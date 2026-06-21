@@ -12,7 +12,17 @@ The recommended first OCI resource is a Compute VM instance.
 
 The platform should not begin with an Oracle managed database service for the main application database. The target application database is PostgreSQL, and the MVP/test environment should run PostgreSQL on the VM or as a container on the VM so the architecture remains portable to the final Rocky Linux deployment.
 
-## 3. Recommended Initial OCI Resource Plan
+## 3. Current OCI Image Decision
+
+During initial VM creation, Rocky Linux was not available as a selectable image in the OCI console.
+
+Decision: Proceed with Oracle Linux as a temporary fallback image for the initial OCI Free Tier development VM.
+
+Reason: Oracle Linux is RHEL-compatible and close enough to the Rocky Linux end-state for early application development, PostgreSQL testing, .NET backend testing, React frontend testing, Podman container testing, and deployment runbook development.
+
+The end-state production target remains Rocky Linux unless a future technical or operational decision changes that direction.
+
+## 4. Recommended Initial OCI Resource Plan
 
 | Resource | Create Now? | Reason |
 |---|---|---|
@@ -23,7 +33,7 @@ The platform should not begin with an Oracle managed database service for the ma
 | VCN/Subnet | Yes | Required network foundation for the VM |
 | Public IP | Yes for test | Needed for SSH and web testing unless using private tunnel |
 
-## 4. Target Test Architecture
+## 5. Target Test Architecture
 
 ```text
 User Browser
@@ -32,7 +42,7 @@ Cloudflare DNS / Optional Proxy
    ↓
 OCI Public IP
    ↓
-Rocky Linux VM
+Oracle Linux VM for initial test
    ↓
 Caddy or NGINX
    ↓
@@ -41,7 +51,23 @@ React Frontend + .NET API
 PostgreSQL
 ```
 
-## 5. VM Creation Checklist
+End-state architecture remains:
+
+```text
+User Browser
+   ↓
+Cloudflare DNS / Optional Proxy
+   ↓
+Rocky Linux Server
+   ↓
+Caddy or NGINX
+   ↓
+React Frontend + .NET API
+   ↓
+PostgreSQL
+```
+
+## 6. VM Creation Checklist
 
 When creating the VM, capture the following values:
 
@@ -51,7 +77,7 @@ When creating the VM, capture the following values:
 | Compartment | TBD |
 | VM Name | Suggested: ptp-dev-01 |
 | Shape | Always Free eligible compute shape, if available |
-| OS Image | Rocky Linux preferred; Oracle Linux acceptable only as temporary fallback |
+| OS Image | Oracle Linux for initial OCI fallback; Rocky Linux remains end-state target |
 | Public IP | TBD |
 | SSH Username | TBD based on image |
 | SSH Key | Do not store private key in GitHub |
@@ -60,7 +86,7 @@ When creating the VM, capture the following values:
 | Subnet | TBD |
 | Ports Open | 22 initially; 80/443 when web testing begins |
 
-## 6. Database Decision
+## 7. Database Decision
 
 For the MVP and early test environment:
 
@@ -70,7 +96,7 @@ For the MVP and early test environment:
 - Do not expose PostgreSQL publicly.
 - Back up PostgreSQL using documented backup scripts.
 
-## 7. Security Notes
+## 8. Security Notes
 
 - Never commit SSH private keys to GitHub.
 - Never commit database passwords to GitHub.
@@ -79,7 +105,7 @@ For the MVP and early test environment:
 - Keep database ports private.
 - Use HTTPS for the web application once a domain/subdomain is available.
 
-## 8. Next Steps After VM Creation
+## 9. Next Steps After VM Creation
 
 After the VM is created, document:
 
