@@ -34,10 +34,39 @@ Use one of the following paths:
 
 1. Keep shape `VM.Standard.E2.1.Micro`.
 2. Change the image to an x86_64-compatible platform image, such as Oracle Linux.
-3. Use this temporarily to validate the application architecture.
-4. Rebuild on Rocky Linux later if needed.
+3. Confirm the image is not an Arm/aarch64 image.
+4. Use this temporarily to validate the application architecture.
+5. Rebuild on Rocky Linux later if needed.
 
-## 3. Issue: Out of Capacity for A1 Flex Shape
+## 3. Issue: Shape Changed but Same Image Error Remains
+
+### Error
+
+```text
+API Error
+Shape VM.Standard.E2.1.Micro is not valid for image ocid1.image.oc1.us-sanjose-1.aaaaaaaa32w7nllwp3hl6encgotpkyts2pve2eeg7l3gbdnpmlcxycbjvr4a.
+```
+
+### Meaning
+
+Changing only the shape is not enough if the previously selected image remains attached to the VM creation form. The image OCID in the error is still the selected image, and that image is not compatible with `VM.Standard.E2.1.Micro`.
+
+### Recommended Fix
+
+1. Return to the `Image and shape` section.
+2. Click `Change image`.
+3. Select an Oracle-provided platform image for `Oracle Linux`.
+4. Choose the x86_64 build if the UI shows architecture choices.
+5. Then select `VM.Standard.E2.1.Micro`.
+6. Retry VM creation.
+
+If the UI continues to reuse the incompatible image, abandon the current VM creation form and start a new `Create VM instance` flow from scratch:
+
+1. Select the image first: Oracle Linux x86_64.
+2. Select the shape second: `VM.Standard.E2.1.Micro`.
+3. Confirm the final summary shows Oracle Linux and E2 Micro before clicking Create.
+
+## 4. Issue: Out of Capacity for A1 Flex Shape
 
 ### Error
 
@@ -52,7 +81,7 @@ If you specified a fault domain, try creating the instance without specifying a 
 
 This is not an operating system error and not a project configuration error. It means OCI does not currently have available capacity for the selected Always Free Arm shape in the selected availability domain.
 
-## 4. Issue: Only One Availability Domain Is Available
+## 5. Issue: Only One Availability Domain Is Available
 
 ### Observation
 
@@ -78,7 +107,7 @@ Try the following in order:
 4. Use `VM.Standard.E2.1.Micro` with a compatible x86_64 Oracle Linux image as the practical short-term fallback.
 5. If OCI remains blocked, use a local Rocky Linux VM temporarily until OCI capacity is available.
 
-## 5. Project Decision
+## 6. Project Decision
 
 For the Project Time Platform, the preference remains:
 
@@ -96,11 +125,11 @@ For the initial no-cost test server, Oracle Linux on `VM.Standard.E2.1.Micro` is
 
 Ubuntu may be used temporarily only if it is the only available free option, but it should be documented as a short-term development workaround because its package manager and OS conventions differ from Rocky Linux.
 
-## 6. Do Not Create Managed Oracle Database Yet
+## 7. Do Not Create Managed Oracle Database Yet
 
 Do not create Oracle Autonomous Database for the application database at this stage. The project target database is PostgreSQL, running on the VM or inside a container.
 
-## 7. Information to Capture After Resolution
+## 8. Information to Capture After Resolution
 
 After a VM is successfully created, document:
 
