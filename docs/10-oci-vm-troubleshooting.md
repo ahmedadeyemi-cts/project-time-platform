@@ -52,24 +52,33 @@ If you specified a fault domain, try creating the instance without specifying a 
 
 This is not an operating system error and not a project configuration error. It means OCI does not currently have available capacity for the selected Always Free Arm shape in the selected availability domain.
 
+## 4. Issue: Only One Availability Domain Is Available
+
+### Observation
+
+During VM creation in the selected OCI region, the Placement screen only showed:
+
+```text
+AD 1
+```
+
+No alternate availability domain was available in the UI.
+
+### Meaning
+
+Because only one availability domain is shown, the A1 Flex capacity issue cannot be resolved by selecting another availability domain in the current region.
+
 ### Recommended Fix Order
 
 Try the following in order:
 
-1. Keep the `VM.Standard.A1.Flex` shape but change the availability domain, if another one is available.
-2. Remove any manually selected fault domain and let OCI choose automatically.
-3. Reduce the A1 Flex allocation to the smallest useful size, such as 1 OCPU and 4-6 GB RAM.
-4. Try again later, especially outside common business hours.
-5. If A1 capacity remains unavailable, use `VM.Standard.E2.1.Micro` with a compatible x86_64 image, preferably Oracle Linux.
-6. If OCI remains blocked, use a local Rocky Linux VM temporarily until OCI capacity is available.
+1. Remove any manually selected fault domain and let OCI choose automatically.
+2. Keep `VM.Standard.A1.Flex` but reduce the allocation to the smallest useful size, such as 1 OCPU and 4-6 GB RAM.
+3. Retry later because A1 Free Tier capacity can become available at a later time.
+4. Use `VM.Standard.E2.1.Micro` with a compatible x86_64 Oracle Linux image as the practical short-term fallback.
+5. If OCI remains blocked, use a local Rocky Linux VM temporarily until OCI capacity is available.
 
-### Project Decision
-
-The preferred long-term target remains Rocky Linux. However, for the initial no-cost test server, Oracle Linux on `VM.Standard.E2.1.Micro` is an acceptable fallback because it is RHEL-compatible and will keep the deployment process closer to Rocky Linux than Ubuntu.
-
-Ubuntu may be used temporarily only if it is the only available free option, but it should be documented as a short-term development workaround because its package manager and OS conventions differ from Rocky Linux.
-
-## 4. Project Decision
+## 5. Project Decision
 
 For the Project Time Platform, the preference remains:
 
@@ -83,11 +92,15 @@ Podman containers
 
 If Rocky Linux is blocked during OCI provisioning, Oracle Linux may be used temporarily because it is also RHEL-compatible. The final deployment process should still be documented for Rocky Linux.
 
-## 5. Do Not Create Managed Oracle Database Yet
+For the initial no-cost test server, Oracle Linux on `VM.Standard.E2.1.Micro` is an acceptable fallback because it is RHEL-compatible and will keep the deployment process closer to Rocky Linux than Ubuntu.
+
+Ubuntu may be used temporarily only if it is the only available free option, but it should be documented as a short-term development workaround because its package manager and OS conventions differ from Rocky Linux.
+
+## 6. Do Not Create Managed Oracle Database Yet
 
 Do not create Oracle Autonomous Database for the application database at this stage. The project target database is PostgreSQL, running on the VM or inside a container.
 
-## 6. Information to Capture After Resolution
+## 7. Information to Capture After Resolution
 
 After a VM is successfully created, document:
 
