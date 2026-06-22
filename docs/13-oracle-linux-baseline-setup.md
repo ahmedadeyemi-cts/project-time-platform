@@ -119,7 +119,63 @@ jq --version
 curl --version
 ```
 
-## 7. Enable Firewall
+## 7. Low Memory Issue: DNF Process Killed
+
+Observed during package installation:
+
+```text
+Killed
+```
+
+The VM currently has approximately 498 MiB of memory and approximately 497 MiB of swap. DNF was killed while processing repository metadata or installing packages.
+
+Decision: Add a temporary 2 GB swap file before retrying package installation.
+
+Run:
+
+```bash
+free -h
+swapon --show
+sudo fallocate -l 2G /swapfile || sudo dd if=/dev/zero of=/swapfile bs=1M count=2048 status=progress
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+free -h
+swapon --show
+```
+
+Then retry the package installation in smaller groups:
+
+```bash
+sudo dnf clean all
+sudo dnf makecache
+sudo dnf install -y git wget unzip tar vim nano firewalld
+sudo dnf install -y podman buildah skopeo
+```
+
+If DNF is still killed, temporarily disable nonessential repositories for the baseline installation:
+
+```bash
+sudo dnf config-manager --set-disabled ol9_ksplice ol9_oci_included || true
+sudo dnf clean all
+sudo dnf makecache
+sudo dnf install -y git wget unzip tar vim nano firewalld podman buildah skopeo
+```
+
+After installation, validate:
+
+```bash
+git --version
+podman --version
+buildah --version
+skopeo --version
+jq --version
+curl --version
+free -h
+```
+
+## 8. Enable Firewall
 
 Check current status:
 
@@ -143,7 +199,7 @@ sudo firewall-cmd --list-all
 
 Do not open PostgreSQL to the public internet.
 
-## 8. Validate Installed Tools
+## 9. Validate Installed Tools
 
 Run:
 
@@ -156,7 +212,7 @@ jq --version
 curl --version
 ```
 
-## 9. Create Application Directory Structure
+## 10. Create Application Directory Structure
 
 Run:
 
@@ -166,7 +222,7 @@ sudo chown -R opc:opc /opt/project-time-platform
 ls -la /opt/project-time-platform
 ```
 
-## 10. Clone Repository
+## 11. Clone Repository
 
 Clone the GitHub repository after GitHub authentication method is confirmed.
 
@@ -179,7 +235,7 @@ git clone https://github.com/ahmedadeyemi-cts/project-time-platform.git
 
 If the repository is private, a GitHub token or SSH deploy key will be required. Do not paste tokens or private keys into documentation or chat.
 
-## 11. Resource Constraint Note
+## 12. Resource Constraint Note
 
 The current VM has approximately 498 MiB of memory. This is enough for early operating system validation and light setup, but it may be constrained for running PostgreSQL, .NET, Node.js builds, and containers at the same time.
 
@@ -190,7 +246,7 @@ The platform should still be documented and built carefully, but later developme
 - Building frontend/backend artifacts elsewhere and deploying compiled output to this VM.
 - Moving to Rocky Linux on a larger VM when available.
 
-## 12. Next Setup Steps
+## 13. Next Setup Steps
 
 After baseline tools are installed and validated, continue with:
 
@@ -203,9 +259,10 @@ After baseline tools are installed and validated, continue with:
 7. Reverse proxy setup.
 8. Microsoft Entra ID application registration.
 
-## 13. Change Log
+## 14. Change Log
 
 | Date | Change |
 |---|---|
 | 2026-06-21 | Created baseline setup runbook for OCI Oracle Linux 9.7 development VM |
 | 2026-06-21 | Documented post-update validation and missing baseline packages |
+| 2026-06-21 | Documented DNF killed issue and 2 GB swap workaround for low-memory VM |
