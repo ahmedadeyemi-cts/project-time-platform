@@ -2,10 +2,10 @@
 
 ## Project Time, Utilization, Approval, Project Management, and Accounting Reconciliation Platform
 
-Version: 0.1  
+Version: 0.2  
 Owner: Ahmed Adeyemi  
 Repository: `ahmedadeyemi-cts/project-time-platform`  
-Status: Foundation setup
+Status: OCI development VM online
 
 ## 1. Purpose
 
@@ -25,7 +25,8 @@ The platform will avoid new paid subscriptions where possible. The current targe
 |---|---|
 | Source Control | GitHub |
 | Authentication | Existing Microsoft Entra ID |
-| Test Hosting | Oracle Free Tier, if suitable |
+| Test Hosting | Oracle Free Tier development VM |
+| Development VM OS | Oracle Linux Server 9.7 |
 | End-State OS | Rocky Linux |
 | Database | PostgreSQL |
 | Backend | .NET / ASP.NET Core |
@@ -76,7 +77,25 @@ The system must support:
 - Audit logging
 - Upgrade-safe operations
 
-## 6. Role Summary
+## 6. Current OCI Development VM Baseline
+
+| Item | Value |
+|---|---|
+| Cloud Provider | Oracle Cloud Infrastructure Free Tier |
+| Region | US West / San Jose selected during account setup |
+| VM Hostname | cts |
+| OS | Oracle Linux Server 9.7 |
+| OS ID | ol |
+| Platform | platform:el9 |
+| Kernel | 6.12.0-203.76.7.1.el9uek.x86_64 |
+| Architecture | x86_64 |
+| SSH User | opc |
+| Public IP | 167.234.223.32 |
+| Private IP | 10.0.0.200 |
+| SSH Status | Successful |
+| End-State Target | Rocky Linux |
+
+## 7. Role Summary
 
 | Role | Purpose |
 |---|---|
@@ -89,7 +108,7 @@ The system must support:
 | System Admin | Configure system, identity, roles, and platform settings |
 | Super Admin | Emergency full access with audit trail |
 
-## 7. Current Workflow Target
+## 8. Current Workflow Target
 
 1. Engineer enters time against an assigned project/task.
 2. Engineer submits timesheet.
@@ -102,7 +121,7 @@ The system must support:
 9. Accounting locks the period.
 10. Historical records remain available for reports and audit.
 
-## 8. Implementation Phases
+## 9. Implementation Phases
 
 ### Phase 1: Foundation
 
@@ -112,6 +131,8 @@ The system must support:
 - Create initial architecture.
 - Create initial database design.
 - Prepare Rocky Linux setup runbook.
+- Create OCI development VM.
+- Validate SSH access.
 
 ### Phase 2: Authentication and Security
 
@@ -151,7 +172,7 @@ The system must support:
 - Add regression tests.
 - Add monitoring.
 
-## 9. Open Decisions
+## 10. Open Decisions
 
 | Decision | Status |
 |---|---|
@@ -165,8 +186,9 @@ The system must support:
 | Email method: Graph, SMTP relay, or other | Open |
 | Reporting: built-in only or Superset later | Built-in first |
 
-## 10. Change Log
+## 11. Change Log
 
 | Date | Change |
 |---|---|
 | Initial | Repository and documentation foundation created |
+| 2026-06-21 | OCI VM created using Oracle Linux Server 9.7; public IP assigned; SSH access validated with `opc` user |
