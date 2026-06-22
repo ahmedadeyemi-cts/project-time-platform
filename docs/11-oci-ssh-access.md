@@ -54,7 +54,46 @@ chmod 600 ~/.ssh/oci_ptp_dev_01.key
 
 Then retry the SSH command.
 
-## 5. SSH from Windows
+## 5. Current SSH Troubleshooting Example
+
+Observed errors:
+
+```text
+Warning: Identity file /ssh-key-2026-06-21.key not accessible: No such file or directory.
+Warning: Identity file /private_key not accessible: No such file or directory.
+Warning: Identity file /Users/Ahmed.Adeyemi/.ssh/private_key.key not accessible: No such file or directory.
+```
+
+Meaning: the SSH command referenced key file paths that did not exist on the local Mac.
+
+Observed error:
+
+```text
+WARNING: UNPROTECTED PRIVATE KEY FILE!
+Permissions 0644 for '/Users/Ahmed.Adeyemi/.ssh/private_key.key' are too open.
+This private key will be ignored.
+Load key "/Users/Ahmed.Adeyemi/.ssh/private_key.key": bad permissions
+```
+
+Meaning: the key file exists, but macOS/OpenSSH rejected it because other users may be able to read it.
+
+Fix:
+
+```bash
+chmod 600 ~/.ssh/private_key.key
+ssh -i ~/.ssh/private_key.key opc@167.234.223.32
+```
+
+If the key is still in the Downloads folder, first move it into `.ssh`:
+
+```bash
+mkdir -p ~/.ssh
+mv ~/Downloads/private_key.key ~/.ssh/private_key.key
+chmod 600 ~/.ssh/private_key.key
+ssh -i ~/.ssh/private_key.key opc@167.234.223.32
+```
+
+## 6. SSH from Windows
 
 Use one of the following:
 
@@ -68,13 +107,13 @@ PowerShell format:
 ssh -i C:\Path\To\private_key opc@PUBLIC_IP_ADDRESS
 ```
 
-## 6. OCI Console Access Notes
+## 7. OCI Console Access Notes
 
 The VM does not provide a normal graphical desktop interface by default. Access is expected through SSH command line.
 
 If SSH fails, use OCI's console connection or Cloud Shell options only for troubleshooting.
 
-## 7. Troubleshooting SSH
+## 8. Troubleshooting SSH
 
 If SSH does not connect, validate:
 
@@ -86,7 +125,19 @@ If SSH does not connect, validate:
 6. Local network is not blocking outbound SSH.
 7. The VM was created with the matching SSH public key.
 
-## 8. Security Notes
+## 9. Post-Login Validation Commands
+
+After SSH succeeds, run:
+
+```bash
+cat /etc/os-release
+whoami
+uname -a
+```
+
+Document the output in the implementation notes before continuing with package installation.
+
+## 10. Security Notes
 
 - Do not commit private SSH keys to GitHub.
 - Do not paste private SSH keys into chat.
