@@ -6,4 +6,8 @@
     <RootNamespace>ProjectTime.Api</RootNamespace>
     <AssemblyName>ProjectTime.Api</AssemblyName>
   </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Npgsql" Version="10.0.3" />
+  </ItemGroup>
 </Project>
