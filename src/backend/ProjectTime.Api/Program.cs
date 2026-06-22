@@ -144,8 +144,8 @@ internal sealed record DatabaseConfig(
                 Password = Password,
                 IncludeErrorDetail = false,
                 Pooling = true,
-                MinimumPoolSize = 0,
-                MaximumPoolSize = 5
+                MinPoolSize = 0,
+                MaxPoolSize = 5
             };
 
             return builder.ConnectionString;
