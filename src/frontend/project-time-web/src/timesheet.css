@@ -1,0 +1,327 @@
+.timesheet-page {
+  overflow: hidden;
+}
+
+.timesheet-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 18px;
+}
+
+.timesheet-toolbar h2 {
+  margin-bottom: 4px;
+}
+
+.week-range {
+  margin-bottom: 0;
+}
+
+.toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.toolbar-actions button,
+.link-button {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 9px 13px;
+  background: var(--surface-strong);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.84rem;
+  font-weight: 850;
+}
+
+.toolbar-actions button:hover,
+.link-button:hover {
+  background: var(--accent);
+  color: var(--brand-blue-strong);
+}
+
+.toolbar-actions .primary-action {
+  border-color: color-mix(in srgb, var(--brand-blue) 38%, var(--border));
+  background: var(--brand-blue);
+  color: #ffffff;
+}
+
+.timesheet-status-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 20px;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.timesheet-status-bar strong {
+  color: var(--text);
+}
+
+.timesheet-workspace {
+  display: grid;
+  grid-template-columns: 300px minmax(760px, 1fr) 300px;
+  gap: 16px;
+  align-items: stretch;
+}
+
+.activities-panel,
+.details-panel {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--surface-strong);
+}
+
+.activities-panel {
+  max-height: 760px;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.details-panel {
+  padding: 18px;
+}
+
+.panel-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.panel-title-row h3,
+.details-panel h3,
+.activity-group h4 {
+  margin-bottom: 0;
+}
+
+.panel-title-row span {
+  border-radius: 999px;
+  padding: 5px 10px;
+  background: var(--accent);
+  color: var(--brand-blue-strong);
+  font-size: 0.8rem;
+  font-weight: 900;
+}
+
+.activity-group + .activity-group {
+  margin-top: 18px;
+}
+
+.activity-group h4 {
+  color: var(--muted);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.small-text {
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.activity-card {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.activity-card:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--brand-blue) 45%, var(--border));
+  box-shadow: 0 10px 24px rgba(0, 75, 141, 0.08);
+}
+
+.activity-card:disabled {
+  cursor: default;
+  opacity: 0.58;
+}
+
+.activity-card strong,
+.activity-card span,
+.activity-card small {
+  display: block;
+}
+
+.activity-card strong {
+  margin-bottom: 4px;
+  font-size: 0.94rem;
+}
+
+.activity-card span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.activity-card small {
+  margin-top: 8px;
+  color: var(--brand-blue-strong);
+  font-size: 0.74rem;
+  font-weight: 850;
+}
+
+.entry-grid-wrap {
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--surface);
+}
+
+.entry-grid {
+  min-width: 1180px;
+}
+
+.entry-grid-row {
+  display: grid;
+  grid-template-columns: 84px 190px 210px repeat(7, 94px) 90px 86px;
+}
+
+.entry-grid-row > div {
+  min-height: 54px;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 10px;
+  color: var(--text);
+  background: var(--surface);
+}
+
+.entry-grid-row > div:last-child {
+  border-right: 0;
+}
+
+.entry-grid-header > div {
+  min-height: 66px;
+  background: var(--surface-strong);
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.day-header strong,
+.day-header span,
+.day-header em {
+  display: block;
+}
+
+.day-header span {
+  margin: 2px 0;
+  color: var(--text);
+  font-size: 0.8rem;
+}
+
+.day-header em {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-style: normal;
+}
+
+.state-dot {
+  color: var(--brand-blue-strong);
+  font-size: 1.4rem;
+  line-height: 0;
+}
+
+.activity-name,
+.row-total,
+.total-row > div {
+  font-weight: 900;
+}
+
+.time-cell-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  align-content: center;
+  background: color-mix(in srgb, var(--surface) 88%, var(--bg-soft)) !important;
+}
+
+.time-cell-pair input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 800;
+  text-align: center;
+}
+
+.time-cell-pair input:focus,
+.selected-time-input {
+  border-color: var(--brand-blue-strong) !important;
+  outline: 2px solid color-mix(in srgb, var(--brand-blue) 18%, transparent);
+}
+
+.total-row > div {
+  min-height: 44px;
+  background: var(--surface-strong);
+}
+
+.link-button {
+  padding: 7px 10px;
+  font-size: 0.76rem;
+}
+
+.detail-form {
+  display: grid;
+  gap: 14px;
+}
+
+.detail-form label {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 850;
+}
+
+.detail-form textarea,
+.detail-form select {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 11px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.detail-form textarea {
+  min-height: 124px;
+  resize: vertical;
+}
+
+@media (max-width: 1180px) {
+  .timesheet-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .activities-panel {
+    max-height: none;
+  }
+}
+
+@media (max-width: 740px) {
+  .timesheet-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .toolbar-actions {
+    justify-content: flex-start;
+  }
+}
