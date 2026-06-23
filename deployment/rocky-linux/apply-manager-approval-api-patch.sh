@@ -15,8 +15,15 @@ from pathlib import Path
 api_file = Path('/opt/project-time-platform/app/project-time-platform/src/backend/ProjectTime.Api/Program.cs')
 api = api_file.read_text()
 
-for old_version in ['0.3.0', '0.3.1', '0.3.2', '0.3.3', '0.3.4', '0.3.5']:
+for old_version in ['0.3.0', '0.3.1', '0.3.2', '0.3.3', '0.3.4', '0.3.5', '0.4.0']:
     api = api.replace(f'version = "{old_version}"', 'version = "0.4.0"')
+
+# Repair any previously generated bad line from the first manager approval patch.
+api = api.replace(
+    'var comment = string.IsNullOrWhiteSpace(request.Comment) ? DBNull.Value : request.Comment.Trim();',
+    'object comment = string.IsNullOrWhiteSpace(request.Comment) ? DBNull.Value : request.Comment.Trim();')
+api = api.replace('manager@ussignal.local', 'ahmed.adeyemi@ussignal.com')
+api = api.replace("'Development Manager'", "'Ahmed Adeyemi'", 1)
 
 manager_endpoints = r'''
 app.MapGet("/api/manager/approvals", async (DateOnly? weekStart, bool? includeAll) =>
@@ -144,7 +151,7 @@ static async Task<Guid> GetOrCreateDevelopmentManagerUserIdAsync(NpgsqlConnectio
 {
     const string sql = """
         INSERT INTO app_users (email, display_name, job_title, department, is_active)
-        VALUES ('manager@ussignal.local', 'Development Manager', 'Development Manager', 'Project Pulse', TRUE)
+        VALUES ('ahmed.adeyemi@ussignal.com', 'Ahmed Adeyemi', 'Development Manager', 'Project Pulse', TRUE)
         ON CONFLICT (email) DO UPDATE
         SET display_name = EXCLUDED.display_name,
             updated_at = NOW()
@@ -244,7 +251,7 @@ static async Task<IResult> ProcessManagerApprovalActionAsync(
     try
     {
         var managerUserId = await GetOrCreateDevelopmentManagerUserIdAsync(connection, transaction);
-        var comment = string.IsNullOrWhiteSpace(request.Comment) ? DBNull.Value : request.Comment.Trim();
+        object comment = string.IsNullOrWhiteSpace(request.Comment) ? DBNull.Value : request.Comment.Trim();
 
         var approvedAtSql = targetStatus == "manager_approved" ? "manager_approved_at = NOW(), manager_declined_at = NULL," : "manager_declined_at = NOW(), manager_approved_at = NULL,";
 
@@ -327,6 +334,10 @@ static async Task<IResult> ProcessManagerApprovalActionAsync(
 
 if 'static async Task<Guid> GetOrCreateDevelopmentManagerUserIdAsync' not in api:
     api = api.replace('static async Task<Guid> GetOrCreateDevelopmentUserIdAsync', manager_helpers + 'static async Task<Guid> GetOrCreateDevelopmentUserIdAsync', 1)
+else:
+    # Make repeated runs repair the helper body created by older patches.
+    api = api.replace("VALUES ('manager@ussignal.local', 'Development Manager', 'Development Manager', 'Project Pulse', TRUE)", "VALUES ('ahmed.adeyemi@ussignal.com', 'Ahmed Adeyemi', 'Development Manager', 'Project Pulse', TRUE)")
+    api = api.replace("VALUES ('ahmed.adeyemi@ussignal.com', 'Development Manager', 'Development Manager', 'Project Pulse', TRUE)", "VALUES ('ahmed.adeyemi@ussignal.com', 'Ahmed Adeyemi', 'Development Manager', 'Project Pulse', TRUE)")
 
 if 'internal sealed record ManagerApprovalActionRequest' not in api:
     api = api.replace('internal sealed record TimesheetSaveRequest', 'internal sealed record ManagerApprovalActionRequest(Guid TimesheetId, DateOnly WorkDate, string? Comment);\n\ninternal sealed record TimesheetSaveRequest', 1)
@@ -336,4 +347,5 @@ PY
 
 echo "==> Manager approval API patch applied"
 echo "==> Expected API version after redeploy: 0.4.0"
+echo "==> Manager development identity: ahmed.adeyemi@ussignal.com"
 echo "==> Validate with: curl -s http://127.0.0.1:5080/api/version | jq"
