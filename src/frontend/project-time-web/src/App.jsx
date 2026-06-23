@@ -296,7 +296,6 @@ export default function App() {
   const activePolicy = utilizationPolicies.data?.policies?.[0];
   const selectedActivitySource = activitySourceOptions.find((option) => option.key === activitySource) ?? activitySourceOptions[0];
   const currentTimesheetStatus = timesheet.data?.status ?? 'draft';
-  const isTimesheetEditable = timesheet.data?.canEdit ?? ['draft', 'manager_declined'].includes(currentTimesheetStatus);
   const isAnyDayEditable = days.length === 0 || days.some((day) => isDayEditable(day.date));
 
   const databaseSummary = useMemo(() => {
@@ -396,8 +395,13 @@ export default function App() {
     setSelectedCell({ rowId, date, type });
   }
 
-  function closeEntryDetails() {
+  async function closeEntryDetails({ autoSave = true } = {}) {
+    const shouldAutoSave = autoSave && selectedCell && isDayEditable(selectedCell.date) && Object.keys(entries).length > 0;
     setSelectedCell(null);
+
+    if (shouldAutoSave) {
+      await autoSaveDraft('Auto-saving draft...');
+    }
   }
 
   function buildTimesheetPayload() {
@@ -437,6 +441,24 @@ export default function App() {
   function getSelectedDayTotal() {
     if (!selectedCell) return 0;
     return getDayTotal(selectedCell.date);
+  }
+
+  async function autoSaveDraft(statusMessage = 'Auto-saving draft...') {
+    if (!isAnyDayEditable) return;
+
+    const payload = buildTimesheetPayload();
+    if (payload.entries.length === 0) return;
+
+    setSaveStatus(statusMessage);
+
+    try {
+      const result = await postJson('/api/timesheets/week/draft', payload);
+      setTimesheet({ loading: false, data: result.timesheet, error: null });
+      setSubmissionStatus(statusToLabel(result.timesheet?.status, grandTotal));
+      setSaveStatus('Draft autosaved');
+    } catch (error) {
+      setSaveStatus(error instanceof Error ? error.message : 'Autosave failed');
+    }
   }
 
   async function saveDraft() {
@@ -731,7 +753,7 @@ export default function App() {
 
       {selectedCell && selectedRow && selectedEntry ? (
         <div className="details-modal-backdrop" role="presentation" onMouseDown={(event) => {
-          if (event.target === event.currentTarget) closeEntryDetails();
+          if (event.target === event.currentTarget) void closeEntryDetails({ autoSave: true });
         }}>
           <section className="details-modal" role="dialog" aria-modal="true" aria-label="Time entry details">
             <div className="modal-title-row">
@@ -742,7 +764,18 @@ export default function App() {
                   {selectedCell.date} • {selectedCell.type === 'afterhours' ? 'Afterhours' : 'Normal time'}
                 </p>
               </div>
-              <button type="button" className="modal-close-button" onClick={closeEntryDetails}>Close</button>
+              <div className="modal-actions">
+                {selectedDayStatus?.status === 'submitted' ? (
+                  <button type="button" className="unlock-action" onClick={unlockSelectedDay} disabled={isSaving}>
+                    Unlock this day
+                  </button>
+                ) : (
+                  <button type="button" className="primary-action" onClick={submitSelectedDay} disabled={isSaving || getSelectedDayTotal() < 8}>
+                    Submit this day
+                  </button>
+                )}
+                <button type="button" className="modal-close-button" onClick={() => void closeEntryDetails({ autoSave: true })}>Close</button>
+              </div>
             </div>
 
             <div className="detail-form modal-detail-form">
@@ -800,19 +833,11 @@ export default function App() {
                 Day total: <strong>{formatNumber(getSelectedDayTotal())}</strong> / minimum 8.00 hours
               </span>
               {selectedDayStatus?.status === 'submitted' ? (
-                <button type="button" className="unlock-action" onClick={unlockSelectedDay} disabled={isSaving}>
-                  Unlock this day
-                </button>
-              ) : (
-                <button type="button" className="primary-action" onClick={submitSelectedDay} disabled={isSaving || getSelectedDayTotal() < 8}>
-                  Submit this day
-                </button>
-              )}
-              {selectedDayStatus?.status === 'submitted' ? (
                 <small>{selectedDayStatus.unlockMessage}</small>
               ) : (
-                <small>Each submitted day must have at least 8.00 hours.</small>
+                <small>Use Submit this day once the day reaches at least 8.00 hours. Closing this window automatically saves your draft.</small>
               )}
+              {isSaving ? <small className="modal-save-note">Saving...</small> : null}
             </div>
           </section>
         </div>
