@@ -258,6 +258,14 @@ export default function App() {
   const selectedRow = activeRows.find((row) => row.id === selectedCell?.rowId);
   const selectedEntry = selectedCell ? getEntry(selectedCell.rowId, selectedCell.date, selectedCell.type) : null;
 
+  function openEntryDetails(rowId, date, type) {
+    setSelectedCell({ rowId, date, type });
+  }
+
+  function closeEntryDetails() {
+    setSelectedCell(null);
+  }
+
   function handleSubmit() {
     if (grandTotal <= 0) {
       setSubmissionStatus('Add time before submitting.');
@@ -406,18 +414,16 @@ export default function App() {
                           const entry = getEntry(row.id, day.date, type.key);
                           const isSelected = selectedCell?.rowId === row.id && selectedCell?.date === day.date && selectedCell?.type === type.key;
                           return (
-                            <input
+                            <button
                               aria-label={`${row.activity} ${day.date} ${type.label}`}
-                              className={isSelected ? 'selected-time-input' : ''}
+                              className={isSelected ? 'time-entry-button selected-time-input' : 'time-entry-button'}
                               key={type.key}
-                              min="0"
-                              step="0.25"
-                              type="number"
-                              value={entry.hours}
-                              placeholder="0.00"
-                              onFocus={() => setSelectedCell({ rowId: row.id, date: day.date, type: type.key })}
-                              onChange={(event) => updateEntry(row.id, day.date, type.key, { hours: event.target.value })}
-                            />
+                              type="button"
+                              title={`${type.label}: ${entry.hours || '0.00'} hours`}
+                              onClick={() => openEntryDetails(row.id, day.date, type.key)}
+                            >
+                              {entry.hours || '0.00'}
+                            </button>
                           );
                         })}
                       </div>
@@ -441,52 +447,74 @@ export default function App() {
                 </div>
               </div>
             </div>
-
-            <aside className="details-panel" aria-label="Details panel">
-              <h3>Details</h3>
-              {selectedCell && selectedRow && selectedEntry ? (
-                <div className="detail-form">
-                  <p className="muted small-text">
-                    {selectedRow.activity} • {selectedCell.date} • {selectedCell.type === 'afterhours' ? 'Afterhours' : 'Normal time'}
-                  </p>
-                  <label>
-                    Description / comment
-                    <textarea
-                      value={selectedEntry.comment}
-                      placeholder="Enter the reportable comment for this time entry."
-                      onChange={(event) => updateEntry(selectedCell.rowId, selectedCell.date, selectedCell.type, { comment: event.target.value })}
-                    />
-                  </label>
-                  <label>
-                    Work location group
-                    <select
-                      value={selectedEntry.workLocationGroupId}
-                      onChange={(event) => updateEntry(selectedCell.rowId, selectedCell.date, selectedCell.type, { workLocationGroupId: event.target.value })}
-                    >
-                      {(locationGroups.data?.groups ?? []).map((group) => (
-                        <option value={group.id} key={group.id}>{group.name}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    Work location
-                    <select
-                      value={selectedEntry.workLocationId}
-                      onChange={(event) => updateEntry(selectedCell.rowId, selectedCell.date, selectedCell.type, { workLocationId: event.target.value })}
-                    >
-                      {(locations.data?.locations ?? []).map((location) => (
-                        <option value={location.id} key={location.id}>{location.name}</option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-              ) : (
-                <p className="muted">Select a normal or afterhours cell to add a comment and work location details.</p>
-              )}
-            </aside>
           </div>
         </DataState>
       </section>
+
+      {selectedCell && selectedRow && selectedEntry ? (
+        <div className="details-modal-backdrop" role="presentation" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) closeEntryDetails();
+        }}>
+          <section className="details-modal" role="dialog" aria-modal="true" aria-label="Time entry details">
+            <div className="modal-title-row">
+              <div>
+                <p className="eyebrow">Time entry details</p>
+                <h2>{selectedRow.activity}</h2>
+                <p className="muted small-text">
+                  {selectedCell.date} • {selectedCell.type === 'afterhours' ? 'Afterhours' : 'Normal time'}
+                </p>
+              </div>
+              <button type="button" className="modal-close-button" onClick={closeEntryDetails}>Close</button>
+            </div>
+
+            <div className="detail-form modal-detail-form">
+              <label>
+                Hours
+                <input
+                  inputMode="decimal"
+                  min="0"
+                  step="0.25"
+                  type="number"
+                  value={selectedEntry.hours}
+                  placeholder="0.00"
+                  autoFocus
+                  onChange={(event) => updateEntry(selectedCell.rowId, selectedCell.date, selectedCell.type, { hours: event.target.value })}
+                />
+              </label>
+              <label>
+                Description / comment
+                <textarea
+                  value={selectedEntry.comment}
+                  placeholder="Enter the reportable comment for this time entry."
+                  onChange={(event) => updateEntry(selectedCell.rowId, selectedCell.date, selectedCell.type, { comment: event.target.value })}
+                />
+              </label>
+              <label>
+                Work location group
+                <select
+                  value={selectedEntry.workLocationGroupId}
+                  onChange={(event) => updateEntry(selectedCell.rowId, selectedCell.date, selectedCell.type, { workLocationGroupId: event.target.value })}
+                >
+                  {(locationGroups.data?.groups ?? []).map((group) => (
+                    <option value={group.id} key={group.id}>{group.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Work location
+                <select
+                  value={selectedEntry.workLocationId}
+                  onChange={(event) => updateEntry(selectedCell.rowId, selectedCell.date, selectedCell.type, { workLocationId: event.target.value })}
+                >
+                  {(locations.data?.locations ?? []).map((location) => (
+                    <option value={location.id} key={location.id}>{location.name}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          </section>
+        </div>
+      ) : null}
 
       <section id="utilization" className="panel">
         <div className="section-header compact">
