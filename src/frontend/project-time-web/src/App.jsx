@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { usSignalLogoDataUrl } from './assets/usSignalLogoData';
 
 const workflowCards = [
   {
@@ -50,10 +49,35 @@ function getInitialTheme() {
   return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
 
+function UsSignalLogoMark() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="brand-logo-svg"
+      viewBox="0 0 220 150"
+      style={{ width: '92px', height: '54px', flex: '0 0 auto', display: 'block' }}
+    >
+      <rect width="220" height="150" rx="18" fill="#ffffff" />
+      <g transform="translate(110 55)" fill="#071b43">
+        <rect x="-14" y="-52" width="28" height="74" rx="12" transform="rotate(0)" />
+        <rect x="-14" y="-52" width="28" height="74" rx="12" transform="rotate(45)" />
+        <rect x="-14" y="-52" width="28" height="74" rx="12" transform="rotate(90)" />
+        <rect x="-14" y="-52" width="28" height="74" rx="12" transform="rotate(135)" />
+        <rect x="-14" y="-52" width="28" height="74" rx="12" transform="rotate(180)" />
+        <rect x="-14" y="-52" width="28" height="74" rx="12" transform="rotate(225)" />
+        <rect x="-14" y="-52" width="28" height="74" rx="12" transform="rotate(270)" />
+        <rect x="-14" y="-52" width="28" height="74" rx="12" transform="rotate(315)" />
+        <path d="M-26 24 C-8 6 6 -8 16 -30 C23 -14 21 7 7 21 C-8 36 -25 42 -44 42 C-40 35 -35 29 -26 24 Z" fill="#ffffff" />
+      </g>
+      <text x="110" y="132" textAnchor="middle" fontFamily="Arial, Helvetica, sans-serif" fontWeight="900" fontSize="28" fill="#071b43">us signal</text>
+    </svg>
+  );
+}
+
 function SignalLogo() {
   return (
     <div className="brand-lockup" aria-label="US Signal Project Time Platform">
-      <img className="brand-logo-image" src={usSignalLogoDataUrl} alt="US Signal" />
+      <UsSignalLogoMark />
       <div>
         <strong>Project Time Platform</strong>
         <small>Time • Approval • Utilization</small>
