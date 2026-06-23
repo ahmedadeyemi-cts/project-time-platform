@@ -15,7 +15,7 @@ const helpTopics = [
   {
     keywords: ['submit', 'approval', 'manager', 'approve', 'reject', 'decline'],
     answer:
-      'Submit sends the weekly timesheet for manager approval. After submission, the timesheet should lock until a manager approves it or returns it for correction. The manager approval screen is planned as the next workflow phase.'
+      'Submit sends the weekly timesheet for manager approval. After submission, the timesheet follows the edit-window policy and then moves into manager review. The manager approval screen is planned as the next workflow phase.'
   },
   {
     keywords: ['non-project', 'administrative', 'vacation', 'holiday', 'training', 'sick', 'peer support', 'fmla'],
@@ -40,6 +40,10 @@ const helpTopics = [
   {
     keywords: ['dark', 'light', 'theme', 'mode'],
     answer: 'Use the Dark mode or Light mode button in the top navigation to switch the display theme.'
+  },
+  {
+    keywords: ['project pulse', 'pulse', 'name', 'system name'],
+    answer: 'Project Pulse is the branded name for this time, approval, utilization, and accounting workflow system.'
   }
 ];
 
@@ -60,7 +64,7 @@ export default function HelpAssistant() {
   const [messages, setMessages] = useState([
     {
       role: 'assistant',
-      text: 'Hi, I can help with this Project Time Platform page. Ask about time entry, saving drafts, submitting, work locations, utilization, or approvals.'
+      text: 'Hi, I can help with Project Pulse. Ask about time entry, saving drafts, submitting, work locations, utilization, or approvals.'
     }
   ]);
 
@@ -93,10 +97,10 @@ export default function HelpAssistant() {
       </button>
 
       {isOpen ? (
-        <aside className="help-panel" aria-label="Page help assistant">
+        <aside className="help-panel" aria-label="Project Pulse help assistant">
           <div className="help-header">
             <div>
-              <strong>Page Help</strong>
+              <strong>Project Pulse Help</strong>
               <span>Ask about the current workflow</span>
             </div>
             <button type="button" onClick={() => setIsOpen(false)} aria-label="Close help assistant">
@@ -129,7 +133,7 @@ export default function HelpAssistant() {
           >
             <input
               value={question}
-              placeholder="Ask a help question..."
+              placeholder="Ask Project Pulse for help..."
               onChange={(event) => setQuestion(event.target.value)}
             />
             <button type="submit">Send</button>
