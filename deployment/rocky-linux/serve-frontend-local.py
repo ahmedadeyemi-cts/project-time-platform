@@ -23,27 +23,57 @@ BACKEND_BASE_URL = "http://127.0.0.1:5080"
 
 
 class FrontendProxyHandler(BaseHTTPRequestHandler):
-    server_version = "ProjectTimeLocalFrontend/0.2"
+    server_version = "ProjectTimeLocalFrontend/0.3"
 
     def do_GET(self) -> None:  # noqa: N802
         if self.path == "/health" or self.path.startswith("/api/"):
-            self.proxy_to_backend(include_body=True)
+            self.proxy_to_backend(method="GET", include_body=True)
             return
 
         self.serve_static_file(include_body=True)
 
     def do_HEAD(self) -> None:  # noqa: N802
         if self.path == "/health" or self.path.startswith("/api/"):
-            self.proxy_to_backend(include_body=False)
+            self.proxy_to_backend(method="HEAD", include_body=False)
             return
 
         self.serve_static_file(include_body=False)
 
-    def proxy_to_backend(self, include_body: bool) -> None:
+    def do_POST(self) -> None:  # noqa: N802
+        if self.path.startswith("/api/"):
+            self.proxy_to_backend(method="POST", include_body=True)
+            return
+
+        self.send_error(405, "POST is only supported for /api/* routes.")
+
+    def do_PUT(self) -> None:  # noqa: N802
+        if self.path.startswith("/api/"):
+            self.proxy_to_backend(method="PUT", include_body=True)
+            return
+
+        self.send_error(405, "PUT is only supported for /api/* routes.")
+
+    def do_DELETE(self) -> None:  # noqa: N802
+        if self.path.startswith("/api/"):
+            self.proxy_to_backend(method="DELETE", include_body=True)
+            return
+
+        self.send_error(405, "DELETE is only supported for /api/* routes.")
+
+    def proxy_to_backend(self, method: str, include_body: bool) -> None:
         target_url = f"{BACKEND_BASE_URL}{self.path}"
-        method = "GET"
-        request = Request(target_url, method=method)
+        request_body = None
+
+        if method in {"POST", "PUT", "DELETE"}:
+            content_length = int(self.headers.get("Content-Length", "0") or "0")
+            request_body = self.rfile.read(content_length) if content_length > 0 else b""
+
+        request = Request(target_url, data=request_body, method=method)
         request.add_header("Accept", self.headers.get("Accept", "*/*"))
+
+        content_type = self.headers.get("Content-Type")
+        if content_type:
+            request.add_header("Content-Type", content_type)
 
         try:
             with urlopen(request, timeout=15) as response:
@@ -60,6 +90,7 @@ class FrontendProxyHandler(BaseHTTPRequestHandler):
             self.send_response(error.code)
             self.send_header("Content-Type", error.headers.get("Content-Type", "application/json"))
             self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
             self.end_headers()
             if include_body:
                 self.wfile.write(body)
@@ -68,6 +99,7 @@ class FrontendProxyHandler(BaseHTTPRequestHandler):
             self.send_response(502)
             self.send_header("Content-Type", "text/plain; charset=utf-8")
             self.send_header("Content-Length", str(len(message)))
+            self.send_header("Cache-Control", "no-store")
             self.end_headers()
             if include_body:
                 self.wfile.write(message)
