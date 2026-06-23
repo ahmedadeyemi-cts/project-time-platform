@@ -277,7 +277,8 @@ export default function App() {
         hours: entry.hours?.toString() ?? '',
         comment: entry.description ?? '',
         workLocationGroupId: entry.workLocationGroupId ?? '',
-        workLocationId: entry.workLocationId ?? ''
+        workLocationId: entry.workLocationId ?? '',
+        savedStatus: entry.status ?? 'draft'
       };
     });
 
@@ -296,6 +297,7 @@ export default function App() {
   const selectedActivitySource = activitySourceOptions.find((option) => option.key === activitySource) ?? activitySourceOptions[0];
   const currentTimesheetStatus = timesheet.data?.status ?? 'draft';
   const isTimesheetEditable = timesheet.data?.canEdit ?? ['draft', 'manager_declined'].includes(currentTimesheetStatus);
+  const isAnyDayEditable = days.length === 0 || days.some((day) => isDayEditable(day.date));
 
   const databaseSummary = useMemo(() => {
     if (dbHealth.loading) return 'Checking database connection...';
@@ -303,17 +305,41 @@ export default function App() {
     return `${dbHealth.data?.status ?? 'unknown'} as ${dbHealth.data?.user ?? 'unknown user'}`;
   }, [dbHealth]);
 
+  function getDayStatus(workDate) {
+    const apiDayStatus = timesheet.data?.dayStatuses?.find((dayStatus) => dayStatus.workDate === workDate);
+    if (apiDayStatus) return apiDayStatus;
+
+    const submittedEntryExists = (timesheet.data?.entries ?? []).some(
+      (entry) => entry.workDate === workDate && entry.status === 'submitted'
+    );
+
+    return {
+      workDate,
+      status: submittedEntryExists ? 'submitted' : 'draft',
+      canEdit: !submittedEntryExists,
+      canUnlock: submittedEntryExists && Boolean(timesheet.data?.canUnlock),
+      unlockMessage: submittedEntryExists
+        ? 'This submitted day is locked. Use Unlock if it is within the allowed correction window, or contact your manager.'
+        : 'This day is open for time entry.'
+    };
+  }
+
+  function isDayEditable(workDate) {
+    return getDayStatus(workDate).canEdit !== false;
+  }
+
   function getEntry(rowId, date, type) {
     return entries[getEntryKey(rowId, date, type)] ?? {
       hours: '',
       comment: '',
       workLocationGroupId: locationGroups.data?.groups?.[0]?.id ?? '',
-      workLocationId: locations.data?.locations?.[0]?.id ?? ''
+      workLocationId: locations.data?.locations?.[0]?.id ?? '',
+      savedStatus: 'draft'
     };
   }
 
   function updateEntry(rowId, date, type, patch) {
-    if (!isTimesheetEditable) return;
+    if (!isDayEditable(date)) return;
 
     const key = getEntryKey(rowId, date, type);
     setEntries((current) => ({
@@ -327,7 +353,7 @@ export default function App() {
   }
 
   function addCategory(category) {
-    if (!isTimesheetEditable) return;
+    if (!isAnyDayEditable) return;
 
     const row = categoryToRow(category);
     setActiveRows((current) => (current.some((item) => item.id === row.id) ? current : [...current, row]));
@@ -335,7 +361,7 @@ export default function App() {
   }
 
   function removeRow(rowId) {
-    if (!isTimesheetEditable) return;
+    if (!isAnyDayEditable) return;
 
     setActiveRows((current) => current.filter((row) => row.id !== rowId));
     setEntries((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !key.startsWith(`${rowId}|`))));
@@ -364,9 +390,9 @@ export default function App() {
 
   const selectedRow = activeRows.find((row) => row.id === selectedCell?.rowId);
   const selectedEntry = selectedCell ? getEntry(selectedCell.rowId, selectedCell.date, selectedCell.type) : null;
+  const selectedDayStatus = selectedCell ? getDayStatus(selectedCell.date) : null;
 
   function openEntryDetails(rowId, date, type) {
-    if (!isTimesheetEditable) return;
     setSelectedCell({ rowId, date, type });
   }
 
@@ -404,8 +430,17 @@ export default function App() {
     };
   }
 
+  function getEntriesForDay(workDate) {
+    return buildTimesheetPayload().entries.filter((entry) => entry.workDate === workDate);
+  }
+
+  function getSelectedDayTotal() {
+    if (!selectedCell) return 0;
+    return getDayTotal(selectedCell.date);
+  }
+
   async function saveDraft() {
-    if (!isTimesheetEditable || isSaving) return;
+    if (!isAnyDayEditable || isSaving) return;
 
     setIsSaving(true);
     setSaveStatus('Saving draft...');
@@ -422,8 +457,58 @@ export default function App() {
     }
   }
 
+  async function submitSelectedDay() {
+    if (!selectedCell || isSaving) return;
+
+    const dayTotal = getDayTotal(selectedCell.date);
+    if (dayTotal < 8) {
+      setSaveStatus(`A minimum of 8.00 hours is required before submitting ${selectedCell.date}. Current total is ${formatNumber(dayTotal)} hours.`);
+      return;
+    }
+
+    setIsSaving(true);
+    setSaveStatus(`Submitting ${selectedCell.date}...`);
+
+    try {
+      const result = await postJson('/api/timesheets/day/submit', {
+        weekStart: selectedWeekStart,
+        workDate: selectedCell.date,
+        entries: getEntriesForDay(selectedCell.date)
+      });
+      setTimesheet({ loading: false, data: result.timesheet, error: null });
+      setSubmissionStatus(`${selectedCell.date} submitted (${formatNumber(dayTotal)} hours).`);
+      setSaveStatus(result.message ?? 'Day submitted');
+      setSelectedCell(null);
+    } catch (error) {
+      setSaveStatus(error instanceof Error ? error.message : 'Failed to submit selected day');
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function unlockSelectedDay() {
+    if (!selectedCell || isSaving) return;
+
+    setIsSaving(true);
+    setSaveStatus(`Requesting unlock for ${selectedCell.date}...`);
+
+    try {
+      const result = await postJson('/api/timesheets/day/unlock', {
+        weekStart: selectedWeekStart,
+        workDate: selectedCell.date
+      });
+      setTimesheet({ loading: false, data: result.timesheet, error: null });
+      setSubmissionStatus('Draft');
+      setSaveStatus(result.message ?? 'Day unlocked');
+    } catch (error) {
+      setSaveStatus(error instanceof Error ? error.message : 'Please contact your manager to unlock this submitted day.');
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   async function handleSubmit() {
-    if (!isTimesheetEditable || isSaving) return;
+    if (!isAnyDayEditable || isSaving) return;
 
     if (grandTotal <= 0) {
       setSubmissionStatus('Add time before submitting.');
@@ -431,23 +516,22 @@ export default function App() {
     }
 
     setIsSaving(true);
-    setSaveStatus('Submitting timesheet...');
+    setSaveStatus('Saving weekly draft...');
 
     try {
-      const result = await postJson('/api/timesheets/week/submit', buildTimesheetPayload());
+      const result = await postJson('/api/timesheets/week/draft', buildTimesheetPayload());
       setTimesheet({ loading: false, data: result.timesheet, error: null });
-      setSubmissionStatus(`Submitted for manager approval (${formatNumber(grandTotal)} hours).`);
-      setSaveStatus('Submitted and saved');
-      setSelectedCell(null);
+      setSubmissionStatus(statusToLabel(result.timesheet?.status, grandTotal));
+      setSaveStatus('Weekly draft saved. Submit each day from the time-entry window when the day reaches 8.00 hours.');
     } catch (error) {
-      setSaveStatus(error instanceof Error ? error.message : 'Failed to submit timesheet');
+      setSaveStatus(error instanceof Error ? error.message : 'Failed to save weekly draft');
     } finally {
       setIsSaving(false);
     }
   }
 
   function resetTimesheet() {
-    if (!isTimesheetEditable) return;
+    if (!isAnyDayEditable) return;
 
     setEntries({});
     setSelectedCell(null);
@@ -512,9 +596,9 @@ export default function App() {
             <button type="button" onClick={() => setSelectedWeekStart(addDaysIso(selectedWeekStart, -7))}>← Previous</button>
             <button type="button" onClick={() => setSelectedWeekStart(getSundayIso())}>Current week</button>
             <button type="button" onClick={() => setSelectedWeekStart(addDaysIso(selectedWeekStart, 7))}>Next →</button>
-            <button type="button" onClick={resetTimesheet} disabled={!isTimesheetEditable || isSaving}>Reset</button>
-            <button type="button" onClick={saveDraft} disabled={!isTimesheetEditable || isSaving}>Save draft</button>
-            <button type="button" className="primary-action" onClick={handleSubmit} disabled={!isTimesheetEditable || isSaving}>Submit</button>
+            <button type="button" onClick={resetTimesheet} disabled={!isAnyDayEditable || isSaving}>Reset</button>
+            <button type="button" onClick={saveDraft} disabled={!isAnyDayEditable || isSaving}>Save draft</button>
+            <button type="button" className="primary-action" onClick={handleSubmit} disabled={!isAnyDayEditable || isSaving}>Save week</button>
           </div>
         </div>
 
@@ -524,6 +608,9 @@ export default function App() {
           <span>Normal: <strong>{formatNumber(normalTotal)}</strong></span>
           <span>Afterhours: <strong>{formatNumber(afterhoursTotal)}</strong></span>
           <span>Total: <strong>{formatNumber(grandTotal)}</strong></span>
+          {currentTimesheetStatus === 'submitted' ? (
+            <span className="unlock-message">Submitted days are locked individually. Open days remain editable.</span>
+          ) : null}
         </div>
 
         <DataState loading={timesheet.loading} error={timesheet.error}>
@@ -557,7 +644,7 @@ export default function App() {
                         className="activity-card"
                         type="button"
                         key={category.code}
-                        disabled={alreadyAdded || !isTimesheetEditable}
+                        disabled={alreadyAdded || !isAnyDayEditable}
                         onClick={() => addCategory(category)}
                       >
                         <strong>{category.name}</strong>
@@ -594,7 +681,7 @@ export default function App() {
 
                 {activeRows.map((row) => (
                   <div className="entry-grid-row" role="row" key={row.id}>
-                    <div role="cell"><span className="state-dot">•</span> {currentTimesheetStatus === 'submitted' ? 'Submitted' : row.state}</div>
+                    <div role="cell"><span className="state-dot">•</span> {row.state}</div>
                     <div role="cell" className="activity-name">{row.activity}</div>
                     <div role="cell">{row.projectDescription}</div>
                     {days.map((day) => (
@@ -602,6 +689,7 @@ export default function App() {
                         {timeTypes.map((type) => {
                           const entry = getEntry(row.id, day.date, type.key);
                           const isSelected = selectedCell?.rowId === row.id && selectedCell?.date === day.date && selectedCell?.type === type.key;
+                          const dayIsEditable = isDayEditable(day.date);
                           return (
                             <button
                               aria-label={`${row.activity} ${day.date} ${type.label}`}
@@ -610,7 +698,7 @@ export default function App() {
                               type="button"
                               title={`${type.label}: ${formatHoursValue(entry.hours)} hours`}
                               onClick={() => openEntryDetails(row.id, day.date, type.key)}
-                              disabled={!isTimesheetEditable}
+                              disabled={!dayIsEditable}
                             >
                               {formatHoursValue(entry.hours)}
                             </button>
@@ -620,7 +708,7 @@ export default function App() {
                     ))}
                     <div role="cell" className="row-total">{formatNumber(getRowTotal(row.id))}</div>
                     <div role="cell">
-                      <button className="link-button" type="button" onClick={() => removeRow(row.id)} disabled={!isTimesheetEditable}>Remove</button>
+                      <button className="link-button" type="button" onClick={() => removeRow(row.id)} disabled={!isAnyDayEditable}>Remove</button>
                     </div>
                   </div>
                 ))}
@@ -668,6 +756,7 @@ export default function App() {
                   value={selectedEntry.hours}
                   placeholder="0.00"
                   autoFocus
+                  disabled={!isDayEditable(selectedCell.date)}
                   onChange={(event) => updateEntry(selectedCell.rowId, selectedCell.date, selectedCell.type, { hours: event.target.value })}
                 />
               </label>
@@ -676,6 +765,7 @@ export default function App() {
                 <textarea
                   value={selectedEntry.comment}
                   placeholder="Enter the reportable comment for this time entry."
+                  disabled={!isDayEditable(selectedCell.date)}
                   onChange={(event) => updateEntry(selectedCell.rowId, selectedCell.date, selectedCell.type, { comment: event.target.value })}
                 />
               </label>
@@ -683,6 +773,7 @@ export default function App() {
                 Work location group
                 <select
                   value={selectedEntry.workLocationGroupId}
+                  disabled={!isDayEditable(selectedCell.date)}
                   onChange={(event) => updateEntry(selectedCell.rowId, selectedCell.date, selectedCell.type, { workLocationGroupId: event.target.value })}
                 >
                   {(locationGroups.data?.groups ?? []).map((group) => (
@@ -694,6 +785,7 @@ export default function App() {
                 Work location
                 <select
                   value={selectedEntry.workLocationId}
+                  disabled={!isDayEditable(selectedCell.date)}
                   onChange={(event) => updateEntry(selectedCell.rowId, selectedCell.date, selectedCell.type, { workLocationId: event.target.value })}
                 >
                   {(locations.data?.locations ?? []).map((location) => (
@@ -701,6 +793,26 @@ export default function App() {
                   ))}
                 </select>
               </label>
+            </div>
+
+            <div className="day-submit-actions">
+              <span>
+                Day total: <strong>{formatNumber(getSelectedDayTotal())}</strong> / minimum 8.00 hours
+              </span>
+              {selectedDayStatus?.status === 'submitted' ? (
+                <button type="button" className="unlock-action" onClick={unlockSelectedDay} disabled={isSaving}>
+                  Unlock this day
+                </button>
+              ) : (
+                <button type="button" className="primary-action" onClick={submitSelectedDay} disabled={isSaving || getSelectedDayTotal() < 8}>
+                  Submit this day
+                </button>
+              )}
+              {selectedDayStatus?.status === 'submitted' ? (
+                <small>{selectedDayStatus.unlockMessage}</small>
+              ) : (
+                <small>Each submitted day must have at least 8.00 hours.</small>
+              )}
             </div>
           </section>
         </div>
