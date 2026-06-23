@@ -187,7 +187,7 @@ a {
 }
 
 .hero {
-  padding: 48px;
+  padding: 34px 40px;
   border: 1px solid var(--border);
   border-radius: 28px;
   background:
@@ -212,12 +212,12 @@ p {
 }
 
 h1 {
-  max-width: 900px;
-  margin-bottom: 18px;
+  max-width: 860px;
+  margin-bottom: 16px;
   color: var(--text);
-  font-size: clamp(2.35rem, 5vw, 4.5rem);
-  line-height: 1;
-  letter-spacing: -0.06em;
+  font-size: clamp(2.1rem, 3.8vw, 3.65rem);
+  line-height: 1.04;
+  letter-spacing: -0.055em;
 }
 
 h2 {
@@ -228,8 +228,8 @@ h2 {
   max-width: 760px;
   margin-bottom: 0;
   color: var(--muted);
-  font-size: 1.08rem;
-  line-height: 1.7;
+  font-size: 1rem;
+  line-height: 1.65;
 }
 
 .status-grid {
@@ -499,7 +499,11 @@ h2 {
 
 @media (max-width: 900px) {
   .hero {
-    padding: 32px;
+    padding: 28px;
+  }
+
+  h1 {
+    font-size: clamp(2rem, 8vw, 3rem);
   }
 
   .status-grid,
