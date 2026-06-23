@@ -102,6 +102,37 @@
   font-weight: 900;
 }
 
+.activity-selector-row {
+  display: grid;
+  gap: 7px;
+  margin-bottom: 16px;
+}
+
+.activity-selector-row label {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.activity-selector-row select {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 0.92rem;
+  font-weight: 900;
+}
+
+.activity-selector-row select:focus {
+  border-color: var(--brand-blue-strong);
+  outline: 2px solid color-mix(in srgb, var(--brand-blue) 18%, transparent);
+}
+
 .activity-group + .activity-group {
   margin-top: 18px;
 }
@@ -111,6 +142,35 @@
   font-size: 0.78rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.activity-results {
+  margin-top: 4px;
+}
+
+.empty-activity-state {
+  border: 1px dashed var(--border);
+  border-radius: 16px;
+  padding: 20px;
+  background: color-mix(in srgb, var(--surface) 82%, var(--bg-soft));
+  text-align: center;
+}
+
+.empty-activity-state strong,
+.empty-activity-state span {
+  display: block;
+}
+
+.empty-activity-state strong {
+  margin-bottom: 8px;
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+.empty-activity-state span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
 }
 
 .small-text {
