@@ -11,7 +11,7 @@
   --brand-cyan: #00a7c8;
   --brand-green: #63b246;
   --accent: #e7f6fb;
-  --shadow: 0 18px 48px rgba(23, 32, 51, 0.08);
+  --shadow: 0 14px 36px rgba(23, 32, 51, 0.07);
   color: var(--text);
   background: var(--bg);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -34,7 +34,7 @@
   --brand-cyan: #24d2f3;
   --brand-green: #7bd65e;
   --accent: #102a45;
-  --shadow: 0 18px 48px rgba(0, 0, 0, 0.3);
+  --shadow: 0 14px 36px rgba(0, 0, 0, 0.28);
 }
 
 * {
@@ -80,8 +80,8 @@ a {
   grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: 24px;
-  margin-bottom: 28px;
-  padding: 14px 16px;
+  margin-bottom: 24px;
+  padding: 12px 16px;
   border: 1px solid var(--border);
   border-radius: 22px;
   background: color-mix(in srgb, var(--surface) 90%, transparent);
@@ -187,21 +187,21 @@ a {
 }
 
 .hero {
-  padding: 34px 40px;
+  padding: 22px 28px;
   border: 1px solid var(--border);
-  border-radius: 28px;
+  border-radius: 22px;
   background:
     linear-gradient(135deg, color-mix(in srgb, var(--surface) 92%, transparent) 0%, color-mix(in srgb, var(--accent) 70%, var(--surface)) 100%);
   box-shadow: var(--shadow);
 }
 
 .eyebrow {
-  margin: 0 0 12px;
+  margin: 0 0 8px;
   color: var(--brand-blue-strong);
   font-weight: 900;
   text-transform: uppercase;
   letter-spacing: 0.13em;
-  font-size: 0.75rem;
+  font-size: 0.72rem;
 }
 
 h1,
@@ -212,12 +212,12 @@ p {
 }
 
 h1 {
-  max-width: 860px;
-  margin-bottom: 16px;
+  max-width: 760px;
+  margin-bottom: 10px;
   color: var(--text);
-  font-size: clamp(2.1rem, 3.8vw, 3.65rem);
-  line-height: 1.04;
-  letter-spacing: -0.055em;
+  font-size: clamp(1.85rem, 3vw, 2.65rem);
+  line-height: 1.08;
+  letter-spacing: -0.05em;
 }
 
 h2 {
@@ -225,18 +225,18 @@ h2 {
 }
 
 .hero-copy {
-  max-width: 760px;
+  max-width: 740px;
   margin-bottom: 0;
   color: var(--muted);
-  font-size: 1rem;
-  line-height: 1.65;
+  font-size: 0.95rem;
+  line-height: 1.55;
 }
 
 .status-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 18px;
-  margin: 28px 0;
+  gap: 16px;
+  margin: 20px 0;
 }
 
 .status-card,
@@ -249,15 +249,15 @@ h2 {
 }
 
 .status-card {
-  padding: 24px;
-  border-radius: 22px;
+  padding: 20px;
+  border-radius: 20px;
 }
 
 .status-label {
   display: block;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
   color: var(--muted);
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   font-weight: 900;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -265,9 +265,9 @@ h2 {
 
 .status-card strong {
   display: block;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
   color: var(--text);
-  font-size: 1.3rem;
+  font-size: 1.15rem;
 }
 
 .status-card small {
@@ -302,9 +302,9 @@ h2 {
 }
 
 .panel {
-  margin: 28px 0;
-  padding: 28px;
-  border-radius: 26px;
+  margin: 24px 0;
+  padding: 26px;
+  border-radius: 24px;
 }
 
 .pill {
@@ -413,7 +413,7 @@ h2 {
 }
 
 .target-card strong,
-.target-card span,
+target-card span,
 .target-card small {
   display: block;
 }
@@ -499,11 +499,11 @@ h2 {
 
 @media (max-width: 900px) {
   .hero {
-    padding: 28px;
+    padding: 22px;
   }
 
   h1 {
-    font-size: clamp(2rem, 8vw, 3rem);
+    font-size: clamp(1.75rem, 7vw, 2.4rem);
   }
 
   .status-grid,
