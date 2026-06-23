@@ -413,7 +413,7 @@ h2 {
 }
 
 .target-card strong,
-target-card span,
+.target-card span,
 .target-card small {
   display: block;
 }
