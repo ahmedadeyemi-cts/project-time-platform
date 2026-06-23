@@ -24,9 +24,12 @@ if [ ! -d "$API_DIR" ]; then
   exit 1
 fi
 
-echo "==> Stopping any manual API processes"
-pkill -f 'ProjectTime.Api' || true
-pkill -f 'dotnet run' || true
+echo "==> Stopping projecttime-api service if it is running"
+sudo systemctl stop projecttime-api || true
+
+echo "==> Stopping any remaining manual API processes"
+pkill -f 'dotnet run --urls http://127.0.0.1:5080' || true
+pkill -f '/ProjectTime.Api --urls http://127.0.0.1:5080' || true
 
 echo "==> Creating publish directory"
 mkdir -p "$PUBLISH_DIR"
@@ -39,7 +42,8 @@ dotnet publish -c Release -o "$PUBLISH_DIR"
 echo "==> Installing systemd service"
 sudo cp "$SERVICE_SRC" "$SERVICE_DST"
 sudo systemctl daemon-reload
-sudo systemctl enable --now projecttime-api
+sudo systemctl enable projecttime-api
+sudo systemctl start projecttime-api
 
 echo "==> Service status"
 sudo systemctl status projecttime-api --no-pager
