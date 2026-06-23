@@ -23,18 +23,26 @@ BACKEND_BASE_URL = "http://127.0.0.1:5080"
 
 
 class FrontendProxyHandler(BaseHTTPRequestHandler):
-    server_version = "ProjectTimeLocalFrontend/0.1"
+    server_version = "ProjectTimeLocalFrontend/0.2"
 
     def do_GET(self) -> None:  # noqa: N802
         if self.path == "/health" or self.path.startswith("/api/"):
-            self.proxy_to_backend()
+            self.proxy_to_backend(include_body=True)
             return
 
-        self.serve_static_file()
+        self.serve_static_file(include_body=True)
 
-    def proxy_to_backend(self) -> None:
+    def do_HEAD(self) -> None:  # noqa: N802
+        if self.path == "/health" or self.path.startswith("/api/"):
+            self.proxy_to_backend(include_body=False)
+            return
+
+        self.serve_static_file(include_body=False)
+
+    def proxy_to_backend(self, include_body: bool) -> None:
         target_url = f"{BACKEND_BASE_URL}{self.path}"
-        request = Request(target_url, method="GET")
+        method = "GET"
+        request = Request(target_url, method=method)
         request.add_header("Accept", self.headers.get("Accept", "*/*"))
 
         try:
@@ -45,23 +53,26 @@ class FrontendProxyHandler(BaseHTTPRequestHandler):
                 self.send_header("Content-Length", str(len(body)))
                 self.send_header("Cache-Control", "no-store")
                 self.end_headers()
-                self.wfile.write(body)
+                if include_body:
+                    self.wfile.write(body)
         except HTTPError as error:
             body = error.read()
             self.send_response(error.code)
             self.send_header("Content-Type", error.headers.get("Content-Type", "application/json"))
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
-            self.wfile.write(body)
+            if include_body:
+                self.wfile.write(body)
         except URLError as error:
             message = f"Backend proxy failed: {error.reason}".encode("utf-8")
             self.send_response(502)
             self.send_header("Content-Type", "text/plain; charset=utf-8")
             self.send_header("Content-Length", str(len(message)))
             self.end_headers()
-            self.wfile.write(message)
+            if include_body:
+                self.wfile.write(message)
 
-    def serve_static_file(self) -> None:
+    def serve_static_file(self, include_body: bool) -> None:
         requested_path = self.path.split("?", 1)[0]
         if requested_path in ("", "/"):
             requested_path = "/index.html"
@@ -89,7 +100,8 @@ class FrontendProxyHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
-        self.wfile.write(body)
+        if include_body:
+            self.wfile.write(body)
 
     def log_message(self, format: str, *args: object) -> None:
         print(f"{self.address_string()} - {format % args}")
