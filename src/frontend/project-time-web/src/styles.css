@@ -126,6 +126,20 @@ a {
   height: 24px;
 }
 
+.brand-logo-image {
+  display: block;
+  width: 82px;
+  max-width: 82px;
+  height: 46px;
+  max-height: 46px;
+  flex: 0 0 82px;
+  object-fit: contain;
+  object-position: center;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 4px;
+}
+
 .brand-lockup strong,
 .brand-lockup small {
   display: block;
