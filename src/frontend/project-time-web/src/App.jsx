@@ -50,6 +50,30 @@ async function fetchJson(path) {
   return response.json();
 }
 
+async function postJson(path, payload) {
+  const response = await fetch(path, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    let details = '';
+    try {
+      const errorBody = await response.json();
+      details = errorBody.message || errorBody.detail || JSON.stringify(errorBody);
+    } catch {
+      details = await response.text();
+    }
+
+    throw new Error(`${path} returned HTTP ${response.status}${details ? `: ${details}` : ''}`);
+  }
+
+  return response.json();
+}
+
 function getInitialTheme() {
   const savedTheme = window.localStorage.getItem('ptp-theme');
   if (savedTheme === 'dark' || savedTheme === 'light') return savedTheme;
@@ -94,6 +118,17 @@ function categoryToRow(category) {
   };
 }
 
+function statusToLabel(status, totalHours = 0) {
+  if (status === 'submitted') return `Submitted for manager approval (${formatNumber(totalHours)} hours).`;
+  if (status === 'manager_declined') return 'Returned by manager for correction.';
+  if (status === 'manager_approved') return 'Manager approved.';
+  if (status === 'pm_approved') return 'Project manager approved.';
+  if (status === 'accounting_ready') return 'Ready for accounting reconciliation.';
+  if (status === 'reconciled') return 'Reconciled.';
+  if (status === 'locked') return 'Locked.';
+  return 'Draft';
+}
+
 function SignalLogo() {
   return (
     <div className="brand-lockup" aria-label="US Signal Project Time Platform">
@@ -127,6 +162,8 @@ export default function App() {
   const [entries, setEntries] = useState({});
   const [selectedCell, setSelectedCell] = useState(null);
   const [submissionStatus, setSubmissionStatus] = useState('Draft');
+  const [saveStatus, setSaveStatus] = useState('Not saved yet');
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -189,15 +226,42 @@ export default function App() {
 
     const defaults = categories.filter((category) => ['ADMINISTRATIVE', 'PEER_SUPPORT'].includes(category.code));
     const fallback = categories.slice(0, 2);
-    setActiveRows((defaults.length > 0 ? defaults : fallback).map(categoryToRow));
-    setEntries({});
+    const savedEntries = timesheet.data?.entries ?? [];
+    const savedCategoryCodes = new Set(savedEntries.map((entry) => entry.categoryCode).filter(Boolean));
+    const savedCategories = categories.filter((category) => savedCategoryCodes.has(category.code));
+    const rowMap = new Map();
+
+    [...(defaults.length > 0 ? defaults : fallback), ...savedCategories].forEach((category) => {
+      rowMap.set(category.code, categoryToRow(category));
+    });
+
+    const entryMap = {};
+    savedEntries.forEach((entry) => {
+      if (entry.rowType !== 'nonProject' || !entry.categoryCode) return;
+
+      const rowId = `non-project-${entry.categoryCode}`;
+      entryMap[getEntryKey(rowId, entry.workDate, entry.timeType)] = {
+        hours: entry.hours?.toString() ?? '',
+        comment: entry.description ?? '',
+        workLocationGroupId: entry.workLocationGroupId ?? '',
+        workLocationId: entry.workLocationId ?? ''
+      };
+    });
+
+    setActiveRows([...rowMap.values()]);
+    setEntries(entryMap);
     setSelectedCell(null);
-    setSubmissionStatus('Draft');
-  }, [timesheet.data?.weekStart]);
+
+    const savedTotal = savedEntries.reduce((total, entry) => total + Number(entry.hours || 0), 0);
+    setSubmissionStatus(statusToLabel(timesheet.data?.status, savedTotal));
+    setSaveStatus(savedEntries.length > 0 ? 'Loaded saved entries' : 'Not saved yet');
+  }, [timesheet.data?.weekStart, timesheet.data?.timesheetId, timesheet.data?.status]);
 
   const days = timesheet.data?.days ?? [];
   const categories = timesheet.data?.nonProjectCategories ?? [];
   const activePolicy = utilizationPolicies.data?.policies?.[0];
+  const currentTimesheetStatus = timesheet.data?.status ?? 'draft';
+  const isTimesheetEditable = ['draft', 'manager_declined'].includes(currentTimesheetStatus);
 
   const databaseSummary = useMemo(() => {
     if (dbHealth.loading) return 'Checking database connection...';
@@ -215,6 +279,8 @@ export default function App() {
   }
 
   function updateEntry(rowId, date, type, patch) {
+    if (!isTimesheetEditable) return;
+
     const key = getEntryKey(rowId, date, type);
     setEntries((current) => ({
       ...current,
@@ -223,17 +289,24 @@ export default function App() {
         ...patch
       }
     }));
+    setSaveStatus('Unsaved changes');
   }
 
   function addCategory(category) {
+    if (!isTimesheetEditable) return;
+
     const row = categoryToRow(category);
     setActiveRows((current) => (current.some((item) => item.id === row.id) ? current : [...current, row]));
+    setSaveStatus('Unsaved changes');
   }
 
   function removeRow(rowId) {
+    if (!isTimesheetEditable) return;
+
     setActiveRows((current) => current.filter((row) => row.id !== rowId));
     setEntries((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !key.startsWith(`${rowId}|`))));
     setSelectedCell((current) => (current?.rowId === rowId ? null : current));
+    setSaveStatus('Unsaved changes');
   }
 
   function getCellHours(rowId, date, type) {
@@ -259,6 +332,7 @@ export default function App() {
   const selectedEntry = selectedCell ? getEntry(selectedCell.rowId, selectedCell.date, selectedCell.type) : null;
 
   function openEntryDetails(rowId, date, type) {
+    if (!isTimesheetEditable) return;
     setSelectedCell({ rowId, date, type });
   }
 
@@ -266,19 +340,85 @@ export default function App() {
     setSelectedCell(null);
   }
 
-  function handleSubmit() {
+  function buildTimesheetPayload() {
+    const payloadEntries = Object.entries(entries)
+      .map(([key, entry]) => {
+        const [rowId, workDate, timeType] = key.split('|');
+        const row = activeRows.find((item) => item.id === rowId);
+        const hours = Number.parseFloat(entry.hours);
+
+        if (!row || Number.isNaN(hours) || hours <= 0) return null;
+
+        return {
+          rowType: row.type,
+          categoryCode: row.categoryCode ?? null,
+          workDate,
+          timeType,
+          hours,
+          description: entry.comment || null,
+          workLocationGroupId: entry.workLocationGroupId || null,
+          workLocationId: entry.workLocationId || null,
+          projectId: row.projectId ?? null,
+          taskId: row.taskId ?? null
+        };
+      })
+      .filter(Boolean);
+
+    return {
+      weekStart: selectedWeekStart,
+      entries: payloadEntries
+    };
+  }
+
+  async function saveDraft() {
+    if (!isTimesheetEditable || isSaving) return;
+
+    setIsSaving(true);
+    setSaveStatus('Saving draft...');
+
+    try {
+      const result = await postJson('/api/timesheets/week/draft', buildTimesheetPayload());
+      setTimesheet({ loading: false, data: result.timesheet, error: null });
+      setSubmissionStatus(statusToLabel(result.timesheet?.status, grandTotal));
+      setSaveStatus('Draft saved');
+    } catch (error) {
+      setSaveStatus(error instanceof Error ? error.message : 'Failed to save draft');
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function handleSubmit() {
+    if (!isTimesheetEditable || isSaving) return;
+
     if (grandTotal <= 0) {
       setSubmissionStatus('Add time before submitting.');
       return;
     }
 
-    setSubmissionStatus(`Submitted for manager approval (${formatNumber(grandTotal)} hours).`);
+    setIsSaving(true);
+    setSaveStatus('Submitting timesheet...');
+
+    try {
+      const result = await postJson('/api/timesheets/week/submit', buildTimesheetPayload());
+      setTimesheet({ loading: false, data: result.timesheet, error: null });
+      setSubmissionStatus(`Submitted for manager approval (${formatNumber(grandTotal)} hours).`);
+      setSaveStatus('Submitted and saved');
+      setSelectedCell(null);
+    } catch (error) {
+      setSaveStatus(error instanceof Error ? error.message : 'Failed to submit timesheet');
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   function resetTimesheet() {
+    if (!isTimesheetEditable) return;
+
     setEntries({});
     setSelectedCell(null);
     setSubmissionStatus('Draft');
+    setSaveStatus('Unsaved changes');
   }
 
   return (
@@ -338,13 +478,15 @@ export default function App() {
             <button type="button" onClick={() => setSelectedWeekStart(addDaysIso(selectedWeekStart, -7))}>← Previous</button>
             <button type="button" onClick={() => setSelectedWeekStart(getSundayIso())}>Current week</button>
             <button type="button" onClick={() => setSelectedWeekStart(addDaysIso(selectedWeekStart, 7))}>Next →</button>
-            <button type="button" onClick={resetTimesheet}>Reset</button>
-            <button type="button" className="primary-action" onClick={handleSubmit}>Submit</button>
+            <button type="button" onClick={resetTimesheet} disabled={!isTimesheetEditable || isSaving}>Reset</button>
+            <button type="button" onClick={saveDraft} disabled={!isTimesheetEditable || isSaving}>Save draft</button>
+            <button type="button" className="primary-action" onClick={handleSubmit} disabled={!isTimesheetEditable || isSaving}>Submit</button>
           </div>
         </div>
 
         <div className="timesheet-status-bar">
           <span className="pill">Status: {submissionStatus}</span>
+          <span>Save: <strong>{saveStatus}</strong></span>
           <span>Normal: <strong>{formatNumber(normalTotal)}</strong></span>
           <span>Afterhours: <strong>{formatNumber(afterhoursTotal)}</strong></span>
           <span>Total: <strong>{formatNumber(grandTotal)}</strong></span>
@@ -374,7 +516,7 @@ export default function App() {
                       className="activity-card"
                       type="button"
                       key={category.code}
-                      disabled={alreadyAdded}
+                      disabled={alreadyAdded || !isTimesheetEditable}
                       onClick={() => addCategory(category)}
                     >
                       <strong>{category.name}</strong>
@@ -405,7 +547,7 @@ export default function App() {
 
                 {activeRows.map((row) => (
                   <div className="entry-grid-row" role="row" key={row.id}>
-                    <div role="cell"><span className="state-dot">•</span> {row.state}</div>
+                    <div role="cell"><span className="state-dot">•</span> {currentTimesheetStatus === 'submitted' ? 'Submitted' : row.state}</div>
                     <div role="cell" className="activity-name">{row.activity}</div>
                     <div role="cell">{row.projectDescription}</div>
                     {days.map((day) => (
@@ -421,6 +563,7 @@ export default function App() {
                               type="button"
                               title={`${type.label}: ${entry.hours || '0.00'} hours`}
                               onClick={() => openEntryDetails(row.id, day.date, type.key)}
+                              disabled={!isTimesheetEditable}
                             >
                               {entry.hours || '0.00'}
                             </button>
@@ -430,7 +573,7 @@ export default function App() {
                     ))}
                     <div role="cell" className="row-total">{formatNumber(getRowTotal(row.id))}</div>
                     <div role="cell">
-                      <button className="link-button" type="button" onClick={() => removeRow(row.id)}>Remove</button>
+                      <button className="link-button" type="button" onClick={() => removeRow(row.id)} disabled={!isTimesheetEditable}>Remove</button>
                     </div>
                   </div>
                 ))}
