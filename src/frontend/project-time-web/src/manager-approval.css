@@ -1,0 +1,176 @@
+.manager-approval-shell {
+  width: min(1200px, calc(100% - 32px));
+  margin: 24px auto;
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  padding: 26px;
+}
+
+.manager-approval-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 18px;
+}
+
+.manager-approval-header h2 {
+  margin-bottom: 8px;
+  font-size: 1.85rem;
+  letter-spacing: -0.04em;
+}
+
+.manager-approval-header p:not(.eyebrow) {
+  max-width: 680px;
+  margin-bottom: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.manager-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.manager-toolbar button,
+.manager-row-actions button {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 9px 12px;
+  background: var(--surface-strong);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 900;
+}
+
+.manager-toolbar button:hover,
+.manager-row-actions button:hover {
+  background: var(--accent);
+  color: var(--brand-blue-strong);
+}
+
+.manager-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-bottom: 18px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.manager-status-row strong {
+  color: var(--text);
+}
+
+.manager-empty-state {
+  border: 1px dashed var(--border);
+  border-radius: 18px;
+  padding: 24px;
+  background: var(--surface-strong);
+  color: var(--muted);
+  text-align: center;
+  font-weight: 800;
+}
+
+.manager-empty-state.error {
+  border-color: rgba(210, 69, 69, 0.35);
+  color: #d24545;
+}
+
+.manager-table-wrap {
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+}
+
+.manager-table {
+  width: 100%;
+  min-width: 980px;
+  border-collapse: collapse;
+}
+
+.manager-table th,
+.manager-table td {
+  border-bottom: 1px solid var(--border);
+  padding: 13px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.manager-table th {
+  background: var(--surface-strong);
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.manager-table td {
+  color: var(--text);
+  font-size: 0.88rem;
+}
+
+.manager-table td span {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.manager-status {
+  display: inline-flex !important;
+  margin-top: 0 !important;
+  border-radius: 999px;
+  padding: 7px 10px;
+  background: var(--accent);
+  color: var(--brand-blue-strong) !important;
+  font-size: 0.74rem !important;
+  font-weight: 900;
+}
+
+.manager-status.manager_approved {
+  background: rgba(99, 178, 70, 0.16);
+  color: #2d7a19 !important;
+}
+
+.manager-status.manager_declined {
+  background: rgba(210, 69, 69, 0.12);
+  color: #d24545 !important;
+}
+
+.manager-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.manager-row-actions .approve {
+  background: var(--brand-blue);
+  color: #ffffff;
+}
+
+.manager-row-actions .decline {
+  background: rgba(210, 69, 69, 0.1);
+  color: #b23232;
+}
+
+.manager-row-actions .unlock {
+  background: color-mix(in srgb, #fff4df 85%, var(--surface));
+  color: #8a5300;
+}
+
+@media (max-width: 900px) {
+  .manager-approval-header {
+    flex-direction: column;
+  }
+
+  .manager-toolbar {
+    justify-content: flex-start;
+  }
+}
