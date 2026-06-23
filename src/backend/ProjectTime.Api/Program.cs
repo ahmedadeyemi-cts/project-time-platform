@@ -21,7 +21,7 @@ app.MapGet("/api/version", () => Results.Ok(new
 {
     application = "Project Time Platform",
     component = "ProjectTime.Api",
-    version = "0.2.0",
+    version = "0.2.1",
     framework = RuntimeInformation.FrameworkDescription,
     os = RuntimeInformation.OSDescription,
     timestampUtc = DateTimeOffset.UtcNow
@@ -346,7 +346,7 @@ app.MapGet("/api/utilization/targets", async () =>
             policyName = reader.GetString(0),
             targetPercent = reader.GetDecimal(1),
             targetHours = reader.GetDecimal(2),
-            bonusReferenceAmount = reader.IsDBNull(3) ? null : reader.GetDecimal(3),
+            bonusReferenceAmount = reader.IsDBNull(3) ? (decimal?)null : reader.GetDecimal(3),
             displayOrder = reader.GetInt32(4)
         });
     }
