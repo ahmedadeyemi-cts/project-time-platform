@@ -40,6 +40,33 @@ const timeTypes = [
   { key: 'afterhours', label: 'Afterhours' }
 ];
 
+const activitySourceOptions = [
+  {
+    key: 'nonProject',
+    label: 'Non-project time',
+    emptyTitle: 'No non-project time available.',
+    emptyDescription: 'Non-project categories will appear here once they are loaded from the API.'
+  },
+  {
+    key: 'openTasks',
+    label: 'Open tasks',
+    emptyTitle: 'No open tasks available.',
+    emptyDescription: 'Assigned open project tasks will appear here after project-task assignments are connected.'
+  },
+  {
+    key: 'regularTasks',
+    label: 'Regular tasks',
+    emptyTitle: 'No regular tasks available.',
+    emptyDescription: 'Recurring or regular project tasks will appear here after the assignment workflow is connected.'
+  },
+  {
+    key: 'requests',
+    label: 'Requests / Service Requests',
+    emptyTitle: 'No requests available.',
+    emptyDescription: 'Service request activities will appear here after the request workflow is connected.'
+  }
+];
+
 async function fetchJson(path) {
   const response = await fetch(path);
 
@@ -105,6 +132,11 @@ function formatNumber(value) {
   return Number(value || 0).toFixed(2);
 }
 
+function formatHoursValue(value) {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed.toFixed(2) : '0.00';
+}
+
 function categoryToRow(category) {
   return {
     id: `non-project-${category.code}`,
@@ -131,10 +163,10 @@ function statusToLabel(status, totalHours = 0) {
 
 function SignalLogo() {
   return (
-    <div className="brand-lockup" aria-label="US Signal Project Time Platform">
+    <div className="brand-lockup" aria-label="US Signal Project Pulse">
       <img className="brand-logo-image" src={usSignalLogoUrl} alt="US Signal" />
       <div>
-        <strong>Project Time Platform</strong>
+        <strong>Project Pulse</strong>
         <small>Time • Approval • Utilization</small>
       </div>
     </div>
@@ -164,6 +196,7 @@ export default function App() {
   const [submissionStatus, setSubmissionStatus] = useState('Draft');
   const [saveStatus, setSaveStatus] = useState('Not saved yet');
   const [isSaving, setIsSaving] = useState(false);
+  const [activitySource, setActivitySource] = useState('nonProject');
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -260,8 +293,9 @@ export default function App() {
   const days = timesheet.data?.days ?? [];
   const categories = timesheet.data?.nonProjectCategories ?? [];
   const activePolicy = utilizationPolicies.data?.policies?.[0];
+  const selectedActivitySource = activitySourceOptions.find((option) => option.key === activitySource) ?? activitySourceOptions[0];
   const currentTimesheetStatus = timesheet.data?.status ?? 'draft';
-  const isTimesheetEditable = ['draft', 'manager_declined'].includes(currentTimesheetStatus);
+  const isTimesheetEditable = timesheet.data?.canEdit ?? ['draft', 'manager_declined'].includes(currentTimesheetStatus);
 
   const databaseSummary = useMemo(() => {
     if (dbHealth.loading) return 'Checking database connection...';
@@ -437,8 +471,8 @@ export default function App() {
       </header>
 
       <section id="dashboard" className="hero">
-        <p className="eyebrow">US Signal Project Time Platform</p>
-        <h1>Time, approval, utilization, and accounting workflow foundation</h1>
+        <p className="eyebrow">US Signal Project Pulse</p>
+        <h1>Project Pulse: time, approval, utilization, and accounting workflow</h1>
         <p className="hero-copy">
           A focused internal platform for weekly time entry, task-based project assignment, manager approval, project validation, accounting reconciliation, and utilization reporting.
         </p>
@@ -448,7 +482,7 @@ export default function App() {
         <article className="status-card">
           <span className="status-label">API</span>
           <strong>{apiHealth.loading ? 'Checking...' : apiHealth.error ? 'Unavailable' : apiHealth.data?.status}</strong>
-          <small>{apiHealth.data?.service ?? apiHealth.error ?? 'Local API health endpoint'}</small>
+          <small>{apiHealth.data?.service ?? apiHealth.error ?? 'Project Pulse API'}</small>
         </article>
 
         <article className="status-card">
@@ -497,35 +531,48 @@ export default function App() {
             <aside className="activities-panel" aria-label="Activities">
               <div className="panel-title-row">
                 <h3>Activities</h3>
-                <span>{categories.length}</span>
+                <span>{activitySource === 'nonProject' ? categories.length : 0}</span>
               </div>
 
-              <div className="activity-group">
-                <h4>Project tasks</h4>
-                <p className="muted small-text">
-                  Assigned project tasks will appear here once the project assignment API is connected to saved project/task data.
-                </p>
+              <div className="activity-selector-row">
+                <label htmlFor="activity-source">Activity type</label>
+                <select
+                  id="activity-source"
+                  value={activitySource}
+                  onChange={(event) => setActivitySource(event.target.value)}
+                >
+                  {activitySourceOptions.map((option) => (
+                    <option value={option.key} key={option.key}>{option.label}</option>
+                  ))}
+                </select>
               </div>
 
-              <div className="activity-group">
-                <h4>Non-project time</h4>
-                {categories.map((category) => {
-                  const alreadyAdded = activeRows.some((row) => row.categoryCode === category.code);
-                  return (
-                    <button
-                      className="activity-card"
-                      type="button"
-                      key={category.code}
-                      disabled={alreadyAdded || !isTimesheetEditable}
-                      onClick={() => addCategory(category)}
-                    >
-                      <strong>{category.name}</strong>
-                      <span>{category.description ?? category.utilizationBucket}</span>
-                      <small>{category.requiresApproval ? 'Approval required' : 'No approval required'}</small>
-                    </button>
-                  );
-                })}
-              </div>
+              {activitySource === 'nonProject' ? (
+                <div className="activity-group activity-results">
+                  <h4>Non-project time</h4>
+                  {categories.map((category) => {
+                    const alreadyAdded = activeRows.some((row) => row.categoryCode === category.code);
+                    return (
+                      <button
+                        className="activity-card"
+                        type="button"
+                        key={category.code}
+                        disabled={alreadyAdded || !isTimesheetEditable}
+                        onClick={() => addCategory(category)}
+                      >
+                        <strong>{category.name}</strong>
+                        <span>{category.description ?? category.utilizationBucket}</span>
+                        <small>{category.requiresApproval ? 'Approval required' : 'No approval required'}</small>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="empty-activity-state">
+                  <strong>{selectedActivitySource.emptyTitle}</strong>
+                  <span>{selectedActivitySource.emptyDescription}</span>
+                </div>
+              )}
             </aside>
 
             <div className="entry-grid-wrap">
@@ -561,11 +608,11 @@ export default function App() {
                               className={isSelected ? 'time-entry-button selected-time-input' : 'time-entry-button'}
                               key={type.key}
                               type="button"
-                              title={`${type.label}: ${entry.hours || '0.00'} hours`}
+                              title={`${type.label}: ${formatHoursValue(entry.hours)} hours`}
                               onClick={() => openEntryDetails(row.id, day.date, type.key)}
                               disabled={!isTimesheetEditable}
                             >
-                              {entry.hours || '0.00'}
+                              {formatHoursValue(entry.hours)}
                             </button>
                           );
                         })}
