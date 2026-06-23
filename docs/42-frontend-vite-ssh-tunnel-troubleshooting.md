@@ -162,7 +162,49 @@ Then test:
 curl -v --max-time 10 http://127.0.0.1:5173/
 ```
 
-Use the same SSH tunnel from the Mac:
+## Python Static Server and API Proxy Fallback
+
+If both Vite dev and Vite preview accept connections but time out, use the Python local frontend server.
+
+This fallback serves the built React `dist` folder and proxies:
+
+```text
+/health
+/api/*
+```
+
+to the local backend API:
+
+```text
+http://127.0.0.1:5080
+```
+
+Run:
+
+```bash
+cd /opt/project-time-platform/app/project-time-platform
+
+pkill -f 'vite' || true
+pkill -f 'node.*5173' || true
+pkill -f 'serve-frontend-local.py' || true
+
+./deployment/rocky-linux/build-frontend.sh
+
+chmod +x deployment/rocky-linux/serve-frontend-local.sh
+./deployment/rocky-linux/serve-frontend-local.sh
+```
+
+Keep this terminal open.
+
+From a second SSH session, validate:
+
+```bash
+curl -I http://127.0.0.1:5173/
+curl http://127.0.0.1:5173/api/version
+curl http://127.0.0.1:5173/api/timesheets/week?weekStart=2026-06-21
+```
+
+Then use the same SSH tunnel from the Mac:
 
 ```bash
 ssh -i ~/.ssh/private_key.key -L 5173:127.0.0.1:5173 opc@167.234.223.32
@@ -176,4 +218,4 @@ http://127.0.0.1:5173/
 
 ## Security Note
 
-Do not open port 5173 publicly in OCI. The Vite server should remain bound to localhost during development. Use SSH tunneling for browser testing.
+Do not open port 5173 publicly in OCI. The frontend server should remain bound to localhost during development. Use SSH tunneling for browser testing.
