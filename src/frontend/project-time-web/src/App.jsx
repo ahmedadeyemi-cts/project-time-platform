@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { usSignalLogoDataUrl } from './assets/usSignalLogoData';
+import usSignalLogoUrl from '../brand/ussignal.png';
 
 const workflowCards = [
   {
@@ -53,7 +53,7 @@ function getInitialTheme() {
 function SignalLogo() {
   return (
     <div className="brand-lockup" aria-label="US Signal Project Time Platform">
-      <img className="brand-logo-image" src={usSignalLogoDataUrl} alt="US Signal" />
+      <img className="brand-logo-image" src={usSignalLogoUrl} alt="US Signal" />
       <div>
         <strong>Project Time Platform</strong>
         <small>Time • Approval • Utilization</small>
