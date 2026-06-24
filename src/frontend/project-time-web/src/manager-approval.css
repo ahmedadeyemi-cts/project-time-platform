@@ -174,3 +174,72 @@
     justify-content: flex-start;
   }
 }
+
+
+.bulk-approval-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 18px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 14px;
+  background: var(--surface-strong);
+  color: var(--muted);
+}
+
+.bulk-approval-bar strong {
+  color: var(--text);
+}
+
+.bulk-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.bulk-actions button {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 9px 12px;
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 900;
+}
+
+.bulk-actions .approve-selected {
+  border-color: color-mix(in srgb, var(--brand-blue) 42%, var(--border));
+  background: var(--brand-blue);
+  color: #ffffff;
+}
+
+.bulk-actions .approve-selected:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* 018B Administrative Approval Requests */
+
+.administrative-approval-panel {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border);
+}
+
+.manager-approval-header.compact {
+  margin-bottom: 1rem;
+}
+
+.administrative-approval-table td span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin-top: 0.2rem;
+}
+
+.administrative-approval-table td {
+  vertical-align: top;
+}

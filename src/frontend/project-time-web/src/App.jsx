@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import usSignalLogoUrl from '../brand/ussignal.png';
 import './timesheet.css';
 
@@ -67,11 +67,30 @@ const activitySourceOptions = [
   }
 ];
 
+
+async function readApiErrorMessage(response, path) {
+  const raw = await response.text();
+
+  if (!raw) {
+    return `${path} returned HTTP ${response.status}`;
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    return `${path} returned HTTP ${response.status}: ${parsed.message || parsed.detail || parsed.status || raw}`;
+  } catch {
+    return `${path} returned HTTP ${response.status}: ${raw}`;
+  }
+}
+
+
 async function fetchJson(path) {
-  const response = await fetch(path);
+  const response = await fetch(path, {
+    headers: getProjectPulseAuthHeaders()
+  });
 
   if (!response.ok) {
-    throw new Error(`${path} returned HTTP ${response.status}`);
+    throw new Error(await readApiErrorMessage(response, path));
   }
 
   return response.json();
@@ -80,26 +99,110 @@ async function fetchJson(path) {
 async function postJson(path, payload) {
   const response = await fetch(path, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
+    headers: { 'Content-Type': 'application/json', ...getProjectPulseAuthHeaders() },
     body: JSON.stringify(payload)
   });
 
   if (!response.ok) {
-    let details = '';
-    try {
-      const errorBody = await response.json();
-      details = errorBody.message || errorBody.detail || JSON.stringify(errorBody);
-    } catch {
-      details = await response.text();
-    }
-
-    throw new Error(`${path} returned HTTP ${response.status}${details ? `: ${details}` : ''}`);
+    throw new Error(await readApiErrorMessage(response, path));
   }
 
   return response.json();
 }
+
+
+
+const PROJECT_PULSE_SESSION_WARNING_MS = 10 * 60 * 1000;
+
+function getStoredAuthSession() {
+  try {
+    const rawSession = window.localStorage.getItem('projectPulseAuthSession');
+    if (!rawSession) return null;
+
+    const parsed = JSON.parse(rawSession);
+    if (!parsed?.username || !parsed?.loginMethod || !parsed?.sessionToken || !parsed?.expiresAt) return null;
+
+    if (Date.now() >= Date.parse(parsed.expiresAt)) {
+      window.localStorage.removeItem('projectPulseAuthSession');
+      return null;
+    }
+
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function getProjectPulseAuthHeaders() {
+  const session = getStoredAuthSession();
+  return session?.sessionToken ? { 'X-ProjectPulse-Session': session.sessionToken } : {};
+}
+
+
+function getInitialAuthSession() {
+  return getStoredAuthSession();
+}
+
+function saveAuthSession(session) {
+  window.localStorage.setItem('projectPulseAuthSession', JSON.stringify(session));
+}
+
+function clearAuthSession() {
+  window.localStorage.removeItem('projectPulseAuthSession');
+}
+
+
+
+function getPreferenceStorageKey(session) {
+  const username = session?.username || 'anonymous';
+  return `projectPulseUserPreferences:${username.toLowerCase()}`;
+}
+
+function getDefaultUserPreferences(session) {
+  return {
+    theme: getInitialTheme(),
+    profilePhotoDataUrl: '',
+    awardsAndCertificates: '',
+    displayNameOverride: '',
+    titleOverride: '',
+    username: session?.username || ''
+  };
+}
+
+function getStoredUserPreferences(session) {
+  try {
+    const key = getPreferenceStorageKey(session);
+    const stored = window.localStorage.getItem(key);
+    if (!stored) return getDefaultUserPreferences(session);
+
+    return {
+      ...getDefaultUserPreferences(session),
+      ...JSON.parse(stored),
+      username: session?.username || ''
+    };
+  } catch {
+    return getDefaultUserPreferences(session);
+  }
+}
+
+function saveStoredUserPreferences(session, preferences) {
+  const key = getPreferenceStorageKey(session);
+  window.localStorage.setItem(key, JSON.stringify({
+    ...preferences,
+    username: session?.username || ''
+  }));
+}
+
+function getInitials(value) {
+  const cleanValue = String(value || 'Project Pulse').replace(/@.*/, '').replace(/[._-]/g, ' ');
+  const parts = cleanValue.split(' ').filter(Boolean);
+
+  if (parts.length === 0) return 'PP';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+
+  return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+}
+
 
 function getInitialTheme() {
   const savedTheme = window.localStorage.getItem('ptp-theme');
@@ -137,6 +240,21 @@ function formatHoursValue(value) {
   return Number.isFinite(parsed) ? parsed.toFixed(2) : '0.00';
 }
 
+function taskToRow(task) {
+  return {
+    id: `project-task-${task.projectId}-${task.taskId}`,
+    type: 'projectTask',
+    state: 'Draft',
+    activity: task.taskName,
+    projectDescription: `${task.projectCode} • ${task.projectName}`,
+    projectId: task.projectId,
+    taskId: task.taskId,
+    taskCode: task.taskCode,
+    clientName: task.clientName,
+    projectManagerName: task.projectManagerName
+  };
+}
+
 function categoryToRow(category) {
   return {
     id: `non-project-${category.code}`,
@@ -150,6 +268,14 @@ function categoryToRow(category) {
   };
 }
 
+function getVacationHolidayReminder(row) {
+  if (!row) return null;
+  const code = (row.categoryCode ?? '').toUpperCase();
+  const activity = (row.activity ?? '').toUpperCase();
+  if (!['VACATION', 'HOLIDAY'].includes(code) && !['VACATION', 'HOLIDAY'].includes(activity)) return null;
+  return 'The code "Vacation" should be used for PTO. "Holiday" should be used only for company-paid holidays and your floating holiday. If you are taking PTO and a time entry deadline is approaching, your time should be submitted before you take your time off. All resources are required to submit 40 hours of time each week.';
+}
+
 function statusToLabel(status, totalHours = 0) {
   if (status === 'submitted') return `Submitted for manager approval (${formatNumber(totalHours)} hours).`;
   if (status === 'manager_declined') return 'Returned by manager for correction.';
@@ -161,7 +287,191 @@ function statusToLabel(status, totalHours = 0) {
   return 'Draft';
 }
 
+
+const roleWorkspaceModules = [
+  {
+    route: 'timesheet',
+    href: '#timesheet',
+    title: 'Time Entry',
+    navLabel: 'Timesheet',
+    description: 'Enter weekly and daily time by project, task, non-project work, and afterhours.',
+    permissions: ['VIEW_TIME_ENTRY']
+  },
+  {
+    route: 'utilization',
+    href: '#utilization',
+    title: 'My Utilization',
+    navLabel: 'Utilization',
+    description: 'View current-quarter utilization, target progress, and remaining hours.',
+    permissions: ['VIEW_OWN_UTILIZATION']
+  },
+  {
+    route: 'utilization',
+    href: '#utilization',
+    title: 'Team Utilization',
+    navLabel: 'Utilization',
+    description: 'Review team and individual utilization across resources.',
+    permissions: ['VIEW_TEAM_UTILIZATION', 'VIEW_INDIVIDUAL_UTILIZATION']
+  },
+  {
+    route: 'holiday-admin',
+    href: '#holiday-admin',
+    title: 'Holiday Calendar',
+    navLabel: 'Holidays',
+    description: 'View uploaded company holidays and calendar availability.',
+    permissions: ['VIEW_HOLIDAYS']
+  },
+  {
+    route: 'holiday-admin',
+    href: '#holiday-admin',
+    title: 'Holiday Administration',
+    navLabel: 'Holidays',
+    description: 'Upload and manage company holidays.',
+    permissions: ['MANAGE_HOLIDAYS']
+  },
+  {
+    route: 'manager-approval',
+    href: '#manager-approval',
+    title: 'Approval Inbox',
+    navLabel: 'Approvals',
+    description: 'Approve, reject, and review submitted time.',
+    permissions: ['VIEW_APPROVAL_INBOX', 'APPROVE_TIME']
+  },
+  {
+    route: 'psa-modules',
+    href: '#psa-modules',
+    title: 'Project Intake',
+    navLabel: 'Modules',
+    description: 'Review project requests, intake templates, and project setup workflows.',
+    permissions: ['VIEW_PROJECT_INTAKE']
+  },
+  {
+    route: 'psa-modules',
+    href: '#psa-modules',
+    title: 'Resource Scheduling',
+    navLabel: 'Modules',
+    description: 'View capacity, scheduling, and resource assignment information.',
+    permissions: ['VIEW_RESOURCE_SCHEDULING']
+  },
+  {
+    route: 'psa-modules',
+    href: '#psa-modules',
+    title: 'Expense Management',
+    navLabel: 'Modules',
+    description: 'Review expense reporting and approval workflows.',
+    permissions: ['VIEW_EXPENSES']
+  },
+  {
+    route: 'workflow',
+    href: '#workflow',
+    title: 'Project Approval',
+    navLabel: 'Workflow',
+    description: 'Validate project and task allocation accuracy before accounting review.',
+    permissions: ['PROJECT_TIME_APPROVAL']
+  },
+  {
+    route: 'workflow',
+    href: '#workflow',
+    title: 'Account Reconciliation',
+    navLabel: 'Workflow',
+    description: 'Review approved time before accounting reconciliation and period lock.',
+    permissions: ['VIEW_ACCOUNT_RECONCILIATION']
+  },
+  {
+    route: 'workflow',
+    href: '#workflow',
+    title: 'Audit Trail',
+    navLabel: 'Workflow',
+    description: 'View workflow, role, approval, decline, and administrative action history.',
+    permissions: ['VIEW_AUDIT_TRAIL']
+  },
+  {
+    route: 'workflow',
+    href: '#workflow',
+    title: 'Exports',
+    navLabel: 'Workflow',
+    description: 'Export time and reporting data to approved formats.',
+    permissions: ['EXPORT_TIME_EXCEL', 'EXPORT_TIME_PDF']
+  },
+  {
+    route: 'psa-modules',
+    href: '#psa-modules',
+    title: 'Executive Reporting',
+    navLabel: 'Modules',
+    description: 'View executive dashboards and reporting summaries.',
+    permissions: ['VIEW_EXECUTIVE_REPORTING']
+  },
+  {
+    route: 'role-admin',
+    href: '#role-admin',
+    title: 'Administration',
+    navLabel: 'Role Admin',
+    description: 'Manage users, roles, access, and administrative configuration.',
+    permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
+  }
+];
+
+function normalizeRoute(hash) {
+  const cleaned = (hash || window.location.hash || '#dashboard').replace('#', '').trim();
+  return cleaned || 'dashboard';
+}
+
+function userPermissionSet(user) {
+  return new Set(user?.permissions ?? []);
+}
+
+function userIsAdministrator(user) {
+  const roles = user?.roles ?? [];
+  const permissions = userPermissionSet(user);
+  return permissions.has('MANAGE_ALL') || permissions.has('SYSTEM_ADMINISTRATION') || roles.some((role) => role.roleCode === 'ADMINISTRATOR');
+}
+
+function userHasAnyPermission(user, permissions) {
+  if (!permissions || permissions.length === 0) return true;
+  if (userIsAdministrator(user)) return true;
+
+  const granted = userPermissionSet(user);
+  return permissions.some((permission) => granted.has(permission));
+}
+
+function getVisibleRoleModules(user) {
+  if (!user) return [];
+  return roleWorkspaceModules.filter((module) => userHasAnyPermission(user, module.permissions));
+}
+
+function getRoleDisplayName(user) {
+  const roles = user?.roles ?? [];
+  if (roles.length === 0) return 'Workspace';
+  if (roles.some((role) => role.roleCode === 'ADMINISTRATOR')) return 'Administrator';
+  return roles.map((role) => role.roleName).join(' + ');
+}
+
+function getRoleNavigation(user) {
+  const modules = getVisibleRoleModules(user);
+  const routeMap = new Map();
+
+  routeMap.set('dashboard', {
+    route: 'dashboard',
+    href: '#dashboard',
+    label: 'Dashboard'
+  });
+
+  modules.forEach((module) => {
+    if (!routeMap.has(module.route)) {
+      routeMap.set(module.route, {
+        route: module.route,
+        href: module.href,
+        label: module.navLabel
+      });
+    }
+  });
+
+  return [...routeMap.values()];
+}
+
+
 function SignalLogo() {
+
   return (
     <div className="brand-lockup" aria-label="US Signal Project Pulse">
       <img className="brand-logo-image" src={usSignalLogoUrl} alt="US Signal" />
@@ -181,15 +491,38 @@ function DataState({ loading, error, children }) {
 
 export default function App() {
   const [theme, setTheme] = useState(getInitialTheme);
+  const [authSession, setAuthSession] = useState(getInitialAuthSession);
+  const [loginUsername, setLoginUsername] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [loginRoute, setLoginRoute] = useState(null);
+  const [loginStatus, setLoginStatus] = useState('');
+  const [isResolvingLogin, setIsResolvingLogin] = useState(false);
+  const [passwordResetNotes, setPasswordResetNotes] = useState('');
+  const [passwordResetStatus, setPasswordResetStatus] = useState('');
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const profileMenuRef = useRef(null);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [profileSettingsPanel, setProfileSettingsPanel] = useState('profile');
+  const [userPreferences, setUserPreferences] = useState(() => getStoredUserPreferences(getInitialAuthSession()));
+  const [profileDraft, setProfileDraft] = useState(() => getStoredUserPreferences(getInitialAuthSession()));
+  const [profileSettingsStatus, setProfileSettingsStatus] = useState('');
+  const [sessionWarning, setSessionWarning] = useState({ visible: false, remainingMs: 0 });
+  const [activeRoute, setActiveRoute] = useState(() => normalizeRoute(window.location.hash));
   const [selectedWeekStart, setSelectedWeekStart] = useState(getSundayIso);
   const [apiHealth, setApiHealth] = useState({ loading: true, data: null, error: null });
+  const [roleAdminUsers, setRoleAdminUsers] = useState({ loading: true, data: null, error: null });
+  const [roleAdminRoles, setRoleAdminRoles] = useState({ loading: true, data: null, error: null });
+  const [roleAdminStatus, setRoleAdminStatus] = useState('No role changes yet');
+  const [securityContext, setSecurityContext] = useState({ loading: true, data: null, error: null });
   const [dbHealth, setDbHealth] = useState({ loading: true, data: null, error: null });
   const [schema, setSchema] = useState({ loading: true, data: null, error: null });
+  const [currentUser, setCurrentUser] = useState({ loading: true, data: null, error: null });
   const [timesheet, setTimesheet] = useState({ loading: true, data: null, error: null });
   const [locationGroups, setLocationGroups] = useState({ loading: true, data: null, error: null });
   const [locations, setLocations] = useState({ loading: true, data: null, error: null });
   const [utilizationPolicies, setUtilizationPolicies] = useState({ loading: true, data: null, error: null });
   const [utilizationTargets, setUtilizationTargets] = useState({ loading: true, data: null, error: null });
+  const [currentQuarterUtilization, setCurrentQuarterUtilization] = useState({ loading: true, data: null, error: null });
   const [activeRows, setActiveRows] = useState([]);
   const [entries, setEntries] = useState({});
   const [selectedCell, setSelectedCell] = useState(null);
@@ -197,20 +530,127 @@ export default function App() {
   const [saveStatus, setSaveStatus] = useState('Not saved yet');
   const [isSaving, setIsSaving] = useState(false);
   const [activitySource, setActivitySource] = useState('nonProject');
+  const holidayYearOptions = useMemo(() => {
+    const currentYear = new Date().getFullYear();
+    return Array.from({ length: 11 }, (_, index) => String(currentYear + index));
+  }, []);
+  const [holidayUploadText, setHolidayUploadText] = useState('');
+  const [holidayUploadStatus, setHolidayUploadStatus] = useState('No holiday upload yet');
+  const [holidayUploadYear, setHolidayUploadYear] = useState(String(new Date().getFullYear()));
+  const [hiddenRowsRevision, setHiddenRowsRevision] = useState(0);
+  const [openTasks, setOpenTasks] = useState({ loading: true, data: null, error: null });
+  const [timesheetPreferences, setTimesheetPreferences] = useState({ loading: true, data: null, error: null });
+  const [companyHolidays, setCompanyHolidays] = useState({ loading: true, data: null, error: null });
+  const [remainingModules, setRemainingModules] = useState({ loading: true, data: null, error: null });
+
+
+  useEffect(() => {
+    if (!window.location.hash) {
+      window.location.hash = '#dashboard';
+    }
+
+    function handleHashChange() {
+      setActiveRoute(normalizeRoute(window.location.hash));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    handleHashChange();
+    window.addEventListener('hashchange', handleHashChange);
+
+    return () => {
+      window.removeEventListener('hashchange', handleHashChange);
+    };
+  }, []);
+
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     window.localStorage.setItem('ptp-theme', theme);
   }, [theme]);
 
+
+
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadCurrentUserAndQuarterUtilization() {
+      try {
+        const [userResult, quarterResult] = await Promise.all([
+          fetchJson('/api/security/me'),
+          fetchJson('/api/utilization/current-quarter')
+        ]);
+
+        if (!cancelled) {
+          setCurrentUser({ loading: false, data: userResult, error: null });
+          setCurrentQuarterUtilization({ loading: false, data: quarterResult, error: null });
+        }
+      } catch (error) {
+        if (!cancelled) {
+          const message = error instanceof Error ? error.message : 'Unknown error';
+          setCurrentUser((current) => ({ ...current, loading: false, error: message }));
+          setCurrentQuarterUtilization((current) => ({ ...current, loading: false, error: message }));
+        }
+      }
+    }
+
+    loadCurrentUserAndQuarterUtilization();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadSecurityContext() {
+      try {
+        const result = await fetchJson('/api/security/me');
+        if (!cancelled) setSecurityContext({ loading: false, data: result, error: null });
+      } catch (error) {
+        if (!cancelled) setSecurityContext({ loading: false, data: null, error: error instanceof Error ? error.message : 'Unable to load security context' });
+      }
+    }
+
+    loadSecurityContext();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
 
     async function loadStatus() {
       setTimesheet({ loading: true, data: null, error: null });
+      setTimesheetPreferences((current) => ({ ...current, loading: true, error: null }));
+      setCompanyHolidays((current) => ({ ...current, loading: true, error: null }));
+      setOpenTasks((current) => ({ ...current, loading: true, error: null }));
+      setRemainingModules((current) => ({ ...current, loading: true, error: null }));
 
       try {
-        const [healthResult, dbResult, schemaResult, timesheetResult, groupResult, locationsResult, policyResult, targetsResult] = await Promise.all([
+        const [
+          healthResult,
+          dbResult,
+          schemaResult,
+          timesheetResult,
+          groupResult,
+          locationsResult,
+          policyResult,
+          targetsResult,
+          openTasksResult,
+          preferencesResult,
+          holidaysResult,
+          projectIntakeResult,
+          projectManagementResult,
+          resourceCapacityResult,
+          expenseSummaryResult,
+          invoicingSummaryResult,
+          executiveDashboardResult
+        ] = await Promise.all([
           fetchJson('/health'),
           fetchJson('/api/db-health'),
           fetchJson('/api/schema/tables'),
@@ -218,7 +658,16 @@ export default function App() {
           fetchJson('/api/work-location-groups'),
           fetchJson('/api/work-locations'),
           fetchJson('/api/utilization/policies'),
-          fetchJson('/api/utilization/targets')
+          fetchJson('/api/utilization/targets'),
+          fetchJson(`/api/assignments/open-tasks?weekStart=${selectedWeekStart}`),
+          fetchJson('/api/users/timesheet-preferences'),
+          fetchJson(`/api/holidays?year=${selectedWeekStart.slice(0, 4)}`),
+          fetchJson('/api/project-intake/summary'),
+          fetchJson('/api/project-management/summary'),
+          fetchJson(`/api/resource-scheduling/capacity?weekStart=${selectedWeekStart}`),
+          fetchJson('/api/expenses/summary'),
+          fetchJson('/api/invoicing/summary'),
+          fetchJson('/api/reporting/executive-dashboard')
         ]);
 
         if (!cancelled) {
@@ -230,6 +679,21 @@ export default function App() {
           setLocations({ loading: false, data: locationsResult, error: null });
           setUtilizationPolicies({ loading: false, data: policyResult, error: null });
           setUtilizationTargets({ loading: false, data: targetsResult, error: null });
+          setOpenTasks({ loading: false, data: openTasksResult, error: null });
+          setTimesheetPreferences({ loading: false, data: preferencesResult, error: null });
+          setCompanyHolidays({ loading: false, data: holidaysResult, error: null });
+          setRemainingModules({
+            loading: false,
+            error: null,
+            data: {
+              projectIntake: projectIntakeResult,
+              projectManagement: projectManagementResult,
+              resourceCapacity: resourceCapacityResult,
+              expenses: expenseSummaryResult,
+              invoicing: invoicingSummaryResult,
+              executiveDashboard: executiveDashboardResult
+            }
+          });
         }
       } catch (error) {
         if (!cancelled) {
@@ -242,6 +706,10 @@ export default function App() {
           setLocations((current) => ({ ...current, loading: false, error: message }));
           setUtilizationPolicies((current) => ({ ...current, loading: false, error: message }));
           setUtilizationTargets((current) => ({ ...current, loading: false, error: message }));
+          setOpenTasks((current) => ({ ...current, loading: false, error: message }));
+          setTimesheetPreferences((current) => ({ ...current, loading: false, error: message }));
+          setCompanyHolidays((current) => ({ ...current, loading: false, error: message }));
+          setRemainingModules((current) => ({ ...current, loading: false, error: message }));
         }
       }
     }
@@ -255,24 +723,81 @@ export default function App() {
 
   useEffect(() => {
     const categories = timesheet.data?.nonProjectCategories ?? [];
-    if (categories.length === 0) return;
-
-    const defaults = categories.filter((category) => ['ADMINISTRATIVE', 'PEER_SUPPORT'].includes(category.code));
-    const fallback = categories.slice(0, 2);
+  const assignedOpenTasks = openTasks.data?.tasks ?? [];
     const savedEntries = timesheet.data?.entries ?? [];
-    const savedCategoryCodes = new Set(savedEntries.map((entry) => entry.categoryCode).filter(Boolean));
-    const savedCategories = categories.filter((category) => savedCategoryCodes.has(category.code));
+    const hiddenRows = getHiddenRows(timesheet.data?.weekStart ?? selectedWeekStart);
+    const daysForWeek = timesheet.data?.days ?? [];
+
+    const userDefaultCodes = timesheetPreferences.data?.defaultNonProjectCategoryCodes ?? [];
     const rowMap = new Map();
 
-    [...(defaults.length > 0 ? defaults : fallback), ...savedCategories].forEach((category) => {
-      rowMap.set(category.code, categoryToRow(category));
+    // Hyper-personalized default rows: no global defaults. Rows are added only from the user's saved defaults,
+    // saved time entries, manually selected tasks/categories, or auto-added holidays.
+    categories
+      .filter((category) => userDefaultCodes.includes(category.code) && !hiddenRows.has(`non-project-${category.code}`))
+      .forEach((category) => rowMap.set(`non-project-${category.code}`, categoryToRow(category)));
+
+    const holidaysForWeek = (companyHolidays.data?.holidays ?? []).filter((holiday) => daysForWeek.some((day) => day.date === holiday.holidayDate));
+    const shouldAutoAddHolidays = timesheetPreferences.data?.autoAddHolidays !== false;
+    const holidayCategory = categories.find((category) => category.code === 'HOLIDAY');
+    if (shouldAutoAddHolidays && holidayCategory && holidaysForWeek.length > 0 && !hiddenRows.has('non-project-HOLIDAY')) {
+      rowMap.set('non-project-HOLIDAY', categoryToRow(holidayCategory));
+    }
+
+    savedEntries.forEach((entry) => {
+      if (entry.rowType === 'nonProject' && entry.categoryCode && !rowMap.has(`non-project-${entry.categoryCode}`)) {
+        rowMap.set(`non-project-${entry.categoryCode}`, {
+          id: `non-project-${entry.categoryCode}`,
+          type: 'nonProject',
+          state: 'Saved',
+          activity: entry.categoryName ?? entry.categoryCode,
+          projectDescription: 'Non-project time',
+          categoryCode: entry.categoryCode
+        });
+      }
+
+      if (entry.rowType === 'projectTask' && entry.projectId && entry.taskId) {
+        const matchingTask = assignedOpenTasks.find((task) => task.projectId === entry.projectId && task.taskId === entry.taskId);
+        const rowId = `project-task-${entry.projectId}-${entry.taskId}`;
+        rowMap.set(rowId, matchingTask ? taskToRow(matchingTask) : {
+          id: rowId,
+          type: 'projectTask',
+          state: 'Saved',
+          activity: entry.taskName ?? entry.taskCode ?? 'Project task',
+          projectDescription: entry.projectCode ? `${entry.projectCode} • ${entry.projectName ?? 'Project'}` : (entry.projectName ?? 'Project task'),
+          projectId: entry.projectId,
+          taskId: entry.taskId,
+          taskCode: entry.taskCode ?? null,
+          clientName: entry.clientName ?? null,
+          projectManagerName: null
+        });
+      }
     });
 
     const entryMap = {};
-    savedEntries.forEach((entry) => {
-      if (entry.rowType !== 'nonProject' || !entry.categoryCode) return;
 
-      const rowId = `non-project-${entry.categoryCode}`;
+    if (shouldAutoAddHolidays && holidayCategory && rowMap.has('non-project-HOLIDAY')) {
+      holidaysForWeek.forEach((holiday) => {
+        const key = getEntryKey('non-project-HOLIDAY', holiday.holidayDate, 'normal');
+        const alreadySaved = savedEntries.some((entry) => entry.workDate === holiday.holidayDate && entry.categoryCode === 'HOLIDAY');
+        if (!alreadySaved) {
+          entryMap[key] = {
+            hours: (holiday.autoPopulateHours ?? 8).toString(),
+            comment: holiday.holidayName ?? 'Company holiday',
+            workLocationGroupId: locationGroups.data?.groups?.[0]?.id ?? '',
+            workLocationId: locations.data?.locations?.[0]?.id ?? '',
+            savedStatus: 'draft'
+          };
+        }
+      });
+    }
+
+    savedEntries.forEach((entry) => {
+      let rowId = null;
+      if (entry.rowType === 'nonProject' && entry.categoryCode) rowId = `non-project-${entry.categoryCode}`;
+      if (entry.rowType === 'projectTask' && entry.projectId && entry.taskId) rowId = `project-task-${entry.projectId}-${entry.taskId}`;
+      if (!rowId) return;
+
       entryMap[getEntryKey(rowId, entry.workDate, entry.timeType)] = {
         hours: entry.hours?.toString() ?? '',
         comment: entry.description ?? '',
@@ -287,12 +812,14 @@ export default function App() {
     setSelectedCell(null);
 
     const savedTotal = savedEntries.reduce((total, entry) => total + Number(entry.hours || 0), 0);
-    setSubmissionStatus(statusToLabel(timesheet.data?.status, savedTotal));
-    setSaveStatus(savedEntries.length > 0 ? 'Loaded saved entries' : 'Not saved yet');
-  }, [timesheet.data?.weekStart, timesheet.data?.timesheetId, timesheet.data?.status]);
+    const holidayDraftTotal = Object.values(entryMap).reduce((total, entry) => total + Number(entry.hours || 0), 0);
+    setSubmissionStatus(statusToLabel(timesheet.data?.status, savedTotal || holidayDraftTotal));
+    setSaveStatus(savedEntries.length > 0 ? `Loaded ${savedEntries.length} saved time entr${savedEntries.length === 1 ? 'y' : 'ies'}` : 'Not saved yet');
+  }, [timesheet.data?.weekStart, timesheet.data?.timesheetId, timesheet.data?.status, timesheet.data?.entries?.length, openTasks.data?.count, timesheetPreferences.data?.defaultNonProjectCategoryCodes?.join(','), timesheetPreferences.data?.autoAddHolidays, companyHolidays.data?.count, hiddenRowsRevision]);
 
   const days = timesheet.data?.days ?? [];
   const categories = timesheet.data?.nonProjectCategories ?? [];
+  const assignedOpenTasks = openTasks.data?.tasks ?? [];
   const activePolicy = utilizationPolicies.data?.policies?.[0];
   const selectedActivitySource = activitySourceOptions.find((option) => option.key === activitySource) ?? activitySourceOptions[0];
   const currentTimesheetStatus = timesheet.data?.status ?? 'draft';
@@ -304,22 +831,375 @@ export default function App() {
     return `${dbHealth.data?.status ?? 'unknown'} as ${dbHealth.data?.user ?? 'unknown user'}`;
   }, [dbHealth]);
 
+
+  function getHiddenRowsKey(weekStart = selectedWeekStart) {
+    return `projectPulseHiddenRows:${weekStart}`;
+  }
+
+  function getHiddenRows(weekStart = selectedWeekStart) {
+    try {
+      return new Set(JSON.parse(window.localStorage.getItem(getHiddenRowsKey(weekStart)) ?? '[]'));
+    } catch {
+      return new Set();
+    }
+  }
+
+  function saveHiddenRows(hiddenRows, weekStart = selectedWeekStart) {
+    window.localStorage.setItem(getHiddenRowsKey(weekStart), JSON.stringify([...hiddenRows]));
+    setHiddenRowsRevision((value) => value + 1);
+  }
+
+  function hideRowForCurrentWeek(rowId) {
+    const hiddenRows = getHiddenRows();
+    hiddenRows.add(rowId);
+    saveHiddenRows(hiddenRows);
+  }
+
+  function unhideRowForCurrentWeek(rowId) {
+    const hiddenRows = getHiddenRows();
+    if (hiddenRows.delete(rowId)) saveHiddenRows(hiddenRows);
+  }
+
+
+
+  useEffect(() => {
+    const preferences = getStoredUserPreferences(authSession);
+    setUserPreferences(preferences);
+    setProfileDraft(preferences);
+
+    if (preferences.theme && preferences.theme !== theme) {
+      setTheme(preferences.theme);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authSession]);
+
+
+  useEffect(() => {
+    if (!isProfileMenuOpen) return;
+
+    function closeProfileMenuOnOutsideClick(event) {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(event.target)) {
+        setIsProfileMenuOpen(false);
+      }
+    }
+
+    function closeProfileMenuOnEscape(event) {
+      if (event.key === 'Escape') {
+        setIsProfileMenuOpen(false);
+      }
+    }
+
+    document.addEventListener('mousedown', closeProfileMenuOnOutsideClick);
+    document.addEventListener('touchstart', closeProfileMenuOnOutsideClick);
+    document.addEventListener('keydown', closeProfileMenuOnEscape);
+
+    return () => {
+      document.removeEventListener('mousedown', closeProfileMenuOnOutsideClick);
+      document.removeEventListener('touchstart', closeProfileMenuOnOutsideClick);
+      document.removeEventListener('keydown', closeProfileMenuOnEscape);
+    };
+  }, [isProfileMenuOpen]);
+
+
+
+  useEffect(() => {
+    if (!authSession?.expiresAt) {
+      setSessionWarning({ visible: false, remainingMs: 0 });
+      return;
+    }
+
+    function evaluateSessionExpiration() {
+      const remainingMs = Date.parse(authSession.expiresAt) - Date.now();
+
+      if (remainingMs <= 0) {
+        void signOut();
+        return;
+      }
+
+      if (remainingMs <= PROJECT_PULSE_SESSION_WARNING_MS) {
+        setSessionWarning({ visible: true, remainingMs });
+      } else {
+        setSessionWarning({ visible: false, remainingMs });
+      }
+    }
+
+    evaluateSessionExpiration();
+    const timer = window.setInterval(evaluateSessionExpiration, 30000);
+
+    return () => window.clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authSession?.expiresAt]);
+
+
+  function openProfileSettings(panel = 'profile') {
+    setProfileSettingsPanel(panel);
+    setProfileDraft(userPreferences);
+    setProfileSettingsStatus('');
+    setIsSettingsOpen(true);
+    setIsProfileMenuOpen(false);
+  }
+
+  function closeProfileSettings() {
+    setIsSettingsOpen(false);
+    setProfileSettingsStatus('');
+  }
+
+  function saveProfileSettings(event) {
+    event.preventDefault();
+
+    const savedPreferences = {
+      ...profileDraft,
+      theme: profileDraft.theme === 'dark' ? 'dark' : 'light'
+    };
+
+    try {
+      saveStoredUserPreferences(authSession, savedPreferences);
+      setUserPreferences(savedPreferences);
+      setTheme(savedPreferences.theme);
+      setProfileSettingsStatus('Profile settings saved.');
+      setIsSettingsOpen(false);
+    } catch {
+      setProfileSettingsStatus('Unable to save profile settings. Try using a smaller profile picture.');
+    }
+  }
+
+  function handleProfilePhotoUpload(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setProfileSettingsStatus('Please select an image file.');
+      return;
+    }
+
+    if (file.size > 2 * 1024 * 1024) {
+      setProfileSettingsStatus('Please select an image smaller than 2 MB for now.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setProfileDraft((current) => ({
+        ...current,
+        profilePhotoDataUrl: String(reader.result || '')
+      }));
+      setProfileSettingsStatus('Profile picture loaded. Select Save settings to keep it.');
+    };
+    reader.onerror = () => {
+      setProfileSettingsStatus('Unable to read the selected profile picture.');
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function removeProfilePhoto() {
+    setProfileDraft((current) => ({
+      ...current,
+      profilePhotoDataUrl: ''
+    }));
+    setProfileSettingsStatus('Profile picture removed. Select Save settings to keep this change.');
+  }
+
+
+  async function resolveLoginRoute(event) {
+    event.preventDefault();
+
+    const username = loginUsername.trim().toLowerCase();
+    if (!username) {
+      setLoginStatus('Enter your US Signal email address or local administrator account.');
+      return;
+    }
+
+    setIsResolvingLogin(true);
+    setLoginStatus('Checking login route...');
+    setPasswordResetStatus('');
+
+    try {
+      const result = await fetchJson(`/api/auth/login/route?username=${encodeURIComponent(username)}`);
+      setLoginRoute(result);
+
+      if (result.loginMethod === 'sso') {
+        setLoginStatus('US Signal SSO route selected.');
+      } else if (result.loginMethod === 'local') {
+        setLoginStatus(result.status === 'route_resolved'
+          ? 'Local administrator account found. Enter the local password.'
+          : result.message ?? 'Local account route selected.');
+      } else {
+        setLoginStatus(result.message ?? 'Login route resolved.');
+      }
+    } catch (error) {
+      setLoginRoute(null);
+      setLoginStatus(error instanceof Error ? error.message : 'Unable to resolve login route.');
+    } finally {
+      setIsResolvingLogin(false);
+    }
+  }
+
+  async function continueWithSsoPlaceholder() {
+    const username = loginUsername.trim().toLowerCase();
+
+    setLoginStatus('Creating US Signal SSO session...');
+
+    try {
+      const result = await postJson('/api/auth/sso/dev-login', { email: username });
+      const session = {
+        username: result.username,
+        displayName: result.displayName,
+        loginMethod: 'sso',
+        provider: result.provider,
+        sessionToken: result.sessionToken,
+        expiresAt: result.expiresAt,
+        signedInAt: new Date().toISOString()
+      };
+
+      saveAuthSession(session);
+      setAuthSession(session);
+      setSessionWarning({ visible: false, remainingMs: 0 });
+      setLoginStatus('');
+      window.location.hash = '#dashboard';
+    } catch (error) {
+      setLoginStatus(error instanceof Error ? error.message : 'Unable to create SSO session.');
+    }
+  }
+
+  async function continueWithLocalShell(event) {
+    event.preventDefault();
+
+    const username = loginUsername.trim().toLowerCase();
+    if (!username.endsWith('.local') && !username.endsWith('@ussignal.local')) {
+      setLoginStatus('Local login is only available for .local administrator accounts.');
+      return;
+    }
+
+    if (!loginPassword.trim()) {
+      setLoginStatus('Enter the local administrator password.');
+      return;
+    }
+
+    setLoginStatus('Signing in with local administrator credentials...');
+
+    try {
+      const result = await postJson('/api/auth/local/login', {
+        username,
+        password: loginPassword
+      });
+
+      const session = {
+        username: result.username,
+        displayName: result.displayName,
+        loginMethod: 'local',
+        provider: result.provider,
+        sessionToken: result.sessionToken,
+        expiresAt: result.expiresAt,
+        mustChangePassword: result.mustChangePassword,
+        signedInAt: new Date().toISOString()
+      };
+
+      saveAuthSession(session);
+      setAuthSession(session);
+      setSessionWarning({ visible: false, remainingMs: 0 });
+      setLoginPassword('');
+      setLoginStatus('');
+      window.location.hash = '#dashboard';
+    } catch (error) {
+      setLoginStatus(error instanceof Error ? error.message : 'Local administrator login failed.');
+    }
+  }
+
+  async function requestLocalPasswordReset() {
+    const username = loginUsername.trim().toLowerCase();
+
+    if (!username.endsWith('.local') && !username.endsWith('@ussignal.local')) {
+      setPasswordResetStatus('Password reset approval is only available for .local administrator accounts.');
+      return;
+    }
+
+    setPasswordResetStatus('Submitting password reset approval request...');
+
+    try {
+      const result = await postJson('/api/auth/password-reset/request', {
+        username,
+        notes: passwordResetNotes || 'Password reset requested from Project Pulse login screen.'
+      });
+
+      setPasswordResetStatus(result.message ?? 'Password reset request queued for approval.');
+    } catch (error) {
+      setPasswordResetStatus(error instanceof Error ? error.message : 'Unable to request password reset approval.');
+    }
+  }
+
+  async function signOut() {
+    try {
+      await postJson('/api/auth/session/logout', {});
+    } catch {
+      // Continue local sign-out even if the backend session was already expired.
+    }
+
+    clearAuthSession();
+    setAuthSession(null);
+    setLoginUsername('');
+    setLoginPassword('');
+    setLoginRoute(null);
+    setLoginStatus('');
+    setPasswordResetNotes('');
+    setPasswordResetStatus('');
+    setSessionWarning({ visible: false, remainingMs: 0 });
+    window.location.hash = '#dashboard';
+  }
+
+  async function extendCurrentSession() {
+    setLoginStatus('');
+
+    try {
+      const result = await postJson('/api/auth/session/extend', {});
+      const updatedSession = {
+        ...authSession,
+        expiresAt: result.expiresAt
+      };
+
+      saveAuthSession(updatedSession);
+      setAuthSession(updatedSession);
+      setSessionWarning({ visible: false, remainingMs: 0 });
+    } catch {
+      await signOut();
+    }
+  }
+
+
+  const visibleRoleModules = useMemo(() => getVisibleRoleModules(currentUser.data), [currentUser.data]);
+  const roleNavigation = useMemo(() => getRoleNavigation(currentUser.data), [currentUser.data]);
+  const workspaceRoleName = getRoleDisplayName(currentUser.data);
+  const showQuarterUtilizationSummary = userHasAnyPermission(currentUser.data, ['VIEW_OWN_UTILIZATION', 'VIEW_TEAM_UTILIZATION', 'MANAGE_ALL']);
+
   function getDayStatus(workDate) {
     const apiDayStatus = timesheet.data?.dayStatuses?.find((dayStatus) => dayStatus.workDate === workDate);
-    if (apiDayStatus) return apiDayStatus;
+    const savedEntryStatus = (timesheet.data?.entries ?? [])
+      .filter((entry) => entry.workDate === workDate)
+      .map((entry) => entry.status)
+      .find((entryStatus) => entryStatus && entryStatus !== 'draft');
 
-    const submittedEntryExists = (timesheet.data?.entries ?? []).some(
-      (entry) => entry.workDate === workDate && entry.status === 'submitted'
-    );
+    const status = apiDayStatus?.status ?? savedEntryStatus ?? 'draft';
+    const editableStatuses = ['draft', 'manager_declined'];
+    const canEdit = editableStatuses.includes(status);
+    const canUnlock = status === 'submitted' && (apiDayStatus?.canUnlock ?? Boolean(timesheet.data?.canUnlock ?? true));
+
+    let unlockMessage = 'This day is open for time entry.';
+    if (status === 'submitted') {
+      unlockMessage = 'This submitted day is locked. Use Unlock if it is within the allowed correction window, or contact your manager.';
+    } else if (status === 'manager_declined') {
+      unlockMessage = apiDayStatus?.managerDecisionComment ?? 'This day was returned by the manager and can be corrected/resubmitted.';
+    } else if (status === 'manager_approved') {
+      unlockMessage = 'This day has been approved by the manager and can no longer be edited by the engineer.';
+    } else if (['pm_approved', 'accounting_ready', 'reconciled', 'locked'].includes(status)) {
+      unlockMessage = 'This day has moved forward in the approval workflow and can no longer be edited by the engineer.';
+    }
 
     return {
+      ...apiDayStatus,
       workDate,
-      status: submittedEntryExists ? 'submitted' : 'draft',
-      canEdit: !submittedEntryExists,
-      canUnlock: submittedEntryExists && Boolean(timesheet.data?.canUnlock),
-      unlockMessage: submittedEntryExists
-        ? 'This submitted day is locked. Use Unlock if it is within the allowed correction window, or contact your manager.'
-        : 'This day is open for time entry.'
+      status,
+      canEdit,
+      canUnlock,
+      unlockMessage
     };
   }
 
@@ -351,10 +1231,116 @@ export default function App() {
     setSaveStatus('Unsaved changes');
   }
 
+
+  async function savePersonalDefaults(defaultCodes) {
+    const currentPreferences = timesheetPreferences.data ?? {};
+    const result = await postJson('/api/users/timesheet-preferences', {
+      defaultNonProjectCategoryCodes: defaultCodes,
+      defaultProjectTaskIds: currentPreferences.defaultProjectTaskIds ?? [],
+      autoAddHolidays: currentPreferences.autoAddHolidays !== false,
+      weeklyReminderEnabled: currentPreferences.weeklyReminderEnabled !== false
+    });
+    setTimesheetPreferences({ loading: false, data: result.preferences, error: null });
+    setSaveStatus('Personal defaults saved');
+  }
+
+  async function toggleCategoryDefault(categoryCode) {
+    const currentCodes = new Set(timesheetPreferences.data?.defaultNonProjectCategoryCodes ?? []);
+    if (currentCodes.has(categoryCode)) currentCodes.delete(categoryCode);
+    else currentCodes.add(categoryCode);
+    await savePersonalDefaults([...currentCodes]);
+  }
+
+  async function savePersonalDefaults(defaultCodes, defaultTaskIds) {
+    const currentPreferences = timesheetPreferences.data ?? {};
+    const result = await postJson('/api/users/timesheet-preferences', {
+      defaultNonProjectCategoryCodes: defaultCodes,
+      defaultProjectTaskIds: defaultTaskIds,
+      autoAddHolidays: currentPreferences.autoAddHolidays !== false,
+      weeklyReminderEnabled: currentPreferences.weeklyReminderEnabled !== false
+    });
+    setTimesheetPreferences({ loading: false, data: result.preferences, error: null });
+    setSaveStatus('Personal defaults saved');
+  }
+
+  async function setRowAsPersonalDefault(row) {
+    const defaultCodes = new Set(timesheetPreferences.data?.defaultNonProjectCategoryCodes ?? []);
+    const defaultTaskIds = new Set(timesheetPreferences.data?.defaultProjectTaskIds ?? []);
+
+    if (row.type === 'nonProject' && row.categoryCode) defaultCodes.add(row.categoryCode);
+    if (row.type === 'projectTask' && row.taskId) defaultTaskIds.add(row.taskId);
+
+    await savePersonalDefaults([...defaultCodes], [...defaultTaskIds]);
+  }
+
+  async function removeRowAsPersonalDefault(row) {
+    const defaultCodes = new Set(timesheetPreferences.data?.defaultNonProjectCategoryCodes ?? []);
+    const defaultTaskIds = new Set(timesheetPreferences.data?.defaultProjectTaskIds ?? []);
+
+    if (row.type === 'nonProject' && row.categoryCode) defaultCodes.delete(row.categoryCode);
+    if (row.type === 'projectTask' && row.taskId) defaultTaskIds.delete(row.taskId);
+
+    await savePersonalDefaults([...defaultCodes], [...defaultTaskIds]);
+  }
+
+  function isRowPersonalDefault(row) {
+    if (row.type === 'nonProject' && row.categoryCode) {
+      return (timesheetPreferences.data?.defaultNonProjectCategoryCodes ?? []).includes(row.categoryCode);
+    }
+    if (row.type === 'projectTask' && row.taskId) {
+      return (timesheetPreferences.data?.defaultProjectTaskIds ?? []).includes(row.taskId);
+    }
+    return false;
+  }
+
+  async function importHolidayCsv() {
+    setHolidayUploadStatus('Importing holidays...');
+    try {
+      const result = await postJson('/api/holidays/import-text', {
+        year: Number.parseInt(holidayUploadYear, 10),
+        filename: `holidays-${holidayUploadYear}.csv`,
+        csvText: holidayUploadText
+      });
+      setHolidayUploadStatus(`Imported ${result.importedCount} holidays for ${result.year}`);
+      const refreshed = await fetchJson(`/api/holidays?year=${holidayUploadYear}`);
+      setCompanyHolidays({ loading: false, data: refreshed, error: null });
+    } catch (error) {
+      setHolidayUploadStatus(error instanceof Error ? error.message : 'Holiday import failed');
+    }
+  }
+
+  function handleHolidayFileUpload(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setHolidayUploadText(String(reader.result ?? ''));
+    reader.readAsText(file);
+  }
+
+  async function loadHolidayAdminYear(year) {
+    setHolidayUploadYear(year);
+    try {
+      const refreshed = await fetchJson(`/api/holidays?year=${year}`);
+      setCompanyHolidays({ loading: false, data: refreshed, error: null });
+    } catch (error) {
+      setCompanyHolidays((current) => ({ ...current, loading: false, error: error instanceof Error ? error.message : 'Failed to load holidays' }));
+    }
+  }
+
   function addCategory(category) {
     if (!isAnyDayEditable) return;
 
     const row = categoryToRow(category);
+    if (typeof unhideRowForCurrentWeek === 'function') unhideRowForCurrentWeek(row.id);
+    setActiveRows((current) => (current.some((item) => item.id === row.id) ? current : [...current, row]));
+    setSaveStatus('Unsaved changes');
+  }
+
+  function addTask(task) {
+    if (!isAnyDayEditable) return;
+
+    const row = taskToRow(task);
+    if (typeof unhideRowForCurrentWeek === 'function') unhideRowForCurrentWeek(row.id);
     setActiveRows((current) => (current.some((item) => item.id === row.id) ? current : [...current, row]));
     setSaveStatus('Unsaved changes');
   }
@@ -362,10 +1348,39 @@ export default function App() {
   function removeRow(rowId) {
     if (!isAnyDayEditable) return;
 
+    hideRowForCurrentWeek(rowId);
+    hideRowForCurrentWeek(rowId);
     setActiveRows((current) => current.filter((row) => row.id !== rowId));
     setEntries((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !key.startsWith(`${rowId}|`))));
     setSelectedCell((current) => (current?.rowId === rowId ? null : current));
     setSaveStatus('Unsaved changes');
+  }
+
+
+  function getRowWorkflowState(rowId) {
+    const rowEntries = Object.entries(entries)
+      .filter(([key]) => key.startsWith(`${rowId}|`))
+      .map(([, entry]) => entry)
+      .filter((entry) => Number.parseFloat(entry.hours) > 0);
+
+    if (rowEntries.length === 0) return 'Draft';
+
+    const statuses = new Set(rowEntries.map((entry) => entry.savedStatus ?? 'draft'));
+
+    if (statuses.has('manager_declined')) return 'Correction';
+
+    const activeStatuses = new Set([
+      'submitted',
+      'manager_approved',
+      'pm_approved',
+      'accounting_ready',
+      'reconciled',
+      'locked'
+    ]);
+
+    if ([...statuses].some((status) => activeStatuses.has(status))) return 'Active';
+
+    return 'Draft';
   }
 
   function getCellHours(rowId, date, type) {
@@ -386,6 +1401,14 @@ export default function App() {
     0
   );
   const normalTotal = grandTotal - afterhoursTotal;
+  const moduleData = remainingModules.data ?? {};
+  const intakeCount = moduleData.projectIntake?.count ?? 0;
+  const milestoneCount = moduleData.projectManagement?.milestoneCount ?? 0;
+  const riskCount = moduleData.projectManagement?.riskCount ?? 0;
+  const capacityCount = moduleData.resourceCapacity?.count ?? 0;
+  const expenseCount = moduleData.expenses?.count ?? 0;
+  const invoiceCount = moduleData.invoicing?.count ?? 0;
+  const executiveMetricCount = moduleData.executiveDashboard?.count ?? 0;
 
   const selectedRow = activeRows.find((row) => row.id === selectedCell?.rowId);
   const selectedEntry = selectedCell ? getEntry(selectedCell.rowId, selectedCell.date, selectedCell.type) : null;
@@ -482,6 +1505,11 @@ export default function App() {
   async function submitSelectedDay() {
     if (!selectedCell || isSaving) return;
 
+    if (!isDayEditable(selectedCell.date)) {
+      setSaveStatus('This day is locked and cannot be submitted or edited by the engineer.');
+      return;
+    }
+
     const dayTotal = getDayTotal(selectedCell.date);
     if (dayTotal < 8) {
       setSaveStatus(`A minimum of 8.00 hours is required before submitting ${selectedCell.date}. Current total is ${formatNumber(dayTotal)} hours.`);
@@ -503,6 +1531,7 @@ export default function App() {
       setSelectedCell(null);
     } catch (error) {
       setSaveStatus(error instanceof Error ? error.message : 'Failed to submit selected day');
+      window.alert(error instanceof Error ? error.message : 'Failed to submit selected day');
     } finally {
       setIsSaving(false);
     }
@@ -533,7 +1562,8 @@ export default function App() {
     if (!isAnyDayEditable || isSaving) return;
 
     if (grandTotal <= 0) {
-      setSubmissionStatus('Add time before submitting.');
+      setSubmissionStatus('Draft');
+      setSaveStatus('Layout saved. No time entries for this week yet.');
       return;
     }
 
@@ -555,33 +1585,472 @@ export default function App() {
   function resetTimesheet() {
     if (!isAnyDayEditable) return;
 
+    saveHiddenRows(new Set());
     setEntries({});
     setSelectedCell(null);
     setSubmissionStatus('Draft');
-    setSaveStatus('Unsaved changes');
+    setSaveStatus('Layout reset');
+  }
+
+  async function loadRoleAdminData() {
+    try {
+      const [usersResult, rolesResult] = await Promise.all([
+        fetchJson('/api/admin/users'),
+        fetchJson('/api/admin/roles')
+      ]);
+      setRoleAdminUsers({ loading: false, data: usersResult, error: null });
+      setRoleAdminRoles({ loading: false, data: rolesResult, error: null });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to load role administration data';
+      setRoleAdminUsers((current) => ({ ...current, loading: false, error: message }));
+      setRoleAdminRoles((current) => ({ ...current, loading: false, error: message }));
+    }
+  }
+
+  async function updateUserRole(email, roleCode) {
+    setRoleAdminStatus(`Updating ${email}...`);
+    try {
+      await postJson('/api/admin/users/roles', {
+        email,
+        roleCodes: [roleCode],
+        reason: 'Updated from Project Pulse role administration screen'
+      });
+      setRoleAdminStatus(`Updated ${email} to ${roleCode}`);
+      await loadRoleAdminData();
+    } catch (error) {
+      setRoleAdminStatus(error instanceof Error ? error.message : 'Role update failed');
+    }
+  }
+
+  function hasPermission(permissionCode) {
+    return securityContext.data?.permissions?.includes(permissionCode) ?? false;
+  }
+
+  function canSeeAny(permissionCodes) {
+    return permissionCodes.some((permissionCode) => hasPermission(permissionCode));
+  }
+
+  const roleNames = securityContext.data?.roles?.map((role) => role.roleName).join(', ') || 'No role assigned';
+  const workspaceFeatures = securityContext.data?.features ?? [];
+  const canManageHolidays = hasPermission('MANAGE_HOLIDAYS') || hasPermission('MANAGE_ALL');
+  const canViewHolidayCalendar = hasPermission('VIEW_HOLIDAYS') || canManageHolidays;
+  const canViewPsaModules = canSeeAny(['VIEW_PROJECT_INTAKE', 'VIEW_RESOURCE_SCHEDULING', 'VIEW_EXPENSES', 'VIEW_EXECUTIVE_REPORTING', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']);
+
+
+  if (!authSession) {
+    return (
+      <main className="app-shell auth-shell">
+        <section className="auth-landing-panel">
+          <div className="auth-brand-block">
+            <SignalLogo />
+            <p className="eyebrow">Project Pulse Access</p>
+            <h1>Sign in to your role-based workspace</h1>
+            <p>
+              Use your US Signal email for SSO. Use the local administrator account only for break-glass access when SSO is unavailable.
+            </p>
+          </div>
+
+          <div className="auth-card">
+            <form onSubmit={resolveLoginRoute}>
+              <label htmlFor="login-username">Email or local admin account</label>
+              <input
+                id="login-username"
+                type="text"
+                value={loginUsername}
+                placeholder="name@ussignal.com or admin@ussignal.local"
+                onChange={(event) => {
+                  setLoginUsername(event.target.value);
+                  setLoginRoute(null);
+                  setLoginStatus('');
+                  setPasswordResetStatus('');
+                }}
+              />
+
+              <button className="primary-action" type="submit" disabled={isResolvingLogin}>
+                {isResolvingLogin ? 'Checking...' : 'Continue'}
+              </button>
+            </form>
+
+            {loginStatus && <p className="auth-status">{loginStatus}</p>}
+
+            {loginRoute?.loginMethod === 'sso' && (
+              <div className="auth-route-box">
+                <p className="eyebrow">US Signal SSO</p>
+                <h2>Continue with Microsoft Entra ID</h2>
+                <p>Production SSO will redirect to Microsoft Entra ID. This development shell records the selected SSO route.</p>
+                <button className="primary-action" type="button" onClick={continueWithSsoPlaceholder}>
+                  Continue with US Signal SSO
+                </button>
+              </div>
+            )}
+
+            {loginRoute?.loginMethod === 'local' && (
+              <div className="auth-route-box">
+                <p className="eyebrow">Local administrator</p>
+                <h2>Break-glass local sign-in</h2>
+                <form onSubmit={continueWithLocalShell}>
+                  <label htmlFor="login-password">Password</label>
+                  <input
+                    id="login-password"
+                    type="password"
+                    value={loginPassword}
+                    placeholder="Enter local administrator password"
+                    onChange={(event) => setLoginPassword(event.target.value)}
+                  />
+
+                  <button className="primary-action" type="submit">
+                    Sign in as local administrator
+                  </button>
+                </form>
+
+                <div className="password-reset-box">
+                  <label htmlFor="password-reset-notes">Forgot password notes</label>
+                  <textarea
+                    id="password-reset-notes"
+                    value={passwordResetNotes}
+                    placeholder="Optional reason for reset request"
+                    onChange={(event) => setPasswordResetNotes(event.target.value)}
+                  />
+
+                  <button className="secondary-action" type="button" onClick={requestLocalPasswordReset}>
+                    Request password reset approval
+                  </button>
+
+                  {passwordResetStatus && <p className="auth-status">{passwordResetStatus}</p>}
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+      </main>
+    );
   }
 
   return (
-    <main className="app-shell">
+    <main className={`app-shell route-${activeRoute}`}>
+
+      {sessionWarning.visible && (
+        <div className="session-timeout-backdrop">
+          <section className="session-timeout-modal" role="dialog" aria-modal="true" aria-label="Session timeout warning">
+            <p className="eyebrow">Session timeout</p>
+            <h2>Your Project Pulse session is about to expire</h2>
+            <p>
+              For security, each session is limited to two hours. Extend your session now to continue working, or you will be signed out when the timer reaches zero.
+            </p>
+            <strong className="session-countdown">
+              Time remaining: {Math.max(1, Math.ceil(sessionWarning.remainingMs / 60000))} minute(s)
+            </strong>
+            <div className="session-timeout-actions">
+              <button type="button" className="secondary-action" onClick={signOut}>
+                Sign out now
+              </button>
+              <button type="button" className="primary-action" onClick={extendCurrentSession}>
+                Extend session
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
+
+
+
+      {isSettingsOpen && (
+        <div className="profile-settings-backdrop">
+          <section className="profile-settings-modal strong-profile-modal" role="dialog" aria-modal="true" aria-label="Profile settings">
+            <div className="profile-settings-header">
+              <div>
+                <p className="eyebrow">User profile</p>
+                <h2>{profileSettingsPanel === 'profile' ? 'My profile' : 'My settings'}</h2>
+                <p>
+                  {profileSettingsPanel === 'profile'
+                    ? 'Update your profile picture, title, and awards or certificates earned.'
+                    : 'Update your personal application preferences.'}
+                </p>
+              </div>
+              <button type="button" className="modal-close-button" onClick={closeProfileSettings}>
+                ×
+              </button>
+            </div>
+
+            <div className="profile-settings-tabs">
+              <button
+                type="button"
+                className={profileSettingsPanel === 'profile' ? 'active' : ''}
+                onClick={() => setProfileSettingsPanel('profile')}
+              >
+                My profile
+              </button>
+              <button
+                type="button"
+                className={profileSettingsPanel === 'settings' ? 'active' : ''}
+                onClick={() => setProfileSettingsPanel('settings')}
+              >
+                My settings
+              </button>
+            </div>
+
+            <form className="profile-settings-form" onSubmit={saveProfileSettings}>
+              {profileSettingsPanel === 'profile' ? (
+                <>
+                  <div className="profile-picture-editor">
+                    <div className="profile-picture-preview">
+                      {profileDraft.profilePhotoDataUrl ? (
+                        <img src={profileDraft.profilePhotoDataUrl} alt="Profile preview" />
+                      ) : (
+                        <span>{getInitials(authSession?.username ?? currentUser.data?.displayName ?? currentUser.data?.email)}</span>
+                      )}
+                    </div>
+
+                    <div>
+                      <label htmlFor="profile-photo-upload">Profile picture</label>
+                      <input
+                        id="profile-photo-upload"
+                        type="file"
+                        accept="image/*"
+                        onChange={handleProfilePhotoUpload}
+                      />
+                      <small>Use a small square image. Current limit is 2 MB.</small>
+                      <button type="button" className="secondary-action" onClick={removeProfilePhoto}>
+                        Remove picture
+                      </button>
+                    </div>
+                  </div>
+
+                  <label htmlFor="display-name-override">Display name</label>
+                  <input
+                    id="display-name-override"
+                    type="text"
+                    value={profileDraft.displayNameOverride}
+                    placeholder={currentUser.data?.displayName ?? authSession?.username ?? 'Display name'}
+                    onChange={(event) => setProfileDraft((current) => ({ ...current, displayNameOverride: event.target.value }))}
+                  />
+
+                  <label htmlFor="title-override">Title / role description</label>
+                  <input
+                    id="title-override"
+                    type="text"
+                    value={profileDraft.titleOverride}
+                    placeholder="Example: Collaboration Team Lead"
+                    onChange={(event) => setProfileDraft((current) => ({ ...current, titleOverride: event.target.value }))}
+                  />
+
+                  <label htmlFor="awards-certificates">Awards / certificates earned</label>
+                  <textarea
+                    id="awards-certificates"
+                    value={profileDraft.awardsAndCertificates}
+                    placeholder={`Cisco - CCNA Collaboration
+Cisco - CCNP Collaboration
+Analytics - Variphy / Infortel`}
+                    onChange={(event) => setProfileDraft((current) => ({ ...current, awardsAndCertificates: event.target.value }))}
+                  />
+                </>
+              ) : (
+                <>
+                  <div className="settings-section-card">
+                    <p className="eyebrow">Appearance</p>
+                    <h3>Theme preference</h3>
+                    <p>Select how Project Pulse should appear for your account on this browser.</p>
+
+                    <div className="theme-choice-grid">
+                      <label className={profileDraft.theme === 'light' ? 'theme-choice active' : 'theme-choice'}>
+                        <input
+                          type="radio"
+                          name="theme"
+                          value="light"
+                          checked={profileDraft.theme === 'light'}
+                          onChange={(event) => setProfileDraft((current) => ({ ...current, theme: event.target.value }))}
+                        />
+                        <strong>Light mode</strong>
+                        <span>Bright workspace view</span>
+                      </label>
+
+                      <label className={profileDraft.theme === 'dark' ? 'theme-choice active' : 'theme-choice'}>
+                        <input
+                          type="radio"
+                          name="theme"
+                          value="dark"
+                          checked={profileDraft.theme === 'dark'}
+                          onChange={(event) => setProfileDraft((current) => ({ ...current, theme: event.target.value }))}
+                        />
+                        <strong>Dark mode</strong>
+                        <span>Reduced brightness view</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="settings-section-card">
+                    <p className="eyebrow">Account</p>
+                    <h3>Current session</h3>
+                    <p><strong>User:</strong> {authSession?.username ?? currentUser.data?.email ?? 'Unknown user'}</p>
+                    <p><strong>Workspace:</strong> {workspaceRoleName}</p>
+                  </div>
+                </>
+              )}
+
+              {profileSettingsStatus && (
+                <p className="profile-settings-status">{profileSettingsStatus}</p>
+              )}
+
+              <div className="profile-settings-actions">
+                <button type="button" className="secondary-action" onClick={closeProfileSettings}>
+                  Cancel
+                </button>
+                <button type="submit" className="primary-action">
+                  Save settings
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
+
+
+
       <header className="top-bar">
         <SignalLogo />
         <nav aria-label="Primary navigation">
-          <a href="#dashboard">Dashboard</a>
-          <a href="#timesheet">Timesheet</a>
-          <a href="#utilization">Utilization</a>
-          <a href="#workflow">Workflow</a>
+          {roleNavigation.map((item) => (
+            <a
+              href={item.href}
+              key={item.route}
+              className={activeRoute === item.route ? 'active' : ''}
+            >
+              {item.label}
+            </a>
+          ))}
         </nav>
-        <button className="theme-toggle" type="button" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
-          {theme === 'dark' ? 'Light mode' : 'Dark mode'}
-        </button>
+        <div className="profile-menu-shell" ref={profileMenuRef}>
+          <button
+            className="profile-avatar-button"
+            type="button"
+            onClick={() => setIsProfileMenuOpen((value) => !value)}
+            aria-label="Open profile menu"
+          >
+            {userPreferences.profilePhotoDataUrl ? (
+              <img src={userPreferences.profilePhotoDataUrl} alt="Profile" />
+            ) : (
+              <span>{getInitials(authSession?.username ?? currentUser.data?.displayName ?? currentUser.data?.email)}</span>
+            )}
+          </button>
+
+          {isProfileMenuOpen && (
+            <div className="profile-dropdown-menu">
+              <div className="profile-dropdown-header">
+                <div className="profile-dropdown-avatar">
+                  {userPreferences.profilePhotoDataUrl ? (
+                    <img src={userPreferences.profilePhotoDataUrl} alt="Profile" />
+                  ) : (
+                    <span>{getInitials(authSession?.username ?? currentUser.data?.displayName ?? currentUser.data?.email)}</span>
+                  )}
+                </div>
+                <div>
+                  <strong>{userPreferences.displayNameOverride || currentUser.data?.displayName || authSession?.username || 'Project Pulse User'}</strong>
+                  <small>{authSession?.username ?? currentUser.data?.email ?? 'Current user'}</small>
+                  <small>{workspaceRoleName}</small>
+                </div>
+              </div>
+
+              <button type="button" onClick={() => openProfileSettings('profile')}>
+                My profile
+              </button>
+              <button type="button" onClick={() => openProfileSettings('settings')}>
+                My settings
+              </button>
+              <button type="button" onClick={signOut}>
+                Sign out
+              </button>
+            </div>
+          )}
+        </div>
       </header>
 
-      <section id="dashboard" className="hero">
-        <p className="eyebrow">US Signal Project Pulse</p>
-        <h1>Project Pulse: time, approval, utilization, and accounting workflow</h1>
-        <p className="hero-copy">
-          A focused internal platform for weekly time entry, task-based project assignment, manager approval, project validation, accounting reconciliation, and utilization reporting.
-        </p>
+
+      <section id="role-dashboard" className="panel role-dashboard-panel">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">Role-based workspace</p>
+            <h1>{workspaceRoleName}</h1>
+            <p className="section-copy">
+              Select a workspace module below. The dashboard only shows the views and actions available to your assigned role.
+            </p>
+          </div>
+          <span className="badge">{visibleRoleModules.length} available views</span>
+        </div>
+
+        {currentUser.error && (
+          <div className="error-text">Unable to load current user: {currentUser.error}</div>
+        )}
+
+        <div className="role-dashboard-grid">
+          {visibleRoleModules.map((module) => (
+            <a className="role-dashboard-card" href={module.href} key={`${module.title}-${module.route}`}>
+              <span>{module.navLabel}</span>
+              <strong>{module.title}</strong>
+              <small>{module.description}</small>
+            </a>
+          ))}
+        </div>
+
+        {showQuarterUtilizationSummary && (
+          <div className="dashboard-quarter-summary">
+            <div className="section-heading compact-heading">
+              <div>
+                <p className="eyebrow">Current quarter utilization</p>
+                <h2>{currentQuarterUtilization.data?.quarter ?? 'Current Quarter'}</h2>
+              </div>
+              <span className="badge">{currentQuarterUtilization.data?.targetPercent ?? 0}% target</span>
+            </div>
+
+            <DataState loading={currentQuarterUtilization.loading} error={currentQuarterUtilization.error}>
+              <div className="quarter-utilization-grid">
+                <article className="quarter-utilization-card">
+                  <span>Target utilization</span>
+                  <strong>{currentQuarterUtilization.data?.targetPercent ?? 0}%</strong>
+                  <small>{formatNumber(currentQuarterUtilization.data?.targetHours)} target hrs</small>
+                </article>
+
+                <article className="quarter-utilization-card">
+                  <span>Current utilization</span>
+                  <strong>{formatNumber(currentQuarterUtilization.data?.currentUtilizationPercent)}%</strong>
+                  <small>{formatNumber(currentQuarterUtilization.data?.currentBillableHours)} billable hrs</small>
+                </article>
+
+                <article className="quarter-utilization-card">
+                  <span>Hours left to target</span>
+                  <strong>{formatNumber(currentQuarterUtilization.data?.hoursLeftToTarget)}</strong>
+                  <small>remaining billable hrs</small>
+                </article>
+
+                <article className="quarter-utilization-card">
+                  <span>Standard quarter</span>
+                  <strong>{formatNumber(currentQuarterUtilization.data?.standardPeriodHours)}</strong>
+                  <small>standard hrs</small>
+                </article>
+              </div>
+            </DataState>
+          </div>
+        )}
+      </section>
+
+      <section id="dashboard" className="hero hero-polished">
+        <div className="hero-content-block">
+          <p className="eyebrow">US Signal Project Pulse</p>
+          <h1>Operational command center for time, approvals, utilization, and billing readiness.</h1>
+          <p className="hero-copy">
+            Project Pulse brings weekly time entry, task-based project assignment, manager approval, project validation, accounting reconciliation, and utilization reporting into one internal workflow.
+          </p>
+          <div className="hero-pill-row">
+            <span>Time entry</span>
+            <span>Approval workflow</span>
+            <span>Utilization</span>
+            <span>Accounting readiness</span>
+          </div>
+        </div>
+        <aside className="hero-side-card" aria-label="Platform direction">
+          <strong>Built for Professional Services</strong>
+          <span>Personalized defaults, holiday automation, reminders, approvals, and reporting.</span>
+        </aside>
       </section>
 
       <section className="status-grid" aria-label="Platform status">
@@ -602,6 +2071,26 @@ export default function App() {
           <strong>{schema.loading ? 'Checking...' : schema.error ? 'Unavailable' : `${schema.data?.count ?? 0} tables`}</strong>
           <small>PostgreSQL platform schema validation</small>
         </article>
+      </section>
+
+      <section className="panel role-workspace-panel" aria-label="Role-based workspace">
+        <div className="section-header compact">
+          <div>
+            <p className="eyebrow">Role-based workspace</p>
+            <h2>{securityContext.loading ? 'Loading workspace access...' : roleNames}</h2>
+            <p className="muted">Views and actions are personalized by assigned role. Engineers see their time and utilization, managers see approvals and team reporting, project roles see project operations, and administrators see all modules.</p>
+          </div>
+          <span className="pill">{workspaceFeatures.length} available views</span>
+        </div>
+        {securityContext.error ? <p className="error-text">{securityContext.error}</p> : null}
+        <div className="role-feature-grid">
+          {workspaceFeatures.map((feature) => (
+            <a className="role-feature-card" href={feature.routeAnchor ?? '#dashboard'} key={feature.featureCode}>
+              <strong>{feature.featureName}</strong>
+              <span>{feature.description}</span>
+            </a>
+          ))}
+        </div>
       </section>
 
       <section id="timesheet" className="panel timesheet-page">
@@ -640,7 +2129,7 @@ export default function App() {
             <aside className="activities-panel" aria-label="Activities">
               <div className="panel-title-row">
                 <h3>Activities</h3>
-                <span>{activitySource === 'nonProject' ? categories.length : 0}</span>
+                <span>{activitySource === 'nonProject' ? categories.length : activitySource === 'openTasks' ? assignedOpenTasks.length : 0}</span>
               </div>
 
               <div className="activity-selector-row">
@@ -672,6 +2161,35 @@ export default function App() {
                         <strong>{category.name}</strong>
                         <span>{category.description ?? category.utilizationBucket}</span>
                         <small>{category.requiresApproval ? 'Approval required' : 'No approval required'}</small>
+                         <span className="default-toggle" onClick={(event) => { event.stopPropagation(); void setRowAsPersonalDefault(categoryToRow(category)); }}>Set as my default</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : activitySource === 'openTasks' ? (
+                <div className="activity-group activity-results">
+                  <h4>Open tasks</h4>
+                  {openTasks.loading ? <span className="muted">Loading assigned tasks...</span> : null}
+                  {openTasks.error ? <span className="error-text">{openTasks.error}</span> : null}
+                  {!openTasks.loading && !openTasks.error && assignedOpenTasks.length === 0 ? (
+                    <div className="empty-activity-state">
+                      <strong>{selectedActivitySource.emptyTitle}</strong>
+                      <span>{selectedActivitySource.emptyDescription}</span>
+                    </div>
+                  ) : null}
+                  {assignedOpenTasks.map((task) => {
+                    const alreadyAdded = activeRows.some((row) => row.projectId === task.projectId && row.taskId === task.taskId);
+                    return (
+                      <button
+                        className="activity-card"
+                        type="button"
+                        key={`${task.projectId}-${task.taskId}`}
+                        disabled={alreadyAdded || !isAnyDayEditable}
+                        onClick={() => addTask(task)}
+                      >
+                        <strong>{task.taskName}</strong>
+                        <span>{task.projectCode} • {task.projectName}</span>
+                        <small>{task.projectManagerName ? `PM: ${task.projectManagerName}` : 'Project task'}</small>
                       </button>
                     );
                   })}
@@ -684,6 +2202,7 @@ export default function App() {
               )}
             </aside>
 
+            <p className="timesheet-mobile-hint">Tip: on smaller screens, swipe horizontally to view all days and actions.</p>
             <div className="entry-grid-wrap">
               <div className="entry-grid" role="table" aria-label="Weekly time entry grid">
                 <div className="entry-grid-row entry-grid-header" role="row">
@@ -703,7 +2222,7 @@ export default function App() {
 
                 {activeRows.map((row) => (
                   <div className="entry-grid-row" role="row" key={row.id}>
-                    <div role="cell"><span className="state-dot">•</span> {row.state}</div>
+                    <div role="cell"><span className="state-dot">•</span> {getRowWorkflowState(row.id)}</div>
                     <div role="cell" className="activity-name">{row.activity}</div>
                     <div role="cell">{row.projectDescription}</div>
                     {days.map((day) => (
@@ -720,7 +2239,7 @@ export default function App() {
                               type="button"
                               title={`${type.label}: ${formatHoursValue(entry.hours)} hours`}
                               onClick={() => openEntryDetails(row.id, day.date, type.key)}
-                              disabled={!dayIsEditable}
+                              disabled={false}
                             >
                               {formatHoursValue(entry.hours)}
                             </button>
@@ -730,7 +2249,12 @@ export default function App() {
                     ))}
                     <div role="cell" className="row-total">{formatNumber(getRowTotal(row.id))}</div>
                     <div role="cell">
-                      <button className="link-button" type="button" onClick={() => removeRow(row.id)} disabled={!isAnyDayEditable}>Remove</button>
+                      <div className="row-action-stack">
+                        <button className="link-button" type="button" onClick={() => isRowPersonalDefault(row) ? void removeRowAsPersonalDefault(row) : void setRowAsPersonalDefault(row)}>
+                          {isRowPersonalDefault(row) ? 'Remove default' : 'Set default'}
+                        </button>
+                        <button className="link-button" type="button" onClick={() => removeRow(row.id)} disabled={!isAnyDayEditable}>Remove</button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -766,19 +2290,25 @@ export default function App() {
               </div>
               <div className="modal-actions">
                 {selectedDayStatus?.status === 'submitted' ? (
-                  <button type="button" className="unlock-action" onClick={unlockSelectedDay} disabled={isSaving}>
+                  <button type="button" className="unlock-action" onClick={unlockSelectedDay} disabled={isSaving || !selectedDayStatus?.canUnlock}>
                     Unlock this day
                   </button>
-                ) : (
+                ) : isDayEditable(selectedCell.date) ? (
                   <button type="button" className="primary-action" onClick={submitSelectedDay} disabled={isSaving || getSelectedDayTotal() < 8}>
                     Submit this day
                   </button>
+                ) : (
+                  <span className="read-only-pill">Read only</span>
                 )}
                 <button type="button" className="modal-close-button" onClick={() => void closeEntryDetails({ autoSave: true })}>Close</button>
               </div>
             </div>
 
-            <div className="detail-form modal-detail-form">
+            {getVacationHolidayReminder(selectedRow) ? (
+                <div className="policy-reminder">{getVacationHolidayReminder(selectedRow)}</div>
+              ) : null}
+
+              <div className="detail-form modal-detail-form">
               <label>
                 Hours
                 <input
@@ -790,6 +2320,7 @@ export default function App() {
                   placeholder="0.00"
                   autoFocus
                   disabled={!isDayEditable(selectedCell.date)}
+                  disabled={!isDayEditable(selectedCell.date)}
                   onChange={(event) => updateEntry(selectedCell.rowId, selectedCell.date, selectedCell.type, { hours: event.target.value })}
                 />
               </label>
@@ -799,6 +2330,7 @@ export default function App() {
                   value={selectedEntry.comment}
                   placeholder="Enter the reportable comment for this time entry."
                   disabled={!isDayEditable(selectedCell.date)}
+                  disabled={!isDayEditable(selectedCell.date)}
                   onChange={(event) => updateEntry(selectedCell.rowId, selectedCell.date, selectedCell.type, { comment: event.target.value })}
                 />
               </label>
@@ -806,6 +2338,7 @@ export default function App() {
                 Work location group
                 <select
                   value={selectedEntry.workLocationGroupId}
+                  disabled={!isDayEditable(selectedCell.date)}
                   disabled={!isDayEditable(selectedCell.date)}
                   onChange={(event) => updateEntry(selectedCell.rowId, selectedCell.date, selectedCell.type, { workLocationGroupId: event.target.value })}
                 >
@@ -818,6 +2351,7 @@ export default function App() {
                 Work location
                 <select
                   value={selectedEntry.workLocationId}
+                  disabled={!isDayEditable(selectedCell.date)}
                   disabled={!isDayEditable(selectedCell.date)}
                   onChange={(event) => updateEntry(selectedCell.rowId, selectedCell.date, selectedCell.type, { workLocationId: event.target.value })}
                 >
@@ -832,7 +2366,7 @@ export default function App() {
               <span>
                 Day total: <strong>{formatNumber(getSelectedDayTotal())}</strong> / minimum 8.00 hours
               </span>
-              {selectedDayStatus?.status === 'submitted' ? (
+              {selectedDayStatus?.status === 'submitted' || !isDayEditable(selectedCell.date) ? (
                 <small>{selectedDayStatus.unlockMessage}</small>
               ) : (
                 <small>Use Submit this day once the day reaches at least 8.00 hours. Closing this window automatically saves your draft.</small>
@@ -842,6 +2376,175 @@ export default function App() {
           </section>
         </div>
       ) : null}
+
+
+
+
+      <section id="holiday-admin" className={`panel holiday-admin-panel ${canViewHolidayCalendar ? '' : 'access-hidden'}`}>
+        <div className="section-header compact">
+          <div>
+            <p className="eyebrow">Holiday administration</p>
+            <h2>Holiday calendar</h2>
+            <p className="muted">View uploaded holidays by year. Holiday import is available only to Managers, Project and Team Coordinators, and Administrators.</p>
+          </div>
+          <span className="pill">{companyHolidays.data?.count ?? 0} uploaded for {holidayUploadYear}</span>
+        </div>
+
+        <div className="holiday-upload-grid">
+          <label>
+            Year
+            <select value={holidayUploadYear} onChange={(event) => void loadHolidayAdminYear(event.target.value)}>
+              {holidayYearOptions.map((year) => <option value={year} key={year}>{year}</option>)}
+            </select>
+          </label>
+          <label>
+            Upload CSV
+            <input type="file" accept=".csv,text/csv" onChange={handleHolidayFileUpload} />
+          </label>
+        </div>
+
+        {canManageHolidays ? (
+          <>
+        <textarea
+          className="holiday-upload-textarea"
+          value={holidayUploadText}
+          onChange={(event) => setHolidayUploadText(event.target.value)}
+          placeholder="holiday_date,holiday_name,holiday_type,is_floating_holiday,auto_populate_hours
+2026-01-01,New Year's Day,company_paid,false,8"
+        />
+
+        <div className="toolbar-actions holiday-upload-actions">
+          <button type="button" className="primary-action" onClick={importHolidayCsv}>Import holidays</button>
+          <span className="muted">{holidayUploadStatus}</span>
+        </div>
+          </>
+        ) : (
+          <p className="muted holiday-admin-readonly-note">You have read-only access to the holiday calendar. Contact an administrator or manager to upload yearly holidays.</p>
+        )}
+
+        <div className="holiday-list-card compact-holiday-list">
+          <div className="holiday-list-header">
+            <h3>Uploaded holidays</h3>
+            <span>{companyHolidays.data?.count ?? 0} records</span>
+          </div>
+          {(companyHolidays.data?.holidays ?? []).length === 0 ? (
+            <p className="muted">No holidays uploaded for {holidayUploadYear} yet.</p>
+          ) : null}
+          {(companyHolidays.data?.holidays ?? []).map((holiday) => (
+            <div className="module-list-row" key={holiday.holidayDate}>
+              <strong>{holiday.holidayName}</strong>
+              <span>{holiday.holidayDate} • {holiday.holidayType} • {formatNumber(holiday.autoPopulateHours)} hours</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section id="psa-modules" className={`panel module-foundation-panel ${canViewPsaModules ? '' : 'access-hidden'}`}>
+        <div className="section-header compact">
+          <div>
+            <p className="eyebrow">PSA platform modules</p>
+            <h2>Remaining sections foundation</h2>
+            <p className="muted">These sections prepare the rest of Project Pulse beyond time entry: intake, project management, resource scheduling, expenses, invoicing, reporting, and administrative workflow.</p>
+          </div>
+          <span className="pill">Foundation ready</span>
+        </div>
+
+        {remainingModules.error ? <p className="error-text">{remainingModules.error}</p> : null}
+
+        <div className="module-grid">
+          <article className="module-card">
+            <span className="status-label">Project intake</span>
+            <strong>{intakeCount} request{intakeCount === 1 ? '' : 's'}</strong>
+            <small>Sales handoff, client intake, project templates, and PM assignment.</small>
+          </article>
+          <article className="module-card">
+            <span className="status-label">Project management</span>
+            <strong>{milestoneCount} milestones</strong>
+            <small>{riskCount} tracked risk{riskCount === 1 ? '' : 's'} for project delivery governance.</small>
+          </article>
+          <article className="module-card">
+            <span className="status-label">Resource scheduling</span>
+            <strong>{capacityCount} capacity rows</strong>
+            <small>Weekly availability, assigned hours, and utilization capacity planning.</small>
+          </article>
+          <article className="module-card">
+            <span className="status-label">Expense management</span>
+            <strong>{expenseCount} report{expenseCount === 1 ? '' : 's'}</strong>
+            <small>Expense report shell, receipt tracking, reimbursable expenses, and approval state.</small>
+          </article>
+          <article className="module-card">
+            <span className="status-label">Invoicing</span>
+            <strong>{invoiceCount} invoice{invoiceCount === 1 ? '' : 's'}</strong>
+            <small>Draft client invoice staging for labor, expenses, export, and accounting review.</small>
+          </article>
+          <article className="module-card">
+            <span className="status-label">Executive reporting</span>
+            <strong>{executiveMetricCount} metrics</strong>
+            <small>Snapshot-based executive dashboard foundation for operational reporting.</small>
+          </article>
+        </div>
+
+        <div className="module-detail-grid">
+          <article>
+            <h3>Project milestones</h3>
+            {(moduleData.projectManagement?.milestones ?? []).slice(0, 7).map((milestone) => (
+              <div className="module-list-row" key={`${milestone.projectCode}-${milestone.name}`}>
+                <strong>{milestone.name}</strong>
+                <span>{milestone.projectCode} • {milestone.status} • due {milestone.dueDate ?? 'TBD'}</span>
+              </div>
+            ))}
+          </article>
+          <article>
+            <h3>Resource capacity</h3>
+            {(moduleData.resourceCapacity?.capacity ?? []).map((capacity) => (
+              <div className="module-list-row" key={`${capacity.resourceEmail}-${capacity.weekStart}`}>
+                <strong>{capacity.resourceName}</strong>
+                <span>{capacity.weekStart}: {formatNumber(capacity.assignedHours)} assigned / {formatNumber(capacity.availableHours)} available • {capacity.status}</span>
+              </div>
+            ))}
+          </article>
+        </div>
+      </section>
+
+
+      <section id="current-quarter-utilization" className="panel current-quarter-utilization-panel">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">Current quarter utilization</p>
+            <h2>{currentQuarterUtilization.data?.quarter ?? 'Current Quarter'}</h2>
+            <p className="section-copy">Track target, current utilization, and remaining billable hours needed to meet the quarter goal.</p>
+          </div>
+          <span className="badge">{currentQuarterUtilization.data?.targetPercent ?? 0}% target</span>
+        </div>
+
+        <DataState loading={currentQuarterUtilization.loading} error={currentQuarterUtilization.error}>
+          <div className="quarter-utilization-grid">
+            <article className="quarter-utilization-card">
+              <span>Target utilization</span>
+              <strong>{currentQuarterUtilization.data?.targetPercent ?? 0}%</strong>
+              <small>{formatNumber(currentQuarterUtilization.data?.targetHours)} target hrs</small>
+            </article>
+
+            <article className="quarter-utilization-card">
+              <span>Current utilization</span>
+              <strong>{formatNumber(currentQuarterUtilization.data?.currentUtilizationPercent)}%</strong>
+              <small>{formatNumber(currentQuarterUtilization.data?.currentBillableHours)} billable hrs</small>
+            </article>
+
+            <article className="quarter-utilization-card">
+              <span>Hours left to target</span>
+              <strong>{formatNumber(currentQuarterUtilization.data?.hoursLeftToTarget)}</strong>
+              <small>remaining billable hrs</small>
+            </article>
+
+            <article className="quarter-utilization-card">
+              <span>Standard quarter</span>
+              <strong>{formatNumber(currentQuarterUtilization.data?.standardPeriodHours)}</strong>
+              <small>standard hrs</small>
+            </article>
+          </div>
+        </DataState>
+      </section>
 
       <section id="utilization" className="panel">
         <div className="section-header compact">
@@ -860,12 +2563,60 @@ export default function App() {
               <article className="target-card" key={target.targetPercent}>
                 <strong>{Number(target.targetPercent).toFixed(0)}%</strong>
                 <span>{Number(target.targetHours).toFixed(1)} hrs</span>
-                <small>{target.bonusReferenceAmount ? `$${Number(target.bonusReferenceAmount).toLocaleString()}` : 'No reference amount'}</small>
+                <small>{target.targetHours ? `${Number(target.targetHours).toLocaleString()} target hrs` : 'No target hours'}</small>
               </article>
             ))}
           </div>
         </DataState>
       </section>
+
+
+      {(hasPermission('SYSTEM_ADMINISTRATION') || hasPermission('MANAGE_ALL')) ? (
+        <section id="role-admin" className="panel role-admin-panel">
+          <div className="section-header compact">
+            <div>
+              <p className="eyebrow">Administration</p>
+              <h2>User role administration</h2>
+              <p className="muted">Assign each user to the workspace role that controls their available views and actions. PMO and PM/Project Manager have been consolidated as Project Management.</p>
+            </div>
+            <span className="pill">{roleAdminUsers.data?.count ?? 0} users</span>
+          </div>
+
+          {roleAdminUsers.error || roleAdminRoles.error ? <p className="error-text">{roleAdminUsers.error ?? roleAdminRoles.error}</p> : null}
+          <p className="muted">{roleAdminStatus}</p>
+
+          <div className="role-admin-table" role="table" aria-label="User role assignments">
+            <div className="role-admin-row role-admin-header" role="row">
+              <div role="columnheader">User</div>
+              <div role="columnheader">Current role</div>
+              <div role="columnheader">Assign role</div>
+            </div>
+            {(roleAdminUsers.data?.users ?? []).map((user) => (
+              <div className="role-admin-row" role="row" key={user.email}>
+                <div role="cell">
+                  <strong>{user.displayName}</strong>
+                  <span>{user.email}</span>
+                  <small>{user.jobTitle || 'No title'}{user.department ? ` • ${user.department}` : ''}</small>
+                </div>
+                <div role="cell">
+                  <span className="role-chip">{user.roleNames?.length ? user.roleNames.join(', ') : 'No role assigned'}</span>
+                </div>
+                <div role="cell">
+                  <select
+                    value={user.roleCodes?.[0] ?? ''}
+                    onChange={(event) => void updateUserRole(user.email, event.target.value)}
+                  >
+                    <option value="" disabled>Select role</option>
+                    {(roleAdminRoles.data?.roles ?? []).map((role) => (
+                      <option value={role.roleCode} key={role.roleCode}>{role.roleName}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <section id="workflow" className="section-header">
         <h2>Core workflow areas</h2>

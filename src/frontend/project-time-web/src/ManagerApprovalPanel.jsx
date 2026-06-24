@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import './manager-approval.css';
+import AdministrativeApprovalRequestsPanel from './AdministrativeApprovalRequestsPanel.jsx';
 
 function toIsoDate(date) {
   return date.toISOString().slice(0, 10);
@@ -18,35 +19,67 @@ function addDaysIso(isoDate, numberOfDays) {
   return toIsoDate(date);
 }
 
+function getProjectPulseAuthHeaders() {
+  try {
+    const rawSession = window.localStorage.getItem('projectPulseAuthSession');
+    if (!rawSession) return {};
+
+    const session = JSON.parse(rawSession);
+    return session?.sessionToken ? { 'X-ProjectPulse-Session': session.sessionToken } : {};
+  } catch {
+    return {};
+  }
+}
+
 function formatNumber(value) {
   return Number(value || 0).toFixed(2);
 }
 
+
+async function readApiErrorMessage(response, path) {
+  const raw = await response.text();
+
+  if (!raw) {
+    return `${path} returned HTTP ${response.status}`;
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    return `${path} returned HTTP ${response.status}: ${parsed.message || parsed.detail || parsed.status || raw}`;
+  } catch {
+    return `${path} returned HTTP ${response.status}: ${raw}`;
+  }
+}
+
+
 async function fetchJson(path) {
-  const response = await fetch(path);
-  if (!response.ok) throw new Error(`${path} returned HTTP ${response.status}`);
+  const response = await fetch(path, {
+    headers: getProjectPulseAuthHeaders()
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiErrorMessage(response, path));
+  }
+
   return response.json();
 }
 
 async function postJson(path, payload) {
   const response = await fetch(path, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...getProjectPulseAuthHeaders() },
     body: JSON.stringify(payload)
   });
 
   if (!response.ok) {
-    let details = '';
-    try {
-      const body = await response.json();
-      details = body.message || body.detail || JSON.stringify(body);
-    } catch {
-      details = await response.text();
-    }
-    throw new Error(`${path} returned HTTP ${response.status}${details ? `: ${details}` : ''}`);
+    throw new Error(await readApiErrorMessage(response, path));
   }
 
   return response.json();
+}
+
+function itemKey(item) {
+  return `${item.timesheetId}|${item.workDate}`;
 }
 
 function statusLabel(status) {
@@ -63,12 +96,14 @@ export default function ManagerApprovalPanel() {
   const [approvalData, setApprovalData] = useState({ loading: true, data: null, error: null });
   const [actionStatus, setActionStatus] = useState('Ready');
   const [isWorking, setIsWorking] = useState(false);
+  const [selectedKeys, setSelectedKeys] = useState(new Set());
 
   async function loadApprovals() {
     setApprovalData({ loading: true, data: null, error: null });
     try {
       const result = await fetchJson(`/api/manager/approvals?weekStart=${weekStart}&includeAll=${includeAll}`);
       setApprovalData({ loading: false, data: result, error: null });
+      setSelectedKeys(new Set());
     } catch (error) {
       setApprovalData({ loading: false, data: null, error: error instanceof Error ? error.message : 'Failed to load manager approvals' });
     }
@@ -118,13 +153,58 @@ export default function ManagerApprovalPanel() {
     void runAction('/api/manager/approvals/unlock', item, { comment: reason.trim() || 'Manager unlock requested.' });
   }
 
+
+  function toggleItemSelection(item) {
+    if (item.status !== 'submitted') return;
+    const key = itemKey(item);
+    setSelectedKeys((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  function toggleAllPending() {
+    const keys = pendingItems.map(itemKey);
+    const allSelected = keys.length > 0 && keys.every((key) => selectedKeys.has(key));
+    setSelectedKeys(allSelected ? new Set() : new Set(keys));
+  }
+
+  async function approveSelected() {
+    if (selectedItems.length === 0 || isWorking) return;
+    setIsWorking(true);
+    setActionStatus(`Approving ${selectedItems.length} selected day(s)...`);
+
+    try {
+      const result = await postJson('/api/manager/approvals/bulk-approve', {
+        items: selectedItems.map((item) => ({
+          timesheetId: item.timesheetId,
+          workDate: item.workDate,
+          comment: 'Bulk approved by manager.'
+        })),
+        comment: 'Bulk approved by manager.'
+      });
+      setActionStatus(result.message ?? `Approved ${selectedItems.length} selected day(s).`);
+      setSelectedKeys(new Set());
+      await loadApprovals();
+    } catch (error) {
+      setActionStatus(error instanceof Error ? error.message : 'Bulk approval failed');
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
   const items = approvalData.data?.items ?? [];
+  const pendingItems = useMemo(() => items.filter((item) => item.status === 'submitted'), [items]);
+  const selectedItems = useMemo(() => items.filter((item) => selectedKeys.has(itemKey(item)) && item.status === 'submitted'), [items, selectedKeys]);
+  const allPendingSelected = pendingItems.length > 0 && pendingItems.every((item) => selectedKeys.has(itemKey(item)));
 
   return (
     <section id="manager-approval" className="manager-approval-shell">
       <div className="manager-approval-header">
         <div>
-          <p className="eyebrow">Manager Approval</p>
+          <p className="eyebrow">Approval Inbox</p>
           <h2>Submitted time awaiting review</h2>
           <p>
             Review submitted day-level time, approve it for the next workflow stage, return it to the engineer with a reason, or unlock it when corrections are needed.
@@ -143,9 +223,22 @@ export default function ManagerApprovalPanel() {
       <div className="manager-status-row">
         <span>Week starts: <strong>{approvalData.data?.weekStart ?? weekStart}</strong></span>
         <span>Week ends: <strong>{approvalData.data?.weekEnd ?? addDaysIso(weekStart, 6)}</strong></span>
-        <span>Items: <strong>{approvalData.loading ? 'Loading...' : items.length}</strong></span>
+        <span>Pending: <strong>{approvalData.loading ? 'Loading...' : pendingItems.length}</strong></span>
+        <span>Selected: <strong>{selectedItems.length}</strong></span>
         <span>Action: <strong>{actionStatus}</strong></span>
       </div>
+
+      {pendingItems.length > 0 ? (
+        <div className="bulk-approval-bar">
+          <div><strong>{pendingItems.length}</strong> pending item(s) for this week.</div>
+          <div className="bulk-actions">
+            <button type="button" onClick={toggleAllPending}>{allPendingSelected ? 'Clear selection' : 'Select all pending'}</button>
+            <button type="button" className="approve-selected" onClick={approveSelected} disabled={selectedItems.length === 0 || isWorking}>
+              Approve selected ({selectedItems.length})
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {approvalData.error ? (
         <div className="manager-empty-state error">{approvalData.error}</div>
@@ -160,6 +253,7 @@ export default function ManagerApprovalPanel() {
           <table className="manager-table">
             <thead>
               <tr>
+                <th>Select</th>
                 <th>Resource</th>
                 <th>Date</th>
                 <th>Status</th>
@@ -172,12 +266,24 @@ export default function ManagerApprovalPanel() {
               </tr>
             </thead>
             <tbody>
-              {items.map((item) => (
-                <tr key={`${item.timesheetId}-${item.workDate}`}>
-                  <td>
-                    <strong>{item.resourceName}</strong>
-                    <span>{item.resourceEmail}</span>
-                  </td>
+              {items.map((item) => {
+                const key = itemKey(item);
+                const canSelect = item.status === 'submitted';
+                return (
+                  <tr key={key}>
+                    <td>
+                      <input
+                        aria-label={`Select ${item.resourceName} ${item.workDate}`}
+                        type="checkbox"
+                        checked={selectedKeys.has(key)}
+                        disabled={!canSelect || isWorking}
+                        onChange={() => toggleItemSelection(item)}
+                      />
+                    </td>
+                    <td>
+                      <strong>{item.resourceName}</strong>
+                      <span>{item.resourceEmail}</span>
+                    </td>
                   <td>{item.workDate}</td>
                   <td><span className={`manager-status ${item.status}`}>{statusLabel(item.status)}</span></td>
                   <td>{item.activitySummary}</td>
@@ -206,12 +312,15 @@ export default function ManagerApprovalPanel() {
                       )}
                     </div>
                   </td>
-                </tr>
-              ))}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       ) : null}
+
+      <AdministrativeApprovalRequestsPanel />
     </section>
   );
 }
