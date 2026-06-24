@@ -1,0 +1,10 @@
+holiday_date,holiday_name,holiday_type,is_floating_holiday,auto_populate_hours
+2026-01-01,New Year's Day,company_paid,false,8
+2026-05-22,Company Floating Holiday,floating,true,8
+2026-05-25,Memorial Day,company_paid,false,8
+2026-07-03,Independence Day,company_paid,false,8
+2026-09-07,Labor Day,company_paid,false,8
+2026-11-26,Thanksgiving Day,company_paid,false,8
+2026-11-27,Day After Thanksgiving,company_paid,false,8
+2026-12-24,Christmas Eve,company_paid,false,8
+2026-12-25,Christmas Day,company_paid,false,8
