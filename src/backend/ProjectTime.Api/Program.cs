@@ -2764,12 +2764,21 @@ app.MapGet("/api/auth/password-reset/approvals", async (HttpContext httpContext)
             pr.expires_at,
             pr.notes,
             u.email AS account_email,
-            u.display_name AS account_display_name
+            u.display_name AS account_display_name,
+            pr.approved_at,
+            pr.approved_by_email,
+            pr.completed_at
         FROM auth_password_reset_requests pr
         JOIN app_users u ON u.user_id = pr.user_id
-        WHERE pr.status = 'pending_approval'
+        WHERE pr.status IN ('pending_approval', 'approved')
           AND lower(u.email) LIKE '%.local'
-        ORDER BY pr.requested_at DESC;
+        ORDER BY
+            CASE pr.status
+                WHEN 'approved' THEN 1
+                WHEN 'pending_approval' THEN 2
+                ELSE 3
+            END,
+            pr.requested_at DESC;
         """, connection);
 
     await using var reader = await command.ExecuteReaderAsync();
@@ -2786,9 +2795,14 @@ app.MapGet("/api/auth/password-reset/approvals", async (HttpContext httpContext)
             notes = reader.IsDBNull(6) ? null : reader.GetString(6),
             accountEmail = reader.GetString(7),
             accountDisplayName = reader.GetString(8),
+            approvedAt = reader.IsDBNull(9) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(9),
+            approvedByEmail = reader.IsDBNull(10) ? null : reader.GetString(10),
+            completedAt = reader.IsDBNull(11) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(11),
             approvalType = "local_admin_password_reset",
             approvalTitle = "Local administrator password reset",
-            approvalDescription = "Approve or decline a password reset request for a Project Pulse local administrator account."
+            approvalDescription = reader.GetString(3) == "approved"
+                ? "Approval is complete. Set a temporary password to finish the reset."
+                : "Approve or decline a password reset request for a Project Pulse local administrator account."
         });
     }
 
@@ -2798,6 +2812,7 @@ app.MapGet("/api/auth/password-reset/approvals", async (HttpContext httpContext)
         approvals
     });
 });
+
 
 app.MapPost("/api/auth/password-reset/approve", async (PasswordResetApprovalAction request, HttpContext httpContext) =>
 {
@@ -2892,7 +2907,7 @@ app.MapPost("/api/auth/password-reset/approve", async (PasswordResetApprovalActi
             resetRequestId,
             accountEmail,
             approvedByEmail,
-            message = "Password reset request approved. A notification has been queued. Temporary password setup will be completed in the local password hashing phase."
+            message = "Password reset request approved. A notification has been queued. Set a temporary password to complete the reset."
         });
     }
     catch (Exception ex)
@@ -3032,6 +3047,132 @@ app.MapPost("/api/auth/sso/dev-login", async (SsoDevelopmentLoginRequest request
         message = "Development SSO session created. Replace this endpoint with Microsoft Entra ID token validation for production."
     });
 });
+
+
+app.MapPost("/api/auth/password-reset/complete", async (PasswordResetCompletionRequest request, HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    var passwordIssue = ValidatePasswordQuality(request.TemporaryPassword);
+    if (passwordIssue is not null)
+    {
+        return Results.BadRequest(new
+        {
+            status = "password_quality_failed",
+            message = passwordIssue
+        });
+    }
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
+    {
+        return Results.Json(new { status = "access_denied", message = "Password reset completion is restricted to administrators and project/team coordinators." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    await using var transaction = await connection.BeginTransactionAsync();
+
+    try
+    {
+        var completedByEmail = GetProjectPulseSessionEmail(httpContext)
+            ?? (string.IsNullOrWhiteSpace(request.ActionByEmail) ? "unknown" : request.ActionByEmail.Trim().ToLowerInvariant());
+
+        Guid userId;
+        string accountEmail;
+        string accountDisplayName;
+
+        await using (var lookupCommand = new NpgsqlCommand("""
+            SELECT
+                pr.user_id,
+                u.email,
+                u.display_name
+            FROM auth_password_reset_requests pr
+            JOIN app_users u ON u.user_id = pr.user_id
+            JOIN auth_local_accounts la ON la.user_id = u.user_id
+            WHERE pr.auth_password_reset_request_id = @reset_request_id
+              AND pr.status = 'approved'
+              AND COALESCE(pr.expires_at, NOW() + INTERVAL '1 minute') >= NOW()
+              AND lower(u.email) LIKE '%.local'
+              AND u.is_active = TRUE
+              AND la.is_active = TRUE;
+            """, connection, transaction))
+        {
+            lookupCommand.Parameters.AddWithValue("reset_request_id", request.ResetRequestId);
+
+            await using var reader = await lookupCommand.ExecuteReaderAsync();
+            if (!await reader.ReadAsync())
+            {
+                return Results.NotFound(new
+                {
+                    status = "approved_reset_not_found",
+                    message = "No approved, unexpired local admin password reset request was found."
+                });
+            }
+
+            userId = reader.GetGuid(0);
+            accountEmail = reader.GetString(1);
+            accountDisplayName = reader.GetString(2);
+        }
+
+        var passwordHash = HashProjectPulsePassword(request.TemporaryPassword);
+
+        await using (var updatePasswordCommand = new NpgsqlCommand("""
+            UPDATE auth_local_accounts
+            SET password_hash = @password_hash,
+                must_change_password = TRUE,
+                failed_login_count = 0,
+                locked_until = NULL,
+                password_hash_updated_at = NOW()
+            WHERE user_id = @user_id;
+            """, connection, transaction))
+        {
+            updatePasswordCommand.Parameters.AddWithValue("password_hash", passwordHash);
+            updatePasswordCommand.Parameters.AddWithValue("user_id", userId);
+            await updatePasswordCommand.ExecuteNonQueryAsync();
+        }
+
+        await using (var completeCommand = new NpgsqlCommand("""
+            UPDATE auth_password_reset_requests
+            SET status = 'completed',
+                completed_at = NOW(),
+                notes = COALESCE(notes, '') || E'\nTemporary password set by: ' || @completed_by_email || E'\nCompletion note: ' || COALESCE(@notes, '')
+            WHERE auth_password_reset_request_id = @reset_request_id
+              AND status = 'approved';
+            """, connection, transaction))
+        {
+            completeCommand.Parameters.AddWithValue("reset_request_id", request.ResetRequestId);
+            completeCommand.Parameters.AddWithValue("completed_by_email", completedByEmail);
+            completeCommand.Parameters.AddWithValue("notes", string.IsNullOrWhiteSpace(request.Notes) ? DBNull.Value : request.Notes.Trim());
+            await completeCommand.ExecuteNonQueryAsync();
+        }
+
+        await transaction.CommitAsync();
+
+        return Results.Ok(new
+        {
+            status = "password_reset_completed",
+            resetRequestId = request.ResetRequestId,
+            accountEmail,
+            accountDisplayName,
+            mustChangePassword = true,
+            message = $"Temporary password was set for {accountEmail}. The local administrator must change it at next login."
+        });
+    }
+    catch (Exception ex)
+    {
+        await transaction.RollbackAsync();
+
+        return Results.Problem(
+            title: "Failed to complete password reset",
+            detail: ex.Message,
+            statusCode: StatusCodes.Status500InternalServerError);
+    }
+});
+
+
 
 app.MapPost("/api/auth/local/login", async (LocalLoginRequest request, HttpRequest httpRequest) =>
 {

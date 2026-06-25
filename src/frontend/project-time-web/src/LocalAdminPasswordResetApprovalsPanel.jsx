@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import './manager-approval.css';
 
 function getAuthSession() {
@@ -67,10 +67,27 @@ function formatDateTime(value) {
   }
 }
 
+function getStatusLabel(status) {
+  if (status === 'pending_approval') return 'Pending approval';
+  if (status === 'approved') return 'Approved - set temporary password';
+  return status || 'Unknown';
+}
+
 export default function LocalAdminPasswordResetApprovalsPanel() {
   const [data, setData] = useState({ loading: true, approvals: [], error: null });
   const [status, setStatus] = useState('Ready.');
   const [busy, setBusy] = useState(false);
+  const [temporaryPasswords, setTemporaryPasswords] = useState({});
+
+  const pendingApprovalCount = useMemo(
+    () => data.approvals.filter((request) => request.status === 'pending_approval').length,
+    [data.approvals]
+  );
+
+  const readyForPasswordCount = useMemo(
+    () => data.approvals.filter((request) => request.status === 'approved').length,
+    [data.approvals]
+  );
 
   async function loadApprovals() {
     setData((current) => ({ ...current, loading: true, error: null }));
@@ -110,7 +127,7 @@ export default function LocalAdminPasswordResetApprovalsPanel() {
         notes: note.trim()
       });
 
-      setStatus(result.message ?? 'Password reset request approved.');
+      setStatus(result.message ?? 'Password reset request approved. Set a temporary password to complete the reset.');
       await loadApprovals();
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Unable to approve password reset request.');
@@ -149,6 +166,41 @@ export default function LocalAdminPasswordResetApprovalsPanel() {
     }
   }
 
+  async function completeReset(request) {
+    const temporaryPassword = temporaryPasswords[request.resetRequestId] ?? '';
+
+    if (!temporaryPassword.trim()) {
+      setStatus('Enter a temporary password before completing the reset.');
+      return;
+    }
+
+    const session = getAuthSession();
+    setBusy(true);
+    setStatus('Completing password reset and setting temporary password...');
+
+    try {
+      const result = await postJson('/api/auth/password-reset/complete', {
+        resetRequestId: request.resetRequestId,
+        temporaryPassword,
+        actionByEmail: session?.username ?? '',
+        notes: 'Temporary password set from local admin password reset approval queue.'
+      });
+
+      setTemporaryPasswords((current) => {
+        const next = { ...current };
+        delete next[request.resetRequestId];
+        return next;
+      });
+
+      setStatus(result.message ?? 'Temporary password was set. The user must change it at next login.');
+      await loadApprovals();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Unable to complete password reset.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="panel administrative-approval-panel">
       <div className="manager-approval-header compact">
@@ -156,8 +208,7 @@ export default function LocalAdminPasswordResetApprovalsPanel() {
           <p className="eyebrow">Administrative Approval Requests</p>
           <h2>Local admin password reset approvals</h2>
           <p>
-            Review password reset approval requests for local Project Pulse administrator accounts only.
-            This does not apply to Entra ID users.
+            Review local administrator password reset requests, approve or decline the request, then set a temporary password after approval.
           </p>
         </div>
 
@@ -169,7 +220,8 @@ export default function LocalAdminPasswordResetApprovalsPanel() {
       </div>
 
       <div className="manager-status-row">
-        <span>Pending local reset requests: <strong>{data.loading ? 'Loading...' : data.approvals.length}</strong></span>
+        <span>Pending approval: <strong>{data.loading ? 'Loading...' : pendingApprovalCount}</strong></span>
+        <span>Ready for temp password: <strong>{data.loading ? 'Loading...' : readyForPasswordCount}</strong></span>
         <span>Status: <strong>{status}</strong></span>
       </div>
 
@@ -186,20 +238,20 @@ export default function LocalAdminPasswordResetApprovalsPanel() {
           <table className="manager-table administrative-approval-table">
             <thead>
               <tr>
-                <th>Request</th>
+                <th>Status</th>
                 <th>Local account</th>
                 <th>Requested by</th>
                 <th>Requested</th>
-                <th>Expires</th>
+                <th>Approved</th>
                 <th>Notes</th>
-                <th>Decision</th>
+                <th>Decision / Completion</th>
               </tr>
             </thead>
             <tbody>
               {data.approvals.map((request) => (
                 <tr key={request.resetRequestId}>
                   <td>
-                    <strong>{request.approvalTitle}</strong>
+                    <strong>{getStatusLabel(request.status)}</strong>
                     <span>{request.approvalDescription}</span>
                   </td>
                   <td>
@@ -208,17 +260,42 @@ export default function LocalAdminPasswordResetApprovalsPanel() {
                   </td>
                   <td>{request.requestedByEmail}</td>
                   <td>{formatDateTime(request.requestedAt)}</td>
-                  <td>{formatDateTime(request.expiresAt)}</td>
+                  <td>
+                    {request.approvedAt ? formatDateTime(request.approvedAt) : 'Not approved yet'}
+                    {request.approvedByEmail ? <span>{request.approvedByEmail}</span> : null}
+                  </td>
                   <td>{request.notes || 'No notes provided'}</td>
                   <td>
-                    <div className="manager-row-actions">
-                      <button type="button" className="approve" onClick={() => approveReset(request)} disabled={busy}>
-                        Approve reset
-                      </button>
-                      <button type="button" className="decline" onClick={() => declineReset(request)} disabled={busy}>
-                        Decline
-                      </button>
-                    </div>
+                    {request.status === 'pending_approval' ? (
+                      <div className="manager-row-actions">
+                        <button type="button" className="approve" onClick={() => approveReset(request)} disabled={busy}>
+                          Approve request
+                        </button>
+                        <button type="button" className="decline" onClick={() => declineReset(request)} disabled={busy}>
+                          Decline
+                        </button>
+                      </div>
+                    ) : null}
+
+                    {request.status === 'approved' ? (
+                      <div className="password-reset-completion-box">
+                        <label htmlFor={`temporary-password-${request.resetRequestId}`}>Temporary password</label>
+                        <input
+                          id={`temporary-password-${request.resetRequestId}`}
+                          type="password"
+                          value={temporaryPasswords[request.resetRequestId] ?? ''}
+                          placeholder="Set temporary password"
+                          onChange={(event) => setTemporaryPasswords((current) => ({
+                            ...current,
+                            [request.resetRequestId]: event.target.value
+                          }))}
+                        />
+                        <button type="button" className="approve" onClick={() => completeReset(request)} disabled={busy}>
+                          Set temporary password
+                        </button>
+                        <small>The local admin will be required to change this password at next login.</small>
+                      </div>
+                    ) : null}
                   </td>
                 </tr>
               ))}

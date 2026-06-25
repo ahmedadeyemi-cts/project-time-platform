@@ -267,3 +267,26 @@
   color: #991b1b;
   border-color: rgba(239, 68, 68, 0.28);
 }
+
+.password-reset-completion-box {
+  display: grid;
+  gap: 8px;
+  min-width: 260px;
+}
+
+.password-reset-completion-box label {
+  font-weight: 800;
+  color: var(--pulse-text);
+}
+
+.password-reset-completion-box input {
+  border: 1px solid var(--pulse-card-border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: var(--pulse-input-bg, #fff);
+  color: var(--pulse-text);
+}
+
+.password-reset-completion-box small {
+  color: var(--pulse-muted);
+}
