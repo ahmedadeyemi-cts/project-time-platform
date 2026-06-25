@@ -2044,3 +2044,527 @@ html[data-theme="dark"] .profile-settings-actions {
   justify-content: flex-end;
   gap: 0.75rem;
 }
+
+/* 019H Azure Admin + Entra User Sync Foundation */
+
+.app-shell.route-azure-admin > section:not(#azure-admin) {
+  display: none !important;
+}
+
+.azure-admin-panel {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.azure-admin-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+  gap: 1.25rem;
+}
+
+.azure-admin-card {
+  border: 1px solid var(--border);
+  border-radius: 1.1rem;
+  background: var(--card);
+  box-shadow: var(--shadow-sm);
+  padding: 1.25rem;
+}
+
+.azure-admin-card h2 {
+  margin: 0.25rem 0 1rem;
+}
+
+.azure-admin-card label {
+  display: block;
+  font-weight: 900;
+  color: var(--text);
+  margin: 0.85rem 0 0.35rem;
+}
+
+.azure-admin-card input,
+.azure-admin-card select,
+.azure-admin-card textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 0.85rem;
+  padding: 0.8rem 0.95rem;
+  color: var(--text);
+  background: var(--panel);
+  font: inherit;
+}
+
+.azure-admin-card .checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin: 1rem 0;
+}
+
+.azure-admin-card .checkbox-row input {
+  width: auto;
+}
+
+.azure-status-box {
+  display: grid;
+  gap: 0.25rem;
+  border: 1px solid var(--border);
+  border-radius: 0.85rem;
+  padding: 0.9rem;
+  margin-top: 1rem;
+  background: rgba(148, 163, 184, 0.08);
+}
+
+.azure-status-box span,
+.azure-status-box small {
+  color: var(--muted);
+}
+
+.azure-import-textarea {
+  min-height: 220px;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+@media (max-width: 1000px) {
+  .azure-admin-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 019H.1 User Administration */
+
+.app-shell.route-user-admin > section:not(#user-admin) {
+  display: none !important;
+}
+
+.user-admin-shell {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.user-admin-layout {
+  display: grid;
+  grid-template-columns: 340px minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.user-admin-list-card,
+.user-admin-card {
+  border: 1px solid var(--border);
+  border-radius: 1.1rem;
+  background: var(--card);
+  box-shadow: var(--shadow-sm);
+  padding: 1.25rem;
+}
+
+.user-admin-list {
+  display: grid;
+  gap: 0.65rem;
+  max-height: 760px;
+  overflow: auto;
+}
+
+.user-admin-list button {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 0.9rem;
+  background: var(--panel);
+  color: var(--text);
+  text-align: left;
+  padding: 0.85rem;
+  cursor: pointer;
+}
+
+.user-admin-list button.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.user-admin-list strong,
+.user-admin-list span,
+.user-admin-list small {
+  display: block;
+}
+
+.user-admin-list span,
+.user-admin-list small {
+  color: var(--muted);
+  margin-top: 0.2rem;
+}
+
+.user-admin-detail-grid {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.user-admin-card label {
+  display: block;
+  font-weight: 900;
+  margin: 0.85rem 0 0.35rem;
+}
+
+.user-admin-card input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 0.85rem;
+  padding: 0.8rem 0.95rem;
+  color: var(--text);
+  background: var(--panel);
+  font: inherit;
+}
+
+.user-admin-card input:disabled {
+  opacity: 0.72;
+}
+
+.user-admin-card .checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.user-admin-card .checkbox-row input {
+  width: auto;
+}
+
+.user-admin-role-grid {
+  display: grid;
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+.role-option {
+  display: grid !important;
+  grid-template-columns: auto 1fr;
+  column-gap: 0.7rem;
+  row-gap: 0.15rem;
+  align-items: start;
+  border: 1px solid var(--border);
+  border-radius: 0.9rem;
+  background: var(--panel);
+  padding: 0.85rem;
+}
+
+.role-option.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.role-option input {
+  width: auto;
+  margin-top: 0.2rem;
+}
+
+.role-option strong,
+.role-option span {
+  grid-column: 2;
+}
+
+.role-option span {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.user-admin-facts {
+  display: grid;
+  gap: 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: 0.9rem;
+  background: rgba(148, 163, 184, 0.08);
+  padding: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+@media (max-width: 1050px) {
+  .user-admin-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .user-admin-list {
+    max-height: 360px;
+  }
+}
+
+/* 019H.2 Hard route isolation.
+   This prevents panels like Approval Inbox from remaining visible on every tab. */
+
+.app-shell.route-dashboard > section.panel:not(#role-dashboard),
+.app-shell.route-timesheet > section.panel:not(#timesheet):not(#time-entry),
+.app-shell.route-utilization > section.panel:not(#utilization),
+.app-shell.route-holiday-admin > section.panel:not(#holiday-admin),
+.app-shell.route-manager-approval > section.panel:not(#manager-approval),
+.app-shell.route-psa-modules > section.panel:not(#psa-modules),
+.app-shell.route-workflow > section.panel:not(#workflow),
+.app-shell.route-user-admin > section.panel:not(#user-admin),
+.app-shell.route-azure-admin > section.panel:not(#azure-admin),
+.app-shell.route-role-admin > section.panel:not(#role-admin) {
+  display: none !important;
+}
+
+/* Ensure the requested route is shown. */
+.app-shell.route-dashboard > #role-dashboard,
+.app-shell.route-timesheet > #timesheet,
+.app-shell.route-timesheet > #time-entry,
+.app-shell.route-utilization > #utilization,
+.app-shell.route-holiday-admin > #holiday-admin,
+.app-shell.route-manager-approval > #manager-approval,
+.app-shell.route-psa-modules > #psa-modules,
+.app-shell.route-workflow > #workflow,
+.app-shell.route-user-admin > #user-admin,
+.app-shell.route-azure-admin > #azure-admin,
+.app-shell.route-role-admin > #role-admin {
+  display: block !important;
+}
+
+/* 019H.2 User Admin bulk update styling */
+
+.user-admin-bulk-card {
+  border: 1px solid var(--border);
+  border-radius: 1.1rem;
+  background: var(--card);
+  box-shadow: var(--shadow-sm);
+  padding: 1.25rem;
+}
+
+.user-admin-bulk-grid {
+  display: grid;
+  grid-template-columns: 220px minmax(240px, 1fr);
+  gap: 0.85rem 1rem;
+  align-items: center;
+}
+
+.user-admin-bulk-grid input,
+.user-admin-bulk-grid select,
+.user-admin-bulk-roles select {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 0.85rem;
+  padding: 0.8rem 0.95rem;
+  color: var(--text);
+  background: var(--panel);
+  font: inherit;
+}
+
+.user-admin-bulk-roles {
+  display: grid;
+  gap: 0.85rem;
+  margin-top: 1rem;
+}
+
+.compact-role-grid {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.user-admin-list-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.user-admin-list-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.65rem;
+  align-items: start;
+}
+
+.user-admin-list-row > input {
+  margin-top: 1rem;
+}
+
+.user-admin-list-row > button {
+  width: 100%;
+}
+
+.user-admin-list-row.active > button {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+@media (max-width: 900px) {
+  .user-admin-bulk-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 019H.3 Team dropdown and manager auto-population */
+
+.user-admin-card select,
+.user-admin-bulk-grid select,
+.user-admin-bulk-roles select {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 0.85rem;
+  padding: 0.8rem 0.95rem;
+  color: var(--text);
+  background: var(--panel);
+  font: inherit;
+}
+
+.user-admin-helper-text {
+  margin-top: 0.4rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+/* 019H.4 Route isolation correction.
+   Prevent Approval Inbox from rendering underneath unrelated pages. */
+
+.route-dashboard #manager-approval,
+.route-timesheet #manager-approval,
+.route-utilization #manager-approval,
+.route-holiday-admin #manager-approval,
+.route-psa-modules #manager-approval,
+.route-workflow #manager-approval,
+.route-user-admin #manager-approval,
+.route-azure-admin #manager-approval,
+.route-role-admin #manager-approval {
+  display: none !important;
+}
+
+.route-user-admin #user-admin,
+.route-azure-admin #azure-admin,
+.route-role-admin #role-admin,
+.route-utilization #utilization,
+.route-manager-approval #manager-approval {
+  display: block !important;
+}
+
+/* 019H.4 Approval badge */
+
+.nav-label-with-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.nav-pending-badge {
+  display: inline-flex;
+  min-width: 1.35rem;
+  height: 1.35rem;
+  padding: 0 0.4rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #dc2626;
+  color: white;
+  font-size: 0.75rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+/* 019H.4 Yearly utilization */
+
+.yearly-utilization-panel {
+  border: 1px solid var(--border);
+  border-radius: 1.25rem;
+  background: var(--card);
+  box-shadow: var(--shadow-sm);
+  padding: 1.5rem;
+  margin-top: 1.5rem;
+}
+
+.year-select {
+  border: 1px solid var(--border);
+  border-radius: 0.85rem;
+  background: var(--panel);
+  color: var(--text);
+  padding: 0.75rem 1rem;
+  font-weight: 900;
+}
+
+.quarter-utilization-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.quarter-utilization-card {
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: var(--panel);
+  padding: 1rem;
+}
+
+.quarter-card-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: start;
+  margin-bottom: 1rem;
+}
+
+.quarter-card-header h3 {
+  margin: 0.2rem 0 0;
+  font-size: 2rem;
+  color: var(--accent);
+}
+
+.quarter-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.65rem;
+  margin-bottom: 1rem;
+}
+
+.quarter-summary-grid span {
+  display: grid;
+  gap: 0.25rem;
+  border: 1px solid var(--border);
+  border-radius: 0.85rem;
+  padding: 0.75rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.quarter-summary-grid strong {
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+.threshold-list {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.threshold-row {
+  display: grid;
+  grid-template-columns: 64px 90px 1fr;
+  gap: 0.5rem;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  padding: 0.6rem 0.75rem;
+}
+
+.threshold-row strong {
+  justify-self: end;
+}
+
+.threshold-row.reached {
+  background: rgba(22, 163, 74, 0.08);
+  border-color: rgba(22, 163, 74, 0.28);
+}
+
+.threshold-row.reached strong {
+  color: #15803d;
+}
+
+@media (max-width: 800px) {
+  .quarter-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .threshold-row {
+    grid-template-columns: 1fr;
+  }
+
+  .threshold-row strong {
+    justify-self: start;
+  }
+}

@@ -91,7 +91,7 @@ function statusLabel(status) {
 }
 
 export default function ManagerApprovalPanel() {
-  const [weekStart, setWeekStart] = useState(getSundayIso);
+const [weekStart, setWeekStart] = useState(getSundayIso);
   const [includeAll, setIncludeAll] = useState(false);
   const [approvalData, setApprovalData] = useState({ loading: true, data: null, error: null });
   const [actionStatus, setActionStatus] = useState('Ready');

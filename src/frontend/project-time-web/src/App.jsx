@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
 import usSignalLogoUrl from '../brand/ussignal.png';
 import './timesheet.css';
+import UserAdministrationPanel from './UserAdministrationPanel.jsx';
+import YearlyUtilizationPanel from './YearlyUtilizationPanel.jsx';
 
 const workflowCards = [
   {
@@ -113,6 +115,12 @@ async function postJson(path, payload) {
 
 
 const PROJECT_PULSE_SESSION_WARNING_MS = 10 * 60 * 1000;
+
+
+function getRouteFromHash() {
+  const hash = window.location.hash || '#dashboard';
+  return hash.replace('#', '') || 'dashboard';
+}
 
 function getStoredAuthSession() {
   try {
@@ -402,6 +410,22 @@ const roleWorkspaceModules = [
     permissions: ['VIEW_EXECUTIVE_REPORTING']
   },
   {
+    route: 'user-admin',
+    href: '#user-admin',
+    title: 'User Administration',
+    navLabel: 'User Admin',
+    description: 'Manage users, local passwords, roles, teams, departments, and login access.',
+    permissions: ['VIEW_USER_ADMIN', 'MANAGE_USER_ADMIN', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
+  },
+  {
+    route: 'azure-admin',
+    href: '#azure-admin',
+    title: 'Azure / Entra Admin',
+    navLabel: 'Azure Admin',
+    description: 'Configure Azure SSO, run user sync, and review imported directory users.',
+    permissions: ['VIEW_AZURE_ADMIN', 'MANAGE_AZURE_SYNC', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
+  },
+  {
     route: 'role-admin',
     href: '#role-admin',
     title: 'Administration',
@@ -523,6 +547,21 @@ export default function App() {
   const [utilizationPolicies, setUtilizationPolicies] = useState({ loading: true, data: null, error: null });
   const [utilizationTargets, setUtilizationTargets] = useState({ loading: true, data: null, error: null });
   const [currentQuarterUtilization, setCurrentQuarterUtilization] = useState({ loading: true, data: null, error: null });
+  const [approvalPendingCount, setApprovalPendingCount] = useState(0);
+  const [azureAdminData, setAzureAdminData] = useState({ loading: false, config: null, users: [], runs: [], error: null });
+  const [azureConfigDraft, setAzureConfigDraft] = useState({
+    tenantId: '',
+    clientId: '',
+    authorityUrl: '',
+    redirectUri: '',
+    graphScope: 'User.Read.All Directory.Read.All',
+    syncEnabled: false,
+    defaultRoleCode: 'ENGINEER',
+    syncFrequencyHours: 24
+  });
+  const [azureImportText, setAzureImportText] = useState('[\n  {\n    "email": "new.engineer@ussignal.com",\n    "displayName": "New Engineer",\n    "jobTitle": "Engineer",\n    "departmentName": "Engineering",\n    "officeLocation": "Remote",\n    "managerEmail": "manager@ussignal.com"\n  }\n]');
+  const [azureAdminStatus, setAzureAdminStatus] = useState('Ready');
+
   const [activeRows, setActiveRows] = useState([]);
   const [entries, setEntries] = useState({});
   const [selectedCell, setSelectedCell] = useState(null);
@@ -1163,6 +1202,143 @@ export default function App() {
       await signOut();
     }
   }
+
+
+
+  async function loadAzureAdmin() {
+    setAzureAdminData((current) => ({ ...current, loading: true, error: null }));
+
+    try {
+      const [configResult, usersResult, runsResult] = await Promise.all([
+        fetchJson('/api/admin/azure/config'),
+        fetchJson('/api/admin/azure/users'),
+        fetchJson('/api/admin/azure/sync/runs')
+      ]);
+
+      setAzureConfigDraft({
+        tenantId: configResult.tenantId ?? '',
+        clientId: configResult.clientId ?? '',
+        authorityUrl: configResult.authorityUrl ?? '',
+        redirectUri: configResult.redirectUri ?? '',
+        graphScope: configResult.graphScope ?? 'User.Read.All Directory.Read.All',
+        syncEnabled: Boolean(configResult.syncEnabled),
+        defaultRoleCode: configResult.defaultRoleCode ?? 'ENGINEER',
+        syncFrequencyHours: configResult.syncFrequencyHours ?? 24
+      });
+
+      setAzureAdminData({
+        loading: false,
+        config: configResult,
+        users: usersResult.users ?? [],
+        runs: runsResult.runs ?? [],
+        error: null
+      });
+    } catch (error) {
+      setAzureAdminData((current) => ({
+        ...current,
+        loading: false,
+        error: error instanceof Error ? error.message : 'Unable to load Azure Admin data.'
+      }));
+    }
+  }
+
+  useEffect(() => {
+    if (activeRoute === 'azure-admin' && authSession?.sessionToken) {
+      loadAzureAdmin();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeRoute, authSession?.sessionToken]);
+
+  async function saveAzureConfig(event) {
+    event.preventDefault();
+    setAzureAdminStatus('Saving Azure/Entra configuration...');
+
+    try {
+      const result = await postJson('/api/admin/azure/config', azureConfigDraft);
+      setAzureAdminStatus(result.message ?? 'Azure/Entra configuration saved.');
+      await loadAzureAdmin();
+    } catch (error) {
+      setAzureAdminStatus(error instanceof Error ? error.message : 'Unable to save Azure configuration.');
+    }
+  }
+
+  async function runAzureFoundationSync() {
+    setAzureAdminStatus('Recording Azure/Entra foundation sync run...');
+
+    try {
+      const result = await postJson('/api/admin/azure/sync/run', {});
+      setAzureAdminStatus(result.message ?? 'Foundation sync run recorded.');
+      await loadAzureAdmin();
+    } catch (error) {
+      setAzureAdminStatus(error instanceof Error ? error.message : 'Unable to run Azure sync foundation.');
+    }
+  }
+
+  async function importAzureUsers() {
+    setAzureAdminStatus('Importing Azure/Entra users...');
+
+    try {
+      const parsed = JSON.parse(azureImportText);
+      const users = Array.isArray(parsed) ? parsed : parsed.users;
+
+      if (!Array.isArray(users)) {
+        setAzureAdminStatus('Import JSON must be an array or an object with a users array.');
+        return;
+      }
+
+      const result = await postJson('/api/admin/azure/users/import', { users });
+      setAzureAdminStatus(result.message ?? 'Azure/Entra users imported.');
+      await loadAzureAdmin();
+    } catch (error) {
+      setAzureAdminStatus(error instanceof Error ? error.message : 'Unable to import Azure users.');
+    }
+  }
+
+
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadApprovalPendingCount() {
+      if (!authSession?.sessionToken) {
+        setApprovalPendingCount(0);
+        return;
+      }
+
+      try {
+        const result = await fetchJson('/api/manager/approval-count');
+        if (!cancelled) {
+          setApprovalPendingCount(Number(result.totalPendingCount ?? 0));
+        }
+      } catch {
+        if (!cancelled) {
+          setApprovalPendingCount(0);
+        }
+      }
+    }
+
+    loadApprovalPendingCount();
+
+    const intervalId = window.setInterval(loadApprovalPendingCount, 60000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [authSession?.sessionToken, activeRoute]);
+
+
+
+  useEffect(() => {
+    const syncRouteFromHash = () => {
+      setActiveRoute(getRouteFromHash());
+    };
+
+    window.addEventListener('hashchange', syncRouteFromHash);
+    syncRouteFromHash();
+
+    return () => window.removeEventListener('hashchange', syncRouteFromHash);
+  }, []);
 
 
   const visibleRoleModules = useMemo(() => getVisibleRoleModules(currentUser.data), [currentUser.data]);
@@ -1964,7 +2140,234 @@ Analytics - Variphy / Infortel`}
           )}
         </div>
       </header>
+<section id="user-admin" className="panel user-admin-panel">
+        <UserAdministrationPanel />
+      </section>
 
+      <section id="azure-admin" className="panel azure-admin-panel">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">Azure Admin</p>
+            <h1>Azure / Entra user sync foundation</h1>
+            <p className="section-copy">
+              Configure Azure SSO foundation settings, review imported users, and run manual foundation sync actions. This page is restricted to administrators.
+            </p>
+          </div>
+          <button type="button" className="secondary-action" onClick={loadAzureAdmin}>
+            Refresh
+          </button>
+        </div>
+
+        {azureAdminData.error && (
+          <div className="error-text">{azureAdminData.error}</div>
+        )}
+
+        <div className="azure-admin-grid">
+          <form className="azure-admin-card" onSubmit={saveAzureConfig}>
+            <p className="eyebrow">Configuration</p>
+            <h2>Azure / Entra settings</h2>
+
+            <label htmlFor="azure-tenant-id">Tenant ID</label>
+            <input
+              id="azure-tenant-id"
+              value={azureConfigDraft.tenantId}
+              onChange={(event) => setAzureConfigDraft((current) => ({ ...current, tenantId: event.target.value }))}
+              placeholder="Azure tenant ID"
+            />
+
+            <label htmlFor="azure-client-id">Client ID</label>
+            <input
+              id="azure-client-id"
+              value={azureConfigDraft.clientId}
+              onChange={(event) => setAzureConfigDraft((current) => ({ ...current, clientId: event.target.value }))}
+              placeholder="Application/client ID"
+            />
+
+            <label htmlFor="azure-authority-url">Authority URL</label>
+            <input
+              id="azure-authority-url"
+              value={azureConfigDraft.authorityUrl}
+              onChange={(event) => setAzureConfigDraft((current) => ({ ...current, authorityUrl: event.target.value }))}
+              placeholder="https://login.microsoftonline.com/{tenantId}"
+            />
+
+            <label htmlFor="azure-redirect-uri">Redirect URI</label>
+            <input
+              id="azure-redirect-uri"
+              value={azureConfigDraft.redirectUri}
+              onChange={(event) => setAzureConfigDraft((current) => ({ ...current, redirectUri: event.target.value }))}
+              placeholder="https://projectpulse.example.com/auth/callback"
+            />
+
+            <label htmlFor="azure-graph-scope">Graph scope</label>
+            <input
+              id="azure-graph-scope"
+              value={azureConfigDraft.graphScope}
+              onChange={(event) => setAzureConfigDraft((current) => ({ ...current, graphScope: event.target.value }))}
+            />
+
+            <label htmlFor="azure-default-role">Default imported role</label>
+            <select
+              id="azure-default-role"
+              value={azureConfigDraft.defaultRoleCode}
+              onChange={(event) => setAzureConfigDraft((current) => ({ ...current, defaultRoleCode: event.target.value }))}
+            >
+              <option value="ENGINEER">Engineer</option>
+            </select>
+
+            <label htmlFor="azure-sync-frequency">Sync frequency hours</label>
+            <input
+              id="azure-sync-frequency"
+              type="number"
+              min="1"
+              value={azureConfigDraft.syncFrequencyHours}
+              onChange={(event) => setAzureConfigDraft((current) => ({ ...current, syncFrequencyHours: Number(event.target.value) }))}
+            />
+
+            <label className="checkbox-row">
+              <input
+                type="checkbox"
+                checked={azureConfigDraft.syncEnabled}
+                onChange={(event) => setAzureConfigDraft((current) => ({ ...current, syncEnabled: event.target.checked }))}
+              />
+              Enable scheduled sync after Microsoft Graph integration is connected
+            </label>
+
+            <button type="submit" className="primary-action">
+              Save Azure settings
+            </button>
+          </form>
+
+          <div className="azure-admin-card">
+            <p className="eyebrow">Manual sync</p>
+            <h2>Foundation sync actions</h2>
+            <p>
+              The foundation sync records sync status now. Real Microsoft Graph user pull will be added in the Azure SSO integration phase.
+            </p>
+            <button type="button" className="primary-action" onClick={runAzureFoundationSync}>
+              Run foundation sync
+            </button>
+
+            <div className="azure-status-box">
+              <strong>Status</strong>
+              <span>{azureAdminStatus}</span>
+            </div>
+
+            <div className="azure-status-box">
+              <strong>Last sync</strong>
+              <span>{azureAdminData.config?.lastSyncStatus ?? 'Not available'}</span>
+              <small>{azureAdminData.config?.lastSyncMessage ?? 'No sync has been recorded yet.'}</small>
+            </div>
+          </div>
+        </div>
+
+        <div className="azure-admin-card">
+          <div className="section-heading compact-heading">
+            <div>
+              <p className="eyebrow">Manual user import</p>
+              <h2>Import Azure / Entra users</h2>
+              <p className="section-copy">
+                Paste users from Azure/Entra export or test data. Imported users receive the Engineer role by default. Administrators can modify roles afterward in Role Admin.
+              </p>
+            </div>
+            <button type="button" className="primary-action" onClick={importAzureUsers}>
+              Import users
+            </button>
+          </div>
+
+          <textarea
+            className="azure-import-textarea"
+            value={azureImportText}
+            onChange={(event) => setAzureImportText(event.target.value)}
+          />
+        </div>
+
+        <div className="azure-admin-card">
+          <div className="section-heading compact-heading">
+            <div>
+              <p className="eyebrow">Imported users</p>
+              <h2>Azure / Entra directory users</h2>
+              <p className="section-copy">
+                Users with no active Project Pulse role are blocked from login. New imports default to Engineer.
+              </p>
+            </div>
+            <span className="badge">{azureAdminData.users.length} users</span>
+          </div>
+
+          <div className="manager-table-wrap">
+            <table className="manager-table">
+              <thead>
+                <tr>
+                  <th>User</th>
+                  <th>Source</th>
+                  <th>Department</th>
+                  <th>Manager</th>
+                  <th>Login</th>
+                  <th>Roles</th>
+                  <th>Last Sync</th>
+                </tr>
+              </thead>
+              <tbody>
+                {azureAdminData.users.map((user) => (
+                  <tr key={user.userId}>
+                    <td>
+                      <strong>{user.displayName}</strong>
+                      <span>{user.email}</span>
+                    </td>
+                    <td>{user.sourceProvider}</td>
+                    <td>{user.departmentName ?? 'Not set'}</td>
+                    <td>{user.managerEmail ?? 'Not set'}</td>
+                    <td>{user.loginEnabled && user.isActive ? 'Enabled' : 'Disabled'}</td>
+                    <td>{user.roleNames?.length ? user.roleNames.join(', ') : 'No active roles'}</td>
+                    <td>{user.lastDirectorySyncAt ? new Date(user.lastDirectorySyncAt).toLocaleString() : 'Not synced'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="azure-admin-card">
+          <div className="section-heading compact-heading">
+            <div>
+              <p className="eyebrow">Sync history</p>
+              <h2>Recent sync runs</h2>
+            </div>
+            <span className="badge">{azureAdminData.runs.length} runs</span>
+          </div>
+
+          <div className="manager-table-wrap">
+            <table className="manager-table">
+              <thead>
+                <tr>
+                  <th>Status</th>
+                  <th>Started</th>
+                  <th>Triggered By</th>
+                  <th>Seen</th>
+                  <th>Imported</th>
+                  <th>Updated</th>
+                  <th>Skipped</th>
+                  <th>Message</th>
+                </tr>
+              </thead>
+              <tbody>
+                {azureAdminData.runs.map((run) => (
+                  <tr key={run.syncRunId}>
+                    <td>{run.status}</td>
+                    <td>{run.syncStartedAt ? new Date(run.syncStartedAt).toLocaleString() : 'Not available'}</td>
+                    <td>{run.triggeredByEmail ?? 'System'}</td>
+                    <td>{run.usersSeen}</td>
+                    <td>{run.usersImported}</td>
+                    <td>{run.usersUpdated}</td>
+                    <td>{run.usersSkipped}</td>
+                    <td>{run.message}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
 
       <section id="role-dashboard" className="panel role-dashboard-panel">
         <div className="section-heading">
@@ -1985,7 +2388,12 @@ Analytics - Variphy / Infortel`}
         <div className="role-dashboard-grid">
           {visibleRoleModules.map((module) => (
             <a className="role-dashboard-card" href={module.href} key={`${module.title}-${module.route}`}>
-              <span>{module.navLabel}</span>
+              <span><span className="nav-label-with-badge">
+                    {module.navLabel}
+                    {module.route === 'manager-approval' && approvalPendingCount > 0 && (
+                      <span className="nav-pending-badge">{approvalPendingCount}</span>
+                    )}
+                  </span></span>
               <strong>{module.title}</strong>
               <small>{module.description}</small>
             </a>
@@ -2547,6 +2955,7 @@ Analytics - Variphy / Infortel`}
       </section>
 
       <section id="utilization" className="panel">
+        <YearlyUtilizationPanel />
         <div className="section-header compact">
           <div>
             <p className="eyebrow">Utilization policy</p>

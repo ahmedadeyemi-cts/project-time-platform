@@ -58,7 +58,7 @@ app.MapGet("/api/version", () => Results.Ok(new
 {
     application = "Project Time Platform",
     component = "ProjectTime.Api",
-    version = "0.7.0",
+    version = "0.7.6",
     framework = RuntimeInformation.FrameworkDescription,
     os = RuntimeInformation.OSDescription,
     timestampUtc = DateTimeOffset.UtcNow
@@ -1798,6 +1798,15 @@ async Task<ProjectPulseSessionValidation> ValidateProjectPulseSessionAsync(HttpC
               AND s.revoked_at IS NULL
               AND s.expires_at > NOW()
               AND u.is_active = TRUE
+              AND COALESCE(u.login_enabled, TRUE) = TRUE
+              AND EXISTS (
+                  SELECT 1
+                  FROM app_user_role_assignments ura
+                  JOIN app_roles r ON r.app_role_id = ura.app_role_id
+                  WHERE ura.user_id = u.user_id
+                    AND ura.is_active = TRUE
+                    AND r.is_active = TRUE
+              )
             LIMIT 1;
             """, connection);
 
@@ -1834,6 +1843,93 @@ async Task<ProjectPulseSessionValidation> ValidateProjectPulseSessionAsync(HttpC
         return new ProjectPulseSessionValidation(false, null, null, null, null, "Unable to validate session.");
     }
 }
+
+
+async Task<bool> UserHasActiveRoleAsync(NpgsqlConnection connection, Guid userId)
+{
+    await using var command = new NpgsqlCommand("""
+        SELECT EXISTS (
+            SELECT 1
+            FROM app_user_role_assignments ura
+            JOIN app_roles r ON r.app_role_id = ura.app_role_id
+            WHERE ura.user_id = @user_id
+              AND ura.is_active = TRUE
+              AND r.is_active = TRUE
+        );
+        """, connection);
+
+    command.Parameters.AddWithValue("user_id", userId);
+    var result = await command.ExecuteScalarAsync();
+
+    return result is bool value && value;
+}
+
+Guid? GetProjectPulseSessionUserId(HttpContext context)
+{
+    if (context.Items.TryGetValue("ProjectPulseSessionUserId", out var value) && value is Guid userId)
+    {
+        return userId;
+    }
+
+    return null;
+}
+
+string? GetProjectPulseSessionEmail(HttpContext context)
+{
+    if (context.Items.TryGetValue("ProjectPulseSessionEmail", out var value) && value is string email)
+    {
+        return email;
+    }
+
+    return null;
+}
+
+
+async Task<bool> RequestUserCanAccessUserAdministrationAsync(HttpContext context, NpgsqlConnection connection)
+{
+    var userId = GetProjectPulseSessionUserId(context);
+
+    if (userId is null)
+    {
+        return false;
+    }
+
+    await using var command = new NpgsqlCommand("""
+        SELECT EXISTS (
+            SELECT 1
+            FROM app_user_role_assignments ura
+            JOIN app_roles r ON r.app_role_id = ura.app_role_id
+            LEFT JOIN app_role_permissions rp ON rp.app_role_id = r.app_role_id
+            LEFT JOIN app_permissions p ON p.app_permission_id = rp.app_permission_id
+            WHERE ura.user_id = @user_id
+              AND ura.is_active = TRUE
+              AND r.is_active = TRUE
+              AND (
+                    r.role_code IN ('ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR')
+                 OR p.permission_code IN ('VIEW_USER_ADMIN', 'MANAGE_USER_ADMIN', 'MANAGE_ALL')
+              )
+        );
+        """, connection);
+
+    command.Parameters.AddWithValue("user_id", userId.Value);
+    var result = await command.ExecuteScalarAsync();
+
+    return result is bool value && value;
+}
+
+
+async Task<bool> RequestUserIsAdministratorAsync(HttpContext context, NpgsqlConnection connection)
+{
+    var userId = GetProjectPulseSessionUserId(context);
+
+    if (userId is null)
+    {
+        return false;
+    }
+
+    return await SessionUserIsAdministratorAsync(connection, userId.Value);
+}
+
 
 async Task<bool> SessionUserIsAdministratorAsync(NpgsqlConnection connection, Guid userId)
 {
@@ -2453,6 +2549,15 @@ app.MapPost("/api/auth/sso/dev-login", async (SsoDevelopmentLoginRequest request
 
     await reader.CloseAsync();
 
+    if (!await UserHasActiveRoleAsync(connection, userId))
+    {
+        return Results.Json(new
+        {
+            status = "no_active_project_pulse_role",
+            message = "Your account exists in Project Pulse, but no active role has been assigned. Contact a Project Pulse administrator."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
     var session = await CreateProjectPulseSessionAsync(connection, userId, "ENTRA_ID", httpRequest);
 
     return Results.Ok(new
@@ -2528,6 +2633,15 @@ app.MapPost("/api/auth/local/login", async (LocalLoginRequest request, HttpReque
     var displayName = reader.GetString(8);
 
     await reader.CloseAsync();
+
+    if (!await UserHasActiveRoleAsync(connection, userId))
+    {
+        return Results.Json(new
+        {
+            status = "no_active_project_pulse_role",
+            message = "This local account exists but has no active Project Pulse role assigned."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
 
     if (!isActive)
     {
@@ -2915,6 +3029,1204 @@ app.MapPost("/api/auth/local/change-password", async (ChangeLocalPasswordRequest
     });
 });
 
+
+
+app.MapGet("/api/admin/azure/config", async (HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    if (!await RequestUserIsAdministratorAsync(httpContext, connection))
+    {
+        return Results.Json(new { status = "admin_required", message = "Azure Admin is restricted to administrators." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    await using var command = new NpgsqlCommand("""
+        SELECT
+            azure_entra_settings_id,
+            tenant_id,
+            client_id,
+            authority_url,
+            redirect_uri,
+            graph_scope,
+            sync_enabled,
+            default_role_code,
+            sync_frequency_hours,
+            last_sync_at,
+            last_sync_status,
+            last_sync_message,
+            updated_by_email,
+            updated_at
+        FROM azure_entra_settings
+        ORDER BY created_at
+        LIMIT 1;
+        """, connection);
+
+    await using var reader = await command.ExecuteReaderAsync();
+
+    if (!await reader.ReadAsync())
+    {
+        return Results.NotFound(new { status = "azure_config_missing", message = "Azure/Entra configuration row was not found." });
+    }
+
+    return Results.Ok(new
+    {
+        settingsId = reader.GetGuid(0),
+        tenantId = reader.IsDBNull(1) ? "" : reader.GetString(1),
+        clientId = reader.IsDBNull(2) ? "" : reader.GetString(2),
+        authorityUrl = reader.IsDBNull(3) ? "" : reader.GetString(3),
+        redirectUri = reader.IsDBNull(4) ? "" : reader.GetString(4),
+        graphScope = reader.GetString(5),
+        syncEnabled = reader.GetBoolean(6),
+        defaultRoleCode = reader.GetString(7),
+        syncFrequencyHours = reader.GetInt32(8),
+        lastSyncAt = reader.IsDBNull(9) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(9),
+        lastSyncStatus = reader.IsDBNull(10) ? null : reader.GetString(10),
+        lastSyncMessage = reader.IsDBNull(11) ? null : reader.GetString(11),
+        updatedByEmail = reader.IsDBNull(12) ? null : reader.GetString(12),
+        updatedAt = reader.GetFieldValue<DateTimeOffset>(13)
+    });
+});
+
+app.MapPost("/api/admin/azure/config", async (AzureAdminConfigRequest request, HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    if (!await RequestUserIsAdministratorAsync(httpContext, connection))
+    {
+        return Results.Json(new { status = "admin_required", message = "Azure Admin is restricted to administrators." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var updatedBy = GetProjectPulseSessionEmail(httpContext) ?? "unknown";
+
+    await using var command = new NpgsqlCommand("""
+        UPDATE azure_entra_settings
+        SET tenant_id = NULLIF(@tenant_id, ''),
+            client_id = NULLIF(@client_id, ''),
+            authority_url = NULLIF(@authority_url, ''),
+            redirect_uri = NULLIF(@redirect_uri, ''),
+            graph_scope = COALESCE(NULLIF(@graph_scope, ''), 'User.Read.All Directory.Read.All'),
+            sync_enabled = @sync_enabled,
+            default_role_code = COALESCE(NULLIF(@default_role_code, ''), 'ENGINEER'),
+            sync_frequency_hours = GREATEST(@sync_frequency_hours, 1),
+            updated_by_email = @updated_by_email,
+            updated_at = NOW()
+        WHERE azure_entra_settings_id = (
+            SELECT azure_entra_settings_id
+            FROM azure_entra_settings
+            ORDER BY created_at
+            LIMIT 1
+        );
+        """, connection);
+
+    command.Parameters.AddWithValue("tenant_id", request.TenantId?.Trim() ?? "");
+    command.Parameters.AddWithValue("client_id", request.ClientId?.Trim() ?? "");
+    command.Parameters.AddWithValue("authority_url", request.AuthorityUrl?.Trim() ?? "");
+    command.Parameters.AddWithValue("redirect_uri", request.RedirectUri?.Trim() ?? "");
+    command.Parameters.AddWithValue("graph_scope", request.GraphScope?.Trim() ?? "User.Read.All Directory.Read.All");
+    command.Parameters.AddWithValue("sync_enabled", request.SyncEnabled);
+    command.Parameters.AddWithValue("default_role_code", string.IsNullOrWhiteSpace(request.DefaultRoleCode) ? "ENGINEER" : request.DefaultRoleCode.Trim().ToUpperInvariant());
+    command.Parameters.AddWithValue("sync_frequency_hours", request.SyncFrequencyHours <= 0 ? 24 : request.SyncFrequencyHours);
+    command.Parameters.AddWithValue("updated_by_email", updatedBy);
+
+    await command.ExecuteNonQueryAsync();
+
+    return Results.Ok(new
+    {
+        status = "azure_config_saved",
+        message = "Azure/Entra configuration foundation saved."
+    });
+});
+
+app.MapGet("/api/admin/azure/users", async (HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    if (!await RequestUserIsAdministratorAsync(httpContext, connection))
+    {
+        return Results.Json(new { status = "admin_required", message = "Azure Admin is restricted to administrators." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var users = new List<object>();
+
+    await using var command = new NpgsqlCommand("""
+        SELECT
+            u.user_id,
+            u.email,
+            u.display_name,
+            u.entra_object_id,
+            u.source_provider,
+            u.job_title,
+            u.department_name,
+            u.office_location,
+            u.manager_email,
+            u.login_enabled,
+            u.is_active,
+            u.last_directory_sync_at,
+            COALESCE(array_agg(r.role_name ORDER BY r.display_order) FILTER (WHERE r.role_name IS NOT NULL), ARRAY[]::varchar[]) AS role_names
+        FROM app_users u
+        LEFT JOIN app_user_role_assignments ura ON ura.user_id = u.user_id AND ura.is_active = TRUE
+        LEFT JOIN app_roles r ON r.app_role_id = ura.app_role_id AND r.is_active = TRUE
+        WHERE u.source_provider = 'ENTRA_ID'
+           OR lower(u.email) LIKE '%@ussignal.com'
+        GROUP BY u.user_id, u.email, u.display_name, u.entra_object_id, u.source_provider, u.job_title, u.department_name, u.office_location, u.manager_email, u.login_enabled, u.is_active, u.last_directory_sync_at
+        ORDER BY u.display_name, u.email;
+        """, connection);
+
+    await using var reader = await command.ExecuteReaderAsync();
+
+    while (await reader.ReadAsync())
+    {
+        users.Add(new
+        {
+            userId = reader.GetGuid(0),
+            email = reader.GetString(1),
+            displayName = reader.GetString(2),
+            entraObjectId = reader.IsDBNull(3) ? null : reader.GetString(3),
+            sourceProvider = reader.GetString(4),
+            jobTitle = reader.IsDBNull(5) ? null : reader.GetString(5),
+            departmentName = reader.IsDBNull(6) ? null : reader.GetString(6),
+            officeLocation = reader.IsDBNull(7) ? null : reader.GetString(7),
+            managerEmail = reader.IsDBNull(8) ? null : reader.GetString(8),
+            loginEnabled = reader.GetBoolean(9),
+            isActive = reader.GetBoolean(10),
+            lastDirectorySyncAt = reader.IsDBNull(11) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(11),
+            roleNames = reader.GetFieldValue<string[]>(12)
+        });
+    }
+
+    return Results.Ok(new
+    {
+        count = users.Count,
+        users
+    });
+});
+
+app.MapPost("/api/admin/azure/users/import", async (AzureUserImportRequest request, HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    if (request.Users is null || request.Users.Count == 0)
+    {
+        return Results.BadRequest(new { status = "no_users", message = "Provide at least one Azure/Entra user to import." });
+    }
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    if (!await RequestUserIsAdministratorAsync(httpContext, connection))
+    {
+        return Results.Json(new { status = "admin_required", message = "Azure Admin is restricted to administrators." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    await using var transaction = await connection.BeginTransactionAsync();
+
+    var syncRunId = Guid.NewGuid();
+    var imported = 0;
+    var updated = 0;
+    var skipped = 0;
+    var errors = new List<object>();
+
+    try
+    {
+        await using (var runCommand = new NpgsqlCommand("""
+            INSERT INTO azure_entra_sync_runs (
+                azure_entra_sync_run_id,
+                status,
+                triggered_by_email,
+                message
+            )
+            VALUES (
+                @sync_run_id,
+                'started',
+                @triggered_by_email,
+                'Manual Azure/Entra import foundation started.'
+            );
+            """, connection, transaction))
+        {
+            runCommand.Parameters.AddWithValue("sync_run_id", syncRunId);
+            runCommand.Parameters.AddWithValue("triggered_by_email", (object?)GetProjectPulseSessionEmail(httpContext) ?? DBNull.Value);
+            await runCommand.ExecuteNonQueryAsync();
+        }
+
+        foreach (var user in request.Users)
+        {
+            var email = user.Email?.Trim().ToLowerInvariant();
+
+            if (string.IsNullOrWhiteSpace(email) || !email.EndsWith("@ussignal.com", StringComparison.OrdinalIgnoreCase))
+            {
+                skipped++;
+                errors.Add(new { email, error = "Skipped because email is blank or not @ussignal.com." });
+                continue;
+            }
+
+            var displayName = string.IsNullOrWhiteSpace(user.DisplayName)
+                ? email
+                : user.DisplayName.Trim();
+
+            Guid resolvedUserId;
+            bool existed;
+
+            await using (var upsertCommand = new NpgsqlCommand("""
+                INSERT INTO app_users (
+                    email,
+                    display_name,
+                    is_active,
+                    login_enabled,
+                    source_provider,
+                    entra_object_id,
+                    job_title,
+                    department_name,
+                    office_location,
+                    manager_email,
+                    last_directory_sync_at
+                )
+                VALUES (
+                    @email,
+                    @display_name,
+                    TRUE,
+                    TRUE,
+                    'ENTRA_ID',
+                    NULLIF(@entra_object_id, ''),
+                    NULLIF(@job_title, ''),
+                    NULLIF(@department_name, ''),
+                    NULLIF(@office_location, ''),
+                    NULLIF(@manager_email, ''),
+                    NOW()
+                )
+                ON CONFLICT (email) DO UPDATE
+                SET display_name = EXCLUDED.display_name,
+                    is_active = TRUE,
+                    login_enabled = TRUE,
+                    source_provider = 'ENTRA_ID',
+                    entra_object_id = COALESCE(EXCLUDED.entra_object_id, app_users.entra_object_id),
+                    job_title = EXCLUDED.job_title,
+                    department_name = EXCLUDED.department_name,
+                    office_location = EXCLUDED.office_location,
+                    manager_email = EXCLUDED.manager_email,
+                    last_directory_sync_at = NOW()
+                RETURNING user_id, (xmax <> 0) AS existed;
+                """, connection, transaction))
+            {
+                upsertCommand.Parameters.AddWithValue("email", email);
+                upsertCommand.Parameters.AddWithValue("display_name", displayName);
+                upsertCommand.Parameters.AddWithValue("entra_object_id", user.EntraObjectId?.Trim() ?? "");
+                upsertCommand.Parameters.AddWithValue("job_title", user.JobTitle?.Trim() ?? "");
+                upsertCommand.Parameters.AddWithValue("department_name", user.DepartmentName?.Trim() ?? "");
+                upsertCommand.Parameters.AddWithValue("office_location", user.OfficeLocation?.Trim() ?? "");
+                upsertCommand.Parameters.AddWithValue("manager_email", user.ManagerEmail?.Trim().ToLowerInvariant() ?? "");
+
+                await using var reader = await upsertCommand.ExecuteReaderAsync();
+                await reader.ReadAsync();
+                resolvedUserId = reader.GetGuid(0);
+                existed = reader.GetBoolean(1);
+            }
+
+            await using (var roleCommand = new NpgsqlCommand("""
+                INSERT INTO app_user_role_assignments (
+                    user_id,
+                    app_role_id,
+                    assignment_reason,
+                    is_active
+                )
+                SELECT @user_id, r.app_role_id, 'Default Engineer role from Azure/Entra import', TRUE
+                FROM app_roles r
+                WHERE r.role_code = 'ENGINEER'
+                ON CONFLICT (user_id, app_role_id) DO UPDATE
+                SET is_active = TRUE,
+                    assignment_reason = EXCLUDED.assignment_reason,
+                    updated_at = NOW();
+                """, connection, transaction))
+            {
+                roleCommand.Parameters.AddWithValue("user_id", resolvedUserId);
+                await roleCommand.ExecuteNonQueryAsync();
+            }
+
+            if (existed) updated++;
+            else imported++;
+        }
+
+        await using (var completeCommand = new NpgsqlCommand("""
+            UPDATE azure_entra_sync_runs
+            SET sync_completed_at = NOW(),
+                status = 'completed_foundation_import',
+                users_seen = @users_seen,
+                users_imported = @users_imported,
+                users_updated = @users_updated,
+                users_skipped = @users_skipped,
+                message = @message
+            WHERE azure_entra_sync_run_id = @sync_run_id;
+
+            UPDATE azure_entra_settings
+            SET last_sync_at = NOW(),
+                last_sync_status = 'completed_foundation_import',
+                last_sync_message = @message,
+                updated_at = NOW();
+            """, connection, transaction))
+        {
+            completeCommand.Parameters.AddWithValue("sync_run_id", syncRunId);
+            completeCommand.Parameters.AddWithValue("users_seen", request.Users.Count);
+            completeCommand.Parameters.AddWithValue("users_imported", imported);
+            completeCommand.Parameters.AddWithValue("users_updated", updated);
+            completeCommand.Parameters.AddWithValue("users_skipped", skipped);
+            completeCommand.Parameters.AddWithValue("message", "Manual Azure/Entra foundation import completed. Real Microsoft Graph sync will be connected in the production SSO phase.");
+            await completeCommand.ExecuteNonQueryAsync();
+        }
+
+        await transaction.CommitAsync();
+
+        return Results.Ok(new
+        {
+            status = "azure_import_completed",
+            syncRunId,
+            usersSeen = request.Users.Count,
+            usersImported = imported,
+            usersUpdated = updated,
+            usersSkipped = skipped,
+            errors,
+            message = "Azure/Entra user import completed. Imported users received the Engineer role by default."
+        });
+    }
+    catch (Exception ex)
+    {
+        await transaction.RollbackAsync();
+
+        return Results.Problem(
+            title: "Azure/Entra user import failed",
+            detail: ex.Message,
+            statusCode: StatusCodes.Status500InternalServerError);
+    }
+});
+
+app.MapPost("/api/admin/azure/sync/run", async (HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    if (!await RequestUserIsAdministratorAsync(httpContext, connection))
+    {
+        return Results.Json(new { status = "admin_required", message = "Azure Admin is restricted to administrators." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var syncRunId = Guid.NewGuid();
+
+    await using var command = new NpgsqlCommand("""
+        INSERT INTO azure_entra_sync_runs (
+            azure_entra_sync_run_id,
+            sync_started_at,
+            sync_completed_at,
+            status,
+            triggered_by_email,
+            users_seen,
+            users_imported,
+            users_updated,
+            users_skipped,
+            message
+        )
+        VALUES (
+            @sync_run_id,
+            NOW(),
+            NOW(),
+            'completed_foundation_only',
+            @triggered_by_email,
+            0,
+            0,
+            0,
+            0,
+            'Foundation sync run recorded. Microsoft Graph connectivity will be connected in the next Azure SSO implementation phase.'
+        );
+
+        UPDATE azure_entra_settings
+        SET last_sync_at = NOW(),
+            last_sync_status = 'completed_foundation_only',
+            last_sync_message = 'Foundation sync run recorded. Microsoft Graph connectivity is not active yet.',
+            updated_at = NOW();
+        """, connection);
+
+    command.Parameters.AddWithValue("sync_run_id", syncRunId);
+    command.Parameters.AddWithValue("triggered_by_email", (object?)GetProjectPulseSessionEmail(httpContext) ?? DBNull.Value);
+
+    await command.ExecuteNonQueryAsync();
+
+    return Results.Ok(new
+    {
+        status = "foundation_sync_recorded",
+        syncRunId,
+        message = "Azure/Entra foundation sync run recorded. Real Microsoft Graph sync will be connected in the Azure SSO phase."
+    });
+});
+
+app.MapGet("/api/admin/azure/sync/runs", async (HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    if (!await RequestUserIsAdministratorAsync(httpContext, connection))
+    {
+        return Results.Json(new { status = "admin_required", message = "Azure Admin is restricted to administrators." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var runs = new List<object>();
+
+    await using var command = new NpgsqlCommand("""
+        SELECT
+            azure_entra_sync_run_id,
+            sync_started_at,
+            sync_completed_at,
+            status,
+            triggered_by_email,
+            users_seen,
+            users_imported,
+            users_updated,
+            users_skipped,
+            message
+        FROM azure_entra_sync_runs
+        ORDER BY sync_started_at DESC
+        LIMIT 20;
+        """, connection);
+
+    await using var reader = await command.ExecuteReaderAsync();
+
+    while (await reader.ReadAsync())
+    {
+        runs.Add(new
+        {
+            syncRunId = reader.GetGuid(0),
+            syncStartedAt = reader.GetFieldValue<DateTimeOffset>(1),
+            syncCompletedAt = reader.IsDBNull(2) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(2),
+            status = reader.GetString(3),
+            triggeredByEmail = reader.IsDBNull(4) ? null : reader.GetString(4),
+            usersSeen = reader.GetInt32(5),
+            usersImported = reader.GetInt32(6),
+            usersUpdated = reader.GetInt32(7),
+            usersSkipped = reader.GetInt32(8),
+            message = reader.IsDBNull(9) ? null : reader.GetString(9)
+        });
+    }
+
+    return Results.Ok(new { count = runs.Count, runs });
+});
+
+
+
+app.MapGet("/api/admin/user-admin/reference", async (HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
+    {
+        return Results.Json(new { status = "access_denied", message = "User Administration is restricted to administrators and project/team coordinators." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var roles = new List<object>();
+    await using (var roleCommand = new NpgsqlCommand("""
+        SELECT role_code, role_name, role_description, display_order
+        FROM app_roles
+        WHERE is_active = TRUE
+        ORDER BY display_order, role_name;
+        """, connection))
+    {
+        await using var reader = await roleCommand.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            roles.Add(new
+            {
+                roleCode = reader.GetString(0),
+                roleName = reader.GetString(1),
+                description = reader.IsDBNull(2) ? null : reader.GetString(2),
+                displayOrder = reader.GetInt32(3)
+            });
+        }
+    }
+
+    var departments = new List<string>();
+    await using (var departmentCommand = new NpgsqlCommand("""
+        SELECT DISTINCT department_name
+        FROM app_users
+        WHERE NULLIF(TRIM(department_name), '') IS NOT NULL
+        ORDER BY department_name;
+        """, connection))
+    {
+        await using var reader = await departmentCommand.ExecuteReaderAsync();
+        while (await reader.ReadAsync()) departments.Add(reader.GetString(0));
+    }
+
+    var teams = new List<string>();
+    await using (var teamCommand = new NpgsqlCommand("""
+        SELECT DISTINCT team_name
+        FROM app_users
+        WHERE NULLIF(TRIM(team_name), '') IS NOT NULL
+        ORDER BY team_name;
+        """, connection))
+    {
+        await using var reader = await teamCommand.ExecuteReaderAsync();
+        while (await reader.ReadAsync()) teams.Add(reader.GetString(0));
+    }
+
+    return Results.Ok(new
+    {
+        roles,
+        departments,
+        teams
+    });
+});
+
+app.MapGet("/api/admin/user-admin/users", async (HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
+    {
+        return Results.Json(new { status = "access_denied", message = "User Administration is restricted to administrators and project/team coordinators." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var users = new List<object>();
+
+    await using var command = new NpgsqlCommand("""
+        SELECT
+            u.user_id,
+            u.email,
+            u.display_name,
+            u.is_active,
+            COALESCE(u.login_enabled, TRUE) AS login_enabled,
+            COALESCE(u.source_provider, 'LOCAL_APP') AS source_provider,
+            u.entra_object_id,
+            u.job_title,
+            u.department_name,
+            u.team_name,
+            u.office_location,
+            u.manager_email,
+            u.last_directory_sync_at,
+            la.username AS local_username,
+            la.password_hash IS NOT NULL AS has_local_password,
+            la.must_change_password,
+            la.failed_login_count,
+            la.locked_until,
+            COALESCE(array_agg(r.role_code ORDER BY r.display_order) FILTER (WHERE r.role_code IS NOT NULL), ARRAY[]::varchar[]) AS role_codes,
+            COALESCE(array_agg(r.role_name ORDER BY r.display_order) FILTER (WHERE r.role_name IS NOT NULL), ARRAY[]::varchar[]) AS role_names
+        FROM app_users u
+        LEFT JOIN auth_local_accounts la ON la.user_id = u.user_id
+        LEFT JOIN app_user_role_assignments ura ON ura.user_id = u.user_id AND ura.is_active = TRUE
+        LEFT JOIN app_roles r ON r.app_role_id = ura.app_role_id AND r.is_active = TRUE
+        GROUP BY
+            u.user_id,
+            u.email,
+            u.display_name,
+            u.is_active,
+            u.login_enabled,
+            u.source_provider,
+            u.entra_object_id,
+            u.job_title,
+            u.department_name,
+            u.team_name,
+            u.office_location,
+            u.manager_email,
+            u.last_directory_sync_at,
+            la.username,
+            la.password_hash,
+            la.must_change_password,
+            la.failed_login_count,
+            la.locked_until
+        ORDER BY u.display_name, u.email;
+        """, connection);
+
+    await using var reader = await command.ExecuteReaderAsync();
+
+    while (await reader.ReadAsync())
+    {
+        users.Add(new
+        {
+            userId = reader.GetGuid(0),
+            email = reader.GetString(1),
+            displayName = reader.GetString(2),
+            isActive = reader.GetBoolean(3),
+            loginEnabled = reader.GetBoolean(4),
+            sourceProvider = reader.GetString(5),
+            entraObjectId = reader.IsDBNull(6) ? null : reader.GetString(6),
+            jobTitle = reader.IsDBNull(7) ? null : reader.GetString(7),
+            departmentName = reader.IsDBNull(8) ? null : reader.GetString(8),
+            teamName = reader.IsDBNull(9) ? null : reader.GetString(9),
+            officeLocation = reader.IsDBNull(10) ? null : reader.GetString(10),
+            managerEmail = reader.IsDBNull(11) ? null : reader.GetString(11),
+            lastDirectorySyncAt = reader.IsDBNull(12) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(12),
+            localUsername = reader.IsDBNull(13) ? null : reader.GetString(13),
+            hasLocalPassword = reader.GetBoolean(14),
+            mustChangePassword = reader.IsDBNull(15) ? (bool?)null : reader.GetBoolean(15),
+            failedLoginCount = reader.IsDBNull(16) ? (int?)null : reader.GetInt32(16),
+            lockedUntil = reader.IsDBNull(17) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(17),
+            roleCodes = reader.GetFieldValue<string[]>(18),
+            roleNames = reader.GetFieldValue<string[]>(19)
+        });
+    }
+
+    return Results.Ok(new
+    {
+        count = users.Count,
+        users
+    });
+});
+
+app.MapPost("/api/admin/user-admin/users/profile", async (UserAdminProfileUpdateRequest request, HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
+    {
+        return Results.Json(new { status = "access_denied", message = "User Administration is restricted to administrators and project/team coordinators." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    await using var command = new NpgsqlCommand("""
+        UPDATE app_users
+        SET display_name = COALESCE(NULLIF(@display_name, ''), display_name),
+            job_title = NULLIF(@job_title, ''),
+            department_name = NULLIF(@department_name, ''),
+            team_name = NULLIF(@team_name, ''),
+            office_location = NULLIF(@office_location, ''),
+            manager_email = NULLIF(@manager_email, ''),
+            login_enabled = @login_enabled,
+            is_active = @is_active
+        WHERE user_id = @user_id;
+        """, connection);
+
+    command.Parameters.AddWithValue("user_id", request.UserId);
+    command.Parameters.AddWithValue("display_name", request.DisplayName?.Trim() ?? "");
+    command.Parameters.AddWithValue("job_title", request.JobTitle?.Trim() ?? "");
+    command.Parameters.AddWithValue("department_name", request.DepartmentName?.Trim() ?? "");
+    command.Parameters.AddWithValue("team_name", request.TeamName?.Trim() ?? "");
+    command.Parameters.AddWithValue("office_location", request.OfficeLocation?.Trim() ?? "");
+    command.Parameters.AddWithValue("manager_email", request.ManagerEmail?.Trim().ToLowerInvariant() ?? "");
+    command.Parameters.AddWithValue("login_enabled", request.LoginEnabled);
+    command.Parameters.AddWithValue("is_active", request.IsActive);
+
+    var rows = await command.ExecuteNonQueryAsync();
+
+    if (rows == 0)
+    {
+        return Results.NotFound(new { status = "user_not_found", message = "User was not found." });
+    }
+
+    return Results.Ok(new
+    {
+        status = "user_profile_updated",
+        message = "User profile, department, team, and login status were updated."
+    });
+});
+
+app.MapPost("/api/admin/user-admin/users/roles", async (UserAdminRoleUpdateRequest request, HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+    await using var transaction = await connection.BeginTransactionAsync();
+
+    try
+    {
+        if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
+        {
+            await transaction.RollbackAsync();
+            return Results.Json(new { status = "access_denied", message = "User Administration is restricted to administrators and project/team coordinators." }, statusCode: StatusCodes.Status403Forbidden);
+        }
+
+        var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+        var cleanRoleCodes = (request.RoleCodes ?? new List<string>())
+            .Where(code => !string.IsNullOrWhiteSpace(code))
+            .Select(code => code.Trim().ToUpperInvariant())
+            .Distinct()
+            .ToList();
+
+        if (sessionUserId == request.UserId && !cleanRoleCodes.Contains("ADMINISTRATOR"))
+        {
+            await transaction.RollbackAsync();
+            return Results.BadRequest(new
+            {
+                status = "self_admin_removal_blocked",
+                message = "You cannot remove your own Administrator role from User Administration."
+            });
+        }
+
+        await using (var deactivateCommand = new NpgsqlCommand("""
+            UPDATE app_user_role_assignments
+            SET is_active = FALSE,
+                updated_at = NOW()
+            WHERE user_id = @user_id;
+            """, connection, transaction))
+        {
+            deactivateCommand.Parameters.AddWithValue("user_id", request.UserId);
+            await deactivateCommand.ExecuteNonQueryAsync();
+        }
+
+        foreach (var roleCode in cleanRoleCodes)
+        {
+            await using var roleCommand = new NpgsqlCommand("""
+                INSERT INTO app_user_role_assignments (
+                    user_id,
+                    app_role_id,
+                    assigned_by_user_id,
+                    assignment_reason,
+                    is_active
+                )
+                SELECT
+                    @user_id,
+                    r.app_role_id,
+                    @assigned_by_user_id,
+                    @assignment_reason,
+                    TRUE
+                FROM app_roles r
+                WHERE r.role_code = @role_code
+                  AND r.is_active = TRUE
+                ON CONFLICT (user_id, app_role_id) DO UPDATE
+                SET is_active = TRUE,
+                    assignment_reason = EXCLUDED.assignment_reason,
+                    assigned_by_user_id = EXCLUDED.assigned_by_user_id,
+                    updated_at = NOW();
+                """, connection, transaction);
+
+            roleCommand.Parameters.AddWithValue("user_id", request.UserId);
+            roleCommand.Parameters.AddWithValue("assigned_by_user_id", (object?)sessionUserId ?? DBNull.Value);
+            roleCommand.Parameters.AddWithValue("assignment_reason", string.IsNullOrWhiteSpace(request.Reason) ? "Updated from User Administration" : request.Reason.Trim());
+            roleCommand.Parameters.AddWithValue("role_code", roleCode);
+            await roleCommand.ExecuteNonQueryAsync();
+        }
+
+        await transaction.CommitAsync();
+
+        return Results.Ok(new
+        {
+            status = "user_roles_updated",
+            roleCodes = cleanRoleCodes,
+            message = cleanRoleCodes.Count == 0
+                ? "All active roles were removed. This user will be blocked from login."
+                : "User roles were updated."
+        });
+    }
+    catch (Exception ex)
+    {
+        await transaction.RollbackAsync();
+
+        return Results.Problem(
+            title: "Failed to update user roles",
+            detail: ex.Message,
+            statusCode: StatusCodes.Status500InternalServerError);
+    }
+});
+
+app.MapPost("/api/admin/user-admin/local-password", async (UserAdminLocalPasswordUpdateRequest request, HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    var passwordIssue = ValidatePasswordQuality(request.TemporaryPassword);
+    if (passwordIssue is not null)
+    {
+        return Results.BadRequest(new
+        {
+            status = "password_quality_failed",
+            message = passwordIssue
+        });
+    }
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
+    {
+        return Results.Json(new { status = "access_denied", message = "User Administration is restricted to administrators and project/team coordinators." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var passwordHash = HashProjectPulsePassword(request.TemporaryPassword);
+
+    await using var command = new NpgsqlCommand("""
+        UPDATE auth_local_accounts la
+        SET password_hash = @password_hash,
+            must_change_password = @must_change_password,
+            failed_login_count = 0,
+            locked_until = NULL,
+            password_hash_updated_at = NOW()
+        FROM app_users u
+        WHERE u.user_id = la.user_id
+          AND u.user_id = @user_id
+          AND lower(la.username) LIKE '%.local';
+        """, connection);
+
+    command.Parameters.AddWithValue("user_id", request.UserId);
+    command.Parameters.AddWithValue("password_hash", passwordHash);
+    command.Parameters.AddWithValue("must_change_password", request.MustChangePassword);
+
+    var rows = await command.ExecuteNonQueryAsync();
+
+    if (rows == 0)
+    {
+        return Results.NotFound(new
+        {
+            status = "local_account_not_found",
+            message = "No local account was found for this user."
+        });
+    }
+
+    return Results.Ok(new
+    {
+        status = "local_password_updated",
+        mustChangePassword = request.MustChangePassword,
+        message = "Local temporary password was updated. The user can now sign in with the new temporary password."
+    });
+});
+
+
+
+app.MapPost("/api/admin/user-admin/users/bulk-update", async (UserAdminBulkUpdateRequest request, HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    if (request.UserIds is null || request.UserIds.Count == 0)
+    {
+        return Results.BadRequest(new
+        {
+            status = "no_users_selected",
+            message = "Select at least one user before applying a bulk update."
+        });
+    }
+
+    var userIds = request.UserIds.Distinct().ToArray();
+    var roleMode = string.IsNullOrWhiteSpace(request.RoleUpdateMode)
+        ? "none"
+        : request.RoleUpdateMode.Trim().ToLowerInvariant();
+
+    if (!new[] { "none", "add", "remove", "replace" }.Contains(roleMode))
+    {
+        return Results.BadRequest(new
+        {
+            status = "invalid_role_update_mode",
+            message = "Role update mode must be none, add, remove, or replace."
+        });
+    }
+
+    var cleanRoleCodes = (request.RoleCodes ?? new List<string>())
+        .Where(code => !string.IsNullOrWhiteSpace(code))
+        .Select(code => code.Trim().ToUpperInvariant())
+        .Distinct()
+        .ToList();
+
+    if (roleMode != "none" && cleanRoleCodes.Count == 0)
+    {
+        return Results.BadRequest(new
+        {
+            status = "no_roles_selected",
+            message = "Select at least one role when using add, remove, or replace role mode."
+        });
+    }
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "User Administration is restricted to administrators and project/team coordinators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+
+    if (sessionUserId is not null && userIds.Contains(sessionUserId.Value))
+    {
+        if (roleMode == "replace" && !cleanRoleCodes.Contains("ADMINISTRATOR"))
+        {
+            return Results.BadRequest(new
+            {
+                status = "self_admin_removal_blocked",
+                message = "You cannot bulk replace your own roles without keeping Administrator."
+            });
+        }
+
+        if (roleMode == "remove" && cleanRoleCodes.Contains("ADMINISTRATOR"))
+        {
+            return Results.BadRequest(new
+            {
+                status = "self_admin_removal_blocked",
+                message = "You cannot bulk remove your own Administrator role."
+            });
+        }
+    }
+
+    await using var transaction = await connection.BeginTransactionAsync();
+
+    try
+    {
+        await using (var profileCommand = new NpgsqlCommand("""
+            UPDATE app_users
+            SET job_title = CASE WHEN @apply_job_title THEN NULLIF(@job_title, '') ELSE job_title END,
+                department_name = CASE WHEN @apply_department_name THEN NULLIF(@department_name, '') ELSE department_name END,
+                team_name = CASE WHEN @apply_team_name THEN NULLIF(@team_name, '') ELSE team_name END,
+                office_location = CASE WHEN @apply_office_location THEN NULLIF(@office_location, '') ELSE office_location END,
+                manager_email = CASE WHEN @apply_manager_email THEN NULLIF(@manager_email, '') ELSE manager_email END,
+                login_enabled = CASE WHEN @apply_login_enabled THEN @login_enabled ELSE login_enabled END,
+                is_active = CASE WHEN @apply_is_active THEN @is_active ELSE is_active END
+            WHERE user_id = ANY(@user_ids);
+            """, connection, transaction))
+        {
+            profileCommand.Parameters.AddWithValue("user_ids", userIds);
+            profileCommand.Parameters.AddWithValue("apply_job_title", request.ApplyJobTitle);
+            profileCommand.Parameters.AddWithValue("job_title", request.JobTitle?.Trim() ?? "");
+            profileCommand.Parameters.AddWithValue("apply_department_name", request.ApplyDepartmentName);
+            profileCommand.Parameters.AddWithValue("department_name", request.DepartmentName?.Trim() ?? "");
+            profileCommand.Parameters.AddWithValue("apply_team_name", request.ApplyTeamName);
+            profileCommand.Parameters.AddWithValue("team_name", request.TeamName?.Trim() ?? "");
+            profileCommand.Parameters.AddWithValue("apply_office_location", request.ApplyOfficeLocation);
+            profileCommand.Parameters.AddWithValue("office_location", request.OfficeLocation?.Trim() ?? "");
+            profileCommand.Parameters.AddWithValue("apply_manager_email", request.ApplyManagerEmail);
+            profileCommand.Parameters.AddWithValue("manager_email", request.ManagerEmail?.Trim().ToLowerInvariant() ?? "");
+            profileCommand.Parameters.AddWithValue("apply_login_enabled", request.ApplyLoginEnabled);
+            profileCommand.Parameters.AddWithValue("login_enabled", request.LoginEnabled);
+            profileCommand.Parameters.AddWithValue("apply_is_active", request.ApplyIsActive);
+            profileCommand.Parameters.AddWithValue("is_active", request.IsActive);
+
+            await profileCommand.ExecuteNonQueryAsync();
+        }
+
+        if (roleMode == "replace")
+        {
+            await using var deactivateCommand = new NpgsqlCommand("""
+                UPDATE app_user_role_assignments
+                SET is_active = FALSE,
+                    updated_at = NOW()
+                WHERE user_id = ANY(@user_ids);
+                """, connection, transaction);
+
+            deactivateCommand.Parameters.AddWithValue("user_ids", userIds);
+            await deactivateCommand.ExecuteNonQueryAsync();
+        }
+
+        if (roleMode == "remove")
+        {
+            await using var removeCommand = new NpgsqlCommand("""
+                UPDATE app_user_role_assignments ura
+                SET is_active = FALSE,
+                    updated_at = NOW()
+                FROM app_roles r
+                WHERE r.app_role_id = ura.app_role_id
+                  AND ura.user_id = ANY(@user_ids)
+                  AND r.role_code = ANY(@role_codes);
+                """, connection, transaction);
+
+            removeCommand.Parameters.AddWithValue("user_ids", userIds);
+            removeCommand.Parameters.AddWithValue("role_codes", cleanRoleCodes.ToArray());
+            await removeCommand.ExecuteNonQueryAsync();
+        }
+
+        if (roleMode == "add" || roleMode == "replace")
+        {
+            foreach (var userId in userIds)
+            {
+                foreach (var roleCode in cleanRoleCodes)
+                {
+                    await using var roleCommand = new NpgsqlCommand("""
+                        INSERT INTO app_user_role_assignments (
+                            user_id,
+                            app_role_id,
+                            assigned_by_user_id,
+                            assignment_reason,
+                            is_active
+                        )
+                        SELECT
+                            @user_id,
+                            r.app_role_id,
+                            @assigned_by_user_id,
+                            @assignment_reason,
+                            TRUE
+                        FROM app_roles r
+                        WHERE r.role_code = @role_code
+                          AND r.is_active = TRUE
+                        ON CONFLICT (user_id, app_role_id) DO UPDATE
+                        SET is_active = TRUE,
+                            assignment_reason = EXCLUDED.assignment_reason,
+                            assigned_by_user_id = EXCLUDED.assigned_by_user_id,
+                            updated_at = NOW();
+                        """, connection, transaction);
+
+                    roleCommand.Parameters.AddWithValue("user_id", userId);
+                    roleCommand.Parameters.AddWithValue("assigned_by_user_id", (object?)sessionUserId ?? DBNull.Value);
+                    roleCommand.Parameters.AddWithValue("assignment_reason", string.IsNullOrWhiteSpace(request.Reason) ? "Bulk update from User Administration" : request.Reason.Trim());
+                    roleCommand.Parameters.AddWithValue("role_code", roleCode);
+
+                    await roleCommand.ExecuteNonQueryAsync();
+                }
+            }
+        }
+
+        await transaction.CommitAsync();
+
+        return Results.Ok(new
+        {
+            status = "bulk_user_update_completed",
+            usersUpdated = userIds.Length,
+            roleUpdateMode = roleMode,
+            roleCodes = cleanRoleCodes,
+            message = $"Bulk update completed for {userIds.Length} user(s)."
+        });
+    }
+    catch (Exception ex)
+    {
+        await transaction.RollbackAsync();
+
+        return Results.Problem(
+            title: "Bulk user update failed",
+            detail: ex.Message,
+            statusCode: StatusCodes.Status500InternalServerError);
+    }
+});
+
+
+
+app.MapGet("/api/manager/approval-count", async (HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var submittedTimeCount = 0;
+    var passwordResetCount = 0;
+
+    await using (var timeCommand = new NpgsqlCommand("""
+        SELECT COUNT(*)
+        FROM timesheets
+        WHERE status IN ('submitted', 'submitted_for_manager_approval', 'pending_manager_approval');
+        """, connection))
+    {
+        submittedTimeCount = Convert.ToInt32(await timeCommand.ExecuteScalarAsync() ?? 0);
+    }
+
+    await using (var resetCommand = new NpgsqlCommand("""
+        SELECT COUNT(*)
+        FROM auth_password_reset_requests
+        WHERE status IN ('pending_approval', 'requested', 'pending');
+        """, connection))
+    {
+        passwordResetCount = Convert.ToInt32(await resetCommand.ExecuteScalarAsync() ?? 0);
+    }
+
+    return Results.Ok(new
+    {
+        submittedTimeCount,
+        passwordResetCount,
+        totalPendingCount = submittedTimeCount + passwordResetCount
+    });
+});
+
+
+
+
+app.MapGet("/api/utilization/yearly-status", async (int? year, HttpContext httpContext) =>
+{
+    var selectedYear = year ?? DateTime.UtcNow.Year;
+
+    if (selectedYear < 2026) selectedYear = 2026;
+    if (selectedYear > 2036) selectedYear = 2036;
+
+    decimal standardQuarterHours = 482m;
+
+    var targets = new[] { 70m, 75m, 80m, 85m, 90m, 95m, 100m, 105m }
+        .Select(percent => new
+        {
+            targetPercent = percent,
+            targetHours = Math.Round(standardQuarterHours * percent / 100m, 1)
+        })
+        .ToList();
+
+    var quarters = new List<object>();
+
+    foreach (var quarterNumber in new[] { 1, 2, 3, 4 })
+    {
+        decimal billableHours = 0m;
+        decimal utilizationPercent = 0m;
+
+        var nextTarget = targets.FirstOrDefault(target => target.targetHours > billableHours);
+        var hoursToNextTarget = nextTarget is null ? 0m : Math.Max(0, Math.Round(nextTarget.targetHours - billableHours, 2));
+
+        quarters.Add(new
+        {
+            quarterNumber,
+            quarterName = $"Q{quarterNumber}",
+            standardQuarterHours,
+            billableHours,
+            utilizationPercent,
+            nextTargetPercent = nextTarget?.targetPercent,
+            nextTargetHours = nextTarget?.targetHours,
+            hoursToNextTarget,
+            thresholds = targets.Select(target => new
+            {
+                target.targetPercent,
+                target.targetHours,
+                hoursRemaining = Math.Max(0, Math.Round(target.targetHours - billableHours, 2)),
+                reached = billableHours >= target.targetHours
+            })
+        });
+    }
+
+    return Results.Ok(new
+    {
+        year = selectedYear,
+        standardQuarterHours,
+        calculationStatus = "placeholder",
+        calculationNote = "Project and service-request utilization calculation will be finalized during 019I. This view is stable now so engineers can see yearly quarterly thresholds.",
+        quarters
+    });
+});
 
 app.Run();
 
@@ -4482,6 +5794,75 @@ internal sealed record HolidayCsvImportRequest(int? Year, string? Filename, stri
 internal sealed record HolidayImportRow(DateOnly HolidayDate, string HolidayName, string HolidayType, bool IsFloatingHoliday, decimal AutoPopulateHours);
 
 internal sealed record UserRoleAssignmentRequest(string Email, List<string>? RoleCodes, string? Reason);
+
+
+
+
+
+internal sealed record UserAdminBulkUpdateRequest(
+    List<Guid>? UserIds,
+    bool ApplyJobTitle,
+    string? JobTitle,
+    bool ApplyDepartmentName,
+    string? DepartmentName,
+    bool ApplyTeamName,
+    string? TeamName,
+    bool ApplyOfficeLocation,
+    string? OfficeLocation,
+    bool ApplyManagerEmail,
+    string? ManagerEmail,
+    bool ApplyLoginEnabled,
+    bool LoginEnabled,
+    bool ApplyIsActive,
+    bool IsActive,
+    string? RoleUpdateMode,
+    List<string>? RoleCodes,
+    string? Reason);
+
+
+internal sealed record UserAdminProfileUpdateRequest(
+    Guid UserId,
+    string? DisplayName,
+    string? JobTitle,
+    string? DepartmentName,
+    string? TeamName,
+    string? OfficeLocation,
+    string? ManagerEmail,
+    bool LoginEnabled,
+    bool IsActive);
+
+internal sealed record UserAdminRoleUpdateRequest(
+    Guid UserId,
+    List<string>? RoleCodes,
+    string? Reason);
+
+internal sealed record UserAdminLocalPasswordUpdateRequest(
+    Guid UserId,
+    string TemporaryPassword,
+    bool MustChangePassword,
+    string? Notes);
+
+
+internal sealed record AzureAdminConfigRequest(
+    string? TenantId,
+    string? ClientId,
+    string? AuthorityUrl,
+    string? RedirectUri,
+    string? GraphScope,
+    bool SyncEnabled,
+    string? DefaultRoleCode,
+    int SyncFrequencyHours);
+
+internal sealed record AzureUserImportRequest(List<AzureUserImportRow>? Users);
+
+internal sealed record AzureUserImportRow(
+    string? Email,
+    string? DisplayName,
+    string? EntraObjectId,
+    string? JobTitle,
+    string? DepartmentName,
+    string? OfficeLocation,
+    string? ManagerEmail);
 
 
 internal sealed record LocalLoginRequest(string Username, string Password);
