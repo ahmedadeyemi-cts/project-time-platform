@@ -88,9 +88,9 @@ async function readApiErrorMessage(response, path) {
 }
 
 
-async function fetchJson(path) {
+async function fetchJson(path, sessionOverride = null) {
   const response = await fetch(path, {
-    headers: getProjectPulseAuthHeaders()
+    headers: getProjectPulseAuthHeaders(sessionOverride)
   });
 
   if (!response.ok) {
@@ -100,10 +100,10 @@ async function fetchJson(path) {
   return response.json();
 }
 
-async function postJson(path, payload) {
+async function postJson(path, payload, sessionOverride = null) {
   const response = await fetch(path, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...getProjectPulseAuthHeaders() },
+    headers: { 'Content-Type': 'application/json', ...getProjectPulseAuthHeaders(sessionOverride) },
     body: JSON.stringify(payload)
   });
 
@@ -143,9 +143,13 @@ function getStoredAuthSession() {
   }
 }
 
-function getProjectPulseAuthHeaders() {
-  const session = getStoredAuthSession();
+function getProjectPulseAuthHeaders(sessionOverride = null) {
+  const session = sessionOverride?.sessionToken ? sessionOverride : getStoredAuthSession();
   return session?.sessionToken ? { 'X-ProjectPulse-Session': session.sessionToken } : {};
+}
+
+function hasProjectPulseSession(session) {
+  return Boolean(session?.sessionToken && session?.expiresAt && Date.now() < Date.parse(session.expiresAt));
 }
 
 
@@ -618,16 +622,34 @@ export default function App() {
   }, [theme]);
 
 
+  useEffect(() => {
+    document.body.dataset.projectPulseRoute = activeRoute || 'dashboard';
+
+    return () => {
+      delete document.body.dataset.projectPulseRoute;
+    };
+  }, [activeRoute]);
+
+
 
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadCurrentUserAndQuarterUtilization() {
+      if (!hasProjectPulseSession(authSession)) {
+        setCurrentUser({ loading: false, data: null, error: null });
+        setCurrentQuarterUtilization({ loading: false, data: null, error: null });
+        return;
+      }
+
+      setCurrentUser((current) => ({ ...current, loading: true, error: null }));
+      setCurrentQuarterUtilization((current) => ({ ...current, loading: true, error: null }));
+
       try {
         const [userResult, quarterResult] = await Promise.all([
-          fetchJson('/api/security/me'),
-          fetchJson('/api/utilization/current-quarter')
+          fetchJson('/api/security/me', authSession),
+          fetchJson('/api/utilization/current-quarter', authSession)
         ]);
 
         if (!cancelled) {
@@ -648,15 +670,22 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [authSession?.sessionToken]);
 
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadSecurityContext() {
+      if (!hasProjectPulseSession(authSession)) {
+        setSecurityContext({ loading: false, data: null, error: null });
+        return;
+      }
+
+      setSecurityContext((current) => ({ ...current, loading: true, error: null }));
+
       try {
-        const result = await fetchJson('/api/security/me');
+        const result = await fetchJson('/api/security/me', authSession);
         if (!cancelled) setSecurityContext({ loading: false, data: result, error: null });
       } catch (error) {
         if (!cancelled) setSecurityContext({ loading: false, data: null, error: error instanceof Error ? error.message : 'Unable to load security context' });
@@ -668,12 +697,28 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [authSession?.sessionToken]);
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadStatus() {
+      if (!hasProjectPulseSession(authSession)) {
+        setApiHealth({ loading: false, data: null, error: null });
+        setDbHealth({ loading: false, data: null, error: null });
+        setSchema({ loading: false, data: null, error: null });
+        setTimesheet({ loading: false, data: null, error: null });
+        setLocationGroups({ loading: false, data: null, error: null });
+        setLocations({ loading: false, data: null, error: null });
+        setUtilizationPolicies({ loading: false, data: null, error: null });
+        setUtilizationTargets({ loading: false, data: null, error: null });
+        setOpenTasks({ loading: false, data: null, error: null });
+        setTimesheetPreferences({ loading: false, data: null, error: null });
+        setCompanyHolidays({ loading: false, data: null, error: null });
+        setRemainingModules({ loading: false, data: null, error: null });
+        return;
+      }
+
       setTimesheet({ loading: true, data: null, error: null });
       setTimesheetPreferences((current) => ({ ...current, loading: true, error: null }));
       setCompanyHolidays((current) => ({ ...current, loading: true, error: null }));
@@ -700,23 +745,23 @@ export default function App() {
           invoicingSummaryResult,
           executiveDashboardResult
         ] = await Promise.all([
-          fetchJson('/health'),
-          fetchJson('/api/db-health'),
-          fetchJson('/api/schema/tables'),
-          fetchJson(`/api/timesheets/week?weekStart=${selectedWeekStart}`),
-          fetchJson('/api/work-location-groups'),
-          fetchJson('/api/work-locations'),
-          fetchJson('/api/utilization/policies'),
-          fetchJson('/api/utilization/targets'),
-          fetchJson(`/api/assignments/open-tasks?weekStart=${selectedWeekStart}`),
-          fetchJson('/api/users/timesheet-preferences'),
-          fetchJson(`/api/holidays?year=${selectedWeekStart.slice(0, 4)}`),
-          fetchJson('/api/project-intake/summary'),
-          fetchJson('/api/project-management/summary'),
-          fetchJson(`/api/resource-scheduling/capacity?weekStart=${selectedWeekStart}`),
-          fetchJson('/api/expenses/summary'),
-          fetchJson('/api/invoicing/summary'),
-          fetchJson('/api/reporting/executive-dashboard')
+          fetchJson('/health', authSession),
+          fetchJson('/api/db-health', authSession),
+          fetchJson('/api/schema/tables', authSession),
+          fetchJson(`/api/timesheets/week?weekStart=${selectedWeekStart}`, authSession),
+          fetchJson('/api/work-location-groups', authSession),
+          fetchJson('/api/work-locations', authSession),
+          fetchJson('/api/utilization/policies', authSession),
+          fetchJson('/api/utilization/targets', authSession),
+          fetchJson(`/api/assignments/open-tasks?weekStart=${selectedWeekStart}`, authSession),
+          fetchJson('/api/users/timesheet-preferences', authSession),
+          fetchJson(`/api/holidays?year=${selectedWeekStart.slice(0, 4)}`, authSession),
+          fetchJson('/api/project-intake/summary', authSession),
+          fetchJson('/api/project-management/summary', authSession),
+          fetchJson(`/api/resource-scheduling/capacity?weekStart=${selectedWeekStart}`, authSession),
+          fetchJson('/api/expenses/summary', authSession),
+          fetchJson('/api/invoicing/summary', authSession),
+          fetchJson('/api/reporting/executive-dashboard', authSession)
         ]);
 
         if (!cancelled) {
@@ -768,7 +813,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [selectedWeekStart]);
+  }, [selectedWeekStart, authSession?.sessionToken]);
 
   useEffect(() => {
     const categories = timesheet.data?.nonProjectCategories ?? [];
@@ -1534,7 +1579,6 @@ export default function App() {
   function removeRow(rowId) {
     if (!isAnyDayEditable) return;
 
-    hideRowForCurrentWeek(rowId);
     hideRowForCurrentWeek(rowId);
     setActiveRows((current) => current.filter((row) => row.id !== rowId));
     setEntries((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !key.startsWith(`${rowId}|`))));

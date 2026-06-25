@@ -3014,3 +3014,568 @@ html[data-theme="dark"] .profile-settings-actions {
     grid-template-columns: 1fr;
   }
 }
+
+
+/* 019M-C.2 approval route and pending badge fixes */
+body:not([data-project-pulse-route="manager-approval"]) .manager-approval-shell {
+  display: none !important;
+}
+
+.nav-pending-badge,
+.workspace-pending-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #dc2626;
+  color: #ffffff;
+  font-size: 0.78rem;
+  font-weight: 900;
+  line-height: 1.35;
+  box-shadow: 0 6px 18px rgba(220, 38, 38, 0.28);
+}
+
+.nav-pending-badge strong,
+.workspace-pending-badge strong {
+  color: #ffffff;
+}
+
+
+/* 019M-C.2 global professional UI polish */
+:root {
+  --pulse-page-bg: #f3f6fb;
+  --pulse-card-bg: rgba(255, 255, 255, 0.94);
+  --pulse-card-border: rgba(148, 163, 184, 0.28);
+  --pulse-card-shadow: 0 20px 55px rgba(15, 23, 42, 0.08);
+  --pulse-card-shadow-soft: 0 12px 32px rgba(15, 23, 42, 0.06);
+  --pulse-text: #172033;
+  --pulse-muted: #5f6f8f;
+  --pulse-blue: #0b4f9f;
+  --pulse-blue-strong: #0b63ce;
+  --pulse-blue-soft: rgba(11, 99, 206, 0.1);
+  --pulse-radius-xl: 24px;
+  --pulse-radius-lg: 18px;
+  --pulse-radius-md: 12px;
+}
+
+[data-theme="dark"] {
+  --pulse-page-bg: #0f172a;
+  --pulse-card-bg: rgba(15, 23, 42, 0.82);
+  --pulse-card-border: rgba(71, 85, 105, 0.72);
+  --pulse-card-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+  --pulse-card-shadow-soft: 0 14px 34px rgba(0, 0, 0, 0.28);
+  --pulse-text: #f8fafc;
+  --pulse-muted: #cbd5e1;
+  --pulse-blue: #60a5fa;
+  --pulse-blue-strong: #93c5fd;
+  --pulse-blue-soft: rgba(96, 165, 250, 0.14);
+}
+
+body {
+  background: var(--pulse-page-bg);
+}
+
+/* Global card consistency across Project Pulse pages */
+.section-heading,
+.user-admin-create-card,
+.user-admin-bulk-card,
+.user-admin-list-card,
+.user-admin-card,
+.manager-approval-shell,
+.manager-approval-card,
+.project-allocation-card,
+.project-info-card,
+.utilization-card,
+.yearly-utilization-card,
+.dashboard-card,
+.workspace-card,
+.module-card,
+.panel-card,
+.admin-card,
+.azure-admin-card,
+.role-admin-card,
+.holiday-admin-card,
+.timesheet-panel,
+.timesheet-card,
+.resource-card,
+.workflow-card {
+  border-radius: var(--pulse-radius-xl);
+  border: 1px solid var(--pulse-card-border);
+  background: var(--pulse-card-bg);
+  box-shadow: var(--pulse-card-shadow-soft);
+}
+
+.section-heading {
+  padding: 24px 28px;
+}
+
+.section-heading h1,
+.section-heading h2,
+.user-admin-card h2,
+.user-admin-create-card h2,
+.manager-approval-shell h2,
+.manager-approval-shell h1 {
+  color: var(--pulse-text);
+  letter-spacing: -0.035em;
+}
+
+.section-copy,
+.muted,
+.user-admin-helper-text {
+  color: var(--pulse-muted);
+}
+
+.eyebrow {
+  color: var(--pulse-blue);
+  font-weight: 900;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+/* Global form consistency */
+input,
+select,
+textarea {
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.48);
+  background: rgba(255, 255, 255, 0.86);
+  color: var(--pulse-text);
+  min-height: 42px;
+  padding: 10px 12px;
+}
+
+[data-theme="dark"] input,
+[data-theme="dark"] select,
+[data-theme="dark"] textarea {
+  background: rgba(15, 23, 42, 0.72);
+  color: var(--pulse-text);
+  border-color: rgba(100, 116, 139, 0.72);
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: 3px solid rgba(37, 99, 235, 0.18);
+  border-color: #2563eb;
+}
+
+/* Professional primary/secondary actions */
+.primary-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 42px;
+  border: 0;
+  border-radius: 12px;
+  padding: 10px 18px;
+  background: linear-gradient(135deg, #075fc8, #0b4f9f);
+  color: #ffffff;
+  font-weight: 900;
+  box-shadow: 0 12px 24px rgba(11, 79, 159, 0.24);
+}
+
+.secondary-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  border-radius: 999px;
+  padding: 9px 16px;
+  border: 1px solid rgba(148, 163, 184, 0.42);
+  background: rgba(248, 250, 252, 0.82);
+  color: #42526e;
+  font-weight: 800;
+}
+
+[data-theme="dark"] .secondary-action {
+  background: rgba(30, 41, 59, 0.84);
+  color: #dbeafe;
+  border-color: rgba(100, 116, 139, 0.72);
+}
+
+/* User Admin create-local-user redesign */
+.user-admin-create-card {
+  padding: 0;
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+
+.user-admin-create-hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+  padding: 28px 32px;
+  border-bottom: 1px solid var(--pulse-card-border);
+  background:
+    radial-gradient(circle at top left, rgba(11, 99, 206, 0.1), transparent 32%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.78));
+}
+
+[data-theme="dark"] .user-admin-create-hero {
+  background:
+    radial-gradient(circle at top left, rgba(96, 165, 250, 0.16), transparent 32%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.88), rgba(30, 41, 59, 0.72));
+}
+
+.user-admin-create-hero h2 {
+  margin: 6px 0 8px;
+}
+
+.user-admin-local-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr);
+  gap: 18px;
+  padding: 22px;
+}
+
+.user-admin-context-card {
+  padding: 22px;
+  border-radius: 20px;
+  border: 1px solid var(--pulse-card-border);
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: var(--pulse-card-shadow-soft);
+}
+
+[data-theme="dark"] .user-admin-context-card {
+  background: rgba(15, 23, 42, 0.62);
+}
+
+.user-admin-context-card.compact-card {
+  align-self: stretch;
+}
+
+.roles-card-wide {
+  grid-column: 1 / -1;
+}
+
+.context-card-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.context-card-heading h3 {
+  margin: 2px 0 0;
+  color: var(--pulse-text);
+  letter-spacing: -0.025em;
+}
+
+.context-card-icon {
+  width: 42px;
+  height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  background: var(--pulse-blue-soft);
+  color: var(--pulse-blue);
+  font-size: 1.15rem;
+}
+
+.user-admin-create-grid.compact {
+  display: grid;
+  grid-template-columns: minmax(140px, 0.32fr) minmax(220px, 1fr);
+  gap: 12px 16px;
+  align-items: center;
+}
+
+.user-admin-create-grid.compact label {
+  font-weight: 900;
+  color: var(--pulse-text);
+}
+
+.user-admin-role-grid.compact-role-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.role-option {
+  border-radius: 16px;
+  border: 1px solid var(--pulse-card-border);
+  background: rgba(255, 255, 255, 0.78);
+  padding: 16px;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+}
+
+[data-theme="dark"] .role-option {
+  background: rgba(15, 23, 42, 0.58);
+}
+
+.role-option.active {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.role-option:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--pulse-card-shadow-soft);
+}
+
+/* Consistent admin/workspace page spacing */
+.user-admin-shell,
+.manager-approval-shell,
+.project-allocation-info-shell,
+.yearly-utilization-shell,
+.utilization-shell,
+.role-admin-shell,
+.azure-admin-shell,
+.holiday-admin-shell,
+.workflow-shell,
+.psa-shell {
+  display: grid;
+  gap: 22px;
+}
+
+.user-admin-layout {
+  gap: 22px;
+}
+
+.user-admin-bulk-card,
+.user-admin-list-card,
+.user-admin-card {
+  padding: 24px;
+}
+
+/* Pending approval badge style */
+.nav-pending-badge,
+.workspace-pending-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #dc2626;
+  color: #ffffff;
+  font-size: 0.78rem;
+  font-weight: 900;
+  line-height: 1.35;
+  box-shadow: 0 8px 20px rgba(220, 38, 38, 0.28);
+}
+
+.nav-pending-badge strong,
+.workspace-pending-badge strong {
+  color: #ffffff;
+}
+
+/* Login page consistency */
+.auth-shell,
+.login-shell {
+  background:
+    radial-gradient(circle at top left, rgba(11, 99, 206, 0.12), transparent 34%),
+    linear-gradient(135deg, #f8fafc, #edf2f7);
+}
+
+[data-theme="dark"] .auth-shell,
+[data-theme="dark"] .login-shell {
+  background:
+    radial-gradient(circle at top left, rgba(96, 165, 250, 0.16), transparent 34%),
+    linear-gradient(135deg, #0f172a, #111827);
+}
+
+.auth-card,
+.login-card {
+  border-radius: var(--pulse-radius-xl);
+  border: 1px solid var(--pulse-card-border);
+  background: var(--pulse-card-bg);
+  box-shadow: var(--pulse-card-shadow);
+}
+
+/* Mobile responsiveness */
+@media (max-width: 980px) {
+  .user-admin-local-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .user-admin-create-hero {
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 720px) {
+  .user-admin-create-grid.compact {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+/* 019M-C.2 compact bulk update redesign */
+.compact-bulk-card {
+  padding: 0;
+  overflow: hidden;
+  margin-bottom: 22px;
+}
+
+.bulk-collapsible-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 22px 26px;
+}
+
+.bulk-collapsible-header h2 {
+  margin: 4px 0 8px;
+}
+
+.bulk-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 360px;
+}
+
+.bulk-selection-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 8px 13px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.38);
+  background: rgba(248, 250, 252, 0.86);
+  color: #64748b;
+  font-weight: 900;
+}
+
+.bulk-selection-pill.active {
+  background: rgba(11, 99, 206, 0.1);
+  border-color: rgba(11, 99, 206, 0.35);
+  color: #0b4f9f;
+}
+
+.bulk-update-body {
+  border-top: 1px solid var(--pulse-card-border);
+  padding: 20px 24px 24px;
+  background: rgba(248, 250, 252, 0.48);
+}
+
+[data-theme="dark"] .bulk-update-body {
+  background: rgba(15, 23, 42, 0.35);
+}
+
+.bulk-selection-context {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  background: rgba(255, 255, 255, 0.82);
+  color: var(--pulse-muted);
+}
+
+[data-theme="dark"] .bulk-selection-context {
+  background: rgba(15, 23, 42, 0.65);
+}
+
+.bulk-selection-context strong {
+  display: inline-flex;
+  min-width: 32px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #0b63ce;
+  color: #ffffff;
+}
+
+.compact-bulk-grid {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.32fr) minmax(260px, 1fr);
+  gap: 12px 16px;
+  align-items: center;
+  max-width: 980px;
+}
+
+.compact-bulk-grid .checkbox-row {
+  font-weight: 900;
+}
+
+.compact-bulk-grid .checkbox-row input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+  padding: 0;
+}
+
+.compact-bulk-roles {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--pulse-card-border);
+  display: grid;
+  gap: 16px;
+}
+
+.primary-action:disabled,
+.secondary-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  box-shadow: none;
+}
+
+@media (max-width: 920px) {
+  .bulk-collapsible-header {
+    flex-direction: column;
+  }
+
+  .bulk-header-actions {
+    justify-content: flex-start;
+    min-width: 0;
+  }
+
+  .compact-bulk-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+/* 019M-C.2 final inline role dropdown */
+.user-admin-card select {
+  width: 100%;
+}
+
+.user-admin-helper-text {
+  margin: 8px 0 14px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(11, 99, 206, 0.08);
+  border: 1px solid rgba(11, 99, 206, 0.16);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+[data-theme="dark"] .user-admin-helper-text {
+  background: rgba(96, 165, 250, 0.12);
+  border-color: rgba(96, 165, 250, 0.24);
+}
+
+
+/* 019M-C.2 selected user inline role dropdown final */
+.user-admin-card select {
+  width: 100%;
+}
+
+.user-admin-helper-text {
+  margin: 8px 0 14px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(11, 99, 206, 0.08);
+  border: 1px solid rgba(11, 99, 206, 0.16);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+[data-theme="dark"] .user-admin-helper-text {
+  background: rgba(96, 165, 250, 0.12);
+  border-color: rgba(96, 165, 250, 0.24);
+}
