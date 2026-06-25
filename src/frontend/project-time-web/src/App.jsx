@@ -3485,7 +3485,7 @@ Analytics - Variphy / Infortel`}
                   placeholder="0.00"
                   autoFocus
                   disabled={!selectedEntryIsEditable}
-                  disabled={!selectedEntryIsEditable}
+                  
                   onChange={(event) => updateEntry(selectedCell.rowId, selectedCell.date, selectedCell.type, { hours: event.target.value })}
                 />
               </label>
@@ -3495,7 +3495,7 @@ Analytics - Variphy / Infortel`}
                   value={selectedEntry.comment}
                   placeholder="Enter the reportable comment for this time entry."
                   disabled={!selectedEntryIsEditable}
-                  disabled={!selectedEntryIsEditable}
+                  
                   onChange={(event) => updateEntry(selectedCell.rowId, selectedCell.date, selectedCell.type, { comment: event.target.value })}
                 />
 
@@ -3550,7 +3550,7 @@ Analytics - Variphy / Infortel`}
                 <select
                   value={selectedEntry.workLocationGroupId}
                   disabled={!selectedEntryIsEditable}
-                  disabled={!selectedEntryIsEditable}
+                  
                   onChange={(event) => updateEntry(selectedCell.rowId, selectedCell.date, selectedCell.type, { workLocationGroupId: event.target.value })}
                 >
                   {(locationGroups.data?.groups ?? []).map((group) => (
@@ -3563,7 +3563,7 @@ Analytics - Variphy / Infortel`}
                 <select
                   value={selectedEntry.workLocationId}
                   disabled={!selectedEntryIsEditable}
-                  disabled={!selectedEntryIsEditable}
+                  
                   onChange={(event) => updateEntry(selectedCell.rowId, selectedCell.date, selectedCell.type, { workLocationId: event.target.value })}
                 >
                   {(locations.data?.locations ?? []).map((location) => (

@@ -3077,8 +3077,9 @@ app.MapPost("/api/auth/password-reset/complete", async (PasswordResetCompletionR
 
     try
     {
-        var completedByEmail = GetProjectPulseSessionEmail(httpContext)
-            ?? (string.IsNullOrWhiteSpace(request.ActionByEmail) ? "unknown" : request.ActionByEmail.Trim().ToLowerInvariant());
+        var completedByEmail = string.IsNullOrWhiteSpace(request.ActionByEmail)
+            ? "unknown"
+            : request.ActionByEmail.Trim().ToLowerInvariant();
 
         Guid userId;
         string accountEmail;
@@ -9503,6 +9504,7 @@ record ProjectPulseImportSettingsUpdateRequest(
 record ProjectPulseCreatedSession(Guid SessionId, string RawToken, DateTimeOffset ExpiresAt);
 internal sealed record ProjectPulseSessionValidation(bool IsValid, Guid? UserId, string? Email, string? ProviderCode, DateTimeOffset? ExpiresAt, string? Message);
 
+internal sealed record PasswordResetCompletionRequest(Guid ResetRequestId, string TemporaryPassword, string? ActionByEmail, string? Notes);
 internal sealed record PasswordResetApprovalAction(Guid ResetRequestId, string? ActionByEmail, string? Notes);
 
 internal sealed record PasswordResetRequest(string Username, string? Notes);
