@@ -3573,8 +3573,10 @@ app.MapGet("/api/admin/azure/users", async (HttpContext httpContext) =>
         FROM app_users u
         LEFT JOIN app_user_role_assignments ura ON ura.user_id = u.user_id AND ura.is_active = TRUE
         LEFT JOIN app_roles r ON r.app_role_id = ura.app_role_id AND r.is_active = TRUE
-        WHERE u.source_provider = 'ENTRA_ID'
+        WHERE COALESCE(u.source_provider, '') IN ('ENTRA_ID', 'ENTRA_ID_TEST')
            OR lower(u.email) LIKE '%@ussignal.com'
+           OR lower(u.email) LIKE '%@onenecklab.com'
+           OR lower(u.email) LIKE '%@onitdemo.com'
         GROUP BY u.user_id, u.email, u.display_name, u.entra_object_id, u.source_provider, u.job_title, u.department_name, u.office_location, u.manager_email, u.login_enabled, u.is_active, u.last_directory_sync_at
         ORDER BY u.display_name, u.email;
         """, connection);
@@ -6307,7 +6309,7 @@ async Task<ProjectPulseEntraImportSettings> ProjectPulseGetEntraImportSettingsAs
     {
         return new ProjectPulseEntraImportSettings(
             "test",
-            "onenecklab.com",
+            "onenecklab.com,onitdemo.com",
             "ENTRA_ID_TEST",
             "ALL_USERS",
             null,
@@ -6371,6 +6373,34 @@ string ProjectPulseNormalizeGraphEmail(JsonElement user)
     var upn = ProjectPulseJsonString(user, "userPrincipalName");
 
     return (mail ?? upn ?? "").Trim().ToLowerInvariant();
+}
+
+string[] ProjectPulseGetTenantDomains(ProjectPulseEntraImportSettings settings)
+{
+    return (settings.TenantDomain ?? "")
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Select(domain => domain.Trim().TrimStart('@').ToLowerInvariant())
+        .Where(domain => !string.IsNullOrWhiteSpace(domain))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+}
+
+bool ProjectPulseEmailMatchesTenantDomains(string? email, ProjectPulseEntraImportSettings settings)
+{
+    if (string.IsNullOrWhiteSpace(email))
+    {
+        return false;
+    }
+
+    var normalizedEmail = email.Trim().ToLowerInvariant();
+    var domains = ProjectPulseGetTenantDomains(settings);
+
+    if (domains.Length == 0)
+    {
+        return false;
+    }
+
+    return domains.Any(domain => normalizedEmail.EndsWith("@" + domain, StringComparison.OrdinalIgnoreCase));
 }
 
 ProjectPulseGraphUser ProjectPulseReadGraphUser(JsonElement user)
@@ -6451,7 +6481,8 @@ async Task<List<ProjectPulseGraphUser>> ProjectPulseFetchGraphUsersAsync(Project
                     continue;
                 }
 
-                if (!graphUser.Email.EndsWith("@" + settings.TenantDomain.Trim().ToLowerInvariant(), StringComparison.OrdinalIgnoreCase))
+                if (!ProjectPulseEmailMatchesTenantDomains(graphUser.Email, settings)
+                    && !ProjectPulseEmailMatchesTenantDomains(graphUser.UserPrincipalName, settings))
                 {
                     continue;
                 }
@@ -6750,13 +6781,13 @@ async Task<int> ProjectPulseDeactivateMissingOrDisabledEntraUsersAsync(
                 login_enabled = FALSE,
                 updated_at = NOW()
             WHERE source_provider = @source_provider
-              AND lower(email) LIKE @domain_pattern
+              AND lower(split_part(email, '@', 2)) = ANY(@tenant_domains)
               AND entra_object_id = @entra_object_id
               AND (is_active = TRUE OR login_enabled = TRUE);
             """, connection);
 
         disabledCommand.Parameters.AddWithValue("source_provider", settings.SourceProvider);
-        disabledCommand.Parameters.AddWithValue("domain_pattern", "%@" + settings.TenantDomain.ToLowerInvariant());
+        disabledCommand.Parameters.AddWithValue("tenant_domains", ProjectPulseGetTenantDomains(settings));
         disabledCommand.Parameters.AddWithValue("entra_object_id", user.Id);
 
         var rows = await disabledCommand.ExecuteNonQueryAsync();
@@ -6781,14 +6812,14 @@ async Task<int> ProjectPulseDeactivateMissingOrDisabledEntraUsersAsync(
                 login_enabled = FALSE,
                 updated_at = NOW()
             WHERE source_provider = @source_provider
-              AND lower(email) LIKE @domain_pattern
+              AND lower(split_part(email, '@', 2)) = ANY(@tenant_domains)
               AND entra_object_id IS NOT NULL
               AND NOT (entra_object_id = ANY(@current_ids))
               AND (is_active = TRUE OR login_enabled = TRUE);
             """, connection);
 
         missingCommand.Parameters.AddWithValue("source_provider", settings.SourceProvider);
-        missingCommand.Parameters.AddWithValue("domain_pattern", "%@" + settings.TenantDomain.ToLowerInvariant());
+        missingCommand.Parameters.AddWithValue("tenant_domains", ProjectPulseGetTenantDomains(settings));
         missingCommand.Parameters.AddWithValue("current_ids", currentIds);
 
         deactivated += await missingCommand.ExecuteNonQueryAsync();
@@ -7186,20 +7217,29 @@ app.MapPost("/api/admin/azure/import-settings", async (HttpContext httpContext, 
         return Results.Json(new { status = "access_denied", message = "Azure Admin is restricted to administrators." }, statusCode: StatusCodes.Status403Forbidden);
     }
 
-    var environmentMode = request.EnvironmentMode.Trim().ToLowerInvariant();
-    var tenantDomain = request.TenantDomain.Trim().ToLowerInvariant();
-    var sourceProvider = request.SourceProvider.Trim().ToUpperInvariant();
-    var importSourceType = request.ImportSourceType.Trim().ToUpperInvariant();
-    var defaultRoleCode = request.DefaultRoleCode.Trim().ToUpperInvariant();
+    var environmentMode = (request.EnvironmentMode ?? "test").Trim().ToLowerInvariant();
+    var tenantDomain = (request.TenantDomain ?? "").Trim().ToLowerInvariant();
+    var sourceProvider = (request.SourceProvider ?? "ENTRA_ID_TEST").Trim().ToUpperInvariant();
+    var importSourceType = (request.ImportSourceType ?? "ALL_USERS").Trim().ToUpperInvariant();
+    var defaultRoleCode = (request.DefaultRoleCode ?? "ENGINEER").Trim().ToUpperInvariant();
 
     if (environmentMode == "production")
     {
         tenantDomain = "ussignal.com";
         sourceProvider = "ENTRA_ID";
     }
+    else if (environmentMode == "custom")
+    {
+        if (string.IsNullOrWhiteSpace(tenantDomain))
+        {
+            return Results.BadRequest(new { status = "validation_failed", message = "Tenant domain is required when using Create New." });
+        }
+
+        sourceProvider = string.IsNullOrWhiteSpace(sourceProvider) ? "ENTRA_ID_TEST" : sourceProvider;
+    }
     else
     {
-        tenantDomain = "onenecklab.com";
+        tenantDomain = "onenecklab.com,onitdemo.com";
         sourceProvider = "ENTRA_ID_TEST";
         environmentMode = "test";
     }
@@ -7294,6 +7334,20 @@ app.MapPost("/api/admin/azure/users/preview", async (HttpContext httpContext) =>
 
     var graphUsers = await ProjectPulseFetchGraphUsersAsync(settings);
 
+    var candidateEmails = graphUsers
+        .SelectMany(user => new[] { user.Email, user.UserPrincipalName })
+        .Where(value => !string.IsNullOrWhiteSpace(value))
+        .Select(value => value!.Trim().ToLowerInvariant())
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+
+    var candidateObjectIds = graphUsers
+        .Select(user => user.Id)
+        .Where(value => !string.IsNullOrWhiteSpace(value))
+        .Select(value => value!.Trim())
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+
     var imported = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
 
     await using (var importedCommand = new NpgsqlCommand("""
@@ -7302,30 +7356,37 @@ app.MapPost("/api/admin/azure/users/preview", async (HttpContext httpContext) =>
                display_name,
                is_active,
                login_enabled,
-               source_provider
+               source_provider,
+               last_directory_sync_at
         FROM app_users
-        WHERE source_provider = @source_provider
-          AND lower(email) LIKE @domain_pattern;
+        WHERE COALESCE(source_provider, '') IN ('ENTRA_ID', 'ENTRA_ID_TEST')
+           OR lower(email) = ANY(@candidate_emails)
+           OR COALESCE(entra_object_id, '') = ANY(@candidate_object_ids);
         """, connection))
     {
-        importedCommand.Parameters.AddWithValue("source_provider", settings.SourceProvider);
-        importedCommand.Parameters.AddWithValue("domain_pattern", "%@" + settings.TenantDomain.ToLowerInvariant());
+        importedCommand.Parameters.AddWithValue("candidate_emails", candidateEmails);
+        importedCommand.Parameters.AddWithValue("candidate_object_ids", candidateObjectIds);
 
         await using var reader = await importedCommand.ExecuteReaderAsync();
 
         while (await reader.ReadAsync())
         {
+            var snapshot = new
+            {
+                email = reader.GetString(1),
+                displayName = reader.GetString(2),
+                isActive = reader.GetBoolean(3),
+                loginEnabled = reader.GetBoolean(4),
+                sourceProvider = reader.GetString(5),
+                lastDirectorySyncAt = reader.IsDBNull(6) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(6)
+            };
+
             if (!reader.IsDBNull(0))
             {
-                imported[reader.GetString(0)] = new
-                {
-                    email = reader.GetString(1),
-                    displayName = reader.GetString(2),
-                    isActive = reader.GetBoolean(3),
-                    loginEnabled = reader.GetBoolean(4),
-                    sourceProvider = reader.GetString(5)
-                };
+                imported[reader.GetString(0)] = snapshot;
             }
+
+            imported[reader.GetString(1)] = snapshot;
         }
     }
 
@@ -7360,7 +7421,16 @@ app.MapPost("/api/admin/azure/users/preview", async (HttpContext httpContext) =>
             user.Department,
             user.OfficeLocation,
             user.AccountEnabled,
-            alreadyImported = imported.ContainsKey(user.Id),
+            alreadyImported =
+                (!string.IsNullOrWhiteSpace(user.Id) && imported.ContainsKey(user.Id)) ||
+                (!string.IsNullOrWhiteSpace(user.Email) && imported.ContainsKey(user.Email)) ||
+                (!string.IsNullOrWhiteSpace(user.UserPrincipalName) && imported.ContainsKey(user.UserPrincipalName)),
+            importStatus =
+                ((!string.IsNullOrWhiteSpace(user.Id) && imported.ContainsKey(user.Id)) ||
+                 (!string.IsNullOrWhiteSpace(user.Email) && imported.ContainsKey(user.Email)) ||
+                 (!string.IsNullOrWhiteSpace(user.UserPrincipalName) && imported.ContainsKey(user.UserPrincipalName)))
+                    ? "Already imported"
+                    : "Ready to import",
             willBeInactive = !user.AccountEnabled
         })
     });

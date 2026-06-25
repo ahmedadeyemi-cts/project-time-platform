@@ -3579,3 +3579,213 @@ textarea:focus {
   background: rgba(96, 165, 250, 0.12);
   border-color: rgba(96, 165, 250, 0.24);
 }
+
+
+/* 019M-D filtered Azure import and sync tracking */
+.azure-admin-workspace {
+  display: grid;
+  gap: 22px;
+}
+
+.azure-admin-heading-actions,
+.azure-admin-action-row,
+.azure-selection-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.azure-card-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.azure-admin-status-banner {
+  margin: 16px 0;
+  padding: 14px 18px;
+  border-radius: 16px;
+  border: 1px solid rgba(11, 99, 206, 0.2);
+  background: rgba(11, 99, 206, 0.08);
+  color: var(--pulse-text);
+  font-weight: 800;
+}
+
+.azure-admin-form-grid,
+.azure-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+  align-items: end;
+}
+
+.azure-admin-form-grid label,
+.azure-filter-grid label {
+  display: grid;
+  gap: 7px;
+  font-weight: 900;
+  color: var(--pulse-text);
+}
+
+.azure-filter-checkbox {
+  align-self: center;
+  display: flex !important;
+  align-items: center;
+  gap: 10px !important;
+  min-height: 44px;
+}
+
+.azure-checkbox-row input[type="checkbox"],
+.azure-filter-checkbox input[type="checkbox"],
+.azure-preview-table input[type="checkbox"] {
+  min-height: 18px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+}
+
+.azure-sync-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.azure-sync-facts span {
+  display: grid;
+  gap: 4px;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid var(--pulse-card-border);
+  background: rgba(248, 250, 252, 0.74);
+}
+
+[data-theme="dark"] .azure-sync-facts span {
+  background: rgba(15, 23, 42, 0.58);
+}
+
+.azure-sync-facts strong {
+  color: var(--pulse-muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.azure-preview-table {
+  overflow-x: auto;
+  border-radius: 18px;
+  border: 1px solid var(--pulse-card-border);
+  margin-top: 16px;
+}
+
+.azure-preview-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.azure-preview-table th,
+.azure-preview-table td {
+  padding: 13px 14px;
+  text-align: left;
+  border-bottom: 1px solid var(--pulse-card-border);
+  vertical-align: middle;
+}
+
+.azure-preview-table th {
+  color: var(--pulse-muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  background: rgba(248, 250, 252, 0.78);
+}
+
+[data-theme="dark"] .azure-preview-table th {
+  background: rgba(15, 23, 42, 0.78);
+}
+
+.azure-preview-table td strong,
+.azure-sync-run-row strong {
+  display: block;
+  color: var(--pulse-text);
+}
+
+.azure-preview-table td small,
+.azure-sync-run-row small,
+.azure-sync-run-row span {
+  display: block;
+  color: var(--pulse-muted);
+  margin-top: 3px;
+}
+
+.imported-directory-table td {
+  white-space: nowrap;
+}
+
+.imported-directory-table td:first-child {
+  white-space: normal;
+  min-width: 220px;
+}
+
+.azure-sync-run-list {
+  display: grid;
+  gap: 12px;
+}
+
+.azure-sync-run-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 15px;
+  border-radius: 16px;
+  border: 1px solid var(--pulse-card-border);
+  background: rgba(255, 255, 255, 0.76);
+}
+
+[data-theme="dark"] .azure-sync-run-row {
+  background: rgba(15, 23, 42, 0.62);
+}
+
+.badge.active {
+  background: rgba(22, 163, 74, 0.12);
+  color: #15803d;
+  border-color: rgba(22, 163, 74, 0.24);
+}
+
+@media (max-width: 920px) {
+  .azure-card-heading,
+  .section-heading {
+    flex-direction: column;
+  }
+
+  .azure-admin-heading-actions,
+  .azure-admin-action-row,
+  .azure-selection-toolbar {
+    justify-content: flex-start;
+  }
+}
+
+
+/* 019M-D tenant profile selector and imported preview status */
+.azure-preview-table input[type="checkbox"]:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.azure-preview-table tr:has(input[type="checkbox"]:disabled) {
+  background: rgba(148, 163, 184, 0.08);
+}
+
+.azure-filter-grid select,
+.azure-admin-form-grid select {
+  width: 100%;
+}
+
+.badge.active {
+  background: rgba(22, 163, 74, 0.12);
+  color: #15803d;
+  border-color: rgba(22, 163, 74, 0.24);
+}

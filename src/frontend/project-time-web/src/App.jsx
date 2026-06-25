@@ -562,7 +562,15 @@ export default function App() {
   const [utilizationTargets, setUtilizationTargets] = useState({ loading: true, data: null, error: null });
   const [currentQuarterUtilization, setCurrentQuarterUtilization] = useState({ loading: true, data: null, error: null });
   const [approvalPendingCount, setApprovalPendingCount] = useState(0);
-  const [azureAdminData, setAzureAdminData] = useState({ loading: false, config: null, users: [], runs: [], error: null });
+  const [azureAdminData, setAzureAdminData] = useState({
+    loading: false,
+    config: null,
+    importSettings: null,
+    users: [],
+    runs: [],
+    roles: [],
+    error: null
+  });
   const [azureConfigDraft, setAzureConfigDraft] = useState({
     tenantId: '',
     clientId: '',
@@ -573,7 +581,24 @@ export default function App() {
     defaultRoleCode: 'ENGINEER',
     syncFrequencyHours: 24
   });
-  const [azureImportText, setAzureImportText] = useState('[\n  {\n    "email": "new.engineer@ussignal.com",\n    "displayName": "New Engineer",\n    "jobTitle": "Engineer",\n    "departmentName": "Engineering",\n    "officeLocation": "Remote",\n    "managerEmail": "manager@ussignal.com"\n  }\n]');
+  const [azurePreviewUsers, setAzurePreviewUsers] = useState([]);
+  const [selectedAzurePreviewKeys, setSelectedAzurePreviewKeys] = useState([]);
+  const [azurePreviewLoading, setAzurePreviewLoading] = useState(false);
+  const [azureTenantProfile, setAzureTenantProfile] = useState('onenecklab');
+  const [customAzureTenantDomain, setCustomAzureTenantDomain] = useState('');
+  const [customAzureTenantName, setCustomAzureTenantName] = useState('');
+  const [azureImportFilters, setAzureImportFilters] = useState({
+    searchText: '',
+    domain: 'all',
+    departmentName: '',
+    includeExisting: false,
+    onlyEnabled: true
+  });
+  const [azureDirectoryFilters, setAzureDirectoryFilters] = useState({
+    searchText: '',
+    sourceProvider: 'entra',
+    syncState: 'all'
+  });
   const [azureAdminStatus, setAzureAdminStatus] = useState('Ready');
 
   const [activeRows, setActiveRows] = useState([]);
@@ -1260,14 +1285,260 @@ export default function App() {
 
 
 
+  function getAzurePreviewKey(user) {
+    return String(
+      user.previewKey ??
+      user.entraObjectId ??
+      user.id ??
+      user.userId ??
+      user.userPrincipalName ??
+      user.mail ??
+      user.email ??
+      ''
+    ).toLowerCase();
+  }
+
+  function normalizeAzurePreviewUser(user) {
+    const email = user.email ?? user.mail ?? user.userPrincipalName ?? user.upn ?? '';
+    return {
+      ...user,
+      previewKey: getAzurePreviewKey(user),
+      email,
+      displayName: user.displayName ?? user.name ?? email,
+      jobTitle: user.jobTitle ?? '',
+      departmentName: user.departmentName ?? user.department ?? '',
+      officeLocation: user.officeLocation ?? user.location ?? '',
+      managerEmail: user.managerEmail ?? '',
+      accountEnabled: user.accountEnabled ?? user.enabled ?? true,
+      importStatus: user.importStatus ?? user.status ?? 'Ready to import'
+    };
+  }
+
+  function getImportedEmailSet() {
+    return new Set((azureAdminData.users ?? []).map((user) => String(user.email ?? '').toLowerCase()));
+  }
+
+  function getFilteredAzurePreviewUsers() {
+    const importedEmailSet = getImportedEmailSet();
+    const searchText = azureImportFilters.searchText.trim().toLowerCase();
+    const departmentName = azureImportFilters.departmentName.trim().toLowerCase();
+
+    return azurePreviewUsers.filter((user) => {
+      const email = String(user.email ?? '').toLowerCase();
+      const displayName = String(user.displayName ?? '').toLowerCase();
+      const jobTitle = String(user.jobTitle ?? '').toLowerCase();
+      const department = String(user.departmentName ?? '').toLowerCase();
+      const imported = isAzurePreviewUserAlreadyImported(user);
+
+      if (!azureImportFilters.includeExisting && imported) return false;
+      if (azureImportFilters.onlyEnabled && user.accountEnabled === false) return false;
+      if (azureImportFilters.domain !== 'all' && !email.endsWith(`@${azureImportFilters.domain}`)) return false;
+      if (departmentName && !department.includes(departmentName)) return false;
+      if (searchText && !`${displayName} ${email} ${jobTitle} ${department}`.includes(searchText)) return false;
+
+      return true;
+    });
+  }
+
+  function getFilteredAzureDirectoryUsers() {
+    const searchText = azureDirectoryFilters.searchText.trim().toLowerCase();
+
+    return (azureAdminData.users ?? []).filter((user) => {
+      const sourceProvider = String(user.sourceProvider ?? '').toUpperCase();
+      const email = String(user.email ?? '').toLowerCase();
+      const displayName = String(user.displayName ?? '').toLowerCase();
+      const department = String(user.departmentName ?? '').toLowerCase();
+      const roles = (user.roleNames ?? []).join(' ').toLowerCase();
+      const hasSyncDate = Boolean(user.lastDirectorySyncAt);
+
+      if (azureDirectoryFilters.sourceProvider === 'entra' && !['ENTRA_ID', 'ENTRA_ID_TEST'].includes(sourceProvider)) {
+        return false;
+      }
+
+      if (
+        azureDirectoryFilters.sourceProvider !== 'all' &&
+        azureDirectoryFilters.sourceProvider !== 'entra' &&
+        sourceProvider !== azureDirectoryFilters.sourceProvider
+      ) {
+        return false;
+      }
+
+      if (azureDirectoryFilters.syncState === 'synced' && !hasSyncDate) return false;
+      if (azureDirectoryFilters.syncState === 'not_synced' && hasSyncDate) return false;
+      if (azureDirectoryFilters.syncState === 'disabled' && user.loginEnabled && user.isActive) return false;
+      if (searchText && !`${displayName} ${email} ${department} ${roles}`.includes(searchText)) return false;
+
+      return true;
+    });
+  }
+
+  function getAzureUserSyncLabel(user) {
+    const sourceProvider = String(user.sourceProvider ?? '').toUpperCase();
+
+    if (sourceProvider === 'ENTRA_ID') {
+      return user.lastDirectorySyncAt ? 'Production Entra synced' : 'Production Entra imported / sync pending';
+    }
+
+    if (sourceProvider === 'ENTRA_ID_TEST') {
+      return user.lastDirectorySyncAt ? 'Test Entra synced' : 'Test Entra imported / sync pending';
+    }
+
+    return 'Local app user';
+  }
+
+  function getAzureUserDomain(email) {
+    const value = String(email ?? '');
+    const index = value.lastIndexOf('@');
+    return index >= 0 ? value.slice(index + 1).toLowerCase() : 'unknown';
+  }
+
+  function getStoredAzureTenantProfiles() {
+    try {
+      return JSON.parse(localStorage.getItem('projectPulseAzureTenantProfiles') ?? '{}');
+    } catch {
+      return {};
+    }
+  }
+
+  function saveStoredAzureTenantProfile(profileKey, profilePayload) {
+    const existing = getStoredAzureTenantProfiles();
+    localStorage.setItem('projectPulseAzureTenantProfiles', JSON.stringify({
+      ...existing,
+      [profileKey]: profilePayload
+    }));
+  }
+
+  function getAzureProfileDefaults(profile) {
+    if (profile === 'ussignal') {
+      return {
+        tenantName: 'US Signal Production',
+        tenantDomain: 'ussignal.com',
+        sourceProvider: 'ENTRA_ID',
+        environmentMode: 'production',
+        config: {
+          tenantId: '',
+          clientId: '',
+          authorityUrl: '',
+          redirectUri: '',
+          graphScope: 'User.Read.All Directory.Read.All',
+          syncEnabled: false,
+          defaultRoleCode: 'ENGINEER',
+          syncFrequencyHours: 24
+        },
+        domainFilter: 'ussignal.com'
+      };
+    }
+
+    if (profile === 'custom') {
+      return {
+        tenantName: customAzureTenantName || 'Create New',
+        tenantDomain: customAzureTenantDomain || '',
+        sourceProvider: 'ENTRA_ID_TEST',
+        environmentMode: 'custom',
+        config: {
+          tenantId: '',
+          clientId: '',
+          authorityUrl: '',
+          redirectUri: '',
+          graphScope: 'User.Read.All Directory.Read.All',
+          syncEnabled: false,
+          defaultRoleCode: 'ENGINEER',
+          syncFrequencyHours: 24
+        },
+        domainFilter: 'all'
+      };
+    }
+
+    return {
+      tenantName: 'OneNeck Lab',
+      tenantDomain: 'onenecklab.com,onitdemo.com',
+      sourceProvider: 'ENTRA_ID_TEST',
+      environmentMode: 'test',
+      config: {
+        tenantId: '',
+        clientId: '',
+        authorityUrl: '',
+        redirectUri: 'https://projectpulse-test.onenecklab.com/auth/callback',
+        graphScope: 'User.Read.All Directory.Read.All',
+        syncEnabled: true,
+        defaultRoleCode: 'ENGINEER',
+        syncFrequencyHours: 24
+      },
+      domainFilter: 'all'
+    };
+  }
+
+  function getAzureTenantProfilePayload() {
+    const defaults = getAzureProfileDefaults(azureTenantProfile);
+
+    return {
+      environmentMode: defaults.environmentMode,
+      tenantDomain: defaults.tenantDomain,
+      sourceProvider: defaults.sourceProvider,
+      tenantName: defaults.tenantName
+    };
+  }
+
+  function applyAzureTenantProfile(profile) {
+    setAzureTenantProfile(profile);
+
+    const stored = getStoredAzureTenantProfiles();
+    const defaults = getAzureProfileDefaults(profile);
+    const profilePayload = stored[profile] ?? defaults;
+
+    setAzureConfigDraft((current) => ({
+      ...current,
+      ...defaults.config,
+      ...(profilePayload.config ?? {})
+    }));
+
+    setCustomAzureTenantName(profilePayload.tenantName ?? defaults.tenantName ?? '');
+    setCustomAzureTenantDomain(profilePayload.tenantDomain ?? defaults.tenantDomain ?? '');
+
+    setAzureImportFilters((current) => ({
+      ...current,
+      domain: profilePayload.domainFilter ?? defaults.domainFilter ?? 'all'
+    }));
+
+    setAzurePreviewUsers([]);
+    setSelectedAzurePreviewKeys([]);
+  }
+
+  function isAzurePreviewUserAlreadyImported(user) {
+    const importedEmailSet = getImportedEmailSet();
+    const email = String(user.email ?? '').toLowerCase();
+
+    return Boolean(user.alreadyImported) || importedEmailSet.has(email);
+  }
+
+  function toggleAzurePreviewUser(previewKey) {
+    setSelectedAzurePreviewKeys((current) => (
+      current.includes(previewKey)
+        ? current.filter((key) => key !== previewKey)
+        : [...current, previewKey]
+    ));
+  }
+
+  function toggleAllFilteredAzurePreviewUsers() {
+    const filteredKeys = getFilteredAzurePreviewUsers()
+      .filter((user) => !isAzurePreviewUserAlreadyImported(user))
+      .map((user) => user.previewKey)
+      .filter(Boolean);
+    const allSelected = filteredKeys.length > 0 && filteredKeys.every((key) => selectedAzurePreviewKeys.includes(key));
+
+    setSelectedAzurePreviewKeys(allSelected ? [] : Array.from(new Set([...selectedAzurePreviewKeys, ...filteredKeys])));
+  }
+
   async function loadAzureAdmin() {
     setAzureAdminData((current) => ({ ...current, loading: true, error: null }));
 
     try {
-      const [configResult, usersResult, runsResult] = await Promise.all([
+      const [configResult, usersResult, runsResult, importSettingsResult, rolesResult] = await Promise.all([
         fetchJson('/api/admin/azure/config'),
         fetchJson('/api/admin/azure/users'),
-        fetchJson('/api/admin/azure/sync/runs')
+        fetchJson('/api/admin/azure/sync/runs'),
+        fetchJson('/api/admin/azure/import-settings').catch(() => null),
+        fetchJson('/api/admin/roles').catch(() => ({ roles: [] }))
       ]);
 
       setAzureConfigDraft({
@@ -1281,11 +1552,25 @@ export default function App() {
         syncFrequencyHours: configResult.syncFrequencyHours ?? 24
       });
 
+      const importSettings = importSettingsResult?.settings ?? importSettingsResult;
+      const importTenantDomain = String(importSettings?.tenantDomain ?? '').toLowerCase();
+
+      if (importTenantDomain.includes('ussignal.com')) {
+        setAzureTenantProfile('ussignal');
+      } else if (importTenantDomain.includes('onenecklab.com') || importTenantDomain.includes('onitdemo.com')) {
+        setAzureTenantProfile('onenecklab');
+      } else if (importTenantDomain) {
+        setAzureTenantProfile('custom');
+        setCustomAzureTenantDomain(importTenantDomain);
+      }
+
       setAzureAdminData({
         loading: false,
         config: configResult,
+        importSettings: importSettingsResult,
         users: usersResult.users ?? [],
         runs: runsResult.runs ?? [],
+        roles: rolesResult.roles ?? [],
         error: null
       });
     } catch (error) {
@@ -1310,42 +1595,115 @@ export default function App() {
 
     try {
       const result = await postJson('/api/admin/azure/config', azureConfigDraft);
-      setAzureAdminStatus(result.message ?? 'Azure/Entra configuration saved.');
+      const tenantProfile = getAzureTenantProfilePayload();
+
+      const settingsResult = await postJson('/api/admin/azure/import-settings', {
+        ...tenantProfile,
+        importSourceType: 'ALL_USERS',
+        graphGroupId: '',
+        graphFilter: '',
+        defaultRoleCode: azureConfigDraft.defaultRoleCode || 'ENGINEER',
+        disableMissingFromSource: false
+      });
+
+      saveStoredAzureTenantProfile(azureTenantProfile, {
+        tenantName: azureTenantProfile === 'custom' ? customAzureTenantName : getAzureProfileDefaults(azureTenantProfile).tenantName,
+        tenantDomain: tenantProfile.tenantDomain,
+        sourceProvider: tenantProfile.sourceProvider,
+        environmentMode: tenantProfile.environmentMode,
+        domainFilter: azureImportFilters.domain,
+        config: azureConfigDraft
+      });
+
+      setAzureAdminStatus(settingsResult.message ?? result.message ?? 'Azure/Entra configuration and import profile saved.');
       await loadAzureAdmin();
     } catch (error) {
       setAzureAdminStatus(error instanceof Error ? error.message : 'Unable to save Azure configuration.');
     }
   }
 
-  async function runAzureFoundationSync() {
-    setAzureAdminStatus('Recording Azure/Entra foundation sync run...');
+  async function previewAzureUsers() {
+    setAzurePreviewLoading(true);
+    setAzureAdminStatus('Loading Entra preview users...');
 
     try {
-      const result = await postJson('/api/admin/azure/sync/run', {});
-      setAzureAdminStatus(result.message ?? 'Foundation sync run recorded.');
-      await loadAzureAdmin();
+      const result = await postJson('/api/admin/azure/users/preview', {
+        filters: azureImportFilters,
+        domain: azureImportFilters.domain,
+        searchText: azureImportFilters.searchText,
+        departmentName: azureImportFilters.departmentName,
+        includeExisting: azureImportFilters.includeExisting,
+        onlyEnabled: azureImportFilters.onlyEnabled
+      });
+
+      const rawUsers = result.users ?? result.previewUsers ?? result.candidates ?? result.availableUsers ?? [];
+      const previewUsers = rawUsers.map(normalizeAzurePreviewUser).filter((user) => user.previewKey && user.email);
+
+      setAzurePreviewUsers(previewUsers);
+      setSelectedAzurePreviewKeys([]);
+      setAzureAdminStatus(result.message ?? `Preview loaded with ${previewUsers.length} user(s). Use filters to narrow the import list.`);
     } catch (error) {
-      setAzureAdminStatus(error instanceof Error ? error.message : 'Unable to run Azure sync foundation.');
+      setAzureAdminStatus(error instanceof Error ? error.message : 'Unable to preview Entra users.');
+    } finally {
+      setAzurePreviewLoading(false);
     }
   }
 
-  async function importAzureUsers() {
-    setAzureAdminStatus('Importing Azure/Entra users...');
+  async function importSelectedAzureUsers() {
+    const selectedUsers = azurePreviewUsers.filter((user) => (
+      selectedAzurePreviewKeys.includes(user.previewKey) &&
+      !isAzurePreviewUserAlreadyImported(user)
+    ));
+
+    if (selectedUsers.length === 0) {
+      setAzureAdminStatus('Select at least one preview user before importing.');
+      return;
+    }
+
+    setAzureAdminStatus(`Importing ${selectedUsers.length} selected Entra user(s)...`);
 
     try {
-      const parsed = JSON.parse(azureImportText);
-      const users = Array.isArray(parsed) ? parsed : parsed.users;
+      const payload = {
+        users: selectedUsers,
+        selectedUsers,
+        emails: selectedUsers.map((user) => user.email).filter(Boolean),
+        selectedEmails: selectedUsers.map((user) => user.email).filter(Boolean),
+        userIds: selectedUsers.map((user) => user.id ?? user.userId ?? user.entraObjectId ?? user.email).filter(Boolean),
+        selectedUserIds: selectedUsers.map((user) => user.id ?? user.userId ?? user.entraObjectId ?? user.email).filter(Boolean),
+        entraObjectIds: selectedUsers.map((user) => user.entraObjectId ?? user.id).filter(Boolean),
+        selectedEntraObjectIds: selectedUsers.map((user) => user.entraObjectId ?? user.id).filter(Boolean)
+      };
 
-      if (!Array.isArray(users)) {
-        setAzureAdminStatus('Import JSON must be an array or an object with a users array.');
-        return;
-      }
-
-      const result = await postJson('/api/admin/azure/users/import', { users });
-      setAzureAdminStatus(result.message ?? 'Azure/Entra users imported.');
+      const result = await postJson('/api/admin/azure/users/import-selected', payload);
+      setAzureAdminStatus(result.message ?? `Imported ${selectedUsers.length} selected user(s).`);
+      setSelectedAzurePreviewKeys([]);
       await loadAzureAdmin();
     } catch (error) {
-      setAzureAdminStatus(error instanceof Error ? error.message : 'Unable to import Azure users.');
+      setAzureAdminStatus(error instanceof Error ? error.message : 'Unable to import selected Entra users.');
+    }
+  }
+
+  async function runAzureFoundationSync() {
+    setAzureAdminStatus('Running Azure/Entra Sync Now...');
+
+    try {
+      const result = await postJson('/api/admin/azure/sync/run', {});
+      setAzureAdminStatus(result.message ?? 'Sync Now completed.');
+      await loadAzureAdmin();
+    } catch (error) {
+      setAzureAdminStatus(error instanceof Error ? error.message : 'Unable to run Azure Sync Now.');
+    }
+  }
+
+  async function reconcileAzureUsers() {
+    setAzureAdminStatus('Reconciling Entra users...');
+
+    try {
+      const result = await postJson('/api/admin/azure/users/reconcile', {});
+      setAzureAdminStatus(result.message ?? 'Azure/Entra reconciliation completed.');
+      await loadAzureAdmin();
+    } catch (error) {
+      setAzureAdminStatus(error instanceof Error ? error.message : 'Unable to reconcile Entra users.');
     }
   }
 
@@ -2202,223 +2560,439 @@ Analytics - Variphy / Infortel`}
         <div className="section-heading">
           <div>
             <p className="eyebrow">Azure Admin</p>
-            <h1>Azure / Entra user sync foundation</h1>
+            <h1>Azure / Entra user sync</h1>
             <p className="section-copy">
-              Configure Azure SSO foundation settings, review imported users, and run manual foundation sync actions. This page is restricted to administrators.
+              Preview Entra users, filter the import list, import selected users, and clearly track who has been imported or synced. Local @ussignal.local users stay in User Administration.
             </p>
           </div>
-          <button type="button" className="secondary-action" onClick={loadAzureAdmin}>
-            Refresh
-          </button>
+          <div className="azure-admin-heading-actions">
+            <button type="button" className="secondary-action" onClick={loadAzureAdmin}>
+              Refresh
+            </button>
+            <button type="button" className="primary-action" onClick={runAzureFoundationSync}>
+              Sync Now
+            </button>
+          </div>
         </div>
 
         {azureAdminData.error && (
           <div className="error-text">{azureAdminData.error}</div>
         )}
 
-        <div className="azure-admin-grid">
-          <form className="azure-admin-card" onSubmit={saveAzureConfig}>
-            <p className="eyebrow">Configuration</p>
-            <h2>Azure / Entra settings</h2>
+        {azureAdminStatus && (
+          <div className="azure-admin-status-banner">{azureAdminStatus}</div>
+        )}
 
-            <label htmlFor="azure-tenant-id">Tenant ID</label>
-            <input
-              id="azure-tenant-id"
-              value={azureConfigDraft.tenantId}
-              onChange={(event) => setAzureConfigDraft((current) => ({ ...current, tenantId: event.target.value }))}
-              placeholder="Azure tenant ID"
-            />
+        <div className="azure-admin-workspace">
+          <form className="azure-admin-card azure-config-card" onSubmit={saveAzureConfig}>
+            <div className="azure-card-heading">
+              <div>
+                <p className="eyebrow">Configuration</p>
+                <h2>Tenant and sync settings</h2>
+                <p className="section-copy">
+                  Use onenecklab.com for test and ussignal.com for production. Imported users default to Engineer.
+                </p>
+              </div>
+              <button type="submit" className="primary-action">
+                Save configuration
+              </button>
+            </div>
 
-            <label htmlFor="azure-client-id">Client ID</label>
-            <input
-              id="azure-client-id"
-              value={azureConfigDraft.clientId}
-              onChange={(event) => setAzureConfigDraft((current) => ({ ...current, clientId: event.target.value }))}
-              placeholder="Application/client ID"
-            />
+            <div className="azure-admin-form-grid">
+              <label>Tenant profile</label>
+              <select
+                value={azureTenantProfile}
+                onChange={(event) => applyAzureTenantProfile(event.target.value)}
+              >
+                <option value="onenecklab">OneNeck Lab - onenecklab.com + ONITDemo.com</option>
+                <option value="ussignal">US Signal Production - ussignal.com</option>
+                <option value="custom">Create New</option>
+              </select>
 
-            <label htmlFor="azure-authority-url">Authority URL</label>
-            <input
-              id="azure-authority-url"
-              value={azureConfigDraft.authorityUrl}
-              onChange={(event) => setAzureConfigDraft((current) => ({ ...current, authorityUrl: event.target.value }))}
-              placeholder="https://login.microsoftonline.com/{tenantId}"
-            />
+              {azureTenantProfile === 'custom' && (
+                <>
+                  <label>Tenant display name</label>
+                  <input
+                    value={customAzureTenantName}
+                    onChange={(event) => setCustomAzureTenantName(event.target.value)}
+                    placeholder="Example: Customer Tenant, Lab Tenant, Partner Tenant"
+                  />
 
-            <label htmlFor="azure-redirect-uri">Redirect URI</label>
-            <input
-              id="azure-redirect-uri"
-              value={azureConfigDraft.redirectUri}
-              onChange={(event) => setAzureConfigDraft((current) => ({ ...current, redirectUri: event.target.value }))}
-              placeholder="https://projectpulse.example.com/auth/callback"
-            />
+                  <label>Custom tenant domains</label>
+                  <input
+                    value={customAzureTenantDomain}
+                    onChange={(event) => setCustomAzureTenantDomain(event.target.value)}
+                    placeholder="example.com or example.com,otherdomain.com"
+                  />
+                </>
+              )}
 
-            <label htmlFor="azure-graph-scope">Graph scope</label>
-            <input
-              id="azure-graph-scope"
-              value={azureConfigDraft.graphScope}
-              onChange={(event) => setAzureConfigDraft((current) => ({ ...current, graphScope: event.target.value }))}
-            />
-
-            <label htmlFor="azure-default-role">Default imported role</label>
-            <select
-              id="azure-default-role"
-              value={azureConfigDraft.defaultRoleCode}
-              onChange={(event) => setAzureConfigDraft((current) => ({ ...current, defaultRoleCode: event.target.value }))}
-            >
-              <option value="ENGINEER">Engineer</option>
-            </select>
-
-            <label htmlFor="azure-sync-frequency">Sync frequency hours</label>
-            <input
-              id="azure-sync-frequency"
-              type="number"
-              min="1"
-              value={azureConfigDraft.syncFrequencyHours}
-              onChange={(event) => setAzureConfigDraft((current) => ({ ...current, syncFrequencyHours: Number(event.target.value) }))}
-            />
-
-            <label className="checkbox-row">
+              <label>Tenant ID</label>
               <input
-                type="checkbox"
-                checked={azureConfigDraft.syncEnabled}
-                onChange={(event) => setAzureConfigDraft((current) => ({ ...current, syncEnabled: event.target.checked }))}
+                value={azureConfigDraft.tenantId}
+                onChange={(event) => setAzureConfigDraft((current) => ({ ...current, tenantId: event.target.value }))}
+                placeholder="Microsoft Entra tenant ID"
               />
-              Enable scheduled sync after Microsoft Graph integration is connected
-            </label>
 
-            <button type="submit" className="primary-action">
-              Save Azure settings
-            </button>
+              <label>Client ID</label>
+              <input
+                value={azureConfigDraft.clientId}
+                onChange={(event) => setAzureConfigDraft((current) => ({ ...current, clientId: event.target.value }))}
+                placeholder="Application client ID"
+              />
+
+              <label>Authority URL</label>
+              <input
+                value={azureConfigDraft.authorityUrl}
+                onChange={(event) => setAzureConfigDraft((current) => ({ ...current, authorityUrl: event.target.value }))}
+                placeholder="https://login.microsoftonline.com/{tenantId}"
+              />
+
+              <label>Redirect URI</label>
+              <input
+                value={azureConfigDraft.redirectUri}
+                onChange={(event) => setAzureConfigDraft((current) => ({ ...current, redirectUri: event.target.value }))}
+                placeholder="https://projectpulse-test.onenecklab.com/auth/callback"
+              />
+
+              <label>Graph scope</label>
+              <input
+                value={azureConfigDraft.graphScope}
+                onChange={(event) => setAzureConfigDraft((current) => ({ ...current, graphScope: event.target.value }))}
+                placeholder="User.Read.All Directory.Read.All"
+              />
+
+              <label>Default role</label>
+              <select
+                value={azureConfigDraft.defaultRoleCode}
+                onChange={(event) => setAzureConfigDraft((current) => ({ ...current, defaultRoleCode: event.target.value }))}
+              >
+                {(azureAdminData.roles?.length ? azureAdminData.roles : [{ roleCode: 'ENGINEER', roleName: 'Engineer' }]).map((role) => (
+                  <option value={role.roleCode} key={role.roleCode}>
+                    {role.roleName}
+                  </option>
+                ))}
+              </select>
+
+              <label>Sync frequency hours</label>
+              <input
+                type="number"
+                min="1"
+                value={azureConfigDraft.syncFrequencyHours}
+                onChange={(event) => setAzureConfigDraft((current) => ({ ...current, syncFrequencyHours: Number(event.target.value) || 24 }))}
+              />
+
+              <label className="checkbox-row azure-checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={azureConfigDraft.syncEnabled}
+                  onChange={(event) => setAzureConfigDraft((current) => ({ ...current, syncEnabled: event.target.checked }))}
+                />
+                Sync enabled
+              </label>
+              <div className="user-admin-helper-text">
+                Azure sync applies to Entra users only. Local @ussignal.local users are never imported from Entra.
+              </div>
+            </div>
           </form>
 
-          <div className="azure-admin-card">
-            <p className="eyebrow">Manual sync</p>
-            <h2>Foundation sync actions</h2>
-            <p>
-              The foundation sync records sync status now. Real Microsoft Graph user pull will be added in the Azure SSO integration phase.
+          <div className="azure-admin-card azure-sync-summary-card">
+            <p className="eyebrow">Sync status</p>
+            <h2>Last sync result</h2>
+            <div className="azure-sync-facts">
+              <span>
+                <strong>Status</strong>
+                {azureAdminData.config?.lastSyncStatus ?? 'Not available'}
+              </span>
+              <span>
+                <strong>Last sync</strong>
+                {azureAdminData.config?.lastSyncAt ?? 'Never'}
+              </span>
+              <span>
+                <strong>Updated by</strong>
+                {azureAdminData.config?.updatedByEmail ?? 'Unknown'}
+              </span>
+            </div>
+            <p className="section-copy">
+              {azureAdminData.config?.lastSyncMessage ?? 'No sync has been recorded yet.'}
             </p>
-            <button type="button" className="primary-action" onClick={runAzureFoundationSync}>
-              Run foundation sync
-            </button>
-
-            <div className="azure-status-box">
-              <strong>Status</strong>
-              <span>{azureAdminStatus}</span>
-            </div>
-
-            <div className="azure-status-box">
-              <strong>Last sync</strong>
-              <span>{azureAdminData.config?.lastSyncStatus ?? 'Not available'}</span>
-              <small>{azureAdminData.config?.lastSyncMessage ?? 'No sync has been recorded yet.'}</small>
+            <div className="azure-admin-action-row">
+              <button type="button" className="primary-action" onClick={runAzureFoundationSync}>
+                Sync Now
+              </button>
+              <button type="button" className="secondary-action" onClick={reconcileAzureUsers}>
+                Reconcile inactive users
+              </button>
             </div>
           </div>
-        </div>
 
-        <div className="azure-admin-card">
-          <div className="section-heading compact-heading">
-            <div>
-              <p className="eyebrow">Manual user import</p>
-              <h2>Import Azure / Entra users</h2>
-              <p className="section-copy">
-                Paste users from Azure/Entra export or test data. Imported users receive the Engineer role by default. Administrators can modify roles afterward in Role Admin.
-              </p>
+          <div className="azure-admin-card azure-preview-card">
+            <div className="azure-card-heading">
+              <div>
+                <p className="eyebrow">Filtered import</p>
+                <h2>Preview, filter, and import Entra users</h2>
+                <p className="section-copy">
+                  Load the Entra preview, filter by domain, department, existing import status, or enabled status, then import only the selected users.
+                </p>
+              </div>
+              <div className="azure-admin-heading-actions">
+                <button type="button" className="secondary-action" onClick={previewAzureUsers} disabled={azurePreviewLoading}>
+                  {azurePreviewLoading ? 'Loading preview...' : 'Preview users'}
+                </button>
+                <button type="button" className="primary-action" onClick={importSelectedAzureUsers} disabled={selectedAzurePreviewKeys.length === 0}>
+                  Import selected
+                </button>
+              </div>
             </div>
-            <button type="button" className="primary-action" onClick={importAzureUsers}>
-              Import users
-            </button>
-          </div>
 
-          <textarea
-            className="azure-import-textarea"
-            value={azureImportText}
-            onChange={(event) => setAzureImportText(event.target.value)}
-          />
-        </div>
+            <div className="azure-filter-grid">
+              <label>
+                Search
+                <input
+                  value={azureImportFilters.searchText}
+                  onChange={(event) => setAzureImportFilters((current) => ({ ...current, searchText: event.target.value }))}
+                  placeholder="Name, email, title, department"
+                />
+              </label>
 
-        <div className="azure-admin-card">
-          <div className="section-heading compact-heading">
-            <div>
-              <p className="eyebrow">Imported users</p>
-              <h2>Azure / Entra directory users</h2>
-              <p className="section-copy">
-                Users with no active Project Pulse role are blocked from login. New imports default to Engineer.
-              </p>
+              <label>
+                Domain
+                <select
+                  value={azureImportFilters.domain}
+                  onChange={(event) => setAzureImportFilters((current) => ({ ...current, domain: event.target.value }))}
+                >
+                  <option value="all">All selected tenant domains</option>
+                  <option value="onenecklab.com">onenecklab.com - OneNeck Lab</option>
+                  <option value="onitdemo.com">ONITDemo.com - OneNeck Lab</option>
+                  <option value="ussignal.com">ussignal.com - Production</option>
+                </select>
+              </label>
+
+              <label>
+                Department contains
+                <input
+                  value={azureImportFilters.departmentName}
+                  onChange={(event) => setAzureImportFilters((current) => ({ ...current, departmentName: event.target.value }))}
+                  placeholder="Engineering, Project Management, etc."
+                />
+              </label>
+
+              <label className="checkbox-row azure-filter-checkbox">
+                <input
+                  type="checkbox"
+                  checked={azureImportFilters.includeExisting}
+                  onChange={(event) => setAzureImportFilters((current) => ({ ...current, includeExisting: event.target.checked }))}
+                />
+                Include already imported users
+              </label>
+
+              <label className="checkbox-row azure-filter-checkbox">
+                <input
+                  type="checkbox"
+                  checked={azureImportFilters.onlyEnabled}
+                  onChange={(event) => setAzureImportFilters((current) => ({ ...current, onlyEnabled: event.target.checked }))}
+                />
+                Enabled Entra accounts only
+              </label>
             </div>
-            <span className="badge">{azureAdminData.users.length} users</span>
-          </div>
 
-          <div className="manager-table-wrap">
-            <table className="manager-table">
-              <thead>
-                <tr>
-                  <th>User</th>
-                  <th>Source</th>
-                  <th>Department</th>
-                  <th>Manager</th>
-                  <th>Login</th>
-                  <th>Roles</th>
-                  <th>Last Sync</th>
-                </tr>
-              </thead>
-              <tbody>
-                {azureAdminData.users.map((user) => (
-                  <tr key={user.userId}>
-                    <td>
-                      <strong>{user.displayName}</strong>
-                      <span>{user.email}</span>
-                    </td>
-                    <td>{user.sourceProvider}</td>
-                    <td>{user.departmentName ?? 'Not set'}</td>
-                    <td>{user.managerEmail ?? 'Not set'}</td>
-                    <td>{user.loginEnabled && user.isActive ? 'Enabled' : 'Disabled'}</td>
-                    <td>{user.roleNames?.length ? user.roleNames.join(', ') : 'No active roles'}</td>
-                    <td>{user.lastDirectorySyncAt ? new Date(user.lastDirectorySyncAt).toLocaleString() : 'Not synced'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div className="azure-admin-card">
-          <div className="section-heading compact-heading">
-            <div>
-              <p className="eyebrow">Sync history</p>
-              <h2>Recent sync runs</h2>
+            <div className="azure-selection-toolbar">
+              <button type="button" className="secondary-action" onClick={toggleAllFilteredAzurePreviewUsers} disabled={getFilteredAzurePreviewUsers().length === 0}>
+                Select filtered users
+              </button>
+              <button type="button" className="secondary-action" onClick={() => setSelectedAzurePreviewKeys([])} disabled={selectedAzurePreviewKeys.length === 0}>
+                Clear selection
+              </button>
+              <span className="bulk-selection-pill active">
+                {selectedAzurePreviewKeys.length} selected
+              </span>
+              <span className="bulk-selection-pill">
+                {getFilteredAzurePreviewUsers().length} filtered
+              </span>
+              <span className="bulk-selection-pill">
+                {azurePreviewUsers.length} previewed
+              </span>
             </div>
-            <span className="badge">{azureAdminData.runs.length} runs</span>
+
+            {azurePreviewUsers.length === 0 ? (
+              <div className="manager-empty-state">
+                Use Preview users to load the Entra user list before applying filters.
+              </div>
+            ) : getFilteredAzurePreviewUsers().length === 0 ? (
+              <div className="manager-empty-state">
+                No preview users match the current filters.
+              </div>
+            ) : (
+              <div className="azure-preview-table">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Select</th>
+                      <th>User</th>
+                      <th>Domain</th>
+                      <th>Job title</th>
+                      <th>Department</th>
+                      <th>Import status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {getFilteredAzurePreviewUsers().map((user) => {
+                      const alreadyImported = isAzurePreviewUserAlreadyImported(user);
+                      return (
+                        <tr key={user.previewKey}>
+                          <td>
+                            <input
+                              type="checkbox"
+                              checked={selectedAzurePreviewKeys.includes(user.previewKey)}
+                              onChange={() => toggleAzurePreviewUser(user.previewKey)}
+                              disabled={alreadyImported}
+                              aria-label={`Select ${user.displayName}`}
+                            />
+                          </td>
+                          <td>
+                            <strong>{user.displayName}</strong>
+                            <small>{user.email}</small>
+                          </td>
+                          <td>{getAzureUserDomain(user.email)}</td>
+                          <td>{user.jobTitle || '—'}</td>
+                          <td>{user.departmentName || '—'}</td>
+                          <td>
+                            <span className={alreadyImported ? 'badge active' : 'badge'}>
+                              {alreadyImported ? 'Already imported / synced' : 'Ready to import'}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
-          <div className="manager-table-wrap">
-            <table className="manager-table">
-              <thead>
-                <tr>
-                  <th>Status</th>
-                  <th>Started</th>
-                  <th>Triggered By</th>
-                  <th>Seen</th>
-                  <th>Imported</th>
-                  <th>Updated</th>
-                  <th>Skipped</th>
-                  <th>Message</th>
-                </tr>
-              </thead>
-              <tbody>
-                {azureAdminData.runs.map((run) => (
-                  <tr key={run.syncRunId}>
-                    <td>{run.status}</td>
-                    <td>{run.syncStartedAt ? new Date(run.syncStartedAt).toLocaleString() : 'Not available'}</td>
-                    <td>{run.triggeredByEmail ?? 'System'}</td>
-                    <td>{run.usersSeen}</td>
-                    <td>{run.usersImported}</td>
-                    <td>{run.usersUpdated}</td>
-                    <td>{run.usersSkipped}</td>
-                    <td>{run.message}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="azure-admin-card azure-imported-users-card">
+            <div className="azure-card-heading">
+              <div>
+                <p className="eyebrow">Imported and synced users</p>
+                <h2>Azure / Entra directory users</h2>
+                <p className="section-copy">
+                  This table shows whether each user came from Entra, whether the user has a sync timestamp, and whether login is currently enabled.
+                </p>
+              </div>
+              <span className="badge">{getFilteredAzureDirectoryUsers().length} shown / {azureAdminData.users.length} total</span>
+            </div>
+
+            <div className="azure-filter-grid compact-directory-filter">
+              <label>
+                Search imported users
+                <input
+                  value={azureDirectoryFilters.searchText}
+                  onChange={(event) => setAzureDirectoryFilters((current) => ({ ...current, searchText: event.target.value }))}
+                  placeholder="Name, email, department, role"
+                />
+              </label>
+
+              <label>
+                Source
+                <select
+                  value={azureDirectoryFilters.sourceProvider}
+                  onChange={(event) => setAzureDirectoryFilters((current) => ({ ...current, sourceProvider: event.target.value }))}
+                >
+                  <option value="entra">All Entra sources</option>
+                  <option value="ENTRA_ID_TEST">Test Entra - ENTRA_ID_TEST</option>
+                  <option value="ENTRA_ID">Production Entra - ENTRA_ID</option>
+                  <option value="LOCAL_APP">Local app - LOCAL_APP</option>
+                  <option value="all">All sources including local</option>
+                </select>
+              </label>
+
+              <label>
+                Sync state
+                <select
+                  value={azureDirectoryFilters.syncState}
+                  onChange={(event) => setAzureDirectoryFilters((current) => ({ ...current, syncState: event.target.value }))}
+                >
+                  <option value="all">All sync states</option>
+                  <option value="synced">Has sync timestamp</option>
+                  <option value="not_synced">No sync timestamp</option>
+                  <option value="disabled">Disabled / inactive</option>
+                </select>
+              </label>
+            </div>
+
+            <div className="azure-preview-table imported-directory-table">
+              {getFilteredAzureDirectoryUsers().length === 0 ? (
+                <div className="manager-empty-state">No users match the current imported-user filters.</div>
+              ) : (
+                <table>
+                  <thead>
+                    <tr>
+                      <th>User</th>
+                      <th>Source</th>
+                      <th>Domain</th>
+                      <th>Department</th>
+                      <th>Roles</th>
+                      <th>Login</th>
+                      <th>Sync state</th>
+                      <th>Last sync</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {getFilteredAzureDirectoryUsers().map((user) => (
+                      <tr key={user.userId ?? user.email}>
+                        <td>
+                          <strong>{user.displayName}</strong>
+                          <small>{user.email}</small>
+                        </td>
+                        <td>{user.sourceProvider ?? 'Unknown'}</td>
+                        <td>{getAzureUserDomain(user.email)}</td>
+                        <td>{user.departmentName || '—'}</td>
+                        <td>{user.roleNames?.length ? user.roleNames.join(', ') : 'No active roles'}</td>
+                        <td>
+                          <span className={user.loginEnabled && user.isActive ? 'badge active' : 'badge'}>
+                            {user.loginEnabled && user.isActive ? 'Enabled' : 'Disabled'}
+                          </span>
+                        </td>
+                        <td>{getAzureUserSyncLabel(user)}</td>
+                        <td>{user.lastDirectorySyncAt ?? 'Not synced'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+
+          <div className="azure-admin-card azure-sync-runs-card">
+            <div className="azure-card-heading">
+              <div>
+                <p className="eyebrow">Audit</p>
+                <h2>Sync run history</h2>
+              </div>
+              <span className="badge">{azureAdminData.runs.length} runs</span>
+            </div>
+
+            <div className="azure-sync-run-list">
+              {azureAdminData.runs.length === 0 ? (
+                <div className="manager-empty-state">No sync runs recorded yet.</div>
+              ) : (
+                azureAdminData.runs.map((run) => (
+                  <div className="azure-sync-run-row" key={run.syncRunId}>
+                    <div>
+                      <strong>{run.status}</strong>
+                      <span>{run.message ?? 'No message recorded.'}</span>
+                      <small>Triggered by: {run.triggeredByEmail ?? 'Unknown'}</small>
+                    </div>
+                    <div>
+                      <small>Seen: {run.usersSeen ?? 0}</small>
+                      <small>Imported: {run.usersImported ?? 0}</small>
+                      <small>Updated: {run.usersUpdated ?? 0}</small>
+                      <small>Skipped: {run.usersSkipped ?? 0}</small>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </div>
       </section>
