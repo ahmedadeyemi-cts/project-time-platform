@@ -2949,3 +2949,68 @@ html[data-theme="dark"] .profile-settings-actions {
 .source-mapping-copy strong {
   color: var(--text);
 }
+
+
+/* 019M-C.2 user admin local create lifecycle */
+.user-admin-create-card {
+  margin-bottom: 24px;
+  padding: 24px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.08);
+}
+
+[data-theme="dark"] .user-admin-create-card {
+  background: rgba(15, 23, 42, 0.72);
+  border-color: rgba(71, 85, 105, 0.75);
+}
+
+.user-admin-create-grid {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.35fr) minmax(240px, 1fr);
+  gap: 12px 16px;
+  align-items: center;
+  margin-top: 16px;
+}
+
+.user-admin-create-grid label {
+  font-weight: 800;
+}
+
+.local-create-roles {
+  margin-top: 16px;
+}
+
+.user-admin-danger-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+
+.danger-action {
+  border: 1px solid rgba(220, 38, 38, 0.35);
+  background: #fee2e2;
+  color: #991b1b;
+  border-radius: 999px;
+  padding: 10px 16px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.danger-action:hover {
+  background: #fecaca;
+}
+
+[data-theme="dark"] .danger-action {
+  background: rgba(127, 29, 29, 0.35);
+  color: #fecaca;
+  border-color: rgba(248, 113, 113, 0.45);
+}
+
+@media (max-width: 760px) {
+  .user-admin-create-grid {
+    grid-template-columns: 1fr;
+  }
+}

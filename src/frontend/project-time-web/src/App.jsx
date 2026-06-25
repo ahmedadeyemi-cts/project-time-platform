@@ -217,7 +217,7 @@ function getInitials(value) {
 function getInitialTheme() {
   const savedTheme = window.localStorage.getItem('ptp-theme');
   if (savedTheme === 'dark' || savedTheme === 'light') return savedTheme;
-  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  return "light";
 }
 
 function toIsoDate(date) {

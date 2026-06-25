@@ -691,7 +691,7 @@ app.MapGet("/api/timesheets/week", async (DateOnly? weekStart, HttpContext httpC
     return Results.Ok(payload);
 });
 
-app.MapPost("/api/timesheets/week/draft", async (TimesheetSaveRequest request) =>
+app.MapPost("/api/timesheets/week/draft", async (TimesheetSaveRequest request, HttpContext httpContext) =>
 {
     var config = DatabaseConfig.FromEnvironment();
     var missingResult = ValidateConfig(config);
@@ -713,7 +713,14 @@ app.MapPost("/api/timesheets/week/draft", async (TimesheetSaveRequest request) =
 
     try
     {
-        var userId = await GetOrCreateDevelopmentUserIdAsync(connection, transaction);
+        var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+        if (sessionUserId is null)
+        {
+            await transaction.RollbackAsync();
+            return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+        }
+
+        var userId = sessionUserId.Value;
         var start = GetSundayForDate(request.WeekStart);
         var existingStatus = await GetTimesheetStatusAsync(connection, transaction, userId, start);
 
@@ -754,7 +761,7 @@ app.MapPost("/api/timesheets/week/draft", async (TimesheetSaveRequest request) =
     }
 });
 
-app.MapPost("/api/timesheets/week/submit", async (TimesheetSaveRequest request) =>
+app.MapPost("/api/timesheets/week/submit", async (TimesheetSaveRequest request, HttpContext httpContext) =>
 {
     var config = DatabaseConfig.FromEnvironment();
     var missingResult = ValidateConfig(config);
@@ -786,7 +793,14 @@ app.MapPost("/api/timesheets/week/submit", async (TimesheetSaveRequest request) 
 
     try
     {
-        var userId = await GetOrCreateDevelopmentUserIdAsync(connection, transaction);
+        var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+        if (sessionUserId is null)
+        {
+            await transaction.RollbackAsync();
+            return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+        }
+
+        var userId = sessionUserId.Value;
         var start = GetSundayForDate(request.WeekStart);
         var existingStatus = await GetTimesheetStatusAsync(connection, transaction, userId, start);
 
@@ -829,7 +843,7 @@ app.MapPost("/api/timesheets/week/submit", async (TimesheetSaveRequest request) 
     }
 });
 
-app.MapPost("/api/timesheets/day/submit", async (TimesheetDaySubmitRequest request) =>
+app.MapPost("/api/timesheets/day/submit", async (TimesheetDaySubmitRequest request, HttpContext httpContext) =>
 {
     var config = DatabaseConfig.FromEnvironment();
     var missingResult = ValidateConfig(config);
@@ -851,7 +865,14 @@ app.MapPost("/api/timesheets/day/submit", async (TimesheetDaySubmitRequest reque
 
     try
     {
-        var userId = await GetOrCreateDevelopmentUserIdAsync(connection, transaction);
+        var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+        if (sessionUserId is null)
+        {
+            await transaction.RollbackAsync();
+            return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+        }
+
+        var userId = sessionUserId.Value;
         var weekStart = GetSundayForDate(request.WeekStart);
         var timesheetId = await UpsertDraftTimesheetAsync(connection, transaction, userId, weekStart);
         var dayState = await GetTimesheetDayStatusAsync(connection, transaction, timesheetId, request.WorkDate);
@@ -895,7 +916,7 @@ app.MapPost("/api/timesheets/day/submit", async (TimesheetDaySubmitRequest reque
     }
 });
 
-app.MapPost("/api/timesheets/day/unlock", async (TimesheetDayUnlockRequest request) =>
+app.MapPost("/api/timesheets/day/unlock", async (TimesheetDayUnlockRequest request, HttpContext httpContext) =>
 {
     var config = DatabaseConfig.FromEnvironment();
     var missingResult = ValidateConfig(config);
@@ -907,7 +928,14 @@ app.MapPost("/api/timesheets/day/unlock", async (TimesheetDayUnlockRequest reque
 
     try
     {
-        var userId = await GetOrCreateDevelopmentUserIdAsync(connection, transaction);
+        var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+        if (sessionUserId is null)
+        {
+            await transaction.RollbackAsync();
+            return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+        }
+
+        var userId = sessionUserId.Value;
         var weekStart = GetSundayForDate(request.WeekStart);
         var timesheetId = await UpsertDraftTimesheetAsync(connection, transaction, userId, weekStart);
         var dayState = await GetTimesheetDayStatusAsync(connection, transaction, timesheetId, request.WorkDate);
@@ -1617,7 +1645,7 @@ app.MapGet("/api/reminders/outbox", async (int? limit) =>
 });
 
 
-app.MapPost("/api/holidays/import-text", async (HolidayCsvImportRequest request) =>
+app.MapPost("/api/holidays/import-text", async (HolidayCsvImportRequest request, HttpContext httpContext) =>
 {
     var config = DatabaseConfig.FromEnvironment();
     var missingResult = ValidateConfig(config);
@@ -1688,7 +1716,14 @@ app.MapPost("/api/holidays/import-text", async (HolidayCsvImportRequest request)
 
     try
     {
-        var userId = await GetOrCreateDevelopmentUserIdAsync(connection, transaction);
+        var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+        if (sessionUserId is null)
+        {
+            await transaction.RollbackAsync();
+            return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+        }
+
+        var userId = sessionUserId.Value;
         Guid batchId;
 
         await using (var batchCommand = new NpgsqlCommand("""
@@ -1882,7 +1917,7 @@ app.MapGet("/api/admin/users", async () =>
     return Results.Ok(new { count = users.Count, users });
 });
 
-app.MapPost("/api/admin/users/roles", async (UserRoleAssignmentRequest request) =>
+app.MapPost("/api/admin/users/roles", async (UserRoleAssignmentRequest request, HttpContext httpContext) =>
 {
     var config = DatabaseConfig.FromEnvironment();
     var missingResult = ValidateConfig(config);
@@ -1905,7 +1940,14 @@ app.MapPost("/api/admin/users/roles", async (UserRoleAssignmentRequest request) 
 
     try
     {
-        var adminUserId = await GetOrCreateDevelopmentUserIdAsync(connection, transaction);
+        var sessionAdminUserId = GetProjectPulseSessionUserId(httpContext);
+        if (sessionAdminUserId is null)
+        {
+            await transaction.RollbackAsync();
+            return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+        }
+
+        var adminUserId = sessionAdminUserId.Value;
         Guid targetUserId;
 
         await using (var userCommand = new NpgsqlCommand("SELECT user_id FROM app_users WHERE lower(email) = lower(@email);", connection, transaction))
@@ -4264,6 +4306,548 @@ app.MapPost("/api/admin/user-admin/local-password", async (UserAdminLocalPasswor
     });
 });
 
+
+
+
+
+app.MapPost("/api/admin/user-admin/users/local", async (UserAdminLocalUserCreateRequest request, HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    var email = request.Email?.Trim().ToLowerInvariant() ?? "";
+    var displayName = request.DisplayName?.Trim() ?? "";
+
+    if (string.IsNullOrWhiteSpace(email) || !email.EndsWith("@ussignal.local", StringComparison.OrdinalIgnoreCase))
+    {
+        return Results.BadRequest(new
+        {
+            status = "invalid_local_domain",
+            message = "Manual users must use the @ussignal.local domain. Use Entra import for @ussignal.com and @onenecklab.com users."
+        });
+    }
+
+    if (email.EndsWith("@ussignal.com", StringComparison.OrdinalIgnoreCase) ||
+        email.EndsWith("@onenecklab.com", StringComparison.OrdinalIgnoreCase))
+    {
+        return Results.BadRequest(new
+        {
+            status = "entra_domain_blocked",
+            message = "Cloud-domain users must be imported from Entra. Manual creation is restricted to @ussignal.local users."
+        });
+    }
+
+    if (string.IsNullOrWhiteSpace(displayName))
+    {
+        return Results.BadRequest(new
+        {
+            status = "display_name_required",
+            message = "Display name is required."
+        });
+    }
+
+    var passwordIssue = ValidatePasswordQuality(request.TemporaryPassword ?? "");
+    if (passwordIssue is not null)
+    {
+        return Results.BadRequest(new
+        {
+            status = "password_quality_failed",
+            message = passwordIssue
+        });
+    }
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+    await using var transaction = await connection.BeginTransactionAsync();
+
+    try
+    {
+        if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
+        {
+            await transaction.RollbackAsync();
+            return Results.Json(new { status = "access_denied", message = "User Administration is restricted to administrators and project/team coordinators." }, statusCode: StatusCodes.Status403Forbidden);
+        }
+
+        var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+        if (sessionUserId is null)
+        {
+            await transaction.RollbackAsync();
+            return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+        }
+
+        await using (var existsCommand = new NpgsqlCommand("SELECT 1 FROM app_users WHERE lower(email) = lower(@email) LIMIT 1;", connection, transaction))
+        {
+            existsCommand.Parameters.AddWithValue("email", email);
+            var exists = await existsCommand.ExecuteScalarAsync();
+            if (exists is not null)
+            {
+                await transaction.RollbackAsync();
+                return Results.Conflict(new
+                {
+                    status = "user_already_exists",
+                    message = $"A user already exists for {email}."
+                });
+            }
+        }
+
+        var userId = Guid.NewGuid();
+        var passwordHash = HashProjectPulsePassword(request.TemporaryPassword ?? "");
+        var cleanRoleCodes = (request.RoleCodes ?? new List<string>())
+            .Where(code => !string.IsNullOrWhiteSpace(code))
+            .Select(code => code.Trim().ToUpperInvariant())
+            .Distinct()
+            .ToList();
+
+        if (cleanRoleCodes.Count == 0)
+        {
+            cleanRoleCodes.Add("ENGINEER");
+        }
+
+        await using (var userCommand = new NpgsqlCommand("""
+            INSERT INTO app_users (
+                user_id,
+                email,
+                display_name,
+                is_active,
+                login_enabled,
+                source_provider,
+                job_title,
+                department_name,
+                team_name,
+                office_location,
+                manager_email
+            )
+            VALUES (
+                @user_id,
+                @email,
+                @display_name,
+                TRUE,
+                TRUE,
+                'LOCAL_APP',
+                NULLIF(@job_title, ''),
+                NULLIF(@department_name, ''),
+                NULLIF(@team_name, ''),
+                NULLIF(@office_location, ''),
+                NULLIF(@manager_email, '')
+            );
+            """, connection, transaction))
+        {
+            userCommand.Parameters.AddWithValue("user_id", userId);
+            userCommand.Parameters.AddWithValue("email", email);
+            userCommand.Parameters.AddWithValue("display_name", displayName);
+            userCommand.Parameters.AddWithValue("job_title", request.JobTitle?.Trim() ?? "");
+            userCommand.Parameters.AddWithValue("department_name", request.DepartmentName?.Trim() ?? "");
+            userCommand.Parameters.AddWithValue("team_name", request.TeamName?.Trim() ?? "");
+            userCommand.Parameters.AddWithValue("office_location", request.OfficeLocation?.Trim() ?? "");
+            userCommand.Parameters.AddWithValue("manager_email", request.ManagerEmail?.Trim().ToLowerInvariant() ?? "");
+            await userCommand.ExecuteNonQueryAsync();
+        }
+
+        await using (var localAccountCommand = new NpgsqlCommand("""
+            INSERT INTO auth_local_accounts (
+                user_id,
+                username,
+                password_hash,
+                must_change_password,
+                failed_login_count,
+                locked_until,
+                password_hash_updated_at
+            )
+            VALUES (
+                @user_id,
+                @username,
+                @password_hash,
+                @must_change_password,
+                0,
+                NULL,
+                NOW()
+            );
+            """, connection, transaction))
+        {
+            localAccountCommand.Parameters.AddWithValue("user_id", userId);
+            localAccountCommand.Parameters.AddWithValue("username", email);
+            localAccountCommand.Parameters.AddWithValue("password_hash", passwordHash);
+            localAccountCommand.Parameters.AddWithValue("must_change_password", request.MustChangePassword);
+            await localAccountCommand.ExecuteNonQueryAsync();
+        }
+
+        foreach (var roleCode in cleanRoleCodes)
+        {
+            await using var roleCommand = new NpgsqlCommand("""
+                INSERT INTO app_user_role_assignments (
+                    user_id,
+                    app_role_id,
+                    assigned_by_user_id,
+                    assignment_reason,
+                    is_active
+                )
+                SELECT
+                    @user_id,
+                    r.app_role_id,
+                    @assigned_by_user_id,
+                    @assignment_reason,
+                    TRUE
+                FROM app_roles r
+                WHERE r.role_code = @role_code
+                  AND r.is_active = TRUE
+                ON CONFLICT (user_id, app_role_id) DO UPDATE
+                SET is_active = TRUE,
+                    assignment_reason = EXCLUDED.assignment_reason,
+                    assigned_by_user_id = EXCLUDED.assigned_by_user_id,
+                    updated_at = NOW();
+                """, connection, transaction);
+
+            roleCommand.Parameters.AddWithValue("user_id", userId);
+            roleCommand.Parameters.AddWithValue("assigned_by_user_id", sessionUserId.Value);
+            roleCommand.Parameters.AddWithValue("assignment_reason", "Created from User Administration local user workflow.");
+            roleCommand.Parameters.AddWithValue("role_code", roleCode);
+            await roleCommand.ExecuteNonQueryAsync();
+        }
+
+        await transaction.CommitAsync();
+
+        return Results.Ok(new
+        {
+            status = "local_user_created",
+            userId,
+            email,
+            roleCodes = cleanRoleCodes,
+            message = $"Local user {email} was created. The temporary password is active."
+        });
+    }
+    catch (Exception ex)
+    {
+        await transaction.RollbackAsync();
+
+        return Results.Problem(
+            title: "Failed to create local user",
+            detail: ex.Message,
+            statusCode: StatusCodes.Status500InternalServerError);
+    }
+});
+
+app.MapPost("/api/admin/user-admin/users/deactivate", async (UserAdminUserLifecycleRequest request, HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+    await using var transaction = await connection.BeginTransactionAsync();
+
+    try
+    {
+        if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
+        {
+            await transaction.RollbackAsync();
+            return Results.Json(new { status = "access_denied", message = "User Administration is restricted to administrators and project/team coordinators." }, statusCode: StatusCodes.Status403Forbidden);
+        }
+
+        var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+        if (sessionUserId is null)
+        {
+            await transaction.RollbackAsync();
+            return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+        }
+
+        if (sessionUserId.Value == request.UserId)
+        {
+            await transaction.RollbackAsync();
+            return Results.BadRequest(new
+            {
+                status = "self_deactivation_blocked",
+                message = "You cannot deactivate your own account."
+            });
+        }
+
+        string? targetEmail;
+        await using (var lookupCommand = new NpgsqlCommand("SELECT email FROM app_users WHERE user_id = @user_id;", connection, transaction))
+        {
+            lookupCommand.Parameters.AddWithValue("user_id", request.UserId);
+            targetEmail = (string?)await lookupCommand.ExecuteScalarAsync();
+        }
+
+        if (string.IsNullOrWhiteSpace(targetEmail))
+        {
+            await transaction.RollbackAsync();
+            return Results.NotFound(new { status = "user_not_found", message = "User was not found." });
+        }
+
+        if (targetEmail.Equals("ahmed.adeyemi@ussignal.local", StringComparison.OrdinalIgnoreCase))
+        {
+            await transaction.RollbackAsync();
+            return Results.BadRequest(new
+            {
+                status = "break_glass_protected",
+                message = "The break-glass local administrator cannot be deactivated from this workflow."
+            });
+        }
+
+        await using (var userCommand = new NpgsqlCommand("""
+            UPDATE app_users
+            SET is_active = FALSE,
+                login_enabled = FALSE
+            WHERE user_id = @user_id;
+            """, connection, transaction))
+        {
+            userCommand.Parameters.AddWithValue("user_id", request.UserId);
+            await userCommand.ExecuteNonQueryAsync();
+        }
+
+        await using (var roleCommand = new NpgsqlCommand("""
+            UPDATE app_user_role_assignments
+            SET is_active = FALSE,
+                updated_at = NOW()
+            WHERE user_id = @user_id;
+            """, connection, transaction))
+        {
+            roleCommand.Parameters.AddWithValue("user_id", request.UserId);
+            await roleCommand.ExecuteNonQueryAsync();
+        }
+
+        await transaction.CommitAsync();
+
+        return Results.Ok(new
+        {
+            status = "user_deactivated",
+            message = $"{targetEmail} was deactivated. Login is disabled and active roles were removed."
+        });
+    }
+    catch (Exception ex)
+    {
+        await transaction.RollbackAsync();
+
+        return Results.Problem(
+            title: "Failed to deactivate user",
+            detail: ex.Message,
+            statusCode: StatusCodes.Status500InternalServerError);
+    }
+});
+
+app.MapPost("/api/admin/user-admin/users/delete", async (UserAdminUserLifecycleRequest request, HttpContext httpContext) =>
+{
+    static string QuoteIdentifier(string value) => "\"" + value.Replace("\"", "\"\"") + "\"";
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+    await using var transaction = await connection.BeginTransactionAsync();
+
+    try
+    {
+        if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
+        {
+            await transaction.RollbackAsync();
+            return Results.Json(new { status = "access_denied", message = "User Administration is restricted to administrators and project/team coordinators." }, statusCode: StatusCodes.Status403Forbidden);
+        }
+
+        var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+        if (sessionUserId is null)
+        {
+            await transaction.RollbackAsync();
+            return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+        }
+
+        if (sessionUserId.Value == request.UserId)
+        {
+            await transaction.RollbackAsync();
+            return Results.BadRequest(new
+            {
+                status = "self_delete_blocked",
+                message = "You cannot delete your own account."
+            });
+        }
+
+        string? targetEmail;
+        await using (var lookupCommand = new NpgsqlCommand("SELECT email FROM app_users WHERE user_id = @user_id;", connection, transaction))
+        {
+            lookupCommand.Parameters.AddWithValue("user_id", request.UserId);
+            targetEmail = (string?)await lookupCommand.ExecuteScalarAsync();
+        }
+
+        if (string.IsNullOrWhiteSpace(targetEmail))
+        {
+            await transaction.RollbackAsync();
+            return Results.NotFound(new { status = "user_not_found", message = "User was not found." });
+        }
+
+        if (targetEmail.Equals("ahmed.adeyemi@ussignal.local", StringComparison.OrdinalIgnoreCase))
+        {
+            await transaction.RollbackAsync();
+            return Results.BadRequest(new
+            {
+                status = "break_glass_protected",
+                message = "The break-glass local administrator cannot be deleted from this workflow."
+            });
+        }
+
+        var ignoredTables = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "app_users",
+            "auth_local_accounts",
+            "app_user_role_assignments",
+            "auth_sessions"
+        };
+
+        var dependencyColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "user_id",
+            "engineer_user_id",
+            "manager_user_id",
+            "assigned_user_id",
+            "assigned_by_user_id",
+            "approved_by_user_id",
+            "declined_by_user_id",
+            "submitted_by_user_id",
+            "uploaded_by_user_id",
+            "created_by_user_id",
+            "updated_by_user_id"
+        };
+
+        var dependencies = new List<string>();
+
+        await using (var dependencyLookup = new NpgsqlCommand("""
+            SELECT table_schema, table_name, column_name
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND column_name IN (
+                  'user_id',
+                  'engineer_user_id',
+                  'manager_user_id',
+                  'assigned_user_id',
+                  'assigned_by_user_id',
+                  'approved_by_user_id',
+                  'declined_by_user_id',
+                  'submitted_by_user_id',
+                  'uploaded_by_user_id',
+                  'created_by_user_id',
+                  'updated_by_user_id'
+              )
+            ORDER BY table_name, column_name;
+            """, connection, transaction))
+        {
+            await using var reader = await dependencyLookup.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var schemaName = reader.GetString(0);
+                var tableName = reader.GetString(1);
+                var columnName = reader.GetString(2);
+
+                if (ignoredTables.Contains(tableName) || !dependencyColumns.Contains(columnName))
+                {
+                    continue;
+                }
+
+                dependencies.Add($"{schemaName}.{tableName}.{columnName}");
+            }
+        }
+
+        var blockingDependencies = new List<string>();
+
+        foreach (var dependency in dependencies)
+        {
+            var parts = dependency.Split('.');
+            if (parts.Length != 3) continue;
+
+            var sql = $"""
+                SELECT 1
+                FROM {QuoteIdentifier(parts[0])}.{QuoteIdentifier(parts[1])}
+                WHERE {QuoteIdentifier(parts[2])} = @user_id
+                LIMIT 1;
+                """;
+
+            await using var dependencyCommand = new NpgsqlCommand(sql, connection, transaction);
+            dependencyCommand.Parameters.AddWithValue("user_id", request.UserId);
+
+            var exists = await dependencyCommand.ExecuteScalarAsync();
+            if (exists is not null)
+            {
+                blockingDependencies.Add(dependency);
+            }
+        }
+
+        if (blockingDependencies.Count > 0)
+        {
+            await using (var userCommand = new NpgsqlCommand("""
+                UPDATE app_users
+                SET is_active = FALSE,
+                    login_enabled = FALSE
+                WHERE user_id = @user_id;
+                """, connection, transaction))
+            {
+                userCommand.Parameters.AddWithValue("user_id", request.UserId);
+                await userCommand.ExecuteNonQueryAsync();
+            }
+
+            await using (var roleCommand = new NpgsqlCommand("""
+                UPDATE app_user_role_assignments
+                SET is_active = FALSE,
+                    updated_at = NOW()
+                WHERE user_id = @user_id;
+                """, connection, transaction))
+            {
+                roleCommand.Parameters.AddWithValue("user_id", request.UserId);
+                await roleCommand.ExecuteNonQueryAsync();
+            }
+
+            await transaction.CommitAsync();
+
+            return Results.Ok(new
+            {
+                status = "user_safe_deactivated",
+                dependencyCount = blockingDependencies.Count,
+                dependencies = blockingDependencies.Take(10).ToList(),
+                message = $"{targetEmail} has history in Project Pulse, so the account was safely deactivated instead of hard deleted."
+            });
+        }
+
+        await using (var sessionsCommand = new NpgsqlCommand("DELETE FROM auth_sessions WHERE user_id = @user_id;", connection, transaction))
+        {
+            sessionsCommand.Parameters.AddWithValue("user_id", request.UserId);
+            await sessionsCommand.ExecuteNonQueryAsync();
+        }
+
+        await using (var rolesCommand = new NpgsqlCommand("DELETE FROM app_user_role_assignments WHERE user_id = @user_id;", connection, transaction))
+        {
+            rolesCommand.Parameters.AddWithValue("user_id", request.UserId);
+            await rolesCommand.ExecuteNonQueryAsync();
+        }
+
+        await using (var localCommand = new NpgsqlCommand("DELETE FROM auth_local_accounts WHERE user_id = @user_id;", connection, transaction))
+        {
+            localCommand.Parameters.AddWithValue("user_id", request.UserId);
+            await localCommand.ExecuteNonQueryAsync();
+        }
+
+        await using (var userDeleteCommand = new NpgsqlCommand("DELETE FROM app_users WHERE user_id = @user_id;", connection, transaction))
+        {
+            userDeleteCommand.Parameters.AddWithValue("user_id", request.UserId);
+            await userDeleteCommand.ExecuteNonQueryAsync();
+        }
+
+        await transaction.CommitAsync();
+
+        return Results.Ok(new
+        {
+            status = "user_deleted",
+            message = $"{targetEmail} had no dependent history and was permanently deleted."
+        });
+    }
+    catch (Exception ex)
+    {
+        await transaction.RollbackAsync();
+
+        return Results.Problem(
+            title: "Failed to delete user",
+            detail: ex.Message,
+            statusCode: StatusCodes.Status500InternalServerError);
+    }
+});
 
 
 app.MapPost("/api/admin/user-admin/users/bulk-update", async (UserAdminBulkUpdateRequest request, HttpContext httpContext) =>
@@ -8712,3 +9296,20 @@ internal sealed record DatabaseConfig(
         return new DatabaseConfig(host, port, database, username, password, missing);
     }
 }
+
+
+record UserAdminLocalUserCreateRequest(
+    string Email,
+    string DisplayName,
+    string? TemporaryPassword,
+    bool MustChangePassword,
+    string? JobTitle,
+    string? DepartmentName,
+    string? TeamName,
+    string? OfficeLocation,
+    string? ManagerEmail,
+    List<string>? RoleCodes);
+
+record UserAdminUserLifecycleRequest(
+    Guid UserId,
+    string? Reason);

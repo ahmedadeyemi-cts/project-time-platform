@@ -109,6 +109,18 @@ export default function UserAdministrationPanel() {
   const [temporaryPassword, setTemporaryPassword] = useState('');
   const [mustChangePassword, setMustChangePassword] = useState(true);
   const [status, setStatus] = useState('Ready');
+  const [localUserDraft, setLocalUserDraft] = useState({
+    email: '',
+    displayName: '',
+    temporaryPassword: '',
+    mustChangePassword: true,
+    jobTitle: '',
+    departmentName: '',
+    teamName: '',
+    officeLocation: '',
+    managerEmail: '',
+    roleCodes: ['ENGINEER']
+  });
 
   const [bulkDraft, setBulkDraft] = useState({
     applyJobTitle: false,
@@ -215,6 +227,105 @@ export default function UserAdministrationPanel() {
         ? current.roleCodes.filter((code) => code !== roleCode)
         : [...current.roleCodes, roleCode]
     }));
+  }
+
+  function toggleLocalCreateRole(roleCode) {
+    setLocalUserDraft((current) => ({
+      ...current,
+      roleCodes: current.roleCodes.includes(roleCode)
+        ? current.roleCodes.filter((code) => code !== roleCode)
+        : [...current.roleCodes, roleCode]
+    }));
+  }
+
+  async function createLocalUser() {
+    const email = localUserDraft.email.trim().toLowerCase();
+
+    if (!email.endsWith('@ussignal.local')) {
+      setStatus('Manual users must use @ussignal.local. Use Entra import for @ussignal.com and @onenecklab.com users.');
+      return;
+    }
+
+    if (!localUserDraft.displayName.trim()) {
+      setStatus('Display name is required before creating a local user.');
+      return;
+    }
+
+    if (!localUserDraft.temporaryPassword.trim()) {
+      setStatus('Enter a temporary password before creating a local user.');
+      return;
+    }
+
+    setStatus(`Creating local user ${email}...`);
+
+    try {
+      const result = await postJson('/api/admin/user-admin/users/local', {
+        ...localUserDraft,
+        email
+      });
+
+      setStatus(result.message ?? 'Local user created.');
+      setLocalUserDraft({
+        email: '',
+        displayName: '',
+        temporaryPassword: '',
+        mustChangePassword: true,
+        jobTitle: '',
+        departmentName: '',
+        teamName: '',
+        officeLocation: '',
+        managerEmail: '',
+        roleCodes: ['ENGINEER']
+      });
+
+      await loadUserAdministration();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Unable to create local user.');
+    }
+  }
+
+  async function deactivateSelectedUser() {
+    if (!selectedUser) return;
+
+    if (!window.confirm(`Deactivate ${selectedUser.email}? Login will be disabled and active roles will be removed.`)) {
+      return;
+    }
+
+    setStatus(`Deactivating ${selectedUser.email}...`);
+
+    try {
+      const result = await postJson('/api/admin/user-admin/users/deactivate', {
+        userId: selectedUser.userId,
+        reason: 'Deactivated from User Administration page.'
+      });
+
+      setStatus(result.message ?? 'User deactivated.');
+      await loadUserAdministration();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Unable to deactivate user.');
+    }
+  }
+
+  async function deleteSelectedUser() {
+    if (!selectedUser) return;
+
+    if (!window.confirm(`Delete ${selectedUser.email}? If this user has history, Project Pulse will safely deactivate the account instead of hard deleting it.`)) {
+      return;
+    }
+
+    setStatus(`Deleting ${selectedUser.email}...`);
+
+    try {
+      const result = await postJson('/api/admin/user-admin/users/delete', {
+        userId: selectedUser.userId,
+        reason: 'Deleted from User Administration page.'
+      });
+
+      setStatus(result.message ?? 'User delete workflow completed.');
+      await loadUserAdministration();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Unable to delete user.');
+    }
   }
 
   async function saveProfile() {
@@ -328,6 +439,121 @@ export default function UserAdministrationPanel() {
         <span>Users: <strong>{data.loading ? 'Loading...' : data.users.length}</strong></span>
         <span>Bulk selected: <strong>{selectedUserIds.length}</strong></span>
         <span>Action: <strong>{status}</strong></span>
+      </div>
+
+
+      <div className="user-admin-create-card">
+        <div className="section-heading compact-heading">
+          <div>
+            <p className="eyebrow">Local user</p>
+            <h2>Create local Project Pulse user</h2>
+            <p className="section-copy">
+              Manual creation is restricted to @ussignal.local accounts. Use Azure Admin import for @ussignal.com and @onenecklab.com users.
+            </p>
+          </div>
+          <button type="button" className="primary-action" onClick={createLocalUser}>
+            Create local user
+          </button>
+        </div>
+
+        <div className="user-admin-create-grid">
+          <label>Email</label>
+          <input
+            value={localUserDraft.email}
+            onChange={(event) => setLocalUserDraft((current) => ({ ...current, email: event.target.value }))}
+            placeholder="firstname.lastname@ussignal.local"
+          />
+
+          <label>Display name</label>
+          <input
+            value={localUserDraft.displayName}
+            onChange={(event) => setLocalUserDraft((current) => ({ ...current, displayName: event.target.value }))}
+            placeholder="Full name"
+          />
+
+          <label>Temporary password</label>
+          <input
+            type="password"
+            value={localUserDraft.temporaryPassword}
+            onChange={(event) => setLocalUserDraft((current) => ({ ...current, temporaryPassword: event.target.value }))}
+            placeholder="At least 12 chars with upper, lower, number, special"
+          />
+
+          <label>Team</label>
+          <select
+            value={localUserDraft.teamName}
+            onChange={(event) => {
+              const nextTeam = TEAM_OPTIONS.find((team) => team.teamName === event.target.value);
+              setLocalUserDraft((current) => ({
+                ...current,
+                teamName: event.target.value,
+                departmentName: nextTeam?.departmentName ?? current.departmentName,
+                managerEmail: nextTeam?.managerEmail ?? current.managerEmail
+              }));
+            }}
+          >
+            <option value="">Select team</option>
+            {TEAM_OPTIONS.map((team) => (
+              <option value={team.teamName} key={team.teamName}>{team.teamName}</option>
+            ))}
+          </select>
+
+          <label>Department</label>
+          <input
+            list="local-user-admin-departments"
+            value={localUserDraft.departmentName}
+            onChange={(event) => setLocalUserDraft((current) => ({ ...current, departmentName: event.target.value }))}
+            placeholder="Department"
+          />
+
+          <label>Job title</label>
+          <input
+            value={localUserDraft.jobTitle}
+            onChange={(event) => setLocalUserDraft((current) => ({ ...current, jobTitle: event.target.value }))}
+            placeholder="Engineer, Coordinator, Manager, etc."
+          />
+
+          <label>Office location</label>
+          <input
+            value={localUserDraft.officeLocation}
+            onChange={(event) => setLocalUserDraft((current) => ({ ...current, officeLocation: event.target.value }))}
+            placeholder="Office / Remote"
+          />
+
+          <label>Manager email</label>
+          <input
+            value={localUserDraft.managerEmail}
+            onChange={(event) => setLocalUserDraft((current) => ({ ...current, managerEmail: event.target.value }))}
+            placeholder="manager@ussignal.com"
+          />
+        </div>
+
+        <label className="checkbox-row">
+          <input
+            type="checkbox"
+            checked={localUserDraft.mustChangePassword}
+            onChange={(event) => setLocalUserDraft((current) => ({ ...current, mustChangePassword: event.target.checked }))}
+          />
+          Require password change at next login
+        </label>
+
+        <div className="user-admin-role-grid compact-role-grid local-create-roles">
+          {data.roles.map((role) => (
+            <label key={role.roleCode} className={localUserDraft.roleCodes.includes(role.roleCode) ? 'role-option active' : 'role-option'}>
+              <input
+                type="checkbox"
+                checked={localUserDraft.roleCodes.includes(role.roleCode)}
+                onChange={() => toggleLocalCreateRole(role.roleCode)}
+              />
+              <strong>{role.roleName}</strong>
+              <span>{role.roleCode}</span>
+            </label>
+          ))}
+        </div>
+
+        <datalist id="local-user-admin-departments">
+          {data.departments.map((item) => <option value={item} key={item} />)}
+        </datalist>
       </div>
 
       <div className="user-admin-bulk-card">
@@ -582,6 +808,15 @@ export default function UserAdministrationPanel() {
               <button type="button" className="primary-action" onClick={saveProfile}>
                 Save profile
               </button>
+
+              <div className="user-admin-danger-row">
+                <button type="button" className="secondary-action" onClick={deactivateSelectedUser}>
+                  Deactivate user
+                </button>
+                <button type="button" className="danger-action" onClick={deleteSelectedUser}>
+                  Delete user
+                </button>
+              </div>
             </div>
 
             <div className="user-admin-card">
