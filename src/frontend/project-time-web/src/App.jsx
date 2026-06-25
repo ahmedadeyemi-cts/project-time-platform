@@ -3,6 +3,7 @@ import usSignalLogoUrl from '../brand/ussignal.png';
 import './timesheet.css';
 import UserAdministrationPanel from './UserAdministrationPanel.jsx';
 import YearlyUtilizationPanel from './YearlyUtilizationPanel.jsx';
+import ProjectAllocationInfoPanel from './ProjectAllocationInfoPanel.jsx';
 
 const workflowCards = [
   {
@@ -344,6 +345,14 @@ const roleWorkspaceModules = [
     navLabel: 'Approvals',
     description: 'Approve, reject, and review submitted time.',
     permissions: ['VIEW_APPROVAL_INBOX', 'APPROVE_TIME']
+  },
+  {
+    route: 'project-allocation-info',
+    href: '#project-allocation-info',
+    title: 'Project Allocation and Info',
+    navLabel: 'Project Info',
+    description: 'View project allocations, engineer hours, and SOW/GSD documents.',
+    permissions: ['VIEW_PROJECT_ALLOCATION_INFO', 'MANAGE_PROJECT_ALLOCATION_INFO', 'MANAGE_ALL']
   },
   {
     route: 'psa-modules',
@@ -2845,6 +2854,10 @@ Analytics - Variphy / Infortel`}
             </div>
           ))}
         </div>
+      </section>
+
+      <section id="project-allocation-info" className="panel project-allocation-info-panel">
+        <ProjectAllocationInfoPanel />
       </section>
 
       <section id="psa-modules" className={`panel module-foundation-panel ${canViewPsaModules ? '' : 'access-hidden'}`}>

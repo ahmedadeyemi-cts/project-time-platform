@@ -58,7 +58,7 @@ app.MapGet("/api/version", () => Results.Ok(new
 {
     application = "Project Time Platform",
     component = "ProjectTime.Api",
-    version = "0.7.6",
+    version = "0.8.0",
     framework = RuntimeInformation.FrameworkDescription,
     os = RuntimeInformation.OSDescription,
     timestampUtc = DateTimeOffset.UtcNow
@@ -4171,6 +4171,84 @@ app.MapGet("/api/manager/approval-count", async (HttpContext httpContext) =>
 
 
 
+
+async Task<bool> ProjectAllocationUserHasPermissionAsync(NpgsqlConnection connection, Guid userId, params string[] permissionCodes)
+{
+    await using var command = new NpgsqlCommand("""
+        SELECT EXISTS (
+            SELECT 1
+            FROM app_user_role_assignments ura
+            JOIN app_roles r ON r.app_role_id = ura.app_role_id
+            LEFT JOIN app_role_permissions rp ON rp.app_role_id = r.app_role_id
+            LEFT JOIN app_permissions p ON p.app_permission_id = rp.app_permission_id
+            WHERE ura.user_id = @user_id
+              AND ura.is_active = TRUE
+              AND r.is_active = TRUE
+              AND (
+                    r.role_code = 'ADMINISTRATOR'
+                 OR p.permission_code = ANY(@permission_codes)
+              )
+        );
+        """, connection);
+
+    command.Parameters.AddWithValue("user_id", userId);
+    command.Parameters.AddWithValue("permission_codes", permissionCodes);
+
+    var result = await command.ExecuteScalarAsync();
+    return result is bool value && value;
+}
+
+string GetProjectPulseUploadRoot()
+{
+    var configured = Environment.GetEnvironmentVariable("PROJECT_PULSE_UPLOAD_ROOT");
+
+    if (!string.IsNullOrWhiteSpace(configured))
+    {
+        return configured;
+    }
+
+    return "/opt/project-time-platform/uploads";
+}
+
+string SanitizeProjectPulseFileName(string fileName)
+{
+    var invalid = Path.GetInvalidFileNameChars();
+    var clean = new string(fileName.Select(ch => invalid.Contains(ch) ? '_' : ch).ToArray());
+    return string.IsNullOrWhiteSpace(clean) ? "uploaded-file" : clean;
+}
+
+bool ProjectDocumentExtensionIsAllowed(string fileName)
+{
+    var extension = Path.GetExtension(fileName).ToLowerInvariant();
+
+    return extension is ".pdf" or ".doc" or ".docx" or ".xls" or ".xlsx" or ".csv";
+}
+
+async Task<bool> ProjectAllocationUserCanAccessProjectAsync(NpgsqlConnection connection, Guid userId, Guid projectAllocationProjectId)
+{
+    if (await ProjectAllocationUserHasPermissionAsync(connection, userId, "MANAGE_PROJECT_ALLOCATION_INFO", "PURGE_PROJECT_DOCUMENTS", "MANAGE_ALL"))
+    {
+        return true;
+    }
+
+    await using var command = new NpgsqlCommand("""
+        SELECT EXISTS (
+            SELECT 1
+            FROM project_engineer_allocations pea
+            WHERE pea.project_allocation_project_id = @project_id
+              AND pea.user_id = @user_id
+              AND pea.is_active = TRUE
+        );
+        """, connection);
+
+    command.Parameters.AddWithValue("project_id", projectAllocationProjectId);
+    command.Parameters.AddWithValue("user_id", userId);
+
+    var result = await command.ExecuteScalarAsync();
+    return result is bool value && value;
+}
+
+
 app.MapGet("/api/utilization/yearly-status", async (int? year, HttpContext httpContext) =>
 {
     var selectedYear = year ?? DateTime.UtcNow.Year;
@@ -4227,6 +4305,639 @@ app.MapGet("/api/utilization/yearly-status", async (int? year, HttpContext httpC
         quarters
     });
 });
+
+
+app.MapGet("/api/project-allocation-info/engineers", async (HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    if (!await ProjectAllocationUserHasPermissionAsync(connection, sessionUserId.Value, "MANAGE_PROJECT_ALLOCATION_INFO", "MANAGE_ALL"))
+    {
+        return Results.Json(new { status = "access_denied", message = "Only PM, Project/Team Coordinator, or Administrator can view engineer allocation setup." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var engineers = new List<object>();
+
+    await using var command = new NpgsqlCommand("""
+        SELECT DISTINCT
+            u.user_id,
+            u.email,
+            u.display_name,
+            u.job_title,
+            u.department_name,
+            u.team_name
+        FROM app_users u
+        LEFT JOIN app_user_role_assignments ura ON ura.user_id = u.user_id AND ura.is_active = TRUE
+        LEFT JOIN app_roles r ON r.app_role_id = ura.app_role_id
+        WHERE u.is_active = TRUE
+          AND COALESCE(u.login_enabled, TRUE) = TRUE
+          AND lower(u.email) NOT LIKE '%.local'
+        ORDER BY u.display_name, u.email;
+        """, connection);
+
+    await using var reader = await command.ExecuteReaderAsync();
+
+    while (await reader.ReadAsync())
+    {
+        engineers.Add(new
+        {
+            userId = reader.GetGuid(0),
+            email = reader.GetString(1),
+            displayName = reader.GetString(2),
+            jobTitle = reader.IsDBNull(3) ? null : reader.GetString(3),
+            departmentName = reader.IsDBNull(4) ? null : reader.GetString(4),
+            teamName = reader.IsDBNull(5) ? null : reader.GetString(5)
+        });
+    }
+
+    return Results.Ok(new { count = engineers.Count, engineers });
+});
+
+app.MapGet("/api/project-allocation-info/projects", async (HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var canManage = await ProjectAllocationUserHasPermissionAsync(connection, sessionUserId.Value, "MANAGE_PROJECT_ALLOCATION_INFO", "MANAGE_ALL");
+    var canPurge = await ProjectAllocationUserHasPermissionAsync(connection, sessionUserId.Value, "PURGE_PROJECT_DOCUMENTS", "MANAGE_ALL");
+
+    if (!canManage && !await ProjectAllocationUserHasPermissionAsync(connection, sessionUserId.Value, "VIEW_PROJECT_ALLOCATION_INFO"))
+    {
+        return Results.Json(new { status = "access_denied", message = "You do not have access to Project Allocation and Info." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var projectRows = new List<(Guid ProjectId, string ProjectCode, string ProjectName, string? CustomerName, string? ServiceRequestNumber, string ProjectStatus, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt)>();
+
+    await using (var projectCommand = new NpgsqlCommand("""
+        SELECT
+            p.project_allocation_project_id,
+            p.project_code,
+            p.project_name,
+            p.customer_name,
+            p.service_request_number,
+            p.project_status,
+            p.created_at,
+            p.updated_at
+        FROM project_allocation_projects p
+        WHERE @can_manage = TRUE
+           OR EXISTS (
+                SELECT 1
+                FROM project_engineer_allocations pea
+                WHERE pea.project_allocation_project_id = p.project_allocation_project_id
+                  AND pea.user_id = @user_id
+                  AND pea.is_active = TRUE
+           )
+        ORDER BY p.updated_at DESC, p.project_name;
+        """, connection))
+    {
+        projectCommand.Parameters.AddWithValue("can_manage", canManage);
+        projectCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+
+        await using var reader = await projectCommand.ExecuteReaderAsync();
+
+        while (await reader.ReadAsync())
+        {
+            projectRows.Add((
+                reader.GetGuid(0),
+                reader.GetString(1),
+                reader.GetString(2),
+                reader.IsDBNull(3) ? null : reader.GetString(3),
+                reader.IsDBNull(4) ? null : reader.GetString(4),
+                reader.GetString(5),
+                reader.GetFieldValue<DateTimeOffset>(6),
+                reader.GetFieldValue<DateTimeOffset>(7)
+            ));
+        }
+    }
+
+    var projects = new List<object>();
+
+    foreach (var project in projectRows)
+    {
+        var allocations = new List<object>();
+        var documents = new List<object>();
+
+        await using (var allocationCommand = new NpgsqlCommand("""
+            SELECT
+                pea.project_engineer_allocation_id,
+                pea.user_id,
+                u.display_name,
+                u.email,
+                u.department_name,
+                u.team_name,
+                pea.allocated_hours,
+                pea.allocation_notes,
+                pea.is_active
+            FROM project_engineer_allocations pea
+            JOIN app_users u ON u.user_id = pea.user_id
+            WHERE pea.project_allocation_project_id = @project_id
+              AND pea.is_active = TRUE
+            ORDER BY u.display_name, u.email;
+            """, connection))
+        {
+            allocationCommand.Parameters.AddWithValue("project_id", project.ProjectId);
+
+            await using var reader = await allocationCommand.ExecuteReaderAsync();
+
+            while (await reader.ReadAsync())
+            {
+                var allocatedHours = reader.GetDecimal(6);
+                decimal usedHours = 0m;
+                var remainingHours = Math.Max(0, allocatedHours - usedHours);
+
+                allocations.Add(new
+                {
+                    allocationId = reader.GetGuid(0),
+                    userId = reader.GetGuid(1),
+                    displayName = reader.GetString(2),
+                    email = reader.GetString(3),
+                    departmentName = reader.IsDBNull(4) ? null : reader.GetString(4),
+                    teamName = reader.IsDBNull(5) ? null : reader.GetString(5),
+                    allocatedHours,
+                    usedHours,
+                    remainingHours,
+                    allocationNotes = reader.IsDBNull(7) ? null : reader.GetString(7),
+                    isActive = reader.GetBoolean(8)
+                });
+            }
+        }
+
+        await using (var documentCommand = new NpgsqlCommand("""
+            SELECT
+                project_document_file_id,
+                document_type,
+                original_file_name,
+                content_type,
+                size_bytes,
+                uploaded_at,
+                is_purged,
+                purged_at
+            FROM project_document_files
+            WHERE project_allocation_project_id = @project_id
+            ORDER BY uploaded_at DESC;
+            """, connection))
+        {
+            documentCommand.Parameters.AddWithValue("project_id", project.ProjectId);
+
+            await using var reader = await documentCommand.ExecuteReaderAsync();
+
+            while (await reader.ReadAsync())
+            {
+                var documentId = reader.GetGuid(0);
+                var isPurged = reader.GetBoolean(6);
+
+                documents.Add(new
+                {
+                    documentId,
+                    documentType = reader.GetString(1),
+                    originalFileName = reader.GetString(2),
+                    contentType = reader.IsDBNull(3) ? null : reader.GetString(3),
+                    sizeBytes = reader.GetInt64(4),
+                    uploadedAt = reader.GetFieldValue<DateTimeOffset>(5),
+                    isPurged,
+                    purgedAt = reader.IsDBNull(7) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(7),
+                    downloadUrl = isPurged ? null : $"/api/project-allocation-info/documents/{documentId}/download"
+                });
+            }
+        }
+
+        projects.Add(new
+        {
+            projectId = project.ProjectId,
+            projectCode = project.ProjectCode,
+            projectName = project.ProjectName,
+            customerName = project.CustomerName,
+            serviceRequestNumber = project.ServiceRequestNumber,
+            projectStatus = project.ProjectStatus,
+            createdAt = project.CreatedAt,
+            updatedAt = project.UpdatedAt,
+            allocations,
+            documents,
+            totalAllocatedHours = allocations.Sum(item => (decimal)item.GetType().GetProperty("allocatedHours")!.GetValue(item)!),
+            totalUsedHours = allocations.Sum(item => (decimal)item.GetType().GetProperty("usedHours")!.GetValue(item)!),
+            totalRemainingHours = allocations.Sum(item => (decimal)item.GetType().GetProperty("remainingHours")!.GetValue(item)!)
+        });
+    }
+
+    return Results.Ok(new
+    {
+        count = projects.Count,
+        canManage,
+        canPurge,
+        calculationStatus = "allocation_foundation",
+        calculationNote = "Used hours are currently placeholders and will be connected to project/service-request time entries after allocation mapping is finalized.",
+        projects
+    });
+});
+
+app.MapPost("/api/project-allocation-info/projects", async (ProjectAllocationProjectUpsertRequest request, HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    if (string.IsNullOrWhiteSpace(request.ProjectCode) || string.IsNullOrWhiteSpace(request.ProjectName))
+    {
+        return Results.BadRequest(new { status = "validation_failed", message = "Project code and project name are required." });
+    }
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    if (!await ProjectAllocationUserHasPermissionAsync(connection, sessionUserId.Value, "MANAGE_PROJECT_ALLOCATION_INFO", "MANAGE_ALL"))
+    {
+        return Results.Json(new { status = "access_denied", message = "Only PM, Project/Team Coordinator, or Administrator can manage project allocations." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    await using var transaction = await connection.BeginTransactionAsync();
+
+    try
+    {
+        Guid projectId;
+
+        await using (var projectCommand = new NpgsqlCommand("""
+            INSERT INTO project_allocation_projects (
+                project_code,
+                project_name,
+                customer_name,
+                service_request_number,
+                project_status,
+                created_by_user_id,
+                updated_by_user_id
+            )
+            VALUES (
+                @project_code,
+                @project_name,
+                NULLIF(@customer_name, ''),
+                NULLIF(@service_request_number, ''),
+                COALESCE(NULLIF(@project_status, ''), 'intake'),
+                @user_id,
+                @user_id
+            )
+            ON CONFLICT (project_code) DO UPDATE
+            SET project_name = EXCLUDED.project_name,
+                customer_name = EXCLUDED.customer_name,
+                service_request_number = EXCLUDED.service_request_number,
+                project_status = EXCLUDED.project_status,
+                updated_by_user_id = EXCLUDED.updated_by_user_id,
+                updated_at = NOW()
+            RETURNING project_allocation_project_id;
+            """, connection, transaction))
+        {
+            projectCommand.Parameters.AddWithValue("project_code", request.ProjectCode.Trim());
+            projectCommand.Parameters.AddWithValue("project_name", request.ProjectName.Trim());
+            projectCommand.Parameters.AddWithValue("customer_name", request.CustomerName?.Trim() ?? "");
+            projectCommand.Parameters.AddWithValue("service_request_number", request.ServiceRequestNumber?.Trim() ?? "");
+            projectCommand.Parameters.AddWithValue("project_status", request.ProjectStatus?.Trim() ?? "intake");
+            projectCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+
+            projectId = (Guid)(await projectCommand.ExecuteScalarAsync() ?? throw new InvalidOperationException("Unable to save project allocation record."));
+        }
+
+        foreach (var allocation in request.Allocations ?? new List<ProjectAllocationEngineerRequest>())
+        {
+            if (allocation.UserId == Guid.Empty || allocation.AllocatedHours < 0)
+            {
+                continue;
+            }
+
+            await using var allocationCommand = new NpgsqlCommand("""
+                INSERT INTO project_engineer_allocations (
+                    project_allocation_project_id,
+                    user_id,
+                    allocated_hours,
+                    allocation_notes,
+                    is_active,
+                    allocated_by_user_id
+                )
+                VALUES (
+                    @project_id,
+                    @user_id,
+                    @allocated_hours,
+                    NULLIF(@allocation_notes, ''),
+                    TRUE,
+                    @allocated_by_user_id
+                )
+                ON CONFLICT (project_allocation_project_id, user_id) DO UPDATE
+                SET allocated_hours = EXCLUDED.allocated_hours,
+                    allocation_notes = EXCLUDED.allocation_notes,
+                    is_active = TRUE,
+                    allocated_by_user_id = EXCLUDED.allocated_by_user_id,
+                    updated_at = NOW();
+                """, connection, transaction);
+
+            allocationCommand.Parameters.AddWithValue("project_id", projectId);
+            allocationCommand.Parameters.AddWithValue("user_id", allocation.UserId);
+            allocationCommand.Parameters.AddWithValue("allocated_hours", allocation.AllocatedHours);
+            allocationCommand.Parameters.AddWithValue("allocation_notes", allocation.Notes?.Trim() ?? "");
+            allocationCommand.Parameters.AddWithValue("allocated_by_user_id", sessionUserId.Value);
+
+            await allocationCommand.ExecuteNonQueryAsync();
+        }
+
+        await transaction.CommitAsync();
+
+        return Results.Ok(new
+        {
+            status = "project_allocation_saved",
+            projectId,
+            message = "Project allocation record saved. Engineers assigned to the project can now view allocation hours and download SOW/GSD documents."
+        });
+    }
+    catch (Exception ex)
+    {
+        await transaction.RollbackAsync();
+
+        return Results.Problem(
+            title: "Failed to save project allocation",
+            detail: ex.Message,
+            statusCode: StatusCodes.Status500InternalServerError);
+    }
+});
+
+app.MapPost("/api/project-allocation-info/documents/upload", async (HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    if (!await ProjectAllocationUserHasPermissionAsync(connection, sessionUserId.Value, "MANAGE_PROJECT_ALLOCATION_INFO", "MANAGE_ALL"))
+    {
+        return Results.Json(new { status = "access_denied", message = "Only PM, Project/Team Coordinator, or Administrator can upload SOW/GSD documents." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var form = await httpContext.Request.ReadFormAsync();
+
+    if (!Guid.TryParse(form["projectId"], out var projectId))
+    {
+        return Results.BadRequest(new { status = "validation_failed", message = "Valid projectId is required." });
+    }
+
+    var documentType = form["documentType"].ToString().Trim().ToUpperInvariant();
+
+    if (documentType is not ("SOW" or "GSD"))
+    {
+        return Results.BadRequest(new { status = "validation_failed", message = "Document type must be SOW or GSD." });
+    }
+
+    var file = form.Files.GetFile("file");
+
+    if (file is null || file.Length == 0)
+    {
+        return Results.BadRequest(new { status = "validation_failed", message = "A SOW/GSD file is required." });
+    }
+
+    if (file.Length > 50 * 1024 * 1024)
+    {
+        return Results.BadRequest(new { status = "file_too_large", message = "Document uploads are limited to 50 MB." });
+    }
+
+    if (!ProjectDocumentExtensionIsAllowed(file.FileName))
+    {
+        return Results.BadRequest(new { status = "file_type_not_allowed", message = "Allowed file types are PDF, Word, Excel, and CSV." });
+    }
+
+    var uploadRoot = GetProjectPulseUploadRoot();
+    var projectFolder = Path.Combine(uploadRoot, "project-documents", projectId.ToString());
+    Directory.CreateDirectory(projectFolder);
+
+    var originalFileName = SanitizeProjectPulseFileName(file.FileName);
+    var storedFileName = $"{documentType}_{Guid.NewGuid():N}_{originalFileName}";
+    var storagePath = Path.Combine(projectFolder, storedFileName);
+
+    await using (var stream = File.Create(storagePath))
+    {
+        await file.CopyToAsync(stream);
+    }
+
+    Guid documentId;
+
+    await using (var command = new NpgsqlCommand("""
+        INSERT INTO project_document_files (
+            project_allocation_project_id,
+            document_type,
+            original_file_name,
+            stored_file_name,
+            storage_path,
+            content_type,
+            size_bytes,
+            uploaded_by_user_id
+        )
+        VALUES (
+            @project_id,
+            @document_type,
+            @original_file_name,
+            @stored_file_name,
+            @storage_path,
+            @content_type,
+            @size_bytes,
+            @uploaded_by_user_id
+        )
+        RETURNING project_document_file_id;
+        """, connection))
+    {
+        command.Parameters.AddWithValue("project_id", projectId);
+        command.Parameters.AddWithValue("document_type", documentType);
+        command.Parameters.AddWithValue("original_file_name", originalFileName);
+        command.Parameters.AddWithValue("stored_file_name", storedFileName);
+        command.Parameters.AddWithValue("storage_path", storagePath);
+        command.Parameters.AddWithValue("content_type", string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType);
+        command.Parameters.AddWithValue("size_bytes", file.Length);
+        command.Parameters.AddWithValue("uploaded_by_user_id", sessionUserId.Value);
+
+        documentId = (Guid)(await command.ExecuteScalarAsync() ?? throw new InvalidOperationException("Unable to save document metadata."));
+    }
+
+    return Results.Ok(new
+    {
+        status = "project_document_uploaded",
+        documentId,
+        documentType,
+        originalFileName,
+        message = $"{documentType} uploaded successfully."
+    });
+});
+
+app.MapGet("/api/project-allocation-info/documents/{documentId:guid}/download", async (Guid documentId, HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    await using var command = new NpgsqlCommand("""
+        SELECT
+            project_allocation_project_id,
+            original_file_name,
+            storage_path,
+            content_type,
+            is_purged
+        FROM project_document_files
+        WHERE project_document_file_id = @document_id;
+        """, connection);
+
+    command.Parameters.AddWithValue("document_id", documentId);
+
+    await using var reader = await command.ExecuteReaderAsync();
+
+    if (!await reader.ReadAsync())
+    {
+        return Results.NotFound(new { status = "document_not_found", message = "Document was not found." });
+    }
+
+    var projectId = reader.GetGuid(0);
+    var originalFileName = reader.GetString(1);
+    var storagePath = reader.GetString(2);
+    var contentType = reader.IsDBNull(3) ? "application/octet-stream" : reader.GetString(3);
+    var isPurged = reader.GetBoolean(4);
+
+    await reader.CloseAsync();
+
+    if (isPurged || !File.Exists(storagePath))
+    {
+        return Results.NotFound(new { status = "document_purged", message = "This document has been purged or is no longer available." });
+    }
+
+    if (!await ProjectAllocationUserCanAccessProjectAsync(connection, sessionUserId.Value, projectId))
+    {
+        return Results.Json(new { status = "access_denied", message = "You do not have access to this project document." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    return Results.File(storagePath, contentType, originalFileName);
+});
+
+app.MapPost("/api/project-allocation-info/documents/purge", async (ProjectDocumentPurgeRequest request, HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    if (!await ProjectAllocationUserHasPermissionAsync(connection, sessionUserId.Value, "PURGE_PROJECT_DOCUMENTS", "MANAGE_ALL"))
+    {
+        return Results.Json(new { status = "access_denied", message = "Only Project/Team Coordinator or Administrator can purge old SOW/GSD files." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var olderThanDays = request.OlderThanDays <= 0 ? 120 : request.OlderThanDays;
+    var cutoff = DateTimeOffset.UtcNow.AddDays(-olderThanDays);
+
+    var purgeCandidates = new List<(Guid DocumentId, string StoragePath)>();
+
+    await using (var selectCommand = new NpgsqlCommand("""
+        SELECT d.project_document_file_id, d.storage_path
+        FROM project_document_files d
+        JOIN project_allocation_projects p ON p.project_allocation_project_id = d.project_allocation_project_id
+        WHERE d.is_purged = FALSE
+          AND d.uploaded_at < @cutoff
+          AND (
+                @include_active_projects = TRUE
+             OR lower(p.project_status) NOT IN ('active', 'in_progress', 'open')
+          );
+        """, connection))
+    {
+        selectCommand.Parameters.AddWithValue("cutoff", cutoff);
+        selectCommand.Parameters.AddWithValue("include_active_projects", request.IncludeActiveProjects);
+
+        await using var reader = await selectCommand.ExecuteReaderAsync();
+
+        while (await reader.ReadAsync())
+        {
+            purgeCandidates.Add((reader.GetGuid(0), reader.GetString(1)));
+        }
+    }
+
+    foreach (var candidate in purgeCandidates)
+    {
+        try
+        {
+            if (File.Exists(candidate.StoragePath))
+            {
+                File.Delete(candidate.StoragePath);
+            }
+        }
+        catch
+        {
+            // Metadata will still be marked purged so the UI stops exposing stale download links.
+        }
+
+        await using var updateCommand = new NpgsqlCommand("""
+            UPDATE project_document_files
+            SET is_purged = TRUE,
+                purged_at = NOW(),
+                purged_by_user_id = @purged_by_user_id,
+                purge_reason = @purge_reason
+            WHERE project_document_file_id = @document_id;
+            """, connection);
+
+        updateCommand.Parameters.AddWithValue("document_id", candidate.DocumentId);
+        updateCommand.Parameters.AddWithValue("purged_by_user_id", sessionUserId.Value);
+        updateCommand.Parameters.AddWithValue("purge_reason", string.IsNullOrWhiteSpace(request.PurgeReason) ? $"Purged because document was older than {olderThanDays} days." : request.PurgeReason.Trim());
+
+        await updateCommand.ExecuteNonQueryAsync();
+    }
+
+    return Results.Ok(new
+    {
+        status = "document_purge_completed",
+        olderThanDays,
+        documentsPurged = purgeCandidates.Count,
+        includeActiveProjects = request.IncludeActiveProjects,
+        message = $"Purged {purgeCandidates.Count} old SOW/GSD document(s)."
+    });
+});
+
 
 app.Run();
 
@@ -5778,6 +6489,26 @@ static async Task<List<object>> LoadSavedTimeEntriesAsync(NpgsqlConnection conne
 }
 
 
+
+
+
+internal sealed record ProjectAllocationProjectUpsertRequest(
+    string ProjectCode,
+    string ProjectName,
+    string? CustomerName,
+    string? ServiceRequestNumber,
+    string? ProjectStatus,
+    List<ProjectAllocationEngineerRequest>? Allocations);
+
+internal sealed record ProjectAllocationEngineerRequest(
+    Guid UserId,
+    decimal AllocatedHours,
+    string? Notes);
+
+internal sealed record ProjectDocumentPurgeRequest(
+    int OlderThanDays,
+    bool IncludeActiveProjects,
+    string? PurgeReason);
 
 
 internal sealed record TimesheetDaySubmitRequest(DateOnly WeekStart, DateOnly WorkDate, List<TimesheetEntryRequest> Entries);

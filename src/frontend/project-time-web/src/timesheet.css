@@ -2568,3 +2568,175 @@ html[data-theme="dark"] .profile-settings-actions {
     justify-self: start;
   }
 }
+
+/* 019I Project Allocation and Info */
+
+.app-shell.route-project-allocation-info > section.panel:not(#project-allocation-info) {
+  display: none !important;
+}
+
+.app-shell.route-project-allocation-info > #project-allocation-info {
+  display: block !important;
+}
+
+.project-allocation-shell {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.project-allocation-admin-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(340px, 0.8fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.project-allocation-grid {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.project-allocation-card {
+  border: 1px solid var(--border);
+  border-radius: 1.15rem;
+  background: var(--card);
+  box-shadow: var(--shadow-sm);
+  padding: 1.25rem;
+}
+
+.project-allocation-card h2,
+.project-allocation-card h3 {
+  margin-top: 0.35rem;
+}
+
+.project-allocation-card label {
+  display: block;
+  font-weight: 900;
+  margin: 0.85rem 0 0.35rem;
+}
+
+.project-allocation-card input,
+.project-allocation-card select {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 0.85rem;
+  padding: 0.8rem 0.95rem;
+  color: var(--text);
+  background: var(--panel);
+  font: inherit;
+}
+
+.project-allocation-card .checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.project-allocation-card .checkbox-row input {
+  width: auto;
+}
+
+.project-allocation-card-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: start;
+}
+
+.project-hours-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+.project-hours-summary span {
+  display: grid;
+  gap: 0.25rem;
+  border: 1px solid var(--border);
+  border-radius: 0.85rem;
+  padding: 0.8rem;
+  color: var(--muted);
+}
+
+.project-hours-summary strong {
+  color: var(--text);
+}
+
+.allocation-edit-list {
+  display: grid;
+  gap: 0.65rem;
+  margin-bottom: 1rem;
+}
+
+.allocation-edit-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) 150px minmax(180px, 1fr) auto;
+  gap: 0.65rem;
+  align-items: center;
+}
+
+.allocation-list,
+.document-link-list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.allocation-row,
+.document-link-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) repeat(3, minmax(120px, auto));
+  gap: 0.75rem;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 0.85rem;
+  padding: 0.8rem;
+  background: var(--panel);
+}
+
+.document-link-row {
+  grid-template-columns: minmax(220px, 1fr) auto;
+}
+
+.allocation-row strong,
+.allocation-row small,
+.document-link-row strong,
+.document-link-row small {
+  display: block;
+}
+
+.allocation-row small,
+.document-link-row small {
+  color: var(--muted);
+  margin-top: 0.15rem;
+}
+
+.document-purge-box {
+  border-top: 1px solid var(--border);
+  margin-top: 1.25rem;
+  padding-top: 1.25rem;
+}
+
+.danger-action {
+  border: none;
+  border-radius: 999px;
+  padding: 0.75rem 1rem;
+  background: #dc2626;
+  color: white;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.purged-label {
+  color: #dc2626;
+  font-weight: 900;
+}
+
+@media (max-width: 1050px) {
+  .project-allocation-admin-grid,
+  .project-hours-summary,
+  .allocation-edit-row,
+  .allocation-row {
+    grid-template-columns: 1fr;
+  }
+}
