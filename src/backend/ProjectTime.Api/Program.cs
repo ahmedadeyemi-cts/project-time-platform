@@ -58,7 +58,7 @@ app.MapGet("/api/version", () => Results.Ok(new
 {
     application = "Project Time Platform",
     component = "ProjectTime.Api",
-    version = "0.8.0",
+    version = "0.8.1",
     framework = RuntimeInformation.FrameworkDescription,
     os = RuntimeInformation.OSDescription,
     timestampUtc = DateTimeOffset.UtcNow
@@ -4935,6 +4935,308 @@ app.MapPost("/api/project-allocation-info/documents/purge", async (ProjectDocume
         documentsPurged = purgeCandidates.Count,
         includeActiveProjects = request.IncludeActiveProjects,
         message = $"Purged {purgeCandidates.Count} old SOW/GSD document(s)."
+    });
+});
+
+
+
+app.MapGet("/api/utilization/manager-team-summary", async (int? year, HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var selectedYear = year ?? DateTime.UtcNow.Year;
+    if (selectedYear < 2026) selectedYear = 2026;
+    if (selectedYear > 2036) selectedYear = 2036;
+
+    var yearStart = new DateOnly(selectedYear, 1, 1);
+    var nextYearStart = new DateOnly(selectedYear + 1, 1, 1);
+    decimal standardQuarterHours = 482m;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var sessionEmail = "";
+    var sessionRoles = new List<string>();
+
+    await using (var roleCommand = new NpgsqlCommand("""
+        SELECT u.email,
+               COALESCE(array_agg(r.role_code ORDER BY r.display_order) FILTER (WHERE r.role_code IS NOT NULL), ARRAY[]::varchar[]) AS role_codes
+        FROM app_users u
+        LEFT JOIN app_user_role_assignments ura ON ura.user_id = u.user_id AND ura.is_active = TRUE
+        LEFT JOIN app_roles r ON r.app_role_id = ura.app_role_id AND r.is_active = TRUE
+        WHERE u.user_id = @user_id
+        GROUP BY u.email;
+        """, connection))
+    {
+        roleCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+
+        await using var reader = await roleCommand.ExecuteReaderAsync();
+
+        if (!await reader.ReadAsync())
+        {
+            return Results.Json(new { status = "user_not_found", message = "Session user was not found." }, statusCode: StatusCodes.Status401Unauthorized);
+        }
+
+        sessionEmail = reader.GetString(0).ToLowerInvariant();
+        sessionRoles = reader.GetFieldValue<string[]>(1).ToList();
+    }
+
+    var isAdministrator = sessionRoles.Contains("ADMINISTRATOR");
+    var isCoordinator = sessionRoles.Contains("PROJECT_TEAM_COORDINATOR");
+    var isManager = sessionRoles.Contains("MANAGER");
+
+    if (!isAdministrator && !isCoordinator && !isManager)
+    {
+        return Results.Ok(new
+        {
+            canViewManagerUtilization = false,
+            year = selectedYear,
+            managedTeams = Array.Empty<string>(),
+            message = "Manager utilization is available to Managers, Project/Team Coordinators, and Administrators."
+        });
+    }
+
+    var managedTeams = new List<string>();
+    var managedDepartments = new List<string>();
+
+    if (isAdministrator || isCoordinator)
+    {
+        managedTeams.AddRange(new[] { "Systems", "Collaboration", "Enterprise Networking", "Project Management", "Back Office" });
+        managedDepartments.AddRange(new[] {
+            "Systems Engineering",
+            "Collaboration Engineering",
+            "Enterprise Networking Engineering",
+            "Project Management",
+            "Project Management Office",
+            "Back Office"
+        });
+    }
+    else if (sessionEmail == "ahmed.adeyemi@ussignal.com" || sessionEmail == "ahmed.adeyemi@ussignal.local")
+    {
+        managedTeams.AddRange(new[] { "Systems", "Collaboration" });
+        managedDepartments.AddRange(new[] { "Systems Engineering", "Collaboration Engineering" });
+    }
+    else if (sessionEmail == "matthew.lenoble@ussignal.com")
+    {
+        managedTeams.AddRange(new[] { "Enterprise Networking", "Project Management" });
+        managedDepartments.AddRange(new[] { "Enterprise Networking Engineering", "Project Management", "Project Management Office" });
+    }
+
+    if (managedTeams.Count == 0 && managedDepartments.Count == 0)
+    {
+        return Results.Ok(new
+        {
+            canViewManagerUtilization = true,
+            year = selectedYear,
+            managedTeams,
+            teamSummaries = Array.Empty<object>(),
+            teamMembers = Array.Empty<object>(),
+            collectiveSummary = new { memberCount = 0, annualBillableHours = 0, annualUtilizationPercent = 0 },
+            message = "No managed teams are configured for this manager yet."
+        });
+    }
+
+    var users = new List<(Guid UserId, string Email, string DisplayName, string? DepartmentName, string? TeamName)>();
+
+    await using (var usersCommand = new NpgsqlCommand("""
+        SELECT DISTINCT
+            u.user_id,
+            u.email,
+            u.display_name,
+            u.department_name,
+            u.team_name
+        FROM app_users u
+        WHERE u.is_active = TRUE
+          AND COALESCE(u.login_enabled, TRUE) = TRUE
+          AND lower(u.email) NOT LIKE '%.local'
+          AND (
+                u.team_name = ANY(@managed_teams)
+             OR u.department_name = ANY(@managed_departments)
+          )
+        ORDER BY u.team_name, u.display_name, u.email;
+        """, connection))
+    {
+        usersCommand.Parameters.AddWithValue("managed_teams", managedTeams.ToArray());
+        usersCommand.Parameters.AddWithValue("managed_departments", managedDepartments.ToArray());
+
+        await using var reader = await usersCommand.ExecuteReaderAsync();
+
+        while (await reader.ReadAsync())
+        {
+            users.Add((
+                reader.GetGuid(0),
+                reader.GetString(1),
+                reader.GetString(2),
+                reader.IsDBNull(3) ? null : reader.GetString(3),
+                reader.IsDBNull(4) ? null : reader.GetString(4)
+            ));
+        }
+    }
+
+    var billableByUserQuarter = new Dictionary<Guid, Dictionary<int, decimal>>();
+
+    foreach (var user in users)
+    {
+        billableByUserQuarter[user.UserId] = new Dictionary<int, decimal>
+        {
+            [1] = 0m,
+            [2] = 0m,
+            [3] = 0m,
+            [4] = 0m
+        };
+    }
+
+    if (users.Count > 0)
+    {
+        await using var usageCommand = new NpgsqlCommand("""
+            WITH entry_rows AS (
+                SELECT
+                    ts.user_id,
+                    NULLIF(to_jsonb(te)->>'work_date', '')::date AS work_date,
+                    COALESCE(NULLIF(to_jsonb(te)->>'hours', '')::numeric, 0) AS hours,
+                    CASE
+                        WHEN NULLIF(to_jsonb(te)->>'is_billable', '') IS NOT NULL
+                            THEN NULLIF(to_jsonb(te)->>'is_billable', '')::boolean
+                        ELSE COALESCE(
+                            NULLIF(to_jsonb(te)->>'project_id', ''),
+                            NULLIF(to_jsonb(te)->>'project_task_id', ''),
+                            NULLIF(to_jsonb(te)->>'task_id', ''),
+                            NULLIF(to_jsonb(te)->>'service_request_id', '')
+                        ) IS NOT NULL
+                    END AS is_billable,
+                    COALESCE(NULLIF(to_jsonb(ts)->>'status', ''), 'draft') AS timesheet_status
+                FROM time_entries te
+                JOIN timesheets ts ON ts.timesheet_id = te.timesheet_id
+                WHERE ts.user_id = ANY(@user_ids)
+            )
+            SELECT
+                user_id,
+                EXTRACT(QUARTER FROM work_date)::int AS quarter_number,
+                COALESCE(SUM(hours), 0) AS billable_hours
+            FROM entry_rows
+            WHERE work_date >= @year_start
+              AND work_date < @next_year_start
+              AND is_billable = TRUE
+              AND timesheet_status NOT IN ('manager_declined', 'rejected', 'voided')
+            GROUP BY user_id, EXTRACT(QUARTER FROM work_date)::int;
+            """, connection);
+
+        usageCommand.Parameters.AddWithValue("user_ids", users.Select(user => user.UserId).ToArray());
+        usageCommand.Parameters.AddWithValue("year_start", yearStart);
+        usageCommand.Parameters.AddWithValue("next_year_start", nextYearStart);
+
+        await using var reader = await usageCommand.ExecuteReaderAsync();
+
+        while (await reader.ReadAsync())
+        {
+            var userId = reader.GetGuid(0);
+            var quarter = reader.GetInt32(1);
+            var billableHours = reader.GetDecimal(2);
+
+            if (billableByUserQuarter.ContainsKey(userId))
+            {
+                billableByUserQuarter[userId][quarter] = billableHours;
+            }
+        }
+    }
+
+    var teamMembers = users.Select(user =>
+    {
+        var quarters = new[] { 1, 2, 3, 4 }.Select(quarter =>
+        {
+            var billableHours = Math.Round(billableByUserQuarter[user.UserId][quarter], 2);
+            var utilizationPercent = standardQuarterHours == 0 ? 0 : Math.Round((billableHours / standardQuarterHours) * 100m, 2);
+
+            return new
+            {
+                quarterNumber = quarter,
+                quarterName = $"Q{quarter}",
+                billableHours,
+                utilizationPercent
+            };
+        }).ToList();
+
+        var annualBillableHours = quarters.Sum(item => item.billableHours);
+        var annualUtilizationPercent = standardQuarterHours == 0 ? 0 : Math.Round((annualBillableHours / (standardQuarterHours * 4m)) * 100m, 2);
+
+        return new
+        {
+            userId = user.UserId,
+            user.Email,
+            user.DisplayName,
+            user.DepartmentName,
+            user.TeamName,
+            annualBillableHours,
+            annualUtilizationPercent,
+            quarters
+        };
+    }).ToList();
+
+    var teamSummaries = teamMembers
+        .GroupBy(member => string.IsNullOrWhiteSpace(member.TeamName) ? member.DepartmentName ?? "Unassigned" : member.TeamName)
+        .Select(group =>
+        {
+            var memberCount = group.Count();
+            var annualBillableHours = group.Sum(member => member.annualBillableHours);
+            var annualCapacityHours = standardQuarterHours * 4m * memberCount;
+            var annualUtilizationPercent = annualCapacityHours == 0 ? 0 : Math.Round((annualBillableHours / annualCapacityHours) * 100m, 2);
+
+            var quarters = new[] { 1, 2, 3, 4 }.Select(quarter =>
+            {
+                var billableHours = group.Sum(member => member.quarters.First(item => item.quarterNumber == quarter).billableHours);
+                var capacityHours = standardQuarterHours * memberCount;
+                var utilizationPercent = capacityHours == 0 ? 0 : Math.Round((billableHours / capacityHours) * 100m, 2);
+
+                return new
+                {
+                    quarterNumber = quarter,
+                    quarterName = $"Q{quarter}",
+                    billableHours,
+                    utilizationPercent
+                };
+            }).ToList();
+
+            return new
+            {
+                teamName = group.Key,
+                memberCount,
+                annualBillableHours,
+                annualUtilizationPercent,
+                quarters
+            };
+        })
+        .OrderBy(team => team.teamName)
+        .ToList();
+
+    var collectiveMemberCount = teamMembers.Count;
+    var collectiveAnnualBillableHours = teamMembers.Sum(member => member.annualBillableHours);
+    var collectiveAnnualCapacityHours = standardQuarterHours * 4m * collectiveMemberCount;
+    var collectiveAnnualUtilizationPercent = collectiveAnnualCapacityHours == 0 ? 0 : Math.Round((collectiveAnnualBillableHours / collectiveAnnualCapacityHours) * 100m, 2);
+
+    return Results.Ok(new
+    {
+        canViewManagerUtilization = true,
+        year = selectedYear,
+        standardQuarterHours,
+        managedTeams,
+        calculationStatus = "foundation",
+        calculationNote = "Manager utilization uses current project/service-request billable time when available. Final mapping will be refined after project allocation/time-entry linkage is completed.",
+        collectiveSummary = new
+        {
+            memberCount = collectiveMemberCount,
+            annualBillableHours = collectiveAnnualBillableHours,
+            annualUtilizationPercent = collectiveAnnualUtilizationPercent
+        },
+        teamSummaries,
+        teamMembers
     });
 });
 

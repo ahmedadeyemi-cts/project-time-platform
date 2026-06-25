@@ -2740,3 +2740,50 @@ html[data-theme="dark"] .profile-settings-actions {
     grid-template-columns: 1fr;
   }
 }
+
+/* 019J Manager Team Utilization */
+
+.manager-team-utilization-panel {
+  border: 1px solid var(--border);
+  border-radius: 1.25rem;
+  background: var(--card);
+  box-shadow: var(--shadow-sm);
+  padding: 1.5rem;
+  margin-top: 1.5rem;
+}
+
+.team-utilization-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.team-utilization-card {
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: var(--panel);
+  padding: 1rem;
+}
+
+.team-utilization-card h3 {
+  margin: 0.2rem 0 0;
+  font-size: 2rem;
+  color: var(--accent);
+}
+
+.manager-team-member-table-wrap {
+  overflow: auto;
+  margin-top: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+}
+
+.manager-team-member-table-wrap table {
+  min-width: 960px;
+}
+
+.manager-team-member-table-wrap td span,
+.manager-team-member-table-wrap td strong {
+  display: block;
+}

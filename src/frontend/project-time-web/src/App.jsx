@@ -4,6 +4,7 @@ import './timesheet.css';
 import UserAdministrationPanel from './UserAdministrationPanel.jsx';
 import YearlyUtilizationPanel from './YearlyUtilizationPanel.jsx';
 import ProjectAllocationInfoPanel from './ProjectAllocationInfoPanel.jsx';
+import ManagerTeamUtilizationPanel from './ManagerTeamUtilizationPanel.jsx';
 
 const workflowCards = [
   {
@@ -2969,6 +2970,7 @@ Analytics - Variphy / Infortel`}
 
       <section id="utilization" className="panel">
         <YearlyUtilizationPanel />
+        <ManagerTeamUtilizationPanel />
         <div className="section-header compact">
           <div>
             <p className="eyebrow">Utilization policy</p>
