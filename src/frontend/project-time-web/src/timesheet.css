@@ -2936,3 +2936,16 @@ html[data-theme="dark"] .profile-settings-actions {
     grid-template-columns: 42px 76px minmax(0, 1fr) !important;
   }
 }
+
+/* 019K Source project mapping display */
+
+.source-mapping-copy {
+  color: var(--muted);
+  font-size: 0.82rem;
+  margin: 0.35rem 0 0;
+  overflow-wrap: anywhere;
+}
+
+.source-mapping-copy strong {
+  color: var(--text);
+}

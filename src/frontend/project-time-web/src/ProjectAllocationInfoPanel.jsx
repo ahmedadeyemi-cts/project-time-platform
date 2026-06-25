@@ -54,6 +54,7 @@ async function postJson(path, payload) {
 export default function ProjectAllocationInfoPanel() {
   const [data, setData] = useState({ loading: true, projects: [], canManage: false, canPurge: false, error: null });
   const [engineers, setEngineers] = useState([]);
+  const [sourceProjects, setSourceProjects] = useState([]);
   const [status, setStatus] = useState('Ready');
   const [projectDraft, setProjectDraft] = useState({
     projectCode: '',
@@ -61,6 +62,9 @@ export default function ProjectAllocationInfoPanel() {
     customerName: '',
     serviceRequestNumber: '',
     projectStatus: 'intake',
+    sourceProjectId: '',
+    sourceTaskId: '',
+    sourceMappingNotes: '',
     allocations: []
   });
   const [uploadDraft, setUploadDraft] = useState({ projectId: '', documentType: 'SOW', file: null });
@@ -82,8 +86,13 @@ export default function ProjectAllocationInfoPanel() {
 
       if (projectsResult.canManage) {
         try {
-          const engineersResult = await fetchJson('/api/project-allocation-info/engineers');
+          const [engineersResult, sourceProjectsResult] = await Promise.all([
+            fetchJson('/api/project-allocation-info/engineers'),
+            fetchJson('/api/project-allocation-info/source-projects')
+          ]);
+
           setEngineers(engineersResult.engineers ?? []);
+          setSourceProjects(sourceProjectsResult.sourceProjects ?? []);
         } catch {
           setEngineers([]);
         }
@@ -138,6 +147,9 @@ export default function ProjectAllocationInfoPanel() {
     try {
       const payload = {
         ...projectDraft,
+        sourceProjectId: projectDraft.sourceProjectId || null,
+        sourceTaskId: projectDraft.sourceTaskId || null,
+        sourceMappingNotes: projectDraft.sourceMappingNotes || '',
         allocations: projectDraft.allocations
           .filter((allocation) => allocation.userId)
           .map((allocation) => ({
@@ -156,6 +168,9 @@ export default function ProjectAllocationInfoPanel() {
         customerName: '',
         serviceRequestNumber: '',
         projectStatus: 'intake',
+        sourceProjectId: '',
+        sourceTaskId: '',
+        sourceMappingNotes: '',
         allocations: []
       });
 
@@ -265,6 +280,36 @@ export default function ProjectAllocationInfoPanel() {
               <option value="closed">Closed</option>
               <option value="cancelled">Cancelled</option>
             </select>
+
+            <label>Source project mapping</label>
+            <select
+              value={`${projectDraft.sourceProjectId || ''}|${projectDraft.sourceTaskId || ''}`}
+              onChange={(event) => {
+                const [sourceProjectId, sourceTaskId] = event.target.value.split('|');
+                setProjectDraft((current) => ({
+                  ...current,
+                  sourceProjectId,
+                  sourceTaskId
+                }));
+              }}
+            >
+              <option value="|">Select source project/time-entry mapping</option>
+              {sourceProjects.map((source) => (
+                <option
+                  value={`${source.projectId}|${source.taskId ?? ''}`}
+                  key={`${source.projectId}-${source.taskId ?? 'all'}`}
+                >
+                  Project {source.projectId}{source.taskId ? ` / Task ${source.taskId}` : ' / All tasks'} • {Number(source.billableHours ?? 0).toFixed(2)} billable hrs
+                </option>
+              ))}
+            </select>
+
+            <label>Source mapping notes</label>
+            <input
+              value={projectDraft.sourceMappingNotes}
+              onChange={(event) => setProjectDraft((current) => ({ ...current, sourceMappingNotes: event.target.value }))}
+              placeholder="Optional notes about project/service request mapping"
+            />
 
             <div className="section-heading compact-heading">
               <div>
@@ -377,6 +422,10 @@ export default function ProjectAllocationInfoPanel() {
                 <h2>{project.projectName}</h2>
                 <p className="section-copy">
                   {project.customerName ?? 'No customer listed'} {project.serviceRequestNumber ? `• SR ${project.serviceRequestNumber}` : ''}
+                </p>
+                <p className="source-mapping-copy">
+                  Source project: <strong>{project.sourceProjectId ?? 'Not mapped'}</strong>
+                  {project.sourceTaskId ? <> • Task: <strong>{project.sourceTaskId}</strong></> : null}
                 </p>
               </div>
               <span className="badge">{project.projectStatus}</span>
