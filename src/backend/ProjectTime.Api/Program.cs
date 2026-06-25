@@ -1,9 +1,11 @@
+using System.Net.Http;
+using System.Text.Json;
 using Npgsql;
 using System.Security.Cryptography;
 using System.Text;
 using System.Runtime.InteropServices;
 
-const string DevelopmentUserEmail = "ahmed.adeyemi@ussignal.com";
+const string DevelopmentUserEmail = "ahmed.adeyemi@ussignal.local";
 const string DevelopmentUserDisplayName = "Ahmed Adeyemi";
 
 var builder = WebApplication.CreateBuilder(args);
@@ -17,6 +19,12 @@ app.Use(async (context, next) =>
 {
     if (context.Request.Method.Equals("OPTIONS", StringComparison.OrdinalIgnoreCase) ||
         IsProjectPulsePublicApiPath(context))
+    {
+        await next();
+        return;
+    }
+
+    if (ProjectPulseIsPublicAuthEndpoint(context.Request.Path.Value))
     {
         await next();
         return;
@@ -54,11 +62,311 @@ app.MapGet("/health", () => Results.Ok(new
     timestampUtc = DateTimeOffset.UtcNow
 }));
 
+
+static string ProjectPulseRequiredEnv(string name)
+{
+    var value = Environment.GetEnvironmentVariable(name);
+
+    if (string.IsNullOrWhiteSpace(value))
+    {
+        throw new InvalidOperationException($"Missing required environment variable: {name}");
+    }
+
+    return value;
+}
+
+static string ProjectPulseBase64UrlEncode(byte[] input)
+{
+    return Convert.ToBase64String(input)
+        .TrimEnd('=')
+        .Replace('+', '-')
+        .Replace('/', '_');
+}
+
+static byte[] ProjectPulseBase64UrlDecode(string input)
+{
+    var padded = input.Replace('-', '+').Replace('_', '/');
+
+    switch (padded.Length % 4)
+    {
+        case 2:
+            padded += "==";
+            break;
+        case 3:
+            padded += "=";
+            break;
+    }
+
+    return Convert.FromBase64String(padded);
+}
+
+static string ProjectPulseSecureToken(int byteLength = 32)
+{
+    return ProjectPulseBase64UrlEncode(RandomNumberGenerator.GetBytes(byteLength));
+}
+
+static string? ProjectPulseJsonString(JsonElement element, string propertyName)
+{
+    if (!element.TryGetProperty(propertyName, out var property))
+    {
+        return null;
+    }
+
+    return property.ValueKind == JsonValueKind.String ? property.GetString() : property.ToString();
+}
+
+static long? ProjectPulseJsonLong(JsonElement element, string propertyName)
+{
+    if (!element.TryGetProperty(propertyName, out var property))
+    {
+        return null;
+    }
+
+    if (property.ValueKind == JsonValueKind.Number && property.TryGetInt64(out var value))
+    {
+        return value;
+    }
+
+    return null;
+}
+
+static JsonElement ProjectPulseDecodeJwtPayload(string jwt)
+{
+    var parts = jwt.Split('.');
+
+    if (parts.Length != 3)
+    {
+        throw new InvalidOperationException("Invalid JWT format.");
+    }
+
+    var payloadBytes = ProjectPulseBase64UrlDecode(parts[1]);
+    using var document = JsonDocument.Parse(payloadBytes);
+
+    return document.RootElement.Clone();
+}
+
+static async Task<JsonElement> ProjectPulseValidateMicrosoftIdTokenAsync(
+    string idToken,
+    string tenantId,
+    string clientId,
+    string expectedNonce)
+{
+    var parts = idToken.Split('.');
+
+    if (parts.Length != 3)
+    {
+        throw new InvalidOperationException("Invalid ID token format.");
+    }
+
+    var headerJson = Encoding.UTF8.GetString(ProjectPulseBase64UrlDecode(parts[0]));
+    using var headerDocument = JsonDocument.Parse(headerJson);
+
+    var kid = ProjectPulseJsonString(headerDocument.RootElement, "kid");
+    var alg = ProjectPulseJsonString(headerDocument.RootElement, "alg");
+
+    if (alg != "RS256" || string.IsNullOrWhiteSpace(kid))
+    {
+        throw new InvalidOperationException("Unsupported ID token signature algorithm.");
+    }
+
+    using var httpClient = new HttpClient();
+
+    var metadataUrl = $"https://login.microsoftonline.com/{tenantId}/v2.0/.well-known/openid-configuration";
+    var metadataJson = await httpClient.GetStringAsync(metadataUrl);
+
+    using var metadataDocument = JsonDocument.Parse(metadataJson);
+
+    var jwksUri = ProjectPulseJsonString(metadataDocument.RootElement, "jwks_uri")
+        ?? throw new InvalidOperationException("Missing jwks_uri from OpenID configuration.");
+
+    var jwksJson = await httpClient.GetStringAsync(jwksUri);
+
+    using var jwksDocument = JsonDocument.Parse(jwksJson);
+
+    JsonElement? signingKey = null;
+
+    foreach (var key in jwksDocument.RootElement.GetProperty("keys").EnumerateArray())
+    {
+        if (ProjectPulseJsonString(key, "kid") == kid)
+        {
+            signingKey = key.Clone();
+            break;
+        }
+    }
+
+    if (signingKey is null)
+    {
+        throw new InvalidOperationException("Unable to find Microsoft signing key.");
+    }
+
+    var modulus = ProjectPulseBase64UrlDecode(ProjectPulseJsonString(signingKey.Value, "n") ?? throw new InvalidOperationException("Missing RSA modulus."));
+    var exponent = ProjectPulseBase64UrlDecode(ProjectPulseJsonString(signingKey.Value, "e") ?? throw new InvalidOperationException("Missing RSA exponent."));
+
+    using var rsa = RSA.Create();
+    rsa.ImportParameters(new RSAParameters
+    {
+        Modulus = modulus,
+        Exponent = exponent
+    });
+
+    var signedData = Encoding.UTF8.GetBytes($"{parts[0]}.{parts[1]}");
+    var signature = ProjectPulseBase64UrlDecode(parts[2]);
+
+    var signatureValid = rsa.VerifyData(
+        signedData,
+        signature,
+        HashAlgorithmName.SHA256,
+        RSASignaturePadding.Pkcs1);
+
+    if (!signatureValid)
+    {
+        throw new InvalidOperationException("Invalid ID token signature.");
+    }
+
+    var payload = ProjectPulseDecodeJwtPayload(idToken);
+
+    var issuer = ProjectPulseJsonString(payload, "iss") ?? "";
+    var expectedIssuer = $"https://login.microsoftonline.com/{tenantId}/v2.0";
+
+    if (!string.Equals(issuer.TrimEnd('/'), expectedIssuer.TrimEnd('/'), StringComparison.OrdinalIgnoreCase))
+    {
+        throw new InvalidOperationException("ID token issuer did not match expected tenant.");
+    }
+
+    var audience = ProjectPulseJsonString(payload, "aud") ?? "";
+
+    if (!string.Equals(audience, clientId, StringComparison.OrdinalIgnoreCase))
+    {
+        throw new InvalidOperationException("ID token audience did not match client ID.");
+    }
+
+    var nonce = ProjectPulseJsonString(payload, "nonce") ?? "";
+
+    if (!string.Equals(nonce, expectedNonce, StringComparison.Ordinal))
+    {
+        throw new InvalidOperationException("ID token nonce did not match.");
+    }
+
+    var expiresAt = ProjectPulseJsonLong(payload, "exp") ?? 0;
+
+    if (expiresAt <= DateTimeOffset.UtcNow.ToUnixTimeSeconds())
+    {
+        throw new InvalidOperationException("ID token has expired.");
+    }
+
+    return payload;
+}
+
+async Task<Guid> ProjectPulseEnsureEntraUserAsync(
+    NpgsqlConnection connection,
+    string tenantId,
+    string objectId,
+    string email,
+    string displayName,
+    string? userPrincipalName,
+    string sourceProvider)
+{
+    await using var command = new NpgsqlCommand("""
+        INSERT INTO app_users (
+            email,
+            display_name,
+            is_active,
+            login_enabled,
+            source_provider,
+            entra_tenant_id,
+            entra_object_id,
+            entra_user_principal_name,
+            last_sso_login_at,
+            last_directory_sync_at
+        )
+        VALUES (
+            @email,
+            @display_name,
+            TRUE,
+            TRUE,
+            @source_provider,
+            @tenant_id,
+            @entra_object_id,
+            @user_principal_name,
+            NOW(),
+            NOW()
+        )
+        ON CONFLICT (email) DO UPDATE
+        SET display_name = EXCLUDED.display_name,
+            is_active = TRUE,
+            login_enabled = TRUE,
+            source_provider = EXCLUDED.source_provider,
+            entra_tenant_id = EXCLUDED.entra_tenant_id,
+            entra_object_id = EXCLUDED.entra_object_id,
+            entra_user_principal_name = EXCLUDED.entra_user_principal_name,
+            last_sso_login_at = NOW(),
+            updated_at = NOW()
+        RETURNING user_id;
+        """, connection);
+
+    command.Parameters.AddWithValue("email", email);
+    command.Parameters.AddWithValue("display_name", displayName);
+    command.Parameters.AddWithValue("source_provider", sourceProvider);
+    command.Parameters.AddWithValue("tenant_id", tenantId);
+    command.Parameters.AddWithValue("entra_object_id", objectId);
+    command.Parameters.AddWithValue("user_principal_name", (object?)userPrincipalName ?? DBNull.Value);
+
+    return (Guid)(await command.ExecuteScalarAsync() ?? throw new InvalidOperationException("Unable to upsert Entra user."));
+}
+
+async Task ProjectPulseAssignDefaultEngineerRoleAsync(NpgsqlConnection connection, Guid userId, string reason)
+{
+    await using var command = new NpgsqlCommand("""
+        INSERT INTO app_user_role_assignments (
+            user_id,
+            app_role_id,
+            assignment_reason,
+            is_active
+        )
+        SELECT
+            @user_id,
+            r.app_role_id,
+            @reason,
+            TRUE
+        FROM app_roles r
+        WHERE r.role_code = 'ENGINEER'
+          AND r.is_active = TRUE
+        ON CONFLICT (user_id, app_role_id) DO UPDATE
+        SET is_active = TRUE,
+            assignment_reason = EXCLUDED.assignment_reason,
+            updated_at = NOW();
+        """, connection);
+
+    command.Parameters.AddWithValue("user_id", userId);
+    command.Parameters.AddWithValue("reason", reason);
+
+    await command.ExecuteNonQueryAsync();
+}
+
+
+
+static bool ProjectPulseIsPublicAuthEndpoint(string? requestPath)
+{
+    if (string.IsNullOrWhiteSpace(requestPath))
+    {
+        return false;
+    }
+
+    return requestPath.StartsWith("/api/version", StringComparison.OrdinalIgnoreCase)
+        || requestPath.StartsWith("/api/auth/login/route", StringComparison.OrdinalIgnoreCase)
+        || requestPath.StartsWith("/api/auth/local/login", StringComparison.OrdinalIgnoreCase)
+        || requestPath.StartsWith("/api/auth/password-reset/request", StringComparison.OrdinalIgnoreCase)
+        || requestPath.StartsWith("/api/auth/sso/start", StringComparison.OrdinalIgnoreCase)
+        || requestPath.StartsWith("/api/auth/sso/callback", StringComparison.OrdinalIgnoreCase)
+        || requestPath.StartsWith("/api/auth/sso/test-config", StringComparison.OrdinalIgnoreCase);
+}
+
+
 app.MapGet("/api/version", () => Results.Ok(new
 {
     application = "Project Time Platform",
     component = "ProjectTime.Api",
-    version = "0.8.1",
+    version = "0.9.0",
     framework = RuntimeInformation.FrameworkDescription,
     os = RuntimeInformation.OSDescription,
     timestampUtc = DateTimeOffset.UtcNow
@@ -360,7 +668,7 @@ app.MapGet("/api/utilization/targets", async () =>
     });
 });
 
-app.MapGet("/api/timesheets/week", async (DateOnly? weekStart) =>
+app.MapGet("/api/timesheets/week", async (DateOnly? weekStart, HttpContext httpContext) =>
 {
     var config = DatabaseConfig.FromEnvironment();
     var missingResult = ValidateConfig(config);
@@ -371,7 +679,13 @@ app.MapGet("/api/timesheets/week", async (DateOnly? weekStart) =>
     await using var connection = new NpgsqlConnection(config.ConnectionString);
     await connection.OpenAsync();
 
-    var userId = await GetOrCreateDevelopmentUserIdAsync(connection);
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var userId = sessionUserId.Value;
     var payload = await BuildTimesheetWeekPayloadAsync(connection, userId, start);
 
     return Results.Ok(payload);
@@ -773,7 +1087,7 @@ app.MapPost("/api/manager/approvals/bulk-approve", async (ManagerBulkApprovalReq
 });
 
 
-app.MapGet("/api/assignments/open-tasks", async (DateOnly? weekStart) =>
+app.MapGet("/api/assignments/open-tasks", async (DateOnly? weekStart, HttpContext httpContext) =>
 {
     var config = DatabaseConfig.FromEnvironment();
     var missingResult = ValidateConfig(config);
@@ -785,7 +1099,13 @@ app.MapGet("/api/assignments/open-tasks", async (DateOnly? weekStart) =>
     await using var connection = new NpgsqlConnection(config.ConnectionString);
     await connection.OpenAsync();
 
-    var userId = await GetOrCreateDevelopmentUserIdAsync(connection);
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var userId = sessionUserId.Value;
     var tasks = await LoadOpenAssignedProjectTasksAsync(connection, userId, start, end);
 
     return Results.Ok(new
@@ -798,7 +1118,7 @@ app.MapGet("/api/assignments/open-tasks", async (DateOnly? weekStart) =>
 });
 
 
-app.MapGet("/api/debug/time-entries", async (DateOnly? weekStart) =>
+app.MapGet("/api/debug/time-entries", async (DateOnly? weekStart, HttpContext httpContext) =>
 {
     var config = DatabaseConfig.FromEnvironment();
     var missingResult = ValidateConfig(config);
@@ -810,7 +1130,13 @@ app.MapGet("/api/debug/time-entries", async (DateOnly? weekStart) =>
     await using var connection = new NpgsqlConnection(config.ConnectionString);
     await connection.OpenAsync();
 
-    var userId = await GetOrCreateDevelopmentUserIdAsync(connection);
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var userId = sessionUserId.Value;
     var rows = new List<object>();
 
     await using var command = new NpgsqlCommand("""
@@ -1121,7 +1447,7 @@ app.MapGet("/api/reporting/executive-dashboard", async () =>
 });
 
 
-app.MapGet("/api/users/timesheet-preferences", async () =>
+app.MapGet("/api/users/timesheet-preferences", async (HttpContext httpContext) =>
 {
     var config = DatabaseConfig.FromEnvironment();
     var missingResult = ValidateConfig(config);
@@ -1130,13 +1456,19 @@ app.MapGet("/api/users/timesheet-preferences", async () =>
     await using var connection = new NpgsqlConnection(config.ConnectionString);
     await connection.OpenAsync();
 
-    var userId = await GetOrCreateDevelopmentUserIdAsync(connection);
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var userId = sessionUserId.Value;
     var preferences = await LoadTimesheetPreferencesAsync(connection, userId);
 
     return Results.Ok(preferences);
 });
 
-app.MapPost("/api/users/timesheet-preferences", async (TimesheetPreferenceRequest request) =>
+app.MapPost("/api/users/timesheet-preferences", async (TimesheetPreferenceRequest request, HttpContext httpContext) =>
 {
     var config = DatabaseConfig.FromEnvironment();
     var missingResult = ValidateConfig(config);
@@ -1145,7 +1477,13 @@ app.MapPost("/api/users/timesheet-preferences", async (TimesheetPreferenceReques
     await using var connection = new NpgsqlConnection(config.ConnectionString);
     await connection.OpenAsync();
 
-    var userId = await GetOrCreateDevelopmentUserIdAsync(connection);
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var userId = sessionUserId.Value;
 
     const string sql = """
         INSERT INTO user_timesheet_preferences (
@@ -1406,7 +1744,7 @@ app.MapPost("/api/holidays/import-text", async (HolidayCsvImportRequest request)
 });
 
 
-app.MapGet("/api/security/me", async () =>
+app.MapGet("/api/security/me", async (HttpContext httpContext) =>
 {
     var config = DatabaseConfig.FromEnvironment();
     var missingResult = ValidateConfig(config);
@@ -1415,7 +1753,13 @@ app.MapGet("/api/security/me", async () =>
     await using var connection = new NpgsqlConnection(config.ConnectionString);
     await connection.OpenAsync();
 
-    var userId = await GetOrCreateDevelopmentUserIdAsync(connection);
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var userId = sessionUserId.Value;
     return Results.Ok(await BuildSecurityContextAsync(connection, userId));
 });
 
@@ -2209,7 +2553,7 @@ app.MapGet("/api/auth/local-accounts", async () =>
 });
 
 
-app.MapGet("/api/utilization/current-quarter", async () =>
+app.MapGet("/api/utilization/current-quarter", async (HttpContext httpContext) =>
 {
     var config = DatabaseConfig.FromEnvironment();
     var missingResult = ValidateConfig(config);
@@ -2224,7 +2568,13 @@ app.MapGet("/api/utilization/current-quarter", async () =>
     await using var connection = new NpgsqlConnection(config.ConnectionString);
     await connection.OpenAsync();
 
-    var userId = await GetOrCreateDevelopmentUserIdAsync(connection);
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var userId = sessionUserId.Value;
 
     string policyName;
     decimal standardPeriodHours;
@@ -4307,6 +4657,96 @@ app.MapGet("/api/utilization/yearly-status", async (int? year, HttpContext httpC
 });
 
 
+
+app.MapGet("/api/project-allocation-info/source-projects", async (HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var canManage = await ProjectAllocationUserHasPermissionAsync(connection, sessionUserId.Value, "MANAGE_PROJECT_ALLOCATION_INFO", "MANAGE_ALL");
+    var canView = await ProjectAllocationUserHasPermissionAsync(connection, sessionUserId.Value, "VIEW_PROJECT_ALLOCATION_INFO", "MANAGE_ALL");
+
+    if (!canManage && !canView)
+    {
+        return Results.Json(new { status = "access_denied", message = "You do not have access to Project Allocation source projects." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var projectMap = new Dictionary<Guid, (string ProjectCode, string ProjectName, List<object> Tasks)>();
+
+    await using var command = new NpgsqlCommand("""
+        SELECT
+            p.project_id,
+            COALESCE(p.project_code, '') AS project_code,
+            COALESCE(p.project_name, '') AS project_name,
+            pt.task_id,
+            COALESCE(pt.task_name, '') AS task_name
+        FROM projects p
+        LEFT JOIN project_tasks pt
+               ON pt.project_id = p.project_id
+        ORDER BY
+            COALESCE(p.project_code, ''),
+            COALESCE(p.project_name, ''),
+            COALESCE(pt.task_name, '');
+        """, connection);
+
+    await using var reader = await command.ExecuteReaderAsync();
+
+    while (await reader.ReadAsync())
+    {
+        var projectId = reader.GetGuid(0);
+        var projectCode = reader.GetString(1);
+        var projectName = reader.GetString(2);
+
+        if (!projectMap.ContainsKey(projectId))
+        {
+            projectMap[projectId] = (projectCode, projectName, new List<object>());
+        }
+
+        if (!reader.IsDBNull(3))
+        {
+            var taskId = reader.GetGuid(3);
+            var taskName = reader.GetString(4);
+
+            projectMap[projectId].Tasks.Add(new
+            {
+                sourceTaskId = taskId,
+                taskId,
+                taskName
+            });
+        }
+    }
+
+    var projects = projectMap.Select(item => new
+    {
+        sourceProjectId = item.Key,
+        projectId = item.Key,
+        projectCode = item.Value.ProjectCode,
+        projectName = item.Value.ProjectName,
+        displayName = string.IsNullOrWhiteSpace(item.Value.ProjectCode)
+            ? item.Value.ProjectName
+            : $"{item.Value.ProjectCode} - {item.Value.ProjectName}",
+        tasks = item.Value.Tasks
+    }).ToList();
+
+    return Results.Ok(new
+    {
+        status = "ok",
+        count = projects.Count,
+        projects
+    });
+});
+
+
 app.MapGet("/api/project-allocation-info/engineers", async (HttpContext httpContext) =>
 {
     var config = DatabaseConfig.FromEnvironment();
@@ -5241,6 +5681,1268 @@ app.MapGet("/api/utilization/manager-team-summary", async (int? year, HttpContex
 });
 
 
+
+
+async Task<bool> ProjectPulseUserIsAzureAdministratorAsync(NpgsqlConnection connection, Guid userId)
+{
+    await using var command = new NpgsqlCommand("""
+        SELECT EXISTS (
+            SELECT 1
+            FROM app_user_role_assignments ura
+            JOIN app_roles r ON r.app_role_id = ura.app_role_id
+            WHERE ura.user_id = @user_id
+              AND ura.is_active = TRUE
+              AND r.is_active = TRUE
+              AND r.role_code = 'ADMINISTRATOR'
+        );
+        """, connection);
+
+    command.Parameters.AddWithValue("user_id", userId);
+
+    return (bool)(await command.ExecuteScalarAsync() ?? false);
+}
+
+async Task<ProjectPulseEntraImportSettings> ProjectPulseGetEntraImportSettingsAsync(NpgsqlConnection connection)
+{
+    await using var command = new NpgsqlCommand("""
+        SELECT environment_mode,
+               tenant_domain,
+               source_provider,
+               import_source_type,
+               graph_group_id,
+               graph_filter,
+               default_role_code,
+               disable_missing_from_source
+        FROM azure_entra_import_settings
+        WHERE settings_id = 'default';
+        """, connection);
+
+    await using var reader = await command.ExecuteReaderAsync();
+
+    if (!await reader.ReadAsync())
+    {
+        return new ProjectPulseEntraImportSettings(
+            "test",
+            "onenecklab.com",
+            "ENTRA_ID_TEST",
+            "ALL_USERS",
+            null,
+            null,
+            "ENGINEER",
+            true);
+    }
+
+    return new ProjectPulseEntraImportSettings(
+        reader.GetString(0),
+        reader.GetString(1),
+        reader.GetString(2),
+        reader.GetString(3),
+        reader.IsDBNull(4) ? null : reader.GetString(4),
+        reader.IsDBNull(5) ? null : reader.GetString(5),
+        reader.GetString(6),
+        reader.GetBoolean(7));
+}
+
+async Task<string> ProjectPulseGetGraphAccessTokenAsync()
+{
+    var tenantId = ProjectPulseRequiredEnv("PROJECTPULSE_ENTRA_TENANT_ID");
+    var clientId = ProjectPulseRequiredEnv("PROJECTPULSE_ENTRA_CLIENT_ID");
+    var clientSecret = ProjectPulseRequiredEnv("PROJECTPULSE_ENTRA_CLIENT_SECRET");
+
+    using var httpClient = new HttpClient();
+
+    var tokenRequest = new FormUrlEncodedContent(new Dictionary<string, string>
+    {
+        ["client_id"] = clientId,
+        ["client_secret"] = clientSecret,
+        ["scope"] = "https://graph.microsoft.com/.default",
+        ["grant_type"] = "client_credentials"
+    });
+
+    var tokenResponse = await httpClient.PostAsync(
+        $"https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/token",
+        tokenRequest);
+
+    var tokenJson = await tokenResponse.Content.ReadAsStringAsync();
+
+    if (!tokenResponse.IsSuccessStatusCode)
+    {
+        throw new InvalidOperationException($"Graph token request failed: HTTP {(int)tokenResponse.StatusCode} {tokenJson}");
+    }
+
+    using var document = JsonDocument.Parse(tokenJson);
+    var accessToken = ProjectPulseJsonString(document.RootElement, "access_token");
+
+    if (string.IsNullOrWhiteSpace(accessToken))
+    {
+        throw new InvalidOperationException("Graph token response did not include access_token.");
+    }
+
+    return accessToken;
+}
+
+string ProjectPulseNormalizeGraphEmail(JsonElement user)
+{
+    var mail = ProjectPulseJsonString(user, "mail");
+    var upn = ProjectPulseJsonString(user, "userPrincipalName");
+
+    return (mail ?? upn ?? "").Trim().ToLowerInvariant();
+}
+
+ProjectPulseGraphUser ProjectPulseReadGraphUser(JsonElement user)
+{
+    var id = ProjectPulseJsonString(user, "id") ?? "";
+    var email = ProjectPulseNormalizeGraphEmail(user);
+
+    return new ProjectPulseGraphUser(
+        id,
+        ProjectPulseJsonString(user, "displayName") ?? email,
+        email,
+        ProjectPulseJsonString(user, "userPrincipalName"),
+        ProjectPulseJsonString(user, "jobTitle"),
+        ProjectPulseJsonString(user, "department"),
+        ProjectPulseJsonString(user, "officeLocation"),
+        user.TryGetProperty("accountEnabled", out var accountEnabledElement)
+            && accountEnabledElement.ValueKind == JsonValueKind.True);
+}
+
+async Task<List<ProjectPulseGraphUser>> ProjectPulseFetchGraphUsersAsync(ProjectPulseEntraImportSettings settings)
+{
+    var accessToken = await ProjectPulseGetGraphAccessTokenAsync();
+
+    var select = "id,displayName,mail,userPrincipalName,jobTitle,department,officeLocation,accountEnabled";
+    var urls = new Queue<string>();
+
+    if (settings.ImportSourceType.Equals("GROUP", StringComparison.OrdinalIgnoreCase))
+    {
+        if (string.IsNullOrWhiteSpace(settings.GraphGroupId))
+        {
+            throw new InvalidOperationException("Graph group ID is required when import source type is GROUP.");
+        }
+
+        urls.Enqueue($"https://graph.microsoft.com/v1.0/groups/{Uri.EscapeDataString(settings.GraphGroupId.Trim())}/members/microsoft.graph.user?$select={Uri.EscapeDataString(select)}&$top=999");
+    }
+    else if (settings.ImportSourceType.Equals("FILTER", StringComparison.OrdinalIgnoreCase))
+    {
+        if (string.IsNullOrWhiteSpace(settings.GraphFilter))
+        {
+            throw new InvalidOperationException("Graph filter is required when import source type is FILTER.");
+        }
+
+        urls.Enqueue($"https://graph.microsoft.com/v1.0/users?$select={Uri.EscapeDataString(select)}&$filter={Uri.EscapeDataString(settings.GraphFilter.Trim())}&$top=999");
+    }
+    else
+    {
+        urls.Enqueue($"https://graph.microsoft.com/v1.0/users?$select={Uri.EscapeDataString(select)}&$top=999");
+    }
+
+    using var httpClient = new HttpClient();
+    httpClient.DefaultRequestHeaders.Authorization =
+        new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
+    httpClient.DefaultRequestHeaders.Add("ConsistencyLevel", "eventual");
+
+    var users = new List<ProjectPulseGraphUser>();
+
+    while (urls.Count > 0)
+    {
+        var url = urls.Dequeue();
+        var response = await httpClient.GetAsync(url);
+        var json = await response.Content.ReadAsStringAsync();
+
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new InvalidOperationException($"Graph user query failed: HTTP {(int)response.StatusCode} {json}");
+        }
+
+        using var document = JsonDocument.Parse(json);
+
+        if (document.RootElement.TryGetProperty("value", out var values))
+        {
+            foreach (var item in values.EnumerateArray())
+            {
+                var graphUser = ProjectPulseReadGraphUser(item);
+
+                if (string.IsNullOrWhiteSpace(graphUser.Email))
+                {
+                    continue;
+                }
+
+                if (!graphUser.Email.EndsWith("@" + settings.TenantDomain.Trim().ToLowerInvariant(), StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                users.Add(graphUser);
+            }
+        }
+
+        if (document.RootElement.TryGetProperty("@odata.nextLink", out var nextLink)
+            && nextLink.ValueKind == JsonValueKind.String
+            && !string.IsNullOrWhiteSpace(nextLink.GetString()))
+        {
+            urls.Enqueue(nextLink.GetString()!);
+        }
+    }
+
+    return users
+        .GroupBy(user => user.Id)
+        .Select(group => group.First())
+        .OrderBy(user => user.DisplayName)
+        .ToList();
+}
+
+async Task<ProjectPulseGraphUser> ProjectPulseFetchGraphUserByIdAsync(string entraObjectId)
+{
+    var accessToken = await ProjectPulseGetGraphAccessTokenAsync();
+    var select = "id,displayName,mail,userPrincipalName,jobTitle,department,officeLocation,accountEnabled";
+
+    using var httpClient = new HttpClient();
+    httpClient.DefaultRequestHeaders.Authorization =
+        new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
+
+    var url = $"https://graph.microsoft.com/v1.0/users/{Uri.EscapeDataString(entraObjectId)}?$select={Uri.EscapeDataString(select)}";
+    var response = await httpClient.GetAsync(url);
+    var json = await response.Content.ReadAsStringAsync();
+
+    if (!response.IsSuccessStatusCode)
+    {
+        throw new InvalidOperationException($"Graph user lookup failed for {entraObjectId}: HTTP {(int)response.StatusCode} {json}");
+    }
+
+    using var document = JsonDocument.Parse(json);
+    return ProjectPulseReadGraphUser(document.RootElement);
+}
+
+async Task<Guid> ProjectPulseCreateAzureImportRunAsync(
+    NpgsqlConnection connection,
+    ProjectPulseEntraImportSettings settings,
+    Guid? requestedByUserId,
+    string runType,
+    int previewedCount = 0,
+    int selectedCount = 0,
+    int importedCount = 0,
+    int updatedCount = 0,
+    int deactivatedCount = 0,
+    int skippedCount = 0,
+    string? message = null)
+{
+    await using var command = new NpgsqlCommand("""
+        INSERT INTO azure_entra_import_runs (
+            run_type,
+            environment_mode,
+            tenant_domain,
+            source_provider,
+            import_source_type,
+            graph_group_id,
+            graph_filter,
+            requested_by_user_id,
+            previewed_count,
+            selected_count,
+            imported_count,
+            updated_count,
+            deactivated_count,
+            skipped_count,
+            message
+        )
+        VALUES (
+            @run_type,
+            @environment_mode,
+            @tenant_domain,
+            @source_provider,
+            @import_source_type,
+            @graph_group_id,
+            @graph_filter,
+            @requested_by_user_id,
+            @previewed_count,
+            @selected_count,
+            @imported_count,
+            @updated_count,
+            @deactivated_count,
+            @skipped_count,
+            @message
+        )
+        RETURNING import_run_id;
+        """, connection);
+
+    command.Parameters.AddWithValue("run_type", runType);
+    command.Parameters.AddWithValue("environment_mode", settings.EnvironmentMode);
+    command.Parameters.AddWithValue("tenant_domain", settings.TenantDomain);
+    command.Parameters.AddWithValue("source_provider", settings.SourceProvider);
+    command.Parameters.AddWithValue("import_source_type", settings.ImportSourceType);
+    command.Parameters.AddWithValue("graph_group_id", (object?)settings.GraphGroupId ?? DBNull.Value);
+    command.Parameters.AddWithValue("graph_filter", (object?)settings.GraphFilter ?? DBNull.Value);
+    command.Parameters.AddWithValue("requested_by_user_id", (object?)requestedByUserId ?? DBNull.Value);
+    command.Parameters.AddWithValue("previewed_count", previewedCount);
+    command.Parameters.AddWithValue("selected_count", selectedCount);
+    command.Parameters.AddWithValue("imported_count", importedCount);
+    command.Parameters.AddWithValue("updated_count", updatedCount);
+    command.Parameters.AddWithValue("deactivated_count", deactivatedCount);
+    command.Parameters.AddWithValue("skipped_count", skippedCount);
+    command.Parameters.AddWithValue("message", (object?)message ?? DBNull.Value);
+
+    return (Guid)(await command.ExecuteScalarAsync() ?? throw new InvalidOperationException("Unable to create Azure import run."));
+}
+
+async Task ProjectPulseRecordAzureImportRunUserAsync(
+    NpgsqlConnection connection,
+    Guid importRunId,
+    ProjectPulseGraphUser user,
+    string actionTaken,
+    string? message = null)
+{
+    await using var command = new NpgsqlCommand("""
+        INSERT INTO azure_entra_import_run_users (
+            import_run_id,
+            entra_object_id,
+            email,
+            display_name,
+            account_enabled,
+            action_taken,
+            message
+        )
+        VALUES (
+            @import_run_id,
+            @entra_object_id,
+            @email,
+            @display_name,
+            @account_enabled,
+            @action_taken,
+            @message
+        );
+        """, connection);
+
+    command.Parameters.AddWithValue("import_run_id", importRunId);
+    command.Parameters.AddWithValue("entra_object_id", user.Id);
+    command.Parameters.AddWithValue("email", user.Email);
+    command.Parameters.AddWithValue("display_name", user.DisplayName);
+    command.Parameters.AddWithValue("account_enabled", user.AccountEnabled);
+    command.Parameters.AddWithValue("action_taken", actionTaken);
+    command.Parameters.AddWithValue("message", (object?)message ?? DBNull.Value);
+
+    await command.ExecuteNonQueryAsync();
+}
+
+async Task<(string ActionTaken, Guid? UserId)> ProjectPulseUpsertSelectedEntraUserAsync(
+    NpgsqlConnection connection,
+    ProjectPulseEntraImportSettings settings,
+    ProjectPulseGraphUser user)
+{
+    if (!user.Email.EndsWith("@" + settings.TenantDomain, StringComparison.OrdinalIgnoreCase))
+    {
+        return ("skipped_domain_mismatch", null);
+    }
+
+    if (!user.AccountEnabled)
+    {
+        await using var deactivateCommand = new NpgsqlCommand("""
+            UPDATE app_users
+            SET is_active = FALSE,
+                login_enabled = FALSE,
+                updated_at = NOW()
+            WHERE entra_object_id = @entra_object_id
+               OR lower(email) = @email
+            RETURNING user_id;
+            """, connection);
+
+        deactivateCommand.Parameters.AddWithValue("entra_object_id", user.Id);
+        deactivateCommand.Parameters.AddWithValue("email", user.Email);
+
+        var deactivated = await deactivateCommand.ExecuteScalarAsync();
+        return deactivated is Guid deactivatedUserId
+            ? ("deactivated_account_disabled_in_entra", deactivatedUserId)
+            : ("skipped_account_disabled_in_entra", null);
+    }
+
+    await using var upsertCommand = new NpgsqlCommand("""
+        INSERT INTO app_users (
+            email,
+            display_name,
+            is_active,
+            login_enabled,
+            source_provider,
+            entra_tenant_id,
+            entra_object_id,
+            entra_user_principal_name,
+            job_title,
+            department_name,
+            office_location,
+            last_directory_sync_at,
+            updated_at
+        )
+        VALUES (
+            @email,
+            @display_name,
+            TRUE,
+            TRUE,
+            @source_provider,
+            @tenant_id,
+            @entra_object_id,
+            @user_principal_name,
+            @job_title,
+            @department_name,
+            @office_location,
+            NOW(),
+            NOW()
+        )
+        ON CONFLICT (email) DO UPDATE
+        SET display_name = EXCLUDED.display_name,
+            is_active = TRUE,
+            login_enabled = TRUE,
+            source_provider = EXCLUDED.source_provider,
+            entra_tenant_id = EXCLUDED.entra_tenant_id,
+            entra_object_id = EXCLUDED.entra_object_id,
+            entra_user_principal_name = EXCLUDED.entra_user_principal_name,
+            job_title = EXCLUDED.job_title,
+            department_name = EXCLUDED.department_name,
+            office_location = EXCLUDED.office_location,
+            last_directory_sync_at = NOW(),
+            updated_at = NOW()
+        RETURNING user_id;
+        """, connection);
+
+    upsertCommand.Parameters.AddWithValue("email", user.Email);
+    upsertCommand.Parameters.AddWithValue("display_name", user.DisplayName);
+    upsertCommand.Parameters.AddWithValue("source_provider", settings.SourceProvider);
+    upsertCommand.Parameters.AddWithValue("tenant_id", ProjectPulseRequiredEnv("PROJECTPULSE_ENTRA_TENANT_ID"));
+    upsertCommand.Parameters.AddWithValue("entra_object_id", user.Id);
+    upsertCommand.Parameters.AddWithValue("user_principal_name", (object?)user.UserPrincipalName ?? DBNull.Value);
+    upsertCommand.Parameters.AddWithValue("job_title", (object?)user.JobTitle ?? DBNull.Value);
+    upsertCommand.Parameters.AddWithValue("department_name", (object?)user.Department ?? DBNull.Value);
+    upsertCommand.Parameters.AddWithValue("office_location", (object?)user.OfficeLocation ?? DBNull.Value);
+
+    var userId = (Guid)(await upsertCommand.ExecuteScalarAsync() ?? throw new InvalidOperationException("Unable to upsert Entra user."));
+
+    await using var roleCommand = new NpgsqlCommand("""
+        INSERT INTO app_user_role_assignments (
+            user_id,
+            app_role_id,
+            assignment_reason,
+            is_active
+        )
+        SELECT @user_id,
+               r.app_role_id,
+               'Default role from Azure Graph selective import',
+               TRUE
+        FROM app_roles r
+        WHERE r.role_code = @role_code
+          AND r.is_active = TRUE
+        ON CONFLICT (user_id, app_role_id) DO UPDATE
+        SET is_active = TRUE,
+            assignment_reason = EXCLUDED.assignment_reason,
+            updated_at = NOW();
+        """, connection);
+
+    roleCommand.Parameters.AddWithValue("user_id", userId);
+    roleCommand.Parameters.AddWithValue("role_code", settings.DefaultRoleCode);
+
+    await roleCommand.ExecuteNonQueryAsync();
+
+    return ("imported_or_updated", userId);
+}
+
+async Task<int> ProjectPulseDeactivateMissingOrDisabledEntraUsersAsync(
+    NpgsqlConnection connection,
+    ProjectPulseEntraImportSettings settings,
+    List<ProjectPulseGraphUser> currentSourceUsers,
+    Guid importRunId)
+{
+    var activeGraphIds = currentSourceUsers
+        .Where(user => user.AccountEnabled)
+        .Select(user => user.Id)
+        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    var disabledGraphIds = currentSourceUsers
+        .Where(user => !user.AccountEnabled)
+        .Select(user => user.Id)
+        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    var deactivated = 0;
+
+    foreach (var user in currentSourceUsers.Where(user => !user.AccountEnabled))
+    {
+        await using var disabledCommand = new NpgsqlCommand("""
+            UPDATE app_users
+            SET is_active = FALSE,
+                login_enabled = FALSE,
+                updated_at = NOW()
+            WHERE source_provider = @source_provider
+              AND lower(email) LIKE @domain_pattern
+              AND entra_object_id = @entra_object_id
+              AND (is_active = TRUE OR login_enabled = TRUE);
+            """, connection);
+
+        disabledCommand.Parameters.AddWithValue("source_provider", settings.SourceProvider);
+        disabledCommand.Parameters.AddWithValue("domain_pattern", "%@" + settings.TenantDomain.ToLowerInvariant());
+        disabledCommand.Parameters.AddWithValue("entra_object_id", user.Id);
+
+        var rows = await disabledCommand.ExecuteNonQueryAsync();
+
+        if (rows > 0)
+        {
+            deactivated += rows;
+            await ProjectPulseRecordAzureImportRunUserAsync(connection, importRunId, user, "deactivated_account_disabled_in_entra");
+        }
+    }
+
+    if (settings.DisableMissingFromSource)
+    {
+        var currentIds = currentSourceUsers
+            .Select(user => user.Id)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .ToArray();
+
+        await using var missingCommand = new NpgsqlCommand("""
+            UPDATE app_users
+            SET is_active = FALSE,
+                login_enabled = FALSE,
+                updated_at = NOW()
+            WHERE source_provider = @source_provider
+              AND lower(email) LIKE @domain_pattern
+              AND entra_object_id IS NOT NULL
+              AND NOT (entra_object_id = ANY(@current_ids))
+              AND (is_active = TRUE OR login_enabled = TRUE);
+            """, connection);
+
+        missingCommand.Parameters.AddWithValue("source_provider", settings.SourceProvider);
+        missingCommand.Parameters.AddWithValue("domain_pattern", "%@" + settings.TenantDomain.ToLowerInvariant());
+        missingCommand.Parameters.AddWithValue("current_ids", currentIds);
+
+        deactivated += await missingCommand.ExecuteNonQueryAsync();
+    }
+
+    return deactivated;
+}
+
+
+app.MapGet("/api/auth/sso/test-config", () =>
+{
+    var tenantId = Environment.GetEnvironmentVariable("PROJECTPULSE_ENTRA_TENANT_ID");
+    var clientId = Environment.GetEnvironmentVariable("PROJECTPULSE_ENTRA_CLIENT_ID");
+    var redirectUri = Environment.GetEnvironmentVariable("PROJECTPULSE_ENTRA_REDIRECT_URI");
+    var testDomain = Environment.GetEnvironmentVariable("PROJECTPULSE_ENTRA_TEST_DOMAIN");
+    var mode = Environment.GetEnvironmentVariable("PROJECTPULSE_ENTRA_MODE") ?? "development";
+
+    return Results.Ok(new
+    {
+        status = "entra_config_loaded",
+        mode,
+        tenantConfigured = !string.IsNullOrWhiteSpace(tenantId),
+        clientConfigured = !string.IsNullOrWhiteSpace(clientId),
+        secretConfigured = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("PROJECTPULSE_ENTRA_CLIENT_SECRET")),
+        redirectUri,
+        testDomain
+    });
+});
+
+app.MapGet("/api/auth/sso/start", async (HttpContext httpContext, string? loginHint, string? prompt) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    var tenantId = ProjectPulseRequiredEnv("PROJECTPULSE_ENTRA_TENANT_ID");
+    var clientId = ProjectPulseRequiredEnv("PROJECTPULSE_ENTRA_CLIENT_ID");
+    var redirectUri = ProjectPulseRequiredEnv("PROJECTPULSE_ENTRA_REDIRECT_URI");
+
+    var state = ProjectPulseSecureToken();
+    var nonce = ProjectPulseSecureToken();
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    await using var command = new NpgsqlCommand("""
+        INSERT INTO auth_sso_state (
+            state_token,
+            nonce_token,
+            provider_code,
+            redirect_uri,
+            requested_email,
+            expires_at,
+            client_ip,
+            user_agent
+        )
+        VALUES (
+            @state_token,
+            @nonce_token,
+            'ENTRA_ID',
+            @redirect_uri,
+            NULLIF(@requested_email, ''),
+            NOW() + INTERVAL '10 minutes',
+            @client_ip,
+            @user_agent
+        );
+        """, connection);
+
+    command.Parameters.AddWithValue("state_token", state);
+    command.Parameters.AddWithValue("nonce_token", nonce);
+    command.Parameters.AddWithValue("redirect_uri", redirectUri);
+    command.Parameters.AddWithValue("requested_email", loginHint ?? "");
+    command.Parameters.AddWithValue("client_ip", httpContext.Connection.RemoteIpAddress?.ToString() ?? "");
+    command.Parameters.AddWithValue("user_agent", httpContext.Request.Headers.UserAgent.ToString());
+
+    await command.ExecuteNonQueryAsync();
+
+    var query = new Dictionary<string, string?>
+    {
+        ["client_id"] = clientId,
+        ["response_type"] = "code",
+        ["redirect_uri"] = redirectUri,
+        ["response_mode"] = "query",
+        ["scope"] = "openid profile email User.Read",
+        ["state"] = state,
+        ["nonce"] = nonce
+    };
+
+    if (!string.IsNullOrWhiteSpace(loginHint))
+    {
+        query["login_hint"] = loginHint.Trim();
+    }
+
+    if (!string.IsNullOrWhiteSpace(prompt))
+    {
+        var allowedPrompts = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "select_account",
+            "login",
+            "consent"
+        };
+
+        if (allowedPrompts.Contains(prompt.Trim()))
+        {
+            query["prompt"] = prompt.Trim();
+        }
+    }
+
+    var authorizationUrl = $"https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/authorize?" +
+        string.Join("&", query.Select(item => $"{Uri.EscapeDataString(item.Key)}={Uri.EscapeDataString(item.Value ?? "")}"));
+
+    return Results.Redirect(authorizationUrl);
+});
+
+app.MapGet("/api/auth/sso/callback", async (HttpContext httpContext, string? code, string? state, string? error, string? error_description) =>
+{
+    if (!string.IsNullOrWhiteSpace(error))
+    {
+        var encodedError = Uri.EscapeDataString(error_description ?? error);
+        return Results.Redirect($"/#login?ssoError={encodedError}");
+    }
+
+    if (string.IsNullOrWhiteSpace(code) || string.IsNullOrWhiteSpace(state))
+    {
+        return Results.Redirect("/#login?ssoError=missing_code_or_state");
+    }
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    var tenantId = ProjectPulseRequiredEnv("PROJECTPULSE_ENTRA_TENANT_ID");
+    var clientId = ProjectPulseRequiredEnv("PROJECTPULSE_ENTRA_CLIENT_ID");
+    var clientSecret = ProjectPulseRequiredEnv("PROJECTPULSE_ENTRA_CLIENT_SECRET");
+    var redirectUri = ProjectPulseRequiredEnv("PROJECTPULSE_ENTRA_REDIRECT_URI");
+    var testDomain = Environment.GetEnvironmentVariable("PROJECTPULSE_ENTRA_TEST_DOMAIN") ?? "";
+    var allowTestJit = string.Equals(Environment.GetEnvironmentVariable("PROJECTPULSE_ENTRA_ALLOW_TEST_JIT"), "true", StringComparison.OrdinalIgnoreCase);
+    var mode = Environment.GetEnvironmentVariable("PROJECTPULSE_ENTRA_MODE") ?? "development";
+
+    string nonce;
+    string? requestedEmail;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    await using (var stateCommand = new NpgsqlCommand("""
+        UPDATE auth_sso_state
+        SET consumed_at = NOW()
+        WHERE state_token = @state_token
+          AND consumed_at IS NULL
+          AND expires_at > NOW()
+        RETURNING nonce_token, requested_email;
+        """, connection))
+    {
+        stateCommand.Parameters.AddWithValue("state_token", state);
+
+        await using var reader = await stateCommand.ExecuteReaderAsync();
+
+        if (!await reader.ReadAsync())
+        {
+            return Results.Redirect("/#login?ssoError=invalid_or_expired_state");
+        }
+
+        nonce = reader.GetString(0);
+        requestedEmail = reader.IsDBNull(1) ? null : reader.GetString(1);
+    }
+
+    using var httpClient = new HttpClient();
+
+    var tokenRequest = new FormUrlEncodedContent(new Dictionary<string, string>
+    {
+        ["client_id"] = clientId,
+        ["scope"] = "openid profile email User.Read",
+        ["code"] = code,
+        ["redirect_uri"] = redirectUri,
+        ["grant_type"] = "authorization_code",
+        ["client_secret"] = clientSecret
+    });
+
+    var tokenResponse = await httpClient.PostAsync($"https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/token", tokenRequest);
+    var tokenJson = await tokenResponse.Content.ReadAsStringAsync();
+
+    if (!tokenResponse.IsSuccessStatusCode)
+    {
+        var tokenErrorMessage = "token_exchange_failed";
+
+        try
+        {
+            using var errorDocument = JsonDocument.Parse(tokenJson);
+            var errorCode = ProjectPulseJsonString(errorDocument.RootElement, "error") ?? "token_exchange_failed";
+            var errorDescription = ProjectPulseJsonString(errorDocument.RootElement, "error_description") ?? "";
+            tokenErrorMessage = $"{errorCode}: {errorDescription}";
+        }
+        catch
+        {
+            tokenErrorMessage = $"token_exchange_failed: HTTP {(int)tokenResponse.StatusCode}";
+        }
+
+        Console.Error.WriteLine($"Project Pulse Entra token exchange failed: {tokenErrorMessage}");
+        var encodedTokenError = Uri.EscapeDataString(tokenErrorMessage);
+        return Results.Redirect($"/#login?ssoError={encodedTokenError}");
+    }
+
+    using var tokenDocument = JsonDocument.Parse(tokenJson);
+    var idToken = ProjectPulseJsonString(tokenDocument.RootElement, "id_token");
+
+    if (string.IsNullOrWhiteSpace(idToken))
+    {
+        return Results.Redirect("/#login?ssoError=missing_id_token");
+    }
+
+    JsonElement payload;
+
+    try
+    {
+        payload = await ProjectPulseValidateMicrosoftIdTokenAsync(idToken, tenantId, clientId, nonce);
+    }
+    catch (Exception ex)
+    {
+        var encoded = Uri.EscapeDataString(ex.Message);
+        return Results.Redirect($"/#login?ssoError={encoded}");
+    }
+
+    var objectId = ProjectPulseJsonString(payload, "oid") ?? "";
+    var preferredUsername = ProjectPulseJsonString(payload, "preferred_username");
+    var email = ProjectPulseJsonString(payload, "email") ?? preferredUsername ?? requestedEmail ?? "";
+    var displayName = ProjectPulseJsonString(payload, "name") ?? email;
+
+    if (string.IsNullOrWhiteSpace(objectId) || string.IsNullOrWhiteSpace(email))
+    {
+        return Results.Redirect("/#login?ssoError=missing_user_claims");
+    }
+
+    email = email.Trim().ToLowerInvariant();
+
+    if (!string.IsNullOrWhiteSpace(testDomain)
+        && mode.Equals("test", StringComparison.OrdinalIgnoreCase)
+        && !email.EndsWith("@" + testDomain, StringComparison.OrdinalIgnoreCase))
+    {
+        return Results.Redirect("/#login?ssoError=test_tenant_domain_restricted");
+    }
+
+    Guid userId;
+
+    await using (var lookupCommand = new NpgsqlCommand("""
+        SELECT user_id
+        FROM app_users
+        WHERE entra_object_id = @entra_object_id
+           OR lower(email) = @email
+        LIMIT 1;
+        """, connection))
+    {
+        lookupCommand.Parameters.AddWithValue("entra_object_id", objectId);
+        lookupCommand.Parameters.AddWithValue("email", email);
+
+        var existing = await lookupCommand.ExecuteScalarAsync();
+
+        if (existing is Guid existingUserId)
+        {
+            userId = existingUserId;
+
+            await using var updateCommand = new NpgsqlCommand("""
+                UPDATE app_users
+                SET display_name = @display_name,
+                    entra_tenant_id = @tenant_id,
+                    entra_object_id = @entra_object_id,
+                    entra_user_principal_name = @user_principal_name,
+                    source_provider = CASE
+                        WHEN @mode = 'test' THEN 'ENTRA_ID_TEST'
+                        ELSE 'ENTRA_ID'
+                    END,
+                    last_sso_login_at = NOW(),
+                    updated_at = NOW()
+                WHERE user_id = @user_id;
+                """, connection);
+
+            updateCommand.Parameters.AddWithValue("display_name", displayName);
+            updateCommand.Parameters.AddWithValue("tenant_id", tenantId);
+            updateCommand.Parameters.AddWithValue("entra_object_id", objectId);
+            updateCommand.Parameters.AddWithValue("user_principal_name", (object?)preferredUsername ?? DBNull.Value);
+            updateCommand.Parameters.AddWithValue("mode", mode);
+            updateCommand.Parameters.AddWithValue("user_id", userId);
+
+            await updateCommand.ExecuteNonQueryAsync();
+        }
+        else if (allowTestJit && mode.Equals("test", StringComparison.OrdinalIgnoreCase))
+        {
+            userId = await ProjectPulseEnsureEntraUserAsync(
+                connection,
+                tenantId,
+                objectId,
+                email,
+                displayName,
+                preferredUsername,
+                "ENTRA_ID_TEST");
+
+            await ProjectPulseAssignDefaultEngineerRoleAsync(
+                connection,
+                userId,
+                "Default Engineer role from test Entra SSO JIT import.");
+        }
+        else
+        {
+            return Results.Redirect("/#login?ssoError=user_not_imported");
+        }
+    }
+
+    if (!await UserHasActiveRoleAsync(connection, userId))
+    {
+        return Results.Redirect("/#login?ssoError=no_active_project_pulse_role");
+    }
+
+    var session = await CreateProjectPulseSessionAsync(connection, userId, "ENTRA_ID", httpContext.Request);
+
+    var sessionJson = JsonSerializer.Serialize(new
+    {
+        username = email,
+        displayName,
+        loginMethod = "sso",
+        provider = "ENTRA_ID",
+        sessionToken = session.RawToken,
+        expiresAt = session.ExpiresAt,
+        signedInAt = DateTimeOffset.UtcNow
+    });
+
+    var sessionJsonLiteral = JsonSerializer.Serialize(sessionJson);
+
+    var html = $"""
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Project Pulse SSO</title>
+</head>
+<body>
+  <p>Completing Project Pulse sign-in...</p>
+  <script>
+    window.localStorage.setItem('projectPulseAuthSession', {sessionJsonLiteral});
+    window.location.replace('/#dashboard');
+  </script>
+</body>
+</html>
+""";
+
+    return Results.Content(html, "text/html");
+});
+
+
+app.MapGet("/api/admin/azure/import-settings", async (HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    if (!await ProjectPulseUserIsAzureAdministratorAsync(connection, sessionUserId.Value))
+    {
+        return Results.Json(new { status = "access_denied", message = "Azure Admin is restricted to administrators." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var settings = await ProjectPulseGetEntraImportSettingsAsync(connection);
+
+    return Results.Ok(new
+    {
+        status = "ok",
+        settings
+    });
+});
+
+app.MapPost("/api/admin/azure/import-settings", async (HttpContext httpContext, ProjectPulseImportSettingsUpdateRequest request) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    if (!await ProjectPulseUserIsAzureAdministratorAsync(connection, sessionUserId.Value))
+    {
+        return Results.Json(new { status = "access_denied", message = "Azure Admin is restricted to administrators." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var environmentMode = request.EnvironmentMode.Trim().ToLowerInvariant();
+    var tenantDomain = request.TenantDomain.Trim().ToLowerInvariant();
+    var sourceProvider = request.SourceProvider.Trim().ToUpperInvariant();
+    var importSourceType = request.ImportSourceType.Trim().ToUpperInvariant();
+    var defaultRoleCode = request.DefaultRoleCode.Trim().ToUpperInvariant();
+
+    if (environmentMode == "production")
+    {
+        tenantDomain = "ussignal.com";
+        sourceProvider = "ENTRA_ID";
+    }
+    else
+    {
+        tenantDomain = "onenecklab.com";
+        sourceProvider = "ENTRA_ID_TEST";
+        environmentMode = "test";
+    }
+
+    if (importSourceType is not ("ALL_USERS" or "GROUP" or "FILTER"))
+    {
+        return Results.BadRequest(new { status = "validation_failed", message = "Import source type must be ALL_USERS, GROUP, or FILTER." });
+    }
+
+    if (importSourceType == "GROUP" && string.IsNullOrWhiteSpace(request.GraphGroupId))
+    {
+        return Results.BadRequest(new { status = "validation_failed", message = "Group ID is required for group-based import." });
+    }
+
+    if (importSourceType == "FILTER" && string.IsNullOrWhiteSpace(request.GraphFilter))
+    {
+        return Results.BadRequest(new { status = "validation_failed", message = "Graph filter is required for filter-based import." });
+    }
+
+    await using var command = new NpgsqlCommand("""
+        INSERT INTO azure_entra_import_settings (
+            settings_id,
+            environment_mode,
+            tenant_domain,
+            source_provider,
+            import_source_type,
+            graph_group_id,
+            graph_filter,
+            default_role_code,
+            disable_missing_from_source,
+            updated_at
+        )
+        VALUES (
+            'default',
+            @environment_mode,
+            @tenant_domain,
+            @source_provider,
+            @import_source_type,
+            NULLIF(@graph_group_id, ''),
+            NULLIF(@graph_filter, ''),
+            @default_role_code,
+            @disable_missing_from_source,
+            NOW()
+        )
+        ON CONFLICT (settings_id) DO UPDATE
+        SET environment_mode = EXCLUDED.environment_mode,
+            tenant_domain = EXCLUDED.tenant_domain,
+            source_provider = EXCLUDED.source_provider,
+            import_source_type = EXCLUDED.import_source_type,
+            graph_group_id = EXCLUDED.graph_group_id,
+            graph_filter = EXCLUDED.graph_filter,
+            default_role_code = EXCLUDED.default_role_code,
+            disable_missing_from_source = EXCLUDED.disable_missing_from_source,
+            updated_at = NOW();
+        """, connection);
+
+    command.Parameters.AddWithValue("environment_mode", environmentMode);
+    command.Parameters.AddWithValue("tenant_domain", tenantDomain);
+    command.Parameters.AddWithValue("source_provider", sourceProvider);
+    command.Parameters.AddWithValue("import_source_type", importSourceType);
+    command.Parameters.AddWithValue("graph_group_id", request.GraphGroupId?.Trim() ?? "");
+    command.Parameters.AddWithValue("graph_filter", request.GraphFilter?.Trim() ?? "");
+    command.Parameters.AddWithValue("default_role_code", defaultRoleCode);
+    command.Parameters.AddWithValue("disable_missing_from_source", request.DisableMissingFromSource);
+
+    await command.ExecuteNonQueryAsync();
+
+    return Results.Ok(new { status = "saved", message = "Azure import settings saved." });
+});
+
+app.MapPost("/api/admin/azure/users/preview", async (HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    if (!await ProjectPulseUserIsAzureAdministratorAsync(connection, sessionUserId.Value))
+    {
+        return Results.Json(new { status = "access_denied", message = "Azure Admin is restricted to administrators." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var settings = await ProjectPulseGetEntraImportSettingsAsync(connection);
+
+    var graphUsers = await ProjectPulseFetchGraphUsersAsync(settings);
+
+    var imported = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+
+    await using (var importedCommand = new NpgsqlCommand("""
+        SELECT entra_object_id,
+               email,
+               display_name,
+               is_active,
+               login_enabled,
+               source_provider
+        FROM app_users
+        WHERE source_provider = @source_provider
+          AND lower(email) LIKE @domain_pattern;
+        """, connection))
+    {
+        importedCommand.Parameters.AddWithValue("source_provider", settings.SourceProvider);
+        importedCommand.Parameters.AddWithValue("domain_pattern", "%@" + settings.TenantDomain.ToLowerInvariant());
+
+        await using var reader = await importedCommand.ExecuteReaderAsync();
+
+        while (await reader.ReadAsync())
+        {
+            if (!reader.IsDBNull(0))
+            {
+                imported[reader.GetString(0)] = new
+                {
+                    email = reader.GetString(1),
+                    displayName = reader.GetString(2),
+                    isActive = reader.GetBoolean(3),
+                    loginEnabled = reader.GetBoolean(4),
+                    sourceProvider = reader.GetString(5)
+                };
+            }
+        }
+    }
+
+    await using (var updatePreviewCommand = new NpgsqlCommand("""
+        UPDATE azure_entra_import_settings
+        SET last_preview_at = NOW(),
+            updated_at = NOW()
+        WHERE settings_id = 'default';
+        """, connection))
+    {
+        await updatePreviewCommand.ExecuteNonQueryAsync();
+    }
+
+    await ProjectPulseCreateAzureImportRunAsync(
+        connection,
+        settings,
+        sessionUserId.Value,
+        "preview",
+        previewedCount: graphUsers.Count);
+
+    return Results.Ok(new
+    {
+        status = "ok",
+        settings,
+        users = graphUsers.Select(user => new
+        {
+            entraObjectId = user.Id,
+            user.DisplayName,
+            user.Email,
+            user.UserPrincipalName,
+            user.JobTitle,
+            user.Department,
+            user.OfficeLocation,
+            user.AccountEnabled,
+            alreadyImported = imported.ContainsKey(user.Id),
+            willBeInactive = !user.AccountEnabled
+        })
+    });
+});
+
+app.MapPost("/api/admin/azure/users/import-selected", async (HttpContext httpContext, ProjectPulseImportSelectedUsersRequest request) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    if (request.EntraObjectIds is null || request.EntraObjectIds.Count == 0)
+    {
+        return Results.BadRequest(new { status = "validation_failed", message = "Select at least one Entra user to import." });
+    }
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    if (!await ProjectPulseUserIsAzureAdministratorAsync(connection, sessionUserId.Value))
+    {
+        return Results.Json(new { status = "access_denied", message = "Azure Admin is restricted to administrators." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var settings = await ProjectPulseGetEntraImportSettingsAsync(connection);
+
+    var imported = 0;
+    var updated = 0;
+    var deactivated = 0;
+    var skipped = 0;
+    var selectedUsers = new List<ProjectPulseGraphUser>();
+
+    foreach (var id in request.EntraObjectIds.Distinct(StringComparer.OrdinalIgnoreCase))
+    {
+        var graphUser = await ProjectPulseFetchGraphUserByIdAsync(id);
+        selectedUsers.Add(graphUser);
+    }
+
+    var importRunId = await ProjectPulseCreateAzureImportRunAsync(
+        connection,
+        settings,
+        sessionUserId.Value,
+        "import_selected",
+        selectedCount: selectedUsers.Count);
+
+    foreach (var user in selectedUsers)
+    {
+        var result = await ProjectPulseUpsertSelectedEntraUserAsync(connection, settings, user);
+
+        if (result.ActionTaken == "imported_or_updated")
+        {
+            imported++;
+        }
+        else if (result.ActionTaken.StartsWith("deactivated", StringComparison.OrdinalIgnoreCase))
+        {
+            deactivated++;
+        }
+        else
+        {
+            skipped++;
+        }
+
+        await ProjectPulseRecordAzureImportRunUserAsync(connection, importRunId, user, result.ActionTaken);
+    }
+
+    await using (var updateImportCommand = new NpgsqlCommand("""
+        UPDATE azure_entra_import_settings
+        SET last_import_at = NOW(),
+            updated_at = NOW()
+        WHERE settings_id = 'default';
+
+        UPDATE azure_entra_import_runs
+        SET imported_count = @imported_count,
+            updated_count = @updated_count,
+            deactivated_count = @deactivated_count,
+            skipped_count = @skipped_count
+        WHERE import_run_id = @import_run_id;
+        """, connection))
+    {
+        updateImportCommand.Parameters.AddWithValue("imported_count", imported);
+        updateImportCommand.Parameters.AddWithValue("updated_count", updated);
+        updateImportCommand.Parameters.AddWithValue("deactivated_count", deactivated);
+        updateImportCommand.Parameters.AddWithValue("skipped_count", skipped);
+        updateImportCommand.Parameters.AddWithValue("import_run_id", importRunId);
+
+        await updateImportCommand.ExecuteNonQueryAsync();
+    }
+
+    return Results.Ok(new
+    {
+        status = "import_completed",
+        selected = selectedUsers.Count,
+        imported,
+        updated,
+        deactivated,
+        skipped
+    });
+});
+
+app.MapPost("/api/admin/azure/users/reconcile", async (HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    if (!await ProjectPulseUserIsAzureAdministratorAsync(connection, sessionUserId.Value))
+    {
+        return Results.Json(new { status = "access_denied", message = "Azure Admin is restricted to administrators." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var settings = await ProjectPulseGetEntraImportSettingsAsync(connection);
+    var currentUsers = await ProjectPulseFetchGraphUsersAsync(settings);
+
+    var importRunId = await ProjectPulseCreateAzureImportRunAsync(
+        connection,
+        settings,
+        sessionUserId.Value,
+        "reconcile",
+        previewedCount: currentUsers.Count);
+
+    var deactivated = await ProjectPulseDeactivateMissingOrDisabledEntraUsersAsync(
+        connection,
+        settings,
+        currentUsers,
+        importRunId);
+
+    await using (var updateCommand = new NpgsqlCommand("""
+        UPDATE azure_entra_import_settings
+        SET last_reconcile_at = NOW(),
+            updated_at = NOW()
+        WHERE settings_id = 'default';
+
+        UPDATE azure_entra_import_runs
+        SET deactivated_count = @deactivated_count
+        WHERE import_run_id = @import_run_id;
+        """, connection))
+    {
+        updateCommand.Parameters.AddWithValue("deactivated_count", deactivated);
+        updateCommand.Parameters.AddWithValue("import_run_id", importRunId);
+
+        await updateCommand.ExecuteNonQueryAsync();
+    }
+
+    return Results.Ok(new
+    {
+        status = "reconcile_completed",
+        sourceUserCount = currentUsers.Count,
+        deactivated
+    });
+});
+
 app.Run();
 
 
@@ -5729,7 +7431,7 @@ static async Task<Guid> GetOrCreateDevelopmentManagerUserIdAsync(NpgsqlConnectio
 {
     const string sql = """
         INSERT INTO app_users (email, display_name, job_title, department, is_active)
-        VALUES ('ahmed.adeyemi@ussignal.com', 'Ahmed Adeyemi', 'Development Manager', 'Project Pulse', TRUE)
+        VALUES ('ahmed.adeyemi@ussignal.local', 'Ahmed Adeyemi', 'Development Manager', 'Project Pulse', TRUE)
         ON CONFLICT (email) DO UPDATE
         SET display_name = EXCLUDED.display_name,
             updated_at = NOW()
@@ -5978,7 +7680,7 @@ static async Task<Guid> GetOrCreateDevelopmentUserIdAsync(NpgsqlConnection conne
 {
     const string sql = """
         INSERT INTO app_users (email, display_name, job_title, department, is_active)
-        VALUES ('ahmed.adeyemi@ussignal.com', 'Ahmed Adeyemi', 'Development Engineer', 'Professional Services', TRUE)
+        VALUES ('ahmed.adeyemi@ussignal.local', 'Ahmed Adeyemi', 'Development Engineer', 'Professional Services', TRUE)
         ON CONFLICT (email) DO UPDATE
         SET display_name = EXCLUDED.display_name,
             job_title = EXCLUDED.job_title,
@@ -6902,7 +8604,42 @@ internal sealed record LocalLoginRequest(string Username, string Password);
 internal sealed record SsoDevelopmentLoginRequest(string Email);
 internal sealed record SetTemporaryPasswordRequest(Guid ResetRequestId, string Username, string TemporaryPassword);
 internal sealed record ChangeLocalPasswordRequest(string CurrentPassword, string NewPassword);
-internal sealed record ProjectPulseCreatedSession(Guid SessionId, string RawToken, DateTimeOffset ExpiresAt);
+internal sealed 
+record ProjectPulseEntraImportSettings(
+    string EnvironmentMode,
+    string TenantDomain,
+    string SourceProvider,
+    string ImportSourceType,
+    string? GraphGroupId,
+    string? GraphFilter,
+    string DefaultRoleCode,
+    bool DisableMissingFromSource);
+
+record ProjectPulseGraphUser(
+    string Id,
+    string DisplayName,
+    string Email,
+    string? UserPrincipalName,
+    string? JobTitle,
+    string? Department,
+    string? OfficeLocation,
+    bool AccountEnabled);
+
+record ProjectPulseImportSelectedUsersRequest(
+    List<string> EntraObjectIds);
+
+record ProjectPulseImportSettingsUpdateRequest(
+    string EnvironmentMode,
+    string TenantDomain,
+    string SourceProvider,
+    string ImportSourceType,
+    string? GraphGroupId,
+    string? GraphFilter,
+    string DefaultRoleCode,
+    bool DisableMissingFromSource);
+
+
+record ProjectPulseCreatedSession(Guid SessionId, string RawToken, DateTimeOffset ExpiresAt);
 internal sealed record ProjectPulseSessionValidation(bool IsValid, Guid? UserId, string? Email, string? ProviderCode, DateTimeOffset? ExpiresAt, string? Message);
 
 internal sealed record PasswordResetApprovalAction(Guid ResetRequestId, string? ActionByEmail, string? Notes);

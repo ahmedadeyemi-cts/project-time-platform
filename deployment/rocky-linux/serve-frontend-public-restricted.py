@@ -24,6 +24,19 @@ def parse_allowed_ips(values):
     return allowed
 
 
+
+def projectpulse_is_public_auth_endpoint(path):
+    public_prefixes = (
+        "/api/auth/login/route",
+        "/api/auth/local/login",
+        "/api/auth/password-reset/request",
+        "/api/auth/sso/start",
+        "/api/auth/sso/callback",
+        "/api/auth/sso/test-config",
+    )
+
+    return any(path.startswith(prefix) for prefix in public_prefixes)
+
 class RestrictedFrontendProxyHandler(module.FrontendProxyHandler):
     allowed_source_ips = {"127.0.0.1", "::1"}
 

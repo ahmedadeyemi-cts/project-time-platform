@@ -235,8 +235,8 @@ CROSS JOIN app_users owner
 CROSS JOIN (
     VALUES
         ('Approval workflow complexity', 'Daily submission, manager approval, PM validation, and accounting reconciliation may create edge cases if not tested by role.', 'medium', 'high', 'open', 'Validate one workflow at a time and keep full debug endpoints during development.'),
-        ('Scope expansion', 'Remaining PSA modules may expand beyond the original minimum validation scope.', 'medium', 'medium', 'Use phased delivery gates and keep backlog items separated from validated functionality.'),
-        ('Public validation exposure', 'Temporary public validation access must remain restricted to approved source IPs.', 'low', 'high', 'Expose only the frontend proxy and restrict source IP at OCI and OS firewall layers.')
+        ('Scope expansion', 'Remaining PSA modules may expand beyond the original minimum validation scope.', 'medium', 'medium', 'open', 'Use phased delivery gates and keep backlog items separated from validated functionality.'),
+        ('Public validation exposure', 'Temporary public validation access must remain restricted to approved source IPs.', 'low', 'high', 'open', 'Expose only the frontend proxy and restrict source IP at OCI and OS firewall layers.')
 ) AS seed(risk_title, risk_description, probability, impact, risk_status, mitigation_plan)
 WHERE p.project_code = 'USS-PSA-2026'
   AND owner.email = 'ahmed.adeyemi@ussignal.com'
