@@ -539,6 +539,11 @@ export default function App() {
   const [isResolvingLogin, setIsResolvingLogin] = useState(false);
   const [passwordResetNotes, setPasswordResetNotes] = useState('');
   const [passwordResetStatus, setPasswordResetStatus] = useState('');
+  const [forcedCurrentPassword, setForcedCurrentPassword] = useState('');
+  const [forcedNewPassword, setForcedNewPassword] = useState('');
+  const [forcedConfirmPassword, setForcedConfirmPassword] = useState('');
+  const [forcedPasswordStatus, setForcedPasswordStatus] = useState('');
+  const [isChangingForcedPassword, setIsChangingForcedPassword] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const profileMenuRef = useRef(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -1246,6 +1251,57 @@ export default function App() {
       setPasswordResetStatus(result.message ?? 'Password reset request queued for approval.');
     } catch (error) {
       setPasswordResetStatus(error instanceof Error ? error.message : 'Unable to request password reset approval.');
+    }
+  }
+
+  async function completeForcedPasswordChange(event) {
+    event.preventDefault();
+
+    if (!forcedCurrentPassword.trim()) {
+      setForcedPasswordStatus('Enter your temporary password as the current password.');
+      return;
+    }
+
+    if (!forcedNewPassword.trim()) {
+      setForcedPasswordStatus('Enter a new password.');
+      return;
+    }
+
+    if (forcedNewPassword !== forcedConfirmPassword) {
+      setForcedPasswordStatus('The new password and confirmation do not match.');
+      return;
+    }
+
+    if (forcedCurrentPassword === forcedNewPassword) {
+      setForcedPasswordStatus('The new password must be different from the temporary password.');
+      return;
+    }
+
+    setIsChangingForcedPassword(true);
+    setForcedPasswordStatus('Updating password...');
+
+    try {
+      const result = await postJson('/api/auth/local/change-password', {
+        currentPassword: forcedCurrentPassword,
+        newPassword: forcedNewPassword
+      });
+
+      const updatedSession = {
+        ...authSession,
+        mustChangePassword: false
+      };
+
+      saveAuthSession(updatedSession);
+      setAuthSession(updatedSession);
+      setForcedCurrentPassword('');
+      setForcedNewPassword('');
+      setForcedConfirmPassword('');
+      setForcedPasswordStatus(result.message ?? 'Password changed successfully.');
+      window.location.hash = '#dashboard';
+    } catch (error) {
+      setForcedPasswordStatus(error instanceof Error ? error.message : 'Unable to change password.');
+    } finally {
+      setIsChangingForcedPassword(false);
     }
   }
 
@@ -2426,6 +2482,73 @@ export default function App() {
                 </div>
               </div>
             )}
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  if (authSession?.loginMethod === 'local' && authSession?.mustChangePassword) {
+    return (
+      <main className="app-shell auth-shell forced-password-shell">
+        <section className="auth-landing-panel">
+          <div className="auth-brand-block">
+            <SignalLogo />
+            <p className="eyebrow">Password Change Required</p>
+            <h1>Set a new local administrator password</h1>
+            <p>
+              You signed in with a temporary password. Before accessing Project Pulse, choose a new password for the local administrator account.
+            </p>
+          </div>
+
+          <div className="auth-card">
+            <div className="auth-route-box">
+              <p className="eyebrow">Local administrator</p>
+              <h2>{authSession.displayName || authSession.username}</h2>
+              <p className="muted">This step protects the break-glass account and completes the approved password reset workflow.</p>
+
+              <form onSubmit={completeForcedPasswordChange} className="forced-password-form">
+                <label htmlFor="forced-current-password">Temporary password</label>
+                <input
+                  id="forced-current-password"
+                  type="password"
+                  value={forcedCurrentPassword}
+                  placeholder="Enter temporary password"
+                  autoComplete="current-password"
+                  onChange={(event) => setForcedCurrentPassword(event.target.value)}
+                />
+
+                <label htmlFor="forced-new-password">New password</label>
+                <input
+                  id="forced-new-password"
+                  type="password"
+                  value={forcedNewPassword}
+                  placeholder="Enter new password"
+                  autoComplete="new-password"
+                  onChange={(event) => setForcedNewPassword(event.target.value)}
+                />
+
+                <label htmlFor="forced-confirm-password">Confirm new password</label>
+                <input
+                  id="forced-confirm-password"
+                  type="password"
+                  value={forcedConfirmPassword}
+                  placeholder="Confirm new password"
+                  autoComplete="new-password"
+                  onChange={(event) => setForcedConfirmPassword(event.target.value)}
+                />
+
+                <button className="primary-action" type="submit" disabled={isChangingForcedPassword}>
+                  {isChangingForcedPassword ? 'Changing password...' : 'Change password and continue'}
+                </button>
+              </form>
+
+              <button className="secondary-action" type="button" onClick={signOut}>
+                Sign out instead
+              </button>
+
+              {forcedPasswordStatus && <p className="auth-status">{forcedPasswordStatus}</p>}
+            </div>
           </div>
         </section>
       </main>
