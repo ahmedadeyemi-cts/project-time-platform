@@ -5,9 +5,84 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#004b8d" />
     <title>Project Pulse</title>
+  
+    <script>
+      (function () {
+        try {
+          var storedTheme = window.localStorage.getItem('ptp-theme');
+          var theme = storedTheme === 'dark' || storedTheme === 'light' ? storedTheme : 'light';
+          window.localStorage.setItem('ptp-theme', theme);
+          document.documentElement.setAttribute('data-theme', theme);
+        } catch (error) {
+          document.documentElement.setAttribute('data-theme', 'light');
+        }
+      })();
+    </script>
+
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
+  
+    <script>
+      (function () {
+        function currentTheme() {
+          try {
+            var storedTheme = window.localStorage.getItem('ptp-theme');
+            return storedTheme === 'dark' || storedTheme === 'light' ? storedTheme : 'light';
+          } catch (error) {
+            return 'light';
+          }
+        }
+
+        function applyTheme(theme) {
+          try {
+            window.localStorage.setItem('ptp-theme', theme);
+          } catch (error) {}
+
+          document.documentElement.setAttribute('data-theme', theme);
+
+          if (document.body) {
+            document.body.setAttribute('data-theme', theme);
+          }
+
+          var button = document.getElementById('projectpulse-floating-theme-toggle');
+          if (button) {
+            button.textContent = theme === 'dark' ? '☀ Light mode' : '🌙 Dark mode';
+            button.setAttribute('aria-label', theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode');
+          }
+        }
+
+        function createButton() {
+          if (document.getElementById('projectpulse-floating-theme-toggle')) {
+            return;
+          }
+
+          var button = document.createElement('button');
+          button.id = 'projectpulse-floating-theme-toggle';
+          button.type = 'button';
+          button.className = 'projectpulse-floating-theme-toggle';
+          button.addEventListener('click', function () {
+            var nextTheme = currentTheme() === 'dark' ? 'light' : 'dark';
+            applyTheme(nextTheme);
+
+            // Force React to reload using the same persisted profile/theme preference.
+            window.setTimeout(function () {
+              window.location.reload();
+            }, 50);
+          });
+
+          document.body.appendChild(button);
+          applyTheme(currentTheme());
+        }
+
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', createButton);
+        } else {
+          createButton();
+        }
+      })();
+    </script>
+
   </body>
 </html>

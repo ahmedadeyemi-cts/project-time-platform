@@ -109,6 +109,19 @@ export default function UserAdministrationPanel() {
   const [temporaryPassword, setTemporaryPassword] = useState('');
   const [mustChangePassword, setMustChangePassword] = useState(true);
   const [status, setStatus] = useState('Ready');
+  const [isBulkUpdateOpen, setIsBulkUpdateOpen] = useState(false);
+  const [localUserDraft, setLocalUserDraft] = useState({
+    email: '',
+    displayName: '',
+    temporaryPassword: '',
+    mustChangePassword: true,
+    jobTitle: '',
+    departmentName: '',
+    teamName: '',
+    officeLocation: '',
+    managerEmail: '',
+    roleCodes: ['ENGINEER']
+  });
 
   const [bulkDraft, setBulkDraft] = useState({
     applyJobTitle: false,
@@ -208,6 +221,14 @@ export default function UserAdministrationPanel() {
     ));
   }
 
+  function getSelectedPrimaryRoleCode() {
+    return selectedRoleCodes?.[0] ?? '';
+  }
+
+  function updateSelectedPrimaryRole(roleCode) {
+    setSelectedRoleCodes(roleCode ? [roleCode] : []);
+  }
+
   function toggleBulkRole(roleCode) {
     setBulkDraft((current) => ({
       ...current,
@@ -217,12 +238,111 @@ export default function UserAdministrationPanel() {
     }));
   }
 
-  async function saveProfile() {
-    if (!profileDraft) return;
-    setStatus('Saving user profile...');
+  function toggleLocalCreateRole(roleCode) {
+    setLocalUserDraft((current) => ({
+      ...current,
+      roleCodes: current.roleCodes.includes(roleCode)
+        ? current.roleCodes.filter((code) => code !== roleCode)
+        : [...current.roleCodes, roleCode]
+    }));
+  }
+
+  async function createLocalUser() {
+    const email = localUserDraft.email.trim().toLowerCase();
+
+    if (!email.endsWith('@ussignal.local')) {
+      setStatus('Manual users must use @ussignal.local. Use Entra import for @ussignal.com and @onenecklab.com users.');
+      return;
+    }
+
+    if (!localUserDraft.displayName.trim()) {
+      setStatus('Display name is required before creating a local user.');
+      return;
+    }
+
+    if (!localUserDraft.temporaryPassword.trim()) {
+      setStatus('Enter a temporary password before creating a local user.');
+      return;
+    }
+
+    setStatus(`Creating local user ${email}...`);
 
     try {
-      const result = await postJson('/api/admin/user-admin/users/profile', {
+      const result = await postJson('/api/admin/user-admin/users/local', {
+        ...localUserDraft,
+        email
+      });
+
+      setStatus(result.message ?? 'Local user created.');
+      setLocalUserDraft({
+        email: '',
+        displayName: '',
+        temporaryPassword: '',
+        mustChangePassword: true,
+        jobTitle: '',
+        departmentName: '',
+        teamName: '',
+        officeLocation: '',
+        managerEmail: '',
+        roleCodes: ['ENGINEER']
+      });
+
+      await loadUserAdministration();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Unable to create local user.');
+    }
+  }
+
+  async function deactivateSelectedUser() {
+    if (!selectedUser) return;
+
+    if (!window.confirm(`Deactivate ${selectedUser.email}? Login will be disabled and active roles will be removed.`)) {
+      return;
+    }
+
+    setStatus(`Deactivating ${selectedUser.email}...`);
+
+    try {
+      const result = await postJson('/api/admin/user-admin/users/deactivate', {
+        userId: selectedUser.userId,
+        reason: 'Deactivated from User Administration page.'
+      });
+
+      setStatus(result.message ?? 'User deactivated.');
+      await loadUserAdministration();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Unable to deactivate user.');
+    }
+  }
+
+  async function deleteSelectedUser() {
+    if (!selectedUser) return;
+
+    if (!window.confirm(`Delete ${selectedUser.email}? If this user has history, Project Pulse will safely deactivate the account instead of hard deleting it.`)) {
+      return;
+    }
+
+    setStatus(`Deleting ${selectedUser.email}...`);
+
+    try {
+      const result = await postJson('/api/admin/user-admin/users/delete', {
+        userId: selectedUser.userId,
+        reason: 'Deleted from User Administration page.'
+      });
+
+      setStatus(result.message ?? 'User delete workflow completed.');
+      await loadUserAdministration();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Unable to delete user.');
+    }
+  }
+
+  async function saveProfile() {
+    if (!profileDraft) return;
+    setStatus('Saving user profile and role...');
+
+    try {
+      const profileResult = await postJson('/api/admin/user-admin/users/profile', {
         userId: profileDraft.userId,
         displayName: profileDraft.displayName,
         jobTitle: profileDraft.jobTitle ?? '',
@@ -234,10 +354,16 @@ export default function UserAdministrationPanel() {
         isActive: Boolean(profileDraft.isActive)
       });
 
-      setStatus(result.message ?? 'User profile saved.');
+      const roleResult = await postJson('/api/admin/user-admin/users/roles', {
+        userId: profileDraft.userId,
+        roleCodes: selectedRoleCodes,
+        reason: 'Updated from User Administration profile section.'
+      });
+
+      setStatus(roleResult.message ?? profileResult.message ?? 'User profile and role saved.');
       await loadUserAdministration();
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'Unable to save user profile.');
+      setStatus(error instanceof Error ? error.message : 'Unable to save user profile and role.');
     }
   }
 
@@ -330,170 +456,359 @@ export default function UserAdministrationPanel() {
         <span>Action: <strong>{status}</strong></span>
       </div>
 
-      <div className="user-admin-bulk-card">
-        <div className="section-heading compact-heading">
+
+      <div className="user-admin-create-card">
+        <div className="user-admin-create-hero">
+          <div>
+            <p className="eyebrow">Local user</p>
+            <h2>Create local Project Pulse user</h2>
+            <p className="section-copy">
+              Manual creation is restricted to @ussignal.local accounts. Use Azure Admin import for @ussignal.com and @onenecklab.com users.
+            </p>
+          </div>
+          <button type="button" className="primary-action" onClick={createLocalUser}>
+            + Create local user
+          </button>
+        </div>
+
+        <div className="user-admin-local-layout">
+          <div className="user-admin-context-card">
+            <div className="context-card-heading">
+              <span className="context-card-icon">👤</span>
+              <div>
+                <p className="eyebrow">1. Identity</p>
+                <h3>Account identity</h3>
+              </div>
+            </div>
+
+            <div className="user-admin-create-grid compact">
+              <label>Email</label>
+              <input
+                value={localUserDraft.email}
+                onChange={(event) => setLocalUserDraft((current) => ({ ...current, email: event.target.value }))}
+                placeholder="firstname.lastname@ussignal.local"
+              />
+
+              <label>Display name</label>
+              <input
+                value={localUserDraft.displayName}
+                onChange={(event) => setLocalUserDraft((current) => ({ ...current, displayName: event.target.value }))}
+                placeholder="Full name"
+              />
+
+              <label>Temporary password</label>
+              <input
+                type="password"
+                value={localUserDraft.temporaryPassword}
+                onChange={(event) => setLocalUserDraft((current) => ({ ...current, temporaryPassword: event.target.value }))}
+                placeholder="At least 12 chars with upper, lower, number, special"
+              />
+            </div>
+          </div>
+
+          <div className="user-admin-context-card">
+            <div className="context-card-heading">
+              <span className="context-card-icon">🏢</span>
+              <div>
+                <p className="eyebrow">2. Organization</p>
+                <h3>Team and reporting</h3>
+              </div>
+            </div>
+
+            <div className="user-admin-create-grid compact">
+              <label>Team</label>
+              <select
+                value={localUserDraft.teamName}
+                onChange={(event) => {
+                  const nextTeam = TEAM_OPTIONS.find((team) => team.teamName === event.target.value);
+                  setLocalUserDraft((current) => ({
+                    ...current,
+                    teamName: event.target.value,
+                    departmentName: nextTeam?.departmentName ?? current.departmentName,
+                    managerEmail: nextTeam?.managerEmail ?? current.managerEmail
+                  }));
+                }}
+              >
+                <option value="">Select team</option>
+                {TEAM_OPTIONS.map((team) => (
+                  <option value={team.teamName} key={team.teamName}>{team.teamName}</option>
+                ))}
+              </select>
+
+              <label>Department</label>
+              <input
+                list="local-user-admin-departments"
+                value={localUserDraft.departmentName}
+                onChange={(event) => setLocalUserDraft((current) => ({ ...current, departmentName: event.target.value }))}
+                placeholder="Department"
+              />
+
+              <label>Job title</label>
+              <input
+                value={localUserDraft.jobTitle}
+                onChange={(event) => setLocalUserDraft((current) => ({ ...current, jobTitle: event.target.value }))}
+                placeholder="Engineer, Coordinator, Manager, etc."
+              />
+
+              <label>Office location</label>
+              <input
+                value={localUserDraft.officeLocation}
+                onChange={(event) => setLocalUserDraft((current) => ({ ...current, officeLocation: event.target.value }))}
+                placeholder="Office / Remote"
+              />
+
+              <label>Manager email</label>
+              <input
+                value={localUserDraft.managerEmail}
+                onChange={(event) => setLocalUserDraft((current) => ({ ...current, managerEmail: event.target.value }))}
+                placeholder="manager@ussignal.com"
+              />
+            </div>
+          </div>
+
+          <div className="user-admin-context-card compact-card">
+            <div className="context-card-heading">
+              <span className="context-card-icon">🛡️</span>
+              <div>
+                <p className="eyebrow">3. Security / Access</p>
+                <h3>Password policy</h3>
+              </div>
+            </div>
+
+            <label className="checkbox-row">
+              <input
+                type="checkbox"
+                checked={localUserDraft.mustChangePassword}
+                onChange={(event) => setLocalUserDraft((current) => ({ ...current, mustChangePassword: event.target.checked }))}
+              />
+              Require password change at next login
+            </label>
+          </div>
+
+          <div className="user-admin-context-card roles-card-wide">
+            <div className="context-card-heading">
+              <span className="context-card-icon">👥</span>
+              <div>
+                <p className="eyebrow">4. Roles</p>
+                <h3>Workspace access</h3>
+              </div>
+            </div>
+
+            <div className="user-admin-role-grid compact-role-grid local-create-roles">
+              {data.roles.map((role) => (
+                <label key={role.roleCode} className={localUserDraft.roleCodes.includes(role.roleCode) ? 'role-option active' : 'role-option'}>
+                  <input
+                    type="checkbox"
+                    checked={localUserDraft.roleCodes.includes(role.roleCode)}
+                    onChange={() => toggleLocalCreateRole(role.roleCode)}
+                  />
+                  <strong>{role.roleName}</strong>
+                  <span>{role.roleCode}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <datalist id="local-user-admin-departments">
+          {data.departments.map((item) => <option value={item} key={item} />)}
+        </datalist>
+      </div>
+
+      <div className={isBulkUpdateOpen ? 'user-admin-bulk-card compact-bulk-card open' : 'user-admin-bulk-card compact-bulk-card'}>
+        <div className="bulk-collapsible-header">
           <div>
             <p className="eyebrow">Bulk update</p>
             <h2>Update selected users</h2>
             <p className="section-copy">
-              Check users on the left, choose the fields to apply, then run one update for everyone selected.
+              Select users from the list below, then expand this panel only when you need to apply the same update to multiple people.
             </p>
           </div>
-          <button type="button" className="primary-action" onClick={applyBulkUpdate}>
-            Apply bulk update
-          </button>
-        </div>
 
-        <div className="user-admin-bulk-grid">
-          <label className="checkbox-row">
-            <input
-              type="checkbox"
-              checked={bulkDraft.applyDepartmentName}
-              onChange={(event) => setBulkDraft((current) => ({ ...current, applyDepartmentName: event.target.checked }))}
-            />
-            Apply department
-          </label>
-          <input
-            list="bulk-user-admin-departments"
-            value={bulkDraft.departmentName}
-            onChange={(event) => setBulkDraft((current) => ({ ...current, departmentName: event.target.value }))}
-            placeholder="Department"
-          />
-
-          <label className="checkbox-row">
-            <input
-              type="checkbox"
-              checked={bulkDraft.applyTeamName}
-              onChange={(event) => setBulkDraft((current) => ({ ...current, applyTeamName: event.target.checked }))}
-            />
-            Apply team
-          </label>
-          <select
-            value={bulkDraft.teamName}
-            onChange={(event) => {
-              const nextTeam = TEAM_OPTIONS.find((team) => team.teamName === event.target.value);
-              setBulkDraft((current) => ({
-                ...current,
-                teamName: event.target.value,
-                applyDepartmentName: Boolean(nextTeam) ? true : current.applyDepartmentName,
-                departmentName: nextTeam?.departmentName ?? current.departmentName,
-                applyManagerEmail: Boolean(nextTeam) ? true : current.applyManagerEmail,
-                managerEmail: nextTeam?.managerEmail ?? current.managerEmail
-              }));
-            }}
-          >
-            <option value="">Select team</option>
-            {TEAM_OPTIONS.map((team) => (
-              <option value={team.teamName} key={team.teamName}>{team.teamName}</option>
-            ))}
-          </select>
-
-          <label className="checkbox-row">
-            <input
-              type="checkbox"
-              checked={bulkDraft.applyJobTitle}
-              onChange={(event) => setBulkDraft((current) => ({ ...current, applyJobTitle: event.target.checked }))}
-            />
-            Apply job title
-          </label>
-          <input
-            value={bulkDraft.jobTitle}
-            onChange={(event) => setBulkDraft((current) => ({ ...current, jobTitle: event.target.value }))}
-            placeholder="Job title"
-          />
-
-          <label className="checkbox-row">
-            <input
-              type="checkbox"
-              checked={bulkDraft.applyManagerEmail}
-              onChange={(event) => setBulkDraft((current) => ({ ...current, applyManagerEmail: event.target.checked }))}
-            />
-            Apply manager email
-          </label>
-          <input
-            value={bulkDraft.managerEmail}
-            onChange={(event) => setBulkDraft((current) => ({ ...current, managerEmail: event.target.value }))}
-            placeholder={bulkDraft.teamName === 'Back Office' ? 'Coordinator assigned' : 'manager@ussignal.com'}
-          />
-
-          <label className="checkbox-row">
-            <input
-              type="checkbox"
-              checked={bulkDraft.applyOfficeLocation}
-              onChange={(event) => setBulkDraft((current) => ({ ...current, applyOfficeLocation: event.target.checked }))}
-            />
-            Apply office location
-          </label>
-          <input
-            value={bulkDraft.officeLocation}
-            onChange={(event) => setBulkDraft((current) => ({ ...current, officeLocation: event.target.value }))}
-            placeholder="Office / Remote"
-          />
-
-          <label className="checkbox-row">
-            <input
-              type="checkbox"
-              checked={bulkDraft.applyLoginEnabled}
-              onChange={(event) => setBulkDraft((current) => ({ ...current, applyLoginEnabled: event.target.checked }))}
-            />
-            Apply login enabled
-          </label>
-          <select
-            value={bulkDraft.loginEnabled ? 'true' : 'false'}
-            onChange={(event) => setBulkDraft((current) => ({ ...current, loginEnabled: event.target.value === 'true' }))}
-          >
-            <option value="true">Enable login</option>
-            <option value="false">Disable login</option>
-          </select>
-
-          <label className="checkbox-row">
-            <input
-              type="checkbox"
-              checked={bulkDraft.applyIsActive}
-              onChange={(event) => setBulkDraft((current) => ({ ...current, applyIsActive: event.target.checked }))}
-            />
-            Apply active status
-          </label>
-          <select
-            value={bulkDraft.isActive ? 'true' : 'false'}
-            onChange={(event) => setBulkDraft((current) => ({ ...current, isActive: event.target.value === 'true' }))}
-          >
-            <option value="true">Active</option>
-            <option value="false">Inactive</option>
-          </select>
-        </div>
-
-        <div className="user-admin-bulk-roles">
-          <label>Bulk role action</label>
-          <select
-            value={bulkDraft.roleUpdateMode}
-            onChange={(event) => setBulkDraft((current) => ({ ...current, roleUpdateMode: event.target.value }))}
-          >
-            <option value="none">Do not change roles</option>
-            <option value="add">Add selected roles</option>
-            <option value="remove">Remove selected roles</option>
-            <option value="replace">Replace all roles with selected roles</option>
-          </select>
-
-          <div className="user-admin-role-grid compact-role-grid">
-            {data.roles.map((role) => (
-              <label key={role.roleCode} className={bulkDraft.roleCodes.includes(role.roleCode) ? 'role-option active' : 'role-option'}>
-                <input
-                  type="checkbox"
-                  checked={bulkDraft.roleCodes.includes(role.roleCode)}
-                  onChange={() => toggleBulkRole(role.roleCode)}
-                />
-                <strong>{role.roleName}</strong>
-                <span>{role.roleCode}</span>
-              </label>
-            ))}
+          <div className="bulk-header-actions">
+            <span className={selectedUserIds.length > 0 ? 'bulk-selection-pill active' : 'bulk-selection-pill'}>
+              {selectedUserIds.length} selected
+            </span>
+            <button
+              type="button"
+              className="secondary-action"
+              onClick={() => setIsBulkUpdateOpen((current) => !current)}
+            >
+              {isBulkUpdateOpen ? 'Collapse' : 'Expand bulk update'}
+            </button>
+            <button
+              type="button"
+              className="primary-action"
+              onClick={applyBulkUpdate}
+              disabled={selectedUserIds.length === 0}
+            >
+              Apply update
+            </button>
           </div>
         </div>
 
-        <datalist id="bulk-user-admin-departments">
-          {data.departments.map((item) => <option value={item} key={item} />)}
-        </datalist>
+        {isBulkUpdateOpen && (
+          <div className="bulk-update-body">
+            <div className="bulk-selection-context">
+              <strong>{selectedUserIds.length}</strong>
+              <span>
+                user{selectedUserIds.length === 1 ? '' : 's'} selected from the user list below. Check or uncheck names on the left before applying changes.
+              </span>
+            </div>
 
+            <div className="user-admin-bulk-grid compact-bulk-grid">
+              <label className="checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={bulkDraft.applyDepartmentName}
+                  onChange={(event) => setBulkDraft((current) => ({ ...current, applyDepartmentName: event.target.checked }))}
+                />
+                Apply department
+              </label>
+              <input
+                list="bulk-user-admin-departments"
+                value={bulkDraft.departmentName}
+                onChange={(event) => setBulkDraft((current) => ({ ...current, departmentName: event.target.value }))}
+                placeholder="Department"
+              />
+
+              <label className="checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={bulkDraft.applyTeamName}
+                  onChange={(event) => setBulkDraft((current) => ({ ...current, applyTeamName: event.target.checked }))}
+                />
+                Apply team
+              </label>
+              <select
+                value={bulkDraft.teamName}
+                onChange={(event) => {
+                  const nextTeam = TEAM_OPTIONS.find((team) => team.teamName === event.target.value);
+                  setBulkDraft((current) => ({
+                    ...current,
+                    teamName: event.target.value,
+                    applyDepartmentName: Boolean(nextTeam) ? true : current.applyDepartmentName,
+                    departmentName: nextTeam?.departmentName ?? current.departmentName,
+                    applyManagerEmail: Boolean(nextTeam) ? true : current.applyManagerEmail,
+                    managerEmail: nextTeam?.managerEmail ?? current.managerEmail
+                  }));
+                }}
+              >
+                <option value="">Select team</option>
+                {TEAM_OPTIONS.map((team) => (
+                  <option value={team.teamName} key={team.teamName}>{team.teamName}</option>
+                ))}
+              </select>
+
+              <label className="checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={bulkDraft.applyJobTitle}
+                  onChange={(event) => setBulkDraft((current) => ({ ...current, applyJobTitle: event.target.checked }))}
+                />
+                Apply job title
+              </label>
+              <input
+                value={bulkDraft.jobTitle}
+                onChange={(event) => setBulkDraft((current) => ({ ...current, jobTitle: event.target.value }))}
+                placeholder="Job title"
+              />
+
+              <label className="checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={bulkDraft.applyManagerEmail}
+                  onChange={(event) => setBulkDraft((current) => ({ ...current, applyManagerEmail: event.target.checked }))}
+                />
+                Apply manager email
+              </label>
+              <input
+                value={bulkDraft.managerEmail}
+                onChange={(event) => setBulkDraft((current) => ({ ...current, managerEmail: event.target.value }))}
+                placeholder={bulkDraft.teamName === 'Back Office' ? 'Coordinator assigned' : 'manager@ussignal.com'}
+              />
+
+              <label className="checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={bulkDraft.applyOfficeLocation}
+                  onChange={(event) => setBulkDraft((current) => ({ ...current, applyOfficeLocation: event.target.checked }))}
+                />
+                Apply office location
+              </label>
+              <input
+                value={bulkDraft.officeLocation}
+                onChange={(event) => setBulkDraft((current) => ({ ...current, officeLocation: event.target.value }))}
+                placeholder="Office / Remote"
+              />
+
+              <label className="checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={bulkDraft.applyLoginEnabled}
+                  onChange={(event) => setBulkDraft((current) => ({ ...current, applyLoginEnabled: event.target.checked }))}
+                />
+                Apply login enabled
+              </label>
+              <select
+                value={bulkDraft.loginEnabled ? 'true' : 'false'}
+                onChange={(event) => setBulkDraft((current) => ({ ...current, loginEnabled: event.target.value === 'true' }))}
+              >
+                <option value="true">Enable login</option>
+                <option value="false">Disable login</option>
+              </select>
+
+              <label className="checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={bulkDraft.applyIsActive}
+                  onChange={(event) => setBulkDraft((current) => ({ ...current, applyIsActive: event.target.checked }))}
+                />
+                Apply active status
+              </label>
+              <select
+                value={bulkDraft.isActive ? 'true' : 'false'}
+                onChange={(event) => setBulkDraft((current) => ({ ...current, isActive: event.target.value === 'true' }))}
+              >
+                <option value="true">Active</option>
+                <option value="false">Inactive</option>
+              </select>
+            </div>
+
+            <div className="user-admin-bulk-roles compact-bulk-roles">
+              <div>
+                <label>Bulk role action</label>
+                <select
+                  value={bulkDraft.roleUpdateMode}
+                  onChange={(event) => setBulkDraft((current) => ({ ...current, roleUpdateMode: event.target.value }))}
+                >
+                  <option value="none">Do not change roles</option>
+                  <option value="add">Add selected roles</option>
+                  <option value="remove">Remove selected roles</option>
+                  <option value="replace">Replace all roles with selected roles</option>
+                </select>
+              </div>
+
+              <div className="user-admin-role-grid compact-role-grid">
+                {data.roles.map((role) => (
+                  <label key={role.roleCode} className={bulkDraft.roleCodes.includes(role.roleCode) ? 'role-option active' : 'role-option'}>
+                    <input
+                      type="checkbox"
+                      checked={bulkDraft.roleCodes.includes(role.roleCode)}
+                      onChange={() => toggleBulkRole(role.roleCode)}
+                    />
+                    <strong>{role.roleName}</strong>
+                    <span>{role.roleCode}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <datalist id="bulk-user-admin-departments">
+              {data.departments.map((item) => <option value={item} key={item} />)}
+            </datalist>
+          </div>
+        )}
       </div>
 
       <div className="user-admin-layout">
@@ -569,7 +884,24 @@ export default function UserAdministrationPanel() {
                 placeholder={profileDraft.teamName === 'Back Office' ? 'Coordinator assigned' : 'manager@ussignal.com'}
               />
 
-              <label className="checkbox-row">
+              
+              <label>Project Pulse role</label>
+              <select
+                value={getSelectedPrimaryRoleCode()}
+                onChange={(event) => updateSelectedPrimaryRole(event.target.value)}
+              >
+                <option value="">No active role - login blocked</option>
+                {data.roles.map((role) => (
+                  <option value={role.roleCode} key={role.roleCode}>
+                    {role.roleName}
+                  </option>
+                ))}
+              </select>
+              <div className="user-admin-helper-text">
+                Select the workspace role that controls this user's available views and actions.
+              </div>
+
+<label className="checkbox-row">
                 <input type="checkbox" checked={Boolean(profileDraft.loginEnabled)} onChange={(event) => setProfileDraft((current) => ({ ...current, loginEnabled: event.target.checked }))} />
                 Login enabled
               </label>
@@ -582,30 +914,15 @@ export default function UserAdministrationPanel() {
               <button type="button" className="primary-action" onClick={saveProfile}>
                 Save profile
               </button>
-            </div>
 
-            <div className="user-admin-card">
-              <p className="eyebrow">Roles</p>
-              <h2>Project Pulse roles</h2>
-              <p className="section-copy">Users with no active roles are blocked from login.</p>
-
-              <div className="user-admin-role-grid">
-                {data.roles.map((role) => (
-                  <label key={role.roleCode} className={selectedRoleCodes.includes(role.roleCode) ? 'role-option active' : 'role-option'}>
-                    <input
-                      type="checkbox"
-                      checked={selectedRoleCodes.includes(role.roleCode)}
-                      onChange={() => toggleRole(role.roleCode)}
-                    />
-                    <strong>{role.roleName}</strong>
-                    <span>{role.description}</span>
-                  </label>
-                ))}
+              <div className="user-admin-danger-row">
+                <button type="button" className="secondary-action" onClick={deactivateSelectedUser}>
+                  Deactivate user
+                </button>
+                <button type="button" className="danger-action" onClick={deleteSelectedUser}>
+                  Delete user
+                </button>
               </div>
-
-              <button type="button" className="primary-action" onClick={saveRoles}>
-                Save roles
-              </button>
             </div>
 
             <div className="user-admin-card">
