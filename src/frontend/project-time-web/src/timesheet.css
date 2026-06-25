@@ -2787,3 +2787,152 @@ html[data-theme="dark"] .profile-settings-actions {
 .manager-team-member-table-wrap td strong {
   display: block;
 }
+
+/* 019J Manager Team Utilization */
+
+.manager-team-utilization-panel {
+  border: 1px solid var(--border);
+  border-radius: 1.25rem;
+  background: var(--card);
+  box-shadow: var(--shadow-sm);
+  padding: 1.5rem;
+  margin-top: 1.5rem;
+}
+
+.team-utilization-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.team-utilization-card {
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: var(--panel);
+  padding: 1rem;
+}
+
+.team-utilization-card h3 {
+  margin: 0.2rem 0 0;
+  font-size: 2rem;
+  color: var(--accent);
+}
+
+.manager-team-member-table-wrap {
+  overflow: auto;
+  margin-top: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+}
+
+.manager-team-member-table-wrap table {
+  min-width: 960px;
+}
+
+.manager-team-member-table-wrap td span,
+.manager-team-member-table-wrap td strong {
+  display: block;
+}
+
+/* 019J.1 Compact quarterly utilization layout */
+
+.yearly-utilization-panel {
+  padding: 1rem !important;
+  margin-top: 1rem !important;
+}
+
+.yearly-utilization-panel .section-heading {
+  margin-bottom: 0.75rem;
+}
+
+.quarter-utilization-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 0.75rem !important;
+  margin-top: 0.75rem !important;
+}
+
+.quarter-utilization-card {
+  padding: 0.85rem !important;
+  border-radius: 0.9rem !important;
+}
+
+.quarter-card-header {
+  margin-bottom: 0.65rem !important;
+}
+
+.quarter-card-header h3 {
+  font-size: 1.7rem !important;
+  line-height: 1.1 !important;
+  color: #003b71 !important;
+  opacity: 1 !important;
+  font-weight: 950 !important;
+}
+
+.quarter-card-header .badge {
+  font-size: 0.75rem !important;
+  padding: 0.35rem 0.55rem !important;
+}
+
+.quarter-summary-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 0.45rem !important;
+  margin-bottom: 0.65rem !important;
+}
+
+.quarter-summary-grid span {
+  padding: 0.55rem !important;
+  font-size: 0.72rem !important;
+  border-radius: 0.65rem !important;
+}
+
+.quarter-summary-grid strong {
+  font-size: 0.85rem !important;
+  line-height: 1.1 !important;
+}
+
+.threshold-list {
+  gap: 0.3rem !important;
+}
+
+.threshold-row {
+  grid-template-columns: 42px 76px minmax(0, 1fr) !important;
+  gap: 0.35rem !important;
+  padding: 0.42rem 0.55rem !important;
+  border-radius: 0.55rem !important;
+  font-size: 0.78rem !important;
+}
+
+.threshold-row span {
+  font-size: 0.75rem !important;
+}
+
+.threshold-row strong {
+  font-size: 0.8rem !important;
+  line-height: 1.05 !important;
+  justify-self: end !important;
+}
+
+.threshold-row strong br {
+  display: none !important;
+}
+
+@media (max-width: 1350px) {
+  .quarter-utilization-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 800px) {
+  .quarter-utilization-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .quarter-summary-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .threshold-row {
+    grid-template-columns: 42px 76px minmax(0, 1fr) !important;
+  }
+}
