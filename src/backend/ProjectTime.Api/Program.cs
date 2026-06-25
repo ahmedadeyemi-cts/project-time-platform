@@ -8144,40 +8144,98 @@ static async Task<List<object>> LoadManagerApprovalItemsAsync(NpgsqlConnection c
     var items = new List<object>();
 
     const string sql = """
+        WITH day_items AS (
+            SELECT
+                tds.timesheet_id,
+                tds.user_id,
+                u.display_name,
+                u.email,
+                tds.work_date,
+                tds.status,
+                tds.submitted_at,
+                COALESCE(SUM(CASE WHEN te.time_type = 'normal' THEN te.hours ELSE 0 END), 0) AS normal_hours,
+                COALESCE(SUM(CASE WHEN te.time_type = 'afterhours' THEN te.hours ELSE 0 END), 0) AS afterhours_hours,
+                COALESCE(SUM(te.hours), 0) AS total_hours,
+                COUNT(te.time_entry_id) AS entry_count,
+                COALESCE(COUNT(te.time_entry_id) FILTER (WHERE te.description IS NOT NULL AND BTRIM(te.description) <> ''), 0) AS comment_count,
+                COALESCE(STRING_AGG(DISTINCT COALESCE(npt.category_name, pt.task_name, p.project_name, 'Project task'), ', '), 'No entries') AS activity_summary,
+                tds.manager_decision_comment
+            FROM timesheet_day_statuses tds
+            INNER JOIN app_users u ON u.user_id = tds.user_id
+            LEFT JOIN time_entries te
+                ON te.timesheet_id = tds.timesheet_id
+               AND te.work_date = tds.work_date
+            LEFT JOIN non_project_time_categories npt
+                ON npt.non_project_time_category_id = te.non_project_time_category_id
+            LEFT JOIN project_tasks pt
+                ON pt.project_task_id = te.project_task_id
+            LEFT JOIN projects p
+                ON p.project_id = te.project_id
+            WHERE tds.work_date BETWEEN @week_start AND @week_end
+              AND (@include_all = TRUE OR tds.status = 'submitted')
+            GROUP BY
+                tds.timesheet_id,
+                tds.user_id,
+                u.display_name,
+                u.email,
+                tds.work_date,
+                tds.status,
+                tds.submitted_at,
+                tds.manager_decision_comment
+        )
         SELECT
-            tds.timesheet_id,
-            tds.user_id,
-            u.display_name,
-            u.email,
-            tds.work_date,
-            tds.status,
-            tds.submitted_at,
-            COALESCE(SUM(CASE WHEN te.time_type = 'normal' THEN te.hours ELSE 0 END), 0) AS normal_hours,
-            COALESCE(SUM(CASE WHEN te.time_type = 'afterhours' THEN te.hours ELSE 0 END), 0) AS afterhours_hours,
-            COALESCE(SUM(te.hours), 0) AS total_hours,
-            COUNT(te.time_entry_id) AS entry_count,
-            COALESCE(COUNT(te.time_entry_id) FILTER (WHERE te.description IS NOT NULL AND BTRIM(te.description) <> ''), 0) AS comment_count,
-            COALESCE(STRING_AGG(DISTINCT COALESCE(npt.category_name, 'Project task'), ', '), 'No entries') AS activity_summary,
-            tds.manager_decision_comment
-        FROM timesheet_day_statuses tds
-        INNER JOIN app_users u ON u.user_id = tds.user_id
-        LEFT JOIN time_entries te
-            ON te.timesheet_id = tds.timesheet_id
-           AND te.work_date = tds.work_date
-        LEFT JOIN non_project_time_categories npt
-            ON npt.non_project_time_category_id = te.non_project_time_category_id
-        WHERE tds.work_date BETWEEN @week_start AND @week_end
-          AND (@include_all = TRUE OR tds.status = 'submitted')
-        GROUP BY
-            tds.timesheet_id,
-            tds.user_id,
-            u.display_name,
-            u.email,
-            tds.work_date,
-            tds.status,
-            tds.submitted_at,
-            tds.manager_decision_comment
-        ORDER BY tds.work_date, u.display_name;
+            di.timesheet_id,
+            di.user_id,
+            di.display_name,
+            di.email,
+            di.work_date,
+            di.status,
+            di.submitted_at,
+            di.normal_hours,
+            di.afterhours_hours,
+            di.total_hours,
+            di.entry_count,
+            di.comment_count,
+            di.activity_summary,
+            di.manager_decision_comment,
+            COALESCE((
+                SELECT jsonb_agg(
+                    jsonb_build_object(
+                        'timeEntryId', te.time_entry_id,
+                        'timeType', te.time_type,
+                        'hours', te.hours,
+                        'description', COALESCE(te.description, ''),
+                        'status', te.status,
+                        'projectId', te.project_id,
+                        'projectCode', COALESCE(p.project_code, ''),
+                        'projectName', COALESCE(p.project_name, ''),
+                        'taskId', te.project_task_id,
+                        'taskCode', COALESCE(pt.task_code, ''),
+                        'taskName', COALESCE(pt.task_name, ''),
+                        'categoryCode', COALESCE(npt.category_code, ''),
+                        'categoryName', COALESCE(npt.category_name, ''),
+                        'workLocationGroupId', te.work_location_group_id,
+                        'workLocationId', te.work_location_id
+                    )
+                    ORDER BY
+                        CASE WHEN te.time_type = 'normal' THEN 0 ELSE 1 END,
+                        COALESCE(p.project_name, npt.category_name, pt.task_name, ''),
+                        COALESCE(pt.task_name, ''),
+                        te.time_entry_id
+                )
+                FROM time_entries te
+                LEFT JOIN non_project_time_categories npt
+                    ON npt.non_project_time_category_id = te.non_project_time_category_id
+                LEFT JOIN project_tasks pt
+                    ON pt.project_task_id = te.project_task_id
+                LEFT JOIN projects p
+                    ON p.project_id = te.project_id
+                WHERE te.timesheet_id = di.timesheet_id
+                  AND te.work_date = di.work_date
+                  AND te.hours > 0
+            ), '[]'::jsonb) AS entries
+        FROM day_items di
+        ORDER BY di.work_date, di.display_name;
         """;
 
     await using var command = new NpgsqlCommand(sql, connection);
@@ -8188,6 +8246,9 @@ static async Task<List<object>> LoadManagerApprovalItemsAsync(NpgsqlConnection c
     await using var reader = await command.ExecuteReaderAsync();
     while (await reader.ReadAsync())
     {
+        var entriesJson = reader.IsDBNull(14) ? "[]" : reader.GetFieldValue<string>(14);
+        var entries = System.Text.Json.JsonSerializer.Deserialize<object>(entriesJson) ?? Array.Empty<object>();
+
         items.Add(new
         {
             timesheetId = reader.GetGuid(0),
@@ -8203,7 +8264,8 @@ static async Task<List<object>> LoadManagerApprovalItemsAsync(NpgsqlConnection c
             entryCount = reader.GetInt64(10),
             commentCount = reader.GetInt64(11),
             activitySummary = reader.GetString(12),
-            managerDecisionComment = reader.IsDBNull(13) ? null : reader.GetString(13)
+            managerDecisionComment = reader.IsDBNull(13) ? null : reader.GetString(13),
+            entries
         });
     }
 
