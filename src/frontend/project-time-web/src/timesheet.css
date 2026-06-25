@@ -3789,3 +3789,116 @@ textarea:focus {
   color: #15803d;
   border-color: rgba(22, 163, 74, 0.24);
 }
+
+
+/* 019M-E Claude AI time entry suggestions */
+.ai-time-suggestion-card {
+  display: grid;
+  gap: 14px;
+  margin: 18px 0;
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(11, 99, 206, 0.2);
+  background:
+    radial-gradient(circle at top left, rgba(11, 99, 206, 0.08), transparent 34%),
+    rgba(248, 250, 252, 0.84);
+}
+
+[data-theme="dark"] .ai-time-suggestion-card {
+  background:
+    radial-gradient(circle at top left, rgba(96, 165, 250, 0.14), transparent 34%),
+    rgba(15, 23, 42, 0.64);
+  border-color: rgba(96, 165, 250, 0.28);
+}
+
+.ai-time-suggestion-card h3 {
+  margin: 4px 0 6px;
+  color: var(--pulse-text);
+}
+
+.ai-time-suggestion-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.ai-suggestion-preview {
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid var(--pulse-card-border);
+  background: rgba(255, 255, 255, 0.86);
+}
+
+[data-theme="dark"] .ai-suggestion-preview {
+  background: rgba(15, 23, 42, 0.72);
+}
+
+.ai-suggestion-preview strong {
+  display: block;
+  color: var(--pulse-text);
+  margin-bottom: 6px;
+}
+
+.ai-suggestion-preview p {
+  margin: 0 0 8px;
+  color: var(--pulse-text);
+  line-height: 1.5;
+}
+
+.ai-suggestion-preview small,
+.ai-suggestion-warning {
+  color: var(--pulse-muted);
+}
+
+/* 019M-E day-level submit guidance */
+.day-submit-guidance-card {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(11, 99, 206, 0.2);
+  background: rgba(248, 250, 252, 0.86);
+}
+
+[data-theme="dark"] .day-submit-guidance-card {
+  background: rgba(15, 23, 42, 0.72);
+  border-color: rgba(96, 165, 250, 0.28);
+}
+
+.day-submit-guidance-card p {
+  margin: 0;
+  color: var(--pulse-muted);
+  line-height: 1.5;
+}
+
+.day-submit-guidance-card .primary-action {
+  width: fit-content;
+}
+
+/* 019M-E visible day-total warning */
+.day-total-warning-banner {
+  display: grid;
+  gap: 6px;
+  margin: 16px 0 18px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(180, 83, 9, 0.28);
+  background: rgba(255, 251, 235, 0.92);
+  color: #78350f;
+}
+
+[data-theme="dark"] .day-total-warning-banner {
+  border-color: rgba(251, 191, 36, 0.34);
+  background: rgba(120, 53, 15, 0.22);
+  color: #fde68a;
+}
+
+.day-total-warning-banner strong {
+  font-size: 0.9rem;
+}
+
+.day-total-warning-banner span {
+  font-size: 0.88rem;
+  line-height: 1.45;
+}

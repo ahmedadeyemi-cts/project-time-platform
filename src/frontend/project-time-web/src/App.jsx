@@ -604,6 +604,7 @@ export default function App() {
   const [activeRows, setActiveRows] = useState([]);
   const [entries, setEntries] = useState({});
   const [selectedCell, setSelectedCell] = useState(null);
+  const [aiSuggestionState, setAiSuggestionState] = useState({ loading: false, suggestion: '', provider: '', warning: '', error: '' });
   const [submissionStatus, setSubmissionStatus] = useState('Draft');
   const [saveStatus, setSaveStatus] = useState('Not saved yet');
   const [isSaving, setIsSaving] = useState(false);
@@ -2001,14 +2002,17 @@ export default function App() {
   const selectedRow = activeRows.find((row) => row.id === selectedCell?.rowId);
   const selectedEntry = selectedCell ? getEntry(selectedCell.rowId, selectedCell.date, selectedCell.type) : null;
   const selectedDayStatus = selectedCell ? getDayStatus(selectedCell.date) : null;
+  const selectedEntryIsEditable = Boolean(selectedCell && isDayEditable(selectedCell.date));
 
   function openEntryDetails(rowId, date, type) {
+    setAiSuggestionState({ loading: false, suggestion: '', provider: '', warning: '', error: '' });
     setSelectedCell({ rowId, date, type });
   }
 
   async function closeEntryDetails({ autoSave = true } = {}) {
-    const shouldAutoSave = autoSave && selectedCell && isDayEditable(selectedCell.date) && Object.keys(entries).length > 0;
+    const shouldAutoSave = autoSave && selectedCell && selectedEntryIsEditable && Object.keys(entries).length > 0;
     setSelectedCell(null);
+    setAiSuggestionState({ loading: false, suggestion: '', provider: '', warning: '', error: '' });
 
     if (shouldAutoSave) {
       await autoSaveDraft('Auto-saving draft...');
@@ -2049,9 +2053,87 @@ export default function App() {
     return buildTimesheetPayload().entries.filter((entry) => entry.workDate === workDate);
   }
 
+  function hasRequiredTimeEntryDescription(value) {
+    return String(value ?? '').trim().length > 0;
+  }
+
+  function getEntriesMissingDescriptions(payloadEntries) {
+    return payloadEntries.filter((entry) => Number(entry.hours) > 0 && !hasRequiredTimeEntryDescription(entry.description));
+  }
+
+  function getMissingDescriptionMessage(missingEntries) {
+    if (!missingEntries.length) {
+      return '';
+    }
+
+    const first = missingEntries[0];
+    return `Description/comment is required before saving or submitting time. Add a description for ${first.workDate}.`;
+  }
+
   function getSelectedDayTotal() {
     if (!selectedCell) return 0;
     return getDayTotal(selectedCell.date);
+  }
+
+  async function generateAiTimeEntrySuggestion() {
+    if (!selectedCell || !selectedRow || !selectedEntry) return;
+
+    if (!selectedEntryIsEditable) {
+      setAiSuggestionState({
+        loading: false,
+        suggestion: '',
+        provider: '',
+        warning: '',
+        error: 'This day is locked or submitted. Unlock the day before generating a new suggestion.'
+      });
+      return;
+    }
+
+    setAiSuggestionState({ loading: true, suggestion: '', provider: '', warning: '', error: '' });
+
+    try {
+      const hours = Number.parseFloat(selectedEntry.hours);
+
+      const result = await postJson('/api/timesheets/ai-description-suggestions', {
+        workDate: selectedCell.date,
+        timeType: selectedCell.type,
+        rowType: selectedRow.type,
+        rowLabel: selectedRow.activity ?? selectedRow.label ?? selectedRow.projectDescription ?? '',
+        projectName: selectedRow.projectName ?? selectedRow.projectDescription ?? '',
+        projectCode: selectedRow.projectCode ?? '',
+        taskName: selectedRow.taskName ?? selectedRow.activity ?? '',
+        taskCode: selectedRow.taskCode ?? '',
+        categoryCode: selectedRow.categoryCode ?? '',
+        hours: Number.isNaN(hours) ? null : hours,
+        currentDescription: selectedEntry.comment ?? ''
+      });
+
+      setAiSuggestionState({
+        loading: false,
+        suggestion: result.suggestion ?? '',
+        provider: result.provider ?? '',
+        warning: result.warning ?? '',
+        error: ''
+      });
+    } catch (error) {
+      setAiSuggestionState({
+        loading: false,
+        suggestion: '',
+        provider: '',
+        warning: '',
+        error: error instanceof Error ? error.message : 'Unable to generate AI suggestion.'
+      });
+    }
+  }
+
+  function applyAiTimeEntrySuggestion() {
+    if (!selectedCell || !aiSuggestionState.suggestion) return;
+
+    updateEntry(selectedCell.rowId, selectedCell.date, selectedCell.type, {
+      comment: aiSuggestionState.suggestion
+    });
+
+    setSaveStatus('AI suggestion applied to description. Review and save or submit when ready.');
   }
 
   async function autoSaveDraft(statusMessage = 'Auto-saving draft...') {
@@ -2059,6 +2141,12 @@ export default function App() {
 
     const payload = buildTimesheetPayload();
     if (payload.entries.length === 0) return;
+
+    const missingDescriptions = getEntriesMissingDescriptions(payload.entries);
+    if (missingDescriptions.length > 0) {
+      setSaveStatus(getMissingDescriptionMessage(missingDescriptions));
+      return;
+    }
 
     setSaveStatus(statusMessage);
 
@@ -2079,7 +2167,15 @@ export default function App() {
     setSaveStatus('Saving draft...');
 
     try {
-      const result = await postJson('/api/timesheets/week/draft', buildTimesheetPayload());
+      const payload = buildTimesheetPayload();
+      const missingDescriptions = getEntriesMissingDescriptions(payload.entries);
+
+      if (missingDescriptions.length > 0) {
+        setSaveStatus(getMissingDescriptionMessage(missingDescriptions));
+        return;
+      }
+
+      const result = await postJson('/api/timesheets/week/draft', payload);
       setTimesheet({ loading: false, data: result.timesheet, error: null });
       setSubmissionStatus(statusToLabel(result.timesheet?.status, grandTotal));
       setSaveStatus('Draft saved');
@@ -2093,7 +2189,7 @@ export default function App() {
   async function submitSelectedDay() {
     if (!selectedCell || isSaving) return;
 
-    if (!isDayEditable(selectedCell.date)) {
+    if (!selectedEntryIsEditable) {
       setSaveStatus('This day is locked and cannot be submitted or edited by the engineer.');
       return;
     }
@@ -2111,7 +2207,7 @@ export default function App() {
       const result = await postJson('/api/timesheets/day/submit', {
         weekStart: selectedWeekStart,
         workDate: selectedCell.date,
-        entries: getEntriesForDay(selectedCell.date)
+        entries: dayEntries
       });
       setTimesheet({ loading: false, data: result.timesheet, error: null });
       setSubmissionStatus(`${selectedCell.date} submitted (${formatNumber(dayTotal)} hours).`);
@@ -2159,7 +2255,15 @@ export default function App() {
     setSaveStatus('Saving weekly draft...');
 
     try {
-      const result = await postJson('/api/timesheets/week/draft', buildTimesheetPayload());
+      const payload = buildTimesheetPayload();
+      const missingDescriptions = getEntriesMissingDescriptions(payload.entries);
+
+      if (missingDescriptions.length > 0) {
+        setSaveStatus(getMissingDescriptionMessage(missingDescriptions));
+        return;
+      }
+
+      const result = await postJson('/api/timesheets/week/draft', payload);
       setTimesheet({ loading: false, data: result.timesheet, error: null });
       setSubmissionStatus(statusToLabel(result.timesheet?.status, grandTotal));
       setSaveStatus('Weekly draft saved. Submit each day from the time-entry window when the day reaches 8.00 hours.');
@@ -3169,6 +3273,8 @@ Analytics - Variphy / Infortel`}
               </div>
 
               <div className="activity-selector-row">
+
+
                 <label htmlFor="activity-source">Activity type</label>
                 <select
                   id="activity-source"
@@ -3323,13 +3429,22 @@ Analytics - Variphy / Infortel`}
                 <p className="muted small-text">
                   {selectedCell.date} • {selectedCell.type === 'afterhours' ? 'Afterhours' : 'Normal time'}
                 </p>
+
+                {getSelectedDayTotal() < 8 && (
+                  <div className="day-total-warning-banner">
+                    <strong>Daily minimum not met.</strong>
+                    <span>
+                      This day has {formatNumber(getSelectedDayTotal())} hour(s). Add {formatNumber(Math.max(0, 8 - getSelectedDayTotal()))} more hour(s) across any combination of project, service request, non-project, or approved time rows before submitting.
+                    </span>
+                  </div>
+                )}
               </div>
               <div className="modal-actions">
                 {selectedDayStatus?.status === 'submitted' ? (
                   <button type="button" className="unlock-action" onClick={unlockSelectedDay} disabled={isSaving || !selectedDayStatus?.canUnlock}>
                     Unlock this day
                   </button>
-                ) : isDayEditable(selectedCell.date) ? (
+                ) : selectedEntryIsEditable ? (
                   <button type="button" className="primary-action" onClick={submitSelectedDay} disabled={isSaving || getSelectedDayTotal() < 8}>
                     Submit this day
                   </button>
@@ -3355,8 +3470,8 @@ Analytics - Variphy / Infortel`}
                   value={selectedEntry.hours}
                   placeholder="0.00"
                   autoFocus
-                  disabled={!isDayEditable(selectedCell.date)}
-                  disabled={!isDayEditable(selectedCell.date)}
+                  disabled={!selectedEntryIsEditable}
+                  disabled={!selectedEntryIsEditable}
                   onChange={(event) => updateEntry(selectedCell.rowId, selectedCell.date, selectedCell.type, { hours: event.target.value })}
                 />
               </label>
@@ -3365,17 +3480,63 @@ Analytics - Variphy / Infortel`}
                 <textarea
                   value={selectedEntry.comment}
                   placeholder="Enter the reportable comment for this time entry."
-                  disabled={!isDayEditable(selectedCell.date)}
-                  disabled={!isDayEditable(selectedCell.date)}
+                  disabled={!selectedEntryIsEditable}
+                  disabled={!selectedEntryIsEditable}
                   onChange={(event) => updateEntry(selectedCell.rowId, selectedCell.date, selectedCell.type, { comment: event.target.value })}
                 />
+
+                <div className="ai-time-suggestion-card">
+                  <div>
+                    <p className="eyebrow">AI description assistant</p>
+                    <h3>Generate a customer-facing description</h3>
+                    <p className="section-copy">
+                      Type a few words in the description box first, or generate from the project, task, activity, and date context. AI can suggest only the description. It cannot change hours, submit time, create tasks, or modify allocations.
+                    </p>
+                  </div>
+
+                  <div className="ai-time-suggestion-actions">
+                    <button
+                      type="button"
+                      className="secondary-action"
+                      onClick={generateAiTimeEntrySuggestion}
+                      disabled={aiSuggestionState.loading || !selectedEntryIsEditable}
+                    >
+                      {aiSuggestionState.loading ? 'Generating...' : 'Generate AI suggestion'}
+                    </button>
+
+                    {aiSuggestionState.suggestion && (
+                      <button type="button" className="primary-action" onClick={applyAiTimeEntrySuggestion}>
+                        Use suggestion
+                      </button>
+                    )}
+                  </div>
+
+                  {aiSuggestionState.error && (
+                    <p className="error-text">{aiSuggestionState.error}</p>
+                  )}
+
+                  {aiSuggestionState.warning && (
+                    <p className="ai-suggestion-warning">{aiSuggestionState.warning}</p>
+                  )}
+
+                  {aiSuggestionState.suggestion && (
+                    <div className="ai-suggestion-preview">
+                      <strong>Suggested description</strong>
+                      <p>{aiSuggestionState.suggestion}</p>
+                      <small>
+                        Provider: {aiSuggestionState.provider === 'claude' ? 'Claude' : 'Local template fallback'}
+                      </small>
+                    </div>
+                  )}
+                </div>
+
               </label>
               <label>
                 Work location group
                 <select
                   value={selectedEntry.workLocationGroupId}
-                  disabled={!isDayEditable(selectedCell.date)}
-                  disabled={!isDayEditable(selectedCell.date)}
+                  disabled={!selectedEntryIsEditable}
+                  disabled={!selectedEntryIsEditable}
                   onChange={(event) => updateEntry(selectedCell.rowId, selectedCell.date, selectedCell.type, { workLocationGroupId: event.target.value })}
                 >
                   {(locationGroups.data?.groups ?? []).map((group) => (
@@ -3387,8 +3548,8 @@ Analytics - Variphy / Infortel`}
                 Work location
                 <select
                   value={selectedEntry.workLocationId}
-                  disabled={!isDayEditable(selectedCell.date)}
-                  disabled={!isDayEditable(selectedCell.date)}
+                  disabled={!selectedEntryIsEditable}
+                  disabled={!selectedEntryIsEditable}
                   onChange={(event) => updateEntry(selectedCell.rowId, selectedCell.date, selectedCell.type, { workLocationId: event.target.value })}
                 >
                   {(locations.data?.locations ?? []).map((location) => (
@@ -3402,7 +3563,7 @@ Analytics - Variphy / Infortel`}
               <span>
                 Day total: <strong>{formatNumber(getSelectedDayTotal())}</strong> / minimum 8.00 hours
               </span>
-              {selectedDayStatus?.status === 'submitted' || !isDayEditable(selectedCell.date) ? (
+              {selectedDayStatus?.status === 'submitted' || !selectedEntryIsEditable ? (
                 <small>{selectedDayStatus.unlockMessage}</small>
               ) : (
                 <small>Use Submit this day once the day reaches at least 8.00 hours. Closing this window automatically saves your draft.</small>

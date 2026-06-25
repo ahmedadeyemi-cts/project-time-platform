@@ -697,7 +697,8 @@ app.MapPost("/api/timesheets/week/draft", async (TimesheetSaveRequest request, H
     var missingResult = ValidateConfig(config);
     if (missingResult is not null) return missingResult;
 
-    var validationErrors = ValidateTimesheetRequest(request);
+    var validationErrors = ValidateTimesheetRequest(request).ToList();
+    validationErrors.AddRange(ProjectPulseTimeEntryDescriptionValidation.GetMissingDescriptionErrors(request.Entries));
     if (validationErrors.Count > 0)
     {
         return Results.BadRequest(new
@@ -767,7 +768,8 @@ app.MapPost("/api/timesheets/week/submit", async (TimesheetSaveRequest request, 
     var missingResult = ValidateConfig(config);
     if (missingResult is not null) return missingResult;
 
-    var validationErrors = ValidateTimesheetRequest(request);
+    var validationErrors = ValidateTimesheetRequest(request).ToList();
+    validationErrors.AddRange(ProjectPulseTimeEntryDescriptionValidation.GetMissingDescriptionErrors(request.Entries));
     if (validationErrors.Count > 0)
     {
         return Results.BadRequest(new
@@ -849,7 +851,8 @@ app.MapPost("/api/timesheets/day/submit", async (TimesheetDaySubmitRequest reque
     var missingResult = ValidateConfig(config);
     if (missingResult is not null) return missingResult;
 
-    var validationErrors = ValidateDaySubmitRequest(request);
+    var validationErrors = ValidateDaySubmitRequest(request).ToList();
+    validationErrors.AddRange(ProjectPulseTimeEntryDescriptionValidation.GetMissingDescriptionErrors(request.Entries));
     if (validationErrors.Count > 0)
     {
         return Results.BadRequest(new
@@ -1112,6 +1115,46 @@ app.MapGet("/api/manager/approval-summary", async () =>
 app.MapPost("/api/manager/approvals/bulk-approve", async (ManagerBulkApprovalRequest request) =>
 {
     return await ProcessManagerBulkApprovalAsync(request);
+});
+
+
+
+app.MapPost("/api/timesheets/ai-description-suggestions", async (ProjectPulseAiTimeEntrySuggestionRequest request, HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    if (request.WorkDate == default)
+    {
+        return Results.BadRequest(new { status = "validation_failed", message = "Work date is required." });
+    }
+
+    var rowLabel = request.RowLabel?.Trim();
+    var taskName = request.TaskName?.Trim();
+    var projectName = request.ProjectName?.Trim();
+
+    if (string.IsNullOrWhiteSpace(rowLabel)
+        && string.IsNullOrWhiteSpace(taskName)
+        && string.IsNullOrWhiteSpace(projectName))
+    {
+        return Results.BadRequest(new { status = "validation_failed", message = "Project, task, or activity context is required before generating a suggestion." });
+    }
+
+    var result = await ProjectPulseAiTimeEntrySuggestionService.GenerateAsync(request);
+
+    return Results.Ok(new
+    {
+        status = "ai_suggestion_generated",
+        suggestion = result.Suggestion,
+        provider = result.Provider,
+        warning = result.Warning,
+        message = result.Provider == "claude"
+            ? "Claude generated a time-entry description suggestion."
+            : "Local suggestion generated because Claude is not configured."
+    });
 });
 
 
@@ -9383,3 +9426,22 @@ record UserAdminLocalUserCreateRequest(
 record UserAdminUserLifecycleRequest(
     Guid UserId,
     string? Reason);
+
+
+record ProjectPulseAiTimeEntrySuggestionRequest(
+    DateOnly WorkDate,
+    string? TimeType,
+    string? RowType,
+    string? RowLabel,
+    string? ProjectName,
+    string? ProjectCode,
+    string? TaskName,
+    string? TaskCode,
+    string? CategoryCode,
+    decimal? Hours,
+    string? CurrentDescription);
+
+record ProjectPulseAiTimeEntrySuggestionResult(
+    string Suggestion,
+    string Provider,
+    string? Warning);
