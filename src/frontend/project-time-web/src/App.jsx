@@ -5,6 +5,8 @@ import UserAdministrationPanel from './UserAdministrationPanel.jsx';
 import YearlyUtilizationPanel from './YearlyUtilizationPanel.jsx';
 import ProjectAllocationInfoPanel from './ProjectAllocationInfoPanel.jsx';
 import ManagerTeamUtilizationPanel from './ManagerTeamUtilizationPanel.jsx';
+import ManagerApprovalPanel from './ManagerApprovalPanel.jsx';
+import LocalAdminPasswordResetApprovalsPanel from './LocalAdminPasswordResetApprovalsPanel.jsx';
 
 const workflowCards = [
   {
@@ -2327,6 +2329,18 @@ export default function App() {
   const canManageHolidays = hasPermission('MANAGE_HOLIDAYS') || hasPermission('MANAGE_ALL');
   const canViewHolidayCalendar = hasPermission('VIEW_HOLIDAYS') || canManageHolidays;
   const canViewPsaModules = canSeeAny(['VIEW_PROJECT_INTAKE', 'VIEW_RESOURCE_SCHEDULING', 'VIEW_EXPENSES', 'VIEW_EXECUTIVE_REPORTING', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']);
+  const currentRoleCodes = securityContext.data?.roles?.map((role) => String(role.roleCode ?? '').toUpperCase()) ?? [];
+  const currentRoleNames = securityContext.data?.roles?.map((role) => String(role.roleName ?? '').toLowerCase()) ?? [];
+  const canViewManagerApprovalPanel = hasPermission('APPROVE_TIME') || hasPermission('REJECT_TIME') || hasPermission('MANAGE_ALL') || hasPermission('SYSTEM_ADMINISTRATION');
+  const canViewLocalAdminPasswordResetApprovals =
+    hasPermission('MANAGE_ALL') ||
+    hasPermission('SYSTEM_ADMINISTRATION') ||
+    currentRoleCodes.includes('ADMINISTRATOR') ||
+    currentRoleCodes.includes('PROJECT_TEAM_COORDINATOR') ||
+    currentRoleCodes.includes('PROJECT_COORDINATOR') ||
+    currentRoleCodes.includes('TEAM_COORDINATOR') ||
+    currentRoleNames.some((roleName) => roleName.includes('project/team coordinator') || roleName.includes('project team coordinator') || roleName.includes('team coordinator'));
+
 
 
   if (!authSession) {
@@ -3635,8 +3649,7 @@ Analytics - Variphy / Infortel`}
           ))}
         </div>
       </section>
-
-      <section id="project-allocation-info" className="panel project-allocation-info-panel">
+<section id="project-allocation-info" className="panel project-allocation-info-panel">
         <ProjectAllocationInfoPanel />
       </section>
 
@@ -3818,6 +3831,13 @@ Analytics - Variphy / Infortel`}
               </div>
             ))}
           </div>
+        </section>
+      ) : null}
+
+      {(canViewManagerApprovalPanel || canViewLocalAdminPasswordResetApprovals) ? (
+        <section id="manager-approval" className="approvals-workspace-panel">
+          {canViewManagerApprovalPanel ? <ManagerApprovalPanel /> : null}
+          {canViewLocalAdminPasswordResetApprovals ? <LocalAdminPasswordResetApprovalsPanel /> : null}
         </section>
       ) : null}
 

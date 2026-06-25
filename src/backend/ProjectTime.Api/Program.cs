@@ -710,6 +710,12 @@ app.MapPost("/api/timesheets/week/draft", async (TimesheetSaveRequest request, H
 
     await using var connection = new NpgsqlConnection(config.ConnectionString);
     await connection.OpenAsync();
+
+    if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
+    {
+        return Results.Json(new { status = "access_denied", message = "Password reset approvals are restricted to administrators and project/team coordinators." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
     await using var transaction = await connection.BeginTransactionAsync();
 
     try
@@ -2732,7 +2738,7 @@ app.MapGet("/api/utilization/current-quarter", async (HttpContext httpContext) =
 });
 
 
-app.MapGet("/api/auth/password-reset/approvals", async () =>
+app.MapGet("/api/auth/password-reset/approvals", async (HttpContext httpContext) =>
 {
     var config = DatabaseConfig.FromEnvironment();
     var missingResult = ValidateConfig(config);
@@ -2740,6 +2746,11 @@ app.MapGet("/api/auth/password-reset/approvals", async () =>
 
     await using var connection = new NpgsqlConnection(config.ConnectionString);
     await connection.OpenAsync();
+
+    if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
+    {
+        return Results.Json(new { status = "access_denied", message = "Password reset approvals are restricted to administrators and project/team coordinators." }, statusCode: StatusCodes.Status403Forbidden);
+    }
 
     var approvals = new List<object>();
 
@@ -2757,6 +2768,7 @@ app.MapGet("/api/auth/password-reset/approvals", async () =>
         FROM auth_password_reset_requests pr
         JOIN app_users u ON u.user_id = pr.user_id
         WHERE pr.status = 'pending_approval'
+          AND lower(u.email) LIKE '%.local'
         ORDER BY pr.requested_at DESC;
         """, connection);
 
@@ -2787,7 +2799,7 @@ app.MapGet("/api/auth/password-reset/approvals", async () =>
     });
 });
 
-app.MapPost("/api/auth/password-reset/approve", async (PasswordResetApprovalAction request) =>
+app.MapPost("/api/auth/password-reset/approve", async (PasswordResetApprovalAction request, HttpContext httpContext) =>
 {
     var config = DatabaseConfig.FromEnvironment();
     var missingResult = ValidateConfig(config);
@@ -2807,15 +2819,18 @@ app.MapPost("/api/auth/password-reset/approve", async (PasswordResetApprovalActi
         string? accountEmail = null;
 
         await using (var updateCommand = new NpgsqlCommand("""
-            UPDATE auth_password_reset_requests
+            UPDATE auth_password_reset_requests pr
             SET status = 'approved',
                 approved_at = NOW(),
                 approved_by_email = @approved_by_email,
-                notes = COALESCE(notes, '') || E'\nApproval note: ' || COALESCE(@notes, ''),
-                expires_at = COALESCE(expires_at, NOW() + INTERVAL '24 hours')
-            WHERE auth_password_reset_request_id = @reset_request_id
-              AND status = 'pending_approval'
-            RETURNING user_id;
+                notes = COALESCE(pr.notes, '') || E'\nApproval note: ' || COALESCE(@notes, ''),
+                expires_at = COALESCE(pr.expires_at, NOW() + INTERVAL '24 hours')
+            FROM app_users u
+            WHERE u.user_id = pr.user_id
+              AND pr.auth_password_reset_request_id = @reset_request_id
+              AND pr.status = 'pending_approval'
+              AND lower(u.email) LIKE '%.local'
+            RETURNING pr.user_id;
             """, connection, transaction))
         {
             updateCommand.Parameters.AddWithValue("reset_request_id", resetRequestId);
@@ -2890,7 +2905,7 @@ app.MapPost("/api/auth/password-reset/approve", async (PasswordResetApprovalActi
     }
 });
 
-app.MapPost("/api/auth/password-reset/decline", async (PasswordResetApprovalAction request) =>
+app.MapPost("/api/auth/password-reset/decline", async (PasswordResetApprovalAction request, HttpContext httpContext) =>
 {
     var config = DatabaseConfig.FromEnvironment();
     var missingResult = ValidateConfig(config);
@@ -2899,17 +2914,25 @@ app.MapPost("/api/auth/password-reset/decline", async (PasswordResetApprovalActi
     await using var connection = new NpgsqlConnection(config.ConnectionString);
     await connection.OpenAsync();
 
+    if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
+    {
+        return Results.Json(new { status = "access_denied", message = "Password reset approvals are restricted to administrators and project/team coordinators." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
     string declinedByEmail = string.IsNullOrWhiteSpace(request.ActionByEmail)
         ? "ahmed.adeyemi@ussignal.com"
         : request.ActionByEmail.Trim().ToLowerInvariant();
 
     await using var command = new NpgsqlCommand("""
-        UPDATE auth_password_reset_requests
+        UPDATE auth_password_reset_requests pr
         SET status = 'declined',
             approved_by_email = @declined_by_email,
-            notes = COALESCE(notes, '') || E'\nDecline note: ' || COALESCE(@notes, '')
-        WHERE auth_password_reset_request_id = @reset_request_id
-          AND status = 'pending_approval';
+            notes = COALESCE(pr.notes, '') || E'\nDecline note: ' || COALESCE(@notes, '')
+        FROM app_users u
+        WHERE u.user_id = pr.user_id
+          AND pr.auth_password_reset_request_id = @reset_request_id
+          AND pr.status = 'pending_approval'
+          AND lower(u.email) LIKE '%.local';
         """, connection);
 
     command.Parameters.AddWithValue("reset_request_id", request.ResetRequestId);
