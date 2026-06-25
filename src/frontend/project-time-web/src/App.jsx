@@ -3490,7 +3490,7 @@ Analytics - Variphy / Infortel`}
                     <p className="eyebrow">AI description assistant</p>
                     <h3>Generate a customer-facing description</h3>
                     <p className="section-copy">
-                      Type a few words in the description box first, or generate from the project, task, activity, and date context. AI can suggest only the description. It cannot change hours, submit time, create tasks, or modify allocations.
+                      Type a rough work note first, such as what was reviewed, configured, tested, documented, coordinated, or troubleshot. AI will use your typed words as the primary context and can suggest only the description. It cannot change hours, submit time, create tasks, or modify allocations.
                     </p>
                   </div>
 

@@ -138,6 +138,18 @@ static class ProjectPulseAiTimeEntrySuggestionService
             ? "after-hours"
             : "standard business hours";
 
+        var roughNote = CleanSuggestion(request.CurrentDescription);
+
+        if (!string.IsNullOrWhiteSpace(roughNote))
+        {
+            if (!string.IsNullOrWhiteSpace(project))
+            {
+                return CleanSuggestion($"Worked on {task} for {project}, including {roughNote}. Additional coordination, validation, and documentation were performed as needed.");
+            }
+
+            return CleanSuggestion($"Worked on {task}, including {roughNote}. Additional coordination, validation, and documentation were performed as needed.");
+        }
+
         if (string.Equals(request.RowType, "nonProject", StringComparison.OrdinalIgnoreCase))
         {
             return CleanSuggestion($"Completed {task} during {timeType}, including coordination, follow-up, documentation, and required operational support activities.");
@@ -156,16 +168,24 @@ static class ProjectPulseAiTimeEntrySuggestionService
         return $"""
 Write one professional, customer-facing time-entry description for a PSA timesheet.
 
-Rules:
-- Return only the description sentence.
-- Do not mention AI.
-- Do not include hours unless the task context requires it.
-- Do not invent project outcomes that are not supported by the context.
-- Do not say the work is complete unless the context says it is complete.
-- Keep it between 18 and 45 words.
-- Make it suitable for a customer invoice or internal project audit.
+Primary instruction:
+Use the engineer's rough note as the most important source of truth. Expand it into a clear, specific, professional description, but do not invent facts, completion status, customer impact, or technical outcomes that the note does not support.
 
-Context:
+Rules:
+- Return only the final description sentence or short paragraph.
+- Do not mention AI.
+- Do not include hours unless the engineer's note specifically references hours.
+- Do not invent tools, systems, incidents, outages, meetings, approvals, deliverables, or outcomes.
+- Do not say the work is complete unless the engineer's note says it is complete.
+- Make the wording useful for customer review, invoice review, manager approval, and audit history.
+- Prefer concrete action verbs such as reviewed, configured, validated, documented, coordinated, investigated, analyzed, updated, tested, supported, or troubleshot.
+- Keep it between 25 and 70 words.
+- If the engineer's rough note is vague, improve clarity using only the available project/task/activity context.
+
+Engineer rough note:
+{request.CurrentDescription ?? ""}
+
+Additional context:
 Work date: {request.WorkDate}
 Time type: {request.TimeType ?? "normal"}
 Row type: {request.RowType ?? "unknown"}
@@ -175,8 +195,6 @@ Task code: {request.TaskCode ?? ""}
 Task name: {request.TaskName ?? ""}
 Activity/row label: {request.RowLabel ?? ""}
 Category code: {request.CategoryCode ?? ""}
-Entered hours: {request.Hours?.ToString() ?? ""}
-Current description: {request.CurrentDescription ?? ""}
 """;
     }
 }
