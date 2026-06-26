@@ -511,6 +511,108 @@ function getRoleNavigation(user) {
 }
 
 
+function userHasRoleText(user, fragments) {
+  const normalizedFragments = fragments.map((fragment) => fragment.toLowerCase());
+  return (user?.roles ?? []).some((role) => {
+    const roleCode = String(role.roleCode ?? '').toLowerCase();
+    const roleName = String(role.roleName ?? '').toLowerCase();
+    return normalizedFragments.some((fragment) => roleCode.includes(fragment) || roleName.includes(fragment));
+  });
+}
+
+function userHasPermissionCode(user, permissionCode) {
+  return userPermissionSet(user).has(permissionCode);
+}
+
+function getPrimaryNavigationPriority(user) {
+  if (userIsAdministrator(user)) {
+    return ['dashboard', 'user-admin', 'audit-history'];
+  }
+
+  if (
+    userHasRoleText(user, ['project/team coordinator', 'project team coordinator', 'team coordinator', 'project coordinator']) ||
+    userHasPermissionCode(user, 'VIEW_PROJECT_ALLOCATION_INFO') ||
+    userHasPermissionCode(user, 'MANAGE_PROJECT_ALLOCATION_INFO')
+  ) {
+    return ['dashboard', 'project-allocation-info', 'audit-history'];
+  }
+
+  if (
+    userHasPermissionCode(user, 'APPROVE_TIME') ||
+    userHasPermissionCode(user, 'VIEW_APPROVAL_INBOX') ||
+    userHasPermissionCode(user, 'VIEW_TEAM_UTILIZATION')
+  ) {
+    return ['dashboard', 'manager-approval', 'utilization'];
+  }
+
+  return ['dashboard', 'timesheet', 'utilization'];
+}
+
+function getNavigationGroup(item) {
+  switch (item.route) {
+    case 'timesheet':
+    case 'manager-approval':
+    case 'holiday-admin':
+    case 'utilization':
+      return 'Time & Approvals';
+    case 'project-allocation-info':
+    case 'psa-modules':
+      return 'Projects & Allocations';
+    case 'audit-history':
+      return 'Security & Audit';
+    case 'user-admin':
+    case 'azure-admin':
+    case 'role-admin':
+      return 'Administration';
+    case 'workflow':
+      return 'Reports & Workflow';
+    default:
+      return 'Other';
+  }
+}
+
+function buildRoleNavigationModel(user, navigationItems) {
+  const availableItems = navigationItems ?? [];
+  const availableByRoute = new Map(availableItems.map((item) => [item.route, item]));
+  const primaryRoutes = getPrimaryNavigationPriority(user);
+  const primary = [];
+
+  primaryRoutes.forEach((route) => {
+    const item = availableByRoute.get(route);
+    if (item && !primary.some((existing) => existing.route === item.route)) {
+      primary.push(item);
+    }
+  });
+
+  availableItems.forEach((item) => {
+    if (primary.length < 3 && !primary.some((existing) => existing.route === item.route)) {
+      primary.push(item);
+    }
+  });
+
+  const primaryRoutesSet = new Set(primary.map((item) => item.route));
+  const groupOrder = ['Time & Approvals', 'Projects & Allocations', 'Security & Audit', 'Administration', 'System Operations', 'Reports & Workflow', 'Other'];
+  const grouped = new Map();
+
+  availableItems.forEach((item) => {
+    if (primaryRoutesSet.has(item.route)) return;
+
+    const groupName = getNavigationGroup(item);
+    if (!grouped.has(groupName)) {
+      grouped.set(groupName, []);
+    }
+
+    grouped.get(groupName).push(item);
+  });
+
+  const groups = [...grouped.entries()]
+    .map(([name, items]) => ({ name, items }))
+    .sort((left, right) => groupOrder.indexOf(left.name) - groupOrder.indexOf(right.name));
+
+  return { primary, groups };
+}
+
+
 function SignalLogo() {
 
   return (
@@ -546,6 +648,12 @@ export default function App() {
   const [forcedPasswordStatus, setForcedPasswordStatus] = useState('');
   const [isChangingForcedPassword, setIsChangingForcedPassword] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const [isSideNavigationOpen, setIsSideNavigationOpen] = useState(false);
+  const [expandedNavigationGroups, setExpandedNavigationGroups] = useState(() => ({
+    'Time & Approvals': true,
+    'Projects & Allocations': true,
+    'Security & Audit': true
+  }));
   const profileMenuRef = useRef(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [profileSettingsPanel, setProfileSettingsPanel] = useState('profile');
@@ -1822,6 +1930,7 @@ export default function App() {
 
   const visibleRoleModules = useMemo(() => getVisibleRoleModules(currentUser.data), [currentUser.data]);
   const roleNavigation = useMemo(() => getRoleNavigation(currentUser.data), [currentUser.data]);
+  const navigationModel = useMemo(() => buildRoleNavigationModel(currentUser.data, roleNavigation), [currentUser.data, roleNavigation]);
   const workspaceRoleName = getRoleDisplayName(currentUser.data);
   const showQuarterUtilizationSummary = userHasAnyPermission(currentUser.data, ['VIEW_OWN_UTILIZATION', 'VIEW_TEAM_UTILIZATION', 'MANAGE_ALL']);
 
@@ -2379,6 +2488,17 @@ export default function App() {
     }
   }
 
+  function closeSideNavigation() {
+    setIsSideNavigationOpen(false);
+  }
+
+  function toggleNavigationGroup(groupName) {
+    setExpandedNavigationGroups((current) => ({
+      ...current,
+      [groupName]: !current[groupName]
+    }));
+  }
+
   function hasPermission(permissionCode) {
     return securityContext.data?.permissions?.includes(permissionCode) ?? false;
   }
@@ -2745,16 +2865,29 @@ Analytics - Variphy / Infortel`}
 
       <header className="top-bar">
         <SignalLogo />
-        <nav aria-label="Primary navigation">
-          {roleNavigation.map((item) => (
+        <nav className="primary-nav" aria-label="Primary navigation">
+          {navigationModel.primary.map((item) => (
             <a
               href={item.href}
               key={item.route}
               className={activeRoute === item.route ? 'active' : ''}
+              onClick={closeSideNavigation}
             >
               {item.label}
             </a>
           ))}
+
+          {navigationModel.groups.length > 0 ? (
+            <button
+              type="button"
+              className={isSideNavigationOpen ? 'nav-more-button active' : 'nav-more-button'}
+              onClick={() => setIsSideNavigationOpen((current) => !current)}
+              aria-expanded={isSideNavigationOpen}
+              aria-controls="role-side-navigation"
+            >
+              More
+            </button>
+          ) : null}
         </nav>
         <div className="profile-menu-shell" ref={profileMenuRef}>
           <button
