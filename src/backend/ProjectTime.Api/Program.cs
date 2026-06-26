@@ -5652,12 +5652,29 @@ app.MapGet("/api/system/version-inventory", async (HttpContext httpContext) =>
                 .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .FirstOrDefault() ?? "Unavailable";
 
+            var normalizedOutput = output.ToLowerInvariant();
+            var versionStatus = result.ExitCode == 0 ? "detected" : "check_failed";
+
+            if (normalizedOutput.Contains("no matching") ||
+                normalizedOutput.Contains("not installed") ||
+                normalizedOutput.Contains("no node.js rpm package match detected") ||
+                normalizedOutput.Contains("no .net rpm package match detected") ||
+                normalizedOutput.Contains("no postgresql rpm package match detected"))
+            {
+                versionStatus = "not_detected";
+            }
+
+            if (normalizedOutput.Contains("timed out"))
+            {
+                versionStatus = "check_timed_out";
+            }
+
             items.Add(new
             {
                 key,
                 name,
                 category,
-                status = result.ExitCode == 0 ? "detected" : "unavailable",
+                status = versionStatus,
                 version,
                 checkedAt,
                 details = new
@@ -5675,8 +5692,8 @@ app.MapGet("/api/system/version-inventory", async (HttpContext httpContext) =>
                 key,
                 name,
                 category,
-                status = "unavailable",
-                version = "Unavailable",
+                status = "check_failed",
+                version = "Check failed",
                 checkedAt,
                 details = new
                 {
@@ -5750,8 +5767,8 @@ app.MapGet("/api/system/version-inventory", async (HttpContext httpContext) =>
             key = "postgresql-server",
             name = "PostgreSQL Server",
             category = "Database",
-            status = "unavailable",
-            version = "Unavailable",
+            status = "check_failed",
+            version = "Check failed",
             checkedAt,
             details = new
             {

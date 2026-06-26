@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import './service-control-center.css';
 
 const refreshMs = 30000;
@@ -6,7 +6,13 @@ const refreshMs = 30000;
 function formatStatus(value) {
   if (!value) return 'Unknown';
   const normalized = String(value);
-  if (normalized.toLowerCase() === 'unavailable') return 'Check failed';
+  const lower = normalized.toLowerCase();
+
+  if (lower === 'unavailable') return 'Check failed';
+  if (lower === 'check_failed') return 'Check failed';
+  if (lower === 'check_timed_out') return 'Timed out';
+  if (lower === 'not_detected') return 'Not detected';
+
   return normalized.replace(/_/g, ' ');
 }
 
@@ -17,7 +23,7 @@ function statusClass(value) {
     return 'healthy';
   }
 
-  if (['degraded', 'pending', 'warning', 'unavailable'].includes(normalized)) {
+  if (['degraded', 'pending', 'warning', 'unavailable', 'check_failed', 'check_timed_out', 'not_detected'].includes(normalized)) {
     return 'warning';
   }
 
@@ -51,7 +57,13 @@ function ServiceControlCenter({ authSession }) {
   const [serviceState, setServiceState] = useState({ loading: true, data: null, error: null });
   const [apiState, setApiState] = useState({ loading: true, data: null, error: null });
   const [versionState, setVersionState] = useState({ loading: true, data: null, error: null });
+  const [restartHistoryState, setRestartHistoryState] = useState({ loading: true, data: null, error: null });
   const [restartState, setRestartState] = useState({ serviceKey: null, reason: '', loading: false, error: null, message: null });
+
+  const versionInventoryRef = useRef(null);
+  const managedServicesRef = useRef(null);
+  const apiStatusRef = useRef(null);
+  const restartHistoryRef = useRef(null);
 
   async function fetchJson(path, options = {}) {
     const response = await fetch(path, {
@@ -67,6 +79,10 @@ function ServiceControlCenter({ authSession }) {
     }
 
     return payload;
+  }
+
+  function scrollToSection(sectionRef) {
+    sectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   async function loadServiceStatus() {
@@ -96,15 +112,24 @@ function ServiceControlCenter({ authSession }) {
     }
   }
 
+  async function loadRestartHistory() {
+    try {
+      const payload = await fetchJson('/api/audit/history?days=30&category=system_audit&search=service_restart');
+      setRestartHistoryState({ loading: false, data: payload, error: null });
+    } catch (error) {
+      setRestartHistoryState({ loading: false, data: null, error: error.message });
+    }
+  }
+
   async function refreshAll() {
-    await Promise.all([loadServiceStatus(), loadApiStatus(), loadVersionInventory()]);
+    await Promise.all([loadServiceStatus(), loadApiStatus(), loadVersionInventory(), loadRestartHistory()]);
   }
 
   useEffect(() => {
     refreshAll();
 
     const timer = window.setInterval(() => {
-      Promise.all([loadServiceStatus(), loadApiStatus()]);
+      Promise.all([loadServiceStatus(), loadApiStatus(), loadRestartHistory()]);
     }, refreshMs);
     return () => window.clearInterval(timer);
   }, [authSession?.sessionToken, authSession?.token, authSession?.accessToken]);
@@ -141,6 +166,11 @@ function ServiceControlCenter({ authSession }) {
       attention: Math.max(items.length - detected, 0)
     };
   }, [versionState.data]);
+
+  const restartHistory = useMemo(() => {
+    const events = restartHistoryState.data?.events ?? restartHistoryState.data?.items ?? restartHistoryState.data?.history ?? [];
+    return Array.isArray(events) ? events.slice(0, 12) : [];
+  }, [restartHistoryState.data]);
 
   const versionGroups = useMemo(() => {
     const groups = new Map();
@@ -234,30 +264,37 @@ function ServiceControlCenter({ authSession }) {
       </div>
 
       <div className="service-control-summary-grid">
-        <article className="service-control-summary-card">
+        <button type="button" className="service-control-summary-card clickable" onClick={() => scrollToSection(managedServicesRef)}>
           <span>Managed Services</span>
           <strong>{serviceState.loading ? 'Checking...' : `${serviceSummary.active}/${serviceSummary.total} active`}</strong>
           <small>{serviceSummary.attention === 0 ? 'All monitored services are active.' : `${serviceSummary.attention} service(s) need attention.`}</small>
-        </article>
+        </button>
 
-        <article className="service-control-summary-card">
+        <button type="button" className="service-control-summary-card clickable" onClick={() => scrollToSection(apiStatusRef)}>
           <span>API Components</span>
           <strong>{apiState.loading ? 'Checking...' : `${apiSummary.healthy}/${apiSummary.total} healthy`}</strong>
           <small>{apiSummary.attention === 0 ? 'All monitored API components are healthy.' : `${apiSummary.attention} component(s) need attention.`}</small>
-        </article>
+        </button>
 
-        <article className="service-control-summary-card">
+        <button type="button" className="service-control-summary-card clickable" onClick={() => scrollToSection(versionInventoryRef)}>
           <span>Version Inventory</span>
           <strong>{versionState.loading ? 'Checking...' : `${versionSummary.detected}/${versionSummary.total} detected`}</strong>
           <small>{versionState.loading ? 'Collecting runtime versions...' : versionSummary.total === 0 ? 'Version inventory has not returned any items yet.' : versionSummary.attention === 0 ? 'All tracked versions were detected.' : `${versionSummary.attention} version check(s) need review, but this does not mean the service is down.`}</small>
-        </article>
+        </button>
       </div>
+
+      <nav className="service-control-section-nav" aria-label="Service Control sections">
+        <button type="button" onClick={() => scrollToSection(versionInventoryRef)}>Version Inventory</button>
+        <button type="button" onClick={() => scrollToSection(managedServicesRef)}>Managed Services</button>
+        <button type="button" onClick={() => scrollToSection(apiStatusRef)}>API Status</button>
+        <button type="button" onClick={() => scrollToSection(restartHistoryRef)}>Restart History</button>
+      </nav>
 
       {serviceState.error ? <div className="service-control-alert critical">{serviceState.error}</div> : null}
       {apiState.error ? <div className="service-control-alert critical">{apiState.error}</div> : null}
       {versionState.error ? <div className="service-control-alert critical">{versionState.error}</div> : null}
 
-      <section className="service-control-card">
+      <section id="version-inventory" ref={versionInventoryRef} className="service-control-card">
         <div className="service-control-card-header">
           <div>
             <p className="eyebrow">Inventory</p>
@@ -300,7 +337,7 @@ function ServiceControlCenter({ authSession }) {
       </section>
 
       <div className="service-control-grid">
-        <section className="service-control-card">
+        <section id="managed-services" ref={managedServicesRef} className="service-control-card">
           <div className="service-control-card-header">
             <div>
               <p className="eyebrow">Runtime</p>
@@ -343,7 +380,7 @@ function ServiceControlCenter({ authSession }) {
           </div>
         </section>
 
-        <section className="service-control-card">
+        <section id="api-status-dashboard" ref={apiStatusRef} className="service-control-card">
           <div className="service-control-card-header">
             <div>
               <p className="eyebrow">Application</p>
@@ -374,6 +411,45 @@ function ServiceControlCenter({ authSession }) {
           </div>
         </section>
       </div>
+
+      <section id="restart-history" ref={restartHistoryRef} className="service-control-card">
+        <div className="service-control-card-header">
+          <div>
+            <p className="eyebrow">Audit</p>
+            <h3>Restart History</h3>
+          </div>
+          <small>Last 30 days</small>
+        </div>
+
+        {restartHistoryState.error ? (
+          <div className="service-control-alert critical">{restartHistoryState.error}</div>
+        ) : null}
+
+        <div className="restart-history-list">
+          {restartHistory.map((event, index) => (
+            <article className="restart-history-row" key={event.eventId ?? event.id ?? `${event.createdAt}-${index}`}>
+              <div>
+                <strong>{event.title ?? event.action ?? event.eventType ?? 'Service restart event'}</strong>
+                <small>{event.createdAt ? new Date(event.createdAt).toLocaleString() : event.eventTime ? new Date(event.eventTime).toLocaleString() : 'Unknown time'}</small>
+              </div>
+
+              <p>{event.description ?? event.summary ?? event.message ?? 'Restart event recorded in audit history.'}</p>
+
+              <span className={`service-status-pill ${statusClass(event.status ?? event.result ?? 'detected')}`}>
+                {formatStatus(event.status ?? event.result ?? 'recorded')}
+              </span>
+            </article>
+          ))}
+
+          {restartHistoryState.loading ? (
+            <p className="service-control-muted">Loading restart history...</p>
+          ) : null}
+
+          {!restartHistoryState.loading && restartHistory.length === 0 ? (
+            <p className="service-control-muted">No service restart events were found in the last 30 days.</p>
+          ) : null}
+        </div>
+      </section>
 
       {restartState.serviceKey ? (
         <div className="service-control-modal-backdrop">
