@@ -5302,6 +5302,700 @@ var projectPulseManagedServices = new Dictionary<string, object>
     }
 };
 
+
+
+
+
+
+app.MapPost("/api/system/backup-dr/runs/delete", async (ProjectPulseBackupDeleteRequest request, HttpContext httpContext) =>
+{
+    if (string.IsNullOrWhiteSpace(request.RequestId))
+    {
+        return Results.BadRequest(new
+        {
+            status = "request_id_required",
+            message = "A backup request ID is required."
+        });
+    }
+
+    if (string.IsNullOrWhiteSpace(request.Reason) || request.Reason.Trim().Length < 8)
+    {
+        return Results.BadRequest(new
+        {
+            status = "reason_required",
+            message = "A deletion reason of at least 8 characters is required."
+        });
+    }
+
+    var requestId = request.RequestId.Trim();
+
+    if (requestId.Any(character => !(char.IsLetterOrDigit(character) || character == '-' || character == '_' || character == '.')))
+    {
+        return Results.BadRequest(new
+        {
+            status = "invalid_request_id",
+            message = "The backup request ID contains unsupported characters."
+        });
+    }
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var adminContext = await ResolveProjectPulseAdministratorContextAsync(httpContext, connection);
+    if (!adminContext.IsAdministrator)
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Backup deletion is restricted to administrators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var deleteRequestId = Guid.NewGuid();
+    var pendingDirectory = "/opt/project-time-platform/backup-delete-requests/pending";
+    Directory.CreateDirectory(pendingDirectory);
+
+    var deletePayload = new
+    {
+        deleteRequestId,
+        requestId,
+        requestedAt = DateTimeOffset.UtcNow,
+        requestedByUserId = adminContext.UserId,
+        requestedByEmail = adminContext.Email,
+        reason = request.Reason.Trim()
+    };
+
+    var deleteRequestPath = Path.Combine(pendingDirectory, $"{deleteRequestId}.json");
+
+    await File.WriteAllTextAsync(
+        deleteRequestPath,
+        JsonSerializer.Serialize(deletePayload, new JsonSerializerOptions { WriteIndented = true }));
+
+    await InsertProjectPulseAuditEventAsync(
+        connection,
+        adminContext.UserId,
+        "backup_delete_queued",
+        "backup_dr",
+        null,
+        httpContext,
+        new
+        {
+            deleteRequestId,
+            requestId,
+            reason = request.Reason.Trim(),
+            deleteRequestPath
+        });
+
+    return Results.Ok(new
+    {
+        status = "backup_delete_queued",
+        message = "Backup deletion was queued. It may take up to one minute to disappear from history.",
+        deleteRequestId,
+        requestId,
+        generatedAt = DateTimeOffset.UtcNow
+    });
+});
+
+
+
+app.MapGet("/api/system/backup-dr/runs", async (HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var adminContext = await ResolveProjectPulseAdministratorContextAsync(httpContext, connection);
+    if (!adminContext.IsAdministrator)
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Backup run history is restricted to administrators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    static string ExtractOutputValue(string output, string key)
+    {
+        if (string.IsNullOrWhiteSpace(output)) return "";
+
+        foreach (var line in output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (line.StartsWith(key + "=", StringComparison.OrdinalIgnoreCase))
+            {
+                return line[(key.Length + 1)..].Trim();
+            }
+        }
+
+        return "";
+    }
+
+    var resultsDirectory = "/opt/project-time-platform/backups/results";
+    Directory.CreateDirectory(resultsDirectory);
+
+    var resultFiles = Directory
+        .EnumerateFiles(resultsDirectory, "*.result.json", SearchOption.TopDirectoryOnly)
+        .Select(path => new FileInfo(path))
+        .OrderByDescending(file => file.LastWriteTimeUtc)
+        .Take(30)
+        .ToList();
+
+    var runs = new List<object>();
+
+    foreach (var file in resultFiles)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(await File.ReadAllTextAsync(file.FullName));
+            var root = document.RootElement;
+
+            var output = root.TryGetProperty("output", out var outputElement) && outputElement.ValueKind == JsonValueKind.String
+                ? outputElement.GetString() ?? ""
+                : "";
+
+            var request = root.TryGetProperty("request", out var requestElement)
+                ? requestElement
+                : default;
+
+            string GetString(JsonElement element, string name)
+            {
+                if (element.ValueKind == JsonValueKind.Undefined || !element.TryGetProperty(name, out var property)) return "";
+                return property.ValueKind == JsonValueKind.String ? property.GetString() ?? "" : property.ToString();
+            }
+
+            bool GetBool(JsonElement element, string name)
+            {
+                if (element.ValueKind == JsonValueKind.Undefined || !element.TryGetProperty(name, out var property)) return false;
+                if (property.ValueKind == JsonValueKind.True) return true;
+                if (property.ValueKind == JsonValueKind.False) return false;
+                return bool.TryParse(property.ToString(), out var parsed) && parsed;
+            }
+
+            runs.Add(new
+            {
+                requestId = GetString(request, "requestId"),
+                requestedAt = GetString(request, "requestedAt"),
+                requestedByEmail = GetString(request, "requestedByEmail"),
+                reason = GetString(request, "reason"),
+                uploadToSftp = GetBool(request, "uploadToSftp"),
+                uploadToAzure = GetBool(request, "uploadToAzure"),
+                status = GetString(root, "status"),
+                exitCode = root.TryGetProperty("exitCode", out var exitCodeElement) && exitCodeElement.TryGetInt32(out var exitCode) ? exitCode : -1,
+                startedAt = GetString(root, "startedAt"),
+                completedAt = GetString(root, "completedAt"),
+                resultFile = file.FullName,
+                outputFile = GetString(root, "outputFile"),
+                backupBundle = ExtractOutputValue(output, "backup_bundle"),
+                backupBundleSha256 = ExtractOutputValue(output, "backup_bundle_sha256"),
+                databaseDump = ExtractOutputValue(output, "database_dump"),
+                configArchive = ExtractOutputValue(output, "config_archive"),
+                appArchive = ExtractOutputValue(output, "app_archive"),
+                sftpUploadStatus = ExtractOutputValue(output, "sftp_upload_status"),
+                azureUploadStatus = ExtractOutputValue(output, "azure_upload_status"),
+                output
+            });
+        }
+        catch (Exception ex)
+        {
+            runs.Add(new
+            {
+                requestId = file.Name.Replace(".result.json", "", StringComparison.OrdinalIgnoreCase),
+                status = "unreadable",
+                exitCode = -1,
+                resultFile = file.FullName,
+                message = ex.Message
+            });
+        }
+    }
+
+    return Results.Ok(new
+    {
+        status = "backup_runs_loaded",
+        generatedAt = DateTimeOffset.UtcNow,
+        totalCount = runs.Count,
+        runs
+    });
+});
+
+
+
+app.MapGet("/api/system/backup-dr/settings", async (HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var adminContext = await ResolveProjectPulseAdministratorContextAsync(httpContext, connection);
+    if (!adminContext.IsAdministrator)
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Backup settings are restricted to administrators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var sftp = ReadProjectPulseEnvFile("/opt/project-time-platform/config/backup-sftp.env");
+    var azure = ReadProjectPulseEnvFile("/opt/project-time-platform/config/backup-azure.env");
+    var notifications = ReadProjectPulseEnvFile("/opt/project-time-platform/config/backup-notifications.env");
+    var schedule = ReadProjectPulseEnvFile("/opt/project-time-platform/config/backup-schedule.env");
+
+    return Results.Ok(new
+    {
+        status = "settings_loaded",
+        sftp = new
+        {
+            enabled = string.Equals(sftp.GetValueOrDefault("PROJECTPULSE_BACKUP_SFTP_ENABLED"), "true", StringComparison.OrdinalIgnoreCase),
+            authMode = sftp.GetValueOrDefault("PROJECTPULSE_BACKUP_SFTP_AUTH_MODE") ?? "private_key",
+            host = sftp.GetValueOrDefault("PROJECTPULSE_BACKUP_SFTP_HOST") ?? "",
+            port = sftp.GetValueOrDefault("PROJECTPULSE_BACKUP_SFTP_PORT") ?? "22",
+            user = sftp.GetValueOrDefault("PROJECTPULSE_BACKUP_SFTP_USER") ?? "",
+            remotePath = sftp.GetValueOrDefault("PROJECTPULSE_BACKUP_SFTP_REMOTE_PATH") ?? "",
+            keyPath = sftp.GetValueOrDefault("PROJECTPULSE_BACKUP_SFTP_KEY_PATH") ?? "",
+            passwordConfigured = !string.IsNullOrWhiteSpace(sftp.GetValueOrDefault("PROJECTPULSE_BACKUP_SFTP_PASSWORD"))
+        },
+        azure = new
+        {
+            enabled = string.Equals(azure.GetValueOrDefault("PROJECTPULSE_BACKUP_AZURE_ENABLED"), "true", StringComparison.OrdinalIgnoreCase),
+            containerSasUrlMasked = MaskProjectPulseSecret(azure.GetValueOrDefault("PROJECTPULSE_BACKUP_AZURE_CONTAINER_SAS_URL")),
+            containerSasUrlConfigured = !string.IsNullOrWhiteSpace(azure.GetValueOrDefault("PROJECTPULSE_BACKUP_AZURE_CONTAINER_SAS_URL")),
+            blobPrefix = azure.GetValueOrDefault("PROJECTPULSE_BACKUP_AZURE_BLOB_PREFIX") ?? "projectpulse-backups"
+        },
+        notifications = new
+        {
+            notifyOnSuccess = string.Equals(notifications.GetValueOrDefault("PROJECTPULSE_BACKUP_NOTIFY_ON_SUCCESS"), "true", StringComparison.OrdinalIgnoreCase),
+            notifyOnFailure = !string.Equals(notifications.GetValueOrDefault("PROJECTPULSE_BACKUP_NOTIFY_ON_FAILURE"), "false", StringComparison.OrdinalIgnoreCase),
+            successRecipients = notifications.GetValueOrDefault("PROJECTPULSE_BACKUP_SUCCESS_RECIPIENTS") ?? "",
+            failureRecipients = notifications.GetValueOrDefault("PROJECTPULSE_BACKUP_FAILURE_RECIPIENTS") ?? "",
+            ccRecipients = notifications.GetValueOrDefault("PROJECTPULSE_BACKUP_CC_RECIPIENTS") ?? ""
+        },
+        schedule = new
+        {
+            enabled = string.Equals(schedule.GetValueOrDefault("PROJECTPULSE_BACKUP_SCHEDULE_ENABLED"), "true", StringComparison.OrdinalIgnoreCase),
+            mode = schedule.GetValueOrDefault("PROJECTPULSE_BACKUP_SCHEDULE_MODE") ?? "daily",
+            timeUtc = schedule.GetValueOrDefault("PROJECTPULSE_BACKUP_SCHEDULE_TIME_UTC") ?? "06:00",
+            weeklyDayUtc = schedule.GetValueOrDefault("PROJECTPULSE_BACKUP_SCHEDULE_WEEKLY_DAY_UTC") ?? "7",
+            monthlyDayUtc = schedule.GetValueOrDefault("PROJECTPULSE_BACKUP_SCHEDULE_MONTHLY_DAY_UTC") ?? "1",
+            uploadToSftp = string.Equals(schedule.GetValueOrDefault("PROJECTPULSE_BACKUP_SCHEDULE_UPLOAD_TO_SFTP"), "true", StringComparison.OrdinalIgnoreCase),
+            uploadToAzure = string.Equals(schedule.GetValueOrDefault("PROJECTPULSE_BACKUP_SCHEDULE_UPLOAD_TO_AZURE"), "true", StringComparison.OrdinalIgnoreCase)
+        }
+    });
+});
+
+app.MapPost("/api/system/backup-dr/settings", async (JsonElement request, HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var adminContext = await ResolveProjectPulseAdministratorContextAsync(httpContext, connection);
+    if (!adminContext.IsAdministrator)
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Backup settings are restricted to administrators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    string GetString(string name, string fallback = "")
+    {
+        if (!request.TryGetProperty(name, out var property)) return fallback;
+        if (property.ValueKind == JsonValueKind.Null || property.ValueKind == JsonValueKind.Undefined) return fallback;
+        return property.ValueKind == JsonValueKind.String ? property.GetString() ?? fallback : property.ToString();
+    }
+
+    bool GetBool(string name, bool fallback = false)
+    {
+        if (!request.TryGetProperty(name, out var property)) return fallback;
+        if (property.ValueKind == JsonValueKind.True) return true;
+        if (property.ValueKind == JsonValueKind.False) return false;
+        if (property.ValueKind == JsonValueKind.String && bool.TryParse(property.GetString(), out var parsed)) return parsed;
+        return fallback;
+    }
+
+    var sftpPath = "/opt/project-time-platform/config/backup-sftp.env";
+    var azurePath = "/opt/project-time-platform/config/backup-azure.env";
+    var notificationPath = "/opt/project-time-platform/config/backup-notifications.env";
+    var schedulePath = "/opt/project-time-platform/config/backup-schedule.env";
+
+    Directory.CreateDirectory("/opt/project-time-platform/config");
+
+    var existingSftp = ReadProjectPulseEnvFile(sftpPath);
+    var existingAzure = ReadProjectPulseEnvFile(azurePath);
+
+    var submittedSftpPassword = GetString("sftpPassword");
+    var effectiveSftpPassword = string.IsNullOrWhiteSpace(submittedSftpPassword)
+        ? existingSftp.GetValueOrDefault("PROJECTPULSE_BACKUP_SFTP_PASSWORD") ?? ""
+        : submittedSftpPassword;
+
+    var submittedAzureSas = GetString("azureContainerSasUrl");
+    var effectiveAzureSas = string.IsNullOrWhiteSpace(submittedAzureSas)
+        ? existingAzure.GetValueOrDefault("PROJECTPULSE_BACKUP_AZURE_CONTAINER_SAS_URL") ?? ""
+        : submittedAzureSas;
+
+    await File.WriteAllLinesAsync(sftpPath, new[]
+    {
+        $"PROJECTPULSE_BACKUP_SFTP_ENABLED={GetBool("sftpEnabled").ToString().ToLowerInvariant()}",
+        $"PROJECTPULSE_BACKUP_SFTP_AUTH_MODE={QuoteProjectPulseEnvValue(GetString("sftpAuthMode", "private_key"))}",
+        $"PROJECTPULSE_BACKUP_SFTP_HOST={QuoteProjectPulseEnvValue(GetString("sftpHost"))}",
+        $"PROJECTPULSE_BACKUP_SFTP_PORT={QuoteProjectPulseEnvValue(GetString("sftpPort", "22"))}",
+        $"PROJECTPULSE_BACKUP_SFTP_USER={QuoteProjectPulseEnvValue(GetString("sftpUser"))}",
+        $"PROJECTPULSE_BACKUP_SFTP_REMOTE_PATH={QuoteProjectPulseEnvValue(GetString("sftpRemotePath"))}",
+        $"PROJECTPULSE_BACKUP_SFTP_KEY_PATH={QuoteProjectPulseEnvValue(GetString("sftpKeyPath"))}",
+        $"PROJECTPULSE_BACKUP_SFTP_PASSWORD={QuoteProjectPulseEnvValue(effectiveSftpPassword)}"
+    });
+
+    await File.WriteAllLinesAsync(azurePath, new[]
+    {
+        $"PROJECTPULSE_BACKUP_AZURE_ENABLED={GetBool("azureEnabled").ToString().ToLowerInvariant()}",
+        $"PROJECTPULSE_BACKUP_AZURE_CONTAINER_SAS_URL={QuoteProjectPulseEnvValue(effectiveAzureSas)}",
+        $"PROJECTPULSE_BACKUP_AZURE_BLOB_PREFIX={QuoteProjectPulseEnvValue(GetString("azureBlobPrefix", "projectpulse-backups"))}"
+    });
+
+    await File.WriteAllLinesAsync(notificationPath, new[]
+    {
+        $"PROJECTPULSE_BACKUP_NOTIFY_ON_SUCCESS={GetBool("notifyOnSuccess").ToString().ToLowerInvariant()}",
+        $"PROJECTPULSE_BACKUP_NOTIFY_ON_FAILURE={GetBool("notifyOnFailure", true).ToString().ToLowerInvariant()}",
+        $"PROJECTPULSE_BACKUP_SUCCESS_RECIPIENTS={QuoteProjectPulseEnvValue(GetString("successRecipients"))}",
+        $"PROJECTPULSE_BACKUP_FAILURE_RECIPIENTS={QuoteProjectPulseEnvValue(GetString("failureRecipients"))}",
+        $"PROJECTPULSE_BACKUP_CC_RECIPIENTS={QuoteProjectPulseEnvValue(GetString("ccRecipients"))}"
+    });
+
+    await File.WriteAllLinesAsync(schedulePath, new[]
+    {
+        $"PROJECTPULSE_BACKUP_SCHEDULE_ENABLED={GetBool("scheduleEnabled").ToString().ToLowerInvariant()}",
+        $"PROJECTPULSE_BACKUP_SCHEDULE_MODE={QuoteProjectPulseEnvValue(GetString("scheduleMode", "daily"))}",
+        $"PROJECTPULSE_BACKUP_SCHEDULE_TIME_UTC={QuoteProjectPulseEnvValue(GetString("scheduleTimeUtc", "06:00"))}",
+        $"PROJECTPULSE_BACKUP_SCHEDULE_WEEKLY_DAY_UTC={QuoteProjectPulseEnvValue(GetString("scheduleWeeklyDayUtc", "7"))}",
+        $"PROJECTPULSE_BACKUP_SCHEDULE_MONTHLY_DAY_UTC={QuoteProjectPulseEnvValue(GetString("scheduleMonthlyDayUtc", "1"))}",
+        $"PROJECTPULSE_BACKUP_SCHEDULE_UPLOAD_TO_SFTP={GetBool("scheduleUploadToSftp").ToString().ToLowerInvariant()}",
+        $"PROJECTPULSE_BACKUP_SCHEDULE_UPLOAD_TO_AZURE={GetBool("scheduleUploadToAzure").ToString().ToLowerInvariant()}"
+    });
+
+    await InsertProjectPulseAuditEventAsync(
+        connection,
+        adminContext.UserId,
+        "backup_settings_updated",
+        "backup_dr",
+        null,
+        httpContext,
+        new
+        {
+            sftpEnabled = GetBool("sftpEnabled"),
+            sftpAuthMode = GetString("sftpAuthMode", "private_key"),
+            azureEnabled = GetBool("azureEnabled"),
+            notifyOnSuccess = GetBool("notifyOnSuccess"),
+            notifyOnFailure = GetBool("notifyOnFailure", true),
+            scheduleEnabled = GetBool("scheduleEnabled"),
+            scheduleMode = GetString("scheduleMode", "daily")
+        });
+
+    return Results.Ok(new
+    {
+        status = "settings_saved",
+        message = "Backup / DR settings were saved.",
+        generatedAt = DateTimeOffset.UtcNow
+    });
+});
+
+
+
+app.MapPost("/api/system/backup-dr/run", async (ProjectPulseBackupRunRequest request, HttpContext httpContext) =>
+{
+    if (string.IsNullOrWhiteSpace(request.Reason) || request.Reason.Trim().Length < 8)
+    {
+        return Results.BadRequest(new
+        {
+            status = "reason_required",
+            message = "A backup reason of at least 8 characters is required."
+        });
+    }
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var adminContext = await ResolveProjectPulseAdministratorContextAsync(httpContext, connection);
+    if (!adminContext.IsAdministrator)
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Manual backup actions are restricted to administrators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var requestId = Guid.NewGuid();
+    var pendingDirectory = "/opt/project-time-platform/backup-requests/pending";
+    Directory.CreateDirectory(pendingDirectory);
+
+    var requestPayload = new
+    {
+        requestId,
+        requestedAt = DateTimeOffset.UtcNow,
+        requestedByUserId = adminContext.UserId,
+        requestedByEmail = adminContext.Email,
+        uploadToSftp = request.UploadToSftp,
+        uploadToAzure = request.UploadToAzure == true,
+        reason = request.Reason.Trim()
+    };
+
+    var requestPath = Path.Combine(pendingDirectory, $"{requestId}.json");
+    await File.WriteAllTextAsync(
+        requestPath,
+        JsonSerializer.Serialize(requestPayload, new JsonSerializerOptions { WriteIndented = true }));
+
+    await InsertProjectPulseAuditEventAsync(
+        connection,
+        adminContext.UserId,
+        "backup_run_queued",
+        "backup_dr",
+        null,
+        httpContext,
+        new
+        {
+            requestId,
+            uploadToSftp = request.UploadToSftp,
+            uploadToAzure = request.UploadToAzure == true,
+            reason = request.Reason.Trim(),
+            requestPath
+        });
+
+    return Results.Ok(new
+    {
+        status = "backup_queued",
+        message = request.UploadToSftp || request.UploadToAzure == true
+            ? "Backup request was queued. The root backup runner will create the bundle and upload it to the selected external target(s)."
+            : "Backup request was queued. The root backup runner will create the local backup bundle.",
+        requestId,
+        requestPath,
+        generatedAt = DateTimeOffset.UtcNow
+    });
+});
+
+
+
+app.MapGet("/api/system/backup-dr/status", async (HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var adminContext = await ResolveProjectPulseAdministratorContextAsync(httpContext, connection);
+    if (!adminContext.IsAdministrator)
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Backup / DR Center is restricted to administrators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var generatedAt = DateTimeOffset.UtcNow;
+    var checks = new List<object>();
+
+    async Task AddCommandCheckAsync(
+        string key,
+        string name,
+        string category,
+        string command,
+        bool requireOutput = false,
+        string actionRequiredMessage = "Review required.")
+    {
+        var result = await RunProjectPulseProcessAsync("/usr/bin/bash", "-lc", command);
+        var output = string.IsNullOrWhiteSpace(result.StandardOutput)
+            ? result.StandardError
+            : result.StandardOutput;
+
+        var hasOutput = !string.IsNullOrWhiteSpace(output);
+        var checkStatus = result.ExitCode == 0 && (!requireOutput || hasOutput)
+            ? "ready"
+            : "action_required";
+
+        var message = checkStatus == "ready"
+            ? "Check passed."
+            : actionRequiredMessage;
+
+        checks.Add(new
+        {
+            key,
+            name,
+            category,
+            status = checkStatus,
+            message,
+            checkedAt = generatedAt,
+            details = new
+            {
+                command,
+                exitCode = result.ExitCode,
+                output
+            }
+        });
+    }
+
+    try
+    {
+        await using var dbCommand = new NpgsqlCommand("""
+            SELECT
+                current_database(),
+                pg_size_pretty(pg_database_size(current_database())) AS database_size,
+                (
+                    SELECT COUNT(*)
+                    FROM information_schema.tables
+                    WHERE table_schema = 'public'
+                      AND table_type = 'BASE TABLE'
+                ) AS public_table_count,
+                NOW();
+            """, connection);
+
+        await using var reader = await dbCommand.ExecuteReaderAsync();
+        await reader.ReadAsync();
+
+        checks.Add(new
+        {
+            key = "database-connectivity",
+            name = "PostgreSQL Database Connectivity",
+            category = "Database",
+            status = "ready",
+            message = "Database is reachable and metadata was collected.",
+            checkedAt = generatedAt,
+            details = new
+            {
+                database = reader.GetString(0),
+                databaseSize = reader.GetString(1),
+                publicTableCount = reader.GetInt64(2),
+                databaseTime = reader.GetFieldValue<DateTimeOffset>(3)
+            }
+        });
+    }
+    catch (Exception ex)
+    {
+        checks.Add(new
+        {
+            key = "database-connectivity",
+            name = "PostgreSQL Database Connectivity",
+            category = "Database",
+            status = "action_required",
+            message = "Database metadata could not be collected.",
+            checkedAt = generatedAt,
+            details = new
+            {
+                error = ex.Message
+            }
+        });
+    }
+
+    await AddCommandCheckAsync(
+        "backup-artifacts",
+        "Latest Backup Artifacts",
+        "Backups",
+        "find /opt/project-time-platform /opt/project-time-platform/backups /var/backups /opt/backup /tmp -maxdepth 5 \\( -iname '*.sql' -o -iname '*.dump' -o -iname '*.backup' -o -iname '*.tgz' -o -iname '*.tar.gz' \\) -printf '%T@|%TY-%Tm-%Td %TH:%TM|%s|%p\\n' 2>/dev/null | sort -nr | head -25",
+        requireOutput: true,
+        actionRequiredMessage: "No backup artifacts were found in the monitored locations.");
+
+    await AddCommandCheckAsync(
+        "backup-directory",
+        "ProjectPulse Backup Directory",
+        "Backups",
+        "test -d /opt/project-time-platform/backups && find /opt/project-time-platform/backups -maxdepth 2 -type f -printf '%TY-%Tm-%Td %TH:%TM|%s|%p\\n' 2>/dev/null | sort -r | head -25",
+        requireOutput: false,
+        actionRequiredMessage: "Backup directory /opt/project-time-platform/backups does not exist yet.");
+
+    await AddCommandCheckAsync(
+        "backup-tools",
+        "Backup Tool Availability",
+        "Tools",
+        "command -v pg_dump && pg_dump --version && command -v pg_restore && pg_restore --version && command -v psql && psql --version && command -v tar && tar --version | head -1 && command -v gzip && gzip --version | head -1",
+        requireOutput: true,
+        actionRequiredMessage: "One or more required backup/restore tools are missing.");
+
+    await AddCommandCheckAsync(
+        "sftp-backup-target",
+        "External SFTP Backup Target",
+        "External Backup",
+        "if [ -f /opt/project-time-platform/config/backup-sftp.env ]; then source /opt/project-time-platform/config/backup-sftp.env; echo host=${PROJECTPULSE_BACKUP_SFTP_HOST:-missing}; echo port=${PROJECTPULSE_BACKUP_SFTP_PORT:-22}; echo user=${PROJECTPULSE_BACKUP_SFTP_USER:-missing}; echo remote_path=${PROJECTPULSE_BACKUP_SFTP_REMOTE_PATH:-missing}; if [ -n \"${PROJECTPULSE_BACKUP_SFTP_KEY_PATH:-}\" ] && [ -f \"$PROJECTPULSE_BACKUP_SFTP_KEY_PATH\" ]; then echo key_status=present; else echo key_status=missing; fi; else echo 'SFTP backup target is not configured'; exit 2; fi",
+        requireOutput: true,
+        actionRequiredMessage: "External SFTP backup target is not configured yet.");
+
+    await AddCommandCheckAsync(
+        "git-deployment-state",
+        "Git Deployment State",
+        "Application",
+        "cd /opt/project-time-platform/app/project-time-platform && echo Branch: $(git rev-parse --abbrev-ref HEAD) && echo Commit: $(git rev-parse HEAD) && echo ShortCommit: $(git rev-parse --short HEAD) && echo Status: && git status --short",
+        requireOutput: true,
+        actionRequiredMessage: "Git deployment state could not be collected.");
+
+    await AddCommandCheckAsync(
+        "application-config-files",
+        "Application Configuration Files",
+        "Configuration",
+        "for p in /opt/project-time-platform/config/*.env /etc/systemd/system/projecttime-api.service /etc/systemd/system/projecttime-api.service.d/*.conf /etc/systemd/system/projecttime-frontend-public.service /etc/systemd/system/projecttime-frontend-public.service.d/*.conf /etc/nginx/conf.d/projectpulse.conf; do [ -e \"$p\" ] && stat -c '%n|owner=%U:%G|mode=%a|bytes=%s|modified=%y' \"$p\"; done",
+        requireOutput: true,
+        actionRequiredMessage: "No application/system configuration files were detected from the monitored paths.");
+
+    await AddCommandCheckAsync(
+        "systemd-units",
+        "Systemd Unit Files",
+        "Configuration",
+        "systemctl list-unit-files 'projecttime*' 'projectpulse*' --no-pager 2>/dev/null",
+        requireOutput: true,
+        actionRequiredMessage: "ProjectPulse systemd unit files were not detected.");
+
+    await AddCommandCheckAsync(
+        "nginx-config",
+        "Nginx Configuration",
+        "Configuration",
+        "cat /opt/project-time-platform/state/nginx-readiness.json 2>/dev/null && grep -q '\"status\": \"ready\"' /opt/project-time-platform/state/nginx-readiness.json",
+        requireOutput: true,
+        actionRequiredMessage: "Nginx readiness export was not available or reported action required.");
+
+    await AddCommandCheckAsync(
+        "runbook",
+        "Backup / DR Runbook",
+        "Recovery",
+        "for p in /opt/project-time-platform/runbooks/backup-dr.md /opt/project-time-platform/app/project-time-platform/docs/backup-dr.md /opt/project-time-platform/app/project-time-platform/README.md; do [ -f \"$p\" ] && stat -c '%n|bytes=%s|modified=%y' \"$p\"; done",
+        requireOutput: true,
+        actionRequiredMessage: "A dedicated Backup / DR runbook was not found yet.");
+
+    var readyCount = checks.Count(check => string.Equals(
+        Convert.ToString(check.GetType().GetProperty("status")?.GetValue(check)),
+        "ready",
+        StringComparison.OrdinalIgnoreCase));
+
+    var actionRequiredCount = checks.Count - readyCount;
+
+    return Results.Ok(new
+    {
+        status = actionRequiredCount == 0 ? "ready" : "action_required",
+        generatedAt,
+        readyCount,
+        actionRequiredCount,
+        totalCount = checks.Count,
+        checks
+    });
+});
+
+
+
 app.MapGet("/api/system/service-control/status", async (HttpContext httpContext) =>
 {
     var config = DatabaseConfig.FromEnvironment();
@@ -10209,6 +10903,55 @@ static async Task<List<object>> LoadSavedTimeEntriesAsync(NpgsqlConnection conne
 
 
 
+
+static Dictionary<string, string> ReadProjectPulseEnvFile(string path)
+{
+    var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+    if (!File.Exists(path)) return values;
+
+    foreach (var rawLine in File.ReadAllLines(path))
+    {
+        var line = rawLine.Trim();
+
+        if (string.IsNullOrWhiteSpace(line) || line.StartsWith("#", StringComparison.Ordinal)) continue;
+
+        var index = line.IndexOf('=');
+        if (index <= 0) continue;
+
+        var key = line[..index].Trim();
+        var value = line[(index + 1)..].Trim();
+
+        if (value.Length >= 2 && value.StartsWith("'", StringComparison.Ordinal) && value.EndsWith("'", StringComparison.Ordinal))
+        {
+            value = value[1..^1].Replace("'\"'\"'", "'");
+        }
+        else if (value.Length >= 2 && value.StartsWith("\"", StringComparison.Ordinal) && value.EndsWith("\"", StringComparison.Ordinal))
+        {
+            value = value[1..^1].Replace("\\\"", "\"");
+        }
+
+        values[key] = value;
+    }
+
+    return values;
+}
+
+static string QuoteProjectPulseEnvValue(string? value)
+{
+    return "'" + (value ?? "").Replace("'", "'\"'\"'") + "'";
+}
+
+static string MaskProjectPulseSecret(string? value)
+{
+    if (string.IsNullOrWhiteSpace(value)) return "";
+
+    var trimmed = value.Trim();
+    if (trimmed.Length <= 8) return "configured";
+
+    return $"{trimmed[..4]}...{trimmed[^4..]}";
+}
+
 static Dictionary<string, string> ParseSystemctlShowProperties(string output)
 {
     return output
@@ -10240,9 +10983,11 @@ static async Task<ProjectPulseProcessResult> RunProjectPulseProcessAsync(string 
         var standardOutputTask = process.StandardOutput.ReadToEndAsync();
         var standardErrorTask = process.StandardError.ReadToEndAsync();
 
-        var timeout = arguments.Any(argument => string.Equals(argument, "restart", StringComparison.OrdinalIgnoreCase))
-            ? TimeSpan.FromSeconds(60)
-            : TimeSpan.FromSeconds(20);
+        var timeout = arguments.Any(argument => argument.Contains("projectpulse-backup.sh", StringComparison.OrdinalIgnoreCase))
+            ? TimeSpan.FromMinutes(10)
+            : arguments.Any(argument => string.Equals(argument, "restart", StringComparison.OrdinalIgnoreCase))
+                ? TimeSpan.FromSeconds(60)
+                : TimeSpan.FromSeconds(20);
 
         try
         {
@@ -10382,6 +11127,8 @@ async Task InsertProjectPulseAuditEventAsync(
 
 
 
+internal sealed record ProjectPulseBackupDeleteRequest(string RequestId, string? Reason);
+internal sealed record ProjectPulseBackupRunRequest(bool UploadToSftp, bool? UploadToAzure, string? Reason);
 internal sealed record ServiceRestartRequest(string ServiceKey, string Reason);
 internal sealed record ProjectPulseProcessResult(int ExitCode, string StandardOutput, string StandardError);
 internal sealed record ProjectPulseAdministratorContext(bool IsAdministrator, Guid? UserId, string? Email);

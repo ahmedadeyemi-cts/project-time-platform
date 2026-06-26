@@ -9,6 +9,7 @@ import ManagerApprovalPanel from './ManagerApprovalPanel.jsx';
 import LocalAdminPasswordResetApprovalsPanel from './LocalAdminPasswordResetApprovalsPanel.jsx';
 import AuditHistoryPanel from './AuditHistoryPanel.jsx';
 import ServiceControlCenter from './ServiceControlCenter.jsx';
+import BackupDrCenter from './BackupDrCenter.jsx';
 
 const workflowCards = [
   {
@@ -451,6 +452,15 @@ const roleWorkspaceModules = [
     description: 'Monitor platform services, API status, recent logs, and controlled restart actions.',
     permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   },
+  {
+    route: 'backup-dr',
+    href: '#backup-dr',
+    title: 'Backup / DR Center',
+    navLabel: 'Backup / DR',
+    description: 'Review backup readiness, recovery coverage, configuration protection, and DR runbook status.',
+    permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
+  },
+,
 
   {
     route: 'role-admin',
@@ -536,7 +546,7 @@ function userHasPermissionCode(user, permissionCode) {
 
 function getPrimaryNavigationPriority(user) {
   if (userIsAdministrator(user)) {
-    return ['dashboard', 'service-control', 'user-admin', 'azure-admin', 'audit-history'];
+    return ['dashboard', 'service-control', 'backup-dr', 'user-admin', 'azure-admin'];
   }
 
   if (
@@ -575,6 +585,7 @@ function getNavigationGroup(item) {
     case 'role-admin':
       return 'Administration';
     case 'service-control':
+    case 'backup-dr':
       return 'System Operations';
     case 'workflow':
       return 'Reports & Workflow';
@@ -3444,7 +3455,11 @@ Analytics - Variphy / Infortel`}
           </div>
         </div>
       </section>
-                {(activeRoute === 'service-control' && (hasPermission('SYSTEM_ADMINISTRATION') || hasPermission('MANAGE_ALL'))) ? (
+                          {(activeRoute === 'backup-dr' && (hasPermission('SYSTEM_ADMINISTRATION') || hasPermission('MANAGE_ALL'))) ? (
+        <BackupDrCenter authSession={authSession} />
+      ) : null}
+
+{(activeRoute === 'service-control' && (hasPermission('SYSTEM_ADMINISTRATION') || hasPermission('MANAGE_ALL'))) ? (
         <ServiceControlCenter authSession={authSession} />
       ) : null}
 

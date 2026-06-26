@@ -4466,3 +4466,26 @@ textarea:focus {
 .app-shell.route-service-control #service-control-center .service-list {
   display: grid !important;
 }
+
+/* Route isolation for Backup / DR Center */
+.app-shell.route-backup-dr > section:not(#backup-dr-center) {
+  display: none !important;
+}
+
+.app-shell.route-backup-dr #backup-dr-center {
+  display: grid !important;
+  visibility: visible !important;
+  min-height: calc(100vh - 160px);
+}
+
+@media (min-width: 981px) {
+  .app-shell.route-backup-dr.sidebar-expanded #backup-dr-center {
+    margin-left: 300px !important;
+    max-width: calc(100% - 300px) !important;
+  }
+
+  .app-shell.route-backup-dr.sidebar-collapsed #backup-dr-center {
+    margin-left: 88px !important;
+    max-width: calc(100% - 88px) !important;
+  }
+}
