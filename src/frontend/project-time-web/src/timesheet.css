@@ -4489,3 +4489,53 @@ textarea:focus {
     max-width: calc(100% - 88px) !important;
   }
 }
+
+/* replication-sync-route-isolation */
+.app-shell.route-replication-sync > section:not(#replication-sync-center) {
+  display: none;
+}
+
+.app-shell.route-replication-sync #replication-sync-center {
+  display: flex;
+  min-height: calc(100vh - 2rem);
+  width: 100%;
+}
+
+@media (min-width: 1100px) {
+  .app-shell.route-replication-sync.sidebar-expanded #replication-sync-center {
+    margin-left: var(--sidebar-expanded-width, 280px);
+    width: calc(100% - var(--sidebar-expanded-width, 280px));
+  }
+
+  .app-shell.route-replication-sync.sidebar-collapsed #replication-sync-center {
+    margin-left: var(--sidebar-collapsed-width, 88px);
+    width: calc(100% - var(--sidebar-collapsed-width, 88px));
+  }
+}
+
+.app-shell.route-replication-sync #replication-sync-center section {
+  display: block;
+}
+
+/* replication-sync-dashboard-bleed-fix */
+.app-shell.route-replication-sync .hero-panel,
+.app-shell.route-replication-sync .dashboard-shell,
+.app-shell.route-replication-sync .dashboard-grid,
+.app-shell.route-replication-sync .home-panel,
+.app-shell.route-replication-sync .welcome-panel {
+  display: none !important;
+}
+
+.app-shell.route-replication-sync #replication-sync-center {
+  background: transparent;
+  color: #172033;
+  display: flex !important;
+  flex-direction: column;
+  gap: 1.25rem;
+  min-height: calc(100vh - 2rem);
+  width: 100%;
+}
+
+.app-shell.route-replication-sync #replication-sync-center * {
+  box-sizing: border-box;
+}

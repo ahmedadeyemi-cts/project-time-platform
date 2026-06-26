@@ -10,6 +10,7 @@ import LocalAdminPasswordResetApprovalsPanel from './LocalAdminPasswordResetAppr
 import AuditHistoryPanel from './AuditHistoryPanel.jsx';
 import ServiceControlCenter from './ServiceControlCenter.jsx';
 import BackupDrCenter from './BackupDrCenter.jsx';
+import ReplicationSyncStatusCenter from './ReplicationSyncStatusCenter.jsx';
 
 const workflowCards = [
   {
@@ -459,7 +460,18 @@ const roleWorkspaceModules = [
     navLabel: 'Backup / DR',
     description: 'Review backup readiness, recovery coverage, configuration protection, and DR runbook status.',
     permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
-  },
+  },,
+
+  {
+    route: 'replication-sync',
+    href: '#replication-sync',
+    title: 'Replication & Sync Status',
+    navLabel: 'Replication / Sync',
+    description: 'Review failover readiness, database role, service health, backup freshness, deployment state, and peer configuration.',
+    status: 'Operational',
+    group: 'System Operations',
+    permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
+  }
 ,
 
   {
@@ -546,7 +558,7 @@ function userHasPermissionCode(user, permissionCode) {
 
 function getPrimaryNavigationPriority(user) {
   if (userIsAdministrator(user)) {
-    return ['dashboard', 'service-control', 'backup-dr', 'user-admin', 'azure-admin'];
+    return ['dashboard', 'service-control', 'backup-dr', 'replication-sync', 'user-admin', 'azure-admin'];
   }
 
   if (
@@ -586,6 +598,7 @@ function getNavigationGroup(item) {
       return 'Administration';
     case 'service-control':
     case 'backup-dr':
+    case 'replication-sync':
       return 'System Operations';
     case 'workflow':
       return 'Reports & Workflow';
@@ -3457,6 +3470,10 @@ Analytics - Variphy / Infortel`}
       </section>
                           {(activeRoute === 'backup-dr' && (hasPermission('SYSTEM_ADMINISTRATION') || hasPermission('MANAGE_ALL'))) ? (
         <BackupDrCenter authSession={authSession} />
+      ) : null}
+
+{(activeRoute === 'replication-sync' && (hasPermission('SYSTEM_ADMINISTRATION') || hasPermission('MANAGE_ALL'))) ? (
+        <ReplicationSyncStatusCenter authSession={authSession} />
       ) : null}
 
 {(activeRoute === 'service-control' && (hasPermission('SYSTEM_ADMINISTRATION') || hasPermission('MANAGE_ALL'))) ? (

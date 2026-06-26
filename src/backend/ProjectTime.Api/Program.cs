@@ -5791,6 +5791,44 @@ app.MapPost("/api/system/backup-dr/run", async (ProjectPulseBackupRunRequest req
 
 
 
+
+
+app.MapGet("/api/system/replication-sync/status", async (HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var adminContext = await ResolveProjectPulseAdministratorContextAsync(httpContext, connection);
+    if (!adminContext.IsAdministrator)
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Replication & Sync Status Center is restricted to administrators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    const string statusFile = "/opt/project-time-platform/state/replication-sync-status.json";
+
+    if (!File.Exists(statusFile))
+    {
+        return Results.Json(new
+        {
+            generatedAt = DateTimeOffset.UtcNow,
+            overallStatus = "unknown",
+            message = "Replication and sync status has not been exported yet.",
+            checks = Array.Empty<object>()
+        });
+    }
+
+    var json = await File.ReadAllTextAsync(statusFile);
+    return Results.Content(json, "application/json");
+});
+
 app.MapGet("/api/system/backup-dr/status", async (HttpContext httpContext) =>
 {
     var config = DatabaseConfig.FromEnvironment();
