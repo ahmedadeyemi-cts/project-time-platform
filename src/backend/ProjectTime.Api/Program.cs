@@ -5268,6 +5268,228 @@ app.MapPost("/api/admin/user-admin/users/bulk-update", async (UserAdminBulkUpdat
 
 
 
+
+app.MapGet("/api/audit/history", async (HttpContext httpContext, int? days, string? category, string? status, string? search) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Audit history is restricted to administrators and project/team coordinators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var lookbackDays = Math.Clamp(days ?? 14, 1, 365);
+    var normalizedCategory = string.IsNullOrWhiteSpace(category) ? "all" : category.Trim().ToLowerInvariant();
+    var normalizedStatus = string.IsNullOrWhiteSpace(status) ? "all" : status.Trim().ToLowerInvariant();
+    var normalizedSearch = string.IsNullOrWhiteSpace(search) ? "" : search.Trim();
+
+    var events = new List<object>();
+
+    await using var command = new NpgsqlCommand("""
+        WITH unified_events AS (
+            SELECT
+                ale.created_at AS event_time,
+                'authentication'::text AS category,
+                CASE
+                    WHEN lower(ale.login_result) LIKE '%success%' THEN 'success'
+                    WHEN lower(ale.login_result) LIKE '%fail%' OR lower(ale.login_result) LIKE '%invalid%' OR lower(ale.login_result) LIKE '%locked%' THEN 'failure'
+                    ELSE lower(ale.login_result)
+                END AS status,
+                CASE
+                    WHEN lower(ale.login_result) LIKE '%success%' THEN 'Login success'
+                    ELSE 'Login failure'
+                END AS event_type,
+                COALESCE(ale.username, u.email, 'Unknown') AS actor,
+                COALESCE(u.email, ale.username, 'Unknown') AS target,
+                ale.login_method AS source,
+                COALESCE(ale.event_details::text, '') AS details,
+                ale.source_ip AS ip_address,
+                ale.user_agent AS user_agent,
+                ale.auth_login_event_id AS event_id
+            FROM auth_login_events ale
+            LEFT JOIN app_users u ON u.user_id = ale.user_id
+
+            UNION ALL
+
+            SELECT
+                pr.requested_at AS event_time,
+                'password_reset'::text AS category,
+                CASE
+                    WHEN pr.status = 'declined' THEN 'failure'
+                    WHEN pr.status = 'completed' THEN 'success'
+                    WHEN pr.status = 'approved' THEN 'warning'
+                    ELSE 'pending'
+                END AS status,
+                CASE
+                    WHEN pr.status = 'pending_approval' THEN 'Password reset requested'
+                    WHEN pr.status = 'approved' THEN 'Password reset approved'
+                    WHEN pr.status = 'declined' THEN 'Password reset declined'
+                    WHEN pr.status = 'completed' THEN 'Temporary password set'
+                    ELSE 'Password reset event'
+                END AS event_type,
+                pr.requested_by_email AS actor,
+                u.email AS target,
+                'LOCAL_APP'::text AS source,
+                COALESCE(pr.notes, '') AS details,
+                NULL::text AS ip_address,
+                NULL::text AS user_agent,
+                pr.auth_password_reset_request_id AS event_id
+            FROM auth_password_reset_requests pr
+            JOIN app_users u ON u.user_id = pr.user_id
+
+            UNION ALL
+
+            SELECT
+                air.created_at AS event_time,
+                'azure_sync'::text AS category,
+                CASE
+                    WHEN lower(air.status) IN ('completed', 'success', 'succeeded') THEN 'success'
+                    WHEN lower(air.status) IN ('failed', 'error') THEN 'failure'
+                    ELSE 'warning'
+                END AS status,
+                CASE
+                    WHEN lower(air.status) IN ('completed', 'success', 'succeeded') THEN 'Azure sync completed'
+                    WHEN lower(air.status) IN ('failed', 'error') THEN 'Azure sync failure'
+                    ELSE 'Azure sync event'
+                END AS event_type,
+                COALESCE(requested_by.email, 'System') AS actor,
+                air.tenant_domain AS target,
+                air.source_provider AS source,
+                CONCAT(
+                    'Run type: ', air.run_type,
+                    '; environment: ', air.environment_mode,
+                    '; selected: ', air.selected_count,
+                    '; imported: ', air.imported_count,
+                    '; updated: ', air.updated_count,
+                    '; deactivated: ', air.deactivated_count,
+                    '; skipped: ', air.skipped_count,
+                    '; message: ', COALESCE(air.message, '')
+                ) AS details,
+                NULL::text AS ip_address,
+                NULL::text AS user_agent,
+                air.import_run_id AS event_id
+            FROM azure_entra_import_runs air
+            LEFT JOIN app_users requested_by ON requested_by.user_id = air.requested_by_user_id
+
+            UNION ALL
+
+            SELECT
+                no.created_at AS event_time,
+                'notification'::text AS category,
+                CASE
+                    WHEN lower(no.status) = 'sent' THEN 'success'
+                    WHEN lower(no.status) = 'failed' OR no.error_message IS NOT NULL THEN 'failure'
+                    ELSE 'pending'
+                END AS status,
+                CASE
+                    WHEN lower(no.status) = 'sent' THEN 'Notification sent'
+                    WHEN lower(no.status) = 'failed' OR no.error_message IS NOT NULL THEN 'Notification failure'
+                    ELSE 'Notification pending'
+                END AS event_type,
+                'System'::text AS actor,
+                no.recipient_email AS target,
+                no.notification_type AS source,
+                CONCAT(no.subject, '; ', COALESCE(no.error_message, no.body, '')) AS details,
+                NULL::text AS ip_address,
+                NULL::text AS user_agent,
+                no.notification_outbox_id AS event_id
+            FROM notification_outbox no
+
+            UNION ALL
+
+            SELECT
+                al.created_at AS event_time,
+                'system_audit'::text AS category,
+                'success'::text AS status,
+                al.action AS event_type,
+                COALESCE(actor.email, 'System') AS actor,
+                COALESCE(al.entity_type, 'Unknown') AS target,
+                al.entity_type AS source,
+                CONCAT(
+                    'Old: ', COALESCE(al.old_value::text, ''),
+                    '; New: ', COALESCE(al.new_value::text, '')
+                ) AS details,
+                al.ip_address::text AS ip_address,
+                al.user_agent AS user_agent,
+                al.audit_log_id AS event_id
+            FROM audit_logs al
+            LEFT JOIN app_users actor ON actor.user_id = al.actor_user_id
+        )
+        SELECT
+            event_time,
+            category,
+            status,
+            event_type,
+            actor,
+            target,
+            source,
+            details,
+            ip_address,
+            user_agent,
+            event_id
+        FROM unified_events
+        WHERE event_time >= NOW() - (@lookback_days::text || ' days')::interval
+          AND (@category = 'all' OR category = @category)
+          AND (@status = 'all' OR status = @status)
+          AND (
+              @search = ''
+              OR actor ILIKE '%' || @search || '%'
+              OR target ILIKE '%' || @search || '%'
+              OR event_type ILIKE '%' || @search || '%'
+              OR details ILIKE '%' || @search || '%'
+              OR source ILIKE '%' || @search || '%'
+          )
+        ORDER BY event_time DESC
+        LIMIT 500;
+        """, connection);
+
+    command.Parameters.AddWithValue("lookback_days", lookbackDays);
+    command.Parameters.AddWithValue("category", normalizedCategory);
+    command.Parameters.AddWithValue("status", normalizedStatus);
+    command.Parameters.AddWithValue("search", normalizedSearch);
+
+    await using var reader = await command.ExecuteReaderAsync();
+
+    while (await reader.ReadAsync())
+    {
+        events.Add(new
+        {
+            eventTime = reader.GetFieldValue<DateTimeOffset>(0),
+            category = reader.GetString(1),
+            status = reader.GetString(2),
+            eventType = reader.GetString(3),
+            actor = reader.GetString(4),
+            target = reader.GetString(5),
+            source = reader.GetString(6),
+            details = reader.IsDBNull(7) ? "" : reader.GetString(7),
+            ipAddress = reader.IsDBNull(8) ? null : reader.GetString(8),
+            userAgent = reader.IsDBNull(9) ? null : reader.GetString(9),
+            eventId = reader.GetGuid(10)
+        });
+    }
+
+    return Results.Ok(new
+    {
+        lookbackDays,
+        category = normalizedCategory,
+        status = normalizedStatus,
+        search = normalizedSearch,
+        count = events.Count,
+        events
+    });
+});
+
+
+
 app.MapGet("/api/manager/approval-count", async (HttpContext httpContext) =>
 {
     var config = DatabaseConfig.FromEnvironment();

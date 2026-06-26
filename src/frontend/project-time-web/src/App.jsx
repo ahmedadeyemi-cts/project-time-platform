@@ -7,6 +7,7 @@ import ProjectAllocationInfoPanel from './ProjectAllocationInfoPanel.jsx';
 import ManagerTeamUtilizationPanel from './ManagerTeamUtilizationPanel.jsx';
 import ManagerApprovalPanel from './ManagerApprovalPanel.jsx';
 import LocalAdminPasswordResetApprovalsPanel from './LocalAdminPasswordResetApprovalsPanel.jsx';
+import AuditHistoryPanel from './AuditHistoryPanel.jsx';
 
 const workflowCards = [
   {
@@ -402,12 +403,12 @@ const roleWorkspaceModules = [
     permissions: ['VIEW_ACCOUNT_RECONCILIATION']
   },
   {
-    route: 'workflow',
-    href: '#workflow',
-    title: 'Audit Trail',
-    navLabel: 'Workflow',
-    description: 'View workflow, role, approval, decline, and administrative action history.',
-    permissions: ['VIEW_AUDIT_TRAIL']
+    route: 'audit-history',
+    href: '#audit-history',
+    title: 'Audit / Security History',
+    navLabel: 'Audit',
+    description: 'Review login history, password reset history, Azure sync failures, notification failures, and system audit events.',
+    permissions: ['VIEW_AUDIT_TRAIL', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   },
   {
     route: 'workflow',
@@ -553,6 +554,12 @@ export default function App() {
   const [profileSettingsStatus, setProfileSettingsStatus] = useState('');
   const [sessionWarning, setSessionWarning] = useState({ visible: false, remainingMs: 0 });
   const [activeRoute, setActiveRoute] = useState(() => normalizeRoute(window.location.hash));
+
+  useEffect(() => {
+    window.requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, behavior: 'auto' });
+    });
+  }, [activeRoute]); // project-pulse-route-scroll-reset
   const [selectedWeekStart, setSelectedWeekStart] = useState(getSundayIso);
   const [apiHealth, setApiHealth] = useState({ loading: true, data: null, error: null });
   const [roleAdminUsers, setRoleAdminUsers] = useState({ loading: true, data: null, error: null });
@@ -3237,6 +3244,9 @@ Analytics - Variphy / Infortel`}
           </div>
         </div>
       </section>
+      {(activeRoute === 'audit-history' && (hasPermission('VIEW_AUDIT_TRAIL') || hasPermission('SYSTEM_ADMINISTRATION') || hasPermission('MANAGE_ALL'))) ? (
+        <AuditHistoryPanel />
+      ) : null}
 
       <section id="role-dashboard" className="panel role-dashboard-panel">
         <div className="section-heading">

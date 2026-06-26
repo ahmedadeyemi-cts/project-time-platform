@@ -1,0 +1,165 @@
+.audit-history-panel {
+  display: grid;
+  gap: 18px;
+}
+
+.audit-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(140px, 1fr));
+  gap: 12px;
+}
+
+.audit-summary-grid article {
+  border: 1px solid var(--pulse-card-border);
+  border-radius: 18px;
+  padding: 16px;
+  background: var(--pulse-card-bg);
+  box-shadow: var(--pulse-card-shadow);
+}
+
+.audit-summary-grid span {
+  display: block;
+  color: var(--pulse-muted);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.audit-summary-grid strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 1.8rem;
+}
+
+.audit-filter-bar {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(150px, 1fr));
+  gap: 12px;
+  align-items: end;
+}
+
+.audit-filter-bar label {
+  display: grid;
+  gap: 6px;
+  color: var(--pulse-muted);
+  font-weight: 800;
+}
+
+.audit-filter-bar select,
+.audit-filter-bar input {
+  width: 100%;
+  border: 1px solid var(--pulse-card-border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: var(--pulse-input-bg, #fff);
+  color: var(--pulse-text);
+}
+
+.audit-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--pulse-card-border);
+  border-radius: 18px;
+  background: var(--pulse-card-bg);
+}
+
+.audit-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 1180px;
+}
+
+.audit-table th,
+.audit-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--pulse-card-border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.audit-table th {
+  color: var(--pulse-muted);
+  font-size: 0.76rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.audit-details {
+  max-width: 420px;
+  white-space: normal;
+  line-height: 1.45;
+}
+
+.audit-status {
+  display: inline-flex;
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.audit-status.success {
+  background: rgba(220, 252, 231, 0.9);
+  color: #166534;
+}
+
+.audit-status.failure {
+  background: rgba(254, 226, 226, 0.9);
+  color: #991b1b;
+}
+
+.audit-status.warning {
+  background: rgba(254, 243, 199, 0.9);
+  color: #92400e;
+}
+
+.audit-status.pending {
+  background: rgba(219, 234, 254, 0.9);
+  color: #1d4ed8;
+}
+
+@media (max-width: 1100px) {
+  .audit-summary-grid,
+  .audit-filter-bar {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Hard route isolation for Audit History.
+   The application currently renders many workspace sections in one long document.
+   When the hash route is audit-history, hide all direct workspace sections except Audit. */
+.app-shell.route-audit-history > section:not(#audit-history),
+.app-shell.route-audit-history > .module-grid,
+.app-shell.route-audit-history > #workflow {
+  display: none !important;
+}
+
+.app-shell.route-audit-history #audit-history {
+  display: grid !important;
+  min-height: calc(100vh - 180px);
+}
+
+/* Strong Audit route isolation.
+   Hide every workspace section inside the authenticated shell except the Audit History page. */
+.app-shell.route-audit-history section:not(#audit-history) {
+  display: none !important;
+}
+
+.app-shell.route-audit-history #audit-history {
+  display: grid !important;
+  visibility: visible !important;
+  min-height: calc(100vh - 160px);
+}
+
+/* Hide non-section workspace grids that may still remain in the long-form dashboard layout. */
+.app-shell.route-audit-history .module-grid,
+.app-shell.route-audit-history .workflow-grid,
+.app-shell.route-audit-history .role-feature-grid,
+.app-shell.route-audit-history .status-grid,
+.app-shell.route-audit-history .hero-section,
+.app-shell.route-audit-history .role-dashboard-panel,
+.app-shell.route-audit-history .timesheet-page,
+.app-shell.route-audit-history .project-allocation-info-panel,
+.app-shell.route-audit-history .module-foundation-panel,
+.app-shell.route-audit-history .current-quarter-utilization-panel,
+.app-shell.route-audit-history .role-admin-panel {
+  display: none !important;
+}
