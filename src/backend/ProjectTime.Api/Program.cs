@@ -5793,6 +5793,94 @@ app.MapPost("/api/system/backup-dr/run", async (ProjectPulseBackupRunRequest req
 
 
 
+
+
+app.MapGet("/api/system/replication-sync/settings", async (HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var adminContext = await ResolveProjectPulseAdministratorContextAsync(httpContext, connection);
+    if (!adminContext.IsAdministrator)
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Replication & Sync settings are restricted to administrators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    const string settingsFile = "/opt/project-time-platform/config/replication-sync.env";
+    var settings = File.Exists(settingsFile)
+        ? ReadProjectPulseEnvFile(settingsFile)
+        : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+    var staleBackupHoursRaw = settings.GetValueOrDefault("PROJECTPULSE_SYNC_STALE_BACKUP_HOURS", "24");
+    var staleBackupHours = int.TryParse(staleBackupHoursRaw, out var parsedHours) ? parsedHours : 24;
+
+    return Results.Ok(new
+    {
+        status = "replication_sync_settings_loaded",
+        peerName = settings.GetValueOrDefault("PROJECTPULSE_SYNC_PEER_NAME", ""),
+        peerHost = settings.GetValueOrDefault("PROJECTPULSE_SYNC_PEER_HOST", ""),
+        peerUrl = settings.GetValueOrDefault("PROJECTPULSE_SYNC_PEER_URL", ""),
+        staleBackupHours
+    });
+});
+
+app.MapPost("/api/system/replication-sync/settings", async (HttpContext httpContext, ProjectPulseReplicationSyncSettingsRequest request) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var adminContext = await ResolveProjectPulseAdministratorContextAsync(httpContext, connection);
+    if (!adminContext.IsAdministrator)
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Replication & Sync settings are restricted to administrators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    const string settingsFile = "/opt/project-time-platform/config/replication-sync.env";
+    Directory.CreateDirectory(Path.GetDirectoryName(settingsFile)!);
+
+    var peerName = request.PeerName?.Trim() ?? "";
+    var peerHost = request.PeerHost?.Trim() ?? "";
+    var peerUrl = request.PeerUrl?.Trim() ?? "";
+    var staleBackupHours = Math.Clamp(request.StaleBackupHours ?? 24, 1, 720);
+
+    var content = string.Join(Environment.NewLine, new[]
+    {
+        $"PROJECTPULSE_SYNC_PEER_NAME={QuoteProjectPulseEnvValue(peerName)}",
+        $"PROJECTPULSE_SYNC_PEER_HOST={QuoteProjectPulseEnvValue(peerHost)}",
+        $"PROJECTPULSE_SYNC_PEER_URL={QuoteProjectPulseEnvValue(peerUrl)}",
+        $"PROJECTPULSE_SYNC_STALE_BACKUP_HOURS={staleBackupHours}"
+    }) + Environment.NewLine;
+
+    await File.WriteAllTextAsync(settingsFile, content);
+    await RunProjectPulseProcessAsync("/usr/bin/chmod", "660", settingsFile);
+
+    return Results.Ok(new
+    {
+        status = "replication_sync_settings_saved",
+        message = "Replication & Sync settings were saved. The status exporter will refresh shortly.",
+        peerName,
+        peerHost,
+        peerUrl,
+        staleBackupHours
+    });
+});
+
 app.MapGet("/api/system/replication-sync/status", async (HttpContext httpContext) =>
 {
     var config = DatabaseConfig.FromEnvironment();
@@ -11425,3 +11513,10 @@ record ProjectPulseAiTimeEntrySuggestionResult(
     string Suggestion,
     string Provider,
     string? Warning);
+
+
+internal sealed record ProjectPulseReplicationSyncSettingsRequest(
+    string? PeerName,
+    string? PeerHost,
+    string? PeerUrl,
+    int? StaleBackupHours);
