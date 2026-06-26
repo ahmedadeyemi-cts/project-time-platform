@@ -526,7 +526,7 @@ function userHasPermissionCode(user, permissionCode) {
 
 function getPrimaryNavigationPriority(user) {
   if (userIsAdministrator(user)) {
-    return ['dashboard', 'user-admin', 'audit-history'];
+    return ['dashboard', 'user-admin', 'azure-admin', 'audit-history', 'role-admin'];
   }
 
   if (
@@ -534,7 +534,7 @@ function getPrimaryNavigationPriority(user) {
     userHasPermissionCode(user, 'VIEW_PROJECT_ALLOCATION_INFO') ||
     userHasPermissionCode(user, 'MANAGE_PROJECT_ALLOCATION_INFO')
   ) {
-    return ['dashboard', 'project-allocation-info', 'audit-history'];
+    return ['dashboard', 'project-allocation-info', 'manager-approval', 'audit-history', 'utilization'];
   }
 
   if (
@@ -542,10 +542,10 @@ function getPrimaryNavigationPriority(user) {
     userHasPermissionCode(user, 'VIEW_APPROVAL_INBOX') ||
     userHasPermissionCode(user, 'VIEW_TEAM_UTILIZATION')
   ) {
-    return ['dashboard', 'manager-approval', 'utilization'];
+    return ['dashboard', 'manager-approval', 'utilization', 'timesheet', 'audit-history'];
   }
 
-  return ['dashboard', 'timesheet', 'utilization'];
+  return ['dashboard', 'timesheet', 'utilization', 'holiday-admin', 'project-allocation-info'];
 }
 
 function getNavigationGroup(item) {
@@ -585,7 +585,7 @@ function buildRoleNavigationModel(user, navigationItems) {
   });
 
   availableItems.forEach((item) => {
-    if (primary.length < 3 && !primary.some((existing) => existing.route === item.route)) {
+    if (primary.length < 5 && !primary.some((existing) => existing.route === item.route)) {
       primary.push(item);
     }
   });
@@ -648,7 +648,7 @@ export default function App() {
   const [forcedPasswordStatus, setForcedPasswordStatus] = useState('');
   const [isChangingForcedPassword, setIsChangingForcedPassword] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
-  const [isSideNavigationOpen, setIsSideNavigationOpen] = useState(false);
+  const [isSideNavigationOpen, setIsSideNavigationOpen] = useState(true);
   const [expandedNavigationGroups, setExpandedNavigationGroups] = useState(() => ({
     'Time & Approvals': true,
     'Projects & Allocations': true,
@@ -1931,6 +1931,10 @@ export default function App() {
   const visibleRoleModules = useMemo(() => getVisibleRoleModules(currentUser.data), [currentUser.data]);
   const roleNavigation = useMemo(() => getRoleNavigation(currentUser.data), [currentUser.data]);
   const navigationModel = useMemo(() => buildRoleNavigationModel(currentUser.data, roleNavigation), [currentUser.data, roleNavigation]);
+  const activeNavigationItem = useMemo(
+    () => roleNavigation.find((item) => item.route === activeRoute) ?? { label: 'Dashboard', route: 'dashboard', href: '#dashboard' },
+    [roleNavigation, activeRoute]
+  );
   const workspaceRoleName = getRoleDisplayName(currentUser.data);
   const showQuarterUtilizationSummary = userHasAnyPermission(currentUser.data, ['VIEW_OWN_UTILIZATION', 'VIEW_TEAM_UTILIZATION', 'MANAGE_ALL']);
 
@@ -2683,7 +2687,7 @@ export default function App() {
   }
 
   return (
-    <main className={`app-shell route-${activeRoute}`}>
+    <main className={`app-shell route-${activeRoute} enterprise-nav-enabled ${isSideNavigationOpen ? 'sidebar-expanded' : 'sidebar-collapsed'}`}>
 
       {sessionWarning.visible && (
         <div className="session-timeout-backdrop">
@@ -2865,30 +2869,21 @@ Analytics - Variphy / Infortel`}
 
       <header className="top-bar">
         <SignalLogo />
-        <nav className="primary-nav" aria-label="Primary navigation">
-          {navigationModel.primary.map((item) => (
-            <a
-              href={item.href}
-              key={item.route}
-              className={activeRoute === item.route ? 'active' : ''}
-              onClick={closeSideNavigation}
-            >
-              {item.label}
-            </a>
-          ))}
+        <div className="workspace-header-context">
+          <button
+            type="button"
+            className="sidebar-toggle-button"
+            onClick={() => setIsSideNavigationOpen((current) => !current)}
+            aria-label={isSideNavigationOpen ? 'Collapse workspace navigation' : 'Expand workspace navigation'}
+          >
+            ☰
+          </button>
 
-          {navigationModel.groups.length > 0 ? (
-            <button
-              type="button"
-              className={isSideNavigationOpen ? 'nav-more-button active' : 'nav-more-button'}
-              onClick={() => setIsSideNavigationOpen((current) => !current)}
-              aria-expanded={isSideNavigationOpen}
-              aria-controls="role-side-navigation"
-            >
-              More
-            </button>
-          ) : null}
-        </nav>
+          <div>
+            <p className="eyebrow">Workspace</p>
+            <h1>{activeNavigationItem.label}</h1>
+          </div>
+        </div>
         <div className="profile-menu-shell" ref={profileMenuRef}>
           <button
             className="profile-avatar-button"
@@ -2933,6 +2928,66 @@ Analytics - Variphy / Infortel`}
           )}
         </div>
       </header>
+
+      <aside className="enterprise-sidebar" aria-label="Workspace navigation">
+        <div className="enterprise-sidebar-header">
+          <div>
+            <p className="eyebrow">Project Pulse</p>
+            <h2>{workspaceRoleName}</h2>
+          </div>
+        </div>
+
+        <div className="enterprise-sidebar-section">
+          <p className="enterprise-sidebar-section-title">Pinned</p>
+          <div className="enterprise-sidebar-links">
+            {navigationModel.primary.map((item) => (
+              <a
+                href={item.href}
+                key={`enterprise-primary-${item.route}`}
+                className={activeRoute === item.route ? 'active' : ''}
+              >
+                <span className="enterprise-nav-icon">{item.label.slice(0, 1)}</span>
+                <span className="enterprise-nav-label">{item.label}</span>
+              </a>
+            ))}
+          </div>
+        </div>
+
+        <div className="enterprise-sidebar-section">
+          <p className="enterprise-sidebar-section-title">Modules</p>
+          <div className="enterprise-sidebar-groups">
+            {navigationModel.groups.map((group) => (
+              <div className="enterprise-sidebar-group" key={group.name}>
+                <button
+                  type="button"
+                  className="enterprise-sidebar-group-toggle"
+                  onClick={() => toggleNavigationGroup(group.name)}
+                  aria-expanded={Boolean(expandedNavigationGroups[group.name])}
+                >
+                  <span className="enterprise-nav-label">{group.name}</span>
+                  <strong>{expandedNavigationGroups[group.name] ? '−' : '+'}</strong>
+                </button>
+
+                {expandedNavigationGroups[group.name] ? (
+                  <div className="enterprise-sidebar-links nested">
+                    {group.items.map((item) => (
+                      <a
+                        href={item.href}
+                        key={`enterprise-${group.name}-${item.route}`}
+                        className={activeRoute === item.route ? 'active' : ''}
+                      >
+                        <span className="enterprise-nav-icon">{item.label.slice(0, 1)}</span>
+                        <span className="enterprise-nav-label">{item.label}</span>
+                      </a>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </div>
+      </aside>
+
 <section id="user-admin" className="panel user-admin-panel">
         <UserAdministrationPanel />
       </section>
