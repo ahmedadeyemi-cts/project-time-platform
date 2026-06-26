@@ -8,6 +8,7 @@ import ManagerTeamUtilizationPanel from './ManagerTeamUtilizationPanel.jsx';
 import ManagerApprovalPanel from './ManagerApprovalPanel.jsx';
 import LocalAdminPasswordResetApprovalsPanel from './LocalAdminPasswordResetApprovalsPanel.jsx';
 import AuditHistoryPanel from './AuditHistoryPanel.jsx';
+import ServiceControlCenter from './ServiceControlCenter.jsx';
 
 const workflowCards = [
   {
@@ -443,6 +444,15 @@ const roleWorkspaceModules = [
     permissions: ['VIEW_AZURE_ADMIN', 'MANAGE_AZURE_SYNC', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   },
   {
+    route: 'service-control',
+    href: '#service-control',
+    title: 'Service Control Center',
+    navLabel: 'Services',
+    description: 'Monitor platform services, API status, recent logs, and controlled restart actions.',
+    permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
+  },
+
+  {
     route: 'role-admin',
     href: '#role-admin',
     title: 'Administration',
@@ -526,7 +536,7 @@ function userHasPermissionCode(user, permissionCode) {
 
 function getPrimaryNavigationPriority(user) {
   if (userIsAdministrator(user)) {
-    return ['dashboard', 'user-admin', 'azure-admin', 'audit-history', 'role-admin'];
+    return ['dashboard', 'service-control', 'user-admin', 'azure-admin', 'audit-history'];
   }
 
   if (
@@ -564,6 +574,8 @@ function getNavigationGroup(item) {
     case 'azure-admin':
     case 'role-admin':
       return 'Administration';
+    case 'service-control':
+      return 'System Operations';
     case 'workflow':
       return 'Reports & Workflow';
     default:
@@ -3432,7 +3444,11 @@ Analytics - Variphy / Infortel`}
           </div>
         </div>
       </section>
-      {(activeRoute === 'audit-history' && (hasPermission('VIEW_AUDIT_TRAIL') || hasPermission('SYSTEM_ADMINISTRATION') || hasPermission('MANAGE_ALL'))) ? (
+                {(activeRoute === 'service-control' && (hasPermission('SYSTEM_ADMINISTRATION') || hasPermission('MANAGE_ALL'))) ? (
+        <ServiceControlCenter authSession={authSession} />
+      ) : null}
+
+{(activeRoute === 'audit-history' && (hasPermission('VIEW_AUDIT_TRAIL') || hasPermission('SYSTEM_ADMINISTRATION') || hasPermission('MANAGE_ALL'))) ? (
         <AuditHistoryPanel />
       ) : null}
 

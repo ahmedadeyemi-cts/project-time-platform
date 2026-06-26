@@ -4426,3 +4426,43 @@ textarea:focus {
     max-width: calc(100% - 88px) !important;
   }
 }
+
+/* Route isolation for Service Control Center */
+.app-shell.route-service-control > section:not(#service-control-center) {
+  display: none !important;
+}
+
+.app-shell.route-service-control #service-control-center {
+  display: grid !important;
+  visibility: visible !important;
+  min-height: calc(100vh - 160px);
+}
+
+@media (min-width: 981px) {
+  .app-shell.route-service-control.sidebar-expanded #service-control-center {
+    margin-left: 300px !important;
+    max-width: calc(100% - 300px) !important;
+  }
+
+  .app-shell.route-service-control.sidebar-collapsed #service-control-center {
+    margin-left: 88px !important;
+    max-width: calc(100% - 88px) !important;
+  }
+}
+
+
+/* service-control-nested-section-visibility-fix
+   Route isolation should hide other app pages, not the internal Service Control sections. */
+.app-shell.route-service-control #service-control-center section {
+  display: block !important;
+  visibility: visible !important;
+}
+
+.app-shell.route-service-control #service-control-center .service-control-grid,
+.app-shell.route-service-control #service-control-center .service-control-summary-grid,
+.app-shell.route-service-control #service-control-center .api-component-grid,
+.app-shell.route-service-control #service-control-center .version-inventory-groups,
+.app-shell.route-service-control #service-control-center .version-inventory-table,
+.app-shell.route-service-control #service-control-center .service-list {
+  display: grid !important;
+}

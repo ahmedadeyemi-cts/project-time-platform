@@ -5269,6 +5269,617 @@ app.MapPost("/api/admin/user-admin/users/bulk-update", async (UserAdminBulkUpdat
 
 
 
+
+var projectPulseManagedServices = new Dictionary<string, object>
+{
+    ["projectpulse-api"] = new
+    {
+        serviceKey = "projectpulse-api",
+        systemdName = "projecttime-api.service",
+        displayName = "ProjectPulse API",
+        description = "ASP.NET backend API service for authentication, timesheets, approvals, audit, integrations, and administration."
+    },
+    ["projectpulse-frontend"] = new
+    {
+        serviceKey = "projectpulse-frontend",
+        systemdName = "projecttime-frontend-public.service",
+        displayName = "ProjectPulse Frontend",
+        description = "Restricted public frontend service that serves the ProjectPulse web application."
+    },
+    ["nginx"] = new
+    {
+        serviceKey = "nginx",
+        systemdName = "nginx.service",
+        displayName = "Nginx Reverse Proxy",
+        description = "Public reverse proxy for HTTPS traffic and routing to API/frontend services."
+    },
+    ["postgresql"] = new
+    {
+        serviceKey = "postgresql",
+        systemdName = "postgresql.service",
+        displayName = "PostgreSQL Database",
+        description = "Primary PostgreSQL database service for ProjectPulse."
+    }
+};
+
+app.MapGet("/api/system/service-control/status", async (HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var adminContext = await ResolveProjectPulseAdministratorContextAsync(httpContext, connection);
+    if (!adminContext.IsAdministrator)
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Service Control Center is restricted to administrators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var services = new List<object>();
+
+    foreach (var service in projectPulseManagedServices.Values)
+    {
+        var systemdName = (string)service.GetType().GetProperty("systemdName")!.GetValue(service)!;
+        var statusResult = await RunProjectPulseProcessAsync("/usr/bin/systemctl", "show", systemdName,
+            "--property=Id,Description,LoadState,ActiveState,SubState,ActiveEnterTimestamp,InactiveEnterTimestamp,NRestarts",
+            "--no-page");
+
+        var isActiveResult = await RunProjectPulseProcessAsync("/usr/bin/systemctl", "is-active", systemdName);
+        var recentLogsResult = await RunProjectPulseProcessAsync("/usr/bin/journalctl", "-u", systemdName, "-n", "12", "--no-pager", "--output=short-iso");
+
+        var properties = ParseSystemctlShowProperties(statusResult.StandardOutput);
+
+        services.Add(new
+        {
+            serviceKey = service.GetType().GetProperty("serviceKey")!.GetValue(service),
+            systemdName,
+            displayName = service.GetType().GetProperty("displayName")!.GetValue(service),
+            description = service.GetType().GetProperty("description")!.GetValue(service),
+            activeState = properties.GetValueOrDefault("ActiveState", isActiveResult.StandardOutput.Trim()),
+            subState = properties.GetValueOrDefault("SubState", ""),
+            loadState = properties.GetValueOrDefault("LoadState", ""),
+            activeSince = properties.GetValueOrDefault("ActiveEnterTimestamp", ""),
+            inactiveSince = properties.GetValueOrDefault("InactiveEnterTimestamp", ""),
+            restartCount = properties.GetValueOrDefault("NRestarts", "0"),
+            commandStatus = statusResult.ExitCode == 0 ? "ok" : "error",
+            statusError = statusResult.StandardError,
+            recentLogs = recentLogsResult.StandardOutput
+                .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .TakeLast(12)
+                .ToArray()
+        });
+    }
+
+    return Results.Ok(new
+    {
+        status = "service_status_loaded",
+        generatedAt = DateTimeOffset.UtcNow,
+        count = services.Count,
+        services
+    });
+});
+
+app.MapGet("/api/system/api-status", async (HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var adminContext = await ResolveProjectPulseAdministratorContextAsync(httpContext, connection);
+    if (!adminContext.IsAdministrator)
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "API Status Dashboard is restricted to administrators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var components = new List<object>();
+
+    async Task AddComponentAsync(string key, string name, string category, Func<Task<object>> probe)
+    {
+        try
+        {
+            var details = await probe();
+            components.Add(new
+            {
+                key,
+                name,
+                category,
+                status = "healthy",
+                checkedAt = DateTimeOffset.UtcNow,
+                details
+            });
+        }
+        catch (Exception ex)
+        {
+            components.Add(new
+            {
+                key,
+                name,
+                category,
+                status = "unhealthy",
+                checkedAt = DateTimeOffset.UtcNow,
+                details = new
+                {
+                    error = ex.Message
+                }
+            });
+        }
+    }
+
+    await AddComponentAsync("database", "Database Health", "Core", async () =>
+    {
+        await using var command = new NpgsqlCommand("SELECT current_database(), current_user, NOW();", connection);
+        await using var reader = await command.ExecuteReaderAsync();
+        await reader.ReadAsync();
+
+        return new
+        {
+            database = reader.GetString(0),
+            user = reader.GetString(1),
+            serverTime = reader.GetFieldValue<DateTimeOffset>(2)
+        };
+    });
+
+    await AddComponentAsync("auth", "Auth API", "Core", async () =>
+    {
+        await using var command = new NpgsqlCommand("""
+            SELECT
+                COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '24 hours') AS login_events_24h,
+                COUNT(*) FILTER (WHERE login_result ILIKE '%fail%' AND created_at >= NOW() - INTERVAL '24 hours') AS failed_logins_24h
+            FROM auth_login_events;
+            """, connection);
+
+        await using var reader = await command.ExecuteReaderAsync();
+        await reader.ReadAsync();
+
+        return new
+        {
+            loginEvents24h = reader.GetInt64(0),
+            failedLogins24h = reader.GetInt64(1)
+        };
+    });
+
+    await AddComponentAsync("timesheet", "Timesheet API", "Application", async () =>
+    {
+        await using var command = new NpgsqlCommand("""
+            SELECT
+                COUNT(*) AS time_entry_count,
+                COUNT(*) FILTER (WHERE work_date >= CURRENT_DATE - INTERVAL '14 days') AS recent_time_entries
+            FROM time_entries;
+            """, connection);
+
+        await using var reader = await command.ExecuteReaderAsync();
+        await reader.ReadAsync();
+
+        return new
+        {
+            totalTimeEntries = reader.GetInt64(0),
+            recentTimeEntries = reader.GetInt64(1)
+        };
+    });
+
+    await AddComponentAsync("approvals", "Approval API", "Application", async () =>
+    {
+        await using var command = new NpgsqlCommand("""
+            SELECT
+                COUNT(*) FILTER (WHERE status = 'submitted') AS submitted_days,
+                COUNT(*) FILTER (WHERE status = 'manager_approved') AS manager_approved_days,
+                COUNT(*) FILTER (WHERE status = 'manager_declined') AS manager_declined_days
+            FROM timesheet_day_statuses;
+            """, connection);
+
+        await using var reader = await command.ExecuteReaderAsync();
+        await reader.ReadAsync();
+
+        return new
+        {
+            submittedDays = reader.GetInt64(0),
+            managerApprovedDays = reader.GetInt64(1),
+            managerDeclinedDays = reader.GetInt64(2)
+        };
+    });
+
+    await AddComponentAsync("audit", "Audit API", "Security", async () =>
+    {
+        await using var command = new NpgsqlCommand("""
+            SELECT
+                (SELECT COUNT(*) FROM audit_logs WHERE created_at >= NOW() - INTERVAL '7 days') AS audit_log_events,
+                (SELECT COUNT(*) FROM auth_login_events WHERE created_at >= NOW() - INTERVAL '7 days') AS login_events,
+                (SELECT COUNT(*) FROM auth_password_reset_requests WHERE requested_at >= NOW() - INTERVAL '30 days') AS password_reset_events;
+            """, connection);
+
+        await using var reader = await command.ExecuteReaderAsync();
+        await reader.ReadAsync();
+
+        return new
+        {
+            auditLogEvents7d = reader.GetInt64(0),
+            loginEvents7d = reader.GetInt64(1),
+            passwordResetEvents30d = reader.GetInt64(2)
+        };
+    });
+
+    await AddComponentAsync("azure-admin", "Azure / Entra Admin API", "Integrations", async () =>
+    {
+        await using var command = new NpgsqlCommand("""
+            SELECT
+                COUNT(*) AS sync_runs,
+                COUNT(*) FILTER (WHERE lower(status) IN ('failed', 'error')) AS failed_runs,
+                MAX(created_at) AS last_run_at
+            FROM azure_entra_import_runs
+            WHERE created_at >= NOW() - INTERVAL '30 days';
+            """, connection);
+
+        await using var reader = await command.ExecuteReaderAsync();
+        await reader.ReadAsync();
+
+        return new
+        {
+            syncRuns30d = reader.GetInt64(0),
+            failedRuns30d = reader.GetInt64(1),
+            lastRunAt = reader.IsDBNull(2) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(2)
+        };
+    });
+
+    await AddComponentAsync("user-admin", "User Admin API", "Administration", async () =>
+    {
+        await using var command = new NpgsqlCommand("""
+            SELECT
+                COUNT(*) AS users,
+                COUNT(*) FILTER (WHERE is_active = TRUE AND login_enabled = TRUE) AS login_enabled_users,
+                COUNT(*) FILTER (WHERE source_provider = 'LOCAL_APP') AS local_users
+            FROM app_users;
+            """, connection);
+
+        await using var reader = await command.ExecuteReaderAsync();
+        await reader.ReadAsync();
+
+        return new
+        {
+            users = reader.GetInt64(0),
+            loginEnabledUsers = reader.GetInt64(1),
+            localUsers = reader.GetInt64(2)
+        };
+    });
+
+    await AddComponentAsync("project-allocation", "Project Allocation API", "Application", async () =>
+    {
+        await using var command = new NpgsqlCommand("""
+            SELECT
+                to_regclass('project_allocation_projects') IS NOT NULL AS has_project_allocation_projects,
+                to_regclass('project_engineer_allocations') IS NOT NULL AS has_engineer_allocations;
+            """, connection);
+
+        await using var reader = await command.ExecuteReaderAsync();
+        await reader.ReadAsync();
+
+        return new
+        {
+            hasProjectAllocationProjects = reader.GetBoolean(0),
+            hasEngineerAllocations = reader.GetBoolean(1)
+        };
+    });
+
+    await AddComponentAsync("ai-description", "AI Description API", "AI", async () =>
+    {
+        var hasClaudeKey = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("PROJECTPULSE_CLAUDE_API_KEY"));
+        var model = Environment.GetEnvironmentVariable("PROJECTPULSE_CLAUDE_MODEL");
+
+        return new
+        {
+            mode = hasClaudeKey ? "claude_configured" : "local_fallback",
+            model = string.IsNullOrWhiteSpace(model) ? "default" : model
+        };
+    });
+
+    await AddComponentAsync("notifications", "Notification Outbox", "Operations", async () =>
+    {
+        await using var command = new NpgsqlCommand("""
+            SELECT
+                COUNT(*) FILTER (WHERE status = 'pending') AS pending,
+                COUNT(*) FILTER (WHERE status = 'sent') AS sent,
+                COUNT(*) FILTER (WHERE status = 'failed' OR error_message IS NOT NULL) AS failed
+            FROM notification_outbox;
+            """, connection);
+
+        await using var reader = await command.ExecuteReaderAsync();
+        await reader.ReadAsync();
+
+        return new
+        {
+            pending = reader.GetInt64(0),
+            sent = reader.GetInt64(1),
+            failed = reader.GetInt64(2)
+        };
+    });
+
+    return Results.Ok(new
+    {
+        status = components.Any(component => ((string)component.GetType().GetProperty("status")!.GetValue(component)!) == "unhealthy")
+            ? "degraded"
+            : "healthy",
+        generatedAt = DateTimeOffset.UtcNow,
+        components
+    });
+});
+
+
+app.MapGet("/api/system/version-inventory", async (HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var adminContext = await ResolveProjectPulseAdministratorContextAsync(httpContext, connection);
+    if (!adminContext.IsAdministrator)
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Version Inventory is restricted to administrators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var checkedAt = DateTimeOffset.UtcNow;
+    var items = new System.Collections.Concurrent.ConcurrentBag<object>();
+    var versionTasks = new List<Task>();
+
+    async Task AddShellVersionAsync(string key, string name, string category, string command)
+    {
+        try
+        {
+            var result = await RunProjectPulseProcessAsync("/usr/bin/bash", "-lc", command);
+            var output = string.IsNullOrWhiteSpace(result.StandardOutput)
+                ? result.StandardError
+                : result.StandardOutput;
+
+            var version = output
+                .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .FirstOrDefault() ?? "Unavailable";
+
+            items.Add(new
+            {
+                key,
+                name,
+                category,
+                status = result.ExitCode == 0 ? "detected" : "unavailable",
+                version,
+                checkedAt,
+                details = new
+                {
+                    command,
+                    exitCode = result.ExitCode,
+                    output
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            items.Add(new
+            {
+                key,
+                name,
+                category,
+                status = "unavailable",
+                version = "Unavailable",
+                checkedAt,
+                details = new
+                {
+                    command,
+                    error = ex.Message
+                }
+            });
+        }
+    }
+
+    items.Add(new
+    {
+        key = "projectpulse-api-runtime",
+        name = "ProjectPulse API Runtime",
+        category = "ProjectPulse",
+        status = "detected",
+        version = System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription,
+        checkedAt,
+        details = new
+        {
+            environmentVersion = Environment.Version.ToString(),
+            osDescription = System.Runtime.InteropServices.RuntimeInformation.OSDescription,
+            processArchitecture = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString(),
+            machineName = Environment.MachineName,
+            applicationBasePath = AppContext.BaseDirectory
+        }
+    });
+
+    versionTasks.Add(AddShellVersionAsync("projectpulse-api-service", "ProjectPulse API Service", "ProjectPulse", "systemctl show projecttime-api.service --property=Id,Description,ActiveState,SubState,FragmentPath,ExecMainPID --no-page || systemctl show projectpulse-api.service --property=Id,Description,ActiveState,SubState,FragmentPath,ExecMainPID --no-page"));
+    versionTasks.Add(AddShellVersionAsync("projectpulse-frontend-service", "ProjectPulse Frontend Service", "ProjectPulse", "systemctl show projecttime-frontend-public.service --property=Id,Description,ActiveState,SubState,FragmentPath,ExecMainPID --no-page || systemctl show projectpulse-frontend-public.service --property=Id,Description,ActiveState,SubState,FragmentPath,ExecMainPID --no-page"));
+
+    versionTasks.Add(AddShellVersionAsync("operating-system", "Operating System", "Host", "source /etc/os-release && echo \"$PRETTY_NAME\""));
+    versionTasks.Add(AddShellVersionAsync("linux-kernel", "Linux Kernel", "Host", "uname -r"));
+    versionTasks.Add(AddShellVersionAsync("systemd", "systemd", "Host", "systemctl --version | head -1"));
+
+    versionTasks.Add(AddShellVersionAsync("dotnet-sdk", ".NET SDK", "Runtime", "dotnet --version"));
+    versionTasks.Add(AddShellVersionAsync("dotnet-runtimes", ".NET Runtimes", "Runtime", "dotnet --list-runtimes"));
+    versionTasks.Add(AddShellVersionAsync("nodejs", "Node.js", "Runtime", "node --version"));
+    versionTasks.Add(AddShellVersionAsync("npm", "npm", "Runtime", "npm --version"));
+    versionTasks.Add(AddShellVersionAsync("python", "Python", "Runtime", "python3 --version"));
+
+    versionTasks.Add(AddShellVersionAsync("nginx", "Nginx", "Web Server", "nginx -v 2>&1"));
+    versionTasks.Add(AddShellVersionAsync("openssl", "OpenSSL", "Security", "openssl version"));
+    versionTasks.Add(AddShellVersionAsync("git", "Git", "Source Control", "git --version"));
+
+    versionTasks.Add(AddShellVersionAsync("postgresql-client", "PostgreSQL Client", "Database", "psql --version"));
+
+    try
+    {
+        await using var postgresCommand = new NpgsqlCommand("SHOW server_version;", connection);
+        var serverVersion = Convert.ToString(await postgresCommand.ExecuteScalarAsync()) ?? "Unavailable";
+
+        items.Add(new
+        {
+            key = "postgresql-server",
+            name = "PostgreSQL Server",
+            category = "Database",
+            status = "detected",
+            version = serverVersion,
+            checkedAt,
+            details = new
+            {
+                source = "SHOW server_version"
+            }
+        });
+    }
+    catch (Exception ex)
+    {
+        items.Add(new
+        {
+            key = "postgresql-server",
+            name = "PostgreSQL Server",
+            category = "Database",
+            status = "unavailable",
+            version = "Unavailable",
+            checkedAt,
+            details = new
+            {
+                error = ex.Message
+            }
+        });
+    }
+
+    versionTasks.Add(AddShellVersionAsync("rocky-release-package", "Rocky Release Package", "Packages", "rpm -q rocky-release"));
+    versionTasks.Add(AddShellVersionAsync("nginx-package", "Nginx Package", "Packages", "rpm -q nginx"));
+    versionTasks.Add(AddShellVersionAsync("postgresql-package", "PostgreSQL Package", "Packages", "rpm -qa | grep -Ei '^postgresql|^postgresql[0-9]+' | sort | head -20"));
+    versionTasks.Add(AddShellVersionAsync("dotnet-package", ".NET Packages", "Packages", "rpm -qa | grep -Ei '^dotnet|^aspnetcore' | sort | head -20"));
+    versionTasks.Add(AddShellVersionAsync("node-package", "Node.js Package", "Packages", "rpm -qa | grep -Ei '^nodejs|^npm' | sort | head -20"));
+
+    await Task.WhenAll(versionTasks);
+
+    return Results.Ok(new
+    {
+        status = "version_inventory_loaded",
+        generatedAt = checkedAt,
+        count = items.Count,
+        items
+    });
+});
+
+
+
+app.MapPost("/api/system/service-control/restart", async (ServiceRestartRequest request, HttpContext httpContext) =>
+{
+    var serviceKey = (request.ServiceKey ?? string.Empty).Trim().ToLowerInvariant();
+
+    if (!projectPulseManagedServices.TryGetValue(serviceKey, out var serviceDefinition))
+    {
+        return Results.BadRequest(new
+        {
+            status = "invalid_service",
+            message = "The requested service is not allowlisted for Project Pulse service control."
+        });
+    }
+
+    if (string.IsNullOrWhiteSpace(request.Reason) || request.Reason.Trim().Length < 8)
+    {
+        return Results.BadRequest(new
+        {
+            status = "reason_required",
+            message = "A restart reason of at least 8 characters is required."
+        });
+    }
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var adminContext = await ResolveProjectPulseAdministratorContextAsync(httpContext, connection);
+    if (!adminContext.IsAdministrator)
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Restart actions are restricted to administrators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var systemdName = (string)serviceDefinition.GetType().GetProperty("systemdName")!.GetValue(serviceDefinition)!;
+    var displayName = (string)serviceDefinition.GetType().GetProperty("displayName")!.GetValue(serviceDefinition)!;
+
+    await InsertProjectPulseAuditEventAsync(
+        connection,
+        adminContext.UserId,
+        "service_restart_requested",
+        "system_service",
+        null,
+        httpContext,
+        new
+        {
+            serviceKey,
+            systemdName,
+            displayName,
+            reason = request.Reason.Trim()
+        });
+
+    var restartResult = await RunProjectPulseProcessAsync("/usr/bin/sudo", "-n", "/usr/bin/systemctl", "restart", systemdName);
+
+    await InsertProjectPulseAuditEventAsync(
+        connection,
+        adminContext.UserId,
+        restartResult.ExitCode == 0 ? "service_restart_completed" : "service_restart_failed",
+        "system_service",
+        null,
+        httpContext,
+        new
+        {
+            serviceKey,
+            systemdName,
+            displayName,
+            reason = request.Reason.Trim(),
+            exitCode = restartResult.ExitCode,
+            standardOutput = restartResult.StandardOutput,
+            standardError = restartResult.StandardError
+        });
+
+    if (restartResult.ExitCode != 0)
+    {
+        return Results.Json(new
+        {
+            status = "restart_failed",
+            serviceKey,
+            systemdName,
+            message = restartResult.StandardError.Length > 0 ? restartResult.StandardError : "Service restart failed.",
+            restartResult.ExitCode
+        }, statusCode: StatusCodes.Status500InternalServerError);
+    }
+
+    return Results.Ok(new
+    {
+        status = "restart_requested",
+        serviceKey,
+        systemdName,
+        displayName,
+        message = $"Restart completed for {displayName}."
+    });
+});
+
+
+
 app.MapGet("/api/audit/history", async (HttpContext httpContext, int? days, string? category, string? status, string? search) =>
 {
     var config = DatabaseConfig.FromEnvironment();
@@ -9580,6 +10191,184 @@ static async Task<List<object>> LoadSavedTimeEntriesAsync(NpgsqlConnection conne
 
 
 
+
+static Dictionary<string, string> ParseSystemctlShowProperties(string output)
+{
+    return output
+        .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Select(line => line.Split('=', 2))
+        .Where(parts => parts.Length == 2)
+        .ToDictionary(parts => parts[0], parts => parts[1]);
+}
+
+static async Task<ProjectPulseProcessResult> RunProjectPulseProcessAsync(string fileName, params string[] arguments)
+{
+    using var process = new System.Diagnostics.Process();
+
+    process.StartInfo.FileName = fileName;
+    process.StartInfo.RedirectStandardOutput = true;
+    process.StartInfo.RedirectStandardError = true;
+    process.StartInfo.UseShellExecute = false;
+    process.StartInfo.CreateNoWindow = true;
+
+    foreach (var argument in arguments)
+    {
+        process.StartInfo.ArgumentList.Add(argument);
+    }
+
+    try
+    {
+        process.Start();
+
+        var standardOutputTask = process.StandardOutput.ReadToEndAsync();
+        var standardErrorTask = process.StandardError.ReadToEndAsync();
+
+        var timeout = arguments.Any(argument => string.Equals(argument, "restart", StringComparison.OrdinalIgnoreCase))
+            ? TimeSpan.FromSeconds(60)
+            : TimeSpan.FromSeconds(20);
+
+        try
+        {
+            await process.WaitForExitAsync().WaitAsync(timeout);
+        }
+        catch (TimeoutException)
+        {
+            try
+            {
+                process.Kill(entireProcessTree: true);
+            }
+            catch
+            {
+                // Best-effort cleanup only.
+            }
+
+            var timedOutOutput = string.Empty;
+            var timedOutError = string.Empty;
+
+            try
+            {
+                timedOutOutput = await standardOutputTask.WaitAsync(TimeSpan.FromSeconds(1));
+            }
+            catch
+            {
+                // Ignore incomplete output after timeout.
+            }
+
+            try
+            {
+                timedOutError = await standardErrorTask.WaitAsync(TimeSpan.FromSeconds(1));
+            }
+            catch
+            {
+                // Ignore incomplete error after timeout.
+            }
+
+            return new ProjectPulseProcessResult(
+                124,
+                timedOutOutput.Trim(),
+                string.IsNullOrWhiteSpace(timedOutError)
+                    ? $"timed out after {timeout.TotalSeconds:0} seconds"
+                    : timedOutError.Trim());
+        }
+
+        return new ProjectPulseProcessResult(
+            process.ExitCode,
+            (await standardOutputTask).Trim(),
+            (await standardErrorTask).Trim());
+    }
+    catch (Exception ex)
+    {
+        return new ProjectPulseProcessResult(127, string.Empty, ex.Message);
+    }
+}
+
+async Task<ProjectPulseAdministratorContext> ResolveProjectPulseAdministratorContextAsync(HttpContext httpContext, NpgsqlConnection connection)
+{
+    var token = GetProjectPulseSessionToken(httpContext.Request);
+    if (string.IsNullOrWhiteSpace(token))
+    {
+        return new ProjectPulseAdministratorContext(false, null, null);
+    }
+
+    var tokenHash = HashSessionToken(token);
+
+    await using var command = new NpgsqlCommand("""
+        SELECT s.user_id, u.email
+        FROM auth_sessions s
+        JOIN app_users u ON u.user_id = s.user_id
+        WHERE s.session_token_hash = @session_token_hash
+          AND s.revoked_at IS NULL
+          AND s.expires_at > NOW()
+          AND u.is_active = TRUE
+          AND u.login_enabled = TRUE
+        LIMIT 1;
+        """, connection);
+
+    command.Parameters.AddWithValue("session_token_hash", tokenHash);
+
+    await using var reader = await command.ExecuteReaderAsync();
+    if (!await reader.ReadAsync())
+    {
+        return new ProjectPulseAdministratorContext(false, null, null);
+    }
+
+    var userId = reader.GetGuid(0);
+    var email = reader.GetString(1);
+
+    await reader.CloseAsync();
+
+    var isAdministrator = await SessionUserIsAdministratorAsync(connection, userId);
+
+    return new ProjectPulseAdministratorContext(isAdministrator, userId, email);
+}
+
+async Task InsertProjectPulseAuditEventAsync(
+    NpgsqlConnection connection,
+    Guid? actorUserId,
+    string action,
+    string entityType,
+    Guid? entityId,
+    HttpContext httpContext,
+    object newValue)
+{
+    await using var command = new NpgsqlCommand("""
+        INSERT INTO audit_logs (
+            actor_user_id,
+            action,
+            entity_type,
+            entity_id,
+            new_value,
+            ip_address,
+            user_agent
+        )
+        VALUES (
+            @actor_user_id,
+            @action,
+            @entity_type,
+            @entity_id,
+            CAST(@new_value AS jsonb),
+            NULLIF(@ip_address, '')::inet,
+            @user_agent
+        );
+        """, connection);
+
+    command.Parameters.AddWithValue("actor_user_id", actorUserId is null ? DBNull.Value : actorUserId.Value);
+    command.Parameters.AddWithValue("action", action);
+    command.Parameters.AddWithValue("entity_type", entityType);
+    command.Parameters.AddWithValue("entity_id", entityId is null ? DBNull.Value : entityId.Value);
+    command.Parameters.AddWithValue("new_value", JsonSerializer.Serialize(newValue));
+    command.Parameters.AddWithValue("ip_address", httpContext.Connection.RemoteIpAddress?.ToString() ?? "");
+    command.Parameters.AddWithValue("user_agent", httpContext.Request.Headers.UserAgent.ToString());
+
+    await command.ExecuteNonQueryAsync();
+}
+
+
+
+internal sealed record ServiceRestartRequest(string ServiceKey, string Reason);
+internal sealed record ProjectPulseProcessResult(int ExitCode, string StandardOutput, string StandardError);
+internal sealed record ProjectPulseAdministratorContext(bool IsAdministrator, Guid? UserId, string? Email);
+
 internal sealed record ProjectAllocationProjectUpsertRequest(
     string ProjectCode,
     string ProjectName,
@@ -9727,6 +10516,9 @@ record ProjectPulseCreatedSession(Guid SessionId, string RawToken, DateTimeOffse
 internal sealed record ProjectPulseSessionValidation(bool IsValid, Guid? UserId, string? Email, string? ProviderCode, DateTimeOffset? ExpiresAt, string? Message);
 
 internal sealed record PasswordResetCompletionRequest(Guid ResetRequestId, string TemporaryPassword, string? ActionByEmail, string? Notes);
+
+
+
 internal sealed record PasswordResetApprovalAction(Guid ResetRequestId, string? ActionByEmail, string? Notes);
 
 internal sealed record PasswordResetRequest(string Username, string? Notes);
@@ -9797,8 +10589,6 @@ internal sealed record DatabaseConfig(
         return new DatabaseConfig(host, port, database, username, password, missing);
     }
 }
-
-
 record UserAdminLocalUserCreateRequest(
     string Email,
     string DisplayName,
