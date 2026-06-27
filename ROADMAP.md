@@ -1,6 +1,6 @@
 # ProjectPulse PSA Production Roadmap
 
-This roadmap tracks the remaining modules needed to mature ProjectPulse into a robust ChangePoint replacement. It reflects the current implementation direction and the expanded requirements around time compliance, reporting, Emburse Certify, project delivery, accounting, help, production hardening, and future multi-server readiness.
+This roadmap tracks the remaining modules needed to mature ProjectPulse into a robust ChangePoint replacement. It reflects the current implementation direction and the expanded requirements around time compliance, reporting, Emburse Certify, project delivery, accounting, help, production hardening, staging, test-data reset controls, and future multi-server readiness.
 
 ## Current Foundation
 
@@ -96,6 +96,8 @@ The platform already has a strong foundation in the following areas:
 - Services
 - Notification Center
 - Help Center
+- Staging & Deployment
+- Test Data Reset
 
 ### Resilience & Recovery
 
@@ -271,7 +273,7 @@ Goal: update the PSA charter to reflect the actual implementation stack and expa
 Scope:
 
 - Update stack from the original proposed stack to the current ProjectPulse implementation direction
-- Document .NET API, React/Vite frontend, PostgreSQL, Linux/systemd operations, internal auth/session model, backup/DR, restore validation, replication readiness, Help Center, Claude Enterprise future integration, Enterprise GitHub migration, notification center, reporting/accountability, and production hardening
+- Document .NET API, React/Vite frontend, PostgreSQL, Linux/systemd operations, internal auth/session model, backup/DR, restore validation, replication readiness, Help Center, Claude Enterprise future integration, Enterprise GitHub migration, notification center, reporting/accountability, staging, test data reset, and production hardening
 
 ### 019M-Z — Production Security Hardening & Enterprise GitHub Readiness
 
@@ -293,6 +295,41 @@ Scope:
 - TLS/certificate validation
 - Least-privilege service accounts
 - Operational runbooks
+
+### 019M-AA — Staging Environment & Deployment Pipeline
+
+Goal: create a safer deployment model before production.
+
+Scope:
+
+- Staging server build plan
+- Separate staging database
+- Separate staging frontend/API services
+- Separate staging DNS name
+- Deployment script for staging
+- Promote-to-production process
+- Pre-deploy backup
+- Post-deploy health checks
+- Restore validation after deploy
+- Rollback plan
+- GitHub Actions staging workflow
+
+### 019M-AB — Controlled Test Data Reset
+
+Goal: provide a one-time and restricted way to wipe test data during the build/UAT period without damaging production data.
+
+Scope:
+
+- Staging/test-only reset controls
+- Explicit environment guard to block production execution
+- Required admin confirmation phrase
+- Required pre-reset backup
+- Reset preview/dry-run
+- Reset selected business data while preserving admin users, roles, permissions, configuration, audit baseline, and system settings
+- Root-owned reset runner
+- Reset audit log
+- Reset history page
+- Final disable/remove option before production go-live
 
 ## Automation Strategy
 
@@ -327,6 +364,7 @@ Recommended automation layers:
    - Notification send queue
    - Backup queue
    - Backup delete queue
+   - Test data reset queue
    - Future import/export queues
    - Future Salesforce/Emburse/Outlook sync queues
 
@@ -348,3 +386,5 @@ Recommended automation layers:
 - Integration settings admin-only
 - Claude/AI help only receives curated documentation and safe metadata
 - Enterprise GitHub migration before production
+- No test-data reset control may run in production
+- Staging must be validated before production deployment
