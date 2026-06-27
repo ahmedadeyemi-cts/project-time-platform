@@ -11,6 +11,7 @@ import AuditHistoryPanel from './AuditHistoryPanel.jsx';
 import ServiceControlCenter from './ServiceControlCenter.jsx';
 import BackupDrCenter from './BackupDrCenter.jsx';
 import ReplicationSyncStatusCenter from './ReplicationSyncStatusCenter.jsx';
+import RestoreValidationCenter from './RestoreValidationCenter.jsx';
 
 const workflowCards = [
   {
@@ -460,7 +461,7 @@ const roleWorkspaceModules = [
     navLabel: 'Backup / DR',
     description: 'Review backup readiness, recovery coverage, configuration protection, and DR runbook status.',
     permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
-  },,
+  },
 
   {
     route: 'replication-sync',
@@ -558,7 +559,7 @@ function userHasPermissionCode(user, permissionCode) {
 
 function getPrimaryNavigationPriority(user) {
   if (userIsAdministrator(user)) {
-    return ['dashboard', 'service-control', 'backup-dr', 'replication-sync', 'user-admin', 'azure-admin'];
+    return ['dashboard', 'service-control', 'backup-dr', 'replication-sync', 'restore-validation', 'user-admin', 'azure-admin'];
   }
 
   if (
@@ -599,6 +600,7 @@ function getNavigationGroup(item) {
     case 'service-control':
     case 'backup-dr':
     case 'replication-sync':
+    case 'restore-validation':
       return 'System Operations';
     case 'workflow':
       return 'Reports & Workflow';
@@ -703,7 +705,18 @@ export default function App() {
     window.requestAnimationFrame(() => {
       window.scrollTo({ top: 0, behavior: 'auto' });
     });
-  }, [activeRoute]); // project-pulse-route-scroll-reset
+  },
+
+  {
+    route: 'restore-validation',
+    href: '#restore-validation',
+    title: 'Restore Validation',
+    navLabel: 'Restore Validation',
+    description: 'Validate backup integrity, database dump readability, configuration archives, application snapshots, and DR runbook readiness.',
+    status: 'Operational',
+    group: 'System Operations',
+    permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
+  } [activeRoute]); // project-pulse-route-scroll-reset
   const [selectedWeekStart, setSelectedWeekStart] = useState(getSundayIso);
   const [apiHealth, setApiHealth] = useState({ loading: true, data: null, error: null });
   const [roleAdminUsers, setRoleAdminUsers] = useState({ loading: true, data: null, error: null });
@@ -3470,6 +3483,10 @@ Analytics - Variphy / Infortel`}
       </section>
                           {(activeRoute === 'backup-dr' && (hasPermission('SYSTEM_ADMINISTRATION') || hasPermission('MANAGE_ALL'))) ? (
         <BackupDrCenter authSession={authSession} />
+      ) : null}
+
+{(activeRoute === 'restore-validation' && (hasPermission('SYSTEM_ADMINISTRATION') || hasPermission('MANAGE_ALL'))) ? (
+        <RestoreValidationCenter authSession={authSession} />
       ) : null}
 
 {(activeRoute === 'replication-sync' && (hasPermission('SYSTEM_ADMINISTRATION') || hasPermission('MANAGE_ALL'))) ? (

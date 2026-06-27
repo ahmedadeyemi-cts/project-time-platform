@@ -5881,6 +5881,202 @@ app.MapPost("/api/system/replication-sync/settings", async (HttpContext httpCont
     });
 });
 
+
+
+
+
+app.MapGet("/api/system/restore-validation/backups", async (HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var adminContext = await ResolveProjectPulseAdministratorContextAsync(httpContext, connection);
+    if (!adminContext.IsAdministrator)
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Restore Validation Center is restricted to administrators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    const string backupRoot = "/opt/project-time-platform/backups";
+
+    var backups = Directory.Exists(backupRoot)
+        ? Directory.EnumerateFiles(backupRoot, "*.tgz", SearchOption.TopDirectoryOnly)
+            .Select(path =>
+            {
+                var info = new FileInfo(path);
+                var checksumPath = path + ".sha256";
+
+                return new
+                {
+                    name = info.Name,
+                    path = info.FullName,
+                    sizeBytes = info.Length,
+                    createdAt = info.LastWriteTimeUtc,
+                    ageHours = Math.Round((DateTimeOffset.UtcNow - info.LastWriteTimeUtc).TotalHours, 2),
+                    checksumExists = File.Exists(checksumPath)
+                };
+            })
+            .OrderByDescending(item => item.createdAt)
+            .ToArray()
+        : Array.Empty<object>();
+
+    return Results.Ok(new
+    {
+        status = "restore_validation_backups_loaded",
+        backups
+    });
+});
+
+app.MapGet("/api/system/restore-validation/settings", async (HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var adminContext = await ResolveProjectPulseAdministratorContextAsync(httpContext, connection);
+    if (!adminContext.IsAdministrator)
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Restore Validation settings are restricted to administrators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    const string settingsFile = "/opt/project-time-platform/config/restore-validation.env";
+    var settings = File.Exists(settingsFile)
+        ? ReadProjectPulseEnvFile(settingsFile)
+        : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+    return Results.Ok(new
+    {
+        status = "restore_validation_settings_loaded",
+        selectedBackup = settings.GetValueOrDefault("PROJECTPULSE_RESTORE_VALIDATION_SELECTED_BACKUP", "")
+    });
+});
+
+app.MapPost("/api/system/restore-validation/settings", async (HttpContext httpContext, ProjectPulseRestoreValidationSettingsRequest request) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var adminContext = await ResolveProjectPulseAdministratorContextAsync(httpContext, connection);
+    if (!adminContext.IsAdministrator)
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Restore Validation settings are restricted to administrators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    const string backupRoot = "/opt/project-time-platform/backups";
+    const string settingsFile = "/opt/project-time-platform/config/restore-validation.env";
+
+    var selectedBackupRaw = request.SelectedBackup?.Trim() ?? "";
+    var selectedBackup = Path.GetFileName(selectedBackupRaw);
+
+    if (!string.IsNullOrWhiteSpace(selectedBackupRaw))
+    {
+        if (!string.Equals(selectedBackupRaw, selectedBackup, StringComparison.Ordinal))
+        {
+            return Results.BadRequest(new
+            {
+                status = "invalid_restore_point",
+                message = "Selected backup must be a backup filename only, not a path."
+            });
+        }
+
+        if (!selectedBackup.EndsWith(".tgz", StringComparison.OrdinalIgnoreCase))
+        {
+            return Results.BadRequest(new
+            {
+                status = "invalid_restore_point",
+                message = "Selected backup must end with .tgz."
+            });
+        }
+
+        var selectedPath = Path.Combine(backupRoot, selectedBackup);
+        if (!File.Exists(selectedPath))
+        {
+            return Results.BadRequest(new
+            {
+                status = "restore_point_not_found",
+                message = "Selected backup was not found."
+            });
+        }
+    }
+    else
+    {
+        selectedBackup = "";
+    }
+
+    Directory.CreateDirectory(Path.GetDirectoryName(settingsFile)!);
+
+    var content = $"PROJECTPULSE_RESTORE_VALIDATION_SELECTED_BACKUP={QuoteProjectPulseEnvValue(selectedBackup)}{Environment.NewLine}";
+    await File.WriteAllTextAsync(settingsFile, content);
+    await RunProjectPulseProcessAsync("/usr/bin/chmod", "660", settingsFile);
+
+    return Results.Ok(new
+    {
+        status = "restore_validation_settings_saved",
+        message = string.IsNullOrWhiteSpace(selectedBackup)
+            ? "Restore point selection saved. ProjectPulse will validate the latest backup."
+            : "Restore point selection saved. ProjectPulse will validate the selected backup.",
+        selectedBackup
+    });
+});
+
+app.MapGet("/api/system/restore-validation/status", async (HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var adminContext = await ResolveProjectPulseAdministratorContextAsync(httpContext, connection);
+    if (!adminContext.IsAdministrator)
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Restore Validation Center is restricted to administrators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    const string statusFile = "/opt/project-time-platform/state/restore-validation-status.json";
+
+    if (!File.Exists(statusFile))
+    {
+        return Results.Json(new
+        {
+            generatedAt = DateTimeOffset.UtcNow,
+            overallStatus = "unknown",
+            message = "Restore validation has not been exported yet.",
+            checks = Array.Empty<object>()
+        });
+    }
+
+    var json = await File.ReadAllTextAsync(statusFile);
+    return Results.Content(json, "application/json");
+});
+
 app.MapGet("/api/system/replication-sync/status", async (HttpContext httpContext) =>
 {
     var config = DatabaseConfig.FromEnvironment();
@@ -11520,3 +11716,6 @@ internal sealed record ProjectPulseReplicationSyncSettingsRequest(
     string? PeerHost,
     string? PeerUrl,
     int? StaleBackupHours);
+
+
+internal sealed record ProjectPulseRestoreValidationSettingsRequest(string? SelectedBackup);

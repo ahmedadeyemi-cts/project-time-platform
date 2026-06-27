@@ -1,0 +1,10 @@
+[Unit]
+Description=Run ProjectPulse Backup Restore Validation Export
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=15min
+Unit=projectpulse-restore-validation.service
+
+[Install]
+WantedBy=timers.target

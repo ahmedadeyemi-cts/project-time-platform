@@ -4539,3 +4539,38 @@ textarea:focus {
 .app-shell.route-replication-sync #replication-sync-center * {
   box-sizing: border-box;
 }
+
+/* restore-validation-route-isolation */
+.app-shell.route-restore-validation > section:not(#restore-validation-center) {
+  display: none;
+}
+
+.app-shell.route-restore-validation #restore-validation-center {
+  background: transparent;
+  color: #172033;
+  display: flex !important;
+  flex-direction: column;
+  gap: 1.25rem;
+  min-height: calc(100vh - 2rem);
+  width: 100%;
+}
+
+@media (min-width: 1100px) {
+  .app-shell.route-restore-validation.sidebar-expanded #restore-validation-center {
+    margin-left: var(--sidebar-expanded-width, 280px);
+    width: calc(100% - var(--sidebar-expanded-width, 280px));
+  }
+
+  .app-shell.route-restore-validation.sidebar-collapsed #restore-validation-center {
+    margin-left: var(--sidebar-collapsed-width, 88px);
+    width: calc(100% - var(--sidebar-collapsed-width, 88px));
+  }
+}
+
+.app-shell.route-restore-validation .hero-panel,
+.app-shell.route-restore-validation .dashboard-shell,
+.app-shell.route-restore-validation .dashboard-grid,
+.app-shell.route-restore-validation .home-panel,
+.app-shell.route-restore-validation .welcome-panel {
+  display: none !important;
+}
