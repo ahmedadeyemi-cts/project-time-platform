@@ -1,6 +1,6 @@
 # ProjectPulse PSA Production Roadmap
 
-This roadmap tracks the remaining modules needed to mature ProjectPulse into a robust ChangePoint replacement. It reflects the current implementation direction and the expanded requirements around time compliance, reporting, Emburse Certify, project delivery, accounting, help, production hardening, staging, test-data reset controls, and future multi-server readiness.
+This roadmap tracks the remaining modules needed to mature ProjectPulse into a robust ChangePoint replacement. It reflects the current implementation direction and the expanded requirements around time compliance, reporting, Emburse Certify, project delivery, accounting, help, production hardening, staging, test-data reset controls, Azure migration, long-term capacity planning, and future multi-server readiness.
 
 ## Current Foundation
 
@@ -98,6 +98,8 @@ The platform already has a strong foundation in the following areas:
 - Help Center
 - Staging & Deployment
 - Test Data Reset
+- Azure Environment Readiness
+- Capacity Planning
 
 ### Resilience & Recovery
 
@@ -273,7 +275,7 @@ Goal: update the PSA charter to reflect the actual implementation stack and expa
 Scope:
 
 - Update stack from the original proposed stack to the current ProjectPulse implementation direction
-- Document .NET API, React/Vite frontend, PostgreSQL, Linux/systemd operations, internal auth/session model, backup/DR, restore validation, replication readiness, Help Center, Claude Enterprise future integration, Enterprise GitHub migration, notification center, reporting/accountability, staging, test data reset, and production hardening
+- Document .NET API, React/Vite frontend, PostgreSQL, Linux/systemd operations, internal auth/session model, backup/DR, restore validation, replication readiness, Help Center, Claude Enterprise future integration, Enterprise GitHub migration, notification center, reporting/accountability, staging, test data reset, Azure migration, long-term capacity planning, and production hardening
 
 ### 019M-Z — Production Security Hardening & Enterprise GitHub Readiness
 
@@ -330,6 +332,45 @@ Scope:
 - Reset audit log
 - Reset history page
 - Final disable/remove option before production go-live
+
+### 019M-AC — Azure Migration & Production Architecture
+
+Goal: migrate from the current lab/server build into an Azure-aligned staging and production platform.
+
+Scope:
+
+- Azure staging environment
+- Azure production environment
+- Azure PostgreSQL architecture decision
+- Azure App Service, VM, or container hosting decision
+- Azure Blob Storage for documents, receipts, backups, and exports
+- Azure Key Vault for secrets
+- Azure Monitor / Application Insights logging strategy
+- Private networking and firewall rules
+- TLS/DNS production plan
+- Environment separation for dev, staging, and production
+- Data migration plan from the current build into Azure staging
+- Production cutover plan after staging validation
+
+### 019M-AD — Load Testing & Long-Term Capacity Planning
+
+Goal: define compute, database, storage, and scaling requirements for a platform expected to run for 10+ years.
+
+Scope:
+
+- Load testing plan
+- Baseline performance tests
+- Peak usage simulation
+- Notification burst testing
+- Report generation load testing
+- File upload/download testing
+- Database growth forecast
+- Storage growth forecast for receipts, documents, exports, logs, and backups
+- Compute sizing recommendation for staging and production
+- Horizontal and vertical scaling strategy
+- Database indexing and query performance review
+- Retention policies for logs, backups, reports, and notification history
+- Capacity review schedule after go-live
 
 ## Automation Strategy
 
@@ -388,3 +429,5 @@ Recommended automation layers:
 - Enterprise GitHub migration before production
 - No test-data reset control may run in production
 - Staging must be validated before production deployment
+- Production cutover must be based on validated staging results
+- Compute sizing must be validated by load testing before go-live
