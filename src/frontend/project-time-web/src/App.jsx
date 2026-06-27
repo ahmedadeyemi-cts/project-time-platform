@@ -12,6 +12,8 @@ import ServiceControlCenter from './ServiceControlCenter.jsx';
 import BackupDrCenter from './BackupDrCenter.jsx';
 import ReplicationSyncStatusCenter from './ReplicationSyncStatusCenter.jsx';
 import RestoreValidationCenter from './RestoreValidationCenter.jsx';
+import BackupRetentionCenter from './BackupRetentionCenter.jsx';
+import TimeComplianceCenter from './TimeComplianceCenter.jsx';
 
 const workflowCards = [
   {
@@ -311,6 +313,14 @@ function statusToLabel(status, totalHours = 0) {
 
 const roleWorkspaceModules = [
   {
+    route: 'time-compliance',
+    href: '#time-compliance',
+    title: 'Time Compliance & Notification Center',
+    navLabel: 'Time Compliance',
+    description: 'Dry-run preview for missing weekly time, manager and Project Team Coordinator copy visibility, month-end rules, holiday reminders, and notification history.',
+    permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL', 'VIEW_TIME_COMPLIANCE', 'VIEW_AUDIT_HISTORY']
+  },
+  {
     route: 'timesheet',
     href: '#timesheet',
     title: 'Time Entry',
@@ -319,44 +329,28 @@ const roleWorkspaceModules = [
     permissions: ['VIEW_TIME_ENTRY']
   },
   {
-    route: 'utilization',
-    href: '#utilization',
-    title: 'My Utilization',
-    navLabel: 'Utilization',
-    description: 'View current-quarter utilization, target progress, and remaining hours.',
-    permissions: ['VIEW_OWN_UTILIZATION']
-  },
-  {
-    route: 'utilization',
-    href: '#utilization',
-    title: 'Team Utilization',
-    navLabel: 'Utilization',
-    description: 'Review team and individual utilization across resources.',
-    permissions: ['VIEW_TEAM_UTILIZATION', 'VIEW_INDIVIDUAL_UTILIZATION']
-  },
-  {
-    route: 'holiday-admin',
-    href: '#holiday-admin',
-    title: 'Holiday Calendar',
-    navLabel: 'Holidays',
-    description: 'View uploaded company holidays and calendar availability.',
-    permissions: ['VIEW_HOLIDAYS']
-  },
-  {
-    route: 'holiday-admin',
-    href: '#holiday-admin',
-    title: 'Holiday Administration',
-    navLabel: 'Holidays',
-    description: 'Upload and manage company holidays.',
-    permissions: ['MANAGE_HOLIDAYS']
-  },
-  {
     route: 'manager-approval',
     href: '#manager-approval',
     title: 'Approval Inbox',
     navLabel: 'Approvals',
     description: 'Approve, reject, and review submitted time.',
     permissions: ['VIEW_APPROVAL_INBOX', 'APPROVE_TIME']
+  },
+  {
+    route: 'utilization',
+    href: '#utilization',
+    title: 'Utilization',
+    navLabel: 'Utilization',
+    description: 'Review utilization progress, team utilization, and remaining hours.',
+    permissions: ['VIEW_OWN_UTILIZATION', 'VIEW_TEAM_UTILIZATION', 'VIEW_INDIVIDUAL_UTILIZATION']
+  },
+  {
+    route: 'holiday-admin',
+    href: '#holiday-admin',
+    title: 'Holiday Calendar',
+    navLabel: 'Holidays',
+    description: 'View or manage company holidays and calendar availability.',
+    permissions: ['VIEW_HOLIDAYS', 'MANAGE_HOLIDAYS']
   },
   {
     route: 'project-allocation-info',
@@ -369,42 +363,18 @@ const roleWorkspaceModules = [
   {
     route: 'psa-modules',
     href: '#psa-modules',
-    title: 'Project Intake',
+    title: 'PSA Modules',
     navLabel: 'Modules',
-    description: 'Review project requests, intake templates, and project setup workflows.',
-    permissions: ['VIEW_PROJECT_INTAKE']
-  },
-  {
-    route: 'psa-modules',
-    href: '#psa-modules',
-    title: 'Resource Scheduling',
-    navLabel: 'Modules',
-    description: 'View capacity, scheduling, and resource assignment information.',
-    permissions: ['VIEW_RESOURCE_SCHEDULING']
-  },
-  {
-    route: 'psa-modules',
-    href: '#psa-modules',
-    title: 'Expense Management',
-    navLabel: 'Modules',
-    description: 'Review expense reporting and approval workflows.',
-    permissions: ['VIEW_EXPENSES']
+    description: 'Review project intake, resource scheduling, expense management, and executive reporting workflows.',
+    permissions: ['VIEW_PROJECT_INTAKE', 'VIEW_RESOURCE_SCHEDULING', 'VIEW_EXPENSES', 'VIEW_EXECUTIVE_REPORTING']
   },
   {
     route: 'workflow',
     href: '#workflow',
-    title: 'Project Approval',
+    title: 'Workflow',
     navLabel: 'Workflow',
-    description: 'Validate project and task allocation accuracy before accounting review.',
-    permissions: ['PROJECT_TIME_APPROVAL']
-  },
-  {
-    route: 'workflow',
-    href: '#workflow',
-    title: 'Account Reconciliation',
-    navLabel: 'Workflow',
-    description: 'Review approved time before accounting reconciliation and period lock.',
-    permissions: ['VIEW_ACCOUNT_RECONCILIATION']
+    description: 'Review project approval, account reconciliation, exports, and reporting workflow.',
+    permissions: ['PROJECT_TIME_APPROVAL', 'VIEW_ACCOUNT_RECONCILIATION', 'EXPORT_TIME_EXCEL', 'EXPORT_TIME_PDF']
   },
   {
     route: 'audit-history',
@@ -413,22 +383,6 @@ const roleWorkspaceModules = [
     navLabel: 'Audit',
     description: 'Review login history, password reset history, Azure sync failures, notification failures, and system audit events.',
     permissions: ['VIEW_AUDIT_TRAIL', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
-  },
-  {
-    route: 'workflow',
-    href: '#workflow',
-    title: 'Exports',
-    navLabel: 'Workflow',
-    description: 'Export time and reporting data to approved formats.',
-    permissions: ['EXPORT_TIME_EXCEL', 'EXPORT_TIME_PDF']
-  },
-  {
-    route: 'psa-modules',
-    href: '#psa-modules',
-    title: 'Executive Reporting',
-    navLabel: 'Modules',
-    description: 'View executive dashboards and reporting summaries.',
-    permissions: ['VIEW_EXECUTIVE_REPORTING']
   },
   {
     route: 'user-admin',
@@ -447,6 +401,14 @@ const roleWorkspaceModules = [
     permissions: ['VIEW_AZURE_ADMIN', 'MANAGE_AZURE_SYNC', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   },
   {
+    route: 'role-admin',
+    href: '#role-admin',
+    title: 'Role Administration',
+    navLabel: 'Role Admin',
+    description: 'Manage users, roles, access, and administrative configuration.',
+    permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
+  },
+  {
     route: 'service-control',
     href: '#service-control',
     title: 'Service Control Center',
@@ -459,28 +421,31 @@ const roleWorkspaceModules = [
     href: '#backup-dr',
     title: 'Backup / DR Center',
     navLabel: 'Backup / DR',
-    description: 'Review backup readiness, recovery coverage, configuration protection, and DR runbook status.',
+    description: 'Create and validate full ProjectPulse backup bundles.',
     permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   },
-
+  {
+    route: 'restore-validation',
+    href: '#restore-validation',
+    title: 'Restore Validation',
+    navLabel: 'Restore Validation',
+    description: 'Validate selected backup restore points without restoring over production.',
+    permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
+  },
+  {
+    route: 'backup-retention',
+    href: '#backup-retention',
+    title: 'Backup Retention',
+    navLabel: 'Backup Retention',
+    description: 'Review and safely remove older backup points with restore-point protection.',
+    permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
+  },
   {
     route: 'replication-sync',
     href: '#replication-sync',
     title: 'Replication & Sync Status',
     navLabel: 'Replication / Sync',
     description: 'Review failover readiness, database role, service health, backup freshness, deployment state, and peer configuration.',
-    status: 'Operational',
-    group: 'System Operations',
-    permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
-  }
-,
-
-  {
-    route: 'role-admin',
-    href: '#role-admin',
-    title: 'Administration',
-    navLabel: 'Role Admin',
-    description: 'Manage users, roles, access, and administrative configuration.',
     permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   }
 ];
@@ -558,52 +523,43 @@ function userHasPermissionCode(user, permissionCode) {
 }
 
 function getPrimaryNavigationPriority(user) {
-  if (userIsAdministrator(user)) {
-    return ['dashboard', 'service-control', 'backup-dr', 'replication-sync', 'restore-validation', 'user-admin', 'azure-admin'];
-  }
-
-  if (
-    userHasRoleText(user, ['project/team coordinator', 'project team coordinator', 'team coordinator', 'project coordinator']) ||
-    userHasPermissionCode(user, 'VIEW_PROJECT_ALLOCATION_INFO') ||
-    userHasPermissionCode(user, 'MANAGE_PROJECT_ALLOCATION_INFO')
-  ) {
-    return ['dashboard', 'project-allocation-info', 'manager-approval', 'audit-history', 'utilization'];
-  }
-
-  if (
-    userHasPermissionCode(user, 'APPROVE_TIME') ||
-    userHasPermissionCode(user, 'VIEW_APPROVAL_INBOX') ||
-    userHasPermissionCode(user, 'VIEW_TEAM_UTILIZATION')
-  ) {
-    return ['dashboard', 'manager-approval', 'utilization', 'timesheet', 'audit-history'];
-  }
-
-  return ['dashboard', 'timesheet', 'utilization', 'holiday-admin', 'project-allocation-info'];
+  return ['dashboard'];
 }
 
 function getNavigationGroup(item) {
   switch (item.route) {
     case 'timesheet':
     case 'manager-approval':
-    case 'holiday-admin':
     case 'utilization':
-      return 'Time & Approvals';
+    case 'holiday-admin':
+      return 'Work Management';
+
     case 'project-allocation-info':
+    case 'time-compliance':
+      return 'Time Compliance';
     case 'psa-modules':
-      return 'Projects & Allocations';
+      return 'Project Operations';
+
     case 'audit-history':
       return 'Security & Audit';
+
     case 'user-admin':
     case 'azure-admin':
     case 'role-admin':
-      return 'Administration';
+      return 'Admin & Identity';
+
     case 'service-control':
+      return 'Platform Operations';
+
     case 'backup-dr':
-    case 'replication-sync':
     case 'restore-validation':
-      return 'System Operations';
+    case 'backup-retention':
+    case 'replication-sync':
+      return 'Resilience & Recovery';
+
     case 'workflow':
       return 'Reports & Workflow';
+
     default:
       return 'Other';
   }
@@ -611,43 +567,89 @@ function getNavigationGroup(item) {
 
 function buildRoleNavigationModel(user, navigationItems) {
   const availableItems = navigationItems ?? [];
-  const availableByRoute = new Map(availableItems.map((item) => [item.route, item]));
-  const primaryRoutes = getPrimaryNavigationPriority(user);
-  const primary = [];
-
-  primaryRoutes.forEach((route) => {
-    const item = availableByRoute.get(route);
-    if (item && !primary.some((existing) => existing.route === item.route)) {
-      primary.push(item);
-    }
-  });
+  const availableByRoute = new Map();
 
   availableItems.forEach((item) => {
-    if (primary.length < 5 && !primary.some((existing) => existing.route === item.route)) {
-      primary.push(item);
+    if (!availableByRoute.has(item.route)) {
+      availableByRoute.set(item.route, item);
     }
   });
 
-  const primaryRoutesSet = new Set(primary.map((item) => item.route));
-  const groupOrder = ['Time & Approvals', 'Projects & Allocations', 'Security & Audit', 'Administration', 'System Operations', 'Reports & Workflow', 'Other'];
-  const grouped = new Map();
+  const dashboardItem = availableByRoute.get('dashboard') ?? {
+    route: 'dashboard',
+    href: '#dashboard',
+    label: 'Dashboard'
+  };
 
-  availableItems.forEach((item) => {
-    if (primaryRoutesSet.has(item.route)) return;
+  const primary = [dashboardItem];
 
-    const groupName = getNavigationGroup(item);
-    if (!grouped.has(groupName)) {
-      grouped.set(groupName, []);
-    }
+  const groupOrder = [
+    'Work Management',
+    'Project Operations',
+    'Security & Audit',
+    'Admin & Identity',
+    'Platform Operations',
+    'Resilience & Recovery',
+    'Reports & Workflow',
+    'Other'
+  ];
 
-    grouped.get(groupName).push(item);
-  });
+  const routeOrder = [
+    'timesheet',
+    'manager-approval',
+    'utilization',
+    'holiday-admin',
+    'project-allocation-info',
+    'time-compliance',
+    'psa-modules',
+    'audit-history',
+    'user-admin',
+    'azure-admin',
+    'role-admin',
+    'service-control',
+    'backup-dr',
+    'restore-validation',
+    'backup-retention',
+    'replication-sync',
+    'workflow'
+  ];
 
-  const groups = [...grouped.entries()]
-    .map(([name, items]) => ({ name, items }))
-    .sort((left, right) => groupOrder.indexOf(left.name) - groupOrder.indexOf(right.name));
+  const routeRank = new Map(routeOrder.map((route, index) => [route, index]));
+  const groupMap = new Map(groupOrder.map((name) => [name, {
+    name,
+    expanded: true,
+    items: []
+  }]));
 
-  return { primary, groups };
+  [...availableByRoute.values()]
+    .filter((item) => item.route !== 'dashboard')
+    .sort((a, b) => {
+      const aRank = routeRank.has(a.route) ? routeRank.get(a.route) : 999;
+      const bRank = routeRank.has(b.route) ? routeRank.get(b.route) : 999;
+
+      if (aRank !== bRank) return aRank - bRank;
+      return String(a.label || '').localeCompare(String(b.label || ''));
+    })
+    .forEach((item) => {
+      const groupName = getNavigationGroup(item);
+
+      if (!groupMap.has(groupName)) {
+        groupMap.set(groupName, {
+          name: groupName,
+          expanded: true,
+          items: []
+        });
+      }
+
+      groupMap.get(groupName).items.push(item);
+    });
+
+  const groups = [...groupMap.values()].filter((group) => group.items.length > 0);
+
+  return {
+    primary,
+    groups
+  };
 }
 
 
@@ -713,6 +715,18 @@ export default function App() {
     title: 'Restore Validation',
     navLabel: 'Restore Validation',
     description: 'Validate backup integrity, database dump readability, configuration archives, application snapshots, and DR runbook readiness.',
+    status: 'Operational',
+    group: 'System Operations',
+    permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
+  },
+
+
+  {
+    route: 'backup-retention',
+    href: '#backup-retention',
+    title: 'Backup Retention',
+    navLabel: 'Backup Retention',
+    description: 'Review backup points and safely remove older backups with restore-point protection.',
     status: 'Operational',
     group: 'System Operations',
     permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
@@ -3485,6 +3499,10 @@ Analytics - Variphy / Infortel`}
         <BackupDrCenter authSession={authSession} />
       ) : null}
 
+{(activeRoute === 'backup-retention' && (hasPermission('SYSTEM_ADMINISTRATION') || hasPermission('MANAGE_ALL'))) ? (
+        <BackupRetentionCenter authSession={authSession} />
+      ) : null}
+
 {(activeRoute === 'restore-validation' && (hasPermission('SYSTEM_ADMINISTRATION') || hasPermission('MANAGE_ALL'))) ? (
         <RestoreValidationCenter authSession={authSession} />
       ) : null}
@@ -4039,6 +4057,12 @@ Analytics - Variphy / Infortel`}
         <ProjectAllocationInfoPanel />
       </section>
 
+      {(activeRoute === 'time-compliance' && canSeeAny(['SYSTEM_ADMINISTRATION', 'MANAGE_ALL', 'VIEW_TIME_COMPLIANCE', 'VIEW_AUDIT_HISTORY'])) ? (
+        <section id="time-compliance" className="panel time-compliance-route-panel">
+          <TimeComplianceCenter />
+        </section>
+      ) : null}
+
       <section id="psa-modules" className={`panel module-foundation-panel ${canViewPsaModules ? '' : 'access-hidden'}`}>
         <div className="section-header compact">
           <div>
@@ -4243,6 +4267,6 @@ Analytics - Variphy / Infortel`}
           </article>
         ))}
       </section>
-    </main>
+</main>
   );
 }

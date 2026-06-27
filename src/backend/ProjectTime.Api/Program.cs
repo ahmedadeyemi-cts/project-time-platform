@@ -4,6 +4,7 @@ using Npgsql;
 using System.Security.Cryptography;
 using System.Text;
 using System.Runtime.InteropServices;
+using ProjectTime.Api.Modules;
 
 const string DevelopmentUserEmail = "ahmed.adeyemi@ussignal.local";
 const string DevelopmentUserDisplayName = "Ahmed Adeyemi";
@@ -6041,6 +6042,227 @@ app.MapPost("/api/system/restore-validation/settings", async (HttpContext httpCo
     });
 });
 
+
+
+app.MapGet("/api/system/backup-retention/status", async (HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var adminContext = await ResolveProjectPulseAdministratorContextAsync(httpContext, connection);
+    if (!adminContext.IsAdministrator)
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Backup Retention Center is restricted to administrators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    const string backupRoot = "/opt/project-time-platform/backups";
+    const string restoreSettingsFile = "/opt/project-time-platform/config/restore-validation.env";
+    const string deleteStateFile = "/opt/project-time-platform/state/backup-delete-status.json";
+
+    var restoreSettings = File.Exists(restoreSettingsFile)
+        ? ReadProjectPulseEnvFile(restoreSettingsFile)
+        : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+    var selectedRestorePoint = restoreSettings.GetValueOrDefault("PROJECTPULSE_RESTORE_VALIDATION_SELECTED_BACKUP", "");
+
+    var backups = new List<object>();
+
+    if (Directory.Exists(backupRoot))
+    {
+        foreach (var filePath in Directory.EnumerateFiles(backupRoot, "*.tgz", SearchOption.TopDirectoryOnly))
+        {
+            var info = new FileInfo(filePath);
+            var checksumPath = filePath + ".sha256";
+
+            backups.Add(new
+            {
+                name = info.Name,
+                path = info.FullName,
+                sizeBytes = info.Length,
+                createdAt = info.LastWriteTimeUtc,
+                ageHours = Math.Round((DateTime.UtcNow - info.LastWriteTimeUtc).TotalHours, 2),
+                checksumExists = File.Exists(checksumPath),
+                isSelectedRestorePoint = string.Equals(info.Name, selectedRestorePoint, StringComparison.Ordinal)
+            });
+        }
+    }
+
+    backups = backups
+        .OrderByDescending(item => ((dynamic)item).createdAt)
+        .ToList();
+
+    object? deleteStatus = null;
+
+    if (File.Exists(deleteStateFile))
+    {
+        try
+        {
+            var deleteJson = await File.ReadAllTextAsync(deleteStateFile);
+            deleteStatus = System.Text.Json.JsonSerializer.Deserialize<object>(deleteJson);
+        }
+        catch
+        {
+            deleteStatus = new
+            {
+                overallStatus = "unknown",
+                message = "Backup delete status file could not be parsed."
+            };
+        }
+    }
+
+    return Results.Ok(new
+    {
+        status = "backup_retention_status_loaded",
+        generatedAt = DateTimeOffset.UtcNow,
+        backupCount = backups.Count,
+        selectedRestorePoint,
+        canDelete = backups.Count > 1,
+        backups,
+        deleteStatus
+    });
+});
+
+app.MapPost("/api/system/backup-retention/delete", async (HttpContext httpContext, ProjectPulseBackupRetentionDeleteRequest request) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var adminContext = await ResolveProjectPulseAdministratorContextAsync(httpContext, connection);
+    if (!adminContext.IsAdministrator)
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Backup Retention Center is restricted to administrators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    if (request.Confirm != true)
+    {
+        return Results.BadRequest(new
+        {
+            status = "confirmation_required",
+            message = "Backup deletion requires explicit confirmation."
+        });
+    }
+
+    const string backupRoot = "/opt/project-time-platform/backups";
+    const string pendingDir = "/opt/project-time-platform/backup-delete-requests/pending";
+    const string restoreSettingsFile = "/opt/project-time-platform/config/restore-validation.env";
+
+    var backupNameRaw = request.BackupName?.Trim() ?? "";
+    var backupName = Path.GetFileName(backupNameRaw);
+
+    if (string.IsNullOrWhiteSpace(backupName))
+    {
+        return Results.BadRequest(new
+        {
+            status = "backup_name_required",
+            message = "Backup name is required."
+        });
+    }
+
+    if (!string.Equals(backupNameRaw, backupName, StringComparison.Ordinal))
+    {
+        return Results.BadRequest(new
+        {
+            status = "invalid_backup_name",
+            message = "Backup name must be a filename only, not a path."
+        });
+    }
+
+    if (!backupName.EndsWith(".tgz", StringComparison.OrdinalIgnoreCase))
+    {
+        return Results.BadRequest(new
+        {
+            status = "invalid_backup_name",
+            message = "Backup name must end with .tgz."
+        });
+    }
+
+    var backupPath = Path.Combine(backupRoot, backupName);
+
+    if (!File.Exists(backupPath))
+    {
+        return Results.BadRequest(new
+        {
+            status = "backup_not_found",
+            message = "Backup file was not found."
+        });
+    }
+
+    var backupCount = Directory.Exists(backupRoot)
+        ? Directory.EnumerateFiles(backupRoot, "*.tgz", SearchOption.TopDirectoryOnly).Count()
+        : 0;
+
+    if (backupCount <= 1)
+    {
+        return Results.BadRequest(new
+        {
+            status = "last_backup_protected",
+            message = "Cannot delete the last remaining backup."
+        });
+    }
+
+    var restoreSettings = File.Exists(restoreSettingsFile)
+        ? ReadProjectPulseEnvFile(restoreSettingsFile)
+        : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+    var selectedRestorePoint = restoreSettings.GetValueOrDefault("PROJECTPULSE_RESTORE_VALIDATION_SELECTED_BACKUP", "");
+
+    if (!string.IsNullOrWhiteSpace(selectedRestorePoint) &&
+        string.Equals(selectedRestorePoint, backupName, StringComparison.Ordinal))
+    {
+        return Results.BadRequest(new
+        {
+            status = "selected_restore_point_protected",
+            message = "Cannot delete the backup currently selected as the Restore Validation restore point."
+        });
+    }
+
+    Directory.CreateDirectory(pendingDir);
+
+    var requestId = $"backup-delete-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}-{Guid.NewGuid():N}";
+    var requestFile = Path.Combine(pendingDir, requestId + ".json");
+
+    var queuePayload = new
+    {
+        requestId,
+        backupName,
+        reason = request.Reason?.Trim() ?? "",
+        requestedAt = DateTimeOffset.UtcNow
+    };
+
+    await File.WriteAllTextAsync(
+        requestFile,
+        System.Text.Json.JsonSerializer.Serialize(queuePayload, new System.Text.Json.JsonSerializerOptions
+        {
+            WriteIndented = true
+        }));
+
+    await RunProjectPulseProcessAsync("/usr/bin/chmod", "660", requestFile);
+
+    return Results.Accepted($"/api/system/backup-retention/status", new
+    {
+        status = "backup_delete_queued",
+        message = "Backup deletion was queued. The root-owned delete runner will process it shortly.",
+        requestId,
+        backupName
+    });
+});
+
 app.MapGet("/api/system/restore-validation/status", async (HttpContext httpContext) =>
 {
     var config = DatabaseConfig.FromEnvironment();
@@ -9671,6 +9893,8 @@ app.MapPost("/api/admin/azure/users/reconcile", async (HttpContext httpContext) 
     });
 });
 
+app.MapTimeComplianceEndpoints();
+
 app.Run();
 
 
@@ -11719,3 +11943,9 @@ internal sealed record ProjectPulseReplicationSyncSettingsRequest(
 
 
 internal sealed record ProjectPulseRestoreValidationSettingsRequest(string? SelectedBackup);
+
+
+internal sealed record ProjectPulseBackupRetentionDeleteRequest(
+    string? BackupName,
+    string? Reason,
+    bool? Confirm);
