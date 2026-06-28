@@ -758,7 +758,7 @@ const roleWorkspaceModules = [
     title: 'Workflow',
     navLabel: 'Workflow',
     description: 'Review project approval, account reconciliation, exports, and reporting workflow.',
-    permissions: ['PROJECT_TIME_APPROVAL', 'VIEW_ACCOUNT_RECONCILIATION', 'EXPORT_TIME_EXCEL', 'EXPORT_TIME_PDF']
+    permissions: ['PROJECT_TIME_APPROVAL', 'VIEW_APPROVAL_WORKFLOW', 'VIEW_ACCOUNT_RECONCILIATION', 'VIEW_WORKFLOW_OPERATIONAL_READINESS', 'VIEW_WORKFLOW_AUDIT_EVIDENCE', 'EXPORT_TIME_EXCEL', 'EXPORT_TIME_PDF', 'DOWNLOAD_TIME_EXPORT_PACKAGE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   },
   {
     route: 'audit-history',
@@ -1261,7 +1261,28 @@ function getInstalledProjectPulseModuleRegistry() {
       group: 'Operations',
       permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
       description: 'Shows replication and synchronization status across database, backup, and operational readiness workflows.'
-    }
+    },
+  {
+    route: 'workflow',
+    title: 'Workflow Operational Readiness',
+    group: 'Approval / Export / Audit',
+    permissions: ['VIEW_WORKFLOW_OPERATIONAL_READINESS', 'VIEW_APPROVAL_WORKFLOW', 'PROJECT_TIME_APPROVAL', 'VIEW_ACCOUNT_RECONCILIATION', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    description: 'Shows manager review, PM validation, accounting review, export readiness, role guidance, and workflow stage health.'
+  },
+  {
+    route: 'workflow',
+    title: 'Export Packages',
+    group: 'Approval / Export / Audit',
+    permissions: ['DOWNLOAD_TIME_EXPORT_PACKAGE', 'EXPORT_TIME_EXCEL', 'EXPORT_TIME_PDF', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    description: 'Generates and downloads CSV/Excel-ready export packages with item counts, hours, package metadata, and audit evidence.'
+  },
+  {
+    route: 'workflow',
+    title: 'Workflow Audit Evidence',
+    group: 'Approval / Export / Audit',
+    permissions: ['VIEW_WORKFLOW_AUDIT_EVIDENCE', 'VIEW_AUDIT_TRAIL', 'VIEW_ACCOUNT_RECONCILIATION', 'PROJECT_TIME_APPROVAL', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    description: 'Displays detailed audit evidence for approval, reconciliation, lock, and export package events.'
+  },
   ];
 }
 

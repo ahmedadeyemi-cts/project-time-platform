@@ -1,6 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import './approval-export-audit-workflow-center.css';
 
+function formatWorkflowDate(value) {
+  if (!value) return 'No date recorded';
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return String(value);
+  }
+
+  return parsed.toLocaleString();
+}
+
 function getStoredAuthSession() {
   try {
     const rawSession = window.localStorage.getItem('projectPulseAuthSession');
@@ -156,7 +167,7 @@ export default function ApprovalExportAuditWorkflowCenter() {
 
   async function createExport(exportFormat) {
     try {
-      setStatusMessage(`Preparing ${exportFormat.toUpperCase()} export foundation record...`);
+      setStatusMessage(`Preparing ${exportFormat.toUpperCase()} export package record...`);
 
       const result = await postJson('/api/time-exports', {
         exportFormat,
@@ -165,12 +176,50 @@ export default function ApprovalExportAuditWorkflowCenter() {
         notes: `Prepared from Approval / Export / Audit Workflow screen for ${weekStart} through ${weekEnd}.`
       });
 
-      setStatusMessage(result.message ?? 'Export foundation record prepared.');
+      setStatusMessage(result.message ?? 'Export package record prepared.');
       await loadWorkflow();
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : 'Export preparation failed.');
     }
   }
+
+  async function downloadExportPackage(item) {
+    try {
+      if (!item?.exportId) {
+        setStatusMessage('No export package selected.');
+        return;
+      }
+
+      setStatusMessage(`Downloading ${item.fileName || 'export package'}...`);
+
+      const response = await fetch(`/api/time-exports/${item.exportId}/download`, {
+        headers: getProjectPulseAuthHeaders()
+      });
+
+      if (!response.ok) {
+        const raw = await response.text();
+        throw new Error(raw || `Download failed with HTTP ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const fallbackName = `projectpulse-time-export-${weekStart}-${weekEnd}.csv`;
+
+      link.href = url;
+      link.download = String(item.fileName || fallbackName).replace(/\.xlsx$|\.pdf$/i, '.csv');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      setStatusMessage('Export package downloaded and audit evidence recorded.');
+      await loadWorkflow();
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : 'Export package download failed.');
+    }
+  }
+
 
   return (
     <section className="approval-export-center">
@@ -293,7 +342,7 @@ export default function ApprovalExportAuditWorkflowCenter() {
           {auditEvidence.map((event) => (
             <article key={event.auditLogId}>
               <strong>{labelStatus(event.action)}</strong>
-              <small>{event.entityType} · {event.actorName} · {formatDate(event.createdAt)}</small>
+              <small>{event.entityType} · {event.actorName} · {formatWorkflowDate(event.createdAt)}</small>
               <p>{event.evidencePreview || 'Audit event recorded.'}</p>
             </article>
           ))}
@@ -371,14 +420,14 @@ export default function ApprovalExportAuditWorkflowCenter() {
           <div className="approval-export-panel-heading">
             <div>
               <h3>Export Readiness</h3>
-              <p className="muted">Prepare Excel/PDF-ready export records for accounting review. File rendering can be connected later.</p>
+              <p className="muted">Prepare Excel/CSV-ready export records for accounting review, then download the generated export package with audit evidence.</p>
             </div>
             <span>{exportsList.length} export(s)</span>
           </div>
 
           {access.canExport || access.canViewAll ? (
             <div className="approval-export-create-row">
-              <button type="button" className="primary-action" onClick={() => createExport('excel')}>Prepare Excel export</button>
+              <button type="button" className="primary-action" onClick={() => createExport('excel')}>Prepare Excel/CSV export</button>
               <button type="button" className="secondary-action" onClick={() => createExport('pdf')}>Prepare PDF export</button>
             </div>
           ) : null}
@@ -409,6 +458,27 @@ export default function ApprovalExportAuditWorkflowCenter() {
               </tbody>
             </table>
           </div>
+
+          {(access.canExport || access.canViewAll) && exportsList.length > 0 ? (
+            <div className="approval-export-package-list">
+              {exportsList.map((item) => (
+                <article key={`package-${item.exportId}`} className="approval-export-package-card">
+                  <div>
+                    <strong>{item.fileName || 'Export package'}</strong>
+                    <small>
+                      {String(item.exportFormat ?? '').toUpperCase()} · {labelStatus(item.exportStatus)} · {formatNumber(item.itemCount)} item(s) · {formatNumber(item.totalHours)} hour(s)
+                    </small>
+                    <p>
+                      Download-ready: {item.downloadReady ? 'Yes' : 'No'} · Downloads: {formatNumber(item.packageDownloadCount)}
+                    </p>
+                  </div>
+                  <button type="button" className="secondary-action" onClick={() => downloadExportPackage(item)}>
+                    Download CSV package
+                  </button>
+                </article>
+              ))}
+            </div>
+          ) : null}
 
           {!exportsData.loading && exportsList.length === 0 ? <p className="muted">No export records have been prepared yet.</p> : null}
         </article>

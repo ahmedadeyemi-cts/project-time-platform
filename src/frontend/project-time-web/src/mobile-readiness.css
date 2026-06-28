@@ -667,3 +667,15 @@ button[type='submit'] {
     grid-template-columns: 1fr !important;
   }
 }
+
+/* 019M-AW / 019M-AX / 019M-AY export package mobile readiness */
+@media (max-width: 820px) {
+  .approval-export-package-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .approval-export-package-card button {
+    width: 100%;
+  }
+}

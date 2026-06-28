@@ -296,3 +296,36 @@
   color: var(--muted);
   margin-top: 0.2rem;
 }
+
+/* 019M-AW / 019M-AX / 019M-AY export package download readiness */
+.approval-export-package-list {
+  display: grid;
+  gap: 0.85rem;
+  margin-top: 1rem;
+}
+
+.approval-export-package-card {
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: var(--card);
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  padding: 1rem;
+}
+
+.approval-export-package-card strong,
+.approval-export-package-card small {
+  display: block;
+}
+
+.approval-export-package-card small,
+.approval-export-package-card p {
+  color: var(--muted);
+  margin: 0.25rem 0 0;
+}
+
+.approval-export-package-card button {
+  white-space: nowrap;
+}

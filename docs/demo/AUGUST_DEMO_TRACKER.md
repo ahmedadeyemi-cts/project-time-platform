@@ -530,3 +530,15 @@
 - Added audit evidence feed for workflow-related audit events.
 - Added mobile-ready operational readiness and audit evidence panels to the Approval / Export / Audit Workflow route.
 - No workflow status changes are performed by the readiness endpoint.
+
+## 019M-AW / 019M-AX / 019M-AY Export Package, Dashboard Registry, and Audit Evidence Sprint
+
+### Added
+- Added export package download permission and export package readiness permission.
+- Added workflow audit evidence detail permission.
+- Added export package metadata columns for generated timestamp, content type, download count, and last download tracking.
+- Added CSV/Excel-ready export package download endpoint.
+- Added export package detail endpoint with package metadata, scoped export items, and audit evidence.
+- Added export package download controls to the Approval / Export / Audit Workflow route.
+- Added dashboard module registry cards for Workflow Operational Readiness, Export Packages, and Workflow Audit Evidence.
+- Updated workflow route permissions so read-only Executive/workflow roles can see appropriate dashboard/module cards while export downloads remain restricted.

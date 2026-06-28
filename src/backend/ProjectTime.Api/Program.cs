@@ -17505,7 +17505,12 @@ app.MapGet("/api/time-exports", async (HttpContext httpContext) =>
             total_hours,
             file_name,
             notes,
-            created_at
+            created_at,
+            COALESCE(package_download_count, 0) AS package_download_count,
+            package_last_downloaded_at,
+            package_generated_at,
+            COALESCE(package_content_type, 'text/csv') AS package_content_type,
+            COALESCE(package_file_extension, 'csv') AS package_file_extension
         FROM time_workflow_exports
         ORDER BY created_at DESC
         LIMIT 100;
@@ -17527,7 +17532,13 @@ app.MapGet("/api/time-exports", async (HttpContext httpContext) =>
                 totalHours = reader.GetDecimal(7),
                 fileName = reader.IsDBNull(8) ? null : reader.GetString(8),
                 notes = reader.IsDBNull(9) ? null : reader.GetString(9),
-                createdAt = reader.GetFieldValue<DateTimeOffset>(10)
+                createdAt = reader.GetFieldValue<DateTimeOffset>(10),
+                packageDownloadCount = reader.GetInt32(11),
+                packageLastDownloadedAt = reader.IsDBNull(12) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(12),
+                packageGeneratedAt = reader.IsDBNull(13) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(13),
+                packageContentType = reader.IsDBNull(14) ? "text/csv" : reader.GetString(14),
+                packageFileExtension = reader.IsDBNull(15) ? "csv" : reader.GetString(15),
+                downloadReady = true
             });
         }
     }
@@ -17540,6 +17551,397 @@ app.MapGet("/api/time-exports", async (HttpContext httpContext) =>
     });
 });
 
+
+
+// 019M-AW Export Package Generation + Download Readiness
+app.MapGet("/api/time-exports/{exportId:guid}/download", async (Guid exportId, HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var access = await LoadApprovalExportWorkflowAccessAsync(connection, sessionUserId.Value);
+    if (!access.CanExport && !access.CanViewAll)
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Export package download is restricted to export-enabled roles."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    string exportFormat;
+    DateOnly? weekStart;
+    DateOnly? weekEnd;
+    string? fileName;
+
+    await using (var exportCommand = new NpgsqlCommand("""
+        SELECT export_format, week_start, week_end, file_name
+        FROM time_workflow_exports
+        WHERE time_workflow_export_id = @export_id;
+        """, connection))
+    {
+        exportCommand.Parameters.AddWithValue("export_id", exportId);
+
+        await using var reader = await exportCommand.ExecuteReaderAsync();
+        if (!await reader.ReadAsync())
+        {
+            return Results.NotFound(new
+            {
+                status = "export_not_found",
+                message = "The requested export package was not found."
+            });
+        }
+
+        exportFormat = reader.GetString(0);
+        weekStart = reader.IsDBNull(1) ? null : reader.GetFieldValue<DateOnly>(1);
+        weekEnd = reader.IsDBNull(2) ? null : reader.GetFieldValue<DateOnly>(2);
+        fileName = reader.IsDBNull(3) ? null : reader.GetString(3);
+    }
+
+    var start = weekStart ?? GetSundayForDate(DateOnly.FromDateTime(DateTime.UtcNow));
+    var end = weekEnd ?? start.AddDays(6);
+
+    var csv = new System.Text.StringBuilder();
+    csv.AppendLine("Export Id,Export Format,Week Start,Week End,Work Date,Employee Name,Employee Email,Project Code,Project Name,Task Code,Task Name,Hours,Billable,Status,Description");
+
+    var itemCount = 0;
+    decimal totalHours = 0;
+
+    await using (var itemCommand = new NpgsqlCommand("""
+        SELECT
+            te.work_date,
+            COALESCE(employee.display_name, employee.email, '') AS employee_name,
+            employee.email AS employee_email,
+            COALESCE(p.project_code, '') AS project_code,
+            COALESCE(p.project_name, '') AS project_name,
+            COALESCE(pt.task_code, '') AS task_code,
+            COALESCE(pt.task_name, '') AS task_name,
+            te.hours,
+            te.billable,
+            te.status,
+            COALESCE(te.description, '') AS description
+        FROM time_entries te
+        JOIN app_users employee
+            ON employee.user_id = te.user_id
+        LEFT JOIN projects p
+            ON p.project_id = te.project_id
+        LEFT JOIN project_tasks pt
+            ON pt.task_id = te.task_id
+        WHERE te.work_date BETWEEN @week_start AND @week_end
+          AND te.status IN ('accounting_ready', 'reconciled', 'locked')
+        ORDER BY te.work_date, employee.display_name, p.project_code, pt.task_code;
+        """, connection))
+    {
+        itemCommand.Parameters.AddWithValue("week_start", start);
+        itemCommand.Parameters.AddWithValue("week_end", end);
+
+        await using var reader = await itemCommand.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            itemCount++;
+            totalHours += reader.GetDecimal(7);
+
+            var fields = new[]
+            {
+                ProjectPulseCsvField(exportId),
+                ProjectPulseCsvField(exportFormat),
+                ProjectPulseCsvField(start),
+                ProjectPulseCsvField(end),
+                ProjectPulseCsvField(reader.GetFieldValue<DateOnly>(0)),
+                ProjectPulseCsvField(reader.GetString(1)),
+                ProjectPulseCsvField(reader.GetString(2)),
+                ProjectPulseCsvField(reader.GetString(3)),
+                ProjectPulseCsvField(reader.GetString(4)),
+                ProjectPulseCsvField(reader.GetString(5)),
+                ProjectPulseCsvField(reader.GetString(6)),
+                ProjectPulseCsvField(reader.GetDecimal(7)),
+                ProjectPulseCsvField(reader.GetBoolean(8) ? "Yes" : "No"),
+                ProjectPulseCsvField(reader.GetString(9)),
+                ProjectPulseCsvField(reader.GetString(10))
+            };
+
+            csv.AppendLine(string.Join(",", fields));
+        }
+    }
+
+    await using (var updateCommand = new NpgsqlCommand("""
+        UPDATE time_workflow_exports
+        SET package_generated_at = COALESCE(package_generated_at, NOW()),
+            package_content_type = 'text/csv',
+            package_file_extension = 'csv',
+            package_download_count = COALESCE(package_download_count, 0) + 1,
+            package_last_downloaded_at = NOW(),
+            package_last_downloaded_by_user_id = @user_id,
+            item_count = @item_count,
+            total_hours = @total_hours,
+            updated_at = NOW()
+        WHERE time_workflow_export_id = @export_id;
+        """, connection))
+    {
+        updateCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+        updateCommand.Parameters.AddWithValue("export_id", exportId);
+        updateCommand.Parameters.AddWithValue("item_count", itemCount);
+        updateCommand.Parameters.AddWithValue("total_hours", totalHours);
+        await updateCommand.ExecuteNonQueryAsync();
+    }
+
+    await using (var auditCommand = new NpgsqlCommand("""
+        INSERT INTO audit_logs (
+            actor_user_id,
+            action,
+            entity_type,
+            entity_id,
+            new_value
+        )
+        VALUES (
+            @actor_user_id,
+            'time_export_package_downloaded',
+            'time_workflow_export',
+            @entity_id,
+            @new_value::jsonb
+        );
+        """, connection))
+    {
+        var auditValue = JsonSerializer.Serialize(new
+        {
+            exportId,
+            exportFormat,
+            weekStart = start,
+            weekEnd = end,
+            itemCount,
+            totalHours,
+            packageContentType = "text/csv",
+            generatedAtUtc = DateTimeOffset.UtcNow
+        });
+
+        auditCommand.Parameters.AddWithValue("actor_user_id", sessionUserId.Value);
+        auditCommand.Parameters.AddWithValue("entity_id", exportId);
+        auditCommand.Parameters.AddWithValue("new_value", auditValue);
+        await auditCommand.ExecuteNonQueryAsync();
+    }
+
+    var baseName = string.IsNullOrWhiteSpace(fileName)
+        ? $"projectpulse-time-export-{start:yyyyMMdd}-{end:yyyyMMdd}"
+        : System.IO.Path.GetFileNameWithoutExtension(fileName);
+
+    var downloadFileName = $"{baseName}.csv";
+    var bytes = System.Text.Encoding.UTF8.GetBytes(csv.ToString());
+
+    return Results.File(bytes, "text/csv; charset=utf-8", downloadFileName);
+});
+
+
+// 019M-AY Workflow Export Audit Evidence Detail
+app.MapGet("/api/time-exports/{exportId:guid}/details", async (Guid exportId, HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var access = await LoadApprovalExportWorkflowAccessAsync(connection, sessionUserId.Value);
+    if (!access.CanAudit && !access.CanExport && !access.CanManageAccounting && !access.CanViewAll)
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Export audit evidence is restricted to workflow audit, export, accounting, and administrator roles."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    object? exportRecord = null;
+    DateOnly start = GetSundayForDate(DateOnly.FromDateTime(DateTime.UtcNow));
+    DateOnly end = start.AddDays(6);
+
+    await using (var exportCommand = new NpgsqlCommand("""
+        SELECT
+            time_workflow_export_id,
+            export_format,
+            week_start,
+            week_end,
+            export_status,
+            requested_by_email,
+            item_count,
+            total_hours,
+            file_name,
+            notes,
+            created_at,
+            COALESCE(package_download_count, 0) AS package_download_count,
+            package_last_downloaded_at,
+            package_generated_at,
+            COALESCE(package_content_type, 'text/csv') AS package_content_type,
+            COALESCE(package_file_extension, 'csv') AS package_file_extension
+        FROM time_workflow_exports
+        WHERE time_workflow_export_id = @export_id;
+        """, connection))
+    {
+        exportCommand.Parameters.AddWithValue("export_id", exportId);
+
+        await using var reader = await exportCommand.ExecuteReaderAsync();
+        if (!await reader.ReadAsync())
+        {
+            return Results.NotFound(new
+            {
+                status = "export_not_found",
+                message = "The requested export package was not found."
+            });
+        }
+
+        start = reader.IsDBNull(2) ? start : reader.GetFieldValue<DateOnly>(2);
+        end = reader.IsDBNull(3) ? end : reader.GetFieldValue<DateOnly>(3);
+
+        exportRecord = new
+        {
+            exportId = reader.GetGuid(0),
+            exportFormat = reader.GetString(1),
+            weekStart = reader.IsDBNull(2) ? (DateOnly?)null : reader.GetFieldValue<DateOnly>(2),
+            weekEnd = reader.IsDBNull(3) ? (DateOnly?)null : reader.GetFieldValue<DateOnly>(3),
+            exportStatus = reader.GetString(4),
+            requestedByEmail = reader.IsDBNull(5) ? null : reader.GetString(5),
+            itemCount = reader.GetInt32(6),
+            totalHours = reader.GetDecimal(7),
+            fileName = reader.IsDBNull(8) ? null : reader.GetString(8),
+            notes = reader.IsDBNull(9) ? null : reader.GetString(9),
+            createdAt = reader.GetFieldValue<DateTimeOffset>(10),
+            packageDownloadCount = reader.GetInt32(11),
+            packageLastDownloadedAt = reader.IsDBNull(12) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(12),
+            packageGeneratedAt = reader.IsDBNull(13) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(13),
+            packageContentType = reader.IsDBNull(14) ? "text/csv" : reader.GetString(14),
+            packageFileExtension = reader.IsDBNull(15) ? "csv" : reader.GetString(15),
+            downloadReady = true
+        };
+    }
+
+    var items = new List<object>();
+    await using (var itemCommand = new NpgsqlCommand("""
+        SELECT
+            te.time_entry_id,
+            te.work_date,
+            COALESCE(employee.display_name, employee.email, '') AS employee_name,
+            employee.email,
+            COALESCE(p.project_code, '') AS project_code,
+            COALESCE(p.project_name, '') AS project_name,
+            COALESCE(pt.task_code, '') AS task_code,
+            COALESCE(pt.task_name, '') AS task_name,
+            te.hours,
+            te.billable,
+            te.status,
+            COALESCE(te.description, '') AS description
+        FROM time_entries te
+        JOIN app_users employee
+            ON employee.user_id = te.user_id
+        LEFT JOIN projects p
+            ON p.project_id = te.project_id
+        LEFT JOIN project_tasks pt
+            ON pt.task_id = te.task_id
+        WHERE te.work_date BETWEEN @week_start AND @week_end
+          AND te.status IN ('accounting_ready', 'reconciled', 'locked')
+        ORDER BY te.work_date, employee.display_name, p.project_code, pt.task_code;
+        """, connection))
+    {
+        itemCommand.Parameters.AddWithValue("week_start", start);
+        itemCommand.Parameters.AddWithValue("week_end", end);
+
+        await using var reader = await itemCommand.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            items.Add(new
+            {
+                timeEntryId = reader.GetGuid(0),
+                workDate = reader.GetFieldValue<DateOnly>(1),
+                employeeName = reader.GetString(2),
+                employeeEmail = reader.GetString(3),
+                projectCode = reader.GetString(4),
+                projectName = reader.GetString(5),
+                taskCode = reader.GetString(6),
+                taskName = reader.GetString(7),
+                hours = reader.GetDecimal(8),
+                billable = reader.GetBoolean(9),
+                status = reader.GetString(10),
+                description = reader.GetString(11)
+            });
+        }
+    }
+
+    var auditEvidence = new List<object>();
+    await using (var auditCommand = new NpgsqlCommand("""
+        SELECT
+            al.audit_log_id,
+            COALESCE(au.display_name, au.email, 'System') AS actor_name,
+            al.action,
+            al.entity_type,
+            al.entity_id,
+            al.created_at,
+            COALESCE(al.old_value::text, '') AS old_value_text,
+            COALESCE(al.new_value::text, '') AS new_value_text
+        FROM audit_logs al
+        LEFT JOIN app_users au
+            ON au.user_id = al.actor_user_id
+        WHERE al.entity_id = @export_id
+           OR al.action ILIKE '%export%'
+           OR al.action ILIKE '%reconcili%'
+           OR al.action ILIKE '%lock%'
+           OR al.action ILIKE '%approval%'
+           OR al.action ILIKE '%approved%'
+        ORDER BY al.created_at DESC
+        LIMIT 50;
+        """, connection))
+    {
+        auditCommand.Parameters.AddWithValue("export_id", exportId);
+
+        await using var reader = await auditCommand.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var oldPreview = reader.GetString(6);
+            var newPreview = reader.GetString(7);
+
+            auditEvidence.Add(new
+            {
+                auditLogId = reader.GetGuid(0),
+                actorName = reader.GetString(1),
+                action = reader.GetString(2),
+                entityType = reader.GetString(3),
+                entityId = reader.IsDBNull(4) ? (Guid?)null : reader.GetGuid(4),
+                createdAt = reader.GetDateTime(5),
+                oldValuePreview = oldPreview.Length > 300 ? oldPreview[..300] + "..." : oldPreview,
+                newValuePreview = newPreview.Length > 300 ? newPreview[..300] + "..." : newPreview
+            });
+        }
+    }
+
+    return Results.Ok(new
+    {
+        module = "019M-AY Workflow Export Audit Evidence Detail",
+        exportRecord,
+        package = new
+        {
+            downloadReady = true,
+            downloadUrl = $"/api/time-exports/{exportId}/download",
+            itemCount = items.Count,
+            totalHours = items.Sum(item => (decimal)item.GetType().GetProperty("hours")!.GetValue(item)!)
+        },
+        items,
+        auditEvidence
+    });
+});
 
 app.MapPost("/api/time-exports", async (TimeWorkflowExportCreateRequest request, HttpContext httpContext) =>
 {
@@ -17600,7 +18002,7 @@ app.MapPost("/api/time-exports", async (TimeWorkflowExportCreateRequest request,
 
         var exportId = Guid.Empty;
         var requestedByEmail = GetProjectPulseSessionEmail(httpContext) ?? "unknown";
-        var fileName = $"projectpulse-time-export-{start:yyyyMMdd}-{end:yyyyMMdd}.{(exportFormat == "excel" ? "xlsx" : "pdf")}";
+        var fileName = $"projectpulse-time-export-{start:yyyyMMdd}-{end:yyyyMMdd}.csv";
 
         await using (var insertCommand = new NpgsqlCommand("""
             INSERT INTO time_workflow_exports (
@@ -17613,7 +18015,10 @@ app.MapPost("/api/time-exports", async (TimeWorkflowExportCreateRequest request,
                 item_count,
                 total_hours,
                 file_name,
-                notes
+                notes,
+                package_generated_at,
+                package_content_type,
+                package_file_extension
             )
             VALUES (
                 @export_format,
@@ -17625,7 +18030,10 @@ app.MapPost("/api/time-exports", async (TimeWorkflowExportCreateRequest request,
                 @item_count,
                 @total_hours,
                 @file_name,
-                @notes
+                @notes,
+                NOW(),
+                'text/csv',
+                'csv'
             )
             RETURNING time_workflow_export_id;
             """, connection, transaction))
@@ -17657,7 +18065,7 @@ app.MapPost("/api/time-exports", async (TimeWorkflowExportCreateRequest request,
             itemCount,
             totalHours,
             fileName,
-            message = $"{exportFormat.ToUpperInvariant()} export foundation record prepared."
+            message = $"{exportFormat.ToUpperInvariant()} export package record prepared. Download-ready CSV package is available from export history."
         });
     }
     catch (Exception ex)
@@ -17704,6 +18112,25 @@ static string GetDayUnlockMessage(string? status, DateTimeOffset? submittedAt)
     if (status == "locked") return "This day is locked.";
 
     return "This day is not editable in its current workflow state.";
+}
+
+
+
+static string ProjectPulseCsvField(object? value)
+{
+    var text = value switch
+    {
+        null => string.Empty,
+        DateOnly d => d.ToString("yyyy-MM-dd"),
+        DateTimeOffset dto => dto.ToString("O"),
+        decimal d => d.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture),
+        double d => d.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture),
+        float f => f.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture),
+        _ => value.ToString() ?? string.Empty
+    };
+
+    text = text.Replace("\r", " ").Replace("\n", " ").Replace("\"", "\"\"");
+    return $"\"{text}\"";
 }
 
 
