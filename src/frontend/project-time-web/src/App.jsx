@@ -346,6 +346,7 @@ import RestoreValidationCenter from './RestoreValidationCenter.jsx';
 import BackupRetentionCenter from './BackupRetentionCenter.jsx';
 import TimeComplianceCenter from './TimeComplianceCenter.jsx';
 import ProjectIntakeCenter from './ProjectIntakeCenter.jsx';
+import CustomerDirectoryCenter from './CustomerDirectoryCenter.jsx';
 import ProjectWorkspaceCenter from './ProjectWorkspaceCenter.jsx';
 
 const workflowCards = [
@@ -656,6 +657,14 @@ const roleWorkspaceModules = [
     permissions: ['VIEW_PROJECT_INTAKE', 'MANAGE_PROJECT_INTAKE', 'VIEW_RESOURCE_SCHEDULING', 'MANAGE_RESOURCE_SCHEDULING', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   },
   {
+    route: 'customer-directory',
+    href: '#customer-directory',
+    title: 'Customer Directory',
+    navLabel: 'Customers',
+    description: 'Manage customer records, contacts, and customer intake/project cost readiness.',
+    permissions: ['VIEW_CUSTOMERS', 'MANAGE_CUSTOMERS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
+  },
+  {
     route: 'time-compliance',
     href: '#time-compliance',
     title: 'Time Compliance & Notification Center',
@@ -880,6 +889,7 @@ function getNavigationGroup(item) {
     case 'project-allocation-info':
     case 'project-workspace':
       return 'Project Workspace';
+    case 'customer-directory':
     case 'project-intake':
       return 'Project Intake';
     case 'time-compliance':
@@ -4431,6 +4441,12 @@ Analytics - Variphy / Infortel`}
       {(activeRoute === 'project-workspace' && canSeeAny(['VIEW_PROJECT_WORKSPACE', 'VIEW_ENGINEERING_PROJECT_DOCUMENTS', 'VIEW_PROJECT_INTAKE', 'VIEW_RESOURCE_SCHEDULING', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
         <section id="project-workspace" className="panel project-workspace-route-panel">
           <ProjectWorkspaceCenter />
+        </section>
+      ) : null}
+
+      {(activeRoute === 'customer-directory' && canSeeAny(['VIEW_CUSTOMERS', 'MANAGE_CUSTOMERS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
+        <section id="customer-directory" className="panel customer-directory-route-panel">
+          <CustomerDirectoryCenter canManageCustomers={canSeeAny(['MANAGE_CUSTOMERS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])} />
         </section>
       ) : null}
 

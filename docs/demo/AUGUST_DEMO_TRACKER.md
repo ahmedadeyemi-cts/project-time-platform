@@ -305,3 +305,12 @@
 - Selected customer contacts are displayed in the intake form.
 - Intake creation captures planned engineering cost, planned PM cost, and calculated total project cost.
 - Intake queue displays planned cost values for existing and newly created intake records.
+
+## 019M-AH Customer Directory Management UI
+
+### Added
+- Added Customer Directory management permissions for customer viewing and management.
+- Added backend endpoints to create/update customers and create/update customer contacts.
+- Added Customer Directory screen with customer list, contact list, cost readiness summary, and management forms.
+- Added sidebar route for Customer Directory under project operations.
+- Preserved the 10 active contacts per customer rule.

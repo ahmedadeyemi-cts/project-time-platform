@@ -1651,6 +1651,364 @@ app.MapGet("/api/customers/overview", async (HttpContext httpContext) =>
 });
 
 
+
+app.MapPost("/api/customers", async (CustomerDirectoryClientUpsertRequest request, HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    if (string.IsNullOrWhiteSpace(request.ClientName))
+    {
+        return Results.BadRequest(new { status = "validation_failed", message = "Customer name is required." });
+    }
+
+    var clientName = request.ClientName.Trim();
+    var clientCode = string.IsNullOrWhiteSpace(request.ClientCode)
+        ? new string(clientName.Where(char.IsLetterOrDigit).Take(8).ToArray()).ToUpperInvariant()
+        : request.ClientCode.Trim().ToUpperInvariant();
+
+    if (string.IsNullOrWhiteSpace(clientCode))
+    {
+        return Results.BadRequest(new { status = "validation_failed", message = "Customer code is required." });
+    }
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    if (!await RequestUserCanManageCustomersAsync(httpContext, connection))
+    {
+        return Results.Json(new { status = "access_denied", message = "Customer Directory management is restricted to administrators and project/team coordinators." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    await using (var duplicateCommand = new NpgsqlCommand("""
+        SELECT client_id
+        FROM clients
+        WHERE lower(client_code) = lower(@client_code)
+           OR lower(client_name) = lower(@client_name)
+        LIMIT 1;
+        """, connection))
+    {
+        duplicateCommand.Parameters.AddWithValue("client_code", clientCode);
+        duplicateCommand.Parameters.AddWithValue("client_name", clientName);
+
+        var duplicateId = await duplicateCommand.ExecuteScalarAsync();
+
+        if (duplicateId is Guid existingClientId)
+        {
+            return Results.Conflict(new
+            {
+                status = "customer_already_exists",
+                clientId = existingClientId,
+                message = "A customer with the same name or customer code already exists."
+            });
+        }
+    }
+
+    await using var command = new NpgsqlCommand("""
+        INSERT INTO clients (
+            client_name,
+            client_code,
+            is_active
+        )
+        VALUES (
+            @client_name,
+            @client_code,
+            @is_active
+        )
+        RETURNING client_id;
+        """, connection);
+
+    command.Parameters.AddWithValue("client_name", clientName);
+    command.Parameters.AddWithValue("client_code", clientCode);
+    command.Parameters.AddWithValue("is_active", request.IsActive ?? true);
+
+    var clientId = (Guid)(await command.ExecuteScalarAsync() ?? throw new InvalidOperationException("Unable to create customer."));
+
+    return Results.Ok(new
+    {
+        status = "customer_created",
+        clientId,
+        clientName,
+        clientCode,
+        message = "Customer record created."
+    });
+});
+
+
+app.MapPut("/api/customers/{clientId:guid}", async (Guid clientId, CustomerDirectoryClientUpsertRequest request, HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    if (string.IsNullOrWhiteSpace(request.ClientName))
+    {
+        return Results.BadRequest(new { status = "validation_failed", message = "Customer name is required." });
+    }
+
+    var clientName = request.ClientName.Trim();
+    var clientCode = string.IsNullOrWhiteSpace(request.ClientCode)
+        ? new string(clientName.Where(char.IsLetterOrDigit).Take(8).ToArray()).ToUpperInvariant()
+        : request.ClientCode.Trim().ToUpperInvariant();
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    if (!await RequestUserCanManageCustomersAsync(httpContext, connection))
+    {
+        return Results.Json(new { status = "access_denied", message = "Customer Directory management is restricted to administrators and project/team coordinators." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    await using (var duplicateCommand = new NpgsqlCommand("""
+        SELECT client_id
+        FROM clients
+        WHERE client_id <> @client_id
+          AND (
+                lower(client_code) = lower(@client_code)
+             OR lower(client_name) = lower(@client_name)
+          )
+        LIMIT 1;
+        """, connection))
+    {
+        duplicateCommand.Parameters.AddWithValue("client_id", clientId);
+        duplicateCommand.Parameters.AddWithValue("client_code", clientCode);
+        duplicateCommand.Parameters.AddWithValue("client_name", clientName);
+
+        var duplicateId = await duplicateCommand.ExecuteScalarAsync();
+
+        if (duplicateId is Guid)
+        {
+            return Results.Conflict(new
+            {
+                status = "customer_already_exists",
+                message = "Another customer already uses the same name or customer code."
+            });
+        }
+    }
+
+    await using var command = new NpgsqlCommand("""
+        UPDATE clients
+        SET client_name = @client_name,
+            client_code = @client_code,
+            is_active = @is_active,
+            updated_at = NOW()
+        WHERE client_id = @client_id;
+        """, connection);
+
+    command.Parameters.AddWithValue("client_id", clientId);
+    command.Parameters.AddWithValue("client_name", clientName);
+    command.Parameters.AddWithValue("client_code", clientCode);
+    command.Parameters.AddWithValue("is_active", request.IsActive ?? true);
+
+    var rows = await command.ExecuteNonQueryAsync();
+
+    if (rows == 0)
+    {
+        return Results.NotFound(new { status = "customer_not_found", message = "Customer was not found." });
+    }
+
+    return Results.Ok(new
+    {
+        status = "customer_updated",
+        clientId,
+        clientName,
+        clientCode,
+        message = "Customer record updated."
+    });
+});
+
+
+app.MapPost("/api/customers/{clientId:guid}/contacts", async (Guid clientId, CustomerDirectoryContactUpsertRequest request, HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    if (string.IsNullOrWhiteSpace(request.ContactName))
+    {
+        return Results.BadRequest(new { status = "validation_failed", message = "Contact name is required." });
+    }
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    if (!await RequestUserCanManageCustomersAsync(httpContext, connection))
+    {
+        return Results.Json(new { status = "access_denied", message = "Customer contact management is restricted to administrators and project/team coordinators." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    await using (var clientCommand = new NpgsqlCommand("SELECT EXISTS (SELECT 1 FROM clients WHERE client_id = @client_id);", connection))
+    {
+        clientCommand.Parameters.AddWithValue("client_id", clientId);
+        var exists = (bool)(await clientCommand.ExecuteScalarAsync() ?? false);
+
+        if (!exists)
+        {
+            return Results.NotFound(new { status = "customer_not_found", message = "Customer was not found." });
+        }
+    }
+
+    await using (var countCommand = new NpgsqlCommand("""
+        SELECT COUNT(*)
+        FROM client_contacts
+        WHERE client_id = @client_id
+          AND is_active = TRUE;
+        """, connection))
+    {
+        countCommand.Parameters.AddWithValue("client_id", clientId);
+        var activeContactCount = Convert.ToInt32(await countCommand.ExecuteScalarAsync() ?? 0);
+
+        if (activeContactCount >= 10)
+        {
+            return Results.BadRequest(new
+            {
+                status = "contact_limit_reached",
+                message = "A customer can have at most 10 active contacts."
+            });
+        }
+    }
+
+    await using var command = new NpgsqlCommand("""
+        INSERT INTO client_contacts (
+            client_id,
+            contact_name,
+            title,
+            role_description,
+            email,
+            phone,
+            address_line1,
+            address_line2,
+            city,
+            state_region,
+            postal_code,
+            country,
+            is_primary,
+            is_active,
+            display_order
+        )
+        VALUES (
+            @client_id,
+            @contact_name,
+            NULLIF(@title, ''),
+            NULLIF(@role_description, ''),
+            NULLIF(@email, ''),
+            NULLIF(@phone, ''),
+            NULLIF(@address_line1, ''),
+            NULLIF(@address_line2, ''),
+            NULLIF(@city, ''),
+            NULLIF(@state_region, ''),
+            NULLIF(@postal_code, ''),
+            COALESCE(NULLIF(@country, ''), 'United States'),
+            @is_primary,
+            @is_active,
+            @display_order
+        )
+        RETURNING client_contact_id;
+        """, connection);
+
+    command.Parameters.AddWithValue("client_id", clientId);
+    command.Parameters.AddWithValue("contact_name", request.ContactName.Trim());
+    command.Parameters.AddWithValue("title", request.Title?.Trim() ?? "");
+    command.Parameters.AddWithValue("role_description", request.RoleDescription?.Trim() ?? "");
+    command.Parameters.AddWithValue("email", request.Email?.Trim().ToLowerInvariant() ?? "");
+    command.Parameters.AddWithValue("phone", request.Phone?.Trim() ?? "");
+    command.Parameters.AddWithValue("address_line1", request.AddressLine1?.Trim() ?? "");
+    command.Parameters.AddWithValue("address_line2", request.AddressLine2?.Trim() ?? "");
+    command.Parameters.AddWithValue("city", request.City?.Trim() ?? "");
+    command.Parameters.AddWithValue("state_region", request.StateRegion?.Trim() ?? "");
+    command.Parameters.AddWithValue("postal_code", request.PostalCode?.Trim() ?? "");
+    command.Parameters.AddWithValue("country", request.Country?.Trim() ?? "United States");
+    command.Parameters.AddWithValue("is_primary", request.IsPrimary ?? false);
+    command.Parameters.AddWithValue("is_active", request.IsActive ?? true);
+    command.Parameters.AddWithValue("display_order", request.DisplayOrder ?? 0);
+
+    var contactId = (Guid)(await command.ExecuteScalarAsync() ?? throw new InvalidOperationException("Unable to create customer contact."));
+
+    return Results.Ok(new
+    {
+        status = "customer_contact_created",
+        clientId,
+        contactId,
+        message = "Customer contact created."
+    });
+});
+
+
+app.MapPut("/api/customers/{clientId:guid}/contacts/{contactId:guid}", async (Guid clientId, Guid contactId, CustomerDirectoryContactUpsertRequest request, HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    if (string.IsNullOrWhiteSpace(request.ContactName))
+    {
+        return Results.BadRequest(new { status = "validation_failed", message = "Contact name is required." });
+    }
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    if (!await RequestUserCanManageCustomersAsync(httpContext, connection))
+    {
+        return Results.Json(new { status = "access_denied", message = "Customer contact management is restricted to administrators and project/team coordinators." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    await using var command = new NpgsqlCommand("""
+        UPDATE client_contacts
+        SET contact_name = @contact_name,
+            title = NULLIF(@title, ''),
+            role_description = NULLIF(@role_description, ''),
+            email = NULLIF(@email, ''),
+            phone = NULLIF(@phone, ''),
+            address_line1 = NULLIF(@address_line1, ''),
+            address_line2 = NULLIF(@address_line2, ''),
+            city = NULLIF(@city, ''),
+            state_region = NULLIF(@state_region, ''),
+            postal_code = NULLIF(@postal_code, ''),
+            country = COALESCE(NULLIF(@country, ''), 'United States'),
+            is_primary = @is_primary,
+            is_active = @is_active,
+            display_order = @display_order,
+            updated_at = NOW()
+        WHERE client_id = @client_id
+          AND client_contact_id = @contact_id;
+        """, connection);
+
+    command.Parameters.AddWithValue("client_id", clientId);
+    command.Parameters.AddWithValue("contact_id", contactId);
+    command.Parameters.AddWithValue("contact_name", request.ContactName.Trim());
+    command.Parameters.AddWithValue("title", request.Title?.Trim() ?? "");
+    command.Parameters.AddWithValue("role_description", request.RoleDescription?.Trim() ?? "");
+    command.Parameters.AddWithValue("email", request.Email?.Trim().ToLowerInvariant() ?? "");
+    command.Parameters.AddWithValue("phone", request.Phone?.Trim() ?? "");
+    command.Parameters.AddWithValue("address_line1", request.AddressLine1?.Trim() ?? "");
+    command.Parameters.AddWithValue("address_line2", request.AddressLine2?.Trim() ?? "");
+    command.Parameters.AddWithValue("city", request.City?.Trim() ?? "");
+    command.Parameters.AddWithValue("state_region", request.StateRegion?.Trim() ?? "");
+    command.Parameters.AddWithValue("postal_code", request.PostalCode?.Trim() ?? "");
+    command.Parameters.AddWithValue("country", request.Country?.Trim() ?? "United States");
+    command.Parameters.AddWithValue("is_primary", request.IsPrimary ?? false);
+    command.Parameters.AddWithValue("is_active", request.IsActive ?? true);
+    command.Parameters.AddWithValue("display_order", request.DisplayOrder ?? 0);
+
+    var rows = await command.ExecuteNonQueryAsync();
+
+    if (rows == 0)
+    {
+        return Results.NotFound(new { status = "contact_not_found", message = "Customer contact was not found." });
+    }
+
+    return Results.Ok(new
+    {
+        status = "customer_contact_updated",
+        clientId,
+        contactId,
+        message = "Customer contact updated."
+    });
+});
+
+
 app.MapGet("/api/projects/cost-status", async (HttpContext httpContext) =>
 {
     var sessionUserId = GetProjectPulseSessionUserId(httpContext);
@@ -3016,6 +3374,40 @@ string? GetProjectPulseSessionEmail(HttpContext context)
     }
 
     return null;
+}
+
+
+
+async Task<bool> RequestUserCanManageCustomersAsync(HttpContext context, NpgsqlConnection connection)
+{
+    var userId = GetProjectPulseSessionUserId(context);
+
+    if (userId is null)
+    {
+        return false;
+    }
+
+    await using var command = new NpgsqlCommand("""
+        SELECT EXISTS (
+            SELECT 1
+            FROM app_user_role_assignments ura
+            JOIN app_roles r ON r.app_role_id = ura.app_role_id
+            LEFT JOIN app_role_permissions rp ON rp.app_role_id = r.app_role_id
+            LEFT JOIN app_permissions p ON p.app_permission_id = rp.app_permission_id
+            WHERE ura.user_id = @user_id
+              AND ura.is_active = TRUE
+              AND r.is_active = TRUE
+              AND (
+                    r.role_code IN ('ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR')
+                 OR p.permission_code IN ('MANAGE_CUSTOMERS', 'MANAGE_ALL', 'SYSTEM_ADMINISTRATION')
+              )
+        );
+        """, connection);
+
+    command.Parameters.AddWithValue("user_id", userId.Value);
+    var result = await command.ExecuteScalarAsync();
+
+    return result is bool value && value;
 }
 
 
@@ -12649,3 +13041,26 @@ internal sealed record ProjectPulseBackupRetentionDeleteRequest(
     string? BackupName,
     string? Reason,
     bool? Confirm);
+
+
+
+internal sealed record CustomerDirectoryClientUpsertRequest(
+    string ClientName,
+    string? ClientCode,
+    bool? IsActive);
+
+internal sealed record CustomerDirectoryContactUpsertRequest(
+    string ContactName,
+    string? Title,
+    string? RoleDescription,
+    string? Email,
+    string? Phone,
+    string? AddressLine1,
+    string? AddressLine2,
+    string? City,
+    string? StateRegion,
+    string? PostalCode,
+    string? Country,
+    bool? IsPrimary,
+    bool? IsActive,
+    int? DisplayOrder);
