@@ -1,0 +1,29 @@
+/* 019M-AL UI repair: floating Help Assistant visibility */
+.help-assistant,
+.help-assistant-widget,
+.help-assistant-launcher,
+.help-chat,
+.help-chat-button,
+.help-button,
+.assistant-help,
+.project-pulse-help-assistant {
+  z-index: 2147483000 !important;
+}
+
+.help-assistant,
+.help-assistant-widget,
+.project-pulse-help-assistant {
+  position: fixed !important;
+  right: 24px !important;
+  bottom: 24px !important;
+}
+
+.help-assistant button,
+.help-assistant-widget button,
+.help-chat-button,
+.help-button,
+.assistant-help button,
+.project-pulse-help-assistant button {
+  min-width: 44px;
+  min-height: 44px;
+}

@@ -12157,6 +12157,631 @@ app.MapPost("/api/admin/azure/users/reconcile", async (HttpContext httpContext) 
     });
 });
 
+
+app.MapGet("/api/workflow/approval-export-summary", async (HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var access = await LoadApprovalExportWorkflowAccessAsync(connection, sessionUserId.Value);
+    if (!access.CanView)
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Approval/export workflow is restricted to approved workflow roles."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var summary = new Dictionary<string, long>();
+
+    await using (var command = new NpgsqlCommand("""
+        WITH scoped_days AS (
+            SELECT
+                tds.status,
+                tds.timesheet_id,
+                tds.work_date,
+                EXISTS (
+                    SELECT 1
+                    FROM time_entries te
+                    JOIN projects p ON p.project_id = te.project_id
+                    WHERE te.timesheet_id = tds.timesheet_id
+                      AND te.work_date = tds.work_date
+                      AND p.project_manager_user_id = @user_id
+                ) AS pm_scope
+            FROM timesheet_day_statuses tds
+            WHERE tds.status IN ('submitted', 'manager_approved', 'pm_approved', 'accounting_ready', 'reconciled', 'locked', 'manager_declined')
+        )
+        SELECT
+            COUNT(*) FILTER (WHERE status = 'submitted')::bigint AS pending_manager,
+            COUNT(*) FILTER (WHERE status = 'manager_approved' AND (@can_view_all OR pm_scope))::bigint AS pending_project,
+            COUNT(*) FILTER (WHERE status = 'pm_approved')::bigint AS pending_accounting,
+            COUNT(*) FILTER (WHERE status = 'accounting_ready')::bigint AS accounting_ready,
+            COUNT(*) FILTER (WHERE status = 'reconciled')::bigint AS reconciled,
+            COUNT(*) FILTER (WHERE status = 'locked')::bigint AS locked,
+            COUNT(*) FILTER (WHERE status = 'manager_declined')::bigint AS returned
+        FROM scoped_days;
+        """, connection))
+    {
+        command.Parameters.AddWithValue("user_id", sessionUserId.Value);
+        command.Parameters.AddWithValue("can_view_all", access.CanViewAll);
+
+        await using var reader = await command.ExecuteReaderAsync();
+        await reader.ReadAsync();
+
+        summary["pendingManagerApprovals"] = reader.GetInt64(0);
+        summary["pendingProjectApprovals"] = reader.GetInt64(1);
+        summary["pendingAccountingReview"] = reader.GetInt64(2);
+        summary["accountingReady"] = reader.GetInt64(3);
+        summary["reconciled"] = reader.GetInt64(4);
+        summary["locked"] = reader.GetInt64(5);
+        summary["returned"] = reader.GetInt64(6);
+    }
+
+    long exportCount;
+    await using (var exportCommand = new NpgsqlCommand("""
+        SELECT COUNT(*)::bigint
+        FROM time_workflow_exports
+        WHERE created_at >= NOW() - INTERVAL '30 days';
+        """, connection))
+    {
+        exportCount = Convert.ToInt64(await exportCommand.ExecuteScalarAsync() ?? 0);
+    }
+
+    return Results.Ok(new
+    {
+        module = "019M-AL Approval Export Audit Workflow",
+        refreshedAtUtc = DateTimeOffset.UtcNow,
+        access = new
+        {
+            access.CanView,
+            access.CanProjectApprove,
+            access.CanManageAccounting,
+            access.CanExport,
+            access.CanAudit,
+            access.CanViewAll
+        },
+        summary = new
+        {
+            pendingManagerApprovals = summary["pendingManagerApprovals"],
+            pendingProjectApprovals = summary["pendingProjectApprovals"],
+            pendingAccountingReview = summary["pendingAccountingReview"],
+            accountingReady = summary["accountingReady"],
+            reconciled = summary["reconciled"],
+            locked = summary["locked"],
+            returned = summary["returned"],
+            exportsLast30Days = exportCount
+        }
+    });
+});
+
+
+app.MapGet("/api/workflow/approval-items", async (HttpContext httpContext, DateOnly? weekStart, DateOnly? weekEnd) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var start = weekStart ?? GetSundayForDate(DateOnly.FromDateTime(DateTime.UtcNow));
+    var end = weekEnd ?? start.AddDays(6);
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var access = await LoadApprovalExportWorkflowAccessAsync(connection, sessionUserId.Value);
+    if (!access.CanView)
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Approval/export workflow is restricted to approved workflow roles."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var items = new List<object>();
+
+    await using (var command = new NpgsqlCommand("""
+        WITH day_totals AS (
+            SELECT
+                tds.timesheet_id,
+                tds.work_date,
+                tds.status,
+                tds.submitted_at,
+                tds.manager_approved_at,
+                tds.manager_decision_comment,
+                tds.pm_approved_at,
+                tds.pm_decision_comment,
+                tds.accounting_ready_at,
+                tds.accounting_comment,
+                tds.reconciled_at,
+                tds.reconciliation_comment,
+                tds.locked_at,
+                tds.lock_comment,
+                t.user_id,
+                employee.display_name AS employee_name,
+                employee.email AS employee_email,
+                COALESCE(SUM(te.hours), 0)::numeric AS total_hours,
+                COALESCE(STRING_AGG(DISTINCT p.project_code, ', ' ORDER BY p.project_code), 'Non-project / mixed') AS project_codes,
+                COALESCE(STRING_AGG(DISTINCT p.project_name, ', ' ORDER BY p.project_name), 'Non-project / mixed') AS project_names,
+                BOOL_OR(p.project_manager_user_id = @user_id) AS pm_scope
+            FROM timesheet_day_statuses tds
+            JOIN timesheets t ON t.timesheet_id = tds.timesheet_id
+            JOIN app_users employee ON employee.user_id = t.user_id
+            LEFT JOIN time_entries te
+                ON te.timesheet_id = tds.timesheet_id
+               AND te.work_date = tds.work_date
+            LEFT JOIN projects p
+                ON p.project_id = te.project_id
+            WHERE tds.work_date BETWEEN @week_start AND @week_end
+              AND tds.status IN ('submitted', 'manager_approved', 'pm_approved', 'accounting_ready', 'reconciled', 'locked', 'manager_declined')
+            GROUP BY
+                tds.timesheet_id,
+                tds.work_date,
+                tds.status,
+                tds.submitted_at,
+                tds.manager_approved_at,
+                tds.manager_decision_comment,
+                tds.pm_approved_at,
+                tds.pm_decision_comment,
+                tds.accounting_ready_at,
+                tds.accounting_comment,
+                tds.reconciled_at,
+                tds.reconciliation_comment,
+                tds.locked_at,
+                tds.lock_comment,
+                t.user_id,
+                employee.display_name,
+                employee.email
+        )
+        SELECT *
+        FROM day_totals
+        WHERE @can_view_all
+           OR (status = 'manager_approved' AND pm_scope)
+           OR (status IN ('pm_approved', 'accounting_ready', 'reconciled', 'locked') AND @can_accounting)
+        ORDER BY work_date DESC, employee_name;
+        """, connection))
+    {
+        command.Parameters.AddWithValue("user_id", sessionUserId.Value);
+        command.Parameters.AddWithValue("week_start", start);
+        command.Parameters.AddWithValue("week_end", end);
+        command.Parameters.AddWithValue("can_view_all", access.CanViewAll);
+        command.Parameters.AddWithValue("can_accounting", access.CanManageAccounting);
+
+        await using var reader = await command.ExecuteReaderAsync();
+
+        while (await reader.ReadAsync())
+        {
+            items.Add(new
+            {
+                timesheetId = reader.GetGuid(0),
+                workDate = reader.GetFieldValue<DateOnly>(1),
+                status = reader.GetString(2),
+                submittedAt = reader.IsDBNull(3) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(3),
+                managerApprovedAt = reader.IsDBNull(4) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(4),
+                managerComment = reader.IsDBNull(5) ? null : reader.GetString(5),
+                pmApprovedAt = reader.IsDBNull(6) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(6),
+                pmComment = reader.IsDBNull(7) ? null : reader.GetString(7),
+                accountingReadyAt = reader.IsDBNull(8) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(8),
+                accountingComment = reader.IsDBNull(9) ? null : reader.GetString(9),
+                reconciledAt = reader.IsDBNull(10) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(10),
+                reconciliationComment = reader.IsDBNull(11) ? null : reader.GetString(11),
+                lockedAt = reader.IsDBNull(12) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(12),
+                lockComment = reader.IsDBNull(13) ? null : reader.GetString(13),
+                userId = reader.GetGuid(14),
+                employeeName = reader.GetString(15),
+                employeeEmail = reader.GetString(16),
+                totalHours = reader.GetDecimal(17),
+                projectCodes = reader.GetString(18),
+                projectNames = reader.GetString(19),
+                pmScope = !reader.IsDBNull(20) && reader.GetBoolean(20)
+            });
+        }
+    }
+
+    return Results.Ok(new
+    {
+        module = "019M-AL Approval Export Audit Workflow",
+        weekStart = start,
+        weekEnd = end,
+        count = items.Count,
+        items,
+        access = new
+        {
+            access.CanProjectApprove,
+            access.CanManageAccounting,
+            access.CanExport,
+            access.CanAudit,
+            access.CanViewAll
+        }
+    });
+});
+
+
+app.MapPost("/api/workflow/approval-items/action", async (ApprovalExportWorkflowActionRequest request, HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    if (request.TimesheetId == Guid.Empty || request.WorkDate == default)
+    {
+        return Results.BadRequest(new { status = "validation_failed", message = "Timesheet and work date are required." });
+    }
+
+    var normalizedAction = (request.Action ?? string.Empty).Trim().ToLowerInvariant();
+    var comment = string.IsNullOrWhiteSpace(request.Comment) ? normalizedAction : request.Comment.Trim();
+
+    string targetStatus;
+    string auditAction;
+    string[] allowedStatuses;
+
+    switch (normalizedAction)
+    {
+        case "pm_approve":
+            targetStatus = "pm_approved";
+            auditAction = "timesheet_day_project_manager_approved";
+            allowedStatuses = new[] { "manager_approved" };
+            break;
+        case "accounting_ready":
+            targetStatus = "accounting_ready";
+            auditAction = "timesheet_day_marked_accounting_ready";
+            allowedStatuses = new[] { "pm_approved", "manager_approved" };
+            break;
+        case "reconcile":
+            targetStatus = "reconciled";
+            auditAction = "timesheet_day_reconciled";
+            allowedStatuses = new[] { "accounting_ready", "pm_approved" };
+            break;
+        case "lock":
+            targetStatus = "locked";
+            auditAction = "timesheet_day_locked";
+            allowedStatuses = new[] { "reconciled", "accounting_ready" };
+            break;
+        default:
+            return Results.BadRequest(new
+            {
+                status = "invalid_action",
+                message = "Action must be pm_approve, accounting_ready, reconcile, or lock."
+            });
+    }
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var access = await LoadApprovalExportWorkflowAccessAsync(connection, sessionUserId.Value);
+
+    if (normalizedAction == "pm_approve" && !access.CanProjectApprove)
+    {
+        return Results.Json(new { status = "access_denied", message = "Project time approval is restricted to project managers, project/team coordinators, and administrators." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    if (normalizedAction is "accounting_ready" or "reconcile" or "lock" && !access.CanManageAccounting)
+    {
+        return Results.Json(new { status = "access_denied", message = "Accounting workflow actions are restricted to project/team coordinators and administrators." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    await using var transaction = await connection.BeginTransactionAsync();
+
+    try
+    {
+        await using var command = new NpgsqlCommand("""
+            UPDATE timesheet_day_statuses tds
+            SET status = @target_status,
+                pm_approved_at = CASE WHEN @target_status = 'pm_approved' THEN NOW() ELSE pm_approved_at END,
+                pm_approved_by_user_id = CASE WHEN @target_status = 'pm_approved' THEN @actor_user_id ELSE pm_approved_by_user_id END,
+                pm_decision_comment = CASE WHEN @target_status = 'pm_approved' THEN @comment ELSE pm_decision_comment END,
+                accounting_ready_at = CASE WHEN @target_status = 'accounting_ready' THEN NOW() ELSE accounting_ready_at END,
+                accounting_ready_by_user_id = CASE WHEN @target_status = 'accounting_ready' THEN @actor_user_id ELSE accounting_ready_by_user_id END,
+                accounting_comment = CASE WHEN @target_status = 'accounting_ready' THEN @comment ELSE accounting_comment END,
+                reconciled_at = CASE WHEN @target_status = 'reconciled' THEN NOW() ELSE reconciled_at END,
+                reconciled_by_user_id = CASE WHEN @target_status = 'reconciled' THEN @actor_user_id ELSE reconciled_by_user_id END,
+                reconciliation_comment = CASE WHEN @target_status = 'reconciled' THEN @comment ELSE reconciliation_comment END,
+                locked_at = CASE WHEN @target_status = 'locked' THEN NOW() ELSE locked_at END,
+                locked_by_user_id = CASE WHEN @target_status = 'locked' THEN @actor_user_id ELSE locked_by_user_id END,
+                lock_comment = CASE WHEN @target_status = 'locked' THEN @comment ELSE lock_comment END,
+                updated_at = NOW()
+            WHERE tds.timesheet_id = @timesheet_id
+              AND tds.work_date = @work_date
+              AND tds.status = ANY(@allowed_statuses)
+              AND (
+                    @can_view_all
+                 OR EXISTS (
+                        SELECT 1
+                        FROM time_entries te
+                        JOIN projects p ON p.project_id = te.project_id
+                        WHERE te.timesheet_id = tds.timesheet_id
+                          AND te.work_date = tds.work_date
+                          AND p.project_manager_user_id = @actor_user_id
+                    )
+              )
+            RETURNING tds.timesheet_day_status_id;
+            """, connection, transaction);
+
+        command.Parameters.AddWithValue("target_status", targetStatus);
+        command.Parameters.AddWithValue("actor_user_id", sessionUserId.Value);
+        command.Parameters.AddWithValue("comment", comment);
+        command.Parameters.AddWithValue("timesheet_id", request.TimesheetId);
+        command.Parameters.AddWithValue("work_date", request.WorkDate);
+        command.Parameters.AddWithValue("allowed_statuses", allowedStatuses);
+        command.Parameters.AddWithValue("can_view_all", access.CanViewAll || access.CanManageAccounting);
+
+        var statusId = (Guid?)(await command.ExecuteScalarAsync());
+
+        if (statusId is null)
+        {
+            await transaction.RollbackAsync();
+
+            return Results.Json(new
+            {
+                status = "workflow_action_not_applied",
+                message = "No eligible workflow item matched the requested action, status, or role scope."
+            }, statusCode: StatusCodes.Status409Conflict);
+        }
+
+        await using (var entryCommand = new NpgsqlCommand("""
+            UPDATE time_entries
+            SET status = @target_status,
+                updated_at = NOW()
+            WHERE timesheet_id = @timesheet_id
+              AND work_date = @work_date;
+            """, connection, transaction))
+        {
+            entryCommand.Parameters.AddWithValue("target_status", targetStatus);
+            entryCommand.Parameters.AddWithValue("timesheet_id", request.TimesheetId);
+            entryCommand.Parameters.AddWithValue("work_date", request.WorkDate);
+            await entryCommand.ExecuteNonQueryAsync();
+        }
+
+        await InsertAuditLogAsync(connection, transaction, sessionUserId.Value, auditAction, "timesheet", request.TimesheetId);
+
+        await transaction.CommitAsync();
+
+        return Results.Ok(new
+        {
+            status = "workflow_action_applied",
+            action = normalizedAction,
+            targetStatus,
+            timesheetId = request.TimesheetId,
+            workDate = request.WorkDate,
+            message = $"Workflow action '{normalizedAction}' applied to {request.WorkDate}."
+        });
+    }
+    catch (Exception ex)
+    {
+        await transaction.RollbackAsync();
+
+        return Results.Problem(
+            title: "Failed to apply approval/export workflow action",
+            detail: ex.Message,
+            statusCode: StatusCodes.Status500InternalServerError);
+    }
+});
+
+
+app.MapGet("/api/time-exports", async (HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var access = await LoadApprovalExportWorkflowAccessAsync(connection, sessionUserId.Value);
+    if (!access.CanExport && !access.CanViewAll)
+    {
+        return Results.Json(new { status = "access_denied", message = "Time export history is restricted to export-enabled roles." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var exports = new List<object>();
+
+    await using (var command = new NpgsqlCommand("""
+        SELECT
+            time_workflow_export_id,
+            export_format,
+            week_start,
+            week_end,
+            export_status,
+            requested_by_email,
+            item_count,
+            total_hours,
+            file_name,
+            notes,
+            created_at
+        FROM time_workflow_exports
+        ORDER BY created_at DESC
+        LIMIT 100;
+        """, connection))
+    {
+        await using var reader = await command.ExecuteReaderAsync();
+
+        while (await reader.ReadAsync())
+        {
+            exports.Add(new
+            {
+                exportId = reader.GetGuid(0),
+                exportFormat = reader.GetString(1),
+                weekStart = reader.IsDBNull(2) ? (DateOnly?)null : reader.GetFieldValue<DateOnly>(2),
+                weekEnd = reader.IsDBNull(3) ? (DateOnly?)null : reader.GetFieldValue<DateOnly>(3),
+                exportStatus = reader.GetString(4),
+                requestedByEmail = reader.IsDBNull(5) ? null : reader.GetString(5),
+                itemCount = reader.GetInt32(6),
+                totalHours = reader.GetDecimal(7),
+                fileName = reader.IsDBNull(8) ? null : reader.GetString(8),
+                notes = reader.IsDBNull(9) ? null : reader.GetString(9),
+                createdAt = reader.GetFieldValue<DateTimeOffset>(10)
+            });
+        }
+    }
+
+    return Results.Ok(new
+    {
+        module = "019M-AL Time Export Foundation",
+        count = exports.Count,
+        exports
+    });
+});
+
+
+app.MapPost("/api/time-exports", async (TimeWorkflowExportCreateRequest request, HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var exportFormat = (request.ExportFormat ?? "excel").Trim().ToLowerInvariant();
+    if (exportFormat is not ("excel" or "pdf"))
+    {
+        return Results.BadRequest(new { status = "invalid_export_format", message = "Export format must be excel or pdf." });
+    }
+
+    var start = request.WeekStart ?? GetSundayForDate(DateOnly.FromDateTime(DateTime.UtcNow));
+    var end = request.WeekEnd ?? start.AddDays(6);
+    var notes = string.IsNullOrWhiteSpace(request.Notes) ? $"Prepared {exportFormat.ToUpperInvariant()} export foundation record." : request.Notes.Trim();
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var access = await LoadApprovalExportWorkflowAccessAsync(connection, sessionUserId.Value);
+    if (!access.CanExport && !access.CanViewAll)
+    {
+        return Results.Json(new { status = "access_denied", message = "Time export preparation is restricted to export-enabled roles." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    await using var transaction = await connection.BeginTransactionAsync();
+
+    try
+    {
+        int itemCount;
+        decimal totalHours;
+
+        await using (var countCommand = new NpgsqlCommand("""
+            SELECT
+                COUNT(*)::int AS item_count,
+                COALESCE(SUM(hours), 0)::numeric AS total_hours
+            FROM time_entries
+            WHERE work_date BETWEEN @week_start AND @week_end
+              AND status IN ('pm_approved', 'accounting_ready', 'reconciled', 'locked');
+            """, connection, transaction))
+        {
+            countCommand.Parameters.AddWithValue("week_start", start);
+            countCommand.Parameters.AddWithValue("week_end", end);
+
+            await using var reader = await countCommand.ExecuteReaderAsync();
+            await reader.ReadAsync();
+
+            itemCount = reader.GetInt32(0);
+            totalHours = reader.GetDecimal(1);
+        }
+
+        var exportId = Guid.Empty;
+        var requestedByEmail = GetProjectPulseSessionEmail(httpContext) ?? "unknown";
+        var fileName = $"projectpulse-time-export-{start:yyyyMMdd}-{end:yyyyMMdd}.{(exportFormat == "excel" ? "xlsx" : "pdf")}";
+
+        await using (var insertCommand = new NpgsqlCommand("""
+            INSERT INTO time_workflow_exports (
+                export_format,
+                week_start,
+                week_end,
+                export_status,
+                requested_by_user_id,
+                requested_by_email,
+                item_count,
+                total_hours,
+                file_name,
+                notes
+            )
+            VALUES (
+                @export_format,
+                @week_start,
+                @week_end,
+                'prepared',
+                @requested_by_user_id,
+                @requested_by_email,
+                @item_count,
+                @total_hours,
+                @file_name,
+                @notes
+            )
+            RETURNING time_workflow_export_id;
+            """, connection, transaction))
+        {
+            insertCommand.Parameters.AddWithValue("export_format", exportFormat);
+            insertCommand.Parameters.AddWithValue("week_start", start);
+            insertCommand.Parameters.AddWithValue("week_end", end);
+            insertCommand.Parameters.AddWithValue("requested_by_user_id", sessionUserId.Value);
+            insertCommand.Parameters.AddWithValue("requested_by_email", requestedByEmail);
+            insertCommand.Parameters.AddWithValue("item_count", itemCount);
+            insertCommand.Parameters.AddWithValue("total_hours", totalHours);
+            insertCommand.Parameters.AddWithValue("file_name", fileName);
+            insertCommand.Parameters.AddWithValue("notes", notes);
+
+            exportId = (Guid)(await insertCommand.ExecuteScalarAsync() ?? Guid.Empty);
+        }
+
+        await InsertAuditLogAsync(connection, transaction, sessionUserId.Value, $"time_export_{exportFormat}_prepared", "time_workflow_export", exportId);
+
+        await transaction.CommitAsync();
+
+        return Results.Ok(new
+        {
+            status = "time_export_prepared",
+            exportId,
+            exportFormat,
+            weekStart = start,
+            weekEnd = end,
+            itemCount,
+            totalHours,
+            fileName,
+            message = $"{exportFormat.ToUpperInvariant()} export foundation record prepared."
+        });
+    }
+    catch (Exception ex)
+    {
+        await transaction.RollbackAsync();
+
+        return Results.Problem(
+            title: "Failed to prepare time export",
+            detail: ex.Message,
+            statusCode: StatusCodes.Status500InternalServerError);
+    }
+});
+
+
 app.MapTimeComplianceEndpoints();
 app.MapProjectIntakeEndpoints();
 app.MapProjectWorkspaceEndpoints();
@@ -14109,6 +14734,85 @@ Please review project assignment, time usage, and cost plan readiness in Project
 }
 
 
+
+async Task<ApprovalExportWorkflowAccess> LoadApprovalExportWorkflowAccessAsync(NpgsqlConnection connection, Guid userId)
+{
+    var permissions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    var roles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+    await using var command = new NpgsqlCommand("""
+        SELECT
+            r.role_code,
+            COALESCE(p.permission_code, '') AS permission_code
+        FROM app_user_role_assignments ura
+        JOIN app_roles r
+            ON r.app_role_id = ura.app_role_id
+           AND r.is_active = TRUE
+        LEFT JOIN app_role_permissions rp
+            ON rp.app_role_id = r.app_role_id
+        LEFT JOIN app_permissions p
+            ON p.app_permission_id = rp.app_permission_id
+        WHERE ura.user_id = @user_id
+          AND ura.is_active = TRUE;
+        """, connection);
+
+    command.Parameters.AddWithValue("user_id", userId);
+
+    await using var reader = await command.ExecuteReaderAsync();
+    while (await reader.ReadAsync())
+    {
+        roles.Add(reader.GetString(0));
+
+        if (!reader.IsDBNull(1) && !string.IsNullOrWhiteSpace(reader.GetString(1)))
+        {
+            permissions.Add(reader.GetString(1));
+        }
+    }
+
+    var canViewAll =
+        roles.Contains("ADMINISTRATOR")
+        || roles.Contains("PROJECT_TEAM_COORDINATOR")
+        || permissions.Contains("SYSTEM_ADMINISTRATION")
+        || permissions.Contains("MANAGE_ALL");
+
+    var canProjectApprove =
+        canViewAll
+        || roles.Contains("PROJECT_MANAGEMENT")
+        || roles.Contains("PROJECT_MANAGER")
+        || permissions.Contains("PROJECT_TIME_APPROVAL");
+
+    var canManageAccounting =
+        canViewAll
+        || permissions.Contains("MANAGE_ACCOUNT_RECONCILIATION");
+
+    var canExport =
+        canViewAll
+        || permissions.Contains("EXPORT_TIME_EXCEL")
+        || permissions.Contains("EXPORT_TIME_PDF");
+
+    var canAudit =
+        canViewAll
+        || permissions.Contains("VIEW_AUDIT_TRAIL");
+
+    var canView =
+        canViewAll
+        || canProjectApprove
+        || canManageAccounting
+        || canExport
+        || canAudit
+        || permissions.Contains("VIEW_APPROVAL_WORKFLOW")
+        || permissions.Contains("VIEW_ACCOUNT_RECONCILIATION");
+
+    return new ApprovalExportWorkflowAccess(
+        CanView: canView,
+        CanProjectApprove: canProjectApprove,
+        CanManageAccounting: canManageAccounting,
+        CanExport: canExport,
+        CanAudit: canAudit,
+        CanViewAll: canViewAll);
+}
+
+
 internal sealed record ProjectPulseBackupDeleteRequest(string RequestId, string? Reason);
 internal sealed record ProjectPulseBackupRunRequest(bool UploadToSftp, bool? UploadToAzure, string? Reason);
 internal sealed record ServiceRestartRequest(string ServiceKey, string Reason);
@@ -14413,6 +15117,31 @@ internal sealed record CustomerDirectoryContactUpsertRequest(
 
 
 
+
+
+
+
+internal sealed record ApprovalExportWorkflowAccess(
+    bool CanView,
+    bool CanProjectApprove,
+    bool CanManageAccounting,
+    bool CanExport,
+    bool CanAudit,
+    bool CanViewAll);
+
+
+internal sealed record ApprovalExportWorkflowActionRequest(
+    Guid TimesheetId,
+    DateOnly WorkDate,
+    string? Action,
+    string? Comment);
+
+
+internal sealed record TimeWorkflowExportCreateRequest(
+    string? ExportFormat,
+    DateOnly? WeekStart,
+    DateOnly? WeekEnd,
+    string? Notes);
 
 
 internal sealed record ProjectCostAlertStatusUpdateRequest(

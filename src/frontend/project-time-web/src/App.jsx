@@ -345,6 +345,7 @@ import ManagerTeamUtilizationPanel from './ManagerTeamUtilizationPanel.jsx';
 import ManagerApprovalPanel from './ManagerApprovalPanel.jsx';
 import LocalAdminPasswordResetApprovalsPanel from './LocalAdminPasswordResetApprovalsPanel.jsx';
 import AuditHistoryPanel from './AuditHistoryPanel.jsx';
+import ApprovalExportAuditWorkflowCenter from './ApprovalExportAuditWorkflowCenter.jsx';
 import ServiceControlCenter from './ServiceControlCenter.jsx';
 import BackupDrCenter from './BackupDrCenter.jsx';
 import ReplicationSyncStatusCenter from './ReplicationSyncStatusCenter.jsx';
@@ -1091,6 +1092,39 @@ function DataState({ loading, error, children }) {
   if (error) return <span className="error-text">{error}</span>;
   return children;
 }
+
+
+function getInstalledModuleDescription(module) {
+  const route = module?.route ?? '';
+
+  const descriptions = {
+    dashboard: 'Provides a role-based landing page with the modules, alerts, and workflow areas available to the signed-in user.',
+    timesheet: 'Allows engineers and eligible users to enter, save, submit, and review weekly or day-level time entries.',
+    utilization: 'Shows billable and eligible utilization performance against quarterly and annual targets.',
+    'project-workload': 'Shows project managers their assigned project workload, active and closed project counts, status mix, hours, and workload risk.',
+    'manager-approval': 'Lets managers review submitted time, approve valid days, return days for correction, and monitor pending approval counts.',
+    'project-workspace': 'Gives engineers and project roles a scoped project workspace with assigned projects, tasks, documents, assigned hours, used hours, and remaining hours.',
+    'project-intake': 'Captures project intake requests, customer selection, planned costs, documents, triage information, and resource request readiness.',
+    'customer-directory': 'Maintains customer/account records, customer contacts, and customer data used by intake, project, cost, billing, and reconciliation workflows.',
+    'cost-alerts': 'Monitors project planned cost, assigned hours, used hours, over-assignment risk, and notification routing for cost overrun alerts.',
+    workflow: 'Coordinates PM validation, accounting readiness, reconciliation, locking, export preparation, and audit visibility after manager approval.',
+    'audit-history': 'Shows login, admin, notification, approval, export, and system audit events for accountability and troubleshooting.',
+    'time-compliance': 'Previews missing time, reminder scenarios, manager/PTC visibility, compliance notification readiness, and month-end time controls.',
+    'holiday-admin': 'Manages company holidays, holiday upload, holiday visibility, and holiday-related timesheet automation.',
+    'user-admin': 'Manages Project Pulse users, roles, active status, local account status, and administrator-controlled access settings.',
+    'azure-admin': 'Manages Azure/Entra import, reconciliation, sync settings, and identity-readiness checks.',
+    'role-admin': 'Manages application roles, permissions, module access, and role-based security configuration.',
+    'service-control': 'Provides operational service restart controls, service health checks, and audit-backed service management.',
+    'backup-dr': 'Shows backup and disaster recovery readiness, backup state, service backup status, and restore preparedness.',
+    'backup-retention': 'Manages backup retention policy, cleanup readiness, and retention compliance visibility.',
+    'restore-validation': 'Validates restore points, restore readiness, and restore test evidence before relying on backups.',
+    'replication-sync': 'Shows replication and synchronization status across backup, database, and operational readiness workflows.',
+    'psa-modules': 'Displays PSA workflow modules such as expense, invoice, project, and billing readiness areas as they are connected.'
+  };
+
+  return module?.description || descriptions[route] || 'Installed Project Pulse module available to this role. Review the module for workflow details, operational status, and next actions.';
+}
+
 
 export default function App() {
   const [theme, setTheme] = useState(getInitialTheme);
@@ -4557,6 +4591,37 @@ Analytics - Variphy / Infortel`}
         </section>
       ) : null}
 
+
+      {activeRoute === 'dashboard' ? (
+        <section className="panel installed-modules-dashboard-panel">
+          <div className="installed-modules-header">
+            <div>
+              <p className="eyebrow">Installed Modules</p>
+              <h2>Role-based module dashboard</h2>
+              <p className="muted">
+                These are the Project Pulse modules available to your current role. Each card explains what the module is intended to do so new workflow areas are visible from the dashboard.
+              </p>
+            </div>
+            <span className="installed-modules-count">
+              {(roleWorkspaceModules || []).filter((module) => !module.permissions?.length || canSeeAny(module.permissions)).length} available
+            </span>
+          </div>
+
+          <div className="installed-module-grid">
+            {(roleWorkspaceModules || [])
+              .filter((module) => !module.permissions?.length || canSeeAny(module.permissions))
+              .map((module) => (
+                <a className="installed-module-card" href={module.href ?? `#${module.route}`} key={module.route}>
+                  <span>{getModuleGroup ? getModuleGroup(module.route) : 'Project Pulse'}</span>
+                  <strong>{module.title ?? module.navLabel ?? module.route}</strong>
+                  <p>{getInstalledModuleDescription(module)}</p>
+                  <small>Open module →</small>
+                </a>
+              ))}
+          </div>
+        </section>
+      ) : null}
+
       {(activeRoute === 'time-compliance' && canSeeAny(['SYSTEM_ADMINISTRATION', 'MANAGE_ALL', 'VIEW_TIME_COMPLIANCE', 'VIEW_AUDIT_HISTORY'])) ? (
         <section id="time-compliance" className="panel time-compliance-route-panel">
           <TimeComplianceCenter />
@@ -4751,10 +4816,12 @@ Analytics - Variphy / Infortel`}
         </section>
       ) : null}
 
-      <section id="workflow" className="section-header">
-        <h2>Core workflow areas</h2>
-        <p>These modules reflect the approved platform direction and will be implemented incrementally.</p>
-      </section>
+      {(activeRoute === 'workflow' && canSeeAny(['VIEW_APPROVAL_WORKFLOW', 'PROJECT_TIME_APPROVAL', 'VIEW_ACCOUNT_RECONCILIATION', 'MANAGE_ACCOUNT_RECONCILIATION', 'EXPORT_TIME_EXCEL', 'EXPORT_TIME_PDF', 'VIEW_AUDIT_TRAIL', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
+        <section id="workflow" className="panel workflow-route-panel approval-export-workflow-route-panel">
+          <ApprovalExportAuditWorkflowCenter />
+        </section>
+      ) : null}
+
 
       <section className="module-grid" aria-label="Core workflow modules">
         {workflowCards.map((card) => (

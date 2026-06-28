@@ -368,3 +368,22 @@
 - Added backend endpoints for alert status updates and notification release.
 - Added Cost Alerts UI controls for acknowledge, resolve, reopen, and release notification actions.
 - Added routing status, acknowledgement history, release history, and action notes to the Cost Alerts screen.
+
+## 019M-AL Approval / Export / Audit Workflow Foundation
+
+### Added
+- Added workflow summary API for manager approval, PM validation, accounting readiness, reconciliation, lock, and export counts.
+- Added role-scoped workflow items API.
+- Added PM approval, accounting-ready, reconcile, and lock actions.
+- Added time export foundation records for Excel/PDF readiness.
+- Added audit log records for PM approval, accounting readiness, reconciliation, lock, and export preparation.
+- Connected the workflow to the existing role dashboard/module card structure.
+- Added mobile-ready Approval / Export / Audit Workflow UI.
+
+## 019M-AL UI Repair: Dashboard Registry, Cost Alert Route, Help Assistant
+
+### Added
+- Added dashboard Installed Modules registry with role-based module cards and plain-language descriptions.
+- Added Cost Alert route isolation so the Cost Alert Overrun page does not render as an endless scroll under the main dashboard.
+- Restored floating Help Assistant visibility above application panels.
+- Added mobile readiness for the installed module registry and Cost Alert route.

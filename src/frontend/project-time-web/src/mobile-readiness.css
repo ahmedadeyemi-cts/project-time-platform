@@ -380,3 +380,63 @@ button[type='submit'] {
     grid-template-columns: 1fr !important;
   }
 }
+
+
+/* 019M-AL Approval / Export / Audit Workflow mobile readiness */
+@media (max-width: 700px) {
+  .approval-export-workflow-route-panel,
+  .approval-export-center,
+  .approval-export-panel,
+  .approval-export-item {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+
+  .approval-export-summary-grid,
+  .approval-export-layout,
+  .approval-export-history,
+  .approval-export-button-row,
+  .approval-export-create-row {
+    grid-template-columns: 1fr !important;
+  }
+
+  .approval-export-table-wrap {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+}
+
+/* 019M-AL UI repair: dashboard module registry and Cost Alerts route */
+@media (max-width: 900px) {
+  .installed-module-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .installed-modules-header {
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 640px) {
+  .installed-module-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .installed-module-card {
+    min-height: unset;
+  }
+
+  .app-shell.route-cost-alerts > #cost-alerts,
+  .cost-alert-route-panel,
+  .cost-alert-center {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+
+  .help-assistant,
+  .help-assistant-widget,
+  .project-pulse-help-assistant {
+    right: 14px !important;
+    bottom: 14px !important;
+  }
+}

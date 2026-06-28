@@ -5169,3 +5169,130 @@ textarea:focus {
     width: 100%;
   }
 }
+
+/* 019M-AL UI repair: Cost Alerts route isolation */
+.app-shell.route-cost-alerts > section:not(#cost-alerts),
+.app-shell.route-cost-alerts > .module-grid,
+.app-shell.route-cost-alerts > .workflow-grid,
+.app-shell.route-cost-alerts > .role-feature-grid,
+.app-shell.route-cost-alerts > .status-grid,
+.app-shell.route-cost-alerts > .hero-section,
+.app-shell.route-cost-alerts > .timesheet-page,
+.app-shell.route-cost-alerts > .project-allocation-info-panel,
+.app-shell.route-cost-alerts > .module-foundation-panel,
+.app-shell.route-cost-alerts > .current-quarter-utilization-panel,
+.app-shell.route-cost-alerts > .role-dashboard-panel,
+.app-shell.route-cost-alerts > .installed-modules-dashboard-panel {
+  display: none !important;
+}
+
+.app-shell.route-cost-alerts > #cost-alerts {
+  display: block !important;
+  width: 100%;
+  max-width: 100%;
+}
+
+/* 019M-AL UI repair: dashboard installed module registry */
+.installed-modules-dashboard-panel {
+  display: grid;
+  gap: 18px;
+}
+
+.installed-modules-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 18px;
+}
+
+.installed-modules-count {
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: rgba(37, 99, 235, 0.1);
+  color: #1d4ed8;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.installed-module-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.installed-module-card {
+  display: grid;
+  gap: 8px;
+  min-height: 178px;
+  padding: 16px;
+  border-radius: 20px;
+  border: 1px solid rgba(148, 163, 184, 0.26);
+  background: rgba(255, 255, 255, 0.82);
+  color: inherit;
+  text-decoration: none;
+  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.07);
+}
+
+.installed-module-card:hover {
+  transform: translateY(-1px);
+  border-color: rgba(37, 99, 235, 0.36);
+  box-shadow: 0 18px 38px rgba(15, 23, 42, 0.1);
+}
+
+.installed-module-card span {
+  color: #64748b;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 850;
+}
+
+.installed-module-card strong {
+  font-size: 1rem;
+  color: #0f172a;
+}
+
+.installed-module-card p {
+  margin: 0;
+  color: #475569;
+  line-height: 1.45;
+}
+
+.installed-module-card small {
+  margin-top: auto;
+  color: #2563eb;
+  font-weight: 850;
+}
+
+[data-theme="dark"] .installed-module-card {
+  background: rgba(15, 23, 42, 0.86);
+  border-color: rgba(148, 163, 184, 0.22);
+}
+
+[data-theme="dark"] .installed-module-card strong {
+  color: #e5e7eb;
+}
+
+[data-theme="dark"] .installed-module-card p {
+  color: #cbd5e1;
+}
+
+/* 019M-AL UI repair: keep Help Assistant above app panels */
+.help-assistant,
+.help-assistant-widget,
+.help-assistant-launcher,
+.help-chat,
+.help-chat-button,
+.help-button,
+.assistant-help,
+.project-pulse-help-assistant {
+  z-index: 2147483000 !important;
+}
+
+.help-assistant,
+.help-assistant-widget,
+.project-pulse-help-assistant {
+  position: fixed !important;
+  right: 24px !important;
+  bottom: 24px !important;
+}
