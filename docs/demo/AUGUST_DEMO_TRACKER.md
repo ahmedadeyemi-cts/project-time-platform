@@ -463,3 +463,18 @@
 - Task categories: Open Tasks, Project Tasks, Service Request Tasks, Non-Project Tasks.
 - Billing classification: Billable, Non-billable.
 - Utilization classification: Billable utilization eligible, Non-billable utilization eligible, Non-billable non-utilization eligible.
+
+## 019M-AQ Role Administration Directory + Permission Visibility
+
+### Added
+- Added Role Administration Directory summary endpoint.
+- Added plain-language role definitions.
+- Added assigned team member visibility by role.
+- Added permission visibility grouped by module.
+- Preserved existing administrator-only role management workflow.
+- Added mobile-ready cards and permission chips for role administration review.
+
+### 019M-AQ UI clarity repair
+- Clarified Permission Modules Summary so module-count rows are understood as role-permission grant counts.
+- Added a separate Role Directory heading before role cards.
+- Preserved the existing User Role Administration assignment section below the directory.

@@ -361,6 +361,7 @@ import ProjectWorkspaceCenter from './ProjectWorkspaceCenter.jsx';
 import ProjectManagerWorkloadCenter from './ProjectManagerWorkloadCenter.jsx';
 import EngineeringTeamLeadUtilizationPanel from './EngineeringTeamLeadUtilizationPanel.jsx';
 import WorkTaskBuilderPanel from './WorkTaskBuilderPanel.jsx';
+import RoleAdminDirectoryPanel from './RoleAdminDirectoryPanel.jsx';
 
 const workflowCards = [
   {
@@ -1214,8 +1215,8 @@ function getInstalledProjectPulseModuleRegistry() {
       route: 'role-admin',
       title: 'Role Administration',
       group: 'Security',
-      permissions: ['MANAGE_ROLES', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
-      description: 'Manages roles, permissions, module access, and role-based security configuration.'
+      permissions: ['VIEW_ROLE_ADMIN_DIRECTORY', 'MANAGE_ROLES', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+      description: 'Defines roles, shows assigned users, displays permissions by module, and manages role-based security configuration.'
     },
     {
       route: 'azure-admin',
@@ -4947,6 +4948,7 @@ Analytics - Variphy / Infortel`}
 
       {(hasPermission('SYSTEM_ADMINISTRATION') || hasPermission('MANAGE_ALL')) ? (
         <section id="role-admin" className="panel role-admin-panel">
+          <RoleAdminDirectoryPanel />
           <div className="section-header compact">
             <div>
               <p className="eyebrow">Administration</p>

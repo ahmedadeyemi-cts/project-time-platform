@@ -5741,6 +5741,239 @@ app.MapGet("/api/security/role-matrix", async () =>
 });
 
 
+
+// 019M-AQ Role Administration Directory + Permission Visibility
+app.MapGet("/api/role-admin/summary", async (HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    if (!await RequestUserIsAdministratorAsync(httpContext, connection))
+    {
+        return Results.Json(new
+        {
+            status = "admin_required",
+            message = "Role Administration Directory is restricted to administrators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var roleDefinitionMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["ADMINISTRATOR"] = "Full platform administrator. Can manage users, roles, security configuration, system administration, and all modules.",
+        ["PROJECT_TEAM_COORDINATOR"] = "Operations coordinator with broad project, intake, time, billing, reconciliation, customer, and work-task coordination access.",
+        ["PROJECT_MANAGEMENT"] = "Project manager role for managing assigned projects, project workspace activity, project workload, intake aging visibility, work-task assignment, and project validation workflows.",
+        ["PROJECT_MANAGER"] = "Legacy or alternate project manager role. Used for assigned project ownership and project-scoped work-task assignment where still present.",
+        ["PM_TEAM_LEAD"] = "Project management team lead role. Used to review PM workload and project-management team visibility where configured.",
+        ["PROJECT_MANAGEMENT_TEAM_LEAD"] = "Project management team lead role. Provides team-level visibility for PM workload, intake aging, and related project-management oversight.",
+        ["MANAGER"] = "People manager role. Reviews team time, approvals, utilization visibility, and manager-scoped operational activity.",
+        ["ENGINEERING_TEAM_LEAD"] = "Engineering team lead role. Reviews engineering team utilization and assigned engineering work within team scope.",
+        ["ENGINEER"] = "Engineer role. Enters own time, views assigned work, sees own utilization, holidays, and assigned project workspace content.",
+        ["EXECUTIVE"] = "Executive/readiness role focused on high-level reporting, workflow visibility, and operational summaries without management write access.",
+        ["PMO"] = "Legacy PMO role retained for compatibility where older records still reference it."
+    };
+
+    var roleMap = new Dictionary<string, (
+        string RoleCode,
+        string RoleName,
+        string DatabaseDescription,
+        string PlainDefinition,
+        bool IsActive,
+        int DisplayOrder,
+        long ActiveUserCount,
+        long PermissionCount,
+        List<object> AssignedUsers,
+        SortedDictionary<string, List<object>> PermissionsByModule
+    )>(StringComparer.OrdinalIgnoreCase);
+
+    await using (var roleCommand = new NpgsqlCommand("""
+        SELECT
+            r.role_code,
+            r.role_name,
+            COALESCE(r.role_description, '') AS role_description,
+            r.is_active,
+            COALESCE(r.display_order, 999) AS display_order,
+            COUNT(DISTINCT ura.user_id) FILTER (WHERE ura.is_active = TRUE) AS active_user_count,
+            COUNT(DISTINCT rp.app_permission_id) AS permission_count
+        FROM app_roles r
+        LEFT JOIN app_user_role_assignments ura
+            ON ura.app_role_id = r.app_role_id
+        LEFT JOIN app_role_permissions rp
+            ON rp.app_role_id = r.app_role_id
+        GROUP BY r.role_code, r.role_name, r.role_description, r.is_active, r.display_order
+        ORDER BY COALESCE(r.display_order, 999), r.role_name, r.role_code;
+        """, connection))
+    {
+        await using var reader = await roleCommand.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var roleCode = reader.GetString(0);
+            var roleName = reader.GetString(1);
+            var databaseDescription = reader.GetString(2);
+            var plainDefinition = roleDefinitionMap.TryGetValue(roleCode, out var mappedDefinition)
+                ? mappedDefinition
+                : string.IsNullOrWhiteSpace(databaseDescription)
+                    ? "Application role used to grant module permissions and route visibility."
+                    : databaseDescription;
+
+            roleMap[roleCode] = (
+                roleCode,
+                roleName,
+                databaseDescription,
+                plainDefinition,
+                reader.GetBoolean(3),
+                reader.GetInt32(4),
+                reader.GetInt64(5),
+                reader.GetInt64(6),
+                new List<object>(),
+                new SortedDictionary<string, List<object>>(StringComparer.OrdinalIgnoreCase)
+            );
+        }
+    }
+
+    await using (var userCommand = new NpgsqlCommand("""
+        SELECT
+            r.role_code,
+            u.user_id,
+            COALESCE(NULLIF(u.display_name, ''), u.email) AS display_name,
+            u.email,
+            COALESCE(NULLIF(u.team_name, ''), NULLIF(u.department_name, ''), NULLIF(u.department, ''), 'Unassigned') AS team_name,
+            ura.assigned_at,
+            COALESCE(ura.assignment_reason, '') AS assignment_reason
+        FROM app_user_role_assignments ura
+        JOIN app_roles r
+            ON r.app_role_id = ura.app_role_id
+        JOIN app_users u
+            ON u.user_id = ura.user_id
+        WHERE ura.is_active = TRUE
+          AND u.is_active = TRUE
+        ORDER BY r.role_code, team_name, display_name, u.email;
+        """, connection))
+    {
+        await using var reader = await userCommand.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var roleCode = reader.GetString(0);
+            if (!roleMap.TryGetValue(roleCode, out var role)) continue;
+
+            role.AssignedUsers.Add(new
+            {
+                userId = reader.GetGuid(1),
+                displayName = reader.GetString(2),
+                email = reader.GetString(3),
+                teamName = reader.GetString(4),
+                assignedAt = reader.IsDBNull(5) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(5),
+                assignmentReason = reader.GetString(6)
+            });
+        }
+    }
+
+    await using (var permissionCommand = new NpgsqlCommand("""
+        SELECT
+            r.role_code,
+            COALESCE(NULLIF(p.module_code, ''), 'Unassigned') AS module_code,
+            p.permission_code,
+            p.permission_name,
+            COALESCE(p.permission_description, '') AS permission_description
+        FROM app_role_permissions rp
+        JOIN app_roles r
+            ON r.app_role_id = rp.app_role_id
+        JOIN app_permissions p
+            ON p.app_permission_id = rp.app_permission_id
+        ORDER BY r.role_code, module_code, p.permission_code;
+        """, connection))
+    {
+        await using var reader = await permissionCommand.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var roleCode = reader.GetString(0);
+            if (!roleMap.TryGetValue(roleCode, out var role)) continue;
+
+            var moduleCode = reader.GetString(1);
+            if (!role.PermissionsByModule.TryGetValue(moduleCode, out var modulePermissions))
+            {
+                modulePermissions = new List<object>();
+                role.PermissionsByModule[moduleCode] = modulePermissions;
+            }
+
+            modulePermissions.Add(new
+            {
+                permissionCode = reader.GetString(2),
+                permissionName = reader.GetString(3),
+                permissionDescription = reader.GetString(4)
+            });
+        }
+    }
+
+    var moduleTotals = new SortedDictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+    foreach (var role in roleMap.Values)
+    {
+        foreach (var module in role.PermissionsByModule)
+        {
+            moduleTotals[module.Key] = moduleTotals.GetValueOrDefault(module.Key, 0) + module.Value.Count;
+        }
+    }
+
+    var directory = roleMap.Values
+        .OrderBy(role => role.DisplayOrder)
+        .ThenBy(role => role.RoleName)
+        .Select(role => new
+        {
+            roleCode = role.RoleCode,
+            roleName = role.RoleName,
+            roleDescription = role.DatabaseDescription,
+            plainLanguageDefinition = role.PlainDefinition,
+            isActive = role.IsActive,
+            displayOrder = role.DisplayOrder,
+            activeUserCount = role.AssignedUsers.Count,
+            permissionCount = role.PermissionsByModule.Sum(module => module.Value.Count),
+            assignedUsers = role.AssignedUsers,
+            permissionsByModule = role.PermissionsByModule.Select(module => new
+            {
+                moduleCode = module.Key,
+                permissionCount = module.Value.Count,
+                permissions = module.Value
+            }).ToList()
+        })
+        .ToList();
+
+    return Results.Ok(new
+    {
+        module = "019M-AQ Role Administration Directory",
+        canViewRoleDirectory = true,
+        canManageRoles = true,
+        access = new
+        {
+            adminOnly = true,
+            managementActionsAdminOnly = true,
+            explanation = "This endpoint summarizes roles, assigned users, and permissions. Existing role assignment write actions remain administrator-controlled."
+        },
+        summary = new
+        {
+            roleCount = directory.Count,
+            activeRoleCount = directory.Count(role => role.isActive),
+            assignedUserRoleCount = directory.Sum(role => role.activeUserCount),
+            permissionGrantCount = directory.Sum(role => role.permissionCount),
+            moduleCount = moduleTotals.Count
+        },
+        moduleTotals = moduleTotals.Select(item => new
+        {
+            moduleCode = item.Key,
+            permissionGrantCount = item.Value
+        }),
+        roles = directory
+    });
+});
+
 app.MapGet("/api/admin/roles", async () =>
 {
     var config = DatabaseConfig.FromEnvironment();

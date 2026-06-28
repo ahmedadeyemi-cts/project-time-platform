@@ -552,3 +552,40 @@ button[type='submit'] {
     flex-basis: 100% !important;
   }
 }
+
+/* 019M-AQ Role Administration Directory mobile readiness */
+@media (max-width: 820px) {
+  .role-directory-toolbar,
+  .role-directory-summary-grid,
+  .role-user-list {
+    grid-template-columns: 1fr !important;
+  }
+
+  .role-directory-card-header,
+  .permission-module-list summary {
+    flex-direction: column;
+  }
+
+  .role-directory-toolbar select,
+  .role-directory-toolbar input,
+  .role-directory-toolbar button {
+    width: 100%;
+  }
+
+  .permission-chip-list span {
+    white-space: normal;
+  }
+}
+
+/* 019M-AQ Role Admin module summary mobile clarity */
+@media (max-width: 820px) {
+  .role-module-summary-list div {
+    align-items: flex-start;
+  }
+
+  .role-directory-module-summary,
+  .role-directory-section-heading {
+    padding-left: 0.85rem;
+    padding-right: 0.85rem;
+  }
+}
