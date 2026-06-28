@@ -362,6 +362,7 @@ import ProjectManagerWorkloadCenter from './ProjectManagerWorkloadCenter.jsx';
 import EngineeringTeamLeadUtilizationPanel from './EngineeringTeamLeadUtilizationPanel.jsx';
 import WorkTaskBuilderPanel from './WorkTaskBuilderPanel.jsx';
 import RoleAdminDirectoryPanel from './RoleAdminDirectoryPanel.jsx';
+import IntakeWorkTaskHandoffPanel from './IntakeWorkTaskHandoffPanel.jsx';
 
 const workflowCards = [
   {
@@ -4763,6 +4764,7 @@ Analytics - Variphy / Infortel`}
         <section id="project-intake" className="panel project-intake-route-panel">
           <ProjectIntakeCenter />
           <PostIntakeAgingPanel />
+        <IntakeWorkTaskHandoffPanel />
         </section>
       ) : null}
 

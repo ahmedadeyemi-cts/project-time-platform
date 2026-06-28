@@ -2350,6 +2350,450 @@ app.MapGet("/api/debug/time-entries", async (DateOnly? weekStart, HttpContext ht
 
 
 
+
+// 019M-AR Project Intake to Work Task Builder Handoff Readiness
+app.MapGet("/api/project-intake/work-task-handoff", async (HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var roles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    var permissions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+    await using (var accessCommand = new NpgsqlCommand("""
+        SELECT
+            r.role_code,
+            COALESCE(p.permission_code, '') AS permission_code
+        FROM app_user_role_assignments ura
+        JOIN app_roles r
+            ON r.app_role_id = ura.app_role_id
+           AND r.is_active = TRUE
+        LEFT JOIN app_role_permissions rp
+            ON rp.app_role_id = r.app_role_id
+        LEFT JOIN app_permissions p
+            ON p.app_permission_id = rp.app_permission_id
+        WHERE ura.user_id = @user_id
+          AND ura.is_active = TRUE;
+        """, connection))
+    {
+        accessCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+
+        await using var reader = await accessCommand.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            roles.Add(reader.GetString(0));
+
+            if (!reader.IsDBNull(1) && !string.IsNullOrWhiteSpace(reader.GetString(1)))
+            {
+                permissions.Add(reader.GetString(1));
+            }
+        }
+    }
+
+    var canViewAll =
+        roles.Contains("ADMINISTRATOR")
+        || roles.Contains("PROJECT_TEAM_COORDINATOR")
+        || permissions.Contains("SYSTEM_ADMINISTRATION")
+        || permissions.Contains("MANAGE_ALL");
+
+    var canViewManaged =
+        roles.Contains("PROJECT_MANAGEMENT")
+        || roles.Contains("PROJECT_MANAGER")
+        || roles.Contains("PM_TEAM_LEAD")
+        || roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD")
+        || roles.Contains("MANAGER")
+        || roles.Contains("PROJECT_COORDINATOR")
+        || permissions.Contains("VIEW_PROJECT_INTAKE")
+        || permissions.Contains("VIEW_PROJECT_INTAKE_AGING")
+        || permissions.Contains("VIEW_INTAKE_WORK_TASK_HANDOFF");
+
+    if (!canViewAll && !canViewManaged)
+    {
+        return Results.Json(new
+        {
+            canViewIntakeWorkTaskHandoff = false,
+            status = "access_denied",
+            message = "Intake to Work Task handoff readiness is available to PTC, Administrators, Project Managers, PM Team Leads, and approved management roles."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var intakes = new List<object>();
+
+    await using (var command = new NpgsqlCommand("""
+        WITH direct_links AS (
+            SELECT DISTINCT project_intake_request_id, project_id
+            FROM engineering_resource_requests
+            WHERE project_intake_request_id IS NOT NULL
+              AND project_id IS NOT NULL
+
+            UNION
+
+            SELECT DISTINCT project_intake_request_id, project_id
+            FROM project_intake_documents
+            WHERE project_intake_request_id IS NOT NULL
+              AND project_id IS NOT NULL
+              AND COALESCE(is_active, TRUE) = TRUE
+        ),
+        candidate_links AS (
+            SELECT DISTINCT
+                pir.project_intake_request_id,
+                p.project_id
+            FROM project_intake_requests pir
+            JOIN projects p
+                ON (
+                    (pir.client_id IS NOT NULL AND p.client_id = pir.client_id)
+                    OR (
+                        pir.assigned_pm_user_id IS NOT NULL
+                        AND p.project_manager_user_id = pir.assigned_pm_user_id
+                    )
+                    OR (
+                        NULLIF(TRIM(pir.request_title), '') IS NOT NULL
+                        AND LOWER(p.project_name) = LOWER(pir.request_title)
+                    )
+                )
+            WHERE NOT EXISTS (
+                SELECT 1
+                FROM direct_links dl
+                WHERE dl.project_intake_request_id = pir.project_intake_request_id
+                  AND dl.project_id = p.project_id
+            )
+        ),
+        task_rollup AS (
+            SELECT
+                project_id,
+                COUNT(DISTINCT task_id)::bigint AS task_count,
+                COUNT(DISTINCT task_id) FILTER (WHERE COALESCE(is_active, TRUE) = TRUE)::bigint AS active_task_count
+            FROM project_tasks
+            GROUP BY project_id
+        ),
+        assignment_rollup AS (
+            SELECT
+                project_id,
+                COUNT(DISTINCT project_assignment_id)::bigint AS assignment_count,
+                COUNT(DISTINCT user_id)::bigint AS assigned_engineer_count,
+                COALESCE(SUM(assigned_hours), 0)::numeric AS assigned_hours
+            FROM project_assignments
+            GROUP BY project_id
+        ),
+        time_rollup AS (
+            SELECT
+                project_id,
+                COUNT(DISTINCT time_entry_id)::bigint AS time_entry_count,
+                COALESCE(SUM(hours), 0)::numeric AS used_hours
+            FROM time_entries
+            WHERE project_id IS NOT NULL
+              AND COALESCE(status, 'draft') NOT IN ('manager_declined', 'rejected', 'voided')
+            GROUP BY project_id
+        ),
+        project_stats AS (
+            SELECT
+                p.project_id,
+                p.project_code,
+                p.project_name,
+                p.status,
+                COALESCE(tr.task_count, 0) AS task_count,
+                COALESCE(tr.active_task_count, 0) AS active_task_count,
+                COALESCE(ar.assignment_count, 0) AS assignment_count,
+                COALESCE(ar.assigned_engineer_count, 0) AS assigned_engineer_count,
+                COALESCE(ar.assigned_hours, 0) AS assigned_hours,
+                COALESCE(tir.time_entry_count, 0) AS time_entry_count,
+                COALESCE(tir.used_hours, 0) AS used_hours
+            FROM projects p
+            LEFT JOIN task_rollup tr
+                ON tr.project_id = p.project_id
+            LEFT JOIN assignment_rollup ar
+                ON ar.project_id = p.project_id
+            LEFT JOIN time_rollup tir
+                ON tir.project_id = p.project_id
+        ),
+        direct_aggregate AS (
+            SELECT
+                dl.project_intake_request_id,
+                COUNT(DISTINCT ps.project_id)::bigint AS project_count,
+                STRING_AGG(DISTINCT ps.project_code || ' · ' || ps.project_name, '; ' ORDER BY ps.project_code || ' · ' || ps.project_name) AS project_labels,
+                COALESCE(SUM(ps.task_count), 0)::bigint AS task_count,
+                COALESCE(SUM(ps.active_task_count), 0)::bigint AS active_task_count,
+                COALESCE(SUM(ps.assignment_count), 0)::bigint AS assignment_count,
+                COALESCE(SUM(ps.assigned_engineer_count), 0)::bigint AS assigned_engineer_count,
+                COALESCE(SUM(ps.assigned_hours), 0)::numeric AS assigned_hours,
+                COALESCE(SUM(ps.time_entry_count), 0)::bigint AS time_entry_count,
+                COALESCE(SUM(ps.used_hours), 0)::numeric AS used_hours
+            FROM direct_links dl
+            JOIN project_stats ps
+                ON ps.project_id = dl.project_id
+            GROUP BY dl.project_intake_request_id
+        ),
+        candidate_aggregate AS (
+            SELECT
+                cl.project_intake_request_id,
+                COUNT(DISTINCT ps.project_id)::bigint AS project_count,
+                STRING_AGG(DISTINCT ps.project_code || ' · ' || ps.project_name, '; ' ORDER BY ps.project_code || ' · ' || ps.project_name) AS project_labels,
+                COALESCE(SUM(ps.task_count), 0)::bigint AS task_count,
+                COALESCE(SUM(ps.active_task_count), 0)::bigint AS active_task_count,
+                COALESCE(SUM(ps.assignment_count), 0)::bigint AS assignment_count,
+                COALESCE(SUM(ps.assigned_engineer_count), 0)::bigint AS assigned_engineer_count,
+                COALESCE(SUM(ps.assigned_hours), 0)::numeric AS assigned_hours,
+                COALESCE(SUM(ps.time_entry_count), 0)::bigint AS time_entry_count,
+                COALESCE(SUM(ps.used_hours), 0)::numeric AS used_hours
+            FROM candidate_links cl
+            JOIN project_stats ps
+                ON ps.project_id = cl.project_id
+            GROUP BY cl.project_intake_request_id
+        )
+        SELECT
+            pir.project_intake_request_id,
+            pir.request_number,
+            COALESCE(pir.client_name, '') AS client_name,
+            pir.request_title,
+            COALESCE(pir.intake_status, 'new') AS intake_status,
+            COALESCE(pir.priority, 'normal') AS priority,
+            COALESCE(pir.project_signed_date::text, '') AS project_signed_date_text,
+            COALESCE(pm.display_name, '') AS assigned_pm_name,
+            COALESCE(da.project_count, 0)::bigint AS directly_linked_project_count,
+            COALESCE(ca.project_count, 0)::bigint AS candidate_project_count,
+            COALESCE(da.project_labels, ca.project_labels, '') AS project_labels,
+            CASE WHEN COALESCE(da.project_count, 0) > 0 THEN COALESCE(da.task_count, 0) ELSE COALESCE(ca.task_count, 0) END::bigint AS task_count,
+            CASE WHEN COALESCE(da.project_count, 0) > 0 THEN COALESCE(da.active_task_count, 0) ELSE COALESCE(ca.active_task_count, 0) END::bigint AS active_task_count,
+            CASE WHEN COALESCE(da.project_count, 0) > 0 THEN COALESCE(da.assignment_count, 0) ELSE COALESCE(ca.assignment_count, 0) END::bigint AS assignment_count,
+            CASE WHEN COALESCE(da.project_count, 0) > 0 THEN COALESCE(da.assigned_engineer_count, 0) ELSE COALESCE(ca.assigned_engineer_count, 0) END::bigint AS assigned_engineer_count,
+            CASE WHEN COALESCE(da.project_count, 0) > 0 THEN COALESCE(da.assigned_hours, 0) ELSE COALESCE(ca.assigned_hours, 0) END::numeric AS assigned_hours,
+            CASE WHEN COALESCE(da.project_count, 0) > 0 THEN COALESCE(da.time_entry_count, 0) ELSE COALESCE(ca.time_entry_count, 0) END::bigint AS time_entry_count,
+            CASE WHEN COALESCE(da.project_count, 0) > 0 THEN COALESCE(da.used_hours, 0) ELSE COALESCE(ca.used_hours, 0) END::numeric AS used_hours
+        FROM project_intake_requests pir
+        LEFT JOIN app_users pm
+            ON pm.user_id = pir.assigned_pm_user_id
+        LEFT JOIN direct_aggregate da
+            ON da.project_intake_request_id = pir.project_intake_request_id
+        LEFT JOIN candidate_aggregate ca
+            ON ca.project_intake_request_id = pir.project_intake_request_id
+        WHERE @can_view_all = TRUE
+           OR pir.assigned_pm_user_id = @user_id
+           OR EXISTS (
+                SELECT 1
+                FROM direct_links dl
+                JOIN projects p
+                    ON p.project_id = dl.project_id
+                WHERE dl.project_intake_request_id = pir.project_intake_request_id
+                  AND p.project_manager_user_id = @user_id
+           )
+        ORDER BY
+            CASE WHEN pir.project_signed_date IS NULL THEN 0 ELSE 1 END,
+            pir.project_signed_date DESC NULLS LAST,
+            pir.created_at DESC NULLS LAST;
+        """, connection))
+    {
+        command.Parameters.AddWithValue("can_view_all", canViewAll);
+        command.Parameters.AddWithValue("user_id", sessionUserId.Value);
+
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var signedDateText = reader.GetString(6);
+            var directProjectCount = reader.GetInt64(8);
+            var candidateProjectCount = reader.GetInt64(9);
+            var taskCount = reader.GetInt64(11);
+            var assignmentCount = reader.GetInt64(13);
+            var timeEntryCount = reader.GetInt64(16);
+            var status = reader.GetString(4);
+
+            string readinessStage;
+            string readinessMessage;
+
+            if (string.IsNullOrWhiteSpace(signedDateText))
+            {
+                readinessStage = "signed_date_needed";
+                readinessMessage = "Signed project date is missing. The intake is not ready for handoff tracking.";
+            }
+            else if (!new[] { "approved", "triage", "resource_requested", "assigned", "active" }.Contains(status, StringComparer.OrdinalIgnoreCase))
+            {
+                readinessStage = "intake_not_ready";
+                readinessMessage = "Intake exists, but it has not moved into an approved/active handoff status.";
+            }
+            else if (directProjectCount == 0 && candidateProjectCount == 0)
+            {
+                readinessStage = "project_link_needed";
+                readinessMessage = "No project is linked or strongly matched yet. Next step is to connect the intake to a project record.";
+            }
+            else if (directProjectCount == 0 && candidateProjectCount > 0)
+            {
+                readinessStage = "project_link_confirmation_needed";
+                readinessMessage = "A possible project match exists, but a direct intake-to-project link should be confirmed.";
+            }
+            else if (taskCount == 0)
+            {
+                readinessStage = "work_tasks_needed";
+                readinessMessage = "Project is linked, but work tasks have not been created yet.";
+            }
+            else if (assignmentCount == 0)
+            {
+                readinessStage = "engineer_assignments_needed";
+                readinessMessage = "Work tasks exist, but engineers have not been assigned yet.";
+            }
+            else if (timeEntryCount == 0)
+            {
+                readinessStage = "timesheet_usage_pending";
+                readinessMessage = "Engineers are assigned, but no timesheet usage has been recorded yet.";
+            }
+            else
+            {
+                readinessStage = "utilization_flow_ready";
+                readinessMessage = "Intake, project, work tasks, assignments, timesheet activity, and utilization readiness are connected.";
+            }
+
+            intakes.Add(new
+            {
+                intakeId = reader.GetGuid(0),
+                requestNumber = reader.GetString(1),
+                clientName = reader.GetString(2),
+                requestTitle = reader.GetString(3),
+                intakeStatus = status,
+                priority = reader.GetString(5),
+                projectSignedDate = signedDateText,
+                assignedPmName = reader.GetString(7),
+                directlyLinkedProjectCount = directProjectCount,
+                candidateProjectCount,
+                projectLabels = reader.GetString(10),
+                taskCount,
+                activeTaskCount = reader.GetInt64(12),
+                assignmentCount,
+                assignedEngineerCount = reader.GetInt64(14),
+                assignedHours = reader.GetDecimal(15),
+                timeEntryCount,
+                usedHours = reader.GetDecimal(17),
+                readinessStage,
+                readinessMessage
+            });
+        }
+    }
+
+    var projects = new List<object>();
+
+    await using (var projectCommand = new NpgsqlCommand("""
+        WITH task_rollup AS (
+            SELECT
+                project_id,
+                COUNT(DISTINCT task_id)::bigint AS task_count
+            FROM project_tasks
+            GROUP BY project_id
+        ),
+        assignment_rollup AS (
+            SELECT
+                project_id,
+                COUNT(DISTINCT project_assignment_id)::bigint AS assignment_count,
+                COUNT(DISTINCT user_id)::bigint AS assigned_engineer_count,
+                COALESCE(SUM(assigned_hours), 0)::numeric AS assigned_hours
+            FROM project_assignments
+            GROUP BY project_id
+        ),
+        time_rollup AS (
+            SELECT
+                project_id,
+                COUNT(DISTINCT time_entry_id)::bigint AS time_entry_count,
+                COALESCE(SUM(hours), 0)::numeric AS used_hours
+            FROM time_entries
+            WHERE project_id IS NOT NULL
+              AND COALESCE(status, 'draft') NOT IN ('manager_declined', 'rejected', 'voided')
+            GROUP BY project_id
+        )
+        SELECT
+            p.project_id,
+            p.project_code,
+            p.project_name,
+            COALESCE(c.client_name, '') AS client_name,
+            p.status,
+            COALESCE(pm.display_name, '') AS project_manager_name,
+            COALESCE(tr.task_count, 0)::bigint AS task_count,
+            COALESCE(ar.assignment_count, 0)::bigint AS assignment_count,
+            COALESCE(ar.assigned_engineer_count, 0)::bigint AS assigned_engineer_count,
+            COALESCE(ar.assigned_hours, 0)::numeric AS assigned_hours,
+            COALESCE(tir.time_entry_count, 0)::bigint AS time_entry_count,
+            COALESCE(tir.used_hours, 0)::numeric AS used_hours
+        FROM projects p
+        LEFT JOIN clients c
+            ON c.client_id = p.client_id
+        LEFT JOIN app_users pm
+            ON pm.user_id = p.project_manager_user_id
+        LEFT JOIN task_rollup tr
+            ON tr.project_id = p.project_id
+        LEFT JOIN assignment_rollup ar
+            ON ar.project_id = p.project_id
+        LEFT JOIN time_rollup tir
+            ON tir.project_id = p.project_id
+        WHERE p.status <> 'archived'
+          AND (@can_view_all = TRUE OR p.project_manager_user_id = @user_id)
+        ORDER BY p.project_name, p.project_code;
+        """, connection))
+    {
+        projectCommand.Parameters.AddWithValue("can_view_all", canViewAll);
+        projectCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+
+        await using var reader = await projectCommand.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            projects.Add(new
+            {
+                projectId = reader.GetGuid(0),
+                projectCode = reader.GetString(1),
+                projectName = reader.GetString(2),
+                clientName = reader.GetString(3),
+                status = reader.GetString(4),
+                projectManagerName = reader.GetString(5),
+                taskCount = reader.GetInt64(6),
+                assignmentCount = reader.GetInt64(7),
+                assignedEngineerCount = reader.GetInt64(8),
+                assignedHours = reader.GetDecimal(9),
+                timeEntryCount = reader.GetInt64(10),
+                usedHours = reader.GetDecimal(11)
+            });
+        }
+    }
+
+    return Results.Ok(new
+    {
+        module = "019M-AR Project Intake to Work Task Builder Handoff",
+        canViewIntakeWorkTaskHandoff = true,
+        access = new
+        {
+            canViewAll,
+            canViewManaged,
+            automationEnabled = false,
+            note = "This release exposes handoff readiness. It does not automatically convert intake records into projects or tasks yet."
+        },
+        lifecycle = new[]
+        {
+            new { step = 1, title = "Project Intake", description = "A request is created manually, uploaded, or sourced from a future integration." },
+            new { step = 2, title = "Signed / Approved Intake", description = "Signed date, PM assignment, status, and supporting documents indicate readiness to move forward." },
+            new { step = 3, title = "Project Record", description = "The intake should connect to a project record that owns delivery, customer, PM, and cost context." },
+            new { step = 4, title = "Work Task Builder", description = "The project receives classified project, service request, open, or non-project work tasks." },
+            new { step = 5, title = "Engineer Assignment", description = "Engineers are assigned to work tasks with hours and effective dates." },
+            new { step = 6, title = "Timesheet and Utilization", description = "Assigned tasks become available for time entry and feed utilization readiness." }
+        },
+        summary = new
+        {
+            intakeCount = intakes.Count,
+            signedIntakeCount = intakes.Count(item => !string.IsNullOrWhiteSpace(Convert.ToString(item.GetType().GetProperty("projectSignedDate")?.GetValue(item)))),
+            directProjectLinkedIntakeCount = intakes.Count(item => Convert.ToInt64(item.GetType().GetProperty("directlyLinkedProjectCount")?.GetValue(item) ?? 0) > 0),
+            candidateProjectMatchedIntakeCount = intakes.Count(item => Convert.ToInt64(item.GetType().GetProperty("candidateProjectCount")?.GetValue(item) ?? 0) > 0),
+            taskReadyIntakeCount = intakes.Count(item => Convert.ToInt64(item.GetType().GetProperty("taskCount")?.GetValue(item) ?? 0) > 0),
+            assignmentReadyIntakeCount = intakes.Count(item => Convert.ToInt64(item.GetType().GetProperty("assignmentCount")?.GetValue(item) ?? 0) > 0),
+            timesheetActivityIntakeCount = intakes.Count(item => Convert.ToInt64(item.GetType().GetProperty("timeEntryCount")?.GetValue(item) ?? 0) > 0),
+            projectCount = projects.Count
+        },
+        intakes,
+        projects
+    });
+});
+
 app.MapGet("/api/project-intake/aging-summary", async (HttpContext httpContext) =>
 {
     var sessionUserId = GetProjectPulseSessionUserId(httpContext);

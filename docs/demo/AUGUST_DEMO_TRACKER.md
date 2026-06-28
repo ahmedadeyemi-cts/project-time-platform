@@ -478,3 +478,13 @@
 - Clarified Permission Modules Summary so module-count rows are understood as role-permission grant counts.
 - Added a separate Role Directory heading before role cards.
 - Preserved the existing User Role Administration assignment section below the directory.
+
+## 019M-AR Project Intake to Work Task Builder Handoff Readiness
+
+### Added
+- Added Intake to Work Task Builder readiness visibility.
+- Shows lifecycle from intake to signed approval, project record, work tasks, engineer assignment, timesheet usage, and utilization readiness.
+- Shows direct project links and possible project matches for intake records.
+- Shows task readiness, assignment readiness, assigned engineer counts, assigned hours, and timesheet activity.
+- Keeps this as visibility/readiness first; automatic intake conversion is intentionally not enabled yet.
+- Added mobile-ready handoff cards on the Project Intake route.

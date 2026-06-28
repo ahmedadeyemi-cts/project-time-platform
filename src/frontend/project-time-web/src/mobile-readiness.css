@@ -589,3 +589,29 @@ button[type='submit'] {
     padding-right: 0.85rem;
   }
 }
+
+/* 019M-AR Intake to Work Task Handoff mobile readiness */
+@media (max-width: 820px) {
+  .handoff-lifecycle-grid,
+  .handoff-summary-grid,
+  .handoff-readiness-grid,
+  .handoff-project-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .handoff-toolbar,
+  .handoff-card-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .handoff-toolbar select {
+    width: 100%;
+  }
+
+  .handoff-project-label span {
+    display: block;
+    margin-left: 0;
+    margin-top: 0.25rem;
+  }
+}
