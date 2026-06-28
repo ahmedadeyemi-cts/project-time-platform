@@ -355,6 +355,7 @@ import ProjectIntakeCenter from './ProjectIntakeCenter.jsx';
 import CustomerDirectoryCenter from './CustomerDirectoryCenter.jsx';
 import CostOverrunAlertCenter from './CostOverrunAlertCenter.jsx';
 import ProjectWorkspaceCenter from './ProjectWorkspaceCenter.jsx';
+import ProjectManagerWorkloadCenter from './ProjectManagerWorkloadCenter.jsx';
 
 const workflowCards = [
   {
@@ -648,6 +649,14 @@ function statusToLabel(status, totalHours = 0) {
 
 const roleWorkspaceModules = [
   {
+    route: 'project-workload',
+    href: '#project-workload',
+    title: 'Project Workload',
+    navLabel: 'Project Workload',
+    description: 'Project Manager dashboard for active projects, closed projects, project status, assigned project list, and workload risks.',
+    permissions: ['VIEW_PROJECT_WORKLOAD', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
+  },
+  {
     route: 'project-workspace',
     href: '#project-workspace',
     title: 'Project Workspace & Engineering Documents',
@@ -842,7 +851,14 @@ function userHasAnyPermission(user, permissions) {
 
 function getVisibleRoleModules(user) {
   if (!user) return [];
-  return roleWorkspaceModules.filter((module) => userHasAnyPermission(user, module.permissions));
+
+  const modules = roleWorkspaceModules.filter((module) => userHasAnyPermission(user, module.permissions));
+
+  if (userIsProjectManagementRole(user) && !userIsAdministrator(user)) {
+    return modules.filter((module) => module.route !== 'utilization');
+  }
+
+  return modules;
 }
 
 function getRoleDisplayName(user) {
@@ -889,9 +905,18 @@ function userHasPermissionCode(user, permissionCode) {
   return userPermissionSet(user).has(permissionCode);
 }
 
+function userIsProjectManagementRole(user) {
+  return userHasRoleText(user, ['project_management', 'project manager', 'project management']);
+}
+
+
 function getPrimaryNavigationPriority(user) {
   if (userIsAdministrator(user)) {
     return ['dashboard', 'timesheet', 'manager-approval', 'project-workspace'];
+  }
+
+  if (userIsProjectManagementRole(user) && !userIsAdministrator(user)) {
+    return ['dashboard', 'project-workload', 'project-workspace', 'project-intake'];
   }
 
   if (
@@ -922,6 +947,7 @@ function getNavigationGroup(item) {
     case 'holiday-admin':
       return 'Work Management';
 
+    case 'project-workload':
     case 'project-allocation-info':
     case 'project-workspace':
       return 'Project Workspace';
@@ -2405,8 +2431,14 @@ export default function App() {
     () => roleNavigation.find((item) => item.route === activeRoute) ?? { label: 'Dashboard', route: 'dashboard', href: '#dashboard' },
     [roleNavigation, activeRoute]
   );
+
+  useEffect(() => {
+    if (activeRoute === 'utilization' && userIsProjectManagementRole(currentUser.data) && !userIsAdministrator(currentUser.data)) {
+      window.location.hash = 'project-workload';
+    }
+  }, [activeRoute, currentUser.data]);
+
   const workspaceRoleName = getRoleDisplayName(currentUser.data);
-  const showQuarterUtilizationSummary = userHasAnyPermission(currentUser.data, ['VIEW_OWN_UTILIZATION', 'VIEW_TEAM_UTILIZATION', 'MANAGE_ALL']);
 
   function getDayStatus(workDate) {
     const apiDayStatus = timesheet.data?.dayStatuses?.find((dayStatus) => dayStatus.workDate === workDate);
@@ -4003,45 +4035,6 @@ Analytics - Variphy / Infortel`}
           ))}
         </div>
 
-        {showQuarterUtilizationSummary && (
-          <div className="dashboard-quarter-summary">
-            <div className="section-heading compact-heading">
-              <div>
-                <p className="eyebrow">Current quarter utilization</p>
-                <h2>{currentQuarterUtilization.data?.quarter ?? 'Current Quarter'}</h2>
-              </div>
-              <span className="badge">{currentQuarterUtilization.data?.targetPercent ?? 0}% target</span>
-            </div>
-
-            <DataState loading={currentQuarterUtilization.loading} error={currentQuarterUtilization.error}>
-              <div className="quarter-utilization-grid">
-                <article className="quarter-utilization-card">
-                  <span>Target utilization</span>
-                  <strong>{currentQuarterUtilization.data?.targetPercent ?? 0}%</strong>
-                  <small>{formatNumber(currentQuarterUtilization.data?.targetHours)} target hrs</small>
-                </article>
-
-                <article className="quarter-utilization-card">
-                  <span>Current utilization</span>
-                  <strong>{formatNumber(currentQuarterUtilization.data?.currentUtilizationPercent)}%</strong>
-                  <small>{formatNumber(currentQuarterUtilization.data?.currentBillableHours)} billable hrs</small>
-                </article>
-
-                <article className="quarter-utilization-card">
-                  <span>Hours left to target</span>
-                  <strong>{formatNumber(currentQuarterUtilization.data?.hoursLeftToTarget)}</strong>
-                  <small>remaining billable hrs</small>
-                </article>
-
-                <article className="quarter-utilization-card">
-                  <span>Standard quarter</span>
-                  <strong>{formatNumber(currentQuarterUtilization.data?.standardPeriodHours)}</strong>
-                  <small>standard hrs</small>
-                </article>
-              </div>
-            </DataState>
-          </div>
-        )}
       </section>
 
       <section id="dashboard" className="hero hero-polished">
@@ -4533,6 +4526,12 @@ Analytics - Variphy / Infortel`}
 <section id="project-allocation-info" className="panel project-allocation-info-panel">
         <ProjectAllocationInfoPanel />
       </section>
+
+      {(activeRoute === 'project-workload' && canSeeAny(['VIEW_PROJECT_WORKLOAD', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
+        <section id="project-workload" className="panel project-workload-route-panel">
+          <ProjectManagerWorkloadCenter />
+        </section>
+      ) : null}
 
       {(activeRoute === 'project-workspace' && canSeeAny(['VIEW_PROJECT_WORKSPACE', 'VIEW_ENGINEERING_PROJECT_DOCUMENTS', 'VIEW_PROJECT_INTAKE', 'VIEW_RESOURCE_SCHEDULING', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
         <section id="project-workspace" className="panel project-workspace-route-panel">

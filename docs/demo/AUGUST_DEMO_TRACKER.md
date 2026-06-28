@@ -349,3 +349,12 @@
 - Anchored the profile initials button to the far-right header utility area.
 - Changed the More menu to open by click instead of hover.
 - Adjusted Engineer/simple-role direct navigation to Timesheet, Utilization, Holidays, and Project Workspace.
+
+## 019M-AK Project Manager Workload Dashboard
+
+### Added
+- Removed the Current Quarter Utilization summary from the Dashboard role workspace.
+- Added Project Workload as the project-manager-focused replacement for Utilization.
+- Hid Utilization from Project Management / Project Manager role navigation.
+- Added Project Manager Workload API for active projects this quarter, closed projects this quarter, project status counts, assigned project list, and workload risks.
+- Added mobile-friendly Project Workload screen.
