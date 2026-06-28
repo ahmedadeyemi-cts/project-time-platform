@@ -440,3 +440,14 @@ button[type='submit'] {
     bottom: 14px !important;
   }
 }
+
+/* 019M-AL route isolation repair: Project Workload and Cost Alert pages */
+@media (max-width: 700px) {
+  .project-workload-route-panel,
+  .cost-alert-route-panel,
+  #project-workload,
+  #cost-alerts {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+}

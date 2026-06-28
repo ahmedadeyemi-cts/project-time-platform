@@ -5170,28 +5170,11 @@ textarea:focus {
   }
 }
 
-/* 019M-AL UI repair: Cost Alerts route isolation */
-.app-shell.route-cost-alerts > section:not(#cost-alerts),
-.app-shell.route-cost-alerts > .module-grid,
-.app-shell.route-cost-alerts > .workflow-grid,
-.app-shell.route-cost-alerts > .role-feature-grid,
-.app-shell.route-cost-alerts > .status-grid,
-.app-shell.route-cost-alerts > .hero-section,
-.app-shell.route-cost-alerts > .timesheet-page,
-.app-shell.route-cost-alerts > .project-allocation-info-panel,
-.app-shell.route-cost-alerts > .module-foundation-panel,
-.app-shell.route-cost-alerts > .current-quarter-utilization-panel,
-.app-shell.route-cost-alerts > .role-dashboard-panel,
-.app-shell.route-cost-alerts > .installed-modules-dashboard-panel {
-  display: none !important;
-}
-
-.app-shell.route-cost-alerts > #cost-alerts {
-  display: block !important;
+/* 019M-AL UI repair: Cost Alerts route panel */
+.cost-alert-route-panel {
   width: 100%;
   max-width: 100%;
 }
-
 /* 019M-AL UI repair: dashboard installed module registry */
 .installed-modules-dashboard-panel {
   display: grid;
@@ -5295,4 +5278,45 @@ textarea:focus {
   position: fixed !important;
   right: 24px !important;
   bottom: 24px !important;
+}
+
+/* 019M-AL route isolation repair: keep heavy route pages from stacking under dashboard */
+body:has(.app-shell.route-project-workload) .app-shell.route-project-workload > section:not(#project-workload),
+body:has(.app-shell.route-project-workload) .app-shell.route-project-workload > .module-grid,
+body:has(.app-shell.route-project-workload) .app-shell.route-project-workload > .workflow-grid,
+body:has(.app-shell.route-project-workload) .app-shell.route-project-workload > .role-feature-grid,
+body:has(.app-shell.route-project-workload) .app-shell.route-project-workload > .status-grid,
+body:has(.app-shell.route-project-workload) .app-shell.route-project-workload > .hero-section,
+body:has(.app-shell.route-project-workload) .app-shell.route-project-workload > .timesheet-page,
+body:has(.app-shell.route-project-workload) .app-shell.route-project-workload > .installed-modules-dashboard-panel {
+  display: none !important;
+}
+
+body:has(.app-shell.route-project-workload) .app-shell.route-project-workload > #project-workload {
+  display: block !important;
+  width: 100%;
+  max-width: 100%;
+}
+
+body:has(.app-shell.route-cost-alerts) .app-shell.route-cost-alerts > section:not(#cost-alerts),
+body:has(.app-shell.route-cost-alerts) .app-shell.route-cost-alerts > .module-grid,
+body:has(.app-shell.route-cost-alerts) .app-shell.route-cost-alerts > .workflow-grid,
+body:has(.app-shell.route-cost-alerts) .app-shell.route-cost-alerts > .role-feature-grid,
+body:has(.app-shell.route-cost-alerts) .app-shell.route-cost-alerts > .status-grid,
+body:has(.app-shell.route-cost-alerts) .app-shell.route-cost-alerts > .hero-section,
+body:has(.app-shell.route-cost-alerts) .app-shell.route-cost-alerts > .timesheet-page,
+body:has(.app-shell.route-cost-alerts) .app-shell.route-cost-alerts > .installed-modules-dashboard-panel {
+  display: none !important;
+}
+
+body:has(.app-shell.route-cost-alerts) .app-shell.route-cost-alerts > #cost-alerts {
+  display: block !important;
+  width: 100%;
+  max-width: 100%;
+}
+
+.project-workload-route-panel,
+.cost-alert-route-panel {
+  width: 100%;
+  max-width: 100%;
 }

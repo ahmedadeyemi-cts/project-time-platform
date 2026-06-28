@@ -387,3 +387,23 @@
 - Added Cost Alert route isolation so the Cost Alert Overrun page does not render as an endless scroll under the main dashboard.
 - Restored floating Help Assistant visibility above application panels.
 - Added mobile readiness for the installed module registry and Cost Alert route.
+
+## 019M-AL UI Repair: Blank Dashboard Recovery
+
+### Fixed
+- Replaced the dashboard Installed Modules rendering with a static, safe module registry to avoid blank-page runtime failures.
+- Route-gated Cost Alert Overrun directly in JSX so it cannot render under the dashboard.
+- Removed the risky Cost Alert CSS route-hiding rule that could hide dashboard content.
+- Ensured the Help Assistant component is imported and rendered.
+
+## 019M-AL UI Repair: Project Workload and Cost Alert Route Isolation
+
+### Fixed
+- Isolated Project Workload so it opens as its own route instead of stacking under the dashboard.
+- Isolated Cost Alert Overrun so it opens as its own route instead of stacking under the dashboard.
+- Preserved the Installed Modules dashboard registry and Help Assistant repair.
+
+### Queued
+- Project Manager should only see their own Project Workload.
+- PM Team Lead should receive a Project Workload dropdown to select PMs on their team.
+- PM Team Lead dropdown must be scoped by PM team relationship, not global user visibility.

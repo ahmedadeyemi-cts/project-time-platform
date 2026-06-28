@@ -1,3 +1,4 @@
+import HelpAssistant from './HelpAssistant.jsx';
 
 /*
  * 019M-V Global View-As User Experience Preview
@@ -1091,6 +1092,153 @@ function DataState({ loading, error, children }) {
   if (loading) return <span className="muted">Loading...</span>;
   if (error) return <span className="error-text">{error}</span>;
   return children;
+}
+
+
+
+function getInstalledProjectPulseModuleRegistry() {
+  return [
+    {
+      route: 'timesheet',
+      title: 'Timesheet',
+      group: 'Time Management',
+      permissions: [],
+      description: 'Allows users to enter, save, submit, and review weekly or daily time entries.'
+    },
+    {
+      route: 'manager-approval',
+      title: 'Approval Inbox',
+      group: 'Approvals',
+      permissions: ['APPROVE_TIME', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+      description: 'Lets managers review submitted time, approve valid entries, and return entries that need correction.'
+    },
+    {
+      route: 'workflow',
+      title: 'Approval / Export / Audit Workflow',
+      group: 'Approvals',
+      permissions: ['VIEW_APPROVAL_WORKFLOW', 'PROJECT_TIME_APPROVAL', 'VIEW_ACCOUNT_RECONCILIATION', 'MANAGE_ACCOUNT_RECONCILIATION', 'EXPORT_TIME_EXCEL', 'EXPORT_TIME_PDF', 'VIEW_AUDIT_TRAIL', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+      description: 'Coordinates PM validation, accounting readiness, reconciliation, lock, export preparation, and audit visibility after manager approval.'
+    },
+    {
+      route: 'utilization',
+      title: 'Utilization',
+      group: 'Resource Management',
+      permissions: ['VIEW_UTILIZATION', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+      description: 'Shows billable and utilization-eligible performance against quarterly and annual targets.'
+    },
+    {
+      route: 'project-workload',
+      title: 'Project Workload',
+      group: 'Project Management',
+      permissions: ['VIEW_PROJECT_WORKLOAD', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+      description: 'Shows project managers their active projects, closed projects, status mix, hours, and workload risk.'
+    },
+    {
+      route: 'project-workspace',
+      title: 'Project Workspace',
+      group: 'Project Delivery',
+      permissions: ['VIEW_PROJECT_WORKSPACE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+      description: 'Provides a role-scoped workspace for assigned projects, tasks, documents, assigned hours, used hours, and remaining hours.'
+    },
+    {
+      route: 'project-intake',
+      title: 'Project Intake',
+      group: 'Project Intake',
+      permissions: ['VIEW_PROJECT_INTAKE', 'MANAGE_PROJECT_INTAKE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+      description: 'Captures project requests, customer selection, planned costs, intake documents, triage details, and resource request readiness.'
+    },
+    {
+      route: 'customer-directory',
+      title: 'Customer Directory',
+      group: 'Customers',
+      permissions: ['VIEW_CUSTOMERS', 'MANAGE_CUSTOMERS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+      description: 'Maintains customer records, contacts, and customer data used by project, billing, cost, and reconciliation workflows.'
+    },
+    {
+      route: 'cost-alerts',
+      title: 'Cost Alert Overrun',
+      group: 'Cost Control',
+      permissions: ['VIEW_COST_ALERTS', 'MANAGE_COST_ALERTS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+      description: 'Monitors planned cost, assigned hours, used hours, over-assignment risk, and notification routing for cost overrun alerts.'
+    },
+    {
+      route: 'time-compliance',
+      title: 'Time Compliance',
+      group: 'Compliance',
+      permissions: ['VIEW_TIME_COMPLIANCE', 'MANAGE_TIME_COMPLIANCE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+      description: 'Previews missing time, reminder readiness, manager/PTC visibility, compliance notifications, and month-end time controls.'
+    },
+    {
+      route: 'holiday-admin',
+      title: 'Holiday Management',
+      group: 'Administration',
+      permissions: ['VIEW_HOLIDAYS', 'MANAGE_HOLIDAYS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+      description: 'Manages company holidays, holiday visibility, uploads, and timesheet holiday readiness.'
+    },
+    {
+      route: 'audit-history',
+      title: 'Audit History',
+      group: 'Audit',
+      permissions: ['VIEW_AUDIT_TRAIL', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+      description: 'Shows login, admin, notification, approval, export, service, and system audit events for accountability.'
+    },
+    {
+      route: 'user-admin',
+      title: 'User Administration',
+      group: 'Security',
+      permissions: ['MANAGE_USERS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+      description: 'Manages users, active status, local account settings, role assignments, and access controls.'
+    },
+    {
+      route: 'role-admin',
+      title: 'Role Administration',
+      group: 'Security',
+      permissions: ['MANAGE_ROLES', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+      description: 'Manages roles, permissions, module access, and role-based security configuration.'
+    },
+    {
+      route: 'azure-admin',
+      title: 'Azure / Entra Administration',
+      group: 'Security',
+      permissions: ['MANAGE_AZURE_AD', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+      description: 'Manages Entra import, reconciliation, sync settings, and identity-readiness checks.'
+    },
+    {
+      route: 'service-control',
+      title: 'Service Control Center',
+      group: 'Operations',
+      permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+      description: 'Provides operational service restart controls, service health checks, and audit-backed service management.'
+    },
+    {
+      route: 'backup-dr',
+      title: 'Backup / DR Center',
+      group: 'Operations',
+      permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+      description: 'Shows backup and disaster recovery readiness, backup state, service backup status, and restore preparedness.'
+    },
+    {
+      route: 'restore-validation',
+      title: 'Restore Validation Center',
+      group: 'Operations',
+      permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+      description: 'Validates restore points, restore readiness, and restore test evidence before relying on backups.'
+    },
+    {
+      route: 'backup-retention',
+      title: 'Backup Retention Center',
+      group: 'Operations',
+      permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+      description: 'Manages backup retention policy, cleanup readiness, and retention compliance visibility.'
+    },
+    {
+      route: 'replication-sync',
+      title: 'Replication / Sync Status',
+      group: 'Operations',
+      permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+      description: 'Shows replication and synchronization status across database, backup, and operational readiness workflows.'
+    }
+  ];
 }
 
 
@@ -4591,34 +4739,42 @@ Analytics - Variphy / Infortel`}
         </section>
       ) : null}
 
-
       {activeRoute === 'dashboard' ? (
         <section className="panel installed-modules-dashboard-panel">
-          <div className="installed-modules-header">
-            <div>
-              <p className="eyebrow">Installed Modules</p>
-              <h2>Role-based module dashboard</h2>
-              <p className="muted">
-                These are the Project Pulse modules available to your current role. Each card explains what the module is intended to do so new workflow areas are visible from the dashboard.
-              </p>
-            </div>
-            <span className="installed-modules-count">
-              {(roleWorkspaceModules || []).filter((module) => !module.permissions?.length || canSeeAny(module.permissions)).length} available
-            </span>
-          </div>
+          {(() => {
+            const installedModules = getInstalledProjectPulseModuleRegistry()
+              .filter((module) => {
+                if (!module.permissions?.length) return true;
+                if (typeof canSeeAny !== 'function') return true;
+                return canSeeAny(module.permissions);
+              });
 
-          <div className="installed-module-grid">
-            {(roleWorkspaceModules || [])
-              .filter((module) => !module.permissions?.length || canSeeAny(module.permissions))
-              .map((module) => (
-                <a className="installed-module-card" href={module.href ?? `#${module.route}`} key={module.route}>
-                  <span>{getModuleGroup ? getModuleGroup(module.route) : 'Project Pulse'}</span>
-                  <strong>{module.title ?? module.navLabel ?? module.route}</strong>
-                  <p>{getInstalledModuleDescription(module)}</p>
-                  <small>Open module →</small>
-                </a>
-              ))}
-          </div>
+            return (
+              <>
+                <div className="installed-modules-header">
+                  <div>
+                    <p className="eyebrow">Installed Modules</p>
+                    <h2>Role-based module dashboard</h2>
+                    <p className="muted">
+                      These are the Project Pulse modules available to your current role. Each card explains what the module is intended to do so new workflow areas are visible from the dashboard.
+                    </p>
+                  </div>
+                  <span className="installed-modules-count">{installedModules.length} available</span>
+                </div>
+
+                <div className="installed-module-grid">
+                  {installedModules.map((module) => (
+                    <a className="installed-module-card" href={`#${module.route}`} key={module.route}>
+                      <span>{module.group}</span>
+                      <strong>{module.title}</strong>
+                      <p>{module.description}</p>
+                      <small>Open module →</small>
+                    </a>
+                  ))}
+                </div>
+              </>
+            );
+          })()}
         </section>
       ) : null}
 
@@ -4834,6 +4990,7 @@ Analytics - Variphy / Infortel`}
           </article>
         ))}
       </section>
+      <HelpAssistant />
 </main>
   );
 }
