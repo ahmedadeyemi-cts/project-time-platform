@@ -11475,6 +11475,469 @@ app.MapPost("/api/project-allocation-info/documents/purge", async (ProjectDocume
 
 
 
+
+app.MapGet("/api/utilization/engineering-team-summary", async (int? year, Guid? engineerUserId, HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    var selectedYear = year ?? DateTime.UtcNow.Year;
+    var yearStart = new DateOnly(selectedYear, 1, 1);
+    var yearEndExclusive = new DateOnly(selectedYear + 1, 1, 1);
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var roles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    var permissions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+    await using (var accessCommand = new NpgsqlCommand("""
+        SELECT
+            r.role_code,
+            COALESCE(p.permission_code, '') AS permission_code
+        FROM app_user_role_assignments ura
+        JOIN app_roles r
+            ON r.app_role_id = ura.app_role_id
+           AND r.is_active = TRUE
+        LEFT JOIN app_role_permissions rp
+            ON rp.app_role_id = r.app_role_id
+        LEFT JOIN app_permissions p
+            ON p.app_permission_id = rp.app_permission_id
+        WHERE ura.user_id = @user_id
+          AND ura.is_active = TRUE;
+        """, connection))
+    {
+        accessCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+
+        await using var reader = await accessCommand.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            roles.Add(reader.GetString(0));
+
+            if (!reader.IsDBNull(1) && !string.IsNullOrWhiteSpace(reader.GetString(1)))
+            {
+                permissions.Add(reader.GetString(1));
+            }
+        }
+    }
+
+    var canViewAll =
+        roles.Contains("ADMINISTRATOR")
+        || roles.Contains("PROJECT_TEAM_COORDINATOR")
+        || permissions.Contains("SYSTEM_ADMINISTRATION")
+        || permissions.Contains("MANAGE_ALL");
+
+    var isEngineeringTeamLead = roles.Contains("ENGINEERING_TEAM_LEAD");
+    var isEngineer = roles.Contains("ENGINEER");
+
+    var canUseTeamScope =
+        !canViewAll
+        && (
+            isEngineeringTeamLead
+            || permissions.Contains("VIEW_TEAM_UTILIZATION")
+        );
+
+    var canUseOwnScope =
+        !canViewAll
+        && !canUseTeamScope
+        && (
+            isEngineer
+            || permissions.Contains("VIEW_OWN_UTILIZATION")
+        );
+
+    var canAccess =
+        canViewAll
+        || canUseTeamScope
+        || canUseOwnScope;
+
+    if (!canAccess)
+    {
+        return Results.Json(new
+        {
+            canViewEngineeringTeamUtilization = false,
+            status = "access_denied",
+            message = "Engineering utilization is available to Engineers, Engineering Team Leads, Project/Team Coordinators, and Administrators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var selectableEngineers = new List<(Guid UserId, string DisplayName, string Email, string TeamName, string ScopeReason)>();
+
+    if (canViewAll)
+    {
+        await using var allCommand = new NpgsqlCommand("""
+            SELECT DISTINCT
+                u.user_id,
+                COALESCE(NULLIF(u.display_name, ''), u.email) AS display_name,
+                u.email,
+                COALESCE(NULLIF(u.team_name, ''), NULLIF(u.department_name, ''), NULLIF(u.department, ''), 'Unassigned') AS team_name
+            FROM app_users u
+            JOIN app_user_role_assignments ura
+                ON ura.user_id = u.user_id
+               AND ura.is_active = TRUE
+            JOIN app_roles r
+                ON r.app_role_id = ura.app_role_id
+               AND r.is_active = TRUE
+            WHERE u.is_active = TRUE
+              AND r.role_code = 'ENGINEER'
+            ORDER BY team_name, display_name, u.email;
+            """, connection);
+
+        await using var reader = await allCommand.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            selectableEngineers.Add((
+                reader.GetGuid(0),
+                reader.GetString(1),
+                reader.GetString(2),
+                reader.GetString(3),
+                "all_engineers"));
+        }
+    }
+    else if (canUseTeamScope)
+    {
+        await using var teamCommand = new NpgsqlCommand("""
+            WITH lead_profile AS (
+                SELECT
+                    user_id,
+                    NULLIF(team_name, '') AS team_name,
+                    NULLIF(department_name, '') AS department_name,
+                    NULLIF(department, '') AS department
+                FROM app_users
+                WHERE user_id = @user_id
+            ),
+            active_lead_teams AS (
+                SELECT DISTINCT tm.team_id
+                FROM team_memberships tm
+                WHERE tm.user_id = @user_id
+                  AND tm.effective_start_date <= CURRENT_DATE
+                  AND (tm.effective_end_date IS NULL OR tm.effective_end_date >= CURRENT_DATE)
+            ),
+            membership_candidates AS (
+                SELECT DISTINCT tm.user_id
+                FROM team_memberships tm
+                JOIN active_lead_teams alt
+                    ON alt.team_id = tm.team_id
+                WHERE tm.effective_start_date <= CURRENT_DATE
+                  AND (tm.effective_end_date IS NULL OR tm.effective_end_date >= CURRENT_DATE)
+            ),
+            profile_candidates AS (
+                SELECT DISTINCT u.user_id
+                FROM app_users u
+                CROSS JOIN lead_profile lp
+                WHERE u.is_active = TRUE
+                  AND (
+                        (lp.team_name IS NOT NULL AND lower(COALESCE(u.team_name, '')) = lower(lp.team_name))
+                     OR (lp.department_name IS NOT NULL AND lower(COALESCE(u.department_name, '')) = lower(lp.department_name))
+                     OR (lp.department IS NOT NULL AND lower(COALESCE(u.department, '')) = lower(lp.department))
+                  )
+            ),
+            eligible_engineers AS (
+                SELECT user_id FROM membership_candidates
+                UNION
+                SELECT user_id FROM profile_candidates
+            )
+            SELECT DISTINCT
+                u.user_id,
+                COALESCE(NULLIF(u.display_name, ''), u.email) AS display_name,
+                u.email,
+                COALESCE(NULLIF(u.team_name, ''), NULLIF(u.department_name, ''), NULLIF(u.department, ''), 'Unassigned') AS team_name
+            FROM eligible_engineers ee
+            JOIN app_users u
+                ON u.user_id = ee.user_id
+               AND u.is_active = TRUE
+            JOIN app_user_role_assignments ura
+                ON ura.user_id = u.user_id
+               AND ura.is_active = TRUE
+            JOIN app_roles r
+                ON r.app_role_id = ura.app_role_id
+               AND r.is_active = TRUE
+            WHERE r.role_code = 'ENGINEER'
+            ORDER BY team_name, display_name, u.email;
+            """, connection);
+
+        teamCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+
+        await using var reader = await teamCommand.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            selectableEngineers.Add((
+                reader.GetGuid(0),
+                reader.GetString(1),
+                reader.GetString(2),
+                reader.GetString(3),
+                "engineering_team_scope"));
+        }
+    }
+    else if (canUseOwnScope)
+    {
+        await using var ownCommand = new NpgsqlCommand("""
+            SELECT
+                u.user_id,
+                COALESCE(NULLIF(u.display_name, ''), u.email) AS display_name,
+                u.email,
+                COALESCE(NULLIF(u.team_name, ''), NULLIF(u.department_name, ''), NULLIF(u.department, ''), 'Unassigned') AS team_name
+            FROM app_users u
+            WHERE u.user_id = @user_id
+              AND u.is_active = TRUE;
+            """, connection);
+
+        ownCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+
+        await using var reader = await ownCommand.ExecuteReaderAsync();
+        if (await reader.ReadAsync())
+        {
+            selectableEngineers.Add((
+                reader.GetGuid(0),
+                reader.GetString(1),
+                reader.GetString(2),
+                reader.GetString(3),
+                "own_engineer_scope"));
+        }
+    }
+
+    selectableEngineers = selectableEngineers
+        .GroupBy(item => item.UserId)
+        .Select(group => group.First())
+        .OrderBy(item => item.TeamName)
+        .ThenBy(item => item.DisplayName)
+        .ThenBy(item => item.Email)
+        .ToList();
+
+    var allowedEngineerIds = selectableEngineers.Select(item => item.UserId).ToArray();
+
+    Guid? effectiveEngineerUserId = null;
+    var scope = canViewAll ? "all_engineers" : canUseTeamScope ? "engineering_team_scope" : "own_engineer_scope";
+
+    if (engineerUserId.HasValue && engineerUserId.Value != Guid.Empty)
+    {
+        if (canViewAll || isEngineeringTeamLead)
+        {
+            if (!allowedEngineerIds.Contains(engineerUserId.Value))
+            {
+                return Results.Json(new
+                {
+                    status = "access_denied",
+                    message = "Selected engineer is not available within your utilization scope."
+                }, statusCode: StatusCodes.Status403Forbidden);
+            }
+
+            effectiveEngineerUserId = engineerUserId.Value;
+            scope = canViewAll ? "selected_engineer_scope" : "selected_team_engineer_scope";
+        }
+        else
+        {
+            effectiveEngineerUserId = sessionUserId.Value;
+            scope = "own_engineer_scope";
+        }
+    }
+
+    var scopedEngineerIds = effectiveEngineerUserId.HasValue
+        ? new[] { effectiveEngineerUserId.Value }
+        : allowedEngineerIds;
+
+    decimal standardQuarterHours = 520m;
+    decimal targetPercent = 70m;
+    string policyName = "Default utilization policy";
+
+    await using (var policyCommand = new NpgsqlCommand("""
+        SELECT
+            policy_name,
+            standard_period_hours,
+            default_target_percent
+        FROM utilization_policies
+        WHERE is_active = TRUE
+        ORDER BY created_at DESC
+        LIMIT 1;
+        """, connection))
+    {
+        await using var reader = await policyCommand.ExecuteReaderAsync();
+        if (await reader.ReadAsync())
+        {
+            policyName = reader.GetString(0);
+            standardQuarterHours = reader.GetDecimal(1);
+            targetPercent = reader.GetDecimal(2);
+        }
+    }
+
+    var usageByUserQuarter = new Dictionary<Guid, Dictionary<int, decimal>>();
+
+    if (scopedEngineerIds.Length > 0)
+    {
+        await using var usageCommand = new NpgsqlCommand("""
+            SELECT
+                te.user_id,
+                EXTRACT(QUARTER FROM te.work_date)::int AS quarter_number,
+                COALESCE(SUM(te.hours) FILTER (WHERE COALESCE(te.billable, FALSE) = TRUE), 0)::numeric AS billable_hours,
+                COALESCE(SUM(te.hours), 0)::numeric AS total_hours
+            FROM time_entries te
+            WHERE te.user_id = ANY(@user_ids)
+              AND te.work_date >= @year_start
+              AND te.work_date < @year_end
+              AND COALESCE(te.status, 'draft') NOT IN ('manager_declined', 'rejected', 'voided')
+            GROUP BY te.user_id, EXTRACT(QUARTER FROM te.work_date)::int
+            ORDER BY te.user_id, quarter_number;
+            """, connection);
+
+        usageCommand.Parameters.AddWithValue("user_ids", scopedEngineerIds);
+        usageCommand.Parameters.AddWithValue("year_start", yearStart);
+        usageCommand.Parameters.AddWithValue("year_end", yearEndExclusive);
+
+        await using var reader = await usageCommand.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var userId = reader.GetGuid(0);
+            var quarter = reader.GetInt32(1);
+            var billableHours = reader.GetDecimal(2);
+
+            if (!usageByUserQuarter.TryGetValue(userId, out var quarterMap))
+            {
+                quarterMap = new Dictionary<int, decimal>();
+                usageByUserQuarter[userId] = quarterMap;
+            }
+
+            quarterMap[quarter] = billableHours;
+        }
+    }
+
+    object BuildQuarter(int quarterNumber, decimal billableHours)
+    {
+        var utilizationPercent = standardQuarterHours == 0
+            ? 0m
+            : Math.Round((billableHours / standardQuarterHours) * 100m, 2);
+
+        var targetHours = Math.Round(standardQuarterHours * (targetPercent / 100m), 2);
+        var hoursLeftToTarget = Math.Max(0m, Math.Round(targetHours - billableHours, 2));
+
+        return new
+        {
+            quarterNumber,
+            billableHours,
+            standardQuarterHours,
+            targetPercent,
+            targetHours,
+            utilizationPercent,
+            hoursLeftToTarget
+        };
+    }
+
+    var selectedUsers = selectableEngineers
+        .Where(item => scopedEngineerIds.Contains(item.UserId))
+        .ToList();
+
+    var members = selectedUsers.Select(user =>
+    {
+        usageByUserQuarter.TryGetValue(user.UserId, out var quarters);
+        quarters ??= new Dictionary<int, decimal>();
+
+        var annualBillableHours = Enumerable.Range(1, 4).Sum(quarter => quarters.GetValueOrDefault(quarter, 0m));
+        var annualCapacityHours = standardQuarterHours * 4m;
+        var annualUtilizationPercent = annualCapacityHours == 0
+            ? 0m
+            : Math.Round((annualBillableHours / annualCapacityHours) * 100m, 2);
+
+        return new
+        {
+            userId = user.UserId,
+            displayName = user.DisplayName,
+            email = user.Email,
+            teamName = user.TeamName,
+            annualBillableHours,
+            annualCapacityHours,
+            annualUtilizationPercent,
+            quarters = Enumerable.Range(1, 4)
+                .Select(quarter => BuildQuarter(quarter, quarters.GetValueOrDefault(quarter, 0m)))
+                .ToList()
+        };
+    }).ToList();
+
+    var teamSummaries = members
+        .GroupBy(member => member.teamName)
+        .Select(group =>
+        {
+            var teamAnnualBillableHours = group.Sum(member => member.annualBillableHours);
+            var teamAnnualCapacityHours = group.Sum(member => member.annualCapacityHours);
+            var teamAnnualUtilizationPercent = teamAnnualCapacityHours == 0
+                ? 0m
+                : Math.Round((teamAnnualBillableHours / teamAnnualCapacityHours) * 100m, 2);
+
+            return new
+            {
+                teamName = group.Key,
+                memberCount = group.Count(),
+                annualBillableHours = teamAnnualBillableHours,
+                annualCapacityHours = teamAnnualCapacityHours,
+                annualUtilizationPercent = teamAnnualUtilizationPercent,
+                quarters = Enumerable.Range(1, 4).Select(quarter =>
+                {
+                    var quarterBillableHours = group.Sum(member =>
+                    {
+                        var quarterObj = member.quarters[quarter - 1];
+                        return (decimal)quarterObj.GetType().GetProperty("billableHours")!.GetValue(quarterObj)!;
+                    });
+
+                    return BuildQuarter(quarter, quarterBillableHours);
+                }).ToList()
+            };
+        })
+        .OrderBy(team => team.teamName)
+        .ToList();
+
+    var collectiveAnnualBillableHours = members.Sum(member => member.annualBillableHours);
+    var collectiveAnnualCapacityHours = members.Sum(member => member.annualCapacityHours);
+    var collectiveAnnualUtilizationPercent = collectiveAnnualCapacityHours == 0
+        ? 0m
+        : Math.Round((collectiveAnnualBillableHours / collectiveAnnualCapacityHours) * 100m, 2);
+
+    return Results.Ok(new
+    {
+        module = "019M-AO Engineering Team Lead Utilization Scope",
+        canViewEngineeringTeamUtilization = true,
+        scope,
+        year = selectedYear,
+        selectedEngineerUserId = effectiveEngineerUserId,
+        policy = new
+        {
+            policyName,
+            standardQuarterHours,
+            targetPercent
+        },
+        access = new
+        {
+            canViewAll,
+            canSelectEngineer = canViewAll || canUseTeamScope,
+            isEngineeringTeamLead,
+            isEngineer,
+            canUseTeamScope,
+            canUseOwnScope
+        },
+        selectableEngineers = selectableEngineers.Select(item => new
+        {
+            userId = item.UserId,
+            displayName = item.DisplayName,
+            email = item.Email,
+            teamName = item.TeamName,
+            scopeReason = item.ScopeReason
+        }),
+        collectiveSummary = new
+        {
+            memberCount = members.Count,
+            annualBillableHours = collectiveAnnualBillableHours,
+            annualCapacityHours = collectiveAnnualCapacityHours,
+            annualUtilizationPercent = collectiveAnnualUtilizationPercent
+        },
+        teamSummaries,
+        members,
+        calculationNote = "Engineering Team Lead scope is enforced by backend role scope. Team leads can only view engineers on matching active team membership or profile team/department scope."
+    });
+});
+
 app.MapGet("/api/utilization/manager-team-summary", async (int? year, HttpContext httpContext) =>
 {
     var config = DatabaseConfig.FromEnvironment();

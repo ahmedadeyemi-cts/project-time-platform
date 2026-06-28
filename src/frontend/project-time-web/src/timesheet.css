@@ -5320,3 +5320,108 @@ body:has(.app-shell.route-cost-alerts) .app-shell.route-cost-alerts > #cost-aler
   width: 100%;
   max-width: 100%;
 }
+
+/* 019M-AO Engineering Team Lead Utilization */
+.engineering-team-utilization-panel {
+  border: 1px solid var(--border);
+  border-radius: 1.25rem;
+  background: var(--card);
+  box-shadow: var(--shadow-sm);
+  padding: 1.5rem;
+  margin-top: 1.5rem;
+}
+
+.engineering-utilization-toolbar {
+  display: flex;
+  gap: 0.9rem;
+  align-items: end;
+  flex-wrap: wrap;
+  margin: 1rem 0;
+}
+
+.engineering-utilization-toolbar label {
+  display: grid;
+  gap: 0.35rem;
+  min-width: min(360px, 100%);
+  font-weight: 800;
+  color: var(--text);
+}
+
+.engineering-utilization-toolbar select {
+  border: 1px solid var(--border);
+  border-radius: 0.85rem;
+  background: var(--input-background, #fff);
+  color: inherit;
+  min-height: 42px;
+  padding: 0.65rem 0.75rem;
+}
+
+.engineering-utilization-summary-grid,
+.engineering-utilization-team-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.engineering-utilization-summary-grid article,
+.engineering-utilization-team-card {
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: var(--panel);
+  padding: 1rem;
+}
+
+.engineering-utilization-summary-grid span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.engineering-utilization-summary-grid strong {
+  display: block;
+  margin-top: 0.3rem;
+  font-size: 1.6rem;
+}
+
+.engineering-quarter-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin-top: 0.8rem;
+}
+
+.engineering-quarter-grid span {
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  padding: 0.65rem;
+  background: var(--card);
+}
+
+.engineering-quarter-grid strong,
+.engineering-quarter-grid small {
+  display: block;
+}
+
+.engineering-utilization-table-wrap {
+  overflow-x: auto;
+  margin-top: 1rem;
+}
+
+.member-quarter-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.member-quarter-list span {
+  border-radius: 999px;
+  padding: 0.25rem 0.5rem;
+  background: rgba(37, 99, 235, 0.09);
+  color: #1d4ed8;
+  font-weight: 800;
+  white-space: nowrap;
+}

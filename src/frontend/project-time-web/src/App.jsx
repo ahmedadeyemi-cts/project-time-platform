@@ -359,6 +359,7 @@ import CustomerDirectoryCenter from './CustomerDirectoryCenter.jsx';
 import CostOverrunAlertCenter from './CostOverrunAlertCenter.jsx';
 import ProjectWorkspaceCenter from './ProjectWorkspaceCenter.jsx';
 import ProjectManagerWorkloadCenter from './ProjectManagerWorkloadCenter.jsx';
+import EngineeringTeamLeadUtilizationPanel from './EngineeringTeamLeadUtilizationPanel.jsx';
 
 const workflowCards = [
   {
@@ -720,7 +721,7 @@ const roleWorkspaceModules = [
     href: '#utilization',
     title: 'Utilization',
     navLabel: 'Utilization',
-    description: 'Review utilization progress, team utilization, and remaining hours.',
+    description: 'Review own utilization, manager team utilization, engineering team lead utilization, and remaining hours.',
     permissions: ['VIEW_OWN_UTILIZATION', 'VIEW_TEAM_UTILIZATION', 'VIEW_INDIVIDUAL_UTILIZATION']
   },
   {
@@ -4896,6 +4897,7 @@ Analytics - Variphy / Infortel`}
       <section id="utilization" className="panel">
         <YearlyUtilizationPanel />
         <ManagerTeamUtilizationPanel />
+        <EngineeringTeamLeadUtilizationPanel />
         <div className="section-header compact">
           <div>
             <p className="eyebrow">Utilization policy</p>

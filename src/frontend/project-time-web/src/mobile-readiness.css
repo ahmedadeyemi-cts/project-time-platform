@@ -488,3 +488,25 @@ button[type='submit'] {
     width: 100%;
   }
 }
+
+/* 019M-AO Engineering Team Lead Utilization mobile readiness */
+@media (max-width: 760px) {
+  .engineering-utilization-toolbar,
+  .engineering-utilization-summary-grid,
+  .engineering-utilization-team-grid,
+  .engineering-quarter-grid {
+    grid-template-columns: 1fr !important;
+    display: grid !important;
+  }
+
+  .engineering-utilization-toolbar label,
+  .engineering-utilization-toolbar select,
+  .engineering-utilization-toolbar button {
+    width: 100%;
+  }
+
+  .engineering-utilization-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}

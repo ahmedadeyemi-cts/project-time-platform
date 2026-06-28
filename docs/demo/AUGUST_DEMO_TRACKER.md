@@ -433,3 +433,17 @@
 - Project Coordinator/PTC/Admin can edit post-intake fields and upload/replace documents.
 - PM/PM Team Lead can view intake aging where permitted.
 - All changes are captured in project intake change history and audit logs.
+
+## 019M-AO Engineering Team Lead Utilization Scope + Engineer Selector
+
+### Added
+- Added backend-scoped engineering utilization endpoint for Engineering Team Leads.
+- Engineering Team Leads can view all engineers in their team scope or select one engineer.
+- Engineers remain limited to their own utilization scope.
+- Admin/PTC can view all engineers or select one engineer.
+- Existing Manager Team Utilization behavior remains unchanged.
+- Added utilization route panel and mobile readiness for Engineering Team Lead utilization.
+
+### Scope Enforcement
+- Backend enforces all team/engineer visibility.
+- The UI selector only displays choices already allowed by the API.
