@@ -11535,27 +11535,22 @@ app.MapGet("/api/utilization/engineering-team-summary", async (int? year, Guid? 
         || permissions.Contains("MANAGE_ALL");
 
     var isEngineeringTeamLead = roles.Contains("ENGINEERING_TEAM_LEAD");
+    var isManager = roles.Contains("MANAGER");
     var isEngineer = roles.Contains("ENGINEER");
 
     var canUseTeamScope =
         !canViewAll
         && (
             isEngineeringTeamLead
+            || isManager
             || permissions.Contains("VIEW_TEAM_UTILIZATION")
         );
 
-    var canUseOwnScope =
-        !canViewAll
-        && !canUseTeamScope
-        && (
-            isEngineer
-            || permissions.Contains("VIEW_OWN_UTILIZATION")
-        );
+    var canUseOwnScope = false;
 
     var canAccess =
         canViewAll
-        || canUseTeamScope
-        || canUseOwnScope;
+        || canUseTeamScope;
 
     if (!canAccess)
     {
@@ -11563,7 +11558,7 @@ app.MapGet("/api/utilization/engineering-team-summary", async (int? year, Guid? 
         {
             canViewEngineeringTeamUtilization = false,
             status = "access_denied",
-            message = "Engineering utilization is available to Engineers, Engineering Team Leads, Project/Team Coordinators, and Administrators."
+            message = "Engineering team utilization is available to Engineering Team Leads, Managers, Project/Team Coordinators, and Administrators."
         }, statusCode: StatusCodes.Status403Forbidden);
     }
 
@@ -11913,6 +11908,7 @@ app.MapGet("/api/utilization/engineering-team-summary", async (int? year, Guid? 
             canViewAll,
             canSelectEngineer = canViewAll || canUseTeamScope,
             isEngineeringTeamLead,
+            isManager,
             isEngineer,
             canUseTeamScope,
             canUseOwnScope

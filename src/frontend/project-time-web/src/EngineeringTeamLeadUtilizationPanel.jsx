@@ -90,6 +90,8 @@ export default function EngineeringTeamLeadUtilizationPanel() {
   const data = payload.data;
   const canView = Boolean(data?.canViewEngineeringTeamUtilization);
   const access = data?.access ?? {};
+  const isEngineerOnlyScope = data?.scope === 'own_engineer_scope'
+    || (access.canUseOwnScope && !access.canUseTeamScope && !access.canViewAll);
   const selectableEngineers = data?.selectableEngineers ?? [];
   const members = data?.members ?? [];
   const teamSummaries = data?.teamSummaries ?? [];
@@ -100,7 +102,11 @@ export default function EngineeringTeamLeadUtilizationPanel() {
     return [currentYear - 1, currentYear, currentYear + 1];
   }, []);
 
-  if (!payload.loading && !payload.error && !canView) {
+  if (payload.loading) {
+    return null;
+  }
+
+  if (!payload.error && (!canView || isEngineerOnlyScope)) {
     return null;
   }
 
@@ -122,7 +128,7 @@ export default function EngineeringTeamLeadUtilizationPanel() {
           <p className="eyebrow">019M-AO</p>
           <h2>Engineering Team Lead Utilization</h2>
           <p className="section-copy">
-            Engineering Team Leads can review utilization for engineers on their team only. Use the selector to switch between all team members and one engineer.
+            Engineering Team Leads and Managers can review utilization for engineers in their team scope. Use the selector to switch between all team members and one engineer.
           </p>
         </div>
         <span className="badge">{getScopeLabel(data?.scope)}</span>

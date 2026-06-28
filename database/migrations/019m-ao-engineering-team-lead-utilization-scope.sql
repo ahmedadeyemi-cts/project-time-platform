@@ -14,7 +14,7 @@ SELECT r.app_role_id, p.app_permission_id
 FROM app_roles r
 JOIN app_permissions p
     ON p.permission_code IN ('VIEW_TEAM_UTILIZATION', 'VIEW_INDIVIDUAL_UTILIZATION')
-WHERE r.role_code IN ('ENGINEERING_TEAM_LEAD', 'ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR')
+WHERE r.role_code IN ('ENGINEERING_TEAM_LEAD', 'MANAGER', 'ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR')
 ON CONFLICT DO NOTHING;
 
 INSERT INTO app_role_permissions (app_role_id, app_permission_id)
