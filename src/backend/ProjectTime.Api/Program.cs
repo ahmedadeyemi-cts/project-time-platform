@@ -1485,6 +1485,242 @@ app.MapGet("/api/project-intake/summary", async () =>
     return Results.Ok(new { count = requests.Count, requests, templates });
 });
 
+
+app.MapGet("/api/customers/overview", async (HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var customers = new List<object>();
+
+    await using (var command = new NpgsqlCommand("""
+        WITH contact_summary AS (
+            SELECT
+                client_id,
+                COUNT(*) FILTER (WHERE is_active = TRUE) AS active_contact_count
+            FROM client_contacts
+            GROUP BY client_id
+        ),
+        project_summary AS (
+            SELECT
+                client_id,
+                COUNT(*) FILTER (WHERE status = 'active') AS active_project_count,
+                COUNT(*) AS total_project_count,
+                COALESCE(SUM(planned_engineering_cost), 0) AS planned_engineering_cost,
+                COALESCE(SUM(planned_pm_cost), 0) AS planned_pm_cost,
+                COALESCE(SUM(planned_total_project_cost), 0) AS planned_total_project_cost
+            FROM projects
+            WHERE client_id IS NOT NULL
+            GROUP BY client_id
+        ),
+        intake_summary AS (
+            SELECT
+                client_id,
+                COUNT(*) AS intake_count,
+                COALESCE(SUM(planned_engineering_cost), 0) AS intake_engineering_cost,
+                COALESCE(SUM(planned_pm_cost), 0) AS intake_pm_cost,
+                COALESCE(SUM(planned_total_project_cost), 0) AS intake_total_cost
+            FROM project_intake_requests
+            WHERE client_id IS NOT NULL
+            GROUP BY client_id
+        ),
+        overrun_summary AS (
+            SELECT
+                client_id,
+                COUNT(*) FILTER (WHERE cost_status = 'hours_over_plan') AS projects_over_plan_count
+            FROM project_cost_status_vw
+            WHERE client_id IS NOT NULL
+            GROUP BY client_id
+        )
+        SELECT
+            c.client_id,
+            c.client_name,
+            COALESCE(c.client_code, '') AS client_code,
+            c.is_active,
+            COALESCE(cs.active_contact_count, 0) AS active_contact_count,
+            COALESCE(ps.active_project_count, 0) AS active_project_count,
+            COALESCE(ps.total_project_count, 0) AS total_project_count,
+            COALESCE(isum.intake_count, 0) AS intake_count,
+            COALESCE(ps.planned_engineering_cost, 0) AS planned_project_engineering_cost,
+            COALESCE(ps.planned_pm_cost, 0) AS planned_project_pm_cost,
+            COALESCE(ps.planned_total_project_cost, 0) AS planned_project_total_cost,
+            COALESCE(isum.intake_engineering_cost, 0) AS planned_intake_engineering_cost,
+            COALESCE(isum.intake_pm_cost, 0) AS planned_intake_pm_cost,
+            COALESCE(isum.intake_total_cost, 0) AS planned_intake_total_cost,
+            COALESCE(os.projects_over_plan_count, 0) AS projects_over_plan_count
+        FROM clients c
+        LEFT JOIN contact_summary cs ON cs.client_id = c.client_id
+        LEFT JOIN project_summary ps ON ps.client_id = c.client_id
+        LEFT JOIN intake_summary isum ON isum.client_id = c.client_id
+        LEFT JOIN overrun_summary os ON os.client_id = c.client_id
+        ORDER BY c.client_name;
+        """, connection))
+    {
+        await using var reader = await command.ExecuteReaderAsync();
+
+        while (await reader.ReadAsync())
+        {
+            customers.Add(new
+            {
+                clientId = reader.GetGuid(0),
+                clientName = reader.GetString(1),
+                clientCode = reader.GetString(2),
+                isActive = reader.GetBoolean(3),
+                activeContactCount = Convert.ToInt32(reader.GetInt64(4)),
+                activeProjectCount = Convert.ToInt32(reader.GetInt64(5)),
+                totalProjectCount = Convert.ToInt32(reader.GetInt64(6)),
+                intakeCount = Convert.ToInt32(reader.GetInt64(7)),
+                plannedProjectEngineeringCost = reader.GetDecimal(8),
+                plannedProjectPmCost = reader.GetDecimal(9),
+                plannedProjectTotalCost = reader.GetDecimal(10),
+                plannedIntakeEngineeringCost = reader.GetDecimal(11),
+                plannedIntakePmCost = reader.GetDecimal(12),
+                plannedIntakeTotalCost = reader.GetDecimal(13),
+                plannedTotalProjectCost = reader.GetDecimal(10),
+                projectsOverPlanCount = Convert.ToInt32(reader.GetInt64(14))
+            });
+        }
+    }
+
+    var contacts = new List<object>();
+
+    await using (var command = new NpgsqlCommand("""
+        SELECT
+            client_contact_id,
+            client_id,
+            contact_name,
+            COALESCE(title, '') AS title,
+            COALESCE(role_description, '') AS role_description,
+            COALESCE(email, '') AS email,
+            COALESCE(phone, '') AS phone,
+            COALESCE(address_line1, '') AS address_line1,
+            COALESCE(address_line2, '') AS address_line2,
+            COALESCE(city, '') AS city,
+            COALESCE(state_region, '') AS state_region,
+            COALESCE(postal_code, '') AS postal_code,
+            COALESCE(country, '') AS country,
+            is_primary,
+            display_order
+        FROM client_contacts
+        WHERE is_active = TRUE
+        ORDER BY client_id, is_primary DESC, display_order, contact_name;
+        """, connection))
+    {
+        await using var reader = await command.ExecuteReaderAsync();
+
+        while (await reader.ReadAsync())
+        {
+            contacts.Add(new
+            {
+                contactId = reader.GetGuid(0),
+                clientId = reader.GetGuid(1),
+                contactName = reader.GetString(2),
+                title = reader.GetString(3),
+                roleDescription = reader.GetString(4),
+                email = reader.GetString(5),
+                phone = reader.GetString(6),
+                addressLine1 = reader.GetString(7),
+                addressLine2 = reader.GetString(8),
+                city = reader.GetString(9),
+                stateRegion = reader.GetString(10),
+                postalCode = reader.GetString(11),
+                country = reader.GetString(12),
+                isPrimary = reader.GetBoolean(13),
+                displayOrder = reader.GetInt32(14)
+            });
+        }
+    }
+
+    return Results.Ok(new
+    {
+        count = customers.Count,
+        customers,
+        contactCount = contacts.Count,
+        contacts
+    });
+});
+
+
+app.MapGet("/api/projects/cost-status", async (HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var projects = new List<object>();
+
+    await using var command = new NpgsqlCommand("""
+        SELECT
+            project_id,
+            project_code,
+            project_name,
+            client_id,
+            COALESCE(client_name, '') AS client_name,
+            project_status,
+            billable,
+            planned_engineering_cost,
+            planned_pm_cost,
+            planned_total_project_cost,
+            assigned_hours,
+            used_hours,
+            remaining_assigned_hours,
+            over_assigned_hours,
+            cost_status
+        FROM project_cost_status_vw
+        ORDER BY client_name, project_code;
+        """, connection);
+
+    await using var reader = await command.ExecuteReaderAsync();
+
+    while (await reader.ReadAsync())
+    {
+        projects.Add(new
+        {
+            projectId = reader.GetGuid(0),
+            projectCode = reader.GetString(1),
+            projectName = reader.GetString(2),
+            clientId = reader.IsDBNull(3) ? (Guid?)null : reader.GetGuid(3),
+            clientName = reader.GetString(4),
+            projectStatus = reader.GetString(5),
+            billable = reader.GetBoolean(6),
+            plannedEngineeringCost = reader.GetDecimal(7),
+            plannedPmCost = reader.GetDecimal(8),
+            plannedTotalProjectCost = reader.GetDecimal(9),
+            assignedHours = reader.GetDecimal(10),
+            usedHours = reader.GetDecimal(11),
+            remainingAssignedHours = reader.GetDecimal(12),
+            overAssignedHours = reader.GetDecimal(13),
+            costStatus = reader.GetString(14)
+        });
+    }
+
+    return Results.Ok(new
+    {
+        count = projects.Count,
+        projects
+    });
+});
+
+
 app.MapGet("/api/project-management/summary", async () =>
 {
     var config = DatabaseConfig.FromEnvironment();

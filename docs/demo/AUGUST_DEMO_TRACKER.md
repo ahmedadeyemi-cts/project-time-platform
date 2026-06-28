@@ -280,3 +280,19 @@
 - Upload CSV controls render only for Administrator, Manager, and Project Team Coordinator.
 - Engineer and Project Management users can view holidays but cannot upload.
 - Removed duplicate empty Regular Tasks option while keeping assigned project tasks under Regular Tasks.
+
+## 019M-AG Phase 1 Customer Directory and Intake Cost Foundation
+
+### Added
+- Added customer contact table foundation with a maximum of 10 active contacts per customer.
+- Added customer linkage and planned engineering, PM, and total project cost fields to project intake.
+- Added planned engineering, PM, and total project cost fields to projects.
+- Added project cost status view for assigned hours, used hours, remaining hours, and over-plan flags.
+- Added read APIs for customer overview and project cost status.
+
+### Not yet changed
+- No frontend redesign was added in this phase.
+- Intake UI still uses the existing layout until the customer selector and cost-entry UI are patched separately.
+
+### 019M-AG Phase 1 adjustment
+- Customer overview now separates project planned cost from intake pipeline planned cost to avoid double-counting converted intake/project records.
