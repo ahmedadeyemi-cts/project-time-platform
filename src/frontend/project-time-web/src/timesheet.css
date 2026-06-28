@@ -5425,3 +5425,45 @@ body:has(.app-shell.route-cost-alerts) .app-shell.route-cost-alerts > #cost-aler
   font-weight: 800;
   white-space: nowrap;
 }
+
+/* 019M-AP repair: Work Task Builder route isolation */
+.app-shell.route-work-task-builder section:not(#work-task-builder):not(:has(#work-task-builder)) {
+  display: none !important;
+}
+
+.app-shell.route-work-task-builder #work-task-builder {
+  display: block !important;
+  margin-top: 1.5rem;
+}
+
+.app-shell.route-work-task-builder .work-task-builder-panel {
+  display: block !important;
+}
+
+body:has(.app-shell.route-work-task-builder) .role-admin-panel,
+body:has(.app-shell.route-work-task-builder) #manager-approval,
+body:has(.app-shell.route-work-task-builder) #local-admin-password-reset,
+body:has(.app-shell.route-work-task-builder) .approval-workflow-panel,
+body:has(.app-shell.route-work-task-builder) .manager-approval-panel {
+  display: none !important;
+}
+
+body:has(.app-shell.route-work-task-builder) #work-task-builder {
+  display: block !important;
+}
+
+/* 019M-AP dedicated route repair */
+.app-shell.route-work-task-builder > #work-task-builder.work-task-builder-panel {
+  display: block !important;
+}
+
+body:has(.app-shell.route-work-task-builder) .app-shell.route-work-task-builder > .hero-section,
+body:has(.app-shell.route-work-task-builder) .app-shell.route-work-task-builder > .hero-panel,
+body:has(.app-shell.route-work-task-builder) .app-shell.route-work-task-builder > .dashboard-shell,
+body:has(.app-shell.route-work-task-builder) .app-shell.route-work-task-builder > .dashboard-grid,
+body:has(.app-shell.route-work-task-builder) .app-shell.route-work-task-builder > .module-foundation-panel,
+body:has(.app-shell.route-work-task-builder) .app-shell.route-work-task-builder > .current-quarter-utilization-panel,
+body:has(.app-shell.route-work-task-builder) .app-shell.route-work-task-builder > .installed-modules-dashboard-panel,
+body:has(.app-shell.route-work-task-builder) .app-shell.route-work-task-builder > .project-allocation-info-panel {
+  display: none !important;
+}

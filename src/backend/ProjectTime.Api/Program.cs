@@ -466,6 +466,928 @@ app.MapGet("/api/schema/tables", async () =>
 });
 
 
+
+// 019M-AP Work Task Builder / Task Classification Foundation
+app.MapGet("/api/work-tasks/summary", async (HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var roles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    var permissions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+    await using (var accessCommand = new NpgsqlCommand("""
+        SELECT
+            r.role_code,
+            COALESCE(p.permission_code, '') AS permission_code
+        FROM app_user_role_assignments ura
+        JOIN app_roles r
+            ON r.app_role_id = ura.app_role_id
+           AND r.is_active = TRUE
+        LEFT JOIN app_role_permissions rp
+            ON rp.app_role_id = r.app_role_id
+        LEFT JOIN app_permissions p
+            ON p.app_permission_id = rp.app_permission_id
+        WHERE ura.user_id = @user_id
+          AND ura.is_active = TRUE;
+        """, connection))
+    {
+        accessCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+
+        await using var reader = await accessCommand.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            roles.Add(reader.GetString(0));
+
+            if (!reader.IsDBNull(1) && !string.IsNullOrWhiteSpace(reader.GetString(1)))
+            {
+                permissions.Add(reader.GetString(1));
+            }
+        }
+    }
+
+    var canViewAll =
+        roles.Contains("ADMINISTRATOR")
+        || roles.Contains("PROJECT_TEAM_COORDINATOR")
+        || permissions.Contains("SYSTEM_ADMINISTRATION")
+        || permissions.Contains("MANAGE_ALL");
+
+    var isProjectManager =
+        roles.Contains("PROJECT_MANAGER")
+        || roles.Contains("PROJECT_MANAGEMENT");
+
+    var canViewBuilder =
+        canViewAll
+        || isProjectManager
+        || roles.Contains("MANAGER")
+        || roles.Contains("ENGINEERING_TEAM_LEAD")
+        || roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD")
+        || permissions.Contains("VIEW_WORK_TASK_BUILDER")
+        || permissions.Contains("MANAGE_WORK_TASK_BUILDER")
+        || permissions.Contains("ASSIGN_WORK_TASKS");
+
+    var canManageTemplates =
+        canViewAll
+        || permissions.Contains("MANAGE_WORK_TASK_BUILDER");
+
+    var canAssignTasks =
+        canViewAll
+        || isProjectManager
+        || permissions.Contains("ASSIGN_WORK_TASKS");
+
+    if (!canViewBuilder)
+    {
+        return Results.Json(new
+        {
+            canViewWorkTaskBuilder = false,
+            status = "access_denied",
+            message = "Work Task Builder is available to Project Team Coordinators, Project Managers, Managers, Team Leads, and Administrators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var templates = new List<object>();
+    await using (var templateCommand = new NpgsqlCommand("""
+        SELECT
+            work_task_template_id,
+            template_code,
+            template_name,
+            COALESCE(template_description, '') AS template_description,
+            task_category,
+            billing_classification,
+            utilization_classification,
+            utilization_bucket,
+            default_billable,
+            default_requires_approval,
+            is_active,
+            display_order
+        FROM work_task_templates
+        ORDER BY is_active DESC, display_order, template_name;
+        """, connection))
+    {
+        await using var reader = await templateCommand.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            templates.Add(new
+            {
+                templateId = reader.GetGuid(0),
+                templateCode = reader.GetString(1),
+                templateName = reader.GetString(2),
+                templateDescription = reader.GetString(3),
+                taskCategory = reader.GetString(4),
+                billingClassification = reader.GetString(5),
+                utilizationClassification = reader.GetString(6),
+                utilizationBucket = reader.GetString(7),
+                defaultBillable = reader.GetBoolean(8),
+                defaultRequiresApproval = reader.GetBoolean(9),
+                isActive = reader.GetBoolean(10),
+                displayOrder = reader.GetInt32(11)
+            });
+        }
+    }
+
+    var projects = new List<object>();
+    await using (var projectCommand = new NpgsqlCommand("""
+        WITH assignment_rollup AS (
+            SELECT
+                pa.project_id,
+                pa.task_id,
+                COUNT(DISTINCT pa.user_id)::bigint AS assigned_engineer_count,
+                COALESCE(SUM(pa.assigned_hours), 0)::numeric AS assigned_hours
+            FROM project_assignments pa
+            WHERE pa.effective_start_date <= CURRENT_DATE
+              AND (pa.effective_end_date IS NULL OR pa.effective_end_date >= CURRENT_DATE)
+            GROUP BY pa.project_id, pa.task_id
+        ),
+        used_rollup AS (
+            SELECT
+                te.project_id,
+                te.task_id,
+                COALESCE(SUM(te.hours), 0)::numeric AS used_hours
+            FROM time_entries te
+            WHERE te.project_id IS NOT NULL
+              AND te.task_id IS NOT NULL
+              AND COALESCE(te.status, 'draft') NOT IN ('manager_declined', 'rejected', 'voided')
+            GROUP BY te.project_id, te.task_id
+        )
+        SELECT
+            p.project_id,
+            p.project_code,
+            p.project_name,
+            COALESCE(c.client_name, '') AS client_name,
+            p.status,
+            p.billable AS project_billable,
+            p.project_manager_user_id,
+            COALESCE(pm.display_name, '') AS project_manager_name,
+            pt.task_id,
+            pt.task_code,
+            pt.task_name,
+            COALESCE(pt.task_description, '') AS task_description,
+            pt.billable,
+            pt.utilization_bucket,
+            pt.utilization_requires_approval,
+            pt.is_active,
+            COALESCE(pt.work_task_category, 'project_task') AS work_task_category,
+            COALESCE(pt.billing_classification, CASE WHEN pt.billable THEN 'billable' ELSE 'non_billable' END) AS billing_classification,
+            COALESCE(pt.utilization_classification, CASE WHEN pt.billable THEN 'billable_utilization' ELSE 'non_billable_utilization' END) AS utilization_classification,
+            COALESCE(pt.service_request_number, '') AS service_request_number,
+            COALESCE(ar.assigned_engineer_count, 0)::bigint AS assigned_engineer_count,
+            COALESCE(ar.assigned_hours, 0)::numeric AS assigned_hours,
+            COALESCE(ur.used_hours, 0)::numeric AS used_hours
+        FROM projects p
+        LEFT JOIN clients c
+            ON c.client_id = p.client_id
+        LEFT JOIN app_users pm
+            ON pm.user_id = p.project_manager_user_id
+        LEFT JOIN project_tasks pt
+            ON pt.project_id = p.project_id
+        LEFT JOIN assignment_rollup ar
+            ON ar.project_id = p.project_id
+           AND ar.task_id = pt.task_id
+        LEFT JOIN used_rollup ur
+            ON ur.project_id = p.project_id
+           AND ur.task_id = pt.task_id
+        WHERE p.status <> 'archived'
+          AND (@can_view_all = TRUE OR p.project_manager_user_id = @session_user_id)
+        ORDER BY p.project_name, pt.task_code NULLS LAST, pt.task_name NULLS LAST;
+        """, connection))
+    {
+        projectCommand.Parameters.AddWithValue("can_view_all", canViewAll);
+        projectCommand.Parameters.AddWithValue("session_user_id", sessionUserId.Value);
+
+        var projectMap = new Dictionary<Guid, dynamic>();
+
+        await using var reader = await projectCommand.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var projectId = reader.GetGuid(0);
+            if (!projectMap.TryGetValue(projectId, out var projectObj))
+            {
+                projectObj = new
+                {
+                    projectId,
+                    projectCode = reader.GetString(1),
+                    projectName = reader.GetString(2),
+                    clientName = reader.GetString(3),
+                    status = reader.GetString(4),
+                    projectBillable = reader.GetBoolean(5),
+                    projectManagerUserId = reader.IsDBNull(6) ? (Guid?)null : reader.GetGuid(6),
+                    projectManagerName = reader.GetString(7),
+                    tasks = new List<object>()
+                };
+
+                projectMap[projectId] = projectObj;
+            }
+
+            if (!reader.IsDBNull(8))
+            {
+                var assignedHours = reader.GetDecimal(21);
+                var usedHours = reader.GetDecimal(22);
+
+                projectObj.tasks.Add(new
+                {
+                    taskId = reader.GetGuid(8),
+                    taskCode = reader.GetString(9),
+                    taskName = reader.GetString(10),
+                    taskDescription = reader.GetString(11),
+                    billable = reader.GetBoolean(12),
+                    utilizationBucket = reader.GetString(13),
+                    utilizationRequiresApproval = reader.GetBoolean(14),
+                    isActive = reader.GetBoolean(15),
+                    workTaskCategory = reader.GetString(16),
+                    billingClassification = reader.GetString(17),
+                    utilizationClassification = reader.GetString(18),
+                    serviceRequestNumber = reader.GetString(19),
+                    assignedEngineerCount = reader.GetInt64(20),
+                    assignedHours,
+                    usedHours,
+                    remainingHours = Math.Max(0m, assignedHours - usedHours)
+                });
+            }
+        }
+
+        projects.AddRange(projectMap.Values);
+    }
+
+    var engineers = new List<object>();
+    await using (var engineerCommand = new NpgsqlCommand("""
+        SELECT DISTINCT
+            u.user_id,
+            COALESCE(NULLIF(u.display_name, ''), u.email) AS display_name,
+            u.email,
+            COALESCE(NULLIF(u.team_name, ''), NULLIF(u.department_name, ''), NULLIF(u.department, ''), 'Unassigned') AS team_name
+        FROM app_users u
+        JOIN app_user_role_assignments ura
+            ON ura.user_id = u.user_id
+           AND ura.is_active = TRUE
+        JOIN app_roles r
+            ON r.app_role_id = ura.app_role_id
+           AND r.is_active = TRUE
+        WHERE u.is_active = TRUE
+          AND r.role_code = 'ENGINEER'
+        ORDER BY team_name, display_name, u.email;
+        """, connection))
+    {
+        await using var reader = await engineerCommand.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            engineers.Add(new
+            {
+                userId = reader.GetGuid(0),
+                displayName = reader.GetString(1),
+                email = reader.GetString(2),
+                teamName = reader.GetString(3)
+            });
+        }
+    }
+
+    var nonProjectCategories = new List<object>();
+    await using (var categoryCommand = new NpgsqlCommand("""
+        SELECT
+            non_project_time_category_id,
+            category_code,
+            category_name,
+            COALESCE(category_description, '') AS category_description,
+            utilization_classification,
+            utilization_bucket,
+            requires_approval,
+            is_active,
+            display_order
+        FROM non_project_time_categories
+        ORDER BY display_order, category_name;
+        """, connection))
+    {
+        await using var reader = await categoryCommand.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            nonProjectCategories.Add(new
+            {
+                categoryId = reader.GetGuid(0),
+                categoryCode = reader.GetString(1),
+                categoryName = reader.GetString(2),
+                categoryDescription = reader.GetString(3),
+                utilizationClassification = reader.GetString(4),
+                utilizationBucket = reader.GetString(5),
+                requiresApproval = reader.GetBoolean(6),
+                isActive = reader.GetBoolean(7),
+                displayOrder = reader.GetInt32(8)
+            });
+        }
+    }
+
+    var totalProjectTasks = projects.Sum(project =>
+    {
+        var tasksProperty = project.GetType().GetProperty("tasks");
+        var tasks = tasksProperty?.GetValue(project) as List<object>;
+        return tasks?.Count ?? 0;
+    });
+
+    return Results.Ok(new
+    {
+        module = "019M-AP Work Task Builder",
+        canViewWorkTaskBuilder = true,
+        access = new
+        {
+            canViewAll,
+            isProjectManager,
+            canManageTemplates,
+            canAssignTasks
+        },
+        classifications = new
+        {
+            taskCategories = new[]
+            {
+                new { value = "open_task", label = "Open Tasks", description = "General work items not yet tied to a specific delivery task." },
+                new { value = "project_task", label = "Project Tasks", description = "Tasks tied to an approved project and project plan." },
+                new { value = "service_request_task", label = "Service Request Tasks", description = "Customer service request work that needs project/task tracking." },
+                new { value = "non_project_task", label = "Non-Project Tasks", description = "Internal operational work outside a customer project." }
+            },
+            billingClassifications = new[]
+            {
+                new { value = "billable", label = "Billable" },
+                new { value = "non_billable", label = "Non-billable" }
+            },
+            utilizationClassifications = new[]
+            {
+                new { value = "billable_utilization", label = "Billable utilization eligible", bucket = "billable" },
+                new { value = "non_billable_utilization", label = "Non-billable utilization eligible", bucket = "non_billable" },
+                new { value = "non_billable_non_utilization", label = "Non-billable non-utilization eligible", bucket = "excluded" }
+            }
+        },
+        summary = new
+        {
+            templateCount = templates.Count,
+            projectCount = projects.Count,
+            projectTaskCount = totalProjectTasks,
+            engineerCount = engineers.Count,
+            nonProjectCategoryCount = nonProjectCategories.Count
+        },
+        templates,
+        projects,
+        engineers,
+        nonProjectCategories
+    });
+});
+
+app.MapPost("/api/work-tasks/templates", async (HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var canManage = false;
+    await using (var accessCommand = new NpgsqlCommand("""
+        SELECT BOOL_OR(
+            r.role_code IN ('ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR')
+            OR p.permission_code IN ('MANAGE_WORK_TASK_BUILDER', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL')
+        )
+        FROM app_user_role_assignments ura
+        JOIN app_roles r
+            ON r.app_role_id = ura.app_role_id
+           AND r.is_active = TRUE
+        LEFT JOIN app_role_permissions rp
+            ON rp.app_role_id = r.app_role_id
+        LEFT JOIN app_permissions p
+            ON p.app_permission_id = rp.app_permission_id
+        WHERE ura.user_id = @user_id
+          AND ura.is_active = TRUE;
+        """, connection))
+    {
+        accessCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+        var result = await accessCommand.ExecuteScalarAsync();
+        canManage = result is bool value && value;
+    }
+
+    if (!canManage)
+    {
+        return Results.Json(new { status = "access_denied", message = "Only Administrators and Project Team Coordinators can manage work task templates." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    using var document = await System.Text.Json.JsonDocument.ParseAsync(httpContext.Request.Body);
+    var root = document.RootElement;
+
+    string ReadString(string name, string fallback = "")
+    {
+        if (!root.TryGetProperty(name, out var value) || value.ValueKind == System.Text.Json.JsonValueKind.Null) return fallback;
+        var text = value.GetString();
+        return string.IsNullOrWhiteSpace(text) ? fallback : text.Trim();
+    }
+
+    var templateName = ReadString("templateName");
+    if (string.IsNullOrWhiteSpace(templateName))
+    {
+        return Results.Json(new { status = "validation_error", message = "Template name is required." }, statusCode: StatusCodes.Status400BadRequest);
+    }
+
+    var templateCode = ReadString("templateCode");
+    if (string.IsNullOrWhiteSpace(templateCode))
+    {
+        templateCode = System.Text.RegularExpressions.Regex.Replace(templateName.ToUpperInvariant(), "[^A-Z0-9]+", "_").Trim('_');
+    }
+
+    if (templateCode.Length > 80) templateCode = templateCode[..80];
+
+    var taskCategory = ReadString("taskCategory", "project_task");
+    var billingClassification = ReadString("billingClassification", "billable");
+    var utilizationClassification = ReadString("utilizationClassification", billingClassification == "billable" ? "billable_utilization" : "non_billable_utilization");
+
+    if (!new[] { "open_task", "project_task", "service_request_task", "non_project_task" }.Contains(taskCategory))
+    {
+        taskCategory = "project_task";
+    }
+
+    if (!new[] { "billable", "non_billable" }.Contains(billingClassification))
+    {
+        billingClassification = "billable";
+    }
+
+    if (!new[] { "billable_utilization", "non_billable_utilization", "non_billable_non_utilization" }.Contains(utilizationClassification))
+    {
+        utilizationClassification = billingClassification == "billable" ? "billable_utilization" : "non_billable_utilization";
+    }
+
+    var utilizationBucket = utilizationClassification switch
+    {
+        "billable_utilization" => "billable",
+        "non_billable_utilization" => "non_billable",
+        _ => "excluded"
+    };
+
+    await using var command = new NpgsqlCommand("""
+        INSERT INTO work_task_templates (
+            template_code,
+            template_name,
+            template_description,
+            task_category,
+            billing_classification,
+            utilization_classification,
+            utilization_bucket,
+            default_billable,
+            default_requires_approval,
+            created_by_user_id,
+            updated_by_user_id
+        )
+        VALUES (
+            @template_code,
+            @template_name,
+            @template_description,
+            @task_category,
+            @billing_classification,
+            @utilization_classification,
+            @utilization_bucket,
+            @default_billable,
+            TRUE,
+            @user_id,
+            @user_id
+        )
+        ON CONFLICT (template_code) DO UPDATE
+        SET template_name = EXCLUDED.template_name,
+            template_description = EXCLUDED.template_description,
+            task_category = EXCLUDED.task_category,
+            billing_classification = EXCLUDED.billing_classification,
+            utilization_classification = EXCLUDED.utilization_classification,
+            utilization_bucket = EXCLUDED.utilization_bucket,
+            default_billable = EXCLUDED.default_billable,
+            updated_by_user_id = EXCLUDED.updated_by_user_id,
+            updated_at = NOW()
+        RETURNING work_task_template_id;
+        """, connection);
+
+    command.Parameters.AddWithValue("template_code", templateCode);
+    command.Parameters.AddWithValue("template_name", templateName);
+    command.Parameters.AddWithValue("template_description", ReadString("templateDescription"));
+    command.Parameters.AddWithValue("task_category", taskCategory);
+    command.Parameters.AddWithValue("billing_classification", billingClassification);
+    command.Parameters.AddWithValue("utilization_classification", utilizationClassification);
+    command.Parameters.AddWithValue("utilization_bucket", utilizationBucket);
+    command.Parameters.AddWithValue("default_billable", billingClassification == "billable");
+    command.Parameters.AddWithValue("user_id", sessionUserId.Value);
+
+    var templateId = (Guid)(await command.ExecuteScalarAsync() ?? Guid.Empty);
+
+    return Results.Ok(new
+    {
+        status = "work_task_template_saved",
+        templateId,
+        templateCode,
+        templateName,
+        taskCategory,
+        billingClassification,
+        utilizationClassification,
+        utilizationBucket
+    });
+});
+
+app.MapPost("/api/work-tasks/project-tasks", async (HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    using var document = await System.Text.Json.JsonDocument.ParseAsync(httpContext.Request.Body);
+    var root = document.RootElement;
+
+    string ReadString(string name, string fallback = "")
+    {
+        if (!root.TryGetProperty(name, out var value) || value.ValueKind == System.Text.Json.JsonValueKind.Null) return fallback;
+        var text = value.GetString();
+        return string.IsNullOrWhiteSpace(text) ? fallback : text.Trim();
+    }
+
+    Guid? ReadGuid(string name)
+    {
+        if (!root.TryGetProperty(name, out var value) || value.ValueKind == System.Text.Json.JsonValueKind.Null) return null;
+        return Guid.TryParse(value.GetString(), out var guid) ? guid : null;
+    }
+
+    var projectId = ReadGuid("projectId");
+    var taskName = ReadString("taskName");
+
+    if (projectId is null || string.IsNullOrWhiteSpace(taskName))
+    {
+        return Results.Json(new { status = "validation_error", message = "Project and task name are required." }, statusCode: StatusCodes.Status400BadRequest);
+    }
+
+    var taskCategory = ReadString("taskCategory", "project_task");
+    var billingClassification = ReadString("billingClassification", "billable");
+    var utilizationClassification = ReadString("utilizationClassification", billingClassification == "billable" ? "billable_utilization" : "non_billable_utilization");
+
+    if (!new[] { "open_task", "project_task", "service_request_task", "non_project_task" }.Contains(taskCategory))
+    {
+        taskCategory = "project_task";
+    }
+
+    if (!new[] { "billable", "non_billable" }.Contains(billingClassification))
+    {
+        billingClassification = "billable";
+    }
+
+    if (!new[] { "billable_utilization", "non_billable_utilization", "non_billable_non_utilization" }.Contains(utilizationClassification))
+    {
+        utilizationClassification = billingClassification == "billable" ? "billable_utilization" : "non_billable_utilization";
+    }
+
+    var utilizationBucket = utilizationClassification switch
+    {
+        "billable_utilization" => "billable",
+        "non_billable_utilization" => "non_billable",
+        _ => "excluded"
+    };
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var canViewAll = false;
+    var isProjectManager = false;
+
+    await using (var accessCommand = new NpgsqlCommand("""
+        SELECT
+            BOOL_OR(
+                r.role_code IN ('ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR')
+                OR p.permission_code IN ('SYSTEM_ADMINISTRATION', 'MANAGE_ALL')
+            ) AS can_view_all,
+            BOOL_OR(
+                r.role_code IN ('PROJECT_MANAGER', 'PROJECT_MANAGEMENT')
+                OR p.permission_code = 'ASSIGN_WORK_TASKS'
+            ) AS is_project_manager
+        FROM app_user_role_assignments ura
+        JOIN app_roles r
+            ON r.app_role_id = ura.app_role_id
+           AND r.is_active = TRUE
+        LEFT JOIN app_role_permissions rp
+            ON rp.app_role_id = r.app_role_id
+        LEFT JOIN app_permissions p
+            ON p.app_permission_id = rp.app_permission_id
+        WHERE ura.user_id = @user_id
+          AND ura.is_active = TRUE;
+        """, connection))
+    {
+        accessCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+        await using var reader = await accessCommand.ExecuteReaderAsync();
+        await reader.ReadAsync();
+        canViewAll = !reader.IsDBNull(0) && reader.GetBoolean(0);
+        isProjectManager = !reader.IsDBNull(1) && reader.GetBoolean(1);
+    }
+
+    if (!canViewAll && !isProjectManager)
+    {
+        return Results.Json(new { status = "access_denied", message = "Only Administrators, Project Team Coordinators, and assigned Project Managers can create project work tasks." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    await using (var scopeCommand = new NpgsqlCommand("""
+        SELECT COUNT(*)
+        FROM projects
+        WHERE project_id = @project_id
+          AND (@can_view_all = TRUE OR project_manager_user_id = @user_id);
+        """, connection))
+    {
+        scopeCommand.Parameters.AddWithValue("project_id", projectId.Value);
+        scopeCommand.Parameters.AddWithValue("can_view_all", canViewAll);
+        scopeCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+
+        var count = Convert.ToInt32(await scopeCommand.ExecuteScalarAsync() ?? 0);
+        if (count == 0)
+        {
+            return Results.Json(new { status = "access_denied", message = "The selected project is not within your work task assignment scope." }, statusCode: StatusCodes.Status403Forbidden);
+        }
+    }
+
+    var taskCode = ReadString("taskCode");
+    if (string.IsNullOrWhiteSpace(taskCode))
+    {
+        var baseCode = System.Text.RegularExpressions.Regex.Replace(taskName.ToUpperInvariant(), "[^A-Z0-9]+", "-").Trim('-');
+        if (string.IsNullOrWhiteSpace(baseCode)) baseCode = "WORK-TASK";
+        if (baseCode.Length > 40) baseCode = baseCode[..40].Trim('-');
+        taskCode = $"{baseCode}-{Guid.NewGuid().ToString("N")[..6].ToUpperInvariant()}";
+    }
+
+    if (taskCode.Length > 80) taskCode = taskCode[..80];
+
+    await using var command = new NpgsqlCommand("""
+        INSERT INTO project_tasks (
+            project_id,
+            task_code,
+            task_name,
+            task_description,
+            billable,
+            utilization_bucket,
+            utilization_requires_approval,
+            work_task_category,
+            billing_classification,
+            utilization_classification,
+            service_request_number,
+            work_task_notes,
+            is_active
+        )
+        VALUES (
+            @project_id,
+            @task_code,
+            @task_name,
+            @task_description,
+            @billable,
+            @utilization_bucket,
+            TRUE,
+            @work_task_category,
+            @billing_classification,
+            @utilization_classification,
+            @service_request_number,
+            @work_task_notes,
+            TRUE
+        )
+        RETURNING task_id;
+        """, connection);
+
+    command.Parameters.AddWithValue("project_id", projectId.Value);
+    command.Parameters.AddWithValue("task_code", taskCode);
+    command.Parameters.AddWithValue("task_name", taskName);
+    command.Parameters.AddWithValue("task_description", ReadString("taskDescription"));
+    command.Parameters.AddWithValue("billable", billingClassification == "billable");
+    command.Parameters.AddWithValue("utilization_bucket", utilizationBucket);
+    command.Parameters.AddWithValue("work_task_category", taskCategory);
+    command.Parameters.AddWithValue("billing_classification", billingClassification);
+    command.Parameters.AddWithValue("utilization_classification", utilizationClassification);
+    command.Parameters.AddWithValue("service_request_number", ReadString("serviceRequestNumber"));
+    command.Parameters.AddWithValue("work_task_notes", ReadString("workTaskNotes"));
+
+    var taskId = (Guid)(await command.ExecuteScalarAsync() ?? Guid.Empty);
+
+    return Results.Ok(new
+    {
+        status = "project_work_task_created",
+        projectId,
+        taskId,
+        taskCode,
+        taskName,
+        taskCategory,
+        billingClassification,
+        utilizationClassification,
+        utilizationBucket
+    });
+});
+
+app.MapPost("/api/work-tasks/assignments", async (HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    using var document = await System.Text.Json.JsonDocument.ParseAsync(httpContext.Request.Body);
+    var root = document.RootElement;
+
+    string ReadString(string name, string fallback = "")
+    {
+        if (!root.TryGetProperty(name, out var value) || value.ValueKind == System.Text.Json.JsonValueKind.Null) return fallback;
+        var text = value.GetString();
+        return string.IsNullOrWhiteSpace(text) ? fallback : text.Trim();
+    }
+
+    Guid? ReadGuid(string name)
+    {
+        if (!root.TryGetProperty(name, out var value) || value.ValueKind == System.Text.Json.JsonValueKind.Null) return null;
+        return Guid.TryParse(value.GetString(), out var guid) ? guid : null;
+    }
+
+    decimal ReadDecimal(string name, decimal fallback)
+    {
+        if (!root.TryGetProperty(name, out var value) || value.ValueKind == System.Text.Json.JsonValueKind.Null) return fallback;
+        return value.TryGetDecimal(out var number) ? number : fallback;
+    }
+
+    DateOnly ReadDate(string name, DateOnly fallback)
+    {
+        if (!root.TryGetProperty(name, out var value) || value.ValueKind == System.Text.Json.JsonValueKind.Null) return fallback;
+        return DateOnly.TryParse(value.GetString(), out var date) ? date : fallback;
+    }
+
+    DateOnly? ReadNullableDate(string name)
+    {
+        if (!root.TryGetProperty(name, out var value) || value.ValueKind == System.Text.Json.JsonValueKind.Null) return null;
+        return DateOnly.TryParse(value.GetString(), out var date) ? date : null;
+    }
+
+    var projectId = ReadGuid("projectId");
+    var taskId = ReadGuid("taskId");
+    var engineerUserId = ReadGuid("engineerUserId");
+    var assignedHours = ReadDecimal("assignedHours", 0m);
+    var allocationPercent = ReadDecimal("allocationPercent", 0m);
+    var effectiveStartDate = ReadDate("effectiveStartDate", DateOnly.FromDateTime(DateTime.UtcNow.Date));
+    var effectiveEndDate = ReadNullableDate("effectiveEndDate");
+
+    if (projectId is null || taskId is null || engineerUserId is null)
+    {
+        return Results.Json(new { status = "validation_error", message = "Project, task, and engineer are required." }, statusCode: StatusCodes.Status400BadRequest);
+    }
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var canViewAll = false;
+    var isProjectManager = false;
+
+    await using (var accessCommand = new NpgsqlCommand("""
+        SELECT
+            BOOL_OR(
+                r.role_code IN ('ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR')
+                OR p.permission_code IN ('SYSTEM_ADMINISTRATION', 'MANAGE_ALL')
+            ) AS can_view_all,
+            BOOL_OR(
+                r.role_code IN ('PROJECT_MANAGER', 'PROJECT_MANAGEMENT')
+                OR p.permission_code = 'ASSIGN_WORK_TASKS'
+            ) AS is_project_manager
+        FROM app_user_role_assignments ura
+        JOIN app_roles r
+            ON r.app_role_id = ura.app_role_id
+           AND r.is_active = TRUE
+        LEFT JOIN app_role_permissions rp
+            ON rp.app_role_id = r.app_role_id
+        LEFT JOIN app_permissions p
+            ON p.app_permission_id = rp.app_permission_id
+        WHERE ura.user_id = @user_id
+          AND ura.is_active = TRUE;
+        """, connection))
+    {
+        accessCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+        await using var reader = await accessCommand.ExecuteReaderAsync();
+        await reader.ReadAsync();
+        canViewAll = !reader.IsDBNull(0) && reader.GetBoolean(0);
+        isProjectManager = !reader.IsDBNull(1) && reader.GetBoolean(1);
+    }
+
+    if (!canViewAll && !isProjectManager)
+    {
+        return Results.Json(new { status = "access_denied", message = "Only Administrators, Project Team Coordinators, and assigned Project Managers can assign work tasks." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    await using (var scopeCommand = new NpgsqlCommand("""
+        SELECT COUNT(*)
+        FROM projects p
+        JOIN project_tasks pt
+            ON pt.project_id = p.project_id
+           AND pt.task_id = @task_id
+        WHERE p.project_id = @project_id
+          AND (@can_view_all = TRUE OR p.project_manager_user_id = @user_id);
+        """, connection))
+    {
+        scopeCommand.Parameters.AddWithValue("project_id", projectId.Value);
+        scopeCommand.Parameters.AddWithValue("task_id", taskId.Value);
+        scopeCommand.Parameters.AddWithValue("can_view_all", canViewAll);
+        scopeCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+
+        var count = Convert.ToInt32(await scopeCommand.ExecuteScalarAsync() ?? 0);
+        if (count == 0)
+        {
+            return Results.Json(new { status = "access_denied", message = "The selected project/task is not within your assignment scope." }, statusCode: StatusCodes.Status403Forbidden);
+        }
+    }
+
+    await using (var engineerCommand = new NpgsqlCommand("""
+        SELECT COUNT(*)
+        FROM app_users u
+        JOIN app_user_role_assignments ura
+            ON ura.user_id = u.user_id
+           AND ura.is_active = TRUE
+        JOIN app_roles r
+            ON r.app_role_id = ura.app_role_id
+           AND r.is_active = TRUE
+        WHERE u.user_id = @engineer_user_id
+          AND u.is_active = TRUE
+          AND r.role_code = 'ENGINEER';
+        """, connection))
+    {
+        engineerCommand.Parameters.AddWithValue("engineer_user_id", engineerUserId.Value);
+        var count = Convert.ToInt32(await engineerCommand.ExecuteScalarAsync() ?? 0);
+        if (count == 0)
+        {
+            return Results.Json(new { status = "validation_error", message = "Selected user must be an active Engineer." }, statusCode: StatusCodes.Status400BadRequest);
+        }
+    }
+
+    await using var command = new NpgsqlCommand("""
+        INSERT INTO project_assignments (
+            project_id,
+            task_id,
+            user_id,
+            assigned_by_user_id,
+            effective_start_date,
+            effective_end_date,
+            allocation_percent,
+            assigned_hours,
+            assignment_source,
+            assignment_notes,
+            updated_at
+        )
+        VALUES (
+            @project_id,
+            @task_id,
+            @engineer_user_id,
+            @assigned_by_user_id,
+            @effective_start_date,
+            @effective_end_date,
+            NULLIF(@allocation_percent, 0),
+            @assigned_hours,
+            'work_task_builder',
+            @assignment_notes,
+            NOW()
+        )
+        RETURNING project_assignment_id;
+        """, connection);
+
+    command.Parameters.AddWithValue("project_id", projectId.Value);
+    command.Parameters.AddWithValue("task_id", taskId.Value);
+    command.Parameters.AddWithValue("engineer_user_id", engineerUserId.Value);
+    command.Parameters.AddWithValue("assigned_by_user_id", sessionUserId.Value);
+    command.Parameters.AddWithValue("effective_start_date", effectiveStartDate);
+    command.Parameters.AddWithValue("effective_end_date", effectiveEndDate.HasValue ? effectiveEndDate.Value : DBNull.Value);
+    command.Parameters.AddWithValue("allocation_percent", allocationPercent);
+    command.Parameters.AddWithValue("assigned_hours", assignedHours);
+    command.Parameters.AddWithValue("assignment_notes", ReadString("assignmentNotes"));
+
+    var assignmentId = (Guid)(await command.ExecuteScalarAsync() ?? Guid.Empty);
+
+    return Results.Ok(new
+    {
+        status = "work_task_assigned",
+        assignmentId,
+        projectId,
+        taskId,
+        engineerUserId,
+        assignedHours,
+        allocationPercent,
+        effectiveStartDate,
+        effectiveEndDate
+    });
+});
+
 app.MapGet("/api/assignments/available-tasks", async (DateOnly? weekStart, HttpContext httpContext) =>
 {
     var userId = GetProjectPulseSessionUserId(httpContext);

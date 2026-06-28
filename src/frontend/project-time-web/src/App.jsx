@@ -360,6 +360,7 @@ import CostOverrunAlertCenter from './CostOverrunAlertCenter.jsx';
 import ProjectWorkspaceCenter from './ProjectWorkspaceCenter.jsx';
 import ProjectManagerWorkloadCenter from './ProjectManagerWorkloadCenter.jsx';
 import EngineeringTeamLeadUtilizationPanel from './EngineeringTeamLeadUtilizationPanel.jsx';
+import WorkTaskBuilderPanel from './WorkTaskBuilderPanel.jsx';
 
 const workflowCards = [
   {
@@ -721,7 +722,7 @@ const roleWorkspaceModules = [
     href: '#utilization',
     title: 'Utilization',
     navLabel: 'Utilization',
-    description: 'Review own utilization, manager team utilization, engineering team lead utilization, and remaining hours.',
+    description: 'Review own utilization, manager team utilization, engineering team lead utilization, remaining hours, and work task classification readiness.',
     permissions: ['VIEW_OWN_UTILIZATION', 'VIEW_TEAM_UTILIZATION', 'VIEW_INDIVIDUAL_UTILIZATION']
   },
   {
@@ -779,6 +780,14 @@ const roleWorkspaceModules = [
     navLabel: 'Azure Admin',
     description: 'Configure Azure SSO, run user sync, and review imported directory users.',
     permissions: ['VIEW_AZURE_ADMIN', 'MANAGE_AZURE_SYNC', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
+  },
+  {
+    route: 'work-task-builder',
+    href: '#work-task-builder',
+    title: 'Work Task Builder',
+    navLabel: 'Work Tasks',
+    description: 'Build, classify, and assign project, service request, open, and non-project work tasks with billing and utilization treatment.',
+    permissions: ['VIEW_WORK_TASK_BUILDER', 'MANAGE_WORK_TASK_BUILDER', 'ASSIGN_WORK_TASKS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   },
   {
     route: 'role-admin',
@@ -969,6 +978,8 @@ function getNavigationGroup(item) {
 
     case 'user-admin':
     case 'azure-admin':
+    case 'work-task-builder':
+      return 'Work Task Builder';
     case 'role-admin':
       return 'Admin & Identity';
 
@@ -1029,6 +1040,7 @@ function buildRoleNavigationModel(user, navigationItems) {
     'audit-history',
     'user-admin',
     'azure-admin',
+    'work-task-builder',
     'role-admin',
     'service-control',
     'backup-dr',
@@ -1190,6 +1202,13 @@ function getInstalledProjectPulseModuleRegistry() {
       group: 'Security',
       permissions: ['MANAGE_USERS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
       description: 'Manages users, active status, local account settings, role assignments, and access controls.'
+    },
+    {
+      route: 'work-task-builder',
+      title: 'Work Task Builder',
+      status: 'Active',
+      permissions: ['VIEW_WORK_TASK_BUILDER', 'MANAGE_WORK_TASK_BUILDER', 'ASSIGN_WORK_TASKS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+      description: 'Defines work task categories, billing classification, utilization classification, and scoped project task assignment.'
     },
     {
       route: 'role-admin',
@@ -4721,6 +4740,10 @@ Analytics - Variphy / Infortel`}
         <section id="project-workspace" className="panel project-workspace-route-panel">
           <ProjectWorkspaceCenter />
         </section>
+      ) : null}
+
+      {(activeRoute === 'work-task-builder' && canSeeAny(['VIEW_WORK_TASK_BUILDER', 'MANAGE_WORK_TASK_BUILDER', 'ASSIGN_WORK_TASKS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
+        <WorkTaskBuilderPanel />
       ) : null}
 
       {(activeRoute === 'cost-alerts' && canSeeAny(['VIEW_COST_ALERTS', 'MANAGE_COST_ALERTS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (

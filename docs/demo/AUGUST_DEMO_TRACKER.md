@@ -447,3 +447,19 @@
 ### Scope Enforcement
 - Backend enforces all team/engineer visibility.
 - The UI selector only displays choices already allowed by the API.
+
+## 019M-AP Work Task Builder / Task Classification Foundation
+
+### Added
+- Added Work Task Builder foundation for project, service request, open, and non-project task classification.
+- Added global work task templates with billing and utilization classification.
+- Added scoped project task creation and assignment workflow.
+- Project Managers can create and assign work tasks only inside their managed project scope.
+- PTC/Admin can manage templates and assign across project scope.
+- Engineers continue to receive assigned project tasks through the existing timesheet task selector.
+- Added mobile readiness and route isolation for Work Task Builder.
+
+### Classification Foundation
+- Task categories: Open Tasks, Project Tasks, Service Request Tasks, Non-Project Tasks.
+- Billing classification: Billable, Non-billable.
+- Utilization classification: Billable utilization eligible, Non-billable utilization eligible, Non-billable non-utilization eligible.

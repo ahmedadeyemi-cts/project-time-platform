@@ -1,0 +1,232 @@
+.work-task-builder-panel {
+  border: 1px solid var(--border);
+  border-radius: 1.25rem;
+  background: var(--card);
+  box-shadow: var(--shadow-sm);
+  padding: 1.5rem;
+  margin-top: 1.5rem;
+}
+
+.work-task-summary-grid,
+.work-task-classification-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.work-task-summary-grid article,
+.work-task-classification-grid article,
+.work-task-card {
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: var(--panel);
+  padding: 1rem;
+}
+
+.work-task-summary-grid span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.work-task-summary-grid strong {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 1.6rem;
+}
+
+.work-task-summary-grid small,
+.work-task-template-list small,
+.work-task-project-header small,
+.work-task-table-wrap td span {
+  display: block;
+  color: var(--muted);
+}
+
+.work-task-builder-layout {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.95fr) minmax(360px, 1.05fr);
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.work-task-card.full-width {
+  margin-top: 1rem;
+}
+
+.section-heading.compact {
+  margin-bottom: 0.75rem;
+}
+
+.work-task-template-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.work-task-template-list article {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) repeat(3, minmax(120px, auto));
+  gap: 0.75rem;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 0.85rem;
+  background: var(--card);
+  padding: 0.85rem;
+}
+
+.work-task-template-list article > span,
+.work-task-project-header > span {
+  justify-self: start;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.09);
+  color: #1d4ed8;
+  font-weight: 800;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.78rem;
+}
+
+.work-task-form {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  border-top: 1px solid var(--border);
+  padding-top: 1rem;
+}
+
+.work-task-form label {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--text);
+  font-weight: 800;
+}
+
+.work-task-form input,
+.work-task-form select,
+.work-task-form textarea {
+  border: 1px solid var(--border);
+  border-radius: 0.85rem;
+  background: var(--input-background, #fff);
+  color: inherit;
+  min-height: 42px;
+  padding: 0.65rem 0.75rem;
+}
+
+.work-task-project-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.work-task-project-list article {
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: var(--card);
+  padding: 1rem;
+}
+
+.work-task-project-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: start;
+  margin-bottom: 0.8rem;
+}
+
+.work-task-table-wrap {
+  overflow-x: auto;
+}
+
+.work-task-table-wrap table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 850px;
+}
+
+.work-task-table-wrap th,
+.work-task-table-wrap td {
+  border-bottom: 1px solid var(--border);
+  padding: 0.7rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.work-task-table-wrap th {
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.app-shell.route-work-task-builder > section.panel:not(#work-task-builder) {
+  display: none !important;
+}
+
+.app-shell.route-work-task-builder > #work-task-builder {
+  display: block !important;
+}
+
+/* 019M-AP repair: make the route panel visibly distinct when isolated */
+.app-shell.route-work-task-builder #work-task-builder.work-task-builder-panel {
+  width: 100%;
+  max-width: none;
+}
+
+/* 019M-AP repair: prevent classification pills from bleeding across columns */
+.work-task-builder-layout > *,
+.work-task-card,
+.work-task-template-list,
+.work-task-template-list article,
+.work-task-project-list article {
+  min-width: 0;
+}
+
+.work-task-card {
+  overflow: hidden;
+}
+
+.work-task-template-list article {
+  display: flex;
+  flex-wrap: wrap;
+  grid-template-columns: none;
+  align-items: flex-start;
+  gap: 0.6rem;
+}
+
+.work-task-template-list article > div {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
+.work-task-template-list article > div strong,
+.work-task-template-list article > div small,
+.work-task-template-list article > div p {
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.work-task-template-list article > span {
+  flex: 0 1 auto;
+  max-width: 100%;
+  white-space: normal;
+  line-height: 1.2;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.work-task-builder-layout {
+  align-items: start;
+}
+
+.work-task-form {
+  min-width: 0;
+}
+
+.work-task-form input,
+.work-task-form select,
+.work-task-form textarea {
+  max-width: 100%;
+  box-sizing: border-box;
+}

@@ -510,3 +510,45 @@ button[type='submit'] {
     -webkit-overflow-scrolling: touch;
   }
 }
+
+/* 019M-AP Work Task Builder mobile readiness */
+@media (max-width: 820px) {
+  .work-task-builder-layout,
+  .work-task-summary-grid,
+  .work-task-classification-grid,
+  .work-task-template-list article {
+    grid-template-columns: 1fr !important;
+  }
+
+  .work-task-project-header {
+    flex-direction: column;
+  }
+
+  .work-task-form input,
+  .work-task-form select,
+  .work-task-form textarea,
+  .work-task-form button {
+    width: 100%;
+  }
+
+  .work-task-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* 019M-AP mobile/desktop overflow repair */
+@media (max-width: 1100px) {
+  .work-task-builder-layout {
+    grid-template-columns: 1fr !important;
+  }
+
+  .work-task-template-list article {
+    display: flex !important;
+    flex-wrap: wrap !important;
+  }
+
+  .work-task-template-list article > div {
+    flex-basis: 100% !important;
+  }
+}
