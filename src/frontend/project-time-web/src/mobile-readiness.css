@@ -372,3 +372,11 @@ button[type='submit'] {
     bottom: 0.75rem !important;
   }
 }
+
+@media (max-width: 700px) {
+  .cost-alert-routing-strip,
+  .cost-alert-history,
+  .cost-alert-action-row {
+    grid-template-columns: 1fr !important;
+  }
+}

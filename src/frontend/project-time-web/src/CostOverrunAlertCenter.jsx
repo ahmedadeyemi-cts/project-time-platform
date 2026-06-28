@@ -29,10 +29,7 @@ async function readApiErrorMessage(response, path) {
 }
 
 async function fetchJson(path) {
-  const response = await fetch(path, {
-    headers: getProjectPulseAuthHeaders()
-  });
-
+  const response = await fetch(path, { headers: getProjectPulseAuthHeaders() });
   if (!response.ok) throw new Error(await readApiErrorMessage(response, path));
   return response.json();
 }
@@ -41,7 +38,7 @@ async function postJson(path, payload) {
   const response = await fetch(path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getProjectPulseAuthHeaders() },
-    body: JSON.stringify(payload)
+    body: JSON.stringify(payload ?? {})
   });
 
   if (!response.ok) throw new Error(await readApiErrorMessage(response, path));
@@ -49,8 +46,7 @@ async function postJson(path, payload) {
 }
 
 function fmtMoney(value) {
-  const amount = Number(value ?? 0);
-  return amount.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+  return Number(value ?? 0).toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
 }
 
 function fmtNumber(value) {
@@ -58,16 +54,20 @@ function fmtNumber(value) {
 }
 
 function labelAlertType(value) {
-  return String(value ?? '')
-    .replaceAll('_', ' ')
-    .replace(/\b\w/g, (match) => match.toUpperCase());
+  return String(value ?? '').replaceAll('_', ' ').replace(/\b\w/g, (match) => match.toUpperCase());
+}
+
+function fmtDateTime(value) {
+  if (!value) return 'Not recorded';
+  return new Date(value).toLocaleString();
 }
 
 export default function CostOverrunAlertCenter({ canManageCostAlerts = false }) {
   const [alertData, setAlertData] = useState({ loading: true, data: null, error: null });
   const [actionStatus, setActionStatus] = useState('');
   const [thresholdHours, setThresholdHours] = useState('8');
-  const [queueNotifications, setQueueNotifications] = useState(true);
+  const [queueNotifications, setQueueNotifications] = useState(false);
+  const [alertNotes, setAlertNotes] = useState({});
 
   async function loadAlerts() {
     setAlertData((current) => ({ ...current, loading: true, error: null }));
@@ -93,16 +93,28 @@ export default function CostOverrunAlertCenter({ canManageCostAlerts = false }) 
 
   const summary = useMemo(() => {
     const openAlerts = alerts.filter((alert) => alert.alertStatus === 'open');
-    const highAlerts = openAlerts.filter((alert) => alert.alertSeverity === 'high');
+    const acknowledgedAlerts = alerts.filter((alert) => alert.alertStatus === 'acknowledged');
+    const highAlerts = alerts.filter((alert) => alert.alertSeverity === 'high');
     const queuedAlerts = alerts.filter((alert) => alert.notificationQueuedAt);
+    const heldAlerts = alerts.filter((alert) => alert.routingStatus === 'hold');
 
     return {
       openCount: openAlerts.length,
+      acknowledgedCount: acknowledgedAlerts.length,
       highCount: highAlerts.length,
       queuedCount: queuedAlerts.length,
+      heldCount: heldAlerts.length,
       candidateCount: candidates.length
     };
   }, [alerts, candidates]);
+
+  function getAlertNote(alertId) {
+    return alertNotes[alertId] ?? '';
+  }
+
+  function setAlertNote(alertId, value) {
+    setAlertNotes((current) => ({ ...current, [alertId]: value }));
+  }
 
   async function evaluateAlerts() {
     if (!canManageCostAlerts) {
@@ -124,55 +136,84 @@ export default function CostOverrunAlertCenter({ canManageCostAlerts = false }) 
     }
   }
 
+  async function updateAlertStatus(alert, alertStatus) {
+    if (!canManageCostAlerts) {
+      setActionStatus('Cost alert status changes are restricted to administrators and project/team coordinators.');
+      return;
+    }
+
+    try {
+      setActionStatus(`Updating ${alert.projectCode}...`);
+      const result = await postJson(`/api/projects/cost-alerts/${alert.alertId}/status`, {
+        alertStatus,
+        note: getAlertNote(alert.alertId)
+      });
+
+      setActionStatus(`${alert.projectCode} updated to ${result.alertStatus}.`);
+      setAlertNote(alert.alertId, '');
+      await loadAlerts();
+    } catch (error) {
+      setActionStatus(error instanceof Error ? error.message : 'Unable to update alert status.');
+    }
+  }
+
+  async function releaseNotification(alert) {
+    if (!canManageCostAlerts) {
+      setActionStatus('Notification release is restricted to administrators and project/team coordinators.');
+      return;
+    }
+
+    try {
+      setActionStatus(`Checking notification routing for ${alert.projectCode}...`);
+      const result = await postJson(`/api/projects/cost-alerts/${alert.alertId}/release-notification`, {
+        routingNote: getAlertNote(alert.alertId)
+      });
+
+      setActionStatus(`${result.message} Recipient count: ${result.recipientCount ?? alert.notificationRecipientCount ?? 0}.`);
+      setAlertNote(alert.alertId, '');
+      await loadAlerts();
+    } catch (error) {
+      setActionStatus(error instanceof Error ? error.message : 'Unable to release notification.');
+    }
+  }
+
   return (
     <section className="cost-alert-center">
       <div className="cost-alert-header">
         <div>
-          <p className="eyebrow">019M-AI</p>
-          <h2>Cost Overrun Alerts</h2>
+          <p className="eyebrow">019M-AJ</p>
+          <h2>Cost Alert Routing Controls</h2>
           <p className="muted">
-            Detect projects missing cost plans, projects with activity against missing plans, and projects using more hours than assigned.
+            Evaluate project cost alerts, hold notifications by default, acknowledge alerts, resolve alerts, and release routing only when Admin/PTC is ready.
           </p>
         </div>
-        <span className="cost-alert-mode">{canManageCostAlerts ? 'Evaluation enabled' : 'Read only'}</span>
+        <span className="cost-alert-mode">{canManageCostAlerts ? 'Routing controls enabled' : 'Read only'}</span>
       </div>
 
       {alertData.error && <div className="cost-alert-banner error">{alertData.error}</div>}
       {actionStatus && <div className="cost-alert-banner">{actionStatus}</div>}
 
       <div className="cost-alert-summary-grid">
-        <article><span>Open alerts</span><strong>{alertData.loading ? '...' : summary.openCount}</strong><small>Active project cost/readiness alerts</small></article>
-        <article><span>High severity</span><strong>{alertData.loading ? '...' : summary.highCount}</strong><small>Missing plan with work or hours over plan</small></article>
-        <article><span>Candidates</span><strong>{alertData.loading ? '...' : summary.candidateCount}</strong><small>Current projects requiring attention</small></article>
-        <article><span>Queued notices</span><strong>{alertData.loading ? '...' : summary.queuedCount}</strong><small>Alerts routed to PM, manager, and PTC</small></article>
+        <article><span>Open alerts</span><strong>{alertData.loading ? '...' : summary.openCount}</strong><small>Alerts requiring action</small></article>
+        <article><span>Acknowledged</span><strong>{alertData.loading ? '...' : summary.acknowledgedCount}</strong><small>Accepted for follow-up</small></article>
+        <article><span>Held routing</span><strong>{alertData.loading ? '...' : summary.heldCount}</strong><small>Notifications not released</small></article>
+        <article><span>Queued notices</span><strong>{alertData.loading ? '...' : summary.queuedCount}</strong><small>Outbox routing already prepared</small></article>
       </div>
 
       {canManageCostAlerts && (
         <article className="cost-alert-panel cost-alert-control-panel">
           <div>
             <h3>Evaluate Alerts</h3>
-            <p className="muted">
-              Evaluation records current alerts and queues notification outbox entries for project managers, resource managers, and Project Team Coordinators.
-            </p>
+            <p className="muted">Evaluation records the latest project cost conditions. Notifications are held by default.</p>
           </div>
           <div className="cost-alert-controls">
             <label>
               Remaining-hours warning threshold
-              <input
-                type="number"
-                min="0"
-                step="0.25"
-                value={thresholdHours}
-                onChange={(event) => setThresholdHours(event.target.value)}
-              />
+              <input type="number" min="0" step="0.25" value={thresholdHours} onChange={(event) => setThresholdHours(event.target.value)} />
             </label>
             <label className="checkbox-label">
-              <input
-                type="checkbox"
-                checked={queueNotifications}
-                onChange={(event) => setQueueNotifications(event.target.checked)}
-              />
-              Queue notifications
+              <input type="checkbox" checked={queueNotifications} onChange={(event) => setQueueNotifications(event.target.checked)} />
+              Queue notifications during evaluation
             </label>
             <button type="button" className="primary-action" onClick={evaluateAlerts}>Evaluate cost alerts</button>
             <button type="button" className="secondary-action" onClick={loadAlerts}>Refresh</button>
@@ -211,7 +252,7 @@ export default function CostOverrunAlertCenter({ canManageCostAlerts = false }) 
 
         <article className="cost-alert-panel">
           <h3>Recorded Alerts</h3>
-          <p className="muted">Stored alert history and routing readiness.</p>
+          <p className="muted">Stored alert history, acknowledgement state, and routing readiness.</p>
           <div className="cost-alert-card-list">
             {alerts.map((alert) => (
               <div className={`cost-alert-card severity-${alert.alertSeverity}`} key={alert.alertId}>
@@ -223,19 +264,56 @@ export default function CostOverrunAlertCenter({ canManageCostAlerts = false }) 
                   </div>
                   <em>{alert.alertSeverity}</em>
                 </div>
+
                 <p>{alert.alertDetail}</p>
+
+                <div className="cost-alert-routing-strip">
+                  <span>Routing: <strong>{alert.routingStatus ?? 'hold'}</strong></span>
+                  <span>Queued: <strong>{alert.notificationQueuedAt ? 'Yes' : 'No'}</strong></span>
+                  <span>Recipients: <strong>{alert.notificationRecipientCount ?? 0}</strong></span>
+                </div>
+
                 <div className="cost-alert-metric-grid">
                   <span>Customer<strong>{alert.clientName || 'No customer'}</strong></span>
                   <span>Plan<strong>{fmtMoney(alert.plannedTotalProjectCost)}</strong></span>
                   <span>Assigned<strong>{fmtNumber(alert.assignedHours)} hrs</strong></span>
                   <span>Used<strong>{fmtNumber(alert.usedHours)} hrs</strong></span>
                   <span>Over<strong>{fmtNumber(alert.overAssignedHours)} hrs</strong></span>
-                  <span>Recipients<strong>{alert.notificationRecipientCount}</strong></span>
+                  <span>Status<strong>{alert.costStatus}</strong></span>
                 </div>
-                <small className="cost-alert-timestamp">
-                  Last detected: {alert.lastDetectedAt ? new Date(alert.lastDetectedAt).toLocaleString() : 'Not recorded'}
-                  {alert.notificationQueuedAt ? ` · Notification queued: ${new Date(alert.notificationQueuedAt).toLocaleString()}` : ' · Notification not queued'}
-                </small>
+
+                <div className="cost-alert-history">
+                  <small>Last detected: {fmtDateTime(alert.lastDetectedAt)}</small>
+                  <small>Acknowledged: {fmtDateTime(alert.acknowledgedAt)}{alert.acknowledgedByEmail ? ` by ${alert.acknowledgedByEmail}` : ''}</small>
+                  <small>Notification released: {fmtDateTime(alert.notificationReleasedAt ?? alert.notificationQueuedAt)}</small>
+                  <small>Last action: {fmtDateTime(alert.lastActionAt)}{alert.lastActionByEmail ? ` by ${alert.lastActionByEmail}` : ''}</small>
+                </div>
+
+                {alert.acknowledgementNote ? <p className="cost-alert-note">Acknowledgement note: {alert.acknowledgementNote}</p> : null}
+                {alert.routingNote ? <p className="cost-alert-note">Routing note: {alert.routingNote}</p> : null}
+
+                {canManageCostAlerts ? (
+                  <div className="cost-alert-action-panel">
+                    <textarea
+                      value={getAlertNote(alert.alertId)}
+                      onChange={(event) => setAlertNote(alert.alertId, event.target.value)}
+                      placeholder="Optional acknowledgement, resolution, or routing note"
+                    />
+                    <div className="cost-alert-action-row">
+                      <button type="button" className="secondary-action" onClick={() => updateAlertStatus(alert, 'acknowledged')}>Acknowledge</button>
+                      <button type="button" className="secondary-action" onClick={() => updateAlertStatus(alert, 'resolved')}>Resolve</button>
+                      <button type="button" className="secondary-action" onClick={() => updateAlertStatus(alert, 'open')}>Reopen</button>
+                      <button
+                        type="button"
+                        className="primary-action"
+                        onClick={() => releaseNotification(alert)}
+                        disabled={Boolean(alert.notificationQueuedAt) || alert.alertStatus === 'resolved'}
+                      >
+                        {alert.notificationQueuedAt ? 'Already queued' : 'Release notification'}
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             ))}
             {!alertData.loading && alerts.length === 0 && <p className="muted">No recorded alerts yet. Run evaluation to create the first alert set.</p>}

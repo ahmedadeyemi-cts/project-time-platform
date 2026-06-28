@@ -358,3 +358,13 @@
 - Hid Utilization from Project Management / Project Manager role navigation.
 - Added Project Manager Workload API for active projects this quarter, closed projects this quarter, project status counts, assigned project list, and workload risks.
 - Added mobile-friendly Project Workload screen.
+
+## 019M-AJ Cost Alert Acknowledgement + Routing Controls
+
+### Added
+- Added cost alert acknowledgement, resolution, reopen, and routing status fields.
+- Held cost alert notifications by default during evaluation.
+- Added manual notification release controls to prevent accidental duplicate routing.
+- Added backend endpoints for alert status updates and notification release.
+- Added Cost Alerts UI controls for acknowledge, resolve, reopen, and release notification actions.
+- Added routing status, acknowledgement history, release history, and action notes to the Cost Alerts screen.

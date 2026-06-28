@@ -2219,7 +2219,16 @@ app.MapGet("/api/projects/cost-alerts", async (HttpContext httpContext) =>
             last_detected_at,
             notification_queued_at,
             notification_recipient_count,
-            resolved_at
+            resolved_at,
+            acknowledged_at,
+            acknowledged_by_email,
+            acknowledgement_note,
+            routing_status,
+            routing_note,
+            notification_released_at,
+            notification_released_by_email,
+            last_action_at,
+            last_action_by_email
         FROM project_cost_alerts
         ORDER BY
             CASE alert_status WHEN 'open' THEN 1 WHEN 'acknowledged' THEN 2 ELSE 3 END,
@@ -2268,7 +2277,16 @@ app.MapGet("/api/projects/cost-alerts", async (HttpContext httpContext) =>
                 lastDetectedAt = reader.GetFieldValue<DateTimeOffset>(18),
                 notificationQueuedAt = reader.IsDBNull(19) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(19),
                 notificationRecipientCount = reader.GetInt32(20),
-                resolvedAt = reader.IsDBNull(21) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(21)
+                resolvedAt = reader.IsDBNull(21) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(21),
+                acknowledgedAt = reader.IsDBNull(22) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(22),
+                acknowledgedByEmail = reader.IsDBNull(23) ? null : reader.GetString(23),
+                acknowledgementNote = reader.IsDBNull(24) ? null : reader.GetString(24),
+                routingStatus = reader.IsDBNull(25) ? "hold" : reader.GetString(25),
+                routingNote = reader.IsDBNull(26) ? null : reader.GetString(26),
+                notificationReleasedAt = reader.IsDBNull(27) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(27),
+                notificationReleasedByEmail = reader.IsDBNull(28) ? null : reader.GetString(28),
+                lastActionAt = reader.IsDBNull(29) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(29),
+                lastActionByEmail = reader.IsDBNull(30) ? null : reader.GetString(30)
             });
         }
     }
@@ -2311,7 +2329,7 @@ app.MapPost("/api/projects/cost-alerts/evaluate", async (ProjectCostAlertEvaluat
     try
     {
         var thresholdHours = request.AssignmentWarningThresholdHours ?? 8m;
-        var queueNotifications = request.QueueNotifications ?? true;
+        var queueNotifications = request.QueueNotifications ?? false;
 
         await using (var upsertCommand = new NpgsqlCommand("""
             WITH current_cost AS (
@@ -2573,12 +2591,20 @@ app.MapPost("/api/projects/cost-alerts/evaluate", async (ProjectCostAlertEvaluat
                     UPDATE project_cost_alerts
                     SET notification_queued_at = CASE WHEN @recipient_count > 0 THEN NOW() ELSE notification_queued_at END,
                         notification_recipient_count = notification_recipient_count + @recipient_count,
+                        routing_status = CASE WHEN @recipient_count > 0 THEN 'queued' ELSE routing_status END,
+                        notification_released_at = CASE WHEN @recipient_count > 0 THEN COALESCE(notification_released_at, NOW()) ELSE notification_released_at END,
+                        notification_released_by_user_id = CASE WHEN @recipient_count > 0 THEN @released_by_user_id ELSE notification_released_by_user_id END,
+                        notification_released_by_email = CASE WHEN @recipient_count > 0 THEN @released_by_email ELSE notification_released_by_email END,
+                        last_action_at = NOW(),
+                        last_action_by_email = @released_by_email,
                         updated_at = NOW()
                     WHERE project_cost_alert_id = @alert_id;
                     """, connection, transaction);
 
                 updateCommand.Parameters.AddWithValue("alert_id", alert.AlertId);
                 updateCommand.Parameters.AddWithValue("recipient_count", recipientCount);
+                updateCommand.Parameters.AddWithValue("released_by_user_id", sessionUserId.Value);
+                updateCommand.Parameters.AddWithValue("released_by_email", GetProjectPulseSessionEmail(httpContext) ?? "unknown");
                 await updateCommand.ExecuteNonQueryAsync();
 
                 if (recipientCount > 0)
@@ -2876,6 +2902,316 @@ app.MapGet("/api/project-management/workload", async (HttpContext httpContext) =
         projects,
         risks
     });
+});
+
+
+
+app.MapPost("/api/projects/cost-alerts/{alertId:guid}/status", async (Guid alertId, ProjectCostAlertStatusUpdateRequest request, HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var requestedStatus = (request.AlertStatus ?? string.Empty).Trim().ToLowerInvariant();
+
+    if (requestedStatus is not ("open" or "acknowledged" or "resolved"))
+    {
+        return Results.Json(new
+        {
+            status = "invalid_alert_status",
+            message = "Alert status must be open, acknowledged, or resolved."
+        }, statusCode: StatusCodes.Status400BadRequest);
+    }
+
+    var note = (request.Note ?? string.Empty).Trim();
+    var actorEmail = GetProjectPulseSessionEmail(httpContext) ?? "unknown";
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    if (!await RequestUserCanAccessCostAlertsAsync(httpContext, connection, requireManage: true))
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Cost alert status changes are restricted to administrators and project/team coordinators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    await using var command = new NpgsqlCommand("""
+        UPDATE project_cost_alerts
+        SET alert_status = @alert_status,
+            acknowledged_at = CASE
+                WHEN @alert_status = 'acknowledged' THEN NOW()
+                WHEN @alert_status = 'open' THEN NULL
+                ELSE acknowledged_at
+            END,
+            acknowledged_by_user_id = CASE
+                WHEN @alert_status = 'acknowledged' THEN @actor_user_id
+                WHEN @alert_status = 'open' THEN NULL
+                ELSE acknowledged_by_user_id
+            END,
+            acknowledged_by_email = CASE
+                WHEN @alert_status = 'acknowledged' THEN @actor_email
+                WHEN @alert_status = 'open' THEN NULL
+                ELSE acknowledged_by_email
+            END,
+            acknowledgement_note = CASE
+                WHEN @alert_status = 'acknowledged' THEN NULLIF(@note, '')
+                WHEN @alert_status = 'open' THEN NULL
+                ELSE acknowledgement_note
+            END,
+            resolved_at = CASE
+                WHEN @alert_status = 'resolved' THEN NOW()
+                WHEN @alert_status = 'open' THEN NULL
+                ELSE resolved_at
+            END,
+            routing_status = CASE
+                WHEN @alert_status = 'resolved' THEN 'closed'
+                WHEN @alert_status = 'open' AND routing_status = 'closed' THEN 'hold'
+                ELSE routing_status
+            END,
+            routing_note = CASE
+                WHEN NULLIF(@note, '') IS NOT NULL THEN @note
+                ELSE routing_note
+            END,
+            last_action_at = NOW(),
+            last_action_by_email = @actor_email,
+            updated_at = NOW()
+        WHERE project_cost_alert_id = @alert_id
+        RETURNING
+            project_cost_alert_id,
+            alert_status,
+            routing_status,
+            acknowledged_at,
+            acknowledged_by_email,
+            acknowledgement_note,
+            resolved_at,
+            last_action_at,
+            last_action_by_email;
+        """, connection);
+
+    command.Parameters.AddWithValue("alert_id", alertId);
+    command.Parameters.AddWithValue("alert_status", requestedStatus);
+    command.Parameters.AddWithValue("actor_user_id", sessionUserId.Value);
+    command.Parameters.AddWithValue("actor_email", actorEmail);
+    command.Parameters.AddWithValue("note", note);
+
+    await using var reader = await command.ExecuteReaderAsync();
+
+    if (!await reader.ReadAsync())
+    {
+        return Results.Json(new { status = "not_found", message = "Cost alert was not found." }, statusCode: StatusCodes.Status404NotFound);
+    }
+
+    return Results.Ok(new
+    {
+        status = "cost_alert_status_updated",
+        alertId = reader.GetGuid(0),
+        alertStatus = reader.GetString(1),
+        routingStatus = reader.GetString(2),
+        acknowledgedAt = reader.IsDBNull(3) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(3),
+        acknowledgedByEmail = reader.IsDBNull(4) ? null : reader.GetString(4),
+        acknowledgementNote = reader.IsDBNull(5) ? null : reader.GetString(5),
+        resolvedAt = reader.IsDBNull(6) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(6),
+        lastActionAt = reader.IsDBNull(7) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(7),
+        lastActionByEmail = reader.IsDBNull(8) ? null : reader.GetString(8)
+    });
+});
+
+
+app.MapPost("/api/projects/cost-alerts/{alertId:guid}/release-notification", async (Guid alertId, ProjectCostAlertReleaseNotificationRequest request, HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var actorEmail = GetProjectPulseSessionEmail(httpContext) ?? "unknown";
+    var routingNote = (request.RoutingNote ?? string.Empty).Trim();
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    if (!await RequestUserCanAccessCostAlertsAsync(httpContext, connection, requireManage: true))
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Notification release is restricted to administrators and project/team coordinators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    await using var transaction = await connection.BeginTransactionAsync();
+
+    try
+    {
+        Guid projectId;
+        string alertType;
+        string alertSeverity;
+        string projectCode;
+        string projectName;
+        string clientName;
+        decimal plannedTotalProjectCost;
+        decimal assignedHours;
+        decimal usedHours;
+        decimal overAssignedHours;
+        string costStatus;
+        DateTimeOffset? notificationQueuedAt;
+        string alertStatus;
+
+        await using (var selectCommand = new NpgsqlCommand("""
+            SELECT
+                project_id,
+                alert_type,
+                alert_severity,
+                COALESCE(project_code, ''),
+                COALESCE(project_name, ''),
+                COALESCE(client_name, ''),
+                planned_total_project_cost,
+                assigned_hours,
+                used_hours,
+                over_assigned_hours,
+                cost_status,
+                notification_queued_at,
+                alert_status
+            FROM project_cost_alerts
+            WHERE project_cost_alert_id = @alert_id;
+            """, connection, transaction))
+        {
+            selectCommand.Parameters.AddWithValue("alert_id", alertId);
+
+            await using var reader = await selectCommand.ExecuteReaderAsync();
+
+            if (!await reader.ReadAsync())
+            {
+                await transaction.RollbackAsync();
+                return Results.Json(new { status = "not_found", message = "Cost alert was not found." }, statusCode: StatusCodes.Status404NotFound);
+            }
+
+            projectId = reader.GetGuid(0);
+            alertType = reader.GetString(1);
+            alertSeverity = reader.GetString(2);
+            projectCode = reader.GetString(3);
+            projectName = reader.GetString(4);
+            clientName = reader.GetString(5);
+            plannedTotalProjectCost = reader.GetDecimal(6);
+            assignedHours = reader.GetDecimal(7);
+            usedHours = reader.GetDecimal(8);
+            overAssignedHours = reader.GetDecimal(9);
+            costStatus = reader.GetString(10);
+            notificationQueuedAt = reader.IsDBNull(11) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(11);
+            alertStatus = reader.GetString(12);
+        }
+
+        if (string.Equals(alertStatus, "resolved", StringComparison.OrdinalIgnoreCase))
+        {
+            await transaction.RollbackAsync();
+            return Results.Json(new
+            {
+                status = "alert_resolved",
+                message = "Resolved alerts cannot release notifications unless reopened."
+            }, statusCode: StatusCodes.Status409Conflict);
+        }
+
+        if (notificationQueuedAt is not null)
+        {
+            await using var alreadyQueuedCommand = new NpgsqlCommand("""
+                UPDATE project_cost_alerts
+                SET routing_status = 'queued',
+                    routing_note = COALESCE(NULLIF(@routing_note, ''), routing_note),
+                    last_action_at = NOW(),
+                    last_action_by_email = @actor_email,
+                    updated_at = NOW()
+                WHERE project_cost_alert_id = @alert_id;
+                """, connection, transaction);
+
+            alreadyQueuedCommand.Parameters.AddWithValue("alert_id", alertId);
+            alreadyQueuedCommand.Parameters.AddWithValue("routing_note", routingNote);
+            alreadyQueuedCommand.Parameters.AddWithValue("actor_email", actorEmail);
+            await alreadyQueuedCommand.ExecuteNonQueryAsync();
+
+            await transaction.CommitAsync();
+
+            return Results.Ok(new
+            {
+                status = "notification_already_queued",
+                alertId,
+                message = "Notification was already queued; no duplicate notification was created."
+            });
+        }
+
+        var recipientCount = await QueueProjectCostAlertNotificationsAsync(
+            connection,
+            transaction,
+            alertId,
+            projectId,
+            alertType,
+            alertSeverity,
+            projectCode,
+            projectName,
+            clientName,
+            plannedTotalProjectCost,
+            assignedHours,
+            usedHours,
+            overAssignedHours,
+            costStatus);
+
+        await using (var updateCommand = new NpgsqlCommand("""
+            UPDATE project_cost_alerts
+            SET notification_queued_at = CASE WHEN @recipient_count > 0 THEN NOW() ELSE notification_queued_at END,
+                notification_recipient_count = notification_recipient_count + @recipient_count,
+                routing_status = CASE WHEN @recipient_count > 0 THEN 'queued' ELSE 'no_recipients' END,
+                routing_note = COALESCE(NULLIF(@routing_note, ''), routing_note),
+                notification_released_at = CASE WHEN @recipient_count > 0 THEN NOW() ELSE notification_released_at END,
+                notification_released_by_user_id = CASE WHEN @recipient_count > 0 THEN @actor_user_id ELSE notification_released_by_user_id END,
+                notification_released_by_email = CASE WHEN @recipient_count > 0 THEN @actor_email ELSE notification_released_by_email END,
+                last_action_at = NOW(),
+                last_action_by_email = @actor_email,
+                updated_at = NOW()
+            WHERE project_cost_alert_id = @alert_id;
+            """, connection, transaction))
+        {
+            updateCommand.Parameters.AddWithValue("alert_id", alertId);
+            updateCommand.Parameters.AddWithValue("recipient_count", recipientCount);
+            updateCommand.Parameters.AddWithValue("routing_note", routingNote);
+            updateCommand.Parameters.AddWithValue("actor_user_id", sessionUserId.Value);
+            updateCommand.Parameters.AddWithValue("actor_email", actorEmail);
+            await updateCommand.ExecuteNonQueryAsync();
+        }
+
+        await transaction.CommitAsync();
+
+        return Results.Ok(new
+        {
+            status = recipientCount > 0 ? "notification_released" : "notification_not_released",
+            alertId,
+            recipientCount,
+            message = recipientCount > 0
+                ? "Cost alert notification was released to the routing outbox."
+                : "No eligible notification recipients were found."
+        });
+    }
+    catch (Exception ex)
+    {
+        await transaction.RollbackAsync();
+
+        return Results.Problem(
+            title: "Failed to release cost alert notification",
+            detail: ex.Message,
+            statusCode: StatusCodes.Status500InternalServerError);
+    }
 });
 
 
@@ -14077,6 +14413,15 @@ internal sealed record CustomerDirectoryContactUpsertRequest(
 
 
 
+
+
+internal sealed record ProjectCostAlertStatusUpdateRequest(
+    string? AlertStatus,
+    string? Note);
+
+
+internal sealed record ProjectCostAlertReleaseNotificationRequest(
+    string? RoutingNote);
 
 
 internal sealed record ProjectCostAlertEvaluationRequest(
