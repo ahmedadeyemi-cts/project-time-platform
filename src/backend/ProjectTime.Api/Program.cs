@@ -1427,6 +1427,693 @@ app.MapGet("/api/debug/time-entries", async (DateOnly? weekStart, HttpContext ht
 });
 
 
+
+app.MapGet("/api/project-intake/aging-summary", async (HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    bool canView;
+    bool canManage;
+
+    await using (var accessCommand = new NpgsqlCommand("""
+        SELECT
+            BOOL_OR(
+                r.role_code IN ('ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR', 'PROJECT_MANAGER', 'PROJECT_MANAGEMENT', 'PM_TEAM_LEAD', 'PROJECT_MANAGEMENT_TEAM_LEAD')
+                OR p.permission_code IN ('VIEW_PROJECT_INTAKE', 'VIEW_PROJECT_INTAKE_AGING', 'MANAGE_PROJECT_INTAKE', 'MANAGE_PROJECT_INTAKE_AGING', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL')
+            ) AS can_view,
+            BOOL_OR(
+                r.role_code IN ('ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR')
+                OR p.permission_code IN ('MANAGE_PROJECT_INTAKE', 'MANAGE_PROJECT_INTAKE_AGING', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL')
+            ) AS can_manage
+        FROM app_user_role_assignments ura
+        JOIN app_roles r
+            ON r.app_role_id = ura.app_role_id
+           AND r.is_active = TRUE
+        LEFT JOIN app_role_permissions rp
+            ON rp.app_role_id = r.app_role_id
+        LEFT JOIN app_permissions p
+            ON p.app_permission_id = rp.app_permission_id
+        WHERE ura.user_id = @user_id
+          AND ura.is_active = TRUE;
+        """, connection))
+    {
+        accessCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+        await using var reader = await accessCommand.ExecuteReaderAsync();
+        await reader.ReadAsync();
+
+        canView = !reader.IsDBNull(0) && reader.GetBoolean(0);
+        canManage = !reader.IsDBNull(1) && reader.GetBoolean(1);
+    }
+
+    if (!canView)
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Project intake aging is available to Project Coordinators, PMs, PTC, and Administrators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    static string? CleanNullableString(NpgsqlDataReader reader, int ordinal)
+    {
+        if (reader.IsDBNull(ordinal)) return null;
+        var value = reader.GetString(ordinal);
+        return string.IsNullOrWhiteSpace(value) ? null : value;
+    }
+
+    var items = new List<object>();
+    var missingSignedDate = 0;
+    var reminder7Day = 0;
+    var reminder14Day = 0;
+    var escalation21Day = 0;
+    var onTrack = 0;
+
+    await using (var command = new NpgsqlCommand("""
+        WITH resource_counts AS (
+            SELECT
+                project_intake_request_id,
+                COUNT(*)::bigint AS resource_request_count,
+                MIN(created_at)::text AS first_resource_request_at
+            FROM engineering_resource_requests
+            WHERE project_intake_request_id IS NOT NULL
+            GROUP BY project_intake_request_id
+        ),
+        document_counts AS (
+            SELECT
+                project_intake_request_id,
+                COUNT(*)::bigint AS active_document_count,
+                COUNT(*)::bigint AS total_document_count,
+                NULL::text AS last_document_uploaded_at
+            FROM project_intake_documents
+            GROUP BY project_intake_request_id
+        ),
+        history_counts AS (
+            SELECT
+                project_intake_request_id,
+                COUNT(*)::bigint AS change_count,
+                MAX(created_at)::text AS last_change_at
+            FROM project_intake_change_history
+            GROUP BY project_intake_request_id
+        ),
+        aging_base AS (
+            SELECT
+                pir.project_intake_request_id,
+                COALESCE(pir.request_number, '') AS request_number,
+                COALESCE(pir.client_name, '') AS client_name,
+                COALESCE(pir.request_title, '') AS request_title,
+                COALESCE(pir.intake_status, 'new') AS intake_status,
+                COALESCE(pir.priority, 'normal') AS priority,
+                pir.project_signed_date,
+                COALESCE(GREATEST(0, CURRENT_DATE - pir.project_signed_date), 0)::integer AS signed_age_days,
+                pir.created_at::text AS created_at_text,
+                pir.updated_at::text AS updated_at_text,
+                pir.triage_started_at::text AS triage_started_at_text,
+                COALESCE(pir.resource_request_started_at::text, rc.first_resource_request_at) AS resource_request_started_at_text,
+                pir.pm_assignment_started_at::text AS pm_assignment_started_at_text,
+                pir.assigned_pm_user_id,
+                COALESCE(pm.display_name, '') AS assigned_pm_name,
+                COALESCE(pm.email, '') AS assigned_pm_email,
+                COALESCE(rc.resource_request_count, 0)::bigint AS resource_request_count,
+                COALESCE(dc.active_document_count, 0)::bigint AS active_document_count,
+                COALESCE(dc.total_document_count, 0)::bigint AS total_document_count,
+                dc.last_document_uploaded_at,
+                COALESCE(hc.change_count, 0)::bigint AS change_count,
+                hc.last_change_at,
+                pir.last_post_intake_edit_note,
+                pir.aging_notification_stage,
+                pir.aging_notification_last_evaluated_at::text AS aging_notification_last_evaluated_at_text,
+                pir.aging_notification_last_message,
+                (
+                    pir.triage_started_at IS NOT NULL
+                    OR LOWER(COALESCE(pir.intake_status, 'new')) IN ('triage', 'requested', 'resource_requested', 'assigned', 'active', 'approved')
+                ) AS triage_started_flag
+            FROM project_intake_requests pir
+            LEFT JOIN app_users pm
+                ON pm.user_id = pir.assigned_pm_user_id
+            LEFT JOIN resource_counts rc
+                ON rc.project_intake_request_id = pir.project_intake_request_id
+            LEFT JOIN document_counts dc
+                ON dc.project_intake_request_id = pir.project_intake_request_id
+            LEFT JOIN history_counts hc
+                ON hc.project_intake_request_id = pir.project_intake_request_id
+        )
+        SELECT
+            project_intake_request_id,
+            request_number,
+            client_name,
+            request_title,
+            intake_status,
+            priority,
+            COALESCE(project_signed_date::text, '') AS project_signed_date_text,
+            signed_age_days,
+            CASE
+                WHEN project_signed_date IS NULL THEN 'missing_signed_date'
+                WHEN signed_age_days >= 21 AND (triage_started_flag = FALSE OR resource_request_count = 0 OR assigned_pm_user_id IS NULL) THEN 'escalation_21_day'
+                WHEN signed_age_days >= 14 AND (resource_request_count = 0 OR assigned_pm_user_id IS NULL) THEN 'reminder_14_day'
+                WHEN signed_age_days >= 7 AND triage_started_flag = FALSE THEN 'reminder_7_day'
+                ELSE 'on_track'
+            END AS aging_stage,
+            CASE
+                WHEN project_signed_date IS NULL THEN 'Signed date is not recorded yet.'
+                WHEN signed_age_days >= 21 AND (triage_started_flag = FALSE OR resource_request_count = 0 OR assigned_pm_user_id IS NULL) THEN '21+ days since signed date with incomplete movement. Escalate to PTC and assigned PM/manager if known.'
+                WHEN signed_age_days >= 14 AND (resource_request_count = 0 OR assigned_pm_user_id IS NULL) THEN '14+ days since signed date with no resource request or PM assignment. Notify Project Coordinator and PTC.'
+                WHEN signed_age_days >= 7 AND triage_started_flag = FALSE THEN '7+ days since signed date with no triage movement. Notify Project Coordinator.'
+                ELSE 'Signed-date aging is currently on track.'
+            END AS aging_message,
+            created_at_text,
+            updated_at_text,
+            COALESCE(triage_started_at_text, '') AS triage_started_at_text,
+            COALESCE(resource_request_started_at_text, '') AS resource_request_started_at_text,
+            COALESCE(pm_assignment_started_at_text, '') AS pm_assignment_started_at_text,
+            assigned_pm_user_id,
+            assigned_pm_name,
+            assigned_pm_email,
+            resource_request_count,
+            active_document_count,
+            total_document_count,
+            COALESCE(last_document_uploaded_at, '') AS last_document_uploaded_at,
+            change_count,
+            COALESCE(last_change_at, '') AS last_change_at,
+            COALESCE(last_post_intake_edit_note, '') AS last_post_intake_edit_note,
+            COALESCE(aging_notification_stage, '') AS aging_notification_stage,
+            COALESCE(aging_notification_last_evaluated_at_text, '') AS aging_notification_last_evaluated_at_text,
+            COALESCE(aging_notification_last_message, '') AS aging_notification_last_message
+        FROM aging_base
+        ORDER BY
+            COALESCE(project_signed_date, created_at_text::date) ASC,
+            created_at_text DESC
+        LIMIT 120;
+        """, connection))
+    {
+        await using var reader = await command.ExecuteReaderAsync();
+
+        while (await reader.ReadAsync())
+        {
+            var agingStage = reader.GetString(8);
+
+            switch (agingStage)
+            {
+                case "missing_signed_date":
+                    missingSignedDate++;
+                    break;
+                case "reminder_7_day":
+                    reminder7Day++;
+                    break;
+                case "reminder_14_day":
+                    reminder14Day++;
+                    break;
+                case "escalation_21_day":
+                    escalation21Day++;
+                    break;
+                default:
+                    onTrack++;
+                    break;
+            }
+
+            items.Add(new
+            {
+                intakeId = reader.GetGuid(0),
+                requestNumber = reader.GetString(1),
+                clientName = reader.GetString(2),
+                requestTitle = reader.GetString(3),
+                intakeStatus = reader.GetString(4),
+                priority = reader.GetString(5),
+                projectSignedDate = CleanNullableString(reader, 6),
+                signedAgeDays = Convert.ToInt32(reader.GetValue(7)),
+                agingStage,
+                agingMessage = reader.GetString(9),
+                createdAt = CleanNullableString(reader, 10),
+                updatedAt = CleanNullableString(reader, 11),
+                triageStartedAt = CleanNullableString(reader, 12),
+                resourceRequestStartedAt = CleanNullableString(reader, 13),
+                pmAssignmentStartedAt = CleanNullableString(reader, 14),
+                assignedPmUserId = reader.IsDBNull(15) ? (Guid?)null : reader.GetGuid(15),
+                assignedPmName = reader.GetString(16),
+                assignedPmEmail = reader.GetString(17),
+                resourceRequestCount = reader.GetInt64(18),
+                activeDocumentCount = reader.GetInt64(19),
+                totalDocumentCount = reader.GetInt64(20),
+                lastDocumentUploadedAt = CleanNullableString(reader, 21),
+                changeCount = reader.GetInt64(22),
+                lastChangeAt = CleanNullableString(reader, 23),
+                lastPostIntakeEditNote = CleanNullableString(reader, 24),
+                lastNotificationStage = CleanNullableString(reader, 25),
+                lastNotificationEvaluatedAt = CleanNullableString(reader, 26),
+                lastNotificationMessage = CleanNullableString(reader, 27)
+            });
+        }
+    }
+
+    return Results.Ok(new
+    {
+        module = "019M-AN Project Intake Aging",
+        canManage,
+        summary = new
+        {
+            totalIntakes = items.Count,
+            missingSignedDate,
+            reminder7Day,
+            reminder14Day,
+            escalation21Day,
+            onTrack
+        },
+        items
+    });
+});
+
+app.MapPut("/api/project-intake/{intakeId:guid}/post-intake", async (Guid intakeId, JsonElement payload, HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    string? GetString(string name)
+    {
+        if (!payload.TryGetProperty(name, out var value)) return null;
+        if (value.ValueKind == JsonValueKind.Null) return null;
+        return value.GetString()?.Trim();
+    }
+
+    DateOnly? GetDate(string name)
+    {
+        var raw = GetString(name);
+        return DateOnly.TryParse(raw, out var parsed) ? parsed : null;
+    }
+
+    var requestTitle = GetString("requestTitle");
+    var requestDescription = GetString("requestDescription");
+    var intakeStatus = GetString("intakeStatus");
+    var priority = GetString("priority");
+    var projectSignedDate = GetDate("projectSignedDate");
+    var targetStartDate = GetDate("targetStartDate");
+    var targetCompletionDate = GetDate("targetCompletionDate");
+    var updateNote = GetString("updateNote");
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    bool canManage;
+    await using (var accessCommand = new NpgsqlCommand("""
+        SELECT BOOL_OR(
+            r.role_code IN ('ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR')
+            OR p.permission_code IN ('MANAGE_PROJECT_INTAKE', 'MANAGE_PROJECT_INTAKE_AGING', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL')
+        )
+        FROM app_user_role_assignments ura
+        JOIN app_roles r
+            ON r.app_role_id = ura.app_role_id
+           AND r.is_active = TRUE
+        LEFT JOIN app_role_permissions rp
+            ON rp.app_role_id = r.app_role_id
+        LEFT JOIN app_permissions p
+            ON p.app_permission_id = rp.app_permission_id
+        WHERE ura.user_id = @user_id
+          AND ura.is_active = TRUE;
+        """, connection))
+    {
+        accessCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+        canManage = (bool?)await accessCommand.ExecuteScalarAsync() == true;
+    }
+
+    if (!canManage)
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Post-intake edits are restricted to Project Coordinators, PTC, and Administrators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    await using var transaction = await connection.BeginTransactionAsync();
+
+    string? previousSnapshot;
+    await using (var previousCommand = new NpgsqlCommand("""
+        SELECT to_jsonb(pir)::text
+        FROM project_intake_requests pir
+        WHERE pir.project_intake_request_id = @intake_id;
+        """, connection, transaction))
+    {
+        previousCommand.Parameters.AddWithValue("intake_id", intakeId);
+        previousSnapshot = (string?)await previousCommand.ExecuteScalarAsync();
+    }
+
+    if (previousSnapshot is null)
+    {
+        await transaction.RollbackAsync();
+        return Results.NotFound(new { status = "intake_not_found", message = "Project intake request was not found." });
+    }
+
+    await using (var updateCommand = new NpgsqlCommand("""
+        UPDATE project_intake_requests
+        SET
+            request_title = CASE WHEN @request_title <> '' THEN @request_title ELSE request_title END,
+            request_description = CASE WHEN @request_description <> '' THEN @request_description ELSE request_description END,
+            intake_status = CASE WHEN @intake_status <> '' THEN @intake_status ELSE intake_status END,
+            priority = CASE WHEN @priority <> '' THEN @priority ELSE priority END,
+            project_signed_date = COALESCE(@project_signed_date, project_signed_date),
+            signed_date_recorded_at = CASE WHEN @project_signed_date IS NULL THEN signed_date_recorded_at ELSE NOW() END,
+            signed_date_recorded_by_user_id = CASE WHEN @project_signed_date IS NULL THEN signed_date_recorded_by_user_id ELSE @updated_by_user_id END,
+            target_start_date = COALESCE(@target_start_date, target_start_date),
+            target_completion_date = COALESCE(@target_completion_date, target_completion_date),
+            triage_started_at = CASE
+                WHEN triage_started_at IS NULL AND LOWER(COALESCE(NULLIF(@intake_status, ''), intake_status)) IN ('triage', 'requested', 'resource_requested', 'assigned', 'active')
+                THEN NOW()
+                ELSE triage_started_at
+            END,
+            resource_request_started_at = CASE
+                WHEN resource_request_started_at IS NULL AND LOWER(COALESCE(NULLIF(@intake_status, ''), intake_status)) IN ('resource_requested', 'assigned', 'active')
+                THEN NOW()
+                ELSE resource_request_started_at
+            END,
+            pm_assignment_started_at = CASE
+                WHEN pm_assignment_started_at IS NULL AND assigned_pm_user_id IS NOT NULL
+                THEN NOW()
+                ELSE pm_assignment_started_at
+            END,
+            post_intake_edit_count = post_intake_edit_count + 1,
+            last_post_intake_edit_at = NOW(),
+            last_post_intake_edit_by_user_id = @updated_by_user_id,
+            last_post_intake_edit_note = NULLIF(@update_note, ''),
+            updated_at = NOW()
+        WHERE project_intake_request_id = @intake_id;
+        """, connection, transaction))
+    {
+        updateCommand.Parameters.AddWithValue("intake_id", intakeId);
+        updateCommand.Parameters.AddWithValue("updated_by_user_id", sessionUserId.Value);
+        updateCommand.Parameters.AddWithValue("request_title", requestTitle ?? "");
+        updateCommand.Parameters.AddWithValue("request_description", requestDescription ?? "");
+        updateCommand.Parameters.AddWithValue("intake_status", intakeStatus ?? "");
+        updateCommand.Parameters.AddWithValue("priority", priority ?? "");
+        updateCommand.Parameters.AddWithValue("project_signed_date", (object?)projectSignedDate ?? DBNull.Value);
+        updateCommand.Parameters.AddWithValue("target_start_date", (object?)targetStartDate ?? DBNull.Value);
+        updateCommand.Parameters.AddWithValue("target_completion_date", (object?)targetCompletionDate ?? DBNull.Value);
+        updateCommand.Parameters.AddWithValue("update_note", updateNote ?? "Post-intake update recorded.");
+
+        await updateCommand.ExecuteNonQueryAsync();
+    }
+
+    string? newSnapshot;
+    await using (var newCommand = new NpgsqlCommand("""
+        SELECT to_jsonb(pir)::text
+        FROM project_intake_requests pir
+        WHERE pir.project_intake_request_id = @intake_id;
+        """, connection, transaction))
+    {
+        newCommand.Parameters.AddWithValue("intake_id", intakeId);
+        newSnapshot = (string?)await newCommand.ExecuteScalarAsync();
+    }
+
+    await using (var historyCommand = new NpgsqlCommand("""
+        INSERT INTO project_intake_change_history (
+            project_intake_request_id,
+            changed_by_user_id,
+            change_type,
+            change_summary,
+            previous_snapshot,
+            new_snapshot
+        )
+        VALUES (
+            @intake_id,
+            @changed_by_user_id,
+            'post_intake_update',
+            @change_summary,
+            @previous_snapshot::jsonb,
+            @new_snapshot::jsonb
+        );
+        """, connection, transaction))
+    {
+        historyCommand.Parameters.AddWithValue("intake_id", intakeId);
+        historyCommand.Parameters.AddWithValue("changed_by_user_id", sessionUserId.Value);
+        historyCommand.Parameters.AddWithValue("change_summary", string.IsNullOrWhiteSpace(updateNote) ? "Post-intake update recorded." : updateNote);
+        historyCommand.Parameters.AddWithValue("previous_snapshot", previousSnapshot);
+        historyCommand.Parameters.AddWithValue("new_snapshot", newSnapshot ?? previousSnapshot);
+        await historyCommand.ExecuteNonQueryAsync();
+    }
+
+    await InsertAuditLogAsync(connection, transaction, sessionUserId.Value, "project_intake_post_intake_updated", "project_intake", intakeId);
+
+    await transaction.CommitAsync();
+
+    return Results.Ok(new
+    {
+        status = "post_intake_updated",
+        intakeId,
+        message = "Post-intake information was updated and audit history was recorded."
+    });
+});
+
+app.MapPost("/api/project-intake/{intakeId:guid}/supporting-documents/upload", async (Guid intakeId, HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    bool canManage;
+    await using (var accessCommand = new NpgsqlCommand("""
+        SELECT BOOL_OR(
+            r.role_code IN ('ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR')
+            OR p.permission_code IN ('MANAGE_PROJECT_INTAKE', 'MANAGE_PROJECT_INTAKE_AGING', 'MANAGE_PROJECT_DOCUMENTS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL')
+        )
+        FROM app_user_role_assignments ura
+        JOIN app_roles r
+            ON r.app_role_id = ura.app_role_id
+           AND r.is_active = TRUE
+        LEFT JOIN app_role_permissions rp
+            ON rp.app_role_id = r.app_role_id
+        LEFT JOIN app_permissions p
+            ON p.app_permission_id = rp.app_permission_id
+        WHERE ura.user_id = @user_id
+          AND ura.is_active = TRUE;
+        """, connection))
+    {
+        accessCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+        canManage = (bool?)await accessCommand.ExecuteScalarAsync() == true;
+    }
+
+    if (!canManage)
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Post-intake document upload is restricted to Project Coordinators, PTC, and Administrators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var form = await httpContext.Request.ReadFormAsync();
+    var file = form.Files.GetFile("file");
+
+    if (file is null || file.Length == 0)
+    {
+        return Results.BadRequest(new { status = "validation_failed", message = "A supporting document file is required." });
+    }
+
+    if (file.Length > 50 * 1024 * 1024)
+    {
+        return Results.BadRequest(new { status = "file_too_large", message = "Document uploads are limited to 50 MB." });
+    }
+
+    if (!ProjectDocumentExtensionIsAllowed(file.FileName))
+    {
+        return Results.BadRequest(new { status = "file_type_not_allowed", message = "Allowed file types are PDF, Word, Excel, and CSV." });
+    }
+
+    var documentType = form["documentType"].ToString().Trim().ToLowerInvariant();
+    if (string.IsNullOrWhiteSpace(documentType)) documentType = "supporting_document";
+
+    var replaceExisting = string.Equals(form["replaceExisting"].ToString(), "true", StringComparison.OrdinalIgnoreCase);
+    var engineeringVisible = !string.Equals(form["engineeringVisible"].ToString(), "false", StringComparison.OrdinalIgnoreCase);
+    var aiTimesheetContextEnabled =
+        string.Equals(form["aiTimesheetContextEnabled"].ToString(), "true", StringComparison.OrdinalIgnoreCase)
+        || documentType is "sow" or "gsd";
+
+    var safeOriginalFileName = Path.GetFileName(file.FileName);
+    var storedFileName = $"{documentType}_{Guid.NewGuid():N}{Path.GetExtension(safeOriginalFileName)}";
+    var uploadRoot = GetProjectPulseUploadRoot();
+    var requestFolder = Path.Combine(uploadRoot, "project-intake", intakeId.ToString("N"));
+    Directory.CreateDirectory(requestFolder);
+    var storedPath = Path.Combine(requestFolder, storedFileName);
+
+    await using (var stream = File.Create(storedPath))
+    {
+        await file.CopyToAsync(stream);
+    }
+
+    await using var transaction = await connection.BeginTransactionAsync();
+
+    await using (var existsCommand = new NpgsqlCommand("""
+        SELECT 1
+        FROM project_intake_requests
+        WHERE project_intake_request_id = @intake_id;
+        """, connection, transaction))
+    {
+        existsCommand.Parameters.AddWithValue("intake_id", intakeId);
+        if (await existsCommand.ExecuteScalarAsync() is null)
+        {
+            await transaction.RollbackAsync();
+            return Results.NotFound(new { status = "intake_not_found", message = "Project intake request was not found." });
+        }
+    }
+
+    if (replaceExisting)
+    {
+        await using var replaceCommand = new NpgsqlCommand("""
+            UPDATE project_intake_documents
+            SET is_active = FALSE,
+                document_status = 'replaced'
+            WHERE project_intake_request_id = @intake_id
+              AND LOWER(document_type) = LOWER(@document_type)
+              AND is_active = TRUE;
+            """, connection, transaction);
+
+        replaceCommand.Parameters.AddWithValue("intake_id", intakeId);
+        replaceCommand.Parameters.AddWithValue("document_type", documentType);
+        await replaceCommand.ExecuteNonQueryAsync();
+    }
+
+    Guid documentId;
+    await using (var insertCommand = new NpgsqlCommand("""
+        INSERT INTO project_intake_documents (
+            project_intake_request_id,
+            document_type,
+            document_category,
+            original_file_name,
+            stored_file_name,
+            storage_path,
+            content_type,
+            size_bytes,
+            uploaded_by_user_id,
+            upload_source,
+            engineering_visible,
+            ai_timesheet_context_enabled,
+            extraction_status,
+            document_status,
+            is_active
+        )
+        VALUES (
+            @intake_id,
+            @document_type,
+            @document_category,
+            @original_file_name,
+            @stored_file_name,
+            @storage_path,
+            @content_type,
+            @size_bytes,
+            @uploaded_by_user_id,
+            'post_intake_upload',
+            @engineering_visible,
+            @ai_timesheet_context_enabled,
+            'not_started',
+            'active',
+            TRUE
+        )
+        RETURNING project_intake_document_id;
+        """, connection, transaction))
+    {
+        insertCommand.Parameters.AddWithValue("intake_id", intakeId);
+        insertCommand.Parameters.AddWithValue("document_type", documentType);
+        insertCommand.Parameters.AddWithValue("document_category", documentType is "sow" or "gsd" ? documentType : "supporting_document");
+        insertCommand.Parameters.AddWithValue("original_file_name", safeOriginalFileName);
+        insertCommand.Parameters.AddWithValue("stored_file_name", storedFileName);
+        insertCommand.Parameters.AddWithValue("storage_path", storedPath);
+        insertCommand.Parameters.AddWithValue("content_type", string.IsNullOrWhiteSpace(file.ContentType) ? DBNull.Value : file.ContentType);
+        insertCommand.Parameters.AddWithValue("size_bytes", file.Length);
+        insertCommand.Parameters.AddWithValue("uploaded_by_user_id", sessionUserId.Value);
+        insertCommand.Parameters.AddWithValue("engineering_visible", engineeringVisible);
+        insertCommand.Parameters.AddWithValue("ai_timesheet_context_enabled", aiTimesheetContextEnabled);
+
+        documentId = (Guid)(await insertCommand.ExecuteScalarAsync() ?? throw new InvalidOperationException("Unable to save supporting document."));
+    }
+
+    await using (var updateCommand = new NpgsqlCommand("""
+        UPDATE project_intake_requests
+        SET source_document_received = TRUE,
+            post_intake_edit_count = post_intake_edit_count + 1,
+            last_post_intake_edit_at = NOW(),
+            last_post_intake_edit_by_user_id = @updated_by_user_id,
+            last_post_intake_edit_note = @note,
+            updated_at = NOW()
+        WHERE project_intake_request_id = @intake_id;
+        """, connection, transaction))
+    {
+        updateCommand.Parameters.AddWithValue("intake_id", intakeId);
+        updateCommand.Parameters.AddWithValue("updated_by_user_id", sessionUserId.Value);
+        updateCommand.Parameters.AddWithValue("note", $"{documentType} document uploaded after initial intake.");
+        await updateCommand.ExecuteNonQueryAsync();
+    }
+
+    await using (var historyCommand = new NpgsqlCommand("""
+        INSERT INTO project_intake_change_history (
+            project_intake_request_id,
+            changed_by_user_id,
+            change_type,
+            change_summary,
+            new_snapshot
+        )
+        VALUES (
+            @intake_id,
+            @changed_by_user_id,
+            'post_intake_document_uploaded',
+            @change_summary,
+            jsonb_build_object(
+                'documentId', @document_id,
+                'documentType', @document_type,
+                'originalFileName', @original_file_name,
+                'replaceExisting', @replace_existing
+            )
+        );
+        """, connection, transaction))
+    {
+        historyCommand.Parameters.AddWithValue("intake_id", intakeId);
+        historyCommand.Parameters.AddWithValue("changed_by_user_id", sessionUserId.Value);
+        historyCommand.Parameters.AddWithValue("change_summary", $"{documentType} document uploaded after initial intake.");
+        historyCommand.Parameters.AddWithValue("document_id", documentId);
+        historyCommand.Parameters.AddWithValue("document_type", documentType);
+        historyCommand.Parameters.AddWithValue("original_file_name", safeOriginalFileName);
+        historyCommand.Parameters.AddWithValue("replace_existing", replaceExisting);
+        await historyCommand.ExecuteNonQueryAsync();
+    }
+
+    await InsertAuditLogAsync(connection, transaction, sessionUserId.Value, "project_intake_post_intake_document_uploaded", "project_intake", intakeId);
+
+    await transaction.CommitAsync();
+
+    return Results.Ok(new
+    {
+        status = "post_intake_document_uploaded",
+        intakeId,
+        documentId,
+        documentType,
+        originalFileName = safeOriginalFileName,
+        replaceExisting,
+        message = "Supporting document uploaded and audit history was recorded."
+    });
+});
+
 app.MapGet("/api/project-intake/summary", async () =>
 {
     var config = DatabaseConfig.FromEnvironment();

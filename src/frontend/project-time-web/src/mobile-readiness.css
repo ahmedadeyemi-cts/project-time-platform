@@ -466,3 +466,25 @@ button[type='submit'] {
     width: 100%;
   }
 }
+
+/* 019M-AN Post-Intake Editability + Signed Date Aging mobile readiness */
+@media (max-width: 900px) {
+  .post-intake-aging-summary,
+  .post-intake-aging-layout,
+  .post-intake-management-grid,
+  .post-intake-detail-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .post-intake-header,
+  .post-intake-detail-heading {
+    flex-direction: column;
+  }
+
+  .post-intake-edit-form input,
+  .post-intake-edit-form select,
+  .post-intake-edit-form textarea,
+  .post-intake-edit-form button {
+    width: 100%;
+  }
+}

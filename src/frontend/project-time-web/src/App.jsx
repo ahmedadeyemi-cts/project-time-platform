@@ -1,4 +1,5 @@
 import HelpAssistant from './HelpAssistant.jsx';
+import PostIntakeAgingPanel from './PostIntakeAgingPanel.jsx';
 
 /*
  * 019M-V Global View-As User Experience Preview
@@ -671,7 +672,7 @@ const roleWorkspaceModules = [
     href: '#project-intake',
     title: 'Project Intake & Engineering Resource Requests',
     navLabel: 'Project Intake',
-    description: 'Create and review project intake requests, engineering resource demand, capacity, and assignment readiness.',
+    description: 'Create and review project intake requests, signed date aging, engineering resource demand, capacity, and assignment readiness.',
     permissions: ['VIEW_PROJECT_INTAKE', 'MANAGE_PROJECT_INTAKE', 'VIEW_RESOURCE_SCHEDULING', 'MANAGE_RESOURCE_SCHEDULING', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   },
   {
@@ -1145,7 +1146,7 @@ function getInstalledProjectPulseModuleRegistry() {
       title: 'Project Intake',
       group: 'Project Intake',
       permissions: ['VIEW_PROJECT_INTAKE', 'MANAGE_PROJECT_INTAKE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
-      description: 'Captures project requests, customer selection, planned costs, intake documents, triage details, and resource request readiness.'
+      description: 'Captures project requests, customer selection, planned costs, intake documents, signed date aging, triage details, and resource request readiness.'
     },
     {
       route: 'customer-directory',
@@ -4736,6 +4737,7 @@ Analytics - Variphy / Infortel`}
       {(activeRoute === 'project-intake' && canSeeAny(['VIEW_PROJECT_INTAKE', 'MANAGE_PROJECT_INTAKE', 'VIEW_RESOURCE_SCHEDULING', 'MANAGE_RESOURCE_SCHEDULING', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
         <section id="project-intake" className="panel project-intake-route-panel">
           <ProjectIntakeCenter />
+          <PostIntakeAgingPanel />
         </section>
       ) : null}
 

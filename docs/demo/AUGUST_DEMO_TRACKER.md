@@ -417,3 +417,19 @@
 - Project Workload API now returns selectable PMs, selected scope, and access flags.
 - Project Workload UI now includes a role-aware PM selector when the user is allowed to select PMs.
 - Added mobile readiness for the PM workload selector.
+
+## 019M-AN Post-Intake Editability + Signed Date Aging
+
+### Added
+- Added Project Signed Date to intake requests.
+- Added signed-date aging logic for 7-day reminders, 14-day reminders, and 21-day escalations.
+- Added post-intake edit tracking and intake-specific change history.
+- Added post-intake supporting document upload/replace workflow.
+- Added Project Intake panel for aging review, post-intake updates, and supporting document uploads.
+- Updated Project Intake dashboard description to include signed-date aging.
+- Added mobile readiness for the post-intake aging panel.
+
+### Role Behavior
+- Project Coordinator/PTC/Admin can edit post-intake fields and upload/replace documents.
+- PM/PM Team Lead can view intake aging where permitted.
+- All changes are captured in project intake change history and audit logs.
