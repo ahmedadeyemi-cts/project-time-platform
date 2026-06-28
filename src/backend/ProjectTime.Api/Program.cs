@@ -3380,6 +3380,420 @@ app.MapPost("/api/project-intake/{intakeId:guid}/project-link", async (Guid inta
     }
 });
 
+
+// 019M-AT Resource Request Assignment to Work Task Assignment Handoff
+app.MapGet("/api/project-intake/resource-assignment-handoff", async (HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var roles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    var permissions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+    await using (var accessCommand = new NpgsqlCommand("""
+        SELECT
+            r.role_code,
+            COALESCE(p.permission_code, '') AS permission_code
+        FROM app_user_role_assignments ura
+        JOIN app_roles r
+            ON r.app_role_id = ura.app_role_id
+           AND r.is_active = TRUE
+        LEFT JOIN app_role_permissions rp
+            ON rp.app_role_id = r.app_role_id
+        LEFT JOIN app_permissions p
+            ON p.app_permission_id = rp.app_permission_id
+        WHERE ura.user_id = @user_id
+          AND ura.is_active = TRUE;
+        """, connection))
+    {
+        accessCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+
+        await using var reader = await accessCommand.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            roles.Add(reader.GetString(0));
+
+            if (!reader.IsDBNull(1) && !string.IsNullOrWhiteSpace(reader.GetString(1)))
+            {
+                permissions.Add(reader.GetString(1));
+            }
+        }
+    }
+
+    var canViewAll =
+        roles.Contains("ADMINISTRATOR")
+        || roles.Contains("PROJECT_TEAM_COORDINATOR")
+        || permissions.Contains("SYSTEM_ADMINISTRATION")
+        || permissions.Contains("MANAGE_ALL");
+
+    var canViewManaged =
+        roles.Contains("PROJECT_MANAGEMENT")
+        || roles.Contains("PROJECT_MANAGER")
+        || roles.Contains("PM_TEAM_LEAD")
+        || roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD")
+        || roles.Contains("PROJECT_COORDINATOR")
+        || permissions.Contains("VIEW_RESOURCE_ASSIGNMENT_HANDOFF")
+        || permissions.Contains("VIEW_INTAKE_WORK_TASK_HANDOFF")
+        || permissions.Contains("MANAGE_INTAKE_PROJECT_LINKS")
+        || permissions.Contains("VIEW_ENGINEERING_RESOURCE_REQUESTS")
+        || permissions.Contains("MANAGE_ENGINEERING_RESOURCE_REQUESTS");
+
+    if (!canViewAll && !canViewManaged)
+    {
+        return Results.Json(new
+        {
+            canViewResourceAssignmentHandoff = false,
+            status = "access_denied",
+            message = "Resource assignment handoff readiness is available to Administrators, PTC, Project Management, and approved intake handoff roles."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var requests = new List<Dictionary<string, object?>>();
+    var requestIndex = new Dictionary<Guid, Dictionary<string, object?>>();
+
+    await using (var command = new NpgsqlCommand("""
+        WITH task_rollup AS (
+            SELECT
+                project_id,
+                COUNT(DISTINCT task_id)::bigint AS task_count,
+                COUNT(DISTINCT task_id) FILTER (WHERE COALESCE(is_active, TRUE) = TRUE)::bigint AS active_task_count
+            FROM project_tasks
+            GROUP BY project_id
+        ),
+        resource_assignment_rollup AS (
+            SELECT
+                engineering_resource_request_id,
+                COUNT(DISTINCT engineering_resource_request_assignment_id)::bigint AS resource_assignment_count,
+                COUNT(DISTINCT user_id)::bigint AS assigned_engineer_count,
+                COALESCE(SUM(allocated_hours), 0)::numeric AS allocated_hours
+            FROM engineering_resource_request_assignments
+            GROUP BY engineering_resource_request_id
+        ),
+        project_assignment_rollup AS (
+            SELECT
+                err.engineering_resource_request_id,
+                COUNT(DISTINCT pa.project_assignment_id)::bigint AS project_assignment_count,
+                COALESCE(SUM(pa.assigned_hours), 0)::numeric AS project_assigned_hours
+            FROM engineering_resource_requests err
+            JOIN engineering_resource_request_assignments erra
+                ON erra.engineering_resource_request_id = err.engineering_resource_request_id
+            LEFT JOIN project_assignments pa
+                ON pa.project_id = err.project_id
+               AND pa.user_id = erra.user_id
+            GROUP BY err.engineering_resource_request_id
+        ),
+        time_rollup AS (
+            SELECT
+                err.engineering_resource_request_id,
+                COUNT(DISTINCT te.time_entry_id)::bigint AS time_entry_count,
+                COALESCE(SUM(te.hours), 0)::numeric AS used_hours
+            FROM engineering_resource_requests err
+            JOIN engineering_resource_request_assignments erra
+                ON erra.engineering_resource_request_id = err.engineering_resource_request_id
+            LEFT JOIN time_entries te
+                ON te.project_id = err.project_id
+               AND te.user_id = erra.user_id
+               AND COALESCE(te.status, 'draft') NOT IN ('manager_declined', 'rejected', 'voided')
+            GROUP BY err.engineering_resource_request_id
+        )
+        SELECT
+            err.engineering_resource_request_id,
+            err.request_number,
+            err.project_intake_request_id,
+            COALESCE(pir.request_number, '') AS intake_number,
+            COALESCE(pir.request_title, '') AS intake_title,
+            err.project_id,
+            COALESCE(p.project_code, '') AS project_code,
+            COALESCE(p.project_name, '') AS project_name,
+            err.requested_function,
+            COALESCE(err.skill_requirements, '') AS skill_requirements,
+            err.requested_hours,
+            COALESCE(err.request_status, 'requested') AS request_status,
+            COALESCE(pm.display_name, '') AS assigned_pm_name,
+            COALESCE(err.target_start_date::text, '') AS target_start_date_text,
+            COALESCE(err.target_end_date::text, '') AS target_end_date_text,
+            COALESCE(tr.task_count, 0)::bigint AS task_count,
+            COALESCE(tr.active_task_count, 0)::bigint AS active_task_count,
+            COALESCE(rar.resource_assignment_count, 0)::bigint AS resource_assignment_count,
+            COALESCE(rar.assigned_engineer_count, 0)::bigint AS assigned_engineer_count,
+            COALESCE(rar.allocated_hours, 0)::numeric AS allocated_hours,
+            COALESCE(par.project_assignment_count, 0)::bigint AS project_assignment_count,
+            COALESCE(par.project_assigned_hours, 0)::numeric AS project_assigned_hours,
+            COALESCE(tir.time_entry_count, 0)::bigint AS time_entry_count,
+            COALESCE(tir.used_hours, 0)::numeric AS used_hours
+        FROM engineering_resource_requests err
+        LEFT JOIN project_intake_requests pir
+            ON pir.project_intake_request_id = err.project_intake_request_id
+        LEFT JOIN projects p
+            ON p.project_id = err.project_id
+        LEFT JOIN app_users pm
+            ON pm.user_id = err.assigned_pm_user_id
+        LEFT JOIN task_rollup tr
+            ON tr.project_id = err.project_id
+        LEFT JOIN resource_assignment_rollup rar
+            ON rar.engineering_resource_request_id = err.engineering_resource_request_id
+        LEFT JOIN project_assignment_rollup par
+            ON par.engineering_resource_request_id = err.engineering_resource_request_id
+        LEFT JOIN time_rollup tir
+            ON tir.engineering_resource_request_id = err.engineering_resource_request_id
+        WHERE @can_view_all = TRUE
+           OR err.assigned_pm_user_id = @user_id
+           OR p.project_manager_user_id = @user_id
+        ORDER BY err.created_at DESC NULLS LAST;
+        """, connection))
+    {
+        command.Parameters.AddWithValue("can_view_all", canViewAll);
+        command.Parameters.AddWithValue("user_id", sessionUserId.Value);
+
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var requestId = reader.GetGuid(0);
+            var projectId = reader.IsDBNull(5) ? (Guid?)null : reader.GetGuid(5);
+            var taskCount = reader.GetInt64(15);
+            var resourceAssignmentCount = reader.GetInt64(17);
+            var allocatedHours = reader.GetDecimal(19);
+            var projectAssignmentCount = reader.GetInt64(20);
+            var projectAssignedHours = reader.GetDecimal(21);
+            var timeEntryCount = reader.GetInt64(22);
+
+            string readinessStage;
+            string readinessMessage;
+
+            if (projectId is null)
+            {
+                readinessStage = "project_link_needed";
+                readinessMessage = "Resource request is not linked to a project yet.";
+            }
+            else if (taskCount == 0)
+            {
+                readinessStage = "work_tasks_needed";
+                readinessMessage = "Resource request is linked to a project, but the project does not have work tasks yet.";
+            }
+            else if (resourceAssignmentCount == 0)
+            {
+                readinessStage = "resource_assignment_needed";
+                readinessMessage = "Project and work tasks exist, but engineers have not been assigned to the resource request yet.";
+            }
+            else if (projectAssignmentCount == 0)
+            {
+                readinessStage = "project_task_assignment_needed";
+                readinessMessage = "Engineers are assigned to the resource request, but they are not yet assigned to project tasks.";
+            }
+            else if (projectAssignedHours < allocatedHours)
+            {
+                readinessStage = "assignment_hours_gap";
+                readinessMessage = "Project task assignments exist, but assigned task hours are below the resource request allocation.";
+            }
+            else if (timeEntryCount == 0)
+            {
+                readinessStage = "timesheet_usage_pending";
+                readinessMessage = "Resource and project task assignments are ready, but no timesheet activity has been recorded yet.";
+            }
+            else
+            {
+                readinessStage = "assignment_flow_ready";
+                readinessMessage = "Resource request assignment, project task assignment, timesheet activity, and utilization readiness are connected.";
+            }
+
+            var item = new Dictionary<string, object?>
+            {
+                ["resourceRequestId"] = requestId,
+                ["requestNumber"] = reader.GetString(1),
+                ["intakeId"] = reader.IsDBNull(2) ? null : reader.GetGuid(2),
+                ["intakeNumber"] = reader.GetString(3),
+                ["intakeTitle"] = reader.GetString(4),
+                ["projectId"] = projectId,
+                ["projectCode"] = reader.GetString(6),
+                ["projectName"] = reader.GetString(7),
+                ["requestedFunction"] = reader.GetString(8),
+                ["skillRequirements"] = reader.GetString(9),
+                ["requestedHours"] = reader.GetDecimal(10),
+                ["requestStatus"] = reader.GetString(11),
+                ["assignedPmName"] = reader.GetString(12),
+                ["targetStartDate"] = reader.GetString(13),
+                ["targetEndDate"] = reader.GetString(14),
+                ["taskCount"] = taskCount,
+                ["activeTaskCount"] = reader.GetInt64(16),
+                ["resourceAssignmentCount"] = resourceAssignmentCount,
+                ["assignedEngineerCount"] = reader.GetInt64(18),
+                ["allocatedHours"] = allocatedHours,
+                ["projectAssignmentCount"] = projectAssignmentCount,
+                ["projectAssignedHours"] = projectAssignedHours,
+                ["timeEntryCount"] = timeEntryCount,
+                ["usedHours"] = reader.GetDecimal(23),
+                ["readinessStage"] = readinessStage,
+                ["readinessMessage"] = readinessMessage,
+                ["assignments"] = new List<object>(),
+                ["projectTasks"] = new List<object>()
+            };
+
+            requests.Add(item);
+            requestIndex[requestId] = item;
+        }
+    }
+
+    await using (var assignmentCommand = new NpgsqlCommand("""
+        SELECT
+            erra.engineering_resource_request_id,
+            erra.engineering_resource_request_assignment_id,
+            erra.user_id,
+            COALESCE(u.display_name, '') AS engineer_name,
+            COALESCE(u.email, '') AS engineer_email,
+            COALESCE(erra.assignment_status, 'assigned') AS assignment_status,
+            erra.allocated_hours,
+            COALESCE(erra.allocation_percent, 0)::numeric AS allocation_percent,
+            COALESCE(erra.assignment_notes, '') AS assignment_notes,
+            COALESCE(par.project_assignment_count, 0)::bigint AS project_assignment_count,
+            COALESCE(par.project_assigned_hours, 0)::numeric AS project_assigned_hours,
+            COALESCE(par.task_labels, '') AS task_labels
+        FROM engineering_resource_request_assignments erra
+        JOIN engineering_resource_requests err
+            ON err.engineering_resource_request_id = erra.engineering_resource_request_id
+        LEFT JOIN app_users u
+            ON u.user_id = erra.user_id
+        LEFT JOIN LATERAL (
+            SELECT
+                COUNT(DISTINCT pa.project_assignment_id)::bigint AS project_assignment_count,
+                COALESCE(SUM(pa.assigned_hours), 0)::numeric AS project_assigned_hours,
+                STRING_AGG(DISTINCT pt.task_code || ' · ' || pt.task_name, '; ' ORDER BY pt.task_code || ' · ' || pt.task_name) AS task_labels
+            FROM project_assignments pa
+            JOIN project_tasks pt
+                ON pt.task_id = pa.task_id
+            WHERE pa.project_id = err.project_id
+              AND pa.user_id = erra.user_id
+        ) par ON TRUE
+        LEFT JOIN projects p
+            ON p.project_id = err.project_id
+        WHERE @can_view_all = TRUE
+           OR err.assigned_pm_user_id = @user_id
+           OR p.project_manager_user_id = @user_id
+        ORDER BY erra.assigned_at DESC NULLS LAST;
+        """, connection))
+    {
+        assignmentCommand.Parameters.AddWithValue("can_view_all", canViewAll);
+        assignmentCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+
+        await using var reader = await assignmentCommand.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var requestId = reader.GetGuid(0);
+            if (!requestIndex.TryGetValue(requestId, out var request)) continue;
+
+            var assignments = (List<object>)request["assignments"]!;
+            assignments.Add(new
+            {
+                resourceAssignmentId = reader.GetGuid(1),
+                engineerUserId = reader.GetGuid(2),
+                engineerName = reader.GetString(3),
+                engineerEmail = reader.GetString(4),
+                assignmentStatus = reader.GetString(5),
+                allocatedHours = reader.GetDecimal(6),
+                allocationPercent = reader.GetDecimal(7),
+                assignmentNotes = reader.GetString(8),
+                projectAssignmentCount = reader.GetInt64(9),
+                projectAssignedHours = reader.GetDecimal(10),
+                taskLabels = reader.GetString(11)
+            });
+        }
+    }
+
+    await using (var taskCommand = new NpgsqlCommand("""
+        SELECT
+            err.engineering_resource_request_id,
+            pt.task_id,
+            pt.task_code,
+            pt.task_name,
+            pt.work_task_category,
+            pt.billing_classification,
+            pt.utilization_classification,
+            COALESCE(pa_roll.assignment_count, 0)::bigint AS assignment_count,
+            COALESCE(pa_roll.assigned_hours, 0)::numeric AS assigned_hours
+        FROM engineering_resource_requests err
+        JOIN project_tasks pt
+            ON pt.project_id = err.project_id
+        LEFT JOIN LATERAL (
+            SELECT
+                COUNT(DISTINCT pa.project_assignment_id)::bigint AS assignment_count,
+                COALESCE(SUM(pa.assigned_hours), 0)::numeric AS assigned_hours
+            FROM project_assignments pa
+            WHERE pa.task_id = pt.task_id
+        ) pa_roll ON TRUE
+        LEFT JOIN projects p
+            ON p.project_id = err.project_id
+        WHERE @can_view_all = TRUE
+           OR err.assigned_pm_user_id = @user_id
+           OR p.project_manager_user_id = @user_id
+        ORDER BY err.engineering_resource_request_id, pt.task_code, pt.task_name;
+        """, connection))
+    {
+        taskCommand.Parameters.AddWithValue("can_view_all", canViewAll);
+        taskCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+
+        await using var reader = await taskCommand.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var requestId = reader.GetGuid(0);
+            if (!requestIndex.TryGetValue(requestId, out var request)) continue;
+
+            var tasks = (List<object>)request["projectTasks"]!;
+            tasks.Add(new
+            {
+                taskId = reader.GetGuid(1),
+                taskCode = reader.GetString(2),
+                taskName = reader.GetString(3),
+                workTaskCategory = reader.GetString(4),
+                billingClassification = reader.GetString(5),
+                utilizationClassification = reader.GetString(6),
+                assignmentCount = reader.GetInt64(7),
+                assignedHours = reader.GetDecimal(8)
+            });
+        }
+    }
+
+    return Results.Ok(new
+    {
+        module = "019M-AT Resource Request Assignment to Work Task Assignment Handoff",
+        canViewResourceAssignmentHandoff = true,
+        access = new
+        {
+            canViewAll,
+            canViewManaged,
+            automationEnabled = false,
+            note = "This release exposes resource-assignment-to-project-task readiness. It does not automatically promote resource request assignments into project task assignments."
+        },
+        summary = new
+        {
+            resourceRequestCount = requests.Count,
+            projectLinkedRequestCount = requests.Count(item => item["projectId"] is Guid),
+            workTaskReadyRequestCount = requests.Count(item => Convert.ToInt64(item["taskCount"] ?? 0) > 0),
+            resourceAssignmentReadyRequestCount = requests.Count(item => Convert.ToInt64(item["resourceAssignmentCount"] ?? 0) > 0),
+            projectTaskAssignmentReadyRequestCount = requests.Count(item => Convert.ToInt64(item["projectAssignmentCount"] ?? 0) > 0),
+            assignmentFlowReadyRequestCount = requests.Count(item => string.Equals(Convert.ToString(item["readinessStage"]), "assignment_flow_ready", StringComparison.OrdinalIgnoreCase)),
+            gapRequestCount = requests.Count(item => !string.Equals(Convert.ToString(item["readinessStage"]), "assignment_flow_ready", StringComparison.OrdinalIgnoreCase))
+        },
+        lifecycle = new[]
+        {
+            new { step = 1, title = "Engineering Resource Request", description = "PM or PTC requests engineering capacity for a linked intake or project." },
+            new { step = 2, title = "Resource Assignment", description = "One or more engineers are assigned to the resource request with allocated hours." },
+            new { step = 3, title = "Project Work Tasks", description = "The linked project must have classified work tasks available for assignment." },
+            new { step = 4, title = "Project Task Assignment", description = "Resource assignments must be translated into task-level assignments so engineers can select the correct work." },
+            new { step = 5, title = "Timesheet and Utilization", description = "Task assignments become available for timesheets and feed utilization readiness." }
+        },
+        requests
+    });
+});
+
 app.MapGet("/api/project-intake/aging-summary", async (HttpContext httpContext) =>
 {
     var sessionUserId = GetProjectPulseSessionUserId(httpContext);

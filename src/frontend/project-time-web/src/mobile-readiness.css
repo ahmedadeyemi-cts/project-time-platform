@@ -624,3 +624,23 @@ button[type='submit'] {
     width: 100%;
   }
 }
+
+/* 019M-AT Resource Assignment Handoff mobile readiness */
+@media (max-width: 820px) {
+  .resource-handoff-lifecycle,
+  .resource-handoff-summary-grid,
+  .resource-handoff-metric-grid,
+  .resource-handoff-detail-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .resource-handoff-toolbar,
+  .resource-handoff-card-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .resource-handoff-toolbar select {
+    width: 100%;
+  }
+}

@@ -499,3 +499,12 @@
 - Updated handoff readiness to treat confirmed links as direct links.
 - Confirmation updates unlinked resource requests and intake documents for the selected intake.
 - Added Admin/PTC/Project Management controls while keeping engineers out of handoff management.
+
+## 019M-AT Resource Request Assignment to Work Task Assignment Handoff
+
+### Added
+- Added resource assignment handoff visibility.
+- Shows how engineering resource request assignments relate to project tasks, project task assignments, timesheet activity, and utilization readiness.
+- Identifies project-link gaps, work-task gaps, resource-assignment gaps, task-assignment gaps, assignment-hour gaps, and timesheet usage pending states.
+- Keeps this as readiness visibility only; automatic promotion from resource request assignment to project task assignment is intentionally disabled.
+- Added mobile-ready readiness cards on the Project Intake route.

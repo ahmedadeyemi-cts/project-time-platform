@@ -363,6 +363,7 @@ import EngineeringTeamLeadUtilizationPanel from './EngineeringTeamLeadUtilizatio
 import WorkTaskBuilderPanel from './WorkTaskBuilderPanel.jsx';
 import RoleAdminDirectoryPanel from './RoleAdminDirectoryPanel.jsx';
 import IntakeWorkTaskHandoffPanel from './IntakeWorkTaskHandoffPanel.jsx';
+import ResourceAssignmentHandoffPanel from './ResourceAssignmentHandoffPanel.jsx';
 
 const workflowCards = [
   {
@@ -676,7 +677,7 @@ const roleWorkspaceModules = [
     href: '#project-intake',
     title: 'Project Intake & Engineering Resource Requests',
     navLabel: 'Project Intake',
-    description: 'Create and review project intake requests, signed date aging, engineering resource demand, capacity, and assignment readiness.',
+    description: 'Create and review project intake requests, signed date aging, engineering resource demand, capacity, project handoff, and work-task assignment readiness.',
     permissions: ['VIEW_PROJECT_INTAKE', 'MANAGE_PROJECT_INTAKE', 'VIEW_RESOURCE_SCHEDULING', 'MANAGE_RESOURCE_SCHEDULING', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   },
   {
@@ -4765,6 +4766,7 @@ Analytics - Variphy / Infortel`}
           <ProjectIntakeCenter />
           <PostIntakeAgingPanel />
         <IntakeWorkTaskHandoffPanel />
+        <ResourceAssignmentHandoffPanel />
         </section>
       ) : null}
 
