@@ -1,0 +1,343 @@
+/*
+  Project Pulse mobile readiness baseline.
+  Goal: pages adapt to phone-sized screens without full-page horizontal scrolling.
+  Wide data grids may still scroll inside their own table wrapper.
+*/
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+img,
+svg,
+canvas,
+video {
+  max-width: 100%;
+}
+
+input,
+select,
+textarea,
+button {
+  max-width: 100%;
+}
+
+.panel,
+.timesheet-page,
+.customer-directory-route-panel,
+.project-intake-route-panel,
+.project-workspace-route-panel,
+.time-compliance-route-panel,
+.service-control-center,
+.backup-dr-center,
+.restore-validation-center,
+.replication-sync-status-center,
+.backup-retention-center {
+  min-width: 0;
+}
+
+/* Keep wide data surfaces scrollable inside the card instead of forcing the whole phone viewport sideways. */
+.entry-grid-wrap,
+.audit-table-wrap,
+.manager-table-wrap,
+.manager-team-member-table-wrap,
+.project-intake-table-wrap,
+.workspace-table-wrap,
+.time-compliance-table-wrap,
+.backup-retention-table-wrap,
+.replication-sync-table-wrap,
+.azure-preview-table,
+.version-inventory-table,
+.service-control-table-wrap,
+.restore-validation-table-wrap {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Useful hint behavior for horizontally scrollable tables/grids on touch screens. */
+.entry-grid-wrap,
+.project-intake-table-wrap,
+.workspace-table-wrap,
+.audit-table-wrap,
+.manager-table-wrap,
+.time-compliance-table-wrap {
+  overscroll-behavior-inline: contain;
+}
+
+/* Prevent long names/emails/URLs from breaking mobile layouts. */
+.panel,
+.module-card,
+.customer-directory-panel,
+.customer-contact-row,
+.customer-list-item,
+.workspace-project-card,
+.workspace-document-card,
+.project-intake-card,
+.time-compliance-card,
+.manager-table,
+.audit-table,
+.project-intake-table,
+.workspace-table {
+  overflow-wrap: anywhere;
+}
+
+/* Tap target baseline. */
+.primary-action,
+.secondary-action,
+.link-button,
+.sidebar-toggle-button,
+.enterprise-sidebar-links a,
+.enterprise-sidebar-group-toggle,
+.customer-list-item,
+.customer-contact-row button,
+button[type='submit'] {
+  min-height: 42px;
+}
+
+/* Tablet and small laptop tightening. */
+@media (max-width: 980px) {
+  .app-shell.enterprise-nav-enabled,
+  .app-shell.enterprise-nav-enabled.sidebar-expanded,
+  .app-shell.enterprise-nav-enabled.sidebar-collapsed {
+    padding-left: clamp(0.75rem, 3vw, 1rem) !important;
+    padding-right: clamp(0.75rem, 3vw, 1rem) !important;
+  }
+
+  .workspace-header-context {
+    min-width: 0 !important;
+  }
+
+  .workspace-header-context h1,
+  .workspace-header-context p {
+    overflow-wrap: anywhere;
+  }
+
+  .enterprise-sidebar {
+    left: 12px !important;
+    right: 12px !important;
+    width: auto !important;
+    max-width: calc(100vw - 24px) !important;
+  }
+
+  .top-bar,
+  .section-heading,
+  .section-header,
+  .section-header.compact,
+  .customer-directory-header,
+  .customer-detail-heading,
+  .customer-directory-panel-header,
+  .timesheet-toolbar,
+  .holiday-calendar-card-header,
+  .project-intake-card-header,
+  .workspace-card-header,
+  .service-control-header,
+  .backup-dr-header,
+  .restore-validation-header,
+  .replication-sync-header {
+    gap: 0.85rem;
+    align-items: flex-start;
+  }
+}
+
+/* Phone layout. */
+@media (max-width: 700px) {
+  .app-shell {
+    padding-left: 0.65rem !important;
+    padding-right: 0.65rem !important;
+  }
+
+  .panel,
+  .timesheet-page,
+  .auth-landing-panel,
+  .customer-directory-panel,
+  .project-intake-card,
+  .workspace-project-card,
+  .workspace-document-card,
+  .time-compliance-card,
+  .backup-dr-card,
+  .restore-validation-card,
+  .replication-sync-card,
+  .backup-retention-card {
+    border-radius: 18px !important;
+    padding: clamp(0.85rem, 4vw, 1.15rem) !important;
+  }
+
+  .top-bar,
+  .section-heading,
+  .section-header,
+  .section-header.compact,
+  .customer-directory-header,
+  .customer-detail-heading,
+  .customer-directory-panel-header,
+  .timesheet-toolbar,
+  .holiday-calendar-card-header,
+  .project-intake-card-header,
+  .workspace-card-header,
+  .profile-dropdown-header {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    align-items: start !important;
+  }
+
+  .toolbar-actions,
+  .modal-actions,
+  .bulk-header-actions,
+  .holiday-card-actions,
+  .project-intake-actions,
+  .workspace-actions,
+  .customer-detail-heading .secondary-action {
+    width: 100%;
+    justify-content: flex-start !important;
+    flex-wrap: wrap;
+  }
+
+  .toolbar-actions > *,
+  .modal-actions > *,
+  .bulk-header-actions > *,
+  .holiday-card-actions > *,
+  .project-intake-actions > *,
+  .workspace-actions > * {
+    max-width: 100%;
+  }
+
+  .customer-directory-summary-grid,
+  .customer-cost-grid,
+  .customer-directory-layout,
+  .customer-directory-layout.management-layout,
+  .customer-directory-form,
+  .project-intake-summary-grid,
+  .project-intake-card-grid,
+  .project-intake-form,
+  .workspace-summary-grid,
+  .workspace-card-grid,
+  .workspace-doc-grid,
+  .time-compliance-summary-grid,
+  .time-compliance-template-grid,
+  .backup-dr-summary-grid,
+  .backup-settings-grid,
+  .backup-retention-summary-grid,
+  .replication-sync-readiness-grid,
+  .replication-sync-layout-grid,
+  .restore-validation-summary-grid,
+  .service-control-summary-grid,
+  .service-control-grid,
+  .api-component-grid,
+  .module-grid,
+  .module-detail-grid,
+  .role-feature-grid,
+  .role-dashboard-grid,
+  .quarter-utilization-grid,
+  .team-utilization-summary-grid,
+  .azure-admin-grid,
+  .azure-admin-form-grid,
+  .azure-filter-grid,
+  .user-admin-layout,
+  .user-admin-local-layout,
+  .user-admin-create-grid,
+  .user-admin-create-grid.compact,
+  .compact-bulk-grid,
+  .project-allocation-admin-grid,
+  .project-allocation-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .customer-contact-row,
+  .allocation-row,
+  .allocation-edit-row,
+  .document-link-row,
+  .threshold-row,
+  .role-admin-row,
+  .manual-allocation-row,
+  .holiday-upload-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .customer-list {
+    max-height: none !important;
+  }
+
+  .profile-dropdown-menu {
+    position: fixed !important;
+    left: 0.75rem !important;
+    right: 0.75rem !important;
+    top: 5.5rem !important;
+    width: auto !important;
+    max-height: calc(100vh - 7rem) !important;
+  }
+
+  .profile-settings-modal,
+  .details-modal,
+  .session-timeout-modal {
+    width: calc(100vw - 1.25rem) !important;
+    max-height: calc(100vh - 1.25rem) !important;
+    border-radius: 18px !important;
+  }
+
+  .entry-grid {
+    min-width: 980px !important;
+  }
+
+  .audit-table,
+  .manager-table,
+  .project-intake-table,
+  .workspace-table,
+  .time-compliance-table,
+  .backup-retention-table,
+  .replication-sync-table {
+    font-size: 0.86rem;
+  }
+}
+
+/* Very narrow phones. */
+@media (max-width: 430px) {
+  .app-shell {
+    padding-left: 0.5rem !important;
+    padding-right: 0.5rem !important;
+  }
+
+  .workspace-header-context {
+    gap: 0.6rem !important;
+  }
+
+  .sidebar-toggle-button {
+    width: 40px !important;
+    height: 40px !important;
+  }
+
+  .enterprise-sidebar {
+    left: 8px !important;
+    right: 8px !important;
+    top: 108px !important;
+    max-width: calc(100vw - 16px) !important;
+    max-height: calc(100vh - 124px) !important;
+    border-radius: 18px !important;
+  }
+
+  .primary-action,
+  .secondary-action,
+  button[type='submit'] {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .customer-directory-status,
+  .read-only-pill,
+  .default-toggle,
+  .nav-pending-badge,
+  .role-chip {
+    width: fit-content;
+    max-width: 100%;
+  }
+}

@@ -332,6 +332,7 @@ installProjectPulseGlobalViewAsPreview();
 import { useEffect, useMemo, useState, useRef } from 'react';
 import usSignalLogoUrl from '../brand/ussignal.png';
 import './timesheet.css';
+import './mobile-readiness.css';
 import UserAdministrationPanel from './UserAdministrationPanel.jsx';
 import YearlyUtilizationPanel from './YearlyUtilizationPanel.jsx';
 import ProjectAllocationInfoPanel from './ProjectAllocationInfoPanel.jsx';

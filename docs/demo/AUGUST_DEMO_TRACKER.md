@@ -314,3 +314,11 @@
 - Added Customer Directory screen with customer list, contact list, cost readiness summary, and management forms.
 - Added sidebar route for Customer Directory under project operations.
 - Preserved the 10 active contacts per customer rule.
+
+## Mobile Readiness Baseline
+
+### Added
+- Added a global mobile-readiness stylesheet for Project Pulse.
+- Standardized phone behavior for panels, forms, card grids, navigation, modals, and wide table wrappers.
+- Preserved internal horizontal scrolling for wide operational grids such as timesheets and reporting tables while preventing full-page horizontal overflow.
+- Established mobile responsiveness as a required acceptance check for all new modules going forward.
