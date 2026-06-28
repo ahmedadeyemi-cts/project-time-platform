@@ -644,3 +644,17 @@ button[type='submit'] {
     width: 100%;
   }
 }
+
+/* 019M-AU Resource assignment promotion mobile readiness */
+@media (max-width: 820px) {
+  .resource-promotion-date-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .resource-promotion-form select,
+  .resource-promotion-form input,
+  .resource-promotion-form textarea,
+  .resource-promotion-form button {
+    width: 100%;
+  }
+}

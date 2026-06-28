@@ -25,6 +25,24 @@ async function fetchJson(path) {
   return response.json();
 }
 
+async function postJson(path, body) {
+  const response = await fetch(path, {
+    method: 'POST',
+    headers: {
+      ...getProjectPulseAuthHeaders(),
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
+  });
+
+  if (!response.ok) {
+    const raw = await response.text();
+    throw new Error(raw || `${path} returned HTTP ${response.status}`);
+  }
+
+  return response.json();
+}
+
 function formatNumber(value) {
   return Number(value ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
@@ -35,9 +53,15 @@ function stageLabel(value) {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+function todayIso() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 export default function ResourceAssignmentHandoffPanel() {
   const [payload, setPayload] = useState({ loading: true, data: null, error: null });
   const [stageFilter, setStageFilter] = useState('all');
+  const [promotionForms, setPromotionForms] = useState({});
+  const [actionMessage, setActionMessage] = useState('');
 
   async function loadHandoff() {
     setPayload((current) => ({ ...current, loading: true, error: null }));
@@ -45,6 +69,22 @@ export default function ResourceAssignmentHandoffPanel() {
     try {
       const data = await fetchJson('/api/project-intake/resource-assignment-handoff');
       setPayload({ loading: false, data, error: null });
+
+      const nextForms = {};
+      (data?.requests ?? []).forEach((request) => {
+        const firstTask = (request.projectTasks ?? [])[0];
+        (request.assignments ?? []).forEach((assignment) => {
+          nextForms[assignment.resourceAssignmentId] = {
+            taskId: firstTask?.taskId ?? '',
+            assignedHours: assignment.allocatedHours ?? request.requestedHours ?? '',
+            effectiveStartDate: request.targetStartDate || todayIso(),
+            effectiveEndDate: request.targetEndDate || '',
+            promotionNote: `Manual promotion from ${request.requestNumber} for ${assignment.engineerName}.`
+          };
+        });
+      });
+
+      setPromotionForms(nextForms);
     } catch (error) {
       setPayload({
         loading: false,
@@ -60,6 +100,7 @@ export default function ResourceAssignmentHandoffPanel() {
 
   const data = payload.data;
   const requests = data?.requests ?? [];
+  const canPromoteResourceAssignments = Boolean(data?.access?.canPromoteResourceAssignments);
 
   const stages = useMemo(() => {
     return Array.from(new Set(requests.map((item) => item.readinessStage).filter(Boolean)));
@@ -69,6 +110,45 @@ export default function ResourceAssignmentHandoffPanel() {
     if (stageFilter === 'all') return requests;
     return requests.filter((item) => item.readinessStage === stageFilter);
   }, [requests, stageFilter]);
+
+  async function promoteAssignment(request, assignment) {
+    const form = promotionForms[assignment.resourceAssignmentId] ?? {};
+
+    if (!form.taskId) {
+      setActionMessage('Select a project task before promoting the resource assignment.');
+      return;
+    }
+
+    const assignedHours = Number(form.assignedHours || 0);
+    if (assignedHours <= 0) {
+      setActionMessage('Assigned hours must be greater than zero.');
+      return;
+    }
+
+    setActionMessage(`Promoting ${assignment.engineerName} from ${request.requestNumber} to a project task...`);
+
+    try {
+      const result = await postJson('/api/project-intake/resource-assignment-promotions', {
+        resourceRequestId: request.resourceRequestId,
+        resourceAssignmentId: assignment.resourceAssignmentId,
+        promotionNote: form.promotionNote,
+        taskAssignments: [
+          {
+            taskId: form.taskId,
+            assignedHours,
+            allocationPercent: 0,
+            effectiveStartDate: form.effectiveStartDate || todayIso(),
+            effectiveEndDate: form.effectiveEndDate || null
+          }
+        ]
+      });
+
+      setActionMessage(result.message || 'Resource assignment promoted.');
+      await loadHandoff();
+    } catch (error) {
+      setActionMessage(error instanceof Error ? error.message : 'Unable to promote resource assignment.');
+    }
+  }
 
   if (payload.loading) return null;
 
@@ -80,16 +160,17 @@ export default function ResourceAssignmentHandoffPanel() {
     <section id="resource-assignment-handoff" className="panel resource-assignment-handoff-panel">
       <div className="section-heading">
         <div>
-          <p className="eyebrow">019M-AT</p>
+          <p className="eyebrow">019M-AT / 019M-AU</p>
           <h2>Resource Request → Work Task Assignment Handoff</h2>
           <p className="section-copy">
-            This readiness view shows whether engineering resource request assignments have a linked project, work tasks, task-level assignments, and timesheet activity. It is visibility first; automatic promotion remains disabled.
+            This readiness view shows whether engineering resource request assignments have a linked project, work tasks, task-level assignments, and timesheet activity. Promotion is manual and requires explicit management action.
           </p>
         </div>
         <button type="button" className="secondary-action" onClick={loadHandoff}>Refresh</button>
       </div>
 
       {payload.error ? <div className="error-text">{payload.error}</div> : null}
+      {actionMessage ? <div className="project-intake-alert">{actionMessage}</div> : null}
 
       <div className="resource-handoff-lifecycle">
         {(data?.lifecycle ?? []).map((step) => (
@@ -153,15 +234,97 @@ export default function ResourceAssignmentHandoffPanel() {
                 <h4>Resource assignment detail</h4>
                 {(item.assignments ?? []).length > 0 ? (
                   <div className="resource-handoff-mini-list">
-                    {item.assignments.map((assignment) => (
-                      <div key={assignment.resourceAssignmentId}>
-                        <strong>{assignment.engineerName}</strong>
-                        <small>
-                          {formatNumber(assignment.allocatedHours)} allocated hrs · {formatNumber(assignment.projectAssignedHours)} task hrs
-                        </small>
-                        <p>{assignment.taskLabels || 'No project task assignment found for this engineer yet.'}</p>
-                      </div>
-                    ))}
+                    {item.assignments.map((assignment) => {
+                      const form = promotionForms[assignment.resourceAssignmentId] ?? {};
+
+                      return (
+                        <div key={assignment.resourceAssignmentId}>
+                          <strong>{assignment.engineerName}</strong>
+                          <small>
+                            {formatNumber(assignment.allocatedHours)} allocated hrs · {formatNumber(assignment.projectAssignedHours)} task hrs
+                          </small>
+                          <p>{assignment.taskLabels || 'No project task assignment found for this engineer yet.'}</p>
+
+                          {canPromoteResourceAssignments && (item.projectTasks ?? []).length > 0 ? (
+                            <div className="resource-promotion-form">
+                              <h5>Promote to project task</h5>
+                              <p className="section-copy">Manual action only. This creates or updates the selected engineer’s task-level assignment.</p>
+
+                              <label>
+                                Project task
+                                <select
+                                  value={form.taskId || ''}
+                                  onChange={(event) => setPromotionForms({
+                                    ...promotionForms,
+                                    [assignment.resourceAssignmentId]: { ...form, taskId: event.target.value }
+                                  })}
+                                >
+                                  <option value="">Select task</option>
+                                  {(item.projectTasks ?? []).map((task) => (
+                                    <option value={task.taskId} key={task.taskId}>{task.taskCode} · {task.taskName}</option>
+                                  ))}
+                                </select>
+                              </label>
+
+                              <label>
+                                Assigned hours
+                                <input
+                                  type="number"
+                                  min="0.25"
+                                  step="0.25"
+                                  value={form.assignedHours ?? ''}
+                                  onChange={(event) => setPromotionForms({
+                                    ...promotionForms,
+                                    [assignment.resourceAssignmentId]: { ...form, assignedHours: event.target.value }
+                                  })}
+                                />
+                              </label>
+
+                              <div className="resource-promotion-date-grid">
+                                <label>
+                                  Effective start
+                                  <input
+                                    type="date"
+                                    value={form.effectiveStartDate || todayIso()}
+                                    onChange={(event) => setPromotionForms({
+                                      ...promotionForms,
+                                      [assignment.resourceAssignmentId]: { ...form, effectiveStartDate: event.target.value }
+                                    })}
+                                  />
+                                </label>
+
+                                <label>
+                                  Effective end
+                                  <input
+                                    type="date"
+                                    value={form.effectiveEndDate || ''}
+                                    onChange={(event) => setPromotionForms({
+                                      ...promotionForms,
+                                      [assignment.resourceAssignmentId]: { ...form, effectiveEndDate: event.target.value }
+                                    })}
+                                  />
+                                </label>
+                              </div>
+
+                              <label>
+                                Promotion note
+                                <textarea
+                                  value={form.promotionNote || ''}
+                                  onChange={(event) => setPromotionForms({
+                                    ...promotionForms,
+                                    [assignment.resourceAssignmentId]: { ...form, promotionNote: event.target.value }
+                                  })}
+                                />
+                              </label>
+
+                              <button type="button" className="primary-action" onClick={() => promoteAssignment(item, assignment)}>
+                                Promote assignment
+                              </button>
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
                   </div>
                 ) : (
                   <p className="section-copy">No engineers are assigned to this resource request yet.</p>

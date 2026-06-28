@@ -508,3 +508,14 @@
 - Identifies project-link gaps, work-task gaps, resource-assignment gaps, task-assignment gaps, assignment-hour gaps, and timesheet usage pending states.
 - Keeps this as readiness visibility only; automatic promotion from resource request assignment to project task assignment is intentionally disabled.
 - Added mobile-ready readiness cards on the Project Intake route.
+
+## 019M-AU Manual Resource Assignment to Project Task Promotion Controls
+
+### Added
+- Added manual promotion permission for resource assignment to project task assignment handoff.
+- Added management-only endpoint to promote a resource request engineer assignment into project task assignments.
+- Promotion requires explicit task selection, assigned hours, effective dates, and a promotion note.
+- Existing project task assignments for the same project/task/engineer are updated instead of duplicated.
+- Duplicate-risk rows are skipped and reported instead of blindly creating more assignments.
+- Promotion writes audit history and keeps assignment_source as resource_request_promotion.
+- Added mobile-ready promotion controls to the Resource Request to Work Task Assignment Handoff panel.

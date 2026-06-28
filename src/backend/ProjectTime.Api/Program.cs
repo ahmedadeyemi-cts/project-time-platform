@@ -3448,6 +3448,17 @@ app.MapGet("/api/project-intake/resource-assignment-handoff", async (HttpContext
         || permissions.Contains("VIEW_ENGINEERING_RESOURCE_REQUESTS")
         || permissions.Contains("MANAGE_ENGINEERING_RESOURCE_REQUESTS");
 
+    var canPromoteResourceAssignments =
+        canViewAll
+        || roles.Contains("PROJECT_MANAGEMENT")
+        || roles.Contains("PROJECT_MANAGER")
+        || roles.Contains("PM_TEAM_LEAD")
+        || roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD")
+        || permissions.Contains("MANAGE_RESOURCE_ASSIGNMENT_PROMOTION")
+        || permissions.Contains("MANAGE_ENGINEERING_RESOURCE_REQUESTS")
+        || permissions.Contains("ASSIGN_WORK_TASKS")
+        || permissions.Contains("MANAGE_PROJECT_INTAKE");
+
     if (!canViewAll && !canViewManaged)
     {
         return Results.Json(new
@@ -3770,7 +3781,8 @@ app.MapGet("/api/project-intake/resource-assignment-handoff", async (HttpContext
             canViewAll,
             canViewManaged,
             automationEnabled = false,
-            note = "This release exposes resource-assignment-to-project-task readiness. It does not automatically promote resource request assignments into project task assignments."
+            canPromoteResourceAssignments,
+            note = "This release exposes resource-assignment-to-project-task readiness. Promotion remains manual and requires explicit management action."
         },
         summary = new
         {
@@ -3792,6 +3804,493 @@ app.MapGet("/api/project-intake/resource-assignment-handoff", async (HttpContext
         },
         requests
     });
+});
+
+
+// 019M-AU Manual Resource Assignment to Project Task Promotion Controls
+app.MapPost("/api/project-intake/resource-assignment-promotions", async (JsonElement payload, HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    Guid? ReadGuid(string name)
+    {
+        if (!payload.TryGetProperty(name, out var value) || value.ValueKind == JsonValueKind.Null) return null;
+        return Guid.TryParse(value.GetString(), out var guid) ? guid : null;
+    }
+
+    string ReadString(string name, string fallback = "")
+    {
+        if (!payload.TryGetProperty(name, out var value) || value.ValueKind == JsonValueKind.Null) return fallback;
+        var text = value.GetString();
+        return string.IsNullOrWhiteSpace(text) ? fallback : text.Trim();
+    }
+
+    var resourceRequestId = ReadGuid("resourceRequestId");
+    var resourceAssignmentId = ReadGuid("resourceAssignmentId");
+    var promotionNote = ReadString("promotionNote", "Manual promotion from resource request assignment to project task assignment.");
+
+    if (resourceRequestId is null || resourceAssignmentId is null)
+    {
+        return Results.BadRequest(new
+        {
+            status = "validation_failed",
+            message = "resourceRequestId and resourceAssignmentId are required."
+        });
+    }
+
+    if (!payload.TryGetProperty("taskAssignments", out var taskAssignmentsElement)
+        || taskAssignmentsElement.ValueKind != JsonValueKind.Array
+        || taskAssignmentsElement.GetArrayLength() == 0)
+    {
+        return Results.BadRequest(new
+        {
+            status = "validation_failed",
+            message = "At least one task assignment is required."
+        });
+    }
+
+    var taskAssignments = new List<(Guid TaskId, decimal AssignedHours, decimal AllocationPercent, DateOnly EffectiveStartDate, DateOnly? EffectiveEndDate)>();
+
+    foreach (var item in taskAssignmentsElement.EnumerateArray())
+    {
+        if (!item.TryGetProperty("taskId", out var taskElement)
+            || taskElement.ValueKind != JsonValueKind.String
+            || !Guid.TryParse(taskElement.GetString(), out var taskId)
+            || taskId == Guid.Empty)
+        {
+            return Results.BadRequest(new
+            {
+                status = "validation_failed",
+                message = "Each task assignment requires a valid taskId."
+            });
+        }
+
+        var assignedHours = 0m;
+        if (item.TryGetProperty("assignedHours", out var hoursElement) && hoursElement.ValueKind != JsonValueKind.Null)
+        {
+            hoursElement.TryGetDecimal(out assignedHours);
+        }
+
+        if (assignedHours <= 0)
+        {
+            return Results.BadRequest(new
+            {
+                status = "validation_failed",
+                message = "Each task assignment requires assignedHours greater than zero."
+            });
+        }
+
+        var allocationPercent = 0m;
+        if (item.TryGetProperty("allocationPercent", out var allocationElement) && allocationElement.ValueKind != JsonValueKind.Null)
+        {
+            allocationElement.TryGetDecimal(out allocationPercent);
+        }
+
+        var effectiveStartDate = DateOnly.FromDateTime(DateTime.UtcNow.Date);
+        if (item.TryGetProperty("effectiveStartDate", out var startElement)
+            && startElement.ValueKind == JsonValueKind.String
+            && DateOnly.TryParse(startElement.GetString(), out var parsedStart))
+        {
+            effectiveStartDate = parsedStart;
+        }
+
+        DateOnly? effectiveEndDate = null;
+        if (item.TryGetProperty("effectiveEndDate", out var endElement)
+            && endElement.ValueKind == JsonValueKind.String
+            && DateOnly.TryParse(endElement.GetString(), out var parsedEnd))
+        {
+            effectiveEndDate = parsedEnd;
+        }
+
+        taskAssignments.Add((taskId, assignedHours, allocationPercent, effectiveStartDate, effectiveEndDate));
+    }
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var roles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    var permissions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+    await using (var accessCommand = new NpgsqlCommand("""
+        SELECT
+            r.role_code,
+            COALESCE(p.permission_code, '') AS permission_code
+        FROM app_user_role_assignments ura
+        JOIN app_roles r
+            ON r.app_role_id = ura.app_role_id
+           AND r.is_active = TRUE
+        LEFT JOIN app_role_permissions rp
+            ON rp.app_role_id = r.app_role_id
+        LEFT JOIN app_permissions p
+            ON p.app_permission_id = rp.app_permission_id
+        WHERE ura.user_id = @user_id
+          AND ura.is_active = TRUE;
+        """, connection))
+    {
+        accessCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+
+        await using var reader = await accessCommand.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            roles.Add(reader.GetString(0));
+
+            if (!reader.IsDBNull(1) && !string.IsNullOrWhiteSpace(reader.GetString(1)))
+            {
+                permissions.Add(reader.GetString(1));
+            }
+        }
+    }
+
+    var canManageAll =
+        roles.Contains("ADMINISTRATOR")
+        || roles.Contains("PROJECT_TEAM_COORDINATOR")
+        || permissions.Contains("SYSTEM_ADMINISTRATION")
+        || permissions.Contains("MANAGE_ALL");
+
+    var canPromoteResourceAssignments =
+        canManageAll
+        || roles.Contains("PROJECT_MANAGEMENT")
+        || roles.Contains("PROJECT_MANAGER")
+        || roles.Contains("PM_TEAM_LEAD")
+        || roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD")
+        || permissions.Contains("MANAGE_RESOURCE_ASSIGNMENT_PROMOTION")
+        || permissions.Contains("MANAGE_ENGINEERING_RESOURCE_REQUESTS")
+        || permissions.Contains("ASSIGN_WORK_TASKS")
+        || permissions.Contains("MANAGE_PROJECT_INTAKE");
+
+    if (!canPromoteResourceAssignments)
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Resource assignment promotion is restricted to Administrators, PTC, and Project Management roles."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    Guid projectId;
+    Guid engineerUserId;
+    Guid? assignedPmUserId;
+    Guid? projectManagerUserId;
+    string requestNumber;
+    string projectCode;
+    string projectName;
+    string engineerName;
+    decimal allocatedHours;
+
+    await using (var contextCommand = new NpgsqlCommand("""
+        SELECT
+            err.project_id,
+            err.request_number,
+            err.assigned_pm_user_id,
+            p.project_manager_user_id,
+            p.project_code,
+            p.project_name,
+            erra.user_id,
+            COALESCE(u.display_name, u.email, '') AS engineer_name,
+            erra.allocated_hours
+        FROM engineering_resource_requests err
+        JOIN engineering_resource_request_assignments erra
+            ON erra.engineering_resource_request_id = err.engineering_resource_request_id
+        LEFT JOIN projects p
+            ON p.project_id = err.project_id
+        LEFT JOIN app_users u
+            ON u.user_id = erra.user_id
+        WHERE err.engineering_resource_request_id = @resource_request_id
+          AND erra.engineering_resource_request_assignment_id = @resource_assignment_id;
+        """, connection))
+    {
+        contextCommand.Parameters.AddWithValue("resource_request_id", resourceRequestId.Value);
+        contextCommand.Parameters.AddWithValue("resource_assignment_id", resourceAssignmentId.Value);
+
+        await using var reader = await contextCommand.ExecuteReaderAsync();
+        if (!await reader.ReadAsync())
+        {
+            return Results.NotFound(new
+            {
+                status = "not_found",
+                message = "The selected resource request assignment was not found."
+            });
+        }
+
+        if (reader.IsDBNull(0))
+        {
+            return Results.BadRequest(new
+            {
+                status = "project_link_needed",
+                message = "The selected resource request must be linked to a project before promotion."
+            });
+        }
+
+        projectId = reader.GetGuid(0);
+        requestNumber = reader.GetString(1);
+        assignedPmUserId = reader.IsDBNull(2) ? null : reader.GetGuid(2);
+        projectManagerUserId = reader.IsDBNull(3) ? null : reader.GetGuid(3);
+        projectCode = reader.GetString(4);
+        projectName = reader.GetString(5);
+        engineerUserId = reader.GetGuid(6);
+        engineerName = reader.GetString(7);
+        allocatedHours = reader.GetDecimal(8);
+    }
+
+    if (!canManageAll
+        && assignedPmUserId != sessionUserId.Value
+        && projectManagerUserId != sessionUserId.Value)
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Project Managers can promote only resource assignments in their PM scope."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var createdCount = 0;
+    var updatedCount = 0;
+    var skippedCount = 0;
+    var taskResults = new List<object>();
+
+    await using var transaction = await connection.BeginTransactionAsync();
+
+    try
+    {
+        foreach (var taskAssignment in taskAssignments)
+        {
+            string taskCode;
+            string taskName;
+
+            await using (var taskCommand = new NpgsqlCommand("""
+                SELECT task_code, task_name
+                FROM project_tasks
+                WHERE task_id = @task_id
+                  AND project_id = @project_id
+                  AND COALESCE(is_active, TRUE) = TRUE;
+                """, connection, transaction))
+            {
+                taskCommand.Parameters.AddWithValue("task_id", taskAssignment.TaskId);
+                taskCommand.Parameters.AddWithValue("project_id", projectId);
+
+                await using var reader = await taskCommand.ExecuteReaderAsync();
+                if (!await reader.ReadAsync())
+                {
+                    throw new InvalidOperationException("A selected task is not active or does not belong to the linked project.");
+                }
+
+                taskCode = reader.GetString(0);
+                taskName = reader.GetString(1);
+            }
+
+            var existingAssignments = new List<Guid>();
+
+            await using (var existingCommand = new NpgsqlCommand("""
+                SELECT project_assignment_id
+                FROM project_assignments
+                WHERE project_id = @project_id
+                  AND task_id = @task_id
+                  AND user_id = @engineer_user_id
+                ORDER BY created_at DESC NULLS LAST;
+                """, connection, transaction))
+            {
+                existingCommand.Parameters.AddWithValue("project_id", projectId);
+                existingCommand.Parameters.AddWithValue("task_id", taskAssignment.TaskId);
+                existingCommand.Parameters.AddWithValue("engineer_user_id", engineerUserId);
+
+                await using var reader = await existingCommand.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    existingAssignments.Add(reader.GetGuid(0));
+                }
+            }
+
+            var note = $"Resource request promotion from {requestNumber}. {promotionNote}".Trim();
+
+            if (existingAssignments.Count > 1)
+            {
+                skippedCount++;
+                taskResults.Add(new
+                {
+                    taskId = taskAssignment.TaskId,
+                    taskCode,
+                    taskName,
+                    status = "skipped_duplicate_risk",
+                    message = "Multiple existing assignments were found for this engineer/task. Review manually before changing."
+                });
+                continue;
+            }
+
+            if (existingAssignments.Count == 1)
+            {
+                await using var updateCommand = new NpgsqlCommand("""
+                    UPDATE project_assignments
+                    SET assigned_by_user_id = @assigned_by_user_id,
+                        effective_start_date = @effective_start_date,
+                        effective_end_date = @effective_end_date,
+                        allocation_percent = NULLIF(@allocation_percent, 0),
+                        assigned_hours = @assigned_hours,
+                        assignment_source = 'resource_request_promotion',
+                        assignment_notes = CASE
+                            WHEN NULLIF(TRIM(COALESCE(assignment_notes, '')), '') IS NULL THEN @assignment_notes
+                            ELSE assignment_notes || E'\n' || @assignment_notes
+                        END,
+                        updated_at = NOW()
+                    WHERE project_assignment_id = @project_assignment_id;
+                    """, connection, transaction);
+
+                updateCommand.Parameters.AddWithValue("project_assignment_id", existingAssignments[0]);
+                updateCommand.Parameters.AddWithValue("assigned_by_user_id", sessionUserId.Value);
+                updateCommand.Parameters.AddWithValue("effective_start_date", taskAssignment.EffectiveStartDate);
+                updateCommand.Parameters.AddWithValue("effective_end_date", taskAssignment.EffectiveEndDate.HasValue ? taskAssignment.EffectiveEndDate.Value : DBNull.Value);
+                updateCommand.Parameters.AddWithValue("allocation_percent", taskAssignment.AllocationPercent);
+                updateCommand.Parameters.AddWithValue("assigned_hours", taskAssignment.AssignedHours);
+                updateCommand.Parameters.AddWithValue("assignment_notes", note);
+
+                await updateCommand.ExecuteNonQueryAsync();
+                updatedCount++;
+
+                taskResults.Add(new
+                {
+                    taskId = taskAssignment.TaskId,
+                    taskCode,
+                    taskName,
+                    projectAssignmentId = existingAssignments[0],
+                    status = "updated",
+                    assignedHours = taskAssignment.AssignedHours
+                });
+            }
+            else
+            {
+                Guid projectAssignmentId;
+
+                await using (var insertCommand = new NpgsqlCommand("""
+                    INSERT INTO project_assignments (
+                        project_id,
+                        task_id,
+                        user_id,
+                        assigned_by_user_id,
+                        effective_start_date,
+                        effective_end_date,
+                        allocation_percent,
+                        assigned_hours,
+                        assignment_source,
+                        assignment_notes,
+                        updated_at
+                    )
+                    VALUES (
+                        @project_id,
+                        @task_id,
+                        @engineer_user_id,
+                        @assigned_by_user_id,
+                        @effective_start_date,
+                        @effective_end_date,
+                        NULLIF(@allocation_percent, 0),
+                        @assigned_hours,
+                        'resource_request_promotion',
+                        @assignment_notes,
+                        NOW()
+                    )
+                    RETURNING project_assignment_id;
+                    """, connection, transaction))
+                {
+                    insertCommand.Parameters.AddWithValue("project_id", projectId);
+                    insertCommand.Parameters.AddWithValue("task_id", taskAssignment.TaskId);
+                    insertCommand.Parameters.AddWithValue("engineer_user_id", engineerUserId);
+                    insertCommand.Parameters.AddWithValue("assigned_by_user_id", sessionUserId.Value);
+                    insertCommand.Parameters.AddWithValue("effective_start_date", taskAssignment.EffectiveStartDate);
+                    insertCommand.Parameters.AddWithValue("effective_end_date", taskAssignment.EffectiveEndDate.HasValue ? taskAssignment.EffectiveEndDate.Value : DBNull.Value);
+                    insertCommand.Parameters.AddWithValue("allocation_percent", taskAssignment.AllocationPercent);
+                    insertCommand.Parameters.AddWithValue("assigned_hours", taskAssignment.AssignedHours);
+                    insertCommand.Parameters.AddWithValue("assignment_notes", note);
+
+                    projectAssignmentId = (Guid)(await insertCommand.ExecuteScalarAsync() ?? Guid.Empty);
+                }
+
+                createdCount++;
+
+                taskResults.Add(new
+                {
+                    taskId = taskAssignment.TaskId,
+                    taskCode,
+                    taskName,
+                    projectAssignmentId,
+                    status = "created",
+                    assignedHours = taskAssignment.AssignedHours
+                });
+            }
+        }
+
+        var auditJson = JsonSerializer.Serialize(new
+        {
+            resourceRequestId,
+            resourceAssignmentId,
+            requestNumber,
+            projectId,
+            projectCode,
+            projectName,
+            engineerUserId,
+            engineerName,
+            allocatedHours,
+            promotionNote,
+            createdCount,
+            updatedCount,
+            skippedCount,
+            taskResults
+        });
+
+        await using (var auditCommand = new NpgsqlCommand("""
+            INSERT INTO audit_logs (
+                actor_user_id,
+                action,
+                entity_type,
+                entity_id,
+                new_value
+            )
+            VALUES (
+                @actor_user_id,
+                'resource_assignment_promoted_to_project_tasks',
+                'engineering_resource_request',
+                @entity_id,
+                @new_value::jsonb
+            );
+            """, connection, transaction))
+        {
+            auditCommand.Parameters.AddWithValue("actor_user_id", sessionUserId.Value);
+            auditCommand.Parameters.AddWithValue("entity_id", resourceRequestId.Value);
+            auditCommand.Parameters.AddWithValue("new_value", auditJson);
+            await auditCommand.ExecuteNonQueryAsync();
+        }
+
+        await transaction.CommitAsync();
+
+        return Results.Ok(new
+        {
+            status = "resource_assignment_promotion_complete",
+            module = "019M-AU Manual Resource Assignment to Project Task Promotion Controls",
+            resourceRequestId,
+            resourceAssignmentId,
+            requestNumber,
+            projectId,
+            projectCode,
+            projectName,
+            engineerUserId,
+            engineerName,
+            createdCount,
+            updatedCount,
+            skippedCount,
+            taskResults,
+            message = $"Promotion completed for {requestNumber}: {createdCount} created, {updatedCount} updated, {skippedCount} skipped."
+        });
+    }
+    catch
+    {
+        await transaction.RollbackAsync();
+        throw;
+    }
 });
 
 app.MapGet("/api/project-intake/aging-summary", async (HttpContext httpContext) =>
