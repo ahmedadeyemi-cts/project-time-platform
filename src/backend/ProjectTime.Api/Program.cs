@@ -2079,6 +2079,556 @@ app.MapGet("/api/projects/cost-status", async (HttpContext httpContext) =>
 });
 
 
+
+app.MapGet("/api/projects/cost-alerts", async (HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    if (!await RequestUserCanAccessCostAlertsAsync(httpContext, connection, requireManage: false))
+    {
+        return Results.Json(new { status = "access_denied", message = "Cost alerts are available to administrators, project/team coordinators, project managers, and managers." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var candidates = new List<object>();
+    await using (var command = new NpgsqlCommand("""
+        WITH current_cost AS (
+            SELECT
+                pcs.project_id,
+                pcs.project_code,
+                pcs.project_name,
+                COALESCE(pcs.client_name, '') AS client_name,
+                COALESCE(pcs.planned_engineering_cost, 0)::numeric AS planned_engineering_cost,
+                COALESCE(pcs.planned_pm_cost, 0)::numeric AS planned_pm_cost,
+                COALESCE(pcs.planned_total_project_cost, 0)::numeric AS planned_total_project_cost,
+                COALESCE(pcs.assigned_hours, 0)::numeric AS assigned_hours,
+                COALESCE(pcs.used_hours, 0)::numeric AS used_hours,
+                COALESCE(pcs.remaining_assigned_hours, 0)::numeric AS remaining_assigned_hours,
+                COALESCE(pcs.over_assigned_hours, 0)::numeric AS over_assigned_hours,
+                COALESCE(pcs.cost_status, 'unknown') AS cost_status,
+                p.project_manager_user_id,
+                pm.email AS project_manager_email
+            FROM project_cost_status_vw pcs
+            JOIN projects p ON p.project_id = pcs.project_id
+            LEFT JOIN app_users pm ON pm.user_id = p.project_manager_user_id
+        ),
+        candidate_alerts AS (
+            SELECT
+                *,
+                CASE
+                    WHEN over_assigned_hours > 0 OR cost_status = 'hours_over_plan' THEN 'hours_over_plan'
+                    WHEN planned_total_project_cost = 0 AND (used_hours > 0 OR assigned_hours > 0) THEN 'cost_plan_missing_with_activity'
+                    WHEN planned_total_project_cost = 0 THEN 'cost_plan_missing'
+                    WHEN assigned_hours > 0 AND remaining_assigned_hours <= 8 THEN 'assignment_capacity_warning'
+                    ELSE NULL
+                END AS alert_type,
+                CASE
+                    WHEN over_assigned_hours > 0 OR cost_status = 'hours_over_plan' THEN 'high'
+                    WHEN planned_total_project_cost = 0 AND (used_hours > 0 OR assigned_hours > 0) THEN 'high'
+                    WHEN planned_total_project_cost = 0 THEN 'medium'
+                    WHEN assigned_hours > 0 AND remaining_assigned_hours <= 8 THEN 'medium'
+                    ELSE 'low'
+                END AS alert_severity
+            FROM current_cost
+        )
+        SELECT
+            project_id,
+            project_code,
+            project_name,
+            client_name,
+            project_manager_user_id,
+            project_manager_email,
+            alert_type,
+            alert_severity,
+            planned_engineering_cost,
+            planned_pm_cost,
+            planned_total_project_cost,
+            assigned_hours,
+            used_hours,
+            remaining_assigned_hours,
+            over_assigned_hours,
+            cost_status
+        FROM candidate_alerts
+        WHERE alert_type IS NOT NULL
+        ORDER BY
+            CASE alert_severity WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
+            client_name,
+            project_code;
+        """, connection))
+    {
+        await using var reader = await command.ExecuteReaderAsync();
+
+        while (await reader.ReadAsync())
+        {
+            candidates.Add(new
+            {
+                projectId = reader.GetGuid(0),
+                projectCode = reader.GetString(1),
+                projectName = reader.GetString(2),
+                clientName = reader.GetString(3),
+                projectManagerUserId = reader.IsDBNull(4) ? (Guid?)null : reader.GetGuid(4),
+                projectManagerEmail = reader.IsDBNull(5) ? null : reader.GetString(5),
+                alertType = reader.GetString(6),
+                alertSeverity = reader.GetString(7),
+                plannedEngineeringCost = reader.GetDecimal(8),
+                plannedPmCost = reader.GetDecimal(9),
+                plannedTotalProjectCost = reader.GetDecimal(10),
+                assignedHours = reader.GetDecimal(11),
+                usedHours = reader.GetDecimal(12),
+                remainingAssignedHours = reader.GetDecimal(13),
+                overAssignedHours = reader.GetDecimal(14),
+                costStatus = reader.GetString(15)
+            });
+        }
+    }
+
+    var alerts = new List<object>();
+    var openAlertCount = 0;
+    var highAlertCount = 0;
+
+    await using (var command = new NpgsqlCommand("""
+        SELECT
+            project_cost_alert_id,
+            project_id,
+            alert_type,
+            alert_severity,
+            alert_status,
+            client_name,
+            project_code,
+            project_name,
+            project_manager_email,
+            planned_total_project_cost,
+            assigned_hours,
+            used_hours,
+            remaining_assigned_hours,
+            over_assigned_hours,
+            cost_status,
+            alert_summary,
+            alert_detail,
+            first_detected_at,
+            last_detected_at,
+            notification_queued_at,
+            notification_recipient_count,
+            resolved_at
+        FROM project_cost_alerts
+        ORDER BY
+            CASE alert_status WHEN 'open' THEN 1 WHEN 'acknowledged' THEN 2 ELSE 3 END,
+            CASE alert_severity WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
+            last_detected_at DESC
+        LIMIT 100;
+        """, connection))
+    {
+        await using var reader = await command.ExecuteReaderAsync();
+
+        while (await reader.ReadAsync())
+        {
+            var alertSeverity = reader.GetString(3);
+            var alertStatus = reader.GetString(4);
+
+            if (string.Equals(alertStatus, "open", StringComparison.OrdinalIgnoreCase))
+            {
+                openAlertCount++;
+            }
+
+            if (string.Equals(alertSeverity, "high", StringComparison.OrdinalIgnoreCase))
+            {
+                highAlertCount++;
+            }
+
+            alerts.Add(new
+            {
+                alertId = reader.GetGuid(0),
+                projectId = reader.GetGuid(1),
+                alertType = reader.GetString(2),
+                alertSeverity,
+                alertStatus,
+                clientName = reader.IsDBNull(5) ? "" : reader.GetString(5),
+                projectCode = reader.IsDBNull(6) ? "" : reader.GetString(6),
+                projectName = reader.IsDBNull(7) ? "" : reader.GetString(7),
+                projectManagerEmail = reader.IsDBNull(8) ? null : reader.GetString(8),
+                plannedTotalProjectCost = reader.GetDecimal(9),
+                assignedHours = reader.GetDecimal(10),
+                usedHours = reader.GetDecimal(11),
+                remainingAssignedHours = reader.GetDecimal(12),
+                overAssignedHours = reader.GetDecimal(13),
+                costStatus = reader.GetString(14),
+                alertSummary = reader.GetString(15),
+                alertDetail = reader.GetString(16),
+                firstDetectedAt = reader.GetFieldValue<DateTimeOffset>(17),
+                lastDetectedAt = reader.GetFieldValue<DateTimeOffset>(18),
+                notificationQueuedAt = reader.IsDBNull(19) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(19),
+                notificationRecipientCount = reader.GetInt32(20),
+                resolvedAt = reader.IsDBNull(21) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(21)
+            });
+        }
+    }
+
+    return Results.Ok(new
+    {
+        module = "019M-AI Cost Overrun Alert Foundation",
+        count = alerts.Count,
+        candidateCount = candidates.Count,
+        openCount = openAlertCount,
+        highCount = highAlertCount,
+        candidates,
+        alerts
+    });
+});
+
+
+app.MapPost("/api/projects/cost-alerts/evaluate", async (ProjectCostAlertEvaluationRequest request, HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    if (!await RequestUserCanAccessCostAlertsAsync(httpContext, connection, requireManage: true))
+    {
+        return Results.Json(new { status = "access_denied", message = "Evaluating and queuing cost alerts is restricted to administrators and project/team coordinators." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    await using var transaction = await connection.BeginTransactionAsync();
+
+    try
+    {
+        var thresholdHours = request.AssignmentWarningThresholdHours ?? 8m;
+        var queueNotifications = request.QueueNotifications ?? true;
+
+        await using (var upsertCommand = new NpgsqlCommand("""
+            WITH current_cost AS (
+                SELECT
+                    pcs.project_id,
+                    pcs.project_code,
+                    pcs.project_name,
+                    COALESCE(pcs.client_name, '') AS client_name,
+                    COALESCE(pcs.planned_engineering_cost, 0)::numeric AS planned_engineering_cost,
+                    COALESCE(pcs.planned_pm_cost, 0)::numeric AS planned_pm_cost,
+                    COALESCE(pcs.planned_total_project_cost, 0)::numeric AS planned_total_project_cost,
+                    COALESCE(pcs.assigned_hours, 0)::numeric AS assigned_hours,
+                    COALESCE(pcs.used_hours, 0)::numeric AS used_hours,
+                    COALESCE(pcs.remaining_assigned_hours, 0)::numeric AS remaining_assigned_hours,
+                    COALESCE(pcs.over_assigned_hours, 0)::numeric AS over_assigned_hours,
+                    COALESCE(pcs.cost_status, 'unknown') AS cost_status,
+                    p.project_manager_user_id,
+                    pm.email AS project_manager_email
+                FROM project_cost_status_vw pcs
+                JOIN projects p ON p.project_id = pcs.project_id
+                LEFT JOIN app_users pm ON pm.user_id = p.project_manager_user_id
+            ),
+            candidate_alerts AS (
+                SELECT
+                    *,
+                    CASE
+                        WHEN over_assigned_hours > 0 OR cost_status = 'hours_over_plan' THEN 'hours_over_plan'
+                        WHEN planned_total_project_cost = 0 AND (used_hours > 0 OR assigned_hours > 0) THEN 'cost_plan_missing_with_activity'
+                        WHEN planned_total_project_cost = 0 THEN 'cost_plan_missing'
+                        WHEN assigned_hours > 0 AND remaining_assigned_hours <= @threshold_hours THEN 'assignment_capacity_warning'
+                        ELSE NULL
+                    END AS alert_type,
+                    CASE
+                        WHEN over_assigned_hours > 0 OR cost_status = 'hours_over_plan' THEN 'high'
+                        WHEN planned_total_project_cost = 0 AND (used_hours > 0 OR assigned_hours > 0) THEN 'high'
+                        WHEN planned_total_project_cost = 0 THEN 'medium'
+                        WHEN assigned_hours > 0 AND remaining_assigned_hours <= @threshold_hours THEN 'medium'
+                        ELSE 'low'
+                    END AS alert_severity
+                FROM current_cost
+            ),
+            actionable AS (
+                SELECT
+                    *,
+                    (project_id::text || ':' || alert_type) AS alert_key,
+                    CASE alert_type
+                        WHEN 'hours_over_plan' THEN 'Project hours exceed assigned allocation.'
+                        WHEN 'cost_plan_missing_with_activity' THEN 'Project has activity but no loaded cost plan.'
+                        WHEN 'cost_plan_missing' THEN 'Project is missing a cost plan.'
+                        WHEN 'assignment_capacity_warning' THEN 'Project has limited assigned hours remaining.'
+                        ELSE 'Project cost alert.'
+                    END AS alert_summary,
+                    (
+                        'Project ' || project_code || ' has cost status ' || cost_status ||
+                        ', planned total cost ' || planned_total_project_cost ||
+                        ', assigned hours ' || assigned_hours ||
+                        ', used hours ' || used_hours ||
+                        ', remaining assigned hours ' || remaining_assigned_hours ||
+                        ', over-assigned hours ' || over_assigned_hours || '.'
+                    ) AS alert_detail
+                FROM candidate_alerts
+                WHERE alert_type IS NOT NULL
+            ),
+            upserted AS (
+                INSERT INTO project_cost_alerts (
+                    project_id,
+                    alert_key,
+                    alert_type,
+                    alert_severity,
+                    alert_status,
+                    client_name,
+                    project_code,
+                    project_name,
+                    project_manager_user_id,
+                    project_manager_email,
+                    planned_engineering_cost,
+                    planned_pm_cost,
+                    planned_total_project_cost,
+                    assigned_hours,
+                    used_hours,
+                    remaining_assigned_hours,
+                    over_assigned_hours,
+                    cost_status,
+                    alert_summary,
+                    alert_detail,
+                    last_detected_at,
+                    resolved_at,
+                    updated_at,
+                    metadata_json
+                )
+                SELECT
+                    project_id,
+                    alert_key,
+                    alert_type,
+                    alert_severity,
+                    'open',
+                    client_name,
+                    project_code,
+                    project_name,
+                    project_manager_user_id,
+                    project_manager_email,
+                    planned_engineering_cost,
+                    planned_pm_cost,
+                    planned_total_project_cost,
+                    assigned_hours,
+                    used_hours,
+                    remaining_assigned_hours,
+                    over_assigned_hours,
+                    cost_status,
+                    alert_summary,
+                    alert_detail,
+                    NOW(),
+                    NULL,
+                    NOW(),
+                    jsonb_build_object('evaluatedBy', @evaluated_by::text, 'thresholdHours', @threshold_hours)
+                FROM actionable
+                ON CONFLICT (alert_key) DO UPDATE
+                SET alert_severity = EXCLUDED.alert_severity,
+                    alert_status = CASE WHEN project_cost_alerts.alert_status = 'resolved' THEN 'open' ELSE project_cost_alerts.alert_status END,
+                    client_name = EXCLUDED.client_name,
+                    project_code = EXCLUDED.project_code,
+                    project_name = EXCLUDED.project_name,
+                    project_manager_user_id = EXCLUDED.project_manager_user_id,
+                    project_manager_email = EXCLUDED.project_manager_email,
+                    planned_engineering_cost = EXCLUDED.planned_engineering_cost,
+                    planned_pm_cost = EXCLUDED.planned_pm_cost,
+                    planned_total_project_cost = EXCLUDED.planned_total_project_cost,
+                    assigned_hours = EXCLUDED.assigned_hours,
+                    used_hours = EXCLUDED.used_hours,
+                    remaining_assigned_hours = EXCLUDED.remaining_assigned_hours,
+                    over_assigned_hours = EXCLUDED.over_assigned_hours,
+                    cost_status = EXCLUDED.cost_status,
+                    alert_summary = EXCLUDED.alert_summary,
+                    alert_detail = EXCLUDED.alert_detail,
+                    last_detected_at = NOW(),
+                    resolved_at = NULL,
+                    updated_at = NOW(),
+                    metadata_json = EXCLUDED.metadata_json
+                RETURNING project_cost_alert_id
+            )
+            SELECT COUNT(*) FROM upserted;
+            """, connection, transaction))
+        {
+            upsertCommand.Parameters.AddWithValue("threshold_hours", thresholdHours);
+            upsertCommand.Parameters.AddWithValue("evaluated_by", GetProjectPulseSessionEmail(httpContext) ?? "unknown");
+            await upsertCommand.ExecuteScalarAsync();
+        }
+
+        await using (var resolveCommand = new NpgsqlCommand("""
+            WITH current_cost AS (
+                SELECT
+                    pcs.project_id,
+                    COALESCE(pcs.planned_total_project_cost, 0)::numeric AS planned_total_project_cost,
+                    COALESCE(pcs.assigned_hours, 0)::numeric AS assigned_hours,
+                    COALESCE(pcs.used_hours, 0)::numeric AS used_hours,
+                    COALESCE(pcs.remaining_assigned_hours, 0)::numeric AS remaining_assigned_hours,
+                    COALESCE(pcs.over_assigned_hours, 0)::numeric AS over_assigned_hours,
+                    COALESCE(pcs.cost_status, 'unknown') AS cost_status
+                FROM project_cost_status_vw pcs
+            ),
+            actionable AS (
+                SELECT
+                    project_id,
+                    CASE
+                        WHEN over_assigned_hours > 0 OR cost_status = 'hours_over_plan' THEN 'hours_over_plan'
+                        WHEN planned_total_project_cost = 0 AND (used_hours > 0 OR assigned_hours > 0) THEN 'cost_plan_missing_with_activity'
+                        WHEN planned_total_project_cost = 0 THEN 'cost_plan_missing'
+                        WHEN assigned_hours > 0 AND remaining_assigned_hours <= @threshold_hours THEN 'assignment_capacity_warning'
+                        ELSE NULL
+                    END AS alert_type
+                FROM current_cost
+            ),
+            active_keys AS (
+                SELECT project_id::text || ':' || alert_type AS alert_key
+                FROM actionable
+                WHERE alert_type IS NOT NULL
+            )
+            UPDATE project_cost_alerts
+            SET alert_status = 'resolved',
+                resolved_at = NOW(),
+                updated_at = NOW()
+            WHERE alert_status = 'open'
+              AND alert_key NOT IN (SELECT alert_key FROM active_keys);
+            """, connection, transaction))
+        {
+            resolveCommand.Parameters.AddWithValue("threshold_hours", thresholdHours);
+            await resolveCommand.ExecuteNonQueryAsync();
+        }
+
+        var queuedRecipientCount = 0;
+        var queuedAlertCount = 0;
+
+        if (queueNotifications)
+        {
+            var alertsToQueue = new List<(Guid AlertId, Guid ProjectId, string AlertType, string AlertSeverity, string ProjectCode, string ProjectName, string ClientName, decimal PlannedTotalProjectCost, decimal AssignedHours, decimal UsedHours, decimal OverAssignedHours, string CostStatus)>();
+
+            await using (var alertCommand = new NpgsqlCommand("""
+                SELECT
+                    project_cost_alert_id,
+                    project_id,
+                    alert_type,
+                    alert_severity,
+                    COALESCE(project_code, ''),
+                    COALESCE(project_name, ''),
+                    COALESCE(client_name, ''),
+                    planned_total_project_cost,
+                    assigned_hours,
+                    used_hours,
+                    over_assigned_hours,
+                    cost_status
+                FROM project_cost_alerts
+                WHERE alert_status = 'open'
+                  AND notification_queued_at IS NULL
+                ORDER BY
+                    CASE alert_severity WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
+                    last_detected_at DESC;
+                """, connection, transaction))
+            {
+                await using var reader = await alertCommand.ExecuteReaderAsync();
+
+                while (await reader.ReadAsync())
+                {
+                    alertsToQueue.Add((
+                        reader.GetGuid(0),
+                        reader.GetGuid(1),
+                        reader.GetString(2),
+                        reader.GetString(3),
+                        reader.GetString(4),
+                        reader.GetString(5),
+                        reader.GetString(6),
+                        reader.GetDecimal(7),
+                        reader.GetDecimal(8),
+                        reader.GetDecimal(9),
+                        reader.GetDecimal(10),
+                        reader.GetString(11)
+                    ));
+                }
+            }
+
+            foreach (var alert in alertsToQueue)
+            {
+                var recipientCount = await QueueProjectCostAlertNotificationsAsync(
+                    connection,
+                    transaction,
+                    alert.AlertId,
+                    alert.ProjectId,
+                    alert.AlertType,
+                    alert.AlertSeverity,
+                    alert.ProjectCode,
+                    alert.ProjectName,
+                    alert.ClientName,
+                    alert.PlannedTotalProjectCost,
+                    alert.AssignedHours,
+                    alert.UsedHours,
+                    alert.OverAssignedHours,
+                    alert.CostStatus);
+
+                await using var updateCommand = new NpgsqlCommand("""
+                    UPDATE project_cost_alerts
+                    SET notification_queued_at = CASE WHEN @recipient_count > 0 THEN NOW() ELSE notification_queued_at END,
+                        notification_recipient_count = notification_recipient_count + @recipient_count,
+                        updated_at = NOW()
+                    WHERE project_cost_alert_id = @alert_id;
+                    """, connection, transaction);
+
+                updateCommand.Parameters.AddWithValue("alert_id", alert.AlertId);
+                updateCommand.Parameters.AddWithValue("recipient_count", recipientCount);
+                await updateCommand.ExecuteNonQueryAsync();
+
+                if (recipientCount > 0)
+                {
+                    queuedAlertCount++;
+                    queuedRecipientCount += recipientCount;
+                }
+            }
+        }
+
+        long openCount;
+        long highCount;
+
+        await using (var summaryCommand = new NpgsqlCommand("""
+            SELECT
+                COUNT(*) FILTER (WHERE alert_status = 'open') AS open_count,
+                COUNT(*) FILTER (WHERE alert_status = 'open' AND alert_severity = 'high') AS high_count
+            FROM project_cost_alerts;
+            """, connection, transaction))
+        await using (var reader = await summaryCommand.ExecuteReaderAsync())
+        {
+            await reader.ReadAsync();
+            openCount = reader.GetInt64(0);
+            highCount = reader.GetInt64(1);
+        }
+
+        await transaction.CommitAsync();
+
+        return Results.Ok(new
+        {
+            status = "cost_alerts_evaluated",
+            openCount,
+            highCount,
+            queuedAlertCount,
+            queuedRecipientCount,
+            queueNotifications,
+            message = "Project cost alerts evaluated and notification routing prepared."
+        });
+    }
+    catch (Exception ex)
+    {
+        await transaction.RollbackAsync();
+        return Results.Problem(
+            title: "Failed to evaluate project cost alerts",
+            detail: ex.Message,
+            statusCode: StatusCodes.Status500InternalServerError);
+    }
+});
+
+
 app.MapGet("/api/project-management/summary", async () =>
 {
     var config = DatabaseConfig.FromEnvironment();
@@ -3376,6 +3926,44 @@ string? GetProjectPulseSessionEmail(HttpContext context)
     return null;
 }
 
+
+
+
+async Task<bool> RequestUserCanAccessCostAlertsAsync(HttpContext context, NpgsqlConnection connection, bool requireManage)
+{
+    var userId = GetProjectPulseSessionUserId(context);
+
+    if (userId is null)
+    {
+        return false;
+    }
+
+    await using var command = new NpgsqlCommand("""
+        SELECT EXISTS (
+            SELECT 1
+            FROM app_user_role_assignments ura
+            JOIN app_roles r ON r.app_role_id = ura.app_role_id
+            LEFT JOIN app_role_permissions rp ON rp.app_role_id = r.app_role_id
+            LEFT JOIN app_permissions p ON p.app_permission_id = rp.app_permission_id
+            WHERE ura.user_id = @user_id
+              AND ura.is_active = TRUE
+              AND r.is_active = TRUE
+              AND (
+                    (NOT @require_manage AND r.role_code IN ('ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR', 'PROJECT_MANAGEMENT', 'PROJECT_MANAGER', 'MANAGER'))
+                 OR (NOT @require_manage AND p.permission_code IN ('VIEW_COST_ALERTS', 'MANAGE_COST_ALERTS', 'MANAGE_ALL', 'SYSTEM_ADMINISTRATION'))
+                 OR (@require_manage AND r.role_code IN ('ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR'))
+                 OR (@require_manage AND p.permission_code IN ('MANAGE_COST_ALERTS', 'MANAGE_ALL', 'SYSTEM_ADMINISTRATION'))
+              )
+        );
+        """, connection);
+
+    command.Parameters.AddWithValue("user_id", userId.Value);
+    command.Parameters.AddWithValue("require_manage", requireManage);
+
+    var result = await command.ExecuteScalarAsync();
+
+    return result is bool value && value;
+}
 
 
 async Task<bool> RequestUserCanManageCustomersAsync(HttpContext context, NpgsqlConnection connection)
@@ -12763,6 +13351,178 @@ async Task InsertProjectPulseAuditEventAsync(
 
 
 
+
+static async Task<int> QueueProjectCostAlertNotificationsAsync(
+    NpgsqlConnection connection,
+    NpgsqlTransaction transaction,
+    Guid alertId,
+    Guid projectId,
+    string alertType,
+    string alertSeverity,
+    string projectCode,
+    string projectName,
+    string clientName,
+    decimal plannedTotalProjectCost,
+    decimal assignedHours,
+    decimal usedHours,
+    decimal overAssignedHours,
+    string costStatus)
+{
+    var recipients = new List<(string Email, string Name, string Role)>();
+
+    await using (var recipientCommand = new NpgsqlCommand("""
+        WITH project_context AS (
+            SELECT p.project_id, p.project_manager_user_id
+            FROM projects p
+            WHERE p.project_id = @project_id
+        ),
+        pm_recipients AS (
+            SELECT DISTINCT
+                pm.email,
+                pm.display_name,
+                'Project Manager'::text AS recipient_role
+            FROM project_context pc
+            JOIN app_users pm ON pm.user_id = pc.project_manager_user_id
+            WHERE pm.is_active = TRUE
+              AND COALESCE(pm.email, '') <> ''
+        ),
+        manager_recipients AS (
+            SELECT DISTINCT
+                manager.email,
+                manager.display_name,
+                'Resource Manager'::text AS recipient_role
+            FROM project_assignments pa
+            JOIN app_users engineer ON engineer.user_id = pa.user_id
+            JOIN app_users manager ON lower(manager.email) = lower(engineer.manager_email)
+            WHERE pa.project_id = @project_id
+              AND manager.is_active = TRUE
+              AND COALESCE(manager.email, '') <> ''
+        ),
+        ptc_recipients AS (
+            SELECT DISTINCT
+                u.email,
+                u.display_name,
+                'Project Team Coordinator'::text AS recipient_role
+            FROM app_users u
+            JOIN app_user_role_assignments ura ON ura.user_id = u.user_id AND ura.is_active = TRUE
+            JOIN app_roles r ON r.app_role_id = ura.app_role_id
+            WHERE r.role_code = 'PROJECT_TEAM_COORDINATOR'
+              AND r.is_active = TRUE
+              AND u.is_active = TRUE
+              AND COALESCE(u.email, '') <> ''
+        )
+        SELECT DISTINCT ON (lower(email))
+            email,
+            display_name,
+            recipient_role
+        FROM (
+            SELECT * FROM pm_recipients
+            UNION ALL
+            SELECT * FROM manager_recipients
+            UNION ALL
+            SELECT * FROM ptc_recipients
+        ) recipients
+        ORDER BY lower(email), recipient_role;
+        """, connection, transaction))
+    {
+        recipientCommand.Parameters.AddWithValue("project_id", projectId);
+
+        await using var reader = await recipientCommand.ExecuteReaderAsync();
+
+        while (await reader.ReadAsync())
+        {
+            recipients.Add((
+                reader.GetString(0),
+                reader.IsDBNull(1) ? reader.GetString(0) : reader.GetString(1),
+                reader.GetString(2)
+            ));
+        }
+    }
+
+    if (recipients.Count == 0)
+    {
+        return 0;
+    }
+
+    var subject = $"Project Pulse Cost Alert: {projectCode} - {alertSeverity.ToUpperInvariant()}";
+    var body = $"""
+Project Pulse detected a project cost/readiness alert.
+
+Project: {projectCode} - {projectName}
+Customer: {clientName}
+Alert Type: {alertType}
+Severity: {alertSeverity}
+Cost Status: {costStatus}
+
+Planned Total Project Cost: {plannedTotalProjectCost:C}
+Assigned Hours: {assignedHours:N2}
+Used Hours: {usedHours:N2}
+Over Assigned Hours: {overAssignedHours:N2}
+
+Please review project assignment, time usage, and cost plan readiness in Project Pulse.
+""";
+
+    foreach (var recipient in recipients)
+    {
+        await using (var notifyCommand = new NpgsqlCommand("""
+            INSERT INTO notification_outbox (
+                notification_type,
+                recipient_email,
+                subject,
+                body,
+                related_entity_type,
+                related_entity_id
+            )
+            VALUES (
+                'project_cost_alert',
+                @recipient_email,
+                @subject,
+                @body,
+                'project_cost_alert',
+                @related_entity_id
+            );
+            """, connection, transaction))
+        {
+            notifyCommand.Parameters.AddWithValue("recipient_email", recipient.Email);
+            notifyCommand.Parameters.AddWithValue("subject", subject);
+            notifyCommand.Parameters.AddWithValue("body", body);
+            notifyCommand.Parameters.AddWithValue("related_entity_id", alertId);
+            await notifyCommand.ExecuteNonQueryAsync();
+        }
+
+        await using (var emailCommand = new NpgsqlCommand("""
+            INSERT INTO email_notification_outbox (
+                rule_code,
+                recipient_email,
+                recipient_name,
+                subject,
+                body,
+                status,
+                scheduled_for
+            )
+            VALUES (
+                'PROJECT_COST_ALERT',
+                @recipient_email,
+                @recipient_name,
+                @subject,
+                @body,
+                'queued',
+                NOW()
+            );
+            """, connection, transaction))
+        {
+            emailCommand.Parameters.AddWithValue("recipient_email", recipient.Email);
+            emailCommand.Parameters.AddWithValue("recipient_name", recipient.Name);
+            emailCommand.Parameters.AddWithValue("subject", subject);
+            emailCommand.Parameters.AddWithValue("body", body);
+            await emailCommand.ExecuteNonQueryAsync();
+        }
+    }
+
+    return recipients.Count;
+}
+
+
 internal sealed record ProjectPulseBackupDeleteRequest(string RequestId, string? Reason);
 internal sealed record ProjectPulseBackupRunRequest(bool UploadToSftp, bool? UploadToAzure, string? Reason);
 internal sealed record ServiceRestartRequest(string ServiceKey, string Reason);
@@ -13064,3 +13824,11 @@ internal sealed record CustomerDirectoryContactUpsertRequest(
     bool? IsPrimary,
     bool? IsActive,
     int? DisplayOrder);
+
+
+
+
+
+internal sealed record ProjectCostAlertEvaluationRequest(
+    bool? QueueNotifications,
+    decimal? AssignmentWarningThresholdHours);

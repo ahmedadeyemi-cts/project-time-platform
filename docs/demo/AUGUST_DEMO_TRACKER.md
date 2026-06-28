@@ -322,3 +322,11 @@
 - Standardized phone behavior for panels, forms, card grids, navigation, modals, and wide table wrappers.
 - Preserved internal horizontal scrolling for wide operational grids such as timesheets and reporting tables while preventing full-page horizontal overflow.
 - Established mobile responsiveness as a required acceptance check for all new modules going forward.
+
+## 019M-AI Cost Overrun Alert Foundation
+
+### Added
+- Added project cost alert persistence for missing cost plans, active projects without cost plans, over-assigned hours, and low remaining assigned hours.
+- Added alert evaluation endpoint that records current project cost alert conditions.
+- Added notification routing foundation to PM, resource manager, and Project Team Coordinator through existing notification outbox tables.
+- Added mobile-friendly Cost Overrun Alerts screen with live candidates, recorded alerts, and evaluation controls.

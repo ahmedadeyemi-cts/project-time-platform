@@ -348,6 +348,7 @@ import BackupRetentionCenter from './BackupRetentionCenter.jsx';
 import TimeComplianceCenter from './TimeComplianceCenter.jsx';
 import ProjectIntakeCenter from './ProjectIntakeCenter.jsx';
 import CustomerDirectoryCenter from './CustomerDirectoryCenter.jsx';
+import CostOverrunAlertCenter from './CostOverrunAlertCenter.jsx';
 import ProjectWorkspaceCenter from './ProjectWorkspaceCenter.jsx';
 
 const workflowCards = [
@@ -666,6 +667,14 @@ const roleWorkspaceModules = [
     permissions: ['VIEW_CUSTOMERS', 'MANAGE_CUSTOMERS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   },
   {
+    route: 'cost-alerts',
+    href: '#cost-alerts',
+    title: 'Cost Overrun Alerts',
+    navLabel: 'Cost Alerts',
+    description: 'Detect missing cost plans, over-assigned projects, and route PM/manager/PTC alerts.',
+    permissions: ['VIEW_COST_ALERTS', 'MANAGE_COST_ALERTS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
+  },
+  {
     route: 'time-compliance',
     href: '#time-compliance',
     title: 'Time Compliance & Notification Center',
@@ -890,6 +899,7 @@ function getNavigationGroup(item) {
     case 'project-allocation-info':
     case 'project-workspace':
       return 'Project Workspace';
+    case 'cost-alerts':
     case 'customer-directory':
     case 'project-intake':
       return 'Project Intake';
@@ -4442,6 +4452,12 @@ Analytics - Variphy / Infortel`}
       {(activeRoute === 'project-workspace' && canSeeAny(['VIEW_PROJECT_WORKSPACE', 'VIEW_ENGINEERING_PROJECT_DOCUMENTS', 'VIEW_PROJECT_INTAKE', 'VIEW_RESOURCE_SCHEDULING', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
         <section id="project-workspace" className="panel project-workspace-route-panel">
           <ProjectWorkspaceCenter />
+        </section>
+      ) : null}
+
+      {(activeRoute === 'cost-alerts' && canSeeAny(['VIEW_COST_ALERTS', 'MANAGE_COST_ALERTS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
+        <section id="cost-alerts" className="panel cost-alert-route-panel">
+          <CostOverrunAlertCenter canManageCostAlerts={canSeeAny(['MANAGE_COST_ALERTS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])} />
         </section>
       ) : null}
 
