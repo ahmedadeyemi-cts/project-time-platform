@@ -462,3 +462,53 @@
     grid-template-columns: 1fr;
   }
 }
+
+.customer-contact-preview {
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 16px;
+  padding: 14px;
+  background: rgba(15, 23, 42, 0.04);
+  display: grid;
+  gap: 10px;
+}
+
+.customer-contact-preview > strong {
+  font-size: 0.92rem;
+}
+
+.customer-contact-preview > span {
+  color: #64748b;
+  font-size: 0.88rem;
+}
+
+.customer-contact-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+}
+
+.customer-contact-card {
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 14px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.72);
+  display: grid;
+  gap: 4px;
+}
+
+.customer-contact-card span {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #2563eb;
+  font-weight: 700;
+}
+
+.customer-contact-card strong {
+  font-size: 0.9rem;
+}
+
+.customer-contact-card small {
+  color: #64748b;
+  line-height: 1.35;
+}

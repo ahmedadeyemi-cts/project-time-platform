@@ -63,12 +63,12 @@ public static class ProjectIntakeModule
 
     private static async Task<IResult> CreateIntakeRequestAsync(ProjectIntakeCreateRequest request)
     {
-        if (string.IsNullOrWhiteSpace(request.ClientName) || string.IsNullOrWhiteSpace(request.RequestTitle))
+        if ((request.ClientId is null && string.IsNullOrWhiteSpace(request.ClientName)) || string.IsNullOrWhiteSpace(request.RequestTitle))
         {
             return Results.BadRequest(new
             {
                 status = "validation_failed",
-                message = "Client name and request title are required."
+                message = "Customer and request title are required."
             });
         }
 
@@ -79,11 +79,43 @@ public static class ProjectIntakeModule
         await using var connection = new NpgsqlConnection(config.ConnectionString);
         await connection.OpenAsync();
 
+        var resolvedClientName = request.ClientName?.Trim() ?? string.Empty;
+
+        if (request.ClientId is not null)
+        {
+            await using var clientCommand = new NpgsqlCommand("""
+                SELECT client_name
+                FROM clients
+                WHERE client_id = @client_id
+                  AND is_active = TRUE;
+                """, connection);
+
+            clientCommand.Parameters.AddWithValue("client_id", request.ClientId.Value);
+
+            var clientNameResult = await clientCommand.ExecuteScalarAsync();
+
+            if (clientNameResult is null)
+            {
+                return Results.BadRequest(new
+                {
+                    status = "validation_failed",
+                    message = "Selected customer was not found or is inactive."
+                });
+            }
+
+            resolvedClientName = Convert.ToString(clientNameResult) ?? resolvedClientName;
+        }
+
+        var plannedEngineeringCost = request.PlannedEngineeringCost ?? 0;
+        var plannedPmCost = request.PlannedPmCost ?? 0;
+        var plannedTotalProjectCost = request.PlannedTotalProjectCost ?? plannedEngineeringCost + plannedPmCost;
+
         var requestNumber = $"INTAKE-{DateTime.UtcNow:yyyyMMddHHmmss}";
 
         const string sql = """
             INSERT INTO project_intake_requests (
                 request_number,
+                client_id,
                 client_name,
                 opportunity_reference,
                 request_title,
@@ -101,10 +133,14 @@ public static class ProjectIntakeModule
                 external_record_url,
                 source_received_at,
                 source_document_required,
-                intake_source_notes
+                intake_source_notes,
+                planned_engineering_cost,
+                planned_pm_cost,
+                planned_total_project_cost
             )
             VALUES (
                 @request_number,
+                @client_id,
                 @client_name,
                 @opportunity_reference,
                 @request_title,
@@ -122,14 +158,18 @@ public static class ProjectIntakeModule
                 @external_record_url,
                 NOW(),
                 @source_document_required,
-                @intake_source_notes
+                @intake_source_notes,
+                @planned_engineering_cost,
+                @planned_pm_cost,
+                @planned_total_project_cost
             )
             RETURNING project_intake_request_id;
             """;
 
         await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("request_number", requestNumber);
-        command.Parameters.AddWithValue("client_name", request.ClientName.Trim());
+        command.Parameters.AddWithValue("client_id", request.ClientId is null ? DBNull.Value : request.ClientId.Value);
+        command.Parameters.AddWithValue("client_name", resolvedClientName);
         command.Parameters.AddWithValue("opportunity_reference", string.IsNullOrWhiteSpace(request.OpportunityReference) ? DBNull.Value : request.OpportunityReference.Trim());
         command.Parameters.AddWithValue("request_title", request.RequestTitle.Trim());
         command.Parameters.AddWithValue("request_description", string.IsNullOrWhiteSpace(request.RequestDescription) ? DBNull.Value : request.RequestDescription.Trim());
@@ -145,6 +185,9 @@ public static class ProjectIntakeModule
         command.Parameters.AddWithValue("external_record_url", string.IsNullOrWhiteSpace(request.ExternalRecordUrl) ? DBNull.Value : request.ExternalRecordUrl.Trim());
         command.Parameters.AddWithValue("source_document_required", request.SourceDocumentRequired);
         command.Parameters.AddWithValue("intake_source_notes", string.IsNullOrWhiteSpace(request.IntakeSourceNotes) ? DBNull.Value : request.IntakeSourceNotes.Trim());
+        command.Parameters.AddWithValue("planned_engineering_cost", plannedEngineeringCost);
+        command.Parameters.AddWithValue("planned_pm_cost", plannedPmCost);
+        command.Parameters.AddWithValue("planned_total_project_cost", plannedTotalProjectCost);
 
         var id = (Guid)(await command.ExecuteScalarAsync() ?? throw new InvalidOperationException("Unable to create intake request."));
 
@@ -504,6 +547,7 @@ public static class ProjectIntakeModule
         const string sql = """
             SELECT
                 pir.project_intake_request_id AS id,
+                pir.client_id AS client_id,
                 pir.request_number AS request_number,
                 pir.client_name AS client_name,
                 pir.opportunity_reference AS opportunity_reference,
@@ -523,7 +567,10 @@ public static class ProjectIntakeModule
                 pir.external_record_url AS external_record_url,
                 COALESCE(pir.source_document_required, FALSE) AS source_document_required,
                 COALESCE(pir.source_document_received, FALSE) AS source_document_received,
-                COALESCE(docs.document_count, 0)::bigint AS document_count
+                COALESCE(docs.document_count, 0)::bigint AS document_count,
+                COALESCE(pir.planned_engineering_cost, 0)::numeric AS planned_engineering_cost,
+                COALESCE(pir.planned_pm_cost, 0)::numeric AS planned_pm_cost,
+                COALESCE(pir.planned_total_project_cost, 0)::numeric AS planned_total_project_cost
             FROM project_intake_requests pir
             LEFT JOIN app_users pm ON pm.user_id = pir.assigned_pm_user_id
             LEFT JOIN (
@@ -546,6 +593,7 @@ public static class ProjectIntakeModule
 
             rows.Add(new IntakeSummary(
                 reader.GetGuid(O("id")),
+                reader.IsDBNull(O("client_id")) ? null : reader.GetGuid(O("client_id")),
                 reader.GetString(O("request_number")),
                 reader.GetString(O("client_name")),
                 S("opportunity_reference"),
@@ -565,7 +613,10 @@ public static class ProjectIntakeModule
                 S("external_record_url"),
                 !reader.IsDBNull(O("source_document_required")) && reader.GetBoolean(O("source_document_required")),
                 !reader.IsDBNull(O("source_document_received")) && reader.GetBoolean(O("source_document_received")),
-                reader.GetInt64(O("document_count"))));
+                reader.GetInt64(O("document_count")),
+                reader.GetDecimal(O("planned_engineering_cost")),
+                reader.GetDecimal(O("planned_pm_cost")),
+                reader.GetDecimal(O("planned_total_project_cost"))));
         }
 
         return rows;
@@ -880,6 +931,7 @@ public static class ProjectIntakeModule
 }
 
 internal sealed record ProjectIntakeCreateRequest(
+    Guid? ClientId,
     string ClientName,
     string? OpportunityReference,
     string RequestTitle,
@@ -895,7 +947,10 @@ internal sealed record ProjectIntakeCreateRequest(
     string? ExternalRecordType,
     string? ExternalRecordUrl,
     bool SourceDocumentRequired,
-    string? IntakeSourceNotes);
+    string? IntakeSourceNotes,
+    decimal? PlannedEngineeringCost,
+    decimal? PlannedPmCost,
+    decimal? PlannedTotalProjectCost);
 
 internal sealed record EngineeringResourceRequestCreateRequest(
     Guid? ProjectIntakeRequestId,
@@ -913,6 +968,7 @@ internal sealed record EngineeringResourceAssignmentRequest(Guid UserId, string?
 
 internal sealed record IntakeSummary(
     Guid Id,
+    Guid? ClientId,
     string RequestNumber,
     string ClientName,
     string? OpportunityReference,
@@ -932,7 +988,10 @@ internal sealed record IntakeSummary(
     string? ExternalRecordUrl,
     bool SourceDocumentRequired,
     bool SourceDocumentReceived,
-    long DocumentCount);
+    long DocumentCount,
+    decimal PlannedEngineeringCost,
+    decimal PlannedPmCost,
+    decimal PlannedTotalProjectCost);
 
 internal sealed record ProjectSummary(
     Guid Id,

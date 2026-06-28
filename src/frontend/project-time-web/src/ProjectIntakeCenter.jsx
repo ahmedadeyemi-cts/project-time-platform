@@ -73,12 +73,18 @@ function fmt(value) {
   return value ?? 'Not set';
 }
 
+function fmtMoney(value) {
+  const amount = Number(value ?? 0);
+  return amount.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+}
+
 function StatusBadge({ children, tone = 'neutral' }) {
   return <span className={`project-intake-badge ${tone}`}>{children}</span>;
 }
 
 export default function ProjectIntakeCenter() {
   const [overview, setOverview] = useState({ loading: true, data: null, error: null });
+  const [customerOverview, setCustomerOverview] = useState({ loading: true, data: null, error: null });
   const [actionStatus, setActionStatus] = useState('');
   const [intakeSearchTerm, setIntakeSearchTerm] = useState('');
   const [intakeStatusFilter, setIntakeStatusFilter] = useState('all');
@@ -92,6 +98,7 @@ export default function ProjectIntakeCenter() {
   const [aiTimesheetContextEnabled, setAiTimesheetContextEnabled] = useState(true);
 
   const [intakeForm, setIntakeForm] = useState({
+    clientId: '',
     clientName: 'Great Lakes Healthcare',
     opportunityReference: 'OPP-NEW-REQUEST',
     requestTitle: 'New Project Intake',
@@ -101,6 +108,8 @@ export default function ProjectIntakeCenter() {
     targetStartDate: '2026-08-03',
     targetCompletionDate: '2026-09-25',
     estimatedHours: '120',
+    plannedEngineeringCost: '48000',
+    plannedPmCost: '12000',
     intakeSource: 'manual_entry',
     sourceSystem: '',
     externalReferenceId: '',
@@ -138,8 +147,32 @@ export default function ProjectIntakeCenter() {
     }
   }
 
+  async function loadCustomerOverview() {
+    setCustomerOverview((current) => ({ ...current, loading: true, error: null }));
+
+    try {
+      const result = await fetchJson('/api/customers/overview');
+      setCustomerOverview({ loading: false, data: result, error: null });
+
+      const defaultCustomer = result.customers?.find((customer) => customer.clientName === 'Great Lakes Healthcare') ?? result.customers?.[0];
+
+      if (defaultCustomer) {
+        setIntakeForm((current) => current.clientId
+          ? current
+          : { ...current, clientId: defaultCustomer.clientId, clientName: defaultCustomer.clientName });
+      }
+    } catch (error) {
+      setCustomerOverview({
+        loading: false,
+        data: null,
+        error: error instanceof Error ? error.message : 'Unable to load customer directory.'
+      });
+    }
+  }
+
   useEffect(() => {
     loadOverview();
+    loadCustomerOverview();
   }, []);
 
   const projectManagers = overview.data?.projectManagers ?? [];
@@ -148,6 +181,13 @@ export default function ProjectIntakeCenter() {
   const resourceRequests = overview.data?.resourceRequests ?? [];
   const capacity = overview.data?.capacity ?? [];
   const engineers = overview.data?.engineers ?? [];
+  const customers = customerOverview.data?.customers ?? [];
+  const customerContacts = customerOverview.data?.contacts ?? [];
+  const selectedCustomer = customers.find((customer) => customer.clientId === intakeForm.clientId);
+  const selectedCustomerContacts = customerContacts.filter((contact) => contact.clientId === intakeForm.clientId);
+  const plannedEngineeringCost = Number(intakeForm.plannedEngineeringCost || 0);
+  const plannedPmCost = Number(intakeForm.plannedPmCost || 0);
+  const plannedTotalProjectCost = plannedEngineeringCost + plannedPmCost;
 
   const filteredIntakes = useMemo(() => {
     const search = intakeSearchTerm.trim().toLowerCase();
@@ -258,10 +298,15 @@ export default function ProjectIntakeCenter() {
     try {
       const result = await postJson('/api/project-intake/requests', {
         ...intakeForm,
+        clientId: intakeForm.clientId || null,
+        clientName: selectedCustomer?.clientName ?? intakeForm.clientName,
         assignedPmUserId: intakeForm.assignedPmUserId || null,
         sourceSystem: intakeForm.intakeSource === 'salesforce' ? 'Salesforce' : intakeForm.sourceSystem || null,
         externalRecordType: intakeForm.intakeSource === 'salesforce' ? 'Opportunity' : intakeForm.externalRecordType || null,
-        estimatedHours: Number(intakeForm.estimatedHours || 0)
+        estimatedHours: Number(intakeForm.estimatedHours || 0),
+        plannedEngineeringCost,
+        plannedPmCost,
+        plannedTotalProjectCost
       });
 
       if (intakeFile) {
@@ -342,6 +387,7 @@ export default function ProjectIntakeCenter() {
       </div>
 
       {overview.error && <div className="project-intake-error">{overview.error}</div>}
+      {customerOverview.error && <div className="project-intake-error">{customerOverview.error}</div>}
       {actionStatus && <div className="project-intake-alert">{actionStatus}</div>}
 
       <div className="project-intake-summary-grid">
@@ -356,7 +402,26 @@ export default function ProjectIntakeCenter() {
           <h3>Create Project Intake</h3>
           <p className="muted">Salesforce-sourced intake can still include manually uploaded SOW, GSD, and supporting documents.</p>
           <form className="project-intake-form" onSubmit={createIntake}>
-            <label>Client<input value={intakeForm.clientName} onChange={(event) => setIntakeForm({ ...intakeForm, clientName: event.target.value })} /></label>
+            <label>Customer<select value={intakeForm.clientId} onChange={(event) => {
+              const customer = customers.find((item) => item.clientId === event.target.value);
+              setIntakeForm({ ...intakeForm, clientId: event.target.value, clientName: customer?.clientName ?? '' });
+            }}><option value="">Select customer</option>{customers.map((customer) => <option value={customer.clientId} key={customer.clientId}>{customer.clientName} · {customer.clientCode}</option>)}</select></label>
+            <div className="customer-contact-preview full-width">
+              <strong>{selectedCustomer ? `${selectedCustomer.clientName} contacts` : 'Customer contacts'}</strong>
+              {selectedCustomerContacts.length === 0 ? (
+                <span>No active contacts loaded for this customer.</span>
+              ) : (
+                <div className="customer-contact-grid">
+                  {selectedCustomerContacts.map((contact) => (
+                    <div className="customer-contact-card" key={contact.contactId}>
+                      <span>{contact.isPrimary ? 'Primary' : 'Contact'}</span>
+                      <strong>{contact.contactName}</strong>
+                      <small>{contact.title || 'No title'} · {contact.email || 'No email'} · {contact.phone || 'No phone'}</small>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
             <label>Opportunity reference<input value={intakeForm.opportunityReference} onChange={(event) => setIntakeForm({ ...intakeForm, opportunityReference: event.target.value })} /></label>
             <label>Request title<input value={intakeForm.requestTitle} onChange={(event) => setIntakeForm({ ...intakeForm, requestTitle: event.target.value })} /></label>
             <label>Assigned PM<select value={intakeForm.assignedPmUserId} onChange={(event) => setIntakeForm({ ...intakeForm, assignedPmUserId: event.target.value })}><option value="">Unassigned</option>{projectManagers.map((pm) => <option value={pm.userId} key={pm.userId}>{pm.displayName} · {pm.jobTitle}</option>)}</select></label>
@@ -369,6 +434,9 @@ export default function ProjectIntakeCenter() {
             <label className="checkbox-label"><input type="checkbox" checked={aiTimesheetContextEnabled} onChange={(event) => setAiTimesheetContextEnabled(event.target.checked)} />Use for timesheet description assistant context</label>
             <label>Priority<select value={intakeForm.priority} onChange={(event) => setIntakeForm({ ...intakeForm, priority: event.target.value })}><option value="low">Low</option><option value="normal">Normal</option><option value="high">High</option></select></label>
             <label>Estimated hours<input type="number" min="1" value={intakeForm.estimatedHours} onChange={(event) => setIntakeForm({ ...intakeForm, estimatedHours: event.target.value })} /></label>
+            <label>Planned engineering cost<input type="number" min="0" step="0.01" value={intakeForm.plannedEngineeringCost} onChange={(event) => setIntakeForm({ ...intakeForm, plannedEngineeringCost: event.target.value })} /></label>
+            <label>Planned PM cost<input type="number" min="0" step="0.01" value={intakeForm.plannedPmCost} onChange={(event) => setIntakeForm({ ...intakeForm, plannedPmCost: event.target.value })} /></label>
+            <label>Total project cost<input type="text" value={fmtMoney(plannedTotalProjectCost)} readOnly /></label>
             <label>Target start<input type="date" value={intakeForm.targetStartDate} onChange={(event) => setIntakeForm({ ...intakeForm, targetStartDate: event.target.value })} /></label>
             <label>Target completion<input type="date" value={intakeForm.targetCompletionDate} onChange={(event) => setIntakeForm({ ...intakeForm, targetCompletionDate: event.target.value })} /></label>
             <label className="full-width">Source notes<textarea value={intakeForm.intakeSourceNotes} onChange={(event) => setIntakeForm({ ...intakeForm, intakeSourceNotes: event.target.value })} /></label>
@@ -588,7 +656,7 @@ export default function ProjectIntakeCenter() {
 
         <div className="project-intake-table-wrap">
           <table className="project-intake-table">
-            <thead><tr><th>Request</th><th>Client</th><th>Status</th><th>Priority</th><th>PM</th><th>Source</th><th>Target</th><th>Hours</th></tr></thead>
+            <thead><tr><th>Request</th><th>Client</th><th>Status</th><th>Priority</th><th>PM</th><th>Source</th><th>Target</th><th>Hours</th><th>Planned cost</th></tr></thead>
             <tbody>
               {visibleIntakes.map((item) => (
                 <tr key={item.id}>
@@ -600,6 +668,7 @@ export default function ProjectIntakeCenter() {
                   <td>{item.intakeSource}<span>{item.externalReferenceId || 'No external ID'} · Docs: {item.documentCount ?? 0}</span></td>
                   <td>{fmt(item.targetStartDate)} → {fmt(item.targetCompletionDate)}</td>
                   <td>{item.estimatedHours ?? 0}</td>
+                  <td>{fmtMoney(item.plannedTotalProjectCost ?? 0)}<span>Eng: {fmtMoney(item.plannedEngineeringCost ?? 0)} · PM: {fmtMoney(item.plannedPmCost ?? 0)}</span></td>
                 </tr>
               ))}
             </tbody>

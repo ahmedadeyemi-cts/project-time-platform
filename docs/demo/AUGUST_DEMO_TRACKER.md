@@ -296,3 +296,12 @@
 
 ### 019M-AG Phase 1 adjustment
 - Customer overview now separates project planned cost from intake pipeline planned cost to avoid double-counting converted intake/project records.
+
+## 019M-AG Phase 2 Intake Customer Selector and Planned Cost UI
+
+### Added
+- Project Intake now loads customers and contacts from the Customer Directory foundation.
+- Intake creation uses a selected customer record instead of relying only on free-text customer entry.
+- Selected customer contacts are displayed in the intake form.
+- Intake creation captures planned engineering cost, planned PM cost, and calculated total project cost.
+- Intake queue displays planned cost values for existing and newly created intake records.
