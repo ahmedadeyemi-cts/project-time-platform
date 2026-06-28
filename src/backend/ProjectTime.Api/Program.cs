@@ -16664,6 +16664,390 @@ app.MapPost("/api/admin/azure/users/reconcile", async (HttpContext httpContext) 
 });
 
 
+
+// 019M-AV Approval Export Audit Workflow Hardening
+app.MapGet("/api/workflow/operational-readiness", async (HttpContext httpContext, DateOnly? weekStart, DateOnly? weekEnd) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var access = await LoadApprovalExportWorkflowAccessAsync(connection, sessionUserId.Value);
+    if (!access.CanView && !access.CanViewAll)
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Workflow operational readiness is restricted to approved workflow roles."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var today = DateOnly.FromDateTime(DateTime.UtcNow.Date);
+    var start = weekStart ?? today.AddDays(-(int)today.DayOfWeek);
+    var end = weekEnd ?? start.AddDays(6);
+
+    long totalEntries = 0;
+    decimal totalHours = 0;
+    long draftEntries = 0;
+    decimal draftHours = 0;
+    long submittedEntries = 0;
+    decimal submittedHours = 0;
+    long managerApprovedEntries = 0;
+    decimal managerApprovedHours = 0;
+    long projectApprovedEntries = 0;
+    decimal projectApprovedHours = 0;
+    long accountingReadyEntries = 0;
+    decimal accountingReadyHours = 0;
+    long reconciledEntries = 0;
+    decimal reconciledHours = 0;
+    long lockedEntries = 0;
+    decimal lockedHours = 0;
+    long returnedEntries = 0;
+    decimal returnedHours = 0;
+    long projectLinkedEntries = 0;
+    long taskLinkedEntries = 0;
+    long exportReadyEntries = 0;
+    decimal exportReadyHours = 0;
+    long exportBlockedEntries = 0;
+    decimal exportBlockedHours = 0;
+
+    await using (var summaryCommand = new NpgsqlCommand("""
+        SELECT
+            COUNT(*)::bigint AS total_entries,
+            COALESCE(SUM(te.hours), 0)::numeric AS total_hours,
+
+            COUNT(*) FILTER (WHERE COALESCE(te.status, 'draft') = 'draft')::bigint AS draft_entries,
+            COALESCE(SUM(te.hours) FILTER (WHERE COALESCE(te.status, 'draft') = 'draft'), 0)::numeric AS draft_hours,
+
+            COUNT(*) FILTER (WHERE COALESCE(te.status, '') IN ('submitted', 'pending_manager_approval'))::bigint AS submitted_entries,
+            COALESCE(SUM(te.hours) FILTER (WHERE COALESCE(te.status, '') IN ('submitted', 'pending_manager_approval')), 0)::numeric AS submitted_hours,
+
+            COUNT(*) FILTER (WHERE COALESCE(te.status, '') = 'manager_approved')::bigint AS manager_approved_entries,
+            COALESCE(SUM(te.hours) FILTER (WHERE COALESCE(te.status, '') = 'manager_approved'), 0)::numeric AS manager_approved_hours,
+
+            COUNT(*) FILTER (WHERE COALESCE(te.status, '') IN ('project_approved', 'project_validated'))::bigint AS project_approved_entries,
+            COALESCE(SUM(te.hours) FILTER (WHERE COALESCE(te.status, '') IN ('project_approved', 'project_validated')), 0)::numeric AS project_approved_hours,
+
+            COUNT(*) FILTER (WHERE COALESCE(te.status, '') = 'accounting_ready')::bigint AS accounting_ready_entries,
+            COALESCE(SUM(te.hours) FILTER (WHERE COALESCE(te.status, '') = 'accounting_ready'), 0)::numeric AS accounting_ready_hours,
+
+            COUNT(*) FILTER (WHERE COALESCE(te.status, '') = 'reconciled')::bigint AS reconciled_entries,
+            COALESCE(SUM(te.hours) FILTER (WHERE COALESCE(te.status, '') = 'reconciled'), 0)::numeric AS reconciled_hours,
+
+            COUNT(*) FILTER (WHERE COALESCE(te.status, '') = 'locked')::bigint AS locked_entries,
+            COALESCE(SUM(te.hours) FILTER (WHERE COALESCE(te.status, '') = 'locked'), 0)::numeric AS locked_hours,
+
+            COUNT(*) FILTER (WHERE COALESCE(te.status, '') IN ('manager_declined', 'rejected', 'returned'))::bigint AS returned_entries,
+            COALESCE(SUM(te.hours) FILTER (WHERE COALESCE(te.status, '') IN ('manager_declined', 'rejected', 'returned')), 0)::numeric AS returned_hours,
+
+            COUNT(*) FILTER (WHERE te.project_id IS NOT NULL)::bigint AS project_linked_entries,
+            COUNT(*) FILTER (WHERE te.task_id IS NOT NULL)::bigint AS task_linked_entries,
+
+            COUNT(*) FILTER (WHERE COALESCE(te.status, '') IN ('accounting_ready', 'reconciled', 'locked'))::bigint AS export_ready_entries,
+            COALESCE(SUM(te.hours) FILTER (WHERE COALESCE(te.status, '') IN ('accounting_ready', 'reconciled', 'locked')), 0)::numeric AS export_ready_hours,
+
+            COUNT(*) FILTER (WHERE COALESCE(te.status, 'draft') NOT IN ('accounting_ready', 'reconciled', 'locked'))::bigint AS export_blocked_entries,
+            COALESCE(SUM(te.hours) FILTER (WHERE COALESCE(te.status, 'draft') NOT IN ('accounting_ready', 'reconciled', 'locked')), 0)::numeric AS export_blocked_hours
+        FROM time_entries te
+        LEFT JOIN projects p
+            ON p.project_id = te.project_id
+        WHERE te.work_date BETWEEN @week_start AND @week_end
+          AND (
+              @can_view_all = TRUE
+              OR @can_manage_accounting = TRUE
+              OR @can_export = TRUE
+              OR p.project_manager_user_id = @user_id
+          );
+        """, connection))
+    {
+        summaryCommand.Parameters.AddWithValue("week_start", start);
+        summaryCommand.Parameters.AddWithValue("week_end", end);
+        summaryCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+        summaryCommand.Parameters.AddWithValue("can_view_all", access.CanViewAll);
+        summaryCommand.Parameters.AddWithValue("can_manage_accounting", access.CanManageAccounting);
+        summaryCommand.Parameters.AddWithValue("can_export", access.CanExport);
+
+        await using var reader = await summaryCommand.ExecuteReaderAsync();
+        if (await reader.ReadAsync())
+        {
+            totalEntries = reader.GetInt64(0);
+            totalHours = reader.GetDecimal(1);
+            draftEntries = reader.GetInt64(2);
+            draftHours = reader.GetDecimal(3);
+            submittedEntries = reader.GetInt64(4);
+            submittedHours = reader.GetDecimal(5);
+            managerApprovedEntries = reader.GetInt64(6);
+            managerApprovedHours = reader.GetDecimal(7);
+            projectApprovedEntries = reader.GetInt64(8);
+            projectApprovedHours = reader.GetDecimal(9);
+            accountingReadyEntries = reader.GetInt64(10);
+            accountingReadyHours = reader.GetDecimal(11);
+            reconciledEntries = reader.GetInt64(12);
+            reconciledHours = reader.GetDecimal(13);
+            lockedEntries = reader.GetInt64(14);
+            lockedHours = reader.GetDecimal(15);
+            returnedEntries = reader.GetInt64(16);
+            returnedHours = reader.GetDecimal(17);
+            projectLinkedEntries = reader.GetInt64(18);
+            taskLinkedEntries = reader.GetInt64(19);
+            exportReadyEntries = reader.GetInt64(20);
+            exportReadyHours = reader.GetDecimal(21);
+            exportBlockedEntries = reader.GetInt64(22);
+            exportBlockedHours = reader.GetDecimal(23);
+        }
+    }
+
+    long exportCount = 0;
+    long exportItemCount = 0;
+    decimal exportedHours = 0;
+
+    await using (var exportCommand = new NpgsqlCommand("""
+        SELECT
+            COUNT(*)::bigint,
+            COALESCE(SUM(item_count), 0)::bigint,
+            COALESCE(SUM(total_hours), 0)::numeric
+        FROM time_workflow_exports
+        WHERE COALESCE(week_start, @week_start) <= @week_end
+          AND COALESCE(week_end, @week_end) >= @week_start;
+        """, connection))
+    {
+        exportCommand.Parameters.AddWithValue("week_start", start);
+        exportCommand.Parameters.AddWithValue("week_end", end);
+
+        await using var reader = await exportCommand.ExecuteReaderAsync();
+        if (await reader.ReadAsync())
+        {
+            exportCount = reader.GetInt64(0);
+            exportItemCount = reader.GetInt64(1);
+            exportedHours = reader.GetDecimal(2);
+        }
+    }
+
+    var statusBreakdown = new List<object>();
+    await using (var breakdownCommand = new NpgsqlCommand("""
+        SELECT
+            COALESCE(te.status, 'draft') AS status,
+            COUNT(*)::bigint AS entry_count,
+            COALESCE(SUM(te.hours), 0)::numeric AS total_hours
+        FROM time_entries te
+        LEFT JOIN projects p
+            ON p.project_id = te.project_id
+        WHERE te.work_date BETWEEN @week_start AND @week_end
+          AND (
+              @can_view_all = TRUE
+              OR @can_manage_accounting = TRUE
+              OR @can_export = TRUE
+              OR p.project_manager_user_id = @user_id
+          )
+        GROUP BY COALESCE(te.status, 'draft')
+        ORDER BY COALESCE(te.status, 'draft');
+        """, connection))
+    {
+        breakdownCommand.Parameters.AddWithValue("week_start", start);
+        breakdownCommand.Parameters.AddWithValue("week_end", end);
+        breakdownCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+        breakdownCommand.Parameters.AddWithValue("can_view_all", access.CanViewAll);
+        breakdownCommand.Parameters.AddWithValue("can_manage_accounting", access.CanManageAccounting);
+        breakdownCommand.Parameters.AddWithValue("can_export", access.CanExport);
+
+        await using var reader = await breakdownCommand.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            statusBreakdown.Add(new
+            {
+                status = reader.GetString(0),
+                entryCount = reader.GetInt64(1),
+                totalHours = reader.GetDecimal(2)
+            });
+        }
+    }
+
+    var auditEvidence = new List<object>();
+    if (access.CanAudit || access.CanViewAll || access.CanManageAccounting || access.CanExport || access.CanProjectApprove)
+    {
+        await using var auditCommand = new NpgsqlCommand("""
+            SELECT
+                al.audit_log_id,
+                COALESCE(au.display_name, au.email, 'System') AS actor_name,
+                al.action,
+                al.entity_type,
+                al.entity_id,
+                al.created_at,
+                COALESCE(al.new_value::text, '') AS new_value_text
+            FROM audit_logs al
+            LEFT JOIN app_users au
+                ON au.user_id = al.actor_user_id
+            WHERE al.action ILIKE '%time%'
+               OR al.action ILIKE '%approval%'
+               OR al.action ILIKE '%approved%'
+               OR al.action ILIKE '%declined%'
+               OR al.action ILIKE '%reconcili%'
+               OR al.action ILIKE '%export%'
+               OR al.action ILIKE '%lock%'
+               OR al.entity_type IN ('timesheet', 'time_entry', 'time_workflow_export', 'accounting_reconciliation')
+            ORDER BY al.created_at DESC
+            LIMIT 30;
+            """, connection);
+
+        await using var reader = await auditCommand.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var preview = reader.GetString(6);
+            auditEvidence.Add(new
+            {
+                auditLogId = reader.GetGuid(0),
+                actorName = reader.GetString(1),
+                action = reader.GetString(2),
+                entityType = reader.GetString(3),
+                entityId = reader.IsDBNull(4) ? (Guid?)null : reader.GetGuid(4),
+                createdAt = reader.GetDateTime(5),
+                evidencePreview = preview.Length > 240 ? preview[..240] + "..." : preview
+            });
+        }
+    }
+
+    var workflowStages = new List<object>
+    {
+        new
+        {
+            stage = "manager_review",
+            title = "Manager Review",
+            entryCount = submittedEntries,
+            totalHours = submittedHours,
+            actionRequired = submittedEntries > 0 && (access.CanViewAll || access.CanProjectApprove),
+            guidance = submittedEntries > 0
+                ? "Submitted time is waiting for manager approval."
+                : "No submitted time is waiting for manager approval in this date range."
+        },
+        new
+        {
+            stage = "project_validation",
+            title = "Project Validation",
+            entryCount = managerApprovedEntries,
+            totalHours = managerApprovedHours,
+            actionRequired = managerApprovedEntries > 0 && (access.CanViewAll || access.CanProjectApprove),
+            guidance = managerApprovedEntries > 0
+                ? "Manager-approved time should be validated against project/task context before accounting review."
+                : "No manager-approved time is waiting for project validation in this date range."
+        },
+        new
+        {
+            stage = "accounting_review",
+            title = "Accounting Review",
+            entryCount = projectApprovedEntries + accountingReadyEntries,
+            totalHours = projectApprovedHours + accountingReadyHours,
+            actionRequired = (projectApprovedEntries + accountingReadyEntries) > 0 && (access.CanViewAll || access.CanManageAccounting),
+            guidance = (projectApprovedEntries + accountingReadyEntries) > 0
+                ? "Accounting can review validated time and reconcile exceptions."
+                : "No validated/accounting-ready time is waiting for accounting review."
+        },
+        new
+        {
+            stage = "reconciled_locked",
+            title = "Reconciled / Locked",
+            entryCount = reconciledEntries + lockedEntries,
+            totalHours = reconciledHours + lockedHours,
+            actionRequired = false,
+            guidance = "Reconciled and locked time is protected for audit and export evidence."
+        },
+        new
+        {
+            stage = "returned",
+            title = "Returned / Rejected",
+            entryCount = returnedEntries,
+            totalHours = returnedHours,
+            actionRequired = returnedEntries > 0,
+            guidance = returnedEntries > 0
+                ? "Returned or rejected time needs correction before it can continue through the workflow."
+                : "No returned or rejected time in this date range."
+        }
+    };
+
+    var roleGuidance = new List<object>
+    {
+        new { role = "Engineer", access = false, guidance = "Engineers do not receive approval, reconciliation, export, or audit workflow controls." },
+        new { role = "Manager", access = access.CanProjectApprove && !access.CanManageAccounting && !access.CanExport, guidance = "Managers focus on approval and project validation where assigned." },
+        new { role = "Project Management", access = access.CanProjectApprove, guidance = "Project Management validates manager-approved project/task time in PM scope." },
+        new { role = "PTC / Admin", access = access.CanViewAll || access.CanManageAccounting || access.CanExport, guidance = "PTC and Administrators can manage reconciliation, export readiness, and audit evidence." },
+        new { role = "Executive", access = access.CanView && !access.CanProjectApprove && !access.CanManageAccounting && !access.CanExport, guidance = "Executives receive read-only workflow status." }
+    };
+
+    return Results.Ok(new
+    {
+        module = "019M-AV Approval Export Audit Workflow Hardening",
+        dateRange = new { weekStart = start, weekEnd = end },
+        access = new
+        {
+            access.CanView,
+            access.CanProjectApprove,
+            access.CanManageAccounting,
+            access.CanExport,
+            access.CanAudit,
+            access.CanViewAll,
+            automationEnabled = false,
+            note = "This endpoint adds operational readiness and audit evidence. It does not change workflow status."
+        },
+        summary = new
+        {
+            totalEntries,
+            totalHours,
+            draftEntries,
+            draftHours,
+            submittedEntries,
+            submittedHours,
+            managerApprovedEntries,
+            managerApprovedHours,
+            projectApprovedEntries,
+            projectApprovedHours,
+            accountingReadyEntries,
+            accountingReadyHours,
+            reconciledEntries,
+            reconciledHours,
+            lockedEntries,
+            lockedHours,
+            returnedEntries,
+            returnedHours,
+            projectLinkedEntries,
+            taskLinkedEntries,
+            exportReadyEntries,
+            exportReadyHours,
+            exportBlockedEntries,
+            exportBlockedHours,
+            exportCount,
+            exportItemCount,
+            exportedHours,
+            auditEvidenceCount = auditEvidence.Count
+        },
+        exportReadiness = new
+        {
+            readyToExport = exportReadyEntries > 0 && exportBlockedEntries == 0,
+            readyEntryCount = exportReadyEntries,
+            readyHours = exportReadyHours,
+            blockedEntryCount = exportBlockedEntries,
+            blockedHours = exportBlockedHours,
+            existingExportCount = exportCount,
+            message = exportReadyEntries == 0
+                ? "No accounting-ready, reconciled, or locked entries are ready for export in this date range."
+                : exportBlockedEntries > 0
+                    ? "Some entries are still draft, submitted, manager-approved, or returned, so the export package is not fully clean."
+                    : "All scoped entries are in export-ready statuses."
+        },
+        workflowStages,
+        statusBreakdown,
+        roleGuidance,
+        auditEvidence
+    });
+});
+
 app.MapGet("/api/workflow/approval-export-summary", async (HttpContext httpContext) =>
 {
     var sessionUserId = GetProjectPulseSessionUserId(httpContext);

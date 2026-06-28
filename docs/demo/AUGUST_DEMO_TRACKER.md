@@ -519,3 +519,14 @@
 - Duplicate-risk rows are skipped and reported instead of blindly creating more assignments.
 - Promotion writes audit history and keeps assignment_source as resource_request_promotion.
 - Added mobile-ready promotion controls to the Resource Request to Work Task Assignment Handoff panel.
+
+## 019M-AV Approval Export Audit Workflow Hardening
+
+### Added
+- Added workflow operational readiness permission and endpoint.
+- Added workflow stage grouping for manager review, project validation, accounting review, reconciled/locked, and returned/rejected time.
+- Added export readiness logic showing ready versus blocked entries for the selected date range.
+- Added role guidance for Engineer, Manager, Project Management, PTC/Admin, and Executive workflow behavior.
+- Added audit evidence feed for workflow-related audit events.
+- Added mobile-ready operational readiness and audit evidence panels to the Approval / Export / Audit Workflow route.
+- No workflow status changes are performed by the readiness endpoint.

@@ -658,3 +658,12 @@ button[type='submit'] {
     width: 100%;
   }
 }
+
+/* 019M-AV Approval workflow operational readiness mobile readiness */
+@media (max-width: 820px) {
+  .approval-operational-grid,
+  .approval-role-guidance-grid,
+  .approval-audit-evidence-list {
+    grid-template-columns: 1fr !important;
+  }
+}

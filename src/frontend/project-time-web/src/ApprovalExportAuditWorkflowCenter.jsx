@@ -75,6 +75,7 @@ export default function ApprovalExportAuditWorkflowCenter() {
   const [summary, setSummary] = useState({ loading: true, data: null, error: null });
   const [items, setItems] = useState({ loading: true, data: null, error: null });
   const [exportsData, setExportsData] = useState({ loading: true, data: null, error: null });
+  const [operational, setOperational] = useState({ loading: true, data: null, error: null });
   const [statusMessage, setStatusMessage] = useState('');
   const [notes, setNotes] = useState({});
 
@@ -85,22 +86,26 @@ export default function ApprovalExportAuditWorkflowCenter() {
     setSummary((current) => ({ ...current, loading: true, error: null }));
     setItems((current) => ({ ...current, loading: true, error: null }));
     setExportsData((current) => ({ ...current, loading: true, error: null }));
+    setOperational((current) => ({ ...current, loading: true, error: null }));
 
     try {
-      const [summaryResult, itemsResult, exportsResult] = await Promise.all([
+      const [summaryResult, itemsResult, exportsResult, operationalResult] = await Promise.all([
         fetchJson('/api/workflow/approval-export-summary'),
         fetchJson(`/api/workflow/approval-items?weekStart=${weekStart}&weekEnd=${weekEnd}`),
-        fetchJson('/api/time-exports')
+        fetchJson('/api/time-exports'),
+        fetchJson(`/api/workflow/operational-readiness?weekStart=${weekStart}&weekEnd=${weekEnd}`)
       ]);
 
       setSummary({ loading: false, data: summaryResult, error: null });
       setItems({ loading: false, data: itemsResult, error: null });
       setExportsData({ loading: false, data: exportsResult, error: null });
+      setOperational({ loading: false, data: operationalResult, error: null });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to load workflow.';
       setSummary((current) => ({ ...current, loading: false, error: message }));
       setItems((current) => ({ ...current, loading: false, error: message }));
       setExportsData((current) => ({ ...current, loading: false, error: message }));
+      setOperational((current) => ({ ...current, loading: false, error: message }));
     }
   }
 
@@ -110,6 +115,12 @@ export default function ApprovalExportAuditWorkflowCenter() {
 
   const workflowItems = items.data?.items ?? [];
   const exportsList = exportsData.data?.exports ?? [];
+  const operationalData = operational.data;
+  const workflowStages = operationalData?.workflowStages ?? [];
+  const statusBreakdown = operationalData?.statusBreakdown ?? [];
+  const roleGuidance = operationalData?.roleGuidance ?? [];
+  const auditEvidence = operationalData?.auditEvidence ?? [];
+  const exportReadiness = operationalData?.exportReadiness ?? {};
   const counts = summary.data?.summary ?? {};
 
   function noteKey(item) {
@@ -205,6 +216,91 @@ export default function ApprovalExportAuditWorkflowCenter() {
           <small>Prepared in the last 30 days</small>
         </article>
       </div>
+
+      <article className="approval-export-panel approval-export-operational-panel">
+        <div className="approval-export-panel-heading">
+          <div>
+            <h3>Operational Readiness</h3>
+            <p className="muted">Role-specific workflow status, export readiness, and audit evidence for the selected date range.</p>
+          </div>
+          <span>{operational.loading ? 'Loading' : `${workflowStages.length} stage(s)`}</span>
+        </div>
+
+        {operational.error ? <div className="approval-export-banner error">{operational.error}</div> : null}
+
+        <div className="approval-operational-grid">
+          {workflowStages.map((stage) => (
+            <article key={stage.stage} className={`approval-operational-card status-${stage.stage}`}>
+              <span>{stage.title}</span>
+              <strong>{formatNumber(stage.entryCount)} item(s)</strong>
+              <small>{formatNumber(stage.totalHours)} hour(s)</small>
+              <p>{stage.guidance}</p>
+              {stage.actionRequired ? <em>Action required</em> : <em>No action required</em>}
+            </article>
+          ))}
+        </div>
+
+        <div className="approval-export-readiness-callout">
+          <div>
+            <span>Export readiness</span>
+            <strong>{formatNumber(exportReadiness.readyEntryCount)} ready / {formatNumber(exportReadiness.blockedEntryCount)} blocked</strong>
+            <p>{exportReadiness.message || 'Export readiness will appear after workflow data loads.'}</p>
+          </div>
+        </div>
+
+        <div className="approval-role-guidance-grid">
+          {roleGuidance.map((item) => (
+            <article key={item.role}>
+              <strong>{item.role}</strong>
+              <span>{item.access ? 'In scope' : 'No workflow controls'}</span>
+              <p>{item.guidance}</p>
+            </article>
+          ))}
+        </div>
+
+        <div className="approval-export-table-wrap">
+          <table className="approval-export-table">
+            <thead>
+              <tr>
+                <th>Status</th>
+                <th>Items</th>
+                <th>Hours</th>
+              </tr>
+            </thead>
+            <tbody>
+              {statusBreakdown.map((item) => (
+                <tr key={item.status}>
+                  <td>{labelStatus(item.status)}</td>
+                  <td>{formatNumber(item.entryCount)}</td>
+                  <td>{formatNumber(item.totalHours)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </article>
+
+      <article className="approval-export-panel approval-audit-evidence-panel">
+        <div className="approval-export-panel-heading">
+          <div>
+            <h3>Audit Evidence</h3>
+            <p className="muted">Recent workflow-related audit events supporting approvals, exports, reconciliation, and locks.</p>
+          </div>
+          <span>{auditEvidence.length} event(s)</span>
+        </div>
+
+        <div className="approval-audit-evidence-list">
+          {auditEvidence.map((event) => (
+            <article key={event.auditLogId}>
+              <strong>{labelStatus(event.action)}</strong>
+              <small>{event.entityType} · {event.actorName} · {formatDate(event.createdAt)}</small>
+              <p>{event.evidencePreview || 'Audit event recorded.'}</p>
+            </article>
+          ))}
+        </div>
+
+        {!operational.loading && auditEvidence.length === 0 ? <p className="muted">No workflow audit evidence was found.</p> : null}
+      </article>
 
       <div className="approval-export-layout">
         <article className="approval-export-panel">
