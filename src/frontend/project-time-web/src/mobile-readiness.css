@@ -615,3 +615,12 @@ button[type='submit'] {
     margin-top: 0.25rem;
   }
 }
+
+/* 019M-AS Project link confirmation mobile readiness */
+@media (max-width: 820px) {
+  .handoff-confirm-panel select,
+  .handoff-confirm-panel textarea,
+  .handoff-confirm-panel button {
+    width: 100%;
+  }
+}

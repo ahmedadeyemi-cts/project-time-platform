@@ -2417,6 +2417,17 @@ app.MapGet("/api/project-intake/work-task-handoff", async (HttpContext httpConte
         || permissions.Contains("VIEW_PROJECT_INTAKE_AGING")
         || permissions.Contains("VIEW_INTAKE_WORK_TASK_HANDOFF");
 
+    var canManageProjectLinks =
+        canViewAll
+        || roles.Contains("PROJECT_MANAGEMENT")
+        || roles.Contains("PROJECT_MANAGER")
+        || roles.Contains("PM_TEAM_LEAD")
+        || roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD")
+        || permissions.Contains("MANAGE_INTAKE_PROJECT_LINKS")
+        || permissions.Contains("MANAGE_PROJECT_INTAKE")
+        || permissions.Contains("MANAGE_ALL")
+        || permissions.Contains("SYSTEM_ADMINISTRATION");
+
     if (!canViewAll && !canViewManaged)
     {
         return Results.Json(new
@@ -2431,6 +2442,15 @@ app.MapGet("/api/project-intake/work-task-handoff", async (HttpContext httpConte
 
     await using (var command = new NpgsqlCommand("""
         WITH direct_links AS (
+            SELECT DISTINCT project_intake_request_id, project_id
+            FROM project_intake_project_links
+            WHERE project_intake_request_id IS NOT NULL
+              AND project_id IS NOT NULL
+              AND COALESCE(is_active, TRUE) = TRUE
+              AND link_status = 'confirmed'
+
+            UNION
+
             SELECT DISTINCT project_intake_request_id, project_id
             FROM engineering_resource_requests
             WHERE project_intake_request_id IS NOT NULL
@@ -2767,6 +2787,7 @@ app.MapGet("/api/project-intake/work-task-handoff", async (HttpContext httpConte
             canViewAll,
             canViewManaged,
             automationEnabled = false,
+            canManageProjectLinks,
             note = "This release exposes handoff readiness. It does not automatically convert intake records into projects or tasks yet."
         },
         lifecycle = new[]
@@ -2792,6 +2813,571 @@ app.MapGet("/api/project-intake/work-task-handoff", async (HttpContext httpConte
         intakes,
         projects
     });
+});
+
+
+// 019M-AS Intake Project Link Confirmation + Resource Assignment Handoff
+app.MapGet("/api/project-intake/project-link-options", async (HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var roles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    var permissions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+    await using (var accessCommand = new NpgsqlCommand("""
+        SELECT
+            r.role_code,
+            COALESCE(p.permission_code, '') AS permission_code
+        FROM app_user_role_assignments ura
+        JOIN app_roles r
+            ON r.app_role_id = ura.app_role_id
+           AND r.is_active = TRUE
+        LEFT JOIN app_role_permissions rp
+            ON rp.app_role_id = r.app_role_id
+        LEFT JOIN app_permissions p
+            ON p.app_permission_id = rp.app_permission_id
+        WHERE ura.user_id = @user_id
+          AND ura.is_active = TRUE;
+        """, connection))
+    {
+        accessCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+
+        await using var reader = await accessCommand.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            roles.Add(reader.GetString(0));
+
+            if (!reader.IsDBNull(1) && !string.IsNullOrWhiteSpace(reader.GetString(1)))
+            {
+                permissions.Add(reader.GetString(1));
+            }
+        }
+    }
+
+    var canViewAll =
+        roles.Contains("ADMINISTRATOR")
+        || roles.Contains("PROJECT_TEAM_COORDINATOR")
+        || permissions.Contains("SYSTEM_ADMINISTRATION")
+        || permissions.Contains("MANAGE_ALL");
+
+    var canViewManaged =
+        roles.Contains("PROJECT_MANAGEMENT")
+        || roles.Contains("PROJECT_MANAGER")
+        || roles.Contains("PM_TEAM_LEAD")
+        || roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD")
+        || permissions.Contains("VIEW_PROJECT_INTAKE")
+        || permissions.Contains("VIEW_PROJECT_INTAKE_AGING")
+        || permissions.Contains("VIEW_INTAKE_WORK_TASK_HANDOFF")
+        || permissions.Contains("MANAGE_INTAKE_PROJECT_LINKS");
+
+    var canManageProjectLinks =
+        canViewAll
+        || roles.Contains("PROJECT_MANAGEMENT")
+        || roles.Contains("PROJECT_MANAGER")
+        || roles.Contains("PM_TEAM_LEAD")
+        || roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD")
+        || permissions.Contains("MANAGE_INTAKE_PROJECT_LINKS")
+        || permissions.Contains("MANAGE_PROJECT_INTAKE");
+
+    if (!canViewAll && !canViewManaged)
+    {
+        return Results.Json(new
+        {
+            canViewProjectLinkOptions = false,
+            status = "access_denied",
+            message = "Project link options are restricted to intake and project handoff roles."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var intakes = new List<Dictionary<string, object?>>();
+    var intakeIndex = new Dictionary<Guid, Dictionary<string, object?>>();
+
+    await using (var command = new NpgsqlCommand("""
+        WITH active_link AS (
+            SELECT DISTINCT ON (project_intake_request_id)
+                project_intake_request_id,
+                project_id,
+                confirmation_note,
+                confirmed_at
+            FROM project_intake_project_links
+            WHERE is_active = TRUE
+              AND link_status = 'confirmed'
+            ORDER BY project_intake_request_id, confirmed_at DESC
+        )
+        SELECT
+            pir.project_intake_request_id,
+            pir.request_number,
+            COALESCE(pir.client_name, '') AS client_name,
+            pir.request_title,
+            COALESCE(pir.intake_status, 'new') AS intake_status,
+            COALESCE(pir.priority, 'normal') AS priority,
+            COALESCE(pir.project_signed_date::text, '') AS project_signed_date_text,
+            COALESCE(pm.display_name, '') AS assigned_pm_name,
+            al.project_id AS confirmed_project_id,
+            COALESCE(cp.project_code, '') AS confirmed_project_code,
+            COALESCE(cp.project_name, '') AS confirmed_project_name,
+            COALESCE(al.confirmation_note, '') AS confirmation_note
+        FROM project_intake_requests pir
+        LEFT JOIN app_users pm
+            ON pm.user_id = pir.assigned_pm_user_id
+        LEFT JOIN active_link al
+            ON al.project_intake_request_id = pir.project_intake_request_id
+        LEFT JOIN projects cp
+            ON cp.project_id = al.project_id
+        WHERE @can_view_all = TRUE
+           OR pir.assigned_pm_user_id = @user_id
+        ORDER BY pir.created_at DESC NULLS LAST;
+        """, connection))
+    {
+        command.Parameters.AddWithValue("can_view_all", canViewAll);
+        command.Parameters.AddWithValue("user_id", sessionUserId.Value);
+
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var intakeId = reader.GetGuid(0);
+            var item = new Dictionary<string, object?>
+            {
+                ["intakeId"] = intakeId,
+                ["requestNumber"] = reader.GetString(1),
+                ["clientName"] = reader.GetString(2),
+                ["requestTitle"] = reader.GetString(3),
+                ["intakeStatus"] = reader.GetString(4),
+                ["priority"] = reader.GetString(5),
+                ["projectSignedDate"] = reader.GetString(6),
+                ["assignedPmName"] = reader.GetString(7),
+                ["confirmedProjectId"] = reader.IsDBNull(8) ? null : reader.GetGuid(8),
+                ["confirmedProjectCode"] = reader.GetString(9),
+                ["confirmedProjectName"] = reader.GetString(10),
+                ["confirmationNote"] = reader.GetString(11),
+                ["candidateProjects"] = new List<object>()
+            };
+
+            intakes.Add(item);
+            intakeIndex[intakeId] = item;
+        }
+    }
+
+    var projects = new List<object>();
+
+    await using (var projectCommand = new NpgsqlCommand("""
+        SELECT
+            p.project_id,
+            p.project_code,
+            p.project_name,
+            COALESCE(c.client_name, '') AS client_name,
+            COALESCE(pm.display_name, '') AS project_manager_name,
+            p.project_manager_user_id
+        FROM projects p
+        LEFT JOIN clients c
+            ON c.client_id = p.client_id
+        LEFT JOIN app_users pm
+            ON pm.user_id = p.project_manager_user_id
+        WHERE COALESCE(p.status, 'active') <> 'archived'
+          AND (@can_view_all = TRUE OR p.project_manager_user_id = @user_id)
+        ORDER BY c.client_name, p.project_name, p.project_code;
+        """, connection))
+    {
+        projectCommand.Parameters.AddWithValue("can_view_all", canViewAll);
+        projectCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+
+        await using var reader = await projectCommand.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            projects.Add(new
+            {
+                projectId = reader.GetGuid(0),
+                projectCode = reader.GetString(1),
+                projectName = reader.GetString(2),
+                clientName = reader.GetString(3),
+                projectManagerName = reader.GetString(4),
+                projectManagerUserId = reader.IsDBNull(5) ? (Guid?)null : reader.GetGuid(5)
+            });
+        }
+    }
+
+    await using (var candidateCommand = new NpgsqlCommand("""
+        SELECT DISTINCT
+            pir.project_intake_request_id,
+            p.project_id,
+            p.project_code,
+            p.project_name,
+            COALESCE(c.client_name, '') AS client_name,
+            COALESCE(pm.display_name, '') AS project_manager_name
+        FROM project_intake_requests pir
+        JOIN projects p
+            ON (
+                (pir.client_id IS NOT NULL AND p.client_id = pir.client_id)
+                OR (pir.assigned_pm_user_id IS NOT NULL AND p.project_manager_user_id = pir.assigned_pm_user_id)
+                OR (
+                    NULLIF(TRIM(pir.request_title), '') IS NOT NULL
+                    AND LOWER(p.project_name) = LOWER(pir.request_title)
+                )
+            )
+        LEFT JOIN clients c
+            ON c.client_id = p.client_id
+        LEFT JOIN app_users pm
+            ON pm.user_id = p.project_manager_user_id
+        WHERE COALESCE(p.status, 'active') <> 'archived'
+          AND (@can_view_all = TRUE OR pir.assigned_pm_user_id = @user_id OR p.project_manager_user_id = @user_id)
+        ORDER BY pir.project_intake_request_id, p.project_code, p.project_name;
+        """, connection))
+    {
+        candidateCommand.Parameters.AddWithValue("can_view_all", canViewAll);
+        candidateCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+
+        await using var reader = await candidateCommand.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var intakeId = reader.GetGuid(0);
+            if (!intakeIndex.TryGetValue(intakeId, out var intake)) continue;
+
+            var candidates = (List<object>)intake["candidateProjects"]!;
+            candidates.Add(new
+            {
+                projectId = reader.GetGuid(1),
+                projectCode = reader.GetString(2),
+                projectName = reader.GetString(3),
+                clientName = reader.GetString(4),
+                projectManagerName = reader.GetString(5)
+            });
+        }
+    }
+
+    return Results.Ok(new
+    {
+        module = "019M-AS Intake Project Link Confirmation",
+        canViewProjectLinkOptions = true,
+        canManageProjectLinks,
+        access = new
+        {
+            canViewAll,
+            canViewManaged,
+            canManageProjectLinks,
+            automationEnabled = false,
+            note = "Project links are manually confirmed. This does not automatically create projects or work tasks."
+        },
+        summary = new
+        {
+            intakeCount = intakes.Count,
+            confirmedLinkCount = intakes.Count(item => item.TryGetValue("confirmedProjectId", out var value) && value is Guid),
+            candidateMatchCount = intakes.Sum(item => ((List<object>)item["candidateProjects"]!).Count),
+            projectOptionCount = projects.Count
+        },
+        intakes,
+        projects
+    });
+});
+
+app.MapPost("/api/project-intake/{intakeId:guid}/project-link", async (Guid intakeId, JsonElement payload, HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    if (!payload.TryGetProperty("projectId", out var projectElement)
+        || projectElement.ValueKind != JsonValueKind.String
+        || !Guid.TryParse(projectElement.GetString(), out var projectId)
+        || projectId == Guid.Empty)
+    {
+        return Results.BadRequest(new
+        {
+            status = "validation_failed",
+            message = "A valid projectId is required to confirm an intake project link."
+        });
+    }
+
+    var confirmationNote = payload.TryGetProperty("confirmationNote", out var noteElement) && noteElement.ValueKind == JsonValueKind.String
+        ? noteElement.GetString()?.Trim()
+        : null;
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var roles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    var permissions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+    await using (var accessCommand = new NpgsqlCommand("""
+        SELECT
+            r.role_code,
+            COALESCE(p.permission_code, '') AS permission_code
+        FROM app_user_role_assignments ura
+        JOIN app_roles r
+            ON r.app_role_id = ura.app_role_id
+           AND r.is_active = TRUE
+        LEFT JOIN app_role_permissions rp
+            ON rp.app_role_id = r.app_role_id
+        LEFT JOIN app_permissions p
+            ON p.app_permission_id = rp.app_permission_id
+        WHERE ura.user_id = @user_id
+          AND ura.is_active = TRUE;
+        """, connection))
+    {
+        accessCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+
+        await using var reader = await accessCommand.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            roles.Add(reader.GetString(0));
+
+            if (!reader.IsDBNull(1) && !string.IsNullOrWhiteSpace(reader.GetString(1)))
+            {
+                permissions.Add(reader.GetString(1));
+            }
+        }
+    }
+
+    var canManageAll =
+        roles.Contains("ADMINISTRATOR")
+        || roles.Contains("PROJECT_TEAM_COORDINATOR")
+        || permissions.Contains("SYSTEM_ADMINISTRATION")
+        || permissions.Contains("MANAGE_ALL");
+
+    var canManageProjectLinks =
+        canManageAll
+        || roles.Contains("PROJECT_MANAGEMENT")
+        || roles.Contains("PROJECT_MANAGER")
+        || roles.Contains("PM_TEAM_LEAD")
+        || roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD")
+        || permissions.Contains("MANAGE_INTAKE_PROJECT_LINKS")
+        || permissions.Contains("MANAGE_PROJECT_INTAKE");
+
+    if (!canManageProjectLinks)
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Project link confirmation is restricted to Administrators, PTC, and Project Management roles."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    string requestNumber;
+    string requestTitle;
+    Guid? intakePmUserId;
+    string projectCode;
+    string projectName;
+    Guid? projectManagerUserId;
+
+    await using (var readCommand = new NpgsqlCommand("""
+        SELECT
+            pir.request_number,
+            pir.request_title,
+            pir.assigned_pm_user_id,
+            p.project_code,
+            p.project_name,
+            p.project_manager_user_id
+        FROM project_intake_requests pir
+        CROSS JOIN projects p
+        WHERE pir.project_intake_request_id = @intake_id
+          AND p.project_id = @project_id;
+        """, connection))
+    {
+        readCommand.Parameters.AddWithValue("intake_id", intakeId);
+        readCommand.Parameters.AddWithValue("project_id", projectId);
+
+        await using var reader = await readCommand.ExecuteReaderAsync();
+        if (!await reader.ReadAsync())
+        {
+            return Results.NotFound(new
+            {
+                status = "not_found",
+                message = "The selected intake or project was not found."
+            });
+        }
+
+        requestNumber = reader.GetString(0);
+        requestTitle = reader.GetString(1);
+        intakePmUserId = reader.IsDBNull(2) ? null : reader.GetGuid(2);
+        projectCode = reader.GetString(3);
+        projectName = reader.GetString(4);
+        projectManagerUserId = reader.IsDBNull(5) ? null : reader.GetGuid(5);
+    }
+
+    if (!canManageAll
+        && intakePmUserId != sessionUserId.Value
+        && projectManagerUserId != sessionUserId.Value)
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Project Managers can confirm links only for intakes or projects assigned to them."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    await using var transaction = await connection.BeginTransactionAsync();
+
+    try
+    {
+        await using (var supersedeCommand = new NpgsqlCommand("""
+            UPDATE project_intake_project_links
+            SET is_active = FALSE,
+                link_status = 'superseded',
+                updated_at = NOW()
+            WHERE project_intake_request_id = @intake_id
+              AND project_id <> @project_id
+              AND is_active = TRUE;
+            """, connection, transaction))
+        {
+            supersedeCommand.Parameters.AddWithValue("intake_id", intakeId);
+            supersedeCommand.Parameters.AddWithValue("project_id", projectId);
+            await supersedeCommand.ExecuteNonQueryAsync();
+        }
+
+        Guid linkId;
+        await using (var linkCommand = new NpgsqlCommand("""
+            INSERT INTO project_intake_project_links (
+                project_intake_request_id,
+                project_id,
+                link_status,
+                link_source,
+                confirmation_note,
+                confirmed_by_user_id,
+                confirmed_at,
+                is_active,
+                updated_at
+            )
+            VALUES (
+                @intake_id,
+                @project_id,
+                'confirmed',
+                'manual_confirmation',
+                NULLIF(@confirmation_note, ''),
+                @confirmed_by_user_id,
+                NOW(),
+                TRUE,
+                NOW()
+            )
+            ON CONFLICT (project_intake_request_id, project_id) DO UPDATE
+            SET link_status = 'confirmed',
+                link_source = 'manual_confirmation',
+                confirmation_note = NULLIF(EXCLUDED.confirmation_note, ''),
+                confirmed_by_user_id = EXCLUDED.confirmed_by_user_id,
+                confirmed_at = NOW(),
+                is_active = TRUE,
+                updated_at = NOW()
+            RETURNING project_intake_project_link_id;
+            """, connection, transaction))
+        {
+            linkCommand.Parameters.AddWithValue("intake_id", intakeId);
+            linkCommand.Parameters.AddWithValue("project_id", projectId);
+            linkCommand.Parameters.AddWithValue("confirmation_note", confirmationNote ?? "");
+            linkCommand.Parameters.AddWithValue("confirmed_by_user_id", sessionUserId.Value);
+            linkId = (Guid)(await linkCommand.ExecuteScalarAsync() ?? throw new InvalidOperationException("Unable to confirm intake project link."));
+        }
+
+        await using (var resourceCommand = new NpgsqlCommand("""
+            UPDATE engineering_resource_requests
+            SET project_id = @project_id,
+                updated_at = NOW()
+            WHERE project_intake_request_id = @intake_id
+              AND project_id IS NULL;
+            """, connection, transaction))
+        {
+            resourceCommand.Parameters.AddWithValue("intake_id", intakeId);
+            resourceCommand.Parameters.AddWithValue("project_id", projectId);
+            await resourceCommand.ExecuteNonQueryAsync();
+        }
+
+        await using (var documentCommand = new NpgsqlCommand("""
+            UPDATE project_intake_documents
+            SET project_id = @project_id
+            WHERE project_intake_request_id = @intake_id
+              AND project_id IS NULL
+              AND COALESCE(is_active, TRUE) = TRUE;
+            """, connection, transaction))
+        {
+            documentCommand.Parameters.AddWithValue("intake_id", intakeId);
+            documentCommand.Parameters.AddWithValue("project_id", projectId);
+            await documentCommand.ExecuteNonQueryAsync();
+        }
+
+        await using (var intakeCommand = new NpgsqlCommand("""
+            UPDATE project_intake_requests
+            SET updated_at = NOW(),
+                triage_started_at = COALESCE(triage_started_at, NOW()),
+                last_post_intake_edit_at = NOW(),
+                last_post_intake_edit_by_user_id = @user_id,
+                last_post_intake_edit_note = @note
+            WHERE project_intake_request_id = @intake_id;
+            """, connection, transaction))
+        {
+            intakeCommand.Parameters.AddWithValue("intake_id", intakeId);
+            intakeCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+            intakeCommand.Parameters.AddWithValue("note", $"Project link confirmed to {projectCode}.");
+            await intakeCommand.ExecuteNonQueryAsync();
+        }
+
+        var auditJson = JsonSerializer.Serialize(new
+        {
+            intakeId,
+            requestNumber,
+            requestTitle,
+            projectId,
+            projectCode,
+            projectName,
+            confirmationNote
+        });
+
+        await using (var auditCommand = new NpgsqlCommand("""
+            INSERT INTO audit_logs (
+                actor_user_id,
+                action,
+                entity_type,
+                entity_id,
+                new_value
+            )
+            VALUES (
+                @actor_user_id,
+                'project_intake_project_link_confirmed',
+                'project_intake_request',
+                @entity_id,
+                @new_value::jsonb
+            );
+            """, connection, transaction))
+        {
+            auditCommand.Parameters.AddWithValue("actor_user_id", sessionUserId.Value);
+            auditCommand.Parameters.AddWithValue("entity_id", intakeId);
+            auditCommand.Parameters.AddWithValue("new_value", auditJson);
+            await auditCommand.ExecuteNonQueryAsync();
+        }
+
+        await transaction.CommitAsync();
+
+        return Results.Ok(new
+        {
+            status = "project_link_confirmed",
+            module = "019M-AS Intake Project Link Confirmation",
+            intakeId,
+            projectId,
+            linkId,
+            requestNumber,
+            projectCode,
+            projectName,
+            message = $"Project link confirmed: {requestNumber} → {projectCode}."
+        });
+    }
+    catch
+    {
+        await transaction.RollbackAsync();
+        throw;
+    }
 });
 
 app.MapGet("/api/project-intake/aging-summary", async (HttpContext httpContext) =>

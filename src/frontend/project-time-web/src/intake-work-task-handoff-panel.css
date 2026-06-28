@@ -171,3 +171,51 @@
   font-weight: 800;
   padding: 0.3rem 0.55rem;
 }
+
+/* 019M-AS Project link confirmation controls */
+.handoff-confirm-panel {
+  margin-top: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: var(--card);
+  padding: 1rem;
+}
+
+.handoff-confirm-panel h4 {
+  margin: 0 0 0.35rem;
+}
+
+.handoff-confirm-panel label {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 0.75rem;
+  font-weight: 800;
+}
+
+.handoff-confirm-panel select,
+.handoff-confirm-panel textarea {
+  border: 1px solid var(--border);
+  border-radius: 0.85rem;
+  background: var(--input-background, #fff);
+  color: inherit;
+  padding: 0.65rem 0.75rem;
+  width: 100%;
+}
+
+.handoff-confirm-panel textarea {
+  min-height: 76px;
+  resize: vertical;
+}
+
+.handoff-confirm-panel .primary-action {
+  margin-top: 0.85rem;
+}
+
+.handoff-confirmed-link {
+  border-radius: 0.85rem;
+  background: rgba(22, 163, 74, 0.1);
+  color: #15803d;
+  font-weight: 900;
+  padding: 0.65rem 0.75rem;
+  margin-top: 0.75rem;
+}

@@ -488,3 +488,14 @@
 - Shows task readiness, assignment readiness, assigned engineer counts, assigned hours, and timesheet activity.
 - Keeps this as visibility/readiness first; automatic intake conversion is intentionally not enabled yet.
 - Added mobile-ready handoff cards on the Project Intake route.
+
+## 019M-AS Intake Project Link Confirmation + Resource Assignment Handoff
+
+### Added
+- Added a dedicated confirmed intake-to-project link table.
+- Added project link management permission.
+- Added project link options endpoint with suggested candidate matches.
+- Added manual project link confirmation endpoint.
+- Updated handoff readiness to treat confirmed links as direct links.
+- Confirmation updates unlinked resource requests and intake documents for the selected intake.
+- Added Admin/PTC/Project Management controls while keeping engineers out of handoff management.
