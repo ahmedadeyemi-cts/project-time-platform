@@ -911,7 +911,7 @@ function getPrimaryNavigationPriority(user) {
     return ['dashboard', 'manager-approval', 'utilization', 'project-workspace'];
   }
 
-  return ['dashboard', 'timesheet', 'project-workspace', 'holiday-admin', 'utilization'];
+  return ['timesheet', 'utilization', 'holiday-admin', 'project-workspace'];
 }
 
 function getNavigationGroup(item) {
@@ -3362,8 +3362,6 @@ Analytics - Variphy / Infortel`}
           {navigationModel.groups.length > 0 ? (
             <div
               className="enterprise-more-navigation"
-              onMouseEnter={() => setIsTopMoreNavigationOpen(true)}
-              onMouseLeave={() => setIsTopMoreNavigationOpen(false)}
             >
               <button
                 type="button"

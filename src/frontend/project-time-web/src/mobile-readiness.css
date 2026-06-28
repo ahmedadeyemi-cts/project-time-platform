@@ -358,3 +358,16 @@ button[type='submit'] {
     width: auto !important;
   }
 }
+
+/* 019M-AJ repair: profile and View-As should not cover top navigation on phones. */
+@media (max-width: 700px) {
+  .profile-dropdown-menu {
+    opacity: 1 !important;
+    background: #ffffff !important;
+  }
+
+  #projectpulse-global-view-as {
+    top: auto !important;
+    bottom: 0.75rem !important;
+  }
+}

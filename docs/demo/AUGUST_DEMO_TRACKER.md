@@ -340,3 +340,12 @@
 - Hid the legacy sidebar so it no longer consumes left-side workspace content area.
 - Repaired global Administrator View-As visibility and refresh behavior after login.
 - Added mobile guardrails so the More menu opens by tap and does not permanently cover page content.
+
+## 019M-AJ Top Navigation Visual Repair
+
+### Added
+- Moved Administrator View-As from the top navigation area to the bottom-right utility area.
+- Made the profile dropdown opaque and readable.
+- Anchored the profile initials button to the far-right header utility area.
+- Changed the More menu to open by click instead of hover.
+- Adjusted Engineer/simple-role direct navigation to Timesheet, Utilization, Holidays, and Project Workspace.

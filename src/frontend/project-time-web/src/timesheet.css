@@ -4994,3 +4994,178 @@ textarea:focus {
     max-width: none !important;
   }
 }
+
+/* 019M-AJ repair: keep top nav clear, move View-As away from menu, and make profile menu readable. */
+.enterprise-top-bar {
+  display: grid !important;
+  grid-template-columns: auto minmax(180px, 300px) minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  min-height: auto !important;
+  overflow: visible !important;
+  padding: 0.85rem 1rem !important;
+}
+
+.enterprise-top-bar > .signal-logo,
+.enterprise-top-bar > .brand-lockup {
+  grid-column: 1;
+}
+
+.enterprise-top-context {
+  grid-column: 2;
+  align-self: center !important;
+}
+
+.enterprise-top-navigation {
+  grid-column: 3;
+  align-self: center !important;
+  justify-content: flex-end !important;
+  padding-right: 0.25rem;
+}
+
+.enterprise-header-utilities {
+  grid-column: 4;
+  align-self: center !important;
+  margin-left: 0.35rem !important;
+  position: relative;
+  z-index: 1500;
+}
+
+.enterprise-header-utilities .profile-menu-shell {
+  position: relative !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  margin: 0 !important;
+}
+
+.enterprise-header-utilities .profile-avatar-button {
+  width: 48px !important;
+  height: 48px !important;
+  min-width: 48px !important;
+  min-height: 48px !important;
+  border-radius: 999px !important;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.22) !important;
+}
+
+.profile-dropdown-menu {
+  position: absolute !important;
+  right: 0 !important;
+  left: auto !important;
+  top: calc(100% + 0.75rem) !important;
+  width: min(360px, calc(100vw - 2rem)) !important;
+  min-width: min(320px, calc(100vw - 2rem)) !important;
+  max-height: calc(100vh - 8rem) !important;
+  overflow-y: auto !important;
+  opacity: 1 !important;
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border: 1px solid rgba(148, 163, 184, 0.34) !important;
+  border-radius: 22px !important;
+  box-shadow: 0 28px 70px rgba(15, 23, 42, 0.28) !important;
+  backdrop-filter: none !important;
+  z-index: 1800 !important;
+}
+
+.profile-dropdown-menu::before,
+.profile-dropdown-menu::after {
+  display: none !important;
+}
+
+.profile-dropdown-header,
+.profile-dropdown-menu button {
+  opacity: 1 !important;
+}
+
+.profile-dropdown-menu button {
+  color: #0f172a !important;
+  background: transparent !important;
+}
+
+.profile-dropdown-menu button:hover {
+  background: rgba(37, 99, 235, 0.08) !important;
+  color: #1d4ed8 !important;
+}
+
+/* Move global Admin View-As to the bottom-right so it never covers top navigation. */
+#projectpulse-global-view-as {
+  position: fixed !important;
+  top: auto !important;
+  left: auto !important;
+  right: 1.25rem !important;
+  bottom: 1.25rem !important;
+  max-width: min(620px, calc(100vw - 2rem)) !important;
+  z-index: 1350 !important;
+  box-shadow: 0 20px 55px rgba(15, 23, 42, 0.28) !important;
+}
+
+#projectpulse-global-view-as label {
+  white-space: nowrap;
+}
+
+#projectpulse-global-view-as select {
+  min-width: 260px;
+}
+
+/* More menu opens only when React state says it is open. No hover-only behavior. */
+.enterprise-more-navigation:hover .enterprise-more-dropdown {
+  display: grid;
+}
+
+@media (max-width: 1180px) {
+  .enterprise-top-bar {
+    grid-template-columns: auto minmax(160px, 1fr) auto !important;
+  }
+
+  .enterprise-top-context {
+    grid-column: 2;
+  }
+
+  .enterprise-header-utilities {
+    grid-column: 3;
+  }
+
+  .enterprise-top-navigation {
+    grid-column: 1 / -1;
+    justify-content: flex-start !important;
+  }
+}
+
+@media (max-width: 700px) {
+  .enterprise-top-bar {
+    grid-template-columns: 1fr auto !important;
+  }
+
+  .enterprise-top-context {
+    grid-column: 1;
+  }
+
+  .enterprise-header-utilities {
+    grid-column: 2;
+  }
+
+  .enterprise-top-navigation {
+    grid-column: 1 / -1;
+  }
+
+  .profile-dropdown-menu {
+    position: fixed !important;
+    top: 5.75rem !important;
+    left: 0.75rem !important;
+    right: 0.75rem !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-height: calc(100vh - 7rem) !important;
+  }
+
+  #projectpulse-global-view-as {
+    left: 0.75rem !important;
+    right: 0.75rem !important;
+    bottom: 0.75rem !important;
+    max-width: none !important;
+  }
+
+  #projectpulse-global-view-as select {
+    min-width: 0;
+    width: 100%;
+  }
+}
