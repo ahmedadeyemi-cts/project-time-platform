@@ -1,0 +1,268 @@
+.project-workspace-center {
+  margin-top: 0;
+  padding: 1.5rem;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 1.25rem;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.015);
+}
+
+.project-workspace-header,
+.workspace-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.workspace-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 1rem;
+  margin: 1rem 0;
+}
+
+.workspace-summary-grid article,
+.workspace-panel {
+  padding: 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.74);
+}
+
+.workspace-summary-grid span,
+.workspace-summary-grid small {
+  display: block;
+}
+
+.workspace-summary-grid strong {
+  display: block;
+  margin: 0.35rem 0;
+  font-size: 1.75rem;
+}
+
+.workspace-panel {
+  margin-top: 1rem;
+}
+
+.workspace-card-grid,
+.workspace-doc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 0.85rem;
+}
+
+.workspace-project-card,
+.workspace-document-card,
+.workspace-resource-card,
+.workspace-empty {
+  padding: 0.9rem;
+  border-radius: 0.85rem;
+  background: rgba(148, 163, 184, 0.1);
+}
+
+.workspace-project-card dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.workspace-project-card dt {
+  font-weight: 800;
+}
+
+.workspace-project-card dd {
+  margin: 0;
+}
+
+.workspace-document-card > div:first-child,
+.workspace-resource-card > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.workspace-document-flags {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0.75rem 0;
+}
+
+.workspace-document-flags span {
+  padding: 0.35rem 0.55rem;
+  border-radius: 0.55rem;
+  background: rgba(255, 255, 255, 0.72);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.workspace-download-link {
+  display: inline-flex;
+  margin-top: 0.5rem;
+  font-weight: 800;
+}
+
+.workspace-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.workspace-filter-row button {
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  border-radius: 999px;
+  padding: 0.45rem 0.75rem;
+  cursor: pointer;
+}
+
+.workspace-filter-row button.active {
+  font-weight: 800;
+  background: rgba(15, 118, 110, 0.14);
+}
+
+.workspace-badge {
+  display: inline-flex;
+  width: fit-content;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 800;
+  background: rgba(148, 163, 184, 0.22);
+}
+
+.workspace-badge.safe {
+  background: rgba(16, 185, 129, 0.115);
+}
+
+.workspace-badge.attention {
+  background: rgba(245, 158, 11, 0.115);
+}
+
+.workspace-table-wrap {
+  overflow-x: auto;
+}
+
+.workspace-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.workspace-table th,
+.workspace-table td {
+  padding: 0.8rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.35);
+  text-align: left;
+  vertical-align: top;
+}
+
+.workspace-table td span {
+  display: block;
+  margin-top: 0.2rem;
+  opacity: 0.75;
+}
+
+.workspace-error {
+  margin: 1rem 0;
+  padding: 0.85rem 1rem;
+  border-radius: 0.8rem;
+  font-weight: 800;
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.app-shell:has(.project-workspace-route-panel) > section:not(.project-workspace-route-panel),
+.app-shell:has(.project-workspace-route-panel) > .module-grid {
+  display: none !important;
+}
+
+.app-shell:has(.project-workspace-route-panel) > .project-workspace-route-panel {
+  display: block !important;
+}
+
+.project-workspace-route-panel {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.admin-view-as-panel {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-end;
+  margin-bottom: 1rem;
+  padding: 1rem;
+  border: 1px solid rgba(14, 165, 233, 0.32);
+  border-radius: 1rem;
+  background: rgba(14, 165, 233, 0.08);
+}
+
+.admin-view-as-panel p {
+  margin: 0.25rem 0 0;
+  opacity: 0.75;
+}
+
+.admin-view-as-panel label {
+  display: grid;
+  gap: 0.35rem;
+  min-width: min(440px, 100%);
+  font-weight: 800;
+}
+
+.admin-view-as-panel select {
+  width: 100%;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  border-radius: 0.65rem;
+  background: var(--input-background, #ffffff);
+  color: inherit;
+}
+
+.admin-view-as-banner {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+  margin-bottom: 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: 0.85rem;
+  background: rgba(245, 158, 11, 0.16);
+  font-weight: 700;
+}
+
+.admin-view-as-banner button {
+  border: 0;
+  border-radius: 999px;
+  padding: 0.45rem 0.75rem;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.workspace-access-line {
+  margin-top: 0.4rem;
+  font-size: 0.92rem;
+  opacity: 0.82;
+}
+
+@media (max-width: 860px) {
+  .admin-view-as-panel,
+  .admin-view-as-banner {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+/* 019M-V hide workspace-local view-as because preview selector is now global. */
+.project-workspace-center .admin-view-as-panel,
+.project-workspace-center .admin-view-as-banner {
+  display: none !important;
+}
+
+.workspace-hours-overrun {
+  color: #b91c1c;
+  font-weight: 900;
+}
+
+[data-theme="dark"] .workspace-hours-overrun {
+  color: #fca5a5;
+}

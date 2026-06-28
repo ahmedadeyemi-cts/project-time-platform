@@ -70,3 +70,213 @@
 - Outlook calendar sync.
 - Multi-server communication.
 - Real email sending.
+
+## 019M-P Project Intake + Engineering Resource Request
+
+### Demo Foundation Added
+- Project Intake route/page shell.
+- Engineering Resource Request route section.
+- Demo intake records.
+- Demo client/project/task records.
+- Demo resource profiles, skills, capacity plans, and assignment readiness.
+- Help Center article placeholder.
+
+### Come Back / Production Hardening Items
+- Persist full settings and workflow transitions.
+- Add intake approval status workflow.
+- Add manager approval for assignments.
+- Add conversion from approved intake into project workspace.
+- Add Salesforce opportunity integration later.
+- Add Outlook calendar/resource sync later.
+- Add export and audit detail views.
+
+### Project Intake Source Handling
+- Project intake supports manual entry, manual document upload, and Salesforce source references.
+- Salesforce source support stores source system, external reference ID, record type, and source URL.
+- Manual upload support stores intake document metadata and file path.
+- Future production item: connect Salesforce API/OAuth and field mapping.
+- Future production item: add document scanning, retention, and extraction/parsing workflow.
+
+### Project Document Handling
+- Intake documents are production-shaped project artifacts, not temporary uploads.
+- SOW, GSD, quote/proposal, order form, architecture/design, and other supporting documents are supported.
+- Documents may be uploaded for Salesforce-sourced, manual-upload, or manual-entry intake.
+- Documents can be marked visible to engineering.
+- SOW/GSD can be marked for future AI-assisted timesheet description context.
+- Future item: expose these documents on the engineering assignment page and project workspace.
+- Future item: add document extraction and AI context summarization pipeline.
+- Future item: add safe Claude integration behind provider abstraction.
+
+## 019M-Q Project Workspace + Engineering Documents
+
+### Demo Foundation Added
+- Project Workspace route/page shell.
+- Project documents panel.
+- Engineering-visible SOW/GSD/supporting documents.
+- Download links for uploaded documents.
+- Timesheet description assistant readiness indicators.
+- Assignment visibility for engineers.
+
+### Come Back / Production Hardening Items
+- Add document scanning before files are downloadable.
+- Add document retention policy and purge workflow.
+- Add document preview.
+- Add project document versioning.
+- Add AI context extraction from SOW/GSD.
+- Add approved Claude/provider abstraction for timesheet description assistance.
+- Unify intake documents and project document files under a common project document artifact model.
+
+### Staffing Allocation Come Back Items
+- Add hard validation so manual allocations cannot exceed requested hours unless override is approved.
+- Add hard validation so manual percentages cannot exceed 100% unless override is approved.
+- Convert assigned engineering resource requests into project assignment records when the request is formally approved.
+- Tie allocations to weekly capacity planning instead of only request-level hours.
+- Add manager approval before resource assignments become final.
+
+## 019M-R Role Foundation + Intake Queue/Search UX
+
+### Added
+- Role foundation normalized for Engineer, Manager, Project Management, Engineering Team Lead, Project Management Team Lead, Project Team Coordinator, Administrator, and Executive.
+- Added future scope permissions for assigned-project, managed-project, team, and executive organization visibility.
+- Project Intake queue now supports search, status filter, selected intake dropdown, and latest-20 default display.
+- Engineering Resource Request queue now supports search, selected request dropdown, and latest-20 default display.
+
+### Scope Enforcement Come Back
+- Engineers should only see projects, tasks, documents, resource requests, and assignments tied to their user ID.
+- PMs should only see projects where they are assigned as PM.
+- Engineering Team Leads should see only engineers and projects within their team scope.
+- Project Management Team Leads should see only PM team scope.
+- Managers should see their reporting/team scope.
+- Project Team Coordinator should retain broader operational coordination across accounting, billing, expense, reporting, project assignments, and limited role coordination.
+- Executives should see organization-wide utilization and reporting by organization, team, manager, and individual.
+
+## 019M-S Role Scope Foundation + Intake Queue UX
+
+### Added
+- Preserved original role scopes and layered in Engineering Team Lead, Project Management Team Lead, and Executive.
+- Added role scope rules table for future backend enforcement.
+- Added team scope assignment table for manager/team lead mapping.
+- Improved Project Intake queue with search, status filter, selected-intake dropdown, and latest-20 default view.
+- Improved Engineering Resource Request queue with search, selected-request dropdown, and latest-20 default view.
+
+### Next
+- 019M-T Backend role scope enforcement:
+  - Engineer = assigned-self only.
+  - PM = managed projects only.
+  - Engineering Team Lead = engineering team only.
+  - PM Team Lead = PM team only.
+  - Manager = reporting/team scope.
+  - Project Team Coordinator = broad operational scope.
+  - Executive = organization-wide read/reporting scope.
+  - Administrator = full platform scope.
+
+## 019M-T Project Workspace Role Scope Enforcement
+
+### Added
+- Backend role scope filtering for Project Workspace.
+- Engineers only see directly assigned project workspace records.
+- PMs see managed project workspace records.
+- Engineering Team Leads and Project Management Team Leads see team-scoped records.
+- Managers see reporting/team-scoped records.
+- Project Team Coordinator, Executive, and Administrator retain broad visibility based on operating/reporting role.
+- Project document download endpoint now checks workspace role scope.
+
+### Come Back
+- Apply the same backend role scoping to Project Intake.
+- Add formal team/lead assignment UI.
+- Add Executive utilization dashboard.
+- Add Project Team Coordinator billing/accounting/expense/reporting scope review.
+
+## 019M-U Administrator View-As / User Experience Preview
+
+### Added
+- Administrator-only user experience preview for Project Workspace.
+- Admin can select a user and view role-scoped workspace data as that user.
+- Preview mode is read-only by design.
+- View-as activity is logged to projectpulse_admin_view_as_audit.
+- Workspace displays a visible preview banner and exit option.
+
+### Guardrails
+- Only Administrator can use View As User preview.
+- Preview does not grant write authority as the selected user.
+- Backend still evaluates role scope using the selected effective user.
+- Production hardening should extend this pattern to Intake, Time, Approvals, Reports, and Expenses.
+
+## 019M-V Global View-As User Preview
+
+### Added
+- Moved Administrator View-As/User Experience Preview to the global top bar layer.
+- Selected preview user is stored globally and applies across page navigation.
+- All frontend API calls now automatically receive X-ProjectPulse-View-As-User while preview is active.
+- Write API calls are blocked in the browser while preview is active to keep View-As read-only.
+- Workspace-local View-As panel is hidden because preview is now global.
+
+### Important
+- Backend modules must honor X-ProjectPulse-View-As-User to apply effective-user scoping.
+- Project Workspace already honors this header.
+- Intake, Timesheet, Approvals, Utilization, Expenses, and Reports should be wired next through backend scope enforcement.
+
+## 019M-X Global Effective User Scope + Timesheet Ownership Guardrail
+
+### Added
+- Backend now resolves X-ProjectPulse-View-As-User globally for Administrator read-only preview.
+- Backend blocks write actions while View-As preview is active.
+- GetProjectPulseSessionUserId now returns the effective viewed user when View-As is active.
+- Timesheet, utilization, navigation/security context, and other APIs that depend on session user now use the effective user.
+- View-As activity is audited through projectpulse_admin_view_as_audit.
+
+### Ownership Rule
+- Time entries remain owned by user_id.
+- Engineers should only see their own timesheet entries.
+- Project Team Coordinator and Administrator can operationally select users.
+- View-As preview remains read-only and cannot submit or save time as the selected user.
+
+## 019M-Y Role Cleanup + Workspace Allocation Hours
+
+### Added
+- Engineers and Project Managers retain holiday visibility but no longer receive holiday management/upload permission.
+- Holiday management is limited to Administrator and Project Team Coordinator.
+- Engineers and Project Managers no longer receive Project Info / Project Allocation page permissions.
+- Project assignments now support assigned hours.
+- Project Workspace assignment rows now show assigned hours, used hours, remaining hours, and overrun indication.
+- Used hours are calculated from time entries by engineer, project, and task.
+
+### Notes
+- Existing project assignment hours are backfilled from current engineering resource request allocations when available.
+- Work Task Builder will set assigned hours directly during future PM task assignment.
+
+## 019M-AA Holiday Upload Removal + Engineer Task Bridge
+
+### Added
+- Completely hides holiday upload controls for roles without MANAGE_HOLIDAYS.
+- Replaces manager wording with Project Team Coordinator / Administrator for holiday management.
+- Upgrades holiday rows toward a card-style dashboard view.
+- Bridges resource request engineer assignments into project task assignments when project tasks exist.
+- Timesheet available tasks are now expected to come from assigned project tasks and include customer, assigned hours, used hours, and remaining hours.
+
+## 019M-AB Repair Timesheet Available Tasks and Holiday Read-Only UI
+
+### Fixed
+- Added missing backend route /api/assignments/available-tasks.
+- Removed aggressive holiday UI guard that could hide holiday rows.
+- Added safer holiday upload guard that hides only file upload controls for read-only users.
+- Timesheet assigned task payload includes customer, assigned hours, used hours, and remaining hours.
+
+## 019M-AC Holiday Calendar Cards + Regular Task Mapping
+
+### Fixed
+- Removed duplicate holiday read-only messages.
+- Removed holiday upload/import instructional copy from read-only holiday views.
+- Re-rendered uploaded holidays as calendar-style cards using month, day, weekday, holiday name, type, and hours.
+- Regular Tasks now maps to assigned project tasks so engineers can select assigned project work from the timesheet.
+- Assigned project tasks remain tied to customer, project, task, assigned hours, used hours, and remaining hours.
+
+## 019M-AF Targeted Holiday JSX and Regular Task Option Fix
+
+### Fixed
+- Patched the actual Holiday calendar JSX instead of using DOM overlay renderers.
+- Removed the old injected holiday renderer from App.jsx.
+- Holiday display now uses the native React holiday data and renders as a 3-column card grid.
+- Upload CSV controls render only for Administrator, Manager, and Project Team Coordinator.
+- Engineer and Project Management users can view holidays but cannot upload.
+- Removed duplicate empty Regular Tasks option while keeping assigned project tasks under Regular Tasks.

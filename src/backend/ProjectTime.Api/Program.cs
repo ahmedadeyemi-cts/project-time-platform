@@ -49,6 +49,11 @@ app.Use(async (context, next) =>
     context.Items["ProjectPulseSessionProvider"] = validation.ProviderCode;
     context.Items["ProjectPulseSessionExpiresAt"] = validation.ExpiresAt;
 
+    if (!await ApplyProjectPulseViewAsContextAsync(context, validation))
+    {
+        return;
+    }
+
     await next();
 });
 
@@ -459,6 +464,165 @@ app.MapGet("/api/schema/tables", async () =>
         tables
     });
 });
+
+
+app.MapGet("/api/assignments/available-tasks", async (DateOnly? weekStart, HttpContext httpContext) =>
+{
+    var userId = GetProjectPulseSessionUserId(httpContext);
+
+    if (userId is null)
+    {
+        return Results.Json(new
+        {
+            status = "session_required",
+            message = "A valid ProjectPulse session is required."
+        }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var start = weekStart ?? DateOnly.FromDateTime(DateTime.UtcNow.Date);
+
+    while (start.DayOfWeek != DayOfWeek.Monday)
+    {
+        start = start.AddDays(-1);
+    }
+
+    var end = start.AddDays(6);
+
+    var host = Environment.GetEnvironmentVariable("PTP_DB_HOST");
+    var port = Environment.GetEnvironmentVariable("PTP_DB_PORT");
+    var database = Environment.GetEnvironmentVariable("PTP_DB_NAME");
+    var username = Environment.GetEnvironmentVariable("PTP_DB_USER");
+    var password = Environment.GetEnvironmentVariable("PTP_DB_PASSWORD");
+
+    var connectionString = new NpgsqlConnectionStringBuilder
+    {
+        Host = host,
+        Port = int.TryParse(port, out var parsedPort) ? parsedPort : 5432,
+        Database = database,
+        Username = username,
+        Password = password,
+        IncludeErrorDetail = false,
+        Pooling = true,
+        MinPoolSize = 0,
+        MaxPoolSize = 5
+    }.ConnectionString;
+
+    var tasks = new List<object>();
+
+    await using var connection = new NpgsqlConnection(connectionString);
+    await connection.OpenAsync();
+
+    const string sql = """
+        WITH used_time AS (
+            SELECT
+                user_id,
+                project_id,
+                task_id,
+                SUM(hours)::numeric AS used_hours
+            FROM time_entries
+            WHERE user_id = @user_id
+              AND project_id IS NOT NULL
+              AND task_id IS NOT NULL
+              AND status NOT IN ('voided', 'rejected')
+            GROUP BY user_id, project_id, task_id
+        ),
+        resource_alloc AS (
+            SELECT
+                err.project_id,
+                erra.user_id,
+                SUM(erra.allocated_hours)::numeric
+                    / NULLIF(COUNT(DISTINCT pa2.project_assignment_id), 0)::numeric AS allocated_hours_per_task
+            FROM engineering_resource_requests err
+            JOIN engineering_resource_request_assignments erra
+                ON erra.engineering_resource_request_id = err.engineering_resource_request_id
+            LEFT JOIN project_assignments pa2
+                ON pa2.project_id = err.project_id
+               AND pa2.user_id = erra.user_id
+            WHERE err.project_id IS NOT NULL
+            GROUP BY err.project_id, erra.user_id
+        )
+        SELECT
+            p.project_id AS project_id,
+            pt.task_id AS task_id,
+            p.project_code AS project_code,
+            p.project_name AS project_name,
+            COALESCE(c.client_name, 'No customer assigned') AS client_name,
+            pt.task_code AS task_code,
+            pt.task_name AS task_name,
+            pt.task_description AS task_description,
+            pt.billable AS billable,
+            COALESCE(pt.utilization_bucket, CASE WHEN pt.billable THEN 'billable' ELSE 'non_billable' END) AS utilization_bucket,
+            COALESCE(pm.display_name, 'No PM assigned') AS project_manager_name,
+            COALESCE(NULLIF(pa.assigned_hours, 0), resource_alloc.allocated_hours_per_task, 0)::numeric AS assigned_hours,
+            COALESCE(used_time.used_hours, 0)::numeric AS used_hours,
+            GREATEST(
+                COALESCE(NULLIF(pa.assigned_hours, 0), resource_alloc.allocated_hours_per_task, 0)::numeric
+                - COALESCE(used_time.used_hours, 0)::numeric,
+                0
+            )::numeric AS remaining_hours,
+            (
+                COALESCE(used_time.used_hours, 0)::numeric >
+                COALESCE(NULLIF(pa.assigned_hours, 0), resource_alloc.allocated_hours_per_task, 0)::numeric
+                AND COALESCE(NULLIF(pa.assigned_hours, 0), resource_alloc.allocated_hours_per_task, 0)::numeric > 0
+            ) AS is_over_allocated
+        FROM project_assignments pa
+        JOIN projects p ON p.project_id = pa.project_id
+        JOIN project_tasks pt ON pt.task_id = pa.task_id
+        LEFT JOIN clients c ON c.client_id = p.client_id
+        LEFT JOIN app_users pm ON pm.user_id = p.project_manager_user_id
+        LEFT JOIN used_time
+            ON used_time.user_id = pa.user_id
+           AND used_time.project_id = pa.project_id
+           AND used_time.task_id = pa.task_id
+        LEFT JOIN resource_alloc
+            ON resource_alloc.project_id = pa.project_id
+           AND resource_alloc.user_id = pa.user_id
+        WHERE pa.user_id = @user_id
+          AND pt.is_active = TRUE
+          AND p.status NOT IN ('cancelled', 'archived')
+        ORDER BY c.client_name, p.project_code, pt.task_code, pt.task_name;
+        """;
+
+    await using var command = new NpgsqlCommand(sql, connection);
+    command.Parameters.AddWithValue("user_id", userId.Value);
+    command.Parameters.AddWithValue("week_start", start);
+    command.Parameters.AddWithValue("week_end", end);
+
+    await using var reader = await command.ExecuteReaderAsync();
+
+    while (await reader.ReadAsync())
+    {
+        int O(string name) => reader.GetOrdinal(name);
+
+        tasks.Add(new
+        {
+            projectId = reader.GetGuid(O("project_id")),
+            taskId = reader.GetGuid(O("task_id")),
+            projectCode = reader.GetString(O("project_code")),
+            projectName = reader.GetString(O("project_name")),
+            clientName = reader.GetString(O("client_name")),
+            taskCode = reader.GetString(O("task_code")),
+            taskName = reader.GetString(O("task_name")),
+            taskDescription = reader.IsDBNull(O("task_description")) ? null : reader.GetString(O("task_description")),
+            billable = reader.GetBoolean(O("billable")),
+            utilizationBucket = reader.GetString(O("utilization_bucket")),
+            projectManagerName = reader.GetString(O("project_manager_name")),
+            assignedHours = reader.GetDecimal(O("assigned_hours")),
+            usedHours = reader.GetDecimal(O("used_hours")),
+            remainingHours = reader.GetDecimal(O("remaining_hours")),
+            isOverAllocated = reader.GetBoolean(O("is_over_allocated"))
+        });
+    }
+
+    return Results.Ok(new
+    {
+        weekStart = start,
+        weekEnd = end,
+        count = tasks.Count,
+        tasks
+    });
+});
+
 
 app.MapGet("/api/non-project-time-categories", async () =>
 {
@@ -1848,6 +2012,94 @@ app.MapGet("/api/security/me", async (HttpContext httpContext) =>
     return Results.Ok(await BuildSecurityContextAsync(connection, userId));
 });
 
+
+app.MapGet("/api/security/context", async (HttpContext httpContext) =>
+{
+    var userId = GetProjectPulseSessionUserId(httpContext);
+
+    if (userId is null)
+    {
+        return Results.Json(new
+        {
+            status = "session_required",
+            message = "A valid ProjectPulse session is required."
+        }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var roles = new List<object>();
+    var permissions = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+
+    await using var connection = new NpgsqlConnection(BuildProjectPulseViewAsConnectionString());
+    await connection.OpenAsync();
+
+    const string roleSql = """
+        SELECT
+            r.role_code,
+            r.role_name
+        FROM app_user_role_assignments ura
+        JOIN app_roles r
+            ON r.app_role_id = ura.app_role_id
+        WHERE ura.user_id = @user_id
+          AND ura.is_active = TRUE
+          AND r.is_active = TRUE
+        ORDER BY r.role_code;
+        """;
+
+    await using (var roleCommand = new NpgsqlCommand(roleSql, connection))
+    {
+        roleCommand.Parameters.AddWithValue("user_id", userId.Value);
+
+        await using var reader = await roleCommand.ExecuteReaderAsync();
+
+        while (await reader.ReadAsync())
+        {
+            roles.Add(new
+            {
+                roleCode = reader.GetString(0),
+                roleName = reader.IsDBNull(1) ? reader.GetString(0) : reader.GetString(1)
+            });
+        }
+    }
+
+    const string permissionSql = """
+        SELECT DISTINCT p.permission_code
+        FROM app_user_role_assignments ura
+        JOIN app_roles r
+            ON r.app_role_id = ura.app_role_id
+        JOIN app_role_permissions rp
+            ON rp.app_role_id = r.app_role_id
+        JOIN app_permissions p
+            ON p.app_permission_id = rp.app_permission_id
+        WHERE ura.user_id = @user_id
+          AND ura.is_active = TRUE
+          AND r.is_active = TRUE
+        ORDER BY p.permission_code;
+        """;
+
+    await using (var permissionCommand = new NpgsqlCommand(permissionSql, connection))
+    {
+        permissionCommand.Parameters.AddWithValue("user_id", userId.Value);
+
+        await using var reader = await permissionCommand.ExecuteReaderAsync();
+
+        while (await reader.ReadAsync())
+        {
+            permissions.Add(reader.GetString(0));
+        }
+    }
+
+    return Results.Ok(new
+    {
+        userId = userId.Value,
+        isViewAs = httpContext.Items.TryGetValue("ProjectPulseIsViewAs", out var isViewAsValue)
+            && isViewAsValue is bool isViewAs
+            && isViewAs,
+        roles,
+        permissions = permissions.ToArray()
+    });
+});
+
+
 app.MapGet("/api/security/role-matrix", async () =>
 {
     var config = DatabaseConfig.FromEnvironment();
@@ -2080,6 +2332,206 @@ bool IsProjectPulsePublicApiPath(HttpContext context)
     return publicPaths.Any(publicPath => path.Equals(publicPath, StringComparison.OrdinalIgnoreCase));
 }
 
+
+async Task<bool> ApplyProjectPulseViewAsContextAsync(HttpContext context, ProjectPulseSessionValidation validation)
+{
+    if (validation.UserId is null)
+    {
+        return true;
+    }
+
+    if (!context.Request.Headers.TryGetValue("X-ProjectPulse-View-As-User", out var viewAsHeader))
+    {
+        return true;
+    }
+
+    var rawViewAs = viewAsHeader.ToString();
+
+    if (string.IsNullOrWhiteSpace(rawViewAs))
+    {
+        return true;
+    }
+
+    if (!Guid.TryParse(rawViewAs, out var viewedAsUserId))
+    {
+        context.Response.StatusCode = StatusCodes.Status400BadRequest;
+        await context.Response.WriteAsJsonAsync(new
+        {
+            status = "invalid_view_as_user",
+            message = "The selected View-As user identifier is invalid."
+        });
+        return false;
+    }
+
+    if (viewedAsUserId == validation.UserId.Value)
+    {
+        return true;
+    }
+
+    var path = context.Request.Path.Value ?? string.Empty;
+    var method = context.Request.Method.ToUpperInvariant();
+
+    if (!path.StartsWith("/api/", StringComparison.OrdinalIgnoreCase))
+    {
+        return true;
+    }
+
+    await using var connection = new NpgsqlConnection(BuildProjectPulseViewAsConnectionString());
+    await connection.OpenAsync();
+
+    var actualIsAdministrator = await ProjectPulseViewAsUserHasRoleAsync(connection, validation.UserId.Value, "ADMINISTRATOR");
+
+    if (!actualIsAdministrator)
+    {
+        context.Response.StatusCode = StatusCodes.Status403Forbidden;
+        await context.Response.WriteAsJsonAsync(new
+        {
+            status = "view_as_forbidden",
+            message = "Only Administrators can use View-As preview."
+        });
+        return false;
+    }
+
+    if (!string.Equals(method, "GET", StringComparison.OrdinalIgnoreCase)
+        && !string.Equals(method, "HEAD", StringComparison.OrdinalIgnoreCase)
+        && !string.Equals(method, "OPTIONS", StringComparison.OrdinalIgnoreCase)
+        && !path.StartsWith("/api/auth/", StringComparison.OrdinalIgnoreCase))
+    {
+        context.Response.StatusCode = StatusCodes.Status403Forbidden;
+        await context.Response.WriteAsJsonAsync(new
+        {
+            status = "view_as_read_only",
+            message = "Write actions are disabled while using Administrator View-As preview. Exit preview to make changes."
+        });
+        return false;
+    }
+
+    var viewedUser = await LoadProjectPulseViewAsUserAsync(connection, viewedAsUserId);
+
+    if (viewedUser is null)
+    {
+        context.Response.StatusCode = StatusCodes.Status404NotFound;
+        await context.Response.WriteAsJsonAsync(new
+        {
+            status = "view_as_user_not_found",
+            message = "The selected View-As user was not found or is inactive."
+        });
+        return false;
+    }
+
+    context.Items["ProjectPulseActualUserId"] = validation.UserId.Value;
+    context.Items["ProjectPulseActualEmail"] = validation.Email ?? string.Empty;
+    context.Items["ProjectPulseEffectiveUserId"] = viewedUser.UserId;
+    context.Items["ProjectPulseEffectiveEmail"] = viewedUser.Email;
+    context.Items["ProjectPulseIsViewAs"] = true;
+
+    await InsertProjectPulseViewAsAuditAsync(connection, validation.UserId.Value, viewedUser.UserId, path);
+
+    return true;
+}
+
+string BuildProjectPulseViewAsConnectionString()
+{
+    var host = Environment.GetEnvironmentVariable("PTP_DB_HOST");
+    var port = Environment.GetEnvironmentVariable("PTP_DB_PORT");
+    var database = Environment.GetEnvironmentVariable("PTP_DB_NAME");
+    var username = Environment.GetEnvironmentVariable("PTP_DB_USER");
+    var password = Environment.GetEnvironmentVariable("PTP_DB_PASSWORD");
+
+    var builder = new NpgsqlConnectionStringBuilder
+    {
+        Host = host,
+        Port = int.TryParse(port, out var parsedPort) ? parsedPort : 5432,
+        Database = database,
+        Username = username,
+        Password = password,
+        IncludeErrorDetail = false,
+        Pooling = true,
+        MinPoolSize = 0,
+        MaxPoolSize = 5
+    };
+
+    return builder.ConnectionString;
+}
+
+async Task<bool> ProjectPulseViewAsUserHasRoleAsync(NpgsqlConnection connection, Guid userId, string roleCode)
+{
+    const string sql = """
+        SELECT EXISTS (
+            SELECT 1
+            FROM app_user_role_assignments ura
+            JOIN app_roles r ON r.app_role_id = ura.app_role_id
+            WHERE ura.user_id = @user_id
+              AND ura.is_active = TRUE
+              AND r.is_active = TRUE
+              AND r.role_code = @role_code
+        );
+        """;
+
+    await using var command = new NpgsqlCommand(sql, connection);
+    command.Parameters.AddWithValue("user_id", userId);
+    command.Parameters.AddWithValue("role_code", roleCode);
+
+    return (bool)(await command.ExecuteScalarAsync() ?? false);
+}
+
+async Task<ProjectPulseViewAsUser?> LoadProjectPulseViewAsUserAsync(NpgsqlConnection connection, Guid userId)
+{
+    const string sql = """
+        SELECT user_id, email
+        FROM app_users
+        WHERE user_id = @user_id
+          AND is_active = TRUE
+          AND login_enabled = TRUE;
+        """;
+
+    await using var command = new NpgsqlCommand(sql, connection);
+    command.Parameters.AddWithValue("user_id", userId);
+
+    await using var reader = await command.ExecuteReaderAsync();
+
+    if (!await reader.ReadAsync())
+    {
+        return null;
+    }
+
+    return new ProjectPulseViewAsUser(reader.GetGuid(0), reader.GetString(1));
+}
+
+async Task InsertProjectPulseViewAsAuditAsync(NpgsqlConnection connection, Guid administratorUserId, Guid viewedAsUserId, string route)
+{
+    try
+    {
+        const string sql = """
+            INSERT INTO projectpulse_admin_view_as_audit (
+                administrator_user_id,
+                viewed_as_user_id,
+                viewed_route,
+                preview_mode,
+                action_taken
+            )
+            VALUES (
+                @administrator_user_id,
+                @viewed_as_user_id,
+                @viewed_route,
+                'read_only',
+                'global_view_as_preview'
+            );
+            """;
+
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("administrator_user_id", administratorUserId);
+        command.Parameters.AddWithValue("viewed_as_user_id", viewedAsUserId);
+        command.Parameters.AddWithValue("viewed_route", route);
+        await command.ExecuteNonQueryAsync();
+    }
+    catch
+    {
+        // Do not break read-only preview if audit insert fails.
+    }
+}
+
+
 string? GetProjectPulseSessionToken(HttpRequest request)
 {
     if (request.Headers.TryGetValue("X-ProjectPulse-Session", out var sessionHeader))
@@ -2302,6 +2754,11 @@ async Task<bool> UserHasActiveRoleAsync(NpgsqlConnection connection, Guid userId
 
 Guid? GetProjectPulseSessionUserId(HttpContext context)
 {
+    if (context.Items.TryGetValue("ProjectPulseEffectiveUserId", out var effectiveValue) && effectiveValue is Guid effectiveUserId)
+    {
+        return effectiveUserId;
+    }
+
     if (context.Items.TryGetValue("ProjectPulseSessionUserId", out var value) && value is Guid userId)
     {
         return userId;
@@ -2312,6 +2769,11 @@ Guid? GetProjectPulseSessionUserId(HttpContext context)
 
 string? GetProjectPulseSessionEmail(HttpContext context)
 {
+    if (context.Items.TryGetValue("ProjectPulseEffectiveEmail", out var effectiveValue) && effectiveValue is string effectiveEmail)
+    {
+        return effectiveEmail;
+    }
+
     if (context.Items.TryGetValue("ProjectPulseSessionEmail", out var value) && value is string email)
     {
         return email;
@@ -9894,6 +10356,8 @@ app.MapPost("/api/admin/azure/users/reconcile", async (HttpContext httpContext) 
 });
 
 app.MapTimeComplianceEndpoints();
+app.MapProjectIntakeEndpoints();
+app.MapProjectWorkspaceEndpoints();
 
 app.Run();
 
@@ -10592,8 +11056,6 @@ static async Task<List<object>> LoadOpenAssignedProjectTasksAsync(NpgsqlConnecti
         WHERE pa.user_id = @user_id
           AND p.status = 'active'
           AND pt.is_active = TRUE
-          AND pa.effective_start_date <= @week_end
-          AND (pa.effective_end_date IS NULL OR pa.effective_end_date >= @week_start)
         ORDER BY p.project_code, pt.task_code;
         """;
 
@@ -11823,6 +12285,8 @@ record ProjectPulseImportSettingsUpdateRequest(
 
 
 record ProjectPulseCreatedSession(Guid SessionId, string RawToken, DateTimeOffset ExpiresAt);
+record ProjectPulseViewAsUser(Guid UserId, string Email);
+
 internal sealed record ProjectPulseSessionValidation(bool IsValid, Guid? UserId, string? Email, string? ProviderCode, DateTimeOffset? ExpiresAt, string? Message);
 
 internal sealed record PasswordResetCompletionRequest(Guid ResetRequestId, string TemporaryPassword, string? ActionByEmail, string? Notes);

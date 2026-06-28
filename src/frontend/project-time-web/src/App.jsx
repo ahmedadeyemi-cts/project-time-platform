@@ -1,3 +1,334 @@
+
+/*
+ * 019M-V Global View-As User Experience Preview
+ * Admin-only preview selector. Applies a read-only effective user to API calls
+ * using X-ProjectPulse-View-As-User. Backend modules opt in by honoring the header.
+ */
+function installProjectPulseGlobalViewAsPreview() {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+  if (window.__projectPulseGlobalViewAsInstalled) return;
+
+  window.__projectPulseGlobalViewAsInstalled = true;
+
+  const STORAGE_KEY = 'projectPulseViewAsUser';
+  const SESSION_KEY = 'projectPulseAuthSession';
+
+  const readSession = () => {
+    try {
+      const raw = window.localStorage.getItem(SESSION_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed?.sessionToken) return null;
+      if (parsed?.expiresAt && Date.now() >= Date.parse(parsed.expiresAt)) return null;
+      return parsed;
+    } catch {
+      return null;
+    }
+  };
+
+  const readViewAs = () => {
+    try {
+      const raw = window.localStorage.getItem(STORAGE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return parsed?.userId ? parsed : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const clearViewAs = () => {
+    window.localStorage.removeItem(STORAGE_KEY);
+    window.dispatchEvent(new CustomEvent('projectpulse:view-as-changed'));
+    window.location.reload();
+  };
+
+  const writeViewAs = (user) => {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
+    window.dispatchEvent(new CustomEvent('projectpulse:view-as-changed', { detail: user }));
+    window.location.reload();
+  };
+
+  const isApiUrl = (input) => {
+    const raw = typeof input === 'string' ? input : input?.url;
+    if (!raw) return false;
+
+    try {
+      const url = new URL(raw, window.location.origin);
+      return url.pathname.startsWith('/api/');
+    } catch {
+      return String(raw).startsWith('/api/');
+    }
+  };
+
+  const originalFetch = window.fetch.bind(window);
+  window.__projectPulseOriginalFetch = window.__projectPulseOriginalFetch || originalFetch;
+
+  window.fetch = async (input, init = {}) => {
+    const viewAs = readViewAs();
+
+    if (!viewAs?.userId || !isApiUrl(input)) {
+      return originalFetch(input, init);
+    }
+
+    const method = String(init?.method || (typeof input !== 'string' ? input?.method : '') || 'GET').toUpperCase();
+    const rawUrl = typeof input === 'string' ? input : input?.url || '';
+
+    const isWrite = !['GET', 'HEAD', 'OPTIONS'].includes(method);
+    const isAuthRoute = rawUrl.includes('/api/auth/');
+
+    if (isWrite && !isAuthRoute) {
+      return new Response(JSON.stringify({
+        status: 'view_as_read_only',
+        message: 'Write actions are disabled while using Administrator View-As preview. Exit preview to make changes.'
+      }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    const headers = new Headers(init?.headers || (typeof input !== 'string' ? input?.headers || {} : {}));
+    headers.set('X-ProjectPulse-View-As-User', viewAs.userId);
+
+    return originalFetch(input, {
+      ...init,
+      headers
+    });
+  };
+
+  const injectStyles = () => {
+    if (document.getElementById('projectpulse-global-view-as-style')) return;
+
+    const style = document.createElement('style');
+    style.id = 'projectpulse-global-view-as-style';
+    style.textContent = `
+      #projectpulse-global-view-as {
+        position: fixed;
+        top: 0.65rem;
+        right: 5.25rem;
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+        max-width: min(560px, calc(100vw - 7rem));
+        padding: 0.42rem 0.55rem;
+        border: 1px solid rgba(14, 165, 233, 0.35);
+        border-radius: 999px;
+        background: rgba(15, 23, 42, 0.92);
+        color: #fff;
+        box-shadow: 0 12px 28px rgba(15, 23, 42, 0.22);
+        backdrop-filter: blur(12px);
+        font-size: 0.78rem;
+      }
+
+      #projectpulse-global-view-as.viewing {
+        border-color: rgba(245, 158, 11, 0.62);
+        background: rgba(120, 53, 15, 0.94);
+      }
+
+      #projectpulse-global-view-as label {
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+        margin: 0;
+        white-space: nowrap;
+        font-weight: 800;
+      }
+
+      #projectpulse-global-view-as select {
+        width: min(330px, 42vw);
+        padding: 0.32rem 0.45rem;
+        border: 1px solid rgba(255, 255, 255, 0.28);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.95);
+        color: #111827;
+        font-size: 0.78rem;
+      }
+
+      #projectpulse-global-view-as button {
+        border: 0;
+        border-radius: 999px;
+        padding: 0.32rem 0.55rem;
+        background: rgba(255, 255, 255, 0.16);
+        color: #fff;
+        cursor: pointer;
+        font-weight: 900;
+        font-size: 0.76rem;
+      }
+
+      #projectpulse-global-view-as .view-as-active-text {
+        max-width: 240px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-weight: 800;
+      }
+
+      @media (max-width: 920px) {
+        #projectpulse-global-view-as {
+          position: static;
+          margin: 0.5rem;
+          max-width: calc(100vw - 1rem);
+          border-radius: 0.8rem;
+          justify-content: space-between;
+        }
+
+        #projectpulse-global-view-as label {
+          flex: 1;
+        }
+
+        #projectpulse-global-view-as select {
+          width: 100%;
+        }
+      }
+
+      .project-workspace-center .admin-view-as-panel,
+      .project-workspace-center .admin-view-as-banner {
+        display: none !important;
+      }
+    `;
+
+    document.head.appendChild(style);
+  };
+
+  const ensureContainer = () => {
+    let container = document.getElementById('projectpulse-global-view-as');
+
+    if (!container) {
+      container = document.createElement('div');
+      container.id = 'projectpulse-global-view-as';
+      container.setAttribute('aria-live', 'polite');
+      document.body.appendChild(container);
+    }
+
+    return container;
+  };
+
+  const renderLoading = () => {
+    injectStyles();
+    const container = ensureContainer();
+    const active = readViewAs();
+    container.className = active ? 'viewing' : '';
+    container.innerHTML = `
+      <label>
+        View as
+        <select disabled>
+          <option>Loading users...</option>
+        </select>
+      </label>
+    `;
+  };
+
+  const renderHidden = () => {
+    const container = document.getElementById('projectpulse-global-view-as');
+    if (container) container.remove();
+  };
+
+  const renderUsers = (users) => {
+    injectStyles();
+
+    const container = ensureContainer();
+    const active = readViewAs();
+    container.className = active ? 'viewing' : '';
+
+    const options = ['<option value="">My Administrator view</option>']
+      .concat(users.map((user) => {
+        const label = `${user.displayName || user.email} — ${user.roleCodes || 'No role'}${user.teamOrDepartment ? ` — ${user.teamOrDepartment}` : ''}`;
+        return `<option value="${user.userId}">${label.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')}</option>`;
+      }))
+      .join('');
+
+    container.innerHTML = `
+      <label>
+        View as
+        <select id="projectpulse-global-view-as-select">${options}</select>
+      </label>
+      ${active ? `<span class="view-as-active-text">Previewing: ${String(active.displayName || active.email || 'selected user').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')}</span><button id="projectpulse-global-view-as-exit" type="button">Exit</button>` : ''}
+    `;
+
+    const select = container.querySelector('#projectpulse-global-view-as-select');
+    if (select) {
+      select.value = active?.userId || '';
+      select.addEventListener('change', (event) => {
+        const selectedUser = users.find((user) => user.userId === event.target.value);
+        if (!selectedUser) {
+          clearViewAs();
+          return;
+        }
+
+        writeViewAs(selectedUser);
+      });
+    }
+
+    const exit = container.querySelector('#projectpulse-global-view-as-exit');
+    if (exit) {
+      exit.addEventListener('click', clearViewAs);
+    }
+  };
+
+  const loadUsers = async () => {
+    const session = readSession();
+
+    if (!session?.sessionToken) {
+      renderHidden();
+      return;
+    }
+
+    renderLoading();
+
+    try {
+      const response = await window.__projectPulseOriginalFetch('/api/project-workspace/view-as/users', {
+        headers: {
+          'X-ProjectPulse-Session': session.sessionToken
+        }
+      });
+
+      if (!response.ok) {
+        renderHidden();
+        return;
+      }
+
+      const body = await response.text();
+      if (!body.trim()) {
+        renderHidden();
+        return;
+      }
+
+      const result = JSON.parse(body);
+      const users = Array.isArray(result?.users) ? result.users : [];
+
+      if (!users.length) {
+        renderHidden();
+        return;
+      }
+
+      renderUsers(users);
+    } catch {
+      renderHidden();
+    }
+  };
+
+  const boot = () => {
+    setTimeout(loadUsers, 500);
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot, { once: true });
+  } else {
+    boot();
+  }
+
+  window.addEventListener('storage', (event) => {
+    if (event.key === STORAGE_KEY || event.key === SESSION_KEY) {
+      loadUsers();
+    }
+  });
+}
+
+installProjectPulseGlobalViewAsPreview();
+
+
+
 import { useEffect, useMemo, useState, useRef } from 'react';
 import usSignalLogoUrl from '../brand/ussignal.png';
 import './timesheet.css';
@@ -14,6 +345,8 @@ import ReplicationSyncStatusCenter from './ReplicationSyncStatusCenter.jsx';
 import RestoreValidationCenter from './RestoreValidationCenter.jsx';
 import BackupRetentionCenter from './BackupRetentionCenter.jsx';
 import TimeComplianceCenter from './TimeComplianceCenter.jsx';
+import ProjectIntakeCenter from './ProjectIntakeCenter.jsx';
+import ProjectWorkspaceCenter from './ProjectWorkspaceCenter.jsx';
 
 const workflowCards = [
   {
@@ -62,15 +395,9 @@ const activitySourceOptions = [
   },
   {
     key: 'openTasks',
-    label: 'Open tasks',
-    emptyTitle: 'No open tasks available.',
-    emptyDescription: 'Assigned open project tasks will appear here after project-task assignments are connected.'
-  },
-  {
-    key: 'regularTasks',
     label: 'Regular tasks',
-    emptyTitle: 'No regular tasks available.',
-    emptyDescription: 'Recurring or regular project tasks will appear here after the assignment workflow is connected.'
+    emptyTitle: 'No regular tasks assigned.',
+    emptyDescription: 'Assigned project tasks will appear here after a PM assigns work to the engineer.'
   },
   {
     key: 'requests',
@@ -313,6 +640,22 @@ function statusToLabel(status, totalHours = 0) {
 
 const roleWorkspaceModules = [
   {
+    route: 'project-workspace',
+    href: '#project-workspace',
+    title: 'Project Workspace & Engineering Documents',
+    navLabel: 'Project Workspace',
+    description: 'View project workspace readiness, engineering-visible documents, assignments, and timesheet-context artifacts.',
+    permissions: ['VIEW_PROJECT_WORKSPACE', 'VIEW_ENGINEERING_PROJECT_DOCUMENTS', 'VIEW_PROJECT_INTAKE', 'VIEW_RESOURCE_SCHEDULING', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
+  },
+  {
+    route: 'project-intake',
+    href: '#project-intake',
+    title: 'Project Intake & Engineering Resource Requests',
+    navLabel: 'Project Intake',
+    description: 'Create and review project intake requests, engineering resource demand, capacity, and assignment readiness.',
+    permissions: ['VIEW_PROJECT_INTAKE', 'MANAGE_PROJECT_INTAKE', 'VIEW_RESOURCE_SCHEDULING', 'MANAGE_RESOURCE_SCHEDULING', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
+  },
+  {
     route: 'time-compliance',
     href: '#time-compliance',
     title: 'Time Compliance & Notification Center',
@@ -535,6 +878,10 @@ function getNavigationGroup(item) {
       return 'Work Management';
 
     case 'project-allocation-info':
+    case 'project-workspace':
+      return 'Project Workspace';
+    case 'project-intake':
+      return 'Project Intake';
     case 'time-compliance':
       return 'Time Compliance';
     case 'psa-modules':
@@ -964,7 +1311,7 @@ export default function App() {
           fetchJson('/api/work-locations', authSession),
           fetchJson('/api/utilization/policies', authSession),
           fetchJson('/api/utilization/targets', authSession),
-          fetchJson(`/api/assignments/open-tasks?weekStart=${selectedWeekStart}`, authSession),
+          fetchJson(`/api/assignments/available-tasks?weekStart=${selectedWeekStart}`, authSession),
           fetchJson('/api/users/timesheet-preferences', authSession),
           fetchJson(`/api/holidays?year=${selectedWeekStart.slice(0, 4)}`, authSession),
           fetchJson('/api/project-intake/summary', authSession),
@@ -3750,6 +4097,12 @@ Analytics - Variphy / Infortel`}
                         <strong>{task.taskName}</strong>
                         <span>{task.projectCode} • {task.projectName}</span>
                         <small>{task.projectManagerName ? `PM: ${task.projectManagerName}` : 'Project task'}</small>
+                        <small className="timesheet-task-detail-line">
+                          {task.clientName ? <strong>Customer: {task.clientName}</strong> : null}
+                          {task.assignedHours !== undefined ? <span>Assigned: {Number(task.assignedHours || 0).toFixed(2)} hrs</span> : null}
+                          {task.usedHours !== undefined ? <span>Used: {Number(task.usedHours || 0).toFixed(2)} hrs</span> : null}
+                          {task.remainingHours !== undefined ? <span>Left: {Number(task.remainingHours || 0).toFixed(2)} hrs</span> : null}
+                        </small>
                       </button>
                     );
                   })}
@@ -4000,62 +4353,92 @@ Analytics - Variphy / Infortel`}
           <div>
             <p className="eyebrow">Holiday administration</p>
             <h2>Holiday calendar</h2>
-            <p className="muted">View uploaded holidays by year. Holiday import is available only to Managers, Project and Team Coordinators, and Administrators.</p>
           </div>
-          <span className="pill">{companyHolidays.data?.count ?? 0} uploaded for {holidayUploadYear}</span>
+          <span className="pill">{companyHolidays.data?.count ?? 0} holiday{(companyHolidays.data?.count ?? 0) === 1 ? '' : 's'} for {holidayUploadYear}</span>
         </div>
 
-        <div className="holiday-upload-grid">
+        <div className={`holiday-upload-grid ${canManageHolidays ? '' : 'holiday-upload-grid-readonly'}`}>
           <label>
             Year
             <select value={holidayUploadYear} onChange={(event) => void loadHolidayAdminYear(event.target.value)}>
               {holidayYearOptions.map((year) => <option value={year} key={year}>{year}</option>)}
             </select>
           </label>
-          <label>
-            Upload CSV
-            <input type="file" accept=".csv,text/csv" onChange={handleHolidayFileUpload} />
-          </label>
+
+          {canManageHolidays ? (
+            <label>
+              Upload CSV
+              <input type="file" accept=".csv,text/csv" onChange={handleHolidayFileUpload} />
+            </label>
+          ) : null}
         </div>
 
         {canManageHolidays ? (
           <>
-        <textarea
-          className="holiday-upload-textarea"
-          value={holidayUploadText}
-          onChange={(event) => setHolidayUploadText(event.target.value)}
-          placeholder="holiday_date,holiday_name,holiday_type,is_floating_holiday,auto_populate_hours
+            <textarea
+              className="holiday-upload-textarea"
+              value={holidayUploadText}
+              onChange={(event) => setHolidayUploadText(event.target.value)}
+              placeholder="holiday_date,holiday_name,holiday_type,is_floating_holiday,auto_populate_hours
 2026-01-01,New Year's Day,company_paid,false,8"
-        />
+            />
 
-        <div className="toolbar-actions holiday-upload-actions">
-          <button type="button" className="primary-action" onClick={importHolidayCsv}>Import holidays</button>
-          <span className="muted">{holidayUploadStatus}</span>
-        </div>
+            <div className="toolbar-actions holiday-upload-actions">
+              <button type="button" className="primary-action" onClick={importHolidayCsv}>Import holidays</button>
+              <span className="muted">{holidayUploadStatus}</span>
+            </div>
           </>
-        ) : (
-          <p className="muted holiday-admin-readonly-note">You have read-only access to the holiday calendar. Contact an administrator or manager to upload yearly holidays.</p>
-        )}
+        ) : null}
 
-        <div className="holiday-list-card compact-holiday-list">
-          <div className="holiday-list-header">
-            <h3>Uploaded holidays</h3>
-            <span>{companyHolidays.data?.count ?? 0} records</span>
+        <div className="holiday-calendar-card-panel">
+          <div className="holiday-calendar-card-header">
+            <h3>Holidays {holidayUploadYear}</h3>
+            <span>{companyHolidays.data?.count ?? 0} total</span>
           </div>
-          {(companyHolidays.data?.holidays ?? []).length === 0 ? (
+
+          {companyHolidays.loading ? <p className="muted">Loading holidays...</p> : null}
+          {companyHolidays.error ? <p className="error-text">{companyHolidays.error}</p> : null}
+
+          {!companyHolidays.loading && !companyHolidays.error && (companyHolidays.data?.holidays ?? []).length === 0 ? (
             <p className="muted">No holidays uploaded for {holidayUploadYear} yet.</p>
           ) : null}
-          {(companyHolidays.data?.holidays ?? []).map((holiday) => (
-            <div className="module-list-row" key={holiday.holidayDate}>
-              <strong>{holiday.holidayName}</strong>
-              <span>{holiday.holidayDate} • {holiday.holidayType} • {formatNumber(holiday.autoPopulateHours)} hours</span>
-            </div>
-          ))}
+
+          <div className="holiday-calendar-card-grid">
+            {(companyHolidays.data?.holidays ?? []).map((holiday, index) => {
+              const holidayDate = new Date(`${holiday.holidayDate}T00:00:00Z`);
+              const monthName = holidayDate.toLocaleString('en-US', { month: 'long', timeZone: 'UTC' });
+              const dayNumber = holidayDate.toLocaleString('en-US', { day: 'numeric', timeZone: 'UTC' });
+              const weekdayName = holidayDate.toLocaleString('en-US', { weekday: 'long', timeZone: 'UTC' });
+              const normalizedType = String(holiday.holidayType ?? 'holiday').replaceAll('_', ' ');
+
+              return (
+                <article className="holiday-calendar-card" key={`${holiday.holidayDate}-${holiday.holidayName}-${index}`}>
+                  <div className="holiday-calendar-card-month">{monthName}</div>
+                  <div className="holiday-calendar-card-day">{dayNumber}</div>
+                  <div className="holiday-calendar-card-weekday">{weekdayName}</div>
+                  <div className="holiday-calendar-card-name">{holiday.holidayName}</div>
+                  <div className="holiday-calendar-card-meta">{normalizedType} • {formatNumber(holiday.autoPopulateHours)} hours</div>
+                </article>
+              );
+            })}
+          </div>
         </div>
       </section>
 <section id="project-allocation-info" className="panel project-allocation-info-panel">
         <ProjectAllocationInfoPanel />
       </section>
+
+      {(activeRoute === 'project-workspace' && canSeeAny(['VIEW_PROJECT_WORKSPACE', 'VIEW_ENGINEERING_PROJECT_DOCUMENTS', 'VIEW_PROJECT_INTAKE', 'VIEW_RESOURCE_SCHEDULING', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
+        <section id="project-workspace" className="panel project-workspace-route-panel">
+          <ProjectWorkspaceCenter />
+        </section>
+      ) : null}
+
+      {(activeRoute === 'project-intake' && canSeeAny(['VIEW_PROJECT_INTAKE', 'MANAGE_PROJECT_INTAKE', 'VIEW_RESOURCE_SCHEDULING', 'MANAGE_RESOURCE_SCHEDULING', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
+        <section id="project-intake" className="panel project-intake-route-panel">
+          <ProjectIntakeCenter />
+        </section>
+      ) : null}
 
       {(activeRoute === 'time-compliance' && canSeeAny(['SYSTEM_ADMINISTRATION', 'MANAGE_ALL', 'VIEW_TIME_COMPLIANCE', 'VIEW_AUDIT_HISTORY'])) ? (
         <section id="time-compliance" className="panel time-compliance-route-panel">
