@@ -104,13 +104,13 @@ function installProjectPulseGlobalViewAsPreview() {
     style.textContent = `
       #projectpulse-global-view-as {
         position: fixed;
-        top: 0.65rem;
-        right: 5.25rem;
+        top: 4.85rem;
+        right: 1.1rem;
         z-index: 9999;
         display: flex;
         align-items: center;
         gap: 0.45rem;
-        max-width: min(560px, calc(100vw - 7rem));
+        max-width: min(620px, calc(100vw - 2rem));
         padding: 0.42rem 0.55rem;
         border: 1px solid rgba(14, 165, 233, 0.35);
         border-radius: 999px;
@@ -309,7 +309,9 @@ function installProjectPulseGlobalViewAsPreview() {
   };
 
   const boot = () => {
-    setTimeout(loadUsers, 500);
+    setTimeout(loadUsers, 250);
+    setTimeout(loadUsers, 1200);
+    setTimeout(loadUsers, 3000);
   };
 
   if (document.readyState === 'loading') {
@@ -323,6 +325,9 @@ function installProjectPulseGlobalViewAsPreview() {
       loadUsers();
     }
   });
+
+  window.addEventListener('hashchange', loadUsers);
+  window.addEventListener('projectpulse:auth-session-ready', loadUsers);
 }
 
 installProjectPulseGlobalViewAsPreview();
@@ -885,7 +890,28 @@ function userHasPermissionCode(user, permissionCode) {
 }
 
 function getPrimaryNavigationPriority(user) {
-  return ['dashboard'];
+  if (userIsAdministrator(user)) {
+    return ['dashboard', 'timesheet', 'manager-approval', 'project-workspace'];
+  }
+
+  if (
+    userHasRoleText(user, ['project/team coordinator', 'project team coordinator', 'team coordinator', 'project coordinator']) ||
+    userHasPermissionCode(user, 'MANAGE_PROJECT_COORDINATION') ||
+    userHasPermissionCode(user, 'MANAGE_PROJECT_INTAKE') ||
+    userHasPermissionCode(user, 'MANAGE_CUSTOMERS')
+  ) {
+    return ['dashboard', 'timesheet', 'project-intake', 'customer-directory'];
+  }
+
+  if (
+    userHasPermissionCode(user, 'APPROVE_TIME') ||
+    userHasPermissionCode(user, 'VIEW_APPROVAL_INBOX') ||
+    userHasPermissionCode(user, 'VIEW_TEAM_UTILIZATION')
+  ) {
+    return ['dashboard', 'manager-approval', 'utilization', 'project-workspace'];
+  }
+
+  return ['dashboard', 'timesheet', 'project-workspace', 'holiday-admin', 'utilization'];
 }
 
 function getNavigationGroup(item) {
@@ -1056,7 +1082,8 @@ export default function App() {
   const [forcedPasswordStatus, setForcedPasswordStatus] = useState('');
   const [isChangingForcedPassword, setIsChangingForcedPassword] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
-  const [isSideNavigationOpen, setIsSideNavigationOpen] = useState(true);
+  const [isSideNavigationOpen, setIsSideNavigationOpen] = useState(false);
+  const [isTopMoreNavigationOpen, setIsTopMoreNavigationOpen] = useState(false);
   const [expandedNavigationGroups, setExpandedNavigationGroups] = useState(() => ({
     'Time & Approvals': true,
     'Projects & Allocations': true,
@@ -2360,8 +2387,20 @@ export default function App() {
 
 
   const visibleRoleModules = useMemo(() => getVisibleRoleModules(currentUser.data), [currentUser.data]);
+
+  useEffect(() => {
+    if (authSession?.sessionToken) {
+      window.dispatchEvent(new CustomEvent('projectpulse:auth-session-ready'));
+    }
+  }, [authSession?.sessionToken]);
+
   const roleNavigation = useMemo(() => getRoleNavigation(currentUser.data), [currentUser.data]);
   const navigationModel = useMemo(() => buildRoleNavigationModel(currentUser.data, roleNavigation), [currentUser.data, roleNavigation]);
+
+  useEffect(() => {
+    setIsTopMoreNavigationOpen(false);
+  }, [activeRoute]);
+
   const activeNavigationItem = useMemo(
     () => roleNavigation.find((item) => item.route === activeRoute) ?? { label: 'Dashboard', route: 'dashboard', href: '#dashboard' },
     [roleNavigation, activeRoute]
@@ -3298,23 +3337,70 @@ Analytics - Variphy / Infortel`}
 
 
 
-      <header className="top-bar">
+      <header className="top-bar enterprise-top-bar">
         <SignalLogo />
-        <div className="workspace-header-context">
-          <button
-            type="button"
-            className="sidebar-toggle-button"
-            onClick={() => setIsSideNavigationOpen((current) => !current)}
-            aria-label={isSideNavigationOpen ? 'Collapse workspace navigation' : 'Expand workspace navigation'}
-          >
-            ☰
-          </button>
 
+        <div className="workspace-header-context enterprise-top-context">
           <div>
             <p className="eyebrow">Workspace</p>
             <h1>{activeNavigationItem.label}</h1>
           </div>
         </div>
+
+        <nav className="enterprise-top-navigation" aria-label="Workspace navigation">
+          {navigationModel.primary.map((item) => (
+            <a
+              href={item.href}
+              key={`enterprise-top-primary-${item.route}`}
+              className={activeRoute === item.route ? 'active' : ''}
+              onClick={() => setIsTopMoreNavigationOpen(false)}
+            >
+              {item.label}
+            </a>
+          ))}
+
+          {navigationModel.groups.length > 0 ? (
+            <div
+              className="enterprise-more-navigation"
+              onMouseEnter={() => setIsTopMoreNavigationOpen(true)}
+              onMouseLeave={() => setIsTopMoreNavigationOpen(false)}
+            >
+              <button
+                type="button"
+                className={isTopMoreNavigationOpen ? 'enterprise-more-button active' : 'enterprise-more-button'}
+                onClick={() => setIsTopMoreNavigationOpen((current) => !current)}
+                aria-expanded={isTopMoreNavigationOpen}
+                aria-controls="enterprise-more-navigation-menu"
+              >
+                ☰ More
+              </button>
+
+              {isTopMoreNavigationOpen ? (
+                <div id="enterprise-more-navigation-menu" className="enterprise-more-dropdown">
+                  {navigationModel.groups.map((group) => (
+                    <div className="enterprise-more-group" key={group.name}>
+                      <strong>{group.name}</strong>
+                      <div className="enterprise-more-links">
+                        {group.items.map((item) => (
+                          <a
+                            href={item.href}
+                            key={`enterprise-more-${group.name}-${item.route}`}
+                            className={activeRoute === item.route ? 'active' : ''}
+                            onClick={() => setIsTopMoreNavigationOpen(false)}
+                          >
+                            {item.label}
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </nav>
+
+        <div className="enterprise-header-utilities">
         <div className="profile-menu-shell" ref={profileMenuRef}>
           <button
             className="profile-avatar-button"
@@ -3358,9 +3444,10 @@ Analytics - Variphy / Infortel`}
             </div>
           )}
         </div>
+        </div>
       </header>
 
-      <aside className="enterprise-sidebar" aria-label="Workspace navigation">
+      <aside className="enterprise-sidebar enterprise-sidebar-legacy" aria-label="Workspace navigation">
         <div className="enterprise-sidebar-header">
           <div>
             <p className="eyebrow">Project Pulse</p>

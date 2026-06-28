@@ -330,3 +330,13 @@
 - Added alert evaluation endpoint that records current project cost alert conditions.
 - Added notification routing foundation to PM, resource manager, and Project Team Coordinator through existing notification outbox tables.
 - Added mobile-friendly Cost Overrun Alerts screen with live candidates, recorded alerts, and evaluation controls.
+
+## 019M-AJ Navigation Usability + View-As Repair
+
+### Added
+- Replaced the default left-side workspace navigation with a top navigation pattern.
+- Kept role-specific common destinations visible directly across the top.
+- Added a top-right More menu for Admin/PTC and other large-menu roles.
+- Hid the legacy sidebar so it no longer consumes left-side workspace content area.
+- Repaired global Administrator View-As visibility and refresh behavior after login.
+- Added mobile guardrails so the More menu opens by tap and does not permanently cover page content.

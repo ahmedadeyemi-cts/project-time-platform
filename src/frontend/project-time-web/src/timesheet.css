@@ -4774,3 +4774,223 @@ textarea:focus {
     grid-template-columns: 1fr;
   }
 }
+
+/* 019M-AJ navigation usability update: top nav replaces the content-consuming left sidebar. */
+.app-shell.enterprise-nav-enabled,
+.app-shell.enterprise-nav-enabled.sidebar-expanded,
+.app-shell.enterprise-nav-enabled.sidebar-collapsed {
+  padding-left: clamp(0.85rem, 2vw, 1.5rem) !important;
+  padding-right: clamp(0.85rem, 2vw, 1.5rem) !important;
+  max-width: 1640px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.app-shell.enterprise-nav-enabled > section,
+.app-shell.enterprise-nav-enabled > .module-grid,
+.app-shell.enterprise-nav-enabled.sidebar-expanded > section,
+.app-shell.enterprise-nav-enabled.sidebar-collapsed > section,
+.app-shell.enterprise-nav-enabled.sidebar-expanded > .module-grid,
+.app-shell.enterprise-nav-enabled.sidebar-collapsed > .module-grid {
+  margin-left: 0 !important;
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+.enterprise-sidebar,
+.enterprise-sidebar-legacy,
+.sidebar-toggle-button {
+  display: none !important;
+}
+
+.enterprise-top-bar {
+  position: sticky;
+  top: 0;
+  z-index: 1100;
+  overflow: visible !important;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.85rem 1rem;
+  backdrop-filter: blur(18px);
+}
+
+.enterprise-top-context {
+  min-width: 185px;
+  max-width: 300px;
+}
+
+.enterprise-top-context h1 {
+  margin: 0;
+  line-height: 1.1;
+}
+
+.enterprise-top-navigation {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.45rem;
+  flex: 1;
+  min-width: 0;
+  overflow: visible;
+}
+
+.enterprise-top-navigation > a,
+.enterprise-more-button {
+  min-height: 42px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.74);
+  color: #334155;
+  padding: 0.58rem 0.85rem;
+  font-weight: 800;
+  font-size: 0.88rem;
+  text-decoration: none;
+  white-space: nowrap;
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.06);
+  cursor: pointer;
+}
+
+.enterprise-top-navigation > a:hover,
+.enterprise-top-navigation > a.active,
+.enterprise-more-button:hover,
+.enterprise-more-button.active {
+  border-color: rgba(37, 99, 235, 0.35);
+  background: rgba(37, 99, 235, 0.1);
+  color: #1d4ed8;
+}
+
+.enterprise-more-navigation {
+  position: relative;
+}
+
+.enterprise-more-dropdown {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.75rem);
+  width: min(760px, calc(100vw - 2rem));
+  max-height: calc(100vh - 7rem);
+  overflow: auto;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+  padding: 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.22);
+  z-index: 1300;
+}
+
+.enterprise-more-group {
+  display: grid;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.enterprise-more-group strong {
+  color: #475569;
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.enterprise-more-links {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.enterprise-more-links a {
+  display: flex;
+  align-items: center;
+  min-height: 38px;
+  padding: 0.55rem 0.7rem;
+  border-radius: 14px;
+  background: rgba(248, 250, 252, 0.9);
+  color: #334155;
+  text-decoration: none;
+  font-weight: 750;
+}
+
+.enterprise-more-links a:hover,
+.enterprise-more-links a.active {
+  background: rgba(37, 99, 235, 0.1);
+  color: #1d4ed8;
+}
+
+.enterprise-header-utilities {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+/* Keep the global View-As utility visible but out of the main content path. */
+#projectpulse-global-view-as {
+  top: 4.85rem !important;
+  right: 1.1rem !important;
+  max-width: min(620px, calc(100vw - 2rem)) !important;
+  z-index: 1400 !important;
+}
+
+@media (min-width: 1180px) {
+  #projectpulse-global-view-as {
+    top: 0.85rem !important;
+    right: 5.5rem !important;
+  }
+}
+
+@media (max-width: 1120px) {
+  .enterprise-top-bar {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+  }
+
+  .enterprise-top-navigation {
+    grid-column: 1 / -1;
+    overflow-x: auto;
+    padding-bottom: 0.2rem;
+  }
+
+  .enterprise-more-dropdown {
+    position: fixed;
+    left: 1rem;
+    right: 1rem;
+    top: 7.2rem;
+    width: auto;
+  }
+}
+
+@media (max-width: 700px) {
+  .enterprise-top-bar {
+    grid-template-columns: 1fr auto;
+    padding: 0.75rem;
+  }
+
+  .enterprise-top-context {
+    min-width: 0;
+  }
+
+  .enterprise-top-navigation {
+    grid-column: 1 / -1;
+    gap: 0.35rem;
+  }
+
+  .enterprise-top-navigation > a,
+  .enterprise-more-button {
+    font-size: 0.82rem;
+    padding: 0.52rem 0.68rem;
+  }
+
+  .enterprise-more-dropdown {
+    top: 8.1rem;
+    grid-template-columns: 1fr;
+    max-height: calc(100vh - 9rem);
+  }
+
+  #projectpulse-global-view-as {
+    top: 8.4rem !important;
+    left: 0.75rem !important;
+    right: 0.75rem !important;
+    max-width: none !important;
+  }
+}

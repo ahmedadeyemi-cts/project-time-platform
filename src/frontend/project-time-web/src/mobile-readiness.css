@@ -342,3 +342,19 @@ button[type='submit'] {
     max-width: 100%;
   }
 }
+
+/* 019M-AJ mobile top navigation guardrails. */
+@media (max-width: 700px) {
+  .enterprise-top-navigation {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .enterprise-more-dropdown {
+    left: 0.75rem !important;
+    right: 0.75rem !important;
+    width: auto !important;
+  }
+}
