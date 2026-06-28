@@ -451,3 +451,18 @@ button[type='submit'] {
     overflow-wrap: anywhere;
   }
 }
+
+/* 019M-AM Project Workload selector mobile readiness */
+@media (max-width: 700px) {
+  .pm-workload-selector-panel,
+  .pm-workload-selector-row {
+    grid-template-columns: 1fr !important;
+    width: 100%;
+  }
+
+  .pm-workload-selector-row label,
+  .pm-workload-selector-row select,
+  .pm-workload-selector-row button {
+    width: 100%;
+  }
+}

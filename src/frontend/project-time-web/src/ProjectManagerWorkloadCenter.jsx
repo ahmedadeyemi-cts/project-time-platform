@@ -38,25 +38,46 @@ function formatNumber(value) {
 }
 
 function formatMoney(value) {
-  return Number(value ?? 0).toLocaleString(undefined, {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: 0
-  });
+  return Number(value ?? 0).toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
 }
 
-function formatStatus(status) {
-  return String(status ?? 'unknown').replaceAll('_', ' ').replace(/\b\w/g, (match) => match.toUpperCase());
+function formatStatus(value) {
+  return String(value ?? 'unknown').replaceAll('_', ' ').replace(/\b\w/g, (match) => match.toUpperCase());
+}
+
+function formatDate(value) {
+  if (!value) return 'Not scheduled';
+  return new Date(`${value}T00:00:00`).toLocaleDateString();
+}
+
+function getScopeLabel(scope) {
+  switch (scope) {
+    case 'all_projects':
+      return 'All project managers';
+    case 'selected_project_manager_scope':
+      return 'Selected project manager';
+    case 'pm_team_scope':
+      return 'PM team scope';
+    case 'selected_team_project_manager_scope':
+      return 'Selected team project manager';
+    case 'own_project_manager_scope':
+      return 'My project workload';
+    default:
+      return formatStatus(scope);
+  }
 }
 
 export default function ProjectManagerWorkloadCenter() {
+  const [selectedProjectManagerUserId, setSelectedProjectManagerUserId] = useState('');
   const [workload, setWorkload] = useState({ loading: true, data: null, error: null });
 
-  async function loadWorkload() {
+  async function loadWorkload(projectManagerUserId = selectedProjectManagerUserId) {
     setWorkload((current) => ({ ...current, loading: true, error: null }));
 
+    const query = projectManagerUserId ? `?projectManagerUserId=${encodeURIComponent(projectManagerUserId)}` : '';
+
     try {
-      const result = await fetchJson('/api/project-management/workload');
+      const result = await fetchJson(`/api/project-management/workload${query}`);
       setWorkload({ loading: false, data: result, error: null });
     } catch (error) {
       setWorkload({
@@ -68,57 +89,87 @@ export default function ProjectManagerWorkloadCenter() {
   }
 
   useEffect(() => {
-    loadWorkload();
+    loadWorkload('');
   }, []);
 
   const summary = workload.data?.summary ?? {};
   const projects = workload.data?.projects ?? [];
-  const risks = workload.data?.risks ?? [];
+  const risks = workload.data?.riskHighlights ?? [];
   const statusBreakdown = workload.data?.statusBreakdown ?? [];
+  const selectableProjectManagers = workload.data?.selectableProjectManagers ?? [];
+  const access = workload.data?.access ?? {};
+  const canSelectProjectManager = Boolean(access.canSelectProjectManager) && selectableProjectManagers.length > 1;
 
   const activeProjects = useMemo(
     () => projects.filter((project) => ['active', 'open', 'in_progress', 'planning'].includes(String(project.status ?? '').toLowerCase())),
     [projects]
   );
 
+  function handleProjectManagerChange(value) {
+    setSelectedProjectManagerUserId(value);
+    loadWorkload(value);
+  }
+
   return (
     <section className="pm-workload-center">
       <div className="pm-workload-header">
         <div>
-          <p className="eyebrow">Project workload</p>
-          <h2>Project Manager Dashboard</h2>
+          <p className="eyebrow">019M-AM</p>
+          <h2>Project Workload</h2>
           <p className="muted">
-            Review active projects, closed projects, current status mix, PM-owned project list, and workload risks for the quarter.
+            Project Managers see only their own workload. PM Team Leads can select project managers on their team. Administrators and PTC can review broader workload.
           </p>
         </div>
-        <div className="pm-workload-actions">
-          <span className="pm-workload-pill">{workload.data?.quarter ?? 'Current Quarter'}</span>
-          <button type="button" className="secondary-action" onClick={loadWorkload}>Refresh</button>
-        </div>
+        <span className="pm-workload-scope">{getScopeLabel(workload.data?.scope)}</span>
       </div>
 
       {workload.error ? <div className="pm-workload-banner error">{workload.error}</div> : null}
+
+      {canSelectProjectManager ? (
+        <article className="pm-workload-panel pm-workload-selector-panel">
+          <div>
+            <h3>Project Manager Selector</h3>
+            <p className="muted">
+              The dropdown is role-scoped. PM Team Leads only see project managers on their team.
+            </p>
+          </div>
+          <div className="pm-workload-selector-row">
+            <label>
+              Workload view
+              <select value={selectedProjectManagerUserId} onChange={(event) => handleProjectManagerChange(event.target.value)}>
+                <option value="">{access.canViewAll ? 'All project managers' : 'All PMs on my team'}</option>
+                {selectableProjectManagers.map((pm) => (
+                  <option value={pm.userId} key={pm.userId}>
+                    {pm.displayName} ({pm.email})
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button type="button" className="secondary-action" onClick={() => loadWorkload(selectedProjectManagerUserId)}>Refresh</button>
+          </div>
+        </article>
+      ) : null}
 
       <div className="pm-workload-summary-grid">
         <article>
           <span>Active this quarter</span>
           <strong>{workload.loading ? '...' : formatNumber(summary.activeProjectsThisQuarter)}</strong>
-          <small>Projects currently moving through delivery</small>
+          <small>{workload.data?.quarter ?? 'Current quarter'}</small>
         </article>
         <article>
           <span>Closed this quarter</span>
           <strong>{workload.loading ? '...' : formatNumber(summary.closedProjectsThisQuarter)}</strong>
-          <small>Projects completed during the quarter</small>
+          <small>Completed project count</small>
         </article>
         <article>
-          <span>Total PM projects</span>
+          <span>Total projects</span>
           <strong>{workload.loading ? '...' : formatNumber(summary.totalProjects)}</strong>
-          <small>{workload.data?.scope === 'all_projects' ? 'All projects visible in admin scope' : 'Projects assigned to this PM'}</small>
+          <small>{getScopeLabel(workload.data?.scope)}</small>
         </article>
         <article>
-          <span>Overdue active</span>
-          <strong>{workload.loading ? '...' : formatNumber(summary.overdueActiveProjects)}</strong>
-          <small>Active projects past target end date</small>
+          <span>Workload risks</span>
+          <strong>{workload.loading ? '...' : formatNumber(risks.length)}</strong>
+          <small>Cost/schedule/status review</small>
         </article>
       </div>
 
@@ -127,7 +178,7 @@ export default function ProjectManagerWorkloadCenter() {
           <div className="pm-workload-panel-heading">
             <div>
               <h3>Project Status</h3>
-              <p className="muted">Overall status distribution for the current PM scope.</p>
+              <p className="muted">Status breakdown for the selected workload scope.</p>
             </div>
             <span>{statusBreakdown.length} statuses</span>
           </div>
@@ -138,15 +189,15 @@ export default function ProjectManagerWorkloadCenter() {
                 <strong>{formatNumber(item.count)}</strong>
               </div>
             ))}
-            {!workload.loading && statusBreakdown.length === 0 ? <p className="muted">No project status data found.</p> : null}
+            {!workload.loading && statusBreakdown.length === 0 ? <p className="muted">No project statuses found.</p> : null}
           </div>
         </article>
 
         <article className="pm-workload-panel">
           <div className="pm-workload-panel-heading">
             <div>
-              <h3>Workload Risks</h3>
-              <p className="muted">Items that may need PM review or follow-up.</p>
+              <h3>Workload Risk Highlights</h3>
+              <p className="muted">Projects with cost alerts, schedule review, or status review needs.</p>
             </div>
             <span>{risks.length} risks</span>
           </div>
@@ -167,7 +218,7 @@ export default function ProjectManagerWorkloadCenter() {
         <div className="pm-workload-panel-heading">
           <div>
             <h3>Assigned Project List</h3>
-            <p className="muted">Project delivery view for this PM workload.</p>
+            <p className="muted">Project delivery view for the selected PM workload scope.</p>
           </div>
           <span>{activeProjects.length} active / {projects.length} total</span>
         </div>
@@ -180,7 +231,8 @@ export default function ProjectManagerWorkloadCenter() {
                   {formatStatus(project.status)}
                 </span>
                 <strong>{project.projectCode} · {project.projectName}</strong>
-                <small>{project.clientName} • PM: {project.projectManagerName}</small>
+                <small>{project.clientName} • PM: {project.projectManagerName}{project.projectManagerEmail ? ` (${project.projectManagerEmail})` : ''}</small>
+                <small>{formatDate(project.startDate)} → {formatDate(project.endDate)}</small>
               </div>
               <div className="pm-project-metrics">
                 <span>{formatNumber(project.assignedResourceCount)} resources</span>

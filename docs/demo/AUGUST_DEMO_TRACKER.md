@@ -407,3 +407,13 @@
 - Project Manager should only see their own Project Workload.
 - PM Team Lead should receive a Project Workload dropdown to select PMs on their team.
 - PM Team Lead dropdown must be scoped by PM team relationship, not global user visibility.
+
+## 019M-AM Project Workload PM Scope + PM Team Lead Selector
+
+### Added
+- Project Manager workload is now backend-scoped to the signed-in PM by default.
+- PM Team Lead workload supports a dropdown scoped to PMs on the same team.
+- Administrator/PTC workload can still review all PMs or select a specific PM.
+- Project Workload API now returns selectable PMs, selected scope, and access flags.
+- Project Workload UI now includes a role-aware PM selector when the user is allowed to select PMs.
+- Added mobile readiness for the PM workload selector.

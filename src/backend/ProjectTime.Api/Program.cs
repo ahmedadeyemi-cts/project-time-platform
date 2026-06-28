@@ -2656,7 +2656,7 @@ app.MapPost("/api/projects/cost-alerts/evaluate", async (ProjectCostAlertEvaluat
 
 
 
-app.MapGet("/api/project-management/workload", async (HttpContext httpContext) =>
+app.MapGet("/api/project-management/workload", async (HttpContext httpContext, Guid? projectManagerUserId) =>
 {
     var sessionUserId = GetProjectPulseSessionUserId(httpContext);
     if (sessionUserId is null)
@@ -2671,58 +2671,267 @@ app.MapGet("/api/project-management/workload", async (HttpContext httpContext) =
     await using var connection = new NpgsqlConnection(config.ConnectionString);
     await connection.OpenAsync();
 
-    var canAccess = false;
-    var canViewAll = false;
+    var roles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    var permissions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
     await using (var accessCommand = new NpgsqlCommand("""
         SELECT
-            EXISTS (
-                SELECT 1
-                FROM app_user_role_assignments ura
-                JOIN app_roles r ON r.app_role_id = ura.app_role_id
-                LEFT JOIN app_role_permissions rp ON rp.app_role_id = r.app_role_id
-                LEFT JOIN app_permissions p ON p.app_permission_id = rp.app_permission_id
-                WHERE ura.user_id = @user_id
-                  AND ura.is_active = TRUE
-                  AND r.is_active = TRUE
-                  AND (
-                        r.role_code IN ('ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR', 'PROJECT_MANAGEMENT', 'PROJECT_MANAGER')
-                     OR p.permission_code IN ('VIEW_PROJECT_WORKLOAD', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL')
-                  )
-            ) AS can_access,
-            EXISTS (
-                SELECT 1
-                FROM app_user_role_assignments ura
-                JOIN app_roles r ON r.app_role_id = ura.app_role_id
-                LEFT JOIN app_role_permissions rp ON rp.app_role_id = r.app_role_id
-                LEFT JOIN app_permissions p ON p.app_permission_id = rp.app_permission_id
-                WHERE ura.user_id = @user_id
-                  AND ura.is_active = TRUE
-                  AND r.is_active = TRUE
-                  AND (
-                        r.role_code IN ('ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR')
-                     OR p.permission_code IN ('SYSTEM_ADMINISTRATION', 'MANAGE_ALL')
-                  )
-            ) AS can_view_all;
+            r.role_code,
+            COALESCE(p.permission_code, '') AS permission_code
+        FROM app_user_role_assignments ura
+        JOIN app_roles r
+            ON r.app_role_id = ura.app_role_id
+           AND r.is_active = TRUE
+        LEFT JOIN app_role_permissions rp
+            ON rp.app_role_id = r.app_role_id
+        LEFT JOIN app_permissions p
+            ON p.app_permission_id = rp.app_permission_id
+        WHERE ura.user_id = @user_id
+          AND ura.is_active = TRUE;
         """, connection))
     {
         accessCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
 
         await using var reader = await accessCommand.ExecuteReaderAsync();
-        if (await reader.ReadAsync())
+
+        while (await reader.ReadAsync())
         {
-            canAccess = reader.GetBoolean(0);
-            canViewAll = reader.GetBoolean(1);
+            roles.Add(reader.GetString(0));
+
+            if (!reader.IsDBNull(1) && !string.IsNullOrWhiteSpace(reader.GetString(1)))
+            {
+                permissions.Add(reader.GetString(1));
+            }
         }
     }
+
+    var canViewAll =
+        roles.Contains("ADMINISTRATOR")
+        || roles.Contains("PROJECT_TEAM_COORDINATOR")
+        || permissions.Contains("SYSTEM_ADMINISTRATION")
+        || permissions.Contains("MANAGE_ALL");
+
+    var isProjectManager =
+        roles.Contains("PROJECT_MANAGER")
+        || roles.Contains("PROJECT_MANAGEMENT");
+
+    var isProjectManagementTeamLead =
+        roles.Contains("PM_TEAM_LEAD")
+        || roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD");
+
+    var canAccess =
+        canViewAll
+        || isProjectManager
+        || isProjectManagementTeamLead
+        || permissions.Contains("VIEW_PROJECT_WORKLOAD");
 
     if (!canAccess)
     {
         return Results.Json(new
         {
             status = "access_denied",
-            message = "Project workload is available to project managers, project/team coordinators, and administrators."
+            message = "Project workload is available to project managers, PM team leads, project/team coordinators, and administrators."
         }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var selectableProjectManagers = new List<(Guid UserId, string DisplayName, string Email, string ScopeReason)>();
+
+    if (canViewAll)
+    {
+        await using var pmCommand = new NpgsqlCommand("""
+            WITH project_pm AS (
+                SELECT DISTINCT project_manager_user_id AS user_id
+                FROM projects
+                WHERE project_manager_user_id IS NOT NULL
+            ),
+            role_pm AS (
+                SELECT DISTINCT ura.user_id
+                FROM app_user_role_assignments ura
+                JOIN app_roles r
+                    ON r.app_role_id = ura.app_role_id
+                   AND r.is_active = TRUE
+                WHERE ura.is_active = TRUE
+                  AND r.role_code IN ('PROJECT_MANAGER', 'PROJECT_MANAGEMENT')
+            ),
+            eligible_pm AS (
+                SELECT user_id FROM project_pm
+                UNION
+                SELECT user_id FROM role_pm
+            )
+            SELECT
+                u.user_id,
+                COALESCE(NULLIF(u.display_name, ''), u.email) AS display_name,
+                u.email
+            FROM eligible_pm ep
+            JOIN app_users u
+                ON u.user_id = ep.user_id
+               AND u.is_active = TRUE
+            ORDER BY display_name, u.email;
+            """, connection);
+
+        await using var reader = await pmCommand.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            selectableProjectManagers.Add((
+                reader.GetGuid(0),
+                reader.GetString(1),
+                reader.GetString(2),
+                "all_project_managers"));
+        }
+    }
+    else if (isProjectManagementTeamLead)
+    {
+        await using var teamCommand = new NpgsqlCommand("""
+            WITH active_lead_teams AS (
+                SELECT DISTINCT tm.team_id
+                FROM team_memberships tm
+                WHERE tm.user_id = @user_id
+                  AND tm.effective_start_date <= CURRENT_DATE
+                  AND (tm.effective_end_date IS NULL OR tm.effective_end_date >= CURRENT_DATE)
+            ),
+            team_pm_members AS (
+                SELECT DISTINCT tm.user_id
+                FROM team_memberships tm
+                JOIN active_lead_teams alt
+                    ON alt.team_id = tm.team_id
+                JOIN app_user_role_assignments ura
+                    ON ura.user_id = tm.user_id
+                   AND ura.is_active = TRUE
+                JOIN app_roles r
+                    ON r.app_role_id = ura.app_role_id
+                   AND r.is_active = TRUE
+                WHERE tm.effective_start_date <= CURRENT_DATE
+                  AND (tm.effective_end_date IS NULL OR tm.effective_end_date >= CURRENT_DATE)
+                  AND r.role_code IN ('PROJECT_MANAGER', 'PROJECT_MANAGEMENT')
+            ),
+            own_pm AS (
+                SELECT @user_id::uuid AS user_id
+                WHERE EXISTS (
+                    SELECT 1
+                    FROM app_user_role_assignments ura
+                    JOIN app_roles r
+                        ON r.app_role_id = ura.app_role_id
+                       AND r.is_active = TRUE
+                    WHERE ura.user_id = @user_id
+                      AND ura.is_active = TRUE
+                      AND r.role_code IN ('PROJECT_MANAGER', 'PROJECT_MANAGEMENT')
+                )
+            ),
+            eligible_pm AS (
+                SELECT user_id FROM team_pm_members
+                UNION
+                SELECT user_id FROM own_pm
+            )
+            SELECT
+                u.user_id,
+                COALESCE(NULLIF(u.display_name, ''), u.email) AS display_name,
+                u.email
+            FROM eligible_pm ep
+            JOIN app_users u
+                ON u.user_id = ep.user_id
+               AND u.is_active = TRUE
+            ORDER BY display_name, u.email;
+            """, connection);
+
+        teamCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+
+        await using var reader = await teamCommand.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            selectableProjectManagers.Add((
+                reader.GetGuid(0),
+                reader.GetString(1),
+                reader.GetString(2),
+                "pm_team_scope"));
+        }
+    }
+    else if (isProjectManager)
+    {
+        await using var ownCommand = new NpgsqlCommand("""
+            SELECT
+                u.user_id,
+                COALESCE(NULLIF(u.display_name, ''), u.email) AS display_name,
+                u.email
+            FROM app_users u
+            WHERE u.user_id = @user_id
+              AND u.is_active = TRUE;
+            """, connection);
+
+        ownCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+
+        await using var reader = await ownCommand.ExecuteReaderAsync();
+        if (await reader.ReadAsync())
+        {
+            selectableProjectManagers.Add((
+                reader.GetGuid(0),
+                reader.GetString(1),
+                reader.GetString(2),
+                "own_project_manager_scope"));
+        }
+    }
+
+    selectableProjectManagers = selectableProjectManagers
+        .GroupBy(item => item.UserId)
+        .Select(group => group.First())
+        .OrderBy(item => item.DisplayName)
+        .ThenBy(item => item.Email)
+        .ToList();
+
+    var allowedProjectManagerIds = selectableProjectManagers.Select(item => item.UserId).ToArray();
+
+    Guid? effectiveProjectManagerUserId = null;
+    var scopeAll = false;
+    var allowTeamScope = false;
+    var scope = "own_project_manager_scope";
+
+    if (canViewAll)
+    {
+        if (projectManagerUserId.HasValue && projectManagerUserId.Value != Guid.Empty)
+        {
+            if (!allowedProjectManagerIds.Contains(projectManagerUserId.Value))
+            {
+                return Results.Json(new
+                {
+                    status = "invalid_project_manager_scope",
+                    message = "Selected project manager is not available for workload scope."
+                }, statusCode: StatusCodes.Status400BadRequest);
+            }
+
+            effectiveProjectManagerUserId = projectManagerUserId.Value;
+            scope = "selected_project_manager_scope";
+        }
+        else
+        {
+            scopeAll = true;
+            scope = "all_projects";
+        }
+    }
+    else if (isProjectManagementTeamLead)
+    {
+        if (projectManagerUserId.HasValue && projectManagerUserId.Value != Guid.Empty)
+        {
+            if (!allowedProjectManagerIds.Contains(projectManagerUserId.Value))
+            {
+                return Results.Json(new
+                {
+                    status = "access_denied",
+                    message = "PM Team Lead workload selection is restricted to project managers on the same team."
+                }, statusCode: StatusCodes.Status403Forbidden);
+            }
+
+            effectiveProjectManagerUserId = projectManagerUserId.Value;
+            scope = "selected_team_project_manager_scope";
+        }
+        else
+        {
+            allowTeamScope = true;
+            scope = "pm_team_scope";
+        }
+    }
+    else
+    {
+        effectiveProjectManagerUserId = sessionUserId.Value;
+        scope = "own_project_manager_scope";
     }
 
     var now = DateTime.UtcNow.Date;
@@ -2731,8 +2940,25 @@ app.MapGet("/api/project-management/workload", async (HttpContext httpContext) =
     var quarterEnd = quarterStart.AddMonths(3).AddDays(-1);
     var quarterLabel = $"Q{quarterNumber} {now.Year}";
 
+    void AddScopeParameters(NpgsqlCommand command)
+    {
+        command.Parameters.AddWithValue("scope_all", scopeAll);
+        command.Parameters.AddWithValue("allow_team_scope", allowTeamScope);
+        command.Parameters.AddWithValue("has_scoped_pm", effectiveProjectManagerUserId.HasValue);
+        command.Parameters.AddWithValue("scoped_pm_user_id", effectiveProjectManagerUserId ?? Guid.Empty);
+        command.Parameters.AddWithValue("team_pm_user_ids", allowedProjectManagerIds);
+    }
+
+    const string workloadScopeWhere = """
+        (
+            @scope_all
+            OR (@has_scoped_pm AND p.project_manager_user_id = @scoped_pm_user_id)
+            OR (@allow_team_scope AND p.project_manager_user_id = ANY(@team_pm_user_ids))
+        )
+        """;
+
     object summary;
-    await using (var summaryCommand = new NpgsqlCommand("""
+    await using (var summaryCommand = new NpgsqlCommand($"""
         WITH scoped_projects AS (
             SELECT
                 p.project_id,
@@ -2741,7 +2967,7 @@ app.MapGet("/api/project-management/workload", async (HttpContext httpContext) =
                 p.end_date,
                 p.created_at
             FROM projects p
-            WHERE @can_view_all OR p.project_manager_user_id = @user_id
+            WHERE {workloadScopeWhere}
         )
         SELECT
             COUNT(*)::bigint AS total_projects,
@@ -2762,8 +2988,7 @@ app.MapGet("/api/project-management/workload", async (HttpContext httpContext) =
         FROM scoped_projects;
         """, connection))
     {
-        summaryCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
-        summaryCommand.Parameters.AddWithValue("can_view_all", canViewAll);
+        AddScopeParameters(summaryCommand);
         summaryCommand.Parameters.AddWithValue("quarter_start", quarterStart);
         summaryCommand.Parameters.AddWithValue("quarter_end", quarterEnd);
         summaryCommand.Parameters.AddWithValue("today", now);
@@ -2781,18 +3006,17 @@ app.MapGet("/api/project-management/workload", async (HttpContext httpContext) =
     }
 
     var statusBreakdown = new List<object>();
-    await using (var statusCommand = new NpgsqlCommand("""
+    await using (var statusCommand = new NpgsqlCommand($"""
         SELECT
             COALESCE(NULLIF(trim(p.status), ''), 'unknown') AS status,
             COUNT(*)::bigint AS project_count
         FROM projects p
-        WHERE @can_view_all OR p.project_manager_user_id = @user_id
+        WHERE {workloadScopeWhere}
         GROUP BY COALESCE(NULLIF(trim(p.status), ''), 'unknown')
         ORDER BY project_count DESC, status;
         """, connection))
     {
-        statusCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
-        statusCommand.Parameters.AddWithValue("can_view_all", canViewAll);
+        AddScopeParameters(statusCommand);
 
         await using var reader = await statusCommand.ExecuteReaderAsync();
         while (await reader.ReadAsync())
@@ -2806,7 +3030,9 @@ app.MapGet("/api/project-management/workload", async (HttpContext httpContext) =
     }
 
     var projects = new List<object>();
-    await using (var projectsCommand = new NpgsqlCommand("""
+    var riskHighlights = new List<object>();
+
+    await using (var projectsCommand = new NpgsqlCommand($"""
         SELECT
             p.project_id,
             p.project_code,
@@ -2816,6 +3042,7 @@ app.MapGet("/api/project-management/workload", async (HttpContext httpContext) =
             p.start_date,
             p.end_date,
             COALESCE(pm.display_name, 'Unassigned PM') AS project_manager_name,
+            COALESCE(pm.email, '') AS project_manager_email,
             COALESCE(SUM(pa.assigned_hours), 0)::numeric AS assigned_hours,
             COUNT(DISTINCT pa.user_id)::bigint AS assigned_resource_count,
             COUNT(DISTINCT pt.task_id)::bigint AS task_count,
@@ -2827,7 +3054,7 @@ app.MapGet("/api/project-management/workload", async (HttpContext httpContext) =
         LEFT JOIN project_assignments pa ON pa.project_id = p.project_id
         LEFT JOIN project_tasks pt ON pt.project_id = p.project_id AND pt.is_active = TRUE
         LEFT JOIN project_cost_alerts pca ON pca.project_id = p.project_id AND pca.alert_status = 'open'
-        WHERE @can_view_all OR p.project_manager_user_id = @user_id
+        WHERE {workloadScopeWhere}
         GROUP BY
             p.project_id,
             p.project_code,
@@ -2837,6 +3064,7 @@ app.MapGet("/api/project-management/workload", async (HttpContext httpContext) =
             p.start_date,
             p.end_date,
             pm.display_name,
+            pm.email,
             p.planned_total_project_cost
         ORDER BY
             CASE
@@ -2849,61 +3077,95 @@ app.MapGet("/api/project-management/workload", async (HttpContext httpContext) =
         LIMIT 100;
         """, connection))
     {
-        projectsCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
-        projectsCommand.Parameters.AddWithValue("can_view_all", canViewAll);
+        AddScopeParameters(projectsCommand);
 
         await using var reader = await projectsCommand.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
+            var projectId = reader.GetGuid(0);
+            var projectCode = reader.GetString(1);
+            var projectName = reader.GetString(2);
+            var clientName = reader.GetString(3);
+            var projectStatus = reader.GetString(4);
+            var startDate = reader.IsDBNull(5) ? (DateOnly?)null : reader.GetFieldValue<DateOnly>(5);
+            var endDate = reader.IsDBNull(6) ? (DateOnly?)null : reader.GetFieldValue<DateOnly>(6);
+            var projectManagerName = reader.GetString(7);
+            var projectManagerEmail = reader.GetString(8);
+            var assignedHours = reader.GetDecimal(9);
+            var assignedResourceCount = reader.GetInt64(10);
+            var taskCount = reader.GetInt64(11);
+            var openCostAlertCount = reader.GetInt64(12);
+            var plannedTotalProjectCost = reader.GetDecimal(13);
+
             projects.Add(new
             {
-                projectId = reader.GetGuid(0),
-                projectCode = reader.GetString(1),
-                projectName = reader.GetString(2),
-                clientName = reader.GetString(3),
-                status = reader.GetString(4),
-                startDate = reader.IsDBNull(5) ? (DateOnly?)null : reader.GetFieldValue<DateOnly>(5),
-                endDate = reader.IsDBNull(6) ? (DateOnly?)null : reader.GetFieldValue<DateOnly>(6),
-                projectManagerName = reader.GetString(7),
-                assignedHours = reader.GetDecimal(8),
-                assignedResourceCount = reader.GetInt64(9),
-                taskCount = reader.GetInt64(10),
-                openCostAlertCount = reader.GetInt64(11),
-                plannedTotalProjectCost = reader.GetDecimal(12)
+                projectId,
+                projectCode,
+                projectName,
+                clientName,
+                status = projectStatus,
+                startDate,
+                endDate,
+                projectManagerName,
+                projectManagerEmail,
+                assignedHours,
+                assignedResourceCount,
+                taskCount,
+                openCostAlertCount,
+                plannedTotalProjectCost
             });
+
+            var statusLower = projectStatus.ToLowerInvariant();
+            var isClosed = statusLower is "closed" or "complete" or "completed" or "done";
+            var scheduleReview = endDate.HasValue && endDate.Value < DateOnly.FromDateTime(now) && !isClosed;
+            var statusReview = statusLower == "at_risk";
+
+            if (riskHighlights.Count < 12 && (openCostAlertCount > 0 || scheduleReview || statusReview))
+            {
+                riskHighlights.Add(new
+                {
+                    projectId,
+                    projectCode,
+                    projectName,
+                    status = projectStatus,
+                    riskSummary = openCostAlertCount > 0
+                        ? $"{openCostAlertCount} open cost alert(s)"
+                        : "Schedule or status requires review"
+                });
+            }
         }
     }
 
-    var risks = projects
-        .Cast<dynamic>()
-        .Where(project => project.openCostAlertCount > 0 || string.Equals((string)project.status, "active", StringComparison.OrdinalIgnoreCase))
-        .Take(12)
-        .Select(project => new
-        {
-            project.projectCode,
-            project.projectName,
-            project.status,
-            project.openCostAlertCount,
-            riskSummary = project.openCostAlertCount > 0
-                ? "Open cost alert requires PM review."
-                : "Active project in current PM workload."
-        })
-        .ToList();
-
     return Results.Ok(new
     {
-        module = "019M-AK Project Manager Workload",
-        scope = canViewAll ? "all_projects" : "assigned_pm_projects",
+        module = "019M-AM Project Workload PM Scope",
+        scope,
         quarter = quarterLabel,
         quarterStart = DateOnly.FromDateTime(quarterStart),
         quarterEnd = DateOnly.FromDateTime(quarterEnd),
+        selectedProjectManagerUserId = effectiveProjectManagerUserId,
+        selectableProjectManagers = selectableProjectManagers.Select(item => new
+        {
+            userId = item.UserId,
+            displayName = item.DisplayName,
+            email = item.Email,
+            scopeReason = item.ScopeReason
+        }),
+        access = new
+        {
+            canViewAll,
+            canSelectProjectManager = canViewAll || isProjectManagementTeamLead,
+            isProjectManager,
+            isProjectManagementTeamLead
+        },
         summary,
         statusBreakdown,
+        projectCount = projects.Count,
         projects,
-        risks
+        riskCount = riskHighlights.Count,
+        riskHighlights
     });
 });
-
 
 
 app.MapPost("/api/projects/cost-alerts/{alertId:guid}/status", async (Guid alertId, ProjectCostAlertStatusUpdateRequest request, HttpContext httpContext) =>
