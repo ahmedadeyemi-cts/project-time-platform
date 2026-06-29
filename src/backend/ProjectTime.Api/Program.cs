@@ -20618,6 +20618,840 @@ static async Task<Guid?> ResolveSessionUserIdForProductionAcknowledgmentAsync(Ht
 
 // 019M-CI Production Operations Acknowledgments + Sign-Off Evidence - END
 
+
+// 019M-CJ Time Compliance Automatic Engineer Email Notifications - START
+app.MapGet("/api/time-compliance/email-notifications/summary", async (HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Time compliance email notification operations are restricted to administrators and project/team coordinators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var schedules = new List<object>();
+
+    await using (var scheduleCommand = new NpgsqlCommand("""
+        SELECT
+            schedule_key,
+            schedule_name,
+            scenario,
+            recipient_group_code,
+            send_day,
+            send_time_local,
+            timezone_name,
+            is_active,
+            requires_preview_before_send,
+            last_run_at,
+            next_run_hint
+        FROM time_compliance_notification_schedule_controls
+        ORDER BY schedule_key;
+        """, connection))
+    {
+        await using var reader = await scheduleCommand.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            schedules.Add(new
+            {
+                scheduleKey = reader.GetString(0),
+                scheduleName = reader.GetString(1),
+                scenario = reader.GetString(2),
+                recipientGroupCode = reader.GetString(3),
+                sendDay = reader.GetString(4),
+                sendTimeLocal = reader.GetString(5),
+                timezoneName = reader.GetString(6),
+                isActive = reader.GetBoolean(7),
+                requiresPreviewBeforeSend = reader.GetBoolean(8),
+                lastRunAt = reader.IsDBNull(9) ? (DateTime?)null : reader.GetDateTime(9),
+                nextRunHint = reader.IsDBNull(10) ? "" : reader.GetString(10)
+            });
+        }
+    }
+
+    long runCount = 0;
+    long queuedCount = 0;
+    long sentCount = 0;
+    long failedCount = 0;
+
+    await using (var summaryCommand = new NpgsqlCommand("""
+        SELECT
+            COUNT(*) AS run_count,
+            COALESCE(SUM(queued_count), 0) AS queued_count,
+            COALESCE(SUM(sent_count), 0) AS sent_count,
+            COALESCE(SUM(failed_count), 0) AS failed_count
+        FROM time_compliance_notification_runs;
+        """, connection))
+    {
+        await using var reader = await summaryCommand.ExecuteReaderAsync();
+        if (await reader.ReadAsync())
+        {
+            runCount = reader.GetInt64(0);
+            queuedCount = reader.GetInt64(1);
+            sentCount = reader.GetInt64(2);
+            failedCount = reader.GetInt64(3);
+        }
+    }
+
+    var recentRuns = new List<object>();
+
+    await using (var runsCommand = new NpgsqlCommand("""
+        SELECT
+            time_compliance_notification_run_id,
+            run_type,
+            scenario,
+            delivery_mode,
+            week_start,
+            week_end,
+            requested_by_email,
+            run_status,
+            generated_count,
+            queued_count,
+            sent_count,
+            failed_count,
+            skipped_count,
+            started_at,
+            completed_at,
+            run_message
+        FROM time_compliance_notification_runs
+        ORDER BY started_at DESC
+        LIMIT 10;
+        """, connection))
+    {
+        await using var reader = await runsCommand.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            recentRuns.Add(new
+            {
+                runId = reader.GetGuid(0),
+                runType = reader.GetString(1),
+                scenario = reader.GetString(2),
+                deliveryMode = reader.GetString(3),
+                weekStart = reader.IsDBNull(4) ? (DateOnly?)null : reader.GetFieldValue<DateOnly>(4),
+                weekEnd = reader.IsDBNull(5) ? (DateOnly?)null : reader.GetFieldValue<DateOnly>(5),
+                requestedByEmail = reader.IsDBNull(6) ? "" : reader.GetString(6),
+                runStatus = reader.GetString(7),
+                generatedCount = reader.GetInt32(8),
+                queuedCount = reader.GetInt32(9),
+                sentCount = reader.GetInt32(10),
+                failedCount = reader.GetInt32(11),
+                skippedCount = reader.GetInt32(12),
+                startedAt = reader.GetDateTime(13),
+                completedAt = reader.IsDBNull(14) ? (DateTime?)null : reader.GetDateTime(14),
+                runMessage = reader.IsDBNull(15) ? "" : reader.GetString(15)
+            });
+        }
+    }
+
+    var emailProvider = GetProjectPulseSharedEmailProviderRuntime();
+
+    return Results.Ok(new
+    {
+        module = "019M-CJ Time Compliance Automatic Engineer Email Notifications",
+        summary = new
+        {
+            runCount,
+            queuedCount,
+            sentCount,
+            failedCount,
+            scheduleCount = schedules.Count,
+            activeScheduleCount = schedules.Count(s => (bool)s.GetType().GetProperty("isActive")!.GetValue(s)!),
+            provider = emailProvider.Provider,
+            senderEmail = emailProvider.SenderEmail,
+            senderName = emailProvider.SenderName,
+            brevoApiConfigured = emailProvider.BrevoApiConfigured,
+            sendmailAvailable = emailProvider.SendmailAvailable,
+            smtpConfigured = emailProvider.SmtpConfigured,
+            blockLocalRecipients = emailProvider.BlockLocalRecipients,
+            preferredDeliveryMode = emailProvider.PreferredDeliveryMode,
+            deliveryReadiness = emailProvider.DeliveryReadiness
+        },
+        schedules,
+        recentRuns
+    });
+});
+
+app.MapGet("/api/time-compliance/email-notifications/events", async (HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Time compliance email notification events are restricted to administrators and project/team coordinators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var limit = 25;
+    if (int.TryParse(httpContext.Request.Query["limit"].FirstOrDefault(), out var parsedLimit))
+    {
+        limit = Math.Clamp(parsedLimit, 1, 100);
+    }
+
+    var events = new List<object>();
+
+    await using var command = new NpgsqlCommand("""
+        SELECT
+            e.time_compliance_notification_delivery_event_id,
+            e.time_compliance_notification_run_id,
+            e.recipient_email,
+            e.recipient_display_name,
+            e.manager_email,
+            e.cc_emails,
+            e.subject,
+            e.delivery_status,
+            e.delivery_mode,
+            e.sent_at,
+            e.failed_at,
+            e.failure_message,
+            e.created_at
+        FROM time_compliance_notification_delivery_events e
+        ORDER BY e.created_at DESC
+        LIMIT @limit;
+        """, connection);
+
+    command.Parameters.AddWithValue("limit", limit);
+
+    await using var reader = await command.ExecuteReaderAsync();
+    while (await reader.ReadAsync())
+    {
+        events.Add(new
+        {
+            deliveryEventId = reader.GetGuid(0),
+            runId = reader.GetGuid(1),
+            recipientEmail = reader.GetString(2),
+            recipientDisplayName = reader.IsDBNull(3) ? "" : reader.GetString(3),
+            managerEmail = reader.IsDBNull(4) ? "" : reader.GetString(4),
+            ccEmails = reader.IsDBNull(5) ? Array.Empty<string>() : reader.GetFieldValue<string[]>(5),
+            subject = reader.GetString(6),
+            deliveryStatus = reader.GetString(7),
+            deliveryMode = reader.GetString(8),
+            sentAt = reader.IsDBNull(9) ? (DateTime?)null : reader.GetDateTime(9),
+            failedAt = reader.IsDBNull(10) ? (DateTime?)null : reader.GetDateTime(10),
+            failureMessage = reader.IsDBNull(11) ? "" : reader.GetString(11),
+            createdAt = reader.GetDateTime(12)
+        });
+    }
+
+    return Results.Ok(new
+    {
+        module = "019M-CJ Time Compliance Email Notification Delivery Events",
+        count = events.Count,
+        events
+    });
+});
+
+app.MapPost("/api/time-compliance/email-notifications/send", async (HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Time compliance email notification send is restricted to administrators and project/team coordinators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    using var document = await JsonDocument.ParseAsync(httpContext.Request.Body);
+    var root = document.RootElement;
+
+    var scenario = root.TryGetProperty("scenario", out var scenarioElement)
+        ? scenarioElement.GetString()
+        : "weekly_reminder";
+
+    scenario = string.IsNullOrWhiteSpace(scenario) ? "weekly_reminder" : scenario.Trim();
+
+    var deliveryMode = root.TryGetProperty("deliveryMode", out var modeElement)
+        ? modeElement.GetString()
+        : "outbox_only";
+
+    deliveryMode = string.IsNullOrWhiteSpace(deliveryMode) ? "outbox_only" : deliveryMode.Trim();
+
+    var sharedEmailProvider = GetProjectPulseSharedEmailProviderRuntime();
+    if (deliveryMode.Equals("provider", StringComparison.OrdinalIgnoreCase)
+        || deliveryMode.Equals("auto", StringComparison.OrdinalIgnoreCase)
+        || deliveryMode.Equals("default", StringComparison.OrdinalIgnoreCase))
+    {
+        deliveryMode = sharedEmailProvider.PreferredDeliveryMode;
+    }
+
+    var runType = root.TryGetProperty("runType", out var runTypeElement)
+        ? runTypeElement.GetString()
+        : "manual";
+
+    runType = string.IsNullOrWhiteSpace(runType) ? "manual" : runType.Trim();
+
+    DateOnly? weekStart = null;
+    DateOnly? weekEnd = null;
+
+    if (root.TryGetProperty("weekStart", out var weekStartElement)
+        && DateOnly.TryParse(weekStartElement.GetString(), out var parsedWeekStart))
+    {
+        weekStart = parsedWeekStart;
+        weekEnd = parsedWeekStart.AddDays(6);
+    }
+
+    var actorUserId = await ResolveSessionUserIdForProductionAcknowledgmentAsync(httpContext, connection);
+    var actorEmail = "";
+
+    if (actorUserId is not null)
+    {
+        await using var userCommand = new NpgsqlCommand("""
+            SELECT email
+            FROM app_users
+            WHERE user_id = @user_id
+            LIMIT 1;
+            """, connection);
+
+        userCommand.Parameters.AddWithValue("user_id", actorUserId.Value);
+        actorEmail = (await userCommand.ExecuteScalarAsync())?.ToString() ?? "";
+    }
+
+    var previewUrl = "/api/time-compliance/preview?scenario=" + Uri.EscapeDataString(scenario);
+    if (weekStart is not null)
+    {
+        previewUrl += "&weekStart=" + Uri.EscapeDataString(weekStart.Value.ToString("yyyy-MM-dd"));
+    }
+
+    var baseUrl = $"{httpContext.Request.Scheme}://{httpContext.Request.Host}";
+    using var client = new HttpClient();
+    client.DefaultRequestHeaders.Add("X-ProjectPulse-Session", httpContext.Request.Headers["X-ProjectPulse-Session"].FirstOrDefault() ?? "");
+
+    var previewJson = await client.GetStringAsync(baseUrl + previewUrl);
+    using var previewDocument = JsonDocument.Parse(previewJson);
+    var previewRoot = previewDocument.RootElement;
+
+    var missingSubmissions = previewRoot.TryGetProperty("missingSubmissions", out var missingElement)
+        && missingElement.ValueKind == JsonValueKind.Array
+        ? missingElement.EnumerateArray().ToList()
+        : new List<JsonElement>();
+
+    Guid runId;
+
+    await using (var runCommand = new NpgsqlCommand("""
+        INSERT INTO time_compliance_notification_runs (
+            run_type,
+            scenario,
+            delivery_mode,
+            week_start,
+            week_end,
+            requested_by_user_id,
+            requested_by_email,
+            run_status,
+            generated_count,
+            preview_snapshot
+        )
+        VALUES (
+            @run_type,
+            @scenario,
+            @delivery_mode,
+            @week_start,
+            @week_end,
+            @requested_by_user_id,
+            @requested_by_email,
+            'running',
+            @generated_count,
+            @preview_snapshot::jsonb
+        )
+        RETURNING time_compliance_notification_run_id;
+        """, connection))
+    {
+        runCommand.Parameters.AddWithValue("run_type", runType);
+        runCommand.Parameters.AddWithValue("scenario", scenario);
+        runCommand.Parameters.AddWithValue("delivery_mode", deliveryMode);
+        runCommand.Parameters.AddWithValue("week_start", weekStart is null ? DBNull.Value : weekStart.Value);
+        runCommand.Parameters.AddWithValue("week_end", weekEnd is null ? DBNull.Value : weekEnd.Value);
+        runCommand.Parameters.AddWithValue("requested_by_user_id", actorUserId is null ? DBNull.Value : actorUserId.Value);
+        runCommand.Parameters.AddWithValue("requested_by_email", string.IsNullOrWhiteSpace(actorEmail) ? DBNull.Value : actorEmail);
+        runCommand.Parameters.AddWithValue("generated_count", missingSubmissions.Count);
+        runCommand.Parameters.Add(new NpgsqlParameter("preview_snapshot", NpgsqlTypes.NpgsqlDbType.Jsonb)
+        {
+            Value = previewJson
+        });
+
+        runId = (Guid)(await runCommand.ExecuteScalarAsync() ?? Guid.Empty);
+    }
+
+    var queuedCount = 0;
+    var skippedCount = 0;
+    var sentCount = 0;
+    var failedCount = 0;
+
+    foreach (var submission in missingSubmissions)
+    {
+        var recipientEmail = submission.TryGetProperty("email", out var emailElement) ? emailElement.GetString() ?? "" : "";
+        var recipientName = submission.TryGetProperty("displayName", out var nameElement) ? nameElement.GetString() ?? "" : "";
+        var managerEmail = submission.TryGetProperty("managerEmail", out var managerElement) ? managerElement.GetString() ?? "" : "";
+        var subject = submission.TryGetProperty("subject", out var subjectElement) ? subjectElement.GetString() ?? "" : "Project Pulse time compliance reminder";
+        var body = submission.TryGetProperty("body", out var bodyElement) ? bodyElement.GetString() ?? "" : "";
+
+        var ccEmails = new List<string>();
+        if (submission.TryGetProperty("ccEmails", out var ccElement) && ccElement.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var cc in ccElement.EnumerateArray())
+            {
+                var ccValue = cc.GetString();
+                if (!string.IsNullOrWhiteSpace(ccValue))
+                {
+                    ccEmails.Add(ccValue.Trim());
+                }
+            }
+        }
+
+        Guid? userId = null;
+        if (submission.TryGetProperty("userId", out var userIdElement)
+            && Guid.TryParse(userIdElement.GetString(), out var parsedUserId))
+        {
+            userId = parsedUserId;
+        }
+
+        if (string.IsNullOrWhiteSpace(recipientEmail))
+        {
+            skippedCount++;
+            continue;
+        }
+
+        var status = deliveryMode.Equals("outbox_only", StringComparison.OrdinalIgnoreCase) ? "outbox_only" : "queued";
+        var failureMessage = "";
+
+        if (deliveryMode.Equals("outbox_only", StringComparison.OrdinalIgnoreCase))
+        {
+            queuedCount++;
+        }
+        else
+        {
+            var deliveryResult = await SendProjectPulseEmailThroughSharedProviderAsync(
+                deliveryMode,
+                recipientEmail,
+                recipientName,
+                ccEmails,
+                subject,
+                body
+            );
+
+            status = deliveryResult.Status;
+            failureMessage = deliveryResult.FailureMessage;
+
+            if (status.Equals("sent", StringComparison.OrdinalIgnoreCase))
+            {
+                sentCount++;
+            }
+            else if (status.Equals("failed", StringComparison.OrdinalIgnoreCase))
+            {
+                failedCount++;
+            }
+            else if (status.Equals("skipped", StringComparison.OrdinalIgnoreCase))
+            {
+                skippedCount++;
+            }
+            else
+            {
+                queuedCount++;
+            }
+        }
+
+        await using var eventCommand = new NpgsqlCommand("""
+            INSERT INTO time_compliance_notification_delivery_events (
+                time_compliance_notification_run_id,
+                recipient_user_id,
+                recipient_email,
+                recipient_display_name,
+                manager_email,
+                cc_emails,
+                subject,
+                body,
+                delivery_status,
+                delivery_mode,
+                sent_at,
+                failed_at,
+                failure_message
+            )
+            VALUES (
+                @run_id,
+                @recipient_user_id,
+                @recipient_email,
+                @recipient_display_name,
+                @manager_email,
+                @cc_emails,
+                @subject,
+                @body,
+                @delivery_status,
+                @delivery_mode,
+                CASE WHEN @delivery_status = 'sent' THEN now() ELSE NULL END,
+                CASE WHEN @delivery_status = 'failed' THEN now() ELSE NULL END,
+                @failure_message
+            );
+            """, connection);
+
+        eventCommand.Parameters.AddWithValue("run_id", runId);
+        eventCommand.Parameters.AddWithValue("recipient_user_id", userId is null ? DBNull.Value : userId.Value);
+        eventCommand.Parameters.AddWithValue("recipient_email", recipientEmail.Trim());
+        eventCommand.Parameters.AddWithValue("recipient_display_name", string.IsNullOrWhiteSpace(recipientName) ? DBNull.Value : recipientName.Trim());
+        eventCommand.Parameters.AddWithValue("manager_email", string.IsNullOrWhiteSpace(managerEmail) ? DBNull.Value : managerEmail.Trim());
+        eventCommand.Parameters.Add(new NpgsqlParameter("cc_emails", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Text)
+        {
+            Value = ccEmails.ToArray()
+        });
+        eventCommand.Parameters.AddWithValue("subject", subject);
+        eventCommand.Parameters.AddWithValue("body", body);
+        eventCommand.Parameters.AddWithValue("delivery_status", status);
+        eventCommand.Parameters.AddWithValue("delivery_mode", deliveryMode);
+        eventCommand.Parameters.AddWithValue("failure_message", string.IsNullOrWhiteSpace(failureMessage) ? DBNull.Value : failureMessage);
+
+        await eventCommand.ExecuteNonQueryAsync();
+    }
+
+    await using (var updateRunCommand = new NpgsqlCommand("""
+        UPDATE time_compliance_notification_runs
+        SET
+            run_status = CASE WHEN @failed_count > 0 THEN 'completed_with_errors' ELSE 'completed' END,
+            queued_count = @queued_count,
+            sent_count = @sent_count,
+            failed_count = @failed_count,
+            skipped_count = @skipped_count,
+            completed_at = now(),
+            run_message = @run_message
+        WHERE time_compliance_notification_run_id = @run_id;
+        """, connection))
+    {
+        updateRunCommand.Parameters.AddWithValue("run_id", runId);
+        updateRunCommand.Parameters.AddWithValue("queued_count", queuedCount);
+        updateRunCommand.Parameters.AddWithValue("sent_count", sentCount);
+        updateRunCommand.Parameters.AddWithValue("failed_count", failedCount);
+        updateRunCommand.Parameters.AddWithValue("skipped_count", skippedCount);
+        updateRunCommand.Parameters.AddWithValue("run_message",
+            deliveryMode.Equals("outbox_only", StringComparison.OrdinalIgnoreCase)
+                ? "Notification run recorded in outbox-only mode. No email was sent."
+                : $"Automatic engineer notification send attempted through shared ProjectPulse email provider: {deliveryMode}.");
+        await updateRunCommand.ExecuteNonQueryAsync();
+    }
+
+    return Results.Ok(new
+    {
+        module = "019M-CJ Time Compliance Automatic Engineer Email Notifications",
+        status = "completed",
+        runId,
+        scenario,
+        deliveryMode,
+        generatedCount = missingSubmissions.Count,
+        queuedCount,
+        sentCount,
+        failedCount,
+        skippedCount,
+        message = deliveryMode.Equals("outbox_only", StringComparison.OrdinalIgnoreCase)
+            ? "Automatic engineer notification run was recorded in outbox-only mode. No email was sent."
+            : $"Automatic engineer notification send completed through shared ProjectPulse email provider: {deliveryMode}."
+    });
+});
+// 019M-CJ Time Compliance Automatic Engineer Email Notifications - END
+
+
+// 019M-CK Shared ProjectPulse Email Provider - START
+app.MapGet("/api/system/email-provider/summary", async (HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Shared email provider settings are restricted to administrators and project/team coordinators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var provider = GetProjectPulseSharedEmailProviderRuntime();
+    var consumers = new List<object>();
+
+    await using (var consumerCommand = new NpgsqlCommand("""
+        SELECT
+            consumer_key,
+            consumer_name,
+            consumer_description,
+            owning_route,
+            required_permissions,
+            expected_delivery_modes,
+            is_active,
+            updated_at
+        FROM system_email_provider_consumers
+        ORDER BY consumer_key;
+        """, connection))
+    {
+        await using var reader = await consumerCommand.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            consumers.Add(new
+            {
+                consumerKey = reader.GetString(0),
+                consumerName = reader.GetString(1),
+                consumerDescription = reader.GetString(2),
+                owningRoute = reader.IsDBNull(3) ? "" : reader.GetString(3),
+                requiredPermissions = reader.IsDBNull(4) ? Array.Empty<string>() : reader.GetFieldValue<string[]>(4),
+                expectedDeliveryModes = reader.IsDBNull(5) ? Array.Empty<string>() : reader.GetFieldValue<string[]>(5),
+                isActive = reader.GetBoolean(6),
+                updatedAt = reader.GetDateTime(7)
+            });
+        }
+    }
+
+    return Results.Ok(new
+    {
+        module = "019M-CK Shared ProjectPulse Email Provider",
+        summary = new
+        {
+            provider = provider.Provider,
+            senderEmail = provider.SenderEmail,
+            senderName = provider.SenderName,
+            brevoApiConfigured = provider.BrevoApiConfigured,
+            sendmailAvailable = provider.SendmailAvailable,
+            smtpConfigured = provider.SmtpConfigured,
+            blockLocalRecipients = provider.BlockLocalRecipients,
+            preferredDeliveryMode = provider.PreferredDeliveryMode,
+            deliveryReadiness = provider.DeliveryReadiness,
+            consumerCount = consumers.Count,
+            activeConsumerCount = consumers.Count(c => (bool)c.GetType().GetProperty("isActive")!.GetValue(c)!)
+        },
+        consumers
+    });
+});
+
+static (
+    string Provider,
+    string SenderEmail,
+    string SenderName,
+    bool BrevoApiConfigured,
+    bool SendmailAvailable,
+    bool SmtpConfigured,
+    bool BlockLocalRecipients,
+    string PreferredDeliveryMode,
+    string DeliveryReadiness
+) GetProjectPulseSharedEmailProviderRuntime()
+{
+    var configuredProvider = (Environment.GetEnvironmentVariable("PROJECTPULSE_EMAIL_PROVIDER") ?? "outbox_only").Trim().ToLowerInvariant();
+
+    var brevoApiKey = Environment.GetEnvironmentVariable("PROJECTPULSE_BREVO_API_KEY") ?? "";
+    var brevoSenderEmail =
+        Environment.GetEnvironmentVariable("PROJECTPULSE_BREVO_SENDER_EMAIL") ??
+        Environment.GetEnvironmentVariable("PROJECTPULSE_EMAIL_DEFAULT_SENDER_EMAIL") ??
+        "";
+
+    var brevoSenderName =
+        Environment.GetEnvironmentVariable("PROJECTPULSE_BREVO_SENDER_NAME") ??
+        Environment.GetEnvironmentVariable("PROJECTPULSE_EMAIL_DEFAULT_SENDER_NAME") ??
+        "Project Pulse";
+
+    var sendmailAvailable = File.Exists("/usr/sbin/sendmail") || File.Exists("/usr/lib/sendmail");
+
+    var smtpConfigured =
+        !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("PROJECTPULSE_SMTP_HOST")) ||
+        !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("SMTP_HOST"));
+
+    var brevoApiConfigured =
+        !string.IsNullOrWhiteSpace(brevoApiKey) &&
+        !string.IsNullOrWhiteSpace(brevoSenderEmail);
+
+    if (configuredProvider == "brevo" || configuredProvider == "brevo_api")
+    {
+        configuredProvider = "brevo_api";
+    }
+
+    string preferredDeliveryMode;
+    if (configuredProvider == "brevo_api" && brevoApiConfigured)
+    {
+        preferredDeliveryMode = "brevo_api";
+    }
+    else if (configuredProvider == "sendmail" && sendmailAvailable)
+    {
+        preferredDeliveryMode = "sendmail";
+    }
+    else if (configuredProvider == "smtp" && smtpConfigured)
+    {
+        preferredDeliveryMode = "smtp";
+    }
+    else if (brevoApiConfigured)
+    {
+        preferredDeliveryMode = "brevo_api";
+        configuredProvider = "brevo_api";
+    }
+    else if (sendmailAvailable)
+    {
+        preferredDeliveryMode = "sendmail";
+    }
+    else
+    {
+        preferredDeliveryMode = "outbox_only";
+    }
+
+    var blockLocalRecipients = !string.Equals(
+        Environment.GetEnvironmentVariable("PROJECTPULSE_EMAIL_BLOCK_LOCAL_RECIPIENTS"),
+        "false",
+        StringComparison.OrdinalIgnoreCase
+    );
+
+    return (
+        configuredProvider,
+        brevoSenderEmail,
+        brevoSenderName,
+        brevoApiConfigured,
+        sendmailAvailable,
+        smtpConfigured,
+        blockLocalRecipients,
+        preferredDeliveryMode,
+        preferredDeliveryMode == "outbox_only" ? "outbox_only" : "ready"
+    );
+}
+
+static bool ProjectPulseEmailRecipientShouldBeSkipped(string email)
+{
+    if (string.IsNullOrWhiteSpace(email))
+    {
+        return true;
+    }
+
+    var provider = GetProjectPulseSharedEmailProviderRuntime();
+
+    if (!provider.BlockLocalRecipients)
+    {
+        return false;
+    }
+
+    return email.EndsWith(".local", StringComparison.OrdinalIgnoreCase);
+}
+
+static async Task<(string Status, string FailureMessage)> SendProjectPulseEmailThroughSharedProviderAsync(
+    string deliveryMode,
+    string recipientEmail,
+    string recipientName,
+    IReadOnlyCollection<string> ccEmails,
+    string subject,
+    string body)
+{
+    var provider = GetProjectPulseSharedEmailProviderRuntime();
+
+    var resolvedMode = string.IsNullOrWhiteSpace(deliveryMode)
+        ? provider.PreferredDeliveryMode
+        : deliveryMode.Trim().ToLowerInvariant();
+
+    if (resolvedMode == "provider" || resolvedMode == "auto" || resolvedMode == "default")
+    {
+        resolvedMode = provider.PreferredDeliveryMode;
+    }
+
+    if (resolvedMode == "outbox_only")
+    {
+        return ("outbox_only", "");
+    }
+
+    if (ProjectPulseEmailRecipientShouldBeSkipped(recipientEmail))
+    {
+        return ("skipped", "Skipped non-routable or empty recipient because the shared email provider is configured to block local/test recipients.");
+    }
+
+    var filteredCcEmails = ccEmails
+        .Where(cc => !ProjectPulseEmailRecipientShouldBeSkipped(cc))
+        .Select(cc => cc.Trim())
+        .Where(cc => !string.IsNullOrWhiteSpace(cc))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+
+    if (resolvedMode == "brevo_api")
+    {
+        if (!provider.BrevoApiConfigured)
+        {
+            return ("failed", "Brevo API provider is selected but PROJECTPULSE_BREVO_API_KEY or sender email is not configured.");
+        }
+
+        try
+        {
+            var brevoApiKey = Environment.GetEnvironmentVariable("PROJECTPULSE_BREVO_API_KEY") ?? "";
+
+            var emailBody = body.Replace(
+                "Notification preview only. No email was sent.",
+                "Automatic Project Pulse time-compliance notification."
+            );
+
+            var brevoPayload = new
+            {
+                sender = new
+                {
+                    name = provider.SenderName,
+                    email = provider.SenderEmail
+                },
+                to = new[]
+                {
+                    new
+                    {
+                        email = recipientEmail.Trim(),
+                        name = string.IsNullOrWhiteSpace(recipientName) ? recipientEmail.Trim() : recipientName.Trim()
+                    }
+                },
+                cc = filteredCcEmails.Select(cc => new { email = cc }).ToArray(),
+                subject,
+                textContent = emailBody
+            };
+
+            using var brevoClient = new HttpClient();
+            using var brevoRequest = new HttpRequestMessage(HttpMethod.Post, "https://api.brevo.com/v3/smtp/email");
+            brevoRequest.Headers.Add("accept", "application/json");
+            brevoRequest.Headers.Add("api-key", brevoApiKey);
+            brevoRequest.Content = new StringContent(
+                JsonSerializer.Serialize(brevoPayload),
+                Encoding.UTF8,
+                "application/json"
+            );
+
+            using var brevoResponse = await brevoClient.SendAsync(brevoRequest);
+            var brevoResponseBody = await brevoResponse.Content.ReadAsStringAsync();
+
+            if (brevoResponse.IsSuccessStatusCode)
+            {
+                return ("sent", "");
+            }
+
+            return ("failed", $"Brevo API HTTP {(int)brevoResponse.StatusCode}: {brevoResponseBody}");
+        }
+        catch (Exception ex)
+        {
+            return ("failed", ex.Message);
+        }
+    }
+
+    if (resolvedMode == "smtp")
+    {
+        return ("failed", "SMTP delivery mode is reserved for a future provider adapter. Configure Brevo API as the shared provider for current production email delivery.");
+    }
+
+    return ("outbox_only", "");
+}
+// 019M-CK Shared ProjectPulse Email Provider - END
+
 app.Run();
 
 

@@ -765,3 +765,26 @@
 - Preserved actor evidence capture when the active session table can be resolved.
 - Confirmed the read endpoints were healthy after table grants and focused this repair on sign-off POST evidence creation.
 - Preserved Dashboard / Navigation / Registry validation.
+
+## 019M-CJ Time Compliance Automatic Engineer Email Notifications
+
+- Added notification run, delivery event, and schedule-control tables for automatic engineer time-compliance email notifications.
+- Added summary, event, and send endpoints under `/api/time-compliance/email-notifications`.
+- Added native React controls on the Time Compliance route for outbox-only runs and real sendmail delivery when server delivery readiness is available.
+- Preserved preview-before-send behavior by building delivery runs from `/api/time-compliance/preview`.
+- Preserved Dashboard / Navigation / Registry validation and engineer negative-access validation coverage.
+
+## 019M-CJ Nullable Response Build Repair
+
+- Repaired nullable `DateTime` and `DateOnly` response fields in the automatic time-compliance email notification endpoints.
+- Preserved automatic engineer notification run records, delivery events, schedule controls, and outbox/sendmail readiness behavior.
+- Preserved Dashboard / Navigation / Registry validation.
+
+## 019M-CK Shared ProjectPulse Email Provider Configuration
+
+- Added `/etc/projectpulse/email.env` as the single global email provider configuration source for ProjectPulse.
+- Added systemd EnvironmentFile wiring through `projecttime-api.service.d/40-projectpulse-email-provider.conf`.
+- Added `/api/system/email-provider/summary` to expose non-secret provider readiness and registered email consumers.
+- Added `system_email_provider_consumers` non-secret registry for current and future email-capable workflows.
+- Refactored Time Compliance automatic notifications to use the shared ProjectPulse email provider instead of owning separate provider settings.
+- Preserved outbox-only mode, Brevo API delivery mode, `.local` recipient blocking, Dashboard / Navigation / Registry validation, and Engineer View-As restrictions.
