@@ -7644,6 +7644,244 @@ app.MapGet("/api/security/context", async (HttpContext httpContext) =>
 });
 
 
+
+
+// 019M-CM Role Enforcement + User Switcher Hardening - START
+app.MapGet("/api/security/effective-session", async (HttpContext httpContext) =>
+{
+    var effectiveUserId = GetProjectPulseSessionUserId(httpContext);
+
+    if (effectiveUserId is null)
+    {
+        return Results.Json(new
+        {
+            status = "session_required",
+            message = "A valid ProjectPulse session is required."
+        }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var actualUserId =
+        httpContext.Items.TryGetValue("ProjectPulseActualUserId", out var actualValue)
+        && actualValue is Guid actualGuid
+            ? actualGuid
+            : effectiveUserId.Value;
+
+    var actualEmail =
+        httpContext.Items.TryGetValue("ProjectPulseActualEmail", out var actualEmailValue)
+        && actualEmailValue is string actualEmailString
+            ? actualEmailString
+            : GetProjectPulseSessionEmail(httpContext);
+
+    var effectiveEmail = GetProjectPulseSessionEmail(httpContext);
+
+    var isViewAs =
+        httpContext.Items.TryGetValue("ProjectPulseIsViewAs", out var isViewAsValue)
+        && isViewAsValue is bool activeViewAs
+        && activeViewAs;
+
+    var roles = new List<object>();
+    var permissions = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+
+    await using var connection = new NpgsqlConnection(BuildProjectPulseViewAsConnectionString());
+    await connection.OpenAsync();
+
+    await using (var roleCommand = new NpgsqlCommand("""
+        SELECT
+            r.role_code,
+            r.role_name
+        FROM app_user_role_assignments ura
+        JOIN app_roles r
+            ON r.app_role_id = ura.app_role_id
+        WHERE ura.user_id = @user_id
+          AND ura.is_active = TRUE
+          AND r.is_active = TRUE
+        ORDER BY r.role_code;
+        """, connection))
+    {
+        roleCommand.Parameters.AddWithValue("user_id", effectiveUserId.Value);
+
+        await using var reader = await roleCommand.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            roles.Add(new
+            {
+                roleCode = reader.GetString(0),
+                roleName = reader.IsDBNull(1) ? reader.GetString(0) : reader.GetString(1)
+            });
+        }
+    }
+
+    await using (var permissionCommand = new NpgsqlCommand("""
+        SELECT DISTINCT p.permission_code
+        FROM app_user_role_assignments ura
+        JOIN app_roles r
+            ON r.app_role_id = ura.app_role_id
+        JOIN app_role_permissions rp
+            ON rp.app_role_id = r.app_role_id
+        JOIN app_permissions p
+            ON p.app_permission_id = rp.app_permission_id
+        WHERE ura.user_id = @user_id
+          AND ura.is_active = TRUE
+          AND r.is_active = TRUE
+        ORDER BY p.permission_code;
+        """, connection))
+    {
+        permissionCommand.Parameters.AddWithValue("user_id", effectiveUserId.Value);
+
+        await using var reader = await permissionCommand.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            permissions.Add(reader.GetString(0));
+        }
+    }
+
+    return Results.Ok(new
+    {
+        module = "019M-CM Role Enforcement + User Switcher Hardening",
+        status = "effective_session_resolved",
+        actualUser = new
+        {
+            userId = actualUserId,
+            email = actualEmail
+        },
+        effectiveUser = new
+        {
+            userId = effectiveUserId.Value,
+            email = effectiveEmail
+        },
+        isViewAs,
+        viewAsMode = isViewAs ? "administrator_read_only_preview" : "normal_session",
+        writeProtection = new
+        {
+            viewAsWriteProtectionEnabled = true,
+            blockedMethods = new[] { "POST", "PUT", "PATCH", "DELETE" },
+            allowedMethods = new[] { "GET", "HEAD", "OPTIONS" },
+            enforcementPoint = "ApplyProjectPulseViewAsContextAsync middleware"
+        },
+        roles,
+        permissions = permissions.ToArray()
+    });
+});
+
+app.MapGet("/api/security/role-enforcement-smoke", async (HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+
+    if (sessionUserId is null)
+    {
+        return Results.Json(new
+        {
+            status = "session_required",
+            message = "A valid ProjectPulse session is required."
+        }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    await using var connection = new NpgsqlConnection(BuildProjectPulseViewAsConnectionString());
+    await connection.OpenAsync();
+
+    if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            module = "019M-CM Role Enforcement + User Switcher Hardening",
+            message = "Role enforcement smoke validation is restricted to administrators and project/team coordinators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var isViewAs =
+        httpContext.Items.TryGetValue("ProjectPulseIsViewAs", out var isViewAsValue)
+        && isViewAsValue is bool activeViewAs
+        && activeViewAs;
+
+    return Results.Ok(new
+    {
+        module = "019M-CM Role Enforcement + User Switcher Hardening",
+        status = "role_enforcement_smoke_ready",
+        isViewAs,
+        effectiveUserId = sessionUserId.Value,
+        checks = new[]
+        {
+            new
+            {
+                check = "session_required",
+                expected = "401 without a valid ProjectPulse session",
+                endpoint = "/api/security/effective-session"
+            },
+            new
+            {
+                check = "administrator_view_as_only",
+                expected = "403 when a non-administrator submits X-ProjectPulse-View-As-User",
+                endpoint = "global middleware"
+            },
+            new
+            {
+                check = "view_as_read_only",
+                expected = "403 for POST, PUT, PATCH, DELETE while View-As is active",
+                endpoint = "global middleware"
+            },
+            new
+            {
+                check = "effective_user_context",
+                expected = "GET requests resolve roles and permissions for the viewed user",
+                endpoint = "/api/security/effective-session"
+            },
+            new
+            {
+                check = "role_admin_restricted",
+                expected = "engineer-only users cannot access role/security administration endpoints",
+                endpoint = "/api/security/role-access-matrix"
+            }
+        },
+        protectedRoutes = new[]
+        {
+            "/api/security/effective-session",
+            "/api/security/role-enforcement-smoke",
+            "/api/security/role-access-matrix",
+            "/api/security/route-permission-contracts",
+            "/api/navigation/registry-integrity",
+            "/api/project-workspace/view-as/users"
+        }
+    });
+});
+
+app.MapPost("/api/security/role-enforcement-smoke/write-attempt", async (HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+
+    if (sessionUserId is null)
+    {
+        return Results.Json(new
+        {
+            status = "session_required",
+            message = "A valid ProjectPulse session is required."
+        }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    await using var connection = new NpgsqlConnection(BuildProjectPulseViewAsConnectionString());
+    await connection.OpenAsync();
+
+    if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            module = "019M-CM Role Enforcement + User Switcher Hardening",
+            message = "Write smoke validation is restricted to administrators and project/team coordinators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    return Results.Ok(new
+    {
+        module = "019M-CM Role Enforcement + User Switcher Hardening",
+        status = "write_smoke_reached",
+        message = "This dry-run endpoint was reached without View-As. If X-ProjectPulse-View-As-User is present, middleware should block this request before endpoint execution.",
+        writesPerformed = false
+    });
+});
+// 019M-CM Role Enforcement + User Switcher Hardening - END
+
+
 app.MapGet("/api/security/role-matrix", async () =>
 {
     var config = DatabaseConfig.FromEnvironment();
