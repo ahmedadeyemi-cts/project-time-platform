@@ -9718,6 +9718,164 @@ app.MapPost("/api/auth/session/logout", async (HttpRequest httpRequest) =>
     });
 });
 
+
+
+app.MapGet("/api/auth/password-reset/clear-ready-summary", async (HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Password reset queue clearing is restricted to administrators and project/team coordinators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    long readyToClear = 0;
+    long totalLocalResetRequests = 0;
+
+    await using (var summaryCommand = new NpgsqlCommand("""
+        SELECT
+            COUNT(*) FILTER (
+                WHERE lower(pr.status) LIKE '%approved%'
+                  AND lower(pr.status) NOT LIKE '%clear%'
+                  AND lower(pr.status) NOT LIKE '%declin%'
+                  AND lower(pr.status) NOT LIKE '%complete%'
+            ) AS ready_to_clear,
+            COUNT(*) AS total_local_reset_requests
+        FROM auth_password_reset_requests pr
+        JOIN app_users u
+          ON u.user_id = pr.user_id
+        WHERE lower(u.email) LIKE '%.local';
+        """, connection))
+    {
+        await using var reader = await summaryCommand.ExecuteReaderAsync();
+        if (await reader.ReadAsync())
+        {
+            readyToClear = reader.IsDBNull(0) ? 0 : reader.GetInt64(0);
+            totalLocalResetRequests = reader.IsDBNull(1) ? 0 : reader.GetInt64(1);
+        }
+    }
+
+    var statuses = new List<object>();
+
+    await using (var statusCommand = new NpgsqlCommand("""
+        SELECT pr.status, COUNT(*) AS count
+        FROM auth_password_reset_requests pr
+        JOIN app_users u
+          ON u.user_id = pr.user_id
+        WHERE lower(u.email) LIKE '%.local'
+        GROUP BY pr.status
+        ORDER BY pr.status;
+        """, connection))
+    {
+        await using var statusReader = await statusCommand.ExecuteReaderAsync();
+        while (await statusReader.ReadAsync())
+        {
+            statuses.Add(new
+            {
+                status = statusReader.IsDBNull(0) ? "" : statusReader.GetString(0),
+                count = statusReader.GetInt64(1)
+            });
+        }
+    }
+
+    return Results.Ok(new
+    {
+        module = "019M-CH Local Admin Password Reset Queue Clear Controls",
+        status = "ready",
+        summary = new
+        {
+            readyToClear,
+            totalLocalResetRequests,
+            statuses
+        },
+        action = new
+        {
+            endpoint = "/api/auth/password-reset/clear-ready",
+            method = "POST",
+            description = "Clears approved local admin password reset requests from the temporary-password action queue."
+        }
+    });
+});
+
+app.MapPost("/api/auth/password-reset/clear-ready", async (HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Password reset queue clearing is restricted to administrators and project/team coordinators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    await using var transaction = await connection.BeginTransactionAsync();
+
+    try
+    {
+        var clearedIds = new List<Guid>();
+
+        await using (var command = new NpgsqlCommand("""
+            UPDATE auth_password_reset_requests pr
+            SET status = 'cleared',
+                completed_at = COALESCE(pr.completed_at, NOW()),
+                notes = COALESCE(pr.notes, '') || E'\nClear note: Cleared from local admin password reset action queue.'
+            FROM app_users u
+            WHERE u.user_id = pr.user_id
+              AND lower(u.email) LIKE '%.local'
+              AND lower(pr.status) LIKE '%approved%'
+              AND lower(pr.status) NOT LIKE '%clear%'
+              AND lower(pr.status) NOT LIKE '%declin%'
+              AND lower(pr.status) NOT LIKE '%complete%'
+            RETURNING pr.auth_password_reset_request_id;
+            """, connection, transaction))
+        {
+            await using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                clearedIds.Add(reader.GetGuid(0));
+            }
+        }
+
+        await transaction.CommitAsync();
+
+        return Results.Ok(new
+        {
+            status = "cleared",
+            clearedCount = clearedIds.Count,
+            resetRequestIds = clearedIds,
+            message = clearedIds.Count == 0
+                ? "No ready local admin password reset requests required clearing."
+                : "Ready local admin password reset requests were cleared from the action queue."
+        });
+    }
+    catch (Exception ex)
+    {
+        await transaction.RollbackAsync();
+
+        return Results.Problem(
+            title: "Failed to clear local admin password reset queue",
+            detail: ex.Message,
+            statusCode: StatusCodes.Status500InternalServerError);
+    }
+});
+
+
 app.MapPost("/api/auth/local/set-temporary-password", async (SetTemporaryPasswordRequest request, HttpRequest httpRequest) =>
 {
     var token = GetProjectPulseSessionToken(httpRequest);

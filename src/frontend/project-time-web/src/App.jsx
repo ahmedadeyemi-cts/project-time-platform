@@ -366,7 +366,9 @@ import IntakeWorkTaskHandoffPanel from './IntakeWorkTaskHandoffPanel.jsx';
 import ResourceAssignmentHandoffPanel from './ResourceAssignmentHandoffPanel.jsx';
 
 import './production-workflow-operations.css';
+import './local-admin-password-reset-clear-actions.css';
 import ProductionOperationsPanel from './ProductionOperationsPanel.jsx';
+import LocalAdminPasswordResetClearActions from './LocalAdminPasswordResetClearActions.jsx';
 const workflowCards = [
   {
     title: 'Time Entry',
@@ -5158,6 +5160,7 @@ Analytics - Variphy / Infortel`}
           </article>
         ))}
       </section>
+      <LocalAdminPasswordResetClearActions />
       <ProductionOperationsPanel />
       <HelpAssistant />
 </main>

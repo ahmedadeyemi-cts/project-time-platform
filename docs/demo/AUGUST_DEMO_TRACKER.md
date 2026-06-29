@@ -707,3 +707,33 @@
 - Preserved signed-out suppression by returning no panel until a valid Project Pulse session exists.
 - Preserved View-As header forwarding for production operations evidence calls.
 - Kept Dashboard / Navigation / Registry coverage across readiness, registry integrity, module visibility, workflow operations, and role-admin route governance.
+
+## 019M-CH Local Admin Password Reset Queue Clear Controls
+
+- Added backend clear-summary and clear-ready endpoints for local admin password reset request queues.
+- Added dynamic database support for clearing approved/reset-ready records while preserving cleared evidence columns.
+- Added Manager Approval route UI control to clear approved local admin password reset requests from the temporary-password action queue.
+- Restricted queue clearing to Administrator and Project Team Coordinator roles.
+- Added Dashboard / Navigation / Registry validation and engineer negative-access validation coverage.
+
+## 019M-CH Recovery: Direct Password Reset Queue Clear Endpoint
+
+- Removed the failed separate local admin password reset clear module from the active API path.
+- Added a safer direct `/api/auth/password-reset/clear-ready` endpoint beside the existing password reset workflow.
+- Added a Manager Approval route panel that counts approved local admin password reset requests and clears them from the temporary-password action queue.
+- Preserved Administrator / Project Team Coordinator authorization using the existing user-administration access guard.
+- Preserved Dashboard / Navigation / Registry validation.
+
+## 019M-CH Visible Password Reset Queue Clear Button Repair
+
+- Repaired the Manager Approval clear control so the button is fixed and visible on the page instead of being hidden below the approval table.
+- Connected the control to the existing password reset approvals queue and direct clear-ready endpoint.
+- The control clears approved local admin reset requests that are still waiting for temporary-password completion.
+- Preserved Dashboard / Navigation / Registry validation.
+
+## 019M-CH Password Reset Clear Count Source Repair
+
+- Repaired the floating reset queue clear panel so its count comes from a backend queue summary endpoint rather than frontend-only approval inference.
+- Added `/api/auth/password-reset/clear-ready-summary` to read the true approved local-admin reset queue count.
+- Updated `/api/auth/password-reset/clear-ready` so the clear action uses the same queue definition as the summary count.
+- Preserved Dashboard / Navigation / Registry validation.
