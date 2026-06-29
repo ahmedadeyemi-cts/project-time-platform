@@ -788,3 +788,11 @@
 - Added `system_email_provider_consumers` non-secret registry for current and future email-capable workflows.
 - Refactored Time Compliance automatic notifications to use the shared ProjectPulse email provider instead of owning separate provider settings.
 - Preserved outbox-only mode, Brevo API delivery mode, `.local` recipient blocking, Dashboard / Navigation / Registry validation, and Engineer View-As restrictions.
+
+## 019M-CL Shared Email Provider Test Harness
+
+- Added controlled single-recipient shared email provider test endpoint.
+- Added provider test event audit table.
+- Added confirmation gate `SEND_PROVIDER_TEST` to avoid accidental test sends.
+- Preserved `.local` recipient blocking and View-As write protection.
+- Preserved Dashboard / Navigation / Registry validation.

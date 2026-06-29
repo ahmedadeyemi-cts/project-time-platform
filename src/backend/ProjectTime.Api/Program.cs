@@ -21452,6 +21452,258 @@ static async Task<(string Status, string FailureMessage)> SendProjectPulseEmailT
 }
 // 019M-CK Shared ProjectPulse Email Provider - END
 
+
+// 019M-CL Shared Email Provider Test Harness - START
+app.MapGet("/api/system/email-provider/test-events", async (HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Shared email provider test events are restricted to administrators and project/team coordinators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var limit = 25;
+    if (int.TryParse(httpContext.Request.Query["limit"].FirstOrDefault(), out var parsedLimit))
+    {
+        limit = Math.Clamp(parsedLimit, 1, 100);
+    }
+
+    var events = new List<object>();
+
+    await using var command = new NpgsqlCommand("""
+        SELECT
+            system_email_provider_test_event_id,
+            provider,
+            delivery_mode,
+            recipient_email,
+            recipient_display_name,
+            subject,
+            delivery_status,
+            failure_message,
+            requested_by_email,
+            created_at
+        FROM system_email_provider_test_events
+        ORDER BY created_at DESC
+        LIMIT @limit;
+        """, connection);
+
+    command.Parameters.AddWithValue("limit", limit);
+
+    await using var reader = await command.ExecuteReaderAsync();
+    while (await reader.ReadAsync())
+    {
+        events.Add(new
+        {
+            testEventId = reader.GetGuid(0),
+            provider = reader.GetString(1),
+            deliveryMode = reader.GetString(2),
+            recipientEmail = reader.GetString(3),
+            recipientDisplayName = reader.IsDBNull(4) ? "" : reader.GetString(4),
+            subject = reader.GetString(5),
+            deliveryStatus = reader.GetString(6),
+            failureMessage = reader.IsDBNull(7) ? "" : reader.GetString(7),
+            requestedByEmail = reader.IsDBNull(8) ? "" : reader.GetString(8),
+            createdAt = reader.GetDateTime(9)
+        });
+    }
+
+    return Results.Ok(new
+    {
+        module = "019M-CL Shared Email Provider Test Harness",
+        count = events.Count,
+        events
+    });
+});
+
+app.MapPost("/api/system/email-provider/test-send", async (HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Shared email provider test send is restricted to administrators and project/team coordinators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    if (httpContext.Request.Headers.ContainsKey("X-ProjectPulse-View-As-User"))
+    {
+        return Results.Json(new
+        {
+            status = "view_as_read_only",
+            message = "Write actions are disabled while using Administrator View-As preview. Exit preview to send test email."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    using var document = await JsonDocument.ParseAsync(httpContext.Request.Body);
+    var root = document.RootElement;
+
+    var recipientEmail = root.TryGetProperty("recipientEmail", out var recipientElement)
+        ? recipientElement.GetString() ?? ""
+        : "";
+
+    var recipientName = root.TryGetProperty("recipientName", out var nameElement)
+        ? nameElement.GetString() ?? ""
+        : "";
+
+    var deliveryMode = root.TryGetProperty("deliveryMode", out var modeElement)
+        ? modeElement.GetString() ?? "provider"
+        : "provider";
+
+    var confirmation = root.TryGetProperty("confirmation", out var confirmElement)
+        ? confirmElement.GetString() ?? ""
+        : "";
+
+    recipientEmail = recipientEmail.Trim();
+    recipientName = recipientName.Trim();
+    deliveryMode = string.IsNullOrWhiteSpace(deliveryMode) ? "provider" : deliveryMode.Trim();
+
+    if (!string.Equals(confirmation, "SEND_PROVIDER_TEST", StringComparison.Ordinal))
+    {
+        return Results.Json(new
+        {
+            status = "confirmation_required",
+            message = "Set confirmation to SEND_PROVIDER_TEST to send one controlled provider test email."
+        }, statusCode: StatusCodes.Status400BadRequest);
+    }
+
+    if (string.IsNullOrWhiteSpace(recipientEmail) || !recipientEmail.Contains("@", StringComparison.Ordinal))
+    {
+        return Results.Json(new
+        {
+            status = "invalid_recipient",
+            message = "A valid recipientEmail is required for the provider test email."
+        }, statusCode: StatusCodes.Status400BadRequest);
+    }
+
+    if (ProjectPulseEmailRecipientShouldBeSkipped(recipientEmail))
+    {
+        return Results.Json(new
+        {
+            status = "recipient_blocked",
+            message = "The configured shared provider blocks .local or empty recipients. Use a real routable recipient for the controlled test."
+        }, statusCode: StatusCodes.Status400BadRequest);
+    }
+
+    var provider = GetProjectPulseSharedEmailProviderRuntime();
+    var actorUserId = await ResolveSessionUserIdForProductionAcknowledgmentAsync(httpContext, connection);
+    var actorEmail = "";
+
+    if (actorUserId is not null)
+    {
+        await using var userCommand = new NpgsqlCommand("""
+            SELECT email
+            FROM app_users
+            WHERE user_id = @user_id
+            LIMIT 1;
+            """, connection);
+
+        userCommand.Parameters.AddWithValue("user_id", actorUserId.Value);
+        actorEmail = (await userCommand.ExecuteScalarAsync())?.ToString() ?? "";
+    }
+
+    var subject = $"ProjectPulse email provider test - {DateTimeOffset.UtcNow:yyyy-MM-dd HH:mm} UTC";
+    var body = $"""
+ProjectPulse shared email provider test
+
+Provider: {provider.Provider}
+Preferred delivery mode: {provider.PreferredDeliveryMode}
+Sender: {provider.SenderName} <{provider.SenderEmail}>
+Recipient: {recipientEmail}
+Requested by: {actorEmail}
+Generated UTC: {DateTimeOffset.UtcNow:O}
+
+This is a controlled single-recipient test email. It confirms that ProjectPulse can send through the shared global email provider configuration.
+""";
+
+    var result = await SendProjectPulseEmailThroughSharedProviderAsync(
+        deliveryMode,
+        recipientEmail,
+        recipientName,
+        Array.Empty<string>(),
+        subject,
+        body
+    );
+
+    await using (var insertCommand = new NpgsqlCommand("""
+        INSERT INTO system_email_provider_test_events (
+            provider,
+            delivery_mode,
+            recipient_email,
+            recipient_display_name,
+            subject,
+            delivery_status,
+            failure_message,
+            requested_by_user_id,
+            requested_by_email
+        )
+        VALUES (
+            @provider,
+            @delivery_mode,
+            @recipient_email,
+            @recipient_display_name,
+            @subject,
+            @delivery_status,
+            @failure_message,
+            @requested_by_user_id,
+            @requested_by_email
+        );
+        """, connection))
+    {
+        insertCommand.Parameters.AddWithValue("provider", provider.Provider);
+        insertCommand.Parameters.AddWithValue("delivery_mode", deliveryMode);
+        insertCommand.Parameters.AddWithValue("recipient_email", recipientEmail);
+        insertCommand.Parameters.AddWithValue("recipient_display_name", string.IsNullOrWhiteSpace(recipientName) ? DBNull.Value : recipientName);
+        insertCommand.Parameters.AddWithValue("subject", subject);
+        insertCommand.Parameters.AddWithValue("delivery_status", result.Status);
+        insertCommand.Parameters.AddWithValue("failure_message", string.IsNullOrWhiteSpace(result.FailureMessage) ? DBNull.Value : result.FailureMessage);
+        insertCommand.Parameters.AddWithValue("requested_by_user_id", actorUserId is null ? DBNull.Value : actorUserId.Value);
+        insertCommand.Parameters.AddWithValue("requested_by_email", string.IsNullOrWhiteSpace(actorEmail) ? DBNull.Value : actorEmail);
+
+        await insertCommand.ExecuteNonQueryAsync();
+    }
+
+    var statusCode = result.Status.Equals("sent", StringComparison.OrdinalIgnoreCase)
+        || result.Status.Equals("outbox_only", StringComparison.OrdinalIgnoreCase)
+        ? StatusCodes.Status200OK
+        : StatusCodes.Status502BadGateway;
+
+    return Results.Json(new
+    {
+        module = "019M-CL Shared Email Provider Test Harness",
+        status = result.Status,
+        provider = provider.Provider,
+        preferredDeliveryMode = provider.PreferredDeliveryMode,
+        deliveryMode,
+        recipientEmail,
+        subject,
+        failureMessage = result.FailureMessage,
+        message = result.Status.Equals("sent", StringComparison.OrdinalIgnoreCase)
+            ? "Controlled provider test email was sent."
+            : result.Status.Equals("outbox_only", StringComparison.OrdinalIgnoreCase)
+                ? "Controlled provider test was recorded in outbox-only mode. No email was sent."
+                : "Controlled provider test did not send successfully."
+    }, statusCode: statusCode);
+});
+// 019M-CL Shared Email Provider Test Harness - END
+
 app.Run();
 
 
