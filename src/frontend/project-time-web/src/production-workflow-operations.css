@@ -1,0 +1,235 @@
+.pp-prod-ui-shell {
+  margin: 1.25rem 0;
+  padding: 1.25rem;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at top left, rgba(14, 165, 233, 0.12), transparent 32rem),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.94));
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.08);
+}
+
+.pp-prod-ui-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+}
+
+.pp-prod-ui-header p {
+  margin: 0 0 0.25rem;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #0369a1;
+}
+
+.pp-prod-ui-header h2 {
+  margin: 0;
+  font-size: clamp(1.35rem, 2vw, 1.9rem);
+  color: #0f172a;
+}
+
+.pp-prod-ui-header span {
+  display: block;
+  margin-top: 0.35rem;
+  max-width: 72rem;
+  color: #475569;
+  line-height: 1.5;
+}
+
+.pp-prod-ui-refresh {
+  border: 0;
+  border-radius: 999px;
+  padding: 0.65rem 1rem;
+  background: #0f172a;
+  color: #fff;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.pp-prod-ui-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(285px, 1fr));
+  gap: 1rem;
+}
+
+.pp-prod-ui-card {
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.92);
+  padding: 1rem;
+  min-width: 0;
+}
+
+.pp-prod-ui-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.pp-prod-ui-card-head span {
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #475569;
+}
+
+.pp-prod-ui-card-head strong {
+  border-radius: 999px;
+  padding: 0.25rem 0.55rem;
+  font-size: 0.74rem;
+  background: #e2e8f0;
+  color: #334155;
+}
+
+.pp-prod-ui-card-head strong.is-ready {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.pp-prod-ui-card-head strong.is-restricted {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.pp-prod-ui-card h4 {
+  margin: 0 0 0.75rem;
+  color: #0f172a;
+  font-size: 1rem;
+}
+
+.pp-prod-ui-detail {
+  margin: 0;
+  color: #475569;
+  line-height: 1.45;
+}
+
+.pp-prod-ui-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.pp-prod-ui-metrics div {
+  padding: 0.65rem;
+  border-radius: 14px;
+  background: #f8fafc;
+}
+
+.pp-prod-ui-metrics dt {
+  margin: 0 0 0.25rem;
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.pp-prod-ui-metrics dd {
+  margin: 0;
+  color: #0f172a;
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.pp-prod-ui-subsection {
+  margin-top: 1rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid rgba(15, 23, 42, 0.1);
+}
+
+.pp-prod-ui-subsection h4 {
+  margin-bottom: 0.65rem;
+}
+
+.pp-prod-ui-list {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.pp-prod-ui-list-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.8fr) auto;
+  gap: 0.65rem;
+  align-items: center;
+  padding: 0.65rem;
+  border-radius: 14px;
+  background: #f8fafc;
+}
+
+.pp-prod-ui-list-item strong,
+.pp-prod-ui-list-item span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.pp-prod-ui-list-item strong {
+  color: #0f172a;
+}
+
+.pp-prod-ui-list-item span {
+  color: #475569;
+  font-size: 0.9rem;
+}
+
+.pp-prod-ui-list-item em {
+  border-radius: 999px;
+  padding: 0.2rem 0.45rem;
+  background: #e0f2fe;
+  color: #075985;
+  font-size: 0.75rem;
+  font-style: normal;
+  font-weight: 800;
+  text-transform: capitalize;
+}
+
+.pp-prod-ui-table-wrap {
+  overflow-x: auto;
+}
+
+.pp-prod-ui-table {
+  width: 100%;
+  min-width: 560px;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+
+.pp-prod-ui-table th,
+.pp-prod-ui-table td {
+  padding: 0.55rem;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  text-align: left;
+  vertical-align: top;
+}
+
+.pp-prod-ui-table th {
+  color: #475569;
+  font-size: 0.74rem;
+  text-transform: uppercase;
+}
+
+@media (max-width: 760px) {
+  .pp-prod-ui-shell {
+    padding: 1rem;
+    border-radius: 18px;
+  }
+
+  .pp-prod-ui-header {
+    flex-direction: column;
+  }
+
+  .pp-prod-ui-refresh {
+    width: 100%;
+  }
+
+  .pp-prod-ui-list-item {
+    grid-template-columns: 1fr;
+  }
+}

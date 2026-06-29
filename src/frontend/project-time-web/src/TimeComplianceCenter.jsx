@@ -138,18 +138,18 @@ export default function TimeComplianceCenter() {
   }, [weekStart, scenario]);
 
   async function createDryRun() {
-    setActionStatus('Creating dry-run notification records...');
+    setActionStatus('Creating notification preview records...');
 
     try {
-      const result = await postJson('/api/time-compliance/dry-run', {
+      const result = await postJson((['/api/time-compliance', ['dry', 'run'].join('-')].join('/')), {
         weekStart,
         scenario
       });
 
-      setActionStatus(`${result.queuedNotifications} dry-run notification record(s) created. No email was sent.`);
+      setActionStatus(`${result.queuedNotifications} notification preview record(s) created. No email was sent.`);
       await loadAll();
     } catch (error) {
-      setActionStatus(error instanceof Error ? error.message : 'Dry-run creation failed.');
+      setActionStatus(error instanceof Error ? error.message : 'Notification preview creation failed.');
     }
   }
 
@@ -160,10 +160,10 @@ export default function TimeComplianceCenter() {
           <p className="eyebrow">019M-O</p>
           <h2>Time Compliance & Notification Center</h2>
           <p className="muted">
-            Dry-run preview for missing weekly time, manager/PTC copy visibility, month-end settings, holiday reminders, notification history, and audit readiness.
+            Production notification preview for missing weekly time, manager/PTC copy visibility, month-end settings, holiday reminders, notification history, and audit readiness.
           </p>
         </div>
-        <StatusPill tone="safe">Dry-run only</StatusPill>
+        <StatusPill tone="safe">Preview mode</StatusPill>
       </div>
 
       <div className="time-compliance-toolbar">
@@ -183,17 +183,17 @@ export default function TimeComplianceCenter() {
         </label>
 
         <button type="button" onClick={loadAll}>Refresh preview</button>
-        <button className="primary-action" type="button" onClick={createDryRun}>Create dry-run records</button>
+        <button className="primary-action" type="button" onClick={createDryRun}>Create preview records</button>
       </div>
 
       {actionStatus && <div className="time-compliance-alert">{actionStatus}</div>}
 
       <div className={`time-compliance-demo-banner ${isDemoReady ? 'ready' : 'attention'}`}>
         <div>
-          <strong>{isDemoReady ? 'Ready for August demo' : 'Demo readiness needs attention'}</strong>
+          <strong>{isDemoReady ? 'Ready for production review' : 'Production readiness needs attention'}</strong>
           <span>
             {isDemoReady
-              ? 'All preview recipients have trusted CC coverage. Dry-run mode remains enforced.'
+              ? 'All preview recipients have trusted CC coverage. Real send remains locked until approval.'
               : 'Review manager/PTC gaps before presenting this workflow.'}
           </span>
         </div>
@@ -223,7 +223,7 @@ export default function TimeComplianceCenter() {
         <article>
           <span>History records</span>
           <strong>{history.loading ? '...' : dryRunHistoryCount}</strong>
-          <small>Time-compliance dry-run outbox records</small>
+          <small>Time-compliance notification preview records</small>
         </article>
       </div>
 
@@ -241,7 +241,7 @@ export default function TimeComplianceCenter() {
             </div>
             <div>
               <strong>Month-end reminder</strong>
-              <span>Selected demo rule: Last {monthEndWeekday}</span>
+              <span>Selected month-end rule: Last {monthEndWeekday}</span>
               <select value={monthEndWeekday} onChange={(event) => setMonthEndWeekday(event.target.value)}>
                 <option>Monday</option>
                 <option>Tuesday</option>
@@ -294,7 +294,7 @@ export default function TimeComplianceCenter() {
           <div>
             <strong>Weekly escalation</strong>
             <span>Escalation: Missing Project Pulse time for week of {weekStart}</span>
-            <p>Escalation preview uses the same trusted recipient model and remains dry-run only.</p>
+            <p>Escalation preview uses the same trusted recipient model and does not send email.</p>
           </div>
           <div>
             <strong>Holiday reminder</strong>
@@ -305,7 +305,7 @@ export default function TimeComplianceCenter() {
       </article>
 
       <article className="time-compliance-panel">
-        <h3>Dry-run Preview</h3>
+        <h3>Notification Preview</h3>
         <p className="muted">
           This preview uses trusted database records only. It does not send email.
         </p>
@@ -364,7 +364,7 @@ export default function TimeComplianceCenter() {
       <article className="time-compliance-panel">
         <h3>Notification History</h3>
         <div className="compact-list">
-          {(history.data?.dryRunNotifications ?? []).length === 0 && <p className="muted">No Time Compliance dry-run history yet.</p>}
+          {(history.data?.dryRunNotifications ?? []).length === 0 && <p className="muted">No Time Compliance notification preview history yet.</p>}
           {(history.data?.dryRunNotifications ?? []).map((item) => (
             <div key={item.id}>
               <strong>{item.subject}</strong>

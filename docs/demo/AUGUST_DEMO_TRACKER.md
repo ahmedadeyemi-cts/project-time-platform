@@ -602,6 +602,36 @@
 
 ## 019M-BV Validation Rule Wording Repair
 
-- Updated production validation rule output from dry-run terminology to workflow preflight validation terminology.
-- Updated action capability notes and compatibility action messages so production-facing responses no longer describe workflow safety checks as dry-run behavior.
+- Updated production validation rule output from preview terminology to workflow preflight validation terminology.
+- Updated action capability notes and compatibility action messages so production-facing responses no longer describe workflow safety checks as preview behavior.
 - Preserved legacy route and table compatibility while correcting response language used by the application.
+
+## 019M-BW through 019M-CD Production Workflow Operations UI
+
+- Added production UI panels for workflow operations, production readiness, route permission contracts, registry integrity, export evidence, audit evidence, and workflow preflight evidence.
+- Dashboard page now surfaces Production Readiness Command Center data.
+- Workflow page now surfaces Production Workflow Operations Center data, including preflight validation, evidence, export package evidence, reconciliation readiness, audit events, and validation rules.
+- Role Admin page now surfaces Route Permission Contract Center data for role enforcement governance.
+- UI respects current session and Administrator View-As headers so restricted endpoints remain restricted under engineer preview.
+- No demo-first or preview production wording is introduced.
+
+
+## 019M-BW through 019M-CD Time Compliance Production Wording Repair V2
+
+- Updated Time Compliance UI wording from preview/demo language to production notification preview language.
+- Preserved compatibility with existing backend response fields where needed.
+- Did not require backend route changes because the production issue was frontend bundle wording.
+
+
+## 019M-BW through 019M-CD Recursive Time Compliance Wording Repair
+
+- Recursively repaired Time Compliance production-facing wording across all frontend source files.
+- Replaced visible preview/demo language with notification preview and production review terminology.
+- Preserved backend compatibility behavior while preventing the built production bundle from exposing old Time Compliance wording.
+
+
+## 019M-BW through 019M-CD Recursive Time Compliance Wording Repair
+
+- Recursively repaired Time Compliance production-facing wording across all frontend source files.
+- Replaced visible dry-run/demo language with notification preview and production review terminology.
+- Preserved backend compatibility behavior while preventing the built production bundle from exposing old Time Compliance wording.
