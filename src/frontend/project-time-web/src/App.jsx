@@ -701,7 +701,7 @@ const roleWorkspaceModules = [
     href: '#time-compliance',
     title: 'Time Compliance & Notification Center',
     navLabel: 'Time Compliance',
-    description: 'Dry-run preview for missing weekly time, manager and Project Team Coordinator copy visibility, month-end rules, holiday reminders, and notification history.',
+    description: 'Production-safe preview for missing weekly time, manager and Project Team Coordinator copy visibility, month-end rules, holiday reminders, and notification history.',
     permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL', 'VIEW_TIME_COMPLIANCE', 'VIEW_AUDIT_HISTORY']
   },
   {
@@ -1292,10 +1292,10 @@ function getInstalledProjectPulseModuleRegistry() {
   },
   {
     route: 'workflow',
-    title: 'Workflow Action Capabilities',
+    title: 'Workflow Preflight Validation',
     group: 'Approval / Export / Audit',
     permissions: ['VIEW_WORKFLOW_ACTION_CAPABILITIES', 'PROJECT_TIME_APPROVAL', 'VIEW_ACCOUNT_RECONCILIATION', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
-    description: 'Shows allowed workflow actions, role capabilities, eligible statuses, and dry-run readiness.'
+    description: 'Shows production workflow preflight checks, role capabilities, eligible statuses, blockers, and readiness evidence.'
   },
   {
     route: 'dashboard',
@@ -1341,17 +1341,17 @@ function getInstalledProjectPulseModuleRegistry() {
   },
   {
     route: 'dashboard',
-    title: 'Demo Readiness Command Center',
+    title: 'Production Readiness Command Center',
     group: 'System',
     permissions: ['VIEW_DEMO_READINESS_COMMAND_CENTER', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
-    description: 'Summarizes user, project, time entry, export, audit, and dashboard readiness for demos.'
+    description: 'Summarizes user, project, time entry, export, audit, route governance, and dashboard readiness for production operations.'
   },
   {
     route: 'workflow',
     title: 'Workflow Validation Rules',
     group: 'Approval / Export / Audit',
     permissions: ['VIEW_WORKFLOW_VALIDATION_RULES', 'VIEW_APPROVAL_WORKFLOW', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
-    description: 'Documents workflow validation rules and current evidence for export, audit, and dry-run controls.'
+    description: 'Documents workflow validation rules and current evidence for export, audit, and production preflight controls.'
   },
   {
     route: 'workflow',
@@ -1362,10 +1362,38 @@ function getInstalledProjectPulseModuleRegistry() {
   },
   {
     route: 'dashboard',
-    title: 'Sprint Automation Validation',
+    title: 'Production Validation Automation',
     group: 'System',
     permissions: ['VIEW_MODULE_VISIBILITY_SMOKE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
-    description: 'Provides validation script coverage for endpoint smoke checks and dashboard registry verification.'
+    description: 'Provides production validation script coverage for endpoint smoke checks, dashboard registry verification, and access enforcement.'
+  },
+  {
+    route: 'workflow',
+    title: 'Production Export Evidence',
+    group: 'Approval / Export / Audit',
+    permissions: ['VIEW_PRODUCTION_EXPORT_EVIDENCE', 'DOWNLOAD_TIME_EXPORT_PACKAGE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    description: 'Shows export package evidence, package download history, audit event counts, and production evidence readiness.'
+  },
+  {
+    route: 'role-admin',
+    title: 'Route Permission Contracts',
+    group: 'Security',
+    permissions: ['VIEW_ROUTE_PERMISSION_CONTRACTS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    description: 'Defines route-level permission contracts, allowed roles, restricted roles, and production guardrails.'
+  },
+  {
+    route: 'dashboard',
+    title: 'Navigation Registry Integrity Guard',
+    group: 'System',
+    permissions: ['VIEW_NAVIGATION_REGISTRY_INTEGRITY', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    description: 'Validates dashboard, navigation, route contract, and production module registry integrity.'
+  },
+  {
+    route: 'dashboard',
+    title: 'Engineer Negative Access Smoke',
+    group: 'Security',
+    permissions: ['VIEW_ENGINEER_NEGATIVE_ACCESS_SMOKE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    description: 'Confirms engineer-only users remain denied from restricted workflow, export, accounting, and role matrix controls.'
   }
   ];
 }

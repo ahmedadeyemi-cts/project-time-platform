@@ -3,14 +3,14 @@
 ## Completed Demo Foundation
 
 ### 019M-O Time Compliance & Notification Center
-- Dry-run Time Compliance page created.
+- Preflight Time Compliance page created.
 - Session-authenticated API calls fixed.
 - Route isolation fixed.
 - Weekly reminder default shown as Monday 6:00 AM Central.
 - Weekly escalation default shown as Monday 8:00 AM Central.
 - Holiday reminder windows shown for 7-day and 1-day reminders.
 - Manager and Project Team Coordinator copy visibility working.
-- Dry-run notification history working.
+- Preflight notification history working.
 - Real send intentionally locked.
 
 ## Come Back / Production Hardening Items
@@ -21,9 +21,9 @@
 - Add real notification provider integration only after approval.
 - Add notification approval workflow before real send.
 - Add notification_log entries in addition to notification_outbox history.
-- Add deduplication controls so repeated dry-runs are grouped by run ID.
+- Add deduplication controls so repeated preflight validations are grouped by run ID.
 - Add run batch table for notification preview/send batches.
-- Add export of dry-run preview to CSV/PDF.
+- Add export of preflight validation preview to CSV/PDF.
 - Add real timezone scheduling logic for Central Time.
 - Add business-day adjustment for holiday reminders that fall on weekends.
 - Remove duplicate Ahmed demo identities or mark one inactive after testing.
@@ -547,7 +547,7 @@
 
 ### Added
 - 019M-AZ Audit History Endpoint + UI Repair.
-- 019M-BA Workflow Action Completion Controls and dry-run workflow planning.
+- 019M-BA Workflow Action Completion Controls and preflight validation workflow planning.
 - 019M-BB Dashboard Module Visibility Smoke Automation.
 - 019M-BC Export Package Readiness Summary.
 - 019M-BD Export Package Evidence Detail registry coverage.
@@ -561,6 +561,29 @@
 
 ### Notes
 - This sprint is intentionally mostly read-only.
-- Workflow dry-run records evidence only and does not change time entry status.
+- Workflow preflight validation records evidence only and does not change time entry status.
 - Dashboard/module registry coverage was added for all new modules.
 - Engineer users remain excluded from workflow/export/reconciliation management controls.
+
+## 019M-BL through 019M-BU Production Hardening Sprint
+
+### Production posture correction
+- Reframed operational readiness away from demo-first language and toward production readiness.
+- Replaced preflight validation user-facing language with workflow preflight validation.
+- Added production preflight validation evidence table and endpoints.
+- Added production readiness command center endpoint.
+- Added route permission contract governance.
+- Added navigation registry integrity endpoint.
+- Added production export evidence endpoint.
+- Added production workflow operations UI/data foundation endpoint.
+- Engineer users remain excluded from restricted export, reconciliation, route contract, and accounting controls.
+
+### Production endpoint coverage
+- `/api/workflow/preflight-validation`
+- `/api/workflow/preflight-validation/run`
+- `/api/workflow/preflight-events`
+- `/api/production/readiness-command-center`
+- `/api/security/route-permission-contracts`
+- `/api/navigation/registry-integrity`
+- `/api/export-packages/evidence-summary`
+- `/api/workflow/operations-ui-data`
