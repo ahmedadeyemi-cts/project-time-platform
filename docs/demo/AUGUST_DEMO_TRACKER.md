@@ -655,3 +655,47 @@
 - Rewrote the preview response wording migration so it safely discovers actual notification/reminder/time-compliance tables.
 - Updated matching database text columns from dry-run preview language to notification preview language.
 - Preserved the compatibility route while cleaning production-facing API and UI text.
+
+## 019M-CF Production Wording + Compatibility Guard Sweep
+
+- Added a full production wording guard validation script for frontend source, backend source, built frontend bundle, API responses, and compatibility routes.
+- Confirmed Time Compliance preview uses `previewOnly` at the top level and inside the summary contract.
+- Confirmed production-facing API responses do not expose `dryRunOnly`, `Dry-run`, `Demo Readiness`, or August demo wording.
+- Preserved compatibility routes where needed while validating that production responses use preflight/preview terminology.
+- Included Dashboard / Navigation / Registry validation for module visibility, navigation registry integrity, and production readiness.
+- Included Engineer View-As negative access checks for restricted workflow, export, route contract, registry, and role-matrix endpoints.
+- Included public smoke checks for Dashboard, Workflow, Role Admin, and Time Compliance routes.
+
+## 019M-CF Recovery Note
+
+- Repaired the remaining production readiness access-denied message in `Program.cs`.
+- Replaced the last production-facing demo-readiness wording with production-readiness terminology.
+- Reran the full production wording, compatibility, Dashboard, Navigation, Registry, and engineer negative-access guard sweep.
+
+## 019M-CF Login Page Production Panel Auth Guard
+
+- Added an auth-aware guard to the production workflow operations injector.
+- Prevented Production Readiness / Workflow Operations panels from rendering or calling protected endpoints before a valid Project Pulse session exists.
+- Fixed the login-page issue where `#dashboard` could show HTTP 401 `session_required` cards before sign-in.
+
+## 019M-CF Login Page Auth Guard Scope Repair
+
+- Repaired the production operations injector auth guard so it is available in both module scope and window scope.
+- Prevented the signed-out login page from rendering Production Readiness cards or calling protected readiness endpoints.
+- Added defensive cleanup for injected production panels when no Project Pulse session exists.
+
+## 019M-CF Clean Auth-Aware Production Operations Injector Repair
+
+- Replaced the production workflow operations injector with a clean auth-aware implementation.
+- Production operations panels are now suppressed until a valid Project Pulse session exists.
+- The signed-out login page no longer renders protected readiness panels or 401/request_failed cards.
+- The injector remains active through MutationObserver, route changes, storage changes, focus events, and periodic sync so panels can appear after sign-in.
+- Cleaned dashboard module visibility notes that still exposed legacy non-production terminology in API responses.
+
+## 019M-CF Clean Auth-Aware Production Operations Injector Repair
+
+- Replaced the production workflow operations injector with a clean auth-aware implementation.
+- Production operations panels are now suppressed until a valid Project Pulse session exists.
+- The signed-out login page no longer renders protected readiness panels or 401/request_failed cards.
+- The injector remains active through MutationObserver, route changes, storage changes, focus events, and periodic sync so panels can appear after sign-in.
+- Cleaned dashboard module visibility notes that still exposed legacy non-production terminology in API responses.

@@ -18985,7 +18985,7 @@ app.MapGet("/api/demo/readiness-command-center", async (HttpContext httpContext)
     var access = await LoadApprovalExportWorkflowAccessAsync(connection, sessionUserId.Value);
     if (!access.CanView && !access.CanViewAll && !access.CanAudit)
     {
-        return Results.Json(new { status = "access_denied", message = "Demo readiness is restricted to approved reporting and workflow roles." }, statusCode: StatusCodes.Status403Forbidden);
+        return Results.Json(new { status = "access_denied", message = "Production readiness is restricted to approved reporting and workflow roles." }, statusCode: StatusCodes.Status403Forbidden);
     }
 
     long activeUsers = 0;
