@@ -635,3 +635,23 @@
 - Recursively repaired Time Compliance production-facing wording across all frontend source files.
 - Replaced visible dry-run/demo language with notification preview and production review terminology.
 - Preserved backend compatibility behavior while preventing the built production bundle from exposing old Time Compliance wording.
+
+## 019M-CE Time Compliance PreviewOnly Response Cleanup
+
+- Updated the production-facing Time Compliance preview summary field from `dryRunOnly` to `previewOnly`.
+- Preserved notification preview behavior while aligning API response naming with production terminology.
+- Added validation to confirm `/api/time-compliance/preview` no longer returns `dryRunOnly`.
+
+## 019M-CE Full Time Compliance Preview Response Repair
+
+- Updated the full `/api/time-compliance/preview` payload so the top-level production response uses `previewOnly` instead of `dryRunOnly`.
+- Updated generated notification preview body text from dry-run wording to notification preview wording.
+- Added a database migration to update reminder-rule cadence descriptions from dry-run preview wording to notification preview wording.
+- Preserved compatibility behavior while removing production-facing dry-run terminology from the preview response.
+
+## 019M-CE Remaining Dry-Run Preview Text Cleanup
+
+- Removed remaining production-facing dry-run wording from Time Compliance preview source messages.
+- Rewrote the preview response wording migration so it safely discovers actual notification/reminder/time-compliance tables.
+- Updated matching database text columns from dry-run preview language to notification preview language.
+- Preserved the compatibility route while cleaning production-facing API and UI text.

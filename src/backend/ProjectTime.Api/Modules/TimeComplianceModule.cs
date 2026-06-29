@@ -66,7 +66,7 @@ public static class TimeComplianceModule
             holidayReminderWindows = holidays,
             guardrails = new[]
             {
-                "Dry-run mode is enforced; this module does not send email.",
+                "Notification preview mode is enforced; this module does not send email.",
                 "Preview must be reviewed before real-send functionality is introduced.",
                 "Manager CC uses reporting_relationships first and app_users.manager_email as fallback.",
                 "Project Team Coordinator is loaded only from trusted database records."
@@ -163,12 +163,12 @@ public static class TimeComplianceModule
             return Results.Ok(new
             {
                 status = "dry_run_created",
-                dryRunOnly = true,
+                previewOnly = true,
                 queuedNotifications = queued,
                 weekStart = payload.WeekStart,
                 weekEnd = payload.WeekEnd,
                 scenario,
-                message = "Dry-run notification records were created. No email was sent.",
+                message = "Notification preview records were created. No email was sent.",
                 preview = payload
             });
         }
@@ -176,7 +176,7 @@ public static class TimeComplianceModule
         {
             await transaction.RollbackAsync();
             return Results.Problem(
-                title: "Failed to create dry-run notification records",
+                title: "Failed to create notification preview records",
                 detail: ex.Message,
                 statusCode: StatusCodes.Status500InternalServerError);
         }
@@ -372,7 +372,7 @@ public static class TimeComplianceModule
                 : $"Reminder: Submit Project Pulse time for week of {weekStart:yyyy-MM-dd}";
 
             var body = $"""
-                Dry-run only. No email was sent.
+                Notification preview only. No email was sent.
 
                 Project Pulse shows missing or unsubmitted time for {displayName} for the week of {weekStart:yyyy-MM-dd} through {weekEnd:yyyy-MM-dd}.
 
@@ -428,7 +428,7 @@ public static class TimeComplianceModule
                 missingSubmissionCount = missingSubmissions.Count,
                 managerCcGapCount = missingSubmissions.Count(item => item.ComplianceGaps.Any(gap => gap.StartsWith("Manager CC", StringComparison.OrdinalIgnoreCase))),
                 coordinatorCcConfigured = coordinator is not null,
-                dryRunOnly = true
+                previewOnly = true
             });
     }
 
@@ -596,7 +596,7 @@ internal sealed record TimeCompliancePreviewItem(
     string Body);
 
 internal sealed record TimeCompliancePreviewPayload(
-    bool DryRunOnly,
+    bool PreviewOnly,
     string Scenario,
     DateTimeOffset GeneratedAtUtc,
     DateOnly WeekStart,
