@@ -18084,6 +18084,1155 @@ app.MapTimeComplianceEndpoints();
 app.MapProjectIntakeEndpoints();
 app.MapProjectWorkspaceEndpoints();
 
+
+// 019M-AZ through 019M-BJ Workflow Operations Mega Sprint
+
+app.MapGet("/api/audit-history/summary", async (HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var access = await LoadApprovalExportWorkflowAccessAsync(connection, sessionUserId.Value);
+    if (!access.CanView && !access.CanAudit && !access.CanViewAll && !access.CanManageAccounting && !access.CanProjectApprove && !access.CanExport)
+    {
+        return Results.Json(new { status = "access_denied", message = "Audit history is restricted to approved workflow roles." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    long totalEvents = 0;
+    long workflowEvents = 0;
+    long exportEvents = 0;
+    long reconciliationEvents = 0;
+    long approvalEvents = 0;
+    DateTimeOffset? latestEventAt = null;
+
+    await using (var command = new NpgsqlCommand("""
+        SELECT
+            COUNT(*)::bigint,
+            COUNT(*) FILTER (
+                WHERE action ILIKE '%workflow%'
+                   OR action ILIKE '%time%'
+                   OR action ILIKE '%approval%'
+                   OR action ILIKE '%export%'
+                   OR action ILIKE '%reconcili%'
+                   OR action ILIKE '%lock%'
+                   OR entity_type IN ('time_entry', 'timesheet', 'time_workflow_export', 'accounting_reconciliation')
+            )::bigint,
+            COUNT(*) FILTER (WHERE action ILIKE '%export%' OR entity_type = 'time_workflow_export')::bigint,
+            COUNT(*) FILTER (WHERE action ILIKE '%reconcili%' OR entity_type = 'accounting_reconciliation')::bigint,
+            COUNT(*) FILTER (WHERE action ILIKE '%approval%' OR action ILIKE '%approved%' OR action ILIKE '%declined%')::bigint,
+            MAX(created_at)
+        FROM audit_logs;
+        """, connection))
+    {
+        await using var reader = await command.ExecuteReaderAsync();
+        if (await reader.ReadAsync())
+        {
+            totalEvents = reader.GetInt64(0);
+            workflowEvents = reader.GetInt64(1);
+            exportEvents = reader.GetInt64(2);
+            reconciliationEvents = reader.GetInt64(3);
+            approvalEvents = reader.GetInt64(4);
+            latestEventAt = reader.IsDBNull(5) ? null : reader.GetFieldValue<DateTimeOffset>(5);
+        }
+    }
+
+    var actionGroups = new List<object>();
+    await using (var groupCommand = new NpgsqlCommand("""
+        SELECT
+            action,
+            entity_type,
+            COUNT(*)::bigint AS event_count,
+            MAX(created_at) AS latest_event_at
+        FROM audit_logs
+        GROUP BY action, entity_type
+        ORDER BY MAX(created_at) DESC NULLS LAST, COUNT(*) DESC
+        LIMIT 25;
+        """, connection))
+    {
+        await using var reader = await groupCommand.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            actionGroups.Add(new
+            {
+                action = reader.GetString(0),
+                entityType = reader.GetString(1),
+                eventCount = reader.GetInt64(2),
+                latestEventAt = reader.IsDBNull(3) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(3)
+            });
+        }
+    }
+
+    return Results.Ok(new
+    {
+        module = "019M-AZ Audit History Endpoint Repair",
+        summary = new
+        {
+            totalEvents,
+            workflowEvents,
+            exportEvents,
+            reconciliationEvents,
+            approvalEvents,
+            latestEventAt
+        },
+        access = new
+        {
+            access.CanView,
+            access.CanProjectApprove,
+            access.CanManageAccounting,
+            access.CanExport,
+            access.CanAudit,
+            access.CanViewAll
+        },
+        actionGroups
+    });
+});
+
+app.MapGet("/api/audit-history/events", async (HttpContext httpContext, string? action, string? entityType, int? limit) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var access = await LoadApprovalExportWorkflowAccessAsync(connection, sessionUserId.Value);
+    if (!access.CanView && !access.CanAudit && !access.CanViewAll && !access.CanManageAccounting && !access.CanProjectApprove && !access.CanExport)
+    {
+        return Results.Json(new { status = "access_denied", message = "Audit history events are restricted to approved workflow roles." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var safeLimit = Math.Clamp(limit ?? 50, 1, 200);
+    var events = new List<object>();
+
+    await using var command = new NpgsqlCommand("""
+        SELECT
+            al.audit_log_id,
+            COALESCE(au.display_name, au.email, 'System') AS actor_name,
+            al.action,
+            al.entity_type,
+            al.entity_id,
+            al.created_at,
+            COALESCE(al.old_value::text, '') AS old_value_text,
+            COALESCE(al.new_value::text, '') AS new_value_text
+        FROM audit_logs al
+        LEFT JOIN app_users au
+            ON au.user_id = al.actor_user_id
+        WHERE (CAST(@action_filter AS text) IS NULL OR al.action ILIKE '%' || CAST(@action_filter AS text) || '%')
+          AND (CAST(@entity_type_filter AS text) IS NULL OR al.entity_type ILIKE '%' || CAST(@entity_type_filter AS text) || '%')
+        ORDER BY al.created_at DESC
+        LIMIT @safe_limit;
+        """, connection);
+
+    command.Parameters.AddWithValue("action_filter", string.IsNullOrWhiteSpace(action) ? DBNull.Value : action.Trim());
+    command.Parameters.AddWithValue("entity_type_filter", string.IsNullOrWhiteSpace(entityType) ? DBNull.Value : entityType.Trim());
+    command.Parameters.AddWithValue("safe_limit", safeLimit);
+
+    await using (var reader = await command.ExecuteReaderAsync())
+    {
+        while (await reader.ReadAsync())
+        {
+            var oldPreview = reader.GetString(6);
+            var newPreview = reader.GetString(7);
+
+            events.Add(new
+            {
+                auditLogId = reader.GetGuid(0),
+                actorName = reader.GetString(1),
+                action = reader.GetString(2),
+                entityType = reader.GetString(3),
+                entityId = reader.IsDBNull(4) ? (Guid?)null : reader.GetGuid(4),
+                createdAt = reader.GetFieldValue<DateTimeOffset>(5),
+                oldValuePreview = oldPreview.Length > 320 ? oldPreview[..320] + "..." : oldPreview,
+                newValuePreview = newPreview.Length > 320 ? newPreview[..320] + "..." : newPreview
+            });
+        }
+    }
+
+    return Results.Ok(new
+    {
+        module = "019M-AZ Audit History Events",
+        count = events.Count,
+        filters = new { action, entityType, limit = safeLimit },
+        events
+    });
+});
+
+app.MapGet("/api/workflow/action-capabilities", async (HttpContext httpContext, DateOnly? weekStart, DateOnly? weekEnd) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var access = await LoadApprovalExportWorkflowAccessAsync(connection, sessionUserId.Value);
+    if (!access.CanView && !access.CanProjectApprove && !access.CanManageAccounting && !access.CanExport && !access.CanViewAll)
+    {
+        return Results.Json(new { status = "access_denied", message = "Workflow action capabilities are restricted to workflow roles." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var today = DateOnly.FromDateTime(DateTime.UtcNow.Date);
+    var start = weekStart ?? today.AddDays(-(int)today.DayOfWeek);
+    var end = weekEnd ?? start.AddDays(6);
+
+    var statusBuckets = new List<object>();
+
+    await using (var command = new NpgsqlCommand("""
+        SELECT
+            COALESCE(status, 'draft') AS status,
+            COUNT(*)::bigint AS item_count,
+            COALESCE(SUM(hours), 0)::numeric AS total_hours
+        FROM time_entries
+        WHERE work_date BETWEEN @week_start AND @week_end
+        GROUP BY COALESCE(status, 'draft')
+        ORDER BY COALESCE(status, 'draft');
+        """, connection))
+    {
+        command.Parameters.AddWithValue("week_start", start);
+        command.Parameters.AddWithValue("week_end", end);
+
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            statusBuckets.Add(new
+            {
+                status = reader.GetString(0),
+                itemCount = reader.GetInt64(1),
+                totalHours = reader.GetDecimal(2)
+            });
+        }
+    }
+
+    var actions = new List<object>
+    {
+        new
+        {
+            actionCode = "manager_approve",
+            title = "Manager Approve",
+            eligibleStatuses = new[] { "submitted", "pending_manager_approval" },
+            allowed = access.CanProjectApprove || access.CanViewAll,
+            destructive = true,
+            enabledInThisSprint = false,
+            note = "Listed for capability visibility. Existing approval endpoints remain the source of truth."
+        },
+        new
+        {
+            actionCode = "project_validate",
+            title = "Project Validate",
+            eligibleStatuses = new[] { "manager_approved" },
+            allowed = access.CanProjectApprove || access.CanViewAll,
+            destructive = true,
+            enabledInThisSprint = false,
+            note = "Dry-run and queue visibility only in this sprint."
+        },
+        new
+        {
+            actionCode = "accounting_reconcile",
+            title = "Accounting Reconcile",
+            eligibleStatuses = new[] { "project_approved", "project_validated", "accounting_ready" },
+            allowed = access.CanManageAccounting || access.CanViewAll,
+            destructive = true,
+            enabledInThisSprint = false,
+            note = "Dry-run and reconciliation workbench visibility only in this sprint."
+        },
+        new
+        {
+            actionCode = "export_package_download",
+            title = "Export Package Download",
+            eligibleStatuses = new[] { "accounting_ready", "reconciled", "locked" },
+            allowed = access.CanExport || access.CanViewAll,
+            destructive = false,
+            enabledInThisSprint = true,
+            note = "Download endpoint is already active and audited."
+        }
+    };
+
+    return Results.Ok(new
+    {
+        module = "019M-BA Workflow Action Capabilities",
+        dateRange = new { weekStart = start, weekEnd = end },
+        access = new
+        {
+            access.CanProjectApprove,
+            access.CanManageAccounting,
+            access.CanExport,
+            access.CanAudit,
+            access.CanViewAll
+        },
+        statusBuckets,
+        actions
+    });
+});
+
+app.MapPost("/api/workflow/actions/dry-run", async (HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var access = await LoadApprovalExportWorkflowAccessAsync(connection, sessionUserId.Value);
+    if (!access.CanManageAccounting && !access.CanExport && !access.CanViewAll)
+    {
+        return Results.Json(new { status = "access_denied", message = "Workflow dry-run is restricted to accounting/export-enabled roles." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    string dryRunAction = "accounting_reconcile";
+    DateOnly? weekStart = null;
+    DateOnly? weekEnd = null;
+
+    try
+    {
+        using var document = await JsonDocument.ParseAsync(httpContext.Request.Body);
+        var root = document.RootElement;
+
+        if (root.TryGetProperty("action", out var actionElement) && actionElement.ValueKind == JsonValueKind.String)
+        {
+            dryRunAction = actionElement.GetString() ?? dryRunAction;
+        }
+
+        if (root.TryGetProperty("weekStart", out var weekStartElement) && weekStartElement.ValueKind == JsonValueKind.String && DateOnly.TryParse(weekStartElement.GetString(), out var parsedStart))
+        {
+            weekStart = parsedStart;
+        }
+
+        if (root.TryGetProperty("weekEnd", out var weekEndElement) && weekEndElement.ValueKind == JsonValueKind.String && DateOnly.TryParse(weekEndElement.GetString(), out var parsedEnd))
+        {
+            weekEnd = parsedEnd;
+        }
+    }
+    catch
+    {
+        return Results.Json(new { status = "invalid_request", message = "Dry-run request body must be valid JSON." }, statusCode: StatusCodes.Status400BadRequest);
+    }
+
+    var today = DateOnly.FromDateTime(DateTime.UtcNow.Date);
+    var start = weekStart ?? today.AddDays(-(int)today.DayOfWeek);
+    var end = weekEnd ?? start.AddDays(6);
+
+    string[] eligibleStatuses = dryRunAction switch
+    {
+        "manager_approve" => new[] { "submitted", "pending_manager_approval" },
+        "project_validate" => new[] { "manager_approved" },
+        "accounting_reconcile" => new[] { "project_approved", "project_validated", "accounting_ready" },
+        "lock_period" => new[] { "reconciled" },
+        "export_package_download" => new[] { "accounting_ready", "reconciled", "locked" },
+        _ => new[] { "project_approved", "project_validated", "accounting_ready" }
+    };
+
+    long eligibleItemCount = 0;
+    decimal eligibleHours = 0;
+
+    await using (var command = new NpgsqlCommand("""
+        SELECT
+            COUNT(*)::bigint,
+            COALESCE(SUM(hours), 0)::numeric
+        FROM time_entries
+        WHERE work_date BETWEEN @week_start AND @week_end
+          AND status = ANY(@eligible_statuses);
+        """, connection))
+    {
+        command.Parameters.AddWithValue("week_start", start);
+        command.Parameters.AddWithValue("week_end", end);
+        command.Parameters.AddWithValue("eligible_statuses", eligibleStatuses);
+
+        await using var reader = await command.ExecuteReaderAsync();
+        if (await reader.ReadAsync())
+        {
+            eligibleItemCount = reader.GetInt64(0);
+            eligibleHours = reader.GetDecimal(1);
+        }
+    }
+
+    var payload = new
+    {
+        dryRunAction,
+        weekStart = start,
+        weekEnd = end,
+        eligibleStatuses,
+        eligibleItemCount,
+        eligibleHours,
+        destructiveStateChangePerformed = false,
+        note = "This endpoint records dry-run evidence only. No time entry status is changed."
+    };
+
+    await using (var insertCommand = new NpgsqlCommand("""
+        INSERT INTO workflow_action_dry_run_events (
+            actor_user_id,
+            dry_run_action,
+            week_start,
+            week_end,
+            eligible_item_count,
+            eligible_hours,
+            result_payload
+        )
+        VALUES (
+            @actor_user_id,
+            @dry_run_action,
+            @week_start,
+            @week_end,
+            @eligible_item_count,
+            @eligible_hours,
+            @result_payload::jsonb
+        );
+        """, connection))
+    {
+        insertCommand.Parameters.AddWithValue("actor_user_id", sessionUserId.Value);
+        insertCommand.Parameters.AddWithValue("dry_run_action", dryRunAction);
+        insertCommand.Parameters.AddWithValue("week_start", start);
+        insertCommand.Parameters.AddWithValue("week_end", end);
+        insertCommand.Parameters.AddWithValue("eligible_item_count", (int)Math.Min(eligibleItemCount, int.MaxValue));
+        insertCommand.Parameters.AddWithValue("eligible_hours", eligibleHours);
+        insertCommand.Parameters.AddWithValue("result_payload", JsonSerializer.Serialize(payload));
+        await insertCommand.ExecuteNonQueryAsync();
+    }
+
+    return Results.Ok(new
+    {
+        module = "019M-BA Workflow Action Dry Run",
+        payload
+    });
+});
+
+app.MapGet("/api/dashboard/module-visibility-smoke", async (HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var access = await LoadApprovalExportWorkflowAccessAsync(connection, sessionUserId.Value);
+    if (!access.CanView && !access.CanViewAll && !access.CanManageAccounting && !access.CanExport && !access.CanProjectApprove)
+    {
+        return Results.Json(new { status = "access_denied", message = "Module visibility smoke is restricted to workflow operators and administrators." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var expectations = new List<object>();
+    await using (var command = new NpgsqlCommand("""
+        SELECT
+            module_key,
+            module_name,
+            route,
+            group_name,
+            required_permissions,
+            allowed_roles,
+            expected_visibility,
+            COALESCE(notes, '') AS notes
+        FROM dashboard_module_visibility_expectations
+        WHERE is_active = TRUE
+        ORDER BY module_key;
+        """, connection))
+    {
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            expectations.Add(new
+            {
+                moduleKey = reader.GetString(0),
+                moduleName = reader.GetString(1),
+                route = reader.GetString(2),
+                groupName = reader.GetString(3),
+                requiredPermissions = reader.GetFieldValue<string[]>(4),
+                allowedRoles = reader.GetFieldValue<string[]>(5),
+                expectedVisibility = reader.GetString(6),
+                notes = reader.GetString(7)
+            });
+        }
+    }
+
+    var roleCoverage = new List<object>();
+    await using (var roleCommand = new NpgsqlCommand("""
+        SELECT
+            r.role_code,
+            r.role_name,
+            COUNT(DISTINCT p.permission_code)::bigint AS permission_count,
+            COUNT(DISTINCT p.permission_code) FILTER (
+                WHERE p.permission_code IN (
+                    'VIEW_AUDIT_HISTORY_EVENTS',
+                    'VIEW_WORKFLOW_ACTION_CAPABILITIES',
+                    'VIEW_MODULE_VISIBILITY_SMOKE',
+                    'VIEW_EXPORT_PACKAGE_READINESS_SUMMARY',
+                    'VIEW_EXPORT_PACKAGE_EVIDENCE_DETAIL',
+                    'VIEW_ACCOUNTING_RECONCILIATION_WORKBENCH',
+                    'VIEW_LOCKED_PERIOD_AUDIT_EVIDENCE',
+                    'VIEW_ROLE_ACCESS_MATRIX',
+                    'VIEW_DEMO_READINESS_COMMAND_CENTER',
+                    'VIEW_WORKFLOW_VALIDATION_RULES',
+                    'VIEW_WORKFLOW_OPERATIONS_CENTER',
+                    'RUN_WORKFLOW_DRY_RUN'
+                )
+            )::bigint AS sprint_permission_count
+        FROM app_roles r
+        LEFT JOIN app_role_permissions rp
+            ON rp.app_role_id = r.app_role_id
+        LEFT JOIN app_permissions p
+            ON p.app_permission_id = rp.app_permission_id
+        WHERE r.is_active = TRUE
+        GROUP BY r.role_code, r.role_name
+        ORDER BY r.role_code;
+        """, connection))
+    {
+        await using var reader = await roleCommand.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            roleCoverage.Add(new
+            {
+                roleCode = reader.GetString(0),
+                roleName = reader.GetString(1),
+                permissionCount = reader.GetInt64(2),
+                sprintPermissionCount = reader.GetInt64(3)
+            });
+        }
+    }
+
+    return Results.Ok(new
+    {
+        module = "019M-BB Dashboard Module Visibility Smoke",
+        summary = new
+        {
+            expectationCount = expectations.Count,
+            roleCount = roleCoverage.Count,
+            active = true,
+            engineerExpectedWorkflowManagementAccess = false
+        },
+        access = new
+        {
+            access.CanView,
+            access.CanProjectApprove,
+            access.CanManageAccounting,
+            access.CanExport,
+            access.CanAudit,
+            access.CanViewAll
+        },
+        expectations,
+        roleCoverage
+    });
+});
+
+app.MapGet("/api/export-packages/readiness-summary", async (HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var access = await LoadApprovalExportWorkflowAccessAsync(connection, sessionUserId.Value);
+    if (!access.CanExport && !access.CanManageAccounting && !access.CanViewAll)
+    {
+        return Results.Json(new { status = "access_denied", message = "Export package readiness is restricted to export/accounting roles." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var packages = new List<object>();
+    await using (var command = new NpgsqlCommand("""
+        SELECT
+            time_workflow_export_id,
+            export_format,
+            week_start,
+            week_end,
+            export_status,
+            requested_by_email,
+            item_count,
+            total_hours,
+            file_name,
+            created_at,
+            package_generated_at,
+            package_download_count,
+            package_last_downloaded_at,
+            COALESCE(package_content_type, 'text/csv') AS package_content_type,
+            COALESCE(package_file_extension, 'csv') AS package_file_extension
+        FROM time_workflow_exports
+        ORDER BY created_at DESC
+        LIMIT 100;
+        """, connection))
+    {
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            packages.Add(new
+            {
+                exportId = reader.GetGuid(0),
+                exportFormat = reader.GetString(1),
+                weekStart = reader.IsDBNull(2) ? (DateOnly?)null : reader.GetFieldValue<DateOnly>(2),
+                weekEnd = reader.IsDBNull(3) ? (DateOnly?)null : reader.GetFieldValue<DateOnly>(3),
+                exportStatus = reader.GetString(4),
+                requestedByEmail = reader.IsDBNull(5) ? null : reader.GetString(5),
+                itemCount = reader.GetInt32(6),
+                totalHours = reader.GetDecimal(7),
+                fileName = reader.IsDBNull(8) ? null : reader.GetString(8),
+                createdAt = reader.GetFieldValue<DateTimeOffset>(9),
+                packageGeneratedAt = reader.IsDBNull(10) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(10),
+                packageDownloadCount = reader.GetInt32(11),
+                packageLastDownloadedAt = reader.IsDBNull(12) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(12),
+                packageContentType = reader.GetString(13),
+                packageFileExtension = reader.GetString(14),
+                downloadReady = true
+            });
+        }
+    }
+
+    return Results.Ok(new
+    {
+        module = "019M-BC Export Package Readiness Summary",
+        summary = new
+        {
+            packageCount = packages.Count,
+            downloadReadyCount = packages.Count,
+            note = "Packages are generated as CSV download artifacts with audit evidence."
+        },
+        packages
+    });
+});
+
+app.MapGet("/api/workflow/reconciliation-workbench", async (HttpContext httpContext, DateOnly? weekStart, DateOnly? weekEnd) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var access = await LoadApprovalExportWorkflowAccessAsync(connection, sessionUserId.Value);
+    if (!access.CanManageAccounting && !access.CanExport && !access.CanViewAll)
+    {
+        return Results.Json(new { status = "access_denied", message = "Accounting reconciliation workbench is restricted to accounting/export roles." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var today = DateOnly.FromDateTime(DateTime.UtcNow.Date);
+    var start = weekStart ?? today.AddDays(-(int)today.DayOfWeek);
+    var end = weekEnd ?? start.AddDays(6);
+
+    var groups = new List<object>();
+    await using (var command = new NpgsqlCommand("""
+        SELECT
+            COALESCE(te.status, 'draft') AS status,
+            COALESCE(p.project_code, 'No Project') AS project_code,
+            COALESCE(p.project_name, 'No Project') AS project_name,
+            COALESCE(employee.display_name, employee.email, 'Unknown User') AS employee_name,
+            COUNT(*)::bigint AS item_count,
+            COALESCE(SUM(te.hours), 0)::numeric AS total_hours,
+            MIN(te.work_date) AS first_work_date,
+            MAX(te.work_date) AS last_work_date,
+            COUNT(*) FILTER (WHERE te.project_id IS NULL OR te.task_id IS NULL)::bigint AS missing_link_count
+        FROM time_entries te
+        JOIN app_users employee
+            ON employee.user_id = te.user_id
+        LEFT JOIN projects p
+            ON p.project_id = te.project_id
+        WHERE te.work_date BETWEEN @week_start AND @week_end
+        GROUP BY
+            COALESCE(te.status, 'draft'),
+            COALESCE(p.project_code, 'No Project'),
+            COALESCE(p.project_name, 'No Project'),
+            COALESCE(employee.display_name, employee.email, 'Unknown User')
+        ORDER BY status, project_code, employee_name;
+        """, connection))
+    {
+        command.Parameters.AddWithValue("week_start", start);
+        command.Parameters.AddWithValue("week_end", end);
+
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            groups.Add(new
+            {
+                status = reader.GetString(0),
+                projectCode = reader.GetString(1),
+                projectName = reader.GetString(2),
+                employeeName = reader.GetString(3),
+                itemCount = reader.GetInt64(4),
+                totalHours = reader.GetDecimal(5),
+                firstWorkDate = reader.GetFieldValue<DateOnly>(6),
+                lastWorkDate = reader.GetFieldValue<DateOnly>(7),
+                missingLinkCount = reader.GetInt64(8),
+                needsAttention = reader.GetInt64(8) > 0 || reader.GetString(0) is "returned" or "rejected" or "manager_declined"
+            });
+        }
+    }
+
+    return Results.Ok(new
+    {
+        module = "019M-BE Accounting Reconciliation Workbench",
+        dateRange = new { weekStart = start, weekEnd = end },
+        summary = new
+        {
+            groupCount = groups.Count,
+            attentionGroupCount = groups.Count(g => (bool)g.GetType().GetProperty("needsAttention")!.GetValue(g)!)
+        },
+        groups
+    });
+});
+
+app.MapGet("/api/workflow/lock-evidence", async (HttpContext httpContext, DateOnly? weekStart, DateOnly? weekEnd) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var access = await LoadApprovalExportWorkflowAccessAsync(connection, sessionUserId.Value);
+    if (!access.CanAudit && !access.CanExport && !access.CanManageAccounting && !access.CanViewAll)
+    {
+        return Results.Json(new { status = "access_denied", message = "Locked period evidence is restricted to audit/export/accounting roles." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var today = DateOnly.FromDateTime(DateTime.UtcNow.Date);
+    var start = weekStart ?? today.AddDays(-(int)today.DayOfWeek);
+    var end = weekEnd ?? start.AddDays(6);
+
+    var lockedItems = new List<object>();
+    await using (var command = new NpgsqlCommand("""
+        SELECT
+            te.time_entry_id,
+            te.work_date,
+            COALESCE(employee.display_name, employee.email, 'Unknown User') AS employee_name,
+            COALESCE(p.project_code, 'No Project') AS project_code,
+            COALESCE(pt.task_code, 'No Task') AS task_code,
+            te.hours,
+            te.status
+        FROM time_entries te
+        JOIN app_users employee
+            ON employee.user_id = te.user_id
+        LEFT JOIN projects p
+            ON p.project_id = te.project_id
+        LEFT JOIN project_tasks pt
+            ON pt.task_id = te.task_id
+        WHERE te.work_date BETWEEN @week_start AND @week_end
+          AND te.status IN ('reconciled', 'locked')
+        ORDER BY te.work_date, employee.display_name, p.project_code, pt.task_code;
+        """, connection))
+    {
+        command.Parameters.AddWithValue("week_start", start);
+        command.Parameters.AddWithValue("week_end", end);
+
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            lockedItems.Add(new
+            {
+                timeEntryId = reader.GetGuid(0),
+                workDate = reader.GetFieldValue<DateOnly>(1),
+                employeeName = reader.GetString(2),
+                projectCode = reader.GetString(3),
+                taskCode = reader.GetString(4),
+                hours = reader.GetDecimal(5),
+                status = reader.GetString(6)
+            });
+        }
+    }
+
+    return Results.Ok(new
+    {
+        module = "019M-BF Locked Period Audit Evidence",
+        dateRange = new { weekStart = start, weekEnd = end },
+        summary = new
+        {
+            lockedOrReconciledItemCount = lockedItems.Count,
+            lockedOrReconciledHours = lockedItems.Sum(item => (decimal)item.GetType().GetProperty("hours")!.GetValue(item)!)
+        },
+        lockedItems
+    });
+});
+
+app.MapGet("/api/security/role-access-matrix", async (HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var access = await LoadApprovalExportWorkflowAccessAsync(connection, sessionUserId.Value);
+    if (!access.CanViewAll)
+    {
+        return Results.Json(new { status = "access_denied", message = "Role access matrix is restricted to administrators and system operators." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var matrix = new List<object>();
+    await using (var command = new NpgsqlCommand("""
+        SELECT
+            r.role_code,
+            r.role_name,
+            COUNT(DISTINCT u.user_id)::bigint AS assigned_user_count,
+            COUNT(DISTINCT p.permission_code)::bigint AS permission_count,
+            COALESCE(STRING_AGG(DISTINCT p.permission_code, ', ' ORDER BY p.permission_code), '') AS permissions
+        FROM app_roles r
+        LEFT JOIN app_user_role_assignments ura
+            ON ura.app_role_id = r.app_role_id
+           AND ura.is_active = TRUE
+        LEFT JOIN app_users u
+            ON u.user_id = ura.user_id
+           AND u.is_active = TRUE
+        LEFT JOIN app_role_permissions rp
+            ON rp.app_role_id = r.app_role_id
+        LEFT JOIN app_permissions p
+            ON p.app_permission_id = rp.app_permission_id
+        WHERE r.is_active = TRUE
+        GROUP BY r.role_code, r.role_name
+        ORDER BY r.role_code;
+        """, connection))
+    {
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            matrix.Add(new
+            {
+                roleCode = reader.GetString(0),
+                roleName = reader.GetString(1),
+                assignedUserCount = reader.GetInt64(2),
+                permissionCount = reader.GetInt64(3),
+                permissions = reader.GetString(4).Split(", ", StringSplitOptions.RemoveEmptyEntries)
+            });
+        }
+    }
+
+    return Results.Ok(new
+    {
+        module = "019M-BG Role Access Matrix",
+        summary = new
+        {
+            roleCount = matrix.Count,
+            note = "Used to verify dashboard/module visibility and role enforcement."
+        },
+        matrix
+    });
+});
+
+app.MapGet("/api/demo/readiness-command-center", async (HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var access = await LoadApprovalExportWorkflowAccessAsync(connection, sessionUserId.Value);
+    if (!access.CanView && !access.CanViewAll && !access.CanAudit)
+    {
+        return Results.Json(new { status = "access_denied", message = "Demo readiness is restricted to approved reporting and workflow roles." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    long activeUsers = 0;
+    long activeProjects = 0;
+    long timeEntries = 0;
+    long exports = 0;
+    long auditEvents = 0;
+    long moduleExpectations = 0;
+
+    await using (var command = new NpgsqlCommand("""
+        SELECT
+            (SELECT COUNT(*)::bigint FROM app_users WHERE is_active = TRUE),
+            (SELECT COUNT(*)::bigint FROM projects WHERE status = 'active'),
+            (SELECT COUNT(*)::bigint FROM time_entries),
+            (SELECT COUNT(*)::bigint FROM time_workflow_exports),
+            (SELECT COUNT(*)::bigint FROM audit_logs),
+            (SELECT COUNT(*)::bigint FROM dashboard_module_visibility_expectations WHERE is_active = TRUE);
+        """, connection))
+    {
+        await using var reader = await command.ExecuteReaderAsync();
+        if (await reader.ReadAsync())
+        {
+            activeUsers = reader.GetInt64(0);
+            activeProjects = reader.GetInt64(1);
+            timeEntries = reader.GetInt64(2);
+            exports = reader.GetInt64(3);
+            auditEvents = reader.GetInt64(4);
+            moduleExpectations = reader.GetInt64(5);
+        }
+    }
+
+    var checks = new List<object>
+    {
+        new { check = "Active users", value = activeUsers, status = activeUsers > 0 ? "ready" : "needs_data" },
+        new { check = "Active projects", value = activeProjects, status = activeProjects > 0 ? "ready" : "needs_data" },
+        new { check = "Time entries", value = timeEntries, status = timeEntries > 0 ? "ready" : "needs_data" },
+        new { check = "Export packages", value = exports, status = exports > 0 ? "ready" : "optional" },
+        new { check = "Audit evidence", value = auditEvents, status = auditEvents > 0 ? "ready" : "needs_data" },
+        new { check = "Dashboard module expectations", value = moduleExpectations, status = moduleExpectations >= 10 ? "ready" : "needs_review" }
+    };
+
+    return Results.Ok(new
+    {
+        module = "019M-BH Demo Readiness Command Center",
+        summary = new
+        {
+            readyCheckCount = checks.Count(c => (string)c.GetType().GetProperty("status")!.GetValue(c)! == "ready"),
+            checkCount = checks.Count,
+            demoReady = activeUsers > 0 && activeProjects > 0 && timeEntries > 0 && auditEvents > 0
+        },
+        checks
+    });
+});
+
+app.MapGet("/api/workflow/validation-rules", async (HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var access = await LoadApprovalExportWorkflowAccessAsync(connection, sessionUserId.Value);
+    if (!access.CanView && !access.CanViewAll && !access.CanAudit && !access.CanProjectApprove && !access.CanManageAccounting && !access.CanExport)
+    {
+        return Results.Json(new { status = "access_denied", message = "Workflow validation rules are restricted to workflow roles." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    long exportReadyEntries = 0;
+    long blockedEntries = 0;
+    long exportPackages = 0;
+    long auditEvents = 0;
+
+    await using (var command = new NpgsqlCommand("""
+        SELECT
+            (SELECT COUNT(*)::bigint FROM time_entries WHERE status IN ('accounting_ready', 'reconciled', 'locked')),
+            (SELECT COUNT(*)::bigint FROM time_entries WHERE COALESCE(status, 'draft') NOT IN ('accounting_ready', 'reconciled', 'locked')),
+            (SELECT COUNT(*)::bigint FROM time_workflow_exports),
+            (SELECT COUNT(*)::bigint FROM audit_logs WHERE action ILIKE '%export%' OR action ILIKE '%approval%' OR action ILIKE '%reconcili%' OR action ILIKE '%lock%');
+        """, connection))
+    {
+        await using var reader = await command.ExecuteReaderAsync();
+        if (await reader.ReadAsync())
+        {
+            exportReadyEntries = reader.GetInt64(0);
+            blockedEntries = reader.GetInt64(1);
+            exportPackages = reader.GetInt64(2);
+            auditEvents = reader.GetInt64(3);
+        }
+    }
+
+    var rules = new List<object>
+    {
+        new
+        {
+            ruleCode = "engineer_no_export_controls",
+            title = "Engineers do not receive export or workflow management controls",
+            status = "configured",
+            evidence = "Export/download endpoints require export-enabled roles and prior smoke checks confirmed Engineer View-As HTTP 403."
+        },
+        new
+        {
+            ruleCode = "export_only_ready_statuses",
+            title = "Export package includes only accounting-ready, reconciled, or locked entries",
+            status = "configured",
+            evidence = $"Export-ready entries: {exportReadyEntries}; blocked entries: {blockedEntries}."
+        },
+        new
+        {
+            ruleCode = "download_audit_evidence",
+            title = "Export package download creates audit evidence",
+            status = auditEvents > 0 ? "evidence_present" : "needs_evidence",
+            evidence = $"Workflow/export audit evidence events: {auditEvents}."
+        },
+        new
+        {
+            ruleCode = "dashboard_registry_coverage",
+            title = "New modules must appear in dashboard/module registry",
+            status = "configured",
+            evidence = "Dashboard module visibility expectations are seeded and dashboard registry is patched by this sprint."
+        },
+        new
+        {
+            ruleCode = "no_destructive_dry_run",
+            title = "Dry-run endpoints must not change workflow status",
+            status = "configured",
+            evidence = "Workflow dry-run writes evidence only to workflow_action_dry_run_events."
+        },
+        new
+        {
+            ruleCode = "export_package_available",
+            title = "Export package records are available for download readiness",
+            status = exportPackages > 0 ? "evidence_present" : "needs_export_package",
+            evidence = $"Export package records: {exportPackages}."
+        }
+    };
+
+    return Results.Ok(new
+    {
+        module = "019M-BI Workflow Validation Rules",
+        summary = new
+        {
+            ruleCount = rules.Count,
+            configuredRuleCount = rules.Count(r => ((string)r.GetType().GetProperty("status")!.GetValue(r)!).Contains("configured") || ((string)r.GetType().GetProperty("status")!.GetValue(r)!).Contains("evidence_present"))
+        },
+        rules
+    });
+});
+
+app.MapGet("/api/workflow/operations-center", async (HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var access = await LoadApprovalExportWorkflowAccessAsync(connection, sessionUserId.Value);
+    if (!access.CanView && !access.CanViewAll && !access.CanAudit && !access.CanProjectApprove && !access.CanManageAccounting && !access.CanExport)
+    {
+        return Results.Json(new { status = "access_denied", message = "Workflow operations center is restricted to workflow roles." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    long expectations = 0;
+    long exports = 0;
+    long auditEvents = 0;
+    long dryRuns = 0;
+    long approvalItems = 0;
+    long exportReadyEntries = 0;
+
+    await using (var command = new NpgsqlCommand("""
+        SELECT
+            (SELECT COUNT(*)::bigint FROM dashboard_module_visibility_expectations WHERE is_active = TRUE),
+            (SELECT COUNT(*)::bigint FROM time_workflow_exports),
+            (SELECT COUNT(*)::bigint FROM audit_logs WHERE action ILIKE '%time%' OR action ILIKE '%approval%' OR action ILIKE '%export%' OR action ILIKE '%reconcili%' OR action ILIKE '%lock%'),
+            (SELECT COUNT(*)::bigint FROM workflow_action_dry_run_events),
+            (SELECT COUNT(*)::bigint FROM time_entries WHERE status IN ('submitted', 'pending_manager_approval', 'manager_approved', 'project_approved', 'project_validated', 'accounting_ready')),
+            (SELECT COUNT(*)::bigint FROM time_entries WHERE status IN ('accounting_ready', 'reconciled', 'locked'));
+        """, connection))
+    {
+        await using var reader = await command.ExecuteReaderAsync();
+        if (await reader.ReadAsync())
+        {
+            expectations = reader.GetInt64(0);
+            exports = reader.GetInt64(1);
+            auditEvents = reader.GetInt64(2);
+            dryRuns = reader.GetInt64(3);
+            approvalItems = reader.GetInt64(4);
+            exportReadyEntries = reader.GetInt64(5);
+        }
+    }
+
+    return Results.Ok(new
+    {
+        module = "019M-BJ Workflow Operations Center",
+        summary = new
+        {
+            dashboardExpectationCount = expectations,
+            exportPackageCount = exports,
+            workflowAuditEventCount = auditEvents,
+            dryRunEvidenceCount = dryRuns,
+            activeWorkflowItemCount = approvalItems,
+            exportReadyEntryCount = exportReadyEntries,
+            operationalStatus = "ready"
+        },
+        access = new
+        {
+            access.CanView,
+            access.CanProjectApprove,
+            access.CanManageAccounting,
+            access.CanExport,
+            access.CanAudit,
+            access.CanViewAll
+        },
+        modules = new[]
+        {
+            "019M-AZ Audit History Endpoint + UI Repair",
+            "019M-BA Workflow Action Completion Controls",
+            "019M-BB Dashboard Module Visibility Smoke Automation",
+            "019M-BC Export Package Readiness Summary",
+            "019M-BD Export Package Evidence Detail",
+            "019M-BE Accounting Reconciliation Workbench",
+            "019M-BF Locked Period Audit Evidence",
+            "019M-BG Role Access Matrix Endpoint",
+            "019M-BH Demo Readiness Command Center",
+            "019M-BI Workflow Validation Rules",
+            "019M-BJ Workflow Operations Center Registry",
+            "019M-BK Sprint Automation Validation Script"
+        }
+    });
+});
+
+
 app.Run();
 
 

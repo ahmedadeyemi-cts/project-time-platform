@@ -1283,6 +1283,90 @@ function getInstalledProjectPulseModuleRegistry() {
     permissions: ['VIEW_WORKFLOW_AUDIT_EVIDENCE', 'VIEW_AUDIT_TRAIL', 'VIEW_ACCOUNT_RECONCILIATION', 'PROJECT_TIME_APPROVAL', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
     description: 'Displays detailed audit evidence for approval, reconciliation, lock, and export package events.'
   },
+  {
+    route: 'workflow',
+    title: 'Audit History Events',
+    group: 'Approval / Export / Audit',
+    permissions: ['VIEW_AUDIT_HISTORY_EVENTS', 'VIEW_WORKFLOW_AUDIT_EVIDENCE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    description: 'Shows workflow, export, reconciliation, lock, and approval audit history events.'
+  },
+  {
+    route: 'workflow',
+    title: 'Workflow Action Capabilities',
+    group: 'Approval / Export / Audit',
+    permissions: ['VIEW_WORKFLOW_ACTION_CAPABILITIES', 'PROJECT_TIME_APPROVAL', 'VIEW_ACCOUNT_RECONCILIATION', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    description: 'Shows allowed workflow actions, role capabilities, eligible statuses, and dry-run readiness.'
+  },
+  {
+    route: 'dashboard',
+    title: 'Dashboard Module Visibility Smoke',
+    group: 'System',
+    permissions: ['VIEW_MODULE_VISIBILITY_SMOKE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    description: 'Checks module registry coverage so new modules appear on the dashboard for the correct roles.'
+  },
+  {
+    route: 'workflow',
+    title: 'Export Package Readiness Summary',
+    group: 'Approval / Export / Audit',
+    permissions: ['VIEW_EXPORT_PACKAGE_READINESS_SUMMARY', 'DOWNLOAD_TIME_EXPORT_PACKAGE', 'EXPORT_TIME_EXCEL', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    description: 'Shows export package readiness, generated package metadata, download counts, and last-download evidence.'
+  },
+  {
+    route: 'workflow',
+    title: 'Export Package Evidence Detail',
+    group: 'Approval / Export / Audit',
+    permissions: ['VIEW_EXPORT_PACKAGE_EVIDENCE_DETAIL', 'VIEW_WORKFLOW_AUDIT_EVIDENCE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    description: 'Connects export packages to item-level and audit evidence detail.'
+  },
+  {
+    route: 'workflow',
+    title: 'Accounting Reconciliation Workbench',
+    group: 'Approval / Export / Audit',
+    permissions: ['VIEW_ACCOUNTING_RECONCILIATION_WORKBENCH', 'MANAGE_ACCOUNT_RECONCILIATION', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    description: 'Groups accounting reconciliation queues, exception status, missing project/task links, and attention items.'
+  },
+  {
+    route: 'workflow',
+    title: 'Locked Period Audit Evidence',
+    group: 'Approval / Export / Audit',
+    permissions: ['VIEW_LOCKED_PERIOD_AUDIT_EVIDENCE', 'VIEW_WORKFLOW_AUDIT_EVIDENCE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    description: 'Shows locked and reconciled time evidence for period-close audit review.'
+  },
+  {
+    route: 'role-admin',
+    title: 'Role Access Matrix',
+    group: 'Security',
+    permissions: ['VIEW_ROLE_ACCESS_MATRIX', 'VIEW_ROLE_ADMIN_DIRECTORY', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    description: 'Shows role-to-permission coverage for governance, route visibility, and role enforcement validation.'
+  },
+  {
+    route: 'dashboard',
+    title: 'Demo Readiness Command Center',
+    group: 'System',
+    permissions: ['VIEW_DEMO_READINESS_COMMAND_CENTER', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    description: 'Summarizes user, project, time entry, export, audit, and dashboard readiness for demos.'
+  },
+  {
+    route: 'workflow',
+    title: 'Workflow Validation Rules',
+    group: 'Approval / Export / Audit',
+    permissions: ['VIEW_WORKFLOW_VALIDATION_RULES', 'VIEW_APPROVAL_WORKFLOW', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    description: 'Documents workflow validation rules and current evidence for export, audit, and dry-run controls.'
+  },
+  {
+    route: 'workflow',
+    title: 'Workflow Operations Center',
+    group: 'Approval / Export / Audit',
+    permissions: ['VIEW_WORKFLOW_OPERATIONS_CENTER', 'VIEW_APPROVAL_WORKFLOW', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    description: 'Central status view for workflow operations, audit history, export readiness, reconciliation, and validation.'
+  },
+  {
+    route: 'dashboard',
+    title: 'Sprint Automation Validation',
+    group: 'System',
+    permissions: ['VIEW_MODULE_VISIBILITY_SMOKE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    description: 'Provides validation script coverage for endpoint smoke checks and dashboard registry verification.'
+  }
   ];
 }
 
