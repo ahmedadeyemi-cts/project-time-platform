@@ -554,7 +554,7 @@
 - 019M-BE Accounting Reconciliation Workbench.
 - 019M-BF Locked Period Audit Evidence.
 - 019M-BG Role Access Matrix Endpoint.
-- 019M-BH Demo Readiness Command Center.
+- 019M-BH Production Readiness Command Center.
 - 019M-BI Workflow Validation Rules.
 - 019M-BJ Workflow Operations Center Registry.
 - 019M-BK Sprint Automation Validation Script.
@@ -587,3 +587,21 @@
 - `/api/navigation/registry-integrity`
 - `/api/export-packages/evidence-summary`
 - `/api/workflow/operations-ui-data`
+
+## 019M-BV Production Preflight Response Naming Cleanup
+
+- Updated the production operations-center response to expose `preflightEvidenceCount` instead of `dryRunEvidenceCount`.
+- Pointed production operations-center evidence counting to `workflow_preflight_validation_events`.
+- Preserved prior compatibility routes while ensuring production-facing response naming aligns with production preflight terminology.
+
+## 019M-BV Production Module Wording Cleanup
+
+- Updated production operations-center module names to remove demo and sprint-only terminology.
+- Updated workflow validation rule evidence language from preflight validation wording to workflow preflight validation wording.
+- Preserved compatibility behavior while ensuring production-facing API responses use production and preflight terminology.
+
+## 019M-BV Validation Rule Wording Repair
+
+- Updated production validation rule output from dry-run terminology to workflow preflight validation terminology.
+- Updated action capability notes and compatibility action messages so production-facing responses no longer describe workflow safety checks as dry-run behavior.
+- Preserved legacy route and table compatibility while correcting response language used by the application.

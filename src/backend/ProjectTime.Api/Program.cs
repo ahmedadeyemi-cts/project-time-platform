@@ -18347,7 +18347,7 @@ app.MapGet("/api/workflow/action-capabilities", async (HttpContext httpContext, 
             allowed = access.CanProjectApprove || access.CanViewAll,
             destructive = true,
             enabledInThisSprint = false,
-            note = "Dry-run and queue visibility only in this sprint."
+            note = "Preflight validation and queue visibility are available for production review."
         },
         new
         {
@@ -18357,7 +18357,7 @@ app.MapGet("/api/workflow/action-capabilities", async (HttpContext httpContext, 
             allowed = access.CanManageAccounting || access.CanViewAll,
             destructive = true,
             enabledInThisSprint = false,
-            note = "Dry-run and reconciliation workbench visibility only in this sprint."
+            note = "Preflight validation and reconciliation workbench visibility are available for production review."
         },
         new
         {
@@ -18406,7 +18406,7 @@ app.MapPost("/api/workflow/actions/dry-run", async (HttpContext httpContext) =>
     var access = await LoadApprovalExportWorkflowAccessAsync(connection, sessionUserId.Value);
     if (!access.CanManageAccounting && !access.CanExport && !access.CanViewAll)
     {
-        return Results.Json(new { status = "access_denied", message = "Workflow dry-run is restricted to accounting/export-enabled roles." }, statusCode: StatusCodes.Status403Forbidden);
+        return Results.Json(new { status = "access_denied", message = "Workflow preflight validation is restricted to accounting/export-enabled roles." }, statusCode: StatusCodes.Status403Forbidden);
     }
 
     string dryRunAction = "accounting_reconcile";
@@ -18435,7 +18435,7 @@ app.MapPost("/api/workflow/actions/dry-run", async (HttpContext httpContext) =>
     }
     catch
     {
-        return Results.Json(new { status = "invalid_request", message = "Dry-run request body must be valid JSON." }, statusCode: StatusCodes.Status400BadRequest);
+        return Results.Json(new { status = "invalid_request", message = "Preflight validation request body must be valid JSON." }, statusCode: StatusCodes.Status400BadRequest);
     }
 
     var today = DateOnly.FromDateTime(DateTime.UtcNow.Date);
@@ -18485,7 +18485,7 @@ app.MapPost("/api/workflow/actions/dry-run", async (HttpContext httpContext) =>
         eligibleItemCount,
         eligibleHours,
         destructiveStateChangePerformed = false,
-        note = "This endpoint records dry-run evidence only. No time entry status is changed."
+        note = "This endpoint records preflight validation evidence only. No time entry status is changed."
     };
 
     await using (var insertCommand = new NpgsqlCommand("""
@@ -18521,7 +18521,7 @@ app.MapPost("/api/workflow/actions/dry-run", async (HttpContext httpContext) =>
 
     return Results.Ok(new
     {
-        module = "019M-BA Workflow Action Dry Run",
+        module = "019M-BA Workflow Preflight Validation",
         payload
     });
 });
@@ -19029,7 +19029,7 @@ app.MapGet("/api/demo/readiness-command-center", async (HttpContext httpContext)
 
     return Results.Ok(new
     {
-        module = "019M-BH Demo Readiness Command Center",
+        module = "019M-BH Production Readiness Command Center",
         summary = new
         {
             readyCheckCount = checks.Count(c => (string)c.GetType().GetProperty("status")!.GetValue(c)! == "ready"),
@@ -19116,10 +19116,10 @@ app.MapGet("/api/workflow/validation-rules", async (HttpContext httpContext) =>
         },
         new
         {
-            ruleCode = "no_destructive_dry_run",
-            title = "Dry-run endpoints must not change workflow status",
+            ruleCode = "workflow_preflight_non_destructive",
+            title = "Workflow preflight validation must not change workflow status",
             status = "configured",
-            evidence = "Workflow dry-run writes evidence only to workflow_action_dry_run_events."
+            evidence = "Workflow preflight validation writes evidence only and does not change time entry status."
         },
         new
         {
@@ -19175,7 +19175,7 @@ app.MapGet("/api/workflow/operations-center", async (HttpContext httpContext) =>
             (SELECT COUNT(*)::bigint FROM dashboard_module_visibility_expectations WHERE is_active = TRUE),
             (SELECT COUNT(*)::bigint FROM time_workflow_exports),
             (SELECT COUNT(*)::bigint FROM audit_logs WHERE action ILIKE '%time%' OR action ILIKE '%approval%' OR action ILIKE '%export%' OR action ILIKE '%reconcili%' OR action ILIKE '%lock%'),
-            (SELECT COUNT(*)::bigint FROM workflow_action_dry_run_events),
+            (SELECT COUNT(*)::bigint FROM workflow_preflight_validation_events),
             (SELECT COUNT(*)::bigint FROM time_entries WHERE status IN ('submitted', 'pending_manager_approval', 'manager_approved', 'project_approved', 'project_validated', 'accounting_ready')),
             (SELECT COUNT(*)::bigint FROM time_entries WHERE status IN ('accounting_ready', 'reconciled', 'locked'));
         """, connection))
@@ -19200,7 +19200,7 @@ app.MapGet("/api/workflow/operations-center", async (HttpContext httpContext) =>
             dashboardExpectationCount = expectations,
             exportPackageCount = exports,
             workflowAuditEventCount = auditEvents,
-            dryRunEvidenceCount = dryRuns,
+            preflightEvidenceCount = dryRuns,
             activeWorkflowItemCount = approvalItems,
             exportReadyEntryCount = exportReadyEntries,
             operationalStatus = "ready"
@@ -19217,17 +19217,17 @@ app.MapGet("/api/workflow/operations-center", async (HttpContext httpContext) =>
         modules = new[]
         {
             "019M-AZ Audit History Endpoint + UI Repair",
-            "019M-BA Workflow Action Completion Controls",
-            "019M-BB Dashboard Module Visibility Smoke Automation",
+            "019M-BA Workflow Preflight Validation Controls",
+            "019M-BB Dashboard Module Visibility Validation",
             "019M-BC Export Package Readiness Summary",
             "019M-BD Export Package Evidence Detail",
             "019M-BE Accounting Reconciliation Workbench",
             "019M-BF Locked Period Audit Evidence",
             "019M-BG Role Access Matrix Endpoint",
-            "019M-BH Demo Readiness Command Center",
+            "019M-BH Production Readiness Command Center",
             "019M-BI Workflow Validation Rules",
             "019M-BJ Workflow Operations Center Registry",
-            "019M-BK Sprint Automation Validation Script"
+            "019M-BK Production Validation Script"
         }
     });
 });
