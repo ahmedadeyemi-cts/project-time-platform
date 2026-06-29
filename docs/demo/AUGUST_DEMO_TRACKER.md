@@ -699,3 +699,11 @@
 - The signed-out login page no longer renders protected readiness panels or 401/request_failed cards.
 - The injector remains active through MutationObserver, route changes, storage changes, focus events, and periodic sync so panels can appear after sign-in.
 - Cleaned dashboard module visibility notes that still exposed legacy non-production terminology in API responses.
+
+## 019M-CG Native React Production Operations Panels
+
+- Added `ProductionOperationsPanel.jsx` as the native React implementation for production readiness, workflow operations, and route permission contract panels.
+- Removed the side-effect production operations injector import from `App.jsx`.
+- Preserved signed-out suppression by returning no panel until a valid Project Pulse session exists.
+- Preserved View-As header forwarding for production operations evidence calls.
+- Kept Dashboard / Navigation / Registry coverage across readiness, registry integrity, module visibility, workflow operations, and role-admin route governance.

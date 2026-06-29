@@ -366,7 +366,7 @@ import IntakeWorkTaskHandoffPanel from './IntakeWorkTaskHandoffPanel.jsx';
 import ResourceAssignmentHandoffPanel from './ResourceAssignmentHandoffPanel.jsx';
 
 import './production-workflow-operations.css';
-import './production-workflow-operations-injector.js';
+import ProductionOperationsPanel from './ProductionOperationsPanel.jsx';
 const workflowCards = [
   {
     title: 'Time Entry',
@@ -5158,6 +5158,7 @@ Analytics - Variphy / Infortel`}
           </article>
         ))}
       </section>
+      <ProductionOperationsPanel />
       <HelpAssistant />
 </main>
   );
