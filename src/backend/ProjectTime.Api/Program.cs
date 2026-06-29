@@ -20217,6 +20217,407 @@ app.MapGet("/api/workflow/operations-ui-data", async (HttpContext httpContext) =
 });
 
 
+
+// 019M-CI Production Operations Acknowledgments + Sign-Off Evidence - START
+app.MapGet("/api/production/operations-acknowledgments/summary", async (HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Production operations acknowledgments are restricted to administrators and project/team coordinators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var routeFilter = httpContext.Request.Query["routeKey"].FirstOrDefault();
+
+    var acknowledgments = new List<object>();
+
+    await using (var command = new NpgsqlCommand("""
+        SELECT
+            production_operations_acknowledgment_id,
+            route_key,
+            operation_key,
+            operation_title,
+            acknowledgment_status,
+            acknowledgment_note,
+            acknowledged_by_email,
+            acknowledged_at,
+            evidence_snapshot
+        FROM production_operations_acknowledgments
+        WHERE is_active = true
+          AND (@route_key IS NULL OR route_key = @route_key)
+        ORDER BY acknowledged_at DESC
+        LIMIT 50;
+        """, connection))
+    {
+        command.Parameters.Add(new NpgsqlParameter("route_key", NpgsqlTypes.NpgsqlDbType.Text)
+        {
+            Value = string.IsNullOrWhiteSpace(routeFilter) ? DBNull.Value : routeFilter.Trim()
+        });
+
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            acknowledgments.Add(new
+            {
+                acknowledgmentId = reader.GetGuid(0),
+                routeKey = reader.GetString(1),
+                operationKey = reader.GetString(2),
+                operationTitle = reader.GetString(3),
+                acknowledgmentStatus = reader.GetString(4),
+                acknowledgmentNote = reader.IsDBNull(5) ? "" : reader.GetString(5),
+                acknowledgedByEmail = reader.IsDBNull(6) ? "" : reader.GetString(6),
+                acknowledgedAt = reader.GetDateTime(7),
+                evidenceSnapshot = reader.IsDBNull(8) ? "{}" : reader.GetValue(8)?.ToString() ?? "{}"
+            });
+        }
+    }
+
+    long totalAcknowledgments = 0;
+    long dashboardAcknowledgments = 0;
+    long workflowAcknowledgments = 0;
+    long roleAdminAcknowledgments = 0;
+
+    await using (var summaryCommand = new NpgsqlCommand("""
+        SELECT
+            COUNT(*) FILTER (WHERE is_active = true) AS total_acknowledgments,
+            COUNT(*) FILTER (WHERE is_active = true AND route_key = 'dashboard') AS dashboard_acknowledgments,
+            COUNT(*) FILTER (WHERE is_active = true AND route_key = 'workflow') AS workflow_acknowledgments,
+            COUNT(*) FILTER (WHERE is_active = true AND route_key = 'role-admin') AS role_admin_acknowledgments
+        FROM production_operations_acknowledgments;
+        """, connection))
+    {
+        await using var reader = await summaryCommand.ExecuteReaderAsync();
+        if (await reader.ReadAsync())
+        {
+            totalAcknowledgments = reader.GetInt64(0);
+            dashboardAcknowledgments = reader.GetInt64(1);
+            workflowAcknowledgments = reader.GetInt64(2);
+            roleAdminAcknowledgments = reader.GetInt64(3);
+        }
+    }
+
+    return Results.Ok(new
+    {
+        module = "019M-CI Production Operations Acknowledgments + Sign-Off Evidence",
+        summary = new
+        {
+            totalAcknowledgments,
+            dashboardAcknowledgments,
+            workflowAcknowledgments,
+            roleAdminAcknowledgments,
+            routeFilter = string.IsNullOrWhiteSpace(routeFilter) ? "all" : routeFilter
+        },
+        acknowledgments
+    });
+});
+
+app.MapGet("/api/production/operations-acknowledgments/events", async (HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Production operations acknowledgment evidence is restricted to administrators and project/team coordinators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var limit = 25;
+    if (int.TryParse(httpContext.Request.Query["limit"].FirstOrDefault(), out var parsedLimit))
+    {
+        limit = Math.Clamp(parsedLimit, 1, 100);
+    }
+
+    var events = new List<object>();
+
+    await using var command = new NpgsqlCommand("""
+        SELECT
+            production_operations_acknowledgment_id,
+            route_key,
+            operation_key,
+            operation_title,
+            acknowledgment_status,
+            acknowledgment_note,
+            acknowledged_by_email,
+            acknowledged_at,
+            evidence_snapshot
+        FROM production_operations_acknowledgments
+        WHERE is_active = true
+        ORDER BY acknowledged_at DESC
+        LIMIT @limit;
+        """, connection);
+
+    command.Parameters.AddWithValue("limit", limit);
+
+    await using var reader = await command.ExecuteReaderAsync();
+    while (await reader.ReadAsync())
+    {
+        events.Add(new
+        {
+            acknowledgmentId = reader.GetGuid(0),
+            routeKey = reader.GetString(1),
+            operationKey = reader.GetString(2),
+            operationTitle = reader.GetString(3),
+            acknowledgmentStatus = reader.GetString(4),
+            acknowledgmentNote = reader.IsDBNull(5) ? "" : reader.GetString(5),
+            acknowledgedByEmail = reader.IsDBNull(6) ? "" : reader.GetString(6),
+            acknowledgedAt = reader.GetDateTime(7),
+            evidenceSnapshot = reader.IsDBNull(8) ? "{}" : reader.GetValue(8)?.ToString() ?? "{}"
+        });
+    }
+
+    return Results.Ok(new
+    {
+        module = "019M-CI Production Operations Acknowledgment Events",
+        count = events.Count,
+        events
+    });
+});
+
+app.MapPost("/api/production/operations-acknowledgments", async (HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Production operations acknowledgment is restricted to administrators and project/team coordinators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    using var document = await JsonDocument.ParseAsync(httpContext.Request.Body);
+    var root = document.RootElement;
+
+    var routeKey = root.TryGetProperty("routeKey", out var routeElement) ? routeElement.GetString() : null;
+    var operationKey = root.TryGetProperty("operationKey", out var operationElement) ? operationElement.GetString() : null;
+    var operationTitle = root.TryGetProperty("operationTitle", out var titleElement) ? titleElement.GetString() : null;
+    var acknowledgmentNote = root.TryGetProperty("acknowledgmentNote", out var noteElement) ? noteElement.GetString() : null;
+    var evidenceSnapshot = root.TryGetProperty("evidenceSnapshot", out var evidenceElement) ? evidenceElement.GetRawText() : "{}";
+
+    if (string.IsNullOrWhiteSpace(routeKey) || string.IsNullOrWhiteSpace(operationKey) || string.IsNullOrWhiteSpace(operationTitle))
+    {
+        return Results.BadRequest(new
+        {
+            status = "invalid_request",
+            message = "routeKey, operationKey, and operationTitle are required."
+        });
+    }
+
+    var actorUserId = await ResolveSessionUserIdForProductionAcknowledgmentAsync(httpContext, connection);
+    var actorEmail = "";
+
+    if (actorUserId is not null)
+    {
+        await using var userCommand = new NpgsqlCommand("""
+            SELECT email
+            FROM app_users
+            WHERE user_id = @user_id
+            LIMIT 1;
+            """, connection);
+
+        userCommand.Parameters.AddWithValue("user_id", actorUserId.Value);
+        actorEmail = (await userCommand.ExecuteScalarAsync())?.ToString() ?? "";
+    }
+
+    Guid acknowledgmentId;
+
+    await using (var command = new NpgsqlCommand("""
+        INSERT INTO production_operations_acknowledgments (
+            route_key,
+            operation_key,
+            operation_title,
+            acknowledgment_status,
+            acknowledgment_note,
+            acknowledged_by_user_id,
+            acknowledged_by_email,
+            evidence_snapshot
+        )
+        VALUES (
+            @route_key,
+            @operation_key,
+            @operation_title,
+            'acknowledged',
+            @acknowledgment_note,
+            @acknowledged_by_user_id,
+            @acknowledged_by_email,
+            @evidence_snapshot::jsonb
+        )
+        RETURNING production_operations_acknowledgment_id;
+        """, connection))
+    {
+        command.Parameters.AddWithValue("route_key", routeKey.Trim());
+        command.Parameters.AddWithValue("operation_key", operationKey.Trim());
+        command.Parameters.AddWithValue("operation_title", operationTitle.Trim());
+        command.Parameters.AddWithValue("acknowledgment_note", string.IsNullOrWhiteSpace(acknowledgmentNote) ? DBNull.Value : acknowledgmentNote.Trim());
+        command.Parameters.AddWithValue("acknowledged_by_user_id", actorUserId is null ? DBNull.Value : actorUserId.Value);
+        command.Parameters.AddWithValue("acknowledged_by_email", string.IsNullOrWhiteSpace(actorEmail) ? DBNull.Value : actorEmail);
+        command.Parameters.Add(new NpgsqlParameter("evidence_snapshot", NpgsqlTypes.NpgsqlDbType.Jsonb)
+        {
+            Value = string.IsNullOrWhiteSpace(evidenceSnapshot) ? "{}" : evidenceSnapshot
+        });
+
+        acknowledgmentId = (Guid)(await command.ExecuteScalarAsync() ?? Guid.Empty);
+    }
+
+    return Results.Ok(new
+    {
+        module = "019M-CI Production Operations Acknowledgments + Sign-Off Evidence",
+        status = "acknowledged",
+        acknowledgmentId,
+        routeKey,
+        operationKey,
+        operationTitle,
+        acknowledgedByEmail = actorEmail,
+        message = "Production operation acknowledgment was recorded with evidence."
+    });
+});
+
+static async Task<Guid?> ResolveSessionUserIdForProductionAcknowledgmentAsync(HttpContext httpContext, NpgsqlConnection connection)
+{
+    var token = httpContext.Request.Headers["X-ProjectPulse-Session"].FirstOrDefault();
+    if (string.IsNullOrWhiteSpace(token))
+    {
+        return null;
+    }
+
+    static string QuoteIdentifierForProductionAcknowledgment(string identifier)
+    {
+        return "\"" + identifier.Replace("\"", "\"\"") + "\"";
+    }
+
+    static async Task<HashSet<string>> GetProductionAcknowledgmentColumnsAsync(NpgsqlConnection lookupConnection, string tableName)
+    {
+        await using var columnsCommand = new NpgsqlCommand("""
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = @table_name;
+            """, lookupConnection);
+
+        columnsCommand.Parameters.AddWithValue("table_name", tableName);
+
+        var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        await using var reader = await columnsCommand.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            columns.Add(reader.GetString(0));
+        }
+
+        return columns;
+    }
+
+    static string? PickProductionAcknowledgmentColumn(HashSet<string> columns, params string[] candidates)
+    {
+        return candidates.FirstOrDefault(columns.Contains);
+    }
+
+    string? sessionTable;
+
+    await using (var tableCommand = new NpgsqlCommand("""
+        SELECT table_name
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+        GROUP BY table_name
+        HAVING
+            bool_or(column_name IN ('session_token', 'token'))
+            AND bool_or(column_name IN ('user_id', 'app_user_id'))
+        ORDER BY
+            CASE
+                WHEN table_name = 'auth_sessions' THEN 0
+                WHEN table_name = 'user_sessions' THEN 1
+                WHEN table_name = 'sessions' THEN 2
+                WHEN table_name ILIKE '%session%' THEN 3
+                ELSE 4
+            END,
+            table_name
+        LIMIT 1;
+        """, connection))
+    {
+        sessionTable = (await tableCommand.ExecuteScalarAsync())?.ToString();
+    }
+
+    if (string.IsNullOrWhiteSpace(sessionTable))
+    {
+        return null;
+    }
+
+    var columns = await GetProductionAcknowledgmentColumnsAsync(connection, sessionTable);
+    var tokenColumn = PickProductionAcknowledgmentColumn(columns, "session_token", "token");
+    var userIdColumn = PickProductionAcknowledgmentColumn(columns, "user_id", "app_user_id");
+    var expiresColumn = PickProductionAcknowledgmentColumn(columns, "expires_at", "expires_utc", "expires_on");
+    var revokedColumn = PickProductionAcknowledgmentColumn(columns, "revoked_at", "revoked_utc");
+    var activeColumn = PickProductionAcknowledgmentColumn(columns, "is_active", "active");
+
+    if (tokenColumn is null || userIdColumn is null)
+    {
+        return null;
+    }
+
+    var whereParts = new List<string>
+    {
+        $"{QuoteIdentifierForProductionAcknowledgment(tokenColumn)} = @session_token"
+    };
+
+    if (expiresColumn is not null)
+    {
+        whereParts.Add($"({QuoteIdentifierForProductionAcknowledgment(expiresColumn)} IS NULL OR {QuoteIdentifierForProductionAcknowledgment(expiresColumn)} > now())");
+    }
+
+    if (revokedColumn is not null)
+    {
+        whereParts.Add($"{QuoteIdentifierForProductionAcknowledgment(revokedColumn)} IS NULL");
+    }
+
+    if (activeColumn is not null)
+    {
+        whereParts.Add($"COALESCE({QuoteIdentifierForProductionAcknowledgment(activeColumn)}, TRUE) = TRUE");
+    }
+
+    await using var command = new NpgsqlCommand($"""
+        SELECT {QuoteIdentifierForProductionAcknowledgment(userIdColumn)}
+        FROM {QuoteIdentifierForProductionAcknowledgment(sessionTable)}
+        WHERE {string.Join(" AND ", whereParts)}
+        LIMIT 1;
+        """, connection);
+
+    command.Parameters.AddWithValue("session_token", token.Trim());
+
+    var value = await command.ExecuteScalarAsync();
+    if (value is null || value == DBNull.Value)
+    {
+        return null;
+    }
+
+    return value is Guid userId ? userId : Guid.Parse(value.ToString()!);
+}
+
+// 019M-CI Production Operations Acknowledgments + Sign-Off Evidence - END
+
 app.Run();
 
 

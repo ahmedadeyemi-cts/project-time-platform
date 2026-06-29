@@ -1,0 +1,126 @@
+.production-ops-ack-panel {
+  margin: 1.25rem 0;
+  padding: 1rem;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 1.15rem;
+  background: linear-gradient(135deg, rgba(239, 246, 255, 0.96), rgba(236, 253, 245, 0.94));
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.08);
+}
+
+.production-ops-ack-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: start;
+}
+
+.production-ops-ack-eyebrow {
+  display: inline-flex;
+  margin-bottom: 0.35rem;
+  color: #0369a1;
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.production-ops-ack-heading h2 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 1.35rem;
+}
+
+.production-ops-ack-heading p {
+  margin: 0.35rem 0 0;
+  color: #475569;
+  line-height: 1.45;
+}
+
+.production-ops-ack-message {
+  font-weight: 800;
+}
+
+.production-ops-ack-summary {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 12rem;
+  padding: 0.8rem;
+  border-radius: 0.9rem;
+  background: rgba(255, 255, 255, 0.76);
+  text-align: center;
+  color: #475569;
+}
+
+.production-ops-ack-summary strong {
+  color: #0f172a;
+  font-size: 1.8rem;
+  line-height: 1;
+}
+
+.production-ops-ack-summary small {
+  color: #64748b;
+}
+
+.production-ops-ack-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.8rem;
+  margin-top: 1rem;
+}
+
+.production-ops-ack-card {
+  display: grid;
+  gap: 0.85rem;
+  align-content: space-between;
+  padding: 0.9rem;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.84);
+}
+
+.production-ops-ack-card span {
+  color: #475569;
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.production-ops-ack-card h3 {
+  margin: 0.35rem 0 0;
+  color: #0f172a;
+  font-size: 1rem;
+}
+
+.production-ops-ack-card p {
+  margin: 0.35rem 0 0;
+  color: #64748b;
+  line-height: 1.35;
+}
+
+.production-ops-ack-button {
+  min-height: 2.45rem;
+  border: 0;
+  border-radius: 0.8rem;
+  background: #0f172a;
+  color: #ffffff;
+  font-weight: 900;
+  cursor: pointer;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.16);
+}
+
+.production-ops-ack-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.56;
+}
+
+@media (max-width: 1000px) {
+  .production-ops-ack-heading,
+  .production-ops-ack-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .production-ops-ack-summary {
+    text-align: left;
+  }
+}

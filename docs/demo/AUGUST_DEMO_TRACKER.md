@@ -737,3 +737,31 @@
 - Added `/api/auth/password-reset/clear-ready-summary` to read the true approved local-admin reset queue count.
 - Updated `/api/auth/password-reset/clear-ready` so the clear action uses the same queue definition as the summary count.
 - Preserved Dashboard / Navigation / Registry validation.
+
+## 019M-CI Production Operations Acknowledgments + Sign-Off Evidence
+
+- Added `production_operations_acknowledgments` evidence table.
+- Added production operations acknowledgment summary, event, and sign-off endpoints.
+- Added native React sign-off panel for Dashboard, Workflow, and Role Admin production operations routes.
+- Preserved View-As read-only behavior by hiding sign-off controls while impersonating another user.
+- Added Dashboard / Navigation / Registry validation and engineer negative-access validation coverage.
+
+## 019M-CI 500 Repair Note
+
+- Verified the production operations acknowledgment summary endpoint after deployment.
+- Applied safe Npgsql parameter typing and JSONB handling for acknowledgment summary/sign-off evidence if the endpoint was still returning HTTP 500.
+- Preserved Dashboard / Navigation / Registry validation.
+
+## 019M-CI Acknowledgment Table Grant Repair
+
+- Repaired production operations acknowledgment endpoints by granting the API database login role access to `production_operations_acknowledgments`.
+- Added the grant block to the 019M-CI migration so future deployments preserve table access.
+- Confirmed Time Compliance settings and preview endpoints are healthy after deployment.
+- Preserved Dashboard / Navigation / Registry validation.
+
+## 019M-CI Session Actor Lookup Repair
+
+- Repaired production operations acknowledgment POST by replacing the hardcoded `app_user_sessions` lookup with dynamic session-table discovery.
+- Preserved actor evidence capture when the active session table can be resolved.
+- Confirmed the read endpoints were healthy after table grants and focused this repair on sign-off POST evidence creation.
+- Preserved Dashboard / Navigation / Registry validation.
