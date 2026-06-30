@@ -370,11 +370,13 @@ import './local-admin-password-reset-clear-actions.css';
 import './production-operations-acknowledgments.css';
 import './time-compliance-email-notifications.css';
 import './production-readiness-center.css';
+import './page-context-guide.css';
 import ProductionOperationsPanel from './ProductionOperationsPanel.jsx';
 import LocalAdminPasswordResetClearActions from './LocalAdminPasswordResetClearActions.jsx';
 import ProductionOperationsAcknowledgmentsPanel from './ProductionOperationsAcknowledgmentsPanel.jsx';
 import TimeComplianceEmailNotificationsPanel from './TimeComplianceEmailNotificationsPanel.jsx';
 import ProductionReadinessCenterPanel from './ProductionReadinessCenterPanel.jsx';
+import PageContextGuide from './PageContextGuide.jsx';
 const workflowCards = [
   {
     title: 'Time Entry',
@@ -3898,6 +3900,8 @@ Analytics - Variphy / Infortel`}
           </div>
         </div>
       </aside>
+
+      <PageContextGuide activeRoute={activeRoute} />
 
       <section id="production-readiness" className="panel production-readiness-route-panel">
         <ProductionReadinessCenterPanel />

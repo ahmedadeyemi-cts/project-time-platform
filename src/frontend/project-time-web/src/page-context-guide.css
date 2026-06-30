@@ -1,0 +1,108 @@
+.page-context-guide {
+  width: min(1180px, calc(100vw - 2rem));
+  margin: 1rem auto 0;
+  border: 1px solid rgba(14, 165, 233, 0.22);
+  border-radius: 1rem;
+  background: linear-gradient(135deg, rgba(240, 249, 255, 0.96), rgba(248, 250, 252, 0.98));
+  box-shadow: 0 16px 32px rgba(15, 23, 42, 0.07);
+  overflow: hidden;
+}
+
+.page-context-guide details {
+  padding: 0.8rem 1rem;
+}
+
+.page-context-guide summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.page-context-guide summary::-webkit-details-marker {
+  display: none;
+}
+
+.page-context-guide summary span {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.page-context-guide summary strong {
+  color: #0f172a;
+  font-size: 1rem;
+}
+
+.page-context-guide summary small {
+  color: #64748b;
+}
+
+.page-context-guide summary::after {
+  content: 'Show / hide';
+  color: #0369a1;
+  font-weight: 800;
+  font-size: 0.82rem;
+}
+
+.page-context-guide-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(260px, 0.9fr) minmax(0, 1.1fr);
+  gap: 0.8rem;
+  margin-top: 0.85rem;
+}
+
+.page-context-guide-grid div {
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 0.85rem;
+  background: rgba(255, 255, 255, 0.8);
+  padding: 0.75rem;
+}
+
+.page-context-guide-grid span {
+  display: block;
+  color: #0369a1;
+  font-weight: 850;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.25rem;
+}
+
+.page-context-guide-grid p {
+  margin: 0;
+  color: #334155;
+  line-height: 1.4;
+}
+
+.page-context-guide-grid code {
+  white-space: normal;
+  word-break: break-word;
+  color: #0f172a;
+  font-size: 0.86rem;
+}
+
+[data-theme='dark'] .page-context-guide {
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.96), rgba(30, 41, 59, 0.95));
+  border-color: rgba(14, 165, 233, 0.28);
+}
+
+[data-theme='dark'] .page-context-guide summary strong,
+[data-theme='dark'] .page-context-guide-grid code {
+  color: #e2e8f0;
+}
+
+[data-theme='dark'] .page-context-guide-grid div {
+  background: rgba(15, 23, 42, 0.72);
+  border-color: rgba(148, 163, 184, 0.24);
+}
+
+[data-theme='dark'] .page-context-guide-grid p {
+  color: #cbd5e1;
+}
+
+@media (max-width: 980px) {
+  .page-context-guide-grid {
+    grid-template-columns: 1fr;
+  }
+}

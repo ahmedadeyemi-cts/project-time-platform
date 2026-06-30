@@ -209,3 +209,22 @@ Artifacts:
 - `src/frontend/project-time-web/src/ProductionReadinessCenterPanel.jsx`
 - `src/frontend/project-time-web/src/production-readiness-center.css`
 - `docs/help/021K-webpage-backend-purpose-map.md`
+
+
+## 021L In-App Page Context Guide
+
+021L adds a visible page context guide across the signed-in app so every major webpage explains its purpose, backend support, and validation expectation.
+
+What to check:
+
+- Guide appears on signed-in pages.
+- Guide updates when navigating between app routes.
+- Purpose, backend support, and validation guidance are clear.
+- Show / hide works.
+
+Artifacts:
+
+- `src/frontend/project-time-web/src/PageContextGuide.jsx`
+- `src/frontend/project-time-web/src/page-context-guide.css`
+- `src/frontend/project-time-web/src/App.jsx`
+- `docs/help/021L-in-app-page-context-guide.md`
