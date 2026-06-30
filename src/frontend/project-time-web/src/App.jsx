@@ -1361,7 +1361,7 @@ function getInstalledProjectPulseModuleRegistry() {
     route: 'dashboard',
     title: 'Production Readiness Command Center',
     group: 'System',
-    permissions: ['VIEW_DEMO_READINESS_COMMAND_CENTER', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    permissions: ['VIEW_PRODUCTION_READINESS_COMMAND_CENTER', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
     description: 'Summarizes user, project, time entry, export, audit, route governance, and dashboard readiness for production operations.'
   },
   {
@@ -3945,7 +3945,7 @@ Analytics - Variphy / Infortel`}
                 value={azureTenantProfile}
                 onChange={(event) => applyAzureTenantProfile(event.target.value)}
               >
-                <option value="onenecklab">OneNeck Lab - onenecklab.com + ONITDemo.com</option>
+                <option value="onenecklab">OneNeck Lab - primary and secondary domains</option>
                 <option value="ussignal">US Signal Production - ussignal.com</option>
                 <option value="custom">Create New</option>
               </select>
@@ -4104,7 +4104,7 @@ Analytics - Variphy / Infortel`}
                 >
                   <option value="all">All selected tenant domains</option>
                   <option value="onenecklab.com">onenecklab.com - OneNeck Lab</option>
-                  <option value="onitdemo.com">ONITDemo.com - OneNeck Lab</option>
+                  <option value="onitdemo.com">OneNeck Lab secondary domain</option>
                   <option value="ussignal.com">ussignal.com - Production</option>
                 </select>
               </label>

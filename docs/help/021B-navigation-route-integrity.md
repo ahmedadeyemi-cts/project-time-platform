@@ -2,7 +2,7 @@
 
 ## Scope
 
-021B adds a static route-integrity report for release hardening and demo readiness.
+021B adds a static route-integrity report for release hardening and production readiness.
 
 ## What the Scanner Checks
 
@@ -18,9 +18,9 @@
 
 ## Generated Reports
 
-- `docs/demo/021_ROUTE_INTEGRITY_REPORT.md`
-- `docs/demo/021_ROUTE_INTEGRITY_REPORT.json`
+- `docs/production-readiness/021_ROUTE_INTEGRITY_REPORT.md`
+- `docs/production-readiness/021_ROUTE_INTEGRITY_REPORT.json`
 
 ## Why This Matters
 
-The demo flow depends on predictable route names, labels, navigation groups, and route-to-hash consistency. This report gives us a release-hardening checkpoint before role-based demo scripts and browser validation.
+The production readiness flow depends on predictable route names, labels, navigation groups, and route-to-hash consistency. This report gives us a release-hardening checkpoint before role-based production readiness runbooks and browser validation.

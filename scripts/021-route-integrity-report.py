@@ -10,8 +10,8 @@ from pathlib import Path
 repo_root = Path(__file__).resolve().parents[1]
 app_path = repo_root / "src/frontend/project-time-web/src/App.jsx"
 production_ops_path = repo_root / "src/frontend/project-time-web/src/ProductionOperationsPanel.jsx"
-report_path = repo_root / "docs/demo/021_ROUTE_INTEGRITY_REPORT.md"
-json_path = repo_root / "docs/demo/021_ROUTE_INTEGRITY_REPORT.json"
+report_path = repo_root / "docs/production-readiness/021_ROUTE_INTEGRITY_REPORT.md"
+json_path = repo_root / "docs/production-readiness/021_ROUTE_INTEGRITY_REPORT.json"
 
 if not app_path.exists():
     raise SystemExit(f"Missing App.jsx at {app_path}")

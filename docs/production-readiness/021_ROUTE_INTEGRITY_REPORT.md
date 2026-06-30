@@ -1,6 +1,6 @@
 # 021 Route Integrity Report
 
-Generated UTC: `2026-06-30T16:00:08.519626+00:00`
+Generated UTC: `2026-06-30T16:18:38.622724+00:00`
 
 ## Summary
 
@@ -141,7 +141,7 @@ Generated UTC: `2026-06-30T16:00:08.519626+00:00`
 | Route | Label | Title | Status | Permissions | Source |
 |---|---|---|---|---|---|
 | `#dashboard` | Missing | Dashboard Module Visibility Smoke | Missing | VIEW_MODULE_VISIBILITY_SMOKE, SYSTEM_ADMINISTRATION, MANAGE_ALL | App.jsx:1319 |
-| `#dashboard` | Missing | Production Readiness Command Center | Missing | VIEW_DEMO_READINESS_COMMAND_CENTER, SYSTEM_ADMINISTRATION, MANAGE_ALL | App.jsx:1361 |
+| `#dashboard` | Missing | Production Readiness Command Center | Missing | VIEW_PRODUCTION_READINESS_COMMAND_CENTER, SYSTEM_ADMINISTRATION, MANAGE_ALL | App.jsx:1361 |
 | `#dashboard` | Missing | Production Validation Automation | Missing | VIEW_MODULE_VISIBILITY_SMOKE, SYSTEM_ADMINISTRATION, MANAGE_ALL | App.jsx:1382 |
 | `#dashboard` | Missing | Navigation Registry Integrity Guard | Missing | VIEW_NAVIGATION_REGISTRY_INTEGRITY, SYSTEM_ADMINISTRATION, MANAGE_ALL | App.jsx:1403 |
 

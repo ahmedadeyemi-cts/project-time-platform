@@ -2,11 +2,11 @@
 
 ## Scope
 
-021A starts the release hardening and demo readiness phase after the 020 module build sprint.
+021A starts the release hardening and production readiness phase after the 020 module build sprint.
 
 ## Added Artifacts
 
-- `docs/demo/021_RELEASE_HARDENING_TRACKER.md`
+- `docs/production-readiness/021_RELEASE_HARDENING_TRACKER.md`
 - `docs/help/021A-release-hardening-baseline.md`
 - `scripts/021-release-smoke.sh`
 

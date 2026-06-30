@@ -1,5 +1,5 @@
 {
-  "generatedAtUtc": "2026-06-30T16:00:08.519626+00:00",
+  "generatedAtUtc": "2026-06-30T16:18:38.622724+00:00",
   "routeCount": 68,
   "groupCount": 17,
   "duplicateRoutes": [
@@ -943,7 +943,7 @@
       "status": "",
       "description": "Summarizes user, project, time entry, export, audit, route governance, and dashboard readiness for production operations.",
       "permissions": [
-        "VIEW_DEMO_READINESS_COMMAND_CENTER",
+        "VIEW_PRODUCTION_READINESS_COMMAND_CENTER",
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],

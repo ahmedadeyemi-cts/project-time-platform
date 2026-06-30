@@ -1,8 +1,8 @@
-# 021 Release Hardening / Demo Readiness Tracker
+# 021 Release Hardening / Production Readiness Tracker
 
 ## Purpose
 
-021 prepares ProjectPulse / ChangePoint for a cleaner end-to-end demonstration and release-readiness pass after the 020 module build sprint.
+021 prepares ProjectPulse / ChangePoint for a cleaner end-to-end production readinessnstration and release-readiness pass after the 020 module build sprint.
 
 ## Starting Baseline
 
@@ -17,13 +17,13 @@
 |---|---|---|---|
 | 021A | Release baseline | Create release hardening tracker and reusable smoke script | Complete |
 | 021B | Navigation / route integrity | Confirm route labels, route visibility, and dashboard grouping alignment | Complete |
-| 021C | Role-based demo scripts | Prepare demo paths for Admin, PM, Manager, Engineer, Accounting, and Viewer-style access | Not Started |
-| 021D | Workflow data readiness | Confirm seeded/demo data supports customer, intake, assignment, approval, export, and audit flows | Not Started |
+| 021C | Production readiness naming alignment | Align branch, documentation, route reports, and permission naming to production readiness | Complete |
+| 021D | Role-based production readiness runbooks | Prepare production readiness paths for Admin, PM, Manager, Engineer, Accounting, and Viewer-style access | Not Started |
 | 021E | UI polish | Address obvious copy, empty states, filter clarity, and responsive presentation gaps | Not Started |
 | 021F | Operational runbook | Document deploy, rollback, smoke, backup, and restore checkpoints | Not Started |
 | 021G | Final release candidate validation | Build, deploy, endpoint smoke, browser validation, and PR closeout | Not Started |
 
-## Demo-Critical Workflows
+## Production-Critical Workflows
 
 1. Login and role-aware navigation.
 2. Customer directory readiness.
@@ -38,7 +38,7 @@
 
 ## Release Hardening Rules
 
-- Keep 021 changes on `feature/021-release-hardening-demo-readiness`.
+- Keep 021 changes on `feature/021-release-hardening-production readiness-readiness`.
 - Do not mix unrelated feature work into the release hardening branch.
 - Preserve any unexpected local WIP before switching branches.
 - Use lightweight builds for each 021 submodule.
@@ -47,11 +47,34 @@
 
 ## 021B Navigation / Route Integrity
 
-021B added a reusable static route-integrity scanner and generated route inventory reports for demo readiness review.
+021B added a reusable static route-integrity scanner and generated route inventory reports for production readiness review.
 
 Artifacts:
 
 - `scripts/021-route-integrity-report.py`
-- `docs/demo/021_ROUTE_INTEGRITY_REPORT.md`
-- `docs/demo/021_ROUTE_INTEGRITY_REPORT.json`
+- `docs/production-readiness/021_ROUTE_INTEGRITY_REPORT.md`
+- `docs/production-readiness/021_ROUTE_INTEGRITY_REPORT.json`
 - `docs/help/021B-navigation-route-integrity.md`
+
+
+## 021C Production Readiness Naming Alignment
+
+021C corrected release-hardening language so this phase is framed as production readiness.
+
+Changes:
+
+- Renamed the working branch to `feature/021-release-hardening-production-readiness`.
+- Moved 021 release artifacts into `docs/production-readiness`.
+- Standardized the August production-readiness tracker name.
+- Updated scanner/report paths to use production-readiness terminology.
+- Reframed role walkthrough work as production readiness runbooks.
+
+
+## Production Readiness Permission Naming
+
+The release-hardening pass standardizes the production readiness command-center permission identifier as:
+
+- `VIEW_PRODUCTION_READINESS_COMMAND_CENTER`
+
+
+Active route naming was also aligned to `/api/production/readiness-command-center`.
