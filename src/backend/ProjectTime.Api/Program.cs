@@ -21135,6 +21135,29 @@ app.MapPost("/api/time-compliance/email-notifications/send", async (HttpContext 
         deliveryMode = sharedEmailProvider.PreferredDeliveryMode;
     }
 
+    if (!deliveryMode.Equals("outbox_only", StringComparison.OrdinalIgnoreCase))
+    {
+        var recipientSafetyGate = await ProjectPulseRecipientSafetyGateAllowsSendAsync(
+            connection,
+            "TIME_COMPLIANCE_ENGINEER_NOTIFICATIONS",
+            scenario
+        );
+
+        if (!recipientSafetyGate.Allowed)
+        {
+            return Results.Json(new
+            {
+                status = "recipient_safety_review_required",
+                module = "020J Shared Email Recipient Safety Review",
+                message = recipientSafetyGate.Reason,
+                scenario,
+                deliveryMode,
+                reviewId = recipientSafetyGate.ReviewId,
+                nextStep = "Run /api/system/email-provider/recipient-safety/run-review and approve a clean review before real provider send."
+            }, statusCode: StatusCodes.Status409Conflict);
+        }
+    }
+
     var runType = root.TryGetProperty("runType", out var runTypeElement)
         ? runTypeElement.GetString()
         : "manual";
@@ -21941,6 +21964,787 @@ This is a controlled single-recipient test email. It confirms that ProjectPulse 
     }, statusCode: statusCode);
 });
 // 019M-CL Shared Email Provider Test Harness - END
+
+
+// 020J Shared Email Recipient Safety Review - START
+app.MapGet("/api/system/email-provider/recipient-safety/summary", async (HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Email recipient safety review is restricted to administrators and project/team coordinators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var rules = new List<object>();
+    await using (var ruleCommand = new NpgsqlCommand("""
+        SELECT rule_code, rule_name, rule_description, risk_level, blocks_send, is_active
+        FROM system_email_recipient_safety_rules
+        ORDER BY blocks_send DESC, risk_level DESC, rule_code;
+        """, connection))
+    {
+        await using var reader = await ruleCommand.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            rules.Add(new
+            {
+                ruleCode = reader.GetString(0),
+                ruleName = reader.GetString(1),
+                ruleDescription = reader.GetString(2),
+                riskLevel = reader.GetString(3),
+                blocksSend = reader.GetBoolean(4),
+                isActive = reader.GetBoolean(5)
+            });
+        }
+    }
+
+    object? latestReview = null;
+    await using (var latestCommand = new NpgsqlCommand("""
+        SELECT
+            system_email_recipient_safety_review_id,
+            consumer_key,
+            scenario,
+            delivery_mode,
+            provider,
+            review_status,
+            total_recipient_count,
+            blocked_count,
+            warning_count,
+            clear_count,
+            generated_by_email,
+            generated_at,
+            approved_by_email,
+            approved_at,
+            expires_at,
+            review_message
+        FROM system_email_recipient_safety_reviews
+        ORDER BY generated_at DESC
+        LIMIT 1;
+        """, connection))
+    {
+        await using var reader = await latestCommand.ExecuteReaderAsync();
+        if (await reader.ReadAsync())
+        {
+            latestReview = new
+            {
+                reviewId = reader.GetGuid(0),
+                consumerKey = reader.GetString(1),
+                scenario = reader.GetString(2),
+                deliveryMode = reader.GetString(3),
+                provider = reader.GetString(4),
+                reviewStatus = reader.GetString(5),
+                totalRecipientCount = reader.GetInt32(6),
+                blockedCount = reader.GetInt32(7),
+                warningCount = reader.GetInt32(8),
+                clearCount = reader.GetInt32(9),
+                generatedByEmail = reader.IsDBNull(10) ? "" : reader.GetString(10),
+                generatedAt = reader.GetDateTime(11),
+                approvedByEmail = reader.IsDBNull(12) ? "" : reader.GetString(12),
+                approvedAt = reader.IsDBNull(13) ? (DateTime?)null : reader.GetDateTime(13),
+                expiresAt = reader.IsDBNull(14) ? (DateTime?)null : reader.GetDateTime(14),
+                reviewMessage = reader.IsDBNull(15) ? "" : reader.GetString(15)
+            };
+        }
+    }
+
+    return Results.Ok(new
+    {
+        module = "020J Shared Email Recipient Safety Review",
+        summary = new
+        {
+            ruleCount = rules.Count,
+            activeRuleCount = rules.Count(r => (bool)r.GetType().GetProperty("isActive")!.GetValue(r)!),
+            latestReview
+        },
+        rules
+    });
+});
+
+app.MapGet("/api/system/email-provider/recipient-safety/review-items", async (HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Email recipient safety review items are restricted to administrators and project/team coordinators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    Guid? reviewId = null;
+    var reviewIdText = httpContext.Request.Query["reviewId"].FirstOrDefault();
+    if (!string.IsNullOrWhiteSpace(reviewIdText) && Guid.TryParse(reviewIdText, out var parsedReviewId))
+    {
+        reviewId = parsedReviewId;
+    }
+
+    if (reviewId is null)
+    {
+        await using var latestCommand = new NpgsqlCommand("""
+            SELECT system_email_recipient_safety_review_id
+            FROM system_email_recipient_safety_reviews
+            ORDER BY generated_at DESC
+            LIMIT 1;
+            """, connection);
+
+        var latestValue = await latestCommand.ExecuteScalarAsync();
+        if (latestValue is Guid latestGuid)
+        {
+            reviewId = latestGuid;
+        }
+    }
+
+    if (reviewId is null)
+    {
+        return Results.Ok(new
+        {
+            module = "020J Shared Email Recipient Safety Review Items",
+            count = 0,
+            reviewId = (Guid?)null,
+            items = Array.Empty<object>()
+        });
+    }
+
+    var limit = 100;
+    if (int.TryParse(httpContext.Request.Query["limit"].FirstOrDefault(), out var parsedLimit))
+    {
+        limit = Math.Clamp(parsedLimit, 1, 500);
+    }
+
+    var items = new List<object>();
+    await using var itemCommand = new NpgsqlCommand("""
+        SELECT
+            system_email_recipient_safety_review_item_id,
+            review_id,
+            recipient_email,
+            recipient_display_name,
+            recipient_kind,
+            manager_email,
+            cc_emails,
+            risk_codes,
+            risk_level,
+            safety_status,
+            block_send,
+            details,
+            created_at
+        FROM system_email_recipient_safety_review_items
+        WHERE review_id = @review_id
+        ORDER BY block_send DESC, risk_level DESC, recipient_email
+        LIMIT @limit;
+        """, connection);
+
+    itemCommand.Parameters.AddWithValue("review_id", reviewId.Value);
+    itemCommand.Parameters.AddWithValue("limit", limit);
+
+    await using var reader = await itemCommand.ExecuteReaderAsync();
+    while (await reader.ReadAsync())
+    {
+        items.Add(new
+        {
+            reviewItemId = reader.GetGuid(0),
+            reviewId = reader.GetGuid(1),
+            recipientEmail = reader.GetString(2),
+            recipientDisplayName = reader.IsDBNull(3) ? "" : reader.GetString(3),
+            recipientKind = reader.GetString(4),
+            managerEmail = reader.IsDBNull(5) ? "" : reader.GetString(5),
+            ccEmails = reader.IsDBNull(6) ? Array.Empty<string>() : reader.GetFieldValue<string[]>(6),
+            riskCodes = reader.IsDBNull(7) ? Array.Empty<string>() : reader.GetFieldValue<string[]>(7),
+            riskLevel = reader.GetString(8),
+            safetyStatus = reader.GetString(9),
+            blockSend = reader.GetBoolean(10),
+            details = reader.GetString(11),
+            createdAt = reader.GetDateTime(12)
+        });
+    }
+
+    return Results.Ok(new
+    {
+        module = "020J Shared Email Recipient Safety Review Items",
+        count = items.Count,
+        reviewId,
+        items
+    });
+});
+
+app.MapPost("/api/system/email-provider/recipient-safety/run-review", async (HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Email recipient safety review generation is restricted to administrators and project/team coordinators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    if (httpContext.Request.Headers.ContainsKey("X-ProjectPulse-View-As-User"))
+    {
+        return Results.Json(new
+        {
+            status = "view_as_read_only",
+            message = "Write actions are disabled while using Administrator View-As preview. Exit preview to run recipient safety review."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    using var requestDocument = await JsonDocument.ParseAsync(httpContext.Request.Body);
+    var requestRoot = requestDocument.RootElement;
+
+    var consumerKey = requestRoot.TryGetProperty("consumerKey", out var consumerElement)
+        ? consumerElement.GetString() ?? "TIME_COMPLIANCE_ENGINEER_NOTIFICATIONS"
+        : "TIME_COMPLIANCE_ENGINEER_NOTIFICATIONS";
+
+    var scenario = requestRoot.TryGetProperty("scenario", out var scenarioElement)
+        ? scenarioElement.GetString() ?? "weekly_reminder"
+        : "weekly_reminder";
+
+    var deliveryMode = requestRoot.TryGetProperty("deliveryMode", out var modeElement)
+        ? modeElement.GetString() ?? "provider"
+        : "provider";
+
+    consumerKey = string.IsNullOrWhiteSpace(consumerKey) ? "TIME_COMPLIANCE_ENGINEER_NOTIFICATIONS" : consumerKey.Trim();
+    scenario = string.IsNullOrWhiteSpace(scenario) ? "weekly_reminder" : scenario.Trim();
+    deliveryMode = string.IsNullOrWhiteSpace(deliveryMode) ? "provider" : deliveryMode.Trim();
+
+    if (!string.Equals(consumerKey, "TIME_COMPLIANCE_ENGINEER_NOTIFICATIONS", StringComparison.OrdinalIgnoreCase))
+    {
+        return Results.Json(new
+        {
+            status = "unsupported_consumer",
+            message = "Recipient safety review currently supports Time Compliance engineer notifications. Additional consumers are registered for future rollout."
+        }, statusCode: StatusCodes.Status400BadRequest);
+    }
+
+    var provider = GetProjectPulseSharedEmailProviderRuntime();
+    var actorUserId = await ResolveSessionUserIdForProductionAcknowledgmentAsync(httpContext, connection);
+    var actorEmail = "";
+
+    if (actorUserId is not null)
+    {
+        await using var userCommand = new NpgsqlCommand("""
+            SELECT email
+            FROM app_users
+            WHERE user_id = @user_id
+            LIMIT 1;
+            """, connection);
+
+        userCommand.Parameters.AddWithValue("user_id", actorUserId.Value);
+        actorEmail = (await userCommand.ExecuteScalarAsync())?.ToString() ?? "";
+    }
+
+    var sessionToken = httpContext.Request.Headers.TryGetValue("X-ProjectPulse-Session", out var headerValue)
+        ? headerValue.ToString()
+        : "";
+
+    using var client = new HttpClient();
+    client.DefaultRequestHeaders.Add("X-ProjectPulse-Session", sessionToken);
+
+    var previewUrl = $"http://127.0.0.1:5080/api/time-compliance/preview?scenario={Uri.EscapeDataString(scenario)}";
+    using var previewResponse = await client.GetAsync(previewUrl);
+    var previewContent = await previewResponse.Content.ReadAsStringAsync();
+
+    if (!previewResponse.IsSuccessStatusCode)
+    {
+        return Results.Json(new
+        {
+            status = "preview_failed",
+            message = $"Could not generate Time Compliance preview before recipient safety review. HTTP {(int)previewResponse.StatusCode}",
+            previewContent
+        }, statusCode: StatusCodes.Status502BadGateway);
+    }
+
+    using var previewDocument = JsonDocument.Parse(previewContent);
+    var previewRoot = previewDocument.RootElement;
+
+    if (!previewRoot.TryGetProperty("missingSubmissions", out var missingSubmissions) || missingSubmissions.ValueKind != JsonValueKind.Array)
+    {
+        return Results.Json(new
+        {
+            status = "preview_missing_recipients",
+            message = "Time Compliance preview did not include missingSubmissions recipient data."
+        }, statusCode: StatusCodes.Status500InternalServerError);
+    }
+
+    var candidates = new List<(string Email, string Name, string ManagerEmail, string[] CcEmails, List<string> RiskCodes, List<string> Details, bool BlockSend, string SourceJson)>();
+
+    foreach (var item in missingSubmissions.EnumerateArray())
+    {
+        var email = item.TryGetProperty("email", out var emailElement) ? emailElement.GetString() ?? "" : "";
+        var name = item.TryGetProperty("displayName", out var nameElement) ? nameElement.GetString() ?? "" : "";
+        var managerEmail = item.TryGetProperty("managerEmail", out var managerEmailElement) ? managerEmailElement.GetString() ?? "" : "";
+
+        var ccEmails = new List<string>();
+        if (item.TryGetProperty("ccEmails", out var ccElement) && ccElement.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var cc in ccElement.EnumerateArray())
+            {
+                var ccText = cc.GetString() ?? "";
+                if (!string.IsNullOrWhiteSpace(ccText))
+                {
+                    ccEmails.Add(ccText.Trim());
+                }
+            }
+        }
+
+        var riskCodes = new List<string>();
+        var details = new List<string>();
+        var blockSend = false;
+
+        var normalizedEmail = email.Trim().ToLowerInvariant();
+        var normalizedName = name.Trim().ToLowerInvariant();
+
+        if (string.IsNullOrWhiteSpace(email) || !email.Contains("@", StringComparison.Ordinal))
+        {
+            riskCodes.Add("EMPTY_OR_INVALID_RECIPIENT");
+            details.Add("Recipient email is empty or invalid.");
+            blockSend = true;
+        }
+
+        if (email.EndsWith(".local", StringComparison.OrdinalIgnoreCase))
+        {
+            riskCodes.Add("LOCAL_OR_TEST_DOMAIN");
+            details.Add("Recipient email is .local and cannot be routed by the shared provider.");
+            blockSend = true;
+        }
+
+        if (normalizedEmail.Contains("demo", StringComparison.OrdinalIgnoreCase)
+            || normalizedEmail.Contains("test", StringComparison.OrdinalIgnoreCase)
+            || normalizedName.Contains("demo", StringComparison.OrdinalIgnoreCase)
+            || normalizedName.Contains("test", StringComparison.OrdinalIgnoreCase))
+        {
+            riskCodes.Add("DEMO_OR_TEST_USER");
+            details.Add("Recipient appears to be a demo/test user.");
+            blockSend = true;
+        }
+
+        if (string.IsNullOrWhiteSpace(managerEmail))
+        {
+            riskCodes.Add("MISSING_MANAGER_EMAIL");
+            details.Add("Manager email is missing.");
+        }
+        else if (managerEmail.EndsWith(".local", StringComparison.OrdinalIgnoreCase))
+        {
+            riskCodes.Add("NON_ROUTABLE_MANAGER_OR_CC");
+            details.Add("Manager email is .local and cannot receive CC/escalation.");
+            blockSend = true;
+        }
+
+        foreach (var ccEmail in ccEmails)
+        {
+            if (ccEmail.EndsWith(".local", StringComparison.OrdinalIgnoreCase))
+            {
+                riskCodes.Add("NON_ROUTABLE_MANAGER_OR_CC");
+                details.Add($"CC email is non-routable: {ccEmail}");
+                blockSend = true;
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(email)
+            && email.Contains("@", StringComparison.Ordinal)
+            && !email.EndsWith("@ussignal.com", StringComparison.OrdinalIgnoreCase)
+            && !email.EndsWith("@oneneck.com", StringComparison.OrdinalIgnoreCase)
+            && !email.EndsWith("@onenecklab.com", StringComparison.OrdinalIgnoreCase)
+            && !email.EndsWith(".local", StringComparison.OrdinalIgnoreCase))
+        {
+            riskCodes.Add("EXTERNAL_DOMAIN_REVIEW");
+            details.Add("Recipient is outside expected US Signal / OneNeck domains.");
+        }
+
+        candidates.Add((email.Trim(), name.Trim(), managerEmail.Trim(), ccEmails.ToArray(), riskCodes, details, blockSend, item.GetRawText()));
+    }
+
+    var duplicateEmailSet = candidates
+        .Where(c => !string.IsNullOrWhiteSpace(c.Email))
+        .GroupBy(c => c.Email.Trim().ToLowerInvariant())
+        .Where(g => g.Count() > 1)
+        .Select(g => g.Key)
+        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    var duplicateNameSet = candidates
+        .Where(c => !string.IsNullOrWhiteSpace(c.Name))
+        .GroupBy(c => c.Name.Trim().ToLowerInvariant())
+        .Where(g => g.Count() > 1)
+        .Select(g => g.Key)
+        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    for (var i = 0; i < candidates.Count; i++)
+    {
+        var candidate = candidates[i];
+
+        if (duplicateEmailSet.Contains(candidate.Email.Trim().ToLowerInvariant()))
+        {
+            candidate.RiskCodes.Add("DUPLICATE_EMAIL");
+            candidate.Details.Add("Recipient email appears more than once in the generated send list.");
+            candidate.BlockSend = true;
+        }
+
+        if (duplicateNameSet.Contains(candidate.Name.Trim().ToLowerInvariant()))
+        {
+            candidate.RiskCodes.Add("DUPLICATE_DISPLAY_NAME");
+            candidate.Details.Add("Recipient display name appears more than once in the generated send list.");
+            candidate.BlockSend = true;
+        }
+
+        candidates[i] = candidate;
+    }
+
+    var blockedCount = candidates.Count(c => c.BlockSend);
+    var warningCount = candidates.Count(c => !c.BlockSend && c.RiskCodes.Count > 0);
+    var clearCount = candidates.Count(c => !c.BlockSend && c.RiskCodes.Count == 0);
+    var reviewStatus = blockedCount > 0 ? "blocked" : warningCount > 0 ? "review_required" : "ready_for_approval";
+    var reviewMessage = blockedCount > 0
+        ? "Recipient safety review found blocking recipient risks. Real provider send is blocked until recipients are corrected and reviewed again."
+        : warningCount > 0
+            ? "Recipient safety review found warnings. Approval is allowed after administrator/PTC review."
+            : "Recipient safety review found no recipient risks.";
+
+    Guid reviewId;
+
+    await using (var reviewCommand = new NpgsqlCommand("""
+        INSERT INTO system_email_recipient_safety_reviews (
+            consumer_key,
+            scenario,
+            delivery_mode,
+            provider,
+            review_status,
+            total_recipient_count,
+            blocked_count,
+            warning_count,
+            clear_count,
+            generated_by_user_id,
+            generated_by_email,
+            expires_at,
+            review_message
+        )
+        VALUES (
+            @consumer_key,
+            @scenario,
+            @delivery_mode,
+            @provider,
+            @review_status,
+            @total_recipient_count,
+            @blocked_count,
+            @warning_count,
+            @clear_count,
+            @generated_by_user_id,
+            @generated_by_email,
+            now() + interval '12 hours',
+            @review_message
+        )
+        RETURNING system_email_recipient_safety_review_id;
+        """, connection))
+    {
+        reviewCommand.Parameters.AddWithValue("consumer_key", consumerKey);
+        reviewCommand.Parameters.AddWithValue("scenario", scenario);
+        reviewCommand.Parameters.AddWithValue("delivery_mode", deliveryMode);
+        reviewCommand.Parameters.AddWithValue("provider", provider.Provider);
+        reviewCommand.Parameters.AddWithValue("review_status", reviewStatus);
+        reviewCommand.Parameters.AddWithValue("total_recipient_count", candidates.Count);
+        reviewCommand.Parameters.AddWithValue("blocked_count", blockedCount);
+        reviewCommand.Parameters.AddWithValue("warning_count", warningCount);
+        reviewCommand.Parameters.AddWithValue("clear_count", clearCount);
+        reviewCommand.Parameters.AddWithValue("generated_by_user_id", actorUserId is null ? (object)DBNull.Value : actorUserId.Value);
+        reviewCommand.Parameters.AddWithValue("generated_by_email", string.IsNullOrWhiteSpace(actorEmail) ? (object)DBNull.Value : actorEmail);
+        reviewCommand.Parameters.AddWithValue("review_message", reviewMessage);
+
+        reviewId = (Guid)(await reviewCommand.ExecuteScalarAsync() ?? Guid.Empty);
+    }
+
+    foreach (var candidate in candidates)
+    {
+        var riskLevel = candidate.BlockSend
+            ? "high"
+            : candidate.RiskCodes.Count > 0
+                ? "medium"
+                : "clear";
+
+        var safetyStatus = candidate.BlockSend
+            ? "blocked"
+            : candidate.RiskCodes.Count > 0
+                ? "warning"
+                : "clear";
+
+        await using var itemCommand = new NpgsqlCommand("""
+            INSERT INTO system_email_recipient_safety_review_items (
+                review_id,
+                recipient_email,
+                recipient_display_name,
+                recipient_kind,
+                manager_email,
+                cc_emails,
+                risk_codes,
+                risk_level,
+                safety_status,
+                block_send,
+                details,
+                source_payload
+            )
+            VALUES (
+                @review_id,
+                @recipient_email,
+                @recipient_display_name,
+                'primary',
+                @manager_email,
+                @cc_emails,
+                @risk_codes,
+                @risk_level,
+                @safety_status,
+                @block_send,
+                @details,
+                @source_payload
+            );
+            """, connection);
+
+        itemCommand.Parameters.AddWithValue("review_id", reviewId);
+        itemCommand.Parameters.AddWithValue("recipient_email", candidate.Email);
+        itemCommand.Parameters.AddWithValue("recipient_display_name", string.IsNullOrWhiteSpace(candidate.Name) ? (object)DBNull.Value : candidate.Name);
+        itemCommand.Parameters.AddWithValue("manager_email", string.IsNullOrWhiteSpace(candidate.ManagerEmail) ? (object)DBNull.Value : candidate.ManagerEmail);
+        itemCommand.Parameters.AddWithValue("cc_emails", candidate.CcEmails);
+        itemCommand.Parameters.AddWithValue("risk_codes", candidate.RiskCodes.Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
+        itemCommand.Parameters.AddWithValue("risk_level", riskLevel);
+        itemCommand.Parameters.AddWithValue("safety_status", safetyStatus);
+        itemCommand.Parameters.AddWithValue("block_send", candidate.BlockSend);
+        itemCommand.Parameters.AddWithValue("details", string.Join(" ", candidate.Details.Distinct()));
+        itemCommand.Parameters.Add(new Npgsql.NpgsqlParameter("source_payload", NpgsqlTypes.NpgsqlDbType.Jsonb) { Value = candidate.SourceJson });
+
+        await itemCommand.ExecuteNonQueryAsync();
+    }
+
+    return Results.Ok(new
+    {
+        module = "020J Shared Email Recipient Safety Review",
+        status = reviewStatus,
+        reviewId,
+        consumerKey,
+        scenario,
+        deliveryMode,
+        provider = provider.Provider,
+        summary = new
+        {
+            totalRecipientCount = candidates.Count,
+            blockedCount,
+            warningCount,
+            clearCount,
+            canApprove = blockedCount == 0,
+            canSendRealProviderEmail = false,
+            reviewMessage
+        }
+    });
+});
+
+app.MapPost("/api/system/email-provider/recipient-safety/approve-review", async (HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Email recipient safety review approval is restricted to administrators and project/team coordinators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    if (httpContext.Request.Headers.ContainsKey("X-ProjectPulse-View-As-User"))
+    {
+        return Results.Json(new
+        {
+            status = "view_as_read_only",
+            message = "Write actions are disabled while using Administrator View-As preview. Exit preview to approve recipient safety review."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    using var document = await JsonDocument.ParseAsync(httpContext.Request.Body);
+    var root = document.RootElement;
+
+    var confirmation = root.TryGetProperty("confirmation", out var confirmationElement)
+        ? confirmationElement.GetString() ?? ""
+        : "";
+
+    if (!string.Equals(confirmation, "APPROVE_RECIPIENT_SAFETY_REVIEW", StringComparison.Ordinal))
+    {
+        return Results.Json(new
+        {
+            status = "confirmation_required",
+            message = "Set confirmation to APPROVE_RECIPIENT_SAFETY_REVIEW to approve a recipient safety review."
+        }, statusCode: StatusCodes.Status400BadRequest);
+    }
+
+    Guid? reviewId = null;
+    if (root.TryGetProperty("reviewId", out var reviewIdElement)
+        && Guid.TryParse(reviewIdElement.GetString(), out var parsedReviewId))
+    {
+        reviewId = parsedReviewId;
+    }
+
+    if (reviewId is null)
+    {
+        await using var latestCommand = new NpgsqlCommand("""
+            SELECT system_email_recipient_safety_review_id
+            FROM system_email_recipient_safety_reviews
+            ORDER BY generated_at DESC
+            LIMIT 1;
+            """, connection);
+
+        var latestValue = await latestCommand.ExecuteScalarAsync();
+        if (latestValue is Guid latestGuid)
+        {
+            reviewId = latestGuid;
+        }
+    }
+
+    if (reviewId is null)
+    {
+        return Results.Json(new
+        {
+            status = "review_not_found",
+            message = "No recipient safety review was found to approve."
+        }, statusCode: StatusCodes.Status404NotFound);
+    }
+
+    await using (var blockCommand = new NpgsqlCommand("""
+        SELECT
+            blocked_count,
+            warning_count,
+            total_recipient_count,
+            review_status
+        FROM system_email_recipient_safety_reviews
+        WHERE system_email_recipient_safety_review_id = @review_id;
+        """, connection))
+    {
+        blockCommand.Parameters.AddWithValue("review_id", reviewId.Value);
+
+        await using var reader = await blockCommand.ExecuteReaderAsync();
+        if (!await reader.ReadAsync())
+        {
+            return Results.Json(new
+            {
+                status = "review_not_found",
+                message = "Recipient safety review was not found."
+            }, statusCode: StatusCodes.Status404NotFound);
+        }
+
+        var blockedCount = reader.GetInt32(0);
+        var warningCount = reader.GetInt32(1);
+        var totalCount = reader.GetInt32(2);
+
+        if (blockedCount > 0)
+        {
+            return Results.Json(new
+            {
+                status = "blocked_recipients_present",
+                message = "Recipient safety review cannot be approved while blocked recipients are present.",
+                reviewId,
+                blockedCount,
+                warningCount,
+                totalRecipientCount = totalCount
+            }, statusCode: StatusCodes.Status409Conflict);
+        }
+    }
+
+    var actorUserId = await ResolveSessionUserIdForProductionAcknowledgmentAsync(httpContext, connection);
+    var actorEmail = "";
+
+    if (actorUserId is not null)
+    {
+        await using var userCommand = new NpgsqlCommand("""
+            SELECT email
+            FROM app_users
+            WHERE user_id = @user_id
+            LIMIT 1;
+            """, connection);
+
+        userCommand.Parameters.AddWithValue("user_id", actorUserId.Value);
+        actorEmail = (await userCommand.ExecuteScalarAsync())?.ToString() ?? "";
+    }
+
+    await using var approveCommand = new NpgsqlCommand("""
+        UPDATE system_email_recipient_safety_reviews
+        SET
+            review_status = 'approved',
+            approved_by_user_id = @approved_by_user_id,
+            approved_by_email = @approved_by_email,
+            approved_at = now(),
+            expires_at = now() + interval '12 hours',
+            review_message = 'Recipient safety review approved for controlled provider send window.'
+        WHERE system_email_recipient_safety_review_id = @review_id;
+        """, connection);
+
+    approveCommand.Parameters.AddWithValue("review_id", reviewId.Value);
+    approveCommand.Parameters.AddWithValue("approved_by_user_id", actorUserId is null ? (object)DBNull.Value : actorUserId.Value);
+    approveCommand.Parameters.AddWithValue("approved_by_email", string.IsNullOrWhiteSpace(actorEmail) ? (object)DBNull.Value : actorEmail);
+
+    await approveCommand.ExecuteNonQueryAsync();
+
+    return Results.Ok(new
+    {
+        module = "020J Shared Email Recipient Safety Review",
+        status = "approved",
+        reviewId,
+        approvedByEmail = actorEmail,
+        expiresInHours = 12,
+        message = "Recipient safety review approved. Real provider send is allowed only while this review remains valid."
+    });
+});
+
+static async Task<(bool Allowed, string Reason, Guid? ReviewId)> ProjectPulseRecipientSafetyGateAllowsSendAsync(
+    NpgsqlConnection connection,
+    string consumerKey,
+    string scenario)
+{
+    await using var command = new NpgsqlCommand("""
+        SELECT
+            system_email_recipient_safety_review_id
+        FROM system_email_recipient_safety_reviews
+        WHERE consumer_key = @consumer_key
+          AND scenario = @scenario
+          AND review_status = 'approved'
+          AND blocked_count = 0
+          AND approved_at IS NOT NULL
+          AND expires_at > now()
+        ORDER BY approved_at DESC
+        LIMIT 1;
+        """, connection);
+
+    command.Parameters.AddWithValue("consumer_key", consumerKey);
+    command.Parameters.AddWithValue("scenario", scenario);
+
+    var value = await command.ExecuteScalarAsync();
+    if (value is Guid reviewId)
+    {
+        return (true, "Approved recipient safety review is active.", reviewId);
+    }
+
+    return (false, "Real provider send requires an approved recipient safety review with zero blocked recipients.", null);
+}
+// 020J Shared Email Recipient Safety Review - END
 
 app.Run();
 
