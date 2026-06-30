@@ -20,7 +20,7 @@
 | 021C | Production readiness naming alignment | Align branch, documentation, route reports, and permission naming to production readiness | Complete |
 | 021D | Role-based production readiness runbooks | Prepare production readiness paths for Admin, PM, Manager, Engineer, Accounting, and read-only stakeholder access | Complete |
 | 021E | Workflow data readiness | Confirm production-critical data signals support customer, intake, assignment, approval, export, and audit flows | Complete |
-| 021F | UI polish | Address obvious copy, empty states, filter clarity, and responsive presentation gaps | Not Started |
+| 021F | UI production polish readiness | Review copy signals, empty states, route metadata, and responsive presentation indicators | Complete |
 | 021G | Operational runbook | Document deploy, rollback, smoke, backup, and restore checkpoints | Not Started |
 | 021H | Final release candidate validation | Build, deploy, endpoint smoke, browser validation, and PR closeout | Not Started |
 
@@ -104,3 +104,15 @@ Artifacts:
 - `docs/production-readiness/021_WORKFLOW_DATA_READINESS_REPORT.json`
 - `database/reports/021-workflow-data-readiness-probe.sql`
 - `docs/help/021E-workflow-data-readiness.md`
+
+
+## 021F UI Production Polish Readiness
+
+021F generated a static UI production-polish report covering product-facing naming, copy review signals, empty/loading/error-state wording, route metadata, and responsive-surface indicators.
+
+Artifacts:
+
+- `scripts/021-ui-production-polish-report.py`
+- `docs/production-readiness/021_UI_PRODUCTION_POLISH_REPORT.md`
+- `docs/production-readiness/021_UI_PRODUCTION_POLISH_REPORT.json`
+- `docs/help/021F-ui-production-polish-readiness.md`

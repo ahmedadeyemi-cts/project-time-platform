@@ -1,0 +1,1287 @@
+{
+  "generatedAtUtc": "2026-06-30T16:49:21.350640+00:00",
+  "status": "needs_route_metadata_review",
+  "sourceFileCount": 64,
+  "jsxFileCount": 34,
+  "cssFileCount": 29,
+  "legacyProductFindingCount": 0,
+  "copyFindingCount": 74,
+  "emptyStateFindingCount": 546,
+  "routeMetadataFindingCount": 75,
+  "largeFileCount": 5,
+  "responsiveCounts": {
+    "@media": 112,
+    "max-width": 175,
+    "min-width": 74,
+    "grid-template-columns": 247,
+    "flex-wrap": 45
+  },
+  "legacyProductFindings": [],
+  "copyFindings": [
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 2120,
+      "pattern": "placeholder",
+      "text": "async function continueWithSsoPlaceholder() {"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 3412,
+      "pattern": "placeholder",
+      "text": "placeholder=\"name@ussignal.com or admin@ussignal.local\""
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 3433,
+      "pattern": "placeholder",
+      "text": "<button className=\"primary-action\" type=\"button\" onClick={continueWithSsoPlaceholder}>"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 3449,
+      "pattern": "placeholder",
+      "text": "placeholder=\"Enter local administrator password\""
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 3463,
+      "pattern": "placeholder",
+      "text": "placeholder=\"Optional reason for reset request\""
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 3506,
+      "pattern": "placeholder",
+      "text": "placeholder=\"Enter temporary password\""
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 3516,
+      "pattern": "placeholder",
+      "text": "placeholder=\"Enter new password\""
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 3526,
+      "pattern": "placeholder",
+      "text": "placeholder=\"Confirm new password\""
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 3644,
+      "pattern": "placeholder",
+      "text": "placeholder={currentUser.data?.displayName ?? authSession?.username ?? 'Display name'}"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 3653,
+      "pattern": "placeholder",
+      "text": "placeholder=\"Example: Collaboration Team Lead\""
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 3661,
+      "pattern": "placeholder",
+      "text": "placeholder={`Cisco - CCNA Collaboration"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 3959,
+      "pattern": "placeholder",
+      "text": "placeholder=\"Example: Customer Tenant, Lab Tenant, Partner Tenant\""
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 3966,
+      "pattern": "placeholder",
+      "text": "placeholder=\"example.com or example.com,otherdomain.com\""
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 3975,
+      "pattern": "placeholder",
+      "text": "placeholder=\"Microsoft Entra tenant ID\""
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 3982,
+      "pattern": "placeholder",
+      "text": "placeholder=\"Application client ID\""
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 3989,
+      "pattern": "placeholder",
+      "text": "placeholder=\"https://login.microsoftonline.com/{tenantId}\""
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 3996,
+      "pattern": "placeholder",
+      "text": "placeholder=\"https://projectpulse-test.onenecklab.com/auth/callback\""
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 4003,
+      "pattern": "placeholder",
+      "text": "placeholder=\"User.Read.All Directory.Read.All\""
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 4095,
+      "pattern": "placeholder",
+      "text": "placeholder=\"Name, email, title, department\""
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 4117,
+      "pattern": "placeholder",
+      "text": "placeholder=\"Engineering, Project Management, etc.\""
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 4232,
+      "pattern": "placeholder",
+      "text": "placeholder=\"Name, email, department, role\""
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 4698,
+      "pattern": "placeholder",
+      "text": "placeholder=\"0.00\""
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 4709,
+      "pattern": "placeholder",
+      "text": "placeholder=\"Enter the reportable comment for this time entry.\""
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 4838,
+      "pattern": "placeholder",
+      "text": "placeholder=\"holiday_date,holiday_name,holiday_type,is_floating_holiday,auto_populate_hours"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/ApprovalExportAuditWorkflowCenter.jsx",
+      "line": 401,
+      "pattern": "placeholder",
+      "text": "placeholder=\"Optional workflow note\""
+    },
+    {
+      "file": "src/frontend/project-time-web/src/AuditHistoryPanel.jsx",
+      "line": 205,
+      "pattern": "placeholder",
+      "text": "placeholder=\"Actor, target, event, details...\""
+    },
+    {
+      "file": "src/frontend/project-time-web/src/BackupDrCenter.jsx",
+      "line": 412,
+      "pattern": "placeholder",
+      "text": "<input value={settingsState.form.sftpHost} onChange={(event) => updateSettingsField('sftpHost', event.target.value)} placeholder=\"sftp.example.com\" />"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/BackupDrCenter.jsx",
+      "line": 417,
+      "pattern": "placeholder",
+      "text": "<input value={settingsState.form.sftpPort} onChange={(event) => updateSettingsField('sftpPort', event.target.value)} placeholder=\"22\" />"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/BackupDrCenter.jsx",
+      "line": 427,
+      "pattern": "placeholder",
+      "text": "<input value={settingsState.form.sftpRemotePath} onChange={(event) => updateSettingsField('sftpRemotePath', event.target.value)} placeholder=\"/backups/projectpulse\" />"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/BackupDrCenter.jsx",
+      "line": 433,
+      "pattern": "placeholder",
+      "text": "<input value={settingsState.form.sftpKeyPath} onChange={(event) => updateSettingsField('sftpKeyPath', event.target.value)} placeholder=\"/opt/project-time-platform/config/keys/sftp_key\" />"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/BackupDrCenter.jsx",
+      "line": 438,
+      "pattern": "placeholder",
+      "text": "<input type=\"password\" value={settingsState.form.sftpPassword} onChange={(event) => updateSettingsField('sftpPassword', event.target.value)} placeholder={settingsState.data?.sftp?.passwordConfigured ? 'Password already c"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/BackupDrCenter.jsx",
+      "line": 461,
+      "pattern": "placeholder",
+      "text": "placeholder={settingsState.data?.azure?.containerSasUrlConfigured ? `Configured: ${settingsState.data.azure.containerSasUrlMasked}. Leave blank to keep.` : 'https://account.blob.core.windows.net/container?sv=...'}"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/BackupDrCenter.jsx",
+      "line": 467,
+      "pattern": "placeholder",
+      "text": "<input value={settingsState.form.azureBlobPrefix} onChange={(event) => updateSettingsField('azureBlobPrefix', event.target.value)} placeholder=\"projectpulse-backups\" />"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/BackupDrCenter.jsx",
+      "line": 486,
+      "pattern": "placeholder",
+      "text": "<input value={settingsState.form.successRecipients} onChange={(event) => updateSettingsField('successRecipients', event.target.value)} placeholder=\"user1@example.com,user2@example.com\" />"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/BackupDrCenter.jsx",
+      "line": 491,
+      "pattern": "placeholder",
+      "text": "<input value={settingsState.form.failureRecipients} onChange={(event) => updateSettingsField('failureRecipients', event.target.value)} placeholder=\"admin@example.com\" />"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/BackupDrCenter.jsx",
+      "line": 519,
+      "pattern": "placeholder",
+      "text": "<input value={settingsState.form.scheduleTimeUtc} onChange={(event) => updateSettingsField('scheduleTimeUtc', event.target.value)} placeholder=\"06:00\" />"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/BackupDrCenter.jsx",
+      "line": 540,
+      "pattern": "placeholder",
+      "text": "<input value={settingsState.form.scheduleMonthlyDayUtc} onChange={(event) => updateSettingsField('scheduleMonthlyDayUtc', event.target.value)} placeholder=\"1\" />"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/BackupDrCenter.jsx",
+      "line": 580,
+      "pattern": "placeholder",
+      "text": "placeholder=\"Example: Creating backup before deployment or configuration change.\""
+    },
+    {
+      "file": "src/frontend/project-time-web/src/BackupRetentionCenter.jsx",
+      "line": 269,
+      "pattern": "placeholder",
+      "text": "placeholder=\"Example: Removing older backup after newer restore point was validated.\""
+    },
+    {
+      "file": "src/frontend/project-time-web/src/CostOverrunAlertCenter.jsx",
+      "line": 300,
+      "pattern": "placeholder",
+      "text": "placeholder=\"Optional acknowledgement, resolution, or routing note\""
+    },
+    {
+      "file": "src/frontend/project-time-web/src/CustomerDirectoryCenter.jsx",
+      "line": 320,
+      "pattern": "placeholder",
+      "text": "placeholder=\"Search customer or code...\""
+    },
+    {
+      "file": "src/frontend/project-time-web/src/HelpAssistant.jsx",
+      "line": 137,
+      "pattern": "placeholder",
+      "text": "placeholder=\"Ask Project Pulse for help...\""
+    },
+    {
+      "file": "src/frontend/project-time-web/src/IntakeWorkTaskHandoffPanel.jsx",
+      "line": 277,
+      "pattern": "placeholder",
+      "text": "placeholder=\"Why is this the correct project link?\""
+    },
+    {
+      "file": "src/frontend/project-time-web/src/LocalAdminPasswordResetApprovalsPanel.jsx",
+      "line": 287,
+      "pattern": "placeholder",
+      "text": "placeholder=\"Set temporary password\""
+    },
+    {
+      "file": "src/frontend/project-time-web/src/PostIntakeAgingPanel.jsx",
+      "line": 288,
+      "pattern": "placeholder",
+      "text": "<textarea rows={3} value={editDraft.updateNote} onChange={(event) => setEditDraft((current) => ({ ...current, updateNote: event.target.value }))} placeholder=\"Explain what changed after intake...\" />"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/ProjectAllocationInfoPanel.jsx",
+      "line": 311,
+      "pattern": "placeholder",
+      "text": "placeholder=\"Optional notes about project/service request mapping\""
+    },
+    {
+      "file": "src/frontend/project-time-web/src/ProjectAllocationInfoPanel.jsx",
+      "line": 341,
+      "pattern": "placeholder",
+      "text": "placeholder=\"Allocated hours\""
+    },
+    {
+      "file": "src/frontend/project-time-web/src/ProjectAllocationInfoPanel.jsx",
+      "line": 346,
+      "pattern": "placeholder",
+      "text": "placeholder=\"Notes\""
+    },
+    {
+      "file": "src/frontend/project-time-web/src/ProjectIntakeCenter.jsx",
+      "line": 521,
+      "pattern": "placeholder",
+      "text": "<label>Source / unique ID<input value={intakeForm.externalReferenceId} placeholder={intakeForm.intakeSource === 'salesforce' ? 'Salesforce Opportunity ID' : 'Optional source reference'} onChange={(event) => setIntakeForm"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/ProjectIntakeCenter.jsx",
+      "line": 572,
+      "pattern": "placeholder",
+      "text": "placeholder=\"Search request, project, function, skills, PM, engineer...\""
+    },
+    {
+      "file": "src/frontend/project-time-web/src/ProjectIntakeCenter.jsx",
+      "line": 629,
+      "pattern": "placeholder",
+      "text": "<input placeholder=\"Hours\" type=\"number\" min=\"0\" value={allocation.allocatedHours ?? ''} onChange={(event) => updateEngineerAllocation(request.id, engineer.userId, 'allocatedHours', event.target.value)} />"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/ProjectIntakeCenter.jsx",
+      "line": 630,
+      "pattern": "placeholder",
+      "text": "<input placeholder=\"%\" type=\"number\" min=\"0\" max=\"100\" value={allocation.allocationPercent ?? ''} onChange={(event) => updateEngineerAllocation(request.id, engineer.userId, 'allocationPercent', event.target.value)} />"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/ProjectIntakeCenter.jsx",
+      "line": 669,
+      "pattern": "placeholder",
+      "text": "placeholder=\"Hours\""
+    },
+    {
+      "file": "src/frontend/project-time-web/src/ProjectIntakeCenter.jsx",
+      "line": 678,
+      "pattern": "placeholder",
+      "text": "placeholder=\"%\""
+    },
+    {
+      "file": "src/frontend/project-time-web/src/ProjectIntakeCenter.jsx",
+      "line": 716,
+      "pattern": "placeholder",
+      "text": "placeholder=\"Search request, client, title, opportunity, source ID...\""
+    },
+    {
+      "file": "src/frontend/project-time-web/src/ReplicationSyncStatusCenter.jsx",
+      "line": 320,
+      "pattern": "placeholder",
+      "text": "placeholder=\"Example: ProjectPulse DR Node\""
+    },
+    {
+      "file": "src/frontend/project-time-web/src/ReplicationSyncStatusCenter.jsx",
+      "line": 330,
+      "pattern": "placeholder",
+      "text": "placeholder=\"Example: 10.20.30.40\""
+    },
+    {
+      "file": "src/frontend/project-time-web/src/ReplicationSyncStatusCenter.jsx",
+      "line": 340,
+      "pattern": "placeholder",
+      "text": "placeholder=\"https://projectpulse-dr.example.com\""
+    },
+    {
+      "file": "src/frontend/project-time-web/src/ResourceAssignmentHandoffPanel.jsx",
+      "line": 278,
+      "pattern": "placeholder",
+      "text": "placeholder=\"Search request, project, PM, function, or readiness...\""
+    },
+    {
+      "file": "src/frontend/project-time-web/src/RoleAdminDirectoryPanel.jsx",
+      "line": 183,
+      "pattern": "placeholder",
+      "text": "placeholder=\"Example: utilization, engineer, MANAGE_ALL\""
+    },
+    {
+      "file": "src/frontend/project-time-web/src/ServiceControlCenter.jsx",
+      "line": 468,
+      "pattern": "placeholder",
+      "text": "placeholder=\"Example: Restarting after configuration update validation.\""
+    },
+    {
+      "file": "src/frontend/project-time-web/src/UserAdministrationPanel.jsx",
+      "line": 489,
+      "pattern": "placeholder",
+      "text": "placeholder=\"firstname.lastname@ussignal.local\""
+    },
+    {
+      "file": "src/frontend/project-time-web/src/UserAdministrationPanel.jsx",
+      "line": 496,
+      "pattern": "placeholder",
+      "text": "placeholder=\"Full name\""
+    },
+    {
+      "file": "src/frontend/project-time-web/src/UserAdministrationPanel.jsx",
+      "line": 504,
+      "pattern": "placeholder",
+      "text": "placeholder=\"At least 12 chars with upper, lower, number, special\""
+    },
+    {
+      "file": "src/frontend/project-time-web/src/UserAdministrationPanel.jsx",
+      "line": 543,
+      "pattern": "placeholder",
+      "text": "placeholder=\"Department\""
+    },
+    {
+      "file": "src/frontend/project-time-web/src/UserAdministrationPanel.jsx",
+      "line": 550,
+      "pattern": "placeholder",
+      "text": "placeholder=\"Engineer, Coordinator, Manager, etc.\""
+    },
+    {
+      "file": "src/frontend/project-time-web/src/UserAdministrationPanel.jsx",
+      "line": 557,
+      "pattern": "placeholder",
+      "text": "placeholder=\"Office / Remote\""
+    },
+    {
+      "file": "src/frontend/project-time-web/src/UserAdministrationPanel.jsx",
+      "line": 564,
+      "pattern": "placeholder",
+      "text": "placeholder=\"manager@ussignal.com\""
+    },
+    {
+      "file": "src/frontend/project-time-web/src/UserAdministrationPanel.jsx",
+      "line": 672,
+      "pattern": "placeholder",
+      "text": "placeholder=\"Department\""
+    },
+    {
+      "file": "src/frontend/project-time-web/src/UserAdministrationPanel.jsx",
+      "line": 714,
+      "pattern": "placeholder",
+      "text": "placeholder=\"Job title\""
+    },
+    {
+      "file": "src/frontend/project-time-web/src/UserAdministrationPanel.jsx",
+      "line": 728,
+      "pattern": "placeholder",
+      "text": "placeholder={bulkDraft.teamName === 'Back Office' ? 'Coordinator assigned' : 'manager@ussignal.com'}"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/UserAdministrationPanel.jsx",
+      "line": 742,
+      "pattern": "placeholder",
+      "text": "placeholder=\"Office / Remote\""
+    },
+    {
+      "file": "src/frontend/project-time-web/src/UserAdministrationPanel.jsx",
+      "line": 884,
+      "pattern": "placeholder",
+      "text": "placeholder={profileDraft.teamName === 'Back Office' ? 'Coordinator assigned' : 'manager@ussignal.com'}"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/UserAdministrationPanel.jsx",
+      "line": 946,
+      "pattern": "placeholder",
+      "text": "placeholder=\"At least 12 chars with upper, lower, number, special\""
+    }
+  ],
+  "emptyStateFindings": [
+    {
+      "file": "src/frontend/project-time-web/src/AdministrativeApprovalRequestsPanel.jsx",
+      "line": 71,
+      "pattern": "Loading",
+      "text": "const [approvalData, setApprovalData] = useState({ loading: true, data: null, error: null });"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/AdministrativeApprovalRequestsPanel.jsx",
+      "line": 76,
+      "pattern": "Loading",
+      "text": "setApprovalData({ loading: true, data: null, error: null });"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/AdministrativeApprovalRequestsPanel.jsx",
+      "line": 80,
+      "pattern": "Loading",
+      "text": "setApprovalData({ loading: false, data: result, error: null });"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/AdministrativeApprovalRequestsPanel.jsx",
+      "line": 83,
+      "pattern": "Loading",
+      "text": "loading: false,"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/AdministrativeApprovalRequestsPanel.jsx",
+      "line": 167,
+      "pattern": "Loading",
+      "text": "<span>Pending admin requests: <strong>{approvalData.loading ? 'Loading...' : approvals.length}</strong></span>"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/AdministrativeApprovalRequestsPanel.jsx",
+      "line": 175,
+      "pattern": "Loading",
+      "text": "{!approvalData.loading && !approvalData.error && approvals.length === 0 ? ("
+    },
+    {
+      "file": "src/frontend/project-time-web/src/AdministrativeApprovalRequestsPanel.jsx",
+      "line": 176,
+      "pattern": "No ",
+      "text": "<div className=\"manager-empty-state\">No administrative approval requests are currently pending.</div>"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/AdministrativeApprovalRequestsPanel.jsx",
+      "line": 207,
+      "pattern": "No ",
+      "text": "<td>{item.notes || 'No notes provided'}</td>"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 209,
+      "pattern": "Loading",
+      "text": "const renderLoading = () => {"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 218,
+      "pattern": "Loading",
+      "text": "<option>Loading users...</option>"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 238,
+      "pattern": "No ",
+      "text": "const label = `${user.displayName || user.email} \u2014 ${user.roleCodes || 'No role'}${user.teamOrDepartment ? ` \u2014 ${user.teamOrDepartment}` : ''}`;"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 279,
+      "pattern": "Loading",
+      "text": "renderLoading();"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 319,
+      "pattern": "Loading",
+      "text": "if (document.readyState === 'loading') {"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 418,
+      "pattern": "No ",
+      "text": "emptyTitle: 'No non-project time available.',"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 424,
+      "pattern": "No ",
+      "text": "emptyTitle: 'No regular tasks assigned.',"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 430,
+      "pattern": "No ",
+      "text": "emptyTitle: 'No requests available.',"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1126,
+      "pattern": "Loading",
+      "text": "function DataState({ loading, error, children }) {"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1127,
+      "pattern": "Loading",
+      "text": "if (loading) return <span className=\"muted\">Loading...</span>;"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1513,
+      "pattern": "Loading",
+      "text": "const [apiHealth, setApiHealth] = useState({ loading: true, data: null, error: null });"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1514,
+      "pattern": "Loading",
+      "text": "const [roleAdminUsers, setRoleAdminUsers] = useState({ loading: true, data: null, error: null });"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1515,
+      "pattern": "Loading",
+      "text": "const [roleAdminRoles, setRoleAdminRoles] = useState({ loading: true, data: null, error: null });"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1516,
+      "pattern": "No ",
+      "text": "const [roleAdminStatus, setRoleAdminStatus] = useState('No role changes yet');"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1517,
+      "pattern": "Loading",
+      "text": "const [securityContext, setSecurityContext] = useState({ loading: true, data: null, error: null });"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1518,
+      "pattern": "Loading",
+      "text": "const [dbHealth, setDbHealth] = useState({ loading: true, data: null, error: null });"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1519,
+      "pattern": "Loading",
+      "text": "const [schema, setSchema] = useState({ loading: true, data: null, error: null });"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1520,
+      "pattern": "Loading",
+      "text": "const [currentUser, setCurrentUser] = useState({ loading: true, data: null, error: null });"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1521,
+      "pattern": "Loading",
+      "text": "const [timesheet, setTimesheet] = useState({ loading: true, data: null, error: null });"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1522,
+      "pattern": "Loading",
+      "text": "const [locationGroups, setLocationGroups] = useState({ loading: true, data: null, error: null });"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1523,
+      "pattern": "Loading",
+      "text": "const [locations, setLocations] = useState({ loading: true, data: null, error: null });"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1524,
+      "pattern": "Loading",
+      "text": "const [utilizationPolicies, setUtilizationPolicies] = useState({ loading: true, data: null, error: null });"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1525,
+      "pattern": "Loading",
+      "text": "const [utilizationTargets, setUtilizationTargets] = useState({ loading: true, data: null, error: null });"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1526,
+      "pattern": "Loading",
+      "text": "const [currentQuarterUtilization, setCurrentQuarterUtilization] = useState({ loading: true, data: null, error: null });"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1529,
+      "pattern": "Loading",
+      "text": "loading: false,"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1549,
+      "pattern": "Loading",
+      "text": "const [azurePreviewLoading, setAzurePreviewLoading] = useState(false);"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1570,
+      "pattern": "Loading",
+      "text": "const [aiSuggestionState, setAiSuggestionState] = useState({ loading: false, suggestion: '', provider: '', warning: '', error: '' });"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1580,
+      "pattern": "No ",
+      "text": "const [holidayUploadStatus, setHolidayUploadStatus] = useState('No holiday upload yet');"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1583,
+      "pattern": "Loading",
+      "text": "const [openTasks, setOpenTasks] = useState({ loading: true, data: null, error: null });"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1584,
+      "pattern": "Loading",
+      "text": "const [timesheetPreferences, setTimesheetPreferences] = useState({ loading: true, data: null, error: null });"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1585,
+      "pattern": "Loading",
+      "text": "const [companyHolidays, setCompanyHolidays] = useState({ loading: true, data: null, error: null });"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1586,
+      "pattern": "Loading",
+      "text": "const [remainingModules, setRemainingModules] = useState({ loading: true, data: null, error: null });"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1630,
+      "pattern": "Loading",
+      "text": "setCurrentUser({ loading: false, data: null, error: null });"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1631,
+      "pattern": "Loading",
+      "text": "setCurrentQuarterUtilization({ loading: false, data: null, error: null });"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1635,
+      "pattern": "Loading",
+      "text": "setCurrentUser((current) => ({ ...current, loading: true, error: null }));"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1636,
+      "pattern": "Loading",
+      "text": "setCurrentQuarterUtilization((current) => ({ ...current, loading: true, error: null }));"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1645,
+      "pattern": "Loading",
+      "text": "setCurrentUser({ loading: false, data: userResult, error: null });"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1646,
+      "pattern": "Loading",
+      "text": "setCurrentQuarterUtilization({ loading: false, data: quarterResult, error: null });"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1651,
+      "pattern": "Loading",
+      "text": "setCurrentUser((current) => ({ ...current, loading: false, error: message }));"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1652,
+      "pattern": "Loading",
+      "text": "setCurrentQuarterUtilization((current) => ({ ...current, loading: false, error: message }));"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1670,
+      "pattern": "Loading",
+      "text": "setSecurityContext({ loading: false, data: null, error: null });"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1674,
+      "pattern": "Loading",
+      "text": "setSecurityContext((current) => ({ ...current, loading: true, error: null }));"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1678,
+      "pattern": "Loading",
+      "text": "if (!cancelled) setSecurityContext({ loading: false, data: result, error: null });"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1680,
+      "pattern": "Unable to load",
+      "text": "if (!cancelled) setSecurityContext({ loading: false, data: null, error: error instanceof Error ? error.message : 'Unable to load security context' });"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1680,
+      "pattern": "Loading",
+      "text": "if (!cancelled) setSecurityContext({ loading: false, data: null, error: error instanceof Error ? error.message : 'Unable to load security context' });"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1696,
+      "pattern": "Loading",
+      "text": "setApiHealth({ loading: false, data: null, error: null });"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1697,
+      "pattern": "Loading",
+      "text": "setDbHealth({ loading: false, data: null, error: null });"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1698,
+      "pattern": "Loading",
+      "text": "setSchema({ loading: false, data: null, error: null });"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1699,
+      "pattern": "Loading",
+      "text": "setTimesheet({ loading: false, data: null, error: null });"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1700,
+      "pattern": "Loading",
+      "text": "setLocationGroups({ loading: false, data: null, error: null });"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1701,
+      "pattern": "Loading",
+      "text": "setLocations({ loading: false, data: null, error: null });"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1702,
+      "pattern": "Loading",
+      "text": "setUtilizationPolicies({ loading: false, data: null, error: null });"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1703,
+      "pattern": "Loading",
+      "text": "setUtilizationTargets({ loading: false, data: null, error: null });"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1704,
+      "pattern": "Loading",
+      "text": "setOpenTasks({ loading: false, data: null, error: null });"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1705,
+      "pattern": "Loading",
+      "text": "setTimesheetPreferences({ loading: false, data: null, error: null });"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1706,
+      "pattern": "Loading",
+      "text": "setCompanyHolidays({ loading: false, data: null, error: null });"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1707,
+      "pattern": "Loading",
+      "text": "setRemainingModules({ loading: false, data: null, error: null });"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1711,
+      "pattern": "Loading",
+      "text": "setTimesheet({ loading: true, data: null, error: null });"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1712,
+      "pattern": "Loading",
+      "text": "setTimesheetPreferences((current) => ({ ...current, loading: true, error: null }));"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1713,
+      "pattern": "Loading",
+      "text": "setCompanyHolidays((current) => ({ ...current, loading: true, error: null }));"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1714,
+      "pattern": "Loading",
+      "text": "setOpenTasks((current) => ({ ...current, loading: true, error: null }));"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1715,
+      "pattern": "Loading",
+      "text": "setRemainingModules((current) => ({ ...current, loading: true, error: null }));"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1757,
+      "pattern": "Loading",
+      "text": "setApiHealth({ loading: false, data: healthResult, error: null });"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1758,
+      "pattern": "Loading",
+      "text": "setDbHealth({ loading: false, data: dbResult, error: null });"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1759,
+      "pattern": "Loading",
+      "text": "setSchema({ loading: false, data: schemaResult, error: null });"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1760,
+      "pattern": "Loading",
+      "text": "setTimesheet({ loading: false, data: timesheetResult, error: null });"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1761,
+      "pattern": "Loading",
+      "text": "setLocationGroups({ loading: false, data: groupResult, error: null });"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1762,
+      "pattern": "Loading",
+      "text": "setLocations({ loading: false, data: locationsResult, error: null });"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1763,
+      "pattern": "Loading",
+      "text": "setUtilizationPolicies({ loading: false, data: policyResult, error: null });"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1764,
+      "pattern": "Loading",
+      "text": "setUtilizationTargets({ loading: false, data: targetsResult, error: null });"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1765,
+      "pattern": "Loading",
+      "text": "setOpenTasks({ loading: false, data: openTasksResult, error: null });"
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "line": 1766,
+      "pattern": "Loading",
+      "text": "setTimesheetPreferences({ loading: false, data: preferencesResult, error: null });"
+    }
+  ],
+  "routeMetadataFindings": [
+    {
+      "route": "project-workload",
+      "finding": "Missing group"
+    },
+    {
+      "route": "project-workspace",
+      "finding": "Missing group"
+    },
+    {
+      "route": "project-intake",
+      "finding": "Missing group"
+    },
+    {
+      "route": "customer-directory",
+      "finding": "Missing group"
+    },
+    {
+      "route": "cost-alerts",
+      "finding": "Missing group"
+    },
+    {
+      "route": "time-compliance",
+      "finding": "Missing group"
+    },
+    {
+      "route": "timesheet",
+      "finding": "Missing group"
+    },
+    {
+      "route": "manager-approval",
+      "finding": "Missing group"
+    },
+    {
+      "route": "utilization",
+      "finding": "Missing group"
+    },
+    {
+      "route": "holiday-admin",
+      "finding": "Missing group"
+    },
+    {
+      "route": "project-allocation-info",
+      "finding": "Missing group"
+    },
+    {
+      "route": "psa-modules",
+      "finding": "Missing group"
+    },
+    {
+      "route": "workflow",
+      "finding": "Missing group"
+    },
+    {
+      "route": "audit-history",
+      "finding": "Missing group"
+    },
+    {
+      "route": "user-admin",
+      "finding": "Missing group"
+    },
+    {
+      "route": "azure-admin",
+      "finding": "Missing group"
+    },
+    {
+      "route": "work-task-builder",
+      "finding": "Missing group"
+    },
+    {
+      "route": "role-admin",
+      "finding": "Missing group"
+    },
+    {
+      "route": "service-control",
+      "finding": "Missing group"
+    },
+    {
+      "route": "backup-dr",
+      "finding": "Missing group"
+    },
+    {
+      "route": "restore-validation",
+      "finding": "Missing group"
+    },
+    {
+      "route": "backup-retention",
+      "finding": "Missing group"
+    },
+    {
+      "route": "replication-sync",
+      "finding": "Missing group"
+    },
+    {
+      "route": "dashboard",
+      "finding": "Missing title"
+    },
+    {
+      "route": "dashboard",
+      "finding": "Missing navLabel"
+    },
+    {
+      "route": "dashboard",
+      "finding": "Missing group"
+    },
+    {
+      "route": "dashboard",
+      "finding": "Missing description"
+    },
+    {
+      "route": "dashboard",
+      "finding": "Missing title"
+    },
+    {
+      "route": "dashboard",
+      "finding": "Missing navLabel"
+    },
+    {
+      "route": "dashboard",
+      "finding": "Missing group"
+    },
+    {
+      "route": "dashboard",
+      "finding": "Missing description"
+    },
+    {
+      "route": "timesheet",
+      "finding": "Missing navLabel"
+    },
+    {
+      "route": "manager-approval",
+      "finding": "Missing navLabel"
+    },
+    {
+      "route": "workflow",
+      "finding": "Missing navLabel"
+    },
+    {
+      "route": "utilization",
+      "finding": "Missing navLabel"
+    },
+    {
+      "route": "project-workload",
+      "finding": "Missing navLabel"
+    },
+    {
+      "route": "project-workspace",
+      "finding": "Missing navLabel"
+    },
+    {
+      "route": "project-intake",
+      "finding": "Missing navLabel"
+    },
+    {
+      "route": "customer-directory",
+      "finding": "Missing navLabel"
+    },
+    {
+      "route": "cost-alerts",
+      "finding": "Missing navLabel"
+    },
+    {
+      "route": "time-compliance",
+      "finding": "Missing navLabel"
+    },
+    {
+      "route": "holiday-admin",
+      "finding": "Missing navLabel"
+    },
+    {
+      "route": "audit-history",
+      "finding": "Missing navLabel"
+    },
+    {
+      "route": "user-admin",
+      "finding": "Missing navLabel"
+    },
+    {
+      "route": "work-task-builder",
+      "finding": "Missing navLabel"
+    },
+    {
+      "route": "role-admin",
+      "finding": "Missing navLabel"
+    },
+    {
+      "route": "azure-admin",
+      "finding": "Missing navLabel"
+    },
+    {
+      "route": "service-control",
+      "finding": "Missing navLabel"
+    },
+    {
+      "route": "backup-dr",
+      "finding": "Missing navLabel"
+    },
+    {
+      "route": "restore-validation",
+      "finding": "Missing navLabel"
+    },
+    {
+      "route": "backup-retention",
+      "finding": "Missing navLabel"
+    },
+    {
+      "route": "replication-sync",
+      "finding": "Missing navLabel"
+    },
+    {
+      "route": "workflow",
+      "finding": "Missing navLabel"
+    },
+    {
+      "route": "workflow",
+      "finding": "Missing navLabel"
+    },
+    {
+      "route": "workflow",
+      "finding": "Missing navLabel"
+    },
+    {
+      "route": "workflow",
+      "finding": "Missing navLabel"
+    },
+    {
+      "route": "workflow",
+      "finding": "Missing navLabel"
+    },
+    {
+      "route": "dashboard",
+      "finding": "Missing navLabel"
+    },
+    {
+      "route": "workflow",
+      "finding": "Missing navLabel"
+    },
+    {
+      "route": "workflow",
+      "finding": "Missing navLabel"
+    },
+    {
+      "route": "workflow",
+      "finding": "Missing navLabel"
+    },
+    {
+      "route": "workflow",
+      "finding": "Missing navLabel"
+    },
+    {
+      "route": "role-admin",
+      "finding": "Missing navLabel"
+    },
+    {
+      "route": "dashboard",
+      "finding": "Missing navLabel"
+    },
+    {
+      "route": "workflow",
+      "finding": "Missing navLabel"
+    },
+    {
+      "route": "workflow",
+      "finding": "Missing navLabel"
+    },
+    {
+      "route": "dashboard",
+      "finding": "Missing navLabel"
+    },
+    {
+      "route": "workflow",
+      "finding": "Missing navLabel"
+    },
+    {
+      "route": "role-admin",
+      "finding": "Missing navLabel"
+    },
+    {
+      "route": "dashboard",
+      "finding": "Missing navLabel"
+    },
+    {
+      "route": "dashboard",
+      "finding": "Missing navLabel"
+    },
+    {
+      "route": "dashboard",
+      "finding": "Missing title"
+    },
+    {
+      "route": "dashboard",
+      "finding": "Missing navLabel"
+    },
+    {
+      "route": "dashboard",
+      "finding": "Missing group"
+    },
+    {
+      "route": "dashboard",
+      "finding": "Missing description"
+    }
+  ],
+  "largeFiles": [
+    {
+      "file": "src/frontend/project-time-web/src/timesheet.css",
+      "lineCount": 5469,
+      "containsMediaQuery": true,
+      "containsFlexWrap": true,
+      "containsGridColumns": true
+    },
+    {
+      "file": "src/frontend/project-time-web/src/App.jsx",
+      "lineCount": 5184,
+      "containsMediaQuery": true,
+      "containsFlexWrap": false,
+      "containsGridColumns": false
+    },
+    {
+      "file": "src/frontend/project-time-web/src/UserAdministrationPanel.jsx",
+      "lineCount": 971,
+      "containsMediaQuery": false,
+      "containsFlexWrap": false,
+      "containsGridColumns": false
+    },
+    {
+      "file": "src/frontend/project-time-web/src/ProjectIntakeCenter.jsx",
+      "lineCount": 802,
+      "containsMediaQuery": false,
+      "containsFlexWrap": false,
+      "containsGridColumns": false
+    },
+    {
+      "file": "src/frontend/project-time-web/src/BackupDrCenter.jsx",
+      "lineCount": 715,
+      "containsMediaQuery": false,
+      "containsFlexWrap": false,
+      "containsGridColumns": false
+    }
+  ]
+}
