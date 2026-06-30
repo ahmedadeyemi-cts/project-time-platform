@@ -15,8 +15,8 @@
 
 | Module | Area | Goal | Status |
 |---|---|---|---|
-| 021A | Release baseline | Create release hardening tracker and reusable smoke script | In Progress |
-| 021B | Navigation / route integrity | Confirm route labels, route visibility, and dashboard grouping alignment | Not Started |
+| 021A | Release baseline | Create release hardening tracker and reusable smoke script | Complete |
+| 021B | Navigation / route integrity | Confirm route labels, route visibility, and dashboard grouping alignment | Complete |
 | 021C | Role-based demo scripts | Prepare demo paths for Admin, PM, Manager, Engineer, Accounting, and Viewer-style access | Not Started |
 | 021D | Workflow data readiness | Confirm seeded/demo data supports customer, intake, assignment, approval, export, and audit flows | Not Started |
 | 021E | UI polish | Address obvious copy, empty states, filter clarity, and responsive presentation gaps | Not Started |
@@ -43,3 +43,15 @@
 - Preserve any unexpected local WIP before switching branches.
 - Use lightweight builds for each 021 submodule.
 - Run full deployment validation only at 021G.
+
+
+## 021B Navigation / Route Integrity
+
+021B added a reusable static route-integrity scanner and generated route inventory reports for demo readiness review.
+
+Artifacts:
+
+- `scripts/021-route-integrity-report.py`
+- `docs/demo/021_ROUTE_INTEGRITY_REPORT.md`
+- `docs/demo/021_ROUTE_INTEGRITY_REPORT.json`
+- `docs/help/021B-navigation-route-integrity.md`

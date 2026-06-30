@@ -1,0 +1,1100 @@
+{
+  "generatedAtUtc": "2026-06-30T16:00:08.519626+00:00",
+  "routeCount": 68,
+  "groupCount": 17,
+  "duplicateRoutes": [
+    "audit-history",
+    "azure-admin",
+    "backup-dr",
+    "backup-retention",
+    "cost-alerts",
+    "customer-directory",
+    "dashboard",
+    "holiday-admin",
+    "manager-approval",
+    "project-intake",
+    "project-workload",
+    "project-workspace",
+    "replication-sync",
+    "restore-validation",
+    "role-admin",
+    "service-control",
+    "time-compliance",
+    "timesheet",
+    "user-admin",
+    "utilization",
+    "work-task-builder",
+    "workflow"
+  ],
+  "duplicateHrefs": [
+    "#backup-retention",
+    "#dashboard",
+    "#restore-validation"
+  ],
+  "missingHrefCount": 40,
+  "missingTitleCount": 3,
+  "missingNavLabelCount": 43,
+  "missingGroupCount": 26,
+  "hrefMismatchCount": 0,
+  "statusCounts": {
+    "Active": 6,
+    "Missing": 60,
+    "Operational": 2
+  },
+  "productionOperationsRouteConfigs": [
+    "dashboard",
+    "workflow"
+  ],
+  "issues": [
+    "Duplicate route keys: audit-history, azure-admin, backup-dr, backup-retention, cost-alerts, customer-directory, dashboard, holiday-admin, manager-approval, project-intake, project-workload, project-workspace, replication-sync, restore-validation, role-admin, service-control, time-compliance, timesheet, user-admin, utilization, work-task-builder, workflow",
+    "Duplicate hrefs: #backup-retention, #dashboard, #restore-validation",
+    "Missing href: 40",
+    "Missing title: 3",
+    "Missing navLabel: 43",
+    "Missing group: 26"
+  ],
+  "routes": [
+    {
+      "route": "project-workload",
+      "href": "#project-workload",
+      "title": "Project Workload",
+      "navLabel": "Project Workload",
+      "group": "",
+      "status": "",
+      "description": "Project Manager dashboard for active projects, closed projects, project status, assigned project list, and workload risks.",
+      "permissions": [
+        "VIEW_PROJECT_WORKLOAD",
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 668
+    },
+    {
+      "route": "project-workspace",
+      "href": "#project-workspace",
+      "title": "Project Workspace & Engineering Documents",
+      "navLabel": "Project Workspace",
+      "group": "",
+      "status": "",
+      "description": "View project workspace readiness, engineering-visible documents, assignments, and timesheet-context artifacts.",
+      "permissions": [
+        "VIEW_PROJECT_WORKSPACE",
+        "VIEW_ENGINEERING_PROJECT_DOCUMENTS",
+        "VIEW_PROJECT_INTAKE",
+        "VIEW_RESOURCE_SCHEDULING",
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 676
+    },
+    {
+      "route": "project-intake",
+      "href": "#project-intake",
+      "title": "Project Intake & Engineering Resource Requests",
+      "navLabel": "Project Intake",
+      "group": "",
+      "status": "",
+      "description": "Create and review project intake requests, signed date aging, engineering resource demand, capacity, project handoff, and work-task assignment readiness.",
+      "permissions": [
+        "VIEW_PROJECT_INTAKE",
+        "MANAGE_PROJECT_INTAKE",
+        "VIEW_RESOURCE_SCHEDULING",
+        "MANAGE_RESOURCE_SCHEDULING",
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 684
+    },
+    {
+      "route": "customer-directory",
+      "href": "#customer-directory",
+      "title": "Customer Directory",
+      "navLabel": "Customers",
+      "group": "",
+      "status": "",
+      "description": "Manage customer records, contacts, and customer intake/project cost readiness.",
+      "permissions": [
+        "VIEW_CUSTOMERS",
+        "MANAGE_CUSTOMERS",
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 692
+    },
+    {
+      "route": "cost-alerts",
+      "href": "#cost-alerts",
+      "title": "Cost Overrun Alerts",
+      "navLabel": "Cost Alerts",
+      "group": "",
+      "status": "",
+      "description": "Detect missing cost plans, over-assigned projects, and route PM/manager/PTC alerts.",
+      "permissions": [
+        "VIEW_COST_ALERTS",
+        "MANAGE_COST_ALERTS",
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 700
+    },
+    {
+      "route": "time-compliance",
+      "href": "#time-compliance",
+      "title": "Time Compliance & Notification Center",
+      "navLabel": "Time Compliance",
+      "group": "",
+      "status": "",
+      "description": "Production-safe preview for missing weekly time, manager and Project Team Coordinator copy visibility, month-end rules, holiday reminders, and notification history.",
+      "permissions": [
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL",
+        "VIEW_TIME_COMPLIANCE",
+        "VIEW_AUDIT_HISTORY"
+      ],
+      "sourceLine": 708
+    },
+    {
+      "route": "timesheet",
+      "href": "#timesheet",
+      "title": "Time Entry",
+      "navLabel": "Timesheet",
+      "group": "",
+      "status": "",
+      "description": "Enter weekly and daily time by project, task, non-project work, and afterhours.",
+      "permissions": [
+        "VIEW_TIME_ENTRY"
+      ],
+      "sourceLine": 716
+    },
+    {
+      "route": "manager-approval",
+      "href": "#manager-approval",
+      "title": "Approval Inbox",
+      "navLabel": "Approvals",
+      "group": "",
+      "status": "",
+      "description": "Approve, reject, and review submitted time.",
+      "permissions": [
+        "VIEW_APPROVAL_INBOX",
+        "APPROVE_TIME"
+      ],
+      "sourceLine": 724
+    },
+    {
+      "route": "utilization",
+      "href": "#utilization",
+      "title": "Utilization",
+      "navLabel": "Utilization",
+      "group": "",
+      "status": "",
+      "description": "Review own utilization, manager team utilization, engineering team lead utilization, remaining hours, and work task classification readiness.",
+      "permissions": [
+        "VIEW_OWN_UTILIZATION",
+        "VIEW_TEAM_UTILIZATION",
+        "VIEW_INDIVIDUAL_UTILIZATION"
+      ],
+      "sourceLine": 732
+    },
+    {
+      "route": "holiday-admin",
+      "href": "#holiday-admin",
+      "title": "Holiday Calendar",
+      "navLabel": "Holidays",
+      "group": "",
+      "status": "",
+      "description": "View or manage company holidays and calendar availability.",
+      "permissions": [
+        "VIEW_HOLIDAYS",
+        "MANAGE_HOLIDAYS"
+      ],
+      "sourceLine": 740
+    },
+    {
+      "route": "project-allocation-info",
+      "href": "#project-allocation-info",
+      "title": "Project Allocation and Info",
+      "navLabel": "Project Info",
+      "group": "",
+      "status": "",
+      "description": "View project allocations, engineer hours, and SOW/GSD documents.",
+      "permissions": [
+        "VIEW_PROJECT_ALLOCATION_INFO",
+        "MANAGE_PROJECT_ALLOCATION_INFO",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 748
+    },
+    {
+      "route": "psa-modules",
+      "href": "#psa-modules",
+      "title": "PSA Modules",
+      "navLabel": "Modules",
+      "group": "",
+      "status": "",
+      "description": "Review project intake, resource scheduling, expense management, and executive reporting workflows.",
+      "permissions": [
+        "VIEW_PROJECT_INTAKE",
+        "VIEW_RESOURCE_SCHEDULING",
+        "VIEW_EXPENSES",
+        "VIEW_EXECUTIVE_REPORTING"
+      ],
+      "sourceLine": 756
+    },
+    {
+      "route": "workflow",
+      "href": "#workflow",
+      "title": "Workflow",
+      "navLabel": "Workflow",
+      "group": "",
+      "status": "",
+      "description": "Review project approval, account reconciliation, exports, and reporting workflow.",
+      "permissions": [
+        "PROJECT_TIME_APPROVAL",
+        "VIEW_APPROVAL_WORKFLOW",
+        "VIEW_ACCOUNT_RECONCILIATION",
+        "VIEW_WORKFLOW_OPERATIONAL_READINESS",
+        "VIEW_WORKFLOW_AUDIT_EVIDENCE",
+        "EXPORT_TIME_EXCEL",
+        "EXPORT_TIME_PDF",
+        "DOWNLOAD_TIME_EXPORT_PACKAGE",
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 764
+    },
+    {
+      "route": "audit-history",
+      "href": "#audit-history",
+      "title": "Audit / Security History",
+      "navLabel": "Audit",
+      "group": "",
+      "status": "",
+      "description": "Review login history, password reset history, Azure sync failures, notification failures, and system audit events.",
+      "permissions": [
+        "VIEW_AUDIT_TRAIL",
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 772
+    },
+    {
+      "route": "user-admin",
+      "href": "#user-admin",
+      "title": "User Administration",
+      "navLabel": "User Admin",
+      "group": "",
+      "status": "",
+      "description": "Manage users, local passwords, roles, teams, departments, and login access.",
+      "permissions": [
+        "VIEW_USER_ADMIN",
+        "MANAGE_USER_ADMIN",
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 780
+    },
+    {
+      "route": "azure-admin",
+      "href": "#azure-admin",
+      "title": "Azure / Entra Admin",
+      "navLabel": "Azure Admin",
+      "group": "",
+      "status": "",
+      "description": "Configure Azure SSO, run user sync, and review imported directory users.",
+      "permissions": [
+        "VIEW_AZURE_ADMIN",
+        "MANAGE_AZURE_SYNC",
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 788
+    },
+    {
+      "route": "work-task-builder",
+      "href": "#work-task-builder",
+      "title": "Work Task Builder",
+      "navLabel": "Work Tasks",
+      "group": "",
+      "status": "",
+      "description": "Build, classify, and assign project, service request, open, and non-project work tasks with billing and utilization treatment.",
+      "permissions": [
+        "VIEW_WORK_TASK_BUILDER",
+        "MANAGE_WORK_TASK_BUILDER",
+        "ASSIGN_WORK_TASKS",
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 796
+    },
+    {
+      "route": "role-admin",
+      "href": "#role-admin",
+      "title": "Role Administration",
+      "navLabel": "Role Admin",
+      "group": "",
+      "status": "",
+      "description": "Manage users, roles, access, and administrative configuration.",
+      "permissions": [
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 804
+    },
+    {
+      "route": "service-control",
+      "href": "#service-control",
+      "title": "Service Control Center",
+      "navLabel": "Services",
+      "group": "",
+      "status": "",
+      "description": "Monitor platform services, API status, recent logs, and controlled restart actions.",
+      "permissions": [
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 812
+    },
+    {
+      "route": "backup-dr",
+      "href": "#backup-dr",
+      "title": "Backup / DR Center",
+      "navLabel": "Backup / DR",
+      "group": "",
+      "status": "",
+      "description": "Create and validate full ProjectPulse backup bundles.",
+      "permissions": [
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 820
+    },
+    {
+      "route": "restore-validation",
+      "href": "#restore-validation",
+      "title": "Restore Validation",
+      "navLabel": "Restore Validation",
+      "group": "",
+      "status": "",
+      "description": "Validate selected backup restore points without restoring over production.",
+      "permissions": [
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 828
+    },
+    {
+      "route": "backup-retention",
+      "href": "#backup-retention",
+      "title": "Backup Retention",
+      "navLabel": "Backup Retention",
+      "group": "",
+      "status": "",
+      "description": "Review and safely remove older backup points with restore-point protection.",
+      "permissions": [
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 836
+    },
+    {
+      "route": "replication-sync",
+      "href": "#replication-sync",
+      "title": "Replication & Sync Status",
+      "navLabel": "Replication / Sync",
+      "group": "",
+      "status": "",
+      "description": "Review failover readiness, database role, service health, backup freshness, deployment state, and peer configuration.",
+      "permissions": [
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 844
+    },
+    {
+      "route": "dashboard",
+      "href": "#dashboard",
+      "title": "",
+      "navLabel": "",
+      "group": "",
+      "status": "",
+      "description": "",
+      "permissions": [],
+      "sourceLine": 900
+    },
+    {
+      "route": "dashboard",
+      "href": "#dashboard",
+      "title": "",
+      "navLabel": "",
+      "group": "",
+      "status": "",
+      "description": "",
+      "permissions": [],
+      "sourceLine": 1026
+    },
+    {
+      "route": "timesheet",
+      "href": "",
+      "title": "Timesheet",
+      "navLabel": "",
+      "group": "Time Management",
+      "status": "",
+      "description": "Allows users to enter, save, submit, and review weekly or daily time entries.",
+      "permissions": [],
+      "sourceLine": 1137
+    },
+    {
+      "route": "manager-approval",
+      "href": "",
+      "title": "Approval Inbox",
+      "navLabel": "",
+      "group": "Approvals",
+      "status": "",
+      "description": "Lets managers review submitted time, approve valid entries, and return entries that need correction.",
+      "permissions": [
+        "APPROVE_TIME",
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 1144
+    },
+    {
+      "route": "workflow",
+      "href": "",
+      "title": "Approval / Export / Audit Workflow",
+      "navLabel": "",
+      "group": "Approvals",
+      "status": "",
+      "description": "Coordinates PM validation, accounting readiness, reconciliation, lock, export preparation, and audit visibility after manager approval.",
+      "permissions": [
+        "VIEW_APPROVAL_WORKFLOW",
+        "PROJECT_TIME_APPROVAL",
+        "VIEW_ACCOUNT_RECONCILIATION",
+        "MANAGE_ACCOUNT_RECONCILIATION",
+        "EXPORT_TIME_EXCEL",
+        "EXPORT_TIME_PDF",
+        "VIEW_AUDIT_TRAIL",
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 1151
+    },
+    {
+      "route": "utilization",
+      "href": "",
+      "title": "Utilization",
+      "navLabel": "",
+      "group": "Resource Management",
+      "status": "",
+      "description": "Shows billable and utilization-eligible performance against quarterly and annual targets.",
+      "permissions": [
+        "VIEW_UTILIZATION",
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 1158
+    },
+    {
+      "route": "project-workload",
+      "href": "",
+      "title": "Project Workload",
+      "navLabel": "",
+      "group": "Project Management",
+      "status": "",
+      "description": "Shows project managers their active projects, closed projects, status mix, hours, and workload risk.",
+      "permissions": [
+        "VIEW_PROJECT_WORKLOAD",
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 1165
+    },
+    {
+      "route": "project-workspace",
+      "href": "",
+      "title": "Project Workspace",
+      "navLabel": "",
+      "group": "Project Delivery",
+      "status": "",
+      "description": "Provides a role-scoped workspace for assigned projects, tasks, documents, assigned hours, used hours, and remaining hours.",
+      "permissions": [
+        "VIEW_PROJECT_WORKSPACE",
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 1172
+    },
+    {
+      "route": "project-intake",
+      "href": "",
+      "title": "Project Intake",
+      "navLabel": "",
+      "group": "Project Intake",
+      "status": "",
+      "description": "Captures project requests, customer selection, planned costs, intake documents, signed date aging, triage details, and resource request readiness.",
+      "permissions": [
+        "VIEW_PROJECT_INTAKE",
+        "MANAGE_PROJECT_INTAKE",
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 1179
+    },
+    {
+      "route": "customer-directory",
+      "href": "",
+      "title": "Customer Directory",
+      "navLabel": "",
+      "group": "Customers",
+      "status": "",
+      "description": "Maintains customer records, contacts, and customer data used by project, billing, cost, and reconciliation workflows.",
+      "permissions": [
+        "VIEW_CUSTOMERS",
+        "MANAGE_CUSTOMERS",
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 1186
+    },
+    {
+      "route": "cost-alerts",
+      "href": "",
+      "title": "Cost Alert Overrun",
+      "navLabel": "",
+      "group": "Cost Control",
+      "status": "Active",
+      "description": "Monitors planned cost, assigned hours, used hours, over-assignment risk, and notification routing for cost overrun alerts.",
+      "permissions": [
+        "VIEW_COST_ALERTS",
+        "MANAGE_COST_ALERTS",
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 1193
+    },
+    {
+      "route": "time-compliance",
+      "href": "",
+      "title": "Time Compliance",
+      "navLabel": "",
+      "group": "Compliance",
+      "status": "Active",
+      "description": "Previews missing time, reminder readiness, manager/PTC visibility, compliance notifications, and month-end time controls.",
+      "permissions": [
+        "VIEW_TIME_COMPLIANCE",
+        "MANAGE_TIME_COMPLIANCE",
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 1200
+    },
+    {
+      "route": "holiday-admin",
+      "href": "",
+      "title": "Holiday Management",
+      "navLabel": "",
+      "group": "Administration",
+      "status": "Active",
+      "description": "Manages company holidays, holiday visibility, uploads, and timesheet holiday readiness.",
+      "permissions": [
+        "VIEW_HOLIDAYS",
+        "MANAGE_HOLIDAYS",
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 1207
+    },
+    {
+      "route": "audit-history",
+      "href": "",
+      "title": "Audit History",
+      "navLabel": "",
+      "group": "Audit",
+      "status": "Active",
+      "description": "Shows login, admin, notification, approval, export, service, and system audit events for accountability.",
+      "permissions": [
+        "VIEW_AUDIT_TRAIL",
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 1214
+    },
+    {
+      "route": "user-admin",
+      "href": "",
+      "title": "User Administration",
+      "navLabel": "",
+      "group": "Security",
+      "status": "Active",
+      "description": "Manages users, active status, local account settings, role assignments, and access controls.",
+      "permissions": [
+        "MANAGE_USERS",
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 1221
+    },
+    {
+      "route": "work-task-builder",
+      "href": "",
+      "title": "Work Task Builder",
+      "navLabel": "",
+      "group": "Security",
+      "status": "Active",
+      "description": "Defines work task categories, billing classification, utilization classification, and scoped project task assignment.",
+      "permissions": [
+        "VIEW_WORK_TASK_BUILDER",
+        "MANAGE_WORK_TASK_BUILDER",
+        "ASSIGN_WORK_TASKS",
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 1228
+    },
+    {
+      "route": "role-admin",
+      "href": "",
+      "title": "Role Administration",
+      "navLabel": "",
+      "group": "Security",
+      "status": "",
+      "description": "Defines roles, shows assigned users, displays permissions by module, and manages role-based security configuration.",
+      "permissions": [
+        "VIEW_ROLE_ADMIN_DIRECTORY",
+        "MANAGE_ROLES",
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 1235
+    },
+    {
+      "route": "azure-admin",
+      "href": "",
+      "title": "Azure / Entra Administration",
+      "navLabel": "",
+      "group": "Security",
+      "status": "",
+      "description": "Manages Entra import, reconciliation, sync settings, and identity-readiness checks.",
+      "permissions": [
+        "MANAGE_AZURE_AD",
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 1242
+    },
+    {
+      "route": "service-control",
+      "href": "",
+      "title": "Service Control Center",
+      "navLabel": "",
+      "group": "Operations",
+      "status": "",
+      "description": "Provides operational service restart controls, service health checks, and audit-backed service management.",
+      "permissions": [
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 1249
+    },
+    {
+      "route": "backup-dr",
+      "href": "",
+      "title": "Backup / DR Center",
+      "navLabel": "",
+      "group": "Operations",
+      "status": "",
+      "description": "Shows backup and disaster recovery readiness, backup state, service backup status, and restore preparedness.",
+      "permissions": [
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 1256
+    },
+    {
+      "route": "restore-validation",
+      "href": "",
+      "title": "Restore Validation Center",
+      "navLabel": "",
+      "group": "Operations",
+      "status": "",
+      "description": "Validates restore points, restore readiness, and restore test evidence before relying on backups.",
+      "permissions": [
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 1263
+    },
+    {
+      "route": "backup-retention",
+      "href": "",
+      "title": "Backup Retention Center",
+      "navLabel": "",
+      "group": "Operations",
+      "status": "",
+      "description": "Manages backup retention policy, cleanup readiness, and retention compliance visibility.",
+      "permissions": [
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 1270
+    },
+    {
+      "route": "replication-sync",
+      "href": "",
+      "title": "Replication / Sync Status",
+      "navLabel": "",
+      "group": "Operations",
+      "status": "",
+      "description": "Shows replication and synchronization status across database, backup, and operational readiness workflows.",
+      "permissions": [
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 1277
+    },
+    {
+      "route": "workflow",
+      "href": "",
+      "title": "Workflow Operational Readiness",
+      "navLabel": "",
+      "group": "Approval / Export / Audit",
+      "status": "",
+      "description": "Shows manager review, PM validation, accounting review, export readiness, role guidance, and workflow stage health.",
+      "permissions": [
+        "VIEW_WORKFLOW_OPERATIONAL_READINESS",
+        "VIEW_APPROVAL_WORKFLOW",
+        "PROJECT_TIME_APPROVAL",
+        "VIEW_ACCOUNT_RECONCILIATION",
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 1284
+    },
+    {
+      "route": "workflow",
+      "href": "",
+      "title": "Export Packages",
+      "navLabel": "",
+      "group": "Approval / Export / Audit",
+      "status": "",
+      "description": "Generates and downloads CSV/Excel-ready export packages with item counts, hours, package metadata, and audit evidence.",
+      "permissions": [
+        "DOWNLOAD_TIME_EXPORT_PACKAGE",
+        "EXPORT_TIME_EXCEL",
+        "EXPORT_TIME_PDF",
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 1291
+    },
+    {
+      "route": "workflow",
+      "href": "",
+      "title": "Workflow Audit Evidence",
+      "navLabel": "",
+      "group": "Approval / Export / Audit",
+      "status": "",
+      "description": "Displays detailed audit evidence for approval, reconciliation, lock, and export package events.",
+      "permissions": [
+        "VIEW_WORKFLOW_AUDIT_EVIDENCE",
+        "VIEW_AUDIT_TRAIL",
+        "VIEW_ACCOUNT_RECONCILIATION",
+        "PROJECT_TIME_APPROVAL",
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 1298
+    },
+    {
+      "route": "workflow",
+      "href": "",
+      "title": "Audit History Events",
+      "navLabel": "",
+      "group": "Approval / Export / Audit",
+      "status": "",
+      "description": "Shows workflow, export, reconciliation, lock, and approval audit history events.",
+      "permissions": [
+        "VIEW_AUDIT_HISTORY_EVENTS",
+        "VIEW_WORKFLOW_AUDIT_EVIDENCE",
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 1305
+    },
+    {
+      "route": "workflow",
+      "href": "",
+      "title": "Workflow Preflight Validation",
+      "navLabel": "",
+      "group": "Approval / Export / Audit",
+      "status": "",
+      "description": "Shows production workflow preflight checks, role capabilities, eligible statuses, blockers, and readiness evidence.",
+      "permissions": [
+        "VIEW_WORKFLOW_ACTION_CAPABILITIES",
+        "PROJECT_TIME_APPROVAL",
+        "VIEW_ACCOUNT_RECONCILIATION",
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 1312
+    },
+    {
+      "route": "dashboard",
+      "href": "",
+      "title": "Dashboard Module Visibility Smoke",
+      "navLabel": "",
+      "group": "System",
+      "status": "",
+      "description": "Checks module registry coverage so new modules appear on the dashboard for the correct roles.",
+      "permissions": [
+        "VIEW_MODULE_VISIBILITY_SMOKE",
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 1319
+    },
+    {
+      "route": "workflow",
+      "href": "",
+      "title": "Export Package Readiness Summary",
+      "navLabel": "",
+      "group": "Approval / Export / Audit",
+      "status": "",
+      "description": "Shows export package readiness, generated package metadata, download counts, and last-download evidence.",
+      "permissions": [
+        "VIEW_EXPORT_PACKAGE_READINESS_SUMMARY",
+        "DOWNLOAD_TIME_EXPORT_PACKAGE",
+        "EXPORT_TIME_EXCEL",
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 1326
+    },
+    {
+      "route": "workflow",
+      "href": "",
+      "title": "Export Package Evidence Detail",
+      "navLabel": "",
+      "group": "Approval / Export / Audit",
+      "status": "",
+      "description": "Connects export packages to item-level and audit evidence detail.",
+      "permissions": [
+        "VIEW_EXPORT_PACKAGE_EVIDENCE_DETAIL",
+        "VIEW_WORKFLOW_AUDIT_EVIDENCE",
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 1333
+    },
+    {
+      "route": "workflow",
+      "href": "",
+      "title": "Accounting Reconciliation Workbench",
+      "navLabel": "",
+      "group": "Approval / Export / Audit",
+      "status": "",
+      "description": "Groups accounting reconciliation queues, exception status, missing project/task links, and attention items.",
+      "permissions": [
+        "VIEW_ACCOUNTING_RECONCILIATION_WORKBENCH",
+        "MANAGE_ACCOUNT_RECONCILIATION",
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 1340
+    },
+    {
+      "route": "workflow",
+      "href": "",
+      "title": "Locked Period Audit Evidence",
+      "navLabel": "",
+      "group": "Approval / Export / Audit",
+      "status": "",
+      "description": "Shows locked and reconciled time evidence for period-close audit review.",
+      "permissions": [
+        "VIEW_LOCKED_PERIOD_AUDIT_EVIDENCE",
+        "VIEW_WORKFLOW_AUDIT_EVIDENCE",
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 1347
+    },
+    {
+      "route": "role-admin",
+      "href": "",
+      "title": "Role Access Matrix",
+      "navLabel": "",
+      "group": "Security",
+      "status": "",
+      "description": "Shows role-to-permission coverage for governance, route visibility, and role enforcement validation.",
+      "permissions": [
+        "VIEW_ROLE_ACCESS_MATRIX",
+        "VIEW_ROLE_ADMIN_DIRECTORY",
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 1354
+    },
+    {
+      "route": "dashboard",
+      "href": "",
+      "title": "Production Readiness Command Center",
+      "navLabel": "",
+      "group": "System",
+      "status": "",
+      "description": "Summarizes user, project, time entry, export, audit, route governance, and dashboard readiness for production operations.",
+      "permissions": [
+        "VIEW_DEMO_READINESS_COMMAND_CENTER",
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 1361
+    },
+    {
+      "route": "workflow",
+      "href": "",
+      "title": "Workflow Validation Rules",
+      "navLabel": "",
+      "group": "Approval / Export / Audit",
+      "status": "",
+      "description": "Documents workflow validation rules and current evidence for export, audit, and production preflight controls.",
+      "permissions": [
+        "VIEW_WORKFLOW_VALIDATION_RULES",
+        "VIEW_APPROVAL_WORKFLOW",
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 1368
+    },
+    {
+      "route": "workflow",
+      "href": "",
+      "title": "Workflow Operations Center",
+      "navLabel": "",
+      "group": "Approval / Export / Audit",
+      "status": "",
+      "description": "Central status view for workflow operations, audit history, export readiness, reconciliation, and validation.",
+      "permissions": [
+        "VIEW_WORKFLOW_OPERATIONS_CENTER",
+        "VIEW_APPROVAL_WORKFLOW",
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 1375
+    },
+    {
+      "route": "dashboard",
+      "href": "",
+      "title": "Production Validation Automation",
+      "navLabel": "",
+      "group": "System",
+      "status": "",
+      "description": "Provides production validation script coverage for endpoint smoke checks, dashboard registry verification, and access enforcement.",
+      "permissions": [
+        "VIEW_MODULE_VISIBILITY_SMOKE",
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 1382
+    },
+    {
+      "route": "workflow",
+      "href": "",
+      "title": "Production Export Evidence",
+      "navLabel": "",
+      "group": "Approval / Export / Audit",
+      "status": "",
+      "description": "Shows export package evidence, package download history, audit event counts, and production evidence readiness.",
+      "permissions": [
+        "VIEW_PRODUCTION_EXPORT_EVIDENCE",
+        "DOWNLOAD_TIME_EXPORT_PACKAGE",
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 1389
+    },
+    {
+      "route": "role-admin",
+      "href": "",
+      "title": "Route Permission Contracts",
+      "navLabel": "",
+      "group": "Security",
+      "status": "",
+      "description": "Defines route-level permission contracts, allowed roles, restricted roles, and production guardrails.",
+      "permissions": [
+        "VIEW_ROUTE_PERMISSION_CONTRACTS",
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 1396
+    },
+    {
+      "route": "dashboard",
+      "href": "",
+      "title": "Navigation Registry Integrity Guard",
+      "navLabel": "",
+      "group": "System",
+      "status": "",
+      "description": "Validates dashboard, navigation, route contract, and production module registry integrity.",
+      "permissions": [
+        "VIEW_NAVIGATION_REGISTRY_INTEGRITY",
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 1403
+    },
+    {
+      "route": "dashboard",
+      "href": "",
+      "title": "Engineer Negative Access Smoke",
+      "navLabel": "",
+      "group": "Security",
+      "status": "",
+      "description": "Confirms engineer-only users remain denied from restricted workflow, export, accounting, and role matrix controls.",
+      "permissions": [
+        "VIEW_ENGINEER_NEGATIVE_ACCESS_SMOKE",
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 1410
+    },
+    {
+      "route": "restore-validation",
+      "href": "#restore-validation",
+      "title": "Restore Validation",
+      "navLabel": "Restore Validation",
+      "group": "System Operations",
+      "status": "Operational",
+      "description": "Validate backup integrity, database dump readability, configuration archives, application snapshots, and DR runbook readiness.",
+      "permissions": [
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 1491
+    },
+    {
+      "route": "backup-retention",
+      "href": "#backup-retention",
+      "title": "Backup Retention",
+      "navLabel": "Backup Retention",
+      "group": "System Operations",
+      "status": "Operational",
+      "description": "Review backup points and safely remove older backups with restore-point protection.",
+      "permissions": [
+        "SYSTEM_ADMINISTRATION",
+        "MANAGE_ALL"
+      ],
+      "sourceLine": 1503
+    },
+    {
+      "route": "dashboard",
+      "href": "#dashboard",
+      "title": "",
+      "navLabel": "",
+      "group": "",
+      "status": "",
+      "description": "",
+      "permissions": [],
+      "sourceLine": 2788
+    }
+  ]
+}
