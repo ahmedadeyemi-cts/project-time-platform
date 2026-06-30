@@ -53,6 +53,34 @@ function stageLabel(value) {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+function getReadinessTone(stage) {
+  const normalized = String(stage ?? '').toLowerCase();
+
+  if (['project_task_assignment_ready', 'complete', 'ready', 'assigned'].includes(normalized)) return 'ready';
+  if (['resource_assignment_ready', 'work_task_ready', 'project_linked'].includes(normalized)) return 'attention';
+  if (['gap', 'missing_project', 'missing_work_task', 'missing_assignment', 'blocked'].includes(normalized)) return 'blocked';
+
+  return 'neutral';
+}
+
+function getAssignmentCoveragePercent(request) {
+  const requested = Number(request?.requestedHours ?? 0);
+  const allocated = Number(request?.allocatedHours ?? 0);
+
+  if (requested <= 0) return 0;
+
+  return Math.min(100, Math.round((allocated / requested) * 100));
+}
+
+function getTaskCoveragePercent(request) {
+  const allocated = Number(request?.allocatedHours ?? 0);
+  const assigned = Number(request?.projectAssignedHours ?? 0);
+
+  if (allocated <= 0) return 0;
+
+  return Math.min(100, Math.round((assigned / allocated) * 100));
+}
+
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -60,6 +88,8 @@ function todayIso() {
 export default function ResourceAssignmentHandoffPanel() {
   const [payload, setPayload] = useState({ loading: true, data: null, error: null });
   const [stageFilter, setStageFilter] = useState('all');
+  const [priorityFilter, setPriorityFilter] = useState('all');
+  const [requestSearchTerm, setRequestSearchTerm] = useState('');
   const [promotionForms, setPromotionForms] = useState({});
   const [actionMessage, setActionMessage] = useState('');
 
@@ -106,10 +136,40 @@ export default function ResourceAssignmentHandoffPanel() {
     return Array.from(new Set(requests.map((item) => item.readinessStage).filter(Boolean)));
   }, [requests]);
 
+  const priorityValues = useMemo(() => {
+    return Array.from(new Set(requests.map((item) => item.priority).filter(Boolean)));
+  }, [requests]);
+
+  const assignmentWorkflowMetrics = useMemo(() => {
+    const gapRequests = requests.filter((request) => String(request.readinessStage ?? '').toLowerCase().includes('gap'));
+    const projectLinked = requests.filter((request) => Boolean(request.projectId || request.projectCode));
+    const workTaskReady = requests.filter((request) => Number(request.taskCount ?? 0) > 0);
+    const resourceAssigned = requests.filter((request) => Number(request.assignedEngineerCount ?? 0) > 0);
+    const taskAssigned = requests.filter((request) => Number(request.projectAssignmentCount ?? 0) > 0);
+    const overAllocated = requests.filter((request) => Number(request.allocatedHours ?? 0) > Number(request.requestedHours ?? 0));
+
+    return {
+      gapRequests: gapRequests.length,
+      projectLinked: projectLinked.length,
+      workTaskReady: workTaskReady.length,
+      resourceAssigned: resourceAssigned.length,
+      taskAssigned: taskAssigned.length,
+      overAllocated: overAllocated.length
+    };
+  }, [requests]);
+
   const filteredRequests = useMemo(() => {
-    if (stageFilter === 'all') return requests;
-    return requests.filter((item) => item.readinessStage === stageFilter);
-  }, [requests, stageFilter]);
+    const search = requestSearchTerm.trim().toLowerCase();
+
+    return requests.filter((item) => {
+      const matchesStage = stageFilter === 'all' || item.readinessStage === stageFilter;
+      const matchesPriority = priorityFilter === 'all' || item.priority === priorityFilter;
+      const haystack = `${item.requestNumber ?? ''} ${item.requestedFunction ?? ''} ${item.projectCode ?? ''} ${item.projectName ?? ''} ${item.assignedPmName ?? ''} ${item.readinessMessage ?? ''}`.toLowerCase();
+      const matchesSearch = !search || haystack.includes(search);
+
+      return matchesStage && matchesPriority && matchesSearch;
+    });
+  }, [requests, stageFilter, priorityFilter, requestSearchTerm]);
 
   async function promoteAssignment(request, assignment) {
     const form = promotionForms[assignment.resourceAssignmentId] ?? {};
@@ -184,11 +244,12 @@ export default function ResourceAssignmentHandoffPanel() {
 
       <div className="resource-handoff-summary-grid">
         <article><span>Resource requests</span><strong>{data?.summary?.resourceRequestCount ?? 0}</strong><small>Total in scope</small></article>
-        <article><span>Project linked</span><strong>{data?.summary?.projectLinkedRequestCount ?? 0}</strong><small>Resource request has project</small></article>
-        <article><span>Work-task ready</span><strong>{data?.summary?.workTaskReadyRequestCount ?? 0}</strong><small>Project has tasks</small></article>
-        <article><span>Resource assigned</span><strong>{data?.summary?.resourceAssignmentReadyRequestCount ?? 0}</strong><small>Engineers allocated</small></article>
-        <article><span>Task assigned</span><strong>{data?.summary?.projectTaskAssignmentReadyRequestCount ?? 0}</strong><small>Engineers assigned to tasks</small></article>
-        <article><span>Gaps</span><strong>{data?.summary?.gapRequestCount ?? 0}</strong><small>Need handoff attention</small></article>
+        <article><span>Project linked</span><strong>{assignmentWorkflowMetrics.projectLinked}</strong><small>Resource request has project</small></article>
+        <article><span>Work-task ready</span><strong>{assignmentWorkflowMetrics.workTaskReady}</strong><small>Project has tasks</small></article>
+        <article><span>Resource assigned</span><strong>{assignmentWorkflowMetrics.resourceAssigned}</strong><small>Engineers allocated</small></article>
+        <article><span>Task assigned</span><strong>{assignmentWorkflowMetrics.taskAssigned}</strong><small>Engineers assigned to tasks</small></article>
+        <article><span>Gaps</span><strong>{assignmentWorkflowMetrics.gapRequests}</strong><small>Need handoff attention</small></article>
+        <article><span>Over allocated</span><strong>{assignmentWorkflowMetrics.overAllocated}</strong><small>Allocated hours exceed requested hours</small></article>
       </div>
 
       <div className="resource-handoff-toolbar">
@@ -200,6 +261,23 @@ export default function ResourceAssignmentHandoffPanel() {
               <option value={stage} key={stage}>{stageLabel(stage)}</option>
             ))}
           </select>
+        </label>
+        <label>
+          Priority filter
+          <select value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value)}>
+            <option value="all">All priorities</option>
+            {priorityValues.map((priority) => (
+              <option value={priority} key={priority}>{stageLabel(priority)}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Search
+          <input
+            value={requestSearchTerm}
+            placeholder="Search request, project, PM, function, or readiness..."
+            onChange={(event) => setRequestSearchTerm(event.target.value)}
+          />
         </label>
         <span>{filteredRequests.length} resource request{filteredRequests.length === 1 ? '' : 's'} shown</span>
       </div>
@@ -213,10 +291,25 @@ export default function ResourceAssignmentHandoffPanel() {
                 <h3>{item.requestedFunction}</h3>
                 <small>{item.projectCode || 'No project'} · {item.projectName || 'Project link needed'} · PM: {item.assignedPmName || 'Unassigned'}</small>
               </div>
-              <span>{stageLabel(item.readinessStage)}</span>
+              <span className={`resource-stage-pill ${getReadinessTone(item.readinessStage)}`}>{stageLabel(item.readinessStage)}</span>
             </div>
 
             <p className="resource-handoff-message">{item.readinessMessage}</p>
+
+            <div className="resource-coverage-grid">
+              <article>
+                <span>Resource allocation coverage</span>
+                <strong>{getAssignmentCoveragePercent(item)}%</strong>
+                <div className="resource-coverage-meter"><div style={{ width: `${getAssignmentCoveragePercent(item)}%` }} /></div>
+                <small>{formatNumber(item.allocatedHours)} of {formatNumber(item.requestedHours)} requested hours allocated</small>
+              </article>
+              <article>
+                <span>Task assignment coverage</span>
+                <strong>{getTaskCoveragePercent(item)}%</strong>
+                <div className="resource-coverage-meter"><div style={{ width: `${getTaskCoveragePercent(item)}%` }} /></div>
+                <small>{formatNumber(item.projectAssignedHours)} of {formatNumber(item.allocatedHours)} allocated hours promoted to work tasks</small>
+              </article>
+            </div>
 
             <div className="resource-handoff-metric-grid">
               <div><span>Requested hours</span><strong>{formatNumber(item.requestedHours)}</strong></div>
@@ -350,6 +443,13 @@ export default function ResourceAssignmentHandoffPanel() {
             </div>
           </article>
         ))}
+
+        {!payload.loading && filteredRequests.length === 0 && (
+          <article className="resource-handoff-empty">
+            <strong>No resource requests match the current filters.</strong>
+            <p className="section-copy">Clear the readiness, priority, or search filters to review all resource assignment handoff items.</p>
+          </article>
+        )}
       </div>
     </section>
   );
