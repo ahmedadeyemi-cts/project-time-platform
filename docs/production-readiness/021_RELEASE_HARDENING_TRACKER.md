@@ -162,3 +162,27 @@ Artifacts:
 - `src/frontend/project-time-web/src/ProductionReadinessCenterPanel.jsx`
 - `src/frontend/project-time-web/src/production-readiness-center.css`
 - `docs/help/021I-web-visible-production-readiness-center.md`
+
+
+## 021J Browser Validation Assist
+
+021J adds a webpage-visible browser validation checklist to the Production Readiness Center.
+
+Webpage:
+
+- `https://projectpulse-test.onenecklab.com/#production-readiness`
+
+What to check:
+
+- Checklist appears below readiness cards.
+- Checkboxes update progress.
+- Notes save in browser local storage.
+- Open links navigate to the related app pages.
+- Reset checklist clears progress.
+
+Artifacts:
+
+- `src/frontend/project-time-web/src/ProductionReadinessBrowserValidationPanel.jsx`
+- `src/frontend/project-time-web/src/ProductionReadinessCenterPanel.jsx`
+- `src/frontend/project-time-web/src/production-readiness-center.css`
+- `docs/help/021J-browser-validation-assist.md`

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import './production-readiness-center.css';
+import ProductionReadinessBrowserValidationPanel from './ProductionReadinessBrowserValidationPanel.jsx';
 
 function readProjectPulseSessionToken() {
   try {
@@ -224,6 +225,9 @@ export default function ProductionReadinessCenterPanel() {
           </div>
         </section>
       </div>
+
+
+      <ProductionReadinessBrowserValidationPanel />
 
       <section className="production-readiness-panel production-readiness-purpose">
         <p className="eyebrow">Backend purpose</p>
