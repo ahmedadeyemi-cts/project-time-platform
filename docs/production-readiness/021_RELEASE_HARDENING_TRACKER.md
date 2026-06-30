@@ -138,3 +138,27 @@ Artifacts:
 Artifact:
 
 - `docs/production-readiness/021H_TEST_DEPLOYMENT_AND_WEBPAGE_VALIDATION.md`
+
+
+## 021I Web-Visible Production Readiness Center
+
+021I adds a webpage-visible Production Readiness Center so backend readiness work can be reviewed directly in the app.
+
+Webpage:
+
+- `https://projectpulse-test.onenecklab.com/#production-readiness`
+
+What to check:
+
+- Production Readiness appears in navigation.
+- The page loads without a blank screen.
+- The backend readiness endpoint status is shown.
+- Readiness cards and check table display for authorized users.
+- Unauthorized users receive a clear access/session message.
+- Validation checklist links route to major workflow areas.
+
+Artifacts:
+
+- `src/frontend/project-time-web/src/ProductionReadinessCenterPanel.jsx`
+- `src/frontend/project-time-web/src/production-readiness-center.css`
+- `docs/help/021I-web-visible-production-readiness-center.md`

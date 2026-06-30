@@ -1,6 +1,6 @@
 # 021 UI Production Polish Report
 
-Generated UTC: `2026-06-30T16:49:21.350640+00:00`
+Generated UTC: `2026-06-30T17:18:30.420085+00:00`
 
 Overall status: `needs_route_metadata_review`
 
@@ -10,23 +10,23 @@ This report performs a static UI production-polish pass across the frontend sour
 
 ## Summary
 
-- Source files scanned: **64**
-- JSX files scanned: **34**
-- CSS files scanned: **29**
+- Source files scanned: **66**
+- JSX files scanned: **35**
+- CSS files scanned: **30**
 - Product-facing legacy naming findings: **0**
 - Copy review findings: **74**
-- Empty/loading/error-state signals: **546**
-- Route metadata findings: **75**
+- Empty/loading/error-state signals: **558**
+- Route metadata findings: **69**
 - Large frontend files: **5**
 
 ## Responsive Surface Signals
 
 | Signal | Count |
 |---|---:|
-| `@media` | 112 |
-| `flex-wrap` | 45 |
-| `grid-template-columns` | 247 |
-| `max-width` | 175 |
+| `@media` | 114 |
+| `flex-wrap` | 46 |
+| `grid-template-columns` | 252 |
+| `max-width` | 179 |
 | `min-width` | 74 |
 
 ## Product-Facing Legacy Naming Findings
@@ -97,12 +97,6 @@ This report performs a static UI production-polish pass across the frontend sour
 | `#dashboard` | Missing navLabel |
 | `#workflow` | Missing navLabel |
 | `#workflow` | Missing navLabel |
-| `#workflow` | Missing navLabel |
-| `#workflow` | Missing navLabel |
-| `#role-admin` | Missing navLabel |
-| `#dashboard` | Missing navLabel |
-| `#workflow` | Missing navLabel |
-| `#workflow` | Missing navLabel |
 | `#dashboard` | Missing navLabel |
 | `#workflow` | Missing navLabel |
 | `#role-admin` | Missing navLabel |
@@ -119,30 +113,30 @@ These are not automatic failures. They identify strings that should be reviewed 
 
 | File | Line | Pattern | Text |
 |---|---:|---|---|
-| `src/frontend/project-time-web/src/App.jsx` | 2120 | `placeholder` | async function continueWithSsoPlaceholder() { |
-| `src/frontend/project-time-web/src/App.jsx` | 3412 | `placeholder` | placeholder="name@ussignal.com or admin@ussignal.local" |
-| `src/frontend/project-time-web/src/App.jsx` | 3433 | `placeholder` | <button className="primary-action" type="button" onClick={continueWithSsoPlaceholder}> |
-| `src/frontend/project-time-web/src/App.jsx` | 3449 | `placeholder` | placeholder="Enter local administrator password" |
-| `src/frontend/project-time-web/src/App.jsx` | 3463 | `placeholder` | placeholder="Optional reason for reset request" |
-| `src/frontend/project-time-web/src/App.jsx` | 3506 | `placeholder` | placeholder="Enter temporary password" |
-| `src/frontend/project-time-web/src/App.jsx` | 3516 | `placeholder` | placeholder="Enter new password" |
-| `src/frontend/project-time-web/src/App.jsx` | 3526 | `placeholder` | placeholder="Confirm new password" |
-| `src/frontend/project-time-web/src/App.jsx` | 3644 | `placeholder` | placeholder={currentUser.data?.displayName ?? authSession?.username ?? 'Display name'} |
-| `src/frontend/project-time-web/src/App.jsx` | 3653 | `placeholder` | placeholder="Example: Collaboration Team Lead" |
-| `src/frontend/project-time-web/src/App.jsx` | 3661 | `placeholder` | placeholder={`Cisco - CCNA Collaboration |
-| `src/frontend/project-time-web/src/App.jsx` | 3959 | `placeholder` | placeholder="Example: Customer Tenant, Lab Tenant, Partner Tenant" |
-| `src/frontend/project-time-web/src/App.jsx` | 3966 | `placeholder` | placeholder="example.com or example.com,otherdomain.com" |
-| `src/frontend/project-time-web/src/App.jsx` | 3975 | `placeholder` | placeholder="Microsoft Entra tenant ID" |
-| `src/frontend/project-time-web/src/App.jsx` | 3982 | `placeholder` | placeholder="Application client ID" |
-| `src/frontend/project-time-web/src/App.jsx` | 3989 | `placeholder` | placeholder="https://login.microsoftonline.com/{tenantId}" |
-| `src/frontend/project-time-web/src/App.jsx` | 3996 | `placeholder` | placeholder="https://projectpulse-test.onenecklab.com/auth/callback" |
-| `src/frontend/project-time-web/src/App.jsx` | 4003 | `placeholder` | placeholder="User.Read.All Directory.Read.All" |
-| `src/frontend/project-time-web/src/App.jsx` | 4095 | `placeholder` | placeholder="Name, email, title, department" |
-| `src/frontend/project-time-web/src/App.jsx` | 4117 | `placeholder` | placeholder="Engineering, Project Management, etc." |
-| `src/frontend/project-time-web/src/App.jsx` | 4232 | `placeholder` | placeholder="Name, email, department, role" |
-| `src/frontend/project-time-web/src/App.jsx` | 4698 | `placeholder` | placeholder="0.00" |
-| `src/frontend/project-time-web/src/App.jsx` | 4709 | `placeholder` | placeholder="Enter the reportable comment for this time entry." |
-| `src/frontend/project-time-web/src/App.jsx` | 4838 | `placeholder` | placeholder="holiday_date,holiday_name,holiday_type,is_floating_holiday,auto_populate_hours |
+| `src/frontend/project-time-web/src/App.jsx` | 2126 | `placeholder` | async function continueWithSsoPlaceholder() { |
+| `src/frontend/project-time-web/src/App.jsx` | 3418 | `placeholder` | placeholder="name@ussignal.com or admin@ussignal.local" |
+| `src/frontend/project-time-web/src/App.jsx` | 3439 | `placeholder` | <button className="primary-action" type="button" onClick={continueWithSsoPlaceholder}> |
+| `src/frontend/project-time-web/src/App.jsx` | 3455 | `placeholder` | placeholder="Enter local administrator password" |
+| `src/frontend/project-time-web/src/App.jsx` | 3469 | `placeholder` | placeholder="Optional reason for reset request" |
+| `src/frontend/project-time-web/src/App.jsx` | 3512 | `placeholder` | placeholder="Enter temporary password" |
+| `src/frontend/project-time-web/src/App.jsx` | 3522 | `placeholder` | placeholder="Enter new password" |
+| `src/frontend/project-time-web/src/App.jsx` | 3532 | `placeholder` | placeholder="Confirm new password" |
+| `src/frontend/project-time-web/src/App.jsx` | 3650 | `placeholder` | placeholder={currentUser.data?.displayName ?? authSession?.username ?? 'Display name'} |
+| `src/frontend/project-time-web/src/App.jsx` | 3659 | `placeholder` | placeholder="Example: Collaboration Team Lead" |
+| `src/frontend/project-time-web/src/App.jsx` | 3667 | `placeholder` | placeholder={`Cisco - CCNA Collaboration |
+| `src/frontend/project-time-web/src/App.jsx` | 3969 | `placeholder` | placeholder="Example: Customer Tenant, Lab Tenant, Partner Tenant" |
+| `src/frontend/project-time-web/src/App.jsx` | 3976 | `placeholder` | placeholder="example.com or example.com,otherdomain.com" |
+| `src/frontend/project-time-web/src/App.jsx` | 3985 | `placeholder` | placeholder="Microsoft Entra tenant ID" |
+| `src/frontend/project-time-web/src/App.jsx` | 3992 | `placeholder` | placeholder="Application client ID" |
+| `src/frontend/project-time-web/src/App.jsx` | 3999 | `placeholder` | placeholder="https://login.microsoftonline.com/{tenantId}" |
+| `src/frontend/project-time-web/src/App.jsx` | 4006 | `placeholder` | placeholder="https://projectpulse-test.onenecklab.com/auth/callback" |
+| `src/frontend/project-time-web/src/App.jsx` | 4013 | `placeholder` | placeholder="User.Read.All Directory.Read.All" |
+| `src/frontend/project-time-web/src/App.jsx` | 4105 | `placeholder` | placeholder="Name, email, title, department" |
+| `src/frontend/project-time-web/src/App.jsx` | 4127 | `placeholder` | placeholder="Engineering, Project Management, etc." |
+| `src/frontend/project-time-web/src/App.jsx` | 4242 | `placeholder` | placeholder="Name, email, department, role" |
+| `src/frontend/project-time-web/src/App.jsx` | 4708 | `placeholder` | placeholder="0.00" |
+| `src/frontend/project-time-web/src/App.jsx` | 4719 | `placeholder` | placeholder="Enter the reportable comment for this time entry." |
+| `src/frontend/project-time-web/src/App.jsx` | 4848 | `placeholder` | placeholder="holiday_date,holiday_name,holiday_type,is_floating_holiday,auto_populate_hours |
 | `src/frontend/project-time-web/src/ApprovalExportAuditWorkflowCenter.jsx` | 401 | `placeholder` | placeholder="Optional workflow note" |
 | `src/frontend/project-time-web/src/AuditHistoryPanel.jsx` | 205 | `placeholder` | placeholder="Actor, target, event, details..." |
 | `src/frontend/project-time-web/src/BackupDrCenter.jsx` | 412 | `placeholder` | <input value={settingsState.form.sftpHost} onChange={(event) => updateSettingsField('sftpHost', event.target.value)} placeholder="sftp.example.com" /> |
@@ -199,60 +193,60 @@ These findings identify areas to inspect for clear production-ready empty, loadi
 | `src/frontend/project-time-web/src/App.jsx` | 238 | `No ` | const label = `${user.displayName \|\| user.email} — ${user.roleCodes \|\| 'No role'}${user.teamOrDepartment ? ` — ${user.teamOrDepartment}` : ''}`; |
 | `src/frontend/project-time-web/src/App.jsx` | 279 | `Loading` | renderLoading(); |
 | `src/frontend/project-time-web/src/App.jsx` | 319 | `Loading` | if (document.readyState === 'loading') { |
-| `src/frontend/project-time-web/src/App.jsx` | 418 | `No ` | emptyTitle: 'No non-project time available.', |
-| `src/frontend/project-time-web/src/App.jsx` | 424 | `No ` | emptyTitle: 'No regular tasks assigned.', |
-| `src/frontend/project-time-web/src/App.jsx` | 430 | `No ` | emptyTitle: 'No requests available.', |
-| `src/frontend/project-time-web/src/App.jsx` | 1126 | `Loading` | function DataState({ loading, error, children }) { |
-| `src/frontend/project-time-web/src/App.jsx` | 1127 | `Loading` | if (loading) return <span className="muted">Loading...</span>; |
-| `src/frontend/project-time-web/src/App.jsx` | 1513 | `Loading` | const [apiHealth, setApiHealth] = useState({ loading: true, data: null, error: null }); |
-| `src/frontend/project-time-web/src/App.jsx` | 1514 | `Loading` | const [roleAdminUsers, setRoleAdminUsers] = useState({ loading: true, data: null, error: null }); |
-| `src/frontend/project-time-web/src/App.jsx` | 1515 | `Loading` | const [roleAdminRoles, setRoleAdminRoles] = useState({ loading: true, data: null, error: null }); |
-| `src/frontend/project-time-web/src/App.jsx` | 1516 | `No ` | const [roleAdminStatus, setRoleAdminStatus] = useState('No role changes yet'); |
-| `src/frontend/project-time-web/src/App.jsx` | 1517 | `Loading` | const [securityContext, setSecurityContext] = useState({ loading: true, data: null, error: null }); |
-| `src/frontend/project-time-web/src/App.jsx` | 1518 | `Loading` | const [dbHealth, setDbHealth] = useState({ loading: true, data: null, error: null }); |
-| `src/frontend/project-time-web/src/App.jsx` | 1519 | `Loading` | const [schema, setSchema] = useState({ loading: true, data: null, error: null }); |
-| `src/frontend/project-time-web/src/App.jsx` | 1520 | `Loading` | const [currentUser, setCurrentUser] = useState({ loading: true, data: null, error: null }); |
-| `src/frontend/project-time-web/src/App.jsx` | 1521 | `Loading` | const [timesheet, setTimesheet] = useState({ loading: true, data: null, error: null }); |
-| `src/frontend/project-time-web/src/App.jsx` | 1522 | `Loading` | const [locationGroups, setLocationGroups] = useState({ loading: true, data: null, error: null }); |
-| `src/frontend/project-time-web/src/App.jsx` | 1523 | `Loading` | const [locations, setLocations] = useState({ loading: true, data: null, error: null }); |
-| `src/frontend/project-time-web/src/App.jsx` | 1524 | `Loading` | const [utilizationPolicies, setUtilizationPolicies] = useState({ loading: true, data: null, error: null }); |
-| `src/frontend/project-time-web/src/App.jsx` | 1525 | `Loading` | const [utilizationTargets, setUtilizationTargets] = useState({ loading: true, data: null, error: null }); |
-| `src/frontend/project-time-web/src/App.jsx` | 1526 | `Loading` | const [currentQuarterUtilization, setCurrentQuarterUtilization] = useState({ loading: true, data: null, error: null }); |
-| `src/frontend/project-time-web/src/App.jsx` | 1529 | `Loading` | loading: false, |
-| `src/frontend/project-time-web/src/App.jsx` | 1549 | `Loading` | const [azurePreviewLoading, setAzurePreviewLoading] = useState(false); |
-| `src/frontend/project-time-web/src/App.jsx` | 1570 | `Loading` | const [aiSuggestionState, setAiSuggestionState] = useState({ loading: false, suggestion: '', provider: '', warning: '', error: '' }); |
-| `src/frontend/project-time-web/src/App.jsx` | 1580 | `No ` | const [holidayUploadStatus, setHolidayUploadStatus] = useState('No holiday upload yet'); |
-| `src/frontend/project-time-web/src/App.jsx` | 1583 | `Loading` | const [openTasks, setOpenTasks] = useState({ loading: true, data: null, error: null }); |
-| `src/frontend/project-time-web/src/App.jsx` | 1584 | `Loading` | const [timesheetPreferences, setTimesheetPreferences] = useState({ loading: true, data: null, error: null }); |
-| `src/frontend/project-time-web/src/App.jsx` | 1585 | `Loading` | const [companyHolidays, setCompanyHolidays] = useState({ loading: true, data: null, error: null }); |
-| `src/frontend/project-time-web/src/App.jsx` | 1586 | `Loading` | const [remainingModules, setRemainingModules] = useState({ loading: true, data: null, error: null }); |
-| `src/frontend/project-time-web/src/App.jsx` | 1630 | `Loading` | setCurrentUser({ loading: false, data: null, error: null }); |
-| `src/frontend/project-time-web/src/App.jsx` | 1631 | `Loading` | setCurrentQuarterUtilization({ loading: false, data: null, error: null }); |
-| `src/frontend/project-time-web/src/App.jsx` | 1635 | `Loading` | setCurrentUser((current) => ({ ...current, loading: true, error: null })); |
-| `src/frontend/project-time-web/src/App.jsx` | 1636 | `Loading` | setCurrentQuarterUtilization((current) => ({ ...current, loading: true, error: null })); |
-| `src/frontend/project-time-web/src/App.jsx` | 1645 | `Loading` | setCurrentUser({ loading: false, data: userResult, error: null }); |
-| `src/frontend/project-time-web/src/App.jsx` | 1646 | `Loading` | setCurrentQuarterUtilization({ loading: false, data: quarterResult, error: null }); |
-| `src/frontend/project-time-web/src/App.jsx` | 1651 | `Loading` | setCurrentUser((current) => ({ ...current, loading: false, error: message })); |
-| `src/frontend/project-time-web/src/App.jsx` | 1652 | `Loading` | setCurrentQuarterUtilization((current) => ({ ...current, loading: false, error: message })); |
-| `src/frontend/project-time-web/src/App.jsx` | 1670 | `Loading` | setSecurityContext({ loading: false, data: null, error: null }); |
-| `src/frontend/project-time-web/src/App.jsx` | 1674 | `Loading` | setSecurityContext((current) => ({ ...current, loading: true, error: null })); |
-| `src/frontend/project-time-web/src/App.jsx` | 1678 | `Loading` | if (!cancelled) setSecurityContext({ loading: false, data: result, error: null }); |
-| `src/frontend/project-time-web/src/App.jsx` | 1680 | `Unable to load` | if (!cancelled) setSecurityContext({ loading: false, data: null, error: error instanceof Error ? error.message : 'Unable to load security context' }); |
-| `src/frontend/project-time-web/src/App.jsx` | 1680 | `Loading` | if (!cancelled) setSecurityContext({ loading: false, data: null, error: error instanceof Error ? error.message : 'Unable to load security context' }); |
-| `src/frontend/project-time-web/src/App.jsx` | 1696 | `Loading` | setApiHealth({ loading: false, data: null, error: null }); |
-| `src/frontend/project-time-web/src/App.jsx` | 1697 | `Loading` | setDbHealth({ loading: false, data: null, error: null }); |
-| `src/frontend/project-time-web/src/App.jsx` | 1698 | `Loading` | setSchema({ loading: false, data: null, error: null }); |
-| `src/frontend/project-time-web/src/App.jsx` | 1699 | `Loading` | setTimesheet({ loading: false, data: null, error: null }); |
-| `src/frontend/project-time-web/src/App.jsx` | 1700 | `Loading` | setLocationGroups({ loading: false, data: null, error: null }); |
-| `src/frontend/project-time-web/src/App.jsx` | 1701 | `Loading` | setLocations({ loading: false, data: null, error: null }); |
-| `src/frontend/project-time-web/src/App.jsx` | 1702 | `Loading` | setUtilizationPolicies({ loading: false, data: null, error: null }); |
+| `src/frontend/project-time-web/src/App.jsx` | 420 | `No ` | emptyTitle: 'No non-project time available.', |
+| `src/frontend/project-time-web/src/App.jsx` | 426 | `No ` | emptyTitle: 'No regular tasks assigned.', |
+| `src/frontend/project-time-web/src/App.jsx` | 432 | `No ` | emptyTitle: 'No requests available.', |
+| `src/frontend/project-time-web/src/App.jsx` | 1128 | `Loading` | function DataState({ loading, error, children }) { |
+| `src/frontend/project-time-web/src/App.jsx` | 1129 | `Loading` | if (loading) return <span className="muted">Loading...</span>; |
+| `src/frontend/project-time-web/src/App.jsx` | 1519 | `Loading` | const [apiHealth, setApiHealth] = useState({ loading: true, data: null, error: null }); |
+| `src/frontend/project-time-web/src/App.jsx` | 1520 | `Loading` | const [roleAdminUsers, setRoleAdminUsers] = useState({ loading: true, data: null, error: null }); |
+| `src/frontend/project-time-web/src/App.jsx` | 1521 | `Loading` | const [roleAdminRoles, setRoleAdminRoles] = useState({ loading: true, data: null, error: null }); |
+| `src/frontend/project-time-web/src/App.jsx` | 1522 | `No ` | const [roleAdminStatus, setRoleAdminStatus] = useState('No role changes yet'); |
+| `src/frontend/project-time-web/src/App.jsx` | 1523 | `Loading` | const [securityContext, setSecurityContext] = useState({ loading: true, data: null, error: null }); |
+| `src/frontend/project-time-web/src/App.jsx` | 1524 | `Loading` | const [dbHealth, setDbHealth] = useState({ loading: true, data: null, error: null }); |
+| `src/frontend/project-time-web/src/App.jsx` | 1525 | `Loading` | const [schema, setSchema] = useState({ loading: true, data: null, error: null }); |
+| `src/frontend/project-time-web/src/App.jsx` | 1526 | `Loading` | const [currentUser, setCurrentUser] = useState({ loading: true, data: null, error: null }); |
+| `src/frontend/project-time-web/src/App.jsx` | 1527 | `Loading` | const [timesheet, setTimesheet] = useState({ loading: true, data: null, error: null }); |
+| `src/frontend/project-time-web/src/App.jsx` | 1528 | `Loading` | const [locationGroups, setLocationGroups] = useState({ loading: true, data: null, error: null }); |
+| `src/frontend/project-time-web/src/App.jsx` | 1529 | `Loading` | const [locations, setLocations] = useState({ loading: true, data: null, error: null }); |
+| `src/frontend/project-time-web/src/App.jsx` | 1530 | `Loading` | const [utilizationPolicies, setUtilizationPolicies] = useState({ loading: true, data: null, error: null }); |
+| `src/frontend/project-time-web/src/App.jsx` | 1531 | `Loading` | const [utilizationTargets, setUtilizationTargets] = useState({ loading: true, data: null, error: null }); |
+| `src/frontend/project-time-web/src/App.jsx` | 1532 | `Loading` | const [currentQuarterUtilization, setCurrentQuarterUtilization] = useState({ loading: true, data: null, error: null }); |
+| `src/frontend/project-time-web/src/App.jsx` | 1535 | `Loading` | loading: false, |
+| `src/frontend/project-time-web/src/App.jsx` | 1555 | `Loading` | const [azurePreviewLoading, setAzurePreviewLoading] = useState(false); |
+| `src/frontend/project-time-web/src/App.jsx` | 1576 | `Loading` | const [aiSuggestionState, setAiSuggestionState] = useState({ loading: false, suggestion: '', provider: '', warning: '', error: '' }); |
+| `src/frontend/project-time-web/src/App.jsx` | 1586 | `No ` | const [holidayUploadStatus, setHolidayUploadStatus] = useState('No holiday upload yet'); |
+| `src/frontend/project-time-web/src/App.jsx` | 1589 | `Loading` | const [openTasks, setOpenTasks] = useState({ loading: true, data: null, error: null }); |
+| `src/frontend/project-time-web/src/App.jsx` | 1590 | `Loading` | const [timesheetPreferences, setTimesheetPreferences] = useState({ loading: true, data: null, error: null }); |
+| `src/frontend/project-time-web/src/App.jsx` | 1591 | `Loading` | const [companyHolidays, setCompanyHolidays] = useState({ loading: true, data: null, error: null }); |
+| `src/frontend/project-time-web/src/App.jsx` | 1592 | `Loading` | const [remainingModules, setRemainingModules] = useState({ loading: true, data: null, error: null }); |
+| `src/frontend/project-time-web/src/App.jsx` | 1636 | `Loading` | setCurrentUser({ loading: false, data: null, error: null }); |
+| `src/frontend/project-time-web/src/App.jsx` | 1637 | `Loading` | setCurrentQuarterUtilization({ loading: false, data: null, error: null }); |
+| `src/frontend/project-time-web/src/App.jsx` | 1641 | `Loading` | setCurrentUser((current) => ({ ...current, loading: true, error: null })); |
+| `src/frontend/project-time-web/src/App.jsx` | 1642 | `Loading` | setCurrentQuarterUtilization((current) => ({ ...current, loading: true, error: null })); |
+| `src/frontend/project-time-web/src/App.jsx` | 1651 | `Loading` | setCurrentUser({ loading: false, data: userResult, error: null }); |
+| `src/frontend/project-time-web/src/App.jsx` | 1652 | `Loading` | setCurrentQuarterUtilization({ loading: false, data: quarterResult, error: null }); |
+| `src/frontend/project-time-web/src/App.jsx` | 1657 | `Loading` | setCurrentUser((current) => ({ ...current, loading: false, error: message })); |
+| `src/frontend/project-time-web/src/App.jsx` | 1658 | `Loading` | setCurrentQuarterUtilization((current) => ({ ...current, loading: false, error: message })); |
+| `src/frontend/project-time-web/src/App.jsx` | 1676 | `Loading` | setSecurityContext({ loading: false, data: null, error: null }); |
+| `src/frontend/project-time-web/src/App.jsx` | 1680 | `Loading` | setSecurityContext((current) => ({ ...current, loading: true, error: null })); |
+| `src/frontend/project-time-web/src/App.jsx` | 1684 | `Loading` | if (!cancelled) setSecurityContext({ loading: false, data: result, error: null }); |
+| `src/frontend/project-time-web/src/App.jsx` | 1686 | `Unable to load` | if (!cancelled) setSecurityContext({ loading: false, data: null, error: error instanceof Error ? error.message : 'Unable to load security context' }); |
+| `src/frontend/project-time-web/src/App.jsx` | 1686 | `Loading` | if (!cancelled) setSecurityContext({ loading: false, data: null, error: error instanceof Error ? error.message : 'Unable to load security context' }); |
+| `src/frontend/project-time-web/src/App.jsx` | 1702 | `Loading` | setApiHealth({ loading: false, data: null, error: null }); |
+| `src/frontend/project-time-web/src/App.jsx` | 1703 | `Loading` | setDbHealth({ loading: false, data: null, error: null }); |
+| `src/frontend/project-time-web/src/App.jsx` | 1704 | `Loading` | setSchema({ loading: false, data: null, error: null }); |
+| `src/frontend/project-time-web/src/App.jsx` | 1705 | `Loading` | setTimesheet({ loading: false, data: null, error: null }); |
+| `src/frontend/project-time-web/src/App.jsx` | 1706 | `Loading` | setLocationGroups({ loading: false, data: null, error: null }); |
+| `src/frontend/project-time-web/src/App.jsx` | 1707 | `Loading` | setLocations({ loading: false, data: null, error: null }); |
+| `src/frontend/project-time-web/src/App.jsx` | 1708 | `Loading` | setUtilizationPolicies({ loading: false, data: null, error: null }); |
 
 ## Large Frontend Files
 
 | File | Lines | Responsive Signals |
 |---|---:|---|
 | `src/frontend/project-time-web/src/timesheet.css` | 5469 | @media, flex-wrap, grid-template-columns |
-| `src/frontend/project-time-web/src/App.jsx` | 5184 | @media |
+| `src/frontend/project-time-web/src/App.jsx` | 5194 | @media |
 | `src/frontend/project-time-web/src/UserAdministrationPanel.jsx` | 971 | Review |
 | `src/frontend/project-time-web/src/ProjectIntakeCenter.jsx` | 802 | Review |
 | `src/frontend/project-time-web/src/BackupDrCenter.jsx` | 715 | Review |

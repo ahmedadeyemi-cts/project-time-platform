@@ -1,5 +1,5 @@
 {
-  "generatedAtUtc": "2026-06-30T16:18:38.622724+00:00",
+  "generatedAtUtc": "2026-06-30T17:18:09.018699+00:00",
   "routeCount": 68,
   "groupCount": 17,
   "duplicateRoutes": [
@@ -29,17 +29,18 @@
   "duplicateHrefs": [
     "#backup-retention",
     "#dashboard",
+    "#production-readiness",
     "#restore-validation"
   ],
-  "missingHrefCount": 40,
+  "missingHrefCount": 34,
   "missingTitleCount": 3,
-  "missingNavLabelCount": 43,
+  "missingNavLabelCount": 37,
   "missingGroupCount": 26,
-  "hrefMismatchCount": 0,
+  "hrefMismatchCount": 5,
   "statusCounts": {
     "Active": 6,
-    "Missing": 60,
-    "Operational": 2
+    "Missing": 54,
+    "Operational": 8
   },
   "productionOperationsRouteConfigs": [
     "dashboard",
@@ -47,10 +48,11 @@
   ],
   "issues": [
     "Duplicate route keys: audit-history, azure-admin, backup-dr, backup-retention, cost-alerts, customer-directory, dashboard, holiday-admin, manager-approval, project-intake, project-workload, project-workspace, replication-sync, restore-validation, role-admin, service-control, time-compliance, timesheet, user-admin, utilization, work-task-builder, workflow",
-    "Duplicate hrefs: #backup-retention, #dashboard, #restore-validation",
-    "Missing href: 40",
+    "Duplicate hrefs: #backup-retention, #dashboard, #production-readiness, #restore-validation",
+    "Href mismatches: 5",
+    "Missing href: 34",
     "Missing title: 3",
-    "Missing navLabel: 43",
+    "Missing navLabel: 37",
     "Missing group: 26"
   ],
   "routes": [
@@ -67,7 +69,7 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 668
+      "sourceLine": 670
     },
     {
       "route": "project-workspace",
@@ -85,7 +87,7 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 676
+      "sourceLine": 678
     },
     {
       "route": "project-intake",
@@ -103,7 +105,7 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 684
+      "sourceLine": 686
     },
     {
       "route": "customer-directory",
@@ -119,7 +121,7 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 692
+      "sourceLine": 694
     },
     {
       "route": "cost-alerts",
@@ -135,7 +137,7 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 700
+      "sourceLine": 702
     },
     {
       "route": "time-compliance",
@@ -151,7 +153,7 @@
         "VIEW_TIME_COMPLIANCE",
         "VIEW_AUDIT_HISTORY"
       ],
-      "sourceLine": 708
+      "sourceLine": 710
     },
     {
       "route": "timesheet",
@@ -164,7 +166,7 @@
       "permissions": [
         "VIEW_TIME_ENTRY"
       ],
-      "sourceLine": 716
+      "sourceLine": 718
     },
     {
       "route": "manager-approval",
@@ -178,7 +180,7 @@
         "VIEW_APPROVAL_INBOX",
         "APPROVE_TIME"
       ],
-      "sourceLine": 724
+      "sourceLine": 726
     },
     {
       "route": "utilization",
@@ -193,7 +195,7 @@
         "VIEW_TEAM_UTILIZATION",
         "VIEW_INDIVIDUAL_UTILIZATION"
       ],
-      "sourceLine": 732
+      "sourceLine": 734
     },
     {
       "route": "holiday-admin",
@@ -207,7 +209,7 @@
         "VIEW_HOLIDAYS",
         "MANAGE_HOLIDAYS"
       ],
-      "sourceLine": 740
+      "sourceLine": 742
     },
     {
       "route": "project-allocation-info",
@@ -222,7 +224,7 @@
         "MANAGE_PROJECT_ALLOCATION_INFO",
         "MANAGE_ALL"
       ],
-      "sourceLine": 748
+      "sourceLine": 750
     },
     {
       "route": "psa-modules",
@@ -238,7 +240,7 @@
         "VIEW_EXPENSES",
         "VIEW_EXECUTIVE_REPORTING"
       ],
-      "sourceLine": 756
+      "sourceLine": 758
     },
     {
       "route": "workflow",
@@ -260,7 +262,7 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 764
+      "sourceLine": 766
     },
     {
       "route": "audit-history",
@@ -275,7 +277,7 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 772
+      "sourceLine": 774
     },
     {
       "route": "user-admin",
@@ -291,7 +293,7 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 780
+      "sourceLine": 782
     },
     {
       "route": "azure-admin",
@@ -307,7 +309,7 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 788
+      "sourceLine": 790
     },
     {
       "route": "work-task-builder",
@@ -324,7 +326,7 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 796
+      "sourceLine": 798
     },
     {
       "route": "role-admin",
@@ -338,7 +340,7 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 804
+      "sourceLine": 806
     },
     {
       "route": "service-control",
@@ -352,7 +354,7 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 812
+      "sourceLine": 814
     },
     {
       "route": "backup-dr",
@@ -366,7 +368,7 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 820
+      "sourceLine": 822
     },
     {
       "route": "restore-validation",
@@ -380,7 +382,7 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 828
+      "sourceLine": 830
     },
     {
       "route": "backup-retention",
@@ -394,7 +396,7 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 836
+      "sourceLine": 838
     },
     {
       "route": "replication-sync",
@@ -408,7 +410,7 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 844
+      "sourceLine": 846
     },
     {
       "route": "dashboard",
@@ -419,7 +421,7 @@
       "status": "",
       "description": "",
       "permissions": [],
-      "sourceLine": 900
+      "sourceLine": 902
     },
     {
       "route": "dashboard",
@@ -430,7 +432,7 @@
       "status": "",
       "description": "",
       "permissions": [],
-      "sourceLine": 1026
+      "sourceLine": 1028
     },
     {
       "route": "timesheet",
@@ -441,7 +443,7 @@
       "status": "",
       "description": "Allows users to enter, save, submit, and review weekly or daily time entries.",
       "permissions": [],
-      "sourceLine": 1137
+      "sourceLine": 1139
     },
     {
       "route": "manager-approval",
@@ -456,7 +458,7 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 1144
+      "sourceLine": 1146
     },
     {
       "route": "workflow",
@@ -477,7 +479,7 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 1151
+      "sourceLine": 1153
     },
     {
       "route": "utilization",
@@ -492,7 +494,7 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 1158
+      "sourceLine": 1160
     },
     {
       "route": "project-workload",
@@ -507,7 +509,7 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 1165
+      "sourceLine": 1167
     },
     {
       "route": "project-workspace",
@@ -522,7 +524,7 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 1172
+      "sourceLine": 1174
     },
     {
       "route": "project-intake",
@@ -538,7 +540,7 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 1179
+      "sourceLine": 1181
     },
     {
       "route": "customer-directory",
@@ -554,7 +556,7 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 1186
+      "sourceLine": 1188
     },
     {
       "route": "cost-alerts",
@@ -570,7 +572,7 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 1193
+      "sourceLine": 1195
     },
     {
       "route": "time-compliance",
@@ -586,7 +588,7 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 1200
+      "sourceLine": 1202
     },
     {
       "route": "holiday-admin",
@@ -602,7 +604,7 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 1207
+      "sourceLine": 1209
     },
     {
       "route": "audit-history",
@@ -617,7 +619,7 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 1214
+      "sourceLine": 1216
     },
     {
       "route": "user-admin",
@@ -632,7 +634,7 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 1221
+      "sourceLine": 1223
     },
     {
       "route": "work-task-builder",
@@ -649,7 +651,7 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 1228
+      "sourceLine": 1230
     },
     {
       "route": "role-admin",
@@ -665,7 +667,7 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 1235
+      "sourceLine": 1237
     },
     {
       "route": "azure-admin",
@@ -680,7 +682,7 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 1242
+      "sourceLine": 1244
     },
     {
       "route": "service-control",
@@ -694,7 +696,7 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 1249
+      "sourceLine": 1251
     },
     {
       "route": "backup-dr",
@@ -708,7 +710,7 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 1256
+      "sourceLine": 1258
     },
     {
       "route": "restore-validation",
@@ -722,7 +724,7 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 1263
+      "sourceLine": 1265
     },
     {
       "route": "backup-retention",
@@ -736,7 +738,7 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 1270
+      "sourceLine": 1272
     },
     {
       "route": "replication-sync",
@@ -750,7 +752,7 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 1277
+      "sourceLine": 1279
     },
     {
       "route": "workflow",
@@ -768,7 +770,7 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 1284
+      "sourceLine": 1286
     },
     {
       "route": "workflow",
@@ -785,7 +787,7 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 1291
+      "sourceLine": 1293
     },
     {
       "route": "workflow",
@@ -803,7 +805,7 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 1298
+      "sourceLine": 1300
     },
     {
       "route": "workflow",
@@ -819,7 +821,7 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 1305
+      "sourceLine": 1307
     },
     {
       "route": "workflow",
@@ -836,7 +838,7 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 1312
+      "sourceLine": 1314
     },
     {
       "route": "dashboard",
@@ -851,15 +853,15 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 1319
+      "sourceLine": 1321
     },
     {
       "route": "workflow",
-      "href": "",
+      "href": "#production-readiness",
       "title": "Export Package Readiness Summary",
-      "navLabel": "",
+      "navLabel": "Production Readiness",
       "group": "Approval / Export / Audit",
-      "status": "",
+      "status": "Operational",
       "description": "Shows export package readiness, generated package metadata, download counts, and last-download evidence.",
       "permissions": [
         "VIEW_EXPORT_PACKAGE_READINESS_SUMMARY",
@@ -868,15 +870,15 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 1326
+      "sourceLine": 1328
     },
     {
       "route": "workflow",
-      "href": "",
+      "href": "#production-readiness",
       "title": "Export Package Evidence Detail",
-      "navLabel": "",
+      "navLabel": "Production Readiness",
       "group": "Approval / Export / Audit",
-      "status": "",
+      "status": "Operational",
       "description": "Connects export packages to item-level and audit evidence detail.",
       "permissions": [
         "VIEW_EXPORT_PACKAGE_EVIDENCE_DETAIL",
@@ -884,15 +886,15 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 1333
+      "sourceLine": 1335
     },
     {
       "route": "workflow",
-      "href": "",
+      "href": "#production-readiness",
       "title": "Accounting Reconciliation Workbench",
-      "navLabel": "",
+      "navLabel": "Production Readiness",
       "group": "Approval / Export / Audit",
-      "status": "",
+      "status": "Operational",
       "description": "Groups accounting reconciliation queues, exception status, missing project/task links, and attention items.",
       "permissions": [
         "VIEW_ACCOUNTING_RECONCILIATION_WORKBENCH",
@@ -900,15 +902,15 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 1340
+      "sourceLine": 1342
     },
     {
       "route": "workflow",
-      "href": "",
+      "href": "#production-readiness",
       "title": "Locked Period Audit Evidence",
-      "navLabel": "",
+      "navLabel": "Production Readiness",
       "group": "Approval / Export / Audit",
-      "status": "",
+      "status": "Operational",
       "description": "Shows locked and reconciled time evidence for period-close audit review.",
       "permissions": [
         "VIEW_LOCKED_PERIOD_AUDIT_EVIDENCE",
@@ -916,15 +918,15 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 1347
+      "sourceLine": 1349
     },
     {
       "route": "role-admin",
-      "href": "",
+      "href": "#production-readiness",
       "title": "Role Access Matrix",
-      "navLabel": "",
+      "navLabel": "Production Readiness",
       "group": "Security",
-      "status": "",
+      "status": "Operational",
       "description": "Shows role-to-permission coverage for governance, route visibility, and role enforcement validation.",
       "permissions": [
         "VIEW_ROLE_ACCESS_MATRIX",
@@ -932,22 +934,22 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 1354
+      "sourceLine": 1356
     },
     {
-      "route": "dashboard",
-      "href": "",
+      "route": "production-readiness",
+      "href": "#production-readiness",
       "title": "Production Readiness Command Center",
-      "navLabel": "",
-      "group": "System",
-      "status": "",
-      "description": "Summarizes user, project, time entry, export, audit, route governance, and dashboard readiness for production operations.",
+      "navLabel": "Production Readiness",
+      "group": "System Operations",
+      "status": "Operational",
+      "description": "Shows a web-visible readiness center with protected backend checks, workflow links, route governance, and release validation guidance.",
       "permissions": [
         "VIEW_PRODUCTION_READINESS_COMMAND_CENTER",
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 1361
+      "sourceLine": 1363
     },
     {
       "route": "workflow",
@@ -963,7 +965,7 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 1368
+      "sourceLine": 1373
     },
     {
       "route": "workflow",
@@ -979,7 +981,7 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 1375
+      "sourceLine": 1380
     },
     {
       "route": "dashboard",
@@ -994,7 +996,7 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 1382
+      "sourceLine": 1387
     },
     {
       "route": "workflow",
@@ -1010,7 +1012,7 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 1389
+      "sourceLine": 1394
     },
     {
       "route": "role-admin",
@@ -1025,7 +1027,7 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 1396
+      "sourceLine": 1401
     },
     {
       "route": "dashboard",
@@ -1040,7 +1042,7 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 1403
+      "sourceLine": 1408
     },
     {
       "route": "dashboard",
@@ -1055,7 +1057,7 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 1410
+      "sourceLine": 1415
     },
     {
       "route": "restore-validation",
@@ -1069,7 +1071,7 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 1491
+      "sourceLine": 1497
     },
     {
       "route": "backup-retention",
@@ -1083,7 +1085,7 @@
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"
       ],
-      "sourceLine": 1503
+      "sourceLine": 1509
     },
     {
       "route": "dashboard",
@@ -1094,7 +1096,7 @@
       "status": "",
       "description": "",
       "permissions": [],
-      "sourceLine": 2788
+      "sourceLine": 2794
     }
   ]
 }
