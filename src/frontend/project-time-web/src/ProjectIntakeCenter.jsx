@@ -356,7 +356,7 @@ export default function ProjectIntakeCenter() {
     setActionStatus(`Assigning ${draft.engineers.length} engineer(s) to ${request.requestNumber}...`);
 
     try {
-      const result = await postJson(`/api/project-intake/resource-requests/${request.id}/assignments`, {
+      const result = await postJson(`/api/project-intake/resource-requests/${request.id}/assign`, {
         distributionMode: draft.distributionMode,
         notes: draft.notes,
         engineers: draft.engineers.map((item) => ({
