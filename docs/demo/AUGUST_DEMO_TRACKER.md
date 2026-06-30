@@ -805,3 +805,7 @@
 - Flags `.local`, demo/test, duplicate, invalid, missing manager, non-routable manager/CC, and external-domain risks.
 - Blocks real provider batch sends until an approved recipient safety review exists with zero blocked recipients.
 - Preserves outbox-only operation, View-As write protection, Dashboard / Navigation / Registry validation, and provider test harness.
+
+## 021 Release Hardening / Demo Readiness
+
+The 021 phase begins after the 020 module build sprint and focuses on release hardening, route/demo readiness, operational smoke testing, role-based demo scripts, and final release-candidate validation.
