@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import './production-readiness-center.css';
 import ProductionReadinessBrowserValidationPanel from './ProductionReadinessBrowserValidationPanel.jsx';
 import ProductionReadinessPurposeMapPanel from './ProductionReadinessPurposeMapPanel.jsx';
+import ProductionReadinessReleaseCloseoutPanel from './ProductionReadinessReleaseCloseoutPanel.jsx';
 
 function readProjectPulseSessionToken() {
   try {
@@ -231,6 +232,10 @@ export default function ProductionReadinessCenterPanel() {
       <ProductionReadinessBrowserValidationPanel />
 
       <ProductionReadinessPurposeMapPanel />
+
+      <ProductionReadinessReleaseCloseoutPanel />
+
+
 
 
 

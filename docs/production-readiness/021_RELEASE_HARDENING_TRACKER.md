@@ -228,3 +228,26 @@ Artifacts:
 - `src/frontend/project-time-web/src/page-context-guide.css`
 - `src/frontend/project-time-web/src/App.jsx`
 - `docs/help/021L-in-app-page-context-guide.md`
+
+
+## 021M Release Candidate Closeout Panel
+
+021M adds a visible release-candidate closeout panel to the Production Readiness Center.
+
+Webpage:
+
+- `https://projectpulse-test.onenecklab.com/#production-readiness`
+
+What to check:
+
+- Closeout panel appears.
+- Checklist updates the Pending/Ready status.
+- Final decision notes save after refresh.
+- Reset closeout clears state.
+
+Artifacts:
+
+- `src/frontend/project-time-web/src/ProductionReadinessReleaseCloseoutPanel.jsx`
+- `src/frontend/project-time-web/src/ProductionReadinessCenterPanel.jsx`
+- `src/frontend/project-time-web/src/production-readiness-center.css`
+- `docs/help/021M-release-candidate-closeout-panel.md`
