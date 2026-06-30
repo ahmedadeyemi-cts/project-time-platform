@@ -22746,6 +22746,454 @@ static async Task<(bool Allowed, string Reason, Guid? ReviewId)> ProjectPulseRec
 }
 // 020J Shared Email Recipient Safety Review - END
 
+
+// 022A Production Notification Center Foundation - START
+app.MapGet("/api/production/notifications/summary", async (HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var effectiveUserId = await ProjectPulseResolveEffectiveProductionNotificationUserIdAsync(httpContext, connection);
+    if (effectiveUserId is null)
+    {
+        return Results.Json(new
+        {
+            status = "session_required",
+            message = "A ProjectPulse session is required to view production notifications."
+        }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var userContext = await ProjectPulseGetProductionNotificationUserContextAsync(connection, effectiveUserId.Value);
+    var notifications = await ProjectPulseLoadVisibleProductionNotificationsAsync(connection, effectiveUserId.Value, userContext.RoleCodes, 25);
+
+    var activeCount = notifications.Count;
+    var unacknowledgedCount = notifications.Count(item => item.TryGetValue("acknowledged", out var value) && value is bool acknowledged && acknowledged == false);
+    var criticalCount = notifications.Count(item => item.TryGetValue("severity", out var value) && string.Equals(value?.ToString(), "critical", StringComparison.OrdinalIgnoreCase));
+    var warningCount = notifications.Count(item => item.TryGetValue("severity", out var value) && string.Equals(value?.ToString(), "warning", StringComparison.OrdinalIgnoreCase));
+
+    return Results.Ok(new
+    {
+        module = "022A Production Notification Center Foundation",
+        summary = new
+        {
+            effectiveUserId,
+            userEmail = userContext.Email,
+            userDisplayName = userContext.DisplayName,
+            roleCodes = userContext.RoleCodes,
+            visibleNotificationCount = activeCount,
+            unacknowledgedCount,
+            criticalCount,
+            warningCount
+        },
+        latestNotifications = notifications.Take(5).ToArray()
+    });
+});
+
+app.MapGet("/api/production/notifications", async (HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var effectiveUserId = await ProjectPulseResolveEffectiveProductionNotificationUserIdAsync(httpContext, connection);
+    if (effectiveUserId is null)
+    {
+        return Results.Json(new
+        {
+            status = "session_required",
+            message = "A ProjectPulse session is required to view production notifications."
+        }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var limit = 50;
+    if (int.TryParse(httpContext.Request.Query["limit"].FirstOrDefault(), out var parsedLimit))
+    {
+        limit = Math.Clamp(parsedLimit, 1, 200);
+    }
+
+    var userContext = await ProjectPulseGetProductionNotificationUserContextAsync(connection, effectiveUserId.Value);
+    var notifications = await ProjectPulseLoadVisibleProductionNotificationsAsync(connection, effectiveUserId.Value, userContext.RoleCodes, limit);
+
+    return Results.Ok(new
+    {
+        module = "022A Production Notification Center",
+        count = notifications.Count,
+        effectiveUserId,
+        roleCodes = userContext.RoleCodes,
+        notifications
+    });
+});
+
+app.MapPost("/api/production/notifications/system", async (HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Creating production notifications is restricted to administrators and production operators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    if (httpContext.Request.Headers.ContainsKey("X-ProjectPulse-View-As-User"))
+    {
+        return Results.Json(new
+        {
+            status = "view_as_read_only",
+            message = "Write actions are disabled while using Administrator View-As preview. Exit preview to create production notifications."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    using var document = await JsonDocument.ParseAsync(httpContext.Request.Body);
+    var root = document.RootElement;
+
+    var moduleKey = root.TryGetProperty("moduleKey", out var moduleElement) ? moduleElement.GetString() ?? "022A" : "022A";
+    var severity = root.TryGetProperty("severity", out var severityElement) ? severityElement.GetString() ?? "info" : "info";
+    var title = root.TryGetProperty("title", out var titleElement) ? titleElement.GetString() ?? "" : "";
+    var body = root.TryGetProperty("body", out var bodyElement) ? bodyElement.GetString() ?? "" : "";
+    var sourceRoute = root.TryGetProperty("sourceRoute", out var routeElement) ? routeElement.GetString() ?? "" : "";
+    var actionUrl = root.TryGetProperty("actionUrl", out var actionElement) ? actionElement.GetString() ?? "" : "";
+
+    var targetRoleCodes = new List<string>();
+    if (root.TryGetProperty("targetRoleCodes", out var rolesElement) && rolesElement.ValueKind == JsonValueKind.Array)
+    {
+        foreach (var role in rolesElement.EnumerateArray())
+        {
+            var roleCode = role.GetString() ?? "";
+            if (!string.IsNullOrWhiteSpace(roleCode))
+            {
+                targetRoleCodes.Add(roleCode.Trim().ToUpperInvariant());
+            }
+        }
+    }
+
+    if (string.IsNullOrWhiteSpace(title) || string.IsNullOrWhiteSpace(body))
+    {
+        return Results.Json(new
+        {
+            status = "validation_failed",
+            message = "title and body are required."
+        }, statusCode: StatusCodes.Status400BadRequest);
+    }
+
+    var actorUserId = GetProjectPulseSessionUserId(httpContext);
+    var actorEmail = "";
+
+    if (actorUserId is not null)
+    {
+        await using var userCommand = new NpgsqlCommand("""
+            SELECT email
+            FROM app_users
+            WHERE user_id = @user_id
+            LIMIT 1;
+            """, connection);
+
+        userCommand.Parameters.AddWithValue("user_id", actorUserId.Value);
+        actorEmail = (await userCommand.ExecuteScalarAsync())?.ToString() ?? "";
+    }
+
+    var notificationKey = root.TryGetProperty("notificationKey", out var keyElement)
+        ? keyElement.GetString() ?? ""
+        : "";
+
+    if (string.IsNullOrWhiteSpace(notificationKey))
+    {
+        notificationKey = $"PROD-NOTICE-{DateTimeOffset.UtcNow:yyyyMMddHHmmssfff}";
+    }
+
+    Guid notificationId;
+    await using (var command = new NpgsqlCommand("""
+        INSERT INTO production_notification_events (
+            notification_key,
+            module_key,
+            severity,
+            title,
+            body,
+            target_role_codes,
+            source_route,
+            source_entity_type,
+            action_url,
+            created_by_user_id,
+            created_by_email
+        )
+        VALUES (
+            @notification_key,
+            @module_key,
+            @severity,
+            @title,
+            @body,
+            @target_role_codes,
+            @source_route,
+            'manual_system_notice',
+            @action_url,
+            @created_by_user_id,
+            @created_by_email
+        )
+        RETURNING production_notification_event_id;
+        """, connection))
+    {
+        command.Parameters.AddWithValue("notification_key", notificationKey);
+        command.Parameters.AddWithValue("module_key", moduleKey.Trim());
+        command.Parameters.AddWithValue("severity", severity.Trim().ToLowerInvariant());
+        command.Parameters.AddWithValue("title", title.Trim());
+        command.Parameters.AddWithValue("body", body.Trim());
+        command.Parameters.AddWithValue("target_role_codes", targetRoleCodes.Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
+        command.Parameters.AddWithValue("source_route", string.IsNullOrWhiteSpace(sourceRoute) ? (object)DBNull.Value : sourceRoute.Trim());
+        command.Parameters.AddWithValue("action_url", string.IsNullOrWhiteSpace(actionUrl) ? (object)DBNull.Value : actionUrl.Trim());
+        command.Parameters.AddWithValue("created_by_user_id", actorUserId is null ? (object)DBNull.Value : actorUserId.Value);
+        command.Parameters.AddWithValue("created_by_email", string.IsNullOrWhiteSpace(actorEmail) ? (object)DBNull.Value : actorEmail);
+
+        notificationId = (Guid)(await command.ExecuteScalarAsync() ?? Guid.Empty);
+    }
+
+    return Results.Ok(new
+    {
+        module = "022A Production Notification Center Foundation",
+        status = "created",
+        notificationId,
+        notificationKey,
+        message = "Production notification was created. No email was sent."
+    });
+});
+
+app.MapPost("/api/production/notifications/acknowledge", async (HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    if (httpContext.Request.Headers.ContainsKey("X-ProjectPulse-View-As-User"))
+    {
+        return Results.Json(new
+        {
+            status = "view_as_read_only",
+            message = "Write actions are disabled while using Administrator View-As preview. Exit preview to acknowledge notifications."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var effectiveUserId = await ProjectPulseResolveEffectiveProductionNotificationUserIdAsync(httpContext, connection);
+    if (effectiveUserId is null)
+    {
+        return Results.Json(new
+        {
+            status = "session_required",
+            message = "A ProjectPulse session is required to acknowledge production notifications."
+        }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    using var document = await JsonDocument.ParseAsync(httpContext.Request.Body);
+    var root = document.RootElement;
+
+    var notificationIdText = root.TryGetProperty("notificationId", out var idElement) ? idElement.GetString() ?? "" : "";
+    if (!Guid.TryParse(notificationIdText, out var notificationId))
+    {
+        return Results.Json(new
+        {
+            status = "validation_failed",
+            message = "notificationId is required."
+        }, statusCode: StatusCodes.Status400BadRequest);
+    }
+
+    var note = root.TryGetProperty("acknowledgmentNote", out var noteElement) ? noteElement.GetString() ?? "" : "";
+    var userContext = await ProjectPulseGetProductionNotificationUserContextAsync(connection, effectiveUserId.Value);
+    var visibleNotifications = await ProjectPulseLoadVisibleProductionNotificationsAsync(connection, effectiveUserId.Value, userContext.RoleCodes, 200);
+
+    var canSeeNotification = visibleNotifications.Any(item =>
+        item.TryGetValue("notificationId", out var value)
+        && value is Guid id
+        && id == notificationId
+    );
+
+    if (!canSeeNotification)
+    {
+        return Results.Json(new
+        {
+            status = "not_found_or_not_visible",
+            message = "The requested notification was not found or is not visible to the current user."
+        }, statusCode: StatusCodes.Status404NotFound);
+    }
+
+    await using var command = new NpgsqlCommand("""
+        INSERT INTO production_notification_acknowledgments (
+            notification_id,
+            acknowledged_by_user_id,
+            acknowledged_by_email,
+            acknowledgment_note
+        )
+        VALUES (
+            @notification_id,
+            @acknowledged_by_user_id,
+            @acknowledged_by_email,
+            @acknowledgment_note
+        )
+        ON CONFLICT (notification_id, acknowledged_by_user_id)
+        DO UPDATE SET
+            acknowledged_at = now(),
+            acknowledgment_note = EXCLUDED.acknowledgment_note;
+        """, connection);
+
+    command.Parameters.AddWithValue("notification_id", notificationId);
+    command.Parameters.AddWithValue("acknowledged_by_user_id", effectiveUserId.Value);
+    command.Parameters.AddWithValue("acknowledged_by_email", string.IsNullOrWhiteSpace(userContext.Email) ? (object)DBNull.Value : userContext.Email);
+    command.Parameters.AddWithValue("acknowledgment_note", string.IsNullOrWhiteSpace(note) ? (object)DBNull.Value : note);
+
+    await command.ExecuteNonQueryAsync();
+
+    return Results.Ok(new
+    {
+        module = "022A Production Notification Center Foundation",
+        status = "acknowledged",
+        notificationId,
+        acknowledgedByEmail = userContext.Email,
+        message = "Production notification was acknowledged."
+    });
+});
+
+Task<Guid?> ProjectPulseResolveEffectiveProductionNotificationUserIdAsync(HttpContext httpContext, NpgsqlConnection connection)
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    return Task.FromResult(sessionUserId);
+}
+
+static async Task<(string Email, string DisplayName, string[] RoleCodes)> ProjectPulseGetProductionNotificationUserContextAsync(
+    NpgsqlConnection connection,
+    Guid userId)
+{
+    var email = "";
+    var displayName = "";
+
+    await using (var userCommand = new NpgsqlCommand("""
+        SELECT
+            COALESCE(email, ''),
+            COALESCE(display_name, email, '')
+        FROM app_users
+        WHERE user_id = @user_id
+        LIMIT 1;
+        """, connection))
+    {
+        userCommand.Parameters.AddWithValue("user_id", userId);
+
+        await using var reader = await userCommand.ExecuteReaderAsync();
+        if (await reader.ReadAsync())
+        {
+            email = reader.GetString(0);
+            displayName = reader.GetString(1);
+        }
+    }
+
+    var roleCodes = new List<string>();
+    await using (var roleCommand = new NpgsqlCommand("""
+        SELECT DISTINCT r.role_code
+        FROM app_user_role_assignments ura
+        JOIN app_roles r
+          ON r.app_role_id = ura.app_role_id
+         AND r.is_active = true
+        WHERE ura.user_id = @user_id
+          AND ura.is_active = true
+        ORDER BY r.role_code;
+        """, connection))
+    {
+        roleCommand.Parameters.AddWithValue("user_id", userId);
+
+        await using var reader = await roleCommand.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            roleCodes.Add(reader.GetString(0));
+        }
+    }
+
+    return (email, displayName, roleCodes.ToArray());
+}
+
+static async Task<List<Dictionary<string, object?>>> ProjectPulseLoadVisibleProductionNotificationsAsync(
+    NpgsqlConnection connection,
+    Guid userId,
+    string[] roleCodes,
+    int limit)
+{
+    var userRoleSet = roleCodes.ToHashSet(StringComparer.OrdinalIgnoreCase);
+    var results = new List<Dictionary<string, object?>>();
+
+    await using var command = new NpgsqlCommand("""
+        SELECT
+            n.production_notification_event_id,
+            n.notification_key,
+            n.module_key,
+            n.severity,
+            n.title,
+            n.body,
+            n.target_user_id,
+            n.target_role_codes,
+            COALESCE(n.source_route, ''),
+            COALESCE(n.action_url, ''),
+            n.created_at,
+            EXISTS (
+                SELECT 1
+                FROM production_notification_acknowledgments a
+                WHERE a.notification_id = n.production_notification_event_id
+                  AND a.acknowledged_by_user_id = @user_id
+            ) AS acknowledged
+        FROM production_notification_events n
+        WHERE n.is_active = true
+          AND (n.expires_at IS NULL OR n.expires_at > now())
+          AND (n.target_user_id IS NULL OR n.target_user_id = @user_id)
+        ORDER BY n.created_at DESC
+        LIMIT @limit;
+        """, connection);
+
+    command.Parameters.AddWithValue("user_id", userId);
+    command.Parameters.AddWithValue("limit", Math.Clamp(limit, 1, 500));
+
+    await using var reader = await command.ExecuteReaderAsync();
+    while (await reader.ReadAsync())
+    {
+        var targetUserId = reader.IsDBNull(6) ? (Guid?)null : reader.GetGuid(6);
+        var targetRoleCodes = reader.IsDBNull(7) ? Array.Empty<string>() : reader.GetFieldValue<string[]>(7);
+
+        var roleVisible = targetRoleCodes.Length == 0 || targetRoleCodes.Any(role => userRoleSet.Contains(role));
+        if (!roleVisible)
+        {
+            continue;
+        }
+
+        results.Add(new Dictionary<string, object?>
+        {
+            ["notificationId"] = reader.GetGuid(0),
+            ["notificationKey"] = reader.GetString(1),
+            ["moduleKey"] = reader.GetString(2),
+            ["severity"] = reader.GetString(3),
+            ["title"] = reader.GetString(4),
+            ["body"] = reader.GetString(5),
+            ["targetUserId"] = targetUserId,
+            ["targetRoleCodes"] = targetRoleCodes,
+            ["sourceRoute"] = reader.GetString(8),
+            ["actionUrl"] = reader.GetString(9),
+            ["createdAt"] = reader.GetDateTime(10),
+            ["acknowledged"] = reader.GetBoolean(11)
+        });
+    }
+
+    return results;
+}
+// 022A Production Notification Center Foundation - END
+
 app.Run();
 
 
