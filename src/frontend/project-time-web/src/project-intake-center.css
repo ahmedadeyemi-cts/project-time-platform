@@ -512,3 +512,73 @@
   color: #64748b;
   line-height: 1.35;
 }
+
+.intake-readiness-panel {
+  margin: 1rem 0;
+}
+
+.project-intake-section-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+  margin-bottom: 0.85rem;
+}
+
+.intake-readiness-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.75rem;
+}
+
+.intake-readiness-item {
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 0.85rem;
+  padding: 0.85rem;
+  background: rgba(248, 250, 252, 0.78);
+}
+
+.intake-readiness-item span {
+  display: inline-flex;
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.7rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.intake-readiness-item.ready span {
+  background: rgba(16, 185, 129, 0.14);
+  color: #047857;
+}
+
+.intake-readiness-item.attention span {
+  background: rgba(245, 158, 11, 0.16);
+  color: #92400e;
+}
+
+.intake-readiness-item strong,
+.intake-readiness-item small {
+  display: block;
+}
+
+.intake-readiness-item strong {
+  margin-top: 0.45rem;
+}
+
+.intake-readiness-item small {
+  margin-top: 0.3rem;
+  color: #64748b;
+}
+
+.project-intake-badge.danger {
+  background: rgba(239, 68, 68, 0.12);
+  color: #991b1b;
+}
+
+@media (max-width: 900px) {
+  .project-intake-section-header {
+    flex-direction: column;
+  }
+}

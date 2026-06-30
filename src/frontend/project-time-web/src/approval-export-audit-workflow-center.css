@@ -329,3 +329,260 @@
 .approval-export-package-card button {
   white-space: nowrap;
 }
+
+.approval-workflow-toolbar {
+  display: flex;
+  gap: 0.75rem;
+  align-items: end;
+  flex-wrap: wrap;
+  margin-top: 0.85rem;
+  padding: 0.85rem;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 1rem;
+  background: rgba(248, 250, 252, 0.82);
+}
+
+.approval-workflow-toolbar label {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 800;
+  color: #334155;
+}
+
+.approval-workflow-toolbar select,
+.approval-workflow-toolbar input {
+  border: 1px solid rgba(148, 163, 184, 0.42);
+  border-radius: 12px;
+  padding: 10px 12px;
+  min-width: 240px;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.workflow-status-badge.tone-ready {
+  background: rgba(22, 163, 74, 0.12);
+  color: #166534;
+}
+
+.workflow-status-badge.tone-attention {
+  background: rgba(245, 158, 11, 0.16);
+  color: #92400e;
+}
+
+.workflow-status-badge.tone-blocked {
+  background: rgba(239, 68, 68, 0.12);
+  color: #991b1b;
+}
+
+.workflow-status-badge.tone-neutral {
+  background: rgba(37, 99, 235, 0.1);
+  color: #1d4ed8;
+}
+
+@media (max-width: 640px) {
+  .approval-workflow-toolbar {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .approval-workflow-toolbar select,
+  .approval-workflow-toolbar input {
+    min-width: 0;
+    width: 100%;
+  }
+}
+
+.export-package-toolbar {
+  display: flex;
+  gap: 0.75rem;
+  align-items: end;
+  flex-wrap: wrap;
+  margin-top: 0.85rem;
+  padding: 0.85rem;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 1rem;
+  background: rgba(248, 250, 252, 0.82);
+}
+
+.export-package-toolbar label {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 800;
+  color: #334155;
+}
+
+.export-package-toolbar select,
+.export-package-toolbar input {
+  border: 1px solid rgba(148, 163, 184, 0.42);
+  border-radius: 12px;
+  padding: 10px 12px;
+  min-width: 210px;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.export-package-readiness-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-top: 0.85rem;
+}
+
+.export-package-readiness-grid article {
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 1rem;
+  padding: 0.85rem;
+  background: rgba(248, 250, 252, 0.78);
+}
+
+.export-package-readiness-grid span,
+.export-package-readiness-grid small {
+  display: block;
+  color: #64748b;
+}
+
+.export-package-readiness-grid span {
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.export-package-readiness-grid strong {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 1.35rem;
+}
+
+.export-package-readiness-grid small {
+  margin-top: 0.35rem;
+}
+
+@media (max-width: 980px) {
+  .export-package-readiness-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .export-package-toolbar {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .export-package-toolbar select,
+  .export-package-toolbar input {
+    min-width: 0;
+    width: 100%;
+  }
+}
+
+.approval-audit-toolbar {
+  display: flex;
+  gap: 0.75rem;
+  align-items: end;
+  flex-wrap: wrap;
+  margin-top: 0.85rem;
+  padding: 0.85rem;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 1rem;
+  background: rgba(248, 250, 252, 0.82);
+}
+
+.approval-audit-toolbar label {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 800;
+  color: #334155;
+}
+
+.approval-audit-toolbar select,
+.approval-audit-toolbar input {
+  border: 1px solid rgba(148, 163, 184, 0.42);
+  border-radius: 12px;
+  padding: 10px 12px;
+  min-width: 220px;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.approval-audit-evidence-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-top: 0.85rem;
+}
+
+.approval-audit-evidence-metrics article {
+  border: 1px solid rgba(148, 163, 184, 0.26);
+  border-radius: 1rem;
+  padding: 0.85rem;
+  background: rgba(248, 250, 252, 0.78);
+}
+
+.approval-audit-evidence-metrics span {
+  display: block;
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.approval-audit-evidence-metrics strong {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 1.25rem;
+}
+
+.approval-audit-evidence-card {
+  border-left: 5px solid rgba(148, 163, 184, 0.6);
+}
+
+.approval-audit-evidence-card > span {
+  display: inline-flex;
+  width: fit-content;
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: rgba(148, 163, 184, 0.16);
+  color: #334155;
+}
+
+.approval-audit-evidence-card.tone-ready {
+  border-left-color: rgba(22, 163, 74, 0.8);
+}
+
+.approval-audit-evidence-card.tone-ready > span {
+  background: rgba(22, 163, 74, 0.12);
+  color: #166534;
+}
+
+.approval-audit-evidence-card.tone-blocked {
+  border-left-color: rgba(239, 68, 68, 0.8);
+}
+
+.approval-audit-evidence-card.tone-blocked > span {
+  background: rgba(239, 68, 68, 0.12);
+  color: #991b1b;
+}
+
+@media (max-width: 980px) {
+  .approval-audit-evidence-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .approval-audit-toolbar,
+  .approval-audit-evidence-metrics {
+    grid-template-columns: 1fr;
+    display: grid;
+  }
+
+  .approval-audit-toolbar select,
+  .approval-audit-toolbar input {
+    min-width: 0;
+    width: 100%;
+  }
+}

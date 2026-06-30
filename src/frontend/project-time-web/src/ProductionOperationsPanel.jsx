@@ -8,7 +8,7 @@ const routeConfigs = {
     title: 'Production Readiness Command Center',
     eyebrow: 'Production Readiness',
     description:
-      'Live operational readiness across users, projects, workflow, exports, audit evidence, route contracts, and module registry integrity.',
+      'Live operational readiness across users, customers, project intake, workflow, exports, audit evidence, route contracts, module registry integrity, and dashboard reporting coverage.',
     cards: [
       {
         key: 'readiness',
@@ -38,6 +38,46 @@ const routeConfigs = {
           title: data?.summary?.active ? 'visibility_ready' : 'visibility_review',
           detail: `Expectations: ${data?.summary?.expectationCount ?? 0}; roles: ${data?.summary?.roleCount ?? 0}`,
           status: data?.summary?.active ? 'Ready' : 'Review'
+        })
+      },
+      {
+        key: 'customerReporting',
+        label: 'Customer Reporting',
+        path: '/api/customers/overview',
+        mapper: (data) => ({
+          title: 'customer_directory',
+          detail: `Customers: ${data?.customers?.length ?? 0}; contacts: ${data?.contacts?.length ?? 0}`,
+          status: (data?.customers?.length ?? 0) > 0 ? 'Ready' : 'Review'
+        })
+      },
+      {
+        key: 'intakeReporting',
+        label: 'Project Intake Reporting',
+        path: '/api/project-intake/summary',
+        mapper: (data) => ({
+          title: data?.module ?? 'project_intake_summary',
+          detail: `Intake records: ${data?.summary?.intakeCount ?? data?.count ?? 0}; open: ${data?.summary?.openIntakeCount ?? 0}`,
+          status: 'Ready'
+        })
+      },
+      {
+        key: 'workflowReporting',
+        label: 'Workflow Reporting',
+        path: '/api/workflow/approval-export-summary',
+        mapper: (data) => ({
+          title: data?.module ?? 'workflow_summary',
+          detail: `PM approvals: ${data?.summary?.pendingProjectApprovals ?? 0}; accounting: ${data?.summary?.pendingAccountingReview ?? 0}; exports 30d: ${data?.summary?.exportsLast30Days ?? 0}`,
+          status: 'Ready'
+        })
+      },
+      {
+        key: 'auditReporting',
+        label: 'Audit Reporting',
+        path: '/api/audit-history/summary',
+        mapper: (data) => ({
+          title: data?.module ?? 'audit_summary',
+          detail: `Events: ${data?.summary?.eventCount ?? data?.summary?.auditEventCount ?? 0}; actors: ${data?.summary?.actorCount ?? 0}`,
+          status: 'Ready'
         })
       }
     ]
@@ -193,43 +233,82 @@ async function fetchProductionJson(path, token, viewAsUserId) {
   }
 }
 
-function ProductionCard({ card, data }) {
+function normalizeOperationalText(value) {
+  return String(value ?? '').toLowerCase();
+}
+
+function getOperationalTone(view) {
+  const haystack = normalizeOperationalText(`${view?.status ?? ''} ${view?.title ?? ''} ${view?.detail ?? ''}`);
+
+  if (haystack.includes('http 4') || haystack.includes('http 5') || haystack.includes('failed') || haystack.includes('blocked') || haystack.includes('error')) {
+    return 'blocked';
+  }
+
+  if (haystack.includes('review') || haystack.includes('warning') || haystack.includes('issue') || haystack.includes('unknown')) {
+    return 'attention';
+  }
+
+  if (haystack.includes('ready') || haystack.includes('active') || haystack.includes('ok')) {
+    return 'ready';
+  }
+
+  if (haystack.includes('loading')) {
+    return 'loading';
+  }
+
+  return 'neutral';
+}
+
+function buildProductionCardView(card, data) {
   if (!data) {
-    return (
-      <article className="production-workflow-card">
-        <div className="production-workflow-card-header">
-          <span>{card.label}</span>
-          <strong>Loading</strong>
-        </div>
-        <h4>loading</h4>
-        <p>Collecting production evidence.</p>
-      </article>
-    );
+    return {
+      status: 'Loading',
+      title: 'loading',
+      detail: 'Collecting production evidence.',
+      httpStatus: null,
+      tone: 'loading'
+    };
   }
 
   if (!data.ok && data.httpStatus) {
-    return (
-      <article className="production-workflow-card production-workflow-card-warning">
-        <div className="production-workflow-card-header">
-          <span>{card.label}</span>
-          <strong>HTTP {data.httpStatus}</strong>
-        </div>
-        <h4>{data.status || 'request_failed'}</h4>
-        <p>{data.message || 'The request did not complete successfully.'}</p>
-      </article>
-    );
+    const view = {
+      status: `HTTP ${data.httpStatus}`,
+      title: data.status || 'request_failed',
+      detail: data.message || 'The request did not complete successfully.',
+      httpStatus: data.httpStatus,
+      tone: 'blocked'
+    };
+
+    return view;
   }
 
   const mapped = card.mapper(data || {});
+  const view = {
+    status: mapped.status || 'Ready',
+    title: mapped.title || 'ready',
+    detail: mapped.detail || 'Production evidence is available.',
+    httpStatus: data.httpStatus,
+    tone: 'neutral'
+  };
+
+  return {
+    ...view,
+    tone: getOperationalTone(view)
+  };
+}
+
+function ProductionCard({ card, data }) {
+  const view = buildProductionCardView(card, data);
 
   return (
-    <article className="production-workflow-card">
+    <article className={`production-workflow-card production-workflow-card-${view.tone}`}>
       <div className="production-workflow-card-header">
         <span>{card.label}</span>
-        <strong>{mapped.status || 'Ready'}</strong>
+        <strong>{view.status}</strong>
       </div>
-      <h4>{mapped.title || 'ready'}</h4>
-      <p>{mapped.detail || 'Production evidence is available.'}</p>
+      <h4>{view.title}</h4>
+      <p>{view.detail}</p>
+      <small>{card.path} {view.httpStatus ? `· HTTP ${view.httpStatus}` : ''}</small>
     </article>
   );
 }
@@ -239,6 +318,7 @@ export default function ProductionOperationsPanel() {
   const [token, setToken] = useState(() => getSessionToken());
   const [viewAsUserId, setViewAsUserId] = useState(() => getViewAsUserId());
   const [results, setResults] = useState({});
+  const [cardToneFilter, setCardToneFilter] = useState('all');
   const [refreshKey, setRefreshKey] = useState(0);
 
   const config = routeConfigs[route];
@@ -301,6 +381,40 @@ export default function ProductionOperationsPanel() {
 
   const isVisible = useMemo(() => Boolean(config && token), [config, token]);
 
+  const cardViews = useMemo(() => {
+    if (!config) return [];
+
+    return config.cards.map((card) => ({
+      card,
+      data: results[card.key],
+      view: buildProductionCardView(card, results[card.key])
+    }));
+  }, [config, results]);
+
+  const operationsSummary = useMemo(() => {
+    return cardViews.reduce((summary, item) => {
+      const tone = item.view.tone || 'neutral';
+
+      return {
+        ...summary,
+        total: summary.total + 1,
+        [tone]: (summary[tone] ?? 0) + 1
+      };
+    }, {
+      total: 0,
+      ready: 0,
+      attention: 0,
+      blocked: 0,
+      loading: 0,
+      neutral: 0
+    });
+  }, [cardViews]);
+
+  const filteredCardViews = useMemo(() => {
+    if (cardToneFilter === 'all') return cardViews;
+    return cardViews.filter((item) => item.view.tone === cardToneFilter);
+  }, [cardViews, cardToneFilter]);
+
   if (!isVisible) {
     return null;
   }
@@ -317,19 +431,56 @@ export default function ProductionOperationsPanel() {
           <h2>{config.title}</h2>
           <p>{config.description}</p>
         </div>
-        <button
-          type="button"
-          className="production-workflow-refresh-button"
-          onClick={() => setRefreshKey((value) => value + 1)}
-        >
-          Refresh
-        </button>
+        <div className="production-workflow-heading-actions">
+          <label>
+            Card filter
+            <select value={cardToneFilter} onChange={(event) => setCardToneFilter(event.target.value)}>
+              <option value="all">All cards</option>
+              <option value="ready">Ready</option>
+              <option value="attention">Needs review</option>
+              <option value="blocked">Blocked / failed</option>
+              <option value="loading">Loading</option>
+              <option value="neutral">Neutral</option>
+            </select>
+          </label>
+          <button
+            type="button"
+            className="production-workflow-refresh-button"
+            onClick={() => setRefreshKey((value) => value + 1)}
+          >
+            Refresh
+          </button>
+        </div>
       </div>
 
+      <div className="production-workflow-summary-grid">
+        <article><span>Total controls</span><strong>{operationsSummary.total}</strong><small>Configured for this route</small></article>
+        <article><span>Ready</span><strong>{operationsSummary.ready}</strong><small>Operational/reporting evidence is healthy</small></article>
+        <article><span>Needs review</span><strong>{operationsSummary.attention}</strong><small>Review, unknown, or warning status</small></article>
+        <article><span>Blocked</span><strong>{operationsSummary.blocked}</strong><small>Failed or denied evidence checks</small></article>
+      </div>
+
+      {viewAsUserId ? (
+        <div className="production-workflow-viewas-banner">
+          View-As preview is active. Production write actions remain protected by read-only View-As enforcement.
+        </div>
+      ) : null}
+
       <div className="production-workflow-card-grid">
-        {config.cards.map((card) => (
-          <ProductionCard key={card.key} card={card} data={results[card.key]} />
+        {filteredCardViews.map(({ card, data }) => (
+          <ProductionCard key={card.key} card={card} data={data} />
         ))}
+
+        {filteredCardViews.length === 0 ? (
+          <article className="production-workflow-card production-workflow-card-neutral">
+            <div className="production-workflow-card-header">
+              <span>No cards</span>
+              <strong>Filtered</strong>
+            </div>
+            <h4>No production controls match the selected filter.</h4>
+            <p>Change the card filter to review all configured operational controls for this route.</p>
+          </article>
+        ) : null}
       </div>
     </section>
   );

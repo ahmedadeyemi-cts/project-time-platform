@@ -233,3 +233,251 @@
     grid-template-columns: 1fr;
   }
 }
+
+.production-workflow-heading-actions {
+  display: flex;
+  align-items: end;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.production-workflow-heading-actions label {
+  display: grid;
+  gap: 0.35rem;
+  color: #334155;
+  font-weight: 800;
+}
+
+.production-workflow-heading-actions select {
+  border: 1px solid rgba(148, 163, 184, 0.42);
+  border-radius: 12px;
+  padding: 0.65rem 0.75rem;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.production-workflow-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+.production-workflow-summary-grid article {
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 1rem;
+  padding: 0.9rem;
+  background: rgba(255, 255, 255, 0.84);
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.05);
+}
+
+.production-workflow-summary-grid span,
+.production-workflow-summary-grid small,
+.production-workflow-card small {
+  display: block;
+  color: #64748b;
+}
+
+.production-workflow-summary-grid span {
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.production-workflow-summary-grid strong {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 1.45rem;
+}
+
+.production-workflow-summary-grid small,
+.production-workflow-card small {
+  margin-top: 0.35rem;
+}
+
+.production-workflow-card {
+  border-left: 5px solid rgba(148, 163, 184, 0.55);
+}
+
+.production-workflow-card-ready {
+  border-left-color: rgba(22, 163, 74, 0.84);
+}
+
+.production-workflow-card-ready .production-workflow-card-header strong {
+  background: rgba(22, 163, 74, 0.12);
+  color: #166534;
+}
+
+.production-workflow-card-attention {
+  border-left-color: rgba(245, 158, 11, 0.84);
+}
+
+.production-workflow-card-attention .production-workflow-card-header strong {
+  background: rgba(245, 158, 11, 0.16);
+  color: #92400e;
+}
+
+.production-workflow-card-blocked {
+  border-left-color: rgba(239, 68, 68, 0.84);
+}
+
+.production-workflow-card-blocked .production-workflow-card-header strong {
+  background: rgba(239, 68, 68, 0.12);
+  color: #991b1b;
+}
+
+.production-workflow-card-loading {
+  opacity: 0.82;
+}
+
+.production-workflow-viewas-banner {
+  border: 1px solid rgba(37, 99, 235, 0.2);
+  border-radius: 1rem;
+  padding: 0.85rem 1rem;
+  background: rgba(37, 99, 235, 0.08);
+  color: #1e3a8a;
+  font-weight: 800;
+}
+
+@media (max-width: 980px) {
+  .production-workflow-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .production-workflow-heading-actions,
+  .production-workflow-summary-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .production-workflow-heading-actions select,
+  .production-workflow-refresh-button {
+    width: 100%;
+  }
+}
+
+.production-workflow-heading-actions {
+  display: flex;
+  align-items: end;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.production-workflow-heading-actions label {
+  display: grid;
+  gap: 0.35rem;
+  color: #334155;
+  font-weight: 800;
+}
+
+.production-workflow-heading-actions select {
+  border: 1px solid rgba(148, 163, 184, 0.42);
+  border-radius: 12px;
+  padding: 0.65rem 0.75rem;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.production-workflow-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+.production-workflow-summary-grid article {
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 1rem;
+  padding: 0.9rem;
+  background: rgba(255, 255, 255, 0.84);
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.05);
+}
+
+.production-workflow-summary-grid span,
+.production-workflow-summary-grid small,
+.production-workflow-card small {
+  display: block;
+  color: #64748b;
+}
+
+.production-workflow-summary-grid span {
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.production-workflow-summary-grid strong {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 1.45rem;
+}
+
+.production-workflow-summary-grid small,
+.production-workflow-card small {
+  margin-top: 0.35rem;
+}
+
+.production-workflow-card {
+  border-left: 5px solid rgba(148, 163, 184, 0.55);
+}
+
+.production-workflow-card-ready {
+  border-left-color: rgba(22, 163, 74, 0.84);
+}
+
+.production-workflow-card-ready .production-workflow-card-header strong {
+  background: rgba(22, 163, 74, 0.12);
+  color: #166534;
+}
+
+.production-workflow-card-attention {
+  border-left-color: rgba(245, 158, 11, 0.84);
+}
+
+.production-workflow-card-attention .production-workflow-card-header strong {
+  background: rgba(245, 158, 11, 0.16);
+  color: #92400e;
+}
+
+.production-workflow-card-blocked {
+  border-left-color: rgba(239, 68, 68, 0.84);
+}
+
+.production-workflow-card-blocked .production-workflow-card-header strong {
+  background: rgba(239, 68, 68, 0.12);
+  color: #991b1b;
+}
+
+.production-workflow-card-loading {
+  opacity: 0.82;
+}
+
+.production-workflow-viewas-banner {
+  border: 1px solid rgba(37, 99, 235, 0.2);
+  border-radius: 1rem;
+  padding: 0.85rem 1rem;
+  background: rgba(37, 99, 235, 0.08);
+  color: #1e3a8a;
+  font-weight: 800;
+}
+
+@media (max-width: 980px) {
+  .production-workflow-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .production-workflow-heading-actions,
+  .production-workflow-summary-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .production-workflow-heading-actions select,
+  .production-workflow-refresh-button {
+    width: 100%;
+  }
+}

@@ -987,10 +987,11 @@ function getNavigationGroup(item) {
     case 'audit-history':
       return 'Security & Audit';
 
-    case 'user-admin':
-    case 'azure-admin':
     case 'work-task-builder':
       return 'Work Task Builder';
+
+    case 'user-admin':
+    case 'azure-admin':
     case 'role-admin':
       return 'Admin & Identity';
 
@@ -1031,12 +1032,16 @@ function buildRoleNavigationModel(user, navigationItems) {
 
   const groupOrder = [
     'Work Management',
+    'Project Workspace',
+    'Project Intake',
+    'Time Compliance',
     'Project Operations',
+    'Work Task Builder',
+    'Reports & Workflow',
     'Security & Audit',
     'Admin & Identity',
     'Platform Operations',
     'Resilience & Recovery',
-    'Reports & Workflow',
     'Other'
   ];
 
@@ -1045,20 +1050,25 @@ function buildRoleNavigationModel(user, navigationItems) {
     'manager-approval',
     'utilization',
     'holiday-admin',
+    'project-workload',
+    'project-workspace',
     'project-allocation-info',
+    'project-intake',
+    'customer-directory',
+    'cost-alerts',
     'time-compliance',
     'psa-modules',
+    'work-task-builder',
+    'workflow',
     'audit-history',
     'user-admin',
     'azure-admin',
-    'work-task-builder',
     'role-admin',
     'service-control',
     'backup-dr',
     'restore-validation',
     'backup-retention',
-    'replication-sync',
-    'workflow'
+    'replication-sync'
   ];
 
   const routeRank = new Map(routeOrder.map((route, index) => [route, index]));

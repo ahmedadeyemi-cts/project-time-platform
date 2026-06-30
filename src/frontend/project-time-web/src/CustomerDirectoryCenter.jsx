@@ -125,13 +125,66 @@ export default function CustomerDirectoryCenter({ canManageCustomers = false }) 
     if (!search) return customers;
 
     return customers.filter((customer) => {
-      const haystack = `${customer.clientName ?? ''} ${customer.clientCode ?? ''}`.toLowerCase();
+      const customerContacts = contacts
+        .filter((contact) => contact.clientId === customer.clientId)
+        .map((contact) => `${contact.contactName ?? ''} ${contact.email ?? ''} ${contact.roleDescription ?? ''}`)
+        .join(' ');
+
+      const haystack = `${customer.clientName ?? ''} ${customer.clientCode ?? ''} ${customerContacts}`.toLowerCase();
       return haystack.includes(search);
     });
-  }, [customers, searchTerm]);
+  }, [customers, contacts, searchTerm]);
 
   const selectedCustomer = customers.find((customer) => customer.clientId === selectedClientId) ?? filteredCustomers[0];
   const selectedContacts = contacts.filter((contact) => contact.clientId === selectedCustomer?.clientId);
+  const selectedPrimaryContact = selectedContacts.find((contact) => contact.isPrimary);
+
+  const customerDirectoryMetrics = useMemo(() => {
+    const activeCustomers = customers.filter((customer) => customer.isActive !== false).length;
+    const inactiveCustomers = customers.length - activeCustomers;
+    const customersWithoutContacts = customers.filter((customer) => Number(customer.activeContactCount ?? 0) === 0).length;
+    const customersWithCostContext = customers.filter((customer) => (
+      Number(customer.plannedProjectTotalCost ?? 0) > 0 ||
+      Number(customer.plannedIntakeTotalCost ?? 0) > 0
+    )).length;
+
+    return {
+      activeCustomers,
+      inactiveCustomers,
+      customersWithoutContacts,
+      customersWithCostContext
+    };
+  }, [customers]);
+
+  const selectedReadinessItems = selectedCustomer ? [
+    {
+      label: 'Customer record',
+      ready: selectedCustomer.isActive !== false,
+      detail: selectedCustomer.isActive === false ? 'Customer is inactive.' : 'Customer is active and available for intake/project workflows.'
+    },
+    {
+      label: 'Contact coverage',
+      ready: selectedContacts.length > 0,
+      detail: selectedContacts.length > 0 ? `${selectedContacts.length} active contact(s) loaded.` : 'No active contact is loaded for this customer.'
+    },
+    {
+      label: 'Primary contact',
+      ready: Boolean(selectedPrimaryContact),
+      detail: selectedPrimaryContact ? `${selectedPrimaryContact.contactName} is marked primary.` : 'No primary contact is selected.'
+    },
+    {
+      label: 'Cost context',
+      ready: Number(selectedCustomer.plannedProjectTotalCost ?? 0) > 0 || Number(selectedCustomer.plannedIntakeTotalCost ?? 0) > 0,
+      detail: 'Project and intake planned cost values are shown for downstream cost review.'
+    },
+    {
+      label: 'Over-plan risk',
+      ready: Number(selectedCustomer.projectsOverPlanCount ?? 0) === 0,
+      detail: Number(selectedCustomer.projectsOverPlanCount ?? 0) === 0
+        ? 'No over-plan project count is currently reported.'
+        : `${selectedCustomer.projectsOverPlanCount} project(s) are reporting over-plan risk.`
+    }
+  ] : [];
 
   useEffect(() => {
     if (!selectedClientId && filteredCustomers[0]?.clientId) {
@@ -244,8 +297,10 @@ export default function CustomerDirectoryCenter({ canManageCustomers = false }) 
       {actionStatus && <div className="customer-directory-alert">{actionStatus}</div>}
 
       <div className="customer-directory-summary-grid">
-        <article><span>Customers</span><strong>{directory.loading ? '...' : customers.length}</strong><small>Active and inactive customer records</small></article>
+        <article><span>Customers</span><strong>{directory.loading ? '...' : customers.length}</strong><small>{customerDirectoryMetrics.activeCustomers} active · {customerDirectoryMetrics.inactiveCustomers} inactive</small></article>
         <article><span>Contacts</span><strong>{directory.loading ? '...' : contacts.length}</strong><small>10 active contacts maximum per customer</small></article>
+        <article><span>Needs contact</span><strong>{directory.loading ? '...' : customerDirectoryMetrics.customersWithoutContacts}</strong><small>Customer records without active contacts</small></article>
+        <article><span>Cost-ready customers</span><strong>{directory.loading ? '...' : customerDirectoryMetrics.customersWithCostContext}</strong><small>Customers with project or intake cost context</small></article>
         <article><span>Project planned cost</span><strong>{fmtMoney(customers.reduce((sum, customer) => sum + Number(customer.plannedProjectTotalCost ?? 0), 0))}</strong><small>Loaded project cost plans</small></article>
         <article><span>Intake pipeline cost</span><strong>{fmtMoney(customers.reduce((sum, customer) => sum + Number(customer.plannedIntakeTotalCost ?? 0), 0))}</strong><small>Open intake cost plans</small></article>
       </div>
@@ -283,8 +338,13 @@ export default function CustomerDirectoryCenter({ canManageCustomers = false }) 
                 <strong>{customer.clientName}</strong>
                 <span>{customer.clientCode} · {customer.activeContactCount}/10 contacts</span>
                 <small>{customer.activeProjectCount} active projects · {customer.intakeCount} intake records</small>
+                {customer.isActive === false && <em>Inactive customer</em>}
               </button>
             ))}
+
+            {!directory.loading && filteredCustomers.length === 0 && (
+              <p className="muted">No customers match the current search. Search by customer name, code, contact name, contact email, or relationship.</p>
+            )}
           </div>
         </article>
 
@@ -294,7 +354,12 @@ export default function CustomerDirectoryCenter({ canManageCustomers = false }) 
               <div className="customer-detail-heading">
                 <div>
                   <h3>{selectedCustomer.clientName}</h3>
-                  <p className="muted">{selectedCustomer.clientCode} · {selectedContacts.length}/10 active contacts</p>
+                  <p className="muted">
+                    {selectedCustomer.clientCode} · {selectedContacts.length}/10 active contacts
+                    <span className={`customer-state-pill ${selectedCustomer.isActive === false ? 'inactive' : 'active'}`}>
+                      {selectedCustomer.isActive === false ? 'Inactive' : 'Active'}
+                    </span>
+                  </p>
                 </div>
                 {canManageCustomers && (
                   <button type="button" className="secondary-action" onClick={() => startEditCustomer(selectedCustomer)}>
@@ -307,6 +372,22 @@ export default function CustomerDirectoryCenter({ canManageCustomers = false }) 
                 <article><span>Project planned cost</span><strong>{fmtMoney(selectedCustomer.plannedProjectTotalCost)}</strong></article>
                 <article><span>Intake pipeline cost</span><strong>{fmtMoney(selectedCustomer.plannedIntakeTotalCost)}</strong></article>
                 <article><span>Projects over plan</span><strong>{selectedCustomer.projectsOverPlanCount ?? 0}</strong></article>
+              </div>
+
+              <div className="customer-readiness-panel">
+                <div>
+                  <h4>Customer workflow readiness</h4>
+                  <p className="muted">Checks whether this customer is ready for intake, assignment, cost review, and approval/export workflows.</p>
+                </div>
+                <div className="customer-readiness-grid">
+                  {selectedReadinessItems.map((item) => (
+                    <article className={`customer-readiness-item ${item.ready ? 'ready' : 'attention'}`} key={item.label}>
+                      <span>{item.ready ? 'Ready' : 'Needs attention'}</span>
+                      <strong>{item.label}</strong>
+                      <small>{item.detail}</small>
+                    </article>
+                  ))}
+                </div>
               </div>
 
               <div className="customer-contact-list">
