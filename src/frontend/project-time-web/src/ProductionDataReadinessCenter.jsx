@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import ProductionDataReadinessRemediationPanel from './ProductionDataReadinessRemediationPanel.jsx';
 import './production-data-readiness-center.css';
 
 function readProjectPulseSessionToken() {
@@ -214,6 +215,8 @@ export default function ProductionDataReadinessCenter() {
           </div>
         )}
       </section>
+
+      <ProductionDataReadinessRemediationPanel checks={checks} loading={state.loading} />
 
       <section className="production-data-panel production-data-validation">
         <p className="eyebrow">Webpage validation</p>

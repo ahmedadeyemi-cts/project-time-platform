@@ -218,3 +218,163 @@
     grid-template-columns: 1fr;
   }
 }
+
+.production-data-remediation-panel {
+  display: grid;
+  gap: 1rem;
+}
+
+.remediation-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.remediation-badge {
+  min-width: 160px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 0.95rem;
+  background: rgba(248, 250, 252, 0.96);
+  padding: 0.8rem;
+  text-align: right;
+}
+
+.remediation-badge strong,
+.remediation-badge span {
+  display: block;
+}
+
+.remediation-badge strong {
+  font-size: 1.25rem;
+}
+
+.remediation-badge.pending strong {
+  color: #92400e;
+}
+
+.remediation-badge.ready {
+  border-color: rgba(34, 197, 94, 0.35);
+  background: rgba(240, 253, 244, 0.98);
+}
+
+.remediation-badge.ready strong {
+  color: #166534;
+}
+
+.remediation-badge span {
+  color: #64748b;
+  font-size: 0.88rem;
+}
+
+.production-data-remediation-ready {
+  border: 1px solid rgba(34, 197, 94, 0.34);
+  border-radius: 0.95rem;
+  background: rgba(240, 253, 244, 0.98);
+  padding: 0.85rem;
+  display: grid;
+  gap: 0.2rem;
+  color: #166534;
+}
+
+.remediation-list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.remediation-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 0.9rem;
+  background: rgba(248, 250, 252, 0.94);
+  padding: 0.8rem;
+  cursor: pointer;
+}
+
+.remediation-item.complete {
+  border-color: rgba(34, 197, 94, 0.35);
+  background: rgba(240, 253, 244, 0.95);
+}
+
+.remediation-item input {
+  margin-top: 0.25rem;
+}
+
+.remediation-item strong,
+.remediation-item small {
+  display: block;
+}
+
+.remediation-item small {
+  margin-top: 0.25rem;
+  color: #64748b;
+  line-height: 1.35;
+}
+
+.remediation-item code {
+  color: #0f172a;
+  background: rgba(15, 23, 42, 0.06);
+  border-radius: 0.35rem;
+  padding: 0.1rem 0.25rem;
+}
+
+.remediation-notes {
+  display: grid;
+  gap: 0.4rem;
+  font-weight: 850;
+}
+
+.remediation-notes textarea,
+.remediation-plan-copybox {
+  width: 100%;
+  min-height: 105px;
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  border-radius: 0.9rem;
+  padding: 0.8rem;
+  font: inherit;
+  resize: vertical;
+}
+
+.remediation-plan-copybox {
+  min-height: 190px;
+  background: rgba(248, 250, 252, 0.96);
+  color: #334155;
+}
+
+.remediation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+  color: #64748b;
+}
+
+[data-theme='dark'] .remediation-badge,
+[data-theme='dark'] .remediation-item,
+[data-theme='dark'] .remediation-notes textarea,
+[data-theme='dark'] .remediation-plan-copybox {
+  background: rgba(15, 23, 42, 0.74);
+  border-color: rgba(148, 163, 184, 0.28);
+}
+
+[data-theme='dark'] .remediation-item code {
+  background: rgba(148, 163, 184, 0.16);
+  color: #e2e8f0;
+}
+
+[data-theme='dark'] .remediation-item.complete,
+[data-theme='dark'] .remediation-badge.ready,
+[data-theme='dark'] .production-data-remediation-ready {
+  background: rgba(20, 83, 45, 0.26);
+}
+
+@media (max-width: 720px) {
+  .remediation-heading {
+    flex-direction: column;
+  }
+
+  .remediation-badge {
+    text-align: left;
+  }
+}

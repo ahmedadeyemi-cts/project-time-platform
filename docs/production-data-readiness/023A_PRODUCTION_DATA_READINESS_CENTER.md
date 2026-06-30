@@ -29,3 +29,15 @@ After deployment, verify:
 3. Refresh data readiness returns endpoint status.
 4. Table shows data areas, backend table names, counts, status, purpose, and webpage validation guidance.
 5. Links navigate to the related app pages.
+
+## 023B Production Data Remediation Checklist
+
+023B adds a remediation checklist inside the Production Data Readiness Center.
+
+What to check:
+
+1. Non-ready rows appear as remediation items.
+2. Items can be checked off.
+3. Notes persist after refresh.
+4. Copy remediation plan provides a text summary.
+5. Reset checklist clears local validation state.
