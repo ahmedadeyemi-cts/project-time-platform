@@ -54,3 +54,16 @@ What to check:
 4. Decision notes persist after refresh.
 5. Copy go-live evidence provides a text summary.
 6. Reset go-live gate clears local validation state.
+
+## 023C Production Data Go-Live Gate
+
+023C adds a go-live decision panel inside the Production Data Readiness Center.
+
+What to check:
+
+1. Go-live gate appears after refreshing data readiness.
+2. Backend blockers, missing tables, needs-data review, and checklist completion are summarized.
+3. Go-live checklist items can be checked off.
+4. Decision notes persist after refresh.
+5. Copy go-live evidence provides a text summary.
+6. Reset go-live gate clears local validation state.
