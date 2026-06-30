@@ -22,7 +22,7 @@
 | 021E | Workflow data readiness | Confirm production-critical data signals support customer, intake, assignment, approval, export, and audit flows | Complete |
 | 021F | UI production polish readiness | Review copy signals, empty states, route metadata, and responsive presentation indicators | Complete |
 | 021G | Operational runbook | Document deploy, rollback, smoke, backup, restore, and evidence checkpoints | Complete |
-| 021H | Final release candidate validation | Build, deploy, endpoint smoke, browser validation, and PR closeout | Not Started |
+| 021H | Test deployment and webpage validation baseline | Deploy branch to test runtime, run endpoint smoke, and define browser validation checks | Complete |
 
 ## Production-Critical Workflows
 
@@ -129,3 +129,12 @@ Artifacts:
 - `docs/production-readiness/021_OPERATIONAL_RUNBOOK.md`
 - `docs/production-readiness/021_OPERATIONAL_RUNBOOK.json`
 - `docs/help/021G-operational-runbook.md`
+
+
+## 021H Test Deployment and Webpage Validation
+
+021H deployed the production-readiness branch to the test runtime, ran service and endpoint smoke checks, and created a browser validation checklist.
+
+Artifact:
+
+- `docs/production-readiness/021H_TEST_DEPLOYMENT_AND_WEBPAGE_VALIDATION.md`
