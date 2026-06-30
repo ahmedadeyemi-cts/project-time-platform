@@ -796,3 +796,12 @@
 - Added confirmation gate `SEND_PROVIDER_TEST` to avoid accidental test sends.
 - Preserved `.local` recipient blocking and View-As write protection.
 - Preserved Dashboard / Navigation / Registry validation.
+
+## 020J Shared Email Recipient Safety Review
+
+- Added shared recipient safety rules, reviews, and review item audit tables.
+- Added recipient safety review endpoints for global email-provider consumers.
+- Added Time Compliance recipient review generation from the existing preview data.
+- Flags `.local`, demo/test, duplicate, invalid, missing manager, non-routable manager/CC, and external-domain risks.
+- Blocks real provider batch sends until an approved recipient safety review exists with zero blocked recipients.
+- Preserves outbox-only operation, View-As write protection, Dashboard / Navigation / Registry validation, and provider test harness.
