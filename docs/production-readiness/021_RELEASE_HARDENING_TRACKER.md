@@ -18,7 +18,7 @@
 | 021A | Release baseline | Create release hardening tracker and reusable smoke script | Complete |
 | 021B | Navigation / route integrity | Confirm route labels, route visibility, and dashboard grouping alignment | Complete |
 | 021C | Production readiness naming alignment | Align branch, documentation, route reports, and permission naming to production readiness | Complete |
-| 021D | Role-based production readiness runbooks | Prepare production readiness paths for Admin, PM, Manager, Engineer, Accounting, and Viewer-style access | Not Started |
+| 021D | Role-based production readiness runbooks | Prepare production readiness paths for Admin, PM, Manager, Engineer, Accounting, and read-only stakeholder access | Complete |
 | 021E | UI polish | Address obvious copy, empty states, filter clarity, and responsive presentation gaps | Not Started |
 | 021F | Operational runbook | Document deploy, rollback, smoke, backup, and restore checkpoints | Not Started |
 | 021G | Final release candidate validation | Build, deploy, endpoint smoke, browser validation, and PR closeout | Not Started |
@@ -78,3 +78,15 @@ The release-hardening pass standardizes the production readiness command-center 
 
 
 Active route naming was also aligned to `/api/production/readiness-command-center`.
+
+
+## 021D Role-Based Production Readiness Runbooks
+
+021D generated role-focused production readiness runbooks using the route inventory created in 021B.
+
+Artifacts:
+
+- `scripts/021-role-production-readiness-runbook-report.py`
+- `docs/production-readiness/021_ROLE_BASED_PRODUCTION_READINESS_RUNBOOKS.md`
+- `docs/production-readiness/021_ROLE_BASED_PRODUCTION_READINESS_RUNBOOKS.json`
+- `docs/help/021D-role-based-production-readiness-runbooks.md`
