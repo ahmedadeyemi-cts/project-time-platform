@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#004b8d" />
     <title>Project Pulse</title>
-  
+
     <script>
       (function () {
         try {
@@ -23,7 +23,7 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
-  
+
     <script>
       (function () {
         function currentTheme() {
@@ -84,5 +84,198 @@
       })();
     </script>
 
-  </body>
+
+<!-- 022B Production Readiness Route Isolation + Dashboard Entry -->
+<script id="projectpulse-022b-production-readiness-route-isolation">
+(() => {
+  const routeName = () => {
+    const hash = (window.location.hash || "#dashboard").replace(/^#/, "").trim();
+    return (hash.split("?")[0] || "dashboard").toLowerCase();
+  };
+
+  const normalizeText = (value) => (value || "").replace(/\s+/g, " ").trim();
+
+  const allCandidateBlocks = () => Array.from(document.querySelectorAll("main section, main article, main div, section, article, div"))
+    .filter((element) => {
+      if (!element || !element.textContent) return false;
+      if (element.id === "projectpulse-production-readiness-dashboard-shortcut") return false;
+      if (element.closest("#projectpulse-production-readiness-dashboard-shortcut")) return false;
+      const text = normalizeText(element.textContent);
+      if (!text) return false;
+      if (text.includes("Production Readiness Center") && text.includes("Readiness check results")) return false;
+      return true;
+    });
+
+  const smallestBlockContaining = (needle) => {
+    const matches = allCandidateBlocks()
+      .filter((element) => normalizeText(element.textContent).includes(needle))
+      .sort((a, b) => normalizeText(a.textContent).length - normalizeText(b.textContent).length);
+
+    if (!matches.length) return null;
+
+    const first = matches[0];
+
+    return first.closest("section, article, .card, .dashboard-card, .module-card, .panel, .workflow-card, .admin-card, .app-card, div") || first;
+  };
+
+  const markExtraProductionReadinessContent = () => {
+    const needles = [
+      "Operational command center for time, approvals, utilization, and billing readiness.",
+      "Built for Professional Services",
+      "Local admin password reset approvals",
+      "Engineers enter weekly project-task",
+      "Managers review submitted regular and OT hours",
+      "Project managers validate project and task allocation",
+      "Accounting reviews approved time",
+      "Monthly and quarterly summaries compare billable",
+      "Role, approval, decline, reconciliation"
+    ];
+
+    needles.forEach((needle) => {
+      const block = smallestBlockContaining(needle);
+      if (block) {
+        block.setAttribute("data-projectpulse-022b-production-readiness-extra", "true");
+      }
+    });
+  };
+
+  const ensureDashboardShortcut = () => {
+    const currentRoute = routeName();
+    const existing = document.getElementById("projectpulse-production-readiness-dashboard-shortcut");
+
+    if (currentRoute !== "dashboard" && currentRoute !== "") {
+      if (existing) existing.remove();
+      return;
+    }
+
+    if (existing) return;
+
+    const anchorBlock =
+      smallestBlockContaining("Operational command center for time, approvals, utilization, and billing readiness.")
+      || smallestBlockContaining("US SIGNAL PROJECT PULSE")
+      || document.querySelector("main")
+      || document.body;
+
+    if (!anchorBlock) return;
+
+    const shortcut = document.createElement("a");
+    shortcut.id = "projectpulse-production-readiness-dashboard-shortcut";
+    shortcut.href = "#production-readiness";
+    shortcut.setAttribute("aria-label", "Open Production Readiness Center");
+    shortcut.innerHTML = `
+      <div class="projectpulse-022b-shortcut-eyebrow">PRODUCTION READINESS</div>
+      <div class="projectpulse-022b-shortcut-title">Production Readiness Center</div>
+      <div class="projectpulse-022b-shortcut-body">Validate release readiness, route governance, backend checks, and operational evidence before production closeout.</div>
+      <div class="projectpulse-022b-shortcut-action">Open readiness center →</div>
+    `;
+
+    if (anchorBlock.parentElement) {
+      anchorBlock.insertAdjacentElement("afterend", shortcut);
+    } else {
+      document.body.appendChild(shortcut);
+    }
+  };
+
+  const syncProductionReadinessRoute = () => {
+    const currentRoute = routeName();
+    document.documentElement.setAttribute("data-projectpulse-route", currentRoute);
+
+    markExtraProductionReadinessContent();
+
+    const isProductionReadiness = currentRoute === "production-readiness";
+
+    document.querySelectorAll("[data-projectpulse-022b-production-readiness-extra='true']").forEach((element) => {
+      element.style.display = isProductionReadiness ? "none" : "";
+      element.setAttribute("aria-hidden", isProductionReadiness ? "true" : "false");
+    });
+
+    ensureDashboardShortcut();
+  };
+
+  const injectStyles = () => {
+    if (document.getElementById("projectpulse-022b-production-readiness-style")) return;
+
+    const style = document.createElement("style");
+    style.id = "projectpulse-022b-production-readiness-style";
+    style.textContent = `
+      #projectpulse-production-readiness-dashboard-shortcut {
+        display: block;
+        max-width: 1280px;
+        margin: 24px auto;
+        padding: 22px 26px;
+        border: 1px solid rgba(15, 74, 117, 0.16);
+        border-radius: 22px;
+        background: linear-gradient(135deg, rgba(255,255,255,0.96), rgba(232,244,251,0.92));
+        box-shadow: 0 20px 50px rgba(15, 34, 67, 0.08);
+        color: #0f172a;
+        text-decoration: none;
+      }
+
+      #projectpulse-production-readiness-dashboard-shortcut:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 24px 60px rgba(15, 34, 67, 0.12);
+      }
+
+      .projectpulse-022b-shortcut-eyebrow {
+        margin-bottom: 8px;
+        color: #064a7a;
+        font-size: 0.76rem;
+        font-weight: 800;
+        letter-spacing: 0.16em;
+      }
+
+      .projectpulse-022b-shortcut-title {
+        margin-bottom: 8px;
+        font-size: clamp(1.35rem, 2vw, 1.9rem);
+        font-weight: 850;
+      }
+
+      .projectpulse-022b-shortcut-body {
+        max-width: 820px;
+        color: #52617a;
+        line-height: 1.55;
+      }
+
+      .projectpulse-022b-shortcut-action {
+        margin-top: 14px;
+        color: #006b5f;
+        font-weight: 800;
+      }
+
+      html[data-projectpulse-route="production-readiness"] #projectpulse-production-readiness-dashboard-shortcut {
+        display: none !important;
+      }
+    `;
+
+    document.head.appendChild(style);
+  };
+
+  const scheduleSync = () => {
+    injectStyles();
+    window.requestAnimationFrame(() => {
+      syncProductionReadinessRoute();
+      setTimeout(syncProductionReadinessRoute, 150);
+      setTimeout(syncProductionReadinessRoute, 600);
+    });
+  };
+
+  window.addEventListener("hashchange", scheduleSync);
+  window.addEventListener("popstate", scheduleSync);
+  document.addEventListener("DOMContentLoaded", scheduleSync);
+
+  const observer = new MutationObserver(() => {
+    clearTimeout(window.__projectpulse022bRouteIsolationTimer);
+    window.__projectpulse022bRouteIsolationTimer = setTimeout(scheduleSync, 75);
+  });
+
+  observer.observe(document.documentElement, {
+    childList: true,
+    subtree: true
+  });
+
+  scheduleSync();
+})();
+</script>
+
+</body>
 </html>
