@@ -31,3 +31,24 @@ Validation:
 - Public dashboard route should show Production Readiness Center shortcut.
 - Public production-readiness route should not continue into general landing/dashboard content.
 - API checks required for readiness command center, navigation registry, dashboard module visibility, and 022A notifications.
+
+## 022C Production Notification Preferences + Routing Rules
+
+Status: Applied pending validation and commit.
+
+Scope:
+- Adds production notification routing rules.
+- Adds user-level notification preferences.
+- Keeps email delivery disabled.
+- Preserves View-As read-only write protection.
+- Includes Dashboard / Navigation / Registry validation.
+
+Validation:
+- Backend build required.
+- Migration must apply safely.
+- Preference summary must return HTTP 200 for authenticated admin.
+- Routing rules must return HTTP 200 for authenticated admin.
+- Preference save must return HTTP 200.
+- Routing rule toggle must return HTTP 200 for admin.
+- Engineer View-As write attempt must return HTTP 403.
+- Dashboard / Navigation / Registry endpoints must remain HTTP 200.

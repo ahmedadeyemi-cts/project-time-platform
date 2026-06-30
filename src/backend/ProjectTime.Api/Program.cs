@@ -23194,6 +23194,454 @@ static async Task<List<Dictionary<string, object?>>> ProjectPulseLoadVisibleProd
 }
 // 022A Production Notification Center Foundation - END
 
+// 022C Production Notification Preferences + Routing Rules - START
+app.MapGet("/api/production/notifications/preferences/summary", async (HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var effectiveUserId = await ProjectPulseResolveEffectiveProductionNotificationUserIdAsync(httpContext, connection);
+    if (effectiveUserId is null)
+    {
+        return Results.Json(new
+        {
+            status = "session_required",
+            message = "A ProjectPulse session is required to view production notification preferences."
+        }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var userContext = await ProjectPulseGetProductionNotificationUserContextAsync(connection, effectiveUserId.Value);
+    var roleCodes = userContext.RoleCodes ?? Array.Empty<string>();
+
+    var routingRules = await ProjectPulse022CLoadRoutingRulesAsync(connection, roleCodes);
+    var preferences = await ProjectPulse022CLoadUserPreferencesAsync(connection, effectiveUserId.Value);
+
+    return Results.Ok(new
+    {
+        module = "022C Production Notification Preferences + Routing Rules",
+        summary = new
+        {
+            effectiveUserId,
+            userEmail = userContext.Email,
+            userDisplayName = userContext.DisplayName,
+            roleCodes,
+            routingRuleCount = routingRules.Count,
+            preferenceCount = preferences.Count,
+            mutedPreferenceCount = preferences.Count(item => item.MutedUntilUtc is not null && item.MutedUntilUtc > DateTimeOffset.UtcNow),
+            inAppDisabledPreferenceCount = preferences.Count(item => !item.InAppEnabled),
+            emailEnabledPreferenceCount = preferences.Count(item => item.EmailEnabled),
+            emailDeliveryPolicy = "Email delivery remains disabled for 022C. Future email delivery must use the shared provider safety gate.",
+            preferenceScope = "user_module_severity"
+        },
+        routingRules,
+        preferences
+    });
+});
+
+app.MapGet("/api/production/notifications/routing-rules", async (HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var effectiveUserId = await ProjectPulseResolveEffectiveProductionNotificationUserIdAsync(httpContext, connection);
+    if (effectiveUserId is null)
+    {
+        return Results.Json(new
+        {
+            status = "session_required",
+            message = "A ProjectPulse session is required to view production notification routing rules."
+        }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var userContext = await ProjectPulseGetProductionNotificationUserContextAsync(connection, effectiveUserId.Value);
+    var roleCodes = userContext.RoleCodes ?? Array.Empty<string>();
+    var routingRules = await ProjectPulse022CLoadRoutingRulesAsync(connection, roleCodes);
+
+    return Results.Ok(new
+    {
+        module = "022C Production Notification Preferences + Routing Rules",
+        count = routingRules.Count,
+        effectiveUserId,
+        roleCodes,
+        routingRules
+    });
+});
+
+app.MapPost("/api/production/notifications/preferences", async (HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new
+        {
+            status = "session_required",
+            message = "A ProjectPulse session is required to update production notification preferences."
+        }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    Dictionary<string, JsonElement>? payload;
+    try
+    {
+        payload = await JsonSerializer.DeserializeAsync<Dictionary<string, JsonElement>>(httpContext.Request.Body);
+    }
+    catch (JsonException ex)
+    {
+        return Results.BadRequest(new
+        {
+            status = "invalid_json",
+            message = "Preference payload must be valid JSON.",
+            detail = ex.Message
+        });
+    }
+
+    if (payload is null)
+    {
+        return Results.BadRequest(new
+        {
+            status = "validation_failed",
+            message = "Preference payload is required."
+        });
+    }
+
+    var moduleKey = ProjectPulse022CJsonString(payload, "moduleKey").Trim().ToUpperInvariant();
+    var severity = ProjectPulse022CJsonString(payload, "severity", "info").Trim().ToLowerInvariant();
+    var inAppEnabled = ProjectPulse022CJsonBool(payload, "inAppEnabled", true);
+    var mutedUntilUtc = ProjectPulse022CJsonDateTimeOffset(payload, "mutedUntilUtc");
+
+    if (string.IsNullOrWhiteSpace(moduleKey))
+    {
+        return Results.BadRequest(new
+        {
+            status = "validation_failed",
+            message = "moduleKey is required."
+        });
+    }
+
+    if (!ProjectPulse022CValidSeverity(severity))
+    {
+        return Results.BadRequest(new
+        {
+            status = "validation_failed",
+            message = "severity must be one of info, warning, critical, success, or error."
+        });
+    }
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    await using var command = new NpgsqlCommand("""
+        INSERT INTO production_notification_user_preferences (
+            user_id,
+            module_key,
+            severity,
+            in_app_enabled,
+            email_enabled,
+            muted_until,
+            updated_by_user_id,
+            created_at,
+            updated_at
+        )
+        VALUES (
+            @user_id,
+            @module_key,
+            @severity,
+            @in_app_enabled,
+            FALSE,
+            @muted_until,
+            @updated_by_user_id,
+            NOW(),
+            NOW()
+        )
+        ON CONFLICT (user_id, module_key, severity)
+        DO UPDATE SET
+            in_app_enabled = EXCLUDED.in_app_enabled,
+            email_enabled = FALSE,
+            muted_until = EXCLUDED.muted_until,
+            updated_by_user_id = EXCLUDED.updated_by_user_id,
+            updated_at = NOW()
+        RETURNING production_notification_user_preference_id;
+        """, connection);
+
+    command.Parameters.AddWithValue("user_id", sessionUserId.Value);
+    command.Parameters.AddWithValue("module_key", moduleKey);
+    command.Parameters.AddWithValue("severity", severity);
+    command.Parameters.AddWithValue("in_app_enabled", inAppEnabled);
+    command.Parameters.AddWithValue("muted_until", (object?)mutedUntilUtc ?? DBNull.Value);
+    command.Parameters.AddWithValue("updated_by_user_id", sessionUserId.Value);
+
+    var preferenceId = (Guid)(await command.ExecuteScalarAsync() ?? Guid.Empty);
+
+    return Results.Ok(new
+    {
+        module = "022C Production Notification Preferences + Routing Rules",
+        status = "preference_saved",
+        preferenceId,
+        userId = sessionUserId.Value,
+        moduleKey,
+        severity,
+        inAppEnabled,
+        emailEnabled = false,
+        mutedUntilUtc,
+        message = "Production notification preference was saved. Email remains disabled for 022C."
+    });
+});
+
+app.MapPost("/api/production/notifications/routing-rules/toggle", async (HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
+    {
+        return Results.Json(new
+        {
+            status = "forbidden",
+            message = "Only administrators or authorized production operators can update notification routing rules."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    Dictionary<string, JsonElement>? payload;
+    try
+    {
+        payload = await JsonSerializer.DeserializeAsync<Dictionary<string, JsonElement>>(httpContext.Request.Body);
+    }
+    catch (JsonException ex)
+    {
+        return Results.BadRequest(new
+        {
+            status = "invalid_json",
+            message = "Routing rule payload must be valid JSON.",
+            detail = ex.Message
+        });
+    }
+
+    if (payload is null)
+    {
+        return Results.BadRequest(new
+        {
+            status = "validation_failed",
+            message = "Routing rule payload is required."
+        });
+    }
+
+    var ruleKey = ProjectPulse022CJsonString(payload, "ruleKey").Trim();
+    var isActive = ProjectPulse022CJsonBool(payload, "isActive", true);
+    var defaultInAppEnabled = ProjectPulse022CJsonNullableBool(payload, "defaultInAppEnabled");
+    var allowUserOptOut = ProjectPulse022CJsonNullableBool(payload, "allowUserOptOut");
+
+    if (string.IsNullOrWhiteSpace(ruleKey))
+    {
+        return Results.BadRequest(new
+        {
+            status = "validation_failed",
+            message = "ruleKey is required."
+        });
+    }
+
+    await using var command = new NpgsqlCommand("""
+        UPDATE production_notification_routing_rules
+        SET
+            is_active = @is_active,
+            default_in_app_enabled = COALESCE(@default_in_app_enabled, default_in_app_enabled),
+            allow_user_opt_out = COALESCE(@allow_user_opt_out, allow_user_opt_out),
+            allow_email_delivery = FALSE,
+            updated_at = NOW()
+        WHERE rule_key = @rule_key
+        RETURNING production_notification_routing_rule_id;
+        """, connection);
+
+    command.Parameters.AddWithValue("rule_key", ruleKey);
+    command.Parameters.AddWithValue("is_active", isActive);
+    command.Parameters.AddWithValue("default_in_app_enabled", (object?)defaultInAppEnabled ?? DBNull.Value);
+    command.Parameters.AddWithValue("allow_user_opt_out", (object?)allowUserOptOut ?? DBNull.Value);
+
+    var result = await command.ExecuteScalarAsync();
+    if (result is null)
+    {
+        return Results.NotFound(new
+        {
+            status = "not_found",
+            message = $"No production notification routing rule was found for {ruleKey}."
+        });
+    }
+
+    return Results.Ok(new
+    {
+        module = "022C Production Notification Preferences + Routing Rules",
+        status = "routing_rule_updated",
+        routingRuleId = (Guid)result,
+        ruleKey,
+        isActive,
+        defaultInAppEnabled,
+        allowUserOptOut,
+        allowEmailDelivery = false,
+        message = "Routing rule was updated. Email delivery remains disabled for 022C."
+    });
+});
+
+static async Task<List<ProjectPulse022CRoutingRule>> ProjectPulse022CLoadRoutingRulesAsync(NpgsqlConnection connection, string[] roleCodes)
+{
+    var rules = new List<ProjectPulse022CRoutingRule>();
+
+    await using var command = new NpgsqlCommand("""
+        SELECT
+            production_notification_routing_rule_id,
+            rule_key,
+            module_key,
+            severity,
+            target_role_codes,
+            default_in_app_enabled,
+            allow_user_opt_out,
+            allow_email_delivery,
+            is_active,
+            rule_description,
+            created_at,
+            updated_at
+        FROM production_notification_routing_rules
+        WHERE is_active = TRUE
+          AND (
+              cardinality(target_role_codes) = 0
+              OR target_role_codes && @role_codes
+          )
+        ORDER BY module_key, severity, rule_key;
+        """, connection);
+
+    command.Parameters.AddWithValue("role_codes", roleCodes ?? Array.Empty<string>());
+
+    await using var reader = await command.ExecuteReaderAsync();
+    while (await reader.ReadAsync())
+    {
+        rules.Add(new ProjectPulse022CRoutingRule(
+            reader.GetGuid(0),
+            reader.GetString(1),
+            reader.GetString(2),
+            reader.GetString(3),
+            reader.IsDBNull(4) ? Array.Empty<string>() : reader.GetFieldValue<string[]>(4),
+            reader.GetBoolean(5),
+            reader.GetBoolean(6),
+            reader.GetBoolean(7),
+            reader.GetBoolean(8),
+            reader.IsDBNull(9) ? string.Empty : reader.GetString(9),
+            reader.GetFieldValue<DateTimeOffset>(10),
+            reader.GetFieldValue<DateTimeOffset>(11)
+        ));
+    }
+
+    return rules;
+}
+
+static async Task<List<ProjectPulse022CUserPreference>> ProjectPulse022CLoadUserPreferencesAsync(NpgsqlConnection connection, Guid userId)
+{
+    var preferences = new List<ProjectPulse022CUserPreference>();
+
+    await using var command = new NpgsqlCommand("""
+        SELECT
+            production_notification_user_preference_id,
+            module_key,
+            severity,
+            in_app_enabled,
+            email_enabled,
+            muted_until,
+            updated_at
+        FROM production_notification_user_preferences
+        WHERE user_id = @user_id
+        ORDER BY module_key, severity;
+        """, connection);
+
+    command.Parameters.AddWithValue("user_id", userId);
+
+    await using var reader = await command.ExecuteReaderAsync();
+    while (await reader.ReadAsync())
+    {
+        preferences.Add(new ProjectPulse022CUserPreference(
+            reader.GetGuid(0),
+            reader.GetString(1),
+            reader.GetString(2),
+            reader.GetBoolean(3),
+            reader.GetBoolean(4),
+            reader.IsDBNull(5) ? null : reader.GetFieldValue<DateTimeOffset>(5),
+            reader.GetFieldValue<DateTimeOffset>(6)
+        ));
+    }
+
+    return preferences;
+}
+
+static string ProjectPulse022CJsonString(Dictionary<string, JsonElement> payload, string key, string fallback = "")
+{
+    if (!payload.TryGetValue(key, out var element))
+    {
+        return fallback;
+    }
+
+    return element.ValueKind == JsonValueKind.String ? element.GetString() ?? fallback : fallback;
+}
+
+static bool ProjectPulse022CJsonBool(Dictionary<string, JsonElement> payload, string key, bool fallback)
+{
+    if (!payload.TryGetValue(key, out var element))
+    {
+        return fallback;
+    }
+
+    if (element.ValueKind == JsonValueKind.True) return true;
+    if (element.ValueKind == JsonValueKind.False) return false;
+
+    return fallback;
+}
+
+static bool? ProjectPulse022CJsonNullableBool(Dictionary<string, JsonElement> payload, string key)
+{
+    if (!payload.TryGetValue(key, out var element))
+    {
+        return null;
+    }
+
+    if (element.ValueKind == JsonValueKind.True) return true;
+    if (element.ValueKind == JsonValueKind.False) return false;
+
+    return null;
+}
+
+static DateTimeOffset? ProjectPulse022CJsonDateTimeOffset(Dictionary<string, JsonElement> payload, string key)
+{
+    if (!payload.TryGetValue(key, out var element) || element.ValueKind != JsonValueKind.String)
+    {
+        return null;
+    }
+
+    var value = element.GetString();
+    return DateTimeOffset.TryParse(value, out var parsed) ? parsed.ToUniversalTime() : null;
+}
+
+static bool ProjectPulse022CValidSeverity(string severity)
+{
+    return string.Equals(severity, "info", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(severity, "warning", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(severity, "critical", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(severity, "success", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(severity, "error", StringComparison.OrdinalIgnoreCase);
+}
+
+// 022C Production Notification Preferences + Routing Rules - END
+
+
 app.Run();
 
 
@@ -25583,3 +26031,27 @@ internal sealed record ProjectCostAlertReleaseNotificationRequest(
 internal sealed record ProjectCostAlertEvaluationRequest(
     bool? QueueNotifications,
     decimal? AssignmentWarningThresholdHours);
+
+// 022C Production Notification DTO Records
+record ProjectPulse022CRoutingRule(
+    Guid RoutingRuleId,
+    string RuleKey,
+    string ModuleKey,
+    string Severity,
+    string[] TargetRoleCodes,
+    bool DefaultInAppEnabled,
+    bool AllowUserOptOut,
+    bool AllowEmailDelivery,
+    bool IsActive,
+    string RuleDescription,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset UpdatedAt);
+
+record ProjectPulse022CUserPreference(
+    Guid PreferenceId,
+    string ModuleKey,
+    string Severity,
+    bool InAppEnabled,
+    bool EmailEnabled,
+    DateTimeOffset? MutedUntilUtc,
+    DateTimeOffset UpdatedAt);
