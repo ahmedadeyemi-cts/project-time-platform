@@ -78,6 +78,20 @@ function fmtMoney(value) {
   return amount.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
 }
 
+function normalizeStatus(value) {
+  return String(value ?? '').trim().toLowerCase();
+}
+
+function getIntakeStatusTone(status) {
+  const normalized = normalizeStatus(status);
+
+  if (['approved', 'assigned', 'ready', 'converted', 'posted'].includes(normalized)) return 'safe';
+  if (['blocked', 'declined', 'cancelled', 'rejected'].includes(normalized)) return 'danger';
+  if (['pending', 'triage', 'review', 'new', 'draft'].includes(normalized)) return 'attention';
+
+  return 'neutral';
+}
+
 function StatusBadge({ children, tone = 'neutral' }) {
   return <span className={`project-intake-badge ${tone}`}>{children}</span>;
 }
@@ -189,6 +203,25 @@ export default function ProjectIntakeCenter() {
   const plannedPmCost = Number(intakeForm.plannedPmCost || 0);
   const plannedTotalProjectCost = plannedEngineeringCost + plannedPmCost;
 
+  const intakeWorkflowMetrics = useMemo(() => {
+    const openStatuses = new Set(['new', 'draft', 'pending', 'triage', 'review', 'open']);
+    const openIntakes = intakes.filter((item) => openStatuses.has(normalizeStatus(item.status)));
+    const unassignedIntakes = intakes.filter((item) => !item.assignedPmUserId && !item.assignedPmName);
+    const highPriorityIntakes = intakes.filter((item) => normalizeStatus(item.priority) === 'high');
+    const sourceDocumentRequired = intakes.filter((item) => item.sourceDocumentRequired === true);
+    const resourceLinkedIntakes = new Set(resourceRequests
+      .map((request) => request.projectIntakeRequestId)
+      .filter(Boolean));
+
+    return {
+      openIntakes: openIntakes.length,
+      unassignedIntakes: unassignedIntakes.length,
+      highPriorityIntakes: highPriorityIntakes.length,
+      sourceDocumentRequired: sourceDocumentRequired.length,
+      linkedToResourceRequest: intakes.filter((item) => resourceLinkedIntakes.has(item.id)).length
+    };
+  }, [intakes, resourceRequests]);
+
   const filteredIntakes = useMemo(() => {
     const search = intakeSearchTerm.trim().toLowerCase();
 
@@ -207,6 +240,38 @@ export default function ProjectIntakeCenter() {
 
     return filteredIntakes.slice(0, 20);
   }, [filteredIntakes, selectedIntakeId]);
+
+  const selectedIntake = intakes.find((item) => item.id === selectedIntakeId) ?? visibleIntakes[0];
+
+  const selectedIntakeReadinessItems = selectedIntake ? [
+    {
+      label: 'Customer selected',
+      ready: Boolean(selectedIntake.clientId || selectedIntake.clientName),
+      detail: selectedIntake.clientName ? `${selectedIntake.clientName} is attached to this intake.` : 'No customer is attached.'
+    },
+    {
+      label: 'PM ownership',
+      ready: Boolean(selectedIntake.assignedPmUserId || selectedIntake.assignedPmName),
+      detail: selectedIntake.assignedPmName ? `${selectedIntake.assignedPmName} owns this intake.` : 'No project manager is assigned.'
+    },
+    {
+      label: 'Source traceability',
+      ready: Boolean(selectedIntake.opportunityReference || selectedIntake.externalReferenceId || selectedIntake.sourceSystem),
+      detail: selectedIntake.externalReferenceId || selectedIntake.opportunityReference || 'No external/source reference is recorded.'
+    },
+    {
+      label: 'Cost estimate',
+      ready: Number(selectedIntake.plannedTotalProjectCost ?? 0) > 0 || Number(selectedIntake.plannedEngineeringCost ?? 0) > 0,
+      detail: `Estimated project cost: ${fmtMoney(selectedIntake.plannedTotalProjectCost ?? selectedIntake.plannedEngineeringCost ?? 0)}.`
+    },
+    {
+      label: 'Resource handoff',
+      ready: resourceRequests.some((request) => request.projectIntakeRequestId === selectedIntake.id),
+      detail: resourceRequests.some((request) => request.projectIntakeRequestId === selectedIntake.id)
+        ? 'At least one engineering resource request is linked.'
+        : 'No engineering resource request is linked yet.'
+    }
+  ] : [];
 
   const filteredResourceRequests = useMemo(() => {
     const search = resourceRequestSearchTerm.trim().toLowerCase();
@@ -391,11 +456,38 @@ export default function ProjectIntakeCenter() {
       {actionStatus && <div className="project-intake-alert">{actionStatus}</div>}
 
       <div className="project-intake-summary-grid">
-        <article><span>Intake requests</span><strong>{overview.loading ? '...' : overview.data?.summary?.intakeCount ?? 0}</strong><small>{overview.data?.summary?.openIntakeCount ?? 0} open</small></article>
+        <article><span>Intake requests</span><strong>{overview.loading ? '...' : overview.data?.summary?.intakeCount ?? 0}</strong><small>{intakeWorkflowMetrics.openIntakes} open workflow item(s)</small></article>
         <article><span>Resource requests</span><strong>{overview.loading ? '...' : overview.data?.summary?.resourceRequestCount ?? 0}</strong><small>{readyResourceRequests} fully or partially assigned · max 15 engineers/request</small></article>
         <article><span>Active projects</span><strong>{overview.loading ? '...' : overview.data?.summary?.activeProjectCount ?? 0}</strong><small>Workspace-ready records</small></article>
         <article><span>Engineers</span><strong>{overview.loading ? '...' : overview.data?.summary?.engineerCount ?? 0}</strong><small>Role, department, capacity, and skills loaded</small></article>
+        <article><span>High priority</span><strong>{overview.loading ? '...' : intakeWorkflowMetrics.highPriorityIntakes}</strong><small>Intake records marked high priority</small></article>
+        <article><span>Needs PM</span><strong>{overview.loading ? '...' : intakeWorkflowMetrics.unassignedIntakes}</strong><small>Intake records without PM ownership</small></article>
+        <article><span>Needs source doc</span><strong>{overview.loading ? '...' : intakeWorkflowMetrics.sourceDocumentRequired}</strong><small>Source document still required</small></article>
+        <article><span>Resource-linked</span><strong>{overview.loading ? '...' : intakeWorkflowMetrics.linkedToResourceRequest}</strong><small>Intakes with engineering demand linked</small></article>
       </div>
+
+      {selectedIntake && (
+        <article className="project-intake-panel intake-readiness-panel">
+          <div className="project-intake-section-header">
+            <div>
+              <h3>Selected Intake Readiness</h3>
+              <p className="muted">
+                {selectedIntake.requestNumber} · {selectedIntake.requestTitle}
+              </p>
+            </div>
+            <StatusBadge tone={getIntakeStatusTone(selectedIntake.status)}>{selectedIntake.status || 'Draft'}</StatusBadge>
+          </div>
+          <div className="intake-readiness-grid">
+            {selectedIntakeReadinessItems.map((item) => (
+              <article className={`intake-readiness-item ${item.ready ? 'ready' : 'attention'}`} key={item.label}>
+                <span>{item.ready ? 'Ready' : 'Needs attention'}</span>
+                <strong>{item.label}</strong>
+                <small>{item.detail}</small>
+              </article>
+            ))}
+          </div>
+        </article>
+      )}
 
       <div className="project-intake-two-column">
         <article className="project-intake-panel">
