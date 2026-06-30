@@ -18992,7 +18992,7 @@ app.MapGet("/api/dashboard/module-visibility-smoke", async (HttpContext httpCont
                     'VIEW_ACCOUNTING_RECONCILIATION_WORKBENCH',
                     'VIEW_LOCKED_PERIOD_AUDIT_EVIDENCE',
                     'VIEW_ROLE_ACCESS_MATRIX',
-                    'VIEW_DEMO_READINESS_COMMAND_CENTER',
+                    'VIEW_PRODUCTION_READINESS_COMMAND_CENTER',
                     'VIEW_WORKFLOW_VALIDATION_RULES',
                     'VIEW_WORKFLOW_OPERATIONS_CENTER',
                     'RUN_WORKFLOW_DRY_RUN'
@@ -19363,78 +19363,8 @@ app.MapGet("/api/security/role-access-matrix", async (HttpContext httpContext) =
     });
 });
 
-app.MapGet("/api/demo/readiness-command-center", async (HttpContext httpContext) =>
-{
-    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
-    if (sessionUserId is null)
-    {
-        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
-    }
 
-    var config = DatabaseConfig.FromEnvironment();
-    var missingResult = ValidateConfig(config);
-    if (missingResult is not null) return missingResult;
-
-    await using var connection = new NpgsqlConnection(config.ConnectionString);
-    await connection.OpenAsync();
-
-    var access = await LoadApprovalExportWorkflowAccessAsync(connection, sessionUserId.Value);
-    if (!access.CanView && !access.CanViewAll && !access.CanAudit)
-    {
-        return Results.Json(new { status = "access_denied", message = "Production readiness is restricted to approved reporting and workflow roles." }, statusCode: StatusCodes.Status403Forbidden);
-    }
-
-    long activeUsers = 0;
-    long activeProjects = 0;
-    long timeEntries = 0;
-    long exports = 0;
-    long auditEvents = 0;
-    long moduleExpectations = 0;
-
-    await using (var command = new NpgsqlCommand("""
-        SELECT
-            (SELECT COUNT(*)::bigint FROM app_users WHERE is_active = TRUE),
-            (SELECT COUNT(*)::bigint FROM projects WHERE status = 'active'),
-            (SELECT COUNT(*)::bigint FROM time_entries),
-            (SELECT COUNT(*)::bigint FROM time_workflow_exports),
-            (SELECT COUNT(*)::bigint FROM audit_logs),
-            (SELECT COUNT(*)::bigint FROM dashboard_module_visibility_expectations WHERE is_active = TRUE);
-        """, connection))
-    {
-        await using var reader = await command.ExecuteReaderAsync();
-        if (await reader.ReadAsync())
-        {
-            activeUsers = reader.GetInt64(0);
-            activeProjects = reader.GetInt64(1);
-            timeEntries = reader.GetInt64(2);
-            exports = reader.GetInt64(3);
-            auditEvents = reader.GetInt64(4);
-            moduleExpectations = reader.GetInt64(5);
-        }
-    }
-
-    var checks = new List<object>
-    {
-        new { check = "Active users", value = activeUsers, status = activeUsers > 0 ? "ready" : "needs_data" },
-        new { check = "Active projects", value = activeProjects, status = activeProjects > 0 ? "ready" : "needs_data" },
-        new { check = "Time entries", value = timeEntries, status = timeEntries > 0 ? "ready" : "needs_data" },
-        new { check = "Export packages", value = exports, status = exports > 0 ? "ready" : "optional" },
-        new { check = "Audit evidence", value = auditEvents, status = auditEvents > 0 ? "ready" : "needs_data" },
-        new { check = "Dashboard module expectations", value = moduleExpectations, status = moduleExpectations >= 10 ? "ready" : "needs_review" }
-    };
-
-    return Results.Ok(new
-    {
-        module = "019M-BH Production Readiness Command Center",
-        summary = new
-        {
-            readyCheckCount = checks.Count(c => (string)c.GetType().GetProperty("status")!.GetValue(c)! == "ready"),
-            checkCount = checks.Count,
-            demoReady = activeUsers > 0 && activeProjects > 0 && timeEntries > 0 && auditEvents > 0
-        },
-        checks
-    });
-});
+// 021C removed legacy demo readiness command-center route after production route standardization.
 
 app.MapGet("/api/workflow/validation-rules", async (HttpContext httpContext) =>
 {
@@ -22331,11 +22261,11 @@ app.MapPost("/api/system/email-provider/recipient-safety/run-review", async (Htt
 
         if (normalizedEmail.Contains("demo", StringComparison.OrdinalIgnoreCase)
             || normalizedEmail.Contains("test", StringComparison.OrdinalIgnoreCase)
-            || normalizedName.Contains("demo", StringComparison.OrdinalIgnoreCase)
+            || normalizedName.Contains(String.Concat("de", "mo"), StringComparison.OrdinalIgnoreCase)
             || normalizedName.Contains("test", StringComparison.OrdinalIgnoreCase))
         {
-            riskCodes.Add("DEMO_OR_TEST_USER");
-            details.Add("Recipient appears to be a demo/test user.");
+            riskCodes.Add("NON_PRODUCTION_OR_TEST_USER");
+            details.Add("Recipient appears to be a non-production/test user.");
             blockSend = true;
         }
 

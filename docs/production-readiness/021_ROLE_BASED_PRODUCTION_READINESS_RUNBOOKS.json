@@ -1,0 +1,1057 @@
+{
+  "generatedAtUtc": "2026-06-30T16:26:40.409560+00:00",
+  "sourceRouteReport": "docs/production-readiness/021_ROUTE_INTEGRITY_REPORT.json",
+  "personaCount": 6,
+  "personas": [
+    {
+      "key": "administrator",
+      "name": "Administrator / System Owner",
+      "objective": "Validate platform governance, role enforcement, production readiness command center, operational controls, and auditability.",
+      "recommendedRoutes": [
+        {
+          "route": "audit-history",
+          "href": "#audit-history",
+          "title": "Audit / Security History",
+          "navLabel": "Audit",
+          "group": "",
+          "status": "",
+          "description": "Review login history, password reset history, Azure sync failures, notification failures, and system audit events.",
+          "permissions": [
+            "VIEW_AUDIT_TRAIL",
+            "SYSTEM_ADMINISTRATION",
+            "MANAGE_ALL"
+          ],
+          "sourceLine": 772
+        },
+        {
+          "route": "azure-admin",
+          "href": "#azure-admin",
+          "title": "Azure / Entra Admin",
+          "navLabel": "Azure Admin",
+          "group": "",
+          "status": "",
+          "description": "Configure Azure SSO, run user sync, and review imported directory users.",
+          "permissions": [
+            "VIEW_AZURE_ADMIN",
+            "MANAGE_AZURE_SYNC",
+            "SYSTEM_ADMINISTRATION",
+            "MANAGE_ALL"
+          ],
+          "sourceLine": 788
+        },
+        {
+          "route": "backup-dr",
+          "href": "#backup-dr",
+          "title": "Backup / DR Center",
+          "navLabel": "Backup / DR",
+          "group": "",
+          "status": "",
+          "description": "Create and validate full ProjectPulse backup bundles.",
+          "permissions": [
+            "SYSTEM_ADMINISTRATION",
+            "MANAGE_ALL"
+          ],
+          "sourceLine": 820
+        },
+        {
+          "route": "backup-retention",
+          "href": "#backup-retention",
+          "title": "Backup Retention",
+          "navLabel": "Backup Retention",
+          "group": "",
+          "status": "",
+          "description": "Review and safely remove older backup points with restore-point protection.",
+          "permissions": [
+            "SYSTEM_ADMINISTRATION",
+            "MANAGE_ALL"
+          ],
+          "sourceLine": 836
+        },
+        {
+          "route": "cost-alerts",
+          "href": "#cost-alerts",
+          "title": "Cost Overrun Alerts",
+          "navLabel": "Cost Alerts",
+          "group": "",
+          "status": "",
+          "description": "Detect missing cost plans, over-assigned projects, and route PM/manager/PTC alerts.",
+          "permissions": [
+            "VIEW_COST_ALERTS",
+            "MANAGE_COST_ALERTS",
+            "SYSTEM_ADMINISTRATION",
+            "MANAGE_ALL"
+          ],
+          "sourceLine": 700
+        },
+        {
+          "route": "customer-directory",
+          "href": "#customer-directory",
+          "title": "Customer Directory",
+          "navLabel": "Customers",
+          "group": "",
+          "status": "",
+          "description": "Manage customer records, contacts, and customer intake/project cost readiness.",
+          "permissions": [
+            "VIEW_CUSTOMERS",
+            "MANAGE_CUSTOMERS",
+            "SYSTEM_ADMINISTRATION",
+            "MANAGE_ALL"
+          ],
+          "sourceLine": 692
+        },
+        {
+          "route": "dashboard",
+          "href": "#dashboard",
+          "title": "",
+          "navLabel": "",
+          "group": "",
+          "status": "",
+          "description": "",
+          "permissions": [],
+          "sourceLine": 900
+        },
+        {
+          "route": "holiday-admin",
+          "href": "#holiday-admin",
+          "title": "Holiday Calendar",
+          "navLabel": "Holidays",
+          "group": "",
+          "status": "",
+          "description": "View or manage company holidays and calendar availability.",
+          "permissions": [
+            "VIEW_HOLIDAYS",
+            "MANAGE_HOLIDAYS"
+          ],
+          "sourceLine": 740
+        },
+        {
+          "route": "manager-approval",
+          "href": "#manager-approval",
+          "title": "Approval Inbox",
+          "navLabel": "Approvals",
+          "group": "",
+          "status": "",
+          "description": "Approve, reject, and review submitted time.",
+          "permissions": [
+            "VIEW_APPROVAL_INBOX",
+            "APPROVE_TIME"
+          ],
+          "sourceLine": 724
+        },
+        {
+          "route": "project-allocation-info",
+          "href": "#project-allocation-info",
+          "title": "Project Allocation and Info",
+          "navLabel": "Project Info",
+          "group": "",
+          "status": "",
+          "description": "View project allocations, engineer hours, and SOW/GSD documents.",
+          "permissions": [
+            "VIEW_PROJECT_ALLOCATION_INFO",
+            "MANAGE_PROJECT_ALLOCATION_INFO",
+            "MANAGE_ALL"
+          ],
+          "sourceLine": 748
+        }
+      ],
+      "validationSteps": [
+        "Confirm the user is authenticated with Administrator-level access.",
+        "Open the production readiness command center and verify operational status cards are visible.",
+        "Open role/security administration and confirm the role matrix aligns with expected access boundaries.",
+        "Review user administration and confirm inactive or restricted users do not appear as active production operators.",
+        "Use the View-As preview only as a read-only access verification tool.",
+        "Open audit history and confirm administrative and workflow activities are traceable.",
+        "Record any route, permission, or visibility gap as a production readiness issue."
+      ],
+      "acceptanceCriteria": [
+        "Administrator can access governance, audit, production operations, and readiness surfaces.",
+        "View-As behavior remains read-only for write actions.",
+        "Protected routes do not expose data to unauthenticated users.",
+        "Audit evidence is available for sensitive workflow and administrative areas."
+      ]
+    },
+    {
+      "key": "project_manager",
+      "name": "Project Manager",
+      "objective": "Validate customer-to-project intake, resource assignment readiness, project allocation, task handoff, and approval preparation.",
+      "recommendedRoutes": [
+        {
+          "route": "backup-dr",
+          "href": "#backup-dr",
+          "title": "Backup / DR Center",
+          "navLabel": "Backup / DR",
+          "group": "",
+          "status": "",
+          "description": "Create and validate full ProjectPulse backup bundles.",
+          "permissions": [
+            "SYSTEM_ADMINISTRATION",
+            "MANAGE_ALL"
+          ],
+          "sourceLine": 820
+        },
+        {
+          "route": "cost-alerts",
+          "href": "#cost-alerts",
+          "title": "Cost Overrun Alerts",
+          "navLabel": "Cost Alerts",
+          "group": "",
+          "status": "",
+          "description": "Detect missing cost plans, over-assigned projects, and route PM/manager/PTC alerts.",
+          "permissions": [
+            "VIEW_COST_ALERTS",
+            "MANAGE_COST_ALERTS",
+            "SYSTEM_ADMINISTRATION",
+            "MANAGE_ALL"
+          ],
+          "sourceLine": 700
+        },
+        {
+          "route": "customer-directory",
+          "href": "#customer-directory",
+          "title": "Customer Directory",
+          "navLabel": "Customers",
+          "group": "",
+          "status": "",
+          "description": "Manage customer records, contacts, and customer intake/project cost readiness.",
+          "permissions": [
+            "VIEW_CUSTOMERS",
+            "MANAGE_CUSTOMERS",
+            "SYSTEM_ADMINISTRATION",
+            "MANAGE_ALL"
+          ],
+          "sourceLine": 692
+        },
+        {
+          "route": "manager-approval",
+          "href": "#manager-approval",
+          "title": "Approval Inbox",
+          "navLabel": "Approvals",
+          "group": "",
+          "status": "",
+          "description": "Approve, reject, and review submitted time.",
+          "permissions": [
+            "VIEW_APPROVAL_INBOX",
+            "APPROVE_TIME"
+          ],
+          "sourceLine": 724
+        },
+        {
+          "route": "project-allocation-info",
+          "href": "#project-allocation-info",
+          "title": "Project Allocation and Info",
+          "navLabel": "Project Info",
+          "group": "",
+          "status": "",
+          "description": "View project allocations, engineer hours, and SOW/GSD documents.",
+          "permissions": [
+            "VIEW_PROJECT_ALLOCATION_INFO",
+            "MANAGE_PROJECT_ALLOCATION_INFO",
+            "MANAGE_ALL"
+          ],
+          "sourceLine": 748
+        },
+        {
+          "route": "project-intake",
+          "href": "#project-intake",
+          "title": "Project Intake & Engineering Resource Requests",
+          "navLabel": "Project Intake",
+          "group": "",
+          "status": "",
+          "description": "Create and review project intake requests, signed date aging, engineering resource demand, capacity, project handoff, and work-task assignment readiness.",
+          "permissions": [
+            "VIEW_PROJECT_INTAKE",
+            "MANAGE_PROJECT_INTAKE",
+            "VIEW_RESOURCE_SCHEDULING",
+            "MANAGE_RESOURCE_SCHEDULING",
+            "SYSTEM_ADMINISTRATION",
+            "MANAGE_ALL"
+          ],
+          "sourceLine": 684
+        },
+        {
+          "route": "project-workload",
+          "href": "#project-workload",
+          "title": "Project Workload",
+          "navLabel": "Project Workload",
+          "group": "",
+          "status": "",
+          "description": "Project Manager dashboard for active projects, closed projects, project status, assigned project list, and workload risks.",
+          "permissions": [
+            "VIEW_PROJECT_WORKLOAD",
+            "SYSTEM_ADMINISTRATION",
+            "MANAGE_ALL"
+          ],
+          "sourceLine": 668
+        },
+        {
+          "route": "project-workspace",
+          "href": "#project-workspace",
+          "title": "Project Workspace & Engineering Documents",
+          "navLabel": "Project Workspace",
+          "group": "",
+          "status": "",
+          "description": "View project workspace readiness, engineering-visible documents, assignments, and timesheet-context artifacts.",
+          "permissions": [
+            "VIEW_PROJECT_WORKSPACE",
+            "VIEW_ENGINEERING_PROJECT_DOCUMENTS",
+            "VIEW_PROJECT_INTAKE",
+            "VIEW_RESOURCE_SCHEDULING",
+            "SYSTEM_ADMINISTRATION",
+            "MANAGE_ALL"
+          ],
+          "sourceLine": 676
+        },
+        {
+          "route": "psa-modules",
+          "href": "#psa-modules",
+          "title": "PSA Modules",
+          "navLabel": "Modules",
+          "group": "",
+          "status": "",
+          "description": "Review project intake, resource scheduling, expense management, and executive reporting workflows.",
+          "permissions": [
+            "VIEW_PROJECT_INTAKE",
+            "VIEW_RESOURCE_SCHEDULING",
+            "VIEW_EXPENSES",
+            "VIEW_EXECUTIVE_REPORTING"
+          ],
+          "sourceLine": 756
+        },
+        {
+          "route": "time-compliance",
+          "href": "#time-compliance",
+          "title": "Time Compliance & Notification Center",
+          "navLabel": "Time Compliance",
+          "group": "",
+          "status": "",
+          "description": "Production-safe preview for missing weekly time, manager and Project Team Coordinator copy visibility, month-end rules, holiday reminders, and notification history.",
+          "permissions": [
+            "SYSTEM_ADMINISTRATION",
+            "MANAGE_ALL",
+            "VIEW_TIME_COMPLIANCE",
+            "VIEW_AUDIT_HISTORY"
+          ],
+          "sourceLine": 708
+        }
+      ],
+      "validationSteps": [
+        "Confirm the user can access customer and project intake context appropriate to the role.",
+        "Review project intake summary and verify records have clear status and ownership.",
+        "Open resource assignment or allocation views and validate staffing/capacity information is understandable.",
+        "Review work-task handoff and confirm planning details can move into execution.",
+        "Confirm approval readiness indicators are visible before work moves to downstream approval or export handling.",
+        "Record any missing data, unclear empty state, or route visibility mismatch."
+      ],
+      "acceptanceCriteria": [
+        "Project intake data is understandable and operationally actionable.",
+        "Resource assignment views support staffing decisions.",
+        "Project handoff information is visible without requiring manual spreadsheet reconciliation.",
+        "Approval readiness is clear before downstream workflow actions."
+      ]
+    },
+    {
+      "key": "manager",
+      "name": "Manager / Approver",
+      "objective": "Validate approval queue visibility, review controls, exception handling, unlock decisions, and audit accountability.",
+      "recommendedRoutes": [
+        {
+          "route": "audit-history",
+          "href": "#audit-history",
+          "title": "Audit / Security History",
+          "navLabel": "Audit",
+          "group": "",
+          "status": "",
+          "description": "Review login history, password reset history, Azure sync failures, notification failures, and system audit events.",
+          "permissions": [
+            "VIEW_AUDIT_TRAIL",
+            "SYSTEM_ADMINISTRATION",
+            "MANAGE_ALL"
+          ],
+          "sourceLine": 772
+        },
+        {
+          "route": "azure-admin",
+          "href": "#azure-admin",
+          "title": "Azure / Entra Admin",
+          "navLabel": "Azure Admin",
+          "group": "",
+          "status": "",
+          "description": "Configure Azure SSO, run user sync, and review imported directory users.",
+          "permissions": [
+            "VIEW_AZURE_ADMIN",
+            "MANAGE_AZURE_SYNC",
+            "SYSTEM_ADMINISTRATION",
+            "MANAGE_ALL"
+          ],
+          "sourceLine": 788
+        },
+        {
+          "route": "backup-retention",
+          "href": "#backup-retention",
+          "title": "Backup Retention",
+          "navLabel": "Backup Retention",
+          "group": "",
+          "status": "",
+          "description": "Review and safely remove older backup points with restore-point protection.",
+          "permissions": [
+            "SYSTEM_ADMINISTRATION",
+            "MANAGE_ALL"
+          ],
+          "sourceLine": 836
+        },
+        {
+          "route": "cost-alerts",
+          "href": "#cost-alerts",
+          "title": "Cost Overrun Alerts",
+          "navLabel": "Cost Alerts",
+          "group": "",
+          "status": "",
+          "description": "Detect missing cost plans, over-assigned projects, and route PM/manager/PTC alerts.",
+          "permissions": [
+            "VIEW_COST_ALERTS",
+            "MANAGE_COST_ALERTS",
+            "SYSTEM_ADMINISTRATION",
+            "MANAGE_ALL"
+          ],
+          "sourceLine": 700
+        },
+        {
+          "route": "manager-approval",
+          "href": "#manager-approval",
+          "title": "Approval Inbox",
+          "navLabel": "Approvals",
+          "group": "",
+          "status": "",
+          "description": "Approve, reject, and review submitted time.",
+          "permissions": [
+            "VIEW_APPROVAL_INBOX",
+            "APPROVE_TIME"
+          ],
+          "sourceLine": 724
+        },
+        {
+          "route": "project-intake",
+          "href": "#project-intake",
+          "title": "Project Intake & Engineering Resource Requests",
+          "navLabel": "Project Intake",
+          "group": "",
+          "status": "",
+          "description": "Create and review project intake requests, signed date aging, engineering resource demand, capacity, project handoff, and work-task assignment readiness.",
+          "permissions": [
+            "VIEW_PROJECT_INTAKE",
+            "MANAGE_PROJECT_INTAKE",
+            "VIEW_RESOURCE_SCHEDULING",
+            "MANAGE_RESOURCE_SCHEDULING",
+            "SYSTEM_ADMINISTRATION",
+            "MANAGE_ALL"
+          ],
+          "sourceLine": 684
+        },
+        {
+          "route": "project-workload",
+          "href": "#project-workload",
+          "title": "Project Workload",
+          "navLabel": "Project Workload",
+          "group": "",
+          "status": "",
+          "description": "Project Manager dashboard for active projects, closed projects, project status, assigned project list, and workload risks.",
+          "permissions": [
+            "VIEW_PROJECT_WORKLOAD",
+            "SYSTEM_ADMINISTRATION",
+            "MANAGE_ALL"
+          ],
+          "sourceLine": 668
+        },
+        {
+          "route": "project-workspace",
+          "href": "#project-workspace",
+          "title": "Project Workspace & Engineering Documents",
+          "navLabel": "Project Workspace",
+          "group": "",
+          "status": "",
+          "description": "View project workspace readiness, engineering-visible documents, assignments, and timesheet-context artifacts.",
+          "permissions": [
+            "VIEW_PROJECT_WORKSPACE",
+            "VIEW_ENGINEERING_PROJECT_DOCUMENTS",
+            "VIEW_PROJECT_INTAKE",
+            "VIEW_RESOURCE_SCHEDULING",
+            "SYSTEM_ADMINISTRATION",
+            "MANAGE_ALL"
+          ],
+          "sourceLine": 676
+        },
+        {
+          "route": "psa-modules",
+          "href": "#psa-modules",
+          "title": "PSA Modules",
+          "navLabel": "Modules",
+          "group": "",
+          "status": "",
+          "description": "Review project intake, resource scheduling, expense management, and executive reporting workflows.",
+          "permissions": [
+            "VIEW_PROJECT_INTAKE",
+            "VIEW_RESOURCE_SCHEDULING",
+            "VIEW_EXPENSES",
+            "VIEW_EXECUTIVE_REPORTING"
+          ],
+          "sourceLine": 756
+        },
+        {
+          "route": "replication-sync",
+          "href": "#replication-sync",
+          "title": "Replication & Sync Status",
+          "navLabel": "Replication / Sync",
+          "group": "",
+          "status": "",
+          "description": "Review failover readiness, database role, service health, backup freshness, deployment state, and peer configuration.",
+          "permissions": [
+            "SYSTEM_ADMINISTRATION",
+            "MANAGE_ALL"
+          ],
+          "sourceLine": 844
+        }
+      ],
+      "validationSteps": [
+        "Confirm the user can access approval queues and pending review counts.",
+        "Review one approval-ready item and verify the displayed information supports an approval decision.",
+        "Validate exception or unlock controls are restricted and clearly labeled.",
+        "Confirm approval actions produce traceable audit evidence.",
+        "Verify unauthenticated access to approval routes returns the expected protected response.",
+        "Record any missing approval evidence, confusing label, or role mismatch."
+      ],
+      "acceptanceCriteria": [
+        "Manager can identify pending approvals quickly.",
+        "Approval and unlock actions are controlled by role.",
+        "Exception handling is visible without bypassing accountability.",
+        "Audit history can support review of approval activity."
+      ]
+    },
+    {
+      "key": "engineer",
+      "name": "Engineer / Contributor",
+      "objective": "Validate time entry, assigned work visibility, project/non-project activity handling, and submission readiness.",
+      "recommendedRoutes": [
+        {
+          "route": "backup-dr",
+          "href": "#backup-dr",
+          "title": "Backup / DR Center",
+          "navLabel": "Backup / DR",
+          "group": "",
+          "status": "",
+          "description": "Create and validate full ProjectPulse backup bundles.",
+          "permissions": [
+            "SYSTEM_ADMINISTRATION",
+            "MANAGE_ALL"
+          ],
+          "sourceLine": 820
+        },
+        {
+          "route": "cost-alerts",
+          "href": "#cost-alerts",
+          "title": "Cost Overrun Alerts",
+          "navLabel": "Cost Alerts",
+          "group": "",
+          "status": "",
+          "description": "Detect missing cost plans, over-assigned projects, and route PM/manager/PTC alerts.",
+          "permissions": [
+            "VIEW_COST_ALERTS",
+            "MANAGE_COST_ALERTS",
+            "SYSTEM_ADMINISTRATION",
+            "MANAGE_ALL"
+          ],
+          "sourceLine": 700
+        },
+        {
+          "route": "customer-directory",
+          "href": "#customer-directory",
+          "title": "Customer Directory",
+          "navLabel": "Customers",
+          "group": "",
+          "status": "",
+          "description": "Manage customer records, contacts, and customer intake/project cost readiness.",
+          "permissions": [
+            "VIEW_CUSTOMERS",
+            "MANAGE_CUSTOMERS",
+            "SYSTEM_ADMINISTRATION",
+            "MANAGE_ALL"
+          ],
+          "sourceLine": 692
+        },
+        {
+          "route": "holiday-admin",
+          "href": "#holiday-admin",
+          "title": "Holiday Calendar",
+          "navLabel": "Holidays",
+          "group": "",
+          "status": "",
+          "description": "View or manage company holidays and calendar availability.",
+          "permissions": [
+            "VIEW_HOLIDAYS",
+            "MANAGE_HOLIDAYS"
+          ],
+          "sourceLine": 740
+        },
+        {
+          "route": "manager-approval",
+          "href": "#manager-approval",
+          "title": "Approval Inbox",
+          "navLabel": "Approvals",
+          "group": "",
+          "status": "",
+          "description": "Approve, reject, and review submitted time.",
+          "permissions": [
+            "VIEW_APPROVAL_INBOX",
+            "APPROVE_TIME"
+          ],
+          "sourceLine": 724
+        },
+        {
+          "route": "project-allocation-info",
+          "href": "#project-allocation-info",
+          "title": "Project Allocation and Info",
+          "navLabel": "Project Info",
+          "group": "",
+          "status": "",
+          "description": "View project allocations, engineer hours, and SOW/GSD documents.",
+          "permissions": [
+            "VIEW_PROJECT_ALLOCATION_INFO",
+            "MANAGE_PROJECT_ALLOCATION_INFO",
+            "MANAGE_ALL"
+          ],
+          "sourceLine": 748
+        },
+        {
+          "route": "project-intake",
+          "href": "#project-intake",
+          "title": "Project Intake & Engineering Resource Requests",
+          "navLabel": "Project Intake",
+          "group": "",
+          "status": "",
+          "description": "Create and review project intake requests, signed date aging, engineering resource demand, capacity, project handoff, and work-task assignment readiness.",
+          "permissions": [
+            "VIEW_PROJECT_INTAKE",
+            "MANAGE_PROJECT_INTAKE",
+            "VIEW_RESOURCE_SCHEDULING",
+            "MANAGE_RESOURCE_SCHEDULING",
+            "SYSTEM_ADMINISTRATION",
+            "MANAGE_ALL"
+          ],
+          "sourceLine": 684
+        },
+        {
+          "route": "project-workload",
+          "href": "#project-workload",
+          "title": "Project Workload",
+          "navLabel": "Project Workload",
+          "group": "",
+          "status": "",
+          "description": "Project Manager dashboard for active projects, closed projects, project status, assigned project list, and workload risks.",
+          "permissions": [
+            "VIEW_PROJECT_WORKLOAD",
+            "SYSTEM_ADMINISTRATION",
+            "MANAGE_ALL"
+          ],
+          "sourceLine": 668
+        },
+        {
+          "route": "project-workspace",
+          "href": "#project-workspace",
+          "title": "Project Workspace & Engineering Documents",
+          "navLabel": "Project Workspace",
+          "group": "",
+          "status": "",
+          "description": "View project workspace readiness, engineering-visible documents, assignments, and timesheet-context artifacts.",
+          "permissions": [
+            "VIEW_PROJECT_WORKSPACE",
+            "VIEW_ENGINEERING_PROJECT_DOCUMENTS",
+            "VIEW_PROJECT_INTAKE",
+            "VIEW_RESOURCE_SCHEDULING",
+            "SYSTEM_ADMINISTRATION",
+            "MANAGE_ALL"
+          ],
+          "sourceLine": 676
+        },
+        {
+          "route": "psa-modules",
+          "href": "#psa-modules",
+          "title": "PSA Modules",
+          "navLabel": "Modules",
+          "group": "",
+          "status": "",
+          "description": "Review project intake, resource scheduling, expense management, and executive reporting workflows.",
+          "permissions": [
+            "VIEW_PROJECT_INTAKE",
+            "VIEW_RESOURCE_SCHEDULING",
+            "VIEW_EXPENSES",
+            "VIEW_EXECUTIVE_REPORTING"
+          ],
+          "sourceLine": 756
+        }
+      ],
+      "validationSteps": [
+        "Confirm the user can access the correct time-entry or assigned-work area.",
+        "Review assigned project work and validate it is distinguishable from non-project activity.",
+        "Confirm week/date context is understandable and supports accurate entry.",
+        "Check whether validation, holidays, preferences, or hidden-row behavior improves entry accuracy.",
+        "Confirm submission readiness is clear before work enters approval routing.",
+        "Record any work visibility gap, unclear validation message, or missing route permission."
+      ],
+      "acceptanceCriteria": [
+        "Engineer can find assigned work and time-entry context.",
+        "Project and non-project work are clearly separated.",
+        "Submission readiness is understandable.",
+        "The contributor experience supports accurate downstream approval and export."
+      ]
+    },
+    {
+      "key": "accounting",
+      "name": "Accounting / Export Reviewer",
+      "objective": "Validate export package readiness, reconciliation evidence, protected export actions, and downstream reporting controls.",
+      "recommendedRoutes": [
+        {
+          "route": "audit-history",
+          "href": "#audit-history",
+          "title": "Audit / Security History",
+          "navLabel": "Audit",
+          "group": "",
+          "status": "",
+          "description": "Review login history, password reset history, Azure sync failures, notification failures, and system audit events.",
+          "permissions": [
+            "VIEW_AUDIT_TRAIL",
+            "SYSTEM_ADMINISTRATION",
+            "MANAGE_ALL"
+          ],
+          "sourceLine": 772
+        },
+        {
+          "route": "manager-approval",
+          "href": "#manager-approval",
+          "title": "Approval Inbox",
+          "navLabel": "Approvals",
+          "group": "",
+          "status": "",
+          "description": "Approve, reject, and review submitted time.",
+          "permissions": [
+            "VIEW_APPROVAL_INBOX",
+            "APPROVE_TIME"
+          ],
+          "sourceLine": 724
+        },
+        {
+          "route": "project-workspace",
+          "href": "#project-workspace",
+          "title": "Project Workspace & Engineering Documents",
+          "navLabel": "Project Workspace",
+          "group": "",
+          "status": "",
+          "description": "View project workspace readiness, engineering-visible documents, assignments, and timesheet-context artifacts.",
+          "permissions": [
+            "VIEW_PROJECT_WORKSPACE",
+            "VIEW_ENGINEERING_PROJECT_DOCUMENTS",
+            "VIEW_PROJECT_INTAKE",
+            "VIEW_RESOURCE_SCHEDULING",
+            "SYSTEM_ADMINISTRATION",
+            "MANAGE_ALL"
+          ],
+          "sourceLine": 676
+        },
+        {
+          "route": "psa-modules",
+          "href": "#psa-modules",
+          "title": "PSA Modules",
+          "navLabel": "Modules",
+          "group": "",
+          "status": "",
+          "description": "Review project intake, resource scheduling, expense management, and executive reporting workflows.",
+          "permissions": [
+            "VIEW_PROJECT_INTAKE",
+            "VIEW_RESOURCE_SCHEDULING",
+            "VIEW_EXPENSES",
+            "VIEW_EXECUTIVE_REPORTING"
+          ],
+          "sourceLine": 756
+        },
+        {
+          "route": "time-compliance",
+          "href": "#time-compliance",
+          "title": "Time Compliance & Notification Center",
+          "navLabel": "Time Compliance",
+          "group": "",
+          "status": "",
+          "description": "Production-safe preview for missing weekly time, manager and Project Team Coordinator copy visibility, month-end rules, holiday reminders, and notification history.",
+          "permissions": [
+            "SYSTEM_ADMINISTRATION",
+            "MANAGE_ALL",
+            "VIEW_TIME_COMPLIANCE",
+            "VIEW_AUDIT_HISTORY"
+          ],
+          "sourceLine": 708
+        },
+        {
+          "route": "timesheet",
+          "href": "#timesheet",
+          "title": "Time Entry",
+          "navLabel": "Timesheet",
+          "group": "",
+          "status": "",
+          "description": "Enter weekly and daily time by project, task, non-project work, and afterhours.",
+          "permissions": [
+            "VIEW_TIME_ENTRY"
+          ],
+          "sourceLine": 716
+        },
+        {
+          "route": "work-task-builder",
+          "href": "#work-task-builder",
+          "title": "Work Task Builder",
+          "navLabel": "Work Tasks",
+          "group": "",
+          "status": "",
+          "description": "Build, classify, and assign project, service request, open, and non-project work tasks with billing and utilization treatment.",
+          "permissions": [
+            "VIEW_WORK_TASK_BUILDER",
+            "MANAGE_WORK_TASK_BUILDER",
+            "ASSIGN_WORK_TASKS",
+            "SYSTEM_ADMINISTRATION",
+            "MANAGE_ALL"
+          ],
+          "sourceLine": 796
+        },
+        {
+          "route": "workflow",
+          "href": "#workflow",
+          "title": "Workflow",
+          "navLabel": "Workflow",
+          "group": "",
+          "status": "",
+          "description": "Review project approval, account reconciliation, exports, and reporting workflow.",
+          "permissions": [
+            "PROJECT_TIME_APPROVAL",
+            "VIEW_APPROVAL_WORKFLOW",
+            "VIEW_ACCOUNT_RECONCILIATION",
+            "VIEW_WORKFLOW_OPERATIONAL_READINESS",
+            "VIEW_WORKFLOW_AUDIT_EVIDENCE",
+            "EXPORT_TIME_EXCEL",
+            "EXPORT_TIME_PDF",
+            "DOWNLOAD_TIME_EXPORT_PACKAGE",
+            "SYSTEM_ADMINISTRATION",
+            "MANAGE_ALL"
+          ],
+          "sourceLine": 764
+        },
+        {
+          "route": "holiday-admin",
+          "href": "",
+          "title": "Holiday Management",
+          "navLabel": "",
+          "group": "Administration",
+          "status": "Active",
+          "description": "Manages company holidays, holiday visibility, uploads, and timesheet holiday readiness.",
+          "permissions": [
+            "VIEW_HOLIDAYS",
+            "MANAGE_HOLIDAYS",
+            "SYSTEM_ADMINISTRATION",
+            "MANAGE_ALL"
+          ],
+          "sourceLine": 1207
+        },
+        {
+          "route": "customer-directory",
+          "href": "",
+          "title": "Customer Directory",
+          "navLabel": "",
+          "group": "Customers",
+          "status": "",
+          "description": "Maintains customer records, contacts, and customer data used by project, billing, cost, and reconciliation workflows.",
+          "permissions": [
+            "VIEW_CUSTOMERS",
+            "MANAGE_CUSTOMERS",
+            "SYSTEM_ADMINISTRATION",
+            "MANAGE_ALL"
+          ],
+          "sourceLine": 1186
+        }
+      ],
+      "validationSteps": [
+        "Confirm the user can access export readiness and accounting review surfaces.",
+        "Review export package status and validate readiness indicators are understandable.",
+        "Confirm reconciliation evidence is visible before export actions.",
+        "Validate export/download actions are protected by role.",
+        "Review audit history for export-related traceability.",
+        "Record any missing export evidence, unclear reconciliation status, or role enforcement issue."
+      ],
+      "acceptanceCriteria": [
+        "Accounting can identify export-ready work.",
+        "Export actions are controlled and traceable.",
+        "Reconciliation evidence is available before downstream handoff.",
+        "Audit history supports accounting review."
+      ]
+    },
+    {
+      "key": "read_only_stakeholder",
+      "name": "Read-Only Stakeholder",
+      "objective": "Validate safe visibility for leadership, auditors, or stakeholders who need status awareness without write access.",
+      "recommendedRoutes": [
+        {
+          "route": "audit-history",
+          "href": "#audit-history",
+          "title": "Audit / Security History",
+          "navLabel": "Audit",
+          "group": "",
+          "status": "",
+          "description": "Review login history, password reset history, Azure sync failures, notification failures, and system audit events.",
+          "permissions": [
+            "VIEW_AUDIT_TRAIL",
+            "SYSTEM_ADMINISTRATION",
+            "MANAGE_ALL"
+          ],
+          "sourceLine": 772
+        },
+        {
+          "route": "azure-admin",
+          "href": "#azure-admin",
+          "title": "Azure / Entra Admin",
+          "navLabel": "Azure Admin",
+          "group": "",
+          "status": "",
+          "description": "Configure Azure SSO, run user sync, and review imported directory users.",
+          "permissions": [
+            "VIEW_AZURE_ADMIN",
+            "MANAGE_AZURE_SYNC",
+            "SYSTEM_ADMINISTRATION",
+            "MANAGE_ALL"
+          ],
+          "sourceLine": 788
+        },
+        {
+          "route": "backup-dr",
+          "href": "#backup-dr",
+          "title": "Backup / DR Center",
+          "navLabel": "Backup / DR",
+          "group": "",
+          "status": "",
+          "description": "Create and validate full ProjectPulse backup bundles.",
+          "permissions": [
+            "SYSTEM_ADMINISTRATION",
+            "MANAGE_ALL"
+          ],
+          "sourceLine": 820
+        },
+        {
+          "route": "backup-retention",
+          "href": "#backup-retention",
+          "title": "Backup Retention",
+          "navLabel": "Backup Retention",
+          "group": "",
+          "status": "",
+          "description": "Review and safely remove older backup points with restore-point protection.",
+          "permissions": [
+            "SYSTEM_ADMINISTRATION",
+            "MANAGE_ALL"
+          ],
+          "sourceLine": 836
+        },
+        {
+          "route": "cost-alerts",
+          "href": "#cost-alerts",
+          "title": "Cost Overrun Alerts",
+          "navLabel": "Cost Alerts",
+          "group": "",
+          "status": "",
+          "description": "Detect missing cost plans, over-assigned projects, and route PM/manager/PTC alerts.",
+          "permissions": [
+            "VIEW_COST_ALERTS",
+            "MANAGE_COST_ALERTS",
+            "SYSTEM_ADMINISTRATION",
+            "MANAGE_ALL"
+          ],
+          "sourceLine": 700
+        },
+        {
+          "route": "customer-directory",
+          "href": "#customer-directory",
+          "title": "Customer Directory",
+          "navLabel": "Customers",
+          "group": "",
+          "status": "",
+          "description": "Manage customer records, contacts, and customer intake/project cost readiness.",
+          "permissions": [
+            "VIEW_CUSTOMERS",
+            "MANAGE_CUSTOMERS",
+            "SYSTEM_ADMINISTRATION",
+            "MANAGE_ALL"
+          ],
+          "sourceLine": 692
+        },
+        {
+          "route": "dashboard",
+          "href": "#dashboard",
+          "title": "",
+          "navLabel": "",
+          "group": "",
+          "status": "",
+          "description": "",
+          "permissions": [],
+          "sourceLine": 900
+        },
+        {
+          "route": "holiday-admin",
+          "href": "#holiday-admin",
+          "title": "Holiday Calendar",
+          "navLabel": "Holidays",
+          "group": "",
+          "status": "",
+          "description": "View or manage company holidays and calendar availability.",
+          "permissions": [
+            "VIEW_HOLIDAYS",
+            "MANAGE_HOLIDAYS"
+          ],
+          "sourceLine": 740
+        },
+        {
+          "route": "manager-approval",
+          "href": "#manager-approval",
+          "title": "Approval Inbox",
+          "navLabel": "Approvals",
+          "group": "",
+          "status": "",
+          "description": "Approve, reject, and review submitted time.",
+          "permissions": [
+            "VIEW_APPROVAL_INBOX",
+            "APPROVE_TIME"
+          ],
+          "sourceLine": 724
+        },
+        {
+          "route": "project-allocation-info",
+          "href": "#project-allocation-info",
+          "title": "Project Allocation and Info",
+          "navLabel": "Project Info",
+          "group": "",
+          "status": "",
+          "description": "View project allocations, engineer hours, and SOW/GSD documents.",
+          "permissions": [
+            "VIEW_PROJECT_ALLOCATION_INFO",
+            "MANAGE_PROJECT_ALLOCATION_INFO",
+            "MANAGE_ALL"
+          ],
+          "sourceLine": 748
+        }
+      ],
+      "validationSteps": [
+        "Confirm the user can access only appropriate read-oriented surfaces.",
+        "Open the production readiness or reporting dashboard and review high-level status.",
+        "Open project or workflow summary views without performing write actions.",
+        "Confirm restricted actions are hidden, disabled, or rejected according to role enforcement.",
+        "Review audit/reporting visibility for transparency.",
+        "Record any overexposed action, missing status summary, or route visibility issue."
+      ],
+      "acceptanceCriteria": [
+        "Stakeholder can view appropriate status information.",
+        "Write actions are unavailable or denied.",
+        "Production readiness status is understandable without operational permissions.",
+        "Role-based visibility supports transparency without weakening control."
+      ]
+    }
+  ]
+}

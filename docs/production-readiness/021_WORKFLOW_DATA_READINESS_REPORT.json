@@ -1,0 +1,821 @@
+{
+  "generatedAtUtc": "2026-06-30T16:42:26.434012+00:00",
+  "sourceRouteReport": "docs/production-readiness/021_ROUTE_INTEGRITY_REPORT.json",
+  "workflowCount": 7,
+  "results": [
+    {
+      "area": "Customer Directory",
+      "purpose": "Customer, contact, and account context is available before project intake and downstream workflow activity.",
+      "status": "ready_for_live_validation",
+      "endpointResults": [
+        {
+          "endpoint": "/api/customers/overview",
+          "present": true
+        },
+        {
+          "endpoint": "/api/customers",
+          "present": true
+        }
+      ],
+      "tableResults": [
+        {
+          "table": "customers",
+          "mentions": 9
+        },
+        {
+          "table": "customer_contacts",
+          "mentions": 0
+        },
+        {
+          "table": "customer_locations",
+          "mentions": 0
+        }
+      ],
+      "routeResults": [
+        {
+          "route": "customer-directory",
+          "title": "Customer Directory",
+          "group": "",
+          "status": ""
+        },
+        {
+          "route": "project-intake",
+          "title": "Project Intake",
+          "group": "Project Intake",
+          "status": ""
+        },
+        {
+          "route": "customer-directory",
+          "title": "Customer Directory",
+          "group": "Customers",
+          "status": ""
+        }
+      ],
+      "readinessChecks": [
+        "At least one active customer exists.",
+        "Customer records have usable names and ownership context.",
+        "Customer contact data is available where required by intake workflows."
+      ],
+      "summary": {
+        "endpointCount": 2,
+        "presentEndpointCount": 2,
+        "tableSignalCount": 1,
+        "routeSignalCount": 3
+      }
+    },
+    {
+      "area": "Project Intake",
+      "purpose": "Intake records can be reviewed, linked, promoted, and prepared for project execution.",
+      "status": "needs_data_confirmation",
+      "endpointResults": [
+        {
+          "endpoint": "/api/project-intake/summary",
+          "present": true
+        },
+        {
+          "endpoint": "/api/project-intake/overview",
+          "present": false
+        },
+        {
+          "endpoint": "/api/project-intake/work-task-handoff",
+          "present": true
+        },
+        {
+          "endpoint": "/api/project-intake/project-link-options",
+          "present": true
+        },
+        {
+          "endpoint": "/api/project-intake/resource-assignment-handoff",
+          "present": true
+        },
+        {
+          "endpoint": "/api/project-intake/resource-assignment-promotions",
+          "present": true
+        }
+      ],
+      "tableResults": [
+        {
+          "table": "project_intake_requests",
+          "mentions": 15
+        },
+        {
+          "table": "project_intakes",
+          "mentions": 0
+        },
+        {
+          "table": "project_intake_supporting_documents",
+          "mentions": 0
+        },
+        {
+          "table": "project_intake_work_tasks",
+          "mentions": 0
+        }
+      ],
+      "routeResults": [
+        {
+          "route": "project-workload",
+          "title": "Project Workload",
+          "group": "",
+          "status": ""
+        },
+        {
+          "route": "project-workspace",
+          "title": "Project Workspace & Engineering Documents",
+          "group": "",
+          "status": ""
+        },
+        {
+          "route": "project-intake",
+          "title": "Project Intake & Engineering Resource Requests",
+          "group": "",
+          "status": ""
+        },
+        {
+          "route": "customer-directory",
+          "title": "Customer Directory",
+          "group": "",
+          "status": ""
+        },
+        {
+          "route": "cost-alerts",
+          "title": "Cost Overrun Alerts",
+          "group": "",
+          "status": ""
+        },
+        {
+          "route": "time-compliance",
+          "title": "Time Compliance & Notification Center",
+          "group": "",
+          "status": ""
+        },
+        {
+          "route": "timesheet",
+          "title": "Time Entry",
+          "group": "",
+          "status": ""
+        },
+        {
+          "route": "project-allocation-info",
+          "title": "Project Allocation and Info",
+          "group": "",
+          "status": ""
+        },
+        {
+          "route": "psa-modules",
+          "title": "PSA Modules",
+          "group": "",
+          "status": ""
+        },
+        {
+          "route": "workflow",
+          "title": "Workflow",
+          "group": "",
+          "status": ""
+        },
+        {
+          "route": "work-task-builder",
+          "title": "Work Task Builder",
+          "group": "",
+          "status": ""
+        },
+        {
+          "route": "backup-dr",
+          "title": "Backup / DR Center",
+          "group": "",
+          "status": ""
+        }
+      ],
+      "readinessChecks": [
+        "Open and recently completed intake records are available for review.",
+        "Intake records can be associated with projects or project-link candidates.",
+        "Supporting documents and handoff details are visible where applicable."
+      ],
+      "summary": {
+        "endpointCount": 6,
+        "presentEndpointCount": 5,
+        "tableSignalCount": 1,
+        "routeSignalCount": 23
+      }
+    },
+    {
+      "area": "Resource Assignment",
+      "purpose": "Project demand can be matched to available resource and capacity signals.",
+      "status": "ready_for_live_validation",
+      "endpointResults": [
+        {
+          "endpoint": "/api/resource-scheduling/capacity",
+          "present": true
+        },
+        {
+          "endpoint": "/api/project-allocation-info/source-projects",
+          "present": true
+        },
+        {
+          "endpoint": "/api/project-allocation-info/engineers",
+          "present": true
+        },
+        {
+          "endpoint": "/api/project-allocation-info/projects",
+          "present": true
+        }
+      ],
+      "tableResults": [
+        {
+          "table": "resource_assignments",
+          "mentions": 0
+        },
+        {
+          "table": "project_resource_assignments",
+          "mentions": 0
+        },
+        {
+          "table": "project_allocations",
+          "mentions": 0
+        },
+        {
+          "table": "app_users",
+          "mentions": 106
+        }
+      ],
+      "routeResults": [
+        {
+          "route": "project-workspace",
+          "title": "Project Workspace & Engineering Documents",
+          "group": "",
+          "status": ""
+        },
+        {
+          "route": "project-intake",
+          "title": "Project Intake & Engineering Resource Requests",
+          "group": "",
+          "status": ""
+        },
+        {
+          "route": "utilization",
+          "title": "Utilization",
+          "group": "",
+          "status": ""
+        },
+        {
+          "route": "project-allocation-info",
+          "title": "Project Allocation and Info",
+          "group": "",
+          "status": ""
+        },
+        {
+          "route": "psa-modules",
+          "title": "PSA Modules",
+          "group": "",
+          "status": ""
+        },
+        {
+          "route": "utilization",
+          "title": "Utilization",
+          "group": "Resource Management",
+          "status": ""
+        },
+        {
+          "route": "project-intake",
+          "title": "Project Intake",
+          "group": "Project Intake",
+          "status": ""
+        },
+        {
+          "route": "cost-alerts",
+          "title": "Cost Alert Overrun",
+          "group": "Cost Control",
+          "status": "Active"
+        },
+        {
+          "route": "user-admin",
+          "title": "User Administration",
+          "group": "Security",
+          "status": "Active"
+        },
+        {
+          "route": "work-task-builder",
+          "title": "Work Task Builder",
+          "group": "Security",
+          "status": "Active"
+        },
+        {
+          "route": "dashboard",
+          "title": "Engineer Negative Access Smoke",
+          "group": "Security",
+          "status": ""
+        }
+      ],
+      "readinessChecks": [
+        "Active users include assignable delivery resources.",
+        "Project allocation records can be reviewed.",
+        "Capacity or assignment views provide enough information to support staffing decisions."
+      ],
+      "summary": {
+        "endpointCount": 4,
+        "presentEndpointCount": 4,
+        "tableSignalCount": 1,
+        "routeSignalCount": 11
+      }
+    },
+    {
+      "area": "Approval Workflow",
+      "purpose": "Submitted work can be reviewed, approved, declined, unlocked, and audited through controlled workflow actions.",
+      "status": "ready_for_live_validation",
+      "endpointResults": [
+        {
+          "endpoint": "/api/manager/approvals",
+          "present": true
+        },
+        {
+          "endpoint": "/api/workflow/approval-items",
+          "present": true
+        },
+        {
+          "endpoint": "/api/workflow/approval-items/action",
+          "present": true
+        },
+        {
+          "endpoint": "/api/workflow/action-capabilities",
+          "present": true
+        },
+        {
+          "endpoint": "/api/workflow/approval-export-summary",
+          "present": true
+        }
+      ],
+      "tableResults": [
+        {
+          "table": "manager_approval_requests",
+          "mentions": 0
+        },
+        {
+          "table": "time_approval_requests",
+          "mentions": 0
+        },
+        {
+          "table": "time_entries",
+          "mentions": 50
+        },
+        {
+          "table": "time_workflow_locks",
+          "mentions": 0
+        }
+      ],
+      "routeResults": [
+        {
+          "route": "project-workload",
+          "title": "Project Workload",
+          "group": "",
+          "status": ""
+        },
+        {
+          "route": "cost-alerts",
+          "title": "Cost Overrun Alerts",
+          "group": "",
+          "status": ""
+        },
+        {
+          "route": "time-compliance",
+          "title": "Time Compliance & Notification Center",
+          "group": "",
+          "status": ""
+        },
+        {
+          "route": "manager-approval",
+          "title": "Approval Inbox",
+          "group": "",
+          "status": ""
+        },
+        {
+          "route": "utilization",
+          "title": "Utilization",
+          "group": "",
+          "status": ""
+        },
+        {
+          "route": "psa-modules",
+          "title": "PSA Modules",
+          "group": "",
+          "status": ""
+        },
+        {
+          "route": "workflow",
+          "title": "Workflow",
+          "group": "",
+          "status": ""
+        },
+        {
+          "route": "manager-approval",
+          "title": "Approval Inbox",
+          "group": "Approvals",
+          "status": ""
+        },
+        {
+          "route": "workflow",
+          "title": "Approval / Export / Audit Workflow",
+          "group": "Approvals",
+          "status": ""
+        },
+        {
+          "route": "project-workload",
+          "title": "Project Workload",
+          "group": "Project Management",
+          "status": ""
+        },
+        {
+          "route": "customer-directory",
+          "title": "Customer Directory",
+          "group": "Customers",
+          "status": ""
+        },
+        {
+          "route": "time-compliance",
+          "title": "Time Compliance",
+          "group": "Compliance",
+          "status": "Active"
+        }
+      ],
+      "readinessChecks": [
+        "Pending and completed approval records are available for review.",
+        "Approval actions are role-gated.",
+        "Workflow summary data clearly separates pending review, approved, and blocked items."
+      ],
+      "summary": {
+        "endpointCount": 5,
+        "presentEndpointCount": 5,
+        "tableSignalCount": 1,
+        "routeSignalCount": 27
+      }
+    },
+    {
+      "area": "Export Package",
+      "purpose": "Approved work can move into controlled export and reconciliation readiness.",
+      "status": "ready_for_live_validation",
+      "endpointResults": [
+        {
+          "endpoint": "/api/time-exports",
+          "present": true
+        },
+        {
+          "endpoint": "/api/export-packages/readiness-summary",
+          "present": true
+        },
+        {
+          "endpoint": "/api/workflow/reconciliation-workbench",
+          "present": true
+        },
+        {
+          "endpoint": "/api/workflow/lock-evidence",
+          "present": true
+        }
+      ],
+      "tableResults": [
+        {
+          "table": "time_workflow_exports",
+          "mentions": 13
+        },
+        {
+          "table": "time_export_packages",
+          "mentions": 0
+        },
+        {
+          "table": "time_export_package_items",
+          "mentions": 0
+        },
+        {
+          "table": "time_entries",
+          "mentions": 50
+        }
+      ],
+      "routeResults": [
+        {
+          "route": "workflow",
+          "title": "Workflow",
+          "group": "",
+          "status": ""
+        },
+        {
+          "route": "workflow",
+          "title": "Approval / Export / Audit Workflow",
+          "group": "Approvals",
+          "status": ""
+        },
+        {
+          "route": "customer-directory",
+          "title": "Customer Directory",
+          "group": "Customers",
+          "status": ""
+        },
+        {
+          "route": "audit-history",
+          "title": "Audit History",
+          "group": "Audit",
+          "status": "Active"
+        },
+        {
+          "route": "azure-admin",
+          "title": "Azure / Entra Administration",
+          "group": "Security",
+          "status": ""
+        },
+        {
+          "route": "workflow",
+          "title": "Workflow Operational Readiness",
+          "group": "Approval / Export / Audit",
+          "status": ""
+        },
+        {
+          "route": "workflow",
+          "title": "Export Packages",
+          "group": "Approval / Export / Audit",
+          "status": ""
+        },
+        {
+          "route": "workflow",
+          "title": "Workflow Audit Evidence",
+          "group": "Approval / Export / Audit",
+          "status": ""
+        },
+        {
+          "route": "workflow",
+          "title": "Audit History Events",
+          "group": "Approval / Export / Audit",
+          "status": ""
+        },
+        {
+          "route": "workflow",
+          "title": "Workflow Preflight Validation",
+          "group": "Approval / Export / Audit",
+          "status": ""
+        },
+        {
+          "route": "workflow",
+          "title": "Export Package Readiness Summary",
+          "group": "Approval / Export / Audit",
+          "status": ""
+        },
+        {
+          "route": "workflow",
+          "title": "Export Package Evidence Detail",
+          "group": "Approval / Export / Audit",
+          "status": ""
+        }
+      ],
+      "readinessChecks": [
+        "Approved or export-ready time exists.",
+        "Export package history or readiness evidence is visible.",
+        "Reconciliation and lock evidence can be reviewed before downstream handoff."
+      ],
+      "summary": {
+        "endpointCount": 4,
+        "presentEndpointCount": 4,
+        "tableSignalCount": 2,
+        "routeSignalCount": 19
+      }
+    },
+    {
+      "area": "Audit Evidence",
+      "purpose": "Security, workflow, approval, export, and administrative actions are traceable.",
+      "status": "ready_for_live_validation",
+      "endpointResults": [
+        {
+          "endpoint": "/api/audit/history",
+          "present": true
+        },
+        {
+          "endpoint": "/api/audit-history/summary",
+          "present": true
+        },
+        {
+          "endpoint": "/api/audit-history/events",
+          "present": true
+        }
+      ],
+      "tableResults": [
+        {
+          "table": "audit_logs",
+          "mentions": 17
+        },
+        {
+          "table": "audit_events",
+          "mentions": 0
+        },
+        {
+          "table": "system_email_provider_test_events",
+          "mentions": 2
+        }
+      ],
+      "routeResults": [
+        {
+          "route": "time-compliance",
+          "title": "Time Compliance & Notification Center",
+          "group": "",
+          "status": ""
+        },
+        {
+          "route": "workflow",
+          "title": "Workflow",
+          "group": "",
+          "status": ""
+        },
+        {
+          "route": "audit-history",
+          "title": "Audit / Security History",
+          "group": "",
+          "status": ""
+        },
+        {
+          "route": "workflow",
+          "title": "Approval / Export / Audit Workflow",
+          "group": "Approvals",
+          "status": ""
+        },
+        {
+          "route": "audit-history",
+          "title": "Audit History",
+          "group": "Audit",
+          "status": "Active"
+        },
+        {
+          "route": "service-control",
+          "title": "Service Control Center",
+          "group": "Operations",
+          "status": ""
+        },
+        {
+          "route": "restore-validation",
+          "title": "Restore Validation Center",
+          "group": "Operations",
+          "status": ""
+        },
+        {
+          "route": "workflow",
+          "title": "Workflow Operational Readiness",
+          "group": "Approval / Export / Audit",
+          "status": ""
+        },
+        {
+          "route": "workflow",
+          "title": "Export Packages",
+          "group": "Approval / Export / Audit",
+          "status": ""
+        },
+        {
+          "route": "workflow",
+          "title": "Workflow Audit Evidence",
+          "group": "Approval / Export / Audit",
+          "status": ""
+        },
+        {
+          "route": "workflow",
+          "title": "Audit History Events",
+          "group": "Approval / Export / Audit",
+          "status": ""
+        },
+        {
+          "route": "workflow",
+          "title": "Workflow Preflight Validation",
+          "group": "Approval / Export / Audit",
+          "status": ""
+        }
+      ],
+      "readinessChecks": [
+        "Audit history is populated.",
+        "Audit filters support operator, action, and workflow review.",
+        "Export, approval, administrative, and notification activity is traceable."
+      ],
+      "summary": {
+        "endpointCount": 3,
+        "presentEndpointCount": 3,
+        "tableSignalCount": 2,
+        "routeSignalCount": 20
+      }
+    },
+    {
+      "area": "Production Readiness Command Center",
+      "purpose": "Production readiness status can be reviewed from consolidated operational indicators.",
+      "status": "ready_for_live_validation",
+      "endpointResults": [
+        {
+          "endpoint": "/api/production/readiness-command-center",
+          "present": true
+        },
+        {
+          "endpoint": "/api/navigation/registry-integrity",
+          "present": true
+        },
+        {
+          "endpoint": "/api/dashboard/module-visibility-smoke",
+          "present": true
+        }
+      ],
+      "tableResults": [
+        {
+          "table": "dashboard_module_visibility_expectations",
+          "mentions": 7
+        },
+        {
+          "table": "app_users",
+          "mentions": 106
+        },
+        {
+          "table": "projects",
+          "mentions": 84
+        },
+        {
+          "table": "time_entries",
+          "mentions": 50
+        },
+        {
+          "table": "audit_logs",
+          "mentions": 17
+        }
+      ],
+      "routeResults": [
+        {
+          "route": "project-workload",
+          "title": "Project Workload",
+          "group": "",
+          "status": ""
+        },
+        {
+          "route": "project-workspace",
+          "title": "Project Workspace & Engineering Documents",
+          "group": "",
+          "status": ""
+        },
+        {
+          "route": "project-intake",
+          "title": "Project Intake & Engineering Resource Requests",
+          "group": "",
+          "status": ""
+        },
+        {
+          "route": "customer-directory",
+          "title": "Customer Directory",
+          "group": "",
+          "status": ""
+        },
+        {
+          "route": "time-compliance",
+          "title": "Time Compliance & Notification Center",
+          "group": "",
+          "status": ""
+        },
+        {
+          "route": "utilization",
+          "title": "Utilization",
+          "group": "",
+          "status": ""
+        },
+        {
+          "route": "workflow",
+          "title": "Workflow",
+          "group": "",
+          "status": ""
+        },
+        {
+          "route": "restore-validation",
+          "title": "Restore Validation",
+          "group": "",
+          "status": ""
+        },
+        {
+          "route": "replication-sync",
+          "title": "Replication & Sync Status",
+          "group": "",
+          "status": ""
+        },
+        {
+          "route": "dashboard",
+          "title": "dashboard",
+          "group": "",
+          "status": ""
+        },
+        {
+          "route": "dashboard",
+          "title": "dashboard",
+          "group": "",
+          "status": ""
+        },
+        {
+          "route": "workflow",
+          "title": "Approval / Export / Audit Workflow",
+          "group": "Approvals",
+          "status": ""
+        }
+      ],
+      "readinessChecks": [
+        "Production readiness endpoint is available.",
+        "Route registry and module visibility evidence are available.",
+        "Readiness indicators cover users, projects, time, audit, and route contracts."
+      ],
+      "summary": {
+        "endpointCount": 3,
+        "presentEndpointCount": 3,
+        "tableSignalCount": 5,
+        "routeSignalCount": 36
+      }
+    }
+  ]
+}
