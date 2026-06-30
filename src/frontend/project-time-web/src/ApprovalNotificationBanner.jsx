@@ -1,8 +1,24 @@
 import { useEffect, useState } from 'react';
 import './approval-notification.css';
 
+
+function getProjectPulseSessionHeaders() {
+  try {
+    const raw = window.localStorage.getItem('projectPulseAuthSession');
+    if (!raw) return {};
+
+    const session = JSON.parse(raw);
+    return session?.sessionToken
+      ? { 'X-ProjectPulse-Session': session.sessionToken }
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+
 async function fetchJson(path) {
-  const response = await fetch(path);
+  const response = await fetch(path, { headers: getProjectPulseSessionHeaders() });
   if (!response.ok) throw new Error(`${path} returned HTTP ${response.status}`);
   return response.json();
 }

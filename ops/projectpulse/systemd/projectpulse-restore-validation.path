@@ -1,0 +1,9 @@
+[Unit]
+Description=Watch ProjectPulse Restore Validation Settings
+
+[Path]
+PathChanged=/opt/project-time-platform/config/restore-validation.env
+Unit=projectpulse-restore-validation.service
+
+[Install]
+WantedBy=multi-user.target

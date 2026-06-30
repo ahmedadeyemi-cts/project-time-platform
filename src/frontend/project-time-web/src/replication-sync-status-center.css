@@ -1,0 +1,357 @@
+.replication-sync-page {
+  color: #172033;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  width: 100%;
+}
+
+.replication-sync-hero,
+.replication-sync-panel,
+.replication-sync-mode-banner,
+.replication-sync-readiness-card,
+.replication-sync-alert {
+  background: #ffffff;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 18px;
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.08);
+}
+
+.replication-sync-hero {
+  align-items: flex-start;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  padding: 1.5rem;
+}
+
+.replication-sync-hero h1 {
+  color: #172033;
+  font-size: clamp(1.9rem, 3vw, 2.6rem);
+  margin: 0.15rem 0 0.35rem;
+}
+
+.replication-sync-hero p,
+.replication-sync-mode-banner p,
+.replication-sync-panel p,
+.replication-sync-readiness-card p {
+  color: #61708f;
+  margin: 0;
+}
+
+.replication-sync-eyebrow,
+.replication-sync-check__category {
+  color: #004b8d;
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.11em;
+  margin: 0 0 0.3rem;
+  text-transform: uppercase;
+}
+
+.replication-sync-hero__actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.replication-sync-hero__actions button,
+.replication-sync-settings-actions button {
+  border-radius: 999px;
+  cursor: pointer;
+  font-weight: 900;
+  padding: 0.75rem 1.1rem;
+}
+
+.replication-sync-hero__actions button {
+  background: #eef6ff;
+  border: 1px solid #b8d7ff;
+  color: #004b8d;
+}
+
+.replication-sync-settings-actions button {
+  background: #004b8d;
+  border: 1px solid #004b8d;
+  color: #ffffff;
+}
+
+.replication-sync-hero__actions button:disabled,
+.replication-sync-settings-actions button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.replication-sync-mode-banner {
+  align-items: center;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  padding: 1.2rem 1.4rem;
+}
+
+.replication-sync-mode-banner h2 {
+  color: #172033;
+  margin: 0 0 0.25rem;
+}
+
+.replication-sync-readiness-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.replication-sync-readiness-card {
+  padding: 1rem;
+}
+
+.replication-sync-readiness-card__header {
+  align-items: center;
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
+.replication-sync-readiness-card__header span {
+  color: #64748b;
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.replication-sync-readiness-card strong {
+  color: #172033;
+  display: block;
+  font-size: 1.1rem;
+  margin-top: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.replication-sync-readiness-card p {
+  margin-top: 0.45rem;
+}
+
+.replication-sync-layout-grid,
+.replication-sync-two-column {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+}
+
+.replication-sync-panel,
+.replication-sync-alert {
+  padding: 1rem;
+}
+
+.replication-sync-panel h2,
+.replication-sync-check h3 {
+  color: #172033;
+  margin: 0;
+}
+
+.replication-sync-section-header {
+  align-items: flex-start;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.replication-sync-section-header p {
+  margin-top: 0.35rem;
+}
+
+.replication-sync-settings-form {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.replication-sync-settings-form label {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.replication-sync-settings-form label span,
+.replication-sync-details dt {
+  color: #64748b;
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.replication-sync-settings-form input {
+  background: #ffffff;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  border-radius: 12px;
+  color: #172033;
+  font: inherit;
+  padding: 0.75rem 0.85rem;
+  width: 100%;
+}
+
+.replication-sync-settings-form input:focus {
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.18);
+  outline: none;
+}
+
+.replication-sync-settings-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.replication-sync-check-list {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.replication-sync-check {
+  align-items: flex-start;
+  background: #f8fbff;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 14px;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  padding: 0.9rem;
+}
+
+.replication-sync-check p {
+  color: #61708f;
+  margin: 0.35rem 0 0;
+}
+
+.replication-sync-status-badge {
+  align-items: center;
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 0.75rem;
+  font-weight: 900;
+  justify-content: center;
+  letter-spacing: 0.02em;
+  padding: 0.35rem 0.65rem;
+  white-space: nowrap;
+}
+
+.replication-sync-status-badge--ready {
+  background: #dcfce7;
+  border: 1px solid #bbf7d0;
+  color: #166534;
+}
+
+.replication-sync-status-badge--warning {
+  background: #fef3c7;
+  border: 1px solid #fde68a;
+  color: #92400e;
+}
+
+.replication-sync-status-badge--action_required {
+  background: #fee2e2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+}
+
+.replication-sync-status-badge--not_configured {
+  background: #dbeafe;
+  border: 1px solid #bfdbfe;
+  color: #1d4ed8;
+}
+
+.replication-sync-status-badge--unknown {
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  color: #475569;
+}
+
+.replication-sync-details {
+  display: grid;
+  gap: 0.75rem;
+  margin: 1rem 0 0;
+}
+
+.replication-sync-details div {
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+  display: grid;
+  gap: 0.2rem;
+  padding-bottom: 0.65rem;
+}
+
+.replication-sync-details dd {
+  color: #172033;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.replication-sync-details.compact {
+  gap: 0.6rem;
+}
+
+.replication-sync-table-wrap {
+  margin-top: 1rem;
+  overflow-x: auto;
+}
+
+.replication-sync-table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.replication-sync-table th,
+.replication-sync-table td {
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+  color: #172033;
+  padding: 0.75rem;
+  text-align: left;
+}
+
+.replication-sync-table th {
+  color: #64748b;
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.replication-sync-alert {
+  border-color: #fecaca;
+  color: #991b1b;
+}
+
+.replication-sync-success.inline,
+.replication-sync-alert.inline {
+  border-radius: 12px;
+  font-weight: 800;
+  padding: 0.75rem 0.9rem;
+}
+
+.replication-sync-success.inline {
+  background: #dcfce7;
+  border: 1px solid #bbf7d0;
+  color: #166534;
+}
+
+@media (max-width: 1200px) {
+  .replication-sync-readiness-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .replication-sync-layout-grid,
+  .replication-sync-two-column {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .replication-sync-hero,
+  .replication-sync-mode-banner,
+  .replication-sync-check {
+    flex-direction: column;
+  }
+
+  .replication-sync-readiness-grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,331 @@
+.approval-export-center {
+  display: grid;
+  gap: 20px;
+}
+
+.approval-export-header,
+.approval-export-panel-heading,
+.approval-export-item-main {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.approval-export-actions,
+.approval-export-create-row,
+.approval-export-button-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.approval-export-actions label {
+  display: grid;
+  gap: 6px;
+  font-weight: 800;
+  color: #334155;
+}
+
+.approval-export-actions input,
+.approval-export-action-panel textarea {
+  border: 1px solid rgba(148, 163, 184, 0.42);
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+
+.approval-export-banner {
+  border-radius: 16px;
+  padding: 12px 14px;
+  background: rgba(37, 99, 235, 0.08);
+  border: 1px solid rgba(37, 99, 235, 0.18);
+  color: #1e3a8a;
+}
+
+.approval-export-banner.error {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.18);
+  color: #991b1b;
+}
+
+.approval-export-summary-grid,
+.approval-export-layout {
+  display: grid;
+  gap: 16px;
+}
+
+.approval-export-summary-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.approval-export-layout {
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.9fr);
+}
+
+.approval-export-summary-grid article,
+.approval-export-panel,
+.approval-export-item {
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: rgba(255, 255, 255, 0.82);
+  border-radius: 20px;
+  padding: 16px;
+  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.07);
+}
+
+.approval-export-panel.compact {
+  box-shadow: none;
+}
+
+.approval-export-summary-grid span,
+.approval-export-panel-heading > span,
+.approval-export-metrics span {
+  display: block;
+  color: #64748b;
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 850;
+}
+
+.approval-export-summary-grid strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 1.45rem;
+}
+
+.approval-export-summary-grid small,
+.approval-export-item small {
+  color: #64748b;
+}
+
+.approval-export-item-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.workflow-status-badge {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: rgba(37, 99, 235, 0.1);
+  color: #1d4ed8;
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.workflow-status-badge.status-locked,
+.workflow-status-badge.status-reconciled {
+  background: rgba(22, 163, 74, 0.12);
+  color: #166534;
+}
+
+.workflow-status-badge.status-manager_declined {
+  background: rgba(239, 68, 68, 0.12);
+  color: #991b1b;
+}
+
+.approval-export-item strong {
+  display: block;
+  margin-top: 6px;
+}
+
+.approval-export-history {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  border-radius: 16px;
+  padding: 10px 12px;
+  background: rgba(15, 23, 42, 0.045);
+}
+
+.approval-export-action-panel {
+  display: grid;
+  gap: 10px;
+  border-radius: 16px;
+  padding: 12px;
+  background: rgba(248, 250, 252, 0.9);
+  border: 1px dashed rgba(148, 163, 184, 0.42);
+}
+
+.approval-export-action-panel textarea {
+  min-height: 72px;
+  resize: vertical;
+}
+
+.approval-export-table-wrap {
+  overflow-x: auto;
+  margin-top: 14px;
+}
+
+.approval-export-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 680px;
+}
+
+.approval-export-table th,
+.approval-export-table td {
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.22);
+}
+
+.approval-export-table th {
+  color: #475569;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+@media (max-width: 980px) {
+  .approval-export-summary-grid,
+  .approval-export-layout,
+  .approval-export-history {
+    grid-template-columns: 1fr;
+  }
+
+  .approval-export-header,
+  .approval-export-panel-heading,
+  .approval-export-item-main {
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 640px) {
+  .approval-export-actions,
+  .approval-export-create-row,
+  .approval-export-button-row {
+    display: grid;
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+
+  .approval-export-actions button,
+  .approval-export-create-row button,
+  .approval-export-button-row button {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* 019M-AV Operational readiness and audit evidence */
+.approval-export-operational-panel,
+.approval-audit-evidence-panel {
+  margin-top: 1rem;
+}
+
+.approval-operational-grid,
+.approval-role-guidance-grid,
+.approval-audit-evidence-list {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.approval-operational-grid {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.approval-role-guidance-grid {
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  margin-top: 1rem;
+}
+
+.approval-operational-card,
+.approval-role-guidance-grid article,
+.approval-audit-evidence-list article,
+.approval-export-readiness-callout {
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: var(--card);
+  padding: 1rem;
+}
+
+.approval-operational-card span,
+.approval-export-readiness-callout span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.approval-operational-card strong,
+.approval-export-readiness-callout strong {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 1.25rem;
+}
+
+.approval-operational-card p,
+.approval-role-guidance-grid p,
+.approval-audit-evidence-list p,
+.approval-export-readiness-callout p {
+  color: var(--muted);
+  margin: 0.5rem 0 0;
+}
+
+.approval-operational-card em {
+  display: inline-block;
+  margin-top: 0.65rem;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.1);
+  color: #1d4ed8;
+  font-size: 0.75rem;
+  font-style: normal;
+  font-weight: 900;
+  padding: 0.3rem 0.55rem;
+}
+
+.approval-export-readiness-callout {
+  margin-top: 1rem;
+  background: rgba(37, 99, 235, 0.06);
+}
+
+.approval-role-guidance-grid strong,
+.approval-role-guidance-grid span,
+.approval-audit-evidence-list strong,
+.approval-audit-evidence-list small {
+  display: block;
+}
+
+.approval-role-guidance-grid span,
+.approval-audit-evidence-list small {
+  color: var(--muted);
+  margin-top: 0.2rem;
+}
+
+/* 019M-AW / 019M-AX / 019M-AY export package download readiness */
+.approval-export-package-list {
+  display: grid;
+  gap: 0.85rem;
+  margin-top: 1rem;
+}
+
+.approval-export-package-card {
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: var(--card);
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  padding: 1rem;
+}
+
+.approval-export-package-card strong,
+.approval-export-package-card small {
+  display: block;
+}
+
+.approval-export-package-card small,
+.approval-export-package-card p {
+  color: var(--muted);
+  margin: 0.25rem 0 0;
+}
+
+.approval-export-package-card button {
+  white-space: nowrap;
+}

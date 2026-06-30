@@ -1,0 +1,209 @@
+.resource-assignment-handoff-panel {
+  border: 1px solid var(--border);
+  border-radius: 1.25rem;
+  background: var(--card);
+  box-shadow: var(--shadow-sm);
+  padding: 1.5rem;
+  margin-top: 1.5rem;
+}
+
+.resource-handoff-lifecycle,
+.resource-handoff-summary-grid,
+.resource-handoff-metric-grid,
+.resource-handoff-detail-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.resource-handoff-lifecycle {
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  margin-top: 1rem;
+}
+
+.resource-handoff-summary-grid {
+  grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+  margin-top: 1rem;
+}
+
+.resource-handoff-lifecycle article,
+.resource-handoff-summary-grid article,
+.resource-handoff-card,
+.resource-handoff-mini-list div {
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: var(--panel);
+  padding: 1rem;
+}
+
+.resource-handoff-lifecycle article > span {
+  display: inline-grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.1);
+  color: #1d4ed8;
+  font-weight: 900;
+  margin-bottom: 0.5rem;
+}
+
+.resource-handoff-summary-grid span,
+.resource-handoff-metric-grid span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.resource-handoff-summary-grid strong {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 1.45rem;
+}
+
+.resource-handoff-toolbar {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 1rem 0;
+}
+
+.resource-handoff-toolbar label {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 800;
+}
+
+.resource-handoff-toolbar select {
+  min-height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 0.85rem;
+  background: var(--input-background, #fff);
+  color: inherit;
+  padding: 0.65rem 0.75rem;
+}
+
+.resource-handoff-card-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.resource-handoff-card-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.resource-handoff-card-header h3 {
+  margin: 0.15rem 0 0.35rem;
+}
+
+.resource-handoff-card-header > span {
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.1);
+  color: #1d4ed8;
+  font-weight: 900;
+  padding: 0.35rem 0.65rem;
+  white-space: nowrap;
+}
+
+.resource-handoff-message {
+  margin: 0.85rem 0;
+  color: var(--muted);
+}
+
+.resource-handoff-metric-grid {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.resource-handoff-metric-grid div {
+  border: 1px solid var(--border);
+  border-radius: 0.85rem;
+  background: var(--card);
+  padding: 0.75rem;
+}
+
+.resource-handoff-metric-grid strong {
+  display: block;
+  margin-top: 0.25rem;
+}
+
+.resource-handoff-detail-grid {
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  margin-top: 1rem;
+}
+
+.resource-handoff-detail-grid h4 {
+  margin: 0 0 0.65rem;
+}
+
+.resource-handoff-mini-list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.resource-handoff-mini-list strong,
+.resource-handoff-mini-list small {
+  display: block;
+}
+
+.resource-handoff-mini-list small {
+  color: var(--muted);
+  margin-top: 0.2rem;
+}
+
+.resource-handoff-mini-list p {
+  color: var(--muted);
+  margin: 0.35rem 0 0;
+}
+
+/* 019M-AU manual promotion controls */
+.resource-promotion-form {
+  margin-top: 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 0.9rem;
+  background: var(--card);
+  padding: 0.85rem;
+}
+
+.resource-promotion-form h5 {
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+}
+
+.resource-promotion-form label {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 0.7rem;
+  font-weight: 800;
+}
+
+.resource-promotion-form select,
+.resource-promotion-form input,
+.resource-promotion-form textarea {
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: var(--input-background, #fff);
+  color: inherit;
+  padding: 0.6rem 0.7rem;
+  width: 100%;
+}
+
+.resource-promotion-form textarea {
+  min-height: 72px;
+  resize: vertical;
+}
+
+.resource-promotion-form .primary-action {
+  margin-top: 0.8rem;
+}
+
+.resource-promotion-date-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}

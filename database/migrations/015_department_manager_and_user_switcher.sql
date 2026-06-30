@@ -1,6 +1,6 @@
 -- Project Pulse
 -- Migration: 015_department_manager_and_user_switcher.sql
--- Purpose: Add department-manager structure and seed role-switching users for role enforcement validation.
+-- Purpose: Add department-manager structure and seed users for role validation.
 
 BEGIN;
 
@@ -24,13 +24,16 @@ CREATE INDEX IF NOT EXISTS idx_app_users_app_department_id ON app_users(app_depa
 CREATE INDEX IF NOT EXISTS idx_app_users_manager_user_id ON app_users(manager_user_id);
 CREATE INDEX IF NOT EXISTS idx_app_departments_manager_user_id ON app_departments(manager_user_id);
 
--- Clean up the previous local-only development user so Role Admin only shows active project users.
-UPDATE app_users
-SET is_active = FALSE,
-    updated_at = NOW()
+-- Remove old local-only development account from active Role Admin testing.
+DELETE FROM app_user_role_assignments
+WHERE user_id IN (
+    SELECT user_id FROM app_users WHERE email = 'ahmed.adeyemi@ussignal.local'
+);
+
+DELETE FROM app_users
 WHERE email = 'ahmed.adeyemi@ussignal.local';
 
--- Ensure the two named department managers exist and remain active.
+-- Ensure named managers exist.
 INSERT INTO app_users (email, display_name, job_title, department, is_active)
 VALUES
     ('ahmed.adeyemi@ussignal.com', 'Ahmed Adeyemi', 'Department Manager / Administrator', 'Systems / Collaboration', TRUE),
@@ -42,7 +45,7 @@ SET display_name = EXCLUDED.display_name,
     is_active = TRUE,
     updated_at = NOW();
 
--- Official department structure supplied for Project Pulse role and approval testing.
+-- Official Project Pulse departments.
 INSERT INTO app_departments (department_code, department_name, department_description, manager_user_id, display_order, is_active)
 VALUES
     ('ENTERPRISE_NETWORKING', 'Enterprise Networking', 'Enterprise Networking delivery and engineering team.', (SELECT user_id FROM app_users WHERE email = 'matthew.lenoble@ussignal.com'), 10, TRUE),
@@ -57,7 +60,7 @@ SET department_name = EXCLUDED.department_name,
     is_active = TRUE,
     updated_at = NOW();
 
--- Seed representative users for Role Enforcement + User Switcher testing.
+-- Seed role-testing users.
 INSERT INTO app_users (email, display_name, job_title, department, app_department_id, manager_user_id, is_active)
 VALUES
     ('network.engineer@ussignal.com', 'Enterprise Networking Engineer', 'Engineer', 'Enterprise Networking', (SELECT app_department_id FROM app_departments WHERE department_code = 'ENTERPRISE_NETWORKING'), (SELECT user_id FROM app_users WHERE email = 'matthew.lenoble@ussignal.com'), TRUE),
@@ -73,7 +76,6 @@ SET display_name = EXCLUDED.display_name,
     is_active = TRUE,
     updated_at = NOW();
 
--- Attach managers to their primary departments for profile display while department ownership still supports multiple departments.
 UPDATE app_users
 SET app_department_id = (SELECT app_department_id FROM app_departments WHERE department_code = 'SYSTEMS'),
     department = 'Systems / Collaboration',
@@ -88,9 +90,9 @@ SET app_department_id = (SELECT app_department_id FROM app_departments WHERE dep
     updated_at = NOW()
 WHERE email = 'matthew.lenoble@ussignal.com';
 
--- Role assignments used by the user switcher.
+-- Assign roles.
 INSERT INTO app_user_role_assignments (user_id, app_role_id, assignment_reason, is_active)
-SELECT u.user_id, r.app_role_id, 'Role enforcement and user switcher seed', TRUE
+SELECT u.user_id, r.app_role_id, 'Role enforcement seed', TRUE
 FROM app_users u
 JOIN app_roles r ON r.role_code = 'ADMINISTRATOR'
 WHERE u.email = 'ahmed.adeyemi@ussignal.com'
@@ -100,7 +102,7 @@ SET is_active = TRUE,
     updated_at = NOW();
 
 INSERT INTO app_user_role_assignments (user_id, app_role_id, assignment_reason, is_active)
-SELECT u.user_id, r.app_role_id, 'Matthew manages departments and project management workflows', TRUE
+SELECT u.user_id, r.app_role_id, 'Department manager and project management seed', TRUE
 FROM app_users u
 JOIN app_roles r ON r.role_code IN ('MANAGER', 'PROJECT_MANAGEMENT')
 WHERE u.email = 'matthew.lenoble@ussignal.com'
@@ -110,7 +112,7 @@ SET is_active = TRUE,
     updated_at = NOW();
 
 INSERT INTO app_user_role_assignments (user_id, app_role_id, assignment_reason, is_active)
-SELECT u.user_id, r.app_role_id, 'Engineer role enforcement seed', TRUE
+SELECT u.user_id, r.app_role_id, 'Engineer role seed', TRUE
 FROM app_users u
 JOIN app_roles r ON r.role_code = 'ENGINEER'
 WHERE u.email IN ('network.engineer@ussignal.com', 'systems.engineer@ussignal.com', 'collaboration.engineer@ussignal.com')
@@ -120,7 +122,7 @@ SET is_active = TRUE,
     updated_at = NOW();
 
 INSERT INTO app_user_role_assignments (user_id, app_role_id, assignment_reason, is_active)
-SELECT u.user_id, r.app_role_id, 'Coordinator role enforcement seed', TRUE
+SELECT u.user_id, r.app_role_id, 'Coordinator role seed', TRUE
 FROM app_users u
 JOIN app_roles r ON r.role_code = 'PROJECT_TEAM_COORDINATOR'
 WHERE u.email = 'ptc.coordinator@ussignal.com'
@@ -130,7 +132,7 @@ SET is_active = TRUE,
     updated_at = NOW();
 
 INSERT INTO schema_migrations (migration_id, description)
-VALUES ('015_department_manager_and_user_switcher', 'Add department manager structure and user switcher seed users')
+VALUES ('015_department_manager_and_user_switcher', 'Add department manager structure and role validation seed users')
 ON CONFLICT (migration_id) DO NOTHING;
 
 COMMIT;

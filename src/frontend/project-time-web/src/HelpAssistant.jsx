@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import './help.css';
+import './help-assistant.css';
 
 const helpTopics = [
   {

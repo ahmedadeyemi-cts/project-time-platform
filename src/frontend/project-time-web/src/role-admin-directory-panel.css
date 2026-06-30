@@ -1,0 +1,227 @@
+.role-directory-panel {
+  border: 1px solid var(--border);
+  border-radius: 1.25rem;
+  background: var(--card);
+  box-shadow: var(--shadow-sm);
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.role-directory-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.role-directory-summary-grid article {
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: var(--panel);
+  padding: 1rem;
+}
+
+.role-directory-summary-grid span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.role-directory-summary-grid strong {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 1.6rem;
+}
+
+.role-directory-toolbar {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.7fr) minmax(320px, 1.3fr);
+  gap: 1rem;
+  margin: 1rem 0;
+}
+
+.role-directory-toolbar label {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 800;
+}
+
+.role-directory-toolbar select,
+.role-directory-toolbar input {
+  border: 1px solid var(--border);
+  border-radius: 0.85rem;
+  background: var(--input-background, #fff);
+  color: inherit;
+  min-height: 42px;
+  padding: 0.65rem 0.75rem;
+}
+
+.role-directory-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.role-directory-card {
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: var(--panel);
+  padding: 1rem;
+}
+
+.role-directory-card-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.role-directory-card-header h3 {
+  margin: 0.15rem 0 0.35rem;
+}
+
+.role-directory-card-header p {
+  color: var(--muted);
+  max-width: 920px;
+}
+
+.role-directory-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.9rem 0;
+}
+
+.role-directory-metrics span {
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.09);
+  color: #1d4ed8;
+  font-weight: 800;
+  padding: 0.35rem 0.65rem;
+}
+
+.role-directory-section {
+  margin-top: 1rem;
+}
+
+.role-user-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.75rem;
+}
+
+.role-user-list div {
+  border: 1px solid var(--border);
+  border-radius: 0.85rem;
+  background: var(--card);
+  padding: 0.75rem;
+  min-width: 0;
+}
+
+.role-user-list strong,
+.role-user-list span,
+.role-user-list small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.role-user-list span,
+.role-user-list small {
+  color: var(--muted);
+}
+
+.permission-module-list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.permission-module-list details {
+  border: 1px solid var(--border);
+  border-radius: 0.85rem;
+  background: var(--card);
+  padding: 0.75rem;
+}
+
+.permission-module-list summary {
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  font-weight: 900;
+}
+
+.permission-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.75rem;
+}
+
+.permission-chip-list span {
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.06);
+  color: var(--text);
+  font-size: 0.76rem;
+  font-weight: 800;
+  padding: 0.3rem 0.55rem;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+}
+
+.badge.muted {
+  background: rgba(100, 116, 139, 0.13);
+  color: #64748b;
+}
+
+/* 019M-AQ repair: clarify permission module summary versus role assignment controls */
+.role-directory-module-summary {
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: var(--panel);
+  padding: 1rem;
+  margin-top: 1rem;
+}
+
+.role-directory-section-heading {
+  margin-top: 1.25rem;
+  border-top: 1px solid var(--border);
+  padding-top: 1rem;
+}
+
+.role-directory-section-heading h3,
+.role-directory-module-summary h3 {
+  margin: 0 0 0.25rem;
+}
+
+.role-module-summary-list {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 0.75rem;
+}
+
+.role-module-summary-list div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 0.85rem;
+  background: var(--card);
+  padding: 0.75rem 0.9rem;
+}
+
+.role-module-summary-list span {
+  font-weight: 900;
+  color: var(--text);
+}
+
+.role-module-summary-list strong {
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.09);
+  color: #1d4ed8;
+  min-width: 2.25rem;
+  text-align: center;
+  padding: 0.25rem 0.55rem;
+}
