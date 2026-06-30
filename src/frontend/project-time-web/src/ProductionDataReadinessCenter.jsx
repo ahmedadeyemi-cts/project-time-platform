@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import ProductionDataReadinessRemediationPanel from './ProductionDataReadinessRemediationPanel.jsx';
+import ProductionDataReadinessGoLiveGatePanel from './ProductionDataReadinessGoLiveGatePanel.jsx';
 import './production-data-readiness-center.css';
 
 function readProjectPulseSessionToken() {
@@ -215,6 +216,8 @@ export default function ProductionDataReadinessCenter() {
           </div>
         )}
       </section>
+
+      <ProductionDataReadinessGoLiveGatePanel checks={checks} loading={state.loading} />
 
       <ProductionDataReadinessRemediationPanel checks={checks} loading={state.loading} />
 
