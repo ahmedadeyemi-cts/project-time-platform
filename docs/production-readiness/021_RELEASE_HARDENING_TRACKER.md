@@ -186,3 +186,26 @@ Artifacts:
 - `src/frontend/project-time-web/src/ProductionReadinessCenterPanel.jsx`
 - `src/frontend/project-time-web/src/production-readiness-center.css`
 - `docs/help/021J-browser-validation-assist.md`
+
+
+## 021K Webpage Backend Purpose Map
+
+021K adds a webpage-visible purpose map that explains what each page shows, which backend process supports it, and what should be checked during validation.
+
+Webpage:
+
+- `https://projectpulse-test.onenecklab.com/#production-readiness`
+
+What to check:
+
+- Purpose map appears in the Production Readiness Center.
+- Rows connect visible pages to backend support.
+- Links navigate to the correct app routes.
+- The table remains readable and scrollable.
+
+Artifacts:
+
+- `src/frontend/project-time-web/src/ProductionReadinessPurposeMapPanel.jsx`
+- `src/frontend/project-time-web/src/ProductionReadinessCenterPanel.jsx`
+- `src/frontend/project-time-web/src/production-readiness-center.css`
+- `docs/help/021K-webpage-backend-purpose-map.md`
