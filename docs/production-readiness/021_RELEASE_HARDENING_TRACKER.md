@@ -19,9 +19,10 @@
 | 021B | Navigation / route integrity | Confirm route labels, route visibility, and dashboard grouping alignment | Complete |
 | 021C | Production readiness naming alignment | Align branch, documentation, route reports, and permission naming to production readiness | Complete |
 | 021D | Role-based production readiness runbooks | Prepare production readiness paths for Admin, PM, Manager, Engineer, Accounting, and read-only stakeholder access | Complete |
-| 021E | UI polish | Address obvious copy, empty states, filter clarity, and responsive presentation gaps | Not Started |
-| 021F | Operational runbook | Document deploy, rollback, smoke, backup, and restore checkpoints | Not Started |
-| 021G | Final release candidate validation | Build, deploy, endpoint smoke, browser validation, and PR closeout | Not Started |
+| 021E | Workflow data readiness | Confirm production-critical data signals support customer, intake, assignment, approval, export, and audit flows | Complete |
+| 021F | UI polish | Address obvious copy, empty states, filter clarity, and responsive presentation gaps | Not Started |
+| 021G | Operational runbook | Document deploy, rollback, smoke, backup, and restore checkpoints | Not Started |
+| 021H | Final release candidate validation | Build, deploy, endpoint smoke, browser validation, and PR closeout | Not Started |
 
 ## Production-Critical Workflows
 
@@ -90,3 +91,16 @@ Artifacts:
 - `docs/production-readiness/021_ROLE_BASED_PRODUCTION_READINESS_RUNBOOKS.md`
 - `docs/production-readiness/021_ROLE_BASED_PRODUCTION_READINESS_RUNBOOKS.json`
 - `docs/help/021D-role-based-production-readiness-runbooks.md`
+
+
+## 021E Workflow Data Readiness
+
+021E generated workflow data readiness reports and a read-only SQL probe for production-critical workflow validation.
+
+Artifacts:
+
+- `scripts/021-workflow-data-readiness-report.py`
+- `docs/production-readiness/021_WORKFLOW_DATA_READINESS_REPORT.md`
+- `docs/production-readiness/021_WORKFLOW_DATA_READINESS_REPORT.json`
+- `database/reports/021-workflow-data-readiness-probe.sql`
+- `docs/help/021E-workflow-data-readiness.md`
