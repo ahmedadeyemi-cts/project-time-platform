@@ -8,7 +8,7 @@ const routeConfigs = {
     title: 'Production Readiness Command Center',
     eyebrow: 'Production Readiness',
     description:
-      'Live operational readiness across users, projects, workflow, exports, audit evidence, route contracts, and module registry integrity.',
+      'Live operational readiness across users, customers, project intake, workflow, exports, audit evidence, route contracts, module registry integrity, and dashboard reporting coverage.',
     cards: [
       {
         key: 'readiness',
@@ -38,6 +38,46 @@ const routeConfigs = {
           title: data?.summary?.active ? 'visibility_ready' : 'visibility_review',
           detail: `Expectations: ${data?.summary?.expectationCount ?? 0}; roles: ${data?.summary?.roleCount ?? 0}`,
           status: data?.summary?.active ? 'Ready' : 'Review'
+        })
+      },
+      {
+        key: 'customerReporting',
+        label: 'Customer Reporting',
+        path: '/api/customers/overview',
+        mapper: (data) => ({
+          title: 'customer_directory',
+          detail: `Customers: ${data?.customers?.length ?? 0}; contacts: ${data?.contacts?.length ?? 0}`,
+          status: (data?.customers?.length ?? 0) > 0 ? 'Ready' : 'Review'
+        })
+      },
+      {
+        key: 'intakeReporting',
+        label: 'Project Intake Reporting',
+        path: '/api/project-intake/summary',
+        mapper: (data) => ({
+          title: data?.module ?? 'project_intake_summary',
+          detail: `Intake records: ${data?.summary?.intakeCount ?? data?.count ?? 0}; open: ${data?.summary?.openIntakeCount ?? 0}`,
+          status: 'Ready'
+        })
+      },
+      {
+        key: 'workflowReporting',
+        label: 'Workflow Reporting',
+        path: '/api/workflow/approval-export-summary',
+        mapper: (data) => ({
+          title: data?.module ?? 'workflow_summary',
+          detail: `PM approvals: ${data?.summary?.pendingProjectApprovals ?? 0}; accounting: ${data?.summary?.pendingAccountingReview ?? 0}; exports 30d: ${data?.summary?.exportsLast30Days ?? 0}`,
+          status: 'Ready'
+        })
+      },
+      {
+        key: 'auditReporting',
+        label: 'Audit Reporting',
+        path: '/api/audit-history/summary',
+        mapper: (data) => ({
+          title: data?.module ?? 'audit_summary',
+          detail: `Events: ${data?.summary?.eventCount ?? data?.summary?.auditEventCount ?? 0}; actors: ${data?.summary?.actorCount ?? 0}`,
+          status: 'Ready'
         })
       }
     ]
@@ -415,7 +455,7 @@ export default function ProductionOperationsPanel() {
 
       <div className="production-workflow-summary-grid">
         <article><span>Total controls</span><strong>{operationsSummary.total}</strong><small>Configured for this route</small></article>
-        <article><span>Ready</span><strong>{operationsSummary.ready}</strong><small>Operational evidence is healthy</small></article>
+        <article><span>Ready</span><strong>{operationsSummary.ready}</strong><small>Operational/reporting evidence is healthy</small></article>
         <article><span>Needs review</span><strong>{operationsSummary.attention}</strong><small>Review, unknown, or warning status</small></article>
         <article><span>Blocked</span><strong>{operationsSummary.blocked}</strong><small>Failed or denied evidence checks</small></article>
       </div>
