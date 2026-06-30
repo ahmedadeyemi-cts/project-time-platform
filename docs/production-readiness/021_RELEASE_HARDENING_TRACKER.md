@@ -21,7 +21,7 @@
 | 021D | Role-based production readiness runbooks | Prepare production readiness paths for Admin, PM, Manager, Engineer, Accounting, and read-only stakeholder access | Complete |
 | 021E | Workflow data readiness | Confirm production-critical data signals support customer, intake, assignment, approval, export, and audit flows | Complete |
 | 021F | UI production polish readiness | Review copy signals, empty states, route metadata, and responsive presentation indicators | Complete |
-| 021G | Operational runbook | Document deploy, rollback, smoke, backup, and restore checkpoints | Not Started |
+| 021G | Operational runbook | Document deploy, rollback, smoke, backup, restore, and evidence checkpoints | Complete |
 | 021H | Final release candidate validation | Build, deploy, endpoint smoke, browser validation, and PR closeout | Not Started |
 
 ## Production-Critical Workflows
@@ -116,3 +116,16 @@ Artifacts:
 - `docs/production-readiness/021_UI_PRODUCTION_POLISH_REPORT.md`
 - `docs/production-readiness/021_UI_PRODUCTION_POLISH_REPORT.json`
 - `docs/help/021F-ui-production-polish-readiness.md`
+
+
+## 021G Operational Runbook
+
+021G generated the operational runbook and production readiness smoke script for release-candidate validation.
+
+Artifacts:
+
+- `scripts/021-operational-runbook-report.py`
+- `scripts/021-production-readiness-smoke.sh`
+- `docs/production-readiness/021_OPERATIONAL_RUNBOOK.md`
+- `docs/production-readiness/021_OPERATIONAL_RUNBOOK.json`
+- `docs/help/021G-operational-runbook.md`
