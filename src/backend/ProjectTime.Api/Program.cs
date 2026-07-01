@@ -368,6 +368,181 @@ static bool ProjectPulseIsPublicAuthEndpoint(string? requestPath)
 }
 
 
+
+
+app.MapGet("/api/production-data-readiness", BuildProjectPulseProductionDataReadinessResultAsync);
+
+app.MapGet("/api/production/data-readiness", async () =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+
+    if (config.Missing.Count > 0)
+    {
+        return Results.BadRequest(new
+        {
+            status = "configuration_missing",
+            missing = config.Missing,
+            generatedAtUtc = DateTimeOffset.UtcNow
+        });
+    }
+
+    try
+    {
+        await using var connection = new NpgsqlConnection(config.ConnectionString);
+        await connection.OpenAsync();
+
+        var checks = new List<object>();
+
+        async Task AddCountCheckAsync(
+            string key,
+            string label,
+            string tableName,
+            int readyMinimum,
+            string purpose,
+            string webpageCheck)
+        {
+            var count = await QueryProjectPulseDataReadinessCountAsync(connection, tableName);
+            var tableExists = count.HasValue;
+            var status = !tableExists
+                ? "missing_table"
+                : count.Value >= readyMinimum
+                    ? "ready"
+                    : "needs_data";
+
+            checks.Add(new
+            {
+                key,
+                label,
+                tableName,
+                count = count ?? 0,
+                readyMinimum,
+                tableExists,
+                status,
+                purpose,
+                webpageCheck
+            });
+        }
+
+        await AddCountCheckAsync(
+            "users",
+            "Users",
+            "app_users",
+            1,
+            "Confirms real users exist for login, role assignment, approvals, and workflow ownership.",
+            "Open User Administration or Role Administration and confirm users are present.");
+
+        await AddCountCheckAsync(
+            "roles",
+            "Roles",
+            "app_roles",
+            1,
+            "Confirms application roles exist for role-based access and dashboard/module visibility.",
+            "Open Role / Security Administration and confirm roles and permissions are visible.");
+
+        await AddCountCheckAsync(
+            "customers",
+            "Customers",
+            "clients",
+            1,
+            "Confirms customer/account data exists for project intake, allocation, billing, and reporting.",
+            "Open Customer Directory and confirm customer records or a clear empty state appears.");
+
+        await AddCountCheckAsync(
+            "projects",
+            "Projects",
+            "projects",
+            1,
+            "Confirms project records exist for timesheets, project workspace, resource assignment, and workload reporting.",
+            "Open Project Workspace or Resource Assignment and confirm project data is visible.");
+
+        await AddCountCheckAsync(
+            "project_tasks",
+            "Project Tasks",
+            "project_tasks",
+            1,
+            "Confirms task-level work is available for time entry, assignment, approvals, and exports.",
+            "Open Project Workspace and confirm project tasks are available or empty state is understandable.");
+
+        await AddCountCheckAsync(
+            "timesheets",
+            "Timesheets",
+            "timesheets",
+            1,
+            "Confirms timesheet headers exist for weekly time entry and manager approval workflows.",
+            "Open Timesheet or Manager Approvals and confirm time workflow data loads.");
+
+        await AddCountCheckAsync(
+            "time_entries",
+            "Time Entries",
+            "time_entries",
+            1,
+            "Confirms submitted or draft time data exists for approvals, exports, utilization, and audit evidence.",
+            "Open Workflow or Manager Approvals and confirm time data appears when expected.");
+
+        await AddCountCheckAsync(
+            "manager_approvals",
+            "Manager Approval Evidence",
+            "manager_approval_actions",
+            1,
+            "Confirms approval decision evidence exists or can be tracked for audit and export readiness.",
+            "Open Manager Approvals and confirm approval workflow state is understandable.");
+
+        await AddCountCheckAsync(
+            "exports",
+            "Export Packages",
+            "time_export_packages",
+            1,
+            "Confirms export package evidence exists for accounting and period-close workflows.",
+            "Open Approval / Export / Audit Workflows and confirm export readiness is visible.");
+
+        await AddCountCheckAsync(
+            "audit_events",
+            "Audit Events",
+            "audit_events",
+            1,
+            "Confirms system actions are being logged for accountability and troubleshooting.",
+            "Open Audit History and confirm audit records or a clear empty state appears.");
+
+        await AddCountCheckAsync(
+            "notification_events",
+            "Notification Events",
+            "notification_events",
+            1,
+            "Confirms notification evidence is available for time compliance and operational messaging.",
+            "Open notification-related pages and confirm events are visible after notification activity.");
+
+        var checkObjects = checks
+            .Select(check => (dynamic)check)
+            .ToList();
+
+        var readyCount = checkObjects.Count(check => check.status == "ready");
+        var needsDataCount = checkObjects.Count(check => check.status == "needs_data");
+        var missingTableCount = checkObjects.Count(check => check.status == "missing_table");
+
+        return Results.Ok(new
+        {
+            status = missingTableCount == 0 && needsDataCount == 0 ? "ready" : "needs_data_review",
+            generatedAtUtc = DateTimeOffset.UtcNow,
+            summary = new
+            {
+                checkCount = checks.Count,
+                readyCount,
+                needsDataCount,
+                missingTableCount,
+                productionDataReady = missingTableCount == 0 && needsDataCount == 0
+            },
+            checks
+        });
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem(
+            title: "Production data readiness failed",
+            detail: ex.Message,
+            statusCode: StatusCodes.Status500InternalServerError);
+    }
+});
+
 app.MapGet("/api/version", () => Results.Ok(new
 {
     application = "Project Time Platform",
@@ -24923,6 +25098,144 @@ static async Task<IReadOnlyList<object>> LoadNonProjectCategoriesAsync(NpgsqlCon
 
     return categories;
 }
+
+
+
+
+
+static async Task<IResult> BuildProjectPulseProductionDataReadinessResultAsync()
+{
+    var config = DatabaseConfig.FromEnvironment();
+
+    if (config.Missing.Count > 0)
+    {
+        return Results.BadRequest(new
+        {
+            status = "configuration_missing",
+            missing = config.Missing,
+            generatedAtUtc = DateTimeOffset.UtcNow
+        });
+    }
+
+    try
+    {
+        await using var connection = new NpgsqlConnection(config.ConnectionString);
+        await connection.OpenAsync();
+
+        var checks = new List<Dictionary<string, object?>>();
+
+        async Task AddCountCheckAsync(
+            string key,
+            string label,
+            string tableName,
+            int readyMinimum,
+            string purpose,
+            string webpageCheck)
+        {
+            var count = await QueryProjectPulseDataReadinessCountAsync(connection, tableName);
+            var tableExists = count.HasValue;
+            var status = !tableExists
+                ? "missing_table"
+                : count.Value >= readyMinimum
+                    ? "ready"
+                    : "needs_data";
+
+            checks.Add(new Dictionary<string, object?>
+            {
+                ["key"] = key,
+                ["label"] = label,
+                ["tableName"] = tableName,
+                ["count"] = count ?? 0,
+                ["readyMinimum"] = readyMinimum,
+                ["tableExists"] = tableExists,
+                ["status"] = status,
+                ["purpose"] = purpose,
+                ["webpageCheck"] = webpageCheck
+            });
+        }
+
+        var dataAreas = new (string Key, string Label, string TableName, int ReadyMinimum, string Purpose, string WebpageCheck)[]
+        {
+            ("users", "Users", "app_users", 1, "Confirms real users exist for login, role assignment, approvals, and workflow ownership.", "Open User Administration or Role Administration and confirm users are present."),
+            ("roles", "Roles", "app_roles", 1, "Confirms application roles exist for role-based access and dashboard/module visibility.", "Open Role / Security Administration and confirm roles and permissions are visible."),
+            ("customers", "Customers", "clients", 1, "Confirms customer/account data exists for project intake, allocation, billing, and reporting.", "Open Customer Directory and confirm customer records or a clear empty state appears."),
+            ("projects", "Projects", "projects", 1, "Confirms project records exist for timesheets, project workspace, resource assignment, and workload reporting.", "Open Project Workspace or Resource Assignment and confirm project data is visible."),
+            ("project_tasks", "Project Tasks", "project_tasks", 1, "Confirms task-level work is available for time entry, assignment, approvals, and exports.", "Open Project Workspace and confirm project tasks are available or empty state is understandable."),
+            ("timesheets", "Timesheets", "timesheets", 1, "Confirms timesheet headers exist for weekly time entry and manager approval workflows.", "Open Timesheet or Manager Approvals and confirm time workflow data loads."),
+            ("time_entries", "Time Entries", "time_entries", 1, "Confirms submitted or draft time data exists for approvals, exports, utilization, and audit evidence.", "Open Workflow or Manager Approvals and confirm time data appears when expected."),
+            ("manager_approvals", "Manager Approval Evidence", "manager_approval_actions", 1, "Confirms approval decision evidence exists or can be tracked for audit and export readiness.", "Open Manager Approvals and confirm approval workflow state is understandable."),
+            ("exports", "Export Packages", "time_export_packages", 1, "Confirms export package evidence exists for accounting and period-close workflows.", "Open Approval / Export / Audit Workflows and confirm export readiness is visible."),
+            ("audit_events", "Audit Events", "audit_events", 1, "Confirms system actions are being logged for accountability and troubleshooting.", "Open Audit History and confirm audit records or a clear empty state appears."),
+            ("notification_events", "Notification Events", "notification_events", 1, "Confirms notification evidence is available for time compliance and operational messaging.", "Open notification-related pages and confirm events are visible after notification activity.")
+        };
+
+        foreach (var area in dataAreas)
+        {
+            await AddCountCheckAsync(
+                area.Key,
+                area.Label,
+                area.TableName,
+                area.ReadyMinimum,
+                area.Purpose,
+                area.WebpageCheck);
+        }
+
+        var readyCount = checks.Count(check => string.Equals(Convert.ToString(check["status"]), "ready", StringComparison.OrdinalIgnoreCase));
+        var needsDataCount = checks.Count(check => string.Equals(Convert.ToString(check["status"]), "needs_data", StringComparison.OrdinalIgnoreCase));
+        var missingTableCount = checks.Count(check => string.Equals(Convert.ToString(check["status"]), "missing_table", StringComparison.OrdinalIgnoreCase));
+
+        return Results.Ok(new
+        {
+            status = missingTableCount == 0 && needsDataCount == 0 ? "ready" : "needs_data_review",
+            generatedAtUtc = DateTimeOffset.UtcNow,
+            route = "/api/production-data-readiness",
+            primaryRoute = "/api/production/data-readiness",
+            summary = new
+            {
+                checkCount = checks.Count,
+                readyCount,
+                needsDataCount,
+                missingTableCount,
+                productionDataReady = missingTableCount == 0 && needsDataCount == 0
+            },
+            checks
+        });
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem(
+            title: "Production data readiness failed",
+            detail: ex.Message,
+            statusCode: StatusCodes.Status500InternalServerError);
+    }
+}
+
+
+static async Task<long?> QueryProjectPulseDataReadinessCountAsync(NpgsqlConnection connection, string tableName)
+{
+    await using (var existsCommand = new NpgsqlCommand("""
+        SELECT EXISTS (
+            SELECT 1
+            FROM information_schema.tables
+            WHERE table_schema = 'public'
+              AND table_name = @table_name
+        );
+        """, connection))
+    {
+        existsCommand.Parameters.AddWithValue("table_name", tableName);
+        var exists = (bool)(await existsCommand.ExecuteScalarAsync() ?? false);
+
+        if (!exists)
+        {
+            return null;
+        }
+    }
+
+    var safeTableName = tableName.Replace("\"", "\"\"");
+    await using var countCommand = new NpgsqlCommand($"SELECT COUNT(*) FROM \"{safeTableName}\";", connection);
+    return Convert.ToInt64(await countCommand.ExecuteScalarAsync() ?? 0);
+}
+
 
 static async Task<object> BuildTimesheetWeekPayloadAsync(NpgsqlConnection connection, Guid userId, DateOnly start)
 {
