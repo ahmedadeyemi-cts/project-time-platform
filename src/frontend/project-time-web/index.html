@@ -2945,5 +2945,670 @@
 </script>
 <!-- 022F_PRODUCTION_READINESS_ROUTE_GUARD_END -->
 
+<!-- 028_SOW_AWARE_TIME_ENTRY_START -->
+<style id="projectpulse-028-sow-aware-time-entry-style">
+  #projectpulse-028-card {
+    border: 1px solid rgba(15, 23, 42, 0.12);
+    border-radius: 18px;
+    background: #ffffff;
+    color: #111827;
+    padding: 1.1rem;
+    min-height: 160px;
+    box-shadow: 0 12px 30px rgba(15, 23, 42, 0.04);
+  }
+
+  #projectpulse-028-card .projectpulse-028-eyebrow,
+  #projectpulse-028-route-host .projectpulse-028-eyebrow {
+    color: #64748b;
+    font-size: 0.72rem;
+    font-weight: 900;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 0.55rem;
+  }
+
+  #projectpulse-028-card h3 {
+    margin: 0 0 0.55rem;
+    font-size: 1.05rem;
+    line-height: 1.25;
+  }
+
+  #projectpulse-028-card p,
+  #projectpulse-028-route-host p {
+    color: #5b6b89;
+    line-height: 1.45;
+  }
+
+  .projectpulse-028-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    margin-top: 1rem;
+  }
+
+  .projectpulse-028-button {
+    border: 1px solid rgba(37, 99, 235, 0.24);
+    border-radius: 12px;
+    background: #ffffff;
+    color: #111827;
+    padding: 0.6rem 0.85rem;
+    font-weight: 850;
+    cursor: pointer;
+  }
+
+  .projectpulse-028-button.primary {
+    background: #0f2a55;
+    color: #ffffff;
+    border-color: #0f2a55;
+  }
+
+  #projectpulse-028-route-host {
+    max-width: 1280px;
+    margin: 1rem auto 2rem;
+    padding: 0 1rem 2rem;
+    color: #111827;
+  }
+
+  #projectpulse-028-route-host[hidden] {
+    display: none !important;
+  }
+
+  .projectpulse-028-shell {
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    border-radius: 24px;
+    background: #f8fafc;
+    box-shadow: 0 24px 70px rgba(15, 23, 42, 0.1);
+    padding: 1.25rem;
+  }
+
+  .projectpulse-028-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    align-items: flex-start;
+    margin-bottom: 1rem;
+  }
+
+  .projectpulse-028-title {
+    margin: 0;
+    font-size: 1.55rem;
+    font-weight: 950;
+  }
+
+  .projectpulse-028-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.85rem;
+    margin: 1rem 0;
+  }
+
+  .projectpulse-028-panel,
+  .projectpulse-028-metric {
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    border-radius: 18px;
+    background: #ffffff;
+    padding: 1rem;
+  }
+
+  .projectpulse-028-panel.wide {
+    grid-column: 1 / -1;
+  }
+
+  .projectpulse-028-metric-label {
+    color: #64748b;
+    font-size: 0.72rem;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .projectpulse-028-metric-value {
+    margin-top: 0.25rem;
+    font-size: 1.45rem;
+    font-weight: 950;
+  }
+
+  .projectpulse-028-form {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.85rem;
+  }
+
+  .projectpulse-028-form label {
+    display: grid;
+    gap: 0.35rem;
+    font-weight: 850;
+  }
+
+  .projectpulse-028-form input,
+  .projectpulse-028-form textarea {
+    width: 100%;
+    border: 1px solid rgba(148, 163, 184, 0.45);
+    border-radius: 14px;
+    padding: 0.7rem 0.8rem;
+    background: #ffffff;
+    color: #111827;
+    font: inherit;
+    box-sizing: border-box;
+  }
+
+  .projectpulse-028-form textarea {
+    min-height: 150px;
+    resize: vertical;
+  }
+
+  .projectpulse-028-form .wide {
+    grid-column: 1 / -1;
+  }
+
+  .projectpulse-028-status {
+    border-radius: 14px;
+    padding: 0.8rem;
+    margin-top: 0.8rem;
+    background: #e0f2fe;
+    color: #334155;
+    font-weight: 750;
+  }
+
+  .projectpulse-028-status.error {
+    background: #fee2e2;
+    color: #991b1b;
+  }
+
+  .projectpulse-028-check {
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    border-radius: 16px;
+    background: #ffffff;
+    padding: 0.85rem;
+    margin-bottom: 0.65rem;
+  }
+
+  .projectpulse-028-check-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    align-items: flex-start;
+  }
+
+  .projectpulse-028-pill {
+    border-radius: 999px;
+    padding: 0.25rem 0.55rem;
+    font-size: 0.72rem;
+    font-weight: 950;
+    background: #dbeafe;
+    color: #1e3a8a;
+    white-space: nowrap;
+  }
+
+  .projectpulse-028-pill.ready,
+  .projectpulse-028-pill.in_scope {
+    background: #dcfce7;
+    color: #166534;
+  }
+
+  .projectpulse-028-pill.needs_review {
+    background: #fef3c7;
+    color: #92400e;
+  }
+
+  .projectpulse-028-pill.missing_context,
+  .projectpulse-028-pill.out_of_scope_risk {
+    background: #fee2e2;
+    color: #991b1b;
+  }
+
+  .projectpulse-028-copy {
+    width: 100%;
+    min-height: 180px;
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    border-radius: 16px;
+    padding: 0.85rem;
+    background: #0f172a;
+    color: #e5e7eb;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    box-sizing: border-box;
+  }
+
+  @media (max-width: 900px) {
+    .projectpulse-028-grid,
+    .projectpulse-028-form {
+      grid-template-columns: 1fr;
+    }
+
+    .projectpulse-028-header {
+      flex-direction: column;
+    }
+  }
+</style>
+
+<script id="projectpulse-028-sow-aware-time-entry-script">
+(function () {
+  const cardId = 'projectpulse-028-card';
+  const routeHostId = 'projectpulse-028-route-host';
+  const routeName = 'sow-aware-time-entry-review';
+  const sessionStorageKey = 'projectPulseAuthSession';
+  const viewAsStorageKey = 'projectPulseViewAsUser';
+
+  const state = {
+    readiness: null,
+    review: null,
+    evidence: '',
+    message: '',
+    error: '',
+    loading: false
+  };
+
+  function cleanText(value) {
+    return String(value || '').replace(/\s+/g, ' ').trim();
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? '')
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#039;');
+  }
+
+  function getSessionToken() {
+    try {
+      const raw = window.localStorage.getItem(sessionStorageKey);
+      if (!raw) return '';
+      const parsed = JSON.parse(raw);
+      return parsed.sessionToken || parsed.token || parsed.rawToken || '';
+    } catch {
+      return '';
+    }
+  }
+
+  function getViewAsUserId() {
+    try {
+      const raw = window.localStorage.getItem(viewAsStorageKey);
+      if (!raw) return '';
+      if (/^[0-9a-fA-F-]{36}$/.test(raw.trim())) return raw.trim();
+      const parsed = JSON.parse(raw);
+      return parsed.userId || parsed.id || parsed.viewAsUserId || '';
+    } catch {
+      return '';
+    }
+  }
+
+  async function apiFetch(path, options = {}) {
+    const token = getSessionToken();
+    if (!token) {
+      throw new Error('Sign in is required before loading SOW-aware time entry review.');
+    }
+
+    const headers = {
+      'X-ProjectPulse-Session': token,
+      ...(options.headers || {})
+    };
+
+    const viewAsUserId = getViewAsUserId();
+    if (viewAsUserId) {
+      headers['X-ProjectPulse-View-As-User'] = viewAsUserId;
+    }
+
+    const response = await fetch(path, { ...options, headers });
+    const raw = await response.text();
+
+    let data = null;
+    try {
+      data = raw ? JSON.parse(raw) : null;
+    } catch {
+      data = { raw };
+    }
+
+    if (!response.ok) {
+      throw new Error(data?.message || data?.title || `HTTP ${response.status}`);
+    }
+
+    return data;
+  }
+
+  function normalizedHashRoute() {
+    return String(window.location.hash || '#dashboard')
+      .replace(/^#/, '')
+      .split('?')[0]
+      .replace(/\/+$/, '')
+      .trim()
+      .toLowerCase();
+  }
+
+  function findDashboardGrid() {
+    const candidates = Array.from(document.querySelectorAll('div, section, article'))
+      .filter((element) => {
+        if (element.id === cardId || element.closest(`#${cardId}`)) return false;
+        const text = cleanText(element.textContent);
+        if (!text.includes('Project Workload')) return false;
+        if (!text.includes('Customer Directory')) return false;
+        if (!text.includes('Time Entry')) return false;
+
+        const rect = element.getBoundingClientRect();
+        return rect.width > 700 && rect.height > 250;
+      })
+      .sort((a, b) => {
+        const ar = a.getBoundingClientRect();
+        const br = b.getBoundingClientRect();
+        return (ar.width * ar.height) - (br.width * br.height);
+      });
+
+    return candidates[0] || null;
+  }
+
+  function ensureDashboardCard() {
+    const grid = findDashboardGrid();
+    if (!grid) return;
+
+    let card = document.getElementById(cardId);
+    if (card) return;
+
+    card = document.createElement('section');
+    card.id = cardId;
+    card.innerHTML = `
+      <div class="projectpulse-028-eyebrow">Module 028</div>
+      <h3>SOW-Aware Time Entry Review</h3>
+      <p>Check generated time entries against signed SOW and GSD scope before PM/Manager approval or export.</p>
+      <div class="projectpulse-028-actions">
+        <button type="button" class="projectpulse-028-button primary" data-028-open>Open review center</button>
+        <button type="button" class="projectpulse-028-button" data-028-readiness>Check readiness</button>
+      </div>
+    `;
+
+    grid.appendChild(card);
+
+    card.querySelector('[data-028-open]')?.addEventListener('click', () => {
+      window.location.hash = `#${routeName}`;
+      setTimeout(renderRoute, 80);
+    });
+
+    card.querySelector('[data-028-readiness]')?.addEventListener('click', async () => {
+      window.location.hash = `#${routeName}`;
+      setTimeout(async () => {
+        renderRoute();
+        await loadReadiness();
+      }, 80);
+    });
+  }
+
+  function ensureRouteHost() {
+    let host = document.getElementById(routeHostId);
+    if (host) return host;
+
+    host = document.createElement('section');
+    host.id = routeHostId;
+    host.hidden = true;
+
+    const main = document.querySelector('main') || document.body;
+    main.insertBefore(host, main.firstChild || null);
+
+    return host;
+  }
+
+  function getPayload() {
+    const host = ensureRouteHost();
+    return {
+      customerName: host.querySelector('[data-028-customer]')?.value || '',
+      projectName: host.querySelector('[data-028-project]')?.value || '',
+      signedSowText: host.querySelector('[data-028-sow]')?.value || '',
+      gsdText: host.querySelector('[data-028-gsd]')?.value || '',
+      timeEntryText: host.querySelector('[data-028-time]')?.value || ''
+    };
+  }
+
+  function samplePayload() {
+    return {
+      customerName: 'Sample Customer',
+      projectName: 'UC Migration and Deployment',
+      signedSowText: 'Approved scope includes discovery, design, implementation, configuration, migration, deployment, testing, validation, documentation, training, and project management for the customer UC migration. Out of scope items require a change order.',
+      gsdText: 'GSD handoff notes confirm the assigned engineer will perform implementation, cutover support, validation, knowledge transfer, and customer documentation. PM will review risks and coordinate approval workflow.',
+      timeEntryText: 'Configured migration settings and validated deployment readiness. Completed customer testing support and documentation updates. Investigated extra unsupported feature request that may require change order review.'
+    };
+  }
+
+  function fillSample() {
+    const host = ensureRouteHost();
+    const sample = samplePayload();
+
+    host.querySelector('[data-028-customer]').value = sample.customerName;
+    host.querySelector('[data-028-project]').value = sample.projectName;
+    host.querySelector('[data-028-sow]').value = sample.signedSowText;
+    host.querySelector('[data-028-gsd]').value = sample.gsdText;
+    host.querySelector('[data-028-time]').value = sample.timeEntryText;
+  }
+
+  async function loadReadiness() {
+    state.loading = true;
+    state.message = 'Loading Module 028 readiness…';
+    state.error = '';
+    renderRoute();
+
+    try {
+      state.readiness = await apiFetch('/api/sow-aware-time-entry/readiness');
+      state.message = 'Module 028 readiness loaded.';
+    } catch (error) {
+      state.error = error.message || 'Failed to load Module 028 readiness.';
+      state.message = '';
+    } finally {
+      state.loading = false;
+      renderRoute();
+    }
+  }
+
+  async function runReview() {
+    state.loading = true;
+    state.message = 'Reviewing generated time entries against SOW/GSD scope…';
+    state.error = '';
+    renderRoute();
+
+    try {
+      state.review = await apiFetch('/api/sow-aware-time-entry/review', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(getPayload())
+      });
+
+      state.evidence = JSON.stringify(state.review, null, 2);
+      state.message = 'SOW-aware time entry review complete.';
+    } catch (error) {
+      state.error = error.message || 'Failed to run SOW-aware review.';
+      state.message = '';
+    } finally {
+      state.loading = false;
+      renderRoute();
+    }
+  }
+
+  async function buildEvidence() {
+    state.loading = true;
+    state.message = 'Building Claude-ready evidence package…';
+    state.error = '';
+    renderRoute();
+
+    try {
+      const result = await apiFetch('/api/sow-aware-time-entry/review/evidence', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(getPayload())
+      });
+
+      state.evidence = JSON.stringify(result, null, 2);
+      state.message = 'Claude-ready evidence package created.';
+    } catch (error) {
+      state.error = error.message || 'Failed to build evidence package.';
+      state.message = '';
+    } finally {
+      state.loading = false;
+      renderRoute();
+    }
+  }
+
+  function copyEvidence() {
+    const text = state.evidence || '';
+    if (!text) {
+      state.error = 'No evidence package is available to copy yet.';
+      renderRoute();
+      return;
+    }
+
+    navigator.clipboard?.writeText(text).then(() => {
+      state.message = 'Evidence package copied to clipboard.';
+      state.error = '';
+      renderRoute();
+    }).catch(() => {
+      state.error = 'Clipboard copy failed. Select and copy the evidence text manually.';
+      renderRoute();
+    });
+  }
+
+  function renderChecks() {
+    const checks = state.review?.checks || state.readiness?.checks || [];
+
+    if (!checks.length) {
+      return '<div class="projectpulse-028-check">No review checks loaded yet.</div>';
+    }
+
+    return checks.map((check) => `
+      <div class="projectpulse-028-check">
+        <div class="projectpulse-028-check-head">
+          <div>
+            <strong>${escapeHtml(check.label || check.key || 'Check')}</strong>
+            <p>${escapeHtml(check.detail || '')}</p>
+          </div>
+          <span class="projectpulse-028-pill ${escapeHtml(check.status || 'info')}">${escapeHtml(check.status || 'info')}</span>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function renderRoute() {
+    ensureDashboardCard();
+    const host = ensureRouteHost();
+    const isRoute = normalizedHashRoute() === routeName;
+
+    host.hidden = !isRoute;
+
+    if (!isRoute) {
+      return;
+    }
+
+    const review = state.review || {};
+    const score = review.alignmentScore ?? '—';
+    const outcome = review.outcome || 'not reviewed';
+    const riskCount = review.riskCheckCount ?? '—';
+    const missingCount = review.missingContextCount ?? '—';
+
+    host.innerHTML = `
+      <div class="projectpulse-028-shell">
+        <div class="projectpulse-028-header">
+          <div>
+            <div class="projectpulse-028-eyebrow">Module 028</div>
+            <h2 class="projectpulse-028-title">SOW-Aware AI Time Entry Generator</h2>
+            <p>Review generated time entries against signed SOW and GSD scope before approval, export, or out-of-scope escalation.</p>
+          </div>
+          <div class="projectpulse-028-actions">
+            <button type="button" class="projectpulse-028-button" data-028-dashboard>Back to Dashboard</button>
+            <button type="button" class="projectpulse-028-button" data-028-readiness>Refresh readiness</button>
+          </div>
+        </div>
+
+        ${state.message ? `<div class="projectpulse-028-status">${escapeHtml(state.message)}</div>` : ''}
+        ${state.error ? `<div class="projectpulse-028-status error">${escapeHtml(state.error)}</div>` : ''}
+
+        <div class="projectpulse-028-grid">
+          <div class="projectpulse-028-metric">
+            <div class="projectpulse-028-metric-label">Alignment Score</div>
+            <div class="projectpulse-028-metric-value">${escapeHtml(score)}</div>
+          </div>
+          <div class="projectpulse-028-metric">
+            <div class="projectpulse-028-metric-label">Outcome</div>
+            <div class="projectpulse-028-metric-value">${escapeHtml(outcome)}</div>
+          </div>
+          <div class="projectpulse-028-metric">
+            <div class="projectpulse-028-metric-label">Risk / Missing</div>
+            <div class="projectpulse-028-metric-value">${escapeHtml(riskCount)} / ${escapeHtml(missingCount)}</div>
+          </div>
+
+          <div class="projectpulse-028-panel wide">
+            <h3>Review Inputs</h3>
+            <div class="projectpulse-028-form">
+              <label>Customer
+                <input data-028-customer value="${escapeHtml(getPayload().customerName || '')}" placeholder="Customer name">
+              </label>
+              <label>Project / Opportunity
+                <input data-028-project value="${escapeHtml(getPayload().projectName || '')}" placeholder="Project or opportunity name">
+              </label>
+              <label class="wide">Signed SOW / Scope Context
+                <textarea data-028-sow placeholder="Paste signed SOW scope, deliverables, assumptions, exclusions, or approved project scope.">${escapeHtml(getPayload().signedSowText || '')}</textarea>
+              </label>
+              <label class="wide">GSD / Delivery Handoff Context
+                <textarea data-028-gsd placeholder="Paste GSD notes, delivery handoff details, PM/Engineer assignment context, or implementation notes.">${escapeHtml(getPayload().gsdText || '')}</textarea>
+              </label>
+              <label class="wide">Generated Time Entries
+                <textarea data-028-time placeholder="Paste Claude-generated or manually drafted time entries for scope alignment review.">${escapeHtml(getPayload().timeEntryText || '')}</textarea>
+              </label>
+            </div>
+            <div class="projectpulse-028-actions">
+              <button type="button" class="projectpulse-028-button" data-028-sample>Load sample</button>
+              <button type="button" class="projectpulse-028-button primary" data-028-review>Run SOW-aware review</button>
+              <button type="button" class="projectpulse-028-button" data-028-evidence>Build Claude-ready evidence</button>
+              <button type="button" class="projectpulse-028-button" data-028-copy>Copy evidence</button>
+            </div>
+          </div>
+
+          <div class="projectpulse-028-panel wide">
+            <h3>Scope Alignment Checks</h3>
+            ${renderChecks()}
+          </div>
+
+          <div class="projectpulse-028-panel wide">
+            <h3>Evidence / Claude Review Package</h3>
+            <textarea class="projectpulse-028-copy" readonly>${escapeHtml(state.evidence || 'Run review or build evidence to generate the review package.')}</textarea>
+          </div>
+        </div>
+      </div>
+    `;
+
+    host.querySelector('[data-028-dashboard]')?.addEventListener('click', () => {
+      window.location.hash = '#dashboard';
+    });
+
+    host.querySelector('[data-028-readiness]')?.addEventListener('click', loadReadiness);
+    host.querySelector('[data-028-sample]')?.addEventListener('click', () => {
+      fillSample();
+      state.message = 'Sample SOW/GSD/time entry context loaded.';
+      state.error = '';
+      renderRoute();
+    });
+    host.querySelector('[data-028-review]')?.addEventListener('click', runReview);
+    host.querySelector('[data-028-evidence]')?.addEventListener('click', buildEvidence);
+    host.querySelector('[data-028-copy]')?.addEventListener('click', copyEvidence);
+  }
+
+  function sync() {
+    ensureDashboardCard();
+    renderRoute();
+  }
+
+  document.addEventListener('DOMContentLoaded', sync);
+  window.addEventListener('hashchange', () => setTimeout(sync, 80));
+  window.addEventListener('storage', () => setTimeout(sync, 80));
+  window.addEventListener('projectpulse:view-as-changed', () => setTimeout(sync, 80));
+
+  const observer = new MutationObserver(() => {
+    clearTimeout(window.__projectpulse028SowAwareTimer);
+    window.__projectpulse028SowAwareTimer = setTimeout(sync, 120);
+  });
+
+  if (document.body) {
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
+
+  sync();
+})();
+</script>
+<!-- 028_SOW_AWARE_TIME_ENTRY_END -->
 </body>
 </html>

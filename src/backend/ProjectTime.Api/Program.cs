@@ -23747,6 +23747,404 @@ static bool ProjectPulse022CValidSeverity(string severity)
 // 022C Production Notification Preferences + Routing Rules - END
 
 
+// 028_SOW_AWARE_TIME_ENTRY_API_START
+app.MapGet("/api/sow-aware-time-entry/readiness", () =>
+{
+    return Results.Ok(new
+    {
+        module = "028",
+        name = "SOW-Aware AI Time Entry Generator",
+        status = "ready",
+        purpose = "Review generated time entries against signed SOW and GSD scope context before approval/export.",
+        dependencies = new[]
+        {
+            new { module = "024", name = "Sales-to-Delivery Intake Foundation", dependencyType = "source artifact provider", expectedArtifacts = new[] { "signedSow", "gsd" }, currentMode = "adapter-ready" },
+            new { module = "025", name = "SOW Generator + Claude Review Workflow", dependencyType = "SOW draft and review source", expectedArtifacts = new[] { "sowDraft", "sowReviewResult" }, currentMode = "adapter-ready" },
+            new { module = "026", name = "CRM Integration Framework", dependencyType = "CRM opportunity context", expectedArtifacts = new[] { "crmOpportunity", "customerContext" }, currentMode = "adapter-ready" },
+            new { module = "027", name = "Signed SOW Handoff + Assignment Trigger", dependencyType = "signed SOW and assignment source", expectedArtifacts = new[] { "signedSow", "assignedPm", "assignedEngineer" }, currentMode = "adapter-ready" }
+        },
+        checks = new[]
+        {
+            new { key = "signed-sow-context", label = "Signed SOW context accepted", status = "ready", detail = "The review accepts signed SOW text, deliverables, exclusions, assumptions, and scope notes." },
+            new { key = "gsd-context", label = "GSD context accepted", status = "ready", detail = "The review accepts GSD notes and handoff details." },
+            new { key = "time-entry-analysis", label = "Time entry alignment analysis", status = "ready", detail = "The review scores generated time entries as in-scope, needs review, missing context, or out-of-scope risk." },
+            new { key = "claude-prompt-pack", label = "Claude-ready review prompt", status = "ready", detail = "The review produces a Claude-ready scope alignment prompt/evidence package without storing secrets." },
+            new { key = "reporting-handoff", label = "Reporting handoff prepared", status = "ready", detail = "Outputs include scope alignment metrics for Module 030 reporting." }
+        },
+        routes = new[]
+        {
+            "/api/sow-aware-time-entry/readiness",
+            "/api/sow-aware-time-entry/context",
+            "/api/sow-aware-time-entry/reviews",
+            "/api/sow-aware-time-entry/review",
+            "/api/sow-aware-time-entry/review/evidence"
+        },
+        webpage = "#sow-aware-time-entry-review"
+    });
+});
+
+app.MapGet("/api/sow-aware-time-entry/context", () =>
+{
+    return Results.Ok(new
+    {
+        module = "028",
+        adapterMode = "placeholder-compatible",
+        signedSowSource = new
+        {
+            status = "adapter-ready",
+            expectedProvider = "024/027 signed SOW artifact workflow",
+            acceptedFields = new[] { "signedSowText", "sowText", "deliverables", "assumptions", "exclusions" }
+        },
+        gsdSource = new
+        {
+            status = "adapter-ready",
+            expectedProvider = "024 GSD upload workflow",
+            acceptedFields = new[] { "gsdText", "handoffNotes", "implementationNotes" }
+        },
+        timeEntrySource = new
+        {
+            status = "ready",
+            acceptedFields = new[] { "timeEntryText", "generatedTimeEntries", "entries" }
+        },
+        reviewOutcomes = new[] { "in_scope", "needs_review", "missing_context", "out_of_scope_risk" }
+    });
+});
+
+app.MapGet("/api/sow-aware-time-entry/reviews", () =>
+{
+    return Results.Ok(new
+    {
+        module = "028",
+        reviews = new[]
+        {
+            new
+            {
+                reviewId = "sample-sow-scope-alignment",
+                customer = "Sample Customer",
+                project = "Sample Implementation Project",
+                outcome = "needs_review",
+                alignmentScore = 72,
+                itemCount = 4,
+                flaggedItemCount = 1,
+                createdAtUtc = DateTimeOffset.UtcNow.AddMinutes(-20),
+                summary = "Sample review showing how generated time entries are checked against SOW/GSD scope."
+            }
+        }
+    });
+});
+
+app.MapPost("/api/sow-aware-time-entry/review", async (HttpRequest request) =>
+{
+    string rawBody = await new StreamReader(request.Body).ReadToEndAsync();
+
+    JsonDocument? document = null;
+    JsonElement root = default;
+
+    try
+    {
+        document = string.IsNullOrWhiteSpace(rawBody)
+            ? JsonDocument.Parse("{}")
+            : JsonDocument.Parse(rawBody);
+
+        root = document.RootElement;
+    }
+    catch
+    {
+        document = JsonDocument.Parse("{}");
+        root = document.RootElement;
+    }
+
+    string customerName = ProjectPulse028ReadString(root, "customerName", "customer", "accountName");
+    string projectName = ProjectPulse028ReadString(root, "projectName", "project", "opportunityName");
+    string sowText = ProjectPulse028ReadString(root, "signedSowText", "sowText", "sow", "scopeText");
+    string gsdText = ProjectPulse028ReadString(root, "gsdText", "gsd", "handoffNotes", "implementationNotes");
+    string timeEntryText = ProjectPulse028ReadString(root, "timeEntryText", "generatedTimeEntries", "entries", "draftTimeEntries");
+
+    if (string.IsNullOrWhiteSpace(customerName)) customerName = "Unspecified customer";
+    if (string.IsNullOrWhiteSpace(projectName)) projectName = "Unspecified project";
+
+    var review = ProjectPulse028BuildReview(customerName, projectName, sowText, gsdText, timeEntryText);
+
+    return Results.Ok(review);
+});
+
+app.MapPost("/api/sow-aware-time-entry/review/evidence", async (HttpRequest request) =>
+{
+    string rawBody = await new StreamReader(request.Body).ReadToEndAsync();
+
+    JsonDocument? document = null;
+    JsonElement root = default;
+
+    try
+    {
+        document = string.IsNullOrWhiteSpace(rawBody)
+            ? JsonDocument.Parse("{}")
+            : JsonDocument.Parse(rawBody);
+
+        root = document.RootElement;
+    }
+    catch
+    {
+        document = JsonDocument.Parse("{}");
+        root = document.RootElement;
+    }
+
+    string customerName = ProjectPulse028ReadString(root, "customerName", "customer", "accountName");
+    string projectName = ProjectPulse028ReadString(root, "projectName", "project", "opportunityName");
+    string sowText = ProjectPulse028ReadString(root, "signedSowText", "sowText", "sow", "scopeText");
+    string gsdText = ProjectPulse028ReadString(root, "gsdText", "gsd", "handoffNotes", "implementationNotes");
+    string timeEntryText = ProjectPulse028ReadString(root, "timeEntryText", "generatedTimeEntries", "entries", "draftTimeEntries");
+
+    var review = ProjectPulse028BuildReview(customerName, projectName, sowText, gsdText, timeEntryText);
+
+    return Results.Ok(new
+    {
+        module = "028",
+        evidenceType = "sow-aware-time-entry-review",
+        generatedAtUtc = DateTimeOffset.UtcNow,
+        review,
+        claudePrompt = ProjectPulse028BuildClaudePrompt(customerName, projectName, sowText, gsdText, timeEntryText),
+        reviewerInstructions = new[]
+        {
+            "Confirm the signed SOW and GSD are the current approved versions.",
+            "Verify each generated time entry maps to an approved deliverable, implementation task, or support activity.",
+            "Flag any time entry that references excluded work, unsupported scope, missing artifact context, or ambiguous billability.",
+            "Send out-of-scope risk items to PM/Manager review before approval/export."
+        }
+    });
+});
+// 028_SOW_AWARE_TIME_ENTRY_API_END
+
+static string ProjectPulse028ReadString(JsonElement root, params string[] names)
+{
+    if (root.ValueKind != JsonValueKind.Object)
+    {
+        return string.Empty;
+    }
+
+    foreach (string name in names)
+    {
+        if (root.TryGetProperty(name, out JsonElement value))
+        {
+            if (value.ValueKind == JsonValueKind.String)
+            {
+                return value.GetString() ?? string.Empty;
+            }
+
+            if (value.ValueKind == JsonValueKind.Array)
+            {
+                var parts = new List<string>();
+
+                foreach (JsonElement item in value.EnumerateArray())
+                {
+                    if (item.ValueKind == JsonValueKind.String)
+                    {
+                        parts.Add(item.GetString() ?? string.Empty);
+                    }
+                    else if (item.ValueKind == JsonValueKind.Object)
+                    {
+                        if (item.TryGetProperty("description", out JsonElement description) && description.ValueKind == JsonValueKind.String)
+                        {
+                            parts.Add(description.GetString() ?? string.Empty);
+                        }
+                        else if (item.TryGetProperty("notes", out JsonElement notes) && notes.ValueKind == JsonValueKind.String)
+                        {
+                            parts.Add(notes.GetString() ?? string.Empty);
+                        }
+                        else
+                        {
+                            parts.Add(item.ToString());
+                        }
+                    }
+                    else
+                    {
+                        parts.Add(item.ToString());
+                    }
+                }
+
+                return string.Join("\n", parts.Where(part => !string.IsNullOrWhiteSpace(part)));
+            }
+
+            if (value.ValueKind == JsonValueKind.Object)
+            {
+                return value.ToString();
+            }
+        }
+    }
+
+    return string.Empty;
+}
+
+static object ProjectPulse028BuildReview(string customerName, string projectName, string sowText, string gsdText, string timeEntryText)
+{
+    string combinedScope = $"{sowText}\n{gsdText}".Trim();
+    string normalizedScope = combinedScope.ToLowerInvariant();
+    string normalizedEntries = (timeEntryText ?? string.Empty).ToLowerInvariant();
+
+    bool hasSow = !string.IsNullOrWhiteSpace(sowText) && sowText.Trim().Length >= 40;
+    bool hasGsd = !string.IsNullOrWhiteSpace(gsdText) && gsdText.Trim().Length >= 20;
+    bool hasEntries = !string.IsNullOrWhiteSpace(timeEntryText) && timeEntryText.Trim().Length >= 20;
+
+    string[] deliveryTerms = new[]
+    {
+        "implementation", "configuration", "migration", "deployment", "cutover", "testing", "validation",
+        "documentation", "training", "knowledge transfer", "design", "discovery", "assessment",
+        "integration", "support", "troubleshooting", "project management", "status meeting"
+    };
+
+    string[] exclusionTerms = new[]
+    {
+        "out of scope", "excluded", "not included", "unsupported", "change order", "separate sow",
+        "future phase", "not covered", "non-billable", "warranty"
+    };
+
+    int deliveryMatches = deliveryTerms.Count(term => normalizedEntries.Contains(term));
+    int scopeMatches = deliveryTerms.Count(term => normalizedEntries.Contains(term) && normalizedScope.Contains(term));
+    int exclusionMatches = exclusionTerms.Count(term => normalizedEntries.Contains(term) || (normalizedEntries.Contains("extra") && normalizedScope.Contains(term)));
+
+    var checks = new List<object>
+    {
+        new
+        {
+            key = "signed-sow-available",
+            label = "Signed SOW context available",
+            status = hasSow ? "ready" : "missing_context",
+            detail = hasSow
+                ? "Signed SOW context was included in the review payload."
+                : "Signed SOW context is missing or too short for reliable scope validation."
+        },
+        new
+        {
+            key = "gsd-available",
+            label = "GSD / delivery handoff context available",
+            status = hasGsd ? "ready" : "needs_review",
+            detail = hasGsd
+                ? "GSD or delivery handoff notes were included."
+                : "GSD context is missing. The review can continue, but PM/Engineer validation is recommended."
+        },
+        new
+        {
+            key = "generated-time-entry-available",
+            label = "Generated time entry content available",
+            status = hasEntries ? "ready" : "missing_context",
+            detail = hasEntries
+                ? "Generated time entry text was included for alignment review."
+                : "No generated time entry content was provided."
+        },
+        new
+        {
+            key = "scope-term-alignment",
+            label = "Generated entries reference approved delivery activities",
+            status = scopeMatches > 0 ? "ready" : "needs_review",
+            detail = scopeMatches > 0
+                ? $"Detected {scopeMatches} delivery terms that appear in both the generated entries and SOW/GSD context."
+                : "Generated entries do not clearly map to known SOW/GSD delivery terms."
+        },
+        new
+        {
+            key = "out-of-scope-risk",
+            label = "Out-of-scope language review",
+            status = exclusionMatches > 0 ? "out_of_scope_risk" : "ready",
+            detail = exclusionMatches > 0
+                ? $"Detected {exclusionMatches} possible exclusion/change-order risk indicators."
+                : "No obvious exclusion or change-order language was detected in the generated entries."
+        },
+        new
+        {
+            key = "human-approval-required",
+            label = "PM/Manager review before approval/export",
+            status = "needs_review",
+            detail = "SOW-aware AI review is decision support. Final approval remains with the authorized PM/Manager workflow."
+        }
+    };
+
+    int readyCount = 0;
+    int riskCount = 0;
+    int missingCount = 0;
+
+    foreach (object check in checks)
+    {
+        string serialized = JsonSerializer.Serialize(check);
+        if (serialized.Contains("\"status\":\"ready\"")) readyCount++;
+        if (serialized.Contains("\"status\":\"out_of_scope_risk\"")) riskCount++;
+        if (serialized.Contains("\"status\":\"missing_context\"")) missingCount++;
+    }
+
+    int score = checks.Count == 0 ? 0 : (int)Math.Round((readyCount / (double)checks.Count) * 100);
+
+    string outcome =
+        missingCount > 0 ? "missing_context" :
+        riskCount > 0 ? "out_of_scope_risk" :
+        score >= 75 ? "in_scope" :
+        "needs_review";
+
+    return new
+    {
+        module = "028",
+        reviewId = $"sow-scope-review-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}",
+        customerName,
+        projectName,
+        generatedAtUtc = DateTimeOffset.UtcNow,
+        outcome,
+        alignmentScore = score,
+        readyCheckCount = readyCount,
+        riskCheckCount = riskCount,
+        missingContextCount = missingCount,
+        deliveryTermMatches = deliveryMatches,
+        scopeTermMatches = scopeMatches,
+        checks,
+        recommendation = outcome switch
+        {
+            "in_scope" => "Generated time entries appear aligned with SOW/GSD context. Continue with normal PM/Manager approval.",
+            "out_of_scope_risk" => "Route flagged entries to PM/Manager review before approval/export. Consider change-order review if risk is confirmed.",
+            "missing_context" => "Attach or select the signed SOW/GSD before relying on the generated time entry review.",
+            _ => "Review the generated entries manually against signed SOW/GSD before approval/export."
+        },
+        reportingHandoff = new
+        {
+            targetModule = "030 Reporting / Executive Dashboard",
+            metrics = new[]
+            {
+                "alignmentScore",
+                "readyCheckCount",
+                "riskCheckCount",
+                "missingContextCount",
+                "scopeTermMatches"
+            }
+        },
+        claudePrompt = ProjectPulse028BuildClaudePrompt(customerName, projectName, sowText, gsdText, timeEntryText)
+    };
+}
+
+static string ProjectPulse028BuildClaudePrompt(string customerName, string projectName, string sowText, string gsdText, string timeEntryText)
+{
+    return $"""
+You are reviewing generated time entries for SOW/GSD scope alignment.
+
+Customer:
+{customerName}
+
+Project:
+{projectName}
+
+Signed SOW / Scope Context:
+{sowText}
+
+GSD / Delivery Handoff Context:
+{gsdText}
+
+Generated Time Entries:
+{timeEntryText}
+
+Review Instructions:
+1. Identify which generated time entries are clearly in scope.
+2. Identify which entries need PM/Manager review.
+3. Identify any out-of-scope or change-order risk.
+4. Identify missing SOW/GSD context that prevents confident validation.
+5. Return a concise table with Entry, Scope Alignment, Reason, Risk Level, and Recommended Action.
+""";
+}
+
 app.Run();
 
 
