@@ -288,7 +288,10 @@ export default function ProductionDataReadinessGoLiveGatePanel({ checks = [], lo
         <span>{gateState.copyStatus || (gateState.lastUpdated ? `Last updated ${new Date(gateState.lastUpdated).toLocaleString()}` : 'Not started')}</span>
       </div>
 
-      <textarea className="golive-evidence-copybox" readOnly value={evidenceText} />
+      <details className="data-readiness-copy-details">
+        <summary>Show go-live evidence text</summary>
+        <textarea className="golive-evidence-copybox" readOnly value={evidenceText} />
+      </details>
     </section>
   );
 }

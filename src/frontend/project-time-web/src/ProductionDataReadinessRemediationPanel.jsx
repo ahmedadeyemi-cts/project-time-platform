@@ -219,7 +219,10 @@ export default function ProductionDataReadinessRemediationPanel({ checks = [], l
         <span>{state.copyStatus || (state.lastUpdated ? `Last updated ${new Date(state.lastUpdated).toLocaleString()}` : 'Not started')}</span>
       </div>
 
-      <textarea className="remediation-plan-copybox" readOnly value={planText} />
+      <details className="data-readiness-copy-details">
+        <summary>Show remediation plan text</summary>
+        <textarea className="remediation-plan-copybox" readOnly value={planText} />
+      </details>
     </section>
   );
 }

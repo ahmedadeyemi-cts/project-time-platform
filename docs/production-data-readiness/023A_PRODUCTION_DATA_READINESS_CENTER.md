@@ -106,3 +106,26 @@ What to check:
 3. Confirm the endpoint status is no longer 404.
 4. Confirm readiness cards and table rows load.
 5. Confirm remediation checklist and go-live gate use the returned checks.
+
+
+## 023F Data Readiness Compact Layout Repair
+
+023F repairs the Data Readiness page layout after browser validation showed runaway/endless scrolling.
+
+Changes:
+
+- Constrains the data readiness table height.
+- Makes table headers sticky inside the table region.
+- Constrains remediation and go-live checklist heights.
+- Collapses remediation plan and go-live evidence text behind expandable details sections.
+- Keeps the Data Readiness page clickable from Dashboard/navigation.
+- Does not change the 022 isolated notification branch.
+
+What to check:
+
+1. Open `https://projectpulse-test.onenecklab.com/#production-data-readiness`.
+2. Confirm the page no longer feels like endless scroll.
+3. Click Refresh data readiness.
+4. Confirm the table scrolls within its own panel.
+5. Confirm remediation checklist and go-live checklist scroll within their sections.
+6. Confirm remediation plan and go-live evidence are hidden until expanded.

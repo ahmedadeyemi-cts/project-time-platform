@@ -726,3 +726,73 @@
     grid-template-columns: 1fr;
   }
 }
+
+
+/* 023F compact layout repair */
+.app-shell.route-production-data-readiness {
+  overflow-x: hidden;
+}
+
+.app-shell.route-production-data-readiness > #production-data-readiness {
+  min-height: 0;
+  overflow: visible;
+}
+
+.production-data-readiness-center {
+  contain: layout paint;
+  padding-bottom: 2rem;
+}
+
+.production-data-table {
+  max-height: 430px;
+  overflow: auto;
+  border-radius: 0.9rem;
+}
+
+.production-data-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: rgba(248, 250, 252, 0.98);
+}
+
+.remediation-list,
+.golive-checklist {
+  max-height: 360px;
+  overflow: auto;
+  padding-right: 0.25rem;
+}
+
+.data-readiness-copy-details {
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 0.9rem;
+  background: rgba(248, 250, 252, 0.96);
+  padding: 0.75rem;
+}
+
+.data-readiness-copy-details summary {
+  cursor: pointer;
+  color: #0369a1;
+  font-weight: 850;
+}
+
+.data-readiness-copy-details textarea {
+  margin-top: 0.7rem;
+}
+
+.remediation-plan-copybox,
+.golive-evidence-copybox {
+  max-height: 220px;
+  overflow: auto;
+}
+
+.production-data-golive-panel,
+.production-data-remediation-panel {
+  scroll-margin-top: 1rem;
+}
+
+[data-theme='dark'] .production-data-table thead th,
+[data-theme='dark'] .data-readiness-copy-details {
+  background: rgba(15, 23, 42, 0.96);
+  border-color: rgba(148, 163, 184, 0.28);
+}
