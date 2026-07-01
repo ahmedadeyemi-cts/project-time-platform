@@ -52,3 +52,44 @@ Validation:
 - Routing rule toggle must return HTTP 200 for admin.
 - Engineer View-As write attempt must return HTTP 403.
 - Dashboard / Navigation / Registry endpoints must remain HTTP 200.
+
+## 022D Production Notification Center UI + Preference Controls
+
+Status: Applied pending validation and commit.
+
+Scope:
+- Adds a dashboard shortcut for the Production Notification Center.
+- Adds a floating notification launcher and drawer UI.
+- Displays latest notifications, summary metrics, routing rules, and saved preferences.
+- Allows notification acknowledgment and preference updates outside View-As.
+- Keeps email delivery disabled.
+- Preserves View-As read-only write protection.
+- Includes Dashboard / Navigation / Registry validation.
+
+Validation:
+- Frontend build required.
+- Published frontend must contain the 022D marker.
+- Notification, preference, routing, readiness, dashboard, and registry APIs must return HTTP 200.
+- Preference save must force email disabled.
+- Engineer View-As write attempt must return HTTP 403.
+
+### 022D Topbar Notification Dropdown Fix
+
+Status: Applied pending validation and commit.
+
+Changes:
+- Hides the dashboard page context guide panel.
+- Replaces the lower-right floating notification launcher with a top-bar Notifications dropdown.
+- Keeps notification summary, latest notifications, preferences, and routing rules inside the dropdown.
+- Preserves View-As read-only write protection.
+- Keeps email delivery disabled.
+
+## 022E Top Bar View-As + Dashboard Cleanup
+
+Status: Applied pending validation and commit.
+
+Scope:
+- Hide dashboard helper panel.
+- Move View As selector from lower-right floating overlay into top-bar open space.
+- Suppress duplicate floating View As rendering.
+- Deploy to actual live frontend paths.

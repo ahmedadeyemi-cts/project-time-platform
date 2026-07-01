@@ -334,6 +334,125 @@ function installProjectPulseGlobalViewAsPreview() {
 
 installProjectPulseGlobalViewAsPreview();
 
+// 022F_TOPBAR_VIEWAS_MOUNT_START
+function installProjectPulseGlobalViewAsTopbarMount() {
+  if (window.__projectPulseGlobalViewAsTopbarMountInstalled) return;
+  window.__projectPulseGlobalViewAsTopbarMountInstalled = true;
+
+  const slotId = 'projectpulse-global-view-as-topbar-slot';
+
+  const cleanText = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+
+  const isVisible = (element) => {
+    if (!element || !element.isConnected) return false;
+    const rect = element.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  };
+
+  const findTopbar = () => {
+    const candidates = Array.from(document.querySelectorAll('header, nav, section, div'))
+      .filter((element) => {
+        if (element.id === slotId || element.closest(`#${slotId}`)) return false;
+
+        const text = cleanText(element.textContent);
+        if (!text.includes('Project Pulse')) return false;
+        if (!text.includes('Dashboard')) return false;
+        if (!text.includes('More')) return false;
+
+        const rect = element.getBoundingClientRect();
+        return rect.top >= 0 && rect.top < 170 && rect.width > 800 && rect.height >= 48 && rect.height <= 150;
+      })
+      .sort((a, b) => {
+        const ar = a.getBoundingClientRect();
+        const br = b.getBoundingClientRect();
+        return (ar.height - br.height) || (cleanText(a.textContent).length - cleanText(b.textContent).length);
+      });
+
+    return candidates[0] || null;
+  };
+
+  const findRightNavCluster = (topbar) => {
+    if (!topbar) return null;
+
+    const buttons = Array.from(topbar.querySelectorAll('button, a, [role="button"], div'))
+      .filter(isVisible);
+
+    const more = buttons.find((button) => cleanText(button.textContent).includes('More'));
+    if (more) return more.closest('div') || more;
+
+    const dashboard = buttons.find((button) => cleanText(button.textContent) === 'Dashboard');
+    if (dashboard) return dashboard.closest('div') || dashboard;
+
+    return null;
+  };
+
+  const ensureSlot = () => {
+    const topbar = findTopbar();
+    if (!topbar) return null;
+
+    let slot = document.getElementById(slotId);
+    if (!slot) {
+      slot = document.createElement('div');
+      slot.id = slotId;
+    }
+
+    const rightCluster = findRightNavCluster(topbar);
+
+    if (rightCluster?.parentElement && rightCluster.parentElement !== slot.parentElement) {
+      rightCluster.parentElement.insertBefore(slot, rightCluster);
+    } else if (!slot.parentElement) {
+      topbar.appendChild(slot);
+    }
+
+    return slot;
+  };
+
+  const mount = () => {
+    const viewAs = document.getElementById('projectpulse-global-view-as');
+    if (!viewAs) return;
+
+    const slot = ensureSlot();
+    if (!slot) return;
+
+    if (viewAs.parentElement !== slot) {
+      slot.appendChild(viewAs);
+    }
+
+    viewAs.setAttribute('data-topbar-mounted', 'true');
+  };
+
+  const run = () => {
+    mount();
+    setTimeout(mount, 100);
+    setTimeout(mount, 500);
+    setTimeout(mount, 1200);
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', run);
+  } else {
+    run();
+  }
+
+  window.addEventListener('hashchange', run);
+  window.addEventListener('resize', run);
+  window.addEventListener('projectpulse:view-as-changed', run);
+
+  const observer = new MutationObserver(() => {
+    clearTimeout(window.__projectPulseGlobalViewAsTopbarMountTimer);
+    window.__projectPulseGlobalViewAsTopbarMountTimer = setTimeout(mount, 80);
+  });
+
+  if (document.body) {
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
+}
+
+installProjectPulseGlobalViewAsTopbarMount();
+// 022F_TOPBAR_VIEWAS_MOUNT_END
+
+// 022E_REAL_VIEWAS_PLACEMENT_CONFIRMED: placement controlled by timesheet.css top-bar override.
+
 
 
 import { useEffect, useMemo, useState, useRef } from 'react';
@@ -4698,7 +4817,7 @@ Analytics - Variphy / Infortel`}
                   placeholder="0.00"
                   autoFocus
                   disabled={!selectedEntryIsEditable}
-                  
+
                   onChange={(event) => updateEntry(selectedCell.rowId, selectedCell.date, selectedCell.type, { hours: event.target.value })}
                 />
               </label>
@@ -4708,7 +4827,7 @@ Analytics - Variphy / Infortel`}
                   value={selectedEntry.comment}
                   placeholder="Enter the reportable comment for this time entry."
                   disabled={!selectedEntryIsEditable}
-                  
+
                   onChange={(event) => updateEntry(selectedCell.rowId, selectedCell.date, selectedCell.type, { comment: event.target.value })}
                 />
 
@@ -4763,7 +4882,7 @@ Analytics - Variphy / Infortel`}
                 <select
                   value={selectedEntry.workLocationGroupId}
                   disabled={!selectedEntryIsEditable}
-                  
+
                   onChange={(event) => updateEntry(selectedCell.rowId, selectedCell.date, selectedCell.type, { workLocationGroupId: event.target.value })}
                 >
                   {(locationGroups.data?.groups ?? []).map((group) => (
@@ -4776,7 +4895,7 @@ Analytics - Variphy / Infortel`}
                 <select
                   value={selectedEntry.workLocationId}
                   disabled={!selectedEntryIsEditable}
-                  
+
                   onChange={(event) => updateEntry(selectedCell.rowId, selectedCell.date, selectedCell.type, { workLocationId: event.target.value })}
                 >
                   {(locations.data?.locations ?? []).map((location) => (
