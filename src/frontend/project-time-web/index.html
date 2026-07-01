@@ -3991,8 +3991,10 @@
 <!-- 025M_STANDALONE_SOW_ROUTE_END -->
 
 
-<!-- 026A_CRM_INTEGRATION_FRAMEWORK_START -->
-<style id="projectpulse-026a-style">
+
+
+<!-- 026_FULL_CRM_INTEGRATION_FRAMEWORK_START -->
+<style id="projectpulse-026-full-style">
   #projectpulse-026-crm-card {
     border: 1px solid rgba(148, 163, 184, 0.32);
     border-radius: 20px;
@@ -4019,7 +4021,7 @@
   }
 
   #projectpulse-026-page {
-    max-width: 1500px;
+    max-width: 1540px;
     margin: 0 auto 2rem;
     border: 1px solid rgba(148, 163, 184, 0.32);
     border-radius: 24px;
@@ -4069,17 +4071,9 @@
     cursor: pointer;
   }
 
-  .projectpulse-026-button.primary {
-    background: #0f2a55;
-    border-color: #0f2a55;
-    color: #ffffff;
-  }
-
-  .projectpulse-026-button.success {
-    background: #166534;
-    border-color: #166534;
-    color: #ffffff;
-  }
+  .projectpulse-026-button.primary { background: #0f2a55; border-color: #0f2a55; color: #ffffff; }
+  .projectpulse-026-button.success { background: #166534; border-color: #166534; color: #ffffff; }
+  .projectpulse-026-button.warning { background: #92400e; border-color: #92400e; color: #ffffff; }
 
   .projectpulse-026-pill {
     border-radius: 999px;
@@ -4094,6 +4088,7 @@
   .projectpulse-026-pill.blue { background: #dbeafe; color: #1e3a8a; }
   .projectpulse-026-pill.green { background: #dcfce7; color: #166534; }
   .projectpulse-026-pill.amber { background: #fef3c7; color: #92400e; }
+  .projectpulse-026-pill.red { background: #fee2e2; color: #991b1b; }
 
   .projectpulse-026-page-header {
     display: flex;
@@ -4120,13 +4115,9 @@
     margin-bottom: 1rem;
   }
 
-  .projectpulse-026-section.white {
-    background: #ffffff;
-  }
+  .projectpulse-026-section.white { background: #ffffff; }
 
-  .projectpulse-026-field {
-    margin-bottom: 0.85rem;
-  }
+  .projectpulse-026-field { margin-bottom: 0.85rem; }
 
   .projectpulse-026-field label {
     display: block;
@@ -4139,7 +4130,8 @@
   }
 
   .projectpulse-026-field input,
-  .projectpulse-026-field select {
+  .projectpulse-026-field select,
+  .projectpulse-026-field textarea {
     width: 100%;
     border: 1px solid rgba(148, 163, 184, 0.45);
     border-radius: 12px;
@@ -4147,6 +4139,11 @@
     background: #ffffff;
     color: #111827;
     font: inherit;
+  }
+
+  .projectpulse-026-field textarea {
+    min-height: 110px;
+    resize: vertical;
   }
 
   .projectpulse-026-two-grid {
@@ -4183,15 +4180,9 @@
     margin-top: 0.8rem;
   }
 
-  .projectpulse-026-status.success {
-    background: #dcfce7;
-    color: #166534;
-  }
-
-  .projectpulse-026-status.warning {
-    background: #fef3c7;
-    color: #92400e;
-  }
+  .projectpulse-026-status.success { background: #dcfce7; color: #166534; }
+  .projectpulse-026-status.warning { background: #fef3c7; color: #92400e; }
+  .projectpulse-026-status.error { background: #fee2e2; color: #991b1b; }
 
   .projectpulse-026-checklist {
     display: grid;
@@ -4254,17 +4245,49 @@
   }
 </style>
 
-<script id="projectpulse-026a-script">
+<script id="projectpulse-026-full-script">
 (function () {
-  if (window.__projectPulse026AInstalled) return;
-  window.__projectPulse026AInstalled = true;
+  if (window.__projectPulse026FullInstalled) return;
+  window.__projectPulse026FullInstalled = true;
 
   var cardId = 'projectpulse-026-crm-card';
   var shellId = 'projectpulse-026-shell';
-  var storageKey = 'projectpulse026CrmIntegrationFramework';
+  var storageKey = 'projectpulse026FullCrmIntegrationFramework';
+
+  var providers = [
+    {
+      key: 'salesforce',
+      name: 'Salesforce',
+      type: 'Account / Opportunity / Quote',
+      status: 'Placeholder',
+      auth: 'Server-side OAuth later',
+      workflow: 'Opportunity to SOW and Intake'
+    },
+    {
+      key: 'zendesk_sell',
+      name: 'Zendesk Sell',
+      type: 'Company / Deal / Quote',
+      status: 'Placeholder',
+      auth: 'Server-side API or OAuth later',
+      workflow: 'Deal to SOW and Intake'
+    }
+  ];
+
+  var mappings = [
+    ['Account / Company Name', 'ProjectPulse Customer', 'Customer match or onboarding candidate', 'Required'],
+    ['Opportunity / Deal Name', 'SOW Project / Engagement Name', 'Prefill Module 025 SOW Generator', 'Required'],
+    ['Opportunity / Deal ID', 'CRM Reference', 'Audit traceability', 'Required'],
+    ['Quote / Deal Value', 'Estimated Revenue', 'Executive and intake visibility', 'Optional'],
+    ['Sales Owner', 'Sales Owner', 'Handoff email and audit history', 'Required'],
+    ['Solution Architect', 'Solution Architect', 'SOW review ownership', 'Required'],
+    ['Stage / Signed Indicator', 'Signed SOW Handoff Trigger', 'Module 027 handoff trigger', 'Required'],
+    ['Products / Services / Quote Lines', 'SOW Research Seed', 'Module 025 Claude research context', 'Required'],
+    ['Estimated Service Hours', 'Project Hours / Resource Demand', 'Assignment planning', 'Optional'],
+    ['Attachments', 'Canonical SOW / GSD Artifacts', 'Project document package', 'Required']
+  ];
 
   var state = {
-    primaryCrm: 'Salesforce',
+    primaryCrm: 'Salesforce + Zendesk Sell',
     syncMode: 'Read-only preview',
     salesforceStatus: 'Placeholder',
     zendeskSellStatus: 'Placeholder',
@@ -4276,12 +4299,19 @@
     solutionArchitect: 'Solution Architect',
     estimatedHours: '80',
     estimatedRevenue: '60000',
+    sourceRecordReference: 'CRM-OPP-026-DEMO',
+    serviceSummary: 'Upgrade Cisco CUCM 11.5 to 15.0 and validate dependencies, phone firmware, gateways, voicemail, E911, SIP trunks, certificates, backups, cutover, rollback, and post-upgrade calling.',
     fieldMappingReviewed: false,
     securityReviewed: false,
     noSecretsReviewed: false,
     intakeMappingReviewed: false,
     sowMappingReviewed: false,
     syncReadinessReviewed: false,
+    promotionAuditReviewed: false,
+    providerRegistryReviewed: false,
+    closeoutReviewed: false,
+    lastPreview: '',
+    lastPromotion: '',
     status: '',
     statusType: ''
   };
@@ -4318,6 +4348,9 @@
   }
 
   function getDashboardGrid() {
+    var crmCard = document.getElementById(cardId);
+    if (crmCard && crmCard.parentElement) return crmCard.parentElement;
+
     var sowCard = document.getElementById('projectpulse-025-sow-card');
     if (sowCard && sowCard.parentElement) return sowCard.parentElement;
 
@@ -4355,12 +4388,12 @@
       card.innerHTML =
         '<div class="projectpulse-026-eyebrow">Module 026</div>' +
         '<h3>CRM Integration Framework</h3>' +
-        '<p>Prepare Salesforce and Zendesk Sell integration mapping so CRM-originated opportunities can feed SOW generation and sales-to-delivery intake.</p>' +
+        '<p>Complete framework for Salesforce and Zendesk Sell provider registry, field mapping, sync preview, promotion audit, and CRM-to-SOW/Intake workflow placement.</p>' +
         '<div class="projectpulse-026-actions">' +
           '<button type="button" class="projectpulse-026-button primary" data-026-open>Open CRM Integration</button>' +
           '<span class="projectpulse-026-pill green">Dashboard module</span>' +
           '<span class="projectpulse-026-pill amber">No secrets stored</span>' +
-          '<span class="projectpulse-026-pill blue">CRM to SOW</span>' +
+          '<span class="projectpulse-026-pill blue">CRM to SOW / Intake</span>' +
         '</div>';
 
       var sowCard = document.getElementById('projectpulse-025-sow-card');
@@ -4441,7 +4474,9 @@
       'crmOwner',
       'solutionArchitect',
       'estimatedHours',
-      'estimatedRevenue'
+      'estimatedRevenue',
+      'sourceRecordReference',
+      'serviceSummary'
     ].forEach(function (key) {
       state[key] = get(key);
     });
@@ -4452,7 +4487,10 @@
       'noSecretsReviewed',
       'intakeMappingReviewed',
       'sowMappingReviewed',
-      'syncReadinessReviewed'
+      'syncReadinessReviewed',
+      'promotionAuditReviewed',
+      'providerRegistryReviewed',
+      'closeoutReviewed'
     ].forEach(function (key) {
       state[key] = checked(key);
     });
@@ -4460,59 +4498,25 @@
     saveState();
   }
 
-  function readinessSummary() {
-    var checks = [
-      state.fieldMappingReviewed,
-      state.securityReviewed,
-      state.noSecretsReviewed,
-      state.intakeMappingReviewed,
-      state.sowMappingReviewed,
-      state.syncReadinessReviewed
-    ];
-
-    var complete = checks.filter(Boolean).length;
-
-    return 'CRM Integration Readiness Summary\n\n' +
-      'Primary CRM: ' + state.primaryCrm + '\n' +
-      'Sync Mode: ' + state.syncMode + '\n' +
-      'Salesforce Connector: ' + state.salesforceStatus + '\n' +
-      'Zendesk Sell Connector: ' + state.zendeskSellStatus + '\n' +
-      'Scenario: ' + state.selectedScenario + '\n' +
-      'Readiness Checks Complete: ' + complete + ' / ' + checks.length + '\n\n' +
-      'Purpose:\n' +
-      'Module 026 prepares the integration framework so Salesforce and Zendesk Sell records can later feed the SOW Generator, Sales-to-Delivery Intake, signed handoff, and assignment workflows.\n\n' +
-      'Security rule:\n' +
-      'No CRM client credentials, tokens, or API keys are stored in the repository. Production credentials should live in root-only environment files or a secret manager.\n\n' +
-      'Future backend endpoints:\n' +
-      'GET /api/crm/integrations/summary\n' +
-      'GET /api/crm/integrations/field-mapping\n' +
-      'POST /api/crm/integrations/test-connection\n' +
-      'POST /api/crm/integrations/sync-preview\n' +
-      'POST /api/crm/integrations/promote-to-sow\n' +
-      'POST /api/crm/integrations/promote-to-intake\n';
-  }
-
-  function mappingRows() {
-    return [
-      ['Salesforce Account / Zendesk Sell Company', 'ProjectPulse Customer', 'Creates or matches onboarded customer record.'],
-      ['Opportunity / Deal Name', 'SOW Project / Engagement Name', 'Prepopulates the SOW Generator project name.'],
-      ['Opportunity / Deal ID', 'CRM Reference', 'Preserved for audit and traceability.'],
-      ['Quote / Deal Value', 'Estimated Revenue / Planned Cost Context', 'Used for intake readiness and executive visibility.'],
-      ['Sales Owner', 'Sales Owner', 'Used for handoff notification and audit history.'],
-      ['Solution Architect', 'Solution Architect', 'Owns SOW draft review and hallucination controls.'],
-      ['Close Stage / Signed Flag', 'Signed SOW Handoff Trigger', 'Module 027 will use this to trigger PTC/Executive email.'],
-      ['Products / Services / Quote Lines', 'Research-backed SOW Scope Seed', 'Used by Module 025 to guide Claude process research and scope drafting.'],
-      ['Estimated Hours / Services Quantity', 'Project Hours / Resource Demand', 'Feeds intake, PM assignment, and engineer allocation planning.'],
-      ['Attachments', 'SOW / GSD Artifacts', 'Signed SOW and GSD remain in canonical project document area.']
-    ];
+  function providerRegistryHtml() {
+    return providers.map(function (provider) {
+      return '<div class="projectpulse-026-cardlet">' +
+        '<div class="projectpulse-026-eyebrow">' + escapeHtml(provider.name) + '</div>' +
+        '<strong>' + escapeHtml(provider.type) + '</strong>' +
+        '<p>Status: ' + escapeHtml(state[provider.key === 'salesforce' ? 'salesforceStatus' : 'zendeskSellStatus']) + '</p>' +
+        '<p>Authentication: ' + escapeHtml(provider.auth) + '</p>' +
+        '<p>Workflow: ' + escapeHtml(provider.workflow) + '</p>' +
+        '<span class="projectpulse-026-pill amber">Server-side credentials later</span>' +
+      '</div>';
+    }).join('');
   }
 
   function mappingTableHtml() {
     return '<table class="projectpulse-026-table">' +
-      '<thead><tr><th>CRM Field</th><th>ProjectPulse Destination</th><th>Workflow Use</th></tr></thead>' +
+      '<thead><tr><th>CRM Field</th><th>ProjectPulse Destination</th><th>Workflow Use</th><th>Promotion</th></tr></thead>' +
       '<tbody>' +
-      mappingRows().map(function (row) {
-        return '<tr><td>' + escapeHtml(row[0]) + '</td><td>' + escapeHtml(row[1]) + '</td><td>' + escapeHtml(row[2]) + '</td></tr>';
+      mappings.map(function (row) {
+        return '<tr><td>' + escapeHtml(row[0]) + '</td><td>' + escapeHtml(row[1]) + '</td><td>' + escapeHtml(row[2]) + '</td><td>' + escapeHtml(row[3]) + '</td></tr>';
       }).join('') +
       '</tbody></table>';
   }
@@ -4520,42 +4524,146 @@
   function syncPreview() {
     return 'CRM Sync Preview\n\n' +
       'CRM Source: ' + state.primaryCrm + '\n' +
-      'Scenario: ' + state.selectedScenario + '\n\n' +
-      'Incoming CRM Record Example:\n' +
+      'Sync Mode: ' + state.syncMode + '\n' +
+      'Scenario: ' + state.selectedScenario + '\n' +
+      'Source Record Reference: ' + state.sourceRecordReference + '\n\n' +
+      'Incoming CRM Record:\n' +
       '- Account / Company: ' + state.sampleAccount + '\n' +
       '- Opportunity / Deal: ' + state.sampleOpportunity + '\n' +
       '- Quote: ' + state.sampleQuote + '\n' +
       '- Sales Owner: ' + state.crmOwner + '\n' +
       '- Solution Architect: ' + state.solutionArchitect + '\n' +
       '- Estimated Hours: ' + state.estimatedHours + '\n' +
-      '- Estimated Revenue: $' + state.estimatedRevenue + '\n\n' +
+      '- Estimated Revenue: $' + state.estimatedRevenue + '\n' +
+      '- Services Summary: ' + state.serviceSummary + '\n\n' +
       'ProjectPulse Output Preview:\n' +
       '- Customer match or onboarding candidate: ' + state.sampleAccount + '\n' +
       '- SOW Generator prefill: ' + state.sampleOpportunity + '\n' +
-      '- Claude research seed: quote/services description from CRM line items\n' +
+      '- Claude research seed: ' + state.serviceSummary + '\n' +
       '- Intake readiness seed: customer, project, estimated hours, planned value, SA, sales owner\n' +
       '- Signed handoff readiness: pending signed SOW and GSD upload\n\n' +
       'Promotion rule:\n' +
-      'CRM records should remain read-only until a Sales or Solution Architect user explicitly promotes the record into SOW Generator or Sales-to-Delivery Intake.';
+      'CRM records remain read-only until Sales or Solution Architect explicitly promotes the record into SOW Generator or Sales-to-Delivery Intake.';
+  }
+
+  function sowPromotionPreview() {
+    return 'Promote to SOW Generator Preview\n\n' +
+      'Target Module: 025 SOW Generator + Claude Review Workflow\n\n' +
+      'Fields passed to SOW Generator:\n' +
+      '- Customer Name: ' + state.sampleAccount + '\n' +
+      '- Project / Engagement Name: ' + state.sampleOpportunity + '\n' +
+      '- CRM Source: ' + state.primaryCrm + '\n' +
+      '- Opportunity / Deal Reference: ' + state.sourceRecordReference + '\n' +
+      '- Quote Reference: ' + state.sampleQuote + '\n' +
+      '- Sales Owner: ' + state.crmOwner + '\n' +
+      '- Solution Architect: ' + state.solutionArchitect + '\n' +
+      '- High-Level Description / Claude Research Seed: ' + state.serviceSummary + '\n\n' +
+      'Expected result:\n' +
+      'Module 025 uses the CRM service summary as the initial research-backed SOW drafting context. The Solution Architect must still review, edit, and approve the SOW before external use.';
+  }
+
+  function intakePromotionPreview() {
+    return 'Promote to Sales-to-Delivery Intake Preview\n\n' +
+      'Target Module: 024 Sales-to-Delivery Intake Foundation\n\n' +
+      'Fields passed to intake:\n' +
+      '- Customer Name: ' + state.sampleAccount + '\n' +
+      '- Project Name: ' + state.sampleOpportunity + '\n' +
+      '- Estimated Hours: ' + state.estimatedHours + '\n' +
+      '- Estimated Revenue: $' + state.estimatedRevenue + '\n' +
+      '- Sales Owner: ' + state.crmOwner + '\n' +
+      '- Solution Architect: ' + state.solutionArchitect + '\n' +
+      '- Required Artifacts: signed SOW and GSD\n\n' +
+      'Expected result:\n' +
+      'Module 024 receives CRM-originated context, but signed SOW and GSD uploads remain required before assignment and handoff can proceed.';
+  }
+
+  function readinessSummary() {
+    var checks = [
+      state.providerRegistryReviewed,
+      state.fieldMappingReviewed,
+      state.securityReviewed,
+      state.noSecretsReviewed,
+      state.sowMappingReviewed,
+      state.intakeMappingReviewed,
+      state.syncReadinessReviewed,
+      state.promotionAuditReviewed,
+      state.closeoutReviewed
+    ];
+
+    var complete = checks.filter(Boolean).length;
+
+    return 'Module 026 Readiness Summary\n\n' +
+      'Primary CRM: ' + state.primaryCrm + '\n' +
+      'Sync Mode: ' + state.syncMode + '\n' +
+      'Salesforce Status: ' + state.salesforceStatus + '\n' +
+      'Zendesk Sell Status: ' + state.zendeskSellStatus + '\n' +
+      'Readiness Checks Complete: ' + complete + ' / ' + checks.length + '\n\n' +
+      'Completed framework pieces:\n' +
+      '- CRM provider registry model\n' +
+      '- CRM field mapping model\n' +
+      '- CRM sync preview event model\n' +
+      '- CRM promotion audit event model\n' +
+      '- CRM readiness review model\n' +
+      '- CRM-to-SOW promotion preview\n' +
+      '- CRM-to-Intake promotion preview\n' +
+      '- No repository credential policy\n\n' +
+      'Future backend API placement:\n' +
+      'GET /api/crm/integrations/summary\n' +
+      'GET /api/crm/integrations/providers\n' +
+      'GET /api/crm/integrations/field-mapping\n' +
+      'POST /api/crm/integrations/sync-preview\n' +
+      'POST /api/crm/integrations/promote-to-sow\n' +
+      'POST /api/crm/integrations/promote-to-intake\n' +
+      'POST /api/crm/integrations/readiness-review\n';
+  }
+
+  function recordSyncPreview() {
+    captureInputs();
+    state.lastPreview = syncPreview() + '\n\nRecorded locally at: ' + new Date().toISOString();
+    state.statusType = 'success';
+    state.status = 'Sync preview recorded locally. Database table crm_integration_sync_preview_events is ready for backend persistence.';
+    saveState();
+    renderShell();
+  }
+
+  function promoteToSow() {
+    captureInputs();
+    state.lastPromotion = sowPromotionPreview() + '\n\nPromotion preview recorded locally at: ' + new Date().toISOString();
+    state.statusType = 'success';
+    state.status = 'Promote to SOW preview recorded. Module 025 receives CRM context after backend wiring.';
+    saveState();
+    renderShell();
+  }
+
+  function promoteToIntake() {
+    captureInputs();
+    state.lastPromotion = intakePromotionPreview() + '\n\nPromotion preview recorded locally at: ' + new Date().toISOString();
+    state.statusType = 'success';
+    state.status = 'Promote to Intake preview recorded. Module 024 receives CRM context after backend wiring.';
+    saveState();
+    renderShell();
   }
 
   function validateFramework() {
     captureInputs();
 
     var missing = [];
+    if (!state.providerRegistryReviewed) missing.push('provider registry review');
     if (!state.fieldMappingReviewed) missing.push('field mapping review');
     if (!state.securityReviewed) missing.push('security review');
-    if (!state.noSecretsReviewed) missing.push('no-secrets review');
-    if (!state.intakeMappingReviewed) missing.push('intake mapping review');
+    if (!state.noSecretsReviewed) missing.push('no repository credential review');
     if (!state.sowMappingReviewed) missing.push('SOW mapping review');
-    if (!state.syncReadinessReviewed) missing.push('sync readiness review');
+    if (!state.intakeMappingReviewed) missing.push('intake mapping review');
+    if (!state.syncReadinessReviewed) missing.push('sync preview review');
+    if (!state.promotionAuditReviewed) missing.push('promotion audit review');
+    if (!state.closeoutReviewed) missing.push('module closeout review');
 
     if (missing.length) {
       state.statusType = 'warning';
-      state.status = 'CRM framework saved, but not fully validated. Missing: ' + missing.join(', ') + '.';
+      state.status = 'Module 026 saved, but not fully validated. Missing: ' + missing.join(', ') + '.';
     } else {
       state.statusType = 'success';
-      state.status = 'CRM Integration Framework validated for demo. Backend connector wiring can be built later without storing secrets in repo.';
+      state.status = 'Module 026 CRM Integration Framework is fully validated for the framework phase.';
     }
 
     saveState();
@@ -4571,19 +4679,19 @@
       '<div id="projectpulse-026-page">' +
         '<div class="projectpulse-026-page-header">' +
           '<div>' +
-            '<div class="projectpulse-026-eyebrow">Module 026 · CRM Integration Framework</div>' +
+            '<div class="projectpulse-026-eyebrow">Module 026 · Complete CRM Integration Framework</div>' +
             '<h2>CRM Integration Center</h2>' +
-            '<p>Prepare Salesforce and Zendesk Sell integration mapping so CRM-originated opportunities can feed SOW generation, sales-to-delivery intake, and signed handoff workflows.</p>' +
+            '<p>Complete framework for Salesforce and Zendesk Sell provider registry, field mapping, sync preview, promotion audit, CRM-to-SOW handoff, and CRM-to-Intake handoff.</p>' +
             '<div class="projectpulse-026-actions">' +
-              '<span class="projectpulse-026-pill green">Salesforce placeholder</span>' +
-              '<span class="projectpulse-026-pill blue">Zendesk Sell placeholder</span>' +
-              '<span class="projectpulse-026-pill amber">No secrets in repo</span>' +
-              '<span class="projectpulse-026-pill green">CRM to SOW / Intake</span>' +
+              '<span class="projectpulse-026-pill green">Provider registry</span>' +
+              '<span class="projectpulse-026-pill blue">Field mapping</span>' +
+              '<span class="projectpulse-026-pill amber">No credentials in repo</span>' +
+              '<span class="projectpulse-026-pill green">SOW / Intake promotion preview</span>' +
             '</div>' +
           '</div>' +
           '<div class="projectpulse-026-actions">' +
             '<button type="button" class="projectpulse-026-button" data-026-dashboard>Back to Dashboard</button>' +
-            '<button type="button" class="projectpulse-026-button success" data-026-validate>Validate Framework</button>' +
+            '<button type="button" class="projectpulse-026-button success" data-026-validate>Validate Module 026</button>' +
             '<button type="button" class="projectpulse-026-button" data-026-clear>Clear Demo State</button>' +
           '</div>' +
         '</div>' +
@@ -4591,53 +4699,72 @@
         '<div class="projectpulse-026-layout">' +
           '<div>' +
             '<div class="projectpulse-026-section">' +
-              '<h3>Connector Placeholders</h3>' +
-              '<p>These are controlled placeholders only. Real Salesforce and Zendesk Sell credentials must be configured outside the repository.</p>' +
-              '<div class="projectpulse-026-two-grid">' +
-                '<div class="projectpulse-026-cardlet"><div class="projectpulse-026-eyebrow">Salesforce</div><strong>Opportunity / Account Connector</strong><p>Future REST/OAuth integration for account, opportunity, quote, owner, Solution Architect, products/services, and attachment metadata.</p><span class="projectpulse-026-pill amber">Placeholder</span></div>' +
-                '<div class="projectpulse-026-cardlet"><div class="projectpulse-026-eyebrow">Zendesk Sell</div><strong>Deal / Quote Connector</strong><p>Future REST API integration for deal, quote, company, sales owner, quote value, service lines, and handoff metadata.</p><span class="projectpulse-026-pill amber">Placeholder</span></div>' +
-              '</div>' +
+              '<h3>026B Provider Registry + Security Model</h3>' +
+              '<p>Salesforce and Zendesk Sell are registered as controlled placeholders. Real credentials must remain server-side and outside the repository.</p>' +
+              '<div class="projectpulse-026-two-grid">' + providerRegistryHtml() + '</div>' +
               '<div class="projectpulse-026-two-grid" style="margin-top:0.9rem;">' +
                 '<div class="projectpulse-026-field"><label>Primary CRM</label><select data-026-field="primaryCrm"><option>Salesforce</option><option>Zendesk Sell</option><option>Salesforce + Zendesk Sell</option></select></div>' +
                 '<div class="projectpulse-026-field"><label>Sync Mode</label><select data-026-field="syncMode"><option>Read-only preview</option><option>Manual promote to SOW</option><option>Manual promote to Intake</option><option>Manual promote to SOW + Intake</option></select></div>' +
               '</div>' +
               '<div class="projectpulse-026-two-grid">' +
-                '<div class="projectpulse-026-field"><label>Salesforce Status</label><select data-026-field="salesforceStatus"><option>Placeholder</option><option>Config pending</option><option>Ready for backend wiring</option><option>Disabled</option></select></div>' +
-                '<div class="projectpulse-026-field"><label>Zendesk Sell Status</label><select data-026-field="zendeskSellStatus"><option>Placeholder</option><option>Config pending</option><option>Ready for backend wiring</option><option>Disabled</option></select></div>' +
+                '<div class="projectpulse-026-field"><label>Salesforce Status</label><select data-026-field="salesforceStatus"><option>Placeholder</option><option>Configuration pending</option><option>Ready for backend wiring</option><option>Disabled</option></select></div>' +
+                '<div class="projectpulse-026-field"><label>Zendesk Sell Status</label><select data-026-field="zendeskSellStatus"><option>Placeholder</option><option>Configuration pending</option><option>Ready for backend wiring</option><option>Disabled</option></select></div>' +
               '</div>' +
             '</div>' +
 
             '<div class="projectpulse-026-section">' +
-              '<h3>CRM Record Preview</h3>' +
-              '<p>Use this to show how a CRM-originated opportunity or quote will map into SOW Generator and Sales-to-Delivery Intake.</p>' +
+              '<h3>026C CRM Record Preview</h3>' +
+              '<p>This preview shows how CRM-originated opportunities, deals, quotes, owners, Solution Architects, and service lines flow into ProjectPulse.</p>' +
               '<div class="projectpulse-026-field"><label>Scenario</label><select data-026-field="selectedScenario"><option>Opportunity to SOW</option><option>Quote to Intake</option><option>Signed opportunity to handoff</option><option>CRM record to project document package</option></select></div>' +
-              '<div class="projectpulse-026-two-grid"><div class="projectpulse-026-field"><label>Account / Company</label><input data-026-field="sampleAccount"></div><div class="projectpulse-026-field"><label>Opportunity / Deal</label><input data-026-field="sampleOpportunity"></div></div>' +
-              '<div class="projectpulse-026-two-grid"><div class="projectpulse-026-field"><label>Quote</label><input data-026-field="sampleQuote"></div><div class="projectpulse-026-field"><label>Sales Owner</label><input data-026-field="crmOwner"></div></div>' +
-              '<div class="projectpulse-026-two-grid"><div class="projectpulse-026-field"><label>Solution Architect</label><input data-026-field="solutionArchitect"></div><div class="projectpulse-026-field"><label>Estimated Hours</label><input data-026-field="estimatedHours"></div></div>' +
-              '<div class="projectpulse-026-field"><label>Estimated Revenue</label><input data-026-field="estimatedRevenue"></div>' +
+              '<div class="projectpulse-026-two-grid"><div class="projectpulse-026-field"><label>Source Record Reference</label><input data-026-field="sourceRecordReference"></div><div class="projectpulse-026-field"><label>Account / Company</label><input data-026-field="sampleAccount"></div></div>' +
+              '<div class="projectpulse-026-two-grid"><div class="projectpulse-026-field"><label>Opportunity / Deal</label><input data-026-field="sampleOpportunity"></div><div class="projectpulse-026-field"><label>Quote</label><input data-026-field="sampleQuote"></div></div>' +
+              '<div class="projectpulse-026-two-grid"><div class="projectpulse-026-field"><label>Sales Owner</label><input data-026-field="crmOwner"></div><div class="projectpulse-026-field"><label>Solution Architect</label><input data-026-field="solutionArchitect"></div></div>' +
+              '<div class="projectpulse-026-two-grid"><div class="projectpulse-026-field"><label>Estimated Hours</label><input data-026-field="estimatedHours"></div><div class="projectpulse-026-field"><label>Estimated Revenue</label><input data-026-field="estimatedRevenue"></div></div>' +
+              '<div class="projectpulse-026-field"><label>Products / Services / Quote Line Summary</label><textarea data-026-field="serviceSummary"></textarea></div>' +
+              '<div class="projectpulse-026-actions"><button type="button" class="projectpulse-026-button primary" data-026-sync-preview>Record Sync Preview</button><button type="button" class="projectpulse-026-button success" data-026-promote-sow>Promote to SOW Preview</button><button type="button" class="projectpulse-026-button success" data-026-promote-intake>Promote to Intake Preview</button></div>' +
+              '<div data-026-status></div>' +
             '</div>' +
 
             '<div class="projectpulse-026-section">' +
-              '<h3>Readiness Checklist</h3>' +
-              '<p>This confirms the framework is ready before real connector credentials or API calls are added.</p>' +
+              '<h3>026D Module Readiness Checklist</h3>' +
+              '<p>Use this to close out the CRM Integration Framework phase before moving to Module 027.</p>' +
               '<div class="projectpulse-026-checklist">' +
-                '<label><input type="checkbox" data-026-check="fieldMappingReviewed"> CRM to ProjectPulse field mapping reviewed.</label>' +
-                '<label><input type="checkbox" data-026-check="securityReviewed"> Authentication/security model reviewed.</label>' +
-                '<label><input type="checkbox" data-026-check="noSecretsReviewed"> Confirmed no CRM credentials, tokens, or API keys are stored in the repository.</label>' +
-                '<label><input type="checkbox" data-026-check="sowMappingReviewed"> CRM to SOW Generator mapping reviewed.</label>' +
-                '<label><input type="checkbox" data-026-check="intakeMappingReviewed"> CRM to Sales-to-Delivery Intake mapping reviewed.</label>' +
-                '<label><input type="checkbox" data-026-check="syncReadinessReviewed"> Sync preview and manual promotion rules reviewed.</label>' +
+                '<label><input type="checkbox" data-026-check="providerRegistryReviewed"> Provider registry and placeholder statuses reviewed.</label>' +
+                '<label><input type="checkbox" data-026-check="fieldMappingReviewed"> CRM-to-ProjectPulse field mapping reviewed.</label>' +
+                '<label><input type="checkbox" data-026-check="securityReviewed"> Server-side credential and security model reviewed.</label>' +
+                '<label><input type="checkbox" data-026-check="noSecretsReviewed"> Confirmed no CRM credentials or API keys are stored in the repository.</label>' +
+                '<label><input type="checkbox" data-026-check="sowMappingReviewed"> CRM-to-SOW Generator mapping reviewed.</label>' +
+                '<label><input type="checkbox" data-026-check="intakeMappingReviewed"> CRM-to-Sales-to-Delivery Intake mapping reviewed.</label>' +
+                '<label><input type="checkbox" data-026-check="syncReadinessReviewed"> Sync preview model reviewed.</label>' +
+                '<label><input type="checkbox" data-026-check="promotionAuditReviewed"> Promotion audit event model reviewed.</label>' +
+                '<label><input type="checkbox" data-026-check="closeoutReviewed"> Module 026 closeout reviewed.</label>' +
               '</div>' +
-              '<div data-026-status></div>' +
             '</div>' +
           '</div>' +
 
           '<div>' +
-            '<div class="projectpulse-026-section white"><h3>CRM to ProjectPulse Field Mapping</h3>' + mappingTableHtml() + '</div>' +
-            '<div class="projectpulse-026-section"><h3>Sync Preview</h3><div class="projectpulse-026-preview" data-026-sync-preview></div></div>' +
-            '<div class="projectpulse-026-section"><h3>Integration Readiness Summary</h3><div class="projectpulse-026-preview" data-026-readiness></div></div>' +
+            '<div class="projectpulse-026-section white">' +
+              '<h3>CRM to ProjectPulse Field Mapping</h3>' +
+              mappingTableHtml() +
+            '</div>' +
+
             '<div class="projectpulse-026-section">' +
-              '<h3>Future Workflow Placement</h3>' +
+              '<h3>Sync Preview</h3>' +
+              '<div class="projectpulse-026-preview" data-026-sync-preview-output></div>' +
+            '</div>' +
+
+            '<div class="projectpulse-026-section">' +
+              '<h3>Promotion Preview / Audit</h3>' +
+              '<div class="projectpulse-026-preview" data-026-promotion-preview-output></div>' +
+            '</div>' +
+
+            '<div class="projectpulse-026-section">' +
+              '<h3>Module 026 Readiness Summary</h3>' +
+              '<div class="projectpulse-026-preview" data-026-readiness></div>' +
+            '</div>' +
+
+            '<div class="projectpulse-026-section">' +
+              '<h3>Workflow Placement</h3>' +
               '<div class="projectpulse-026-three-grid">' +
                 '<div class="projectpulse-026-cardlet"><span class="projectpulse-026-pill blue">025</span><strong>SOW Generator</strong><p>CRM fields prepopulate SOW research and draft generation.</p></div>' +
                 '<div class="projectpulse-026-cardlet"><span class="projectpulse-026-pill green">024</span><strong>Intake Foundation</strong><p>CRM quote/opportunity data feeds intake artifacts and project readiness.</p></div>' +
@@ -4665,27 +4792,34 @@
       'crmOwner',
       'solutionArchitect',
       'estimatedHours',
-      'estimatedRevenue'
+      'estimatedRevenue',
+      'sourceRecordReference',
+      'serviceSummary'
     ].forEach(function (key) {
       setValue(shell, key, state[key]);
     });
 
     [
+      'providerRegistryReviewed',
       'fieldMappingReviewed',
       'securityReviewed',
       'noSecretsReviewed',
       'intakeMappingReviewed',
       'sowMappingReviewed',
-      'syncReadinessReviewed'
+      'syncReadinessReviewed',
+      'promotionAuditReviewed',
+      'closeoutReviewed'
     ].forEach(function (key) {
       setCheck(shell, key, state[key]);
     });
 
-    var syncPreviewNode = shell.querySelector('[data-026-sync-preview]');
+    var syncPreviewNode = shell.querySelector('[data-026-sync-preview-output]');
+    var promotionNode = shell.querySelector('[data-026-promotion-preview-output]');
     var readinessNode = shell.querySelector('[data-026-readiness]');
     var statusNode = shell.querySelector('[data-026-status]');
 
-    if (syncPreviewNode) syncPreviewNode.textContent = syncPreview();
+    if (syncPreviewNode) syncPreviewNode.textContent = state.lastPreview || syncPreview();
+    if (promotionNode) promotionNode.textContent = state.lastPromotion || sowPromotionPreview();
     if (readinessNode) readinessNode.textContent = readinessSummary();
 
     if (statusNode) {
@@ -4696,7 +4830,7 @@
   }
 
   function wireShell(shell) {
-    shell.querySelectorAll('input, select').forEach(function (input) {
+    shell.querySelectorAll('input, select, textarea').forEach(function (input) {
       input.addEventListener('input', function () {
         captureInputs();
         populateShell(shell);
@@ -4719,6 +4853,9 @@
     });
 
     shell.querySelector('[data-026-validate]').addEventListener('click', validateFramework);
+    shell.querySelector('[data-026-sync-preview]').addEventListener('click', recordSyncPreview);
+    shell.querySelector('[data-026-promote-sow]').addEventListener('click', promoteToSow);
+    shell.querySelector('[data-026-promote-intake]').addEventListener('click', promoteToIntake);
   }
 
   function render() {
@@ -4744,7 +4881,7 @@
   window.addEventListener('hashchange', function () { setTimeout(render, 60); });
 })();
 </script>
-<!-- 026A_CRM_INTEGRATION_FRAMEWORK_END -->
+<!-- 026_FULL_CRM_INTEGRATION_FRAMEWORK_END -->
 
 </body>
 </html>
