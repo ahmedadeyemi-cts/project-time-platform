@@ -93,3 +93,23 @@ Scope:
 - Move View As selector from lower-right floating overlay into top-bar open space.
 - Suppress duplicate floating View As rendering.
 - Deploy to actual live frontend paths.
+
+## 022E Reallocate Notifications to Dashboard Card
+
+Status: Applied pending validation and commit.
+
+Scope:
+- Move Notifications out of the top bar to avoid conflict with View As.
+- Add dashboard card and inline expandable notification panel.
+- Fix Readiness Center action by loading readiness status inline instead of navigating to the problematic route.
+- Fix Open related page behavior with deterministic action handling.
+
+## 022F Production Readiness Route Guard
+
+Status: Applied pending validation and commit.
+
+Scope:
+- Redirect direct `#production-readiness` navigation to `#dashboard`.
+- Prevent endless-scroll behavior from the direct readiness route.
+- Keep production readiness status available through the dashboard notification card.
+- Preserve Dashboard / Navigation / Registry validation.

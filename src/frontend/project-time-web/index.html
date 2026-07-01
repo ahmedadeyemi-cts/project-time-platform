@@ -2066,5 +2066,884 @@
 
 
 
+
+<!-- 022E_DASHBOARD_NOTIFICATION_CARD_START -->
+<style id="projectpulse-022e-dashboard-notification-card-style">
+  #projectpulse-022d-topbar-notification-host,
+  .projectpulse-022d-topbar-host,
+  #projectpulse-production-notification-dashboard-shortcut,
+  #projectpulse-022d-notification-root {
+    display: none !important;
+  }
+
+  #projectpulse-022e-dashboard-notification-card {
+    border: 1px solid rgba(148, 163, 184, 0.32);
+    border-radius: 18px;
+    background: #ffffff;
+    padding: 1.15rem;
+    min-height: 150px;
+    box-shadow: 0 12px 30px rgba(15, 23, 42, 0.04);
+    color: #111827;
+  }
+
+  #projectpulse-022e-dashboard-notification-card .projectpulse-022e-eyebrow {
+    color: #64748b;
+    font-size: 0.72rem;
+    font-weight: 900;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 0.55rem;
+  }
+
+  #projectpulse-022e-dashboard-notification-card h3 {
+    margin: 0 0 0.55rem;
+    font-size: 1.05rem;
+    line-height: 1.25;
+  }
+
+  #projectpulse-022e-dashboard-notification-card p {
+    margin: 0;
+    color: #5b6b89;
+    line-height: 1.45;
+  }
+
+  .projectpulse-022e-card-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    margin-top: 1rem;
+  }
+
+  .projectpulse-022e-button {
+    border: 1px solid rgba(37, 99, 235, 0.24);
+    border-radius: 12px;
+    background: #ffffff;
+    color: #111827;
+    padding: 0.6rem 0.85rem;
+    font-weight: 850;
+    cursor: pointer;
+  }
+
+  .projectpulse-022e-button.primary {
+    background: #0f2a55;
+    color: #ffffff;
+    border-color: #0f2a55;
+  }
+
+  .projectpulse-022e-badge {
+    min-width: 24px;
+    height: 24px;
+    border-radius: 999px;
+    background: #ef4444;
+    color: #ffffff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 0.45rem;
+    font-size: 0.78rem;
+    font-weight: 950;
+  }
+
+  #projectpulse-022e-dashboard-notification-panel {
+    grid-column: 1 / -1;
+    border: 1px solid rgba(148, 163, 184, 0.32);
+    border-radius: 20px;
+    background: #f8fafc;
+    padding: 1rem;
+    box-shadow: 0 18px 44px rgba(15, 23, 42, 0.08);
+    color: #111827;
+  }
+
+  #projectpulse-022e-dashboard-notification-panel[hidden] {
+    display: none !important;
+  }
+
+  .projectpulse-022e-panel-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .projectpulse-022e-panel-title {
+    margin: 0;
+    font-size: 1.2rem;
+    font-weight: 950;
+  }
+
+  .projectpulse-022e-muted {
+    color: #64748b;
+    line-height: 1.45;
+  }
+
+  .projectpulse-022e-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.7rem;
+    margin-bottom: 1rem;
+  }
+
+  .projectpulse-022e-metric,
+  .projectpulse-022e-section {
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    border-radius: 16px;
+    background: #ffffff;
+    padding: 0.9rem;
+  }
+
+  .projectpulse-022e-metric-label {
+    color: #64748b;
+    font-size: 0.72rem;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .projectpulse-022e-metric-value {
+    margin-top: 0.2rem;
+    font-size: 1.35rem;
+    font-weight: 950;
+  }
+
+  .projectpulse-022e-section-title {
+    margin: 1rem 0 0.6rem;
+    font-weight: 950;
+  }
+
+  .projectpulse-022e-notification-row {
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    border-radius: 16px;
+    background: #ffffff;
+    padding: 0.9rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .projectpulse-022e-row-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    align-items: flex-start;
+  }
+
+  .projectpulse-022e-pill {
+    border-radius: 999px;
+    padding: 0.25rem 0.55rem;
+    font-size: 0.72rem;
+    font-weight: 950;
+  }
+
+  .projectpulse-022e-pill.warning {
+    background: #fef3c7;
+    color: #92400e;
+  }
+
+  .projectpulse-022e-pill.info {
+    background: #dbeafe;
+    color: #1e3a8a;
+  }
+
+  .projectpulse-022e-pill.success {
+    background: #dcfce7;
+    color: #166534;
+  }
+
+  .projectpulse-022e-pill.critical,
+  .projectpulse-022e-pill.error {
+    background: #fee2e2;
+    color: #991b1b;
+  }
+
+  .projectpulse-022e-inline-status {
+    margin-top: 0.75rem;
+    border-radius: 14px;
+    padding: 0.8rem;
+    background: #e0f2fe;
+    color: #334155;
+  }
+
+  .projectpulse-022e-inline-status.error {
+    background: #fee2e2;
+    color: #991b1b;
+  }
+
+  .projectpulse-022e-form-row {
+    display: grid;
+    grid-template-columns: 1fr 160px;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+  }
+
+  #projectpulse-022e-dashboard-notification-panel select {
+    width: 100%;
+    border: 1px solid rgba(148, 163, 184, 0.45);
+    border-radius: 12px;
+    padding: 0.65rem 0.75rem;
+    background: #ffffff;
+  }
+
+  @media (max-width: 900px) {
+    .projectpulse-022e-grid,
+    .projectpulse-022e-form-row {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+
+<script id="projectpulse-022e-dashboard-notification-card-script">
+(function () {
+  const cardId = 'projectpulse-022e-dashboard-notification-card';
+  const panelId = 'projectpulse-022e-dashboard-notification-panel';
+  const sessionStorageKey = 'projectPulseAuthSession';
+  const viewAsStorageKey = 'projectPulseViewAsUser';
+
+  const state = {
+    open: false,
+    loading: false,
+    summary: null,
+    notifications: [],
+    preferences: [],
+    routingRules: [],
+    readiness: null,
+    message: '',
+    error: ''
+  };
+
+  function cleanText(value) {
+    return String(value || '').replace(/\s+/g, ' ').trim();
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? '')
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#039;');
+  }
+
+  function formatDate(value) {
+    if (!value) return '';
+    try {
+      return new Date(value).toLocaleString();
+    } catch {
+      return value;
+    }
+  }
+
+  function getSessionToken() {
+    try {
+      const raw = window.localStorage.getItem(sessionStorageKey);
+      if (!raw) return '';
+      const parsed = JSON.parse(raw);
+      return parsed.sessionToken || parsed.token || parsed.rawToken || '';
+    } catch {
+      return '';
+    }
+  }
+
+  function getViewAsUserId() {
+    try {
+      const raw = window.localStorage.getItem(viewAsStorageKey);
+      if (!raw) return '';
+      if (/^[0-9a-fA-F-]{36}$/.test(raw.trim())) return raw.trim();
+      const parsed = JSON.parse(raw);
+      return parsed.userId || parsed.id || parsed.viewAsUserId || '';
+    } catch {
+      return '';
+    }
+  }
+
+  function isViewAs() {
+    return !!getViewAsUserId();
+  }
+
+  async function apiFetch(path, options = {}) {
+    const token = getSessionToken();
+    if (!token) {
+      throw new Error('Sign in is required before loading production notifications.');
+    }
+
+    const headers = {
+      'X-ProjectPulse-Session': token,
+      ...(options.headers || {})
+    };
+
+    const viewAsUserId = getViewAsUserId();
+    if (viewAsUserId) {
+      headers['X-ProjectPulse-View-As-User'] = viewAsUserId;
+    }
+
+    const response = await fetch(path, { ...options, headers });
+    const raw = await response.text();
+
+    let data = null;
+    try {
+      data = raw ? JSON.parse(raw) : null;
+    } catch {
+      data = { raw };
+    }
+
+    if (!response.ok) {
+      throw new Error(data?.message || data?.title || `HTTP ${response.status}`);
+    }
+
+    return data;
+  }
+
+  function getArray(data, names) {
+    for (const name of names) {
+      if (Array.isArray(data?.[name])) return data[name];
+    }
+    if (Array.isArray(data)) return data;
+    return [];
+  }
+
+  function severityClass(value) {
+    const normalized = String(value || 'info').toLowerCase();
+    if (normalized === 'warning') return 'warning';
+    if (normalized === 'critical') return 'critical';
+    if (normalized === 'error') return 'error';
+    if (normalized === 'success') return 'success';
+    return 'info';
+  }
+
+  function getNotificationId(item) {
+    return item.notificationId || item.productionNotificationEventId || item.eventId || item.id || '';
+  }
+
+  function isAcknowledged(item) {
+    return !!(item.acknowledged || item.isAcknowledged || item.acknowledgedAt || item.acknowledgedAtUtc);
+  }
+
+  function findDashboardGrid() {
+    const candidates = Array.from(document.querySelectorAll('div, section, article'))
+      .filter((element) => {
+        if (element.id === cardId || element.closest(`#${cardId}`)) return false;
+        const text = cleanText(element.textContent);
+        if (!text.includes('Project Workload')) return false;
+        if (!text.includes('Customer Directory')) return false;
+        if (!text.includes('Time Entry')) return false;
+
+        const rect = element.getBoundingClientRect();
+        return rect.width > 700 && rect.height > 250;
+      })
+      .sort((a, b) => {
+        const ar = a.getBoundingClientRect();
+        const br = b.getBoundingClientRect();
+        return (ar.width * ar.height) - (br.width * br.height);
+      });
+
+    return candidates[0] || null;
+  }
+
+  function ensureCard() {
+    let card = document.getElementById(cardId);
+    let panel = document.getElementById(panelId);
+
+    const grid = findDashboardGrid();
+    if (!grid) return null;
+
+    if (!card) {
+      card = document.createElement('section');
+      card.id = cardId;
+      card.innerHTML = `
+        <div class="projectpulse-022e-eyebrow">Notifications</div>
+        <h3>Production Notification Center</h3>
+        <p>Review production alerts, readiness notices, preferences, and routing rules without crowding the top bar.</p>
+        <div class="projectpulse-022e-card-actions">
+          <button type="button" class="projectpulse-022e-button primary" data-022e-action="toggle">Open notifications</button>
+          <span class="projectpulse-022e-badge" data-022e-badge hidden>0</span>
+        </div>
+      `;
+      grid.insertBefore(card, grid.firstElementChild || null);
+
+      card.querySelector('[data-022e-action="toggle"]').addEventListener('click', async () => {
+        state.open = !state.open;
+        render();
+        if (state.open) await loadAll();
+      });
+    }
+
+    if (!panel) {
+      panel = document.createElement('section');
+      panel.id = panelId;
+      panel.hidden = true;
+      if (card.nextSibling) {
+        grid.insertBefore(panel, card.nextSibling);
+      } else {
+        grid.appendChild(panel);
+      }
+    }
+
+    return { card, panel };
+  }
+
+  async function loadAll() {
+    if (state.loading) return;
+    state.loading = true;
+    state.message = 'Loading notifications…';
+    state.error = '';
+    render();
+
+    try {
+      const [summaryData, listData, preferenceData, routingData] = await Promise.all([
+        apiFetch('/api/production/notifications/summary'),
+        apiFetch('/api/production/notifications?limit=20'),
+        apiFetch('/api/production/notifications/preferences/summary'),
+        apiFetch('/api/production/notifications/routing-rules')
+      ]);
+
+      state.summary = summaryData?.summary || null;
+      state.notifications = getArray(listData, ['notifications', 'events', 'items', 'results']);
+      state.preferences = getArray(preferenceData, ['preferences', 'items', 'results']);
+      state.routingRules = getArray(routingData, ['routingRules', 'rules', 'items', 'results']);
+      state.message = '';
+      state.error = '';
+    } catch (error) {
+      state.error = error.message || 'Failed to load notifications.';
+      state.message = '';
+    } finally {
+      state.loading = false;
+      render();
+    }
+  }
+
+  async function loadReadinessInline() {
+    state.message = 'Checking production readiness…';
+    state.error = '';
+    render();
+
+    try {
+      const result = await apiFetch('/api/production/readiness-command-center');
+      state.readiness = result?.summary || result || null;
+      state.message = 'Readiness status loaded below.';
+    } catch (error) {
+      state.error = error.message || 'Failed to load readiness status.';
+      state.message = '';
+    }
+
+    render();
+  }
+
+  async function acknowledge(notificationId) {
+    if (isViewAs()) {
+      state.error = 'Write actions are disabled while using Administrator View-As preview.';
+      render();
+      return;
+    }
+
+    if (!notificationId) {
+      state.error = 'This notification does not include an acknowledgment id.';
+      render();
+      return;
+    }
+
+    state.message = 'Acknowledging notification…';
+    state.error = '';
+    render();
+
+    try {
+      await apiFetch('/api/production/notifications/acknowledge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notificationId })
+      });
+      await loadAll();
+      state.message = 'Notification acknowledged.';
+    } catch (error) {
+      state.error = error.message || 'Failed to acknowledge notification.';
+      state.message = '';
+    }
+
+    render();
+  }
+
+  async function savePreference() {
+    if (isViewAs()) {
+      state.error = 'Write actions are disabled while using Administrator View-As preview.';
+      render();
+      return;
+    }
+
+    const panel = document.getElementById(panelId);
+    const moduleKey = panel?.querySelector('[data-022e-pref-module]')?.value || 'PRODUCTION_READINESS';
+    const severity = panel?.querySelector('[data-022e-pref-severity]')?.value || 'warning';
+    const inAppEnabled = !!panel?.querySelector('[data-022e-pref-inapp]')?.checked;
+
+    state.message = 'Saving preference…';
+    state.error = '';
+    render();
+
+    try {
+      await apiFetch('/api/production/notifications/preferences', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ moduleKey, severity, inAppEnabled, emailEnabled: false })
+      });
+      await loadAll();
+      state.message = 'Preference saved. Email remains disabled.';
+    } catch (error) {
+      state.error = error.message || 'Failed to save preference.';
+      state.message = '';
+    }
+
+    render();
+  }
+
+  function openRelated(item) {
+    const actionUrl = String(item.actionUrl || '').trim();
+    const moduleKey = String(item.moduleKey || item.module || '').toUpperCase();
+
+    if (actionUrl.includes('production-readiness') || moduleKey.includes('PRODUCTION')) {
+      loadReadinessInline();
+      return;
+    }
+
+    if (actionUrl && actionUrl !== '#') {
+      if (actionUrl.startsWith('#')) {
+        window.location.hash = actionUrl;
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+
+      if (actionUrl.startsWith('/#')) {
+        window.location.href = actionUrl;
+        return;
+      }
+
+      if (actionUrl.startsWith('http')) {
+        window.location.href = actionUrl;
+        return;
+      }
+    }
+
+    window.location.hash = '#dashboard';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function render() {
+    const mounted = ensureCard();
+    if (!mounted) return;
+
+    const { card, panel } = mounted;
+    const badge = card.querySelector('[data-022e-badge]');
+    const toggle = card.querySelector('[data-022e-action="toggle"]');
+
+    const count = Number(state.summary?.unacknowledgedCount || 0);
+    if (badge) {
+      badge.textContent = String(count);
+      badge.hidden = count <= 0;
+    }
+
+    if (toggle) {
+      toggle.textContent = state.open ? 'Close notifications' : 'Open notifications';
+    }
+
+    panel.hidden = !state.open;
+
+    if (!state.open) return;
+
+    if (!getSessionToken()) {
+      panel.innerHTML = `
+        <div class="projectpulse-022e-panel-header">
+          <div>
+            <h3 class="projectpulse-022e-panel-title">Production Notification Center</h3>
+            <p class="projectpulse-022e-muted">Sign in is required before loading notifications.</p>
+          </div>
+        </div>
+      `;
+      return;
+    }
+
+    const summary = state.summary || {};
+    const notifications = state.notifications || [];
+    const modules = Array.from(new Set(['PRODUCTION_READINESS', 'TIME_COMPLIANCE', 'APPROVAL_WORKFLOW', 'EXPORT_RECONCILIATION', 'SYSTEM'].concat((state.routingRules || []).map((rule) => rule.moduleKey).filter(Boolean)))).sort();
+
+    const notificationRows = notifications.length
+      ? notifications.map((item, index) => {
+          const severity = item.severity || 'info';
+          const notificationId = getNotificationId(item);
+          const acknowledged = isAcknowledged(item);
+          const title = item.title || item.notificationTitle || item.notificationKey || item.eventKey || 'Notification';
+          const body = item.body || item.message || item.description || '';
+          const moduleKey = item.moduleKey || item.module || 'notification';
+          const createdAt = item.createdAt || item.createdAtUtc || item.eventCreatedAt || '';
+
+          return `
+            <div class="projectpulse-022e-notification-row">
+              <div class="projectpulse-022e-row-head">
+                <div>
+                  <strong>${escapeHtml(title)}</strong>
+                  <div class="projectpulse-022e-muted">${escapeHtml(moduleKey)} · ${escapeHtml(formatDate(createdAt))}</div>
+                </div>
+                <span class="projectpulse-022e-pill ${severityClass(severity)}">${escapeHtml(severity)}</span>
+              </div>
+              <p style="margin-top:0.65rem;">${escapeHtml(body)}</p>
+              <div class="projectpulse-022e-card-actions">
+                ${acknowledged ? '<span class="projectpulse-022e-pill success">Acknowledged</span>' : `<button type="button" class="projectpulse-022e-button primary" data-022e-ack="${escapeHtml(notificationId)}">Acknowledge</button>`}
+                <button type="button" class="projectpulse-022e-button" data-022e-related="${index}">Open related page</button>
+              </div>
+            </div>
+          `;
+        }).join('')
+      : '<div class="projectpulse-022e-section">No visible notifications for this role/context.</div>';
+
+    const preferenceRows = state.preferences.length
+      ? state.preferences.map((pref) => `
+          <div class="projectpulse-022e-notification-row">
+            <strong>${escapeHtml(pref.moduleKey || '')} · ${escapeHtml(pref.severity || '')}</strong>
+            <div class="projectpulse-022e-muted">In-app: ${pref.inAppEnabled ? 'enabled' : 'disabled'} · Email: disabled</div>
+          </div>
+        `).join('')
+      : '<p class="projectpulse-022e-muted">No saved preferences yet.</p>';
+
+    const ruleRows = state.routingRules.length
+      ? state.routingRules.map((rule) => `
+          <div class="projectpulse-022e-notification-row">
+            <strong>${escapeHtml(rule.ruleKey || '')}</strong>
+            <div class="projectpulse-022e-muted">${escapeHtml(rule.moduleKey || '')} · ${escapeHtml(rule.severity || '')}</div>
+            <div class="projectpulse-022e-muted">Roles: ${escapeHtml((rule.targetRoleCodes || []).join(', ') || 'All')}</div>
+          </div>
+        `).join('')
+      : '<p class="projectpulse-022e-muted">No routing rules are visible for this role/context.</p>';
+
+    const moduleOptions = modules.map((moduleKey) => `<option value="${escapeHtml(moduleKey)}">${escapeHtml(moduleKey)}</option>`).join('');
+
+    panel.innerHTML = `
+      <div class="projectpulse-022e-panel-header">
+        <div>
+          <h3 class="projectpulse-022e-panel-title">Production Notification Center</h3>
+          <p class="projectpulse-022e-muted">In-app alerts, preferences, and routing rules. Email remains disabled here.</p>
+        </div>
+        <button type="button" class="projectpulse-022e-button" data-022e-close>Close</button>
+      </div>
+
+      <div class="projectpulse-022e-card-actions">
+        <button type="button" class="projectpulse-022e-button primary" data-022e-refresh>Refresh</button>
+        <button type="button" class="projectpulse-022e-button" data-022e-readiness>Check readiness status</button>
+      </div>
+
+      ${state.message ? `<div class="projectpulse-022e-inline-status">${escapeHtml(state.message)}</div>` : ''}
+      ${state.error ? `<div class="projectpulse-022e-inline-status error">${escapeHtml(state.error)}</div>` : ''}
+
+      <div class="projectpulse-022e-section-title">Current notification posture</div>
+      <div class="projectpulse-022e-section">
+        <p class="projectpulse-022e-muted">${escapeHtml(summary.userDisplayName || '')}${summary.userEmail ? ` (${escapeHtml(summary.userEmail)})` : ''}</p>
+        <div class="projectpulse-022e-grid">
+          <div class="projectpulse-022e-metric"><div class="projectpulse-022e-metric-label">Visible</div><div class="projectpulse-022e-metric-value">${escapeHtml(summary.visibleNotificationCount ?? notifications.length ?? 0)}</div></div>
+          <div class="projectpulse-022e-metric"><div class="projectpulse-022e-metric-label">Unacked</div><div class="projectpulse-022e-metric-value">${escapeHtml(summary.unacknowledgedCount ?? 0)}</div></div>
+          <div class="projectpulse-022e-metric"><div class="projectpulse-022e-metric-label">Warnings</div><div class="projectpulse-022e-metric-value">${escapeHtml(summary.warningCount ?? 0)}</div></div>
+          <div class="projectpulse-022e-metric"><div class="projectpulse-022e-metric-label">Critical</div><div class="projectpulse-022e-metric-value">${escapeHtml(summary.criticalCount ?? 0)}</div></div>
+        </div>
+      </div>
+
+      ${state.readiness ? `
+        <div class="projectpulse-022e-section-title">Production readiness status</div>
+        <div class="projectpulse-022e-section">
+          <strong>Production ready: ${state.readiness.productionReady ? 'Yes' : 'No'}</strong>
+          <p class="projectpulse-022e-muted">Ready checks: ${escapeHtml(state.readiness.readyCheckCount ?? '')} / ${escapeHtml(state.readiness.checkCount ?? '')}</p>
+        </div>
+      ` : ''}
+
+      <div class="projectpulse-022e-section-title">Latest notifications</div>
+      ${notificationRows}
+
+      <div class="projectpulse-022e-section-title">Preference controls</div>
+      <div class="projectpulse-022e-section">
+        <p class="projectpulse-022e-muted">Preferences are scoped by user, module, and severity. Email is intentionally disabled.</p>
+        <div class="projectpulse-022e-form-row">
+          <select data-022e-pref-module>${moduleOptions}</select>
+          <select data-022e-pref-severity>
+            <option value="info">info</option>
+            <option value="warning" selected>warning</option>
+            <option value="critical">critical</option>
+            <option value="success">success</option>
+            <option value="error">error</option>
+          </select>
+        </div>
+        <label><input type="checkbox" data-022e-pref-inapp checked> In-app notifications enabled</label>
+        <div class="projectpulse-022e-card-actions">
+          <button type="button" class="projectpulse-022e-button primary" data-022e-save-pref>Save preference</button>
+        </div>
+      </div>
+
+      <div class="projectpulse-022e-section-title">Saved preferences</div>
+      ${preferenceRows}
+
+      <div class="projectpulse-022e-section-title">Routing rules</div>
+      ${ruleRows}
+    `;
+
+    panel.querySelector('[data-022e-close]')?.addEventListener('click', () => {
+      state.open = false;
+      render();
+    });
+
+    panel.querySelector('[data-022e-refresh]')?.addEventListener('click', loadAll);
+    panel.querySelector('[data-022e-readiness]')?.addEventListener('click', loadReadinessInline);
+    panel.querySelector('[data-022e-save-pref]')?.addEventListener('click', savePreference);
+
+    panel.querySelectorAll('[data-022e-ack]').forEach((button) => {
+      button.addEventListener('click', () => acknowledge(button.getAttribute('data-022e-ack')));
+    });
+
+    panel.querySelectorAll('[data-022e-related]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const index = Number(button.getAttribute('data-022e-related'));
+        const item = state.notifications[index];
+        if (item) openRelated(item);
+      });
+    });
+  }
+
+  function sync() {
+    ensureCard();
+    render();
+  }
+
+  document.addEventListener('DOMContentLoaded', sync);
+  window.addEventListener('hashchange', () => setTimeout(sync, 100));
+  window.addEventListener('storage', () => setTimeout(sync, 100));
+  window.addEventListener('projectpulse:view-as-changed', () => setTimeout(sync, 100));
+
+  const observer = new MutationObserver(() => {
+    clearTimeout(window.__projectpulse022eDashboardNotificationTimer);
+    window.__projectpulse022eDashboardNotificationTimer = setTimeout(sync, 120);
+  });
+
+  if (document.body) {
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
+
+  sync();
+})();
+</script>
+<!-- 022E_DASHBOARD_NOTIFICATION_CARD_END -->
+
+
+<!-- 022F_PRODUCTION_READINESS_ROUTE_GUARD_START -->
+<style id="projectpulse-022f-production-readiness-route-guard-style">
+  #projectpulse-022f-readiness-route-message {
+    max-width: 1180px;
+    margin: 1rem auto;
+    border: 1px solid rgba(37, 99, 235, 0.22);
+    border-radius: 16px;
+    background: #eff6ff;
+    color: #1e3a8a;
+    padding: 0.85rem 1rem;
+    font-weight: 750;
+    box-shadow: 0 12px 30px rgba(15, 23, 42, 0.06);
+  }
+</style>
+
+<script id="projectpulse-022f-production-readiness-route-guard">
+(function () {
+  const redirectFlagKey = 'projectpulseProductionReadinessRedirected';
+  const guardedRoutes = new Set([
+    'production-readiness',
+    '/production-readiness'
+  ]);
+
+  function normalizedHashRoute() {
+    return String(window.location.hash || '#dashboard')
+      .replace(/^#/, '')
+      .split('?')[0]
+      .replace(/\/+$/, '')
+      .trim()
+      .toLowerCase();
+  }
+
+  function redirectToDashboard() {
+    const route = normalizedHashRoute();
+
+    if (!guardedRoutes.has(route)) {
+      return false;
+    }
+
+    try {
+      window.sessionStorage.setItem(redirectFlagKey, '1');
+    } catch {
+      // ignore storage failures
+    }
+
+    const nextUrl = window.location.pathname + window.location.search + '#dashboard';
+    window.history.replaceState(null, '', nextUrl);
+
+    setTimeout(() => {
+      window.dispatchEvent(new Event('hashchange'));
+      showRedirectMessage();
+    }, 0);
+
+    return true;
+  }
+
+  function findDashboardContainer() {
+    const candidates = Array.from(document.querySelectorAll('main, section, article, div'))
+      .filter((element) => {
+        const text = String(element.textContent || '').replace(/\s+/g, ' ').trim();
+        if (!text.includes('Role-Based Workspace')) return false;
+        if (!text.includes('Administrator') && !text.includes('Project Workload')) return false;
+
+        const rect = element.getBoundingClientRect();
+        return rect.width > 600 && rect.height > 120;
+      })
+      .sort((a, b) => {
+        const ar = a.getBoundingClientRect();
+        const br = b.getBoundingClientRect();
+        return (ar.width * ar.height) - (br.width * br.height);
+      });
+
+    return candidates[0] || document.querySelector('main') || document.body;
+  }
+
+  function showRedirectMessage() {
+    let shouldShow = false;
+
+    try {
+      shouldShow = window.sessionStorage.getItem(redirectFlagKey) === '1';
+      window.sessionStorage.removeItem(redirectFlagKey);
+    } catch {
+      shouldShow = false;
+    }
+
+    if (!shouldShow || document.getElementById('projectpulse-022f-readiness-route-message')) {
+      return;
+    }
+
+    const message = document.createElement('div');
+    message.id = 'projectpulse-022f-readiness-route-message';
+    message.textContent = 'Production readiness is available from the Production Notification Center card. The direct readiness route was redirected to prevent the endless-scroll page.';
+
+    const container = findDashboardContainer();
+    if (container && container.parentElement) {
+      container.parentElement.insertBefore(message, container);
+    } else {
+      document.body.insertBefore(message, document.body.firstChild || null);
+    }
+
+    setTimeout(() => {
+      message.remove();
+    }, 8000);
+  }
+
+  function guard() {
+    const redirected = redirectToDashboard();
+    if (!redirected) {
+      showRedirectMessage();
+    }
+  }
+
+  guard();
+
+  window.addEventListener('hashchange', guard, true);
+  document.addEventListener('DOMContentLoaded', guard);
+  setTimeout(guard, 100);
+  setTimeout(guard, 500);
+})();
+</script>
+<!-- 022F_PRODUCTION_READINESS_ROUTE_GUARD_END -->
+
 </body>
 </html>
