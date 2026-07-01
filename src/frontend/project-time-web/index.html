@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#004b8d" />
     <title>Project Pulse</title>
-  
+
     <script>
       (function () {
         try {
@@ -23,7 +23,7 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
-  
+
     <script>
       (function () {
         function currentTheme() {
@@ -84,5 +84,2866 @@
       })();
     </script>
 
-  </body>
+
+<!-- 022B Production Readiness Route Isolation + Dashboard Entry -->
+<script id="projectpulse-022b-production-readiness-route-isolation">
+(() => {
+  const routeName = () => {
+    const hash = (window.location.hash || "#dashboard").replace(/^#/, "").trim();
+    return (hash.split("?")[0] || "dashboard").toLowerCase();
+  };
+
+  const normalizeText = (value) => (value || "").replace(/\s+/g, " ").trim();
+
+  const allCandidateBlocks = () => Array.from(document.querySelectorAll("main section, main article, main div, section, article, div"))
+    .filter((element) => {
+      if (!element || !element.textContent) return false;
+      if (element.id === "projectpulse-production-readiness-dashboard-shortcut") return false;
+      if (element.closest("#projectpulse-production-readiness-dashboard-shortcut")) return false;
+      const text = normalizeText(element.textContent);
+      if (!text) return false;
+      if (text.includes("Production Readiness Center") && text.includes("Readiness check results")) return false;
+      return true;
+    });
+
+  const smallestBlockContaining = (needle) => {
+    const matches = allCandidateBlocks()
+      .filter((element) => normalizeText(element.textContent).includes(needle))
+      .sort((a, b) => normalizeText(a.textContent).length - normalizeText(b.textContent).length);
+
+    if (!matches.length) return null;
+
+    const first = matches[0];
+
+    return first.closest("section, article, .card, .dashboard-card, .module-card, .panel, .workflow-card, .admin-card, .app-card, div") || first;
+  };
+
+  const markExtraProductionReadinessContent = () => {
+    const needles = [
+      "Operational command center for time, approvals, utilization, and billing readiness.",
+      "Built for Professional Services",
+      "Local admin password reset approvals",
+      "Engineers enter weekly project-task",
+      "Managers review submitted regular and OT hours",
+      "Project managers validate project and task allocation",
+      "Accounting reviews approved time",
+      "Monthly and quarterly summaries compare billable",
+      "Role, approval, decline, reconciliation"
+    ];
+
+    needles.forEach((needle) => {
+      const block = smallestBlockContaining(needle);
+      if (block) {
+        block.setAttribute("data-projectpulse-022b-production-readiness-extra", "true");
+      }
+    });
+  };
+
+  const ensureDashboardShortcut = () => {
+    const currentRoute = routeName();
+    const existing = document.getElementById("projectpulse-production-readiness-dashboard-shortcut");
+
+    if (currentRoute !== "dashboard" && currentRoute !== "") {
+      if (existing) existing.remove();
+      return;
+    }
+
+    if (existing) return;
+
+    const anchorBlock =
+      smallestBlockContaining("Operational command center for time, approvals, utilization, and billing readiness.")
+      || smallestBlockContaining("US SIGNAL PROJECT PULSE")
+      || document.querySelector("main")
+      || document.body;
+
+    if (!anchorBlock) return;
+
+    const shortcut = document.createElement("a");
+    shortcut.id = "projectpulse-production-readiness-dashboard-shortcut";
+    shortcut.href = "#production-readiness";
+    shortcut.setAttribute("aria-label", "Open Production Readiness Center");
+    shortcut.innerHTML = `
+      <div class="projectpulse-022b-shortcut-eyebrow">PRODUCTION READINESS</div>
+      <div class="projectpulse-022b-shortcut-title">Production Readiness Center</div>
+      <div class="projectpulse-022b-shortcut-body">Validate release readiness, route governance, backend checks, and operational evidence before production closeout.</div>
+      <div class="projectpulse-022b-shortcut-action">Open readiness center →</div>
+    `;
+
+    if (anchorBlock.parentElement) {
+      anchorBlock.insertAdjacentElement("afterend", shortcut);
+    } else {
+      document.body.appendChild(shortcut);
+    }
+  };
+
+  const syncProductionReadinessRoute = () => {
+    const currentRoute = routeName();
+    document.documentElement.setAttribute("data-projectpulse-route", currentRoute);
+
+    markExtraProductionReadinessContent();
+
+    const isProductionReadiness = currentRoute === "production-readiness";
+
+    document.querySelectorAll("[data-projectpulse-022b-production-readiness-extra='true']").forEach((element) => {
+      element.style.display = isProductionReadiness ? "none" : "";
+      element.setAttribute("aria-hidden", isProductionReadiness ? "true" : "false");
+    });
+
+    ensureDashboardShortcut();
+  };
+
+  const injectStyles = () => {
+    if (document.getElementById("projectpulse-022b-production-readiness-style")) return;
+
+    const style = document.createElement("style");
+    style.id = "projectpulse-022b-production-readiness-style";
+    style.textContent = `
+      #projectpulse-production-readiness-dashboard-shortcut {
+        display: block;
+        max-width: 1280px;
+        margin: 24px auto;
+        padding: 22px 26px;
+        border: 1px solid rgba(15, 74, 117, 0.16);
+        border-radius: 22px;
+        background: linear-gradient(135deg, rgba(255,255,255,0.96), rgba(232,244,251,0.92));
+        box-shadow: 0 20px 50px rgba(15, 34, 67, 0.08);
+        color: #0f172a;
+        text-decoration: none;
+      }
+
+      #projectpulse-production-readiness-dashboard-shortcut:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 24px 60px rgba(15, 34, 67, 0.12);
+      }
+
+      .projectpulse-022b-shortcut-eyebrow {
+        margin-bottom: 8px;
+        color: #064a7a;
+        font-size: 0.76rem;
+        font-weight: 800;
+        letter-spacing: 0.16em;
+      }
+
+      .projectpulse-022b-shortcut-title {
+        margin-bottom: 8px;
+        font-size: clamp(1.35rem, 2vw, 1.9rem);
+        font-weight: 850;
+      }
+
+      .projectpulse-022b-shortcut-body {
+        max-width: 820px;
+        color: #52617a;
+        line-height: 1.55;
+      }
+
+      .projectpulse-022b-shortcut-action {
+        margin-top: 14px;
+        color: #006b5f;
+        font-weight: 800;
+      }
+
+      html[data-projectpulse-route="production-readiness"] #projectpulse-production-readiness-dashboard-shortcut {
+        display: none !important;
+      }
+    `;
+
+    document.head.appendChild(style);
+  };
+
+  const scheduleSync = () => {
+    injectStyles();
+    window.requestAnimationFrame(() => {
+      syncProductionReadinessRoute();
+      setTimeout(syncProductionReadinessRoute, 150);
+      setTimeout(syncProductionReadinessRoute, 600);
+    });
+  };
+
+  window.addEventListener("hashchange", scheduleSync);
+  window.addEventListener("popstate", scheduleSync);
+  document.addEventListener("DOMContentLoaded", scheduleSync);
+
+  const observer = new MutationObserver(() => {
+    clearTimeout(window.__projectpulse022bRouteIsolationTimer);
+    window.__projectpulse022bRouteIsolationTimer = setTimeout(scheduleSync, 75);
+  });
+
+  observer.observe(document.documentElement, {
+    childList: true,
+    subtree: true
+  });
+
+  scheduleSync();
+})();
+</script>
+
+
+<!-- 022D Production Notification Center UI + Preference Controls -->
+<script id="projectpulse-022d-production-notification-center-ui">
+(() => {
+  const rootId = "projectpulse-022d-notification-root";
+  const shortcutId = "projectpulse-production-notification-dashboard-shortcut";
+  const sessionStorageKey = "projectPulseAuthSession";
+  const viewAsStorageKey = "projectPulseViewAsUser";
+
+  const state = {
+    open: false,
+    loading: false,
+    error: "",
+    summary: null,
+    notifications: [],
+    routingRules: [],
+    preferences: [],
+    lastLoadedAt: null
+  };
+
+  const routeName = () => {
+    const hash = (window.location.hash || "#dashboard").replace(/^#/, "").trim();
+    return (hash.split("?")[0] || "dashboard").toLowerCase();
+  };
+
+  const normalizeText = (value) => (value || "").replace(/\s+/g, " ").trim();
+
+  const getSessionToken = () => {
+    try {
+      const raw = window.localStorage.getItem(sessionStorageKey);
+      if (!raw) return "";
+      const parsed = JSON.parse(raw);
+      return parsed.sessionToken || parsed.token || parsed.rawToken || "";
+    } catch {
+      return "";
+    }
+  };
+
+  const getViewAsUserId = () => {
+    try {
+      const raw = window.localStorage.getItem(viewAsStorageKey);
+      if (!raw) return "";
+      if (/^[0-9a-fA-F-]{36}$/.test(raw.trim())) return raw.trim();
+      const parsed = JSON.parse(raw);
+      return parsed.userId || parsed.id || parsed.viewAsUserId || "";
+    } catch {
+      return "";
+    }
+  };
+
+  const isViewAs = () => !!getViewAsUserId();
+
+  const apiFetch = async (path, options = {}) => {
+    const token = getSessionToken();
+    if (!token) {
+      throw new Error("Sign in is required before loading production notifications.");
+    }
+
+    const headers = {
+      "X-ProjectPulse-Session": token,
+      ...(options.headers || {})
+    };
+
+    const viewAsUserId = getViewAsUserId();
+    if (viewAsUserId) {
+      headers["X-ProjectPulse-View-As-User"] = viewAsUserId;
+    }
+
+    const response = await fetch(path, {
+      ...options,
+      headers
+    });
+
+    const text = await response.text();
+    let data = null;
+
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      data = { raw: text };
+    }
+
+    if (!response.ok) {
+      const message = data?.message || data?.title || `HTTP ${response.status}`;
+      const error = new Error(message);
+      error.status = response.status;
+      error.data = data;
+      throw error;
+    }
+
+    return data;
+  };
+
+  const escapeHtml = (value) => String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+
+  const formatDate = (value) => {
+    if (!value) return "";
+    try {
+      return new Date(value).toLocaleString();
+    } catch {
+      return value;
+    }
+  };
+
+  const severityClass = (severity) => {
+    const normalized = String(severity || "info").toLowerCase();
+    if (["critical", "error"].includes(normalized)) return "projectpulse-022d-severity-critical";
+    if (normalized === "warning") return "projectpulse-022d-severity-warning";
+    if (normalized === "success") return "projectpulse-022d-severity-success";
+    return "projectpulse-022d-severity-info";
+  };
+
+  const allCandidateBlocks = () => Array.from(document.querySelectorAll("main section, main article, main div, section, article, div"))
+    .filter((element) => {
+      if (!element || !element.textContent) return false;
+      if (element.id === shortcutId) return false;
+      if (element.closest(`#${shortcutId}`)) return false;
+      if (element.closest(`#${rootId}`)) return false;
+      const text = normalizeText(element.textContent);
+      return !!text;
+    });
+
+  const smallestBlockContaining = (needle) => {
+    const matches = allCandidateBlocks()
+      .filter((element) => normalizeText(element.textContent).includes(needle))
+      .sort((a, b) => normalizeText(a.textContent).length - normalizeText(b.textContent).length);
+
+    return matches[0] || null;
+  };
+
+  const ensureStyles = () => {
+    if (document.getElementById("projectpulse-022d-notification-style")) return;
+
+    const style = document.createElement("style");
+    style.id = "projectpulse-022d-notification-style";
+    style.textContent = `
+      #${shortcutId} {
+        display: block;
+        max-width: 1280px;
+        margin: 24px auto;
+        padding: 22px 26px;
+        border: 1px solid rgba(31, 83, 154, 0.16);
+        border-radius: 22px;
+        background: linear-gradient(135deg, rgba(255,255,255,0.97), rgba(241,247,255,0.94));
+        box-shadow: 0 20px 50px rgba(15, 34, 67, 0.08);
+        color: #0f172a;
+        text-decoration: none;
+        cursor: pointer;
+      }
+
+      #${shortcutId}:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 24px 60px rgba(15, 34, 67, 0.12);
+      }
+
+      .projectpulse-022d-shortcut-eyebrow {
+        margin-bottom: 8px;
+        color: #164e8f;
+        font-size: 0.76rem;
+        font-weight: 800;
+        letter-spacing: 0.16em;
+      }
+
+      .projectpulse-022d-shortcut-title {
+        margin-bottom: 8px;
+        font-size: clamp(1.35rem, 2vw, 1.9rem);
+        font-weight: 850;
+      }
+
+      .projectpulse-022d-shortcut-body {
+        max-width: 860px;
+        color: #52617a;
+        line-height: 1.55;
+      }
+
+      .projectpulse-022d-shortcut-action {
+        margin-top: 14px;
+        color: #006b5f;
+        font-weight: 800;
+      }
+
+      #${rootId} .projectpulse-022d-launcher {
+        position: fixed;
+        right: 22px;
+        bottom: 22px;
+        z-index: 9997;
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        border: none;
+        border-radius: 999px;
+        padding: 13px 18px;
+        background: #0f2a55;
+        color: #ffffff;
+        font-weight: 800;
+        box-shadow: 0 20px 50px rgba(15, 42, 85, 0.3);
+        cursor: pointer;
+      }
+
+      #${rootId} .projectpulse-022d-badge {
+        min-width: 24px;
+        height: 24px;
+        padding: 0 7px;
+        border-radius: 999px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: #f59e0b;
+        color: #111827;
+        font-size: 0.78rem;
+        font-weight: 900;
+      }
+
+      #${rootId} .projectpulse-022d-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 9998;
+        background: rgba(15, 23, 42, 0.38);
+        display: none;
+      }
+
+      #${rootId}.projectpulse-022d-open .projectpulse-022d-backdrop {
+        display: block;
+      }
+
+      #${rootId} .projectpulse-022d-panel {
+        position: fixed;
+        top: 0;
+        right: 0;
+        z-index: 9999;
+        width: min(760px, 96vw);
+        height: 100vh;
+        overflow: auto;
+        background: #f8fafc;
+        color: #0f172a;
+        box-shadow: -24px 0 70px rgba(15, 23, 42, 0.28);
+        transform: translateX(104%);
+        transition: transform 180ms ease;
+      }
+
+      #${rootId}.projectpulse-022d-open .projectpulse-022d-panel {
+        transform: translateX(0);
+      }
+
+      #${rootId} .projectpulse-022d-header {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        padding: 24px;
+        background: rgba(248, 250, 252, 0.96);
+        border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+        backdrop-filter: blur(12px);
+      }
+
+      #${rootId} .projectpulse-022d-header-row {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+      }
+
+      #${rootId} .projectpulse-022d-title {
+        margin: 0;
+        font-size: 1.55rem;
+        font-weight: 900;
+      }
+
+      #${rootId} .projectpulse-022d-subtitle {
+        margin: 8px 0 0;
+        color: #52617a;
+        line-height: 1.5;
+      }
+
+      #${rootId} .projectpulse-022d-close {
+        border: 1px solid rgba(148, 163, 184, 0.35);
+        border-radius: 12px;
+        background: #ffffff;
+        padding: 9px 12px;
+        cursor: pointer;
+        font-weight: 800;
+      }
+
+      #${rootId} .projectpulse-022d-body {
+        padding: 22px 24px 32px;
+      }
+
+      #${rootId} .projectpulse-022d-toolbar {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-top: 18px;
+      }
+
+      #${rootId} .projectpulse-022d-button {
+        border: 1px solid rgba(15, 42, 85, 0.18);
+        border-radius: 12px;
+        background: #ffffff;
+        padding: 9px 12px;
+        cursor: pointer;
+        font-weight: 800;
+      }
+
+      #${rootId} .projectpulse-022d-primary {
+        background: #0f2a55;
+        color: #ffffff;
+      }
+
+      #${rootId} .projectpulse-022d-card {
+        margin: 0 0 16px;
+        padding: 18px;
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        border-radius: 18px;
+        background: #ffffff;
+        box-shadow: 0 14px 34px rgba(15, 23, 42, 0.05);
+      }
+
+      #${rootId} .projectpulse-022d-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      #${rootId} .projectpulse-022d-metric {
+        padding: 14px;
+        border-radius: 15px;
+        background: #f1f5f9;
+      }
+
+      #${rootId} .projectpulse-022d-metric-label {
+        color: #64748b;
+        font-size: 0.78rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+
+      #${rootId} .projectpulse-022d-metric-value {
+        margin-top: 4px;
+        font-size: 1.35rem;
+        font-weight: 900;
+      }
+
+      #${rootId} .projectpulse-022d-section-title {
+        margin: 22px 0 10px;
+        font-size: 1rem;
+        font-weight: 900;
+      }
+
+      #${rootId} .projectpulse-022d-notification-title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 6px;
+        font-weight: 900;
+      }
+
+      #${rootId} .projectpulse-022d-pill {
+        display: inline-flex;
+        align-items: center;
+        border-radius: 999px;
+        padding: 4px 9px;
+        font-size: 0.72rem;
+        font-weight: 900;
+      }
+
+      #${rootId} .projectpulse-022d-severity-info {
+        background: #dbeafe;
+        color: #1e3a8a;
+      }
+
+      #${rootId} .projectpulse-022d-severity-warning {
+        background: #fef3c7;
+        color: #92400e;
+      }
+
+      #${rootId} .projectpulse-022d-severity-critical {
+        background: #fee2e2;
+        color: #991b1b;
+      }
+
+      #${rootId} .projectpulse-022d-severity-success {
+        background: #dcfce7;
+        color: #166534;
+      }
+
+      #${rootId} .projectpulse-022d-muted {
+        color: #64748b;
+      }
+
+      #${rootId} .projectpulse-022d-form-row {
+        display: grid;
+        grid-template-columns: 1fr 140px;
+        gap: 10px;
+        margin-bottom: 10px;
+      }
+
+      #${rootId} select,
+      #${rootId} input[type="checkbox"] {
+        accent-color: #0f2a55;
+      }
+
+      #${rootId} select {
+        width: 100%;
+        border: 1px solid rgba(148, 163, 184, 0.5);
+        border-radius: 12px;
+        padding: 10px 12px;
+        background: #ffffff;
+      }
+
+      #${rootId} .projectpulse-022d-rule-row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 12px;
+        align-items: center;
+        padding: 12px 0;
+        border-top: 1px solid rgba(148, 163, 184, 0.22);
+      }
+
+      #${rootId} .projectpulse-022d-error {
+        color: #991b1b;
+        background: #fee2e2;
+        border-radius: 14px;
+        padding: 12px;
+        margin-top: 12px;
+      }
+
+      #${rootId} .projectpulse-022d-loading {
+        color: #334155;
+        background: #e0f2fe;
+        border-radius: 14px;
+        padding: 12px;
+        margin-top: 12px;
+      }
+
+      @media (max-width: 720px) {
+        #${rootId} .projectpulse-022d-grid,
+        #${rootId} .projectpulse-022d-form-row {
+          grid-template-columns: 1fr;
+        }
+
+        #${rootId} .projectpulse-022d-launcher {
+          right: 12px;
+          bottom: 12px;
+        }
+      }
+    `;
+
+    document.head.appendChild(style);
+  };
+
+  const ensureRoot = () => {
+    let root = document.getElementById(rootId);
+
+    if (!root) {
+      root = document.createElement("div");
+      root.id = rootId;
+      root.innerHTML = `
+        <button type="button" class="projectpulse-022d-launcher" aria-label="Open Production Notification Center">
+          <span>Notifications</span>
+          <span class="projectpulse-022d-badge">0</span>
+        </button>
+        <div class="projectpulse-022d-backdrop"></div>
+        <aside class="projectpulse-022d-panel" aria-label="Production Notification Center">
+          <div class="projectpulse-022d-header">
+            <div class="projectpulse-022d-header-row">
+              <div>
+                <h2 class="projectpulse-022d-title">Production Notification Center</h2>
+                <p class="projectpulse-022d-subtitle">Role-aware in-app alerts, routing rules, and user notification preferences. Email delivery remains disabled here.</p>
+              </div>
+              <button type="button" class="projectpulse-022d-close">Close</button>
+            </div>
+            <div class="projectpulse-022d-toolbar">
+              <button type="button" class="projectpulse-022d-button projectpulse-022d-primary" data-022d-action="refresh">Refresh</button>
+              <button type="button" class="projectpulse-022d-button" data-022d-action="open-dashboard">Dashboard</button>
+              <button type="button" class="projectpulse-022d-button" data-022d-action="open-readiness">Readiness Center</button>
+            </div>
+            <div class="projectpulse-022d-status"></div>
+          </div>
+          <div class="projectpulse-022d-body"></div>
+        </aside>
+      `;
+      document.body.appendChild(root);
+
+      root.querySelector(".projectpulse-022d-launcher").addEventListener("click", () => openPanel());
+      root.querySelector(".projectpulse-022d-backdrop").addEventListener("click", () => closePanel());
+      root.querySelector(".projectpulse-022d-close").addEventListener("click", () => closePanel());
+      root.querySelector("[data-022d-action='refresh']").addEventListener("click", () => loadData(true));
+      root.querySelector("[data-022d-action='open-dashboard']").addEventListener("click", () => {
+        window.location.hash = "#dashboard";
+        closePanel();
+      });
+      root.querySelector("[data-022d-action='open-readiness']").addEventListener("click", () => {
+        window.location.hash = "#production-readiness";
+        closePanel();
+      });
+    }
+
+    return root;
+  };
+
+  const openPanel = async () => {
+    state.open = true;
+    ensureRoot().classList.add("projectpulse-022d-open");
+    await loadData(false);
+  };
+
+  const closePanel = () => {
+    state.open = false;
+    ensureRoot().classList.remove("projectpulse-022d-open");
+  };
+
+  const setStatus = (message, type = "loading") => {
+    const root = ensureRoot();
+    const status = root.querySelector(".projectpulse-022d-status");
+    if (!message) {
+      status.innerHTML = "";
+      return;
+    }
+
+    const className = type === "error" ? "projectpulse-022d-error" : "projectpulse-022d-loading";
+    status.innerHTML = `<div class="${className}">${escapeHtml(message)}</div>`;
+  };
+
+  const loadData = async (force) => {
+    const root = ensureRoot();
+    const badge = root.querySelector(".projectpulse-022d-badge");
+
+    if (state.loading) return;
+
+    const token = getSessionToken();
+    if (!token) {
+      badge.textContent = "0";
+      if (state.open) {
+        setStatus("Sign in is required before loading production notifications.", "error");
+        renderBody();
+      }
+      return;
+    }
+
+    if (!force && state.lastLoadedAt && Date.now() - state.lastLoadedAt < 30000) {
+      renderBody();
+      return;
+    }
+
+    try {
+      state.loading = true;
+      state.error = "";
+      if (state.open) setStatus("Loading production notifications…");
+
+      const [summary, list, preferenceSummary, routingRules] = await Promise.all([
+        apiFetch("/api/production/notifications/summary"),
+        apiFetch("/api/production/notifications?limit=20"),
+        apiFetch("/api/production/notifications/preferences/summary"),
+        apiFetch("/api/production/notifications/routing-rules")
+      ]);
+
+      state.summary = summary?.summary || null;
+      state.notifications = Array.isArray(list?.notifications) ? list.notifications : [];
+      state.routingRules = Array.isArray(routingRules?.routingRules) ? routingRules.routingRules : [];
+      state.preferences = Array.isArray(preferenceSummary?.preferences) ? preferenceSummary.preferences : [];
+      state.lastLoadedAt = Date.now();
+
+      const count = Number(state.summary?.unacknowledgedCount || 0);
+      badge.textContent = String(count);
+      badge.style.display = count > 0 ? "inline-flex" : "none";
+      setStatus("");
+      renderBody();
+    } catch (error) {
+      state.error = error.message || "Failed to load production notifications.";
+      badge.textContent = "0";
+      if (state.open) {
+        setStatus(state.error, "error");
+        renderBody();
+      }
+    } finally {
+      state.loading = false;
+    }
+  };
+
+  const acknowledgeNotification = async (notificationId) => {
+    if (isViewAs()) {
+      setStatus("Write actions are disabled while using Administrator View-As preview.", "error");
+      return;
+    }
+
+    try {
+      setStatus("Acknowledging notification…");
+      await apiFetch("/api/production/notifications/acknowledge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notificationId })
+      });
+      state.lastLoadedAt = null;
+      await loadData(true);
+    } catch (error) {
+      setStatus(error.message || "Failed to acknowledge notification.", "error");
+    }
+  };
+
+  const savePreference = async () => {
+    if (isViewAs()) {
+      setStatus("Write actions are disabled while using Administrator View-As preview.", "error");
+      return;
+    }
+
+    const root = ensureRoot();
+    const moduleKey = root.querySelector("[data-022d-pref-module]")?.value || "PRODUCTION_READINESS";
+    const severity = root.querySelector("[data-022d-pref-severity]")?.value || "warning";
+    const inAppEnabled = !!root.querySelector("[data-022d-pref-inapp]")?.checked;
+
+    try {
+      setStatus("Saving notification preference…");
+      await apiFetch("/api/production/notifications/preferences", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          moduleKey,
+          severity,
+          inAppEnabled,
+          emailEnabled: false
+        })
+      });
+      state.lastLoadedAt = null;
+      await loadData(true);
+      setStatus("Preference saved. Email remains disabled.", "loading");
+      setTimeout(() => setStatus(""), 1800);
+    } catch (error) {
+      setStatus(error.message || "Failed to save preference.", "error");
+    }
+  };
+
+  const toggleRoutingRule = async (ruleKey, isActive, defaultInAppEnabled, allowUserOptOut) => {
+    if (isViewAs()) {
+      setStatus("Write actions are disabled while using Administrator View-As preview.", "error");
+      return;
+    }
+
+    try {
+      setStatus("Updating routing rule…");
+      await apiFetch("/api/production/notifications/routing-rules/toggle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ruleKey,
+          isActive,
+          defaultInAppEnabled,
+          allowUserOptOut
+        })
+      });
+      state.lastLoadedAt = null;
+      await loadData(true);
+      setStatus("Routing rule updated. Email remains disabled.", "loading");
+      setTimeout(() => setStatus(""), 1800);
+    } catch (error) {
+      setStatus(error.message || "Failed to update routing rule.", "error");
+    }
+  };
+
+  const uniqueModules = () => {
+    const modules = new Set(["PRODUCTION_READINESS", "TIME_COMPLIANCE", "APPROVAL_WORKFLOW", "EXPORT_RECONCILIATION", "SYSTEM"]);
+    state.routingRules.forEach((rule) => {
+      if (rule.moduleKey) modules.add(rule.moduleKey);
+    });
+    return Array.from(modules).sort();
+  };
+
+  const renderBody = () => {
+    const root = ensureRoot();
+    const body = root.querySelector(".projectpulse-022d-body");
+
+    if (!getSessionToken()) {
+      body.innerHTML = `
+        <div class="projectpulse-022d-card">
+          <strong>Sign in required</strong>
+          <p class="projectpulse-022d-muted">The notification center loads after a ProjectPulse session is available.</p>
+        </div>
+      `;
+      return;
+    }
+
+    const summary = state.summary || {};
+    const viewAsMessage = isViewAs()
+      ? `<div class="projectpulse-022d-error">Administrator View-As preview is active. Read-only notification visibility is allowed, but write actions are disabled.</div>`
+      : "";
+
+    const metricHtml = `
+      <div class="projectpulse-022d-grid">
+        <div class="projectpulse-022d-metric">
+          <div class="projectpulse-022d-metric-label">Visible</div>
+          <div class="projectpulse-022d-metric-value">${escapeHtml(summary.visibleNotificationCount ?? state.notifications.length ?? 0)}</div>
+        </div>
+        <div class="projectpulse-022d-metric">
+          <div class="projectpulse-022d-metric-label">Unacknowledged</div>
+          <div class="projectpulse-022d-metric-value">${escapeHtml(summary.unacknowledgedCount ?? 0)}</div>
+        </div>
+        <div class="projectpulse-022d-metric">
+          <div class="projectpulse-022d-metric-label">Warnings</div>
+          <div class="projectpulse-022d-metric-value">${escapeHtml(summary.warningCount ?? 0)}</div>
+        </div>
+        <div class="projectpulse-022d-metric">
+          <div class="projectpulse-022d-metric-label">Critical</div>
+          <div class="projectpulse-022d-metric-value">${escapeHtml(summary.criticalCount ?? 0)}</div>
+        </div>
+      </div>
+    `;
+
+    const notificationsHtml = state.notifications.length
+      ? state.notifications.map((item) => `
+          <div class="projectpulse-022d-card">
+            <div class="projectpulse-022d-notification-title">
+              <span>${escapeHtml(item.title || item.notificationKey || "Notification")}</span>
+              <span class="projectpulse-022d-pill ${severityClass(item.severity)}">${escapeHtml(item.severity || "info")}</span>
+            </div>
+            <div class="projectpulse-022d-muted">${escapeHtml(item.moduleKey || "")} · ${escapeHtml(formatDate(item.createdAt))}</div>
+            <p>${escapeHtml(item.body || "")}</p>
+            <div class="projectpulse-022d-toolbar">
+              ${item.acknowledged
+                ? `<span class="projectpulse-022d-pill projectpulse-022d-severity-success">Acknowledged</span>`
+                : `<button type="button" class="projectpulse-022d-button projectpulse-022d-primary" data-022d-ack="${escapeHtml(item.notificationId)}" ${isViewAs() ? "disabled" : ""}>Acknowledge</button>`
+              }
+              ${item.actionUrl ? `<a class="projectpulse-022d-button" href="${escapeHtml(item.actionUrl)}">Open related page</a>` : ""}
+            </div>
+          </div>
+        `).join("")
+      : `<div class="projectpulse-022d-card"><strong>No visible notifications</strong><p class="projectpulse-022d-muted">There are no notifications for the current role/context.</p></div>`;
+
+    const moduleOptions = uniqueModules().map((moduleKey) => `<option value="${escapeHtml(moduleKey)}">${escapeHtml(moduleKey)}</option>`).join("");
+
+    const preferencesHtml = `
+      <div class="projectpulse-022d-card">
+        <div class="projectpulse-022d-section-title">Preference controls</div>
+        <p class="projectpulse-022d-muted">Preferences are scoped by user, module, and severity. Email is intentionally disabled for this module.</p>
+        <div class="projectpulse-022d-form-row">
+          <select data-022d-pref-module>${moduleOptions}</select>
+          <select data-022d-pref-severity>
+            <option value="info">info</option>
+            <option value="warning" selected>warning</option>
+            <option value="critical">critical</option>
+            <option value="success">success</option>
+            <option value="error">error</option>
+          </select>
+        </div>
+        <label><input type="checkbox" data-022d-pref-inapp checked> In-app notifications enabled</label>
+        <div class="projectpulse-022d-muted" style="margin-top:8px;">Email delivery: disabled. Future email must use the shared provider safety gate.</div>
+        <div class="projectpulse-022d-toolbar">
+          <button type="button" class="projectpulse-022d-button projectpulse-022d-primary" data-022d-action="save-preference" ${isViewAs() ? "disabled" : ""}>Save preference</button>
+        </div>
+      </div>
+    `;
+
+    const rulesHtml = state.routingRules.length
+      ? state.routingRules.map((rule) => `
+          <div class="projectpulse-022d-rule-row">
+            <div>
+              <strong>${escapeHtml(rule.ruleKey || "")}</strong>
+              <div class="projectpulse-022d-muted">${escapeHtml(rule.moduleKey || "")} · ${escapeHtml(rule.severity || "")} · Roles: ${escapeHtml((rule.targetRoleCodes || []).join(", ") || "All")}</div>
+              <div class="projectpulse-022d-muted">${escapeHtml(rule.ruleDescription || "")}</div>
+            </div>
+            <button
+              type="button"
+              class="projectpulse-022d-button"
+              data-022d-rule="${escapeHtml(rule.ruleKey)}"
+              data-022d-rule-active="${rule.isActive ? "true" : "false"}"
+              data-022d-rule-default-inapp="${rule.defaultInAppEnabled ? "true" : "false"}"
+              data-022d-rule-optout="${rule.allowUserOptOut ? "true" : "false"}"
+              ${isViewAs() ? "disabled" : ""}
+            >
+              ${rule.isActive ? "Active" : "Inactive"}
+            </button>
+          </div>
+        `).join("")
+      : `<p class="projectpulse-022d-muted">No routing rules are visible for the current role/context.</p>`;
+
+    const preferenceRows = state.preferences.length
+      ? state.preferences.map((pref) => `
+          <div class="projectpulse-022d-rule-row">
+            <div>
+              <strong>${escapeHtml(pref.moduleKey)} · ${escapeHtml(pref.severity)}</strong>
+              <div class="projectpulse-022d-muted">In-app: ${pref.inAppEnabled ? "enabled" : "disabled"} · Email: disabled · Updated: ${escapeHtml(formatDate(pref.updatedAt))}</div>
+            </div>
+          </div>
+        `).join("")
+      : `<p class="projectpulse-022d-muted">No saved preferences yet for this user/context.</p>`;
+
+    body.innerHTML = `
+      ${viewAsMessage}
+      <div class="projectpulse-022d-card">
+        <div class="projectpulse-022d-section-title">Current notification posture</div>
+        <p class="projectpulse-022d-muted">${escapeHtml(summary.userDisplayName || "")} ${summary.userEmail ? `(${escapeHtml(summary.userEmail)})` : ""}</p>
+        ${metricHtml}
+      </div>
+
+      <div class="projectpulse-022d-section-title">Latest notifications</div>
+      ${notificationsHtml}
+
+      ${preferencesHtml}
+
+      <div class="projectpulse-022d-card">
+        <div class="projectpulse-022d-section-title">Saved preferences</div>
+        ${preferenceRows}
+      </div>
+
+      <div class="projectpulse-022d-card">
+        <div class="projectpulse-022d-section-title">Routing rules</div>
+        <p class="projectpulse-022d-muted">Routing rules are in-app only. Email delivery is disabled for 022D.</p>
+        ${rulesHtml}
+      </div>
+    `;
+
+    body.querySelectorAll("[data-022d-ack]").forEach((button) => {
+      button.addEventListener("click", () => acknowledgeNotification(button.getAttribute("data-022d-ack")));
+    });
+
+    body.querySelector("[data-022d-action='save-preference']")?.addEventListener("click", savePreference);
+
+    body.querySelectorAll("[data-022d-rule]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const ruleKey = button.getAttribute("data-022d-rule");
+        const active = button.getAttribute("data-022d-rule-active") === "true";
+        const defaultInApp = button.getAttribute("data-022d-rule-default-inapp") === "true";
+        const optOut = button.getAttribute("data-022d-rule-optout") === "true";
+        toggleRoutingRule(ruleKey, !active, defaultInApp, optOut);
+      });
+    });
+  };
+
+  const ensureDashboardShortcut = () => {
+    const currentRoute = routeName();
+    const existing = document.getElementById(shortcutId);
+
+    if (currentRoute !== "dashboard" && currentRoute !== "") {
+      if (existing) existing.remove();
+      return;
+    }
+
+    if (existing) return;
+
+    const anchorBlock =
+      document.getElementById("projectpulse-production-readiness-dashboard-shortcut")
+      || smallestBlockContaining("Production Readiness Center")
+      || smallestBlockContaining("Operational command center for time, approvals, utilization, and billing readiness.")
+      || smallestBlockContaining("US SIGNAL PROJECT PULSE")
+      || document.querySelector("main")
+      || document.body;
+
+    if (!anchorBlock) return;
+
+    const shortcut = document.createElement("button");
+    shortcut.id = shortcutId;
+    shortcut.type = "button";
+    shortcut.setAttribute("aria-label", "Open Production Notification Center");
+    shortcut.innerHTML = `
+      <div class="projectpulse-022d-shortcut-eyebrow">PRODUCTION NOTIFICATIONS</div>
+      <div class="projectpulse-022d-shortcut-title">Production Notification Center</div>
+      <div class="projectpulse-022d-shortcut-body">Review role-aware in-app alerts, acknowledge production notices, inspect routing rules, and manage notification preferences.</div>
+      <div class="projectpulse-022d-shortcut-action">Open notification center →</div>
+    `;
+
+    shortcut.addEventListener("click", openPanel);
+
+    if (anchorBlock.parentElement) {
+      anchorBlock.insertAdjacentElement("afterend", shortcut);
+    } else {
+      document.body.appendChild(shortcut);
+    }
+  };
+
+  const scheduleSync = () => {
+    ensureStyles();
+    ensureRoot();
+    window.requestAnimationFrame(() => {
+      ensureDashboardShortcut();
+      loadData(false);
+    });
+  };
+
+  window.addEventListener("hashchange", scheduleSync);
+  window.addEventListener("storage", scheduleSync);
+  document.addEventListener("DOMContentLoaded", scheduleSync);
+
+  const observer = new MutationObserver(() => {
+    clearTimeout(window.__projectpulse022dNotificationTimer);
+    window.__projectpulse022dNotificationTimer = setTimeout(scheduleSync, 120);
+  });
+
+  observer.observe(document.documentElement, {
+    childList: true,
+    subtree: true
+  });
+
+  scheduleSync();
+})();
+</script>
+
+
+<!-- 022D Topbar Notification Dropdown Fix - START -->
+<style id="projectpulse-022d-topbar-style">
+  #projectpulse-022d-notification-root,
+  #projectpulse-production-notification-dashboard-shortcut {
+    display: none !important;
+  }
+
+  .projectpulse-022d-topbar-host {
+    position: absolute;
+    right: 190px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 10020;
+    font-family: inherit;
+  }
+
+  .projectpulse-022d-topbar-host[data-fallback="true"] {
+    position: fixed;
+    top: 92px;
+    right: 184px;
+    transform: none;
+  }
+
+  .projectpulse-022d-topbar-button {
+    border: 1px solid rgba(37, 99, 235, 0.25);
+    border-radius: 999px;
+    background: #ffffff;
+    color: #111827;
+    padding: 10px 16px;
+    font-weight: 850;
+    box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .projectpulse-022d-topbar-button:hover {
+    background: #f8fbff;
+    border-color: rgba(37, 99, 235, 0.45);
+  }
+
+  .projectpulse-022d-topbar-badge {
+    min-width: 22px;
+    height: 22px;
+    border-radius: 999px;
+    background: #f59e0b;
+    color: #111827;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 7px;
+    font-size: 0.75rem;
+    font-weight: 950;
+  }
+
+  .projectpulse-022d-topbar-panel {
+    position: absolute;
+    top: calc(100% + 12px);
+    right: 0;
+    width: min(680px, calc(100vw - 32px));
+    max-height: calc(100vh - 145px);
+    overflow: auto;
+    display: none;
+    border: 1px solid rgba(148, 163, 184, 0.32);
+    border-radius: 22px;
+    background: #f8fafc;
+    color: #0f172a;
+    box-shadow: 0 28px 80px rgba(15, 23, 42, 0.25);
+  }
+
+  .projectpulse-022d-topbar-host[data-open="true"] .projectpulse-022d-topbar-panel {
+    display: block;
+  }
+
+  .projectpulse-022d-topbar-panel-header {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: rgba(248, 250, 252, 0.97);
+    border-bottom: 1px solid rgba(148, 163, 184, 0.24);
+    padding: 18px 20px;
+    backdrop-filter: blur(10px);
+  }
+
+  .projectpulse-022d-topbar-title-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    align-items: flex-start;
+  }
+
+  .projectpulse-022d-topbar-title {
+    margin: 0;
+    font-size: 1.2rem;
+    font-weight: 950;
+  }
+
+  .projectpulse-022d-topbar-subtitle {
+    margin: 5px 0 0;
+    color: #64748b;
+    line-height: 1.45;
+    font-size: 0.92rem;
+  }
+
+  .projectpulse-022d-topbar-close {
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    border-radius: 12px;
+    background: #ffffff;
+    padding: 7px 10px;
+    font-weight: 850;
+    cursor: pointer;
+  }
+
+  .projectpulse-022d-topbar-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 9px;
+    margin-top: 13px;
+  }
+
+  .projectpulse-022d-topbar-action {
+    border: 1px solid rgba(15, 42, 85, 0.18);
+    border-radius: 12px;
+    background: #ffffff;
+    padding: 8px 11px;
+    cursor: pointer;
+    font-weight: 850;
+  }
+
+  .projectpulse-022d-topbar-primary {
+    background: #0f2a55;
+    color: #ffffff;
+  }
+
+  .projectpulse-022d-topbar-body {
+    padding: 18px 20px 22px;
+  }
+
+  .projectpulse-022d-topbar-card {
+    margin: 0 0 14px;
+    padding: 15px;
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    border-radius: 17px;
+    background: #ffffff;
+    box-shadow: 0 12px 30px rgba(15, 23, 42, 0.045);
+  }
+
+  .projectpulse-022d-topbar-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .projectpulse-022d-topbar-metric {
+    border-radius: 14px;
+    background: #f1f5f9;
+    padding: 12px;
+  }
+
+  .projectpulse-022d-topbar-metric-label {
+    color: #64748b;
+    font-size: 0.72rem;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .projectpulse-022d-topbar-metric-value {
+    margin-top: 3px;
+    font-size: 1.25rem;
+    font-weight: 950;
+  }
+
+  .projectpulse-022d-topbar-section-title {
+    margin: 18px 0 9px;
+    font-weight: 950;
+  }
+
+  .projectpulse-022d-topbar-muted {
+    color: #64748b;
+    line-height: 1.45;
+  }
+
+  .projectpulse-022d-topbar-pill {
+    border-radius: 999px;
+    padding: 4px 9px;
+    font-size: 0.72rem;
+    font-weight: 950;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .projectpulse-022d-topbar-info {
+    background: #dbeafe;
+    color: #1e3a8a;
+  }
+
+  .projectpulse-022d-topbar-warning {
+    background: #fef3c7;
+    color: #92400e;
+  }
+
+  .projectpulse-022d-topbar-critical {
+    background: #fee2e2;
+    color: #991b1b;
+  }
+
+  .projectpulse-022d-topbar-success {
+    background: #dcfce7;
+    color: #166534;
+  }
+
+  .projectpulse-022d-topbar-error {
+    margin-top: 10px;
+    border-radius: 14px;
+    padding: 11px;
+    background: #fee2e2;
+    color: #991b1b;
+  }
+
+  .projectpulse-022d-topbar-loading {
+    margin-top: 10px;
+    border-radius: 14px;
+    padding: 11px;
+    background: #e0f2fe;
+    color: #334155;
+  }
+
+  .projectpulse-022d-topbar-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 12px;
+    align-items: center;
+    padding: 11px 0;
+    border-top: 1px solid rgba(148, 163, 184, 0.22);
+  }
+
+  .projectpulse-022d-topbar-form-row {
+    display: grid;
+    grid-template-columns: 1fr 140px;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+
+  .projectpulse-022d-topbar-panel select {
+    width: 100%;
+    border: 1px solid rgba(148, 163, 184, 0.5);
+    border-radius: 12px;
+    padding: 9px 11px;
+    background: #ffffff;
+  }
+
+  .projectpulse-022d-topbar-panel input[type="checkbox"] {
+    accent-color: #0f2a55;
+  }
+
+  @media (max-width: 980px) {
+    .projectpulse-022d-topbar-host {
+      right: 104px;
+    }
+
+    .projectpulse-022d-topbar-host[data-fallback="true"] {
+      right: 104px;
+    }
+
+    .projectpulse-022d-topbar-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 680px) {
+    .projectpulse-022d-topbar-button span:first-child {
+      display: none;
+    }
+
+    .projectpulse-022d-topbar-grid,
+    .projectpulse-022d-topbar-form-row {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+
+<script id="projectpulse-022d-topbar-notification-dropdown">
+(() => {
+  const hostId = "projectpulse-022d-topbar-notification-host";
+  const sessionStorageKey = "projectPulseAuthSession";
+  const viewAsStorageKey = "projectPulseViewAsUser";
+
+  const state = {
+    open: false,
+    loading: false,
+    error: "",
+    summary: null,
+    notifications: [],
+    routingRules: [],
+    preferences: [],
+    lastLoadedAt: null
+  };
+
+  const compact = (value) => String(value || "").replace(/\s+/g, " ").trim();
+
+  const escapeHtml = (value) => String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+
+  const formatDate = (value) => {
+    if (!value) return "";
+    try {
+      return new Date(value).toLocaleString();
+    } catch {
+      return value;
+    }
+  };
+
+  const getSessionToken = () => {
+    try {
+      const raw = window.localStorage.getItem(sessionStorageKey);
+      if (!raw) return "";
+      const parsed = JSON.parse(raw);
+      return parsed.sessionToken || parsed.token || parsed.rawToken || "";
+    } catch {
+      return "";
+    }
+  };
+
+  const getViewAsUserId = () => {
+    try {
+      const raw = window.localStorage.getItem(viewAsStorageKey);
+      if (!raw) return "";
+      if (/^[0-9a-fA-F-]{36}$/.test(raw.trim())) return raw.trim();
+      const parsed = JSON.parse(raw);
+      return parsed.userId || parsed.id || parsed.viewAsUserId || "";
+    } catch {
+      return "";
+    }
+  };
+
+  const isViewAs = () => !!getViewAsUserId();
+
+  const apiFetch = async (path, options = {}) => {
+    const token = getSessionToken();
+    if (!token) {
+      throw new Error("Sign in is required before loading production notifications.");
+    }
+
+    const headers = {
+      "X-ProjectPulse-Session": token,
+      ...(options.headers || {})
+    };
+
+    const viewAsUserId = getViewAsUserId();
+    if (viewAsUserId) {
+      headers["X-ProjectPulse-View-As-User"] = viewAsUserId;
+    }
+
+    const response = await fetch(path, {
+      ...options,
+      headers
+    });
+
+    const raw = await response.text();
+    let data = null;
+
+    try {
+      data = raw ? JSON.parse(raw) : null;
+    } catch {
+      data = { raw };
+    }
+
+    if (!response.ok) {
+      const message = data?.message || data?.title || `HTTP ${response.status}`;
+      const error = new Error(message);
+      error.status = response.status;
+      error.data = data;
+      throw error;
+    }
+
+    return data;
+  };
+
+  const severityClass = (severity) => {
+    const normalized = String(severity || "info").toLowerCase();
+    if (["critical", "error"].includes(normalized)) return "projectpulse-022d-topbar-critical";
+    if (normalized === "warning") return "projectpulse-022d-topbar-warning";
+    if (normalized === "success") return "projectpulse-022d-topbar-success";
+    return "projectpulse-022d-topbar-info";
+  };
+
+  const getArrayFromResponse = (data, names) => {
+    for (const name of names) {
+      if (Array.isArray(data?.[name])) return data[name];
+    }
+
+    if (Array.isArray(data)) return data;
+    return [];
+  };
+
+  const getNotificationId = (item) =>
+    item.notificationId ||
+    item.productionNotificationEventId ||
+    item.productionNotificationId ||
+    item.eventId ||
+    item.id ||
+    "";
+
+  const isAcknowledged = (item) =>
+    !!(item.acknowledged || item.isAcknowledged || item.acknowledgedAt || item.acknowledgedAtUtc);
+
+  const hidePageContextGuide = () => {
+    const candidates = Array.from(document.querySelectorAll("section, article, div"))
+      .filter((element) => {
+        const text = compact(element.textContent);
+        if (!text.includes("What this page does and what backend process supports it")) return false;
+        if (!text.includes("PURPOSE") || !text.includes("BACKEND SUPPORT") || !text.includes("WHAT TO CHECK")) return false;
+
+        const rect = element.getBoundingClientRect();
+        return rect.top < 390 && rect.height > 60 && rect.height < 320 && rect.width > 500;
+      })
+      .sort((a, b) => compact(a.textContent).length - compact(b.textContent).length);
+
+    for (const element of candidates.slice(0, 2)) {
+      element.style.display = "none";
+      element.setAttribute("data-022d-hidden-page-context", "true");
+    }
+  };
+
+  const findTopbar = () => {
+    const candidates = Array.from(document.querySelectorAll("header, nav, body > div, div"))
+      .filter((element) => {
+        if (element.id === hostId || element.closest(`#${hostId}`)) return false;
+
+        const rect = element.getBoundingClientRect();
+        if (rect.top > 150 || rect.height < 48 || rect.height > 145 || rect.width < window.innerWidth * 0.65) return false;
+
+        const text = compact(element.textContent);
+        return text.includes("Project Pulse") && (text.includes("Dashboard") || text.includes("More"));
+      })
+      .sort((a, b) => {
+        const ar = a.getBoundingClientRect();
+        const br = b.getBoundingClientRect();
+        return (ar.top - br.top) || (ar.height - br.height) || (compact(a.textContent).length - compact(b.textContent).length);
+      });
+
+    return candidates[0] || null;
+  };
+
+  const ensureHost = () => {
+    let host = document.getElementById(hostId);
+    const topbar = findTopbar();
+
+    if (!host) {
+      host = document.createElement("div");
+      host.id = hostId;
+      host.className = "projectpulse-022d-topbar-host";
+      host.innerHTML = `
+        <button type="button" class="projectpulse-022d-topbar-button" aria-label="Open Production Notification Center">
+          <span>Notifications</span>
+          <span class="projectpulse-022d-topbar-badge">0</span>
+          <span>▾</span>
+        </button>
+        <div class="projectpulse-022d-topbar-panel" aria-label="Production Notification Center">
+          <div class="projectpulse-022d-topbar-panel-header">
+            <div class="projectpulse-022d-topbar-title-row">
+              <div>
+                <h2 class="projectpulse-022d-topbar-title">Production Notification Center</h2>
+                <p class="projectpulse-022d-topbar-subtitle">In-app alerts, preferences, and routing rules. Email remains disabled here.</p>
+              </div>
+              <button type="button" class="projectpulse-022d-topbar-close">Close</button>
+            </div>
+            <div class="projectpulse-022d-topbar-toolbar">
+              <button type="button" class="projectpulse-022d-topbar-action projectpulse-022d-topbar-primary" data-022d-action="refresh">Refresh</button>
+              <button type="button" class="projectpulse-022d-topbar-action" data-022d-action="dashboard">Dashboard</button>
+              <button type="button" class="projectpulse-022d-topbar-action" data-022d-action="readiness">Readiness Center</button>
+            </div>
+            <div class="projectpulse-022d-topbar-status"></div>
+          </div>
+          <div class="projectpulse-022d-topbar-body"></div>
+        </div>
+      `;
+
+      host.querySelector(".projectpulse-022d-topbar-button").addEventListener("click", async (event) => {
+        event.stopPropagation();
+        state.open = !state.open;
+        host.setAttribute("data-open", state.open ? "true" : "false");
+        if (state.open) await loadData(true);
+      });
+
+      host.querySelector(".projectpulse-022d-topbar-close").addEventListener("click", () => {
+        state.open = false;
+        host.setAttribute("data-open", "false");
+      });
+
+      host.querySelector("[data-022d-action='refresh']").addEventListener("click", () => loadData(true));
+
+      host.querySelector("[data-022d-action='dashboard']").addEventListener("click", () => {
+        window.location.hash = "#dashboard";
+        state.open = false;
+        host.setAttribute("data-open", "false");
+      });
+
+      host.querySelector("[data-022d-action='readiness']").addEventListener("click", () => {
+        window.location.hash = "#production-readiness";
+        state.open = false;
+        host.setAttribute("data-open", "false");
+      });
+
+      document.addEventListener("click", (event) => {
+        if (!host.contains(event.target)) {
+          state.open = false;
+          host.setAttribute("data-open", "false");
+        }
+      });
+    }
+
+    if (topbar && host.parentElement !== topbar) {
+      topbar.style.position = topbar.style.position || "relative";
+      topbar.style.overflow = "visible";
+      topbar.appendChild(host);
+      host.removeAttribute("data-fallback");
+    } else if (!topbar && !host.parentElement) {
+      document.body.appendChild(host);
+      host.setAttribute("data-fallback", "true");
+    } else if (!topbar && host.parentElement === document.body) {
+      host.setAttribute("data-fallback", "true");
+    }
+
+    return host;
+  };
+
+  const setStatus = (message, type = "loading") => {
+    const host = ensureHost();
+    const status = host.querySelector(".projectpulse-022d-topbar-status");
+
+    if (!message) {
+      status.innerHTML = "";
+      return;
+    }
+
+    const className = type === "error" ? "projectpulse-022d-topbar-error" : "projectpulse-022d-topbar-loading";
+    status.innerHTML = `<div class="${className}">${escapeHtml(message)}</div>`;
+  };
+
+  const updateBadge = () => {
+    const host = ensureHost();
+    const badge = host.querySelector(".projectpulse-022d-topbar-badge");
+    const count = Number(state.summary?.unacknowledgedCount || 0);
+    badge.textContent = String(count);
+    badge.style.display = count > 0 ? "inline-flex" : "none";
+  };
+
+  const loadData = async (force = false) => {
+    ensureHost();
+
+    if (!getSessionToken()) {
+      state.summary = null;
+      state.notifications = [];
+      state.routingRules = [];
+      state.preferences = [];
+      updateBadge();
+      renderPanel();
+      return;
+    }
+
+    if (!force && state.lastLoadedAt && Date.now() - state.lastLoadedAt < 30000) {
+      updateBadge();
+      renderPanel();
+      return;
+    }
+
+    try {
+      state.loading = true;
+      state.error = "";
+      if (state.open) setStatus("Loading notifications…");
+
+      const [summaryData, listData, preferenceData, routingData] = await Promise.all([
+        apiFetch("/api/production/notifications/summary"),
+        apiFetch("/api/production/notifications?limit=20"),
+        apiFetch("/api/production/notifications/preferences/summary"),
+        apiFetch("/api/production/notifications/routing-rules")
+      ]);
+
+      state.summary = summaryData?.summary || null;
+      state.notifications = getArrayFromResponse(listData, ["notifications", "events", "items", "results"]);
+      state.routingRules = getArrayFromResponse(routingData, ["routingRules", "rules", "items", "results"]);
+      state.preferences = getArrayFromResponse(preferenceData, ["preferences", "items", "results"]);
+      state.lastLoadedAt = Date.now();
+
+      updateBadge();
+      setStatus("");
+      renderPanel();
+    } catch (error) {
+      state.error = error.message || "Failed to load notifications.";
+      updateBadge();
+      if (state.open) {
+        setStatus(state.error, "error");
+        renderPanel();
+      }
+    } finally {
+      state.loading = false;
+    }
+  };
+
+  const acknowledgeNotification = async (notificationId) => {
+    if (!notificationId) {
+      setStatus("This notification does not include an acknowledgment id.", "error");
+      return;
+    }
+
+    if (isViewAs()) {
+      setStatus("Write actions are disabled while using Administrator View-As preview.", "error");
+      return;
+    }
+
+    try {
+      setStatus("Acknowledging notification…");
+      await apiFetch("/api/production/notifications/acknowledge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notificationId })
+      });
+      state.lastLoadedAt = null;
+      await loadData(true);
+      setStatus("Notification acknowledged.", "loading");
+      setTimeout(() => setStatus(""), 1600);
+    } catch (error) {
+      setStatus(error.message || "Failed to acknowledge notification.", "error");
+    }
+  };
+
+  const savePreference = async () => {
+    if (isViewAs()) {
+      setStatus("Write actions are disabled while using Administrator View-As preview.", "error");
+      return;
+    }
+
+    const host = ensureHost();
+    const moduleKey = host.querySelector("[data-022d-pref-module]")?.value || "PRODUCTION_READINESS";
+    const severity = host.querySelector("[data-022d-pref-severity]")?.value || "warning";
+    const inAppEnabled = !!host.querySelector("[data-022d-pref-inapp]")?.checked;
+
+    try {
+      setStatus("Saving preference…");
+      await apiFetch("/api/production/notifications/preferences", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          moduleKey,
+          severity,
+          inAppEnabled,
+          emailEnabled: false
+        })
+      });
+      state.lastLoadedAt = null;
+      await loadData(true);
+      setStatus("Preference saved. Email remains disabled.", "loading");
+      setTimeout(() => setStatus(""), 1800);
+    } catch (error) {
+      setStatus(error.message || "Failed to save preference.", "error");
+    }
+  };
+
+  const toggleRule = async (rule) => {
+    if (isViewAs()) {
+      setStatus("Write actions are disabled while using Administrator View-As preview.", "error");
+      return;
+    }
+
+    try {
+      setStatus("Updating routing rule…");
+      await apiFetch("/api/production/notifications/routing-rules/toggle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ruleKey: rule.ruleKey,
+          isActive: !rule.isActive,
+          defaultInAppEnabled: rule.defaultInAppEnabled,
+          allowUserOptOut: rule.allowUserOptOut
+        })
+      });
+      state.lastLoadedAt = null;
+      await loadData(true);
+      setStatus("Routing rule updated. Email remains disabled.", "loading");
+      setTimeout(() => setStatus(""), 1800);
+    } catch (error) {
+      setStatus(error.message || "Failed to update routing rule.", "error");
+    }
+  };
+
+  const uniqueModules = () => {
+    const modules = new Set(["PRODUCTION_READINESS", "TIME_COMPLIANCE", "APPROVAL_WORKFLOW", "EXPORT_RECONCILIATION", "SYSTEM"]);
+    for (const rule of state.routingRules) {
+      if (rule.moduleKey) modules.add(rule.moduleKey);
+    }
+    return Array.from(modules).sort();
+  };
+
+  const renderPanel = () => {
+    const host = ensureHost();
+    const body = host.querySelector(".projectpulse-022d-topbar-body");
+
+    if (!getSessionToken()) {
+      body.innerHTML = `
+        <div class="projectpulse-022d-topbar-card">
+          <strong>Sign in required</strong>
+          <p class="projectpulse-022d-topbar-muted">The notification center loads after a ProjectPulse session is available.</p>
+        </div>
+      `;
+      return;
+    }
+
+    const summary = state.summary || {};
+    const viewAsBanner = isViewAs()
+      ? `<div class="projectpulse-022d-topbar-error">Administrator View-As preview is active. Notification visibility is read-only, and write actions are disabled.</div>`
+      : "";
+
+    const metrics = `
+      <div class="projectpulse-022d-topbar-grid">
+        <div class="projectpulse-022d-topbar-metric">
+          <div class="projectpulse-022d-topbar-metric-label">Visible</div>
+          <div class="projectpulse-022d-topbar-metric-value">${escapeHtml(summary.visibleNotificationCount ?? state.notifications.length ?? 0)}</div>
+        </div>
+        <div class="projectpulse-022d-topbar-metric">
+          <div class="projectpulse-022d-topbar-metric-label">Unacked</div>
+          <div class="projectpulse-022d-topbar-metric-value">${escapeHtml(summary.unacknowledgedCount ?? 0)}</div>
+        </div>
+        <div class="projectpulse-022d-topbar-metric">
+          <div class="projectpulse-022d-topbar-metric-label">Warnings</div>
+          <div class="projectpulse-022d-topbar-metric-value">${escapeHtml(summary.warningCount ?? 0)}</div>
+        </div>
+        <div class="projectpulse-022d-topbar-metric">
+          <div class="projectpulse-022d-topbar-metric-label">Critical</div>
+          <div class="projectpulse-022d-topbar-metric-value">${escapeHtml(summary.criticalCount ?? 0)}</div>
+        </div>
+      </div>
+    `;
+
+    const notificationRows = state.notifications.length
+      ? state.notifications.map((item, index) => {
+          const notificationId = getNotificationId(item);
+          const acknowledged = isAcknowledged(item);
+          const title = item.title || item.notificationTitle || item.notificationKey || item.eventKey || "Notification";
+          const bodyText = item.body || item.message || item.description || "";
+          const moduleKey = item.moduleKey || item.module || "";
+          const severity = item.severity || "info";
+          const createdAt = item.createdAt || item.createdAtUtc || item.eventCreatedAt || "";
+
+          return `
+            <div class="projectpulse-022d-topbar-card">
+              <div class="projectpulse-022d-topbar-row" style="border-top:0;padding-top:0;">
+                <div>
+                  <strong>${escapeHtml(title)}</strong>
+                  <div class="projectpulse-022d-topbar-muted">${escapeHtml(moduleKey)} · ${escapeHtml(formatDate(createdAt))}</div>
+                </div>
+                <span class="projectpulse-022d-topbar-pill ${severityClass(severity)}">${escapeHtml(severity)}</span>
+              </div>
+              <p>${escapeHtml(bodyText)}</p>
+              <div class="projectpulse-022d-topbar-toolbar">
+                ${acknowledged
+                  ? `<span class="projectpulse-022d-topbar-pill projectpulse-022d-topbar-success">Acknowledged</span>`
+                  : `<button type="button" class="projectpulse-022d-topbar-action projectpulse-022d-topbar-primary" data-022d-ack="${escapeHtml(notificationId)}" ${isViewAs() ? "disabled" : ""}>Acknowledge</button>`
+                }
+                ${item.actionUrl ? `<a class="projectpulse-022d-topbar-action" href="${escapeHtml(item.actionUrl)}">Open related page</a>` : ""}
+              </div>
+            </div>
+          `;
+        }).join("")
+      : `<div class="projectpulse-022d-topbar-card"><strong>No visible notifications</strong><p class="projectpulse-022d-topbar-muted">There are no notifications for the current role/context.</p></div>`;
+
+    const moduleOptions = uniqueModules()
+      .map((moduleKey) => `<option value="${escapeHtml(moduleKey)}">${escapeHtml(moduleKey)}</option>`)
+      .join("");
+
+    const preferenceRows = state.preferences.length
+      ? state.preferences.map((pref) => `
+          <div class="projectpulse-022d-topbar-row">
+            <div>
+              <strong>${escapeHtml(pref.moduleKey || "")} · ${escapeHtml(pref.severity || "")}</strong>
+              <div class="projectpulse-022d-topbar-muted">In-app: ${pref.inAppEnabled ? "enabled" : "disabled"} · Email: disabled · Updated: ${escapeHtml(formatDate(pref.updatedAt || pref.updatedAtUtc))}</div>
+            </div>
+          </div>
+        `).join("")
+      : `<p class="projectpulse-022d-topbar-muted">No saved preferences yet for this user/context.</p>`;
+
+    const ruleRows = state.routingRules.length
+      ? state.routingRules.map((rule, index) => `
+          <div class="projectpulse-022d-topbar-row">
+            <div>
+              <strong>${escapeHtml(rule.ruleKey || "")}</strong>
+              <div class="projectpulse-022d-topbar-muted">${escapeHtml(rule.moduleKey || "")} · ${escapeHtml(rule.severity || "")} · Roles: ${escapeHtml((rule.targetRoleCodes || []).join(", ") || "All")}</div>
+              <div class="projectpulse-022d-topbar-muted">${escapeHtml(rule.ruleDescription || "")}</div>
+            </div>
+            <button type="button" class="projectpulse-022d-topbar-action" data-022d-rule-index="${index}" ${isViewAs() ? "disabled" : ""}>
+              ${rule.isActive ? "Active" : "Inactive"}
+            </button>
+          </div>
+        `).join("")
+      : `<p class="projectpulse-022d-topbar-muted">No routing rules are visible for this role/context.</p>`;
+
+    body.innerHTML = `
+      ${viewAsBanner}
+
+      <div class="projectpulse-022d-topbar-card">
+        <strong>Current notification posture</strong>
+        <p class="projectpulse-022d-topbar-muted">${escapeHtml(summary.userDisplayName || "")}${summary.userEmail ? ` (${escapeHtml(summary.userEmail)})` : ""}</p>
+        ${metrics}
+      </div>
+
+      <div class="projectpulse-022d-topbar-section-title">Latest notifications</div>
+      ${notificationRows}
+
+      <div class="projectpulse-022d-topbar-card">
+        <div class="projectpulse-022d-topbar-section-title" style="margin-top:0;">Preference controls</div>
+        <p class="projectpulse-022d-topbar-muted">Preferences are scoped by user, module, and severity. Email is intentionally disabled.</p>
+        <div class="projectpulse-022d-topbar-form-row">
+          <select data-022d-pref-module>${moduleOptions}</select>
+          <select data-022d-pref-severity>
+            <option value="info">info</option>
+            <option value="warning" selected>warning</option>
+            <option value="critical">critical</option>
+            <option value="success">success</option>
+            <option value="error">error</option>
+          </select>
+        </div>
+        <label><input type="checkbox" data-022d-pref-inapp checked> In-app notifications enabled</label>
+        <div class="projectpulse-022d-topbar-muted" style="margin-top:8px;">Email delivery: disabled. Future email must use the shared provider safety gate.</div>
+        <div class="projectpulse-022d-topbar-toolbar">
+          <button type="button" class="projectpulse-022d-topbar-action projectpulse-022d-topbar-primary" data-022d-save-preference ${isViewAs() ? "disabled" : ""}>Save preference</button>
+        </div>
+      </div>
+
+      <div class="projectpulse-022d-topbar-card">
+        <div class="projectpulse-022d-topbar-section-title" style="margin-top:0;">Saved preferences</div>
+        ${preferenceRows}
+      </div>
+
+      <div class="projectpulse-022d-topbar-card">
+        <div class="projectpulse-022d-topbar-section-title" style="margin-top:0;">Routing rules</div>
+        <p class="projectpulse-022d-topbar-muted">Routing rules are in-app only. Email delivery remains disabled.</p>
+        ${ruleRows}
+      </div>
+    `;
+
+    body.querySelectorAll("[data-022d-ack]").forEach((button) => {
+      button.addEventListener("click", () => acknowledgeNotification(button.getAttribute("data-022d-ack")));
+    });
+
+    body.querySelector("[data-022d-save-preference]")?.addEventListener("click", savePreference);
+
+    body.querySelectorAll("[data-022d-rule-index]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const index = Number(button.getAttribute("data-022d-rule-index"));
+        const rule = state.routingRules[index];
+        if (rule) toggleRule(rule);
+      });
+    });
+  };
+
+  const sync = () => {
+    hidePageContextGuide();
+    ensureHost();
+    loadData(false);
+  };
+
+  document.addEventListener("DOMContentLoaded", sync);
+  window.addEventListener("hashchange", sync);
+  window.addEventListener("storage", sync);
+
+  const observer = new MutationObserver(() => {
+    clearTimeout(window.__projectpulse022dTopbarTimer);
+    window.__projectpulse022dTopbarTimer = setTimeout(sync, 140);
+  });
+
+  observer.observe(document.documentElement, {
+    childList: true,
+    subtree: true
+  });
+
+  sync();
+})();
+</script>
+<!-- 022D Topbar Notification Dropdown Fix - END -->
+
+
+
+
+<!-- 022E_DASHBOARD_NOTIFICATION_CARD_START -->
+<style id="projectpulse-022e-dashboard-notification-card-style">
+  #projectpulse-022d-topbar-notification-host,
+  .projectpulse-022d-topbar-host,
+  #projectpulse-production-notification-dashboard-shortcut,
+  #projectpulse-022d-notification-root {
+    display: none !important;
+  }
+
+  #projectpulse-022e-dashboard-notification-card {
+    border: 1px solid rgba(148, 163, 184, 0.32);
+    border-radius: 18px;
+    background: #ffffff;
+    padding: 1.15rem;
+    min-height: 150px;
+    box-shadow: 0 12px 30px rgba(15, 23, 42, 0.04);
+    color: #111827;
+  }
+
+  #projectpulse-022e-dashboard-notification-card .projectpulse-022e-eyebrow {
+    color: #64748b;
+    font-size: 0.72rem;
+    font-weight: 900;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 0.55rem;
+  }
+
+  #projectpulse-022e-dashboard-notification-card h3 {
+    margin: 0 0 0.55rem;
+    font-size: 1.05rem;
+    line-height: 1.25;
+  }
+
+  #projectpulse-022e-dashboard-notification-card p {
+    margin: 0;
+    color: #5b6b89;
+    line-height: 1.45;
+  }
+
+  .projectpulse-022e-card-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    margin-top: 1rem;
+  }
+
+  .projectpulse-022e-button {
+    border: 1px solid rgba(37, 99, 235, 0.24);
+    border-radius: 12px;
+    background: #ffffff;
+    color: #111827;
+    padding: 0.6rem 0.85rem;
+    font-weight: 850;
+    cursor: pointer;
+  }
+
+  .projectpulse-022e-button.primary {
+    background: #0f2a55;
+    color: #ffffff;
+    border-color: #0f2a55;
+  }
+
+  .projectpulse-022e-badge {
+    min-width: 24px;
+    height: 24px;
+    border-radius: 999px;
+    background: #ef4444;
+    color: #ffffff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 0.45rem;
+    font-size: 0.78rem;
+    font-weight: 950;
+  }
+
+  #projectpulse-022e-dashboard-notification-panel {
+    grid-column: 1 / -1;
+    border: 1px solid rgba(148, 163, 184, 0.32);
+    border-radius: 20px;
+    background: #f8fafc;
+    padding: 1rem;
+    box-shadow: 0 18px 44px rgba(15, 23, 42, 0.08);
+    color: #111827;
+  }
+
+  #projectpulse-022e-dashboard-notification-panel[hidden] {
+    display: none !important;
+  }
+
+  .projectpulse-022e-panel-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .projectpulse-022e-panel-title {
+    margin: 0;
+    font-size: 1.2rem;
+    font-weight: 950;
+  }
+
+  .projectpulse-022e-muted {
+    color: #64748b;
+    line-height: 1.45;
+  }
+
+  .projectpulse-022e-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.7rem;
+    margin-bottom: 1rem;
+  }
+
+  .projectpulse-022e-metric,
+  .projectpulse-022e-section {
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    border-radius: 16px;
+    background: #ffffff;
+    padding: 0.9rem;
+  }
+
+  .projectpulse-022e-metric-label {
+    color: #64748b;
+    font-size: 0.72rem;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .projectpulse-022e-metric-value {
+    margin-top: 0.2rem;
+    font-size: 1.35rem;
+    font-weight: 950;
+  }
+
+  .projectpulse-022e-section-title {
+    margin: 1rem 0 0.6rem;
+    font-weight: 950;
+  }
+
+  .projectpulse-022e-notification-row {
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    border-radius: 16px;
+    background: #ffffff;
+    padding: 0.9rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .projectpulse-022e-row-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    align-items: flex-start;
+  }
+
+  .projectpulse-022e-pill {
+    border-radius: 999px;
+    padding: 0.25rem 0.55rem;
+    font-size: 0.72rem;
+    font-weight: 950;
+  }
+
+  .projectpulse-022e-pill.warning {
+    background: #fef3c7;
+    color: #92400e;
+  }
+
+  .projectpulse-022e-pill.info {
+    background: #dbeafe;
+    color: #1e3a8a;
+  }
+
+  .projectpulse-022e-pill.success {
+    background: #dcfce7;
+    color: #166534;
+  }
+
+  .projectpulse-022e-pill.critical,
+  .projectpulse-022e-pill.error {
+    background: #fee2e2;
+    color: #991b1b;
+  }
+
+  .projectpulse-022e-inline-status {
+    margin-top: 0.75rem;
+    border-radius: 14px;
+    padding: 0.8rem;
+    background: #e0f2fe;
+    color: #334155;
+  }
+
+  .projectpulse-022e-inline-status.error {
+    background: #fee2e2;
+    color: #991b1b;
+  }
+
+  .projectpulse-022e-form-row {
+    display: grid;
+    grid-template-columns: 1fr 160px;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+  }
+
+  #projectpulse-022e-dashboard-notification-panel select {
+    width: 100%;
+    border: 1px solid rgba(148, 163, 184, 0.45);
+    border-radius: 12px;
+    padding: 0.65rem 0.75rem;
+    background: #ffffff;
+  }
+
+  @media (max-width: 900px) {
+    .projectpulse-022e-grid,
+    .projectpulse-022e-form-row {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+
+<script id="projectpulse-022e-dashboard-notification-card-script">
+(function () {
+  const cardId = 'projectpulse-022e-dashboard-notification-card';
+  const panelId = 'projectpulse-022e-dashboard-notification-panel';
+  const sessionStorageKey = 'projectPulseAuthSession';
+  const viewAsStorageKey = 'projectPulseViewAsUser';
+
+  const state = {
+    open: false,
+    loading: false,
+    summary: null,
+    notifications: [],
+    preferences: [],
+    routingRules: [],
+    readiness: null,
+    message: '',
+    error: ''
+  };
+
+  function cleanText(value) {
+    return String(value || '').replace(/\s+/g, ' ').trim();
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? '')
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#039;');
+  }
+
+  function formatDate(value) {
+    if (!value) return '';
+    try {
+      return new Date(value).toLocaleString();
+    } catch {
+      return value;
+    }
+  }
+
+  function getSessionToken() {
+    try {
+      const raw = window.localStorage.getItem(sessionStorageKey);
+      if (!raw) return '';
+      const parsed = JSON.parse(raw);
+      return parsed.sessionToken || parsed.token || parsed.rawToken || '';
+    } catch {
+      return '';
+    }
+  }
+
+  function getViewAsUserId() {
+    try {
+      const raw = window.localStorage.getItem(viewAsStorageKey);
+      if (!raw) return '';
+      if (/^[0-9a-fA-F-]{36}$/.test(raw.trim())) return raw.trim();
+      const parsed = JSON.parse(raw);
+      return parsed.userId || parsed.id || parsed.viewAsUserId || '';
+    } catch {
+      return '';
+    }
+  }
+
+  function isViewAs() {
+    return !!getViewAsUserId();
+  }
+
+  async function apiFetch(path, options = {}) {
+    const token = getSessionToken();
+    if (!token) {
+      throw new Error('Sign in is required before loading production notifications.');
+    }
+
+    const headers = {
+      'X-ProjectPulse-Session': token,
+      ...(options.headers || {})
+    };
+
+    const viewAsUserId = getViewAsUserId();
+    if (viewAsUserId) {
+      headers['X-ProjectPulse-View-As-User'] = viewAsUserId;
+    }
+
+    const response = await fetch(path, { ...options, headers });
+    const raw = await response.text();
+
+    let data = null;
+    try {
+      data = raw ? JSON.parse(raw) : null;
+    } catch {
+      data = { raw };
+    }
+
+    if (!response.ok) {
+      throw new Error(data?.message || data?.title || `HTTP ${response.status}`);
+    }
+
+    return data;
+  }
+
+  function getArray(data, names) {
+    for (const name of names) {
+      if (Array.isArray(data?.[name])) return data[name];
+    }
+    if (Array.isArray(data)) return data;
+    return [];
+  }
+
+  function severityClass(value) {
+    const normalized = String(value || 'info').toLowerCase();
+    if (normalized === 'warning') return 'warning';
+    if (normalized === 'critical') return 'critical';
+    if (normalized === 'error') return 'error';
+    if (normalized === 'success') return 'success';
+    return 'info';
+  }
+
+  function getNotificationId(item) {
+    return item.notificationId || item.productionNotificationEventId || item.eventId || item.id || '';
+  }
+
+  function isAcknowledged(item) {
+    return !!(item.acknowledged || item.isAcknowledged || item.acknowledgedAt || item.acknowledgedAtUtc);
+  }
+
+  function findDashboardGrid() {
+    const candidates = Array.from(document.querySelectorAll('div, section, article'))
+      .filter((element) => {
+        if (element.id === cardId || element.closest(`#${cardId}`)) return false;
+        const text = cleanText(element.textContent);
+        if (!text.includes('Project Workload')) return false;
+        if (!text.includes('Customer Directory')) return false;
+        if (!text.includes('Time Entry')) return false;
+
+        const rect = element.getBoundingClientRect();
+        return rect.width > 700 && rect.height > 250;
+      })
+      .sort((a, b) => {
+        const ar = a.getBoundingClientRect();
+        const br = b.getBoundingClientRect();
+        return (ar.width * ar.height) - (br.width * br.height);
+      });
+
+    return candidates[0] || null;
+  }
+
+  function ensureCard() {
+    let card = document.getElementById(cardId);
+    let panel = document.getElementById(panelId);
+
+    const grid = findDashboardGrid();
+    if (!grid) return null;
+
+    if (!card) {
+      card = document.createElement('section');
+      card.id = cardId;
+      card.innerHTML = `
+        <div class="projectpulse-022e-eyebrow">Notifications</div>
+        <h3>Production Notification Center</h3>
+        <p>Review production alerts, readiness notices, preferences, and routing rules without crowding the top bar.</p>
+        <div class="projectpulse-022e-card-actions">
+          <button type="button" class="projectpulse-022e-button primary" data-022e-action="toggle">Open notifications</button>
+          <span class="projectpulse-022e-badge" data-022e-badge hidden>0</span>
+        </div>
+      `;
+      grid.insertBefore(card, grid.firstElementChild || null);
+
+      card.querySelector('[data-022e-action="toggle"]').addEventListener('click', async () => {
+        state.open = !state.open;
+        render();
+        if (state.open) await loadAll();
+      });
+    }
+
+    if (!panel) {
+      panel = document.createElement('section');
+      panel.id = panelId;
+      panel.hidden = true;
+      if (card.nextSibling) {
+        grid.insertBefore(panel, card.nextSibling);
+      } else {
+        grid.appendChild(panel);
+      }
+    }
+
+    return { card, panel };
+  }
+
+  async function loadAll() {
+    if (state.loading) return;
+    state.loading = true;
+    state.message = 'Loading notifications…';
+    state.error = '';
+    render();
+
+    try {
+      const [summaryData, listData, preferenceData, routingData] = await Promise.all([
+        apiFetch('/api/production/notifications/summary'),
+        apiFetch('/api/production/notifications?limit=20'),
+        apiFetch('/api/production/notifications/preferences/summary'),
+        apiFetch('/api/production/notifications/routing-rules')
+      ]);
+
+      state.summary = summaryData?.summary || null;
+      state.notifications = getArray(listData, ['notifications', 'events', 'items', 'results']);
+      state.preferences = getArray(preferenceData, ['preferences', 'items', 'results']);
+      state.routingRules = getArray(routingData, ['routingRules', 'rules', 'items', 'results']);
+      state.message = '';
+      state.error = '';
+    } catch (error) {
+      state.error = error.message || 'Failed to load notifications.';
+      state.message = '';
+    } finally {
+      state.loading = false;
+      render();
+    }
+  }
+
+  async function loadReadinessInline() {
+    state.message = 'Checking production readiness…';
+    state.error = '';
+    render();
+
+    try {
+      const result = await apiFetch('/api/production/readiness-command-center');
+      state.readiness = result?.summary || result || null;
+      state.message = 'Readiness status loaded below.';
+    } catch (error) {
+      state.error = error.message || 'Failed to load readiness status.';
+      state.message = '';
+    }
+
+    render();
+  }
+
+  async function acknowledge(notificationId) {
+    if (isViewAs()) {
+      state.error = 'Write actions are disabled while using Administrator View-As preview.';
+      render();
+      return;
+    }
+
+    if (!notificationId) {
+      state.error = 'This notification does not include an acknowledgment id.';
+      render();
+      return;
+    }
+
+    state.message = 'Acknowledging notification…';
+    state.error = '';
+    render();
+
+    try {
+      await apiFetch('/api/production/notifications/acknowledge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notificationId })
+      });
+      await loadAll();
+      state.message = 'Notification acknowledged.';
+    } catch (error) {
+      state.error = error.message || 'Failed to acknowledge notification.';
+      state.message = '';
+    }
+
+    render();
+  }
+
+  async function savePreference() {
+    if (isViewAs()) {
+      state.error = 'Write actions are disabled while using Administrator View-As preview.';
+      render();
+      return;
+    }
+
+    const panel = document.getElementById(panelId);
+    const moduleKey = panel?.querySelector('[data-022e-pref-module]')?.value || 'PRODUCTION_READINESS';
+    const severity = panel?.querySelector('[data-022e-pref-severity]')?.value || 'warning';
+    const inAppEnabled = !!panel?.querySelector('[data-022e-pref-inapp]')?.checked;
+
+    state.message = 'Saving preference…';
+    state.error = '';
+    render();
+
+    try {
+      await apiFetch('/api/production/notifications/preferences', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ moduleKey, severity, inAppEnabled, emailEnabled: false })
+      });
+      await loadAll();
+      state.message = 'Preference saved. Email remains disabled.';
+    } catch (error) {
+      state.error = error.message || 'Failed to save preference.';
+      state.message = '';
+    }
+
+    render();
+  }
+
+  function openRelated(item) {
+    const actionUrl = String(item.actionUrl || '').trim();
+    const moduleKey = String(item.moduleKey || item.module || '').toUpperCase();
+
+    if (actionUrl.includes('production-readiness') || moduleKey.includes('PRODUCTION')) {
+      loadReadinessInline();
+      return;
+    }
+
+    if (actionUrl && actionUrl !== '#') {
+      if (actionUrl.startsWith('#')) {
+        window.location.hash = actionUrl;
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+
+      if (actionUrl.startsWith('/#')) {
+        window.location.href = actionUrl;
+        return;
+      }
+
+      if (actionUrl.startsWith('http')) {
+        window.location.href = actionUrl;
+        return;
+      }
+    }
+
+    window.location.hash = '#dashboard';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function render() {
+    const mounted = ensureCard();
+    if (!mounted) return;
+
+    const { card, panel } = mounted;
+    const badge = card.querySelector('[data-022e-badge]');
+    const toggle = card.querySelector('[data-022e-action="toggle"]');
+
+    const count = Number(state.summary?.unacknowledgedCount || 0);
+    if (badge) {
+      badge.textContent = String(count);
+      badge.hidden = count <= 0;
+    }
+
+    if (toggle) {
+      toggle.textContent = state.open ? 'Close notifications' : 'Open notifications';
+    }
+
+    panel.hidden = !state.open;
+
+    if (!state.open) return;
+
+    if (!getSessionToken()) {
+      panel.innerHTML = `
+        <div class="projectpulse-022e-panel-header">
+          <div>
+            <h3 class="projectpulse-022e-panel-title">Production Notification Center</h3>
+            <p class="projectpulse-022e-muted">Sign in is required before loading notifications.</p>
+          </div>
+        </div>
+      `;
+      return;
+    }
+
+    const summary = state.summary || {};
+    const notifications = state.notifications || [];
+    const modules = Array.from(new Set(['PRODUCTION_READINESS', 'TIME_COMPLIANCE', 'APPROVAL_WORKFLOW', 'EXPORT_RECONCILIATION', 'SYSTEM'].concat((state.routingRules || []).map((rule) => rule.moduleKey).filter(Boolean)))).sort();
+
+    const notificationRows = notifications.length
+      ? notifications.map((item, index) => {
+          const severity = item.severity || 'info';
+          const notificationId = getNotificationId(item);
+          const acknowledged = isAcknowledged(item);
+          const title = item.title || item.notificationTitle || item.notificationKey || item.eventKey || 'Notification';
+          const body = item.body || item.message || item.description || '';
+          const moduleKey = item.moduleKey || item.module || 'notification';
+          const createdAt = item.createdAt || item.createdAtUtc || item.eventCreatedAt || '';
+
+          return `
+            <div class="projectpulse-022e-notification-row">
+              <div class="projectpulse-022e-row-head">
+                <div>
+                  <strong>${escapeHtml(title)}</strong>
+                  <div class="projectpulse-022e-muted">${escapeHtml(moduleKey)} · ${escapeHtml(formatDate(createdAt))}</div>
+                </div>
+                <span class="projectpulse-022e-pill ${severityClass(severity)}">${escapeHtml(severity)}</span>
+              </div>
+              <p style="margin-top:0.65rem;">${escapeHtml(body)}</p>
+              <div class="projectpulse-022e-card-actions">
+                ${acknowledged ? '<span class="projectpulse-022e-pill success">Acknowledged</span>' : `<button type="button" class="projectpulse-022e-button primary" data-022e-ack="${escapeHtml(notificationId)}">Acknowledge</button>`}
+                <button type="button" class="projectpulse-022e-button" data-022e-related="${index}">Open related page</button>
+              </div>
+            </div>
+          `;
+        }).join('')
+      : '<div class="projectpulse-022e-section">No visible notifications for this role/context.</div>';
+
+    const preferenceRows = state.preferences.length
+      ? state.preferences.map((pref) => `
+          <div class="projectpulse-022e-notification-row">
+            <strong>${escapeHtml(pref.moduleKey || '')} · ${escapeHtml(pref.severity || '')}</strong>
+            <div class="projectpulse-022e-muted">In-app: ${pref.inAppEnabled ? 'enabled' : 'disabled'} · Email: disabled</div>
+          </div>
+        `).join('')
+      : '<p class="projectpulse-022e-muted">No saved preferences yet.</p>';
+
+    const ruleRows = state.routingRules.length
+      ? state.routingRules.map((rule) => `
+          <div class="projectpulse-022e-notification-row">
+            <strong>${escapeHtml(rule.ruleKey || '')}</strong>
+            <div class="projectpulse-022e-muted">${escapeHtml(rule.moduleKey || '')} · ${escapeHtml(rule.severity || '')}</div>
+            <div class="projectpulse-022e-muted">Roles: ${escapeHtml((rule.targetRoleCodes || []).join(', ') || 'All')}</div>
+          </div>
+        `).join('')
+      : '<p class="projectpulse-022e-muted">No routing rules are visible for this role/context.</p>';
+
+    const moduleOptions = modules.map((moduleKey) => `<option value="${escapeHtml(moduleKey)}">${escapeHtml(moduleKey)}</option>`).join('');
+
+    panel.innerHTML = `
+      <div class="projectpulse-022e-panel-header">
+        <div>
+          <h3 class="projectpulse-022e-panel-title">Production Notification Center</h3>
+          <p class="projectpulse-022e-muted">In-app alerts, preferences, and routing rules. Email remains disabled here.</p>
+        </div>
+        <button type="button" class="projectpulse-022e-button" data-022e-close>Close</button>
+      </div>
+
+      <div class="projectpulse-022e-card-actions">
+        <button type="button" class="projectpulse-022e-button primary" data-022e-refresh>Refresh</button>
+        <button type="button" class="projectpulse-022e-button" data-022e-readiness>Check readiness status</button>
+      </div>
+
+      ${state.message ? `<div class="projectpulse-022e-inline-status">${escapeHtml(state.message)}</div>` : ''}
+      ${state.error ? `<div class="projectpulse-022e-inline-status error">${escapeHtml(state.error)}</div>` : ''}
+
+      <div class="projectpulse-022e-section-title">Current notification posture</div>
+      <div class="projectpulse-022e-section">
+        <p class="projectpulse-022e-muted">${escapeHtml(summary.userDisplayName || '')}${summary.userEmail ? ` (${escapeHtml(summary.userEmail)})` : ''}</p>
+        <div class="projectpulse-022e-grid">
+          <div class="projectpulse-022e-metric"><div class="projectpulse-022e-metric-label">Visible</div><div class="projectpulse-022e-metric-value">${escapeHtml(summary.visibleNotificationCount ?? notifications.length ?? 0)}</div></div>
+          <div class="projectpulse-022e-metric"><div class="projectpulse-022e-metric-label">Unacked</div><div class="projectpulse-022e-metric-value">${escapeHtml(summary.unacknowledgedCount ?? 0)}</div></div>
+          <div class="projectpulse-022e-metric"><div class="projectpulse-022e-metric-label">Warnings</div><div class="projectpulse-022e-metric-value">${escapeHtml(summary.warningCount ?? 0)}</div></div>
+          <div class="projectpulse-022e-metric"><div class="projectpulse-022e-metric-label">Critical</div><div class="projectpulse-022e-metric-value">${escapeHtml(summary.criticalCount ?? 0)}</div></div>
+        </div>
+      </div>
+
+      ${state.readiness ? `
+        <div class="projectpulse-022e-section-title">Production readiness status</div>
+        <div class="projectpulse-022e-section">
+          <strong>Production ready: ${state.readiness.productionReady ? 'Yes' : 'No'}</strong>
+          <p class="projectpulse-022e-muted">Ready checks: ${escapeHtml(state.readiness.readyCheckCount ?? '')} / ${escapeHtml(state.readiness.checkCount ?? '')}</p>
+        </div>
+      ` : ''}
+
+      <div class="projectpulse-022e-section-title">Latest notifications</div>
+      ${notificationRows}
+
+      <div class="projectpulse-022e-section-title">Preference controls</div>
+      <div class="projectpulse-022e-section">
+        <p class="projectpulse-022e-muted">Preferences are scoped by user, module, and severity. Email is intentionally disabled.</p>
+        <div class="projectpulse-022e-form-row">
+          <select data-022e-pref-module>${moduleOptions}</select>
+          <select data-022e-pref-severity>
+            <option value="info">info</option>
+            <option value="warning" selected>warning</option>
+            <option value="critical">critical</option>
+            <option value="success">success</option>
+            <option value="error">error</option>
+          </select>
+        </div>
+        <label><input type="checkbox" data-022e-pref-inapp checked> In-app notifications enabled</label>
+        <div class="projectpulse-022e-card-actions">
+          <button type="button" class="projectpulse-022e-button primary" data-022e-save-pref>Save preference</button>
+        </div>
+      </div>
+
+      <div class="projectpulse-022e-section-title">Saved preferences</div>
+      ${preferenceRows}
+
+      <div class="projectpulse-022e-section-title">Routing rules</div>
+      ${ruleRows}
+    `;
+
+    panel.querySelector('[data-022e-close]')?.addEventListener('click', () => {
+      state.open = false;
+      render();
+    });
+
+    panel.querySelector('[data-022e-refresh]')?.addEventListener('click', loadAll);
+    panel.querySelector('[data-022e-readiness]')?.addEventListener('click', loadReadinessInline);
+    panel.querySelector('[data-022e-save-pref]')?.addEventListener('click', savePreference);
+
+    panel.querySelectorAll('[data-022e-ack]').forEach((button) => {
+      button.addEventListener('click', () => acknowledge(button.getAttribute('data-022e-ack')));
+    });
+
+    panel.querySelectorAll('[data-022e-related]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const index = Number(button.getAttribute('data-022e-related'));
+        const item = state.notifications[index];
+        if (item) openRelated(item);
+      });
+    });
+  }
+
+  function sync() {
+    ensureCard();
+    render();
+  }
+
+  document.addEventListener('DOMContentLoaded', sync);
+  window.addEventListener('hashchange', () => setTimeout(sync, 100));
+  window.addEventListener('storage', () => setTimeout(sync, 100));
+  window.addEventListener('projectpulse:view-as-changed', () => setTimeout(sync, 100));
+
+  const observer = new MutationObserver(() => {
+    clearTimeout(window.__projectpulse022eDashboardNotificationTimer);
+    window.__projectpulse022eDashboardNotificationTimer = setTimeout(sync, 120);
+  });
+
+  if (document.body) {
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
+
+  sync();
+})();
+</script>
+<!-- 022E_DASHBOARD_NOTIFICATION_CARD_END -->
+
+
+<!-- 022F_PRODUCTION_READINESS_ROUTE_GUARD_START -->
+<style id="projectpulse-022f-production-readiness-route-guard-style">
+  #projectpulse-022f-readiness-route-message {
+    max-width: 1180px;
+    margin: 1rem auto;
+    border: 1px solid rgba(37, 99, 235, 0.22);
+    border-radius: 16px;
+    background: #eff6ff;
+    color: #1e3a8a;
+    padding: 0.85rem 1rem;
+    font-weight: 750;
+    box-shadow: 0 12px 30px rgba(15, 23, 42, 0.06);
+  }
+</style>
+
+<script id="projectpulse-022f-production-readiness-route-guard">
+(function () {
+  const redirectFlagKey = 'projectpulseProductionReadinessRedirected';
+  const guardedRoutes = new Set([
+    'production-readiness',
+    '/production-readiness'
+  ]);
+
+  function normalizedHashRoute() {
+    return String(window.location.hash || '#dashboard')
+      .replace(/^#/, '')
+      .split('?')[0]
+      .replace(/\/+$/, '')
+      .trim()
+      .toLowerCase();
+  }
+
+  function redirectToDashboard() {
+    const route = normalizedHashRoute();
+
+    if (!guardedRoutes.has(route)) {
+      return false;
+    }
+
+    try {
+      window.sessionStorage.setItem(redirectFlagKey, '1');
+    } catch {
+      // ignore storage failures
+    }
+
+    const nextUrl = window.location.pathname + window.location.search + '#dashboard';
+    window.history.replaceState(null, '', nextUrl);
+
+    setTimeout(() => {
+      window.dispatchEvent(new Event('hashchange'));
+      showRedirectMessage();
+    }, 0);
+
+    return true;
+  }
+
+  function findDashboardContainer() {
+    const candidates = Array.from(document.querySelectorAll('main, section, article, div'))
+      .filter((element) => {
+        const text = String(element.textContent || '').replace(/\s+/g, ' ').trim();
+        if (!text.includes('Role-Based Workspace')) return false;
+        if (!text.includes('Administrator') && !text.includes('Project Workload')) return false;
+
+        const rect = element.getBoundingClientRect();
+        return rect.width > 600 && rect.height > 120;
+      })
+      .sort((a, b) => {
+        const ar = a.getBoundingClientRect();
+        const br = b.getBoundingClientRect();
+        return (ar.width * ar.height) - (br.width * br.height);
+      });
+
+    return candidates[0] || document.querySelector('main') || document.body;
+  }
+
+  function showRedirectMessage() {
+    let shouldShow = false;
+
+    try {
+      shouldShow = window.sessionStorage.getItem(redirectFlagKey) === '1';
+      window.sessionStorage.removeItem(redirectFlagKey);
+    } catch {
+      shouldShow = false;
+    }
+
+    if (!shouldShow || document.getElementById('projectpulse-022f-readiness-route-message')) {
+      return;
+    }
+
+    const message = document.createElement('div');
+    message.id = 'projectpulse-022f-readiness-route-message';
+    message.textContent = 'Production readiness is available from the Production Notification Center card. The direct readiness route was redirected to prevent the endless-scroll page.';
+
+    const container = findDashboardContainer();
+    if (container && container.parentElement) {
+      container.parentElement.insertBefore(message, container);
+    } else {
+      document.body.insertBefore(message, document.body.firstChild || null);
+    }
+
+    setTimeout(() => {
+      message.remove();
+    }, 8000);
+  }
+
+  function guard() {
+    const redirected = redirectToDashboard();
+    if (!redirected) {
+      showRedirectMessage();
+    }
+  }
+
+  guard();
+
+  window.addEventListener('hashchange', guard, true);
+  document.addEventListener('DOMContentLoaded', guard);
+  setTimeout(guard, 100);
+  setTimeout(guard, 500);
+})();
+</script>
+<!-- 022F_PRODUCTION_READINESS_ROUTE_GUARD_END -->
+
+</body>
 </html>
