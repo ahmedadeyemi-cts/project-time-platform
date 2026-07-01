@@ -2945,5 +2945,1050 @@
 </script>
 <!-- 022F_PRODUCTION_READINESS_ROUTE_GUARD_END -->
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<!-- 025M_STANDALONE_SOW_ROUTE_START -->
+<style id="projectpulse-025m-style">
+  #projectpulse-025-sow-card {
+    border: 1px solid rgba(148, 163, 184, 0.32);
+    border-radius: 20px;
+    background: #ffffff;
+    color: #111827;
+    box-shadow: 0 14px 36px rgba(15, 23, 42, 0.06);
+    padding: 1.15rem;
+    min-height: 175px;
+  }
+
+  #projectpulse-025m-shell {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483000;
+    background: linear-gradient(135deg, #eef8ff 0%, #f8fbff 42%, #eef8f2 100%);
+    overflow-y: auto;
+    padding: 1.25rem;
+    box-sizing: border-box;
+    display: none;
+  }
+
+  #projectpulse-025m-shell[data-open="true"] {
+    display: block;
+  }
+
+  #projectpulse-025m-page {
+    max-width: 1500px;
+    margin: 0 auto 2rem;
+    border: 1px solid rgba(148, 163, 184, 0.32);
+    border-radius: 24px;
+    background: #ffffff;
+    color: #111827;
+    box-shadow: 0 20px 60px rgba(15, 23, 42, 0.12);
+    padding: 1.25rem;
+  }
+
+  .projectpulse-025-eyebrow {
+    color: #64748b;
+    font-size: 0.72rem;
+    font-weight: 950;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 0.55rem;
+  }
+
+  #projectpulse-025-sow-card h3,
+  #projectpulse-025m-page h2,
+  #projectpulse-025m-page h3 {
+    margin: 0 0 0.55rem;
+    line-height: 1.25;
+  }
+
+  #projectpulse-025-sow-card p,
+  #projectpulse-025m-page p {
+    color: #5b6b89;
+    line-height: 1.48;
+  }
+
+  .projectpulse-025-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.65rem;
+    align-items: center;
+    margin-top: 1rem;
+  }
+
+  .projectpulse-025-button {
+    border: 1px solid rgba(37, 99, 235, 0.24);
+    border-radius: 12px;
+    background: #ffffff;
+    color: #111827;
+    padding: 0.65rem 0.9rem;
+    font-weight: 900;
+    cursor: pointer;
+  }
+
+  .projectpulse-025-button.primary {
+    background: #0f2a55;
+    border-color: #0f2a55;
+    color: #ffffff;
+  }
+
+  .projectpulse-025-button.success {
+    background: #166534;
+    border-color: #166534;
+    color: #ffffff;
+  }
+
+  .projectpulse-025-button.warning {
+    background: #92400e;
+    border-color: #92400e;
+    color: #ffffff;
+  }
+
+  .projectpulse-025-pill {
+    border-radius: 999px;
+    padding: 0.28rem 0.58rem;
+    font-size: 0.72rem;
+    font-weight: 950;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .projectpulse-025-pill.blue { background: #dbeafe; color: #1e3a8a; }
+  .projectpulse-025-pill.green { background: #dcfce7; color: #166534; }
+  .projectpulse-025-pill.amber { background: #fef3c7; color: #92400e; }
+
+  .projectpulse-025-page-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.22);
+    padding-bottom: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .projectpulse-025-layout {
+    display: grid;
+    grid-template-columns: 0.9fr 1.1fr;
+    gap: 1rem;
+    align-items: start;
+  }
+
+  .projectpulse-025-section {
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    border-radius: 18px;
+    background: #f8fafc;
+    padding: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .projectpulse-025-section.white {
+    background: #ffffff;
+  }
+
+  .projectpulse-025-field {
+    margin-bottom: 0.85rem;
+  }
+
+  .projectpulse-025-field label {
+    display: block;
+    font-size: 0.78rem;
+    color: #475569;
+    font-weight: 950;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    margin-bottom: 0.35rem;
+  }
+
+  .projectpulse-025-field input,
+  .projectpulse-025-field select,
+  .projectpulse-025-field textarea {
+    width: 100%;
+    border: 1px solid rgba(148, 163, 184, 0.45);
+    border-radius: 12px;
+    padding: 0.7rem 0.75rem;
+    background: #ffffff;
+    color: #111827;
+    font: inherit;
+  }
+
+  .projectpulse-025-field textarea,
+  .projectpulse-025-draft-section textarea {
+    min-height: 112px;
+    max-height: 240px;
+    overflow: auto;
+    resize: vertical;
+  }
+
+  .projectpulse-025-draft-section {
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    border-radius: 16px;
+    background: #ffffff;
+    padding: 0.9rem;
+    margin-bottom: 0.85rem;
+  }
+
+  .projectpulse-025-draft-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75rem;
+    align-items: center;
+    margin-bottom: 0.55rem;
+  }
+
+  .projectpulse-025-status {
+    border-radius: 16px;
+    padding: 0.85rem;
+    background: #eff6ff;
+    color: #1e3a8a;
+    font-weight: 750;
+    margin-top: 0.8rem;
+  }
+
+  .projectpulse-025-status.success { background: #dcfce7; color: #166534; }
+  .projectpulse-025-status.warning { background: #fef3c7; color: #92400e; }
+  .projectpulse-025-status.error { background: #fee2e2; color: #991b1b; }
+
+  .projectpulse-025-checklist {
+    display: grid;
+    gap: 0.55rem;
+  }
+
+  .projectpulse-025-checklist label {
+    display: flex;
+    gap: 0.55rem;
+    align-items: flex-start;
+    color: #334155;
+    line-height: 1.4;
+  }
+
+  .projectpulse-025-two-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.65rem;
+  }
+
+  .projectpulse-025-mini-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.65rem;
+  }
+
+  .projectpulse-025-metric {
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    border-radius: 14px;
+    padding: 0.8rem;
+    background: #ffffff;
+  }
+
+  .projectpulse-025-email-preview,
+  .projectpulse-025-prompt-preview,
+  .projectpulse-025-research-preview {
+    white-space: pre-wrap;
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    border-radius: 14px;
+    background: #ffffff;
+    padding: 0.85rem;
+    color: #334155;
+    max-height: 320px;
+    overflow: auto;
+  }
+
+  @media (max-width: 1050px) {
+    .projectpulse-025-layout,
+    .projectpulse-025-two-grid,
+    .projectpulse-025-mini-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .projectpulse-025-page-header {
+      flex-direction: column;
+    }
+  }
+</style>
+
+<script id="projectpulse-025m-script">
+(function () {
+  if (window.__projectPulse025MInstalled) return;
+  window.__projectPulse025MInstalled = true;
+
+  const cardId = 'projectpulse-025-sow-card';
+  const shellId = 'projectpulse-025m-shell';
+  const pageId = 'projectpulse-025m-page';
+  const storageKey = 'projectpulse025MStandaloneDraft';
+  const customers = [{"id": "great-lakes-healthcare", "name": "Great Lakes Healthcare", "code": "GLH"}, {"id": "summit-manufacturing", "name": "Summit Manufacturing", "code": "SMFG"}];
+
+  const sectionKeys = ['executiveSummary', 'projectScope', 'deliverables', 'assumptions', 'exclusions', 'handoffNotes'];
+  const labels = {
+    executiveSummary: 'Executive Summary',
+    projectScope: 'Project Scope',
+    deliverables: 'Deliverables',
+    assumptions: 'Assumptions',
+    exclusions: 'Exclusions',
+    handoffNotes: 'Sales-to-Delivery Handoff Notes'
+  };
+
+  const state = {
+    customerId: customers[0] ? customers[0].id : '',
+    customerName: customers[0] ? customers[0].name : '',
+    projectName: '',
+    crmSource: 'Manual / Existing ProjectPulse Customer',
+    opportunityRef: '',
+    quoteRef: '',
+    solutionArchitect: '',
+    salesOwner: '',
+    projectType: 'Professional Services',
+    requestedTimeline: '',
+    templateName: '',
+    templateVersion: 'v1',
+    templateFileName: '',
+    signedSowFileName: '',
+    gsdFileName: '',
+    highLevelDescription: '',
+    researchBrief: '',
+    sections: {},
+    status: '',
+    statusType: '',
+    reviewComplete: false,
+    scopeAccuracyReviewed: false,
+    assumptionsReviewed: false,
+    exclusionsReviewed: false,
+    hallucinationReviewed: false,
+    canonicalDocsReviewed: false,
+    researchReviewed: false,
+    readyForSignedHandoff: false,
+    handoffSaved: false
+  };
+
+  sectionKeys.forEach(function (key) { state.sections[key] = ''; });
+
+  function escapeHtml(value) {
+    return String(value == null ? '' : value)
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#039;');
+  }
+
+  function cleanText(value) {
+    return String(value || '').replace(/\s+/g, ' ').trim();
+  }
+
+  function loadState() {
+    try {
+      const raw = window.localStorage.getItem(storageKey);
+      if (!raw) return;
+      const saved = JSON.parse(raw);
+      Object.assign(state, saved);
+      state.sections = Object.assign({}, state.sections, saved.sections || {});
+      if (!state.customerId && customers[0]) {
+        state.customerId = customers[0].id;
+        state.customerName = customers[0].name;
+      }
+    } catch {}
+  }
+
+  function saveState() {
+    try { window.localStorage.setItem(storageKey, JSON.stringify(state)); } catch {}
+  }
+
+  function route() {
+    return String(window.location.hash || '#dashboard').replace(/^#/, '').split('?')[0].toLowerCase();
+  }
+
+  function getDashboardGrid() {
+    const notificationCard = document.getElementById('projectpulse-022e-dashboard-notification-card');
+    if (notificationCard && notificationCard.parentElement) return notificationCard.parentElement;
+
+    const candidates = Array.from(document.querySelectorAll('section, article, div, main'))
+      .filter(function (element) {
+        if (element.id === cardId || element.closest('#' + cardId)) return false;
+        const text = cleanText(element.textContent);
+        const rect = element.getBoundingClientRect();
+        return rect.width > 700 &&
+          rect.height > 250 &&
+          text.includes('Project Workload') &&
+          text.includes('Project Workspace') &&
+          text.includes('Project Intake');
+      })
+      .sort(function (a, b) {
+        const ar = a.getBoundingClientRect();
+        const br = b.getBoundingClientRect();
+        return (ar.width * ar.height) - (br.width * br.height);
+      });
+
+    return candidates[0] || null;
+  }
+
+  function ensureCard() {
+    const grid = getDashboardGrid();
+    if (!grid) return null;
+
+    let card = document.getElementById(cardId);
+    if (!card) {
+      card = document.createElement('section');
+      card.id = cardId;
+      card.innerHTML =
+        '<div class="projectpulse-025-eyebrow">Module 025</div>' +
+        '<h3>SOW Generator + Claude Research Review</h3>' +
+        '<p>Create research-backed SOW scope and deliverables from Solution Architect input, reuse SOW/GSD project documents, and prepare Sales-to-Delivery handoff.</p>' +
+        '<div class="projectpulse-025-actions">' +
+          '<button type="button" class="projectpulse-025-button primary" data-025-open>Open SOW Generator</button>' +
+          '<span class="projectpulse-025-pill green">Dashboard module</span>' +
+          '<span class="projectpulse-025-pill amber">Research-backed draft</span>' +
+          '<span class="projectpulse-025-pill blue">SOW/GSD reused</span>' +
+        '</div>';
+
+      const notificationCard = document.getElementById('projectpulse-022e-dashboard-notification-card');
+      if (notificationCard && notificationCard.parentElement === grid) {
+        grid.insertBefore(card, notificationCard.nextSibling);
+      } else {
+        grid.insertBefore(card, grid.firstElementChild || null);
+      }
+
+      card.querySelector('[data-025-open]').addEventListener('click', function () {
+        window.location.hash = '#sow-generator';
+        render();
+      });
+    }
+
+    return card;
+  }
+
+  function ensureShell() {
+    let shell = document.getElementById(shellId);
+    if (!shell) {
+      shell = document.createElement('div');
+      shell.id = shellId;
+      shell.setAttribute('aria-label', 'SOW Generator route');
+      document.body.appendChild(shell);
+    }
+    return shell;
+  }
+
+  function openShell(open) {
+    const shell = ensureShell();
+    if (open) {
+      shell.setAttribute('data-open', 'true');
+      document.documentElement.style.overflow = 'hidden';
+      document.body.style.overflow = 'hidden';
+      renderShell();
+      setTimeout(function () { shell.scrollTop = 0; }, 0);
+    } else {
+      shell.removeAttribute('data-open');
+      document.documentElement.style.overflow = '';
+      document.body.style.overflow = '';
+    }
+  }
+
+  function setValue(root, name, value) {
+    const element = root.querySelector('[data-025-field="' + name + '"]');
+    if (element) element.value = value || '';
+  }
+
+  function setCheck(root, name, value) {
+    const element = root.querySelector('[data-025-check="' + name + '"]');
+    if (element) element.checked = !!value;
+  }
+
+  function captureInputs() {
+    const shell = document.getElementById(shellId);
+    if (!shell || shell.getAttribute('data-open') !== 'true') return;
+
+    function get(name) {
+      const element = shell.querySelector('[data-025-field="' + name + '"]');
+      return element ? element.value : '';
+    }
+
+    function checked(name) {
+      const element = shell.querySelector('[data-025-check="' + name + '"]');
+      return !!(element && element.checked);
+    }
+
+    state.customerId = get('customerId');
+    const customer = customers.find(function (item) { return item.id === state.customerId; });
+    state.customerName = customer ? customer.name : state.customerName;
+
+    ['projectName', 'crmSource', 'opportunityRef', 'quoteRef', 'solutionArchitect', 'salesOwner', 'projectType', 'requestedTimeline', 'templateName', 'templateVersion', 'highLevelDescription'].forEach(function (key) {
+      state[key] = get(key);
+    });
+
+    sectionKeys.forEach(function (key) {
+      const element = shell.querySelector('[data-025-section="' + key + '"]');
+      if (element) state.sections[key] = element.value;
+    });
+
+    state.researchReviewed = checked('researchReviewed');
+    state.reviewComplete = checked('reviewComplete');
+    state.scopeAccuracyReviewed = checked('scopeAccuracyReviewed');
+    state.assumptionsReviewed = checked('assumptionsReviewed');
+    state.exclusionsReviewed = checked('exclusionsReviewed');
+    state.hallucinationReviewed = checked('hallucinationReviewed');
+    state.canonicalDocsReviewed = checked('canonicalDocsReviewed');
+    state.readyForSignedHandoff = checked('readyForSignedHandoff');
+
+    saveState();
+  }
+
+  function classifyWorkType() {
+    const text = (state.highLevelDescription + ' ' + state.projectName + ' ' + state.projectType).toLowerCase();
+    if (text.includes('cucm') || text.includes('call manager') || text.includes('collaboration') || text.includes('voice')) return 'Cisco UC / Voice Platform Migration or Upgrade';
+    if (text.includes('firewall') || text.includes('asa') || text.includes('fortinet') || text.includes('palo alto')) return 'Firewall / Security Platform Implementation or Migration';
+    if (text.includes('contact center') || text.includes('uccx') || text.includes('webex contact')) return 'Contact Center Implementation or Migration';
+    if (text.includes('server') || text.includes('vmware') || text.includes('storage') || text.includes('backup')) return 'Systems / Server / Storage Implementation';
+    if (text.includes('service request')) return 'Service Request / Scoped Professional Services Task';
+    return 'Professional Services Delivery Engagement';
+  }
+
+  function researchStepsForWorkType(workType) {
+    if (workType.includes('Cisco UC')) {
+      return [
+        'Confirm source and target application versions, supported migration path, and required intermediate versions or migration method.',
+        'Review official vendor upgrade and migration documentation for compatibility, supported direct upgrades, migration tooling, and release-specific caveats.',
+        'Validate dependent systems such as Unity Connection, UCCX, Expressway, CUBE/gateways, E911, call recording, paging, SIP trunks, certificates, and integrations.',
+        'Perform readiness checks: backups, database replication, NTP/DNS, VM sizing, licensing, phone firmware, COP files, device compatibility, and supported operating environment.',
+        'Create migration or upgrade plan covering pre-change checks, implementation sequence, cutover, rollback, testing, and post-change validation.',
+        'Execute implementation activities during an approved maintenance window and validate registration, calling, voicemail, contact center, emergency calling, routing, and monitoring.',
+        'Document results, risks, exceptions, open items, and handoff instructions.'
+      ];
+    }
+
+    if (workType.includes('Firewall')) {
+      return [
+        'Identify current firewall platform, target platform/version, licensing, interface design, routing, NAT, VPN, security policies, and logging requirements.',
+        'Review vendor migration and deployment documentation for supported conversion methods, policy mapping, feature parity, and high-availability requirements.',
+        'Collect current configuration, rulebase, object groups, NAT rules, VPN settings, routes, certificates, and dependencies.',
+        'Create implementation plan covering staging, policy validation, migration/conversion, testing, cutover, rollback, and monitoring.',
+        'Validate traffic flows, VPN connectivity, NAT behavior, security logging, failover, and customer acceptance criteria.',
+        'Document final configuration, known exceptions, and operational handoff.'
+      ];
+    }
+
+    if (workType.includes('Contact Center')) {
+      return [
+        'Confirm source/target contact center platform, call flows, queues, agents, supervisors, reporting, recording, IVR, CRM integrations, and telephony dependencies.',
+        'Review vendor implementation and migration documentation for supported configuration, integration, and cutover methods.',
+        'Capture current call flows, scripts, prompts, routing logic, user roles, and reporting needs.',
+        'Build implementation plan covering design, configuration, testing, agent validation, supervisor validation, cutover, rollback, and handoff.',
+        'Validate inbound/outbound calls, queue routing, agent login, reporting, recordings, integrations, and post-cutover support.'
+      ];
+    }
+
+    if (workType.includes('Systems')) {
+      return [
+        'Confirm current infrastructure, target architecture, workloads, dependencies, backup posture, capacity, licensing, and maintenance windows.',
+        'Review vendor implementation documentation for supported versions, compatibility, sizing, prerequisites, and migration process.',
+        'Build deployment plan covering staging, migration, testing, rollback, monitoring, and customer acceptance.',
+        'Validate workload availability, performance, backup/restore, access, monitoring, and handoff documentation.'
+      ];
+    }
+
+    if (workType.includes('Service Request')) {
+      return [
+        'Clarify the requested service outcome, affected systems, acceptance criteria, risk level, change window, and customer dependencies.',
+        'Review relevant product/vendor documentation or internal implementation standards for the specific request.',
+        'Define scope boundaries, implementation tasks, validation steps, rollback approach, and customer handoff items.',
+        'Complete the approved service activity, validate results, document work performed, and identify follow-up actions.'
+      ];
+    }
+
+    return [
+      'Classify the engagement type based on the Solution Architect description and customer objective.',
+      'Research the actual delivery process using official/vendor documentation, internal standards, and known implementation practices.',
+      'Identify prerequisites, dependencies, scope boundaries, implementation phases, validation requirements, assumptions, exclusions, and handoff requirements.',
+      'Convert the researched process into SOW scope, deliverables, assumptions, exclusions, and acceptance criteria.',
+      'Require Solution Architect review before any SOW language is finalized.'
+    ];
+  }
+
+  function generateResearchBrief() {
+    captureInputs();
+
+    const workType = classifyWorkType();
+    const steps = researchStepsForWorkType(workType);
+    const description = state.highLevelDescription || '[High-level SA description required before final research]';
+
+    state.researchBrief =
+      'Process Research Brief\n\n' +
+      'Detected work type: ' + workType + '\n\n' +
+      'Solution Architect description:\n' + description + '\n\n' +
+      'Research-backed drafting approach:\n' +
+      'In the backend version, ProjectPulse should call the shared Claude provider with web/retrieval-enabled research. Claude should search official vendor/product documentation first, then trusted implementation references, and should return source-backed findings before drafting SOW language.\n\n' +
+      'Recommended delivery process steps:\n' +
+      steps.map(function (step, index) { return (index + 1) + '. ' + step; }).join('\n') +
+      '\n\nItems requiring Solution Architect review:\n' +
+      '- Confirm product versions, licensing, dependencies, and supported implementation path.\n' +
+      '- Confirm customer responsibilities, access requirements, maintenance window, and rollback expectations.\n' +
+      '- Confirm integrations, exclusions, and scope boundaries.\n' +
+      '- Confirm that no Claude-generated item is treated as final until reviewed by the Solution Architect.\n\n' +
+      'Source handling expectation for backend build:\n' +
+      '- Store the research run, research summary, sources reviewed, and final SA-reviewed edits.\n' +
+      '- Use the research brief to populate Project Scope and Deliverables.\n';
+
+    state.statusType = 'success';
+    state.status = 'Process Research Brief generated. Use Generate SOW Draft from Research to create scope and deliverables from this brief.';
+    saveState();
+    renderShell();
+  }
+
+  function seedSection(key) {
+    const customer = state.customerName || '[Customer]';
+    const project = state.projectName || '[Project]';
+    const description = state.highLevelDescription || '[High-level SA description required]';
+    const brief = state.researchBrief || 'Research brief has not been generated yet.';
+    const workType = classifyWorkType();
+
+    const map = {
+      executiveSummary:
+        'This Statement of Work draft is prepared for ' + customer + ' for the ' + project + ' engagement.\n\n' +
+        'Detected work type: ' + workType + '\n\n' +
+        'High-level business and technical intent:\n' + description + '\n\n' +
+        'This draft is based on the Process Research Brief and must be reviewed by the Solution Architect before external use.',
+
+      projectScope:
+        'The project scope includes activities required to deliver the agreed solution for ' + customer + ' under ' + project + '.\n\n' +
+        'Research-backed scope basis:\n' + brief + '\n\n' +
+        'Scope drafting rule:\nProject scope must be based on the researched delivery process, customer-approved quote/context, signed SOW/GSD, and Solution Architect review. Unsupported or unclear items must be excluded or flagged for review.',
+
+      deliverables:
+        'Draft deliverables for ' + project + ':\n' +
+        researchStepsForWorkType(workType).map(function (step, index) { return (index + 1) + '. ' + step; }).join('\n') +
+        '\n\nDeliverables must be adjusted by the Solution Architect to match the quote, signed SOW, approved GSD, and customer expectations.',
+
+      assumptions:
+        'Draft assumptions:\n' +
+        '1. Customer stakeholders will provide timely access, approvals, and required technical information.\n' +
+        '2. The approved GSD represents the current technical design baseline.\n' +
+        '3. Work outside the signed SOW requires review before assignment.\n' +
+        '4. ProjectPulse will use the canonical SOW/GSD document area as the source of truth.\n' +
+        '5. Claude research output is draft-only and requires Solution Architect review.',
+
+      exclusions:
+        'Draft exclusions:\n' +
+        '1. Work not explicitly included in the signed SOW or approved GSD.\n' +
+        '2. Customer environment changes not identified during solution design.\n' +
+        '3. Additional integrations, migrations, remediation, licensing, or support activities not included in the quote.\n' +
+        '4. Any Claude-generated recommendation not verified by the Solution Architect.\n' +
+        '5. Any vendor/product work that is unsupported by current official guidance.',
+
+      handoffNotes:
+        'Sales-to-Delivery handoff notes:\n' +
+        '- CRM source: ' + state.crmSource + '\n' +
+        '- Quote/opportunity reference: ' + (state.quoteRef || state.opportunityRef || '[Reference]') + '\n' +
+        '- Solution Architect: ' + (state.solutionArchitect || '[Solution Architect]') + '\n' +
+        '- Project type: ' + state.projectType + '\n' +
+        '- Detected work type: ' + workType + '\n' +
+        '- Signed SOW and GSD remain in the existing Project Hours / SOW-GSD / Engineer Allocation document area.\n' +
+        '- Once Sales marks the SOW signed and uploads the signed SOW/GSD, ProjectPulse should notify PTC and Executive stakeholders.'
+    };
+
+    return map[key] || '';
+  }
+
+  function generateDraftFromResearch() {
+    captureInputs();
+
+    if (!state.researchBrief) {
+      const workType = classifyWorkType();
+      const steps = researchStepsForWorkType(workType);
+      state.researchBrief =
+        'Process Research Brief\n\nDetected work type: ' + workType + '\n\nRecommended delivery process steps:\n' +
+        steps.map(function (step, index) { return (index + 1) + '. ' + step; }).join('\n');
+    }
+
+    sectionKeys.forEach(function (key) { state.sections[key] = seedSection(key); });
+
+    state.statusType = 'success';
+    state.status = 'SOW draft generated from the Process Research Brief. SA review is required before handoff.';
+    saveState();
+    renderShell();
+  }
+
+  function regenerateSection(key) {
+    captureInputs();
+    state.sections[key] = seedSection(key) + '\n\nRegenerated section note: This section must be re-reviewed by the Solution Architect.';
+    state.statusType = 'warning';
+    state.status = labels[key] + ' regenerated from research brief. SA review is required.';
+    saveState();
+    renderShell();
+  }
+
+  function saveReview() {
+    captureInputs();
+
+    const complete = state.reviewComplete &&
+      state.scopeAccuracyReviewed &&
+      state.assumptionsReviewed &&
+      state.exclusionsReviewed &&
+      state.hallucinationReviewed &&
+      state.canonicalDocsReviewed &&
+      state.researchReviewed;
+
+    state.statusType = complete ? 'success' : 'warning';
+    state.status = complete
+      ? 'SA review checklist is complete. Research-backed SOW draft is ready for Word output and signed handoff.'
+      : 'Draft saved, but one or more SA review safeguards are incomplete.';
+
+    saveState();
+    renderShell();
+  }
+
+  function triggerHandoff() {
+    captureInputs();
+
+    const missing = [];
+    if (!state.customerName) missing.push('customer');
+    if (!state.projectName) missing.push('project name');
+    if (!state.solutionArchitect) missing.push('solution architect');
+    if (!state.researchReviewed) missing.push('research review');
+    if (!state.signedSowFileName) missing.push('signed SOW');
+    if (!state.gsdFileName) missing.push('GSD');
+    if (!state.reviewComplete) missing.push('SA review');
+    if (!state.canonicalDocsReviewed) missing.push('canonical document review');
+
+    if (missing.length) {
+      state.statusType = 'error';
+      state.status = 'Cannot save handoff yet. Missing: ' + missing.join(', ') + '.';
+    } else {
+      state.readyForSignedHandoff = true;
+      state.handoffSaved = true;
+      state.statusType = 'success';
+      state.status = 'Handoff saved in demo mode. Backend wiring will trigger email to PTC and Executive, then assignment email to PM/Engineer(s) with SOW/GSD.';
+    }
+
+    saveState();
+    renderShell();
+  }
+
+  function wordHtml() {
+    const title = 'SOW Draft - ' + (state.customerName || 'Customer') + ' - ' + (state.projectName || 'Project');
+    const template = state.templateFileName || state.templateName || 'Default ProjectPulse SOW Template';
+    let sections = '';
+
+    sections += '<h2>Process Research Brief</h2><p>' + escapeHtml(state.researchBrief || 'No research brief generated.').replace(/\n/g, '<br>') + '</p>';
+
+    sectionKeys.forEach(function (key) {
+      sections += '<h2>' + escapeHtml(labels[key]) + '</h2><p>' + escapeHtml(state.sections[key] || '').replace(/\n/g, '<br>') + '</p>';
+    });
+
+    return '<html><head><meta charset="utf-8"><title>' + escapeHtml(title) + '</title>' +
+      '<style>body{font-family:Calibri,Arial,sans-serif;font-size:11pt;color:#111827;}h1{font-size:20pt;}h2{font-size:14pt;color:#0f2a55;border-bottom:1px solid #cbd5e1;padding-bottom:4px;}table{border-collapse:collapse;width:100%;margin-bottom:18px;}td{border:1px solid #cbd5e1;padding:6px;vertical-align:top}.label{background:#f1f5f9;font-weight:bold;width:30%}.notice{background:#fef3c7;border:1px solid #f59e0b;padding:10px;margin-bottom:18px}</style>' +
+      '</head><body><h1>' + escapeHtml(title) + '</h1>' +
+      '<div class="notice">This Word-compatible SOW draft was generated from ProjectPulse Module 025. Claude-assisted research and draft content are draft-only and require Solution Architect review.</div>' +
+      '<table>' +
+      '<tr><td class="label">Customer</td><td>' + escapeHtml(state.customerName) + '</td></tr>' +
+      '<tr><td class="label">Project</td><td>' + escapeHtml(state.projectName) + '</td></tr>' +
+      '<tr><td class="label">Project Type</td><td>' + escapeHtml(state.projectType) + '</td></tr>' +
+      '<tr><td class="label">CRM Source</td><td>' + escapeHtml(state.crmSource) + '</td></tr>' +
+      '<tr><td class="label">Opportunity Reference</td><td>' + escapeHtml(state.opportunityRef) + '</td></tr>' +
+      '<tr><td class="label">Quote Reference</td><td>' + escapeHtml(state.quoteRef) + '</td></tr>' +
+      '<tr><td class="label">Solution Architect</td><td>' + escapeHtml(state.solutionArchitect) + '</td></tr>' +
+      '<tr><td class="label">Sales Owner</td><td>' + escapeHtml(state.salesOwner) + '</td></tr>' +
+      '<tr><td class="label">Template Used</td><td>' + escapeHtml(template) + '</td></tr>' +
+      '<tr><td class="label">Signed SOW</td><td>' + escapeHtml(state.signedSowFileName || 'Not uploaded in demo') + '</td></tr>' +
+      '<tr><td class="label">GSD</td><td>' + escapeHtml(state.gsdFileName || 'Not uploaded in demo') + '</td></tr>' +
+      '</table>' + sections + '</body></html>';
+  }
+
+  function downloadWordDraft() {
+    captureInputs();
+
+    const blob = new Blob([wordHtml()], { type: 'application/msword;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const safeCustomer = (state.customerName || 'customer').replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase();
+    const safeProject = (state.projectName || 'project').replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase();
+
+    link.href = url;
+    link.download = safeCustomer + '_' + safeProject + '_research_backed_sow_draft.doc';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+
+    state.statusType = 'success';
+    state.status = 'Word-compatible research-backed draft downloaded using ' + (state.templateFileName || state.templateName || 'the default template reference') + '.';
+    saveState();
+    renderShell();
+  }
+
+  function emailPreview() {
+    return 'Subject: Sales Process Completed - ' + (state.customerName || '[Customer]') + ' / ' + (state.projectName || '[Project]') + ' Ready for Project Assignment\n\n' +
+      'Hello Project Team Coordinator and Executive Team,\n\n' +
+      'Sales has completed the SOW process for ' + (state.customerName || '[Customer]') + ' - ' + (state.projectName || '[Project]') + '.\n\n' +
+      'The signed SOW and GSD have been captured in the existing ProjectPulse SOW/GSD project document area so PMs, Engineers, and Leads can access the approved scope from Project Workspace / Engineering Documents.\n\n' +
+      'Solution Architect: ' + (state.solutionArchitect || '[Solution Architect]') + '\n' +
+      'Sales Owner: ' + (state.salesOwner || '[Sales Owner]') + '\n' +
+      'Project Type: ' + (state.projectType || '[Project Type]') + '\n' +
+      'CRM Source: ' + (state.crmSource || '[CRM Source]') + '\n' +
+      'Opportunity Reference: ' + (state.opportunityRef || '[Opportunity Reference]') + '\n' +
+      'Quote Reference: ' + (state.quoteRef || '[Quote Reference]') + '\n' +
+      'Requested Timeline: ' + (state.requestedTimeline || '[Requested Timeline]') + '\n' +
+      'Signed SOW: ' + (state.signedSowFileName || '[Required before sending]') + '\n' +
+      'GSD: ' + (state.gsdFileName || '[Required before sending]') + '\n\n' +
+      'Next step:\nPlease review the intake package and assign the Project Manager and Engineer(s).';
+  }
+
+  function promptPreview() {
+    return 'Shared Claude Provider Prompt Context Preview\n\n' +
+      'Role:\nYou are assisting a Solution Architect in creating research-backed SOW language. Output is draft-only and requires human review.\n\n' +
+      'Research instruction:\nUse the high-level Solution Architect description to identify the actual delivery process involved. Research official/vendor/product documentation first, then trusted implementation references. Return a Process Research Brief with source references before drafting scope.\n\n' +
+      'Drafting instruction:\nGenerate Project Scope and Deliverables from the research brief, not from unsupported assumptions. Flag unclear, unsupported, or risky items for SA review.\n\n' +
+      'Customer: ' + (state.customerName || '[Customer]') + '\n' +
+      'Project: ' + (state.projectName || '[Project]') + '\n' +
+      'Project Type: ' + (state.projectType || '[Project Type]') + '\n' +
+      'CRM Source: ' + (state.crmSource || '[CRM Source]') + '\n' +
+      'Quote/Opportunity: ' + (state.quoteRef || state.opportunityRef || '[Reference]') + '\n' +
+      'Solution Architect: ' + (state.solutionArchitect || '[SA]') + '\n' +
+      'Template: ' + (state.templateFileName || state.templateName || '[Default template]') + '\n\n' +
+      'High-level SA description:\n' + (state.highLevelDescription || '[High-level description required]');
+  }
+
+  function sectionTextarea(key) {
+    return '<div class="projectpulse-025-draft-section">' +
+      '<div class="projectpulse-025-draft-header">' +
+        '<div class="projectpulse-025-eyebrow">' + escapeHtml(labels[key]) + '</div>' +
+        '<button type="button" class="projectpulse-025-button" data-025-regenerate="' + escapeHtml(key) + '">Regenerate from Research</button>' +
+      '</div>' +
+      '<textarea data-025-section="' + escapeHtml(key) + '" placeholder="Generate or manually enter ' + escapeHtml(labels[key]) + '...">' + escapeHtml(state.sections[key] || '') + '</textarea>' +
+    '</div>';
+  }
+
+  function renderShell() {
+    loadState();
+
+    const shell = ensureShell();
+    shell.innerHTML =
+      '<div id="projectpulse-025m-page">' +
+        '<div class="projectpulse-025-page-header">' +
+          '<div>' +
+            '<div class="projectpulse-025-eyebrow">Module 025 · Standalone Research-Backed SOW Generator</div>' +
+            '<h2>SOW Generator Workspace</h2>' +
+            '<p>Create, research, review, and prepare a SOW draft while keeping SOW/GSD documents in the existing ProjectPulse project document area.</p>' +
+            '<div class="projectpulse-025-actions">' +
+              '<span class="projectpulse-025-pill green">Research-backed scope</span>' +
+              '<span class="projectpulse-025-pill blue">Onboarded customer dropdown</span>' +
+              '<span class="projectpulse-025-pill amber">Claude output draft-only</span>' +
+              '<span class="projectpulse-025-pill green">Word download</span>' +
+            '</div>' +
+          '</div>' +
+          '<div class="projectpulse-025-actions">' +
+            '<button type="button" class="projectpulse-025-button" data-025-dashboard>Back to Dashboard</button>' +
+            '<button type="button" class="projectpulse-025-button" data-025-download>Download Word Draft</button>' +
+            '<button type="button" class="projectpulse-025-button" data-025-clear>Clear Draft</button>' +
+          '</div>' +
+        '</div>' +
+
+        '<div class="projectpulse-025-layout">' +
+          '<div>' +
+            '<div class="projectpulse-025-section">' +
+              '<h3>Source / CRM Context</h3>' +
+              '<p>Customer names are seeded from the existing Customer Directory database records during deployment.</p>' +
+              '<div class="projectpulse-025-two-grid">' +
+                '<div class="projectpulse-025-field"><label>Customer Name</label><select data-025-field="customerId"></select></div>' +
+                '<div class="projectpulse-025-field"><label>Project Type</label><select data-025-field="projectType"><option>Professional Services</option><option>Managed Services</option><option>Implementation</option><option>Consulting</option><option>Service Request</option></select></div>' +
+              '</div>' +
+              '<div class="projectpulse-025-field"><label>CRM Source</label><select data-025-field="crmSource"><option>Manual / Existing ProjectPulse Customer</option><option>Salesforce Opportunity</option><option>Zendesk Sell Quote / Deal</option></select></div>' +
+              '<div class="projectpulse-025-field"><label>Project / Engagement Name</label><input data-025-field="projectName" placeholder="Project or engagement name"></div>' +
+              '<div class="projectpulse-025-two-grid"><div class="projectpulse-025-field"><label>Opportunity Reference</label><input data-025-field="opportunityRef" placeholder="Salesforce opportunity ID"></div><div class="projectpulse-025-field"><label>Quote Reference</label><input data-025-field="quoteRef" placeholder="Zendesk Sell quote/deal reference"></div></div>' +
+              '<div class="projectpulse-025-two-grid"><div class="projectpulse-025-field"><label>Solution Architect</label><input data-025-field="solutionArchitect" placeholder="Solution Architect name"></div><div class="projectpulse-025-field"><label>Sales Owner</label><input data-025-field="salesOwner" placeholder="Sales owner name"></div></div>' +
+              '<div class="projectpulse-025-field"><label>Requested Timeline</label><input data-025-field="requestedTimeline" placeholder="Requested timeline or target start date"></div>' +
+            '</div>' +
+
+            '<div class="projectpulse-025-section">' +
+              '<h3>Word Template + Field Mapping</h3>' +
+              '<p>If the Solution Architect uploads a Word template, that template becomes the selected template for this SOW draft unless another template is selected later.</p>' +
+              '<div class="projectpulse-025-two-grid"><div class="projectpulse-025-field"><label>Template Name</label><input data-025-field="templateName" placeholder="Standard Professional Services SOW"></div><div class="projectpulse-025-field"><label>Template Version</label><input data-025-field="templateVersion" placeholder="v1"></div></div>' +
+              '<div class="projectpulse-025-field"><label>Word Template File</label><input type="file" accept=".doc,.docx" data-025-template-file><p>Selected template: <strong data-025-template-name></strong></p></div>' +
+            '</div>' +
+
+            '<div class="projectpulse-025-section">' +
+              '<h3>Canonical Project Documents</h3>' +
+              '<p>The SOW Generator reuses the existing Project Hours / SOW-GSD / Engineer Allocation document area. PMs, Engineers, and Leads access these same documents through Project Workspace / Engineering Documents.</p>' +
+              '<div class="projectpulse-025-two-grid"><div class="projectpulse-025-field"><label>Signed SOW Upload Preview</label><input type="file" accept=".pdf,.doc,.docx" data-025-signed-sow-file><p>Selected SOW: <strong data-025-sow-name></strong></p></div><div class="projectpulse-025-field"><label>GSD Upload Preview</label><input type="file" accept=".pdf,.doc,.docx,.xlsx" data-025-gsd-file><p>Selected GSD: <strong data-025-gsd-name></strong></p></div></div>' +
+            '</div>' +
+
+            '<div class="projectpulse-025-section">' +
+              '<h3>High-Level SA Description</h3>' +
+              '<p>Claude should research the actual delivery process from this description, then use that research to draft scope and deliverables.</p>' +
+              '<div class="projectpulse-025-field"><label>High-Level Description</label><textarea data-025-field="highLevelDescription" placeholder="Example: Upgrade Cisco CUCM 11.5 to 15.0. Validate migration path, dependencies, phone firmware, gateways, voicemail, E911, SIP trunks, certificates, backups, cutover, rollback, and post-upgrade calling validation."></textarea></div>' +
+              '<div class="projectpulse-025-actions"><button type="button" class="projectpulse-025-button primary" data-025-research>Research Actual Delivery Process</button><button type="button" class="projectpulse-025-button success" data-025-generate>Generate SOW Draft from Research</button><button type="button" class="projectpulse-025-button" data-025-save>Save Local Review Draft</button></div>' +
+              '<div data-025-status></div>' +
+            '</div>' +
+
+            '<div class="projectpulse-025-section"><h3>Process Research Brief</h3><p>This is the research-backed bridge between the SA description and the SOW scope/deliverables. Backend wiring will replace the demo brief with Claude web/retrieval research and cited sources.</p><div class="projectpulse-025-research-preview" data-025-research-brief></div></div>' +
+            '<div class="projectpulse-025-section"><h3>Claude Research Prompt Preview</h3><div class="projectpulse-025-prompt-preview" data-025-prompt></div></div>' +
+          '</div>' +
+
+          '<div>' +
+            '<div class="projectpulse-025-section white"><h3>Editable SOW Draft Sections</h3><p>Each section is editable and can be regenerated from the Process Research Brief. Claude output remains draft-only.</p>' +
+              sectionKeys.map(sectionTextarea).join('') +
+            '</div>' +
+
+            '<div class="projectpulse-025-section">' +
+              '<h3>SA Review + Hallucination Controls</h3>' +
+              '<div class="projectpulse-025-checklist">' +
+                '<label><input type="checkbox" data-025-check="researchReviewed"> SA reviewed the Process Research Brief and source expectations.</label>' +
+                '<label><input type="checkbox" data-025-check="reviewComplete"> SA has reviewed the full draft.</label>' +
+                '<label><input type="checkbox" data-025-check="scopeAccuracyReviewed"> Scope aligns with quote, SOW intent, GSD, research brief, and actual delivery process.</label>' +
+                '<label><input type="checkbox" data-025-check="assumptionsReviewed"> Assumptions are accurate and not written as guaranteed deliverables.</label>' +
+                '<label><input type="checkbox" data-025-check="exclusionsReviewed"> Exclusions are clear and protect against scope creep.</label>' +
+                '<label><input type="checkbox" data-025-check="hallucinationReviewed"> Claude hallucination review completed.</label>' +
+                '<label><input type="checkbox" data-025-check="canonicalDocsReviewed"> SOW/GSD will be maintained in the existing canonical document area.</label>' +
+                '<label><input type="checkbox" data-025-check="readyForSignedHandoff"> Ready for signed SOW/GSD handoff.</label>' +
+              '</div>' +
+              '<div class="projectpulse-025-actions"><button type="button" class="projectpulse-025-button success" data-025-review-save>Save SA Review</button><button type="button" class="projectpulse-025-button warning" data-025-handoff>Save Signed Handoff + Trigger Email</button></div>' +
+            '</div>' +
+
+            '<div class="projectpulse-025-section"><h3>Sales-to-Delivery Email Preview</h3><p>This is the planned email to PTC and Executive once the signed handoff is saved. Backend email wiring will use the shared email provider.</p><div class="projectpulse-025-email-preview" data-025-email></div></div>' +
+            '<div class="projectpulse-025-section"><h3>SOW-Aware Time Entry Future Hook</h3><p>The existing Claude timesheet generator can read the signed SOW/GSD and check engineer time-entry descriptions against approved scope.</p><div class="projectpulse-025-mini-grid"><div class="projectpulse-025-metric"><span class="projectpulse-025-pill green">Input</span><strong>Engineer Summary</strong><p>Engineer rough description.</p></div><div class="projectpulse-025-metric"><span class="projectpulse-025-pill blue">Context</span><strong>SOW/GSD</strong><p>Approved project scope.</p></div><div class="projectpulse-025-metric"><span class="projectpulse-025-pill amber">Output</span><strong>Scope Check</strong><p>In scope / needs review.</p></div></div></div>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+
+    populateShellValues(shell);
+    wireShell(shell);
+  }
+
+  function populateShellValues(shell) {
+    const customerSelect = shell.querySelector('[data-025-field="customerId"]');
+    customers.forEach(function (customer) {
+      const option = document.createElement('option');
+      option.value = customer.id;
+      option.textContent = customer.code ? customer.name + ' (' + customer.code + ')' : customer.name;
+      customerSelect.appendChild(option);
+    });
+
+    setValue(shell, 'customerId', state.customerId);
+    setValue(shell, 'projectType', state.projectType);
+    setValue(shell, 'crmSource', state.crmSource);
+    setValue(shell, 'projectName', state.projectName);
+    setValue(shell, 'opportunityRef', state.opportunityRef);
+    setValue(shell, 'quoteRef', state.quoteRef);
+    setValue(shell, 'solutionArchitect', state.solutionArchitect);
+    setValue(shell, 'salesOwner', state.salesOwner);
+    setValue(shell, 'requestedTimeline', state.requestedTimeline);
+    setValue(shell, 'templateName', state.templateName);
+    setValue(shell, 'templateVersion', state.templateVersion);
+    setValue(shell, 'highLevelDescription', state.highLevelDescription);
+
+    sectionKeys.forEach(function (key) {
+      const element = shell.querySelector('[data-025-section="' + key + '"]');
+      if (element) element.value = state.sections[key] || '';
+    });
+
+    ['researchReviewed', 'reviewComplete', 'scopeAccuracyReviewed', 'assumptionsReviewed', 'exclusionsReviewed', 'hallucinationReviewed', 'canonicalDocsReviewed', 'readyForSignedHandoff'].forEach(function (key) {
+      setCheck(shell, key, state[key]);
+    });
+
+    shell.querySelector('[data-025-template-name]').textContent = state.templateFileName || 'Default ProjectPulse SOW template';
+    shell.querySelector('[data-025-sow-name]').textContent = state.signedSowFileName || 'Required before handoff email';
+    shell.querySelector('[data-025-gsd-name]').textContent = state.gsdFileName || 'Required before PM/Engineer assignment email';
+    shell.querySelector('[data-025-research-brief]').textContent = state.researchBrief || 'No research brief generated yet. Click Research Actual Delivery Process.';
+    shell.querySelector('[data-025-prompt]').textContent = promptPreview();
+    shell.querySelector('[data-025-email]').textContent = emailPreview();
+
+    const status = shell.querySelector('[data-025-status]');
+    status.innerHTML = state.status ? '<div class="projectpulse-025-status ' + escapeHtml(state.statusType || '') + '">' + escapeHtml(state.status) + '</div>' : '';
+  }
+
+  function wireShell(shell) {
+    shell.querySelectorAll('input, select, textarea').forEach(function (input) {
+      input.addEventListener('input', captureInputs);
+      input.addEventListener('change', captureInputs);
+    });
+
+    shell.querySelector('[data-025-template-file]').addEventListener('change', function (event) {
+      state.templateFileName = event.target.files && event.target.files[0] ? event.target.files[0].name : '';
+      if (!state.templateName && state.templateFileName) state.templateName = state.templateFileName.replace(/\.(docx?|DOCX?)$/, '');
+      saveState();
+      renderShell();
+    });
+
+    shell.querySelector('[data-025-signed-sow-file]').addEventListener('change', function (event) {
+      state.signedSowFileName = event.target.files && event.target.files[0] ? event.target.files[0].name : '';
+      saveState();
+      renderShell();
+    });
+
+    shell.querySelector('[data-025-gsd-file]').addEventListener('change', function (event) {
+      state.gsdFileName = event.target.files && event.target.files[0] ? event.target.files[0].name : '';
+      saveState();
+      renderShell();
+    });
+
+    shell.querySelector('[data-025-research]').addEventListener('click', generateResearchBrief);
+    shell.querySelector('[data-025-generate]').addEventListener('click', generateDraftFromResearch);
+    shell.querySelector('[data-025-review-save]').addEventListener('click', saveReview);
+    shell.querySelector('[data-025-handoff]').addEventListener('click', triggerHandoff);
+    shell.querySelector('[data-025-download]').addEventListener('click', downloadWordDraft);
+
+    shell.querySelector('[data-025-save]').addEventListener('click', function () {
+      captureInputs();
+      state.statusType = 'success';
+      state.status = 'Local Module 025 research-backed review draft saved. Backend persistence will be wired later.';
+      saveState();
+      renderShell();
+    });
+
+    shell.querySelector('[data-025-clear]').addEventListener('click', function () {
+      if (!confirm('Clear the current Module 025 draft on this browser?')) return;
+      window.localStorage.removeItem(storageKey);
+      location.reload();
+    });
+
+    shell.querySelector('[data-025-dashboard]').addEventListener('click', function () {
+      window.location.hash = '#dashboard';
+      render();
+    });
+
+    shell.querySelectorAll('[data-025-regenerate]').forEach(function (button) {
+      button.addEventListener('click', function () {
+        regenerateSection(button.getAttribute('data-025-regenerate'));
+      });
+    });
+  }
+
+  function render() {
+    loadState();
+    ensureShell();
+    ensureCard();
+    openShell(route() === 'sow-generator');
+  }
+
+  function boot(attempt) {
+    render();
+    if (!document.getElementById(cardId) && attempt < 12) {
+      setTimeout(function () { boot(attempt + 1); }, 250);
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () { boot(0); });
+  } else {
+    boot(0);
+  }
+
+  window.addEventListener('hashchange', function () { setTimeout(render, 60); });
+})();
+</script>
+<!-- 025M_STANDALONE_SOW_ROUTE_END -->
+
 </body>
 </html>
