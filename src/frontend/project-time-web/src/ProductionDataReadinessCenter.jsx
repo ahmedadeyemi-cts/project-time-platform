@@ -63,7 +63,7 @@ export default function ProductionDataReadinessCenter() {
     }));
 
     try {
-      const response = await fetch('/api/production/data-readiness', {
+      const response = await fetch('/api/production-data-readiness', {
         headers: sessionToken ? { 'X-ProjectPulse-Session': sessionToken } : {}
       });
 

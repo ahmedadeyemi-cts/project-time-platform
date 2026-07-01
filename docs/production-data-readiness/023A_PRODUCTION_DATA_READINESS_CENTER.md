@@ -83,3 +83,26 @@ Status:
 - Service smoke validated.
 - Protected endpoint behavior validated.
 - Final browser validation ready for PR review.
+
+
+## 023E Data Readiness API Route Exposure Repair
+
+023E adds a protected alias endpoint for the Data Readiness page because the browser page returned HTTP 404 when calling the original route.
+
+Primary route:
+
+- `GET /api/production/data-readiness`
+
+Protected browser-facing alias:
+
+- `GET /api/production-data-readiness`
+
+The frontend Data Readiness page now calls the alias route. Both routes remain protected by the existing session middleware.
+
+What to check:
+
+1. Open `https://projectpulse-test.onenecklab.com/#production-data-readiness`.
+2. Click Refresh data readiness.
+3. Confirm the endpoint status is no longer 404.
+4. Confirm readiness cards and table rows load.
+5. Confirm remediation checklist and go-live gate use the returned checks.
