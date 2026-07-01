@@ -3990,5 +3990,761 @@
 </script>
 <!-- 025M_STANDALONE_SOW_ROUTE_END -->
 
+
+<!-- 026A_CRM_INTEGRATION_FRAMEWORK_START -->
+<style id="projectpulse-026a-style">
+  #projectpulse-026-crm-card {
+    border: 1px solid rgba(148, 163, 184, 0.32);
+    border-radius: 20px;
+    background: #ffffff;
+    color: #111827;
+    box-shadow: 0 14px 36px rgba(15, 23, 42, 0.06);
+    padding: 1.15rem;
+    min-height: 175px;
+  }
+
+  #projectpulse-026-shell {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483001;
+    background: linear-gradient(135deg, #eef8ff 0%, #f8fbff 42%, #eef8f2 100%);
+    overflow-y: auto;
+    padding: 1.25rem;
+    box-sizing: border-box;
+    display: none;
+  }
+
+  #projectpulse-026-shell[data-open="true"] {
+    display: block;
+  }
+
+  #projectpulse-026-page {
+    max-width: 1500px;
+    margin: 0 auto 2rem;
+    border: 1px solid rgba(148, 163, 184, 0.32);
+    border-radius: 24px;
+    background: #ffffff;
+    color: #111827;
+    box-shadow: 0 20px 60px rgba(15, 23, 42, 0.12);
+    padding: 1.25rem;
+  }
+
+  .projectpulse-026-eyebrow {
+    color: #64748b;
+    font-size: 0.72rem;
+    font-weight: 950;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 0.55rem;
+  }
+
+  #projectpulse-026-crm-card h3,
+  #projectpulse-026-page h2,
+  #projectpulse-026-page h3 {
+    margin: 0 0 0.55rem;
+    line-height: 1.25;
+  }
+
+  #projectpulse-026-crm-card p,
+  #projectpulse-026-page p {
+    color: #5b6b89;
+    line-height: 1.48;
+  }
+
+  .projectpulse-026-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.65rem;
+    align-items: center;
+    margin-top: 1rem;
+  }
+
+  .projectpulse-026-button {
+    border: 1px solid rgba(37, 99, 235, 0.24);
+    border-radius: 12px;
+    background: #ffffff;
+    color: #111827;
+    padding: 0.65rem 0.9rem;
+    font-weight: 900;
+    cursor: pointer;
+  }
+
+  .projectpulse-026-button.primary {
+    background: #0f2a55;
+    border-color: #0f2a55;
+    color: #ffffff;
+  }
+
+  .projectpulse-026-button.success {
+    background: #166534;
+    border-color: #166534;
+    color: #ffffff;
+  }
+
+  .projectpulse-026-pill {
+    border-radius: 999px;
+    padding: 0.28rem 0.58rem;
+    font-size: 0.72rem;
+    font-weight: 950;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .projectpulse-026-pill.blue { background: #dbeafe; color: #1e3a8a; }
+  .projectpulse-026-pill.green { background: #dcfce7; color: #166534; }
+  .projectpulse-026-pill.amber { background: #fef3c7; color: #92400e; }
+
+  .projectpulse-026-page-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.22);
+    padding-bottom: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .projectpulse-026-layout {
+    display: grid;
+    grid-template-columns: 0.9fr 1.1fr;
+    gap: 1rem;
+    align-items: start;
+  }
+
+  .projectpulse-026-section {
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    border-radius: 18px;
+    background: #f8fafc;
+    padding: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .projectpulse-026-section.white {
+    background: #ffffff;
+  }
+
+  .projectpulse-026-field {
+    margin-bottom: 0.85rem;
+  }
+
+  .projectpulse-026-field label {
+    display: block;
+    font-size: 0.78rem;
+    color: #475569;
+    font-weight: 950;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    margin-bottom: 0.35rem;
+  }
+
+  .projectpulse-026-field input,
+  .projectpulse-026-field select {
+    width: 100%;
+    border: 1px solid rgba(148, 163, 184, 0.45);
+    border-radius: 12px;
+    padding: 0.7rem 0.75rem;
+    background: #ffffff;
+    color: #111827;
+    font: inherit;
+  }
+
+  .projectpulse-026-two-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.65rem;
+  }
+
+  .projectpulse-026-three-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.65rem;
+  }
+
+  .projectpulse-026-cardlet {
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    border-radius: 16px;
+    background: #ffffff;
+    padding: 0.9rem;
+  }
+
+  .projectpulse-026-cardlet strong {
+    display: block;
+    font-size: 1rem;
+    margin: 0.25rem 0;
+  }
+
+  .projectpulse-026-status {
+    border-radius: 16px;
+    padding: 0.85rem;
+    background: #eff6ff;
+    color: #1e3a8a;
+    font-weight: 750;
+    margin-top: 0.8rem;
+  }
+
+  .projectpulse-026-status.success {
+    background: #dcfce7;
+    color: #166534;
+  }
+
+  .projectpulse-026-status.warning {
+    background: #fef3c7;
+    color: #92400e;
+  }
+
+  .projectpulse-026-checklist {
+    display: grid;
+    gap: 0.55rem;
+  }
+
+  .projectpulse-026-checklist label {
+    display: flex;
+    gap: 0.55rem;
+    align-items: flex-start;
+    color: #334155;
+    line-height: 1.4;
+  }
+
+  .projectpulse-026-preview {
+    white-space: pre-wrap;
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    border-radius: 14px;
+    background: #ffffff;
+    padding: 0.85rem;
+    color: #334155;
+    max-height: 360px;
+    overflow: auto;
+  }
+
+  .projectpulse-026-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #ffffff;
+    border-radius: 14px;
+    overflow: hidden;
+  }
+
+  .projectpulse-026-table th,
+  .projectpulse-026-table td {
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    padding: 0.65rem;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  .projectpulse-026-table th {
+    background: #f1f5f9;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #475569;
+  }
+
+  @media (max-width: 1050px) {
+    .projectpulse-026-layout,
+    .projectpulse-026-two-grid,
+    .projectpulse-026-three-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .projectpulse-026-page-header {
+      flex-direction: column;
+    }
+  }
+</style>
+
+<script id="projectpulse-026a-script">
+(function () {
+  if (window.__projectPulse026AInstalled) return;
+  window.__projectPulse026AInstalled = true;
+
+  var cardId = 'projectpulse-026-crm-card';
+  var shellId = 'projectpulse-026-shell';
+  var storageKey = 'projectpulse026CrmIntegrationFramework';
+
+  var state = {
+    primaryCrm: 'Salesforce',
+    syncMode: 'Read-only preview',
+    salesforceStatus: 'Placeholder',
+    zendeskSellStatus: 'Placeholder',
+    selectedScenario: 'Opportunity to SOW',
+    sampleAccount: 'Great Lakes Healthcare',
+    sampleOpportunity: 'Cisco CUCM 11.5 to 15.0 Upgrade',
+    sampleQuote: 'Professional Services Quote - UC Upgrade',
+    crmOwner: 'Sales Owner',
+    solutionArchitect: 'Solution Architect',
+    estimatedHours: '80',
+    estimatedRevenue: '60000',
+    fieldMappingReviewed: false,
+    securityReviewed: false,
+    noSecretsReviewed: false,
+    intakeMappingReviewed: false,
+    sowMappingReviewed: false,
+    syncReadinessReviewed: false,
+    status: '',
+    statusType: ''
+  };
+
+  function escapeHtml(value) {
+    return String(value == null ? '' : value)
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#039;');
+  }
+
+  function cleanText(value) {
+    return String(value || '').replace(/\s+/g, ' ').trim();
+  }
+
+  function loadState() {
+    try {
+      var raw = window.localStorage.getItem(storageKey);
+      if (!raw) return;
+      Object.assign(state, JSON.parse(raw));
+    } catch {}
+  }
+
+  function saveState() {
+    try {
+      window.localStorage.setItem(storageKey, JSON.stringify(state));
+    } catch {}
+  }
+
+  function route() {
+    return String(window.location.hash || '#dashboard').replace(/^#/, '').split('?')[0].toLowerCase();
+  }
+
+  function getDashboardGrid() {
+    var sowCard = document.getElementById('projectpulse-025-sow-card');
+    if (sowCard && sowCard.parentElement) return sowCard.parentElement;
+
+    var notificationCard = document.getElementById('projectpulse-022e-dashboard-notification-card');
+    if (notificationCard && notificationCard.parentElement) return notificationCard.parentElement;
+
+    var candidates = Array.from(document.querySelectorAll('section, article, div, main'))
+      .filter(function (element) {
+        if (element.id === cardId || element.closest('#' + cardId)) return false;
+        var text = cleanText(element.textContent);
+        var rect = element.getBoundingClientRect();
+        return rect.width > 700 &&
+          rect.height > 250 &&
+          text.includes('Project Workload') &&
+          text.includes('Project Workspace') &&
+          text.includes('Project Intake');
+      })
+      .sort(function (a, b) {
+        var ar = a.getBoundingClientRect();
+        var br = b.getBoundingClientRect();
+        return (ar.width * ar.height) - (br.width * br.height);
+      });
+
+    return candidates[0] || null;
+  }
+
+  function ensureCard() {
+    var grid = getDashboardGrid();
+    if (!grid) return null;
+
+    var card = document.getElementById(cardId);
+    if (!card) {
+      card = document.createElement('section');
+      card.id = cardId;
+      card.innerHTML =
+        '<div class="projectpulse-026-eyebrow">Module 026</div>' +
+        '<h3>CRM Integration Framework</h3>' +
+        '<p>Prepare Salesforce and Zendesk Sell integration mapping so CRM-originated opportunities can feed SOW generation and sales-to-delivery intake.</p>' +
+        '<div class="projectpulse-026-actions">' +
+          '<button type="button" class="projectpulse-026-button primary" data-026-open>Open CRM Integration</button>' +
+          '<span class="projectpulse-026-pill green">Dashboard module</span>' +
+          '<span class="projectpulse-026-pill amber">No secrets stored</span>' +
+          '<span class="projectpulse-026-pill blue">CRM to SOW</span>' +
+        '</div>';
+
+      var sowCard = document.getElementById('projectpulse-025-sow-card');
+      if (sowCard && sowCard.parentElement === grid) {
+        grid.insertBefore(card, sowCard.nextSibling);
+      } else {
+        grid.insertBefore(card, grid.firstElementChild || null);
+      }
+
+      card.querySelector('[data-026-open]').addEventListener('click', function () {
+        window.location.hash = '#crm-integration';
+        render();
+      });
+    }
+
+    return card;
+  }
+
+  function ensureShell() {
+    var shell = document.getElementById(shellId);
+    if (!shell) {
+      shell = document.createElement('div');
+      shell.id = shellId;
+      shell.setAttribute('aria-label', 'CRM Integration Center route');
+      document.body.appendChild(shell);
+    }
+    return shell;
+  }
+
+  function openShell(open) {
+    var shell = ensureShell();
+    if (open) {
+      shell.setAttribute('data-open', 'true');
+      document.documentElement.style.overflow = 'hidden';
+      document.body.style.overflow = 'hidden';
+      renderShell();
+      setTimeout(function () { shell.scrollTop = 0; }, 0);
+    } else {
+      shell.removeAttribute('data-open');
+      document.documentElement.style.overflow = '';
+      document.body.style.overflow = '';
+    }
+  }
+
+  function setValue(root, name, value) {
+    var element = root.querySelector('[data-026-field="' + name + '"]');
+    if (element) element.value = value || '';
+  }
+
+  function setCheck(root, name, value) {
+    var element = root.querySelector('[data-026-check="' + name + '"]');
+    if (element) element.checked = !!value;
+  }
+
+  function captureInputs() {
+    var shell = document.getElementById(shellId);
+    if (!shell || shell.getAttribute('data-open') !== 'true') return;
+
+    function get(name) {
+      var element = shell.querySelector('[data-026-field="' + name + '"]');
+      return element ? element.value : '';
+    }
+
+    function checked(name) {
+      var element = shell.querySelector('[data-026-check="' + name + '"]');
+      return !!(element && element.checked);
+    }
+
+    [
+      'primaryCrm',
+      'syncMode',
+      'salesforceStatus',
+      'zendeskSellStatus',
+      'selectedScenario',
+      'sampleAccount',
+      'sampleOpportunity',
+      'sampleQuote',
+      'crmOwner',
+      'solutionArchitect',
+      'estimatedHours',
+      'estimatedRevenue'
+    ].forEach(function (key) {
+      state[key] = get(key);
+    });
+
+    [
+      'fieldMappingReviewed',
+      'securityReviewed',
+      'noSecretsReviewed',
+      'intakeMappingReviewed',
+      'sowMappingReviewed',
+      'syncReadinessReviewed'
+    ].forEach(function (key) {
+      state[key] = checked(key);
+    });
+
+    saveState();
+  }
+
+  function readinessSummary() {
+    var checks = [
+      state.fieldMappingReviewed,
+      state.securityReviewed,
+      state.noSecretsReviewed,
+      state.intakeMappingReviewed,
+      state.sowMappingReviewed,
+      state.syncReadinessReviewed
+    ];
+
+    var complete = checks.filter(Boolean).length;
+
+    return 'CRM Integration Readiness Summary\n\n' +
+      'Primary CRM: ' + state.primaryCrm + '\n' +
+      'Sync Mode: ' + state.syncMode + '\n' +
+      'Salesforce Connector: ' + state.salesforceStatus + '\n' +
+      'Zendesk Sell Connector: ' + state.zendeskSellStatus + '\n' +
+      'Scenario: ' + state.selectedScenario + '\n' +
+      'Readiness Checks Complete: ' + complete + ' / ' + checks.length + '\n\n' +
+      'Purpose:\n' +
+      'Module 026 prepares the integration framework so Salesforce and Zendesk Sell records can later feed the SOW Generator, Sales-to-Delivery Intake, signed handoff, and assignment workflows.\n\n' +
+      'Security rule:\n' +
+      'No CRM client credentials, tokens, or API keys are stored in the repository. Production credentials should live in root-only environment files or a secret manager.\n\n' +
+      'Future backend endpoints:\n' +
+      'GET /api/crm/integrations/summary\n' +
+      'GET /api/crm/integrations/field-mapping\n' +
+      'POST /api/crm/integrations/test-connection\n' +
+      'POST /api/crm/integrations/sync-preview\n' +
+      'POST /api/crm/integrations/promote-to-sow\n' +
+      'POST /api/crm/integrations/promote-to-intake\n';
+  }
+
+  function mappingRows() {
+    return [
+      ['Salesforce Account / Zendesk Sell Company', 'ProjectPulse Customer', 'Creates or matches onboarded customer record.'],
+      ['Opportunity / Deal Name', 'SOW Project / Engagement Name', 'Prepopulates the SOW Generator project name.'],
+      ['Opportunity / Deal ID', 'CRM Reference', 'Preserved for audit and traceability.'],
+      ['Quote / Deal Value', 'Estimated Revenue / Planned Cost Context', 'Used for intake readiness and executive visibility.'],
+      ['Sales Owner', 'Sales Owner', 'Used for handoff notification and audit history.'],
+      ['Solution Architect', 'Solution Architect', 'Owns SOW draft review and hallucination controls.'],
+      ['Close Stage / Signed Flag', 'Signed SOW Handoff Trigger', 'Module 027 will use this to trigger PTC/Executive email.'],
+      ['Products / Services / Quote Lines', 'Research-backed SOW Scope Seed', 'Used by Module 025 to guide Claude process research and scope drafting.'],
+      ['Estimated Hours / Services Quantity', 'Project Hours / Resource Demand', 'Feeds intake, PM assignment, and engineer allocation planning.'],
+      ['Attachments', 'SOW / GSD Artifacts', 'Signed SOW and GSD remain in canonical project document area.']
+    ];
+  }
+
+  function mappingTableHtml() {
+    return '<table class="projectpulse-026-table">' +
+      '<thead><tr><th>CRM Field</th><th>ProjectPulse Destination</th><th>Workflow Use</th></tr></thead>' +
+      '<tbody>' +
+      mappingRows().map(function (row) {
+        return '<tr><td>' + escapeHtml(row[0]) + '</td><td>' + escapeHtml(row[1]) + '</td><td>' + escapeHtml(row[2]) + '</td></tr>';
+      }).join('') +
+      '</tbody></table>';
+  }
+
+  function syncPreview() {
+    return 'CRM Sync Preview\n\n' +
+      'CRM Source: ' + state.primaryCrm + '\n' +
+      'Scenario: ' + state.selectedScenario + '\n\n' +
+      'Incoming CRM Record Example:\n' +
+      '- Account / Company: ' + state.sampleAccount + '\n' +
+      '- Opportunity / Deal: ' + state.sampleOpportunity + '\n' +
+      '- Quote: ' + state.sampleQuote + '\n' +
+      '- Sales Owner: ' + state.crmOwner + '\n' +
+      '- Solution Architect: ' + state.solutionArchitect + '\n' +
+      '- Estimated Hours: ' + state.estimatedHours + '\n' +
+      '- Estimated Revenue: $' + state.estimatedRevenue + '\n\n' +
+      'ProjectPulse Output Preview:\n' +
+      '- Customer match or onboarding candidate: ' + state.sampleAccount + '\n' +
+      '- SOW Generator prefill: ' + state.sampleOpportunity + '\n' +
+      '- Claude research seed: quote/services description from CRM line items\n' +
+      '- Intake readiness seed: customer, project, estimated hours, planned value, SA, sales owner\n' +
+      '- Signed handoff readiness: pending signed SOW and GSD upload\n\n' +
+      'Promotion rule:\n' +
+      'CRM records should remain read-only until a Sales or Solution Architect user explicitly promotes the record into SOW Generator or Sales-to-Delivery Intake.';
+  }
+
+  function validateFramework() {
+    captureInputs();
+
+    var missing = [];
+    if (!state.fieldMappingReviewed) missing.push('field mapping review');
+    if (!state.securityReviewed) missing.push('security review');
+    if (!state.noSecretsReviewed) missing.push('no-secrets review');
+    if (!state.intakeMappingReviewed) missing.push('intake mapping review');
+    if (!state.sowMappingReviewed) missing.push('SOW mapping review');
+    if (!state.syncReadinessReviewed) missing.push('sync readiness review');
+
+    if (missing.length) {
+      state.statusType = 'warning';
+      state.status = 'CRM framework saved, but not fully validated. Missing: ' + missing.join(', ') + '.';
+    } else {
+      state.statusType = 'success';
+      state.status = 'CRM Integration Framework validated for demo. Backend connector wiring can be built later without storing secrets in repo.';
+    }
+
+    saveState();
+    renderShell();
+  }
+
+  function renderShell() {
+    loadState();
+
+    var shell = ensureShell();
+
+    shell.innerHTML =
+      '<div id="projectpulse-026-page">' +
+        '<div class="projectpulse-026-page-header">' +
+          '<div>' +
+            '<div class="projectpulse-026-eyebrow">Module 026 · CRM Integration Framework</div>' +
+            '<h2>CRM Integration Center</h2>' +
+            '<p>Prepare Salesforce and Zendesk Sell integration mapping so CRM-originated opportunities can feed SOW generation, sales-to-delivery intake, and signed handoff workflows.</p>' +
+            '<div class="projectpulse-026-actions">' +
+              '<span class="projectpulse-026-pill green">Salesforce placeholder</span>' +
+              '<span class="projectpulse-026-pill blue">Zendesk Sell placeholder</span>' +
+              '<span class="projectpulse-026-pill amber">No secrets in repo</span>' +
+              '<span class="projectpulse-026-pill green">CRM to SOW / Intake</span>' +
+            '</div>' +
+          '</div>' +
+          '<div class="projectpulse-026-actions">' +
+            '<button type="button" class="projectpulse-026-button" data-026-dashboard>Back to Dashboard</button>' +
+            '<button type="button" class="projectpulse-026-button success" data-026-validate>Validate Framework</button>' +
+            '<button type="button" class="projectpulse-026-button" data-026-clear>Clear Demo State</button>' +
+          '</div>' +
+        '</div>' +
+
+        '<div class="projectpulse-026-layout">' +
+          '<div>' +
+            '<div class="projectpulse-026-section">' +
+              '<h3>Connector Placeholders</h3>' +
+              '<p>These are controlled placeholders only. Real Salesforce and Zendesk Sell credentials must be configured outside the repository.</p>' +
+              '<div class="projectpulse-026-two-grid">' +
+                '<div class="projectpulse-026-cardlet"><div class="projectpulse-026-eyebrow">Salesforce</div><strong>Opportunity / Account Connector</strong><p>Future REST/OAuth integration for account, opportunity, quote, owner, Solution Architect, products/services, and attachment metadata.</p><span class="projectpulse-026-pill amber">Placeholder</span></div>' +
+                '<div class="projectpulse-026-cardlet"><div class="projectpulse-026-eyebrow">Zendesk Sell</div><strong>Deal / Quote Connector</strong><p>Future REST API integration for deal, quote, company, sales owner, quote value, service lines, and handoff metadata.</p><span class="projectpulse-026-pill amber">Placeholder</span></div>' +
+              '</div>' +
+              '<div class="projectpulse-026-two-grid" style="margin-top:0.9rem;">' +
+                '<div class="projectpulse-026-field"><label>Primary CRM</label><select data-026-field="primaryCrm"><option>Salesforce</option><option>Zendesk Sell</option><option>Salesforce + Zendesk Sell</option></select></div>' +
+                '<div class="projectpulse-026-field"><label>Sync Mode</label><select data-026-field="syncMode"><option>Read-only preview</option><option>Manual promote to SOW</option><option>Manual promote to Intake</option><option>Manual promote to SOW + Intake</option></select></div>' +
+              '</div>' +
+              '<div class="projectpulse-026-two-grid">' +
+                '<div class="projectpulse-026-field"><label>Salesforce Status</label><select data-026-field="salesforceStatus"><option>Placeholder</option><option>Config pending</option><option>Ready for backend wiring</option><option>Disabled</option></select></div>' +
+                '<div class="projectpulse-026-field"><label>Zendesk Sell Status</label><select data-026-field="zendeskSellStatus"><option>Placeholder</option><option>Config pending</option><option>Ready for backend wiring</option><option>Disabled</option></select></div>' +
+              '</div>' +
+            '</div>' +
+
+            '<div class="projectpulse-026-section">' +
+              '<h3>CRM Record Preview</h3>' +
+              '<p>Use this to show how a CRM-originated opportunity or quote will map into SOW Generator and Sales-to-Delivery Intake.</p>' +
+              '<div class="projectpulse-026-field"><label>Scenario</label><select data-026-field="selectedScenario"><option>Opportunity to SOW</option><option>Quote to Intake</option><option>Signed opportunity to handoff</option><option>CRM record to project document package</option></select></div>' +
+              '<div class="projectpulse-026-two-grid"><div class="projectpulse-026-field"><label>Account / Company</label><input data-026-field="sampleAccount"></div><div class="projectpulse-026-field"><label>Opportunity / Deal</label><input data-026-field="sampleOpportunity"></div></div>' +
+              '<div class="projectpulse-026-two-grid"><div class="projectpulse-026-field"><label>Quote</label><input data-026-field="sampleQuote"></div><div class="projectpulse-026-field"><label>Sales Owner</label><input data-026-field="crmOwner"></div></div>' +
+              '<div class="projectpulse-026-two-grid"><div class="projectpulse-026-field"><label>Solution Architect</label><input data-026-field="solutionArchitect"></div><div class="projectpulse-026-field"><label>Estimated Hours</label><input data-026-field="estimatedHours"></div></div>' +
+              '<div class="projectpulse-026-field"><label>Estimated Revenue</label><input data-026-field="estimatedRevenue"></div>' +
+            '</div>' +
+
+            '<div class="projectpulse-026-section">' +
+              '<h3>Readiness Checklist</h3>' +
+              '<p>This confirms the framework is ready before real connector credentials or API calls are added.</p>' +
+              '<div class="projectpulse-026-checklist">' +
+                '<label><input type="checkbox" data-026-check="fieldMappingReviewed"> CRM to ProjectPulse field mapping reviewed.</label>' +
+                '<label><input type="checkbox" data-026-check="securityReviewed"> Authentication/security model reviewed.</label>' +
+                '<label><input type="checkbox" data-026-check="noSecretsReviewed"> Confirmed no CRM credentials, tokens, or API keys are stored in the repository.</label>' +
+                '<label><input type="checkbox" data-026-check="sowMappingReviewed"> CRM to SOW Generator mapping reviewed.</label>' +
+                '<label><input type="checkbox" data-026-check="intakeMappingReviewed"> CRM to Sales-to-Delivery Intake mapping reviewed.</label>' +
+                '<label><input type="checkbox" data-026-check="syncReadinessReviewed"> Sync preview and manual promotion rules reviewed.</label>' +
+              '</div>' +
+              '<div data-026-status></div>' +
+            '</div>' +
+          '</div>' +
+
+          '<div>' +
+            '<div class="projectpulse-026-section white"><h3>CRM to ProjectPulse Field Mapping</h3>' + mappingTableHtml() + '</div>' +
+            '<div class="projectpulse-026-section"><h3>Sync Preview</h3><div class="projectpulse-026-preview" data-026-sync-preview></div></div>' +
+            '<div class="projectpulse-026-section"><h3>Integration Readiness Summary</h3><div class="projectpulse-026-preview" data-026-readiness></div></div>' +
+            '<div class="projectpulse-026-section">' +
+              '<h3>Future Workflow Placement</h3>' +
+              '<div class="projectpulse-026-three-grid">' +
+                '<div class="projectpulse-026-cardlet"><span class="projectpulse-026-pill blue">025</span><strong>SOW Generator</strong><p>CRM fields prepopulate SOW research and draft generation.</p></div>' +
+                '<div class="projectpulse-026-cardlet"><span class="projectpulse-026-pill green">024</span><strong>Intake Foundation</strong><p>CRM quote/opportunity data feeds intake artifacts and project readiness.</p></div>' +
+                '<div class="projectpulse-026-cardlet"><span class="projectpulse-026-pill amber">027</span><strong>Signed Handoff</strong><p>Signed opportunity or signed SOW state triggers PTC/Executive notification.</p></div>' +
+              '</div>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+
+    populateShell(shell);
+    wireShell(shell);
+  }
+
+  function populateShell(shell) {
+    [
+      'primaryCrm',
+      'syncMode',
+      'salesforceStatus',
+      'zendeskSellStatus',
+      'selectedScenario',
+      'sampleAccount',
+      'sampleOpportunity',
+      'sampleQuote',
+      'crmOwner',
+      'solutionArchitect',
+      'estimatedHours',
+      'estimatedRevenue'
+    ].forEach(function (key) {
+      setValue(shell, key, state[key]);
+    });
+
+    [
+      'fieldMappingReviewed',
+      'securityReviewed',
+      'noSecretsReviewed',
+      'intakeMappingReviewed',
+      'sowMappingReviewed',
+      'syncReadinessReviewed'
+    ].forEach(function (key) {
+      setCheck(shell, key, state[key]);
+    });
+
+    var syncPreviewNode = shell.querySelector('[data-026-sync-preview]');
+    var readinessNode = shell.querySelector('[data-026-readiness]');
+    var statusNode = shell.querySelector('[data-026-status]');
+
+    if (syncPreviewNode) syncPreviewNode.textContent = syncPreview();
+    if (readinessNode) readinessNode.textContent = readinessSummary();
+
+    if (statusNode) {
+      statusNode.innerHTML = state.status
+        ? '<div class="projectpulse-026-status ' + escapeHtml(state.statusType || '') + '">' + escapeHtml(state.status) + '</div>'
+        : '';
+    }
+  }
+
+  function wireShell(shell) {
+    shell.querySelectorAll('input, select').forEach(function (input) {
+      input.addEventListener('input', function () {
+        captureInputs();
+        populateShell(shell);
+      });
+      input.addEventListener('change', function () {
+        captureInputs();
+        populateShell(shell);
+      });
+    });
+
+    shell.querySelector('[data-026-dashboard]').addEventListener('click', function () {
+      window.location.hash = '#dashboard';
+      render();
+    });
+
+    shell.querySelector('[data-026-clear]').addEventListener('click', function () {
+      if (!confirm('Clear Module 026 demo state on this browser?')) return;
+      window.localStorage.removeItem(storageKey);
+      location.reload();
+    });
+
+    shell.querySelector('[data-026-validate]').addEventListener('click', validateFramework);
+  }
+
+  function render() {
+    loadState();
+    ensureShell();
+    ensureCard();
+    openShell(route() === 'crm-integration');
+  }
+
+  function boot(attempt) {
+    render();
+    if (!document.getElementById(cardId) && attempt !== 12) {
+      setTimeout(function () { boot(attempt + 1); }, 250);
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () { boot(0); });
+  } else {
+    boot(0);
+  }
+
+  window.addEventListener('hashchange', function () { setTimeout(render, 60); });
+})();
+</script>
+<!-- 026A_CRM_INTEGRATION_FRAMEWORK_END -->
+
 </body>
 </html>
