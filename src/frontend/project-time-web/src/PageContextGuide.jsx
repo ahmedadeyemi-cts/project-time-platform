@@ -1,6 +1,13 @@
 import './page-context-guide.css';
 
 const routeContext = {
+  'production-data-readiness': {
+    page: 'Production Data Readiness Center',
+    purpose: 'Shows whether core production data exists for users, roles, customers, projects, tasks, time, approvals, exports, audit evidence, and notifications.',
+    backend: '/api/production/data-readiness',
+    check: 'Refresh data readiness, review each table count/status, then open the linked pages to validate data visibility.'
+  },
+
   dashboard: {
     page: 'Dashboard',
     purpose: 'Role-based landing page showing the modules, alerts, and work areas available to the signed-in user.',

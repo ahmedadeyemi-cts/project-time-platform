@@ -489,12 +489,14 @@ import './local-admin-password-reset-clear-actions.css';
 import './production-operations-acknowledgments.css';
 import './time-compliance-email-notifications.css';
 import './production-readiness-center.css';
+import './production-data-readiness-center.css';
 import './page-context-guide.css';
 import ProductionOperationsPanel from './ProductionOperationsPanel.jsx';
 import LocalAdminPasswordResetClearActions from './LocalAdminPasswordResetClearActions.jsx';
 import ProductionOperationsAcknowledgmentsPanel from './ProductionOperationsAcknowledgmentsPanel.jsx';
 import TimeComplianceEmailNotificationsPanel from './TimeComplianceEmailNotificationsPanel.jsx';
 import ProductionReadinessCenterPanel from './ProductionReadinessCenterPanel.jsx';
+import ProductionDataReadinessCenter from './ProductionDataReadinessCenter.jsx';
 import PageContextGuide from './PageContextGuide.jsx';
 const workflowCards = [
   {
@@ -1479,7 +1481,17 @@ function getInstalledProjectPulseModuleRegistry() {
     group: 'Security',
     permissions: ['VIEW_ROLE_ACCESS_MATRIX', 'VIEW_ROLE_ADMIN_DIRECTORY', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
     description: 'Shows role-to-permission coverage for governance, route visibility, and role enforcement validation.'
+  },  {
+    route: 'production-data-readiness',
+    href: '#production-data-readiness',
+    title: 'Production Data Readiness Center',
+    navLabel: 'Data Readiness',
+    status: 'Operational',
+    group: 'System Operations',
+    permissions: ['VIEW_PRODUCTION_READINESS_COMMAND_CENTER', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    description: 'Shows whether users, roles, customers, projects, tasks, time entries, approvals, exports, audit events, and notification evidence are ready for production.'
   },
+
   {
     route: 'production-readiness',
     href: '#production-readiness',
@@ -1549,6 +1561,7 @@ function getInstalledModuleDescription(module) {
   const descriptions = {
     dashboard: 'Provides a role-based landing page with the modules, alerts, and workflow areas available to the signed-in user.',
     'production-readiness': 'Shows a web-visible production readiness command center backed by protected readiness checks, route governance, and release validation guidance.',
+    'production-data-readiness': 'Shows production data readiness for users, roles, customers, projects, tasks, timesheets, approvals, exports, audit evidence, and notifications.',
     timesheet: 'Allows engineers and eligible users to enter, save, submit, and review weekly or day-level time entries.',
     utilization: 'Shows billable and eligible utilization performance against quarterly and annual targets.',
     'project-workload': 'Shows project managers their assigned project workload, active and closed project counts, status mix, hours, and workload risk.',
@@ -4021,6 +4034,10 @@ Analytics - Variphy / Infortel`}
       </aside>
 
       <PageContextGuide activeRoute={activeRoute} />
+
+      <section id="production-data-readiness" className="panel production-data-readiness-route-panel">
+        <ProductionDataReadinessCenter />
+      </section>
 
       <section id="production-readiness" className="panel production-readiness-route-panel">
         <ProductionReadinessCenterPanel />
