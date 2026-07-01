@@ -5756,5 +5756,1021 @@
 </script>
 <!-- 024_FULL_SALES_DELIVERY_INTAKE_END -->
 
+
+<!-- 027_FULL_SIGNED_SOW_HANDOFF_ASSIGNMENT_TRIGGER_START -->
+<style id="projectpulse-027-style">
+  #projectpulse-027-handoff-card {
+    border: 1px solid rgba(148, 163, 184, 0.32);
+    border-radius: 20px;
+    background: #ffffff;
+    color: #111827;
+    box-shadow: 0 14px 36px rgba(15, 23, 42, 0.06);
+    padding: 1.15rem;
+    min-height: 175px;
+  }
+
+  #projectpulse-027-shell {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483004;
+    background: linear-gradient(135deg, #eef8ff 0%, #f8fbff 42%, #eef8f2 100%);
+    overflow-y: auto;
+    padding: 1.25rem;
+    box-sizing: border-box;
+    display: none;
+  }
+
+  #projectpulse-027-shell[data-open="true"] {
+    display: block;
+  }
+
+  #projectpulse-027-page {
+    max-width: 1540px;
+    margin: 0 auto 2rem;
+    border: 1px solid rgba(148, 163, 184, 0.32);
+    border-radius: 24px;
+    background: #ffffff;
+    color: #111827;
+    box-shadow: 0 20px 60px rgba(15, 23, 42, 0.12);
+    padding: 1.25rem;
+  }
+
+  .projectpulse-027-eyebrow {
+    color: #64748b;
+    font-size: 0.72rem;
+    font-weight: 950;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 0.55rem;
+  }
+
+  #projectpulse-027-handoff-card h3,
+  #projectpulse-027-page h2,
+  #projectpulse-027-page h3 {
+    margin: 0 0 0.55rem;
+    line-height: 1.25;
+  }
+
+  #projectpulse-027-handoff-card p,
+  #projectpulse-027-page p {
+    color: #5b6b89;
+    line-height: 1.48;
+  }
+
+  .projectpulse-027-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.65rem;
+    align-items: center;
+    margin-top: 1rem;
+  }
+
+  .projectpulse-027-button {
+    border: 1px solid rgba(37, 99, 235, 0.24);
+    border-radius: 12px;
+    background: #ffffff;
+    color: #111827;
+    padding: 0.65rem 0.9rem;
+    font-weight: 900;
+    cursor: pointer;
+  }
+
+  .projectpulse-027-button.primary { background: #0f2a55; border-color: #0f2a55; color: #ffffff; }
+  .projectpulse-027-button.success { background: #166534; border-color: #166534; color: #ffffff; }
+  .projectpulse-027-button.warning { background: #92400e; border-color: #92400e; color: #ffffff; }
+
+  .projectpulse-027-pill {
+    border-radius: 999px;
+    padding: 0.28rem 0.58rem;
+    font-size: 0.72rem;
+    font-weight: 950;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .projectpulse-027-pill.blue { background: #dbeafe; color: #1e3a8a; }
+  .projectpulse-027-pill.green { background: #dcfce7; color: #166534; }
+  .projectpulse-027-pill.amber { background: #fef3c7; color: #92400e; }
+  .projectpulse-027-pill.red { background: #fee2e2; color: #991b1b; }
+
+  .projectpulse-027-page-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.22);
+    padding-bottom: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .projectpulse-027-layout {
+    display: grid;
+    grid-template-columns: 0.9fr 1.1fr;
+    gap: 1rem;
+    align-items: start;
+  }
+
+  .projectpulse-027-section {
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    border-radius: 18px;
+    background: #f8fafc;
+    padding: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .projectpulse-027-section.white { background: #ffffff; }
+
+  .projectpulse-027-field { margin-bottom: 0.85rem; }
+
+  .projectpulse-027-field label {
+    display: block;
+    font-size: 0.78rem;
+    color: #475569;
+    font-weight: 950;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    margin-bottom: 0.35rem;
+  }
+
+  .projectpulse-027-field input,
+  .projectpulse-027-field select,
+  .projectpulse-027-field textarea {
+    width: 100%;
+    border: 1px solid rgba(148, 163, 184, 0.45);
+    border-radius: 12px;
+    padding: 0.7rem 0.75rem;
+    background: #ffffff;
+    color: #111827;
+    font: inherit;
+  }
+
+  .projectpulse-027-field textarea {
+    min-height: 110px;
+    resize: vertical;
+  }
+
+  .projectpulse-027-two-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.65rem;
+  }
+
+  .projectpulse-027-three-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.65rem;
+  }
+
+  .projectpulse-027-cardlet {
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    border-radius: 16px;
+    background: #ffffff;
+    padding: 0.9rem;
+  }
+
+  .projectpulse-027-cardlet strong {
+    display: block;
+    font-size: 1rem;
+    margin: 0.25rem 0;
+  }
+
+  .projectpulse-027-status {
+    border-radius: 16px;
+    padding: 0.85rem;
+    background: #eff6ff;
+    color: #1e3a8a;
+    font-weight: 750;
+    margin-top: 0.8rem;
+  }
+
+  .projectpulse-027-status.success { background: #dcfce7; color: #166534; }
+  .projectpulse-027-status.warning { background: #fef3c7; color: #92400e; }
+  .projectpulse-027-status.error { background: #fee2e2; color: #991b1b; }
+
+  .projectpulse-027-checklist {
+    display: grid;
+    gap: 0.55rem;
+  }
+
+  .projectpulse-027-checklist label {
+    display: flex;
+    gap: 0.55rem;
+    align-items: flex-start;
+    color: #334155;
+    line-height: 1.4;
+  }
+
+  .projectpulse-027-preview {
+    white-space: pre-wrap;
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    border-radius: 14px;
+    background: #ffffff;
+    padding: 0.85rem;
+    color: #334155;
+    max-height: 360px;
+    overflow: auto;
+  }
+
+  .projectpulse-027-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #ffffff;
+    border-radius: 14px;
+    overflow: hidden;
+  }
+
+  .projectpulse-027-table th,
+  .projectpulse-027-table td {
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    padding: 0.65rem;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  .projectpulse-027-table th {
+    background: #f1f5f9;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #475569;
+  }
+
+  @media (max-width: 1050px) {
+    .projectpulse-027-layout,
+    .projectpulse-027-two-grid,
+    .projectpulse-027-three-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .projectpulse-027-page-header {
+      flex-direction: column;
+    }
+  }
+</style>
+
+<script id="projectpulse-027-script">
+(function () {
+  if (window.__projectPulse027Installed) return;
+  window.__projectPulse027Installed = true;
+
+  var cardId = 'projectpulse-027-handoff-card';
+  var shellId = 'projectpulse-027-shell';
+  var storageKey = 'projectpulse027SignedSowHandoffAssignment';
+
+  var state = {
+    handoffReference: 'HANDOFF-027-DEMO',
+    intakeReference: 'INTAKE-024-DEMO',
+    crmSource: 'CRM Integration Framework',
+    crmRecordReference: 'CRM-OPP-026-DEMO',
+    customerName: 'Great Lakes Healthcare',
+    projectName: 'Cisco CUCM 11.5 to 15.0 Upgrade',
+    projectType: 'Professional Services',
+    salesOwner: 'Sales Owner',
+    solutionArchitect: 'Solution Architect',
+    projectTeamCoordinator: 'Project Team Coordinator',
+    estimatedHours: '80',
+    estimatedRevenue: '60000',
+    scopeSummary: 'Signed SOW/GSD package for Cisco CUCM 11.5 to 15.0 upgrade. Delivery should not begin until PTC validates the handoff package and assigns PM/Engineer resources.',
+    signedSowFileName: '',
+    gsdFileName: '',
+    supportingArtifactFileName: '',
+    assignedProjectManager: '',
+    assignedEngineeringTeam: 'Collaboration Engineering',
+    primaryEngineer: '',
+    secondaryEngineer: '',
+    backupEngineer: '',
+    targetStartDate: '',
+    assignmentNotes: '',
+    signedSowConfirmed: false,
+    gsdConfirmed: false,
+    scopeLocked: false,
+    canonicalDocsConfirmed: false,
+    ptcNotificationReady: false,
+    executiveNotificationReady: false,
+    assignmentPackageReady: false,
+    pmAssignmentConfirmed: false,
+    engineerAssignmentConfirmed: false,
+    sharedEmailProviderConfirmed: false,
+    recipientSafetyConfirmed: false,
+    auditReviewed: false,
+    closeoutReviewed: false,
+    lastPtcExecutiveNotification: '',
+    lastAssignmentNotification: '',
+    lastAssignmentPreview: '',
+    lastAuditEvent: '',
+    status: '',
+    statusType: ''
+  };
+
+  function escapeHtml(value) {
+    return String(value == null ? '' : value)
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#039;');
+  }
+
+  function cleanText(value) {
+    return String(value || '').replace(/\s+/g, ' ').trim();
+  }
+
+  function loadState() {
+    try {
+      var raw = window.localStorage.getItem(storageKey);
+      if (!raw) return;
+      Object.assign(state, JSON.parse(raw));
+    } catch {}
+  }
+
+  function saveState() {
+    try {
+      window.localStorage.setItem(storageKey, JSON.stringify(state));
+    } catch {}
+  }
+
+  function route() {
+    return String(window.location.hash || '#dashboard').replace(/^#/, '').split('?')[0].toLowerCase();
+  }
+
+  function getDashboardGrid() {
+    var handoffCard = document.getElementById(cardId);
+    if (handoffCard && handoffCard.parentElement) return handoffCard.parentElement;
+
+    var intakeCard = document.getElementById('projectpulse-024-intake-card');
+    if (intakeCard && intakeCard.parentElement) return intakeCard.parentElement;
+
+    var crmCard = document.getElementById('projectpulse-026-crm-card');
+    if (crmCard && crmCard.parentElement) return crmCard.parentElement;
+
+    var sowCard = document.getElementById('projectpulse-025-sow-card');
+    if (sowCard && sowCard.parentElement) return sowCard.parentElement;
+
+    var notificationCard = document.getElementById('projectpulse-022e-dashboard-notification-card');
+    if (notificationCard && notificationCard.parentElement) return notificationCard.parentElement;
+
+    var candidates = Array.from(document.querySelectorAll('section, article, div, main'))
+      .filter(function (element) {
+        if (element.id === cardId || element.closest('#' + cardId)) return false;
+        var text = cleanText(element.textContent);
+        var rect = element.getBoundingClientRect();
+        return rect.width > 700 &&
+          rect.height > 250 &&
+          text.includes('Project Workload') &&
+          text.includes('Project Workspace') &&
+          text.includes('Project Intake');
+      })
+      .sort(function (a, b) {
+        var ar = a.getBoundingClientRect();
+        var br = b.getBoundingClientRect();
+        return (ar.width * ar.height) - (br.width * br.height);
+      });
+
+    return candidates[0] || null;
+  }
+
+  function ensureCard() {
+    var grid = getDashboardGrid();
+    if (!grid) return null;
+
+    var card = document.getElementById(cardId);
+    if (!card) {
+      card = document.createElement('section');
+      card.id = cardId;
+      card.innerHTML =
+        '<div class="projectpulse-027-eyebrow">Module 027</div>' +
+        '<h3>Signed SOW Handoff + Assignment Trigger</h3>' +
+        '<p>Validate signed SOW/GSD readiness, notify PTC and Executive stakeholders, and prepare PM/Engineer assignment package.</p>' +
+        '<div class="projectpulse-027-actions">' +
+          '<button type="button" class="projectpulse-027-button primary" data-027-open>Open Signed Handoff</button>' +
+          '<span class="projectpulse-027-pill green">PTC / Executive notify</span>' +
+          '<span class="projectpulse-027-pill blue">Assignment trigger</span>' +
+          '<span class="projectpulse-027-pill amber">Email safety gated</span>' +
+        '</div>';
+
+      var intakeCard = document.getElementById('projectpulse-024-intake-card');
+      var crmCard = document.getElementById('projectpulse-026-crm-card');
+
+      if (crmCard && crmCard.parentElement === grid) {
+        grid.insertBefore(card, crmCard.nextSibling);
+      } else if (intakeCard && intakeCard.parentElement === grid) {
+        grid.insertBefore(card, intakeCard.nextSibling);
+      } else {
+        grid.insertBefore(card, grid.firstElementChild || null);
+      }
+
+      card.querySelector('[data-027-open]').addEventListener('click', function () {
+        window.location.hash = '#signed-handoff';
+        render();
+      });
+    }
+
+    return card;
+  }
+
+  function ensureShell() {
+    var shell = document.getElementById(shellId);
+    if (!shell) {
+      shell = document.createElement('div');
+      shell.id = shellId;
+      shell.setAttribute('aria-label', 'Signed SOW Handoff route');
+      document.body.appendChild(shell);
+    }
+    return shell;
+  }
+
+  function openShell(open) {
+    var shell = ensureShell();
+    if (open) {
+      shell.setAttribute('data-open', 'true');
+      document.documentElement.style.overflow = 'hidden';
+      document.body.style.overflow = 'hidden';
+      renderShell();
+      setTimeout(function () { shell.scrollTop = 0; }, 0);
+    } else {
+      shell.removeAttribute('data-open');
+      document.documentElement.style.overflow = '';
+      document.body.style.overflow = '';
+    }
+  }
+
+  function setValue(root, name, value) {
+    var element = root.querySelector('[data-027-field="' + name + '"]');
+    if (element) element.value = value || '';
+  }
+
+  function setCheck(root, name, value) {
+    var element = root.querySelector('[data-027-check="' + name + '"]');
+    if (element) element.checked = !!value;
+  }
+
+  function captureInputs() {
+    var shell = document.getElementById(shellId);
+    if (!shell || shell.getAttribute('data-open') !== 'true') return;
+
+    function get(name) {
+      var element = shell.querySelector('[data-027-field="' + name + '"]');
+      return element ? element.value : '';
+    }
+
+    function checked(name) {
+      var element = shell.querySelector('[data-027-check="' + name + '"]');
+      return !!(element && element.checked);
+    }
+
+    [
+      'handoffReference',
+      'intakeReference',
+      'crmSource',
+      'crmRecordReference',
+      'customerName',
+      'projectName',
+      'projectType',
+      'salesOwner',
+      'solutionArchitect',
+      'projectTeamCoordinator',
+      'estimatedHours',
+      'estimatedRevenue',
+      'scopeSummary',
+      'assignedProjectManager',
+      'assignedEngineeringTeam',
+      'primaryEngineer',
+      'secondaryEngineer',
+      'backupEngineer',
+      'targetStartDate',
+      'assignmentNotes'
+    ].forEach(function (key) {
+      state[key] = get(key);
+    });
+
+    [
+      'signedSowConfirmed',
+      'gsdConfirmed',
+      'scopeLocked',
+      'canonicalDocsConfirmed',
+      'ptcNotificationReady',
+      'executiveNotificationReady',
+      'assignmentPackageReady',
+      'pmAssignmentConfirmed',
+      'engineerAssignmentConfirmed',
+      'sharedEmailProviderConfirmed',
+      'recipientSafetyConfirmed',
+      'auditReviewed',
+      'closeoutReviewed'
+    ].forEach(function (key) {
+      state[key] = checked(key);
+    });
+
+    saveState();
+  }
+
+  function artifactTableHtml() {
+    var rows = [
+      ['Signed SOW', state.signedSowFileName || 'Missing', 'Required before handoff notification', state.signedSowFileName ? 'Received' : 'Required'],
+      ['GSD', state.gsdFileName || 'Missing', 'Required before assignment trigger', state.gsdFileName ? 'Received' : 'Required'],
+      ['Supporting Artifact', state.supportingArtifactFileName || state.crmRecordReference || 'Optional', 'Quote / CRM / PO support', state.supportingArtifactFileName || state.crmRecordReference ? 'Available' : 'Optional']
+    ];
+
+    return '<table class="projectpulse-027-table">' +
+      '<thead><tr><th>Artifact</th><th>Current Value</th><th>Use</th><th>Status</th></tr></thead>' +
+      '<tbody>' +
+      rows.map(function (row) {
+        return '<tr><td>' + escapeHtml(row[0]) + '</td><td>' + escapeHtml(row[1]) + '</td><td>' + escapeHtml(row[2]) + '</td><td>' + escapeHtml(row[3]) + '</td></tr>';
+      }).join('') +
+      '</tbody></table>';
+  }
+
+  function roleVisibilityHtml() {
+    var rows = [
+      ['Sales', 'Mark SOW signed, upload signed SOW/GSD package, initiate PTC/Executive notification', 'Before assignment'],
+      ['Solution Architect', 'Confirm scope is locked and artifacts align with approved design', 'Before assignment'],
+      ['PTC', 'Validate handoff, prepare PM/Engineer assignment, trigger assignment notification', 'Before delivery'],
+      ['Executive', 'View signed handoff readiness and delivery pipeline status', 'Before delivery'],
+      ['Project Management', 'View signed SOW/GSD and project assignment package after assignment', 'After assignment'],
+      ['Engineer', 'View signed SOW/GSD and engineering package after assignment', 'After assignment']
+    ];
+
+    return '<table class="projectpulse-027-table">' +
+      '<thead><tr><th>Role</th><th>Visibility / Responsibility</th><th>Timing</th></tr></thead>' +
+      '<tbody>' +
+      rows.map(function (row) {
+        return '<tr><td>' + escapeHtml(row[0]) + '</td><td>' + escapeHtml(row[1]) + '</td><td>' + escapeHtml(row[2]) + '</td></tr>';
+      }).join('') +
+      '</tbody></table>';
+  }
+
+  function readinessSummary() {
+    var checks = [
+      state.signedSowConfirmed,
+      state.gsdConfirmed,
+      state.scopeLocked,
+      state.canonicalDocsConfirmed,
+      state.ptcNotificationReady,
+      state.executiveNotificationReady,
+      state.assignmentPackageReady,
+      state.pmAssignmentConfirmed,
+      state.engineerAssignmentConfirmed,
+      state.sharedEmailProviderConfirmed,
+      state.recipientSafetyConfirmed,
+      state.auditReviewed,
+      state.closeoutReviewed
+    ];
+
+    var complete = checks.filter(Boolean).length;
+    var artifactGate = state.signedSowFileName && state.gsdFileName ? 'Required artifacts selected' : 'Missing signed SOW or GSD';
+
+    return 'Signed SOW Handoff Readiness Summary\n\n' +
+      'Handoff Reference: ' + state.handoffReference + '\n' +
+      'Intake Reference: ' + state.intakeReference + '\n' +
+      'CRM Source: ' + state.crmSource + '\n' +
+      'CRM Record Reference: ' + state.crmRecordReference + '\n' +
+      'Customer: ' + state.customerName + '\n' +
+      'Project: ' + state.projectName + '\n' +
+      'Project Type: ' + state.projectType + '\n' +
+      'Sales Owner: ' + state.salesOwner + '\n' +
+      'Solution Architect: ' + state.solutionArchitect + '\n' +
+      'PTC: ' + state.projectTeamCoordinator + '\n' +
+      'Estimated Hours: ' + state.estimatedHours + '\n' +
+      'Estimated Revenue: $' + state.estimatedRevenue + '\n\n' +
+      'Artifact Gate:\n' +
+      '- Signed SOW: ' + (state.signedSowFileName || 'Missing') + '\n' +
+      '- GSD: ' + (state.gsdFileName || 'Missing') + '\n' +
+      '- Gate Status: ' + artifactGate + '\n\n' +
+      'Readiness Checks Complete: ' + complete + ' / ' + checks.length + '\n\n' +
+      'Assignment Trigger Rule:\n' +
+      'Assignment notification should not proceed until signed SOW/GSD are confirmed, scope is locked, PTC/Executive notification is ready, shared email provider is confirmed, and recipient safety is reviewed.';
+  }
+
+  function ptcExecutiveNotificationPreview() {
+    return 'Subject: Signed SOW/GSD Ready - ' + state.customerName + ' / ' + state.projectName + '\n\n' +
+      'Hello PTC and Executive Team,\n\n' +
+      'The signed SOW/GSD handoff package is ready for review.\n\n' +
+      'Customer: ' + state.customerName + '\n' +
+      'Project: ' + state.projectName + '\n' +
+      'Intake Reference: ' + state.intakeReference + '\n' +
+      'Handoff Reference: ' + state.handoffReference + '\n' +
+      'Sales Owner: ' + state.salesOwner + '\n' +
+      'Solution Architect: ' + state.solutionArchitect + '\n' +
+      'Estimated Hours: ' + state.estimatedHours + '\n' +
+      'Estimated Revenue: $' + state.estimatedRevenue + '\n' +
+      'Signed SOW: ' + (state.signedSowFileName || '[Missing]') + '\n' +
+      'GSD: ' + (state.gsdFileName || '[Missing]') + '\n\n' +
+      'Next step:\n' +
+      'PTC should validate the handoff package and prepare PM/Engineer assignment.';
+  }
+
+  function assignmentNotificationPreview() {
+    return 'Subject: Project Assignment Ready - ' + state.customerName + ' / ' + state.projectName + '\n\n' +
+      'Hello Assigned Project Team,\n\n' +
+      'You have been assigned to the delivery package for ' + state.customerName + ' - ' + state.projectName + '.\n\n' +
+      'Project Manager: ' + (state.assignedProjectManager || '[PM not selected]') + '\n' +
+      'Engineering Team: ' + state.assignedEngineeringTeam + '\n' +
+      'Primary Engineer: ' + (state.primaryEngineer || '[Primary engineer not selected]') + '\n' +
+      'Secondary Engineer: ' + (state.secondaryEngineer || '[Secondary engineer not selected]') + '\n' +
+      'Backup Engineer: ' + (state.backupEngineer || '[Backup engineer optional]') + '\n' +
+      'Target Start Date: ' + (state.targetStartDate || '[Target start date not set]') + '\n' +
+      'Planned Hours: ' + state.estimatedHours + '\n\n' +
+      'Required action:\n' +
+      'Review the signed SOW and GSD in ProjectPulse Project Workspace / Engineering Documents before starting delivery work.';
+  }
+
+  function assignmentPreview() {
+    return 'PTC Assignment Trigger Preview\n\n' +
+      'Handoff Reference: ' + state.handoffReference + '\n' +
+      'Customer: ' + state.customerName + '\n' +
+      'Project: ' + state.projectName + '\n' +
+      'Project Type: ' + state.projectType + '\n' +
+      'Project Manager: ' + (state.assignedProjectManager || '[Required]') + '\n' +
+      'Engineering Team: ' + state.assignedEngineeringTeam + '\n' +
+      'Primary Engineer: ' + (state.primaryEngineer || '[Required]') + '\n' +
+      'Secondary Engineer: ' + (state.secondaryEngineer || '[Optional]') + '\n' +
+      'Backup Engineer: ' + (state.backupEngineer || '[Optional]') + '\n' +
+      'Target Start Date: ' + (state.targetStartDate || '[Required]') + '\n' +
+      'Assignment Notes: ' + (state.assignmentNotes || '[None]') + '\n\n' +
+      'After trigger:\n' +
+      '- PM receives assigned project package visibility.\n' +
+      '- Engineer(s) receive signed SOW/GSD visibility.\n' +
+      '- Project Workspace / Engineering Documents becomes the canonical artifact view.\n' +
+      '- Module 028 can use signed SOW/GSD scope for SOW-aware AI time entry.';
+  }
+
+  function auditPreview(eventName) {
+    return 'Audit Event Preview\n\n' +
+      'Event: ' + eventName + '\n' +
+      'Handoff Reference: ' + state.handoffReference + '\n' +
+      'Intake Reference: ' + state.intakeReference + '\n' +
+      'Customer: ' + state.customerName + '\n' +
+      'Project: ' + state.projectName + '\n' +
+      'Actor: Current ProjectPulse user\n' +
+      'Timestamp: ' + new Date().toISOString() + '\n\n' +
+      'Audit storage target:\n' +
+      '- signed_sow_handoff_notification_events\n' +
+      '- signed_sow_assignment_events\n' +
+      '- signed_sow_handoff_readiness_reviews';
+  }
+
+  function saveHandoffPackage() {
+    captureInputs();
+    state.statusType = 'success';
+    state.status = 'Signed SOW handoff package saved locally. Database table signed_sow_handoff_packages is ready for backend persistence.';
+    state.lastAuditEvent = auditPreview('handoff_package_saved');
+    saveState();
+    renderShell();
+  }
+
+  function validateReadiness() {
+    captureInputs();
+
+    var missing = [];
+    if (!state.signedSowFileName) missing.push('signed SOW file');
+    if (!state.gsdFileName) missing.push('GSD file');
+    if (!state.signedSowConfirmed) missing.push('signed SOW confirmation');
+    if (!state.gsdConfirmed) missing.push('GSD confirmation');
+    if (!state.scopeLocked) missing.push('scope locked');
+    if (!state.canonicalDocsConfirmed) missing.push('canonical document confirmation');
+    if (!state.ptcNotificationReady) missing.push('PTC notification readiness');
+    if (!state.executiveNotificationReady) missing.push('Executive notification readiness');
+    if (!state.assignmentPackageReady) missing.push('assignment package readiness');
+    if (!state.sharedEmailProviderConfirmed) missing.push('shared email provider confirmation');
+    if (!state.recipientSafetyConfirmed) missing.push('recipient safety confirmation');
+    if (!state.auditReviewed) missing.push('audit review');
+    if (!state.closeoutReviewed) missing.push('Module 027 closeout review');
+
+    if (missing.length) {
+      state.statusType = 'warning';
+      state.status = 'Handoff is not ready to trigger. Missing: ' + missing.join(', ') + '.';
+    } else {
+      state.statusType = 'success';
+      state.status = 'Signed SOW handoff is ready for PTC/Executive notification and assignment trigger.';
+    }
+
+    state.lastAuditEvent = auditPreview('handoff_readiness_validated');
+    saveState();
+    renderShell();
+  }
+
+  function preparePtcExecutiveNotification() {
+    captureInputs();
+    state.lastPtcExecutiveNotification = ptcExecutiveNotificationPreview() + '\n\nPrepared locally at: ' + new Date().toISOString();
+    state.ptcNotificationReady = true;
+    state.executiveNotificationReady = true;
+    state.statusType = 'success';
+    state.status = 'PTC/Executive notification preview prepared. Backend email delivery will use shared email provider and recipient safety gate.';
+    state.lastAuditEvent = auditPreview('ptc_executive_notification_prepared');
+    saveState();
+    renderShell();
+  }
+
+  function prepareAssignmentTrigger() {
+    captureInputs();
+    state.lastAssignmentPreview = assignmentPreview() + '\n\nPrepared locally at: ' + new Date().toISOString();
+    state.assignmentPackageReady = true;
+    state.statusType = 'success';
+    state.status = 'Assignment trigger preview prepared. Validate PM and Engineer assignments before marking triggered.';
+    state.lastAuditEvent = auditPreview('assignment_trigger_preview_prepared');
+    saveState();
+    renderShell();
+  }
+
+  function markAssignmentTriggered() {
+    captureInputs();
+
+    var missing = [];
+    if (!state.assignedProjectManager) missing.push('Project Manager');
+    if (!state.primaryEngineer) missing.push('Primary Engineer');
+    if (!state.targetStartDate) missing.push('Target Start Date');
+    if (!state.assignmentPackageReady) missing.push('assignment package readiness');
+
+    state.lastAssignmentNotification = assignmentNotificationPreview() + '\n\nPrepared locally at: ' + new Date().toISOString();
+
+    if (missing.length) {
+      state.statusType = 'warning';
+      state.status = 'Assignment cannot be marked triggered yet. Missing: ' + missing.join(', ') + '.';
+    } else {
+      state.pmAssignmentConfirmed = true;
+      state.engineerAssignmentConfirmed = true;
+      state.statusType = 'success';
+      state.status = 'Assignment trigger marked in preview. Backend will send PM/Engineer notification through the shared email provider.';
+    }
+
+    state.lastAuditEvent = auditPreview('assignment_triggered_preview');
+    saveState();
+    renderShell();
+  }
+
+  function renderShell() {
+    loadState();
+
+    var shell = ensureShell();
+
+    shell.innerHTML =
+      '<div id="projectpulse-027-page">' +
+        '<div class="projectpulse-027-page-header">' +
+          '<div>' +
+            '<div class="projectpulse-027-eyebrow">Module 027 · Signed SOW Handoff + Assignment Trigger</div>' +
+            '<h2>Signed Handoff + Assignment Trigger Center</h2>' +
+            '<p>Validate signed SOW/GSD readiness, prepare PTC and Executive notification, and trigger PM/Engineer assignment package visibility.</p>' +
+            '<div class="projectpulse-027-actions">' +
+              '<span class="projectpulse-027-pill green">Signed SOW/GSD gate</span>' +
+              '<span class="projectpulse-027-pill blue">PTC / Executive notification</span>' +
+              '<span class="projectpulse-027-pill amber">Shared email safety</span>' +
+              '<span class="projectpulse-027-pill green">PM / Engineer assignment</span>' +
+            '</div>' +
+          '</div>' +
+          '<div class="projectpulse-027-actions">' +
+            '<button type="button" class="projectpulse-027-button" data-027-dashboard>Back to Dashboard</button>' +
+            '<button type="button" class="projectpulse-027-button primary" data-027-save>Save Handoff Package</button>' +
+            '<button type="button" class="projectpulse-027-button success" data-027-validate>Validate Readiness</button>' +
+            '<button type="button" class="projectpulse-027-button" data-027-clear>Clear Demo State</button>' +
+          '</div>' +
+        '</div>' +
+
+        '<div class="projectpulse-027-layout">' +
+          '<div>' +
+            '<div class="projectpulse-027-section">' +
+              '<h3>027A Signed Handoff Package</h3>' +
+              '<p>This package is created after Sales/Solution Architect confirms signed SOW and GSD readiness from Module 024/025/026 workflow context.</p>' +
+              '<div class="projectpulse-027-two-grid">' +
+                '<div class="projectpulse-027-field"><label>Handoff Reference</label><input data-027-field="handoffReference"></div>' +
+                '<div class="projectpulse-027-field"><label>Intake Reference</label><input data-027-field="intakeReference"></div>' +
+              '</div>' +
+              '<div class="projectpulse-027-two-grid">' +
+                '<div class="projectpulse-027-field"><label>CRM Source</label><select data-027-field="crmSource"><option>Manual / ProjectPulse</option><option>CRM Integration Framework</option><option>Salesforce</option><option>Zendesk Sell</option><option>SOW Generator</option><option>Sales-to-Delivery Intake</option></select></div>' +
+                '<div class="projectpulse-027-field"><label>CRM Record Reference</label><input data-027-field="crmRecordReference"></div>' +
+              '</div>' +
+              '<div class="projectpulse-027-two-grid">' +
+                '<div class="projectpulse-027-field"><label>Customer Name</label><input data-027-field="customerName"></div>' +
+                '<div class="projectpulse-027-field"><label>Project Type</label><select data-027-field="projectType"><option>Professional Services</option><option>Managed Services</option><option>Implementation</option><option>Consulting</option><option>Service Request</option></select></div>' +
+              '</div>' +
+              '<div class="projectpulse-027-field"><label>Project / Engagement Name</label><input data-027-field="projectName"></div>' +
+              '<div class="projectpulse-027-two-grid">' +
+                '<div class="projectpulse-027-field"><label>Sales Owner</label><input data-027-field="salesOwner"></div>' +
+                '<div class="projectpulse-027-field"><label>Solution Architect</label><input data-027-field="solutionArchitect"></div>' +
+              '</div>' +
+              '<div class="projectpulse-027-field"><label>Project Team Coordinator</label><input data-027-field="projectTeamCoordinator"></div>' +
+              '<div class="projectpulse-027-two-grid">' +
+                '<div class="projectpulse-027-field"><label>Estimated Hours</label><input data-027-field="estimatedHours"></div>' +
+                '<div class="projectpulse-027-field"><label>Estimated Revenue</label><input data-027-field="estimatedRevenue"></div>' +
+              '</div>' +
+              '<div class="projectpulse-027-field"><label>Scope Summary</label><textarea data-027-field="scopeSummary"></textarea></div>' +
+            '</div>' +
+
+            '<div class="projectpulse-027-section">' +
+              '<h3>027B Required Signed SOW/GSD Artifacts</h3>' +
+              '<p>Signed SOW and GSD must remain in the canonical Project Hours / SOW-GSD / Engineer Allocation document area.</p>' +
+              '<div class="projectpulse-027-two-grid">' +
+                '<div class="projectpulse-027-field"><label>Signed SOW Upload Preview</label><input type="file" accept=".pdf,.doc,.docx" data-027-signed-sow-file><p>Selected SOW: <strong data-027-sow-name></strong></p></div>' +
+                '<div class="projectpulse-027-field"><label>GSD Upload Preview</label><input type="file" accept=".pdf,.doc,.docx,.xlsx" data-027-gsd-file><p>Selected GSD: <strong data-027-gsd-name></strong></p></div>' +
+              '</div>' +
+              '<div class="projectpulse-027-field"><label>Supporting Artifact Preview</label><input type="file" accept=".pdf,.doc,.docx,.xlsx" data-027-support-file><p>Selected Support: <strong data-027-support-name></strong></p></div>' +
+              '<div class="projectpulse-027-preview">' + artifactTableHtml() + '</div>' +
+            '</div>' +
+
+            '<div class="projectpulse-027-section">' +
+              '<h3>027C PTC Assignment Package</h3>' +
+              '<p>PTC prepares PM and Engineer assignment after signed SOW/GSD readiness is validated.</p>' +
+              '<div class="projectpulse-027-two-grid">' +
+                '<div class="projectpulse-027-field"><label>Assigned Project Manager</label><input data-027-field="assignedProjectManager"></div>' +
+                '<div class="projectpulse-027-field"><label>Engineering Team</label><select data-027-field="assignedEngineeringTeam"><option>Collaboration Engineering</option><option>Systems & Storage Engineering</option><option>Network Engineering</option><option>Security Engineering</option><option>Professional Services</option></select></div>' +
+              '</div>' +
+              '<div class="projectpulse-027-three-grid">' +
+                '<div class="projectpulse-027-field"><label>Primary Engineer</label><input data-027-field="primaryEngineer"></div>' +
+                '<div class="projectpulse-027-field"><label>Secondary Engineer</label><input data-027-field="secondaryEngineer"></div>' +
+                '<div class="projectpulse-027-field"><label>Backup Engineer</label><input data-027-field="backupEngineer"></div>' +
+              '</div>' +
+              '<div class="projectpulse-027-field"><label>Target Start Date</label><input data-027-field="targetStartDate" placeholder="YYYY-MM-DD or target week"></div>' +
+              '<div class="projectpulse-027-field"><label>Assignment Notes</label><textarea data-027-field="assignmentNotes"></textarea></div>' +
+              '<div class="projectpulse-027-actions"><button type="button" class="projectpulse-027-button warning" data-027-ptc-email>Prepare PTC/Executive Notification</button><button type="button" class="projectpulse-027-button primary" data-027-assignment-preview>Prepare Assignment Trigger</button><button type="button" class="projectpulse-027-button success" data-027-assignment-triggered>Mark Assignment Triggered Preview</button></div>' +
+              '<div data-027-status></div>' +
+            '</div>' +
+
+            '<div class="projectpulse-027-section">' +
+              '<h3>027D Readiness + Email Safety Checklist</h3>' +
+              '<div class="projectpulse-027-checklist">' +
+                '<label><input type="checkbox" data-027-check="signedSowConfirmed"> Signed SOW confirmed.</label>' +
+                '<label><input type="checkbox" data-027-check="gsdConfirmed"> GSD confirmed.</label>' +
+                '<label><input type="checkbox" data-027-check="scopeLocked"> Scope is locked and approved for delivery.</label>' +
+                '<label><input type="checkbox" data-027-check="canonicalDocsConfirmed"> Canonical SOW/GSD document area confirmed.</label>' +
+                '<label><input type="checkbox" data-027-check="ptcNotificationReady"> PTC notification readiness confirmed.</label>' +
+                '<label><input type="checkbox" data-027-check="executiveNotificationReady"> Executive notification readiness confirmed.</label>' +
+                '<label><input type="checkbox" data-027-check="assignmentPackageReady"> Assignment package readiness confirmed.</label>' +
+                '<label><input type="checkbox" data-027-check="pmAssignmentConfirmed"> PM assignment confirmed.</label>' +
+                '<label><input type="checkbox" data-027-check="engineerAssignmentConfirmed"> Engineer assignment confirmed.</label>' +
+                '<label><input type="checkbox" data-027-check="sharedEmailProviderConfirmed"> Shared email provider readiness confirmed.</label>' +
+                '<label><input type="checkbox" data-027-check="recipientSafetyConfirmed"> Recipient safety gate confirmed.</label>' +
+                '<label><input type="checkbox" data-027-check="auditReviewed"> Audit trail reviewed.</label>' +
+                '<label><input type="checkbox" data-027-check="closeoutReviewed"> Module 027 closeout reviewed.</label>' +
+              '</div>' +
+            '</div>' +
+          '</div>' +
+
+          '<div>' +
+            '<div class="projectpulse-027-section white"><h3>Signed Handoff Readiness Summary</h3><div class="projectpulse-027-preview" data-027-readiness-output></div></div>' +
+            '<div class="projectpulse-027-section"><h3>PTC / Executive Notification Preview</h3><div class="projectpulse-027-preview" data-027-ptc-email-output></div></div>' +
+            '<div class="projectpulse-027-section"><h3>PM / Engineer Assignment Notification Preview</h3><div class="projectpulse-027-preview" data-027-assignment-email-output></div></div>' +
+            '<div class="projectpulse-027-section"><h3>Assignment Trigger Preview</h3><div class="projectpulse-027-preview" data-027-assignment-output></div></div>' +
+            '<div class="projectpulse-027-section"><h3>Audit Trail Preview</h3><div class="projectpulse-027-preview" data-027-audit-output></div></div>' +
+            '<div class="projectpulse-027-section"><h3>Role Visibility Model</h3>' + roleVisibilityHtml() + '</div>' +
+            '<div class="projectpulse-027-section">' +
+              '<h3>Workflow Placement</h3>' +
+              '<div class="projectpulse-027-three-grid">' +
+                '<div class="projectpulse-027-cardlet"><span class="projectpulse-027-pill blue">024</span><strong>Intake</strong><p>Validated signed SOW/GSD readiness flows into handoff.</p></div>' +
+                '<div class="projectpulse-027-cardlet"><span class="projectpulse-027-pill green">025</span><strong>SOW Generator</strong><p>SA-reviewed SOW context supports signed package.</p></div>' +
+                '<div class="projectpulse-027-cardlet"><span class="projectpulse-027-pill amber">028</span><strong>SOW-Aware Time Entry</strong><p>Assignment unlocks SOW/GSD-aware time-entry checks.</p></div>' +
+              '</div>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+
+    populateShell(shell);
+    wireShell(shell);
+  }
+
+  function populateShell(shell) {
+    [
+      'handoffReference',
+      'intakeReference',
+      'crmSource',
+      'crmRecordReference',
+      'customerName',
+      'projectName',
+      'projectType',
+      'salesOwner',
+      'solutionArchitect',
+      'projectTeamCoordinator',
+      'estimatedHours',
+      'estimatedRevenue',
+      'scopeSummary',
+      'assignedProjectManager',
+      'assignedEngineeringTeam',
+      'primaryEngineer',
+      'secondaryEngineer',
+      'backupEngineer',
+      'targetStartDate',
+      'assignmentNotes'
+    ].forEach(function (key) {
+      setValue(shell, key, state[key]);
+    });
+
+    [
+      'signedSowConfirmed',
+      'gsdConfirmed',
+      'scopeLocked',
+      'canonicalDocsConfirmed',
+      'ptcNotificationReady',
+      'executiveNotificationReady',
+      'assignmentPackageReady',
+      'pmAssignmentConfirmed',
+      'engineerAssignmentConfirmed',
+      'sharedEmailProviderConfirmed',
+      'recipientSafetyConfirmed',
+      'auditReviewed',
+      'closeoutReviewed'
+    ].forEach(function (key) {
+      setCheck(shell, key, state[key]);
+    });
+
+    shell.querySelector('[data-027-sow-name]').textContent = state.signedSowFileName || 'Required before handoff';
+    shell.querySelector('[data-027-gsd-name]').textContent = state.gsdFileName || 'Required before assignment';
+    shell.querySelector('[data-027-support-name]').textContent = state.supportingArtifactFileName || 'Optional supporting artifact';
+
+    var readinessNode = shell.querySelector('[data-027-readiness-output]');
+    var ptcEmailNode = shell.querySelector('[data-027-ptc-email-output]');
+    var assignmentEmailNode = shell.querySelector('[data-027-assignment-email-output]');
+    var assignmentNode = shell.querySelector('[data-027-assignment-output]');
+    var auditNode = shell.querySelector('[data-027-audit-output]');
+    var statusNode = shell.querySelector('[data-027-status]');
+
+    if (readinessNode) readinessNode.textContent = readinessSummary();
+    if (ptcEmailNode) ptcEmailNode.textContent = state.lastPtcExecutiveNotification || ptcExecutiveNotificationPreview();
+    if (assignmentEmailNode) assignmentEmailNode.textContent = state.lastAssignmentNotification || assignmentNotificationPreview();
+    if (assignmentNode) assignmentNode.textContent = state.lastAssignmentPreview || assignmentPreview();
+    if (auditNode) auditNode.textContent = state.lastAuditEvent || auditPreview('module_027_loaded');
+
+    if (statusNode) {
+      statusNode.innerHTML = state.status
+        ? '<div class="projectpulse-027-status ' + escapeHtml(state.statusType || '') + '">' + escapeHtml(state.status) + '</div>'
+        : '';
+    }
+  }
+
+  function wireShell(shell) {
+    shell.querySelectorAll('input, select, textarea').forEach(function (input) {
+      input.addEventListener('input', function () {
+        captureInputs();
+        populateShell(shell);
+      });
+      input.addEventListener('change', function () {
+        captureInputs();
+        populateShell(shell);
+      });
+    });
+
+    shell.querySelector('[data-027-signed-sow-file]').addEventListener('change', function (event) {
+      state.signedSowFileName = event.target.files && event.target.files[0] ? event.target.files[0].name : '';
+      if (state.signedSowFileName) state.signedSowConfirmed = true;
+      saveState();
+      renderShell();
+    });
+
+    shell.querySelector('[data-027-gsd-file]').addEventListener('change', function (event) {
+      state.gsdFileName = event.target.files && event.target.files[0] ? event.target.files[0].name : '';
+      if (state.gsdFileName) state.gsdConfirmed = true;
+      saveState();
+      renderShell();
+    });
+
+    shell.querySelector('[data-027-support-file]').addEventListener('change', function (event) {
+      state.supportingArtifactFileName = event.target.files && event.target.files[0] ? event.target.files[0].name : '';
+      saveState();
+      renderShell();
+    });
+
+    shell.querySelector('[data-027-dashboard]').addEventListener('click', function () {
+      window.location.hash = '#dashboard';
+      render();
+    });
+
+    shell.querySelector('[data-027-clear]').addEventListener('click', function () {
+      if (!confirm('Clear Module 027 demo state on this browser?')) return;
+      window.localStorage.removeItem(storageKey);
+      location.reload();
+    });
+
+    shell.querySelector('[data-027-save]').addEventListener('click', saveHandoffPackage);
+    shell.querySelector('[data-027-validate]').addEventListener('click', validateReadiness);
+    shell.querySelector('[data-027-ptc-email]').addEventListener('click', preparePtcExecutiveNotification);
+    shell.querySelector('[data-027-assignment-preview]').addEventListener('click', prepareAssignmentTrigger);
+    shell.querySelector('[data-027-assignment-triggered]').addEventListener('click', markAssignmentTriggered);
+  }
+
+  function render() {
+    loadState();
+    ensureShell();
+    ensureCard();
+    var currentRoute = route();
+    openShell(currentRoute === 'signed-handoff' || currentRoute === 'signed-sow-handoff' || currentRoute === 'assignment-trigger');
+  }
+
+  function boot(attempt) {
+    render();
+    if (!document.getElementById(cardId) && attempt !== 12) {
+      setTimeout(function () { boot(attempt + 1); }, 250);
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () { boot(0); });
+  } else {
+    boot(0);
+  }
+
+  window.addEventListener('hashchange', function () { setTimeout(render, 60); });
+})();
+</script>
+<!-- 027_FULL_SIGNED_SOW_HANDOFF_ASSIGNMENT_TRIGGER_END -->
+
 </body>
 </html>
