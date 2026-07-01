@@ -4883,5 +4883,878 @@
 </script>
 <!-- 026_FULL_CRM_INTEGRATION_FRAMEWORK_END -->
 
+
+<!-- 024_FULL_SALES_DELIVERY_INTAKE_START -->
+<style id="projectpulse-024-style">
+  #projectpulse-024-intake-card {
+    border: 1px solid rgba(148, 163, 184, 0.32);
+    border-radius: 20px;
+    background: #ffffff;
+    color: #111827;
+    box-shadow: 0 14px 36px rgba(15, 23, 42, 0.06);
+    padding: 1.15rem;
+    min-height: 175px;
+  }
+
+  #projectpulse-024-shell {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483002;
+    background: linear-gradient(135deg, #eef8ff 0%, #f8fbff 42%, #eef8f2 100%);
+    overflow-y: auto;
+    padding: 1.25rem;
+    box-sizing: border-box;
+    display: none;
+  }
+
+  #projectpulse-024-shell[data-open="true"] {
+    display: block;
+  }
+
+  #projectpulse-024-page {
+    max-width: 1540px;
+    margin: 0 auto 2rem;
+    border: 1px solid rgba(148, 163, 184, 0.32);
+    border-radius: 24px;
+    background: #ffffff;
+    color: #111827;
+    box-shadow: 0 20px 60px rgba(15, 23, 42, 0.12);
+    padding: 1.25rem;
+  }
+
+  .projectpulse-024-eyebrow {
+    color: #64748b;
+    font-size: 0.72rem;
+    font-weight: 950;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 0.55rem;
+  }
+
+  #projectpulse-024-intake-card h3,
+  #projectpulse-024-page h2,
+  #projectpulse-024-page h3 {
+    margin: 0 0 0.55rem;
+    line-height: 1.25;
+  }
+
+  #projectpulse-024-intake-card p,
+  #projectpulse-024-page p {
+    color: #5b6b89;
+    line-height: 1.48;
+  }
+
+  .projectpulse-024-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.65rem;
+    align-items: center;
+    margin-top: 1rem;
+  }
+
+  .projectpulse-024-button {
+    border: 1px solid rgba(37, 99, 235, 0.24);
+    border-radius: 12px;
+    background: #ffffff;
+    color: #111827;
+    padding: 0.65rem 0.9rem;
+    font-weight: 900;
+    cursor: pointer;
+  }
+
+  .projectpulse-024-button.primary { background: #0f2a55; border-color: #0f2a55; color: #ffffff; }
+  .projectpulse-024-button.success { background: #166534; border-color: #166534; color: #ffffff; }
+  .projectpulse-024-button.warning { background: #92400e; border-color: #92400e; color: #ffffff; }
+
+  .projectpulse-024-pill {
+    border-radius: 999px;
+    padding: 0.28rem 0.58rem;
+    font-size: 0.72rem;
+    font-weight: 950;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .projectpulse-024-pill.blue { background: #dbeafe; color: #1e3a8a; }
+  .projectpulse-024-pill.green { background: #dcfce7; color: #166534; }
+  .projectpulse-024-pill.amber { background: #fef3c7; color: #92400e; }
+  .projectpulse-024-pill.red { background: #fee2e2; color: #991b1b; }
+
+  .projectpulse-024-page-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.22);
+    padding-bottom: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .projectpulse-024-layout {
+    display: grid;
+    grid-template-columns: 0.9fr 1.1fr;
+    gap: 1rem;
+    align-items: start;
+  }
+
+  .projectpulse-024-section {
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    border-radius: 18px;
+    background: #f8fafc;
+    padding: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .projectpulse-024-section.white { background: #ffffff; }
+
+  .projectpulse-024-field { margin-bottom: 0.85rem; }
+
+  .projectpulse-024-field label {
+    display: block;
+    font-size: 0.78rem;
+    color: #475569;
+    font-weight: 950;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    margin-bottom: 0.35rem;
+  }
+
+  .projectpulse-024-field input,
+  .projectpulse-024-field select,
+  .projectpulse-024-field textarea {
+    width: 100%;
+    border: 1px solid rgba(148, 163, 184, 0.45);
+    border-radius: 12px;
+    padding: 0.7rem 0.75rem;
+    background: #ffffff;
+    color: #111827;
+    font: inherit;
+  }
+
+  .projectpulse-024-field textarea {
+    min-height: 110px;
+    resize: vertical;
+  }
+
+  .projectpulse-024-two-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.65rem;
+  }
+
+  .projectpulse-024-three-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.65rem;
+  }
+
+  .projectpulse-024-cardlet {
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    border-radius: 16px;
+    background: #ffffff;
+    padding: 0.9rem;
+  }
+
+  .projectpulse-024-cardlet strong {
+    display: block;
+    font-size: 1rem;
+    margin: 0.25rem 0;
+  }
+
+  .projectpulse-024-status {
+    border-radius: 16px;
+    padding: 0.85rem;
+    background: #eff6ff;
+    color: #1e3a8a;
+    font-weight: 750;
+    margin-top: 0.8rem;
+  }
+
+  .projectpulse-024-status.success { background: #dcfce7; color: #166534; }
+  .projectpulse-024-status.warning { background: #fef3c7; color: #92400e; }
+  .projectpulse-024-status.error { background: #fee2e2; color: #991b1b; }
+
+  .projectpulse-024-checklist {
+    display: grid;
+    gap: 0.55rem;
+  }
+
+  .projectpulse-024-checklist label {
+    display: flex;
+    gap: 0.55rem;
+    align-items: flex-start;
+    color: #334155;
+    line-height: 1.4;
+  }
+
+  .projectpulse-024-preview {
+    white-space: pre-wrap;
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    border-radius: 14px;
+    background: #ffffff;
+    padding: 0.85rem;
+    color: #334155;
+    max-height: 360px;
+    overflow: auto;
+  }
+
+  .projectpulse-024-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #ffffff;
+    border-radius: 14px;
+    overflow: hidden;
+  }
+
+  .projectpulse-024-table th,
+  .projectpulse-024-table td {
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    padding: 0.65rem;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  .projectpulse-024-table th {
+    background: #f1f5f9;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #475569;
+  }
+
+  @media (max-width: 1050px) {
+    .projectpulse-024-layout,
+    .projectpulse-024-two-grid,
+    .projectpulse-024-three-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .projectpulse-024-page-header {
+      flex-direction: column;
+    }
+  }
+</style>
+
+<script id="projectpulse-024-script">
+(function () {
+  if (window.__projectPulse024Installed) return;
+  window.__projectPulse024Installed = true;
+
+  var cardId = 'projectpulse-024-intake-card';
+  var shellId = 'projectpulse-024-shell';
+  var storageKey = 'projectpulse024SalesDeliveryIntake';
+
+  var state = {
+    intakeReference: 'INTAKE-024-DEMO',
+    sourceSystem: 'Manual / ProjectPulse',
+    sourceRecordReference: 'CRM-OPP-026-DEMO',
+    customerName: 'Great Lakes Healthcare',
+    projectName: 'Cisco CUCM 11.5 to 15.0 Upgrade',
+    projectType: 'Professional Services',
+    salesOwner: 'Sales Owner',
+    solutionArchitect: 'Solution Architect',
+    projectTeamCoordinator: 'Project Team Coordinator',
+    estimatedHours: '80',
+    estimatedRevenue: '60000',
+    highLevelScope: 'Upgrade Cisco CUCM 11.5 to 15.0. Validate migration path, dependencies, phone firmware, gateways, voicemail, E911, SIP trunks, certificates, backups, cutover, rollback, and post-upgrade calling validation.',
+    signedSowFileName: '',
+    gsdFileName: '',
+    quoteFileName: '',
+    customerConfirmed: false,
+    scopeConfirmed: false,
+    estimateConfirmed: false,
+    salesOwnerConfirmed: false,
+    solutionArchitectConfirmed: false,
+    signedSowConfirmed: false,
+    gsdConfirmed: false,
+    canonicalDocsConfirmed: false,
+    ptcAssignmentReady: false,
+    executiveVisibilityReady: false,
+    closeoutReviewed: false,
+    lastReadiness: '',
+    lastAssignmentPreview: '',
+    status: '',
+    statusType: ''
+  };
+
+  function escapeHtml(value) {
+    return String(value == null ? '' : value)
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#039;');
+  }
+
+  function cleanText(value) {
+    return String(value || '').replace(/\s+/g, ' ').trim();
+  }
+
+  function loadState() {
+    try {
+      var raw = window.localStorage.getItem(storageKey);
+      if (!raw) return;
+      Object.assign(state, JSON.parse(raw));
+    } catch {}
+  }
+
+  function saveState() {
+    try {
+      window.localStorage.setItem(storageKey, JSON.stringify(state));
+    } catch {}
+  }
+
+  function route() {
+    return String(window.location.hash || '#dashboard').replace(/^#/, '').split('?')[0].toLowerCase();
+  }
+
+  function getDashboardGrid() {
+    var intakeCard = document.getElementById(cardId);
+    if (intakeCard && intakeCard.parentElement) return intakeCard.parentElement;
+
+    var crmCard = document.getElementById('projectpulse-026-crm-card');
+    if (crmCard && crmCard.parentElement) return crmCard.parentElement;
+
+    var sowCard = document.getElementById('projectpulse-025-sow-card');
+    if (sowCard && sowCard.parentElement) return sowCard.parentElement;
+
+    var notificationCard = document.getElementById('projectpulse-022e-dashboard-notification-card');
+    if (notificationCard && notificationCard.parentElement) return notificationCard.parentElement;
+
+    var candidates = Array.from(document.querySelectorAll('section, article, div, main'))
+      .filter(function (element) {
+        if (element.id === cardId || element.closest('#' + cardId)) return false;
+        var text = cleanText(element.textContent);
+        var rect = element.getBoundingClientRect();
+        return rect.width > 700 &&
+          rect.height > 250 &&
+          text.includes('Project Workload') &&
+          text.includes('Project Workspace') &&
+          text.includes('Project Intake');
+      })
+      .sort(function (a, b) {
+        var ar = a.getBoundingClientRect();
+        var br = b.getBoundingClientRect();
+        return (ar.width * ar.height) - (br.width * br.height);
+      });
+
+    return candidates[0] || null;
+  }
+
+  function ensureCard() {
+    var grid = getDashboardGrid();
+    if (!grid) return null;
+
+    var card = document.getElementById(cardId);
+    if (!card) {
+      card = document.createElement('section');
+      card.id = cardId;
+      card.innerHTML =
+        '<div class="projectpulse-024-eyebrow">Module 024</div>' +
+        '<h3>Sales-to-Delivery Intake Foundation</h3>' +
+        '<p>Create the intake package that gates delivery handoff on required signed SOW and GSD artifacts before PTC assignment of PM and Engineers.</p>' +
+        '<div class="projectpulse-024-actions">' +
+          '<button type="button" class="projectpulse-024-button primary" data-024-open>Open Sales Intake</button>' +
+          '<span class="projectpulse-024-pill green">Signed SOW required</span>' +
+          '<span class="projectpulse-024-pill blue">GSD required</span>' +
+          '<span class="projectpulse-024-pill amber">Assignment gated</span>' +
+        '</div>';
+
+      var crmCard = document.getElementById('projectpulse-026-crm-card');
+      var sowCard = document.getElementById('projectpulse-025-sow-card');
+
+      if (crmCard && crmCard.parentElement === grid) {
+        grid.insertBefore(card, crmCard);
+      } else if (sowCard && sowCard.parentElement === grid) {
+        grid.insertBefore(card, sowCard);
+      } else {
+        grid.insertBefore(card, grid.firstElementChild || null);
+      }
+
+      card.querySelector('[data-024-open]').addEventListener('click', function () {
+        window.location.hash = '#sales-intake';
+        render();
+      });
+    }
+
+    return card;
+  }
+
+  function ensureShell() {
+    var shell = document.getElementById(shellId);
+    if (!shell) {
+      shell = document.createElement('div');
+      shell.id = shellId;
+      shell.setAttribute('aria-label', 'Sales-to-Delivery Intake route');
+      document.body.appendChild(shell);
+    }
+    return shell;
+  }
+
+  function openShell(open) {
+    var shell = ensureShell();
+    if (open) {
+      shell.setAttribute('data-open', 'true');
+      document.documentElement.style.overflow = 'hidden';
+      document.body.style.overflow = 'hidden';
+      renderShell();
+      setTimeout(function () { shell.scrollTop = 0; }, 0);
+    } else {
+      shell.removeAttribute('data-open');
+      document.documentElement.style.overflow = '';
+      document.body.style.overflow = '';
+    }
+  }
+
+  function setValue(root, name, value) {
+    var element = root.querySelector('[data-024-field="' + name + '"]');
+    if (element) element.value = value || '';
+  }
+
+  function setCheck(root, name, value) {
+    var element = root.querySelector('[data-024-check="' + name + '"]');
+    if (element) element.checked = !!value;
+  }
+
+  function captureInputs() {
+    var shell = document.getElementById(shellId);
+    if (!shell || shell.getAttribute('data-open') !== 'true') return;
+
+    function get(name) {
+      var element = shell.querySelector('[data-024-field="' + name + '"]');
+      return element ? element.value : '';
+    }
+
+    function checked(name) {
+      var element = shell.querySelector('[data-024-check="' + name + '"]');
+      return !!(element && element.checked);
+    }
+
+    [
+      'intakeReference',
+      'sourceSystem',
+      'sourceRecordReference',
+      'customerName',
+      'projectName',
+      'projectType',
+      'salesOwner',
+      'solutionArchitect',
+      'projectTeamCoordinator',
+      'estimatedHours',
+      'estimatedRevenue',
+      'highLevelScope'
+    ].forEach(function (key) {
+      state[key] = get(key);
+    });
+
+    [
+      'customerConfirmed',
+      'scopeConfirmed',
+      'estimateConfirmed',
+      'salesOwnerConfirmed',
+      'solutionArchitectConfirmed',
+      'signedSowConfirmed',
+      'gsdConfirmed',
+      'canonicalDocsConfirmed',
+      'ptcAssignmentReady',
+      'executiveVisibilityReady',
+      'closeoutReviewed'
+    ].forEach(function (key) {
+      state[key] = checked(key);
+    });
+
+    saveState();
+  }
+
+  function artifactRowsHtml() {
+    var rows = [
+      ['Signed SOW', state.signedSowFileName || 'Missing', 'Required before PTC assignment', state.signedSowFileName ? 'Received' : 'Required'],
+      ['GSD', state.gsdFileName || 'Missing', 'Required before PM/Engineer handoff', state.gsdFileName ? 'Received' : 'Required'],
+      ['Quote / CRM Support', state.quoteFileName || state.sourceRecordReference || 'Optional', 'Supports estimate and scope review', state.quoteFileName || state.sourceRecordReference ? 'Available' : 'Optional']
+    ];
+
+    return '<table class="projectpulse-024-table">' +
+      '<thead><tr><th>Artifact</th><th>Current Value</th><th>Use</th><th>Status</th></tr></thead>' +
+      '<tbody>' +
+      rows.map(function (row) {
+        return '<tr><td>' + escapeHtml(row[0]) + '</td><td>' + escapeHtml(row[1]) + '</td><td>' + escapeHtml(row[2]) + '</td><td>' + escapeHtml(row[3]) + '</td></tr>';
+      }).join('') +
+      '</tbody></table>';
+  }
+
+  function roleVisibilityHtml() {
+    var rows = [
+      ['Sales', 'Create/update intake, attach signed SOW/GSD package artifacts', 'Before handoff'],
+      ['Solution Architect', 'Review scope, signed SOW, GSD, and technical readiness', 'Before handoff'],
+      ['PTC', 'Validate readiness and prepare PM/Engineer assignment', 'Before assignment'],
+      ['Executive', 'View signed handoff readiness and delivery pipeline status', 'Before assignment'],
+      ['Project Management', 'View SOW/GSD after assignment', 'After assignment'],
+      ['Engineer', 'View assigned SOW/GSD after assignment', 'After assignment']
+    ];
+
+    return '<table class="projectpulse-024-table">' +
+      '<thead><tr><th>Role</th><th>Visibility / Responsibility</th><th>Timing</th></tr></thead>' +
+      '<tbody>' +
+      rows.map(function (row) {
+        return '<tr><td>' + escapeHtml(row[0]) + '</td><td>' + escapeHtml(row[1]) + '</td><td>' + escapeHtml(row[2]) + '</td></tr>';
+      }).join('') +
+      '</tbody></table>';
+  }
+
+  function readinessSummary() {
+    var requiredChecks = [
+      state.customerConfirmed,
+      state.scopeConfirmed,
+      state.estimateConfirmed,
+      state.salesOwnerConfirmed,
+      state.solutionArchitectConfirmed,
+      state.signedSowConfirmed,
+      state.gsdConfirmed,
+      state.canonicalDocsConfirmed,
+      state.ptcAssignmentReady,
+      state.executiveVisibilityReady,
+      state.closeoutReviewed
+    ];
+
+    var complete = requiredChecks.filter(Boolean).length;
+    var artifactStatus = state.signedSowFileName && state.gsdFileName ? 'Required artifacts selected' : 'Missing required signed SOW or GSD';
+
+    return 'Sales-to-Delivery Intake Readiness Summary\n\n' +
+      'Intake Reference: ' + state.intakeReference + '\n' +
+      'Source System: ' + state.sourceSystem + '\n' +
+      'Source Record Reference: ' + state.sourceRecordReference + '\n' +
+      'Customer: ' + state.customerName + '\n' +
+      'Project: ' + state.projectName + '\n' +
+      'Project Type: ' + state.projectType + '\n' +
+      'Sales Owner: ' + state.salesOwner + '\n' +
+      'Solution Architect: ' + state.solutionArchitect + '\n' +
+      'PTC: ' + state.projectTeamCoordinator + '\n' +
+      'Estimated Hours: ' + state.estimatedHours + '\n' +
+      'Estimated Revenue: $' + state.estimatedRevenue + '\n\n' +
+      'Artifact Gate:\n' +
+      '- Signed SOW: ' + (state.signedSowFileName || 'Missing') + '\n' +
+      '- GSD: ' + (state.gsdFileName || 'Missing') + '\n' +
+      '- Gate Status: ' + artifactStatus + '\n\n' +
+      'Readiness Checks Complete: ' + complete + ' / ' + requiredChecks.length + '\n\n' +
+      'Assignment Gate Rule:\n' +
+      'PTC assignment of PM and Engineer(s) should not proceed until signed SOW and GSD are received, scope/estimate are confirmed, and the canonical document area is acknowledged.';
+  }
+
+  function handoffEmailPreview() {
+    return 'Subject: Signed SOW/GSD Intake Ready - ' + state.customerName + ' / ' + state.projectName + '\n\n' +
+      'Hello PTC and Executive Team,\n\n' +
+      'The Sales-to-Delivery intake package has been prepared for ' + state.customerName + ' - ' + state.projectName + '.\n\n' +
+      'Required artifacts:\n' +
+      '- Signed SOW: ' + (state.signedSowFileName || '[Missing]') + '\n' +
+      '- GSD: ' + (state.gsdFileName || '[Missing]') + '\n\n' +
+      'Sales Owner: ' + state.salesOwner + '\n' +
+      'Solution Architect: ' + state.solutionArchitect + '\n' +
+      'Estimated Hours: ' + state.estimatedHours + '\n' +
+      'Estimated Revenue: $' + state.estimatedRevenue + '\n\n' +
+      'Next step:\n' +
+      'PTC should validate the intake package and assign the Project Manager and Engineer(s).';
+  }
+
+  function assignmentPreview() {
+    return 'PTC Assignment Preview\n\n' +
+      'Customer: ' + state.customerName + '\n' +
+      'Project: ' + state.projectName + '\n' +
+      'Project Type: ' + state.projectType + '\n' +
+      'Estimated Hours: ' + state.estimatedHours + '\n\n' +
+      'Required before assignment:\n' +
+      '- Signed SOW received: ' + (state.signedSowFileName ? 'Yes' : 'No') + '\n' +
+      '- GSD received: ' + (state.gsdFileName ? 'Yes' : 'No') + '\n' +
+      '- Scope confirmed: ' + (state.scopeConfirmed ? 'Yes' : 'No') + '\n' +
+      '- Estimate confirmed: ' + (state.estimateConfirmed ? 'Yes' : 'No') + '\n' +
+      '- Canonical document area confirmed: ' + (state.canonicalDocsConfirmed ? 'Yes' : 'No') + '\n\n' +
+      'After assignment:\n' +
+      '- PM receives project package visibility.\n' +
+      '- Engineer(s) receive assigned project workspace and engineering document visibility.\n' +
+      '- SOW-aware time entry can use signed SOW/GSD scope later in Module 028.';
+  }
+
+  function saveIntakePackage() {
+    captureInputs();
+    state.statusType = 'success';
+    state.status = 'Intake package saved locally. Database table sales_delivery_intake_packages is ready for backend persistence.';
+    saveState();
+    renderShell();
+  }
+
+  function validateReadiness() {
+    captureInputs();
+
+    var missing = [];
+    if (!state.customerConfirmed) missing.push('customer confirmation');
+    if (!state.scopeConfirmed) missing.push('scope confirmation');
+    if (!state.estimateConfirmed) missing.push('estimate confirmation');
+    if (!state.salesOwnerConfirmed) missing.push('sales owner confirmation');
+    if (!state.solutionArchitectConfirmed) missing.push('Solution Architect confirmation');
+    if (!state.signedSowConfirmed) missing.push('signed SOW confirmation');
+    if (!state.gsdConfirmed) missing.push('GSD confirmation');
+    if (!state.canonicalDocsConfirmed) missing.push('canonical document confirmation');
+    if (!state.ptcAssignmentReady) missing.push('PTC assignment readiness');
+    if (!state.executiveVisibilityReady) missing.push('Executive visibility readiness');
+    if (!state.closeoutReviewed) missing.push('Module 024 closeout review');
+    if (!state.signedSowFileName) missing.push('signed SOW file');
+    if (!state.gsdFileName) missing.push('GSD file');
+
+    state.lastReadiness = readinessSummary() + '\n\nValidated locally at: ' + new Date().toISOString();
+
+    if (missing.length) {
+      state.statusType = 'warning';
+      state.status = 'Intake not ready for assignment. Missing: ' + missing.join(', ') + '.';
+    } else {
+      state.statusType = 'success';
+      state.status = 'Intake package is ready for PTC assignment trigger.';
+    }
+
+    saveState();
+    renderShell();
+  }
+
+  function prepareAssignmentPreview() {
+    captureInputs();
+    state.lastAssignmentPreview = assignmentPreview() + '\n\nPrepared locally at: ' + new Date().toISOString();
+    state.statusType = 'success';
+    state.status = 'PTC assignment preview prepared. Module 027 will turn this into signed handoff and assignment trigger.';
+    saveState();
+    renderShell();
+  }
+
+  function renderShell() {
+    loadState();
+
+    var shell = ensureShell();
+
+    shell.innerHTML =
+      '<div id="projectpulse-024-page">' +
+        '<div class="projectpulse-024-page-header">' +
+          '<div>' +
+            '<div class="projectpulse-024-eyebrow">Module 024 · Sales-to-Delivery Intake Foundation</div>' +
+            '<h2>Sales-to-Delivery Intake Center</h2>' +
+            '<p>Create the intake package that connects Sales, Solution Architecture, PTC, Executive visibility, Project Management, and Engineering delivery.</p>' +
+            '<div class="projectpulse-024-actions">' +
+              '<span class="projectpulse-024-pill green">Signed SOW required</span>' +
+              '<span class="projectpulse-024-pill blue">GSD required</span>' +
+              '<span class="projectpulse-024-pill amber">Assignment gated</span>' +
+              '<span class="projectpulse-024-pill green">Canonical documents reused</span>' +
+            '</div>' +
+          '</div>' +
+          '<div class="projectpulse-024-actions">' +
+            '<button type="button" class="projectpulse-024-button" data-024-dashboard>Back to Dashboard</button>' +
+            '<button type="button" class="projectpulse-024-button primary" data-024-save>Save Intake Package</button>' +
+            '<button type="button" class="projectpulse-024-button success" data-024-readiness>Validate Readiness</button>' +
+            '<button type="button" class="projectpulse-024-button" data-024-clear>Clear Demo State</button>' +
+          '</div>' +
+        '</div>' +
+
+        '<div class="projectpulse-024-layout">' +
+          '<div>' +
+            '<div class="projectpulse-024-section">' +
+              '<h3>024A Intake Package</h3>' +
+              '<p>This package can originate manually, from CRM Integration, or from a SOW Generator workflow.</p>' +
+              '<div class="projectpulse-024-two-grid">' +
+                '<div class="projectpulse-024-field"><label>Intake Reference</label><input data-024-field="intakeReference"></div>' +
+                '<div class="projectpulse-024-field"><label>Source System</label><select data-024-field="sourceSystem"><option>Manual / ProjectPulse</option><option>Salesforce</option><option>Zendesk Sell</option><option>SOW Generator</option><option>CRM Integration Framework</option></select></div>' +
+              '</div>' +
+              '<div class="projectpulse-024-field"><label>Source Record Reference</label><input data-024-field="sourceRecordReference"></div>' +
+              '<div class="projectpulse-024-two-grid">' +
+                '<div class="projectpulse-024-field"><label>Customer Name</label><input data-024-field="customerName"></div>' +
+                '<div class="projectpulse-024-field"><label>Project Type</label><select data-024-field="projectType"><option>Professional Services</option><option>Managed Services</option><option>Implementation</option><option>Consulting</option><option>Service Request</option></select></div>' +
+              '</div>' +
+              '<div class="projectpulse-024-field"><label>Project / Engagement Name</label><input data-024-field="projectName"></div>' +
+              '<div class="projectpulse-024-two-grid">' +
+                '<div class="projectpulse-024-field"><label>Sales Owner</label><input data-024-field="salesOwner"></div>' +
+                '<div class="projectpulse-024-field"><label>Solution Architect</label><input data-024-field="solutionArchitect"></div>' +
+              '</div>' +
+              '<div class="projectpulse-024-field"><label>Project Team Coordinator</label><input data-024-field="projectTeamCoordinator"></div>' +
+              '<div class="projectpulse-024-two-grid">' +
+                '<div class="projectpulse-024-field"><label>Estimated Hours</label><input data-024-field="estimatedHours"></div>' +
+                '<div class="projectpulse-024-field"><label>Estimated Revenue</label><input data-024-field="estimatedRevenue"></div>' +
+              '</div>' +
+              '<div class="projectpulse-024-field"><label>High-Level Scope</label><textarea data-024-field="highLevelScope"></textarea></div>' +
+            '</div>' +
+
+            '<div class="projectpulse-024-section">' +
+              '<h3>024B Required Artifact Gate</h3>' +
+              '<p>Signed SOW and GSD are required intake artifacts. They should be stored in the existing Project Hours / SOW-GSD / Engineer Allocation document area.</p>' +
+              '<div class="projectpulse-024-two-grid">' +
+                '<div class="projectpulse-024-field"><label>Signed SOW Upload Preview</label><input type="file" accept=".pdf,.doc,.docx" data-024-signed-sow-file><p>Selected SOW: <strong data-024-sow-name></strong></p></div>' +
+                '<div class="projectpulse-024-field"><label>GSD Upload Preview</label><input type="file" accept=".pdf,.doc,.docx,.xlsx" data-024-gsd-file><p>Selected GSD: <strong data-024-gsd-name></strong></p></div>' +
+              '</div>' +
+              '<div class="projectpulse-024-field"><label>Quote / Supporting Artifact Preview</label><input type="file" accept=".pdf,.doc,.docx,.xlsx" data-024-quote-file><p>Selected Quote / Support: <strong data-024-quote-name></strong></p></div>' +
+              '<div class="projectpulse-024-preview">' + artifactRowsHtml() + '</div>' +
+            '</div>' +
+
+            '<div class="projectpulse-024-section">' +
+              '<h3>024C Readiness Checklist</h3>' +
+              '<div class="projectpulse-024-checklist">' +
+                '<label><input type="checkbox" data-024-check="customerConfirmed"> Customer and project information confirmed.</label>' +
+                '<label><input type="checkbox" data-024-check="scopeConfirmed"> Scope aligns with signed SOW/GSD and approved sales context.</label>' +
+                '<label><input type="checkbox" data-024-check="estimateConfirmed"> Estimated hours/revenue reviewed for assignment planning.</label>' +
+                '<label><input type="checkbox" data-024-check="salesOwnerConfirmed"> Sales owner confirmed.</label>' +
+                '<label><input type="checkbox" data-024-check="solutionArchitectConfirmed"> Solution Architect confirmed.</label>' +
+                '<label><input type="checkbox" data-024-check="signedSowConfirmed"> Signed SOW confirmed.</label>' +
+                '<label><input type="checkbox" data-024-check="gsdConfirmed"> GSD confirmed.</label>' +
+                '<label><input type="checkbox" data-024-check="canonicalDocsConfirmed"> Canonical SOW/GSD document area confirmed.</label>' +
+                '<label><input type="checkbox" data-024-check="ptcAssignmentReady"> PTC assignment readiness confirmed.</label>' +
+                '<label><input type="checkbox" data-024-check="executiveVisibilityReady"> Executive visibility readiness confirmed.</label>' +
+                '<label><input type="checkbox" data-024-check="closeoutReviewed"> Module 024 closeout reviewed.</label>' +
+              '</div>' +
+              '<div class="projectpulse-024-actions"><button type="button" class="projectpulse-024-button warning" data-024-assignment>Prepare PTC Assignment Preview</button></div>' +
+              '<div data-024-status></div>' +
+            '</div>' +
+          '</div>' +
+
+          '<div>' +
+            '<div class="projectpulse-024-section white"><h3>Readiness Summary</h3><div class="projectpulse-024-preview" data-024-readiness-output></div></div>' +
+            '<div class="projectpulse-024-section"><h3>PTC / Executive Handoff Email Preview</h3><div class="projectpulse-024-preview" data-024-email-output></div></div>' +
+            '<div class="projectpulse-024-section"><h3>PTC Assignment Preview</h3><div class="projectpulse-024-preview" data-024-assignment-output></div></div>' +
+            '<div class="projectpulse-024-section"><h3>Role Visibility Model</h3>' + roleVisibilityHtml() + '</div>' +
+            '<div class="projectpulse-024-section">' +
+              '<h3>Workflow Placement</h3>' +
+              '<div class="projectpulse-024-three-grid">' +
+                '<div class="projectpulse-024-cardlet"><span class="projectpulse-024-pill blue">026</span><strong>CRM Integration</strong><p>CRM records can seed this intake package.</p></div>' +
+                '<div class="projectpulse-024-cardlet"><span class="projectpulse-024-pill green">025</span><strong>SOW Generator</strong><p>SOW draft and signed SOW context feed intake readiness.</p></div>' +
+                '<div class="projectpulse-024-cardlet"><span class="projectpulse-024-pill amber">027</span><strong>Signed Handoff</strong><p>Validated intake triggers PTC/Executive notification and PM/Engineer assignment.</p></div>' +
+              '</div>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+
+    populateShell(shell);
+    wireShell(shell);
+  }
+
+  function populateShell(shell) {
+    [
+      'intakeReference',
+      'sourceSystem',
+      'sourceRecordReference',
+      'customerName',
+      'projectName',
+      'projectType',
+      'salesOwner',
+      'solutionArchitect',
+      'projectTeamCoordinator',
+      'estimatedHours',
+      'estimatedRevenue',
+      'highLevelScope'
+    ].forEach(function (key) {
+      setValue(shell, key, state[key]);
+    });
+
+    [
+      'customerConfirmed',
+      'scopeConfirmed',
+      'estimateConfirmed',
+      'salesOwnerConfirmed',
+      'solutionArchitectConfirmed',
+      'signedSowConfirmed',
+      'gsdConfirmed',
+      'canonicalDocsConfirmed',
+      'ptcAssignmentReady',
+      'executiveVisibilityReady',
+      'closeoutReviewed'
+    ].forEach(function (key) {
+      setCheck(shell, key, state[key]);
+    });
+
+    shell.querySelector('[data-024-sow-name]').textContent = state.signedSowFileName || 'Required before assignment';
+    shell.querySelector('[data-024-gsd-name]').textContent = state.gsdFileName || 'Required before assignment';
+    shell.querySelector('[data-024-quote-name]').textContent = state.quoteFileName || 'Optional supporting artifact';
+
+    var readinessNode = shell.querySelector('[data-024-readiness-output]');
+    var emailNode = shell.querySelector('[data-024-email-output]');
+    var assignmentNode = shell.querySelector('[data-024-assignment-output]');
+    var statusNode = shell.querySelector('[data-024-status]');
+
+    if (readinessNode) readinessNode.textContent = state.lastReadiness || readinessSummary();
+    if (emailNode) emailNode.textContent = handoffEmailPreview();
+    if (assignmentNode) assignmentNode.textContent = state.lastAssignmentPreview || assignmentPreview();
+
+    if (statusNode) {
+      statusNode.innerHTML = state.status
+        ? '<div class="projectpulse-024-status ' + escapeHtml(state.statusType || '') + '">' + escapeHtml(state.status) + '</div>'
+        : '';
+    }
+  }
+
+  function wireShell(shell) {
+    shell.querySelectorAll('input, select, textarea').forEach(function (input) {
+      input.addEventListener('input', function () {
+        captureInputs();
+        populateShell(shell);
+      });
+      input.addEventListener('change', function () {
+        captureInputs();
+        populateShell(shell);
+      });
+    });
+
+    shell.querySelector('[data-024-signed-sow-file]').addEventListener('change', function (event) {
+      state.signedSowFileName = event.target.files && event.target.files[0] ? event.target.files[0].name : '';
+      if (state.signedSowFileName) state.signedSowConfirmed = true;
+      saveState();
+      renderShell();
+    });
+
+    shell.querySelector('[data-024-gsd-file]').addEventListener('change', function (event) {
+      state.gsdFileName = event.target.files && event.target.files[0] ? event.target.files[0].name : '';
+      if (state.gsdFileName) state.gsdConfirmed = true;
+      saveState();
+      renderShell();
+    });
+
+    shell.querySelector('[data-024-quote-file]').addEventListener('change', function (event) {
+      state.quoteFileName = event.target.files && event.target.files[0] ? event.target.files[0].name : '';
+      saveState();
+      renderShell();
+    });
+
+    shell.querySelector('[data-024-dashboard]').addEventListener('click', function () {
+      window.location.hash = '#dashboard';
+      render();
+    });
+
+    shell.querySelector('[data-024-clear]').addEventListener('click', function () {
+      if (!confirm('Clear Module 024 demo state on this browser?')) return;
+      window.localStorage.removeItem(storageKey);
+      location.reload();
+    });
+
+    shell.querySelector('[data-024-save]').addEventListener('click', saveIntakePackage);
+    shell.querySelector('[data-024-readiness]').addEventListener('click', validateReadiness);
+    shell.querySelector('[data-024-assignment]').addEventListener('click', prepareAssignmentPreview);
+  }
+
+  function render() {
+    loadState();
+    ensureShell();
+    ensureCard();
+    openShell(route() === 'sales-intake' || route() === 'sales-to-delivery-intake');
+  }
+
+  function boot(attempt) {
+    render();
+    if (!document.getElementById(cardId) && attempt !== 12) {
+      setTimeout(function () { boot(attempt + 1); }, 250);
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () { boot(0); });
+  } else {
+    boot(0);
+  }
+
+  window.addEventListener('hashchange', function () { setTimeout(render, 60); });
+})();
+</script>
+<!-- 024_FULL_SALES_DELIVERY_INTAKE_END -->
+
 </body>
 </html>
