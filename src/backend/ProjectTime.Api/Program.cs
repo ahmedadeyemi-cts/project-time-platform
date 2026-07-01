@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Runtime.InteropServices;
 using ProjectTime.Api.Modules;
+using System.Text.RegularExpressions;
 
 const string DevelopmentUserEmail = "ahmed.adeyemi@ussignal.local";
 const string DevelopmentUserDisplayName = "Ahmed Adeyemi";
@@ -23746,6 +23747,223 @@ static bool ProjectPulse022CValidSeverity(string severity)
 
 // 022C Production Notification Preferences + Routing Rules - END
 
+
+// 025A_TIMESHEET_SOW_AWARE_AI_API_START
+app.MapPost("/api/timesheets/ai-description-suggestion", async (HttpRequest request) =>
+{
+    string rawBody = await new StreamReader(request.Body).ReadToEndAsync();
+
+    JsonDocument? document = null;
+    JsonElement root = default;
+
+    try
+    {
+        document = string.IsNullOrWhiteSpace(rawBody)
+            ? JsonDocument.Parse("{}")
+            : JsonDocument.Parse(rawBody);
+
+        root = document.RootElement;
+    }
+    catch
+    {
+        document = JsonDocument.Parse("{}");
+        root = document.RootElement;
+    }
+
+    string activityType = ProjectPulse025AReadString(root, "activityType", "sourceType", "activitySource");
+    string taskName = ProjectPulse025AReadString(root, "taskName", "activityName", "selectedTaskName");
+    string projectName = ProjectPulse025AReadString(root, "projectName", "project", "projectDescription");
+    string customerName = ProjectPulse025AReadString(root, "customerName", "customer");
+    string engineerNote = ProjectPulse025AReadString(root, "engineerNote", "description", "comment", "typedDescription");
+    string hours = ProjectPulse025AReadString(root, "hours");
+    string dateLabel = ProjectPulse025AReadString(root, "dateLabel", "entryDate");
+    string timeType = ProjectPulse025AReadString(root, "timeType");
+    string sowText = ProjectPulse025AReadString(root, "sowText", "signedSowText", "scopeContext", "sowContext");
+    string gsdText = ProjectPulse025AReadString(root, "gsdText", "deliveryContext", "handoffNotes");
+
+    string combinedScope = $"{sowText}\n{gsdText}".Trim();
+    bool isProjectLike =
+        ProjectPulse025AContains(activityType, "regular") ||
+        ProjectPulse025AContains(activityType, "project") ||
+        ProjectPulse025AContains(activityType, "task") ||
+        !string.IsNullOrWhiteSpace(projectName);
+
+    bool hasSowContext = combinedScope.Length >= 40;
+    string normalizedScope = combinedScope.ToLowerInvariant();
+    string normalizedNote = engineerNote.ToLowerInvariant();
+
+    string[] deliveryTerms = new[]
+    {
+        "reviewed", "configured", "validated", "tested", "documented", "coordinated",
+        "troubleshot", "implemented", "deployed", "migrated", "cutover", "hypercare",
+        "assessment", "design", "discovery", "training", "knowledge transfer", "support"
+    };
+
+    string[] outOfScopeTerms = new[]
+    {
+        "out of scope", "change order", "not included", "excluded", "unsupported",
+        "future phase", "separate sow", "extra request"
+    };
+
+    var matchedTerms = deliveryTerms
+        .Where(term => normalizedNote.Contains(term) || normalizedScope.Contains(term))
+        .Take(5)
+        .ToArray();
+
+    var riskTerms = outOfScopeTerms
+        .Where(term => normalizedNote.Contains(term) || normalizedScope.Contains(term))
+        .Take(5)
+        .ToArray();
+
+    string actionSummary = ProjectPulse025ABuildActionSummary(engineerNote, taskName);
+    string contextSummary = ProjectPulse025ABuildContextSummary(projectName, taskName, customerName);
+
+    string suggestion;
+
+    if (!isProjectLike)
+    {
+        suggestion = ProjectPulse025ACleanSentence(
+            $"{actionSummary} for {dateLabel}".Replace(" for ", " ")
+        );
+    }
+    else if (hasSowContext)
+    {
+        string scopePhrase = matchedTerms.Length > 0
+            ? $"aligned with approved scope activities including {string.Join(", ", matchedTerms)}"
+            : "aligned with the approved SOW and delivery scope";
+
+        suggestion = ProjectPulse025ACleanSentence(
+            $"{actionSummary} for {contextSummary}, {scopePhrase}."
+        );
+    }
+    else
+    {
+        suggestion = ProjectPulse025ACleanSentence(
+            $"{actionSummary} for {contextSummary}. SOW context was not available in the current timesheet payload, so this suggestion is based on the selected task and engineer-provided note."
+        );
+    }
+
+    string scopeStatus =
+        !isProjectLike ? "not_required_for_non_project_time" :
+        hasSowContext && riskTerms.Length > 0 ? "scope_review_recommended" :
+        hasSowContext ? "sow_context_used" :
+        "sow_context_missing";
+
+    return Results.Ok(new
+    {
+        module = "025A",
+        source = "existing-timesheet-modal",
+        suggestion,
+        scopeStatus,
+        sowContextUsed = hasSowContext,
+        projectTaskDetected = isProjectLike,
+        projectName,
+        taskName,
+        customerName,
+        hours,
+        dateLabel,
+        timeType,
+        matchedScopeTerms = matchedTerms,
+        riskTerms,
+        warning = scopeStatus switch
+        {
+            "sow_context_used" => "Suggestion used available SOW/GSD context and the engineer's typed note.",
+            "scope_review_recommended" => "Possible out-of-scope or change-order language was detected. Review before saving/submitting.",
+            "sow_context_missing" => "No SOW/GSD context was available for this selected task. Suggestion used task and typed-note context only.",
+            _ => "SOW context is not required for this non-project time entry."
+        }
+    });
+});
+// 025A_TIMESHEET_SOW_AWARE_AI_API_END
+
+static string ProjectPulse025AReadString(JsonElement root, params string[] names)
+{
+    if (root.ValueKind != JsonValueKind.Object)
+    {
+        return string.Empty;
+    }
+
+    foreach (string name in names)
+    {
+        if (root.TryGetProperty(name, out JsonElement value))
+        {
+            if (value.ValueKind == JsonValueKind.String)
+            {
+                return value.GetString() ?? string.Empty;
+            }
+
+            if (value.ValueKind == JsonValueKind.Number)
+            {
+                return value.ToString();
+            }
+
+            if (value.ValueKind == JsonValueKind.Object || value.ValueKind == JsonValueKind.Array)
+            {
+                return value.ToString();
+            }
+        }
+    }
+
+    return string.Empty;
+}
+
+static bool ProjectPulse025AContains(string value, string token)
+{
+    return !string.IsNullOrWhiteSpace(value)
+        && value.Contains(token, StringComparison.OrdinalIgnoreCase);
+}
+
+static string ProjectPulse025ABuildActionSummary(string engineerNote, string taskName)
+{
+    string note = ProjectPulse025ACleanSentence(engineerNote);
+
+    if (string.IsNullOrWhiteSpace(note))
+    {
+        return string.IsNullOrWhiteSpace(taskName)
+            ? "Performed assigned work and updated delivery progress"
+            : $"Performed {taskName} work and updated delivery progress";
+    }
+
+    return note.EndsWith(".") ? note : $"{note}.";
+}
+
+static string ProjectPulse025ABuildContextSummary(string projectName, string taskName, string customerName)
+{
+    var parts = new List<string>();
+
+    if (!string.IsNullOrWhiteSpace(taskName))
+    {
+        parts.Add(taskName.Trim());
+    }
+
+    if (!string.IsNullOrWhiteSpace(projectName))
+    {
+        parts.Add(projectName.Trim());
+    }
+
+    if (!string.IsNullOrWhiteSpace(customerName))
+    {
+        parts.Add(customerName.Trim());
+    }
+
+    return parts.Count == 0
+        ? "the selected project task"
+        : string.Join(" / ", parts.Distinct());
+}
+
+static string ProjectPulse025ACleanSentence(string value)
+{
+    string cleaned = string.Join(" ", (value ?? string.Empty).Split(new[] { ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries));
+
+    if (string.IsNullOrWhiteSpace(cleaned))
+    {
+        return string.Empty;
+    }
+
+    cleaned = char.ToUpperInvariant(cleaned[0]) + cleaned.Substring(1);
+
+    return cleaned;
+}
 
 app.Run();
 

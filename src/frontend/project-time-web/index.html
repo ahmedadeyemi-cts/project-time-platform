@@ -3703,7 +3703,8 @@
       '<tr><td class="label">Template Used</td><td>' + escapeHtml(template) + '</td></tr>' +
       '<tr><td class="label">Signed SOW</td><td>' + escapeHtml(state.signedSowFileName || 'Not uploaded in demo') + '</td></tr>' +
       '<tr><td class="label">GSD</td><td>' + escapeHtml(state.gsdFileName || 'Not uploaded in demo') + '</td></tr>' +
-      '</table>' + sections + '</body></html>';
+      '</table>' + sections + '
+</body></html>';
   }
 
   function downloadWordDraft() {
@@ -3974,7 +3975,7 @@
 
   function boot(attempt) {
     render();
-    if (!document.getElementById(cardId) && attempt < 12) {
+    if (!document.getElementById(cardId) && attempt !== 12) {
       setTimeout(function () { boot(attempt + 1); }, 250);
     }
   }
@@ -3990,5 +3991,290 @@
 </script>
 <!-- 025M_STANDALONE_SOW_ROUTE_END -->
 
+<!-- 025A_TIMESHEET_SOW_AWARE_AI_START -->
+<style id="projectpulse-025a-timesheet-ai-style">
+  .projectpulse-025a-status {
+    margin-top: 0.75rem;
+    padding: 0.75rem 0.85rem;
+    border: 1px solid rgba(14, 165, 233, 0.28);
+    border-radius: 14px;
+    background: rgba(224, 242, 254, 0.72);
+    color: #334155;
+    font-weight: 750;
+    line-height: 1.35;
+  }
+
+  .projectpulse-025a-status.warning {
+    border-color: rgba(245, 158, 11, 0.38);
+    background: rgba(254, 243, 199, 0.74);
+    color: #92400e;
+  }
+
+  .projectpulse-025a-status.error {
+    border-color: rgba(239, 68, 68, 0.35);
+    background: rgba(254, 226, 226, 0.78);
+    color: #991b1b;
+  }
+
+  .projectpulse-025a-context-note {
+    margin-top: 0.5rem;
+    color: #475569;
+    font-size: 0.82rem;
+    line-height: 1.35;
+  }
+</style>
+
+<script id="projectpulse-025a-timesheet-ai-script">
+(function () {
+  if (window.__projectPulse025ATimesheetAiInstalled) return;
+  window.__projectPulse025ATimesheetAiInstalled = true;
+
+  const SESSION_KEY = 'projectPulseAuthSession';
+  const STATUS_ID = 'projectpulse-025a-timesheet-ai-status';
+
+  function cleanText(value) {
+    return String(value || '').replace(/\s+/g, ' ').trim();
+  }
+
+  function getSessionToken() {
+    try {
+      const raw = window.localStorage.getItem(SESSION_KEY);
+      if (!raw) return '';
+      const parsed = JSON.parse(raw);
+      return parsed.sessionToken || parsed.token || parsed.rawToken || '';
+    } catch {
+      return '';
+    }
+  }
+
+  function getViewAsUserId() {
+    try {
+      const raw = window.localStorage.getItem('projectPulseViewAsUser');
+      if (!raw) return '';
+      const parsed = JSON.parse(raw);
+      return parsed.userId || parsed.id || parsed.viewAsUserId || '';
+    } catch {
+      return '';
+    }
+  }
+
+  function findTimesheetModal() {
+    return Array.from(document.querySelectorAll('[role="dialog"], .modal, section, div'))
+      .filter((element) => {
+        const text = cleanText(element.textContent);
+        if (!text.includes('AI DESCRIPTION ASSISTANT')) return false;
+        if (!text.includes('Generate AI suggestion')) return false;
+        if (!element.querySelector('textarea')) return false;
+        return true;
+      })
+      .sort((a, b) => {
+        const ar = a.getBoundingClientRect();
+        const br = b.getBoundingClientRect();
+        return (ar.width * ar.height) - (br.width * br.height);
+      })[0] || null;
+  }
+
+  function setNativeValue(element, value) {
+    if (!element) return;
+
+    const prototype = Object.getPrototypeOf(element);
+    const descriptor = Object.getOwnPropertyDescriptor(prototype, 'value');
+
+    if (descriptor?.set) {
+      descriptor.set.call(element, value);
+    } else {
+      element.value = value;
+    }
+
+    element.dispatchEvent(new Event('input', { bubbles: true }));
+    element.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  function getFieldValue(modal, selector) {
+    const element = modal.querySelector(selector);
+    return element ? element.value || element.textContent || '' : '';
+  }
+
+  function inferModalTitle(modal) {
+    const heading = modal.querySelector('h1, h2, h3, strong');
+    return cleanText(heading?.textContent || '');
+  }
+
+  function inferActivityType() {
+    const selected = document.querySelector('select option:checked');
+    return cleanText(selected?.textContent || '');
+  }
+
+  function inferProjectContext(modal) {
+    const modalText = cleanText(modal.textContent);
+    const pageText = cleanText(document.body.textContent);
+
+    const taskName = inferModalTitle(modal);
+    const projectMatch =
+      modalText.match(/([A-Z0-9]{2,}[-–][A-Z0-9]{2,}[-–]\d{4}[^•\n]*)/i) ||
+      pageText.match(/([A-Z0-9]{2,}[-–][A-Z0-9]{2,}[-–]\d{4}[^•\n]*)/i);
+
+    const customerMatch =
+      pageText.match(/Customer:\s*([^|\n]+?)(?:Assigned:|Used:|Left:|PM:|$)/i) ||
+      pageText.match(/Customer\s+([A-Z][A-Za-z0-9 &.,'-]{3,80})/i);
+
+    return {
+      taskName,
+      projectName: cleanText(projectMatch?.[1] || ''),
+      customerName: cleanText(customerMatch?.[1] || '')
+    };
+  }
+
+  function findDescriptionTextarea(modal) {
+    const textareas = Array.from(modal.querySelectorAll('textarea'));
+    return textareas.find((textarea) => {
+      const placeholder = cleanText(textarea.getAttribute('placeholder') || '');
+      return placeholder.toLowerCase().includes('comment') ||
+             placeholder.toLowerCase().includes('description') ||
+             cleanText(textarea.closest('label')?.textContent || '').toLowerCase().includes('description');
+    }) || textareas[0] || null;
+  }
+
+  function showStatus(modal, message, kind = '') {
+    const assistantPanel = Array.from(modal.querySelectorAll('section, div'))
+      .find((element) => cleanText(element.textContent).includes('AI DESCRIPTION ASSISTANT')) || modal;
+
+    let status = modal.querySelector(`#${STATUS_ID}`);
+    if (!status) {
+      status = document.createElement('div');
+      status.id = STATUS_ID;
+      assistantPanel.appendChild(status);
+    }
+
+    status.className = `projectpulse-025a-status ${kind || ''}`.trim();
+    status.textContent = message;
+  }
+
+  function updateAssistantCopy(modal) {
+    const assistantPanel = Array.from(modal.querySelectorAll('section, div'))
+      .find((element) => cleanText(element.textContent).includes('AI DESCRIPTION ASSISTANT'));
+
+    if (!assistantPanel || assistantPanel.dataset.projectpulse025aCopy === 'updated') return;
+
+    assistantPanel.dataset.projectpulse025aCopy = 'updated';
+
+    const note = document.createElement('div');
+    note.className = 'projectpulse-025a-context-note';
+    note.textContent = 'For Regular/project tasks, this uses the selected task, project context, SOW/GSD context when available, and your typed note. For non-project time, SOW lookup is skipped.';
+    assistantPanel.appendChild(note);
+  }
+
+  async function requestSuggestion(modal) {
+    const token = getSessionToken();
+    if (!token) {
+      throw new Error('Sign in is required before generating a timesheet AI suggestion.');
+    }
+
+    const descriptionField = findDescriptionTextarea(modal);
+    const projectContext = inferProjectContext(modal);
+    const hours = getFieldValue(modal, 'input[type="number"]');
+
+    const payload = {
+      source: 'existing-timesheet-modal',
+      activityType: inferActivityType(),
+      taskName: projectContext.taskName,
+      projectName: projectContext.projectName,
+      customerName: projectContext.customerName,
+      engineerNote: descriptionField?.value || '',
+      hours,
+      modalText: cleanText(modal.textContent).slice(0, 4000),
+      pageContext: cleanText(document.body.textContent).slice(0, 4000)
+    };
+
+    const headers = {
+      'Content-Type': 'application/json',
+      'X-ProjectPulse-Session': token
+    };
+
+    const viewAsUserId = getViewAsUserId();
+    if (viewAsUserId) {
+      headers['X-ProjectPulse-View-As-User'] = viewAsUserId;
+    }
+
+    const response = await fetch('/api/timesheets/ai-description-suggestion', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload)
+    });
+
+    const raw = await response.text();
+    let data = null;
+
+    try {
+      data = raw ? JSON.parse(raw) : null;
+    } catch {
+      data = { raw };
+    }
+
+    if (!response.ok) {
+      throw new Error(data?.message || data?.title || `HTTP ${response.status}`);
+    }
+
+    return data;
+  }
+
+  async function handleGenerateClick(event) {
+    const button = event.target.closest('button');
+    if (!button) return;
+
+    if (!cleanText(button.textContent).toLowerCase().includes('generate ai suggestion')) return;
+
+    const modal = findTimesheetModal();
+    if (!modal || !modal.contains(button)) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+
+    updateAssistantCopy(modal);
+    showStatus(modal, 'Generating SOW-aware time-entry suggestion…');
+
+    try {
+      const result = await requestSuggestion(modal);
+      const descriptionField = findDescriptionTextarea(modal);
+
+      if (result?.suggestion && descriptionField) {
+        setNativeValue(descriptionField, result.suggestion);
+      }
+
+      const kind =
+        result?.scopeStatus === 'sow_context_missing' || result?.scopeStatus === 'scope_review_recommended'
+          ? 'warning'
+          : '';
+
+      showStatus(modal, result?.warning || 'AI suggestion generated.', kind);
+    } catch (error) {
+      showStatus(modal, error.message || 'Failed to generate AI suggestion.', 'error');
+    }
+  }
+
+  function sync() {
+    const modal = findTimesheetModal();
+    if (!modal) return;
+    updateAssistantCopy(modal);
+  }
+
+  document.addEventListener('click', handleGenerateClick, true);
+  document.addEventListener('DOMContentLoaded', sync);
+  window.addEventListener('hashchange', () => setTimeout(sync, 120));
+
+  const observer = new MutationObserver(() => {
+    clearTimeout(window.__projectPulse025ATimesheetAiTimer);
+    window.__projectPulse025ATimesheetAiTimer = setTimeout(sync, 120);
+  });
+
+  if (document.body) {
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
+
+  sync();
+})();
+</script>
+<!-- 025A_TIMESHEET_SOW_AWARE_AI_END -->
 </body>
 </html>
