@@ -7779,5 +7779,943 @@
 </script>
 <!-- 028_FULL_SOW_AWARE_AI_TIME_ENTRY_END -->
 
+
+<!-- 029_FULL_UAT_ROLE_WORKFLOW_VALIDATION_START -->
+<style id="projectpulse-029-style">
+  #projectpulse-029-uat-card {
+    border: 1px solid rgba(148, 163, 184, 0.32);
+    border-radius: 20px;
+    background: #ffffff;
+    color: #111827;
+    box-shadow: 0 14px 36px rgba(15, 23, 42, 0.06);
+    padding: 1.15rem;
+    min-height: 175px;
+  }
+
+  #projectpulse-029-shell {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483006;
+    background: linear-gradient(135deg, #eef8ff 0%, #f8fbff 42%, #eef8f2 100%);
+    overflow-y: auto;
+    padding: 1.25rem;
+    box-sizing: border-box;
+    display: none;
+  }
+
+  #projectpulse-029-shell[data-open="true"] {
+    display: block;
+  }
+
+  #projectpulse-029-page {
+    max-width: 1580px;
+    margin: 0 auto 2rem;
+    border: 1px solid rgba(148, 163, 184, 0.32);
+    border-radius: 24px;
+    background: #ffffff;
+    color: #111827;
+    box-shadow: 0 20px 60px rgba(15, 23, 42, 0.12);
+    padding: 1.25rem;
+  }
+
+  .projectpulse-029-eyebrow {
+    color: #64748b;
+    font-size: 0.72rem;
+    font-weight: 950;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 0.55rem;
+  }
+
+  #projectpulse-029-uat-card h3,
+  #projectpulse-029-page h2,
+  #projectpulse-029-page h3 {
+    margin: 0 0 0.55rem;
+    line-height: 1.25;
+  }
+
+  #projectpulse-029-uat-card p,
+  #projectpulse-029-page p {
+    color: #5b6b89;
+    line-height: 1.48;
+  }
+
+  .projectpulse-029-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.65rem;
+    align-items: center;
+    margin-top: 1rem;
+  }
+
+  .projectpulse-029-button {
+    border: 1px solid rgba(37, 99, 235, 0.24);
+    border-radius: 12px;
+    background: #ffffff;
+    color: #111827;
+    padding: 0.65rem 0.9rem;
+    font-weight: 900;
+    cursor: pointer;
+  }
+
+  .projectpulse-029-button.primary { background: #0f2a55; border-color: #0f2a55; color: #ffffff; }
+  .projectpulse-029-button.success { background: #166534; border-color: #166534; color: #ffffff; }
+  .projectpulse-029-button.warning { background: #92400e; border-color: #92400e; color: #ffffff; }
+
+  .projectpulse-029-pill {
+    border-radius: 999px;
+    padding: 0.28rem 0.58rem;
+    font-size: 0.72rem;
+    font-weight: 950;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .projectpulse-029-pill.blue { background: #dbeafe; color: #1e3a8a; }
+  .projectpulse-029-pill.green { background: #dcfce7; color: #166534; }
+  .projectpulse-029-pill.amber { background: #fef3c7; color: #92400e; }
+  .projectpulse-029-pill.red { background: #fee2e2; color: #991b1b; }
+
+  .projectpulse-029-page-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.22);
+    padding-bottom: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .projectpulse-029-layout {
+    display: grid;
+    grid-template-columns: 0.92fr 1.08fr;
+    gap: 1rem;
+    align-items: start;
+  }
+
+  .projectpulse-029-section {
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    border-radius: 18px;
+    background: #f8fafc;
+    padding: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .projectpulse-029-section.white { background: #ffffff; }
+
+  .projectpulse-029-field { margin-bottom: 0.85rem; }
+
+  .projectpulse-029-field label {
+    display: block;
+    font-size: 0.78rem;
+    color: #475569;
+    font-weight: 950;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    margin-bottom: 0.35rem;
+  }
+
+  .projectpulse-029-field input,
+  .projectpulse-029-field select,
+  .projectpulse-029-field textarea {
+    width: 100%;
+    border: 1px solid rgba(148, 163, 184, 0.45);
+    border-radius: 12px;
+    padding: 0.7rem 0.75rem;
+    background: #ffffff;
+    color: #111827;
+    font: inherit;
+  }
+
+  .projectpulse-029-field textarea {
+    min-height: 115px;
+    resize: vertical;
+  }
+
+  .projectpulse-029-two-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.65rem;
+  }
+
+  .projectpulse-029-three-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.65rem;
+  }
+
+  .projectpulse-029-cardlet {
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    border-radius: 16px;
+    background: #ffffff;
+    padding: 0.9rem;
+  }
+
+  .projectpulse-029-cardlet strong {
+    display: block;
+    font-size: 1rem;
+    margin: 0.25rem 0;
+  }
+
+  .projectpulse-029-status {
+    border-radius: 16px;
+    padding: 0.85rem;
+    background: #eff6ff;
+    color: #1e3a8a;
+    font-weight: 750;
+    margin-top: 0.8rem;
+  }
+
+  .projectpulse-029-status.success { background: #dcfce7; color: #166534; }
+  .projectpulse-029-status.warning { background: #fef3c7; color: #92400e; }
+  .projectpulse-029-status.error { background: #fee2e2; color: #991b1b; }
+
+  .projectpulse-029-checklist {
+    display: grid;
+    gap: 0.55rem;
+  }
+
+  .projectpulse-029-checklist label {
+    display: flex;
+    gap: 0.55rem;
+    align-items: flex-start;
+    color: #334155;
+    line-height: 1.4;
+  }
+
+  .projectpulse-029-preview {
+    white-space: pre-wrap;
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    border-radius: 14px;
+    background: #ffffff;
+    padding: 0.85rem;
+    color: #334155;
+    max-height: 390px;
+    overflow: auto;
+  }
+
+  .projectpulse-029-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #ffffff;
+    border-radius: 14px;
+    overflow: hidden;
+  }
+
+  .projectpulse-029-table th,
+  .projectpulse-029-table td {
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    padding: 0.65rem;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  .projectpulse-029-table th {
+    background: #f1f5f9;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #475569;
+  }
+
+  @media (max-width: 1050px) {
+    .projectpulse-029-layout,
+    .projectpulse-029-two-grid,
+    .projectpulse-029-three-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .projectpulse-029-page-header {
+      flex-direction: column;
+    }
+  }
+</style>
+
+<script id="projectpulse-029-script">
+(function () {
+  if (window.__projectPulse029Installed) return;
+  window.__projectPulse029Installed = true;
+
+  var cardId = 'projectpulse-029-uat-card';
+  var shellId = 'projectpulse-029-shell';
+  var storageKey = 'projectpulse029UatRoleWorkflowValidation';
+
+  var roles = [
+    ['Engineer', 'Own time, assigned work, holidays view-only, assigned project workspace, SOW/GSD after assignment, own AI time entry only', 'No Project Info/Allocation, no workflow/export/reconciliation, no View-As writes'],
+    ['Project Management', 'Assigned projects, Project Workload, PM validation for assigned project time', 'No global engineer time, no Utilization, no Project Info/Allocation'],
+    ['Manager', 'Team approvals, team utilization, holidays management, customer directory view', 'No unrelated-team approvals, no password reset/admin-only controls'],
+    ['Engineering Team Lead', 'Team engineers, assigned work, team/individual utilization', 'No approval/password reset/export/reconciliation'],
+    ['PM Team Lead', 'PMs on team, PM workload, managed projects', 'No approval/password reset/global engineering controls'],
+    ['PTC', 'Broad operations, time records, holidays, customers, workflow, export, reconciliation, handoff assignment', 'No admin-only secret management unless also Admin'],
+    ['Administrator', 'Full access with View-As read-only preview', 'Cannot approve/submit/write as selected View-As user'],
+    ['Executive', 'High-level reporting and workflow status', 'No operational writes'],
+    ['Accounting', 'Reconciliation/export readiness and accounting workflow visibility', 'No full admin/system control'],
+    ['Sales', 'Sales-owned intake, CRM context, signed SOW handoff prep', 'No PM/Engineer assignment trigger unless PTC/Admin'],
+    ['Solution Architect', 'SOW review, GSD/scope validation, technical handoff', 'No assignment trigger unless PTC/Admin'],
+    ['Project Coordinator', 'Post-intake editing, document uploads, signed-date aging workflow', 'No approval/export/admin controls']
+  ];
+
+  var scenarios = [
+    ['Engineer Own-Time Validation', 'Timesheet', 'Engineer can draft and manage own time only; cannot see global user time.'],
+    ['PM Assigned-Project Validation', 'Project Management', 'PM sees assigned projects and validates assigned project time only.'],
+    ['Manager Team Approval Validation', 'Approval', 'Manager approves/rejects only team-scope records.'],
+    ['Admin View-As Read-Only Validation', 'View-As', 'Admin preview is read-only; write attempts are forbidden and auditable.'],
+    ['PTC Handoff Assignment Validation', 'Operations', 'PTC validates signed SOW/GSD handoff and assignment trigger readiness.'],
+    ['Executive Reporting Validation', 'Reporting', 'Executive sees reporting-only workflow status.'],
+    ['Accounting Reconciliation/Export Validation', 'Accounting', 'Accounting sees reconciliation/export readiness without full admin scope.'],
+    ['Sales and SA Intake/SOW Validation', 'Sales-to-Delivery', 'Sales and SA can support intake, SOW review, and handoff readiness.'],
+    ['Project Coordinator Document Workflow Validation', 'Documents', 'Coordinator supports post-intake edits, uploads, and signed-date aging.'],
+    ['Module Chain 024-028 Validation', 'Platform Workflow', 'Dashboard cards and standalone routes remain clean for Modules 024 through 028.']
+  ];
+
+  var modules = [
+    ['024', 'Sales-to-Delivery Intake Foundation', '#sales-intake', 'projectpulse-024-intake-card', '024 source marker present'],
+    ['025', 'SOW Generator + Claude Review Workflow', '#sow-generator', 'projectpulse-025-sow-card', '025 source marker present'],
+    ['026', 'CRM Integration Framework', '#crm-integration', 'projectpulse-026-crm-card', '026 source marker present'],
+    ['027', 'Signed SOW Handoff + Assignment Trigger', '#signed-handoff', 'projectpulse-027-handoff-card', '027 source marker present'],
+    ['028', 'SOW-Aware AI Time Entry Generator', '#ai-time-entry', 'projectpulse-028-ai-time-card', '028 source marker present'],
+    ['029', 'User Acceptance / Role + Workflow Validation Center', '#uat-validation', 'projectpulse-029-uat-card', '029 source marker present']
+  ];
+
+  var state = {
+    selectedRole: 'Engineer',
+    selectedScenario: 'Engineer Own-Time Validation',
+    validationEnvironment: 'production preview',
+    testerName: '',
+    evidenceReference: 'UAT-029-PREVIEW',
+    evidenceSummary: '',
+    roleMatrixConfirmed: false,
+    workflowScenariosConfirmed: false,
+    viewAsEnforcementConfirmed: false,
+    dashboardNavigationRegistryConfirmed: false,
+    moduleAccessConfirmed: false,
+    approvalExportAuditConfirmed: false,
+    evidenceCaptureConfirmed: false,
+    closeoutConfirmed: false,
+    lastRoleValidation: '',
+    lastWorkflowValidation: '',
+    lastViewAsValidation: '',
+    lastModuleValidation: '',
+    lastEvidence: '',
+    lastReadiness: '',
+    status: '',
+    statusType: ''
+  };
+
+  function escapeHtml(value) {
+    return String(value == null ? '' : value)
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#039;');
+  }
+
+  function cleanText(value) {
+    return String(value || '').replace(/\s+/g, ' ').trim();
+  }
+
+  function loadState() {
+    try {
+      var raw = window.localStorage.getItem(storageKey);
+      if (!raw) return;
+      Object.assign(state, JSON.parse(raw));
+    } catch {}
+  }
+
+  function saveState() {
+    try {
+      window.localStorage.setItem(storageKey, JSON.stringify(state));
+    } catch {}
+  }
+
+  function route() {
+    return String(window.location.hash || '#dashboard').replace(/^#/, '').split('?')[0].toLowerCase();
+  }
+
+  function getDashboardGrid() {
+    var ownCard = document.getElementById(cardId);
+    if (ownCard && ownCard.parentElement) return ownCard.parentElement;
+
+    var aiCard = document.getElementById('projectpulse-028-ai-time-card');
+    if (aiCard && aiCard.parentElement) return aiCard.parentElement;
+
+    var handoffCard = document.getElementById('projectpulse-027-handoff-card');
+    if (handoffCard && handoffCard.parentElement) return handoffCard.parentElement;
+
+    var intakeCard = document.getElementById('projectpulse-024-intake-card');
+    if (intakeCard && intakeCard.parentElement) return intakeCard.parentElement;
+
+    var candidates = Array.from(document.querySelectorAll('section, article, div, main'))
+      .filter(function (element) {
+        if (element.id === cardId || element.closest('#' + cardId)) return false;
+        var text = cleanText(element.textContent);
+        var rect = element.getBoundingClientRect();
+        return rect.width > 700 &&
+          rect.height > 250 &&
+          text.includes('Project Workload') &&
+          text.includes('Project Workspace') &&
+          text.includes('Project Intake');
+      })
+      .sort(function (a, b) {
+        var ar = a.getBoundingClientRect();
+        var br = b.getBoundingClientRect();
+        return (ar.width * ar.height) - (br.width * br.height);
+      });
+
+    return candidates[0] || null;
+  }
+
+  function ensureCard() {
+    var grid = getDashboardGrid();
+    if (!grid) return null;
+
+    var card = document.getElementById(cardId);
+    if (!card) {
+      card = document.createElement('section');
+      card.id = cardId;
+      card.innerHTML =
+        '<div class="projectpulse-029-eyebrow">Module 029</div>' +
+        '<h3>User Acceptance / Role + Workflow Validation Center</h3>' +
+        '<p>Validate dashboard, navigation, registry, module access, View-As write protection, role scope, workflow readiness, evidence, approval/export/audit controls.</p>' +
+        '<div class="projectpulse-029-actions">' +
+          '<button type="button" class="projectpulse-029-button primary" data-029-open>Open UAT Validation</button>' +
+          '<span class="projectpulse-029-pill green">Role matrix</span>' +
+          '<span class="projectpulse-029-pill blue">Workflow scenarios</span>' +
+          '<span class="projectpulse-029-pill amber">View-As enforcement</span>' +
+        '</div>';
+
+      var aiCard = document.getElementById('projectpulse-028-ai-time-card');
+      if (aiCard && aiCard.parentElement === grid) {
+        grid.insertBefore(card, aiCard.nextSibling);
+      } else {
+        grid.insertBefore(card, grid.firstElementChild || null);
+      }
+
+      card.querySelector('[data-029-open]').addEventListener('click', function () {
+        window.location.hash = '#uat-validation';
+        render();
+      });
+    }
+
+    return card;
+  }
+
+  function ensureShell() {
+    var shell = document.getElementById(shellId);
+    if (!shell) {
+      shell = document.createElement('div');
+      shell.id = shellId;
+      shell.setAttribute('aria-label', 'User Acceptance Role Workflow Validation route');
+      document.body.appendChild(shell);
+    }
+    return shell;
+  }
+
+  function openShell(open) {
+    var shell = ensureShell();
+    if (open) {
+      shell.setAttribute('data-open', 'true');
+      document.documentElement.style.overflow = 'hidden';
+      document.body.style.overflow = 'hidden';
+      renderShell();
+      setTimeout(function () { shell.scrollTop = 0; }, 0);
+    } else {
+      shell.removeAttribute('data-open');
+      document.documentElement.style.overflow = '';
+      document.body.style.overflow = '';
+    }
+  }
+
+  function setValue(root, name, value) {
+    var element = root.querySelector('[data-029-field="' + name + '"]');
+    if (element) element.value = value || '';
+  }
+
+  function setCheck(root, name, value) {
+    var element = root.querySelector('[data-029-check="' + name + '"]');
+    if (element) element.checked = !!value;
+  }
+
+  function captureInputs() {
+    var shell = document.getElementById(shellId);
+    if (!shell || shell.getAttribute('data-open') !== 'true') return;
+
+    function get(name) {
+      var element = shell.querySelector('[data-029-field="' + name + '"]');
+      return element ? element.value : '';
+    }
+
+    function checked(name) {
+      var element = shell.querySelector('[data-029-check="' + name + '"]');
+      return !!(element && element.checked);
+    }
+
+    [
+      'selectedRole',
+      'selectedScenario',
+      'validationEnvironment',
+      'testerName',
+      'evidenceReference',
+      'evidenceSummary'
+    ].forEach(function (key) {
+      state[key] = get(key);
+    });
+
+    [
+      'roleMatrixConfirmed',
+      'workflowScenariosConfirmed',
+      'viewAsEnforcementConfirmed',
+      'dashboardNavigationRegistryConfirmed',
+      'moduleAccessConfirmed',
+      'approvalExportAuditConfirmed',
+      'evidenceCaptureConfirmed',
+      'closeoutConfirmed'
+    ].forEach(function (key) {
+      state[key] = checked(key);
+    });
+
+    saveState();
+  }
+
+  function roleMatrixHtml() {
+    return '<table class="projectpulse-029-table">' +
+      '<thead><tr><th>Role</th><th>Expected Access</th><th>Restrictions</th></tr></thead>' +
+      '<tbody>' +
+      roles.map(function (row) {
+        return '<tr><td>' + escapeHtml(row[0]) + '</td><td>' + escapeHtml(row[1]) + '</td><td>' + escapeHtml(row[2]) + '</td></tr>';
+      }).join('') +
+      '</tbody></table>';
+  }
+
+  function scenarioTableHtml() {
+    return '<table class="projectpulse-029-table">' +
+      '<thead><tr><th>Scenario</th><th>Area</th><th>Expected Validation</th></tr></thead>' +
+      '<tbody>' +
+      scenarios.map(function (row) {
+        return '<tr><td>' + escapeHtml(row[0]) + '</td><td>' + escapeHtml(row[1]) + '</td><td>' + escapeHtml(row[2]) + '</td></tr>';
+      }).join('') +
+      '</tbody></table>';
+  }
+
+  function moduleTableHtml() {
+    return '<table class="projectpulse-029-table">' +
+      '<thead><tr><th>Module</th><th>Name</th><th>Route</th><th>Card</th><th>Marker</th></tr></thead>' +
+      '<tbody>' +
+      modules.map(function (row) {
+        var cardPresent = document.getElementById(row[3]) ? 'Visible' : 'Pending visual check';
+        return '<tr><td>' + escapeHtml(row[0]) + '</td><td>' + escapeHtml(row[1]) + '</td><td>' + escapeHtml(row[2]) + '</td><td>' + escapeHtml(cardPresent) + '</td><td>' + escapeHtml(row[4]) + '</td></tr>';
+      }).join('') +
+      '</tbody></table>';
+  }
+
+  function validateRole() {
+    captureInputs();
+    var role = roles.find(function (row) { return row[0] === state.selectedRole; }) || roles[0];
+
+    state.lastRoleValidation =
+      'Role Validation Preview\n\n' +
+      'Role: ' + role[0] + '\n' +
+      'Expected access:\n' + role[1] + '\n\n' +
+      'Expected restrictions:\n' + role[2] + '\n\n' +
+      'Validation actions:\n' +
+      '- Confirm dashboard cards match role scope.\n' +
+      '- Confirm navigation links match role scope.\n' +
+      '- Confirm module routes do not expose restricted workflows.\n' +
+      '- Confirm writes are limited to expected controls.\n' +
+      '- Confirm View-As does not allow impersonated writes.';
+
+    state.roleMatrixConfirmed = true;
+    state.statusType = 'success';
+    state.status = 'Role validation preview prepared for ' + role[0] + '.';
+    state.lastEvidence = evidencePreview('role_validation_preview');
+    saveState();
+    renderShell();
+  }
+
+  function validateWorkflow() {
+    captureInputs();
+    var scenario = scenarios.find(function (row) { return row[0] === state.selectedScenario; }) || scenarios[0];
+
+    state.lastWorkflowValidation =
+      'Workflow Scenario Validation Preview\n\n' +
+      'Scenario: ' + scenario[0] + '\n' +
+      'Workflow area: ' + scenario[1] + '\n' +
+      'Expected result:\n' + scenario[2] + '\n\n' +
+      'Validation actions:\n' +
+      '- Execute the role path in production preview.\n' +
+      '- Validate module card visibility.\n' +
+      '- Validate standalone route behavior.\n' +
+      '- Validate restricted controls are hidden or blocked.\n' +
+      '- Capture evidence and mark readiness only after visual confirmation.';
+
+    state.workflowScenariosConfirmed = true;
+    state.statusType = 'success';
+    state.status = 'Workflow validation preview prepared for ' + scenario[0] + '.';
+    state.lastEvidence = evidencePreview('workflow_validation_preview');
+    saveState();
+    renderShell();
+  }
+
+  function validateViewAs() {
+    captureInputs();
+
+    state.lastViewAsValidation =
+      'View-As Enforcement Validation Preview\n\n' +
+      'Required controls:\n' +
+      '- Admin may preview another role experience.\n' +
+      '- View-As must not allow submit, approve, reject, export, create, update, delete, or assignment writes as the selected user.\n' +
+      '- Forbidden write attempts must return a blocked result and be auditable.\n' +
+      '- View-As localStorage key remains projectPulseViewAsUser.\n' +
+      '- API View-As header remains X-ProjectPulse-View-As-User.\n\n' +
+      'Expected write result:\n' +
+      '403 view_as_read_only or equivalent forbidden response for protected writes.';
+
+    state.viewAsEnforcementConfirmed = true;
+    state.statusType = 'success';
+    state.status = 'View-As enforcement validation preview prepared.';
+    state.lastEvidence = evidencePreview('view_as_enforcement_preview');
+    saveState();
+    renderShell();
+  }
+
+  function validateModules() {
+    captureInputs();
+
+    state.lastModuleValidation =
+      'Dashboard / Navigation / Registry / Module Access Validation Preview\n\n' +
+      modules.map(function (row) {
+        return row[0] + ' - ' + row[1] + '\nRoute: ' + row[2] + '\nExpected: Dashboard card visible, standalone route opens cleanly, no page bleed-through.\n';
+      }).join('\n') +
+      '\nAPI checks required:\n' +
+      '- /api/navigation/registry-integrity\n' +
+      '- /api/dashboard/module-visibility-smoke\n' +
+      '- /api/production/readiness-command-center\n' +
+      '- /api/production/notifications/summary\n\n' +
+      'Validation status:\n' +
+      'Prepared for visual and API verification.';
+
+    state.dashboardNavigationRegistryConfirmed = true;
+    state.moduleAccessConfirmed = true;
+    state.statusType = 'success';
+    state.status = 'Module access and registry validation preview prepared.';
+    state.lastEvidence = evidencePreview('module_access_validation_preview');
+    saveState();
+    renderShell();
+  }
+
+  function validateApprovalExportAudit() {
+    captureInputs();
+
+    state.lastReadiness =
+      'Approval / Export / Audit Readiness Validation Preview\n\n' +
+      'Approval controls:\n' +
+      '- Manager approve/reject limited to team scope.\n' +
+      '- PM validation limited to assigned project time.\n' +
+      '- Engineer cannot approve or submit as another user.\n\n' +
+      'Export/reconciliation controls:\n' +
+      '- PTC/Admin/Accounting visibility must follow operational scope.\n' +
+      '- Executive remains reporting-only.\n\n' +
+      'Audit controls:\n' +
+      '- View-As write block is auditable.\n' +
+      '- SOW/GSD handoff and AI time-entry draft/acceptance events preserve actor and version context.\n' +
+      '- Evidence capture records tester, role, scenario, module, and timestamp.';
+
+    state.approvalExportAuditConfirmed = true;
+    state.statusType = 'success';
+    state.status = 'Approval/export/audit readiness preview prepared.';
+    state.lastEvidence = evidencePreview('approval_export_audit_preview');
+    saveState();
+    renderShell();
+  }
+
+  function evidencePreview(eventName) {
+    return 'UAT Evidence Capture Preview\n\n' +
+      'Evidence Reference: ' + (state.evidenceReference || 'UAT-029-PREVIEW') + '\n' +
+      'Event: ' + eventName + '\n' +
+      'Environment: ' + state.validationEnvironment + '\n' +
+      'Tester: ' + (state.testerName || '[Tester not entered]') + '\n' +
+      'Selected Role: ' + state.selectedRole + '\n' +
+      'Selected Scenario: ' + state.selectedScenario + '\n' +
+      'Timestamp: ' + new Date().toISOString() + '\n\n' +
+      'Evidence Summary:\n' +
+      (state.evidenceSummary || '[Enter observed result, route, role, and pass/fail notes.]') + '\n\n' +
+      'Database target:\n' +
+      '- uat_evidence_capture_events';
+  }
+
+  function captureEvidence() {
+    captureInputs();
+    state.evidenceCaptureConfirmed = true;
+    state.lastEvidence = evidencePreview('manual_evidence_captured_preview');
+    state.statusType = 'success';
+    state.status = 'UAT evidence preview captured locally. Backend table is ready for persistence.';
+    saveState();
+    renderShell();
+  }
+
+  function readinessSummary() {
+    var checks = [
+      state.roleMatrixConfirmed,
+      state.workflowScenariosConfirmed,
+      state.viewAsEnforcementConfirmed,
+      state.dashboardNavigationRegistryConfirmed,
+      state.moduleAccessConfirmed,
+      state.approvalExportAuditConfirmed,
+      state.evidenceCaptureConfirmed,
+      state.closeoutConfirmed
+    ];
+
+    var complete = checks.filter(Boolean).length;
+
+    return 'Module 029 Readiness Summary\n\n' +
+      'Validation Environment: ' + state.validationEnvironment + '\n' +
+      'Selected Role: ' + state.selectedRole + '\n' +
+      'Selected Scenario: ' + state.selectedScenario + '\n' +
+      'Evidence Reference: ' + state.evidenceReference + '\n\n' +
+      'Readiness Checks Complete: ' + complete + ' / ' + checks.length + '\n\n' +
+      'Required confirmations:\n' +
+      '- Role validation matrix confirmed.\n' +
+      '- Workflow scenarios confirmed.\n' +
+      '- View-As enforcement confirmed.\n' +
+      '- Dashboard / Navigation / Registry confirmed.\n' +
+      '- Module access across 024-028 confirmed.\n' +
+      '- Approval / export / audit readiness confirmed.\n' +
+      '- Evidence capture confirmed.\n' +
+      '- Closeout confirmed.';
+  }
+
+  function validateReadiness() {
+    captureInputs();
+
+    var missing = [];
+    if (!state.roleMatrixConfirmed) missing.push('role matrix');
+    if (!state.workflowScenariosConfirmed) missing.push('workflow scenarios');
+    if (!state.viewAsEnforcementConfirmed) missing.push('View-As enforcement');
+    if (!state.dashboardNavigationRegistryConfirmed) missing.push('Dashboard / Navigation / Registry');
+    if (!state.moduleAccessConfirmed) missing.push('module access');
+    if (!state.approvalExportAuditConfirmed) missing.push('approval/export/audit readiness');
+    if (!state.evidenceCaptureConfirmed) missing.push('evidence capture');
+    if (!state.closeoutConfirmed) missing.push('closeout');
+
+    if (missing.length) {
+      state.statusType = 'warning';
+      state.status = 'Module 029 readiness incomplete. Missing: ' + missing.join(', ') + '.';
+    } else {
+      state.statusType = 'success';
+      state.status = 'Module 029 readiness complete for UAT role/workflow validation closeout.';
+    }
+
+    state.lastReadiness = readinessSummary();
+    saveState();
+    renderShell();
+  }
+
+  function renderShell() {
+    loadState();
+
+    var shell = ensureShell();
+
+    shell.innerHTML =
+      '<div id="projectpulse-029-page">' +
+        '<div class="projectpulse-029-page-header">' +
+          '<div>' +
+            '<div class="projectpulse-029-eyebrow">Module 029 · User Acceptance / Role + Workflow Validation Center</div>' +
+            '<h2>UAT Role + Workflow Validation Center</h2>' +
+            '<p>Validate the completed 024–028 workflow chain across dashboard, navigation, registry, role scope, View-As enforcement, evidence capture, approval/export/audit readiness, and closeout.</p>' +
+            '<div class="projectpulse-029-actions">' +
+              '<span class="projectpulse-029-pill green">Role matrix</span>' +
+              '<span class="projectpulse-029-pill blue">Workflow scenarios</span>' +
+              '<span class="projectpulse-029-pill amber">View-As write protection</span>' +
+              '<span class="projectpulse-029-pill green">Evidence capture</span>' +
+            '</div>' +
+          '</div>' +
+          '<div class="projectpulse-029-actions">' +
+            '<button type="button" class="projectpulse-029-button" data-029-dashboard>Back to Dashboard</button>' +
+            '<button type="button" class="projectpulse-029-button primary" data-029-validate-modules>Validate Modules</button>' +
+            '<button type="button" class="projectpulse-029-button success" data-029-readiness>Validate 029 Readiness</button>' +
+            '<button type="button" class="projectpulse-029-button" data-029-clear>Clear Preview State</button>' +
+          '</div>' +
+        '</div>' +
+
+        '<div class="projectpulse-029-layout">' +
+          '<div>' +
+            '<div class="projectpulse-029-section">' +
+              '<h3>029A Role Validation Matrix</h3>' +
+              '<div class="projectpulse-029-two-grid">' +
+                '<div class="projectpulse-029-field"><label>Selected Role</label><select data-029-field="selectedRole">' +
+                  roles.map(function (row) { return '<option>' + escapeHtml(row[0]) + '</option>'; }).join('') +
+                '</select></div>' +
+                '<div class="projectpulse-029-field"><label>Validation Environment</label><input data-029-field="validationEnvironment"></div>' +
+              '</div>' +
+              '<div class="projectpulse-029-actions"><button type="button" class="projectpulse-029-button primary" data-029-role>Prepare Role Validation</button></div>' +
+              '<div style="margin-top:1rem;">' + roleMatrixHtml() + '</div>' +
+            '</div>' +
+
+            '<div class="projectpulse-029-section">' +
+              '<h3>029B Workflow Validation Scenarios</h3>' +
+              '<div class="projectpulse-029-field"><label>Selected Scenario</label><select data-029-field="selectedScenario">' +
+                scenarios.map(function (row) { return '<option>' + escapeHtml(row[0]) + '</option>'; }).join('') +
+              '</select></div>' +
+              '<div class="projectpulse-029-actions"><button type="button" class="projectpulse-029-button primary" data-029-workflow>Prepare Workflow Validation</button><button type="button" class="projectpulse-029-button warning" data-029-view-as>Prepare View-As Test</button><button type="button" class="projectpulse-029-button success" data-029-audit>Prepare Approval / Export / Audit Check</button></div>' +
+              '<div style="margin-top:1rem;">' + scenarioTableHtml() + '</div>' +
+            '</div>' +
+
+            '<div class="projectpulse-029-section">' +
+              '<h3>029F UAT Evidence Capture</h3>' +
+              '<div class="projectpulse-029-two-grid">' +
+                '<div class="projectpulse-029-field"><label>Tester Name</label><input data-029-field="testerName"></div>' +
+                '<div class="projectpulse-029-field"><label>Evidence Reference</label><input data-029-field="evidenceReference"></div>' +
+              '</div>' +
+              '<div class="projectpulse-029-field"><label>Evidence Summary</label><textarea data-029-field="evidenceSummary" placeholder="Record observed route, role, expected result, actual result, and pass/fail notes."></textarea></div>' +
+              '<div class="projectpulse-029-actions"><button type="button" class="projectpulse-029-button success" data-029-evidence>Capture Evidence Preview</button></div>' +
+              '<div data-029-status></div>' +
+            '</div>' +
+
+            '<div class="projectpulse-029-section">' +
+              '<h3>029H Readiness + Closeout Checklist</h3>' +
+              '<div class="projectpulse-029-checklist">' +
+                '<label><input type="checkbox" data-029-check="roleMatrixConfirmed"> Role validation matrix confirmed.</label>' +
+                '<label><input type="checkbox" data-029-check="workflowScenariosConfirmed"> Workflow scenarios confirmed.</label>' +
+                '<label><input type="checkbox" data-029-check="viewAsEnforcementConfirmed"> View-As enforcement confirmed.</label>' +
+                '<label><input type="checkbox" data-029-check="dashboardNavigationRegistryConfirmed"> Dashboard / Navigation / Registry confirmed.</label>' +
+                '<label><input type="checkbox" data-029-check="moduleAccessConfirmed"> Module access across 024–028 confirmed.</label>' +
+                '<label><input type="checkbox" data-029-check="approvalExportAuditConfirmed"> Approval / export / audit readiness confirmed.</label>' +
+                '<label><input type="checkbox" data-029-check="evidenceCaptureConfirmed"> Evidence capture confirmed.</label>' +
+                '<label><input type="checkbox" data-029-check="closeoutConfirmed"> Module 029 closeout confirmed.</label>' +
+              '</div>' +
+            '</div>' +
+          '</div>' +
+
+          '<div>' +
+            '<div class="projectpulse-029-section white"><h3>029D Dashboard / Navigation / Registry + Module Access</h3>' + moduleTableHtml() + '</div>' +
+            '<div class="projectpulse-029-section"><h3>Role Validation Output</h3><div class="projectpulse-029-preview" data-029-role-output></div></div>' +
+            '<div class="projectpulse-029-section"><h3>Workflow Validation Output</h3><div class="projectpulse-029-preview" data-029-workflow-output></div></div>' +
+            '<div class="projectpulse-029-section"><h3>029C View-As Enforcement Output</h3><div class="projectpulse-029-preview" data-029-view-as-output></div></div>' +
+            '<div class="projectpulse-029-section"><h3>029E Module Access Validation Output</h3><div class="projectpulse-029-preview" data-029-module-output></div></div>' +
+            '<div class="projectpulse-029-section"><h3>029G Approval / Export / Audit Output</h3><div class="projectpulse-029-preview" data-029-readiness-output></div></div>' +
+            '<div class="projectpulse-029-section"><h3>Evidence Preview</h3><div class="projectpulse-029-preview" data-029-evidence-output></div></div>' +
+            '<div class="projectpulse-029-section">' +
+              '<h3>Workflow Placement</h3>' +
+              '<div class="projectpulse-029-three-grid">' +
+                '<div class="projectpulse-029-cardlet"><span class="projectpulse-029-pill blue">024-028</span><strong>Workflow Chain</strong><p>Validates intake, SOW, CRM, handoff, assignment, and AI time-entry flow.</p></div>' +
+                '<div class="projectpulse-029-cardlet"><span class="projectpulse-029-pill green">029</span><strong>UAT Evidence</strong><p>Captures role/scenario/module evidence for readiness decisions.</p></div>' +
+                '<div class="projectpulse-029-cardlet"><span class="projectpulse-029-pill amber">030</span><strong>Reporting</strong><p>Next module can roll validated workflow status into executive reporting.</p></div>' +
+              '</div>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+
+    populateShell(shell);
+    wireShell(shell);
+  }
+
+  function populateShell(shell) {
+    [
+      'selectedRole',
+      'selectedScenario',
+      'validationEnvironment',
+      'testerName',
+      'evidenceReference',
+      'evidenceSummary'
+    ].forEach(function (key) {
+      setValue(shell, key, state[key]);
+    });
+
+    [
+      'roleMatrixConfirmed',
+      'workflowScenariosConfirmed',
+      'viewAsEnforcementConfirmed',
+      'dashboardNavigationRegistryConfirmed',
+      'moduleAccessConfirmed',
+      'approvalExportAuditConfirmed',
+      'evidenceCaptureConfirmed',
+      'closeoutConfirmed'
+    ].forEach(function (key) {
+      setCheck(shell, key, state[key]);
+    });
+
+    var roleNode = shell.querySelector('[data-029-role-output]');
+    var workflowNode = shell.querySelector('[data-029-workflow-output]');
+    var viewAsNode = shell.querySelector('[data-029-view-as-output]');
+    var moduleNode = shell.querySelector('[data-029-module-output]');
+    var readinessNode = shell.querySelector('[data-029-readiness-output]');
+    var evidenceNode = shell.querySelector('[data-029-evidence-output]');
+    var statusNode = shell.querySelector('[data-029-status]');
+
+    if (roleNode) roleNode.textContent = state.lastRoleValidation || 'Prepare role validation to review expected access and restrictions.';
+    if (workflowNode) workflowNode.textContent = state.lastWorkflowValidation || 'Prepare workflow scenario validation to review role-specific expected results.';
+    if (viewAsNode) viewAsNode.textContent = state.lastViewAsValidation || 'Prepare View-As validation to confirm read-only enforcement and forbidden writes.';
+    if (moduleNode) moduleNode.textContent = state.lastModuleValidation || 'Validate module access to review dashboard cards, standalone routes, and registry expectations.';
+    if (readinessNode) readinessNode.textContent = state.lastReadiness || readinessSummary();
+    if (evidenceNode) evidenceNode.textContent = state.lastEvidence || evidencePreview('module_029_loaded');
+
+    if (statusNode) {
+      statusNode.innerHTML = state.status
+        ? '<div class="projectpulse-029-status ' + escapeHtml(state.statusType || '') + '">' + escapeHtml(state.status) + '</div>'
+        : '';
+    }
+  }
+
+  function wireShell(shell) {
+    shell.querySelectorAll('input, select, textarea').forEach(function (input) {
+      input.addEventListener('input', function () {
+        captureInputs();
+        populateShell(shell);
+      });
+      input.addEventListener('change', function () {
+        captureInputs();
+        populateShell(shell);
+      });
+    });
+
+    shell.querySelector('[data-029-dashboard]').addEventListener('click', function () {
+      window.location.hash = '#dashboard';
+      render();
+    });
+
+    shell.querySelector('[data-029-clear]').addEventListener('click', function () {
+      if (!confirm('Clear Module 029 preview state on this browser?')) return;
+      window.localStorage.removeItem(storageKey);
+      location.reload();
+    });
+
+    shell.querySelector('[data-029-role]').addEventListener('click', validateRole);
+    shell.querySelector('[data-029-workflow]').addEventListener('click', validateWorkflow);
+    shell.querySelector('[data-029-view-as]').addEventListener('click', validateViewAs);
+    shell.querySelector('[data-029-validate-modules]').addEventListener('click', validateModules);
+    shell.querySelector('[data-029-audit]').addEventListener('click', validateApprovalExportAudit);
+    shell.querySelector('[data-029-evidence]').addEventListener('click', captureEvidence);
+    shell.querySelector('[data-029-readiness]').addEventListener('click', validateReadiness);
+  }
+
+  function render() {
+    loadState();
+    ensureShell();
+    ensureCard();
+    var currentRoute = route();
+    openShell(currentRoute === 'uat-validation' || currentRoute === 'role-validation' || currentRoute === 'workflow-validation');
+  }
+
+  function boot(attempt) {
+    render();
+    if (!document.getElementById(cardId) && attempt !== 12) {
+      setTimeout(function () { boot(attempt + 1); }, 250);
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () { boot(0); });
+  } else {
+    boot(0);
+  }
+
+  window.addEventListener('hashchange', function () { setTimeout(render, 60); });
+})();
+</script>
+<!-- 029_FULL_UAT_ROLE_WORKFLOW_VALIDATION_END -->
+
 </body>
 </html>
