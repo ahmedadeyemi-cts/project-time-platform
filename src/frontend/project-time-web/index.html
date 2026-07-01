@@ -6772,5 +6772,1012 @@
 </script>
 <!-- 027_FULL_SIGNED_SOW_HANDOFF_ASSIGNMENT_TRIGGER_END -->
 
+
+<!-- 028_FULL_SOW_AWARE_AI_TIME_ENTRY_START -->
+<style id="projectpulse-028-style">
+  #projectpulse-028-ai-time-card {
+    border: 1px solid rgba(148, 163, 184, 0.32);
+    border-radius: 20px;
+    background: #ffffff;
+    color: #111827;
+    box-shadow: 0 14px 36px rgba(15, 23, 42, 0.06);
+    padding: 1.15rem;
+    min-height: 175px;
+  }
+
+  #projectpulse-028-shell {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483005;
+    background: linear-gradient(135deg, #eef8ff 0%, #f8fbff 42%, #eef8f2 100%);
+    overflow-y: auto;
+    padding: 1.25rem;
+    box-sizing: border-box;
+    display: none;
+  }
+
+  #projectpulse-028-shell[data-open="true"] {
+    display: block;
+  }
+
+  #projectpulse-028-page {
+    max-width: 1540px;
+    margin: 0 auto 2rem;
+    border: 1px solid rgba(148, 163, 184, 0.32);
+    border-radius: 24px;
+    background: #ffffff;
+    color: #111827;
+    box-shadow: 0 20px 60px rgba(15, 23, 42, 0.12);
+    padding: 1.25rem;
+  }
+
+  .projectpulse-028-eyebrow {
+    color: #64748b;
+    font-size: 0.72rem;
+    font-weight: 950;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 0.55rem;
+  }
+
+  #projectpulse-028-ai-time-card h3,
+  #projectpulse-028-page h2,
+  #projectpulse-028-page h3 {
+    margin: 0 0 0.55rem;
+    line-height: 1.25;
+  }
+
+  #projectpulse-028-ai-time-card p,
+  #projectpulse-028-page p {
+    color: #5b6b89;
+    line-height: 1.48;
+  }
+
+  .projectpulse-028-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.65rem;
+    align-items: center;
+    margin-top: 1rem;
+  }
+
+  .projectpulse-028-button {
+    border: 1px solid rgba(37, 99, 235, 0.24);
+    border-radius: 12px;
+    background: #ffffff;
+    color: #111827;
+    padding: 0.65rem 0.9rem;
+    font-weight: 900;
+    cursor: pointer;
+  }
+
+  .projectpulse-028-button.primary { background: #0f2a55; border-color: #0f2a55; color: #ffffff; }
+  .projectpulse-028-button.success { background: #166534; border-color: #166534; color: #ffffff; }
+  .projectpulse-028-button.warning { background: #92400e; border-color: #92400e; color: #ffffff; }
+
+  .projectpulse-028-pill {
+    border-radius: 999px;
+    padding: 0.28rem 0.58rem;
+    font-size: 0.72rem;
+    font-weight: 950;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .projectpulse-028-pill.blue { background: #dbeafe; color: #1e3a8a; }
+  .projectpulse-028-pill.green { background: #dcfce7; color: #166534; }
+  .projectpulse-028-pill.amber { background: #fef3c7; color: #92400e; }
+  .projectpulse-028-pill.red { background: #fee2e2; color: #991b1b; }
+
+  .projectpulse-028-page-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.22);
+    padding-bottom: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .projectpulse-028-layout {
+    display: grid;
+    grid-template-columns: 0.9fr 1.1fr;
+    gap: 1rem;
+    align-items: start;
+  }
+
+  .projectpulse-028-section {
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    border-radius: 18px;
+    background: #f8fafc;
+    padding: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .projectpulse-028-section.white { background: #ffffff; }
+
+  .projectpulse-028-field { margin-bottom: 0.85rem; }
+
+  .projectpulse-028-field label {
+    display: block;
+    font-size: 0.78rem;
+    color: #475569;
+    font-weight: 950;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    margin-bottom: 0.35rem;
+  }
+
+  .projectpulse-028-field input,
+  .projectpulse-028-field select,
+  .projectpulse-028-field textarea {
+    width: 100%;
+    border: 1px solid rgba(148, 163, 184, 0.45);
+    border-radius: 12px;
+    padding: 0.7rem 0.75rem;
+    background: #ffffff;
+    color: #111827;
+    font: inherit;
+  }
+
+  .projectpulse-028-field textarea {
+    min-height: 115px;
+    resize: vertical;
+  }
+
+  .projectpulse-028-two-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.65rem;
+  }
+
+  .projectpulse-028-three-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.65rem;
+  }
+
+  .projectpulse-028-cardlet {
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    border-radius: 16px;
+    background: #ffffff;
+    padding: 0.9rem;
+  }
+
+  .projectpulse-028-cardlet strong {
+    display: block;
+    font-size: 1rem;
+    margin: 0.25rem 0;
+  }
+
+  .projectpulse-028-status {
+    border-radius: 16px;
+    padding: 0.85rem;
+    background: #eff6ff;
+    color: #1e3a8a;
+    font-weight: 750;
+    margin-top: 0.8rem;
+  }
+
+  .projectpulse-028-status.success { background: #dcfce7; color: #166534; }
+  .projectpulse-028-status.warning { background: #fef3c7; color: #92400e; }
+  .projectpulse-028-status.error { background: #fee2e2; color: #991b1b; }
+
+  .projectpulse-028-checklist {
+    display: grid;
+    gap: 0.55rem;
+  }
+
+  .projectpulse-028-checklist label {
+    display: flex;
+    gap: 0.55rem;
+    align-items: flex-start;
+    color: #334155;
+    line-height: 1.4;
+  }
+
+  .projectpulse-028-preview {
+    white-space: pre-wrap;
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    border-radius: 14px;
+    background: #ffffff;
+    padding: 0.85rem;
+    color: #334155;
+    max-height: 380px;
+    overflow: auto;
+  }
+
+  .projectpulse-028-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #ffffff;
+    border-radius: 14px;
+    overflow: hidden;
+  }
+
+  .projectpulse-028-table th,
+  .projectpulse-028-table td {
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    padding: 0.65rem;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  .projectpulse-028-table th {
+    background: #f1f5f9;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #475569;
+  }
+
+  @media (max-width: 1050px) {
+    .projectpulse-028-layout,
+    .projectpulse-028-two-grid,
+    .projectpulse-028-three-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .projectpulse-028-page-header {
+      flex-direction: column;
+    }
+  }
+</style>
+
+<script id="projectpulse-028-script">
+(function () {
+  if (window.__projectPulse028Installed) return;
+  window.__projectPulse028Installed = true;
+
+  var cardId = 'projectpulse-028-ai-time-card';
+  var shellId = 'projectpulse-028-shell';
+  var storageKey = 'projectpulse028SowAwareAiTimeEntry';
+
+  var state = {
+    scopeContextReference: 'SCOPE-028-DEMO',
+    handoffReference: 'HANDOFF-027-DEMO',
+    intakeReference: 'INTAKE-024-DEMO',
+    crmRecordReference: 'CRM-OPP-026-DEMO',
+    customerName: 'Great Lakes Healthcare',
+    projectName: 'Cisco CUCM 11.5 to 15.0 Upgrade',
+    projectType: 'Professional Services',
+    assignedProjectManager: '',
+    assignedEngineeringTeam: 'Collaboration Engineering',
+    assignedEngineer: '',
+    taskName: 'CUCM Upgrade Planning and Validation',
+    workDate: '',
+    recommendedHours: '2.0',
+    signedSowFileName: 'Signed SOW - CUCM Upgrade.pdf',
+    gsdFileName: 'GSD - CUCM Upgrade.xlsx',
+    sowVersionReference: 'SOW-v1-signed',
+    gsdVersionReference: 'GSD-v1-approved',
+    roughWorkDescription: 'Reviewed current CUCM environment, checked upgrade prerequisites, validated gateway and voicemail dependencies, and documented risks for the upgrade plan.',
+    scopeSummary: 'Cisco CUCM 11.5 to 15.0 upgrade including discovery, migration planning, dependency validation, gateway/SIP trunk review, voicemail integration, E911 review, certificate checks, backup planning, cutover support, rollback plan, and post-upgrade call validation.',
+    includedScopeKeywords: 'CUCM, upgrade, gateway, SIP trunk, voicemail, E911, certificate, backup, cutover, rollback, validation',
+    excludedScopeKeywords: 'new contact center deployment, unrelated network refresh, desktop support, hardware procurement, cabling',
+    finalEngineerEntry: '',
+    signedSowContextConfirmed: false,
+    gsdContextConfirmed: false,
+    assignmentContextConfirmed: false,
+    engineerOwnTimeRuleConfirmed: false,
+    aiProviderServerSideRuleConfirmed: false,
+    engineerReviewRequiredConfirmed: false,
+    auditCaptureConfirmed: false,
+    scopeStatusModelConfirmed: false,
+    closeoutReviewed: false,
+    lastScopeCheck: '',
+    lastAiDraft: '',
+    lastAcceptedEntry: '',
+    lastAuditTrail: '',
+    status: '',
+    statusType: ''
+  };
+
+  function escapeHtml(value) {
+    return String(value == null ? '' : value)
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#039;');
+  }
+
+  function cleanText(value) {
+    return String(value || '').replace(/\s+/g, ' ').trim();
+  }
+
+  function loadState() {
+    try {
+      var raw = window.localStorage.getItem(storageKey);
+      if (!raw) return;
+      Object.assign(state, JSON.parse(raw));
+    } catch {}
+  }
+
+  function saveState() {
+    try {
+      window.localStorage.setItem(storageKey, JSON.stringify(state));
+    } catch {}
+  }
+
+  function route() {
+    return String(window.location.hash || '#dashboard').replace(/^#/, '').split('?')[0].toLowerCase();
+  }
+
+  function getDashboardGrid() {
+    var ownCard = document.getElementById(cardId);
+    if (ownCard && ownCard.parentElement) return ownCard.parentElement;
+
+    var handoffCard = document.getElementById('projectpulse-027-handoff-card');
+    if (handoffCard && handoffCard.parentElement) return handoffCard.parentElement;
+
+    var intakeCard = document.getElementById('projectpulse-024-intake-card');
+    if (intakeCard && intakeCard.parentElement) return intakeCard.parentElement;
+
+    var crmCard = document.getElementById('projectpulse-026-crm-card');
+    if (crmCard && crmCard.parentElement) return crmCard.parentElement;
+
+    var sowCard = document.getElementById('projectpulse-025-sow-card');
+    if (sowCard && sowCard.parentElement) return sowCard.parentElement;
+
+    var notificationCard = document.getElementById('projectpulse-022e-dashboard-notification-card');
+    if (notificationCard && notificationCard.parentElement) return notificationCard.parentElement;
+
+    var candidates = Array.from(document.querySelectorAll('section, article, div, main'))
+      .filter(function (element) {
+        if (element.id === cardId || element.closest('#' + cardId)) return false;
+        var text = cleanText(element.textContent);
+        var rect = element.getBoundingClientRect();
+        return rect.width > 700 &&
+          rect.height > 250 &&
+          text.includes('Project Workload') &&
+          text.includes('Project Workspace') &&
+          text.includes('Project Intake');
+      })
+      .sort(function (a, b) {
+        var ar = a.getBoundingClientRect();
+        var br = b.getBoundingClientRect();
+        return (ar.width * ar.height) - (br.width * br.height);
+      });
+
+    return candidates[0] || null;
+  }
+
+  function ensureCard() {
+    var grid = getDashboardGrid();
+    if (!grid) return null;
+
+    var card = document.getElementById(cardId);
+    if (!card) {
+      card = document.createElement('section');
+      card.id = cardId;
+      card.innerHTML =
+        '<div class="projectpulse-028-eyebrow">Module 028</div>' +
+        '<h3>SOW-Aware AI Time Entry Generator</h3>' +
+        '<p>Engineers draft time entries against signed SOW/GSD scope. Claude remains draft-only, scope-aware, and engineer-reviewed before acceptance.</p>' +
+        '<div class="projectpulse-028-actions">' +
+          '<button type="button" class="projectpulse-028-button primary" data-028-open>Open AI Time Entry</button>' +
+          '<span class="projectpulse-028-pill green">Engineer review required</span>' +
+          '<span class="projectpulse-028-pill blue">SOW/GSD scope check</span>' +
+          '<span class="projectpulse-028-pill amber">Claude server-side only</span>' +
+        '</div>';
+
+      var handoffCard = document.getElementById('projectpulse-027-handoff-card');
+      if (handoffCard && handoffCard.parentElement === grid) {
+        grid.insertBefore(card, handoffCard.nextSibling);
+      } else {
+        grid.insertBefore(card, grid.firstElementChild || null);
+      }
+
+      card.querySelector('[data-028-open]').addEventListener('click', function () {
+        window.location.hash = '#ai-time-entry';
+        render();
+      });
+    }
+
+    return card;
+  }
+
+  function ensureShell() {
+    var shell = document.getElementById(shellId);
+    if (!shell) {
+      shell = document.createElement('div');
+      shell.id = shellId;
+      shell.setAttribute('aria-label', 'SOW-Aware AI Time Entry route');
+      document.body.appendChild(shell);
+    }
+    return shell;
+  }
+
+  function openShell(open) {
+    var shell = ensureShell();
+    if (open) {
+      shell.setAttribute('data-open', 'true');
+      document.documentElement.style.overflow = 'hidden';
+      document.body.style.overflow = 'hidden';
+      renderShell();
+      setTimeout(function () { shell.scrollTop = 0; }, 0);
+    } else {
+      shell.removeAttribute('data-open');
+      document.documentElement.style.overflow = '';
+      document.body.style.overflow = '';
+    }
+  }
+
+  function setValue(root, name, value) {
+    var element = root.querySelector('[data-028-field="' + name + '"]');
+    if (element) element.value = value || '';
+  }
+
+  function setCheck(root, name, value) {
+    var element = root.querySelector('[data-028-check="' + name + '"]');
+    if (element) element.checked = !!value;
+  }
+
+  function captureInputs() {
+    var shell = document.getElementById(shellId);
+    if (!shell || shell.getAttribute('data-open') !== 'true') return;
+
+    function get(name) {
+      var element = shell.querySelector('[data-028-field="' + name + '"]');
+      return element ? element.value : '';
+    }
+
+    function checked(name) {
+      var element = shell.querySelector('[data-028-check="' + name + '"]');
+      return !!(element && element.checked);
+    }
+
+    [
+      'scopeContextReference',
+      'handoffReference',
+      'intakeReference',
+      'crmRecordReference',
+      'customerName',
+      'projectName',
+      'projectType',
+      'assignedProjectManager',
+      'assignedEngineeringTeam',
+      'assignedEngineer',
+      'taskName',
+      'workDate',
+      'recommendedHours',
+      'signedSowFileName',
+      'gsdFileName',
+      'sowVersionReference',
+      'gsdVersionReference',
+      'roughWorkDescription',
+      'scopeSummary',
+      'includedScopeKeywords',
+      'excludedScopeKeywords',
+      'finalEngineerEntry'
+    ].forEach(function (key) {
+      state[key] = get(key);
+    });
+
+    [
+      'signedSowContextConfirmed',
+      'gsdContextConfirmed',
+      'assignmentContextConfirmed',
+      'engineerOwnTimeRuleConfirmed',
+      'aiProviderServerSideRuleConfirmed',
+      'engineerReviewRequiredConfirmed',
+      'auditCaptureConfirmed',
+      'scopeStatusModelConfirmed',
+      'closeoutReviewed'
+    ].forEach(function (key) {
+      state[key] = checked(key);
+    });
+
+    saveState();
+  }
+
+  function scopeDocumentTableHtml() {
+    var rows = [
+      ['Signed SOW', state.signedSowFileName || 'Missing', state.sowVersionReference || 'Not set', 'Primary contract scope source'],
+      ['GSD', state.gsdFileName || 'Missing', state.gsdVersionReference || 'Not set', 'Delivery detail and engineering task context'],
+      ['Assignment Context', state.handoffReference || 'Missing', state.intakeReference || 'Not set', 'Confirms assigned project and engineer visibility']
+    ];
+
+    return '<table class="projectpulse-028-table">' +
+      '<thead><tr><th>Source</th><th>Document / Reference</th><th>Version</th><th>Use</th></tr></thead>' +
+      '<tbody>' +
+      rows.map(function (row) {
+        return '<tr><td>' + escapeHtml(row[0]) + '</td><td>' + escapeHtml(row[1]) + '</td><td>' + escapeHtml(row[2]) + '</td><td>' + escapeHtml(row[3]) + '</td></tr>';
+      }).join('') +
+      '</tbody></table>';
+  }
+
+  function roleRulesHtml() {
+    var rows = [
+      ['Engineer', 'Can draft only own assigned project/time entries; must review/edit/accept before use.', 'Own assigned projects only'],
+      ['Project Management', 'Can review assigned project AI draft risk; cannot submit engineer time.', 'Assigned projects'],
+      ['Engineering Team Lead', 'Can review team scope-risk patterns and coaching needs.', 'Team scope'],
+      ['PTC', 'Can review operational readiness and assignment workflow impact.', 'Operational scope'],
+      ['Administrator', 'Can review configuration/audit; View-As remains read-only.', 'System-wide audit'],
+      ['Executive', 'Receives reporting only; no drafting or approval controls.', 'Reporting only']
+    ];
+
+    return '<table class="projectpulse-028-table">' +
+      '<thead><tr><th>Role</th><th>Rule</th><th>Visibility</th></tr></thead>' +
+      '<tbody>' +
+      rows.map(function (row) {
+        return '<tr><td>' + escapeHtml(row[0]) + '</td><td>' + escapeHtml(row[1]) + '</td><td>' + escapeHtml(row[2]) + '</td></tr>';
+      }).join('') +
+      '</tbody></table>';
+  }
+
+  function getTermList(value) {
+    return String(value || '')
+      .split(',')
+      .map(function (term) { return cleanText(term).toLowerCase(); })
+      .filter(Boolean);
+  }
+
+  function computeScopeCheck() {
+    captureInputs();
+
+    var description = String(state.roughWorkDescription || '').toLowerCase();
+    var included = getTermList(state.includedScopeKeywords);
+    var excluded = getTermList(state.excludedScopeKeywords);
+
+    var matched = included.filter(function (term) { return description.includes(term); });
+    var excludedMatched = excluded.filter(function (term) { return description.includes(term); });
+
+    var status = 'needs_review';
+    var reason = '';
+
+    if (!state.signedSowFileName || !state.gsdFileName) {
+      status = 'insufficient_sow_context';
+      reason = 'Signed SOW and GSD context must be present before the scope check can be trusted.';
+    } else if (excludedMatched.length > 0) {
+      status = 'out_of_scope';
+      reason = 'The rough description contains terms that appear outside the signed SOW/GSD scope: ' + excludedMatched.join(', ') + '.';
+    } else if (matched.length >= 3) {
+      status = 'in_scope';
+      reason = 'The rough description strongly matches signed SOW/GSD scope terms: ' + matched.join(', ') + '.';
+    } else if (matched.length >= 1) {
+      status = 'likely_in_scope';
+      reason = 'The rough description partially matches signed SOW/GSD scope terms: ' + matched.join(', ') + '. Engineer should confirm before accepting.';
+    } else {
+      status = 'needs_review';
+      reason = 'The rough description does not clearly match the configured SOW/GSD scope terms.';
+    }
+
+    state.lastScopeCheck =
+      'Scope Alignment Check\n\n' +
+      'Status: ' + status + '\n' +
+      'Reason: ' + reason + '\n\n' +
+      'Matched scope terms: ' + (matched.join(', ') || 'None') + '\n' +
+      'Out-of-scope/risk terms: ' + (excludedMatched.join(', ') || 'None') + '\n\n' +
+      'Allowed statuses:\n' +
+      '- in_scope\n' +
+      '- likely_in_scope\n' +
+      '- needs_review\n' +
+      '- out_of_scope\n' +
+      '- insufficient_sow_context\n\n' +
+      'Policy:\n' +
+      'AI output is advisory only. The engineer must review, edit, and accept the final time entry before it can be used.';
+
+    state.statusType = status === 'in_scope' || status === 'likely_in_scope' ? 'success' : 'warning';
+    state.status = 'Scope check completed with status: ' + status + '.';
+
+    saveState();
+    renderShell();
+  }
+
+  function generateAiDraft() {
+    captureInputs();
+
+    var base = String(state.roughWorkDescription || '').trim();
+    var customerSummary = base;
+    if (customerSummary.length > 220) {
+      customerSummary = customerSummary.slice(0, 217) + '...';
+    }
+
+    var draft =
+      'Performed work for ' + state.projectName + ' under the signed SOW/GSD scope. ' +
+      base +
+      ' Documented findings and updated project delivery notes for continued execution.';
+
+    var customerFacing =
+      'Worked on ' + state.projectName + ' activities aligned to the signed SOW/GSD, including ' +
+      customerSummary.charAt(0).toLowerCase() + customerSummary.slice(1) + '.';
+
+    state.lastAiDraft =
+      'Claude Draft Preview\n\n' +
+      'Provider: Claude\n' +
+      'Provider mode: server-side only, no repository secrets\n' +
+      'Draft type: advisory only\n' +
+      'Engineer review required: yes\n\n' +
+      'Internal Time Entry Draft:\n' +
+      draft + '\n\n' +
+      'Customer-Facing Summary Draft:\n' +
+      customerFacing + '\n\n' +
+      'Recommended Hours: ' + state.recommendedHours + '\n\n' +
+      'Important control:\n' +
+      'This draft must not auto-submit. The engineer must review, edit, and accept the final entry.';
+
+    if (!state.finalEngineerEntry) {
+      state.finalEngineerEntry = draft;
+    }
+
+    state.statusType = 'success';
+    state.status = 'AI time-entry draft prepared in preview mode. Engineer review is required before acceptance.';
+
+    state.lastAuditTrail = auditTrail('ai_draft_generated_preview');
+
+    saveState();
+    renderShell();
+  }
+
+  function acceptEngineerEntry() {
+    captureInputs();
+
+    var missing = [];
+    if (!state.finalEngineerEntry) missing.push('final engineer-reviewed entry');
+    if (!state.signedSowContextConfirmed) missing.push('signed SOW context confirmation');
+    if (!state.gsdContextConfirmed) missing.push('GSD context confirmation');
+    if (!state.assignmentContextConfirmed) missing.push('assignment context confirmation');
+    if (!state.engineerOwnTimeRuleConfirmed) missing.push('engineer own-time rule confirmation');
+    if (!state.engineerReviewRequiredConfirmed) missing.push('engineer review confirmation');
+    if (!state.auditCaptureConfirmed) missing.push('audit capture confirmation');
+
+    if (missing.length) {
+      state.statusType = 'warning';
+      state.status = 'Final entry cannot be accepted yet. Missing: ' + missing.join(', ') + '.';
+    } else {
+      state.statusType = 'success';
+      state.status = 'Engineer-reviewed entry accepted in preview mode. Backend will store acceptance event and final time-entry draft.';
+    }
+
+    state.lastAcceptedEntry =
+      'Engineer Acceptance Preview\n\n' +
+      'Draft Reference: AI-DRAFT-028-PREVIEW\n' +
+      'Scope Context: ' + state.scopeContextReference + '\n' +
+      'Project: ' + state.projectName + '\n' +
+      'Task: ' + state.taskName + '\n' +
+      'Work Date: ' + (state.workDate || '[Not set]') + '\n' +
+      'Accepted Hours: ' + state.recommendedHours + '\n\n' +
+      'Engineer Final Entry:\n' +
+      (state.finalEngineerEntry || '[Missing]') + '\n\n' +
+      'SOW Version: ' + state.sowVersionReference + '\n' +
+      'GSD Version: ' + state.gsdVersionReference + '\n\n' +
+      'Acceptance Policy:\n' +
+      'The accepted output preserves engineer original input, AI generated draft, final edited entry, hours, SOW version, GSD version, and actor timestamp.';
+
+    state.lastAuditTrail = auditTrail('engineer_entry_acceptance_preview');
+
+    saveState();
+    renderShell();
+  }
+
+  function readinessSummary() {
+    var checks = [
+      state.signedSowContextConfirmed,
+      state.gsdContextConfirmed,
+      state.assignmentContextConfirmed,
+      state.engineerOwnTimeRuleConfirmed,
+      state.aiProviderServerSideRuleConfirmed,
+      state.engineerReviewRequiredConfirmed,
+      state.auditCaptureConfirmed,
+      state.scopeStatusModelConfirmed,
+      state.closeoutReviewed
+    ];
+
+    var complete = checks.filter(Boolean).length;
+
+    return 'Module 028 Readiness Summary\n\n' +
+      'Scope Context: ' + state.scopeContextReference + '\n' +
+      'Handoff Reference: ' + state.handoffReference + '\n' +
+      'Intake Reference: ' + state.intakeReference + '\n' +
+      'Customer: ' + state.customerName + '\n' +
+      'Project: ' + state.projectName + '\n' +
+      'Task: ' + state.taskName + '\n' +
+      'Assigned Engineer: ' + (state.assignedEngineer || '[Engineer not selected]') + '\n' +
+      'SOW Version: ' + state.sowVersionReference + '\n' +
+      'GSD Version: ' + state.gsdVersionReference + '\n\n' +
+      'Readiness Checks Complete: ' + complete + ' / ' + checks.length + '\n\n' +
+      'Control Rules:\n' +
+      '- Engineer can draft only own assigned project/time entries.\n' +
+      '- Claude is draft-only and must run server-side.\n' +
+      '- No AI provider secrets are stored in the repository.\n' +
+      '- AI output must be compared against signed SOW/GSD scope.\n' +
+      '- Engineer must review/edit/accept before final use.\n' +
+      '- Audit must preserve original input, AI draft, final entry, SOW/GSD version, and actor timestamp.';
+  }
+
+  function validateReadiness() {
+    captureInputs();
+
+    var missing = [];
+    if (!state.signedSowContextConfirmed) missing.push('signed SOW context');
+    if (!state.gsdContextConfirmed) missing.push('GSD context');
+    if (!state.assignmentContextConfirmed) missing.push('assignment context');
+    if (!state.engineerOwnTimeRuleConfirmed) missing.push('engineer own-time rule');
+    if (!state.aiProviderServerSideRuleConfirmed) missing.push('Claude server-side provider rule');
+    if (!state.engineerReviewRequiredConfirmed) missing.push('engineer review required rule');
+    if (!state.auditCaptureConfirmed) missing.push('audit capture');
+    if (!state.scopeStatusModelConfirmed) missing.push('scope status model');
+    if (!state.closeoutReviewed) missing.push('Module 028 closeout');
+
+    if (missing.length) {
+      state.statusType = 'warning';
+      state.status = 'Module 028 readiness is incomplete. Missing: ' + missing.join(', ') + '.';
+    } else {
+      state.statusType = 'success';
+      state.status = 'Module 028 is ready for backend wiring to shared Claude provider and time-entry persistence.';
+    }
+
+    state.lastAuditTrail = auditTrail('module_028_readiness_validated');
+
+    saveState();
+    renderShell();
+  }
+
+  function auditTrail(eventName) {
+    return 'Audit Trail Preview\n\n' +
+      'Event: ' + eventName + '\n' +
+      'Scope Context: ' + state.scopeContextReference + '\n' +
+      'Project: ' + state.projectName + '\n' +
+      'Task: ' + state.taskName + '\n' +
+      'Engineer: ' + (state.assignedEngineer || '[Not selected]') + '\n' +
+      'Timestamp: ' + new Date().toISOString() + '\n\n' +
+      'Captured fields:\n' +
+      '- Engineer rough input\n' +
+      '- Signed SOW version reference\n' +
+      '- GSD version reference\n' +
+      '- Scope alignment status and reason\n' +
+      '- AI generated draft\n' +
+      '- Engineer final accepted entry\n' +
+      '- Accepted hours\n' +
+      '- Actor and timestamp\n\n' +
+      'Database targets:\n' +
+      '- sow_ai_time_entry_drafts\n' +
+      '- sow_ai_time_entry_scope_checks\n' +
+      '- sow_ai_time_entry_acceptance_events';
+  }
+
+  function renderShell() {
+    loadState();
+
+    var shell = ensureShell();
+
+    shell.innerHTML =
+      '<div id="projectpulse-028-page">' +
+        '<div class="projectpulse-028-page-header">' +
+          '<div>' +
+            '<div class="projectpulse-028-eyebrow">Module 028 · SOW-Aware AI Time Entry Generator</div>' +
+            '<h2>SOW-Aware AI Time Entry Center</h2>' +
+            '<p>Help assigned Engineers draft time entries using signed SOW/GSD scope while keeping Claude draft-only, server-side, and engineer-reviewed.</p>' +
+            '<div class="projectpulse-028-actions">' +
+              '<span class="projectpulse-028-pill green">Engineer review required</span>' +
+              '<span class="projectpulse-028-pill blue">SOW/GSD scope aware</span>' +
+              '<span class="projectpulse-028-pill amber">Claude server-side only</span>' +
+              '<span class="projectpulse-028-pill green">Audit preserved</span>' +
+            '</div>' +
+          '</div>' +
+          '<div class="projectpulse-028-actions">' +
+            '<button type="button" class="projectpulse-028-button" data-028-dashboard>Back to Dashboard</button>' +
+            '<button type="button" class="projectpulse-028-button primary" data-028-scope-check>Run Scope Check</button>' +
+            '<button type="button" class="projectpulse-028-button success" data-028-validate>Validate Module 028</button>' +
+            '<button type="button" class="projectpulse-028-button" data-028-clear>Clear Preview State</button>' +
+          '</div>' +
+        '</div>' +
+
+        '<div class="projectpulse-028-layout">' +
+          '<div>' +
+            '<div class="projectpulse-028-section">' +
+              '<h3>028A SOW/GSD Scope Context</h3>' +
+              '<p>This context comes from Modules 024, 025, 026, and 027 after signed SOW/GSD handoff and assignment.</p>' +
+              '<div class="projectpulse-028-two-grid">' +
+                '<div class="projectpulse-028-field"><label>Scope Context Reference</label><input data-028-field="scopeContextReference"></div>' +
+                '<div class="projectpulse-028-field"><label>Handoff Reference</label><input data-028-field="handoffReference"></div>' +
+              '</div>' +
+              '<div class="projectpulse-028-two-grid">' +
+                '<div class="projectpulse-028-field"><label>Intake Reference</label><input data-028-field="intakeReference"></div>' +
+                '<div class="projectpulse-028-field"><label>CRM Record Reference</label><input data-028-field="crmRecordReference"></div>' +
+              '</div>' +
+              '<div class="projectpulse-028-two-grid">' +
+                '<div class="projectpulse-028-field"><label>Customer Name</label><input data-028-field="customerName"></div>' +
+                '<div class="projectpulse-028-field"><label>Project Type</label><select data-028-field="projectType"><option>Professional Services</option><option>Managed Services</option><option>Implementation</option><option>Consulting</option><option>Service Request</option></select></div>' +
+              '</div>' +
+              '<div class="projectpulse-028-field"><label>Project / Engagement Name</label><input data-028-field="projectName"></div>' +
+              '<div class="projectpulse-028-two-grid">' +
+                '<div class="projectpulse-028-field"><label>Assigned Project Manager</label><input data-028-field="assignedProjectManager"></div>' +
+                '<div class="projectpulse-028-field"><label>Assigned Engineering Team</label><select data-028-field="assignedEngineeringTeam"><option>Collaboration Engineering</option><option>Systems & Storage Engineering</option><option>Network Engineering</option><option>Security Engineering</option><option>Professional Services</option></select></div>' +
+              '</div>' +
+              '<div class="projectpulse-028-field"><label>Assigned Engineer</label><input data-028-field="assignedEngineer" placeholder="Engineer using own time entry workspace"></div>' +
+              '<div class="projectpulse-028-two-grid">' +
+                '<div class="projectpulse-028-field"><label>Signed SOW File</label><input data-028-field="signedSowFileName"></div>' +
+                '<div class="projectpulse-028-field"><label>GSD File</label><input data-028-field="gsdFileName"></div>' +
+              '</div>' +
+              '<div class="projectpulse-028-two-grid">' +
+                '<div class="projectpulse-028-field"><label>SOW Version Reference</label><input data-028-field="sowVersionReference"></div>' +
+                '<div class="projectpulse-028-field"><label>GSD Version Reference</label><input data-028-field="gsdVersionReference"></div>' +
+              '</div>' +
+              '<div class="projectpulse-028-field"><label>Signed SOW/GSD Scope Summary</label><textarea data-028-field="scopeSummary"></textarea></div>' +
+              '<div class="projectpulse-028-two-grid">' +
+                '<div class="projectpulse-028-field"><label>Included Scope Keywords</label><textarea data-028-field="includedScopeKeywords"></textarea></div>' +
+                '<div class="projectpulse-028-field"><label>Excluded / Risk Keywords</label><textarea data-028-field="excludedScopeKeywords"></textarea></div>' +
+              '</div>' +
+            '</div>' +
+
+            '<div class="projectpulse-028-section">' +
+              '<h3>028B Engineer AI Time Entry Draft Workspace</h3>' +
+              '<p>The Engineer provides rough work performed. Claude can draft wording, but the Engineer must review, edit, and accept the final entry.</p>' +
+              '<div class="projectpulse-028-two-grid">' +
+                '<div class="projectpulse-028-field"><label>Task Name</label><input data-028-field="taskName"></div>' +
+                '<div class="projectpulse-028-field"><label>Work Date</label><input data-028-field="workDate" placeholder="YYYY-MM-DD"></div>' +
+              '</div>' +
+              '<div class="projectpulse-028-field"><label>Recommended Hours</label><input data-028-field="recommendedHours"></div>' +
+              '<div class="projectpulse-028-field"><label>Engineer Rough Work Description</label><textarea data-028-field="roughWorkDescription"></textarea></div>' +
+              '<div class="projectpulse-028-actions">' +
+                '<button type="button" class="projectpulse-028-button primary" data-028-generate-draft>Generate AI Draft Preview</button>' +
+                '<button type="button" class="projectpulse-028-button success" data-028-accept-entry>Accept Engineer-Reviewed Entry</button>' +
+              '</div>' +
+              '<div class="projectpulse-028-field" style="margin-top:1rem;"><label>Final Engineer-Reviewed Entry</label><textarea data-028-field="finalEngineerEntry"></textarea></div>' +
+              '<div data-028-status></div>' +
+            '</div>' +
+
+            '<div class="projectpulse-028-section">' +
+              '<h3>028G Role Enforcement + Readiness Checklist</h3>' +
+              '<div class="projectpulse-028-checklist">' +
+                '<label><input type="checkbox" data-028-check="signedSowContextConfirmed"> Signed SOW context confirmed.</label>' +
+                '<label><input type="checkbox" data-028-check="gsdContextConfirmed"> GSD context confirmed.</label>' +
+                '<label><input type="checkbox" data-028-check="assignmentContextConfirmed"> PM/Engineer assignment context confirmed.</label>' +
+                '<label><input type="checkbox" data-028-check="engineerOwnTimeRuleConfirmed"> Engineer own-time-only rule confirmed.</label>' +
+                '<label><input type="checkbox" data-028-check="aiProviderServerSideRuleConfirmed"> Claude provider must run server-side with no repository secrets.</label>' +
+                '<label><input type="checkbox" data-028-check="engineerReviewRequiredConfirmed"> Engineer review/edit/accept is required before final use.</label>' +
+                '<label><input type="checkbox" data-028-check="auditCaptureConfirmed"> Audit captures original input, AI draft, final entry, SOW/GSD version, and actor timestamp.</label>' +
+                '<label><input type="checkbox" data-028-check="scopeStatusModelConfirmed"> Scope status model confirmed.</label>' +
+                '<label><input type="checkbox" data-028-check="closeoutReviewed"> Module 028 closeout reviewed.</label>' +
+              '</div>' +
+            '</div>' +
+          '</div>' +
+
+          '<div>' +
+            '<div class="projectpulse-028-section white"><h3>Scope Documents / Version Context</h3>' + scopeDocumentTableHtml() + '</div>' +
+            '<div class="projectpulse-028-section"><h3>028C Scope Alignment Check</h3><div class="projectpulse-028-preview" data-028-scope-check-output></div></div>' +
+            '<div class="projectpulse-028-section"><h3>028D Claude Provider Readiness Hook</h3><div class="projectpulse-028-preview">Provider: Claude\nConsumer: 028 SOW-Aware AI Time Entry\nStorage Policy: no repository secrets\nExecution Rule: server-side only\nOutput Rule: draft only; engineer must review and accept\nScope Rule: compare rough work and AI draft against signed SOW/GSD context before acceptance</div></div>' +
+            '<div class="projectpulse-028-section"><h3>028E AI Draft Preview</h3><div class="projectpulse-028-preview" data-028-ai-draft-output></div></div>' +
+            '<div class="projectpulse-028-section"><h3>028F Engineer Acceptance / Audit Preview</h3><div class="projectpulse-028-preview" data-028-accepted-output></div></div>' +
+            '<div class="projectpulse-028-section"><h3>Audit Trail Preview</h3><div class="projectpulse-028-preview" data-028-audit-output></div></div>' +
+            '<div class="projectpulse-028-section"><h3>Module 028 Readiness Summary</h3><div class="projectpulse-028-preview" data-028-readiness-output></div></div>' +
+            '<div class="projectpulse-028-section"><h3>Role Rules</h3>' + roleRulesHtml() + '</div>' +
+            '<div class="projectpulse-028-section">' +
+              '<h3>Workflow Placement</h3>' +
+              '<div class="projectpulse-028-three-grid">' +
+                '<div class="projectpulse-028-cardlet"><span class="projectpulse-028-pill blue">027</span><strong>Assignment Trigger</strong><p>Assigned PM/Engineer context unlocks SOW-aware time-entry drafting.</p></div>' +
+                '<div class="projectpulse-028-cardlet"><span class="projectpulse-028-pill green">025</span><strong>SOW Generator</strong><p>Signed SOW review context feeds scope checks.</p></div>' +
+                '<div class="projectpulse-028-cardlet"><span class="projectpulse-028-pill amber">029</span><strong>Validation Center</strong><p>Role and workflow validation will test engineer own-time controls.</p></div>' +
+              '</div>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+
+    populateShell(shell);
+    wireShell(shell);
+  }
+
+  function populateShell(shell) {
+    [
+      'scopeContextReference',
+      'handoffReference',
+      'intakeReference',
+      'crmRecordReference',
+      'customerName',
+      'projectName',
+      'projectType',
+      'assignedProjectManager',
+      'assignedEngineeringTeam',
+      'assignedEngineer',
+      'taskName',
+      'workDate',
+      'recommendedHours',
+      'signedSowFileName',
+      'gsdFileName',
+      'sowVersionReference',
+      'gsdVersionReference',
+      'roughWorkDescription',
+      'scopeSummary',
+      'includedScopeKeywords',
+      'excludedScopeKeywords',
+      'finalEngineerEntry'
+    ].forEach(function (key) {
+      setValue(shell, key, state[key]);
+    });
+
+    [
+      'signedSowContextConfirmed',
+      'gsdContextConfirmed',
+      'assignmentContextConfirmed',
+      'engineerOwnTimeRuleConfirmed',
+      'aiProviderServerSideRuleConfirmed',
+      'engineerReviewRequiredConfirmed',
+      'auditCaptureConfirmed',
+      'scopeStatusModelConfirmed',
+      'closeoutReviewed'
+    ].forEach(function (key) {
+      setCheck(shell, key, state[key]);
+    });
+
+    var scopeCheckNode = shell.querySelector('[data-028-scope-check-output]');
+    var aiDraftNode = shell.querySelector('[data-028-ai-draft-output]');
+    var acceptedNode = shell.querySelector('[data-028-accepted-output]');
+    var auditNode = shell.querySelector('[data-028-audit-output]');
+    var readinessNode = shell.querySelector('[data-028-readiness-output]');
+    var statusNode = shell.querySelector('[data-028-status]');
+
+    if (scopeCheckNode) scopeCheckNode.textContent = state.lastScopeCheck || 'Run scope check to compare engineer rough work against signed SOW/GSD scope.';
+    if (aiDraftNode) aiDraftNode.textContent = state.lastAiDraft || 'Generate AI draft preview after rough work is entered and scope context is available.';
+    if (acceptedNode) acceptedNode.textContent = state.lastAcceptedEntry || 'Engineer-reviewed accepted entry will appear here.';
+    if (auditNode) auditNode.textContent = state.lastAuditTrail || auditTrail('module_028_loaded');
+    if (readinessNode) readinessNode.textContent = readinessSummary();
+
+    if (statusNode) {
+      statusNode.innerHTML = state.status
+        ? '<div class="projectpulse-028-status ' + escapeHtml(state.statusType || '') + '">' + escapeHtml(state.status) + '</div>'
+        : '';
+    }
+  }
+
+  function wireShell(shell) {
+    shell.querySelectorAll('input, select, textarea').forEach(function (input) {
+      input.addEventListener('input', function () {
+        captureInputs();
+        populateShell(shell);
+      });
+      input.addEventListener('change', function () {
+        captureInputs();
+        populateShell(shell);
+      });
+    });
+
+    shell.querySelector('[data-028-dashboard]').addEventListener('click', function () {
+      window.location.hash = '#dashboard';
+      render();
+    });
+
+    shell.querySelector('[data-028-clear]').addEventListener('click', function () {
+      if (!confirm('Clear Module 028 preview state on this browser?')) return;
+      window.localStorage.removeItem(storageKey);
+      location.reload();
+    });
+
+    shell.querySelector('[data-028-scope-check]').addEventListener('click', computeScopeCheck);
+    shell.querySelector('[data-028-generate-draft]').addEventListener('click', generateAiDraft);
+    shell.querySelector('[data-028-accept-entry]').addEventListener('click', acceptEngineerEntry);
+    shell.querySelector('[data-028-validate]').addEventListener('click', validateReadiness);
+  }
+
+  function render() {
+    loadState();
+    ensureShell();
+    ensureCard();
+    var currentRoute = route();
+    openShell(currentRoute === 'ai-time-entry' || currentRoute === 'sow-ai-time-entry' || currentRoute === 'sow-time-entry');
+  }
+
+  function boot(attempt) {
+    render();
+    if (!document.getElementById(cardId) && attempt !== 12) {
+      setTimeout(function () { boot(attempt + 1); }, 250);
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () { boot(0); });
+  } else {
+    boot(0);
+  }
+
+  window.addEventListener('hashchange', function () { setTimeout(render, 60); });
+})();
+</script>
+<!-- 028_FULL_SOW_AWARE_AI_TIME_ENTRY_END -->
+
 </body>
 </html>
