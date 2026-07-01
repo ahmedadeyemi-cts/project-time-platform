@@ -1,6 +1,6 @@
-# ProjectPulse August Demo Tracker
+# ProjectPulse August Production Readiness Tracker
 
-## Completed Demo Foundation
+## Completed Production Readiness Foundation
 
 ### 019M-O Time Compliance & Notification Center
 - Preflight Time Compliance page created.
@@ -26,14 +26,14 @@
 - Add export of preflight validation preview to CSV/PDF.
 - Add real timezone scheduling logic for Central Time.
 - Add business-day adjustment for holiday reminders that fall on weekends.
-- Remove duplicate Ahmed demo identities or mark one inactive after testing.
+- Remove duplicate Ahmed production readiness identities or mark one inactive after testing.
 
 ### Role Enforcement / User Switcher
 - Confirm all roles and permissions are database-driven.
-- Add admin-safe user switcher for demo mode only.
+- Add admin-safe user switcher for production readiness mode only.
 - Add visible role banner showing current user, role, and permissions.
 - Add route guard messaging when a user lacks access.
-- Add audit entry when demo user switcher is used.
+- Add audit entry when production readiness user switcher is used.
 
 ### Project Intake / Resource Assignment
 - Add Project Intake shell.
@@ -55,7 +55,7 @@
 - Add drill-down links to source modules.
 
 ### Backup / DR / Restore / Replication
-- Keep current demo modules.
+- Keep current production readiness modules.
 - Add clearer readiness badges.
 - Add exportable DR readiness summary later.
 
@@ -64,7 +64,7 @@
 - Add per-module help article links.
 - Add admin support guidance.
 
-## Items Not in August Demo Scope
+## Items Not in August Production Readiness Scope
 - Full production Azure migration.
 - Salesforce API integration.
 - Outlook calendar sync.
@@ -73,12 +73,12 @@
 
 ## 019M-P Project Intake + Engineering Resource Request
 
-### Demo Foundation Added
+### Production Readiness Foundation Added
 - Project Intake route/page shell.
 - Engineering Resource Request route section.
-- Demo intake records.
-- Demo client/project/task records.
-- Demo resource profiles, skills, capacity plans, and assignment readiness.
+- Production Readiness intake records.
+- Production Readiness client/project/task records.
+- Production Readiness resource profiles, skills, capacity plans, and assignment readiness.
 - Help Center article placeholder.
 
 ### Come Back / Production Hardening Items
@@ -109,7 +109,7 @@
 
 ## 019M-Q Project Workspace + Engineering Documents
 
-### Demo Foundation Added
+### Production Readiness Foundation Added
 - Project Workspace route/page shell.
 - Project documents panel.
 - Engineering-visible SOW/GSD/supporting documents.
@@ -568,7 +568,7 @@
 ## 019M-BL through 019M-BU Production Hardening Sprint
 
 ### Production posture correction
-- Reframed operational readiness away from demo-first language and toward production readiness.
+- Reframed operational readiness away from production readiness-first language and toward production readiness.
 - Replaced preflight validation user-facing language with workflow preflight validation.
 - Added production preflight validation evidence table and endpoints.
 - Added production readiness command center endpoint.
@@ -596,7 +596,7 @@
 
 ## 019M-BV Production Module Wording Cleanup
 
-- Updated production operations-center module names to remove demo and sprint-only terminology.
+- Updated production operations-center module names to remove production readiness and sprint-only terminology.
 - Updated workflow validation rule evidence language from preflight validation wording to workflow preflight validation wording.
 - Preserved compatibility behavior while ensuring production-facing API responses use production and preflight terminology.
 
@@ -613,12 +613,12 @@
 - Workflow page now surfaces Production Workflow Operations Center data, including preflight validation, evidence, export package evidence, reconciliation readiness, audit events, and validation rules.
 - Role Admin page now surfaces Route Permission Contract Center data for role enforcement governance.
 - UI respects current session and Administrator View-As headers so restricted endpoints remain restricted under engineer preview.
-- No demo-first or preview production wording is introduced.
+- No production readiness-first or preview production wording is introduced.
 
 
 ## 019M-BW through 019M-CD Time Compliance Production Wording Repair V2
 
-- Updated Time Compliance UI wording from preview/demo language to production notification preview language.
+- Updated Time Compliance UI wording from preview/production readiness language to production notification preview language.
 - Preserved compatibility with existing backend response fields where needed.
 - Did not require backend route changes because the production issue was frontend bundle wording.
 
@@ -626,14 +626,14 @@
 ## 019M-BW through 019M-CD Recursive Time Compliance Wording Repair
 
 - Recursively repaired Time Compliance production-facing wording across all frontend source files.
-- Replaced visible preview/demo language with notification preview and production review terminology.
+- Replaced visible preview/production readiness language with notification preview and production review terminology.
 - Preserved backend compatibility behavior while preventing the built production bundle from exposing old Time Compliance wording.
 
 
 ## 019M-BW through 019M-CD Recursive Time Compliance Wording Repair
 
 - Recursively repaired Time Compliance production-facing wording across all frontend source files.
-- Replaced visible dry-run/demo language with notification preview and production review terminology.
+- Replaced visible dry-run/production readiness language with notification preview and production review terminology.
 - Preserved backend compatibility behavior while preventing the built production bundle from exposing old Time Compliance wording.
 
 ## 019M-CE Time Compliance PreviewOnly Response Cleanup
@@ -660,7 +660,7 @@
 
 - Added a full production wording guard validation script for frontend source, backend source, built frontend bundle, API responses, and compatibility routes.
 - Confirmed Time Compliance preview uses `previewOnly` at the top level and inside the summary contract.
-- Confirmed production-facing API responses do not expose `dryRunOnly`, `Dry-run`, `Demo Readiness`, or August demo wording.
+- Confirmed production-facing API responses do not expose `dryRunOnly`, `Dry-run`, `Production Readiness`, or August production readiness wording.
 - Preserved compatibility routes where needed while validating that production responses use preflight/preview terminology.
 - Included Dashboard / Navigation / Registry validation for module visibility, navigation registry integrity, and production readiness.
 - Included Engineer View-As negative access checks for restricted workflow, export, route contract, registry, and role-matrix endpoints.
@@ -669,7 +669,7 @@
 ## 019M-CF Recovery Note
 
 - Repaired the remaining production readiness access-denied message in `Program.cs`.
-- Replaced the last production-facing demo-readiness wording with production-readiness terminology.
+- Replaced the last production-facing production readiness-readiness wording with production-readiness terminology.
 - Reran the full production wording, compatibility, Dashboard, Navigation, Registry, and engineer negative-access guard sweep.
 
 ## 019M-CF Login Page Production Panel Auth Guard
@@ -802,6 +802,10 @@
 - Added shared recipient safety rules, reviews, and review item audit tables.
 - Added recipient safety review endpoints for global email-provider consumers.
 - Added Time Compliance recipient review generation from the existing preview data.
-- Flags `.local`, demo/test, duplicate, invalid, missing manager, non-routable manager/CC, and external-domain risks.
+- Flags `.local`, production readiness/test, duplicate, invalid, missing manager, non-routable manager/CC, and external-domain risks.
 - Blocks real provider batch sends until an approved recipient safety review exists with zero blocked recipients.
 - Preserves outbox-only operation, View-As write protection, Dashboard / Navigation / Registry validation, and provider test harness.
+
+## 021 Release Hardening / Production Readiness
+
+The 021 phase begins after the 020 module build sprint and focuses on release hardening, route/production readiness, operational smoke testing, role-based production readiness runbooks, and final release-candidate validation.

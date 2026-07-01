@@ -488,10 +488,14 @@ import './production-workflow-operations.css';
 import './local-admin-password-reset-clear-actions.css';
 import './production-operations-acknowledgments.css';
 import './time-compliance-email-notifications.css';
+import './production-readiness-center.css';
+import './page-context-guide.css';
 import ProductionOperationsPanel from './ProductionOperationsPanel.jsx';
 import LocalAdminPasswordResetClearActions from './LocalAdminPasswordResetClearActions.jsx';
 import ProductionOperationsAcknowledgmentsPanel from './ProductionOperationsAcknowledgmentsPanel.jsx';
 import TimeComplianceEmailNotificationsPanel from './TimeComplianceEmailNotificationsPanel.jsx';
+import ProductionReadinessCenterPanel from './ProductionReadinessCenterPanel.jsx';
+import PageContextGuide from './PageContextGuide.jsx';
 const workflowCards = [
   {
     title: 'Time Entry',
@@ -1477,11 +1481,14 @@ function getInstalledProjectPulseModuleRegistry() {
     description: 'Shows role-to-permission coverage for governance, route visibility, and role enforcement validation.'
   },
   {
-    route: 'dashboard',
+    route: 'production-readiness',
+    href: '#production-readiness',
     title: 'Production Readiness Command Center',
-    group: 'System',
-    permissions: ['VIEW_DEMO_READINESS_COMMAND_CENTER', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
-    description: 'Summarizes user, project, time entry, export, audit, route governance, and dashboard readiness for production operations.'
+    navLabel: 'Production Readiness',
+    status: 'Operational',
+    group: 'System Operations',
+    permissions: ['VIEW_PRODUCTION_READINESS_COMMAND_CENTER', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    description: 'Shows a web-visible readiness center with protected backend checks, workflow links, route governance, and release validation guidance.'
   },
   {
     route: 'workflow',
@@ -1541,6 +1548,7 @@ function getInstalledModuleDescription(module) {
 
   const descriptions = {
     dashboard: 'Provides a role-based landing page with the modules, alerts, and workflow areas available to the signed-in user.',
+    'production-readiness': 'Shows a web-visible production readiness command center backed by protected readiness checks, route governance, and release validation guidance.',
     timesheet: 'Allows engineers and eligible users to enter, save, submit, and review weekly or day-level time entries.',
     utilization: 'Shows billable and eligible utilization performance against quarterly and annual targets.',
     'project-workload': 'Shows project managers their assigned project workload, active and closed project counts, status mix, hours, and workload risk.',
@@ -4012,6 +4020,12 @@ Analytics - Variphy / Infortel`}
         </div>
       </aside>
 
+      <PageContextGuide activeRoute={activeRoute} />
+
+      <section id="production-readiness" className="panel production-readiness-route-panel">
+        <ProductionReadinessCenterPanel />
+      </section>
+
 <section id="user-admin" className="panel user-admin-panel">
         <UserAdministrationPanel />
       </section>
@@ -4064,7 +4078,7 @@ Analytics - Variphy / Infortel`}
                 value={azureTenantProfile}
                 onChange={(event) => applyAzureTenantProfile(event.target.value)}
               >
-                <option value="onenecklab">OneNeck Lab - onenecklab.com + ONITDemo.com</option>
+                <option value="onenecklab">OneNeck Lab - primary and secondary domains</option>
                 <option value="ussignal">US Signal Production - ussignal.com</option>
                 <option value="custom">Create New</option>
               </select>
@@ -4223,7 +4237,7 @@ Analytics - Variphy / Infortel`}
                 >
                   <option value="all">All selected tenant domains</option>
                   <option value="onenecklab.com">onenecklab.com - OneNeck Lab</option>
-                  <option value="onitdemo.com">ONITDemo.com - OneNeck Lab</option>
+                  <option value="onitdemo.com">OneNeck Lab secondary domain</option>
                   <option value="ussignal.com">ussignal.com - Production</option>
                 </select>
               </label>
