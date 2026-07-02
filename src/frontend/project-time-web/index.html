@@ -822,7 +822,7 @@
       return;
     }
 
-    if (!force && state.lastLoadedAt && Date.now() - state.lastLoadedAt < 30000) {
+    if (!force && state.lastLoadedAt && Date.now() - 30000 > state.lastLoadedAt) {
       renderBody();
       return;
     }
@@ -1598,7 +1598,7 @@
         if (!text.includes("PURPOSE") || !text.includes("BACKEND SUPPORT") || !text.includes("WHAT TO CHECK")) return false;
 
         const rect = element.getBoundingClientRect();
-        return rect.top < 390 && rect.height > 60 && rect.height < 320 && rect.width > 500;
+        return 390 > rect.top && rect.height > 60 && 320 > rect.height && rect.width > 500;
       })
       .sort((a, b) => compact(a.textContent).length - compact(b.textContent).length);
 
@@ -1614,7 +1614,7 @@
         if (element.id === hostId || element.closest(`#${hostId}`)) return false;
 
         const rect = element.getBoundingClientRect();
-        if (rect.top > 150 || rect.height < 48 || rect.height > 145 || rect.width < window.innerWidth * 0.65) return false;
+        if (rect.top > 150 || 48 > rect.height || rect.height > 145 || rect.width < window.innerWidth * 0.65) return false;
 
         const text = compact(element.textContent);
         return text.includes("Project Pulse") && (text.includes("Dashboard") || text.includes("More"));
@@ -1745,7 +1745,7 @@
       return;
     }
 
-    if (!force && state.lastLoadedAt && Date.now() - state.lastLoadedAt < 30000) {
+    if (!force && state.lastLoadedAt && Date.now() - 30000 > state.lastLoadedAt) {
       updateBadge();
       renderPanel();
       return;
@@ -2634,7 +2634,7 @@
     const count = Number(state.summary?.unacknowledgedCount || 0);
     if (badge) {
       badge.textContent = String(count);
-      badge.hidden = count <= 0;
+      badge.hidden = 0 >= count;
     }
 
     if (toggle) {
@@ -3703,7 +3703,150 @@
       '<tr><td class="label">Template Used</td><td>' + escapeHtml(template) + '</td></tr>' +
       '<tr><td class="label">Signed SOW</td><td>' + escapeHtml(state.signedSowFileName || 'Not uploaded in demo') + '</td></tr>' +
       '<tr><td class="label">GSD</td><td>' + escapeHtml(state.gsdFileName || 'Not uploaded in demo') + '</td></tr>' +
-      '</table>' + sections + '</body></html>';
+      '</table>' + sections + '<!-- DASHBOARD_MODULE_NUMBER_LABELS_START -->
+<script id="projectpulse-dashboard-module-number-labels">
+(function () {
+  if (window.__projectPulseDashboardModuleNumberLabelsInstalled) return;
+  window.__projectPulseDashboardModuleNumberLabelsInstalled = true;
+
+  const moduleMap = [
+    { number: '001', title: 'Time Entry', aliases: ['Timesheet', 'Time Entry'] },
+    { number: '002', title: 'Approval Inbox', aliases: ['Approval Inbox'] },
+    { number: '003', title: 'Utilization', aliases: ['Utilization'] },
+    { number: '004', title: 'Holiday Calendar', aliases: ['Holiday Calendar'] },
+    { number: '005', title: 'Project Allocation and Info', aliases: ['Project Allocation and Info'] },
+    { number: '006', title: 'PSA Modules', aliases: ['PSA Modules'] },
+    { number: '007', title: 'Workflow', aliases: ['Workflow'] },
+    { number: '008', title: 'Audit / Security History', aliases: ['Audit / Security History'] },
+    { number: '009', title: 'User Administration', aliases: ['User Administration'] },
+    { number: '010', title: 'Azure / Entra Admin', aliases: ['Azure / Entra Admin'] },
+    { number: '011', title: 'Work Task Builder', aliases: ['Work Task Builder'] },
+    { number: '012', title: 'Role Administration', aliases: ['Role Administration'] },
+    { number: '013', title: 'Service Control Center', aliases: ['Service Control Center'] },
+    { number: '014', title: 'Backup / DR Center', aliases: ['Backup / DR Center'] },
+    { number: '015', title: 'Restore Validation', aliases: ['Restore Validation'] },
+    { number: '016', title: 'Backup Retention', aliases: ['Backup Retention'] },
+    { number: '017', title: 'Replication & Sync Status', aliases: ['Replication & Sync Status'] },
+    { number: '018', title: 'Project Workload', aliases: ['Project Workload'] },
+    { number: '019', title: 'Project Workspace & Engineering Documents', aliases: ['Project Workspace & Engineering Documents'] },
+    { number: '020', title: 'Project Intake & Engineering Resource Requests', aliases: ['Project Intake & Engineering Resource Requests'] },
+    { number: '021', title: 'Customer Directory', aliases: ['Customer Directory'] },
+    { number: '022', title: 'Cost Overrun Alerts', aliases: ['Cost Overrun Alerts'] },
+    { number: '023', title: 'Time Compliance & Notification Center', aliases: ['Time Compliance & Notification Center', 'Production Notification Center'] },
+    { number: '024', title: 'Sales-to-Delivery Intake Foundation', aliases: ['Sales-to-Delivery Intake Foundation'] },
+    { number: '025', title: 'SOW Generator + Claude Research Review', aliases: ['SOW Generator + Claude Research Review'] },
+    { number: '026', title: 'CRM Integration Framework', aliases: ['CRM Integration Framework'] },
+    { number: '027', title: 'Signed SOW Handoff + Assignment Trigger', aliases: ['Signed SOW Handoff + Assignment Trigger'] },
+    { number: '028', title: 'SOW-Aware AI Time Entry Generator', aliases: ['SOW-Aware AI Time Entry Generator'] },
+    { number: '029', title: 'User Acceptance / Role + Workflow Validation Center', aliases: ['User Acceptance / Role + Workflow Validation Center'] },
+    { number: '030', title: 'Reporting / Accounting / Invoicing / Analytics Command Center', aliases: ['Reporting / Accounting / Invoicing / Analytics Command Center'] }
+  ];
+
+  function cleanText(value) {
+    return String(value || '').replace(/\s+/g, ' ').trim();
+  }
+
+  function isDashboardRoute() {
+    const hash = String(window.location.hash || '#dashboard').replace(/^#/, '').split('?')[0];
+    return hash === '' || hash === 'dashboard';
+  }
+
+  function findCardForTitle(title) {
+    const headings = Array.from(document.querySelectorAll('h1, h2, h3, h4, strong'))
+      .filter((node) => cleanText(node.textContent) === title);
+
+    for (const heading of headings) {
+      let current = heading;
+
+      for (let depth = 0; 8 > depth && current; depth += 1) {
+        current = current.parentElement;
+
+        if (!current) break;
+
+        const text = cleanText(current.textContent);
+        const rect = current.getBoundingClientRect();
+
+        if (
+          rect.width >= 220 &&
+          rect.height >= 100 &&
+          700 >= rect.width &&
+          text.includes(title)
+        ) {
+          return current;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  function findEyebrow(card) {
+    if (!card) return null;
+
+    const candidates = Array.from(card.querySelectorAll('small, span, div, p'))
+      .filter((node) => {
+        const text = cleanText(node.textContent);
+        if (!text) return false;
+        if (text.length > 45) return false;
+        if (/^MODULE\s+\d{3}$/i.test(text)) return true;
+        if (/^[A-Z0-9 /&+-]{3,45}$/.test(text)) return true;
+        return false;
+      })
+      .sort((a, b) => {
+        const ar = a.getBoundingClientRect();
+        const br = b.getBoundingClientRect();
+        return (ar.top - br.top) || (ar.left - br.left);
+      });
+
+    return candidates[0] || null;
+  }
+
+  function applyLabels() {
+    if (!isDashboardRoute()) return;
+
+    for (const module of moduleMap) {
+      const title = module.aliases.find((alias) => findCardForTitle(alias));
+      if (!title) continue;
+
+      const card = findCardForTitle(title);
+      if (!card) continue;
+
+      const eyebrow = findEyebrow(card);
+      if (!eyebrow) continue;
+
+      const desired = `MODULE ${module.number}`;
+      if (cleanText(eyebrow.textContent) !== desired) {
+        eyebrow.textContent = desired;
+        eyebrow.setAttribute('data-projectpulse-module-number-label', desired);
+      }
+    }
+  }
+
+  function scheduleApply() {
+    clearTimeout(window.__projectPulseDashboardModuleNumberLabelsTimer);
+    window.__projectPulseDashboardModuleNumberLabelsTimer = setTimeout(() => {
+      applyLabels();
+      setTimeout(applyLabels, 250);
+      setTimeout(applyLabels, 750);
+      setTimeout(applyLabels, 1500);
+    }, 80);
+  }
+
+  document.addEventListener('DOMContentLoaded', scheduleApply);
+  window.addEventListener('hashchange', scheduleApply);
+  window.addEventListener('storage', scheduleApply);
+  window.addEventListener('projectpulse:view-as-changed', scheduleApply);
+
+  const observer = new MutationObserver(scheduleApply);
+  if (document.body) {
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
+
+  scheduleApply();
+})();
+</script>
+<!-- DASHBOARD_MODULE_NUMBER_LABELS_END -->
+</body></html>';
   }
 
   function downloadWordDraft() {
@@ -3974,7 +4117,7 @@
 
   function boot(attempt) {
     render();
-    if (!document.getElementById(cardId) && attempt < 12) {
+    if (!document.getElementById(cardId) && 12 > attempt) {
       setTimeout(function () { boot(attempt + 1); }, 250);
     }
   }
@@ -3990,5 +4133,148 @@
 </script>
 <!-- 025M_STANDALONE_SOW_ROUTE_END -->
 
+<!-- DASHBOARD_MODULE_NUMBER_LABELS_START -->
+<script id="projectpulse-dashboard-module-number-labels">
+(function () {
+  if (window.__projectPulseDashboardModuleNumberLabelsInstalled) return;
+  window.__projectPulseDashboardModuleNumberLabelsInstalled = true;
+
+  const moduleMap = [
+    { number: '001', title: 'Time Entry', aliases: ['Timesheet', 'Time Entry'] },
+    { number: '002', title: 'Approval Inbox', aliases: ['Approval Inbox'] },
+    { number: '003', title: 'Utilization', aliases: ['Utilization'] },
+    { number: '004', title: 'Holiday Calendar', aliases: ['Holiday Calendar'] },
+    { number: '005', title: 'Project Allocation and Info', aliases: ['Project Allocation and Info'] },
+    { number: '006', title: 'PSA Modules', aliases: ['PSA Modules'] },
+    { number: '007', title: 'Workflow', aliases: ['Workflow'] },
+    { number: '008', title: 'Audit / Security History', aliases: ['Audit / Security History'] },
+    { number: '009', title: 'User Administration', aliases: ['User Administration'] },
+    { number: '010', title: 'Azure / Entra Admin', aliases: ['Azure / Entra Admin'] },
+    { number: '011', title: 'Work Task Builder', aliases: ['Work Task Builder'] },
+    { number: '012', title: 'Role Administration', aliases: ['Role Administration'] },
+    { number: '013', title: 'Service Control Center', aliases: ['Service Control Center'] },
+    { number: '014', title: 'Backup / DR Center', aliases: ['Backup / DR Center'] },
+    { number: '015', title: 'Restore Validation', aliases: ['Restore Validation'] },
+    { number: '016', title: 'Backup Retention', aliases: ['Backup Retention'] },
+    { number: '017', title: 'Replication & Sync Status', aliases: ['Replication & Sync Status'] },
+    { number: '018', title: 'Project Workload', aliases: ['Project Workload'] },
+    { number: '019', title: 'Project Workspace & Engineering Documents', aliases: ['Project Workspace & Engineering Documents'] },
+    { number: '020', title: 'Project Intake & Engineering Resource Requests', aliases: ['Project Intake & Engineering Resource Requests'] },
+    { number: '021', title: 'Customer Directory', aliases: ['Customer Directory'] },
+    { number: '022', title: 'Cost Overrun Alerts', aliases: ['Cost Overrun Alerts'] },
+    { number: '023', title: 'Time Compliance & Notification Center', aliases: ['Time Compliance & Notification Center', 'Production Notification Center'] },
+    { number: '024', title: 'Sales-to-Delivery Intake Foundation', aliases: ['Sales-to-Delivery Intake Foundation'] },
+    { number: '025', title: 'SOW Generator + Claude Research Review', aliases: ['SOW Generator + Claude Research Review'] },
+    { number: '026', title: 'CRM Integration Framework', aliases: ['CRM Integration Framework'] },
+    { number: '027', title: 'Signed SOW Handoff + Assignment Trigger', aliases: ['Signed SOW Handoff + Assignment Trigger'] },
+    { number: '028', title: 'SOW-Aware AI Time Entry Generator', aliases: ['SOW-Aware AI Time Entry Generator'] },
+    { number: '029', title: 'User Acceptance / Role + Workflow Validation Center', aliases: ['User Acceptance / Role + Workflow Validation Center'] },
+    { number: '030', title: 'Reporting / Accounting / Invoicing / Analytics Command Center', aliases: ['Reporting / Accounting / Invoicing / Analytics Command Center'] }
+  ];
+
+  function cleanText(value) {
+    return String(value || '').replace(/\s+/g, ' ').trim();
+  }
+
+  function isDashboardRoute() {
+    const hash = String(window.location.hash || '#dashboard').replace(/^#/, '').split('?')[0];
+    return hash === '' || hash === 'dashboard';
+  }
+
+  function findCardForTitle(title) {
+    const headings = Array.from(document.querySelectorAll('h1, h2, h3, h4, strong'))
+      .filter((node) => cleanText(node.textContent) === title);
+
+    for (const heading of headings) {
+      let current = heading;
+
+      for (let depth = 0; 8 > depth && current; depth += 1) {
+        current = current.parentElement;
+
+        if (!current) break;
+
+        const text = cleanText(current.textContent);
+        const rect = current.getBoundingClientRect();
+
+        if (
+          rect.width >= 220 &&
+          rect.height >= 100 &&
+          700 >= rect.width &&
+          text.includes(title)
+        ) {
+          return current;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  function findEyebrow(card) {
+    if (!card) return null;
+
+    const candidates = Array.from(card.querySelectorAll('small, span, div, p'))
+      .filter((node) => {
+        const text = cleanText(node.textContent);
+        if (!text) return false;
+        if (text.length > 45) return false;
+        if (/^MODULE\s+\d{3}$/i.test(text)) return true;
+        if (/^[A-Z0-9 /&+-]{3,45}$/.test(text)) return true;
+        return false;
+      })
+      .sort((a, b) => {
+        const ar = a.getBoundingClientRect();
+        const br = b.getBoundingClientRect();
+        return (ar.top - br.top) || (ar.left - br.left);
+      });
+
+    return candidates[0] || null;
+  }
+
+  function applyLabels() {
+    if (!isDashboardRoute()) return;
+
+    for (const module of moduleMap) {
+      const title = module.aliases.find((alias) => findCardForTitle(alias));
+      if (!title) continue;
+
+      const card = findCardForTitle(title);
+      if (!card) continue;
+
+      const eyebrow = findEyebrow(card);
+      if (!eyebrow) continue;
+
+      const desired = `MODULE ${module.number}`;
+      if (cleanText(eyebrow.textContent) !== desired) {
+        eyebrow.textContent = desired;
+        eyebrow.setAttribute('data-projectpulse-module-number-label', desired);
+      }
+    }
+  }
+
+  function scheduleApply() {
+    clearTimeout(window.__projectPulseDashboardModuleNumberLabelsTimer);
+    window.__projectPulseDashboardModuleNumberLabelsTimer = setTimeout(() => {
+      applyLabels();
+      setTimeout(applyLabels, 250);
+      setTimeout(applyLabels, 750);
+      setTimeout(applyLabels, 1500);
+    }, 80);
+  }
+
+  document.addEventListener('DOMContentLoaded', scheduleApply);
+  window.addEventListener('hashchange', scheduleApply);
+  window.addEventListener('storage', scheduleApply);
+  window.addEventListener('projectpulse:view-as-changed', scheduleApply);
+
+  const observer = new MutationObserver(scheduleApply);
+  if (document.body) {
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
+
+  scheduleApply();
+})();
+</script>
+<!-- DASHBOARD_MODULE_NUMBER_LABELS_END -->
 </body>
 </html>
