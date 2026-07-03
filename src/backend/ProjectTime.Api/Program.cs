@@ -24799,14 +24799,18 @@ LIMIT 250;";
 
 static async Task<object> ProjectPulse030BuildUtilizationOverUnderReportAsync(NpgsqlConnection connection, string reportType, string category, JsonElement criteria)
 {
+    // 030C_UTILIZATION_TIME_ENTRY_FALLBACK
+    // Derive utilization directly from time_entries so the report remains useful even when
+    // utilization_weekly_summaries has not yet been populated by a scheduled rollup job.
     var columns = new List<(string Key, string Label)>
     {
         ("engineer", "Engineer"),
         ("engineer_email", "Engineer Email"),
-        ("week_start_date", "Week Start Date"),
-        ("week_end_date", "Week End Date"),
-        ("regular_utilized_hours", "Regular Utilized Hours"),
-        ("afterhours_utilized_hours", "Afterhours Utilized Hours"),
+        ("team", "Team"),
+        ("period_start_date", "Period Start Date"),
+        ("period_end_date", "Period End Date"),
+        ("billable_hours", "Billable Hours"),
+        ("non_billable_hours", "Non-Billable Hours"),
         ("pto_hours", "PTO Hours"),
         ("total_hours", "Total Hours"),
         ("standard_period_hours", "Standard Period Hours"),
@@ -24816,33 +24820,59 @@ static async Task<object> ProjectPulse030BuildUtilizationOverUnderReportAsync(Np
 
     var where = new List<string>();
     var parameters = new Dictionary<string, object>();
-    ProjectPulse030AddDateRange(criteria, where, parameters, "uws.week_start_date");
+
+    ProjectPulse030AddDateRange(criteria, where, parameters, "te.work_date");
     ProjectPulse030AddReadableTextFilter(criteria, where, parameters, "engineer", new[] { "u.display_name", "u.email" });
+    ProjectPulse030AddReadableTextFilter(criteria, where, parameters, "selectedEngineers", new[] { "u.display_name", "u.email" });
+    ProjectPulse030AddReadableTextFilter(criteria, where, parameters, "team", new[] { "tm.team_name", "u.team_name", "u.department", "u.department_name" });
+    ProjectPulse030AddReadableTextFilter(criteria, where, parameters, "organization", new[] { "u.department", "u.department_name" });
 
     string sql = @"
 SELECT
     COALESCE(u.display_name, '') AS engineer,
     COALESCE(u.email, '') AS engineer_email,
-    uws.week_start_date,
-    uws.week_end_date,
-    uws.regular_utilized_hours,
-    uws.afterhours_utilized_hours,
-    uws.pto_hours,
-    uws.total_hours,
-    uws.standard_period_hours,
-    uws.total_utilization_percent AS utilization_percent,
+    COALESCE(tm.team_name, NULLIF(u.team_name, ''), '') AS team,
+    MIN(te.work_date) AS period_start_date,
+    MAX(te.work_date) AS period_end_date,
+    COALESCE(SUM(CASE WHEN COALESCE(te.billable, pt.billable, p.billable, FALSE) THEN te.hours ELSE 0 END), 0) AS billable_hours,
+    COALESCE(SUM(CASE WHEN COALESCE(te.billable, pt.billable, p.billable, FALSE) THEN 0 ELSE te.hours END), 0) AS non_billable_hours,
+    COALESCE(SUM(CASE
+        WHEN LOWER(COALESCE(npc.utilization_bucket, npc.category_code, npc.category_name, '')) IN ('pto', 'vacation', 'holiday')
+          OR LOWER(COALESCE(npc.category_code, npc.category_name, '')) LIKE '%vacation%'
+          OR LOWER(COALESCE(npc.category_code, npc.category_name, '')) LIKE '%holiday%'
+          OR LOWER(COALESCE(npc.category_code, npc.category_name, '')) LIKE '%pto%'
+        THEN te.hours ELSE 0 END), 0) AS pto_hours,
+    COALESCE(SUM(te.hours), 0) AS total_hours,
+    40::numeric AS standard_period_hours,
     CASE
-        WHEN uws.total_utilization_percent >= 100 THEN 'Over target'
-        WHEN uws.total_utilization_percent >= 85 THEN 'Near target'
+        WHEN 40::numeric = 0 THEN 0
+        ELSE ROUND((COALESCE(SUM(CASE WHEN COALESCE(te.billable, pt.billable, p.billable, FALSE) THEN te.hours ELSE 0 END), 0) / 40::numeric) * 100, 2)
+    END AS utilization_percent,
+    CASE
+        WHEN ROUND((COALESCE(SUM(CASE WHEN COALESCE(te.billable, pt.billable, p.billable, FALSE) THEN te.hours ELSE 0 END), 0) / 40::numeric) * 100, 2) >= 100 THEN 'Over target'
+        WHEN ROUND((COALESCE(SUM(CASE WHEN COALESCE(te.billable, pt.billable, p.billable, FALSE) THEN te.hours ELSE 0 END), 0) / 40::numeric) * 100, 2) >= 85 THEN 'Near target'
         ELSE 'Under target'
     END AS utilization_position
-FROM utilization_weekly_summaries uws
-LEFT JOIN app_users u ON u.user_id = uws.user_id
+FROM time_entries te
+LEFT JOIN app_users u
+  ON u.user_id = te.user_id
+LEFT JOIN projects p
+  ON p.project_id = te.project_id
+LEFT JOIN project_tasks pt
+  ON pt.task_id = te.task_id
+LEFT JOIN non_project_time_categories npc
+  ON npc.non_project_time_category_id = te.non_project_time_category_id
+LEFT JOIN team_memberships tmem
+  ON tmem.user_id = te.user_id
+ AND (tmem.effective_end_date IS NULL OR tmem.effective_end_date >= te.work_date)
+LEFT JOIN teams tm
+  ON tm.team_id = tmem.team_id
 " + ProjectPulse030WhereSql(where) + @"
-ORDER BY u.display_name, uws.week_start_date DESC
+GROUP BY u.display_name, u.email, tm.team_name, u.team_name
+ORDER BY engineer, period_start_date DESC
 LIMIT 250;";
 
-    return await ProjectPulse030ExecuteReadableReportAsync(connection, reportType, category, "public.utilization_weekly_summaries + users", columns, sql, parameters);
+    return await ProjectPulse030ExecuteReadableReportAsync(connection, reportType, category, "public.time_entries + utilization fallback joins", columns, sql, parameters);
 }
 
 static async Task<object> ProjectPulse030BuildPtoUsedReportAsync(NpgsqlConnection connection, string reportType, string category, JsonElement criteria)
