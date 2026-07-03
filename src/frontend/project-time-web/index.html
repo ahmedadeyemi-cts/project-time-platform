@@ -3414,6 +3414,29 @@
     return typeof option === 'string' ? option : (option && (option.value || option.label || option.name)) || '';
   }
 
+  function selectedEngineerSummaryText() {
+    var selected = selectedEngineerValues();
+
+    if (!selected.length) {
+      return 'All engineers';
+    }
+
+    var options = filterOptions.selectedEngineers || filterOptions.engineers || [];
+    var labels = selected.map(function (value) {
+      var match = options.find(function (option) {
+        return filterOptionValue(option) === value;
+      });
+
+      return match ? filterOptionLabel(match) : value;
+    });
+
+    if (labels.length <= 3) {
+      return labels.join(', ');
+    }
+
+    return labels.length + ' engineers selected';
+  }
+
   function selectedEngineerCheckboxHtml() {
     var selected = selectedEngineerValues();
     var values = (filterOptions.selectedEngineers || filterOptions.engineers || ['All engineers'])
@@ -3423,17 +3446,31 @@
       });
 
     if (!values.length) {
-      return '<div class="projectpulse-030-checkbox-panel"><label><input type="checkbox" checked disabled> All engineers</label></div>';
+      return '<details class="projectpulse-030-multiselect"><summary>No engineer list loaded yet</summary>' +
+        '<div class="projectpulse-030-checkbox-panel"><label><input type="checkbox" checked disabled> All engineers</label></div>' +
+        '</details>' +
+        '<div class="projectpulse-030-filter-status">Use Refresh Filter Lists if names do not appear.</div>';
     }
 
-    return '<div class="projectpulse-030-checkbox-panel" data-030-selected-engineers-panel>' +
+    return '<details class="projectpulse-030-multiselect" data-030-selected-engineers-dropdown>' +
+      '<summary data-030-selected-engineer-summary>' + escapeHtml(selectedEngineerSummaryText()) + '</summary>' +
+      '<div class="projectpulse-030-checkbox-panel" data-030-selected-engineers-panel>' +
       '<label><input type="checkbox" data-030-selected-engineer-all' + (!selected.length ? ' checked' : '') + '> All engineers</label>' +
       values.map(function (option) {
         var value = filterOptionValue(option);
         var label = filterOptionLabel(option);
         return '<label><input type="checkbox" data-030-selected-engineer value="' + escapeHtml(value) + '"' + (selected.includes(value) ? ' checked' : '') + '> ' + escapeHtml(label) + '</label>';
       }).join('') +
-      '</div>';
+      '</div>' +
+      '</details>';
+  }
+
+  function updateSelectedEngineerSummary(root) {
+    var summary = root && root.querySelector ? root.querySelector('[data-030-selected-engineer-summary]') : null;
+    if (summary) {
+      summary.textContent = selectedEngineerSummaryText();
+    }
+    saveState();
   }
 
   function captureSelectedEngineerCheckboxes() {
@@ -3888,6 +3925,9 @@
   }
 
   function renderShell() {
+    if (!filterOptionsLoaded && !filterOptionsLoading && !filterOptionsAttempted) {
+      setTimeout(function () { loadFilterOptions(false); }, 0);
+    }
     loadState();
 
     const shell = ensureShell();
@@ -9650,6 +9690,31 @@
     width: auto;
   }
 
+  .projectpulse-030-multiselect {
+    border: 1px solid rgba(148, 163, 184, 0.45);
+    border-radius: 12px;
+    background: #ffffff;
+  }
+
+  .projectpulse-030-multiselect summary {
+    cursor: pointer;
+    padding: 0.65rem 0.75rem;
+    font-weight: 800;
+    color: #0f172a;
+    list-style: none;
+  }
+
+  .projectpulse-030-multiselect summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .projectpulse-030-filter-status {
+    font-size: 0.82rem;
+    color: #475569;
+    font-weight: 700;
+    margin-top: 0.35rem;
+  }
+
   @media (max-width: 1150px) {
     .projectpulse-030-layout,
     .projectpulse-030-two-grid,
@@ -9730,6 +9795,8 @@
   };
   var filterOptionsLoaded = false;
   var filterOptionsLoading = false;
+  var filterOptionsAttempted = false;
+  var filterOptionsLastError = '';
 
   var domains = [
     ['Time Entry Reporting', 'All time entered, submitted, approved, rejected, returned, missing, late, billable, non-billable, AI-assisted, and SOW-aligned time.'],
@@ -9966,49 +10033,105 @@
     }).join('');
   }
 
-  async function loadFilterOptions() {
-    if (filterOptionsLoaded || filterOptionsLoading) return;
+  function projectPulse030ReadJsonStorage(key) {
+    try {
+      return JSON.parse(window.localStorage.getItem(key) || '{}');
+    } catch {
+      return {};
+    }
+  }
+
+  function projectPulse030AuthHeaders() {
+    var headers = {};
+    var knownSessionKeys = [
+      'projectPulseAuthSession',
+      'projectPulseSession',
+      'projectPulseSessionToken'
+    ];
+
+    knownSessionKeys.forEach(function (key) {
+      if (headers['X-ProjectPulse-Session']) return;
+
+      var raw = window.localStorage.getItem(key) || '';
+      var parsed = projectPulse030ReadJsonStorage(key);
+      var token = parsed.sessionToken || parsed.token || parsed.accessToken || raw;
+
+      if (token && String(token).length > 20) {
+        headers['X-ProjectPulse-Session'] = token;
+      }
+    });
+
+    if (!headers['X-ProjectPulse-Session']) {
+      for (var index = 0; index < window.localStorage.length; index += 1) {
+        var key = window.localStorage.key(index);
+        var parsed = projectPulse030ReadJsonStorage(key);
+        var token = parsed.sessionToken || parsed.token || parsed.accessToken;
+
+        if (token && String(token).length > 20) {
+          headers['X-ProjectPulse-Session'] = token;
+          break;
+        }
+      }
+    }
+
+    var viewAsUser = window.localStorage.getItem('projectPulseViewAsUser') || '';
+    if (viewAsUser) {
+      headers['X-ProjectPulse-View-As-User'] = viewAsUser;
+    }
+
+    return headers;
+  }
+
+  async function loadFilterOptions(force) {
+    if (filterOptionsLoading) return;
+    if (!force && (filterOptionsLoaded || filterOptionsAttempted)) return;
 
     filterOptionsLoading = true;
+    filterOptionsAttempted = true;
+    filterOptionsLastError = '';
 
     try {
-      var session = {};
-      try {
-        session = JSON.parse(window.localStorage.getItem('projectPulseAuthSession') || '{}');
-      } catch {}
+      var response = await fetch('/api/reports/030/filter-options?_ts=' + Date.now(), {
+        headers: projectPulse030AuthHeaders(),
+        cache: 'no-store'
+      });
 
-      var headers = {};
-      if (session.sessionToken) {
-        headers['X-ProjectPulse-Session'] = session.sessionToken;
-      }
-
-      var response = await fetch('/api/reports/030/filter-options', { headers: headers });
       var payload = await response.json();
 
-      if (response.ok && payload && payload.databaseBacked) {
-        [
-          'customers',
-          'projects',
-          'pms',
-          'engineers',
-              'teams',
-          'organizations',
-          'contractTypes',
-          'billableOptions',
-          'workLocations',
-          'workCodes'
-        ].forEach(function (key) {
-          if (Array.isArray(payload[key]) && payload[key].length) {
-            filterOptions[key] = payload[key];
-          }
-        });
-
-        filterOptionsLoaded = true;
+      if (!response.ok || !payload || !payload.databaseBacked) {
+        filterOptionsLastError = payload && payload.message ? payload.message : 'Filter lists could not be loaded from the database.';
         saveState();
         renderShell();
+        return;
       }
+
+      [
+        'customers',
+        'projects',
+        'pms',
+        'engineers',
+        'selectedEngineers',
+        'teams',
+        'organizations',
+        'contractTypes',
+        'billableOptions',
+        'workLocations',
+        'workCodes'
+      ].forEach(function (key) {
+        if (Array.isArray(payload[key]) && payload[key].length) {
+          filterOptions[key] = payload[key];
+        }
+      });
+
+      filterOptionsLoaded = true;
+      filterOptionsLastError = '';
+      saveState();
+      renderShell();
     } catch (error) {
+      filterOptionsLastError = error && error.message ? error.message : 'Filter lists could not be loaded.';
       console.warn('030 filter options could not be loaded', error);
+      saveState();
+      renderShell();
     } finally {
       filterOptionsLoading = false;
     }
@@ -10732,6 +10855,7 @@
       '</div>' +
       '<div class="projectpulse-030-actions">' +
         '<button type="button" class="projectpulse-030-button primary" data-030-generate>Generate Report Preview</button>' +
+        '<button type="button" class="projectpulse-030-button" data-030-refresh-filters>Refresh Filter Lists</button>' +
         '<button type="button" class="projectpulse-030-button success" data-030-csv-export>Export Visible Rows CSV</button>' +
         '<button type="button" class="projectpulse-030-button success" data-030-export>Build Export Layout</button>' +
         '<button type="button" class="projectpulse-030-button warning" data-030-save-definition>Save Report Definition Preview</button>' +
@@ -10903,6 +11027,15 @@
     });
 
     shell.querySelector('[data-030-generate]').addEventListener('click', generateReportPreview);
+    var refreshFiltersButton = shell.querySelector('[data-030-refresh-filters]');
+    if (refreshFiltersButton) {
+      refreshFiltersButton.addEventListener('click', function () {
+        filterOptionsLoaded = false;
+        filterOptionsAttempted = false;
+        filterOptionsLastError = '';
+        loadFilterOptions(true);
+      });
+    }
     shell.querySelector('[data-030-csv-export]').addEventListener('click', exportVisibleReportCsv);
     if (!shell.projectPulse030bSelectionHandlerAttached) {
       shell.addEventListener('change', function (event) {
@@ -10916,14 +11049,14 @@
             });
           }
           captureInputs();
-          renderShell();
+          updateSelectedEngineerSummary(shell);
         }
 
         if (target.matches('[data-030-selected-engineer]')) {
           var all = shell.querySelector('[data-030-selected-engineer-all]');
           if (all) all.checked = false;
           captureInputs();
-          renderShell();
+          updateSelectedEngineerSummary(shell);
         }
       });
 
