@@ -3406,10 +3406,21 @@
       .filter(Boolean);
   }
 
+  function filterOptionLabel(option) {
+    return typeof option === 'string' ? option : (option && (option.label || option.name || option.value)) || '';
+  }
+
+  function filterOptionValue(option) {
+    return typeof option === 'string' ? option : (option && (option.value || option.label || option.name)) || '';
+  }
+
   function selectedEngineerCheckboxHtml() {
     var selected = selectedEngineerValues();
     var values = (filterOptions.selectedEngineers || filterOptions.engineers || ['All engineers'])
-      .filter(function (value) { return value && value !== 'All engineers'; });
+      .filter(function (option) {
+        var value = filterOptionValue(option);
+        return value && value !== 'All engineers';
+      });
 
     if (!values.length) {
       return '<div class="projectpulse-030-checkbox-panel"><label><input type="checkbox" checked disabled> All engineers</label></div>';
@@ -3417,8 +3428,10 @@
 
     return '<div class="projectpulse-030-checkbox-panel" data-030-selected-engineers-panel>' +
       '<label><input type="checkbox" data-030-selected-engineer-all' + (!selected.length ? ' checked' : '') + '> All engineers</label>' +
-      values.map(function (value) {
-        return '<label><input type="checkbox" data-030-selected-engineer value="' + escapeHtml(value) + '"' + (selected.includes(value) ? ' checked' : '') + '> ' + escapeHtml(value) + '</label>';
+      values.map(function (option) {
+        var value = filterOptionValue(option);
+        var label = filterOptionLabel(option);
+        return '<label><input type="checkbox" data-030-selected-engineer value="' + escapeHtml(value) + '"' + (selected.includes(value) ? ' checked' : '') + '> ' + escapeHtml(label) + '</label>';
       }).join('') +
       '</div>';
   }

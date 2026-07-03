@@ -24346,17 +24346,18 @@ FROM projects
 WHERE NULLIF(TRIM(project_name), '') IS NOT NULL
 ORDER BY label;", "All projects");
 
-    var pms = await ProjectPulse030LoadStringOptionsAsync(connection, @"
-SELECT DISTINCT u.display_name
+    var pms = await ProjectPulse030LoadPersonOptionsAsync(connection, @"
+SELECT DISTINCT u.display_name, u.email
 FROM projects p
 JOIN app_users u
   ON u.user_id = p.project_manager_user_id
 WHERE u.is_active = TRUE
   AND NULLIF(TRIM(u.display_name), '') IS NOT NULL
-ORDER BY u.display_name;", "All PMs");
+  AND NULLIF(TRIM(u.email), '') IS NOT NULL
+ORDER BY u.display_name, u.email;", "All PMs");
 
-    var engineers = await ProjectPulse030LoadStringOptionsAsync(connection, @"
-SELECT DISTINCT u.display_name
+    var engineers = await ProjectPulse030LoadPersonOptionsAsync(connection, @"
+SELECT DISTINCT u.display_name, u.email
 FROM app_users u
 JOIN app_user_role_assignments ura
   ON ura.user_id = u.user_id
@@ -24368,7 +24369,8 @@ WHERE u.is_active = TRUE
   AND u.login_enabled = TRUE
   AND r.role_code IN ('ENGINEERING', 'ENGINEERING_LEAD', 'MANAGER', 'PROJECT_TEAM_COORDINATOR', 'SUPER_ADMINISTRATOR')
   AND NULLIF(TRIM(u.display_name), '') IS NOT NULL
-ORDER BY u.display_name;", "All engineers");
+  AND NULLIF(TRIM(u.email), '') IS NOT NULL
+ORDER BY u.display_name, u.email;", "All engineers");
 
     var teams = await ProjectPulse030LoadStringOptionsAsync(connection, @"
 SELECT DISTINCT team_name
@@ -24472,6 +24474,42 @@ static async Task<string[]> ProjectPulse030LoadStringOptionsAsync(NpgsqlConnecti
 
     return values.ToArray();
 }
+
+static async Task<object[]> ProjectPulse030LoadPersonOptionsAsync(NpgsqlConnection connection, string sql, string allLabel)
+{
+    var values = new List<object>
+    {
+        new { label = allLabel, value = allLabel }
+    };
+
+    var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { allLabel };
+
+    await using var command = new NpgsqlCommand(sql, connection);
+    await using var reader = await command.ExecuteReaderAsync();
+
+    while (await reader.ReadAsync())
+    {
+        string displayName = reader.IsDBNull(0) ? "" : reader.GetString(0).Trim();
+        string email = reader.IsDBNull(1) ? "" : reader.GetString(1).Trim();
+
+        if (string.IsNullOrWhiteSpace(displayName) || string.IsNullOrWhiteSpace(email))
+        {
+            continue;
+        }
+
+        if (seen.Add(email))
+        {
+            values.Add(new
+            {
+                label = $"{displayName} <{email}>",
+                value = email
+            });
+        }
+    }
+
+    return values.ToArray();
+}
+
 
 static void ProjectPulse030AddDateRange(JsonElement criteria, List<string> where, Dictionary<string, object> parameters, string sqlExpression)
 {
