@@ -3398,6 +3398,107 @@
     }
   }
 
+  function selectedEngineerValues() {
+    if (!state.selectedEngineers || state.selectedEngineers === 'All engineers') return [];
+    return String(state.selectedEngineers)
+      .split(',')
+      .map(function (value) { return value.trim(); })
+      .filter(Boolean);
+  }
+
+  function selectedEngineerCheckboxHtml() {
+    var selected = selectedEngineerValues();
+    var values = (filterOptions.selectedEngineers || filterOptions.engineers || ['All engineers'])
+      .filter(function (value) { return value && value !== 'All engineers'; });
+
+    if (!values.length) {
+      return '<div class="projectpulse-030-checkbox-panel"><label><input type="checkbox" checked disabled> All engineers</label></div>';
+    }
+
+    return '<div class="projectpulse-030-checkbox-panel" data-030-selected-engineers-panel>' +
+      '<label><input type="checkbox" data-030-selected-engineer-all' + (!selected.length ? ' checked' : '') + '> All engineers</label>' +
+      values.map(function (value) {
+        return '<label><input type="checkbox" data-030-selected-engineer value="' + escapeHtml(value) + '"' + (selected.includes(value) ? ' checked' : '') + '> ' + escapeHtml(value) + '</label>';
+      }).join('') +
+      '</div>';
+  }
+
+  function captureSelectedEngineerCheckboxes() {
+    var shell = document.getElementById(shellId);
+    if (!shell) return;
+
+    var all = shell.querySelector('[data-030-selected-engineer-all]');
+    var checked = Array.from(shell.querySelectorAll('[data-030-selected-engineer]:checked'))
+      .map(function (element) { return element.value; })
+      .filter(Boolean);
+
+    if (all && all.checked) {
+      state.selectedEngineers = 'All engineers';
+      return;
+    }
+
+    state.selectedEngineers = checked.length ? checked.join(', ') : 'All engineers';
+  }
+
+  function csvEscape(value) {
+    var output = String(value == null ? '' : value);
+    output = output.replaceAll('"', '""');
+    return '"' + output + '"';
+  }
+
+  function exportVisibleReportCsv() {
+    captureInputs();
+
+    var headers = reportHeaders();
+    var rows = reportRows();
+
+    if (!rows.length) {
+      state.statusType = 'warning';
+      state.status = 'Generate a report before exporting CSV.';
+      saveState();
+      renderShell();
+      return;
+    }
+
+    var csv = [
+      headers.map(csvEscape).join(',')
+    ].concat(rows.map(function (row) {
+      return headers.map(function (_, index) {
+        return csvEscape(Array.isArray(row) ? row[index] : '');
+      }).join(',');
+    })).join('\n');
+
+    var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    var url = URL.createObjectURL(blob);
+    var safeName = String(state.reportType || 'report')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'report';
+
+    var anchor = document.createElement('a');
+    var filename = safeName + '-' + new Date().toISOString().slice(0, 10) + '.csv';
+
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+
+    state.lastExportLayout =
+      'CSV Export Generated\n\n' +
+      'Report Type: ' + state.reportType + '\n' +
+      'Rows Exported: ' + rows.length + '\n' +
+      'Columns Exported: ' + headers.length + '\n' +
+      'Export File: ' + filename;
+
+    state.exportCenterConfirmed = true;
+    state.statusType = 'success';
+    state.status = 'CSV export generated for ' + rows.length + ' visible report rows.';
+    saveState();
+    renderShell();
+  }
+
   function setValue(root, name, value) {
     const element = root.querySelector('[data-025-field="' + name + '"]');
     if (element) element.value = value || '';
@@ -3411,6 +3512,8 @@
   function captureInputs() {
     const shell = document.getElementById(shellId);
     if (!shell || shell.getAttribute('data-open') !== 'true') return;
+
+    captureSelectedEngineerCheckboxes();
 
     function get(name) {
       const element = shell.querySelector('[data-025-field="' + name + '"]');
@@ -4439,6 +4542,107 @@
     }
   }
 
+  function selectedEngineerValues() {
+    if (!state.selectedEngineers || state.selectedEngineers === 'All engineers') return [];
+    return String(state.selectedEngineers)
+      .split(',')
+      .map(function (value) { return value.trim(); })
+      .filter(Boolean);
+  }
+
+  function selectedEngineerCheckboxHtml() {
+    var selected = selectedEngineerValues();
+    var values = (filterOptions.selectedEngineers || filterOptions.engineers || ['All engineers'])
+      .filter(function (value) { return value && value !== 'All engineers'; });
+
+    if (!values.length) {
+      return '<div class="projectpulse-030-checkbox-panel"><label><input type="checkbox" checked disabled> All engineers</label></div>';
+    }
+
+    return '<div class="projectpulse-030-checkbox-panel" data-030-selected-engineers-panel>' +
+      '<label><input type="checkbox" data-030-selected-engineer-all' + (!selected.length ? ' checked' : '') + '> All engineers</label>' +
+      values.map(function (value) {
+        return '<label><input type="checkbox" data-030-selected-engineer value="' + escapeHtml(value) + '"' + (selected.includes(value) ? ' checked' : '') + '> ' + escapeHtml(value) + '</label>';
+      }).join('') +
+      '</div>';
+  }
+
+  function captureSelectedEngineerCheckboxes() {
+    var shell = document.getElementById(shellId);
+    if (!shell) return;
+
+    var all = shell.querySelector('[data-030-selected-engineer-all]');
+    var checked = Array.from(shell.querySelectorAll('[data-030-selected-engineer]:checked'))
+      .map(function (element) { return element.value; })
+      .filter(Boolean);
+
+    if (all && all.checked) {
+      state.selectedEngineers = 'All engineers';
+      return;
+    }
+
+    state.selectedEngineers = checked.length ? checked.join(', ') : 'All engineers';
+  }
+
+  function csvEscape(value) {
+    var output = String(value == null ? '' : value);
+    output = output.replaceAll('"', '""');
+    return '"' + output + '"';
+  }
+
+  function exportVisibleReportCsv() {
+    captureInputs();
+
+    var headers = reportHeaders();
+    var rows = reportRows();
+
+    if (!rows.length) {
+      state.statusType = 'warning';
+      state.status = 'Generate a report before exporting CSV.';
+      saveState();
+      renderShell();
+      return;
+    }
+
+    var csv = [
+      headers.map(csvEscape).join(',')
+    ].concat(rows.map(function (row) {
+      return headers.map(function (_, index) {
+        return csvEscape(Array.isArray(row) ? row[index] : '');
+      }).join(',');
+    })).join('\n');
+
+    var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    var url = URL.createObjectURL(blob);
+    var safeName = String(state.reportType || 'report')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'report';
+
+    var anchor = document.createElement('a');
+    var filename = safeName + '-' + new Date().toISOString().slice(0, 10) + '.csv';
+
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+
+    state.lastExportLayout =
+      'CSV Export Generated\n\n' +
+      'Report Type: ' + state.reportType + '\n' +
+      'Rows Exported: ' + rows.length + '\n' +
+      'Columns Exported: ' + headers.length + '\n' +
+      'Export File: ' + filename;
+
+    state.exportCenterConfirmed = true;
+    state.statusType = 'success';
+    state.status = 'CSV export generated for ' + rows.length + ' visible report rows.';
+    saveState();
+    renderShell();
+  }
+
   function setValue(root, name, value) {
     var element = root.querySelector('[data-026-field="' + name + '"]');
     if (element) element.value = value || '';
@@ -5306,6 +5510,107 @@
       document.documentElement.style.overflow = '';
       document.body.style.overflow = '';
     }
+  }
+
+  function selectedEngineerValues() {
+    if (!state.selectedEngineers || state.selectedEngineers === 'All engineers') return [];
+    return String(state.selectedEngineers)
+      .split(',')
+      .map(function (value) { return value.trim(); })
+      .filter(Boolean);
+  }
+
+  function selectedEngineerCheckboxHtml() {
+    var selected = selectedEngineerValues();
+    var values = (filterOptions.selectedEngineers || filterOptions.engineers || ['All engineers'])
+      .filter(function (value) { return value && value !== 'All engineers'; });
+
+    if (!values.length) {
+      return '<div class="projectpulse-030-checkbox-panel"><label><input type="checkbox" checked disabled> All engineers</label></div>';
+    }
+
+    return '<div class="projectpulse-030-checkbox-panel" data-030-selected-engineers-panel>' +
+      '<label><input type="checkbox" data-030-selected-engineer-all' + (!selected.length ? ' checked' : '') + '> All engineers</label>' +
+      values.map(function (value) {
+        return '<label><input type="checkbox" data-030-selected-engineer value="' + escapeHtml(value) + '"' + (selected.includes(value) ? ' checked' : '') + '> ' + escapeHtml(value) + '</label>';
+      }).join('') +
+      '</div>';
+  }
+
+  function captureSelectedEngineerCheckboxes() {
+    var shell = document.getElementById(shellId);
+    if (!shell) return;
+
+    var all = shell.querySelector('[data-030-selected-engineer-all]');
+    var checked = Array.from(shell.querySelectorAll('[data-030-selected-engineer]:checked'))
+      .map(function (element) { return element.value; })
+      .filter(Boolean);
+
+    if (all && all.checked) {
+      state.selectedEngineers = 'All engineers';
+      return;
+    }
+
+    state.selectedEngineers = checked.length ? checked.join(', ') : 'All engineers';
+  }
+
+  function csvEscape(value) {
+    var output = String(value == null ? '' : value);
+    output = output.replaceAll('"', '""');
+    return '"' + output + '"';
+  }
+
+  function exportVisibleReportCsv() {
+    captureInputs();
+
+    var headers = reportHeaders();
+    var rows = reportRows();
+
+    if (!rows.length) {
+      state.statusType = 'warning';
+      state.status = 'Generate a report before exporting CSV.';
+      saveState();
+      renderShell();
+      return;
+    }
+
+    var csv = [
+      headers.map(csvEscape).join(',')
+    ].concat(rows.map(function (row) {
+      return headers.map(function (_, index) {
+        return csvEscape(Array.isArray(row) ? row[index] : '');
+      }).join(',');
+    })).join('\n');
+
+    var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    var url = URL.createObjectURL(blob);
+    var safeName = String(state.reportType || 'report')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'report';
+
+    var anchor = document.createElement('a');
+    var filename = safeName + '-' + new Date().toISOString().slice(0, 10) + '.csv';
+
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+
+    state.lastExportLayout =
+      'CSV Export Generated\n\n' +
+      'Report Type: ' + state.reportType + '\n' +
+      'Rows Exported: ' + rows.length + '\n' +
+      'Columns Exported: ' + headers.length + '\n' +
+      'Export File: ' + filename;
+
+    state.exportCenterConfirmed = true;
+    state.statusType = 'success';
+    state.status = 'CSV export generated for ' + rows.length + ' visible report rows.';
+    saveState();
+    renderShell();
   }
 
   function setValue(root, name, value) {
@@ -6194,6 +6499,107 @@
       document.documentElement.style.overflow = '';
       document.body.style.overflow = '';
     }
+  }
+
+  function selectedEngineerValues() {
+    if (!state.selectedEngineers || state.selectedEngineers === 'All engineers') return [];
+    return String(state.selectedEngineers)
+      .split(',')
+      .map(function (value) { return value.trim(); })
+      .filter(Boolean);
+  }
+
+  function selectedEngineerCheckboxHtml() {
+    var selected = selectedEngineerValues();
+    var values = (filterOptions.selectedEngineers || filterOptions.engineers || ['All engineers'])
+      .filter(function (value) { return value && value !== 'All engineers'; });
+
+    if (!values.length) {
+      return '<div class="projectpulse-030-checkbox-panel"><label><input type="checkbox" checked disabled> All engineers</label></div>';
+    }
+
+    return '<div class="projectpulse-030-checkbox-panel" data-030-selected-engineers-panel>' +
+      '<label><input type="checkbox" data-030-selected-engineer-all' + (!selected.length ? ' checked' : '') + '> All engineers</label>' +
+      values.map(function (value) {
+        return '<label><input type="checkbox" data-030-selected-engineer value="' + escapeHtml(value) + '"' + (selected.includes(value) ? ' checked' : '') + '> ' + escapeHtml(value) + '</label>';
+      }).join('') +
+      '</div>';
+  }
+
+  function captureSelectedEngineerCheckboxes() {
+    var shell = document.getElementById(shellId);
+    if (!shell) return;
+
+    var all = shell.querySelector('[data-030-selected-engineer-all]');
+    var checked = Array.from(shell.querySelectorAll('[data-030-selected-engineer]:checked'))
+      .map(function (element) { return element.value; })
+      .filter(Boolean);
+
+    if (all && all.checked) {
+      state.selectedEngineers = 'All engineers';
+      return;
+    }
+
+    state.selectedEngineers = checked.length ? checked.join(', ') : 'All engineers';
+  }
+
+  function csvEscape(value) {
+    var output = String(value == null ? '' : value);
+    output = output.replaceAll('"', '""');
+    return '"' + output + '"';
+  }
+
+  function exportVisibleReportCsv() {
+    captureInputs();
+
+    var headers = reportHeaders();
+    var rows = reportRows();
+
+    if (!rows.length) {
+      state.statusType = 'warning';
+      state.status = 'Generate a report before exporting CSV.';
+      saveState();
+      renderShell();
+      return;
+    }
+
+    var csv = [
+      headers.map(csvEscape).join(',')
+    ].concat(rows.map(function (row) {
+      return headers.map(function (_, index) {
+        return csvEscape(Array.isArray(row) ? row[index] : '');
+      }).join(',');
+    })).join('\n');
+
+    var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    var url = URL.createObjectURL(blob);
+    var safeName = String(state.reportType || 'report')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'report';
+
+    var anchor = document.createElement('a');
+    var filename = safeName + '-' + new Date().toISOString().slice(0, 10) + '.csv';
+
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+
+    state.lastExportLayout =
+      'CSV Export Generated\n\n' +
+      'Report Type: ' + state.reportType + '\n' +
+      'Rows Exported: ' + rows.length + '\n' +
+      'Columns Exported: ' + headers.length + '\n' +
+      'Export File: ' + filename;
+
+    state.exportCenterConfirmed = true;
+    state.statusType = 'success';
+    state.status = 'CSV export generated for ' + rows.length + ' visible report rows.';
+    saveState();
+    renderShell();
   }
 
   function setValue(root, name, value) {
@@ -7204,6 +7610,107 @@
       document.documentElement.style.overflow = '';
       document.body.style.overflow = '';
     }
+  }
+
+  function selectedEngineerValues() {
+    if (!state.selectedEngineers || state.selectedEngineers === 'All engineers') return [];
+    return String(state.selectedEngineers)
+      .split(',')
+      .map(function (value) { return value.trim(); })
+      .filter(Boolean);
+  }
+
+  function selectedEngineerCheckboxHtml() {
+    var selected = selectedEngineerValues();
+    var values = (filterOptions.selectedEngineers || filterOptions.engineers || ['All engineers'])
+      .filter(function (value) { return value && value !== 'All engineers'; });
+
+    if (!values.length) {
+      return '<div class="projectpulse-030-checkbox-panel"><label><input type="checkbox" checked disabled> All engineers</label></div>';
+    }
+
+    return '<div class="projectpulse-030-checkbox-panel" data-030-selected-engineers-panel>' +
+      '<label><input type="checkbox" data-030-selected-engineer-all' + (!selected.length ? ' checked' : '') + '> All engineers</label>' +
+      values.map(function (value) {
+        return '<label><input type="checkbox" data-030-selected-engineer value="' + escapeHtml(value) + '"' + (selected.includes(value) ? ' checked' : '') + '> ' + escapeHtml(value) + '</label>';
+      }).join('') +
+      '</div>';
+  }
+
+  function captureSelectedEngineerCheckboxes() {
+    var shell = document.getElementById(shellId);
+    if (!shell) return;
+
+    var all = shell.querySelector('[data-030-selected-engineer-all]');
+    var checked = Array.from(shell.querySelectorAll('[data-030-selected-engineer]:checked'))
+      .map(function (element) { return element.value; })
+      .filter(Boolean);
+
+    if (all && all.checked) {
+      state.selectedEngineers = 'All engineers';
+      return;
+    }
+
+    state.selectedEngineers = checked.length ? checked.join(', ') : 'All engineers';
+  }
+
+  function csvEscape(value) {
+    var output = String(value == null ? '' : value);
+    output = output.replaceAll('"', '""');
+    return '"' + output + '"';
+  }
+
+  function exportVisibleReportCsv() {
+    captureInputs();
+
+    var headers = reportHeaders();
+    var rows = reportRows();
+
+    if (!rows.length) {
+      state.statusType = 'warning';
+      state.status = 'Generate a report before exporting CSV.';
+      saveState();
+      renderShell();
+      return;
+    }
+
+    var csv = [
+      headers.map(csvEscape).join(',')
+    ].concat(rows.map(function (row) {
+      return headers.map(function (_, index) {
+        return csvEscape(Array.isArray(row) ? row[index] : '');
+      }).join(',');
+    })).join('\n');
+
+    var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    var url = URL.createObjectURL(blob);
+    var safeName = String(state.reportType || 'report')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'report';
+
+    var anchor = document.createElement('a');
+    var filename = safeName + '-' + new Date().toISOString().slice(0, 10) + '.csv';
+
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+
+    state.lastExportLayout =
+      'CSV Export Generated\n\n' +
+      'Report Type: ' + state.reportType + '\n' +
+      'Rows Exported: ' + rows.length + '\n' +
+      'Columns Exported: ' + headers.length + '\n' +
+      'Export File: ' + filename;
+
+    state.exportCenterConfirmed = true;
+    state.statusType = 'success';
+    state.status = 'CSV export generated for ' + rows.length + ' visible report rows.';
+    saveState();
+    renderShell();
   }
 
   function setValue(root, name, value) {
@@ -8229,6 +8736,107 @@
     }
   }
 
+  function selectedEngineerValues() {
+    if (!state.selectedEngineers || state.selectedEngineers === 'All engineers') return [];
+    return String(state.selectedEngineers)
+      .split(',')
+      .map(function (value) { return value.trim(); })
+      .filter(Boolean);
+  }
+
+  function selectedEngineerCheckboxHtml() {
+    var selected = selectedEngineerValues();
+    var values = (filterOptions.selectedEngineers || filterOptions.engineers || ['All engineers'])
+      .filter(function (value) { return value && value !== 'All engineers'; });
+
+    if (!values.length) {
+      return '<div class="projectpulse-030-checkbox-panel"><label><input type="checkbox" checked disabled> All engineers</label></div>';
+    }
+
+    return '<div class="projectpulse-030-checkbox-panel" data-030-selected-engineers-panel>' +
+      '<label><input type="checkbox" data-030-selected-engineer-all' + (!selected.length ? ' checked' : '') + '> All engineers</label>' +
+      values.map(function (value) {
+        return '<label><input type="checkbox" data-030-selected-engineer value="' + escapeHtml(value) + '"' + (selected.includes(value) ? ' checked' : '') + '> ' + escapeHtml(value) + '</label>';
+      }).join('') +
+      '</div>';
+  }
+
+  function captureSelectedEngineerCheckboxes() {
+    var shell = document.getElementById(shellId);
+    if (!shell) return;
+
+    var all = shell.querySelector('[data-030-selected-engineer-all]');
+    var checked = Array.from(shell.querySelectorAll('[data-030-selected-engineer]:checked'))
+      .map(function (element) { return element.value; })
+      .filter(Boolean);
+
+    if (all && all.checked) {
+      state.selectedEngineers = 'All engineers';
+      return;
+    }
+
+    state.selectedEngineers = checked.length ? checked.join(', ') : 'All engineers';
+  }
+
+  function csvEscape(value) {
+    var output = String(value == null ? '' : value);
+    output = output.replaceAll('"', '""');
+    return '"' + output + '"';
+  }
+
+  function exportVisibleReportCsv() {
+    captureInputs();
+
+    var headers = reportHeaders();
+    var rows = reportRows();
+
+    if (!rows.length) {
+      state.statusType = 'warning';
+      state.status = 'Generate a report before exporting CSV.';
+      saveState();
+      renderShell();
+      return;
+    }
+
+    var csv = [
+      headers.map(csvEscape).join(',')
+    ].concat(rows.map(function (row) {
+      return headers.map(function (_, index) {
+        return csvEscape(Array.isArray(row) ? row[index] : '');
+      }).join(',');
+    })).join('\n');
+
+    var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    var url = URL.createObjectURL(blob);
+    var safeName = String(state.reportType || 'report')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'report';
+
+    var anchor = document.createElement('a');
+    var filename = safeName + '-' + new Date().toISOString().slice(0, 10) + '.csv';
+
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+
+    state.lastExportLayout =
+      'CSV Export Generated\n\n' +
+      'Report Type: ' + state.reportType + '\n' +
+      'Rows Exported: ' + rows.length + '\n' +
+      'Columns Exported: ' + headers.length + '\n' +
+      'Export File: ' + filename;
+
+    state.exportCenterConfirmed = true;
+    state.statusType = 'success';
+    state.status = 'CSV export generated for ' + rows.length + ' visible report rows.';
+    saveState();
+    renderShell();
+  }
+
   function setValue(root, name, value) {
     var element = root.querySelector('[data-029-field="' + name + '"]');
     if (element) element.value = value || '';
@@ -9004,6 +9612,31 @@
   .projectpulse-030-status.warning { background: #fef3c7; color: #92400e; }
   .projectpulse-030-status.error { background: #fee2e2; color: #991b1b; }
 
+  .projectpulse-030-checkbox-panel {
+    border: 1px solid rgba(148, 163, 184, 0.45);
+    border-radius: 12px;
+    background: #ffffff;
+    padding: 0.55rem;
+    max-height: 180px;
+    overflow: auto;
+  }
+
+  .projectpulse-030-checkbox-panel label {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.25rem 0;
+    font-size: 0.9rem;
+    color: #334155;
+    text-transform: none;
+    letter-spacing: normal;
+    font-weight: 700;
+  }
+
+  .projectpulse-030-checkbox-panel input {
+    width: auto;
+  }
+
   @media (max-width: 1150px) {
     .projectpulse-030-layout,
     .projectpulse-030-two-grid,
@@ -9031,6 +9664,21 @@
     'Executive Summary Dashboard',
     'Time Entry Detail Report',
     'Accounting Invoice Detail Report',
+    'T&M Sales Report',
+    'Project Status Report - Billed Cost and Remaining Balance',
+    'Certify Expense + Accounting Invoice Breakdown',
+    'Engineer Project Over / Under Budget Report',
+    'Utilization Over / Under Report by Engineer',
+    'Engineer Vacation / PTO Used Report',
+    'Billable vs Non-Billable Report',
+    'Unbilled Time / Invoice Readiness Report',
+    'Approval Bottleneck Report',
+    'Missing Time / Late Timesheet Report',
+    'Project Margin Report',
+    'Rate / Amount Exception Report',
+    'Customer Profitability Report',
+    'Project Closeout Readiness Report',
+    'Sales-to-Delivery Handoff Quality Report',
     'Customer Billing Summary Report',
     'Project Report',
     'PM Project Workload Report',
@@ -9062,7 +9710,7 @@
     selectedEngineers: ['All engineers'],
     teams: ['All teams'],
     organizations: ['All organizations'],
-    contractTypes: ['All contract types'],
+    contractTypes: ['All contract types', 'T&M', 'Time and Material', 'Fixed Bid', 'Fixed Fee', 'Service Request', 'Managed Service', 'Project', 'Non-Project Time'],
     billableOptions: ['All billable statuses', 'Billable', 'Non-billable'],
     workLocations: ['All work locations'],
     workCodes: ['All work codes']
@@ -9330,8 +9978,7 @@
           'projects',
           'pms',
           'engineers',
-          'selectedEngineers',
-          'teams',
+              'teams',
           'organizations',
           'contractTypes',
           'billableOptions',
@@ -9352,6 +9999,107 @@
     } finally {
       filterOptionsLoading = false;
     }
+  }
+
+  function selectedEngineerValues() {
+    if (!state.selectedEngineers || state.selectedEngineers === 'All engineers') return [];
+    return String(state.selectedEngineers)
+      .split(',')
+      .map(function (value) { return value.trim(); })
+      .filter(Boolean);
+  }
+
+  function selectedEngineerCheckboxHtml() {
+    var selected = selectedEngineerValues();
+    var values = (filterOptions.selectedEngineers || filterOptions.engineers || ['All engineers'])
+      .filter(function (value) { return value && value !== 'All engineers'; });
+
+    if (!values.length) {
+      return '<div class="projectpulse-030-checkbox-panel"><label><input type="checkbox" checked disabled> All engineers</label></div>';
+    }
+
+    return '<div class="projectpulse-030-checkbox-panel" data-030-selected-engineers-panel>' +
+      '<label><input type="checkbox" data-030-selected-engineer-all' + (!selected.length ? ' checked' : '') + '> All engineers</label>' +
+      values.map(function (value) {
+        return '<label><input type="checkbox" data-030-selected-engineer value="' + escapeHtml(value) + '"' + (selected.includes(value) ? ' checked' : '') + '> ' + escapeHtml(value) + '</label>';
+      }).join('') +
+      '</div>';
+  }
+
+  function captureSelectedEngineerCheckboxes() {
+    var shell = document.getElementById(shellId);
+    if (!shell) return;
+
+    var all = shell.querySelector('[data-030-selected-engineer-all]');
+    var checked = Array.from(shell.querySelectorAll('[data-030-selected-engineer]:checked'))
+      .map(function (element) { return element.value; })
+      .filter(Boolean);
+
+    if (all && all.checked) {
+      state.selectedEngineers = 'All engineers';
+      return;
+    }
+
+    state.selectedEngineers = checked.length ? checked.join(', ') : 'All engineers';
+  }
+
+  function csvEscape(value) {
+    var output = String(value == null ? '' : value);
+    output = output.replaceAll('"', '""');
+    return '"' + output + '"';
+  }
+
+  function exportVisibleReportCsv() {
+    captureInputs();
+
+    var headers = reportHeaders();
+    var rows = reportRows();
+
+    if (!rows.length) {
+      state.statusType = 'warning';
+      state.status = 'Generate a report before exporting CSV.';
+      saveState();
+      renderShell();
+      return;
+    }
+
+    var csv = [
+      headers.map(csvEscape).join(',')
+    ].concat(rows.map(function (row) {
+      return headers.map(function (_, index) {
+        return csvEscape(Array.isArray(row) ? row[index] : '');
+      }).join(',');
+    })).join('\n');
+
+    var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    var url = URL.createObjectURL(blob);
+    var safeName = String(state.reportType || 'report')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'report';
+
+    var anchor = document.createElement('a');
+    var filename = safeName + '-' + new Date().toISOString().slice(0, 10) + '.csv';
+
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+
+    state.lastExportLayout =
+      'CSV Export Generated\n\n' +
+      'Report Type: ' + state.reportType + '\n' +
+      'Rows Exported: ' + rows.length + '\n' +
+      'Columns Exported: ' + headers.length + '\n' +
+      'Export File: ' + filename;
+
+    state.exportCenterConfirmed = true;
+    state.statusType = 'success';
+    state.status = 'CSV export generated for ' + rows.length + ' visible report rows.';
+    saveState();
+    renderShell();
   }
 
   function setValue(root, name, value) {
@@ -9389,7 +10137,6 @@
       'project',
       'pm',
       'engineer',
-      'selectedEngineers',
       'team',
       'organization',
       'contractType',
@@ -9844,7 +10591,12 @@
       '- System stability and API status\n' +
       '- External connections including CRM, Salesforce, Zendesk Sell, Claude, Azure, Brevo, SSO/Auth\n' +
       '- Authentication and security events\n' +
-      '- Report library and saved definitions';
+      '- Report library and saved definitions\n' +
+      '- T&M sales reporting\n' +
+      '- Project billed cost and remaining balance\n' +
+      '- Certify-ready expense accounting breakdown\n' +
+      '- Engineer/project over-under and utilization over-under\n' +
+      '- Vacation/PTO used and missing time reports';
   }
 
   function validateReadiness() {
@@ -9917,7 +10669,7 @@
       '</div>' +
       '<div class="projectpulse-030-three-grid">' +
         '<div class="projectpulse-030-field"><label>Engineer</label><select data-030-field="engineer">' + optionHtml(filterOptions.engineers, state.engineer) + '</select></div>' +
-        '<div class="projectpulse-030-field"><label>Selected Engineers</label><select data-030-field="selectedEngineers">' + optionHtml(filterOptions.selectedEngineers, state.selectedEngineers) + '</select></div>' +
+        '<div class=\"projectpulse-030-field\"><label>Selected Engineers</label>' + selectedEngineerCheckboxHtml() + '</div>' +
         '<div class="projectpulse-030-field"><label>Team</label><select data-030-field="team">' + optionHtml(filterOptions.teams, state.team) + '</select></div>' +
       '</div>' +
       '<div class="projectpulse-030-three-grid">' +
@@ -9967,6 +10719,7 @@
       '</div>' +
       '<div class="projectpulse-030-actions">' +
         '<button type="button" class="projectpulse-030-button primary" data-030-generate>Generate Report Preview</button>' +
+        '<button type="button" class="projectpulse-030-button success" data-030-csv-export>Export Visible Rows CSV</button>' +
         '<button type="button" class="projectpulse-030-button success" data-030-export>Build Export Layout</button>' +
         '<button type="button" class="projectpulse-030-button warning" data-030-save-definition>Save Report Definition Preview</button>' +
       '</div>' +
@@ -10055,7 +10808,6 @@
       'project',
       'pm',
       'engineer',
-      'selectedEngineers',
       'team',
       'organization',
       'contractType',
@@ -10138,7 +10890,36 @@
     });
 
     shell.querySelector('[data-030-generate]').addEventListener('click', generateReportPreview);
+    shell.querySelector('[data-030-csv-export]').addEventListener('click', exportVisibleReportCsv);
+    if (!shell.projectPulse030bSelectionHandlerAttached) {
+      shell.addEventListener('change', function (event) {
+        var target = event.target;
+        if (!target) return;
+
+        if (target.matches('[data-030-selected-engineer-all]')) {
+          if (target.checked) {
+            shell.querySelectorAll('[data-030-selected-engineer]').forEach(function (element) {
+              element.checked = false;
+            });
+          }
+          captureInputs();
+          renderShell();
+        }
+
+        if (target.matches('[data-030-selected-engineer]')) {
+          var all = shell.querySelector('[data-030-selected-engineer-all]');
+          if (all) all.checked = false;
+          captureInputs();
+          renderShell();
+        }
+      });
+
+      shell.projectPulse030bSelectionHandlerAttached = true;
+    }
+    shell.querySelector('[data-030-csv-export]').addEventListener('click', exportVisibleReportCsv);
     shell.querySelector('[data-030-generate-top]').addEventListener('click', generateReportPreview);
+    shell.querySelector('[data-030-csv-export]').addEventListener('click', exportVisibleReportCsv);
+    shell.querySelector('[data-030-csv-export]').addEventListener('click', exportVisibleReportCsv);
     shell.querySelector('[data-030-export]').addEventListener('click', buildExportLayout);
     shell.querySelector('[data-030-save-definition]').addEventListener('click', saveReportDefinition);
     shell.querySelector('[data-030-readiness]').addEventListener('click', validateReadiness);
