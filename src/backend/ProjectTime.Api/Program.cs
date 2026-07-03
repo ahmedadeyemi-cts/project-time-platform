@@ -335,7 +335,7 @@ async Task ProjectPulseAssignDefaultEngineerRoleAsync(NpgsqlConnection connectio
             @reason,
             TRUE
         FROM app_roles r
-        WHERE r.role_code = 'ENGINEER'
+        WHERE r.role_code IN ('ENGINEERING', 'ENGINEER')
           AND r.is_active = TRUE
         ON CONFLICT (user_id, app_role_id) DO UPDATE
         SET is_active = TRUE,
@@ -517,21 +517,21 @@ app.MapGet("/api/work-tasks/summary", async (HttpContext httpContext) =>
     }
 
     var canViewAll =
-        roles.Contains("ADMINISTRATOR")
+        (roles.Contains("SUPER_ADMINISTRATOR") || roles.Contains("ADMINISTRATOR"))
         || roles.Contains("PROJECT_TEAM_COORDINATOR")
         || permissions.Contains("SYSTEM_ADMINISTRATION")
         || permissions.Contains("MANAGE_ALL");
 
     var isProjectManager =
-        roles.Contains("PROJECT_MANAGER")
+        (roles.Contains("PROJECT_MANAGEMENT") || roles.Contains("PROJECT_MANAGER"))
         || roles.Contains("PROJECT_MANAGEMENT");
 
     var canViewBuilder =
         canViewAll
         || isProjectManager
         || roles.Contains("MANAGER")
-        || roles.Contains("ENGINEERING_TEAM_LEAD")
-        || roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD")
+        || (roles.Contains("ENGINEERING_LEAD") || roles.Contains("ENGINEERING_TEAM_LEAD"))
+        || (roles.Contains("PROJECT_MANAGEMENT_LEAD") || roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD"))
         || permissions.Contains("VIEW_WORK_TASK_BUILDER")
         || permissions.Contains("MANAGE_WORK_TASK_BUILDER")
         || permissions.Contains("ASSIGN_WORK_TASKS");
@@ -733,7 +733,7 @@ app.MapGet("/api/work-tasks/summary", async (HttpContext httpContext) =>
             ON r.app_role_id = ura.app_role_id
            AND r.is_active = TRUE
         WHERE u.is_active = TRUE
-          AND r.role_code = 'ENGINEER'
+          AND r.role_code IN ('ENGINEERING', 'ENGINEER')
         ORDER BY team_name, display_name, u.email;
         """, connection))
     {
@@ -856,7 +856,7 @@ app.MapPost("/api/work-tasks/templates", async (HttpContext httpContext) =>
     var canManage = false;
     await using (var accessCommand = new NpgsqlCommand("""
         SELECT BOOL_OR(
-            r.role_code IN ('ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR')
+            r.role_code IN ('SUPER_ADMINISTRATOR', 'ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR')
             OR p.permission_code IN ('MANAGE_WORK_TASK_BUILDER', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL')
         )
         FROM app_user_role_assignments ura
@@ -1067,11 +1067,11 @@ app.MapPost("/api/work-tasks/project-tasks", async (HttpContext httpContext) =>
     await using (var accessCommand = new NpgsqlCommand("""
         SELECT
             BOOL_OR(
-                r.role_code IN ('ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR')
+                r.role_code IN ('SUPER_ADMINISTRATOR', 'ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR')
                 OR p.permission_code IN ('SYSTEM_ADMINISTRATION', 'MANAGE_ALL')
             ) AS can_view_all,
             BOOL_OR(
-                r.role_code IN ('PROJECT_MANAGER', 'PROJECT_MANAGEMENT')
+                r.role_code IN ('PROJECT_MANAGEMENT', 'PROJECT_MANAGER')
                 OR p.permission_code = 'ASSIGN_WORK_TASKS'
             ) AS is_project_manager
         FROM app_user_role_assignments ura
@@ -1257,11 +1257,11 @@ app.MapPost("/api/work-tasks/assignments", async (HttpContext httpContext) =>
     await using (var accessCommand = new NpgsqlCommand("""
         SELECT
             BOOL_OR(
-                r.role_code IN ('ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR')
+                r.role_code IN ('SUPER_ADMINISTRATOR', 'ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR')
                 OR p.permission_code IN ('SYSTEM_ADMINISTRATION', 'MANAGE_ALL')
             ) AS can_view_all,
             BOOL_OR(
-                r.role_code IN ('PROJECT_MANAGER', 'PROJECT_MANAGEMENT')
+                r.role_code IN ('PROJECT_MANAGEMENT', 'PROJECT_MANAGER')
                 OR p.permission_code = 'ASSIGN_WORK_TASKS'
             ) AS is_project_manager
         FROM app_user_role_assignments ura
@@ -1321,7 +1321,7 @@ app.MapPost("/api/work-tasks/assignments", async (HttpContext httpContext) =>
            AND r.is_active = TRUE
         WHERE u.user_id = @engineer_user_id
           AND u.is_active = TRUE
-          AND r.role_code = 'ENGINEER';
+          AND r.role_code IN ('ENGINEERING', 'ENGINEER');
         """, connection))
     {
         engineerCommand.Parameters.AddWithValue("engineer_user_id", engineerUserId.Value);
@@ -2401,16 +2401,16 @@ app.MapGet("/api/project-intake/work-task-handoff", async (HttpContext httpConte
     }
 
     var canViewAll =
-        roles.Contains("ADMINISTRATOR")
+        (roles.Contains("SUPER_ADMINISTRATOR") || roles.Contains("ADMINISTRATOR"))
         || roles.Contains("PROJECT_TEAM_COORDINATOR")
         || permissions.Contains("SYSTEM_ADMINISTRATION")
         || permissions.Contains("MANAGE_ALL");
 
     var canViewManaged =
         roles.Contains("PROJECT_MANAGEMENT")
-        || roles.Contains("PROJECT_MANAGER")
-        || roles.Contains("PM_TEAM_LEAD")
-        || roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD")
+        || (roles.Contains("PROJECT_MANAGEMENT") || roles.Contains("PROJECT_MANAGER"))
+        || (roles.Contains("PROJECT_MANAGEMENT_LEAD") || roles.Contains("PM_TEAM_LEAD"))
+        || (roles.Contains("PROJECT_MANAGEMENT_LEAD") || roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD"))
         || roles.Contains("MANAGER")
         || roles.Contains("PROJECT_COORDINATOR")
         || permissions.Contains("VIEW_PROJECT_INTAKE")
@@ -2420,9 +2420,9 @@ app.MapGet("/api/project-intake/work-task-handoff", async (HttpContext httpConte
     var canManageProjectLinks =
         canViewAll
         || roles.Contains("PROJECT_MANAGEMENT")
-        || roles.Contains("PROJECT_MANAGER")
-        || roles.Contains("PM_TEAM_LEAD")
-        || roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD")
+        || (roles.Contains("PROJECT_MANAGEMENT") || roles.Contains("PROJECT_MANAGER"))
+        || (roles.Contains("PROJECT_MANAGEMENT_LEAD") || roles.Contains("PM_TEAM_LEAD"))
+        || (roles.Contains("PROJECT_MANAGEMENT_LEAD") || roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD"))
         || permissions.Contains("MANAGE_INTAKE_PROJECT_LINKS")
         || permissions.Contains("MANAGE_PROJECT_INTAKE")
         || permissions.Contains("MANAGE_ALL")
@@ -2866,16 +2866,16 @@ app.MapGet("/api/project-intake/project-link-options", async (HttpContext httpCo
     }
 
     var canViewAll =
-        roles.Contains("ADMINISTRATOR")
+        (roles.Contains("SUPER_ADMINISTRATOR") || roles.Contains("ADMINISTRATOR"))
         || roles.Contains("PROJECT_TEAM_COORDINATOR")
         || permissions.Contains("SYSTEM_ADMINISTRATION")
         || permissions.Contains("MANAGE_ALL");
 
     var canViewManaged =
         roles.Contains("PROJECT_MANAGEMENT")
-        || roles.Contains("PROJECT_MANAGER")
-        || roles.Contains("PM_TEAM_LEAD")
-        || roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD")
+        || (roles.Contains("PROJECT_MANAGEMENT") || roles.Contains("PROJECT_MANAGER"))
+        || (roles.Contains("PROJECT_MANAGEMENT_LEAD") || roles.Contains("PM_TEAM_LEAD"))
+        || (roles.Contains("PROJECT_MANAGEMENT_LEAD") || roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD"))
         || permissions.Contains("VIEW_PROJECT_INTAKE")
         || permissions.Contains("VIEW_PROJECT_INTAKE_AGING")
         || permissions.Contains("VIEW_INTAKE_WORK_TASK_HANDOFF")
@@ -2884,9 +2884,9 @@ app.MapGet("/api/project-intake/project-link-options", async (HttpContext httpCo
     var canManageProjectLinks =
         canViewAll
         || roles.Contains("PROJECT_MANAGEMENT")
-        || roles.Contains("PROJECT_MANAGER")
-        || roles.Contains("PM_TEAM_LEAD")
-        || roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD")
+        || (roles.Contains("PROJECT_MANAGEMENT") || roles.Contains("PROJECT_MANAGER"))
+        || (roles.Contains("PROJECT_MANAGEMENT_LEAD") || roles.Contains("PM_TEAM_LEAD"))
+        || (roles.Contains("PROJECT_MANAGEMENT_LEAD") || roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD"))
         || permissions.Contains("MANAGE_INTAKE_PROJECT_LINKS")
         || permissions.Contains("MANAGE_PROJECT_INTAKE");
 
@@ -3145,7 +3145,7 @@ app.MapPost("/api/project-intake/{intakeId:guid}/project-link", async (Guid inta
     }
 
     var canManageAll =
-        roles.Contains("ADMINISTRATOR")
+        (roles.Contains("SUPER_ADMINISTRATOR") || roles.Contains("ADMINISTRATOR"))
         || roles.Contains("PROJECT_TEAM_COORDINATOR")
         || permissions.Contains("SYSTEM_ADMINISTRATION")
         || permissions.Contains("MANAGE_ALL");
@@ -3153,9 +3153,9 @@ app.MapPost("/api/project-intake/{intakeId:guid}/project-link", async (Guid inta
     var canManageProjectLinks =
         canManageAll
         || roles.Contains("PROJECT_MANAGEMENT")
-        || roles.Contains("PROJECT_MANAGER")
-        || roles.Contains("PM_TEAM_LEAD")
-        || roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD")
+        || (roles.Contains("PROJECT_MANAGEMENT") || roles.Contains("PROJECT_MANAGER"))
+        || (roles.Contains("PROJECT_MANAGEMENT_LEAD") || roles.Contains("PM_TEAM_LEAD"))
+        || (roles.Contains("PROJECT_MANAGEMENT_LEAD") || roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD"))
         || permissions.Contains("MANAGE_INTAKE_PROJECT_LINKS")
         || permissions.Contains("MANAGE_PROJECT_INTAKE");
 
@@ -3431,16 +3431,16 @@ app.MapGet("/api/project-intake/resource-assignment-handoff", async (HttpContext
     }
 
     var canViewAll =
-        roles.Contains("ADMINISTRATOR")
+        (roles.Contains("SUPER_ADMINISTRATOR") || roles.Contains("ADMINISTRATOR"))
         || roles.Contains("PROJECT_TEAM_COORDINATOR")
         || permissions.Contains("SYSTEM_ADMINISTRATION")
         || permissions.Contains("MANAGE_ALL");
 
     var canViewManaged =
         roles.Contains("PROJECT_MANAGEMENT")
-        || roles.Contains("PROJECT_MANAGER")
-        || roles.Contains("PM_TEAM_LEAD")
-        || roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD")
+        || (roles.Contains("PROJECT_MANAGEMENT") || roles.Contains("PROJECT_MANAGER"))
+        || (roles.Contains("PROJECT_MANAGEMENT_LEAD") || roles.Contains("PM_TEAM_LEAD"))
+        || (roles.Contains("PROJECT_MANAGEMENT_LEAD") || roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD"))
         || roles.Contains("PROJECT_COORDINATOR")
         || permissions.Contains("VIEW_RESOURCE_ASSIGNMENT_HANDOFF")
         || permissions.Contains("VIEW_INTAKE_WORK_TASK_HANDOFF")
@@ -3451,9 +3451,9 @@ app.MapGet("/api/project-intake/resource-assignment-handoff", async (HttpContext
     var canPromoteResourceAssignments =
         canViewAll
         || roles.Contains("PROJECT_MANAGEMENT")
-        || roles.Contains("PROJECT_MANAGER")
-        || roles.Contains("PM_TEAM_LEAD")
-        || roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD")
+        || (roles.Contains("PROJECT_MANAGEMENT") || roles.Contains("PROJECT_MANAGER"))
+        || (roles.Contains("PROJECT_MANAGEMENT_LEAD") || roles.Contains("PM_TEAM_LEAD"))
+        || (roles.Contains("PROJECT_MANAGEMENT_LEAD") || roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD"))
         || permissions.Contains("MANAGE_RESOURCE_ASSIGNMENT_PROMOTION")
         || permissions.Contains("MANAGE_ENGINEERING_RESOURCE_REQUESTS")
         || permissions.Contains("ASSIGN_WORK_TASKS")
@@ -3950,7 +3950,7 @@ app.MapPost("/api/project-intake/resource-assignment-promotions", async (JsonEle
     }
 
     var canManageAll =
-        roles.Contains("ADMINISTRATOR")
+        (roles.Contains("SUPER_ADMINISTRATOR") || roles.Contains("ADMINISTRATOR"))
         || roles.Contains("PROJECT_TEAM_COORDINATOR")
         || permissions.Contains("SYSTEM_ADMINISTRATION")
         || permissions.Contains("MANAGE_ALL");
@@ -3958,9 +3958,9 @@ app.MapPost("/api/project-intake/resource-assignment-promotions", async (JsonEle
     var canPromoteResourceAssignments =
         canManageAll
         || roles.Contains("PROJECT_MANAGEMENT")
-        || roles.Contains("PROJECT_MANAGER")
-        || roles.Contains("PM_TEAM_LEAD")
-        || roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD")
+        || (roles.Contains("PROJECT_MANAGEMENT") || roles.Contains("PROJECT_MANAGER"))
+        || (roles.Contains("PROJECT_MANAGEMENT_LEAD") || roles.Contains("PM_TEAM_LEAD"))
+        || (roles.Contains("PROJECT_MANAGEMENT_LEAD") || roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD"))
         || permissions.Contains("MANAGE_RESOURCE_ASSIGNMENT_PROMOTION")
         || permissions.Contains("MANAGE_ENGINEERING_RESOURCE_REQUESTS")
         || permissions.Contains("ASSIGN_WORK_TASKS")
@@ -4314,11 +4314,11 @@ app.MapGet("/api/project-intake/aging-summary", async (HttpContext httpContext) 
     await using (var accessCommand = new NpgsqlCommand("""
         SELECT
             BOOL_OR(
-                r.role_code IN ('ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR', 'PROJECT_MANAGER', 'PROJECT_MANAGEMENT', 'PM_TEAM_LEAD', 'PROJECT_MANAGEMENT_TEAM_LEAD')
+                r.role_code IN ('SUPER_ADMINISTRATOR', 'ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR', 'PROJECT_MANAGEMENT', 'PROJECT_MANAGER', 'PROJECT_MANAGEMENT_LEAD', 'PM_TEAM_LEAD', 'PROJECT_MANAGEMENT_TEAM_LEAD')
                 OR p.permission_code IN ('VIEW_PROJECT_INTAKE', 'VIEW_PROJECT_INTAKE_AGING', 'MANAGE_PROJECT_INTAKE', 'MANAGE_PROJECT_INTAKE_AGING', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL')
             ) AS can_view,
             BOOL_OR(
-                r.role_code IN ('ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR')
+                r.role_code IN ('SUPER_ADMINISTRATOR', 'ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR')
                 OR p.permission_code IN ('MANAGE_PROJECT_INTAKE', 'MANAGE_PROJECT_INTAKE_AGING', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL')
             ) AS can_manage
         FROM app_user_role_assignments ura
@@ -4597,7 +4597,7 @@ app.MapPut("/api/project-intake/{intakeId:guid}/post-intake", async (Guid intake
     bool canManage;
     await using (var accessCommand = new NpgsqlCommand("""
         SELECT BOOL_OR(
-            r.role_code IN ('ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR')
+            r.role_code IN ('SUPER_ADMINISTRATOR', 'ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR')
             OR p.permission_code IN ('MANAGE_PROJECT_INTAKE', 'MANAGE_PROJECT_INTAKE_AGING', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL')
         )
         FROM app_user_role_assignments ura
@@ -4761,7 +4761,7 @@ app.MapPost("/api/project-intake/{intakeId:guid}/supporting-documents/upload", a
     bool canManage;
     await using (var accessCommand = new NpgsqlCommand("""
         SELECT BOOL_OR(
-            r.role_code IN ('ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR')
+            r.role_code IN ('SUPER_ADMINISTRATOR', 'ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR')
             OR p.permission_code IN ('MANAGE_PROJECT_INTAKE', 'MANAGE_PROJECT_INTAKE_AGING', 'MANAGE_PROJECT_DOCUMENTS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL')
         )
         FROM app_user_role_assignments ura
@@ -6258,18 +6258,18 @@ app.MapGet("/api/project-management/workload", async (HttpContext httpContext, G
     }
 
     var canViewAll =
-        roles.Contains("ADMINISTRATOR")
+        (roles.Contains("SUPER_ADMINISTRATOR") || roles.Contains("ADMINISTRATOR"))
         || roles.Contains("PROJECT_TEAM_COORDINATOR")
         || permissions.Contains("SYSTEM_ADMINISTRATION")
         || permissions.Contains("MANAGE_ALL");
 
     var isProjectManager =
-        roles.Contains("PROJECT_MANAGER")
+        (roles.Contains("PROJECT_MANAGEMENT") || roles.Contains("PROJECT_MANAGER"))
         || roles.Contains("PROJECT_MANAGEMENT");
 
     var isProjectManagementTeamLead =
-        roles.Contains("PM_TEAM_LEAD")
-        || roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD");
+        (roles.Contains("PROJECT_MANAGEMENT_LEAD") || roles.Contains("PM_TEAM_LEAD"))
+        || (roles.Contains("PROJECT_MANAGEMENT_LEAD") || roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD"));
 
     var canAccess =
         canViewAll
@@ -6303,7 +6303,7 @@ app.MapGet("/api/project-management/workload", async (HttpContext httpContext, G
                     ON r.app_role_id = ura.app_role_id
                    AND r.is_active = TRUE
                 WHERE ura.is_active = TRUE
-                  AND r.role_code IN ('PROJECT_MANAGER', 'PROJECT_MANAGEMENT')
+                  AND r.role_code IN ('PROJECT_MANAGEMENT', 'PROJECT_MANAGER')
             ),
             eligible_pm AS (
                 SELECT user_id FROM project_pm
@@ -6354,7 +6354,7 @@ app.MapGet("/api/project-management/workload", async (HttpContext httpContext, G
                    AND r.is_active = TRUE
                 WHERE tm.effective_start_date <= CURRENT_DATE
                   AND (tm.effective_end_date IS NULL OR tm.effective_end_date >= CURRENT_DATE)
-                  AND r.role_code IN ('PROJECT_MANAGER', 'PROJECT_MANAGEMENT')
+                  AND r.role_code IN ('PROJECT_MANAGEMENT', 'PROJECT_MANAGER')
             ),
             own_pm AS (
                 SELECT @user_id::uuid AS user_id
@@ -6366,7 +6366,7 @@ app.MapGet("/api/project-management/workload", async (HttpContext httpContext, G
                        AND r.is_active = TRUE
                     WHERE ura.user_id = @user_id
                       AND ura.is_active = TRUE
-                      AND r.role_code IN ('PROJECT_MANAGER', 'PROJECT_MANAGEMENT')
+                      AND r.role_code IN ('PROJECT_MANAGEMENT', 'PROJECT_MANAGER')
                 )
             ),
             eligible_pm AS (
@@ -7950,15 +7950,15 @@ app.MapGet("/api/role-admin/summary", async (HttpContext httpContext) =>
 
     var roleDefinitionMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
     {
-        ["ADMINISTRATOR"] = "Full platform administrator. Can manage users, roles, security configuration, system administration, and all modules.",
+        ["SUPER_ADMINISTRATOR"] = "Full platform administrator. Can manage users, roles, security configuration, system administration, and all modules.",
         ["PROJECT_TEAM_COORDINATOR"] = "Operations coordinator with broad project, intake, time, billing, reconciliation, customer, and work-task coordination access.",
         ["PROJECT_MANAGEMENT"] = "Project manager role for managing assigned projects, project workspace activity, project workload, intake aging visibility, work-task assignment, and project validation workflows.",
         ["PROJECT_MANAGER"] = "Legacy or alternate project manager role. Used for assigned project ownership and project-scoped work-task assignment where still present.",
         ["PM_TEAM_LEAD"] = "Project management team lead role. Used to review PM workload and project-management team visibility where configured.",
-        ["PROJECT_MANAGEMENT_TEAM_LEAD"] = "Project management team lead role. Provides team-level visibility for PM workload, intake aging, and related project-management oversight.",
+        ["PROJECT_MANAGEMENT_LEAD"] = "Project management team lead role. Provides team-level visibility for PM workload, intake aging, and related project-management oversight.",
         ["MANAGER"] = "People manager role. Reviews team time, approvals, utilization visibility, and manager-scoped operational activity.",
-        ["ENGINEERING_TEAM_LEAD"] = "Engineering team lead role. Reviews engineering team utilization and assigned engineering work within team scope.",
-        ["ENGINEER"] = "Engineer role. Enters own time, views assigned work, sees own utilization, holidays, and assigned project workspace content.",
+        ["ENGINEERING_LEAD"] = "Engineering team lead role. Reviews engineering team utilization and assigned engineering work within team scope.",
+        ["ENGINEERING"] = "Engineering role. Enters own time, views assigned work, sees own utilization, holidays, and assigned project workspace content.",
         ["EXECUTIVE"] = "Executive/readiness role focused on high-level reporting, workflow visibility, and operational summaries without management write access.",
         ["PMO"] = "Legacy PMO role retained for compatibility where older records still reference it."
     };
@@ -8820,9 +8820,9 @@ async Task<bool> RequestUserCanAccessCostAlertsAsync(HttpContext context, Npgsql
               AND ura.is_active = TRUE
               AND r.is_active = TRUE
               AND (
-                    (NOT @require_manage AND r.role_code IN ('ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR', 'PROJECT_MANAGEMENT', 'PROJECT_MANAGER', 'MANAGER'))
+                    (NOT @require_manage AND r.role_code IN ('SUPER_ADMINISTRATOR', 'ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR', 'PROJECT_MANAGEMENT', 'PROJECT_MANAGER', 'MANAGER'))
                  OR (NOT @require_manage AND p.permission_code IN ('VIEW_COST_ALERTS', 'MANAGE_COST_ALERTS', 'MANAGE_ALL', 'SYSTEM_ADMINISTRATION'))
-                 OR (@require_manage AND r.role_code IN ('ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR'))
+                 OR (@require_manage AND r.role_code IN ('SUPER_ADMINISTRATOR', 'ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR'))
                  OR (@require_manage AND p.permission_code IN ('MANAGE_COST_ALERTS', 'MANAGE_ALL', 'SYSTEM_ADMINISTRATION'))
               )
         );
@@ -8857,7 +8857,7 @@ async Task<bool> RequestUserCanManageCustomersAsync(HttpContext context, NpgsqlC
               AND ura.is_active = TRUE
               AND r.is_active = TRUE
               AND (
-                    r.role_code IN ('ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR')
+                    r.role_code IN ('SUPER_ADMINISTRATOR', 'ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR')
                  OR p.permission_code IN ('MANAGE_CUSTOMERS', 'MANAGE_ALL', 'SYSTEM_ADMINISTRATION')
               )
         );
@@ -8890,7 +8890,7 @@ async Task<bool> RequestUserCanAccessUserAdministrationAsync(HttpContext context
               AND ura.is_active = TRUE
               AND r.is_active = TRUE
               AND (
-                    r.role_code IN ('ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR')
+                    r.role_code IN ('SUPER_ADMINISTRATOR', 'ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR')
                  OR p.permission_code IN ('VIEW_USER_ADMIN', 'MANAGE_USER_ADMIN', 'MANAGE_ALL')
               )
         );
@@ -8925,7 +8925,7 @@ async Task<bool> SessionUserIsAdministratorAsync(NpgsqlConnection connection, Gu
             JOIN app_roles r ON r.app_role_id = ura.app_role_id
             WHERE ura.user_id = @user_id
               AND ura.is_active = TRUE
-              AND r.role_code = 'ADMINISTRATOR'
+              AND r.role_code IN ('SUPER_ADMINISTRATOR', 'ADMINISTRATOR')
               AND r.is_active = TRUE
         );
         """, connection);
@@ -10424,7 +10424,7 @@ app.MapPost("/api/admin/azure/config", async (AzureAdminConfigRequest request, H
             redirect_uri = NULLIF(@redirect_uri, ''),
             graph_scope = COALESCE(NULLIF(@graph_scope, ''), 'User.Read.All Directory.Read.All'),
             sync_enabled = @sync_enabled,
-            default_role_code = COALESCE(NULLIF(@default_role_code, ''), 'ENGINEER'),
+            default_role_code = COALESCE(NULLIF(@default_role_code, ''), 'ENGINEERING'),
             sync_frequency_hours = GREATEST(@sync_frequency_hours, 1),
             updated_by_email = @updated_by_email,
             updated_at = NOW()
@@ -10442,7 +10442,7 @@ app.MapPost("/api/admin/azure/config", async (AzureAdminConfigRequest request, H
     command.Parameters.AddWithValue("redirect_uri", request.RedirectUri?.Trim() ?? "");
     command.Parameters.AddWithValue("graph_scope", request.GraphScope?.Trim() ?? "User.Read.All Directory.Read.All");
     command.Parameters.AddWithValue("sync_enabled", request.SyncEnabled);
-    command.Parameters.AddWithValue("default_role_code", string.IsNullOrWhiteSpace(request.DefaultRoleCode) ? "ENGINEER" : request.DefaultRoleCode.Trim().ToUpperInvariant());
+    command.Parameters.AddWithValue("default_role_code", string.IsNullOrWhiteSpace(request.DefaultRoleCode) ? "ENGINEERING" : request.DefaultRoleCode.Trim().ToUpperInvariant());
     command.Parameters.AddWithValue("sync_frequency_hours", request.SyncFrequencyHours <= 0 ? 24 : request.SyncFrequencyHours);
     command.Parameters.AddWithValue("updated_by_email", updatedBy);
 
@@ -10657,7 +10657,7 @@ app.MapPost("/api/admin/azure/users/import", async (AzureUserImportRequest reque
                 )
                 SELECT @user_id, r.app_role_id, 'Default Engineer role from Azure/Entra import', TRUE
                 FROM app_roles r
-                WHERE r.role_code = 'ENGINEER'
+                WHERE r.role_code IN ('ENGINEERING', 'ENGINEER')
                 ON CONFLICT (user_id, app_role_id) DO UPDATE
                 SET is_active = TRUE,
                     assignment_reason = EXCLUDED.assignment_reason,
@@ -11086,7 +11086,7 @@ app.MapPost("/api/admin/user-admin/users/roles", async (UserAdminRoleUpdateReque
             .Distinct()
             .ToList();
 
-        if (sessionUserId == request.UserId && !cleanRoleCodes.Contains("ADMINISTRATOR"))
+        if (sessionUserId == request.UserId && !(cleanRoleCodes.Contains("SUPER_ADMINISTRATOR") || cleanRoleCodes.Contains("ADMINISTRATOR")))
         {
             await transaction.RollbackAsync();
             return Results.BadRequest(new
@@ -11319,7 +11319,7 @@ app.MapPost("/api/admin/user-admin/users/local", async (UserAdminLocalUserCreate
 
         if (cleanRoleCodes.Count == 0)
         {
-            cleanRoleCodes.Add("ENGINEER");
+            cleanRoleCodes.Add("ENGINEERING");
         }
 
         await using (var userCommand = new NpgsqlCommand("""
@@ -11828,7 +11828,7 @@ app.MapPost("/api/admin/user-admin/users/bulk-update", async (UserAdminBulkUpdat
 
     if (sessionUserId is not null && userIds.Contains(sessionUserId.Value))
     {
-        if (roleMode == "replace" && !cleanRoleCodes.Contains("ADMINISTRATOR"))
+        if (roleMode == "replace" && !(cleanRoleCodes.Contains("SUPER_ADMINISTRATOR") || cleanRoleCodes.Contains("ADMINISTRATOR")))
         {
             return Results.BadRequest(new
             {
@@ -11837,7 +11837,7 @@ app.MapPost("/api/admin/user-admin/users/bulk-update", async (UserAdminBulkUpdat
             });
         }
 
-        if (roleMode == "remove" && cleanRoleCodes.Contains("ADMINISTRATOR"))
+        if (roleMode == "remove" && (cleanRoleCodes.Contains("SUPER_ADMINISTRATOR") || cleanRoleCodes.Contains("ADMINISTRATOR")))
         {
             return Results.BadRequest(new
             {
@@ -14124,7 +14124,7 @@ async Task<bool> ProjectAllocationUserHasPermissionAsync(NpgsqlConnection connec
               AND ura.is_active = TRUE
               AND r.is_active = TRUE
               AND (
-                    r.role_code = 'ADMINISTRATOR'
+                    r.role_code IN ('SUPER_ADMINISTRATOR', 'ADMINISTRATOR')
                  OR p.permission_code = ANY(@permission_codes)
               )
         );
@@ -15023,14 +15023,14 @@ app.MapGet("/api/utilization/engineering-team-summary", async (int? year, Guid? 
     }
 
     var canViewAll =
-        roles.Contains("ADMINISTRATOR")
+        (roles.Contains("SUPER_ADMINISTRATOR") || roles.Contains("ADMINISTRATOR"))
         || roles.Contains("PROJECT_TEAM_COORDINATOR")
         || permissions.Contains("SYSTEM_ADMINISTRATION")
         || permissions.Contains("MANAGE_ALL");
 
-    var isEngineeringTeamLead = roles.Contains("ENGINEERING_TEAM_LEAD");
+    var isEngineeringTeamLead = (roles.Contains("ENGINEERING_LEAD") || roles.Contains("ENGINEERING_TEAM_LEAD"));
     var isManager = roles.Contains("MANAGER");
-    var isEngineer = roles.Contains("ENGINEER");
+    var isEngineer = (roles.Contains("ENGINEERING") || roles.Contains("ENGINEER"));
 
     var canUseTeamScope =
         !canViewAll
@@ -15074,7 +15074,7 @@ app.MapGet("/api/utilization/engineering-team-summary", async (int? year, Guid? 
                 ON r.app_role_id = ura.app_role_id
                AND r.is_active = TRUE
             WHERE u.is_active = TRUE
-              AND r.role_code = 'ENGINEER'
+              AND r.role_code IN ('ENGINEERING', 'ENGINEER')
             ORDER BY team_name, display_name, u.email;
             """, connection);
 
@@ -15147,7 +15147,7 @@ app.MapGet("/api/utilization/engineering-team-summary", async (int? year, Guid? 
             JOIN app_roles r
                 ON r.app_role_id = ura.app_role_id
                AND r.is_active = TRUE
-            WHERE r.role_code = 'ENGINEER'
+            WHERE r.role_code IN ('ENGINEERING', 'ENGINEER')
             ORDER BY team_name, display_name, u.email;
             """, connection);
 
@@ -15477,7 +15477,7 @@ app.MapGet("/api/utilization/manager-team-summary", async (int? year, HttpContex
         sessionRoles = reader.GetFieldValue<string[]>(1).ToList();
     }
 
-    var isAdministrator = sessionRoles.Contains("ADMINISTRATOR");
+    var isAdministrator = (sessionRoles.Contains("SUPER_ADMINISTRATOR") || sessionRoles.Contains("ADMINISTRATOR"));
     var isCoordinator = sessionRoles.Contains("PROJECT_TEAM_COORDINATOR");
     var isManager = sessionRoles.Contains("MANAGER");
 
@@ -15741,7 +15741,7 @@ async Task<bool> ProjectPulseUserIsAzureAdministratorAsync(NpgsqlConnection conn
             WHERE ura.user_id = @user_id
               AND ura.is_active = TRUE
               AND r.is_active = TRUE
-              AND r.role_code = 'ADMINISTRATOR'
+              AND r.role_code IN ('SUPER_ADMINISTRATOR', 'ADMINISTRATOR')
         );
         """, connection);
 
@@ -16683,7 +16683,7 @@ app.MapPost("/api/admin/azure/import-settings", async (HttpContext httpContext, 
     var tenantDomain = (request.TenantDomain ?? "").Trim().ToLowerInvariant();
     var sourceProvider = (request.SourceProvider ?? "ENTRA_ID_TEST").Trim().ToUpperInvariant();
     var importSourceType = (request.ImportSourceType ?? "ALL_USERS").Trim().ToUpperInvariant();
-    var defaultRoleCode = (request.DefaultRoleCode ?? "ENGINEER").Trim().ToUpperInvariant();
+    var defaultRoleCode = (request.DefaultRoleCode ?? "ENGINEERING").Trim().ToUpperInvariant();
 
     if (environmentMode == "production")
     {
@@ -23572,6 +23572,572 @@ static bool ProjectPulse022CValidSeverity(string severity)
 // 022C Production Notification Preferences + Routing Rules - END
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+// 030_REPORT_API_JSON_SAFE_START
+app.MapPost("/api/reports/030/preview", async (HttpRequest request) =>
+{
+    // 030_REPORT_API_DATABASECONFIG_FROM_ENV_FIX
+    // 030_REPORT_API_SOURCE_TABLE_AND_MESSAGE_FIX
+    var config = DatabaseConfig.FromEnvironment();
+    var missingConfigResult = ValidateConfig(config);
+    if (missingConfigResult is not null)
+    {
+        return missingConfigResult;
+    }
+
+
+    JsonDocument? document = null;
+
+    try
+    {
+        string rawBody = await new StreamReader(request.Body).ReadToEndAsync();
+
+        document = string.IsNullOrWhiteSpace(rawBody)
+            ? JsonDocument.Parse("{}")
+            : JsonDocument.Parse(rawBody);
+
+        JsonElement root = document.RootElement;
+
+        string reportType = ProjectPulse030SafeReadString(root, "reportType", "type", "reportName");
+
+        if (string.IsNullOrWhiteSpace(reportType))
+        {
+            reportType = "Accounting Invoice Detail Report";
+        }
+
+        await using var connection = new NpgsqlConnection(config.ConnectionString);
+        await connection.OpenAsync();
+        var result = await ProjectPulse030BuildSafeDatabaseReportAsync(connection, reportType, root);
+
+        return Results.Json(result);
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new
+        {
+            databaseBacked = true,
+            error = true,
+            reportType = "030 Report Preview",
+            category = "error",
+            sourceTable = "",
+            columns = new[] { "Error" },
+            rows = Array.Empty<object?[]>(),
+            rowCount = 0,
+            message = "Report generation failed. No report rows were returned.",
+            exceptionType = ex.GetType().FullName,
+            detail = ex.Message
+        });
+    }
+    finally
+    {
+        document?.Dispose();
+    }
+});
+// 030_REPORT_API_JSON_SAFE_END
+
+// 030_REPORT_API_JSON_SAFE_HELPERS_START
+
+static async Task<NpgsqlConnection> ProjectPulse030OpenConnectionAsync(IServiceProvider services)
+{
+    var dataSource = services.GetService(typeof(NpgsqlDataSource)) as NpgsqlDataSource;
+
+    if (dataSource is not null)
+    {
+        return await dataSource.OpenConnectionAsync();
+    }
+
+    var configuration = services.GetService(typeof(Microsoft.Extensions.Configuration.IConfiguration)) as Microsoft.Extensions.Configuration.IConfiguration;
+
+    var candidates = new[]
+    {
+        configuration?["ConnectionStrings:ProjectPulse"],
+        configuration?["ConnectionStrings:DefaultConnection"],
+        configuration?["ConnectionStrings:ProjectTime"],
+        configuration?["PROJECTPULSE_CONNECTION_STRING"],
+        configuration?["PROJECTTIME_DATABASE_CONNECTION"],
+        configuration?["DATABASE_URL"],
+        Environment.GetEnvironmentVariable("ConnectionStrings__ProjectPulse"),
+        Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection"),
+        Environment.GetEnvironmentVariable("ConnectionStrings__ProjectTime"),
+        Environment.GetEnvironmentVariable("PROJECTPULSE_CONNECTION_STRING"),
+        Environment.GetEnvironmentVariable("PROJECTTIME_DATABASE_CONNECTION"),
+        Environment.GetEnvironmentVariable("DATABASE_URL")
+    };
+
+    string? connectionString = candidates.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+
+    if (string.IsNullOrWhiteSpace(connectionString))
+    {
+        throw new InvalidOperationException("No database connection string or NpgsqlDataSource was available to the 030 reporting API.");
+    }
+
+    var connection = new NpgsqlConnection(connectionString);
+    await connection.OpenAsync();
+
+    return connection;
+}
+
+static string ProjectPulse030SafeReadString(JsonElement root, params string[] names)
+{
+    if (root.ValueKind != JsonValueKind.Object)
+    {
+        return string.Empty;
+    }
+
+    foreach (var name in names)
+    {
+        if (root.TryGetProperty(name, out var element))
+        {
+            if (element.ValueKind == JsonValueKind.String)
+            {
+                return element.GetString() ?? string.Empty;
+            }
+
+            if (element.ValueKind == JsonValueKind.Number || element.ValueKind == JsonValueKind.True || element.ValueKind == JsonValueKind.False)
+            {
+                return element.ToString();
+            }
+        }
+    }
+
+    return string.Empty;
+}
+
+static string ProjectPulse030SafeCategory(string reportType)
+{
+    string value = (reportType ?? string.Empty).ToLowerInvariant();
+
+    if (value.Contains("accounting") || value.Contains("invoice")) return "accounting";
+    if (value.Contains("time entry")) return "time";
+    if (value.Contains("customer")) return "customer";
+    if (value.Contains("project report")) return "project";
+    if (value.Contains("pm")) return "pm";
+    if (value.Contains("selected engineer") || value.Contains("engineer")) return "engineer";
+    if (value.Contains("team") || value.Contains("organization")) return "team";
+    if (value.Contains("workflow") || value.Contains("approval") || value.Contains("audit")) return "audit";
+    if (value.Contains("system")) return "system";
+    if (value.Contains("api")) return "api";
+    if (value.Contains("external")) return "external";
+    if (value.Contains("authentication") || value.Contains("security")) return "auth";
+    if (value.Contains("ai") || value.Contains("sow")) return "ai";
+    if (value.Contains("notification")) return "notification";
+    if (value.Contains("uat")) return "uat";
+    if (value.Contains("library")) return "library";
+    if (value.Contains("executive")) return "executive";
+
+    return "accounting";
+}
+
+static async Task<object> ProjectPulse030BuildSafeDatabaseReportAsync(NpgsqlConnection connection, string reportType, JsonElement criteria)
+{
+    string category = ProjectPulse030SafeCategory(reportType);
+    var table = await ProjectPulse030FindSafeReportTableAsync(connection, category);
+
+    if (string.IsNullOrWhiteSpace(table.Schema) || string.IsNullOrWhiteSpace(table.Name))
+    {
+        return new
+        {
+            databaseBacked = true,
+            reportType,
+            category,
+            sourceTable = "",
+            columns = new[] { "Message" },
+            rows = Array.Empty<object?[]>(),
+            rowCount = 0,
+            message = $"No database table is currently configured for report category '{category}'."
+        };
+    }
+
+    var columns = await ProjectPulse030GetSafeColumnsAsync(connection, table.Schema, table.Name);
+
+    if (columns.Count == 0)
+    {
+        return new
+        {
+            databaseBacked = true,
+            reportType,
+            category,
+            sourceTable = $"{table.Schema}.{table.Name}",
+            columns = new[] { "Message" },
+            rows = Array.Empty<object?[]>(),
+            rowCount = 0,
+            message = $"The selected report source '{table.Schema}.{table.Name}' did not expose reportable columns through the database connection."
+        };
+    }
+
+    var selectedColumns = ProjectPulse030SelectSafeColumns(category, columns);
+    var where = ProjectPulse030BuildSafeWhereClause(criteria, selectedColumns);
+
+    string orderBy = selectedColumns.Any(c => string.Equals(c.Name, "created_at", StringComparison.OrdinalIgnoreCase))
+        ? " ORDER BY " + ProjectPulse030Quote("created_at") + " DESC NULLS LAST"
+        : "";
+
+    string sql =
+        "SELECT " + string.Join(", ", selectedColumns.Select(c => ProjectPulse030Quote(c.Name))) +
+        " FROM " + ProjectPulse030Quote(table.Schema) + "." + ProjectPulse030Quote(table.Name) +
+        where.Sql +
+        orderBy +
+        " LIMIT 250;";
+
+    await using var command = new NpgsqlCommand(sql, connection);
+
+    foreach (var parameter in where.Parameters)
+    {
+        command.Parameters.AddWithValue(parameter.Key, parameter.Value);
+    }
+
+    var rows = new List<object?[]>();
+
+    await using (var reader = await command.ExecuteReaderAsync())
+    {
+        while (await reader.ReadAsync())
+        {
+            var row = new object?[selectedColumns.Count];
+
+            for (int i = 0; i < selectedColumns.Count; i++)
+            {
+                row[i] = reader.IsDBNull(i) ? null : ProjectPulse030SafeFormatValue(reader.GetValue(i));
+            }
+
+            rows.Add(row);
+        }
+    }
+
+    string message = rows.Count == 0
+        ? $"No database rows matched the selected criteria from '{table.Schema}.{table.Name}'."
+        : $"Database-backed report generated from '{table.Schema}.{table.Name}'. Rows shown are actual database rows.";
+
+    return new
+    {
+        databaseBacked = true,
+        reportType,
+        category,
+        sourceTable = $"{table.Schema}.{table.Name}",
+        columns = selectedColumns.Select(c => ProjectPulse030Display(c.Name)).ToArray(),
+        columnKeys = selectedColumns.Select(c => c.Name).ToArray(),
+        rows,
+        rowCount = rows.Count,
+        message
+    };
+}
+
+static object ProjectPulse030SafeFormatValue(object value)
+{
+    if (value is DateTime dateTime)
+    {
+        return dateTime.ToString("yyyy-MM-dd HH:mm:ss");
+    }
+
+    if (value is DateTimeOffset dateTimeOffset)
+    {
+        return dateTimeOffset.ToString("yyyy-MM-dd HH:mm:ss zzz");
+    }
+
+    if (value is bool boolValue)
+    {
+        return boolValue ? "Yes" : "No";
+    }
+
+    return value;
+}
+
+static string ProjectPulse030Display(string columnName)
+{
+    string cleaned = columnName.Replace("_", " ").Replace("-", " ").Trim();
+
+    if (string.IsNullOrWhiteSpace(cleaned))
+    {
+        return columnName;
+    }
+
+    return string.Join(" ", cleaned.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+        .Select(part => part.Length == 0 ? part : char.ToUpperInvariant(part[0]) + part.Substring(1)));
+}
+
+static string ProjectPulse030Quote(string value)
+{
+    return "\"" + value.Replace("\"", "\"\"") + "\"";
+}
+
+static async Task<(string Schema, string Name)> ProjectPulse030FindSafeReportTableAsync(NpgsqlConnection connection, string category)
+{
+    var tables = new List<(string Schema, string Name, long Estimate)>();
+
+    await using (var command = new NpgsqlCommand(@"
+SELECT
+    schemaname,
+    relname,
+    COALESCE(n_live_tup, 0)::bigint AS row_estimate
+FROM pg_stat_user_tables
+ORDER BY schemaname, relname;", connection))
+    await using (var reader = await command.ExecuteReaderAsync())
+    {
+        while (await reader.ReadAsync())
+        {
+            tables.Add((reader.GetString(0), reader.GetString(1), reader.GetInt64(2)));
+        }
+    }
+
+    string[] preferred = ProjectPulse030PreferredSafeTokens(category);
+    string[] allowedReportingTables = ProjectPulse030AllowedReportingTables(category);
+
+    var scored = tables
+        .Select(t => new
+        {
+            Table = t,
+            Score = ProjectPulse030ScoreSafeTable(category, t.Name, preferred, allowedReportingTables, t.Estimate)
+        })
+        .Where(x => x.Score > 0)
+        .OrderByDescending(x => x.Score)
+        .ThenByDescending(x => x.Table.Estimate)
+        .ThenBy(x => x.Table.Name)
+        .ToList();
+
+    if (scored.Count == 0)
+    {
+        return ("", "");
+    }
+
+    return (scored[0].Table.Schema, scored[0].Table.Name);
+}
+
+static string[] ProjectPulse030PreferredSafeTokens(string category)
+{
+    return category switch
+    {
+        "accounting" => new[] { "invoice", "billing", "export", "time_entry", "time_entries", "timesheet" },
+        "time" => new[] { "time_entry", "time_entries", "timesheet", "time" },
+        "customer" => new[] { "customer", "customers" },
+        "project" => new[] { "project", "projects" },
+        "pm" => new[] { "project", "assignment", "time_entry", "time_entries", "user", "users" },
+        "engineer" => new[] { "time_entry", "time_entries", "timesheet", "user", "users", "assignment" },
+        "team" => new[] { "team", "teams", "user", "users", "time_entry", "time_entries" },
+        "audit" => new[] { "audit", "event", "events", "approval", "export" },
+        "system" => new[] { "reporting_system_health_catalog" },
+        "api" => new[] { "reporting_api_status_catalog" },
+        "external" => new[] { "reporting_external_connection_catalog" },
+        "auth" => new[] { "session", "auth", "login", "view_as", "audit" },
+        "ai" => new[] { "sow_ai_time_entry_drafts", "sow_ai_time_entry_scope_checks", "sow_ai_time_entry_ai_provider_readiness" },
+        "notification" => new[] { "production_notification_events", "time_compliance_notification_delivery_events", "system_email_provider_test_events" },
+        "uat" => new[] { "uat_evidence_capture_events", "uat_workflow_validation_scenarios", "uat_role_validation_matrix" },
+        "library" => new[] { "reporting_saved_report_definitions", "reporting_templates" },
+        "executive" => new[] { "reporting_execution_events", "reporting_data_domains", "project", "time_entry", "invoice" },
+        _ => new[] { "time_entry", "project", "customer" }
+    };
+}
+
+static string[] ProjectPulse030AllowedReportingTables(string category)
+{
+    return category switch
+    {
+        "system" => new[] { "reporting_system_health_catalog" },
+        "api" => new[] { "reporting_api_status_catalog" },
+        "external" => new[] { "reporting_external_connection_catalog" },
+        "library" => new[] { "reporting_saved_report_definitions", "reporting_templates" },
+        "executive" => new[] { "reporting_execution_events", "reporting_data_domains" },
+        _ => Array.Empty<string>()
+    };
+}
+
+static int ProjectPulse030ScoreSafeTable(string category, string tableName, string[] preferredTokens, string[] allowedReportingTables, long rowEstimate)
+{
+    string name = tableName.ToLowerInvariant();
+    int score = 0;
+
+    if (name.StartsWith("reporting_") && !allowedReportingTables.Contains(name))
+    {
+        return 0;
+    }
+
+    foreach (var token in preferredTokens)
+    {
+        string loweredToken = token.ToLowerInvariant();
+
+        if (name == loweredToken)
+        {
+            score += 100;
+        }
+        else if (name.Contains(loweredToken))
+        {
+            score += 35;
+        }
+    }
+
+    if (rowEstimate > 0)
+    {
+        score += 15;
+    }
+
+    if (name.Contains("archive") || name.Contains("backup") || name.Contains("test"))
+    {
+        score -= 30;
+    }
+
+    return score;
+}
+
+static async Task<List<(string Name, string DataType)>> ProjectPulse030GetSafeColumnsAsync(NpgsqlConnection connection, string schema, string table)
+{
+    // 030_REPORT_API_GET_COLUMNS_PG_CATALOG_FIX
+    // Use pg_catalog first, then information_schema as a fallback.
+    var columns = new List<(string Name, string DataType)>();
+
+    await using (var command = new NpgsqlCommand(@"
+SELECT
+    a.attname AS column_name,
+    pg_catalog.format_type(a.atttypid, a.atttypmod) AS data_type
+FROM pg_catalog.pg_attribute a
+JOIN pg_catalog.pg_class c
+  ON c.oid = a.attrelid
+JOIN pg_catalog.pg_namespace n
+  ON n.oid = c.relnamespace
+WHERE n.nspname = @schema
+  AND c.relname = @table
+  AND a.attnum > 0
+  AND NOT a.attisdropped
+ORDER BY a.attnum;", connection))
+    {
+        command.Parameters.AddWithValue("schema", schema);
+        command.Parameters.AddWithValue("table", table);
+
+        await using var reader = await command.ExecuteReaderAsync();
+
+        while (await reader.ReadAsync())
+        {
+            columns.Add((reader.GetString(0), reader.GetString(1)));
+        }
+    }
+
+    if (columns.Count > 0)
+    {
+        return columns;
+    }
+
+    await using (var fallbackCommand = new NpgsqlCommand(@"
+SELECT column_name, data_type
+FROM information_schema.columns
+WHERE table_schema = @schema
+  AND table_name = @table
+ORDER BY ordinal_position;", connection))
+    {
+        fallbackCommand.Parameters.AddWithValue("schema", schema);
+        fallbackCommand.Parameters.AddWithValue("table", table);
+
+        await using var fallbackReader = await fallbackCommand.ExecuteReaderAsync();
+
+        while (await fallbackReader.ReadAsync())
+        {
+            columns.Add((fallbackReader.GetString(0), fallbackReader.GetString(1)));
+        }
+    }
+
+    return columns;
+}
+
+static List<(string Name, string DataType)> ProjectPulse030SelectSafeColumns(string category, List<(string Name, string DataType)> columns)
+{
+    string[] preferred = category switch
+    {
+        "accounting" => new[] { "invoice", "customer", "project", "engagement", "contract", "po", "quote", "description", "hours", "quantity", "rate", "amount", "work", "location", "status", "date", "created", "approved", "exported" },
+        "time" => new[] { "time", "entry", "date", "customer", "project", "engineer", "user", "hours", "status", "billable", "description", "notes", "approved", "submitted", "created" },
+        "customer" => new[] { "customer", "name", "status", "created", "updated" },
+        "project" => new[] { "project", "customer", "pm", "manager", "status", "sow", "gsd", "assignment", "created", "updated" },
+        "pm" => new[] { "pm", "project_manager", "manager", "project", "customer", "status", "created", "updated" },
+        "engineer" => new[] { "engineer", "user", "display", "email", "team", "project", "hours", "status", "created", "updated" },
+        "team" => new[] { "team", "user", "engineer", "manager", "hours", "status", "created", "updated" },
+        "audit" => new[] { "event", "audit", "actor", "role", "action", "status", "created", "timestamp", "notes" },
+        "system" => new[] { "component", "health", "status", "notes", "created" },
+        "api" => new[] { "api", "path", "module", "status", "success", "created" },
+        "external" => new[] { "connection", "provider", "type", "owner", "status", "created" },
+        "auth" => new[] { "auth", "session", "user", "role", "status", "created" },
+        "ai" => new[] { "ai", "sow", "scope", "draft", "engineer", "project", "status", "created" },
+        "notification" => new[] { "notification", "provider", "recipient", "status", "created" },
+        "uat" => new[] { "scenario", "role", "workflow", "evidence", "status", "created" },
+        "library" => new[] { "report", "template", "criteria", "owner", "cadence", "format", "status", "created" },
+        "executive" => new[] { "domain", "name", "description", "audience", "owner", "created" },
+        _ => new[] { "id", "name", "status", "created" }
+    };
+
+    var selected = columns
+        .Select(c => new
+        {
+            Column = c,
+            Score = preferred.Any(p => c.Name.Contains(p, StringComparison.OrdinalIgnoreCase)) ? 20 : 0
+        })
+        .OrderByDescending(x => x.Score)
+        .ThenBy(x => columns.FindIndex(c => c.Name == x.Column.Name))
+        .Select(x => x.Column)
+        .Take(24)
+        .ToList();
+
+    if (selected.Count == 0)
+    {
+        selected = columns.Take(24).ToList();
+    }
+
+    return selected;
+}
+
+static (string Sql, Dictionary<string, object> Parameters) ProjectPulse030BuildSafeWhereClause(JsonElement criteria, List<(string Name, string DataType)> columns)
+{
+    var whereParts = new List<string>();
+    var parameters = new Dictionary<string, object>();
+
+    void AddTextFilter(string fieldName, string[] columnTokens)
+    {
+        string value = ProjectPulse030SafeReadString(criteria, fieldName);
+
+        if (string.IsNullOrWhiteSpace(value) || string.Equals(value, "All", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var matchingColumns = columns
+            .Where(c => columnTokens.Any(token => c.Name.Contains(token, StringComparison.OrdinalIgnoreCase)))
+            .Take(4)
+            .ToList();
+
+        if (matchingColumns.Count == 0)
+        {
+            return;
+        }
+
+        string parameterName = "p" + parameters.Count;
+        parameters[parameterName] = "%" + value + "%";
+
+        whereParts.Add("(" + string.Join(" OR ", matchingColumns.Select(c => ProjectPulse030Quote(c.Name) + "::text ILIKE @" + parameterName)) + ")");
+    }
+
+    AddTextFilter("customer", new[] { "customer", "client" });
+    AddTextFilter("project", new[] { "project", "engagement" });
+    AddTextFilter("pm", new[] { "pm", "project_manager", "manager" });
+    AddTextFilter("engineer", new[] { "engineer", "user", "employee", "display", "email" });
+    AddTextFilter("team", new[] { "team", "department" });
+    AddTextFilter("contractType", new[] { "contract" });
+    AddTextFilter("timeEntryStatus", new[] { "status" });
+    AddTextFilter("approvalStatus", new[] { "approval", "status" });
+    AddTextFilter("invoiceStatus", new[] { "invoice", "status" });
+    AddTextFilter("workCode", new[] { "work_code", "work" });
+    AddTextFilter("workLocation", new[] { "location" });
+
+    return (whereParts.Count == 0 ? "" : " WHERE " + string.Join(" AND ", whereParts), parameters);
+}
+
+// 030_REPORT_API_JSON_SAFE_HELPERS_END
+
+
 app.Run();
 
 
@@ -25575,7 +26141,7 @@ async Task<ApprovalExportWorkflowAccess> LoadApprovalExportWorkflowAccessAsync(N
     }
 
     var canViewAll =
-        roles.Contains("ADMINISTRATOR")
+        (roles.Contains("SUPER_ADMINISTRATOR") || roles.Contains("ADMINISTRATOR"))
         || roles.Contains("PROJECT_TEAM_COORDINATOR")
         || permissions.Contains("SYSTEM_ADMINISTRATION")
         || permissions.Contains("MANAGE_ALL");
@@ -25583,7 +26149,7 @@ async Task<ApprovalExportWorkflowAccess> LoadApprovalExportWorkflowAccessAsync(N
     var canProjectApprove =
         canViewAll
         || roles.Contains("PROJECT_MANAGEMENT")
-        || roles.Contains("PROJECT_MANAGER")
+        || (roles.Contains("PROJECT_MANAGEMENT") || roles.Contains("PROJECT_MANAGER"))
         || permissions.Contains("PROJECT_TIME_APPROVAL");
 
     var canManageAccounting =
@@ -25732,7 +26298,7 @@ internal sealed record LocalLoginRequest(string Username, string Password);
 internal sealed record SsoDevelopmentLoginRequest(string Email);
 internal sealed record SetTemporaryPasswordRequest(Guid ResetRequestId, string Username, string TemporaryPassword);
 internal sealed record ChangeLocalPasswordRequest(string CurrentPassword, string NewPassword);
-internal sealed 
+internal sealed
 record ProjectPulseEntraImportSettings(
     string EnvironmentMode,
     string TenantDomain,
@@ -25985,3 +26551,8 @@ record ProjectPulse022CUserPreference(
     bool EmailEnabled,
     DateTimeOffset? MutedUntilUtc,
     DateTimeOffset UpdatedAt);
+
+
+// 030_ROLE_CLEANUP_PHASE2_COMPATIBILITY
+// Canonical roles are now ENGINEERING, ENGINEERING_LEAD, PROJECT_MANAGEMENT_LEAD, and SUPER_ADMINISTRATOR.
+// Legacy role codes remain temporarily recognized until Phase 3 role retirement is complete.

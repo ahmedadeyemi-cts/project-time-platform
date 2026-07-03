@@ -942,7 +942,7 @@
   };
 
   const uniqueModules = () => {
-    const modules = new Set(["PRODUCTION_READINESS", "TIME_COMPLIANCE", "APPROVAL_WORKFLOW", "EXPORT_RECONCILIATION", "SYSTEM"]);
+    const modules = new Set(["PRODUCTION_READINESS", "TIME_COMPLIANCE", "APPROVAL_MODULE 007", "EXPORT_RECONCILIATION", "SYSTEM"]);
     state.routingRules.forEach((rule) => {
       if (rule.moduleKey) modules.add(rule.moduleKey);
     });
@@ -1135,7 +1135,7 @@
     shortcut.type = "button";
     shortcut.setAttribute("aria-label", "Open Production Notification Center");
     shortcut.innerHTML = `
-      <div class="projectpulse-022d-shortcut-eyebrow">PRODUCTION NOTIFICATIONS</div>
+      <div class="projectpulse-022d-shortcut-eyebrow">PRODUCTION MODULE 023</div>
       <div class="projectpulse-022d-shortcut-title">Production Notification Center</div>
       <div class="projectpulse-022d-shortcut-body">Review role-aware in-app alerts, acknowledge production notices, inspect routing rules, and manage notification preferences.</div>
       <div class="projectpulse-022d-shortcut-action">Open notification center →</div>
@@ -1871,7 +1871,7 @@
   };
 
   const uniqueModules = () => {
-    const modules = new Set(["PRODUCTION_READINESS", "TIME_COMPLIANCE", "APPROVAL_WORKFLOW", "EXPORT_RECONCILIATION", "SYSTEM"]);
+    const modules = new Set(["PRODUCTION_READINESS", "TIME_COMPLIANCE", "APPROVAL_MODULE 007", "EXPORT_RECONCILIATION", "SYSTEM"]);
     for (const rule of state.routingRules) {
       if (rule.moduleKey) modules.add(rule.moduleKey);
     }
@@ -2659,7 +2659,7 @@
 
     const summary = state.summary || {};
     const notifications = state.notifications || [];
-    const modules = Array.from(new Set(['PRODUCTION_READINESS', 'TIME_COMPLIANCE', 'APPROVAL_WORKFLOW', 'EXPORT_RECONCILIATION', 'SYSTEM'].concat((state.routingRules || []).map((rule) => rule.moduleKey).filter(Boolean)))).sort();
+    const modules = Array.from(new Set(['PRODUCTION_READINESS', 'TIME_COMPLIANCE', 'APPROVAL_MODULE 007', 'EXPORT_RECONCILIATION', 'SYSTEM'].concat((state.routingRules || []).map((rule) => rule.moduleKey).filter(Boolean)))).sort();
 
     const notificationRows = notifications.length
       ? notifications.map((item, index) => {
@@ -3345,7 +3345,7 @@
       card = document.createElement('section');
       card.id = cardId;
       card.innerHTML =
-        '<div class="projectpulse-025-eyebrow">Module 025</div>' +
+        '<div class="projectpulse-025-eyebrow">MODULE 025</div>' +
         '<h3>SOW Generator + Claude Research Review</h3>' +
         '<p>Create research-backed SOW scope and deliverables from Solution Architect input, reuse SOW/GSD project documents, and prepare Sales-to-Delivery handoff.</p>' +
         '<div class="projectpulse-025-actions">' +
@@ -3690,7 +3690,7 @@
     return '<html><head><meta charset="utf-8"><title>' + escapeHtml(title) + '</title>' +
       '<style>body{font-family:Calibri,Arial,sans-serif;font-size:11pt;color:#111827;}h1{font-size:20pt;}h2{font-size:14pt;color:#0f2a55;border-bottom:1px solid #cbd5e1;padding-bottom:4px;}table{border-collapse:collapse;width:100%;margin-bottom:18px;}td{border:1px solid #cbd5e1;padding:6px;vertical-align:top}.label{background:#f1f5f9;font-weight:bold;width:30%}.notice{background:#fef3c7;border:1px solid #f59e0b;padding:10px;margin-bottom:18px}</style>' +
       '</head><body><h1>' + escapeHtml(title) + '</h1>' +
-      '<div class="notice">This Word-compatible SOW draft was generated from ProjectPulse Module 025. Claude-assisted research and draft content are draft-only and require Solution Architect review.</div>' +
+      '<div class="notice">This Word-compatible SOW draft was generated from ProjectPulse MODULE 025. Claude-assisted research and draft content are draft-only and require Solution Architect review.</div>' +
       '<table>' +
       '<tr><td class="label">Customer</td><td>' + escapeHtml(state.customerName) + '</td></tr>' +
       '<tr><td class="label">Project</td><td>' + escapeHtml(state.projectName) + '</td></tr>' +
@@ -3778,7 +3778,7 @@
       '<div id="projectpulse-025m-page">' +
         '<div class="projectpulse-025-page-header">' +
           '<div>' +
-            '<div class="projectpulse-025-eyebrow">Module 025 · Standalone Research-Backed SOW Generator</div>' +
+            '<div class="projectpulse-025-eyebrow">MODULE 025 · Standalone Research-Backed SOW Generator</div>' +
             '<h2>SOW Generator Workspace</h2>' +
             '<p>Create, research, review, and prepare a SOW draft while keeping SOW/GSD documents in the existing ProjectPulse project document area.</p>' +
             '<div class="projectpulse-025-actions">' +
@@ -3942,13 +3942,13 @@
     shell.querySelector('[data-025-save]').addEventListener('click', function () {
       captureInputs();
       state.statusType = 'success';
-      state.status = 'Local Module 025 research-backed review draft saved. Backend persistence will be wired later.';
+      state.status = 'Local MODULE 025 research-backed review draft saved. Backend persistence will be wired later.';
       saveState();
       renderShell();
     });
 
     shell.querySelector('[data-025-clear]').addEventListener('click', function () {
-      if (!confirm('Clear the current Module 025 draft on this browser?')) return;
+      if (!confirm('Clear the current MODULE 025 draft on this browser?')) return;
       window.localStorage.removeItem(storageKey);
       location.reload();
     });
@@ -4275,13 +4275,13 @@
 
   var mappings = [
     ['Account / Company Name', 'ProjectPulse Customer', 'Customer match or onboarding candidate', 'Required'],
-    ['Opportunity / Deal Name', 'SOW Project / Engagement Name', 'Prefill Module 025 SOW Generator', 'Required'],
+    ['Opportunity / Deal Name', 'SOW Project / Engagement Name', 'Prefill MODULE 025 SOW Generator', 'Required'],
     ['Opportunity / Deal ID', 'CRM Reference', 'Audit traceability', 'Required'],
     ['Quote / Deal Value', 'Estimated Revenue', 'Executive and intake visibility', 'Optional'],
     ['Sales Owner', 'Sales Owner', 'Handoff email and audit history', 'Required'],
     ['Solution Architect', 'Solution Architect', 'SOW review ownership', 'Required'],
-    ['Stage / Signed Indicator', 'Signed SOW Handoff Trigger', 'Module 027 handoff trigger', 'Required'],
-    ['Products / Services / Quote Lines', 'SOW Research Seed', 'Module 025 Claude research context', 'Required'],
+    ['Stage / Signed Indicator', 'Signed SOW Handoff Trigger', 'MODULE 027 handoff trigger', 'Required'],
+    ['Products / Services / Quote Lines', 'SOW Research Seed', 'MODULE 025 Claude research context', 'Required'],
     ['Estimated Service Hours', 'Project Hours / Resource Demand', 'Assignment planning', 'Optional'],
     ['Attachments', 'Canonical SOW / GSD Artifacts', 'Project document package', 'Required']
   ];
@@ -4386,7 +4386,7 @@
       card = document.createElement('section');
       card.id = cardId;
       card.innerHTML =
-        '<div class="projectpulse-026-eyebrow">Module 026</div>' +
+        '<div class="projectpulse-026-eyebrow">MODULE 026</div>' +
         '<h3>CRM Integration Framework</h3>' +
         '<p>Complete framework for Salesforce and Zendesk Sell provider registry, field mapping, sync preview, promotion audit, and CRM-to-SOW/Intake workflow placement.</p>' +
         '<div class="projectpulse-026-actions">' +
@@ -4559,7 +4559,7 @@
       '- Solution Architect: ' + state.solutionArchitect + '\n' +
       '- High-Level Description / Claude Research Seed: ' + state.serviceSummary + '\n\n' +
       'Expected result:\n' +
-      'Module 025 uses the CRM service summary as the initial research-backed SOW drafting context. The Solution Architect must still review, edit, and approve the SOW before external use.';
+      'MODULE 025 uses the CRM service summary as the initial research-backed SOW drafting context. The Solution Architect must still review, edit, and approve the SOW before external use.';
   }
 
   function intakePromotionPreview() {
@@ -4574,7 +4574,7 @@
       '- Solution Architect: ' + state.solutionArchitect + '\n' +
       '- Required Artifacts: signed SOW and GSD\n\n' +
       'Expected result:\n' +
-      'Module 024 receives CRM-originated context, but signed SOW and GSD uploads remain required before assignment and handoff can proceed.';
+      'MODULE 024 receives CRM-originated context, but signed SOW and GSD uploads remain required before assignment and handoff can proceed.';
   }
 
   function readinessSummary() {
@@ -4592,7 +4592,7 @@
 
     var complete = checks.filter(Boolean).length;
 
-    return 'Module 026 Readiness Summary\n\n' +
+    return 'MODULE 026 Readiness Summary\n\n' +
       'Primary CRM: ' + state.primaryCrm + '\n' +
       'Sync Mode: ' + state.syncMode + '\n' +
       'Salesforce Status: ' + state.salesforceStatus + '\n' +
@@ -4630,7 +4630,7 @@
     captureInputs();
     state.lastPromotion = sowPromotionPreview() + '\n\nPromotion preview recorded locally at: ' + new Date().toISOString();
     state.statusType = 'success';
-    state.status = 'Promote to SOW preview recorded. Module 025 receives CRM context after backend wiring.';
+    state.status = 'Promote to SOW preview recorded. MODULE 025 receives CRM context after backend wiring.';
     saveState();
     renderShell();
   }
@@ -4639,7 +4639,7 @@
     captureInputs();
     state.lastPromotion = intakePromotionPreview() + '\n\nPromotion preview recorded locally at: ' + new Date().toISOString();
     state.statusType = 'success';
-    state.status = 'Promote to Intake preview recorded. Module 024 receives CRM context after backend wiring.';
+    state.status = 'Promote to Intake preview recorded. MODULE 024 receives CRM context after backend wiring.';
     saveState();
     renderShell();
   }
@@ -4660,10 +4660,10 @@
 
     if (missing.length) {
       state.statusType = 'warning';
-      state.status = 'Module 026 saved, but not fully validated. Missing: ' + missing.join(', ') + '.';
+      state.status = 'MODULE 026 saved, but not fully validated. Missing: ' + missing.join(', ') + '.';
     } else {
       state.statusType = 'success';
-      state.status = 'Module 026 CRM Integration Framework is fully validated for the framework phase.';
+      state.status = 'MODULE 026 CRM Integration Framework is fully validated for the framework phase.';
     }
 
     saveState();
@@ -4679,7 +4679,7 @@
       '<div id="projectpulse-026-page">' +
         '<div class="projectpulse-026-page-header">' +
           '<div>' +
-            '<div class="projectpulse-026-eyebrow">Module 026 · Complete CRM Integration Framework</div>' +
+            '<div class="projectpulse-026-eyebrow">MODULE 026 · Complete CRM Integration Framework</div>' +
             '<h2>CRM Integration Center</h2>' +
             '<p>Complete framework for Salesforce and Zendesk Sell provider registry, field mapping, sync preview, promotion audit, CRM-to-SOW handoff, and CRM-to-Intake handoff.</p>' +
             '<div class="projectpulse-026-actions">' +
@@ -4691,7 +4691,7 @@
           '</div>' +
           '<div class="projectpulse-026-actions">' +
             '<button type="button" class="projectpulse-026-button" data-026-dashboard>Back to Dashboard</button>' +
-            '<button type="button" class="projectpulse-026-button success" data-026-validate>Validate Module 026</button>' +
+            '<button type="button" class="projectpulse-026-button success" data-026-validate>Validate MODULE 026</button>' +
             '<button type="button" class="projectpulse-026-button" data-026-clear>Clear Demo State</button>' +
           '</div>' +
         '</div>' +
@@ -4727,7 +4727,7 @@
 
             '<div class="projectpulse-026-section">' +
               '<h3>026D Module Readiness Checklist</h3>' +
-              '<p>Use this to close out the CRM Integration Framework phase before moving to Module 027.</p>' +
+              '<p>Use this to close out the CRM Integration Framework phase before moving to MODULE 027.</p>' +
               '<div class="projectpulse-026-checklist">' +
                 '<label><input type="checkbox" data-026-check="providerRegistryReviewed"> Provider registry and placeholder statuses reviewed.</label>' +
                 '<label><input type="checkbox" data-026-check="fieldMappingReviewed"> CRM-to-ProjectPulse field mapping reviewed.</label>' +
@@ -4737,7 +4737,7 @@
                 '<label><input type="checkbox" data-026-check="intakeMappingReviewed"> CRM-to-Sales-to-Delivery Intake mapping reviewed.</label>' +
                 '<label><input type="checkbox" data-026-check="syncReadinessReviewed"> Sync preview model reviewed.</label>' +
                 '<label><input type="checkbox" data-026-check="promotionAuditReviewed"> Promotion audit event model reviewed.</label>' +
-                '<label><input type="checkbox" data-026-check="closeoutReviewed"> Module 026 closeout reviewed.</label>' +
+                '<label><input type="checkbox" data-026-check="closeoutReviewed"> MODULE 026 closeout reviewed.</label>' +
               '</div>' +
             '</div>' +
           '</div>' +
@@ -4759,16 +4759,16 @@
             '</div>' +
 
             '<div class="projectpulse-026-section">' +
-              '<h3>Module 026 Readiness Summary</h3>' +
+              '<h3>MODULE 026 Readiness Summary</h3>' +
               '<div class="projectpulse-026-preview" data-026-readiness></div>' +
             '</div>' +
 
             '<div class="projectpulse-026-section">' +
               '<h3>Workflow Placement</h3>' +
               '<div class="projectpulse-026-three-grid">' +
-                '<div class="projectpulse-026-cardlet"><span class="projectpulse-026-pill blue">025</span><strong>SOW Generator</strong><p>CRM fields prepopulate SOW research and draft generation.</p></div>' +
-                '<div class="projectpulse-026-cardlet"><span class="projectpulse-026-pill green">024</span><strong>Intake Foundation</strong><p>CRM quote/opportunity data feeds intake artifacts and project readiness.</p></div>' +
-                '<div class="projectpulse-026-cardlet"><span class="projectpulse-026-pill amber">027</span><strong>Signed Handoff</strong><p>Signed opportunity or signed SOW state triggers PTC/Executive notification.</p></div>' +
+                '<div class="projectpulse-026-cardlet"><span class="projectpulse-026-pill blue">MODULE 025</span><strong>SOW Generator</strong><p>CRM fields prepopulate SOW research and draft generation.</p></div>' +
+                '<div class="projectpulse-026-cardlet"><span class="projectpulse-026-pill green">MODULE 024</span><strong>Intake Foundation</strong><p>CRM quote/opportunity data feeds intake artifacts and project readiness.</p></div>' +
+                '<div class="projectpulse-026-cardlet"><span class="projectpulse-026-pill amber">MODULE 027</span><strong>Signed Handoff</strong><p>Signed opportunity or signed SOW state triggers PTC/Executive notification.</p></div>' +
               '</div>' +
             '</div>' +
           '</div>' +
@@ -4847,7 +4847,7 @@
     });
 
     shell.querySelector('[data-026-clear]').addEventListener('click', function () {
-      if (!confirm('Clear Module 026 demo state on this browser?')) return;
+      if (!confirm('Clear MODULE 026 demo state on this browser?')) return;
       window.localStorage.removeItem(storageKey);
       location.reload();
     });
@@ -5251,7 +5251,7 @@
       card = document.createElement('section');
       card.id = cardId;
       card.innerHTML =
-        '<div class="projectpulse-024-eyebrow">Module 024</div>' +
+        '<div class="projectpulse-024-eyebrow">MODULE 024</div>' +
         '<h3>Sales-to-Delivery Intake Foundation</h3>' +
         '<p>Create the intake package that gates delivery handoff on required signed SOW and GSD artifacts before PTC assignment of PM and Engineers.</p>' +
         '<div class="projectpulse-024-actions">' +
@@ -5471,7 +5471,7 @@
       'After assignment:\n' +
       '- PM receives project package visibility.\n' +
       '- Engineer(s) receive assigned project workspace and engineering document visibility.\n' +
-      '- SOW-aware time entry can use signed SOW/GSD scope later in Module 028.';
+      '- SOW-aware time entry can use signed SOW/GSD scope later in MODULE 028.';
   }
 
   function saveIntakePackage() {
@@ -5496,7 +5496,7 @@
     if (!state.canonicalDocsConfirmed) missing.push('canonical document confirmation');
     if (!state.ptcAssignmentReady) missing.push('PTC assignment readiness');
     if (!state.executiveVisibilityReady) missing.push('Executive visibility readiness');
-    if (!state.closeoutReviewed) missing.push('Module 024 closeout review');
+    if (!state.closeoutReviewed) missing.push('MODULE 024 closeout review');
     if (!state.signedSowFileName) missing.push('signed SOW file');
     if (!state.gsdFileName) missing.push('GSD file');
 
@@ -5518,7 +5518,7 @@
     captureInputs();
     state.lastAssignmentPreview = assignmentPreview() + '\n\nPrepared locally at: ' + new Date().toISOString();
     state.statusType = 'success';
-    state.status = 'PTC assignment preview prepared. Module 027 will turn this into signed handoff and assignment trigger.';
+    state.status = 'PTC assignment preview prepared. MODULE 027 will turn this into signed handoff and assignment trigger.';
     saveState();
     renderShell();
   }
@@ -5532,7 +5532,7 @@
       '<div id="projectpulse-024-page">' +
         '<div class="projectpulse-024-page-header">' +
           '<div>' +
-            '<div class="projectpulse-024-eyebrow">Module 024 · Sales-to-Delivery Intake Foundation</div>' +
+            '<div class="projectpulse-024-eyebrow">MODULE 024 · Sales-to-Delivery Intake Foundation</div>' +
             '<h2>Sales-to-Delivery Intake Center</h2>' +
             '<p>Create the intake package that connects Sales, Solution Architecture, PTC, Executive visibility, Project Management, and Engineering delivery.</p>' +
             '<div class="projectpulse-024-actions">' +
@@ -5601,7 +5601,7 @@
                 '<label><input type="checkbox" data-024-check="canonicalDocsConfirmed"> Canonical SOW/GSD document area confirmed.</label>' +
                 '<label><input type="checkbox" data-024-check="ptcAssignmentReady"> PTC assignment readiness confirmed.</label>' +
                 '<label><input type="checkbox" data-024-check="executiveVisibilityReady"> Executive visibility readiness confirmed.</label>' +
-                '<label><input type="checkbox" data-024-check="closeoutReviewed"> Module 024 closeout reviewed.</label>' +
+                '<label><input type="checkbox" data-024-check="closeoutReviewed"> MODULE 024 closeout reviewed.</label>' +
               '</div>' +
               '<div class="projectpulse-024-actions"><button type="button" class="projectpulse-024-button warning" data-024-assignment>Prepare PTC Assignment Preview</button></div>' +
               '<div data-024-status></div>' +
@@ -5616,9 +5616,9 @@
             '<div class="projectpulse-024-section">' +
               '<h3>Workflow Placement</h3>' +
               '<div class="projectpulse-024-three-grid">' +
-                '<div class="projectpulse-024-cardlet"><span class="projectpulse-024-pill blue">026</span><strong>CRM Integration</strong><p>CRM records can seed this intake package.</p></div>' +
-                '<div class="projectpulse-024-cardlet"><span class="projectpulse-024-pill green">025</span><strong>SOW Generator</strong><p>SOW draft and signed SOW context feed intake readiness.</p></div>' +
-                '<div class="projectpulse-024-cardlet"><span class="projectpulse-024-pill amber">027</span><strong>Signed Handoff</strong><p>Validated intake triggers PTC/Executive notification and PM/Engineer assignment.</p></div>' +
+                '<div class="projectpulse-024-cardlet"><span class="projectpulse-024-pill blue">MODULE 026</span><strong>CRM Integration</strong><p>CRM records can seed this intake package.</p></div>' +
+                '<div class="projectpulse-024-cardlet"><span class="projectpulse-024-pill green">MODULE 025</span><strong>SOW Generator</strong><p>SOW draft and signed SOW context feed intake readiness.</p></div>' +
+                '<div class="projectpulse-024-cardlet"><span class="projectpulse-024-pill amber">MODULE 027</span><strong>Signed Handoff</strong><p>Validated intake triggers PTC/Executive notification and PM/Engineer assignment.</p></div>' +
               '</div>' +
             '</div>' +
           '</div>' +
@@ -5721,7 +5721,7 @@
     });
 
     shell.querySelector('[data-024-clear]').addEventListener('click', function () {
-      if (!confirm('Clear Module 024 demo state on this browser?')) return;
+      if (!confirm('Clear MODULE 024 demo state on this browser?')) return;
       window.localStorage.removeItem(storageKey);
       location.reload();
     });
@@ -6139,7 +6139,7 @@
       card = document.createElement('section');
       card.id = cardId;
       card.innerHTML =
-        '<div class="projectpulse-027-eyebrow">Module 027</div>' +
+        '<div class="projectpulse-027-eyebrow">MODULE 027</div>' +
         '<h3>Signed SOW Handoff + Assignment Trigger</h3>' +
         '<p>Validate signed SOW/GSD readiness, notify PTC and Executive stakeholders, and prepare PM/Engineer assignment package.</p>' +
         '<div class="projectpulse-027-actions">' +
@@ -6392,7 +6392,7 @@
       '- PM receives assigned project package visibility.\n' +
       '- Engineer(s) receive signed SOW/GSD visibility.\n' +
       '- Project Workspace / Engineering Documents becomes the canonical artifact view.\n' +
-      '- Module 028 can use signed SOW/GSD scope for SOW-aware AI time entry.';
+      '- MODULE 028 can use signed SOW/GSD scope for SOW-aware AI time entry.';
   }
 
   function auditPreview(eventName) {
@@ -6435,7 +6435,7 @@
     if (!state.sharedEmailProviderConfirmed) missing.push('shared email provider confirmation');
     if (!state.recipientSafetyConfirmed) missing.push('recipient safety confirmation');
     if (!state.auditReviewed) missing.push('audit review');
-    if (!state.closeoutReviewed) missing.push('Module 027 closeout review');
+    if (!state.closeoutReviewed) missing.push('MODULE 027 closeout review');
 
     if (missing.length) {
       state.statusType = 'warning';
@@ -6508,7 +6508,7 @@
       '<div id="projectpulse-027-page">' +
         '<div class="projectpulse-027-page-header">' +
           '<div>' +
-            '<div class="projectpulse-027-eyebrow">Module 027 · Signed SOW Handoff + Assignment Trigger</div>' +
+            '<div class="projectpulse-027-eyebrow">MODULE 027 · Signed SOW Handoff + Assignment Trigger</div>' +
             '<h2>Signed Handoff + Assignment Trigger Center</h2>' +
             '<p>Validate signed SOW/GSD readiness, prepare PTC and Executive notification, and trigger PM/Engineer assignment package visibility.</p>' +
             '<div class="projectpulse-027-actions">' +
@@ -6530,7 +6530,7 @@
           '<div>' +
             '<div class="projectpulse-027-section">' +
               '<h3>027A Signed Handoff Package</h3>' +
-              '<p>This package is created after Sales/Solution Architect confirms signed SOW and GSD readiness from Module 024/025/026 workflow context.</p>' +
+              '<p>This package is created after Sales/Solution Architect confirms signed SOW and GSD readiness from MODULE 024/025/026 workflow context.</p>' +
               '<div class="projectpulse-027-two-grid">' +
                 '<div class="projectpulse-027-field"><label>Handoff Reference</label><input data-027-field="handoffReference"></div>' +
                 '<div class="projectpulse-027-field"><label>Intake Reference</label><input data-027-field="intakeReference"></div>' +
@@ -6600,7 +6600,7 @@
                 '<label><input type="checkbox" data-027-check="sharedEmailProviderConfirmed"> Shared email provider readiness confirmed.</label>' +
                 '<label><input type="checkbox" data-027-check="recipientSafetyConfirmed"> Recipient safety gate confirmed.</label>' +
                 '<label><input type="checkbox" data-027-check="auditReviewed"> Audit trail reviewed.</label>' +
-                '<label><input type="checkbox" data-027-check="closeoutReviewed"> Module 027 closeout reviewed.</label>' +
+                '<label><input type="checkbox" data-027-check="closeoutReviewed"> MODULE 027 closeout reviewed.</label>' +
               '</div>' +
             '</div>' +
           '</div>' +
@@ -6615,9 +6615,9 @@
             '<div class="projectpulse-027-section">' +
               '<h3>Workflow Placement</h3>' +
               '<div class="projectpulse-027-three-grid">' +
-                '<div class="projectpulse-027-cardlet"><span class="projectpulse-027-pill blue">024</span><strong>Intake</strong><p>Validated signed SOW/GSD readiness flows into handoff.</p></div>' +
-                '<div class="projectpulse-027-cardlet"><span class="projectpulse-027-pill green">025</span><strong>SOW Generator</strong><p>SA-reviewed SOW context supports signed package.</p></div>' +
-                '<div class="projectpulse-027-cardlet"><span class="projectpulse-027-pill amber">028</span><strong>SOW-Aware Time Entry</strong><p>Assignment unlocks SOW/GSD-aware time-entry checks.</p></div>' +
+                '<div class="projectpulse-027-cardlet"><span class="projectpulse-027-pill blue">MODULE 024</span><strong>Intake</strong><p>Validated signed SOW/GSD readiness flows into handoff.</p></div>' +
+                '<div class="projectpulse-027-cardlet"><span class="projectpulse-027-pill green">MODULE 025</span><strong>SOW Generator</strong><p>SA-reviewed SOW context supports signed package.</p></div>' +
+                '<div class="projectpulse-027-cardlet"><span class="projectpulse-027-pill amber">MODULE 028</span><strong>SOW-Aware Time Entry</strong><p>Assignment unlocks SOW/GSD-aware time-entry checks.</p></div>' +
               '</div>' +
             '</div>' +
           '</div>' +
@@ -6734,7 +6734,7 @@
     });
 
     shell.querySelector('[data-027-clear]').addEventListener('click', function () {
-      if (!confirm('Clear Module 027 demo state on this browser?')) return;
+      if (!confirm('Clear MODULE 027 demo state on this browser?')) return;
       window.localStorage.removeItem(storageKey);
       location.reload();
     });
@@ -7153,7 +7153,7 @@
       card = document.createElement('section');
       card.id = cardId;
       card.innerHTML =
-        '<div class="projectpulse-028-eyebrow">Module 028</div>' +
+        '<div class="projectpulse-028-eyebrow">MODULE 028</div>' +
         '<h3>SOW-Aware AI Time Entry Generator</h3>' +
         '<p>Engineers draft time entries against signed SOW/GSD scope. Claude remains draft-only, scope-aware, and engineer-reviewed before acceptance.</p>' +
         '<div class="projectpulse-028-actions">' +
@@ -7468,7 +7468,7 @@
 
     var complete = checks.filter(Boolean).length;
 
-    return 'Module 028 Readiness Summary\n\n' +
+    return 'MODULE 028 Readiness Summary\n\n' +
       'Scope Context: ' + state.scopeContextReference + '\n' +
       'Handoff Reference: ' + state.handoffReference + '\n' +
       'Intake Reference: ' + state.intakeReference + '\n' +
@@ -7500,14 +7500,14 @@
     if (!state.engineerReviewRequiredConfirmed) missing.push('engineer review required rule');
     if (!state.auditCaptureConfirmed) missing.push('audit capture');
     if (!state.scopeStatusModelConfirmed) missing.push('scope status model');
-    if (!state.closeoutReviewed) missing.push('Module 028 closeout');
+    if (!state.closeoutReviewed) missing.push('MODULE 028 closeout');
 
     if (missing.length) {
       state.statusType = 'warning';
-      state.status = 'Module 028 readiness is incomplete. Missing: ' + missing.join(', ') + '.';
+      state.status = 'MODULE 028 readiness is incomplete. Missing: ' + missing.join(', ') + '.';
     } else {
       state.statusType = 'success';
-      state.status = 'Module 028 is ready for backend wiring to shared Claude provider and time-entry persistence.';
+      state.status = 'MODULE 028 is ready for backend wiring to shared Claude provider and time-entry persistence.';
     }
 
     state.lastAuditTrail = auditTrail('module_028_readiness_validated');
@@ -7548,7 +7548,7 @@
       '<div id="projectpulse-028-page">' +
         '<div class="projectpulse-028-page-header">' +
           '<div>' +
-            '<div class="projectpulse-028-eyebrow">Module 028 · SOW-Aware AI Time Entry Generator</div>' +
+            '<div class="projectpulse-028-eyebrow">MODULE 028 · SOW-Aware AI Time Entry Generator</div>' +
             '<h2>SOW-Aware AI Time Entry Center</h2>' +
             '<p>Help assigned Engineers draft time entries using signed SOW/GSD scope while keeping Claude draft-only, server-side, and engineer-reviewed.</p>' +
             '<div class="projectpulse-028-actions">' +
@@ -7561,7 +7561,7 @@
           '<div class="projectpulse-028-actions">' +
             '<button type="button" class="projectpulse-028-button" data-028-dashboard>Back to Dashboard</button>' +
             '<button type="button" class="projectpulse-028-button primary" data-028-scope-check>Run Scope Check</button>' +
-            '<button type="button" class="projectpulse-028-button success" data-028-validate>Validate Module 028</button>' +
+            '<button type="button" class="projectpulse-028-button success" data-028-validate>Validate MODULE 028</button>' +
             '<button type="button" class="projectpulse-028-button" data-028-clear>Clear Preview State</button>' +
           '</div>' +
         '</div>' +
@@ -7632,7 +7632,7 @@
                 '<label><input type="checkbox" data-028-check="engineerReviewRequiredConfirmed"> Engineer review/edit/accept is required before final use.</label>' +
                 '<label><input type="checkbox" data-028-check="auditCaptureConfirmed"> Audit captures original input, AI draft, final entry, SOW/GSD version, and actor timestamp.</label>' +
                 '<label><input type="checkbox" data-028-check="scopeStatusModelConfirmed"> Scope status model confirmed.</label>' +
-                '<label><input type="checkbox" data-028-check="closeoutReviewed"> Module 028 closeout reviewed.</label>' +
+                '<label><input type="checkbox" data-028-check="closeoutReviewed"> MODULE 028 closeout reviewed.</label>' +
               '</div>' +
             '</div>' +
           '</div>' +
@@ -7644,14 +7644,14 @@
             '<div class="projectpulse-028-section"><h3>028E AI Draft Preview</h3><div class="projectpulse-028-preview" data-028-ai-draft-output></div></div>' +
             '<div class="projectpulse-028-section"><h3>028F Engineer Acceptance / Audit Preview</h3><div class="projectpulse-028-preview" data-028-accepted-output></div></div>' +
             '<div class="projectpulse-028-section"><h3>Audit Trail Preview</h3><div class="projectpulse-028-preview" data-028-audit-output></div></div>' +
-            '<div class="projectpulse-028-section"><h3>Module 028 Readiness Summary</h3><div class="projectpulse-028-preview" data-028-readiness-output></div></div>' +
+            '<div class="projectpulse-028-section"><h3>MODULE 028 Readiness Summary</h3><div class="projectpulse-028-preview" data-028-readiness-output></div></div>' +
             '<div class="projectpulse-028-section"><h3>Role Rules</h3>' + roleRulesHtml() + '</div>' +
             '<div class="projectpulse-028-section">' +
               '<h3>Workflow Placement</h3>' +
               '<div class="projectpulse-028-three-grid">' +
-                '<div class="projectpulse-028-cardlet"><span class="projectpulse-028-pill blue">027</span><strong>Assignment Trigger</strong><p>Assigned PM/Engineer context unlocks SOW-aware time-entry drafting.</p></div>' +
-                '<div class="projectpulse-028-cardlet"><span class="projectpulse-028-pill green">025</span><strong>SOW Generator</strong><p>Signed SOW review context feeds scope checks.</p></div>' +
-                '<div class="projectpulse-028-cardlet"><span class="projectpulse-028-pill amber">029</span><strong>Validation Center</strong><p>Role and workflow validation will test engineer own-time controls.</p></div>' +
+                '<div class="projectpulse-028-cardlet"><span class="projectpulse-028-pill blue">MODULE 027</span><strong>Assignment Trigger</strong><p>Assigned PM/Engineer context unlocks SOW-aware time-entry drafting.</p></div>' +
+                '<div class="projectpulse-028-cardlet"><span class="projectpulse-028-pill green">MODULE 025</span><strong>SOW Generator</strong><p>Signed SOW review context feeds scope checks.</p></div>' +
+                '<div class="projectpulse-028-cardlet"><span class="projectpulse-028-pill amber">MODULE 029</span><strong>Validation Center</strong><p>Role and workflow validation will test engineer own-time controls.</p></div>' +
               '</div>' +
             '</div>' +
           '</div>' +
@@ -7742,7 +7742,7 @@
     });
 
     shell.querySelector('[data-028-clear]').addEventListener('click', function () {
-      if (!confirm('Clear Module 028 preview state on this browser?')) return;
+      if (!confirm('Clear MODULE 028 preview state on this browser?')) return;
       window.localStorage.removeItem(storageKey);
       location.reload();
     });
@@ -7780,7 +7780,7 @@
 <!-- 028_FULL_SOW_AWARE_AI_TIME_ENTRY_END -->
 
 
-<!-- 029_FULL_UAT_ROLE_WORKFLOW_VALIDATION_START -->
+<!-- 029_FULL_UAT_ROLE_MODULE 007_VALIDATION_START -->
 <style id="projectpulse-029-style">
   #projectpulse-029-uat-card {
     border: 1px solid rgba(148, 163, 184, 0.32);
@@ -8176,7 +8176,7 @@
       card = document.createElement('section');
       card.id = cardId;
       card.innerHTML =
-        '<div class="projectpulse-029-eyebrow">Module 029</div>' +
+        '<div class="projectpulse-029-eyebrow">MODULE 029</div>' +
         '<h3>User Acceptance / Role + Workflow Validation Center</h3>' +
         '<p>Validate dashboard, navigation, registry, module access, View-As write protection, role scope, workflow readiness, evidence, approval/export/audit controls.</p>' +
         '<div class="projectpulse-029-actions">' +
@@ -8469,7 +8469,7 @@
 
     var complete = checks.filter(Boolean).length;
 
-    return 'Module 029 Readiness Summary\n\n' +
+    return 'MODULE 029 Readiness Summary\n\n' +
       'Validation Environment: ' + state.validationEnvironment + '\n' +
       'Selected Role: ' + state.selectedRole + '\n' +
       'Selected Scenario: ' + state.selectedScenario + '\n' +
@@ -8501,10 +8501,10 @@
 
     if (missing.length) {
       state.statusType = 'warning';
-      state.status = 'Module 029 readiness incomplete. Missing: ' + missing.join(', ') + '.';
+      state.status = 'MODULE 029 readiness incomplete. Missing: ' + missing.join(', ') + '.';
     } else {
       state.statusType = 'success';
-      state.status = 'Module 029 readiness complete for UAT role/workflow validation closeout.';
+      state.status = 'MODULE 029 readiness complete for UAT role/workflow validation closeout.';
     }
 
     state.lastReadiness = readinessSummary();
@@ -8521,7 +8521,7 @@
       '<div id="projectpulse-029-page">' +
         '<div class="projectpulse-029-page-header">' +
           '<div>' +
-            '<div class="projectpulse-029-eyebrow">Module 029 · User Acceptance / Role + Workflow Validation Center</div>' +
+            '<div class="projectpulse-029-eyebrow">MODULE 029 · User Acceptance / Role + Workflow Validation Center</div>' +
             '<h2>UAT Role + Workflow Validation Center</h2>' +
             '<p>Validate the completed 024–028 workflow chain across dashboard, navigation, registry, role scope, View-As enforcement, evidence capture, approval/export/audit readiness, and closeout.</p>' +
             '<div class="projectpulse-029-actions">' +
@@ -8583,7 +8583,7 @@
                 '<label><input type="checkbox" data-029-check="moduleAccessConfirmed"> Module access across 024–028 confirmed.</label>' +
                 '<label><input type="checkbox" data-029-check="approvalExportAuditConfirmed"> Approval / export / audit readiness confirmed.</label>' +
                 '<label><input type="checkbox" data-029-check="evidenceCaptureConfirmed"> Evidence capture confirmed.</label>' +
-                '<label><input type="checkbox" data-029-check="closeoutConfirmed"> Module 029 closeout confirmed.</label>' +
+                '<label><input type="checkbox" data-029-check="closeoutConfirmed"> MODULE 029 closeout confirmed.</label>' +
               '</div>' +
             '</div>' +
           '</div>' +
@@ -8600,8 +8600,8 @@
               '<h3>Workflow Placement</h3>' +
               '<div class="projectpulse-029-three-grid">' +
                 '<div class="projectpulse-029-cardlet"><span class="projectpulse-029-pill blue">024-028</span><strong>Workflow Chain</strong><p>Validates intake, SOW, CRM, handoff, assignment, and AI time-entry flow.</p></div>' +
-                '<div class="projectpulse-029-cardlet"><span class="projectpulse-029-pill green">029</span><strong>UAT Evidence</strong><p>Captures role/scenario/module evidence for readiness decisions.</p></div>' +
-                '<div class="projectpulse-029-cardlet"><span class="projectpulse-029-pill amber">030</span><strong>Reporting</strong><p>Next module can roll validated workflow status into executive reporting.</p></div>' +
+                '<div class="projectpulse-029-cardlet"><span class="projectpulse-029-pill green">MODULE 029</span><strong>UAT Evidence</strong><p>Captures role/scenario/module evidence for readiness decisions.</p></div>' +
+                '<div class="projectpulse-029-cardlet"><span class="projectpulse-029-pill amber">MODULE 030</span><strong>Reporting</strong><p>Next module can roll validated workflow status into executive reporting.</p></div>' +
               '</div>' +
             '</div>' +
           '</div>' +
@@ -8677,7 +8677,7 @@
     });
 
     shell.querySelector('[data-029-clear]').addEventListener('click', function () {
-      if (!confirm('Clear Module 029 preview state on this browser?')) return;
+      if (!confirm('Clear MODULE 029 preview state on this browser?')) return;
       window.localStorage.removeItem(storageKey);
       location.reload();
     });
@@ -8715,7 +8715,1757 @@
   window.addEventListener('hashchange', function () { setTimeout(render, 60); });
 })();
 </script>
-<!-- 029_FULL_UAT_ROLE_WORKFLOW_VALIDATION_END -->
+<!-- 029_FULL_UAT_ROLE_MODULE 007_VALIDATION_END -->
+
+
+<!-- 030_FULL_REPORTING_ACCOUNTING_INVOICING_ANALYTICS_START -->
+<style id="projectpulse-030-style">
+  #projectpulse-030-reporting-card {
+    border: 1px solid rgba(14, 116, 144, 0.24);
+    border-radius: 20px;
+    background: #ffffff;
+    color: #111827;
+    box-shadow: 0 14px 36px rgba(15, 23, 42, 0.06);
+    padding: 1.15rem;
+    min-height: 185px;
+  }
+
+  #projectpulse-030-shell {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483007;
+    background: linear-gradient(135deg, #edf9ff 0%, #f8fbff 45%, #f8fafc 100%);
+    overflow-y: auto;
+    padding: 1.25rem;
+    box-sizing: border-box;
+    display: none;
+  }
+
+  #projectpulse-030-shell[data-open="true"] {
+    display: block;
+  }
+
+  #projectpulse-030-page {
+    max-width: 1660px;
+    margin: 0 auto 2rem;
+    border: 1px solid rgba(148, 163, 184, 0.32);
+    border-radius: 24px;
+    background: #ffffff;
+    color: #111827;
+    box-shadow: 0 20px 60px rgba(15, 23, 42, 0.12);
+    padding: 1.25rem;
+  }
+
+  .projectpulse-030-eyebrow {
+    color: #64748b;
+    font-size: 0.72rem;
+    font-weight: 950;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 0.55rem;
+  }
+
+  #projectpulse-030-reporting-card h3,
+  #projectpulse-030-page h2,
+  #projectpulse-030-page h3 {
+    margin: 0 0 0.55rem;
+    line-height: 1.25;
+  }
+
+  #projectpulse-030-reporting-card p,
+  #projectpulse-030-page p {
+    color: #5b6b89;
+    line-height: 1.48;
+  }
+
+  .projectpulse-030-page-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    align-items: flex-start;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.22);
+    padding-bottom: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .projectpulse-030-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.65rem;
+    align-items: center;
+    margin-top: 1rem;
+  }
+
+  .projectpulse-030-button {
+    border: 1px solid rgba(37, 99, 235, 0.24);
+    border-radius: 12px;
+    background: #ffffff;
+    color: #111827;
+    padding: 0.65rem 0.9rem;
+    font-weight: 900;
+    cursor: pointer;
+  }
+
+  .projectpulse-030-button.primary { background: #0f2a55; border-color: #0f2a55; color: #ffffff; }
+  .projectpulse-030-button.success { background: #166534; border-color: #166534; color: #ffffff; }
+  .projectpulse-030-button.warning { background: #92400e; border-color: #92400e; color: #ffffff; }
+  .projectpulse-030-button.danger { background: #991b1b; border-color: #991b1b; color: #ffffff; }
+
+  .projectpulse-030-pill {
+    border-radius: 999px;
+    padding: 0.28rem 0.58rem;
+    font-size: 0.72rem;
+    font-weight: 950;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .projectpulse-030-pill.blue { background: #dbeafe; color: #1e3a8a; }
+  .projectpulse-030-pill.green { background: #dcfce7; color: #166534; }
+  .projectpulse-030-pill.amber { background: #fef3c7; color: #92400e; }
+  .projectpulse-030-pill.red { background: #fee2e2; color: #991b1b; }
+  .projectpulse-030-pill.slate { background: #e2e8f0; color: #334155; }
+
+  .projectpulse-030-layout {
+    display: grid;
+    grid-template-columns: 0.95fr 1.05fr;
+    gap: 1rem;
+    align-items: start;
+  }
+
+  .projectpulse-030-section {
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    border-radius: 18px;
+    background: #f8fafc;
+    padding: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .projectpulse-030-section.white {
+    background: #ffffff;
+  }
+
+  .projectpulse-030-field {
+    margin-bottom: 0.82rem;
+  }
+
+  .projectpulse-030-field label {
+    display: block;
+    font-size: 0.76rem;
+    color: #475569;
+    font-weight: 950;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    margin-bottom: 0.35rem;
+  }
+
+  .projectpulse-030-field input,
+  .projectpulse-030-field select,
+  .projectpulse-030-field textarea {
+    width: 100%;
+    border: 1px solid rgba(148, 163, 184, 0.45);
+    border-radius: 12px;
+    padding: 0.68rem 0.75rem;
+    background: #ffffff;
+    color: #111827;
+    font: inherit;
+    box-sizing: border-box;
+  }
+
+  .projectpulse-030-field textarea {
+    min-height: 110px;
+    resize: vertical;
+  }
+
+  .projectpulse-030-two-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.65rem;
+  }
+
+  .projectpulse-030-three-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.65rem;
+  }
+
+  .projectpulse-030-four-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.65rem;
+  }
+
+  .projectpulse-030-cardlet {
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    border-radius: 16px;
+    background: #ffffff;
+    padding: 0.9rem;
+  }
+
+  .projectpulse-030-cardlet strong {
+    display: block;
+    font-size: 1rem;
+    margin: 0.25rem 0;
+  }
+
+  .projectpulse-030-kpi {
+    border: 1px solid rgba(14, 116, 144, 0.22);
+    border-radius: 16px;
+    background: #ffffff;
+    padding: 0.9rem;
+  }
+
+  .projectpulse-030-kpi .label {
+    color: #64748b;
+    font-size: 0.74rem;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .projectpulse-030-kpi .value {
+    font-size: 1.45rem;
+    font-weight: 950;
+    color: #0f172a;
+    margin-top: 0.25rem;
+  }
+
+  .projectpulse-030-table-wrap {
+    overflow: auto;
+    border-radius: 14px;
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    background: #ffffff;
+  }
+
+  .projectpulse-030-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 1200px;
+    background: #ffffff;
+  }
+
+  .projectpulse-030-table.compact {
+    min-width: 760px;
+  }
+
+  .projectpulse-030-table th,
+  .projectpulse-030-table td {
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    padding: 0.62rem;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  .projectpulse-030-table th {
+    background: #f1f5f9;
+    font-size: 0.74rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #475569;
+    white-space: nowrap;
+  }
+
+  .projectpulse-030-preview {
+    white-space: pre-wrap;
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    border-radius: 14px;
+    background: #ffffff;
+    padding: 0.85rem;
+    color: #334155;
+    max-height: 430px;
+    overflow: auto;
+  }
+
+  .projectpulse-030-checklist {
+    display: grid;
+    gap: 0.55rem;
+  }
+
+  .projectpulse-030-checklist label {
+    display: flex;
+    gap: 0.55rem;
+    align-items: flex-start;
+    color: #334155;
+    line-height: 1.4;
+  }
+
+  .projectpulse-030-status {
+    border-radius: 16px;
+    padding: 0.85rem;
+    background: #eff6ff;
+    color: #1e3a8a;
+    font-weight: 750;
+    margin-top: 0.8rem;
+  }
+
+  .projectpulse-030-status.success { background: #dcfce7; color: #166534; }
+  .projectpulse-030-status.warning { background: #fef3c7; color: #92400e; }
+  .projectpulse-030-status.error { background: #fee2e2; color: #991b1b; }
+
+  @media (max-width: 1150px) {
+    .projectpulse-030-layout,
+    .projectpulse-030-two-grid,
+    .projectpulse-030-three-grid,
+    .projectpulse-030-four-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .projectpulse-030-page-header {
+      flex-direction: column;
+    }
+  }
+</style>
+
+<script id="projectpulse-030-script">
+(function () {
+  if (window.__projectPulse030Installed) return;
+  window.__projectPulse030Installed = true;
+
+  var cardId = 'projectpulse-030-reporting-card';
+  var shellId = 'projectpulse-030-shell';
+  var storageKey = 'projectpulse030ReportingAccountingInvoicingAnalytics';
+
+  var reportTypes = [
+    'Executive Summary Dashboard',
+    'Time Entry Detail Report',
+    'Accounting Invoice Detail Report',
+    'Customer Billing Summary Report',
+    'Project Report',
+    'PM Project Workload Report',
+    'Engineer Utilization Detail Report',
+    'Selected Engineers Report',
+    'Team Report',
+    'Organization Report',
+    'Workflow / Approval / Audit Report',
+    'System Stability Report',
+    'API Status Report',
+    'External Connection Report',
+    'Authentication / Security Report',
+    'AI / SOW Scope Report',
+    'Notification Report',
+    'UAT Evidence Report',
+    'Report Library'
+  ];
+
+  var periodPresets = ['Daily', 'Weekly', 'Monthly', 'Custom Date Range', 'Year to Date', 'Fiscal Period'];
+  var dateBasisOptions = ['Entry Date', 'Submitted Date', 'Approved Date', 'Exported Date', 'Invoice Date'];
+  var groupByOptions = ['Customer', 'Project', 'PM', 'Engineer', 'Selected Engineers', 'Team', 'Organization', 'Invoice Number', 'Time Entry Status', 'Approval Status', 'Invoice Status', 'Work Code', 'Work Location', 'External Connection', 'API Area', 'Authentication Event', 'System Component'];
+  var exportFormats = ['Preview', 'CSV', 'XLSX', 'PDF', 'Accounting Invoice Extract'];
+
+  var domains = [
+    ['Time Entry Reporting', 'All time entered, submitted, approved, rejected, returned, missing, late, billable, non-billable, AI-assisted, and SOW-aligned time.'],
+    ['Accounting / Invoicing', 'Invoice-ready time, non-invoiced time, invoiced amount, rate, hours, PO/quote, CP invoice number, contract type, work code, and work location.'],
+    ['Customer Reporting', 'Customer, engagement, project, contract type, invoice status, billable hours, total invoiced amount, billing exposure, and exceptions.'],
+    ['Project Reporting', 'Project status, PM, customer, SOW/GSD, signed handoff, assignment, workload, time entered, and billing readiness.'],
+    ['PM Reporting', 'PM assigned projects, workload, PM validation backlog, returned/rejected time, project billing readiness, and handoff gaps.'],
+    ['Engineer Reporting', 'Engineer, selected engineers, utilization, submitted time, missing time, billable/non-billable, allocation, AI entries, and SOW alignment.'],
+    ['Team / Organization', 'Team report, department report, organization-wide rollup, billable/non-billable totals, workload distribution, and approval backlog.'],
+    ['Workflow / Approval / Audit', 'Approval backlog, View-As audit, export readiness, handoff audit, assignment audit, notification audit, and UAT evidence.'],
+    ['System Stability', 'Frontend, API, database, nginx, service status, validation checks, uptime placeholders, and production readiness indicators.'],
+    ['API Status', 'Authentication, navigation, dashboard, notifications, email provider, recipient safety, readiness, CRM, SOW, and AI provider APIs.'],
+    ['External Connections', 'CRM, Salesforce, Zendesk Sell, Claude, Azure, Brevo, SSO/Auth, recipient safety, and future integrations.'],
+    ['Authentication / Security', 'SSO login activity, session_required events, role access checks, View-As activity, forbidden writes, and admin/system access readiness.']
+  ];
+
+  var invoiceColumns = [
+    'Engagement Manager',
+    'Customer',
+    'Engagement',
+    'Contract Type',
+    'PO / Quote',
+    'Invoicing Instructions',
+    'CP Invoice Number',
+    'Invoice Date',
+    'Category',
+    'Item Description',
+    'Quantity / Hours Entered',
+    'Rate',
+    'Amount',
+    'Work Code',
+    'Work Location',
+    'Total Invoiced Amount'
+  ];
+
+  var systemColumns = [
+    'Component',
+    'Area',
+    'Status',
+    'Last Check',
+    'Expected Result',
+    'Observed Result',
+    'Owner',
+    'Exception'
+  ];
+
+  var state = {
+    reportType: 'Accounting Invoice Detail Report',
+    periodPreset: 'Monthly',
+    dateBasis: 'Invoice Date',
+    startDate: '',
+    endDate: '',
+    fiscalPeriod: '',
+    customer: '',
+    project: '',
+    pm: '',
+    engineer: '',
+    selectedEngineers: '',
+    team: '',
+    organization: '',
+    contractType: 'All',
+    timeEntryStatus: 'All',
+    approvalStatus: 'All',
+    invoiceStatus: 'All',
+    workCode: 'All',
+    workLocation: 'All',
+    externalConnection: 'All',
+    apiArea: 'All',
+    authEvent: 'All',
+    systemComponent: 'All',
+    groupBy: 'Customer',
+    exportFormat: 'Preview',
+    includeDetailRows: true,
+    includeExceptions: true,
+    includeInvoiceColumns: true,
+    includeAuditEvents: true,
+    reportName: 'Monthly Accounting Invoice Detail',
+    reportOwner: 'PTC / Accounting',
+    reportCadence: 'On Demand',
+    criteriaBuilderConfirmed: false,
+    timeReportingConfirmed: false,
+    accountingInvoicingConfirmed: false,
+    customerProjectPmEngineerConfirmed: false,
+    teamOrganizationConfirmed: false,
+    systemApiExternalAuthConfirmed: false,
+    exportCenterConfirmed: false,
+    roleVisibilityConfirmed: false,
+    closeoutConfirmed: false,
+    lastPreview: '',
+    lastExportLayout: '',
+    lastSavedDefinition: '',
+    lastReadiness: '',
+    status: '',
+    statusType: ''
+  };
+
+  function escapeHtml(value) {
+    return String(value == null ? '' : value)
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#039;');
+  }
+
+  function cleanText(value) {
+    return String(value || '').replace(/\s+/g, ' ').trim();
+  }
+
+  function currency(value) {
+    var number = Number(value || 0);
+    return number.toLocaleString(undefined, { style: 'currency', currency: 'USD' });
+  }
+
+  function number(value) {
+    return Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
+  }
+
+  function loadState() {
+    try {
+      var raw = window.localStorage.getItem(storageKey);
+      if (!raw) return;
+      Object.assign(state, JSON.parse(raw));
+    } catch {}
+  }
+
+  function saveState() {
+    try {
+      window.localStorage.setItem(storageKey, JSON.stringify(state));
+    } catch {}
+  }
+
+  function route() {
+    return String(window.location.hash || '#dashboard').replace(/^#/, '').split('?')[0].toLowerCase();
+  }
+
+  function getDashboardGrid() {
+    var ownCard = document.getElementById(cardId);
+    if (ownCard && ownCard.parentElement) return ownCard.parentElement;
+
+    var uatCard = document.getElementById('projectpulse-029-uat-card');
+    if (uatCard && uatCard.parentElement) return uatCard.parentElement;
+
+    var aiCard = document.getElementById('projectpulse-028-ai-time-card');
+    if (aiCard && aiCard.parentElement) return aiCard.parentElement;
+
+    var candidates = Array.from(document.querySelectorAll('section, article, div, main'))
+      .filter(function (element) {
+        if (element.id === cardId || element.closest('#' + cardId)) return false;
+        var text = cleanText(element.textContent);
+        var rect = element.getBoundingClientRect();
+        return rect.width > 700 &&
+          rect.height > 250 &&
+          text.includes('Project Workload') &&
+          text.includes('Project Workspace') &&
+          text.includes('Project Intake');
+      })
+      .sort(function (a, b) {
+        var ar = a.getBoundingClientRect();
+        var br = b.getBoundingClientRect();
+        return (ar.width * ar.height) - (br.width * br.height);
+      });
+
+    return candidates[0] || null;
+  }
+
+  function ensureCard() {
+    var grid = getDashboardGrid();
+    if (!grid) return null;
+
+    var card = document.getElementById(cardId);
+    if (!card) {
+      card = document.createElement('section');
+      card.id = cardId;
+      card.innerHTML =
+        '<div class="projectpulse-030-eyebrow">MODULE 030</div>' +
+        '<h3>Reporting / Accounting / Invoicing / Analytics Command Center</h3>' +
+        '<p>Run detailed reports across time, accounting, invoicing, customers, PMs, engineers, teams, projects, APIs, system stability, external connections, authentication, audit, and export readiness.</p>' +
+        '<div class="projectpulse-030-actions">' +
+          '<button type="button" class="projectpulse-030-button primary" data-030-open>Open Reporting Center</button>' +
+          '<span class="projectpulse-030-pill green">Invoice detail</span>' +
+          '<span class="projectpulse-030-pill blue">Criteria builder</span>' +
+          '<span class="projectpulse-030-pill amber">System/API health</span>' +
+        '</div>';
+
+      var uatCard = document.getElementById('projectpulse-029-uat-card');
+      if (uatCard && uatCard.parentElement === grid) {
+        grid.insertBefore(card, uatCard.nextSibling);
+      } else {
+        grid.insertBefore(card, grid.firstElementChild || null);
+      }
+
+      card.querySelector('[data-030-open]').addEventListener('click', function () {
+        window.location.hash = '#reporting';
+        render();
+      });
+    }
+
+    return card;
+  }
+
+  function ensureShell() {
+    var shell = document.getElementById(shellId);
+    if (!shell) {
+      shell = document.createElement('div');
+      shell.id = shellId;
+      shell.setAttribute('aria-label', 'Reporting accounting invoicing analytics route');
+      document.body.appendChild(shell);
+    }
+    return shell;
+  }
+
+  function openShell(open) {
+    var shell = ensureShell();
+    if (open) {
+      shell.setAttribute('data-open', 'true');
+      document.documentElement.style.overflow = 'hidden';
+      document.body.style.overflow = 'hidden';
+      renderShell();
+      setTimeout(function () { shell.scrollTop = 0; }, 0);
+    } else {
+      shell.removeAttribute('data-open');
+      document.documentElement.style.overflow = '';
+      document.body.style.overflow = '';
+    }
+  }
+
+  function optionHtml(values, selected) {
+    return values.map(function (value) {
+      return '<option' + (value === selected ? ' selected' : '') + '>' + escapeHtml(value) + '</option>';
+    }).join('');
+  }
+
+  function setValue(root, name, value) {
+    var element = root.querySelector('[data-030-field="' + name + '"]');
+    if (element) element.value = value || '';
+  }
+
+  function setCheck(root, name, value) {
+    var element = root.querySelector('[data-030-check="' + name + '"]');
+    if (element) element.checked = !!value;
+  }
+
+  function captureInputs() {
+    var shell = document.getElementById(shellId);
+    if (!shell || shell.getAttribute('data-open') !== 'true') return;
+
+    function get(name) {
+      var element = shell.querySelector('[data-030-field="' + name + '"]');
+      return element ? element.value : '';
+    }
+
+    function checked(name) {
+      var element = shell.querySelector('[data-030-check="' + name + '"]');
+      return !!(element && element.checked);
+    }
+
+    [
+      'reportType',
+      'periodPreset',
+      'dateBasis',
+      'startDate',
+      'endDate',
+      'fiscalPeriod',
+      'customer',
+      'project',
+      'pm',
+      'engineer',
+      'selectedEngineers',
+      'team',
+      'organization',
+      'contractType',
+      'timeEntryStatus',
+      'approvalStatus',
+      'invoiceStatus',
+      'workCode',
+      'workLocation',
+      'externalConnection',
+      'apiArea',
+      'authEvent',
+      'systemComponent',
+      'groupBy',
+      'exportFormat',
+      'reportName',
+      'reportOwner',
+      'reportCadence'
+    ].forEach(function (key) {
+      state[key] = get(key);
+    });
+
+    [
+      'includeDetailRows',
+      'includeExceptions',
+      'includeInvoiceColumns',
+      'includeAuditEvents',
+      'criteriaBuilderConfirmed',
+      'timeReportingConfirmed',
+      'accountingInvoicingConfirmed',
+      'customerProjectPmEngineerConfirmed',
+      'teamOrganizationConfirmed',
+      'systemApiExternalAuthConfirmed',
+      'exportCenterConfirmed',
+      'roleVisibilityConfirmed',
+      'closeoutConfirmed'
+    ].forEach(function (key) {
+      state[key] = checked(key);
+    });
+
+    saveState();
+  }
+
+
+  function sampleInvoiceRows() {
+    return [];
+  }
+
+
+  function sampleSystemRows() {
+    return [];
+  }
+
+  function reportCategory() {
+    var value = String(state.reportType || '').toLowerCase();
+
+    if (value.includes('accounting') || value.includes('invoice')) return 'accounting';
+    if (value.includes('time entry')) return 'time';
+    if (value.includes('customer')) return 'customer';
+    if (value.includes('project report')) return 'project';
+    if (value.includes('pm')) return 'pm';
+    if (value.includes('selected engineer') || value.includes('engineer')) return 'engineer';
+    if (value.includes('team') || value.includes('organization')) return 'team';
+    if (value.includes('workflow') || value.includes('approval') || value.includes('audit')) return 'audit';
+    if (value.includes('system')) return 'system';
+    if (value.includes('api')) return 'api';
+    if (value.includes('external')) return 'external';
+    if (value.includes('authentication') || value.includes('security')) return 'auth';
+    if (value.includes('ai') || value.includes('sow')) return 'ai';
+    if (value.includes('notification')) return 'notification';
+    if (value.includes('uat')) return 'uat';
+    if (value.includes('library')) return 'library';
+    if (value.includes('executive')) return 'executive';
+
+    return 'accounting';
+  }
+
+
+  // 030 renderer-level dynamic report table patch.
+  function reportCategory() {
+    var value = String(state.reportType || '').toLowerCase();
+
+    if (value.includes('accounting') || value.includes('invoice')) return 'accounting';
+    if (value.includes('time entry')) return 'time';
+    if (value.includes('customer')) return 'customer';
+    if (value.includes('project report')) return 'project';
+    if (value.includes('pm')) return 'pm';
+    if (value.includes('selected engineer') || value.includes('engineer')) return 'engineer';
+    if (value.includes('team') || value.includes('organization')) return 'team';
+    if (value.includes('workflow') || value.includes('approval') || value.includes('audit')) return 'audit';
+    if (value.includes('system')) return 'system';
+    if (value.includes('api')) return 'api';
+    if (value.includes('external')) return 'external';
+    if (value.includes('authentication') || value.includes('security')) return 'auth';
+    if (value.includes('ai') || value.includes('sow')) return 'ai';
+    if (value.includes('notification')) return 'notification';
+    if (value.includes('uat')) return 'uat';
+    if (value.includes('library')) return 'library';
+    if (value.includes('executive')) return 'executive';
+
+    return 'accounting';
+  }
+
+  function isSystemReport() {
+    var category = reportCategory();
+    return category === 'system' ||
+      category === 'api' ||
+      category === 'external' ||
+      category === 'auth' ||
+      category === 'notification';
+  }
+
+
+
+  function reportRows() {
+    if (state.databaseReport && Array.isArray(state.databaseReport.rows)) {
+      return state.databaseReport.rows;
+    }
+
+    return [];
+  }
+
+
+  function reportHeaders() {
+    if (state.databaseReport && Array.isArray(state.databaseReport.columns) && state.databaseReport.columns.length) {
+      return state.databaseReport.columns;
+    }
+
+    return ['Database Report Status'];
+  }
+
+
+  function reportTableHtml() {
+    var headers = reportHeaders();
+    var rows = reportRows();
+
+    var message = state.databaseReport && state.databaseReport.message
+      ? state.databaseReport.message
+      : 'Select criteria and click Generate Report Preview. Only database-backed rows returned by the API are shown.';
+
+    var sourceTable = state.databaseReport && state.databaseReport.sourceTable
+      ? state.databaseReport.sourceTable
+      : '';
+
+    if (!rows.length) {
+      return '<p style="margin:0 0 .75rem;color:#475569;font-weight:750;">Database-backed report only. ' + escapeHtml(message) + '</p>' +
+        '<div class="projectpulse-030-table-wrap">' +
+          '<table class="projectpulse-030-table compact">' +
+            '<thead><tr><th>Report Type</th><th>Source Table</th><th>Status</th></tr></thead>' +
+            '<tbody><tr><td>' + escapeHtml(state.reportType) + '</td><td>' + escapeHtml(sourceTable || 'No matching source table') + '</td><td>' + escapeHtml(message) + '</td></tr></tbody>' +
+          '</table>' +
+        '</div>';
+    }
+
+    return '<p style="margin:0 0 .75rem;color:#475569;font-weight:750;">Database-backed report. Source: ' + escapeHtml(sourceTable) + '. ' + escapeHtml(message) + '</p>' +
+      '<div class="projectpulse-030-table-wrap">' +
+        '<table class="projectpulse-030-table">' +
+          '<thead><tr>' + headers.map(function (h) { return '<th>' + escapeHtml(h) + '</th>'; }).join('') + '</tr></thead>' +
+          '<tbody>' +
+            rows.map(function (row) {
+              return '<tr>' + headers.map(function (_, index) {
+                return '<td>' + escapeHtml(Array.isArray(row) ? row[index] : '') + '</td>';
+              }).join('') + '</tr>';
+            }).join('') +
+          '</tbody>' +
+        '</table>' +
+      '</div>';
+  }
+
+
+  function totals() {
+    var rows = reportRows();
+    var headers = reportHeaders();
+
+    function indexOfAny(names) {
+      for (var i = 0; i < names.length; i++) {
+        var index = headers.findIndex(function (header) {
+          return String(header || '').toLowerCase().includes(names[i]);
+        });
+
+        if (index >= 0) return index;
+      }
+
+      return -1;
+    }
+
+    var hoursIndex = indexOfAny(['hour', 'quantity']);
+    var amountIndex = indexOfAny(['amount', 'total', 'invoice ready', 'invoiced']);
+
+    var totalHours = hoursIndex >= 0
+      ? rows.reduce(function (sum, row) { return sum + (Number(row[hoursIndex]) || 0); }, 0)
+      : 0;
+
+    var totalAmount = amountIndex >= 0
+      ? rows.reduce(function (sum, row) { return sum + (Number(String(row[amountIndex]).replace(/[^0-9.-]/g, '')) || 0); }, 0)
+      : 0;
+
+    var exceptions = rows.filter(function (row) {
+      return row.some(function (value) {
+        value = String(value || '').toLowerCase();
+        return value.includes('exception') ||
+          value.includes('undefined') ||
+          value.includes('missing') ||
+          value.includes('pending') ||
+          value.includes('required') ||
+          value.includes('forbidden') ||
+          value.includes('credit') ||
+          value.includes('needs review') ||
+          value.includes('failed');
+      });
+    }).length;
+
+    return {
+      rows: rows.length,
+      hours: totalHours,
+      amount: totalAmount,
+      healthy: 0,
+      exceptions: exceptions
+    };
+  }
+
+  function criteriaSummary() {
+    return 'Report Criteria\n\n' +
+      'Report Type: ' + state.reportType + '\n' +
+      'Report Name: ' + state.reportName + '\n' +
+      'Period: ' + state.periodPreset + '\n' +
+      'Date Basis: ' + state.dateBasis + '\n' +
+      'Start Date: ' + (state.startDate || '[not selected]') + '\n' +
+      'End Date: ' + (state.endDate || '[not selected]') + '\n' +
+      'Fiscal Period: ' + (state.fiscalPeriod || '[not selected]') + '\n\n' +
+      'People / Org Criteria:\n' +
+      '- PM: ' + (state.pm || 'All scoped PMs') + '\n' +
+      '- Engineer: ' + (state.engineer || 'All scoped engineers') + '\n' +
+      '- Selected Engineers: ' + (state.selectedEngineers || 'None selected') + '\n' +
+      '- Team: ' + (state.team || 'All scoped teams') + '\n' +
+      '- Organization: ' + (state.organization || 'All scoped organizations') + '\n\n' +
+      'Customer / Project Criteria:\n' +
+      '- Customer: ' + (state.customer || 'All scoped customers') + '\n' +
+      '- Project: ' + (state.project || 'All scoped projects') + '\n' +
+      '- Contract Type: ' + state.contractType + '\n\n' +
+      'Time / Accounting Criteria:\n' +
+      '- Time Entry Status: ' + state.timeEntryStatus + '\n' +
+      '- Approval Status: ' + state.approvalStatus + '\n' +
+      '- Invoice Status: ' + state.invoiceStatus + '\n' +
+      '- Work Code: ' + state.workCode + '\n' +
+      '- Work Location: ' + state.workLocation + '\n\n' +
+      'System Criteria:\n' +
+      '- External Connection: ' + state.externalConnection + '\n' +
+      '- API Area: ' + state.apiArea + '\n' +
+      '- Authentication Event: ' + state.authEvent + '\n' +
+      '- System Component: ' + state.systemComponent + '\n\n' +
+      'Output:\n' +
+      '- Group By: ' + state.groupBy + '\n' +
+      '- Export Format: ' + state.exportFormat + '\n' +
+      '- Include Detail Rows: ' + (state.includeDetailRows ? 'Yes' : 'No') + '\n' +
+      '- Include Exceptions: ' + (state.includeExceptions ? 'Yes' : 'No') + '\n' +
+      '- Include Invoice Columns: ' + (state.includeInvoiceColumns ? 'Yes' : 'No') + '\n' +
+      '- Include Audit Events: ' + (state.includeAuditEvents ? 'Yes' : 'No');
+  }
+
+
+  async function generateReportPreview() {
+    captureInputs();
+
+    state.statusType = '';
+    state.status = 'Generating database-backed report preview from database rows only.';
+    saveState();
+    renderShell();
+
+    try {
+      var session = {};
+      try {
+        session = JSON.parse(window.localStorage.getItem('projectPulseAuthSession') || '{}');
+      } catch {}
+
+      var headers = {
+        'Content-Type': 'application/json'
+      };
+
+      if (session.sessionToken) {
+        headers['X-ProjectPulse-Session'] = session.sessionToken;
+      }
+
+      var response = await fetch('/api/reports/030/preview', {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify({
+          reportType: state.reportType,
+          periodPreset: state.periodPreset,
+          dateBasis: state.dateBasis,
+          startDate: state.startDate,
+          endDate: state.endDate,
+          fiscalPeriod: state.fiscalPeriod,
+          customer: state.customer,
+          project: state.project,
+          pm: state.pm,
+          engineer: state.engineer,
+          selectedEngineers: state.selectedEngineers,
+          team: state.team,
+          organization: state.organization,
+          contractType: state.contractType,
+          timeEntryStatus: state.timeEntryStatus,
+          approvalStatus: state.approvalStatus,
+          invoiceStatus: state.invoiceStatus,
+          workCode: state.workCode,
+          workLocation: state.workLocation,
+          externalConnection: state.externalConnection,
+          apiArea: state.apiArea,
+          authEvent: state.authEvent,
+          systemComponent: state.systemComponent,
+          groupBy: state.groupBy,
+          exportFormat: state.exportFormat
+        })
+      });
+
+      var payload = await response.json().catch(function () {
+        return { message: 'Report API returned a non-JSON response.', rows: [], columns: [] };
+      });
+
+      if (!response.ok) {
+        throw new Error(payload.message || ('Report API failed with HTTP ' + response.status));
+      }
+
+      state.databaseReport = payload;
+      state.lastPreview =
+        'Database-Backed Report Preview\n\n' +
+        'Report Type: ' + state.reportType + '\n' +
+        'Source Table: ' + (payload.sourceTable || 'No matching source table') + '\n' +
+        'Rows Returned: ' + (payload.rowCount || 0) + '\n\n' +
+        (payload.message || 'Database-backed report generated.') + '\n\n' +
+        'This view only displays database-backed users, customers, PMs, engineers, teams, or invoices returned by the API.';
+
+      state.criteriaBuilderConfirmed = true;
+
+      if (String(state.reportType).includes('Time')) state.timeReportingConfirmed = true;
+      if (String(state.reportType).includes('Accounting') || String(state.reportType).includes('Invoice')) state.accountingInvoicingConfirmed = true;
+      if (state.customer || state.project || state.pm || state.engineer || state.selectedEngineers) state.customerProjectPmEngineerConfirmed = true;
+      if (state.team || state.organization) state.teamOrganizationConfirmed = true;
+      if (String(state.reportType).includes('System') || String(state.reportType).includes('API') || String(state.reportType).includes('External') || String(state.reportType).includes('Authentication')) state.systemApiExternalAuthConfirmed = true;
+
+      state.statusType = payload.rowCount > 0 ? 'success' : 'warning';
+      state.status = payload.rowCount > 0
+        ? 'Database-backed report generated from ' + payload.sourceTable + '.'
+        : (payload.message || 'No matching database rows found.');
+
+      saveState();
+      renderShell();
+    } catch (error) {
+      state.databaseReport = {
+        columns: ['Error'],
+        rows: [],
+        rowCount: 0,
+        sourceTable: '',
+        message: error.message || 'Unknown report generation error.'
+      };
+
+      state.lastPreview =
+        'Database-Backed Report Preview Failed\n\n' +
+        (error.message || 'Unknown report generation error.') + '\n\n' +
+        'No matching database rows were returned.';
+
+      state.statusType = 'error';
+      state.status = error.message || 'Report generation failed.';
+      saveState();
+      renderShell();
+    }
+  }
+
+
+  function buildExportLayout() {
+    captureInputs();
+
+    var headers = reportHeaders();
+
+    state.lastExportLayout =
+      'Export Layout Preview\n\n' +
+      'Report Name: ' + state.reportName + '\n' +
+      'Report Type: ' + state.reportType + '\n' +
+      'Format: ' + state.exportFormat + '\n' +
+      'Source Table: ' + ((state.databaseReport && state.databaseReport.sourceTable) || 'Generate report first') + '\n' +
+      'Rows Available: ' + ((state.databaseReport && state.databaseReport.rowCount) || 0) + '\n\n' +
+      'Columns:\n' +
+      headers.map(function (column, index) {
+        return String(index + 1).padStart(2, '0') + '. ' + column;
+      }).join('\n') + '\n\n' +
+      'Export rule:\n' +
+      'Exports are based only on database-backed rows returned by /api/reports/030/preview.';
+
+    state.exportCenterConfirmed = true;
+    state.statusType = 'success';
+    state.status = 'Database-backed export layout prepared with ' + headers.length + ' columns.';
+    saveState();
+    renderShell();
+  }
+
+  function saveReportDefinition() {
+    captureInputs();
+
+    state.lastSavedDefinition =
+      'Saved Report Definition Preview\n\n' +
+      'Report Reference: REPORT-030-PREVIEW-' + new Date().toISOString().replace(/[-:T.Z]/g, '').slice(0, 14) + '\n' +
+      'Report Name: ' + state.reportName + '\n' +
+      'Report Type: ' + state.reportType + '\n' +
+      'Owner: ' + state.reportOwner + '\n' +
+      'Cadence: ' + state.reportCadence + '\n' +
+      'Audience: ' + roleAudience() + '\n' +
+      'Export Format: ' + state.exportFormat + '\n\n' +
+      criteriaSummary() + '\n\n' +
+      'Database target:\n' +
+      '- reporting_saved_report_definitions';
+
+    state.statusType = 'success';
+    state.status = 'Saved report definition preview prepared.';
+    saveState();
+    renderShell();
+  }
+
+  function roleAudience() {
+    if (state.reportType.includes('Accounting') || state.reportType.includes('Invoice')) return 'Accounting, PTC, Admin, Executive';
+    if (state.reportType.includes('System') || state.reportType.includes('API') || state.reportType.includes('External') || state.reportType.includes('Authentication')) return 'Admin, PTC, Executive';
+    if (state.reportType.includes('Engineer')) return 'Engineer, Manager, Engineering Team Lead, PTC';
+    if (state.reportType.includes('PM')) return 'PM, PM Team Lead, PTC, Executive';
+    if (state.reportType.includes('Team')) return 'Manager, Team Lead, PTC, Executive';
+    return 'Scoped operational audience';
+  }
+
+  function readinessSummary() {
+    var checks = [
+      ['Criteria Builder', state.criteriaBuilderConfirmed],
+      ['Time Reporting', state.timeReportingConfirmed],
+      ['Accounting / Invoicing', state.accountingInvoicingConfirmed],
+      ['Customer / Project / PM / Engineer', state.customerProjectPmEngineerConfirmed],
+      ['Team / Organization', state.teamOrganizationConfirmed],
+      ['System / API / External / Auth', state.systemApiExternalAuthConfirmed],
+      ['Export Center', state.exportCenterConfirmed],
+      ['Role Visibility', state.roleVisibilityConfirmed],
+      ['Closeout', state.closeoutConfirmed]
+    ];
+
+    return '030 Reporting Readiness Summary\n\n' +
+      checks.map(function (row) {
+        return '- ' + row[0] + ': ' + (row[1] ? 'Confirmed' : 'Pending');
+      }).join('\n') + '\n\n' +
+      'Reporting Scope Covered:\n' +
+      '- Time entered and time entry status\n' +
+      '- Accounting and invoicing\n' +
+      '- Customer, project, PM, engineer, selected engineers\n' +
+      '- Team and organization rollups\n' +
+      '- Workflow, approval, export, and audit\n' +
+      '- System stability and API status\n' +
+      '- External connections including CRM, Salesforce, Zendesk Sell, Claude, Azure, Brevo, SSO/Auth\n' +
+      '- Authentication and security events\n' +
+      '- Report library and saved definitions';
+  }
+
+  function validateReadiness() {
+    captureInputs();
+
+    state.roleVisibilityConfirmed = true;
+
+    var missing = [];
+    if (!state.criteriaBuilderConfirmed) missing.push('criteria builder');
+    if (!state.timeReportingConfirmed) missing.push('time reporting');
+    if (!state.accountingInvoicingConfirmed) missing.push('accounting/invoicing');
+    if (!state.customerProjectPmEngineerConfirmed) missing.push('customer/project/PM/engineer');
+    if (!state.teamOrganizationConfirmed) missing.push('team/organization');
+    if (!state.systemApiExternalAuthConfirmed) missing.push('system/API/external/authentication');
+    if (!state.exportCenterConfirmed) missing.push('export center');
+    if (!state.roleVisibilityConfirmed) missing.push('role visibility');
+    if (!state.closeoutConfirmed) missing.push('closeout');
+
+    state.lastReadiness = readinessSummary();
+
+    if (missing.length) {
+      state.statusType = 'warning';
+      state.status = 'MODULE 030 readiness incomplete. Missing: ' + missing.join(', ') + '.';
+    } else {
+      state.statusType = 'success';
+      state.status = 'MODULE 030 reporting readiness complete.';
+    }
+
+    saveState();
+    renderShell();
+  }
+
+  function kpiHtml() {
+    var total = totals();
+    return '<div class="projectpulse-030-four-grid">' +
+      '<div class="projectpulse-030-kpi"><div class="label">Preview Rows</div><div class="value">' + escapeHtml(total.rows) + '</div></div>' +
+      '<div class="projectpulse-030-kpi"><div class="label">Total Hours</div><div class="value">' + escapeHtml(number(total.hours)) + '</div></div>' +
+      '<div class="projectpulse-030-kpi"><div class="label">Total Amount</div><div class="value">' + escapeHtml(currency(total.amount)) + '</div></div>' +
+      '<div class="projectpulse-030-kpi"><div class="label">Exceptions</div><div class="value">' + escapeHtml(total.exceptions) + '</div></div>' +
+    '</div>';
+  }
+
+  function domainTableHtml() {
+    return '<div class="projectpulse-030-table-wrap"><table class="projectpulse-030-table compact">' +
+      '<thead><tr><th>Domain</th><th>Coverage</th></tr></thead>' +
+      '<tbody>' +
+      domains.map(function (row) {
+        return '<tr><td>' + escapeHtml(row[0]) + '</td><td>' + escapeHtml(row[1]) + '</td></tr>';
+      }).join('') +
+      '</tbody></table></div>';
+  }
+
+  function criteriaBuilderHtml() {
+    return '<div class="projectpulse-030-section">' +
+      '<h3>030A Reporting Criteria Builder</h3>' +
+      '<div class="projectpulse-030-three-grid">' +
+        '<div class="projectpulse-030-field"><label>Report Type</label><select data-030-field="reportType">' + optionHtml(reportTypes, state.reportType) + '</select></div>' +
+        '<div class="projectpulse-030-field"><label>Period</label><select data-030-field="periodPreset">' + optionHtml(periodPresets, state.periodPreset) + '</select></div>' +
+        '<div class="projectpulse-030-field"><label>Date Basis</label><select data-030-field="dateBasis">' + optionHtml(dateBasisOptions, state.dateBasis) + '</select></div>' +
+      '</div>' +
+      '<div class="projectpulse-030-three-grid">' +
+        '<div class="projectpulse-030-field"><label>Start Date</label><input type="date" data-030-field="startDate"></div>' +
+        '<div class="projectpulse-030-field"><label>End Date</label><input type="date" data-030-field="endDate"></div>' +
+        '<div class="projectpulse-030-field"><label>Fiscal Period</label><input data-030-field="fiscalPeriod" placeholder="FY2026-Q1 or 2026-07"></div>' +
+      '</div>' +
+      '<div class="projectpulse-030-three-grid">' +
+        '<div class="projectpulse-030-field"><label>Customer</label><input data-030-field="customer" placeholder="All scoped customers"></div>' +
+        '<div class="projectpulse-030-field"><label>Project</label><input data-030-field="project" placeholder="Project / engagement"></div>' +
+        '<div class="projectpulse-030-field"><label>PM</label><input data-030-field="pm" placeholder="PM name"></div>' +
+      '</div>' +
+      '<div class="projectpulse-030-three-grid">' +
+        '<div class="projectpulse-030-field"><label>Engineer</label><input data-030-field="engineer" placeholder="Engineer name"></div>' +
+        '<div class="projectpulse-030-field"><label>Selected Engineers</label><input data-030-field="selectedEngineers" placeholder="Comma-separated engineers"></div>' +
+        '<div class="projectpulse-030-field"><label>Team</label><input data-030-field="team" placeholder="Team name"></div>' +
+      '</div>' +
+      '<div class="projectpulse-030-three-grid">' +
+        '<div class="projectpulse-030-field"><label>Organization</label><input data-030-field="organization" placeholder="Organization / department"></div>' +
+        '<div class="projectpulse-030-field"><label>Contract Type</label><select data-030-field="contractType">' + optionHtml(['All', 'T&M', 'Fixed Fee', 'Service Request', 'Managed Service', 'Project'], state.contractType) + '</select></div>' +
+        '<div class="projectpulse-030-field"><label>Group By</label><select data-030-field="groupBy">' + optionHtml(groupByOptions, state.groupBy) + '</select></div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function advancedCriteriaHtml() {
+    return '<div class="projectpulse-030-section">' +
+      '<h3>030B–030M Advanced Filters</h3>' +
+      '<div class="projectpulse-030-four-grid">' +
+        '<div class="projectpulse-030-field"><label>Time Entry Status</label><select data-030-field="timeEntryStatus">' + optionHtml(['All', 'Draft', 'Submitted', 'Approved', 'Rejected', 'Returned', 'Exported', 'Invoiced', 'Missing', 'Late'], state.timeEntryStatus) + '</select></div>' +
+        '<div class="projectpulse-030-field"><label>Approval Status</label><select data-030-field="approvalStatus">' + optionHtml(['All', 'Pending PM Validation', 'Pending Manager Approval', 'Approved', 'Rejected', 'Returned'], state.approvalStatus) + '</select></div>' +
+        '<div class="projectpulse-030-field"><label>Invoice Status</label><select data-030-field="invoiceStatus">' + optionHtml(['All', 'Invoice Ready', 'Invoiced', 'Not Invoiced', 'Exception', 'Credit / Correction'], state.invoiceStatus) + '</select></div>' +
+        '<div class="projectpulse-030-field"><label>Work Code</label><select data-030-field="workCode">' + optionHtml(['All', 'Consulting', 'Configuration', 'Project Management', 'Support', 'Architecture', 'Training'], state.workCode) + '</select></div>' +
+      '</div>' +
+      '<div class="projectpulse-030-four-grid">' +
+        '<div class="projectpulse-030-field"><label>Work Location</label><select data-030-field="workLocation">' + optionHtml(['All', 'Default Work Location', 'Undefined', 'Remote', 'Onsite'], state.workLocation) + '</select></div>' +
+        '<div class="projectpulse-030-field"><label>External Connection</label><select data-030-field="externalConnection">' + optionHtml(['All', 'CRM', 'Salesforce', 'Zendesk Sell', 'Claude', 'Azure', 'Brevo', 'SSO/Auth', 'Recipient Safety'], state.externalConnection) + '</select></div>' +
+        '<div class="projectpulse-030-field"><label>API Area</label><select data-030-field="apiArea">' + optionHtml(['All', 'Authentication', 'Navigation', 'Dashboard', 'Notifications', 'Email Provider', 'Recipient Safety', 'Readiness', 'CRM', 'SOW/AI'], state.apiArea) + '</select></div>' +
+        '<div class="projectpulse-030-field"><label>Authentication Event</label><select data-030-field="authEvent">' + optionHtml(['All', 'SSO Login', 'session_required', 'Forbidden Write', 'View-As', 'Role Access Check', 'Admin Access'], state.authEvent) + '</select></div>' +
+      '</div>' +
+      '<div class="projectpulse-030-two-grid">' +
+        '<div class="projectpulse-030-field"><label>System Component</label><select data-030-field="systemComponent">' + optionHtml(['All', 'Frontend', 'API', 'Database', 'Nginx', 'Email Provider', 'AI Provider', 'External Connection'], state.systemComponent) + '</select></div>' +
+        '<div class="projectpulse-030-field"><label>Export Format</label><select data-030-field="exportFormat">' + optionHtml(exportFormats, state.exportFormat) + '</select></div>' +
+      '</div>' +
+      '<div class="projectpulse-030-checklist">' +
+        '<label><input type="checkbox" data-030-check="includeDetailRows"> Include detail rows.</label>' +
+        '<label><input type="checkbox" data-030-check="includeExceptions"> Include exceptions and missing/failed criteria.</label>' +
+        '<label><input type="checkbox" data-030-check="includeInvoiceColumns"> Include accounting invoice columns.</label>' +
+        '<label><input type="checkbox" data-030-check="includeAuditEvents"> Include workflow/audit events.</label>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function reportLibraryHtml() {
+    return '<div class="projectpulse-030-section">' +
+      '<h3>030P Report Library Definition</h3>' +
+      '<div class="projectpulse-030-three-grid">' +
+        '<div class="projectpulse-030-field"><label>Report Name</label><input data-030-field="reportName"></div>' +
+        '<div class="projectpulse-030-field"><label>Owner / Audience</label><input data-030-field="reportOwner"></div>' +
+        '<div class="projectpulse-030-field"><label>Cadence</label><select data-030-field="reportCadence">' + optionHtml(['On Demand', 'Daily', 'Weekly', 'Monthly', 'Quarterly', 'Yearly'], state.reportCadence) + '</select></div>' +
+      '</div>' +
+      '<div class="projectpulse-030-actions">' +
+        '<button type="button" class="projectpulse-030-button primary" data-030-generate>Generate Report Preview</button>' +
+        '<button type="button" class="projectpulse-030-button success" data-030-export>Build Export Layout</button>' +
+        '<button type="button" class="projectpulse-030-button warning" data-030-save-definition>Save Report Definition Preview</button>' +
+      '</div>' +
+      '<div data-030-status></div>' +
+    '</div>';
+  }
+
+  function readinessHtml() {
+    return '<div class="projectpulse-030-section">' +
+      '<h3>030Q Reporting Readiness Closeout</h3>' +
+      '<div class="projectpulse-030-checklist">' +
+        '<label><input type="checkbox" data-030-check="criteriaBuilderConfirmed"> Criteria builder confirmed.</label>' +
+        '<label><input type="checkbox" data-030-check="timeReportingConfirmed"> Time reporting confirmed.</label>' +
+        '<label><input type="checkbox" data-030-check="accountingInvoicingConfirmed"> Accounting / invoicing reporting confirmed.</label>' +
+        '<label><input type="checkbox" data-030-check="customerProjectPmEngineerConfirmed"> Customer / project / PM / engineer reporting confirmed.</label>' +
+        '<label><input type="checkbox" data-030-check="teamOrganizationConfirmed"> Team / organization reporting confirmed.</label>' +
+        '<label><input type="checkbox" data-030-check="systemApiExternalAuthConfirmed"> System / API / external / authentication reporting confirmed.</label>' +
+        '<label><input type="checkbox" data-030-check="exportCenterConfirmed"> Export center confirmed.</label>' +
+        '<label><input type="checkbox" data-030-check="roleVisibilityConfirmed"> Role visibility confirmed.</label>' +
+        '<label><input type="checkbox" data-030-check="closeoutConfirmed"> MODULE 030 closeout confirmed.</label>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function renderShell() {
+    loadState();
+
+    var shell = ensureShell();
+
+    shell.innerHTML =
+      '<div id="projectpulse-030-page">' +
+        '<div class="projectpulse-030-page-header">' +
+          '<div>' +
+            '<div class="projectpulse-030-eyebrow">MODULE 030 · Full Reporting / Accounting / Invoicing / Analytics</div>' +
+            '<h2>Reporting, Accounting, Invoicing, Analytics Command Center</h2>' +
+            '<p>Criteria-driven reporting across time entered, billing, invoicing, customers, PMs, engineers, teams, organization, projects, workflow, audit, system stability, APIs, external connections, authentication, AI/SOW scope, notifications, UAT, and export readiness.</p>' +
+            '<div class="projectpulse-030-actions">' +
+              '<span class="projectpulse-030-pill green">Daily / weekly / monthly / YTD</span>' +
+              '<span class="projectpulse-030-pill blue">Customer / PM / engineer / project</span>' +
+              '<span class="projectpulse-030-pill amber">Accounting invoice schema</span>' +
+              '<span class="projectpulse-030-pill slate">System / API / external health</span>' +
+            '</div>' +
+          '</div>' +
+          '<div class="projectpulse-030-actions">' +
+            '<button type="button" class="projectpulse-030-button" data-030-dashboard>Back to Dashboard</button>' +
+            '<button type="button" class="projectpulse-030-button primary" data-030-generate-top>Generate Report</button>' +
+            '<button type="button" class="projectpulse-030-button success" data-030-readiness>Validate 030 Readiness</button>' +
+            '<button type="button" class="projectpulse-030-button" data-030-clear>Clear Preview State</button>' +
+          '</div>' +
+        '</div>' +
+
+        kpiHtml() +
+
+        '<div class="projectpulse-030-layout" style="margin-top:1rem;">' +
+          '<div>' +
+            criteriaBuilderHtml() +
+            advancedCriteriaHtml() +
+            reportLibraryHtml() +
+            readinessHtml() +
+          '</div>' +
+          '<div>' +
+            '<div class="projectpulse-030-section white"><h3>030O Executive / Operational KPI Summary</h3><p>High-level rollup is generated from selected criteria and backed by the detailed report preview below.</p>' + kpiHtml() + '</div>' +
+            '<div class="projectpulse-030-section white"><h3>Report Preview Rows · ' + escapeHtml(state.reportType) + '</h3>' + reportTableHtml() + '</div>' +
+            '<div class="projectpulse-030-section"><h3>Report Criteria Summary</h3><div class="projectpulse-030-preview" data-030-preview-output></div></div>' +
+            '<div class="projectpulse-030-section"><h3>030N Export Center Output</h3><div class="projectpulse-030-preview" data-030-export-output></div></div>' +
+            '<div class="projectpulse-030-section"><h3>030P Saved Report Definition</h3><div class="projectpulse-030-preview" data-030-saved-output></div></div>' +
+            '<div class="projectpulse-030-section"><h3>030Q Readiness Output</h3><div class="projectpulse-030-preview" data-030-readiness-output></div></div>' +
+            '<div class="projectpulse-030-section white"><h3>030A–030M Reporting Domain Coverage</h3>' + domainTableHtml() + '</div>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+
+    populateShell(shell);
+    wireShell(shell);
+  }
+
+  function populateShell(shell) {
+    [
+      'reportType',
+      'periodPreset',
+      'dateBasis',
+      'startDate',
+      'endDate',
+      'fiscalPeriod',
+      'customer',
+      'project',
+      'pm',
+      'engineer',
+      'selectedEngineers',
+      'team',
+      'organization',
+      'contractType',
+      'timeEntryStatus',
+      'approvalStatus',
+      'invoiceStatus',
+      'workCode',
+      'workLocation',
+      'externalConnection',
+      'apiArea',
+      'authEvent',
+      'systemComponent',
+      'groupBy',
+      'exportFormat',
+      'reportName',
+      'reportOwner',
+      'reportCadence'
+    ].forEach(function (key) {
+      setValue(shell, key, state[key]);
+    });
+
+    [
+      'includeDetailRows',
+      'includeExceptions',
+      'includeInvoiceColumns',
+      'includeAuditEvents',
+      'criteriaBuilderConfirmed',
+      'timeReportingConfirmed',
+      'accountingInvoicingConfirmed',
+      'customerProjectPmEngineerConfirmed',
+      'teamOrganizationConfirmed',
+      'systemApiExternalAuthConfirmed',
+      'exportCenterConfirmed',
+      'roleVisibilityConfirmed',
+      'closeoutConfirmed'
+    ].forEach(function (key) {
+      setCheck(shell, key, state[key]);
+    });
+
+    var previewNode = shell.querySelector('[data-030-preview-output]');
+    var exportNode = shell.querySelector('[data-030-export-output]');
+    var savedNode = shell.querySelector('[data-030-saved-output]');
+    var readinessNode = shell.querySelector('[data-030-readiness-output]');
+    var statusNode = shell.querySelector('[data-030-status]');
+
+    if (previewNode) previewNode.textContent = state.lastPreview || criteriaSummary();
+    if (exportNode) exportNode.textContent = state.lastExportLayout || 'Build export layout to preview report columns, invoice readiness rules, and export format.';
+    if (savedNode) savedNode.textContent = state.lastSavedDefinition || 'Save report definition preview to capture criteria, owner, cadence, audience, and output format.';
+    if (readinessNode) readinessNode.textContent = state.lastReadiness || readinessSummary();
+
+    if (statusNode) {
+      statusNode.innerHTML = state.status
+        ? '<div class="projectpulse-030-status ' + escapeHtml(state.statusType || '') + '">' + escapeHtml(state.status) + '</div>'
+        : '';
+    }
+  }
+
+  function wireShell(shell) {
+    shell.querySelectorAll('input, select, textarea').forEach(function (input) {
+      input.addEventListener('input', function () {
+        captureInputs();
+        renderShell();
+      });
+      input.addEventListener('change', function () {
+        captureInputs();
+        renderShell();
+      });
+    });
+
+    shell.querySelector('[data-030-dashboard]').addEventListener('click', function () {
+      window.location.hash = '#dashboard';
+      render();
+    });
+
+    shell.querySelector('[data-030-clear]').addEventListener('click', function () {
+      if (!confirm('Clear MODULE 030 preview state on this browser?')) return;
+      window.localStorage.removeItem(storageKey);
+      location.reload();
+    });
+
+    shell.querySelector('[data-030-generate]').addEventListener('click', generateReportPreview);
+    shell.querySelector('[data-030-generate-top]').addEventListener('click', generateReportPreview);
+    shell.querySelector('[data-030-export]').addEventListener('click', buildExportLayout);
+    shell.querySelector('[data-030-save-definition]').addEventListener('click', saveReportDefinition);
+    shell.querySelector('[data-030-readiness]').addEventListener('click', validateReadiness);
+  }
+
+  function render() {
+    loadState();
+    ensureShell();
+    ensureCard();
+    var currentRoute = route();
+    openShell(currentRoute === 'reporting' || currentRoute === 'reports' || currentRoute === 'analytics' || currentRoute === 'executive-reporting');
+  }
+
+  function boot(attempt) {
+    render();
+    if (!document.getElementById(cardId) && attempt !== 12) {
+      setTimeout(function () { boot(attempt + 1); }, 250);
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () { boot(0); });
+  } else {
+    boot(0);
+  }
+
+  window.addEventListener('hashchange', function () { setTimeout(render, 60); });
+})();
+</script>
+<!-- 030_FULL_REPORTING_ACCOUNTING_INVOICING_ANALYTICS_END -->
+
+<!-- 030_USABLE_REPORTING_LAYOUT_REFRESH_START -->
+<style id="projectpulse-030-usable-layout-refresh">
+  /*
+    030 usability refresh:
+    - Fixes compressed reporting filters.
+    - Gives the criteria panel a usable width.
+    - Keeps the report table inside a controlled scroll region.
+    - Makes invoice/accounting reporting readable without breaking the rest of 024-030.
+  */
+
+  #projectpulse-030-shell {
+    padding: 0.85rem !important;
+    background: #f3f7fb !important;
+  }
+
+  #projectpulse-030-page {
+    width: min(100%, 1920px) !important;
+    max-width: none !important;
+    margin: 0 auto 2rem !important;
+    padding: 1rem !important;
+    border-radius: 22px !important;
+    background: #f8fafc !important;
+    box-sizing: border-box !important;
+  }
+
+  #projectpulse-030-page .projectpulse-030-page-header {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 20 !important;
+    background: rgba(255, 255, 255, 0.98) !important;
+    backdrop-filter: blur(12px) !important;
+    border: 1px solid rgba(148, 163, 184, 0.24) !important;
+    border-radius: 18px !important;
+    padding: 1rem !important;
+    margin: 0 0 1rem !important;
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08) !important;
+  }
+
+  #projectpulse-030-page .projectpulse-030-page-header h2 {
+    font-size: clamp(1.35rem, 1.4vw, 1.9rem) !important;
+  }
+
+  #projectpulse-030-page .projectpulse-030-page-header p {
+    max-width: 1050px !important;
+    margin-bottom: 0 !important;
+  }
+
+  #projectpulse-030-page > .projectpulse-030-four-grid {
+    grid-template-columns: repeat(4, minmax(180px, 1fr)) !important;
+    gap: 0.75rem !important;
+    margin-bottom: 1rem !important;
+  }
+
+  #projectpulse-030-page .projectpulse-030-layout {
+    display: grid !important;
+    grid-template-columns: minmax(400px, 470px) minmax(0, 1fr) !important;
+    gap: 1rem !important;
+    align-items: start !important;
+  }
+
+  #projectpulse-030-page .projectpulse-030-layout > div:first-child {
+    min-width: 0 !important;
+    max-width: 470px !important;
+    position: sticky !important;
+    top: 7.25rem !important;
+    max-height: calc(100vh - 8.25rem) !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    padding-right: 0.25rem !important;
+    scrollbar-gutter: stable !important;
+  }
+
+  #projectpulse-030-page .projectpulse-030-layout > div:nth-child(2) {
+    min-width: 0 !important;
+    overflow: hidden !important;
+  }
+
+  #projectpulse-030-page .projectpulse-030-section {
+    background: #ffffff !important;
+    border: 1px solid rgba(148, 163, 184, 0.26) !important;
+    border-radius: 18px !important;
+    padding: 1rem !important;
+    margin-bottom: 1rem !important;
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.04) !important;
+  }
+
+  #projectpulse-030-page .projectpulse-030-layout > div:first-child .projectpulse-030-section h3 {
+    font-size: 1rem !important;
+    line-height: 1.25 !important;
+    margin-bottom: 0.8rem !important;
+    padding-bottom: 0.65rem !important;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.22) !important;
+  }
+
+  #projectpulse-030-page .projectpulse-030-layout > div:first-child .projectpulse-030-three-grid,
+  #projectpulse-030-page .projectpulse-030-layout > div:first-child .projectpulse-030-four-grid,
+  #projectpulse-030-page .projectpulse-030-layout > div:first-child .projectpulse-030-two-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.7rem !important;
+  }
+
+  #projectpulse-030-page .projectpulse-030-layout > div:first-child .projectpulse-030-section:first-child .projectpulse-030-three-grid:first-of-type .projectpulse-030-field:first-child {
+    grid-column: 1 / -1 !important;
+  }
+
+  #projectpulse-030-page .projectpulse-030-field {
+    min-width: 0 !important;
+    margin-bottom: 0.75rem !important;
+  }
+
+  #projectpulse-030-page .projectpulse-030-field label {
+    display: flex !important;
+    align-items: flex-end !important;
+    min-height: 1.95rem !important;
+    margin-bottom: 0.32rem !important;
+    color: #475569 !important;
+    font-size: 0.72rem !important;
+    font-weight: 950 !important;
+    letter-spacing: 0.045em !important;
+    line-height: 1.1 !important;
+    text-transform: uppercase !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  #projectpulse-030-page .projectpulse-030-field input,
+  #projectpulse-030-page .projectpulse-030-field select,
+  #projectpulse-030-page .projectpulse-030-field textarea {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 44px !important;
+    border-radius: 12px !important;
+    padding: 0.6rem 0.68rem !important;
+    font-size: 0.93rem !important;
+    line-height: 1.25 !important;
+    box-sizing: border-box !important;
+  }
+
+  #projectpulse-030-page .projectpulse-030-field textarea {
+    min-height: 96px !important;
+  }
+
+  #projectpulse-030-page .projectpulse-030-checklist {
+    gap: 0.55rem !important;
+  }
+
+  #projectpulse-030-page .projectpulse-030-checklist label {
+    display: grid !important;
+    grid-template-columns: 20px minmax(0, 1fr) !important;
+    gap: 0.55rem !important;
+    align-items: start !important;
+    font-size: 0.92rem !important;
+    line-height: 1.35 !important;
+  }
+
+  #projectpulse-030-page .projectpulse-030-checklist input[type="checkbox"] {
+    width: 16px !important;
+    height: 16px !important;
+    margin-top: 0.15rem !important;
+  }
+
+  #projectpulse-030-page .projectpulse-030-actions {
+    gap: 0.55rem !important;
+  }
+
+  #projectpulse-030-page .projectpulse-030-layout > div:first-child .projectpulse-030-actions {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+  }
+
+  #projectpulse-030-page .projectpulse-030-button {
+    min-height: 44px !important;
+    border-radius: 12px !important;
+    padding: 0.65rem 0.9rem !important;
+    font-size: 0.92rem !important;
+    line-height: 1.2 !important;
+  }
+
+  #projectpulse-030-page .projectpulse-030-kpi {
+    min-height: 86px !important;
+    border-color: rgba(14, 116, 144, 0.20) !important;
+    background: #ffffff !important;
+  }
+
+  #projectpulse-030-page .projectpulse-030-kpi .label {
+    font-size: 0.72rem !important;
+    line-height: 1.1 !important;
+  }
+
+  #projectpulse-030-page .projectpulse-030-kpi .value {
+    font-size: clamp(1.25rem, 1.3vw, 1.7rem) !important;
+    line-height: 1.1 !important;
+  }
+
+  #projectpulse-030-page .projectpulse-030-layout > div:nth-child(2) > .projectpulse-030-section.white:first-child .projectpulse-030-four-grid {
+    display: none !important;
+  }
+
+  #projectpulse-030-page .projectpulse-030-table-wrap {
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: 560px !important;
+    overflow: auto !important;
+    border-radius: 16px !important;
+    background: #ffffff !important;
+  }
+
+  #projectpulse-030-page .projectpulse-030-table {
+    min-width: 1680px !important;
+    width: max-content !important;
+    table-layout: auto !important;
+    border-collapse: separate !important;
+    border-spacing: 0 !important;
+  }
+
+  #projectpulse-030-page .projectpulse-030-table th,
+  #projectpulse-030-page .projectpulse-030-table td {
+    padding: 0.7rem 0.72rem !important;
+    font-size: 0.88rem !important;
+    line-height: 1.25 !important;
+    white-space: normal !important;
+    vertical-align: top !important;
+    background: #ffffff !important;
+  }
+
+  #projectpulse-030-page .projectpulse-030-table th {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 4 !important;
+    background: #eef4fb !important;
+    color: #334155 !important;
+    font-size: 0.72rem !important;
+    letter-spacing: 0.055em !important;
+    white-space: nowrap !important;
+  }
+
+  #projectpulse-030-page .projectpulse-030-table th:nth-child(1),
+  #projectpulse-030-page .projectpulse-030-table td:nth-child(1) {
+    position: sticky !important;
+    left: 0 !important;
+    z-index: 5 !important;
+    min-width: 185px !important;
+    max-width: 185px !important;
+    background: #ffffff !important;
+    box-shadow: 1px 0 0 rgba(148, 163, 184, 0.28) !important;
+  }
+
+  #projectpulse-030-page .projectpulse-030-table th:nth-child(1) {
+    background: #e2ebf6 !important;
+    z-index: 7 !important;
+  }
+
+  #projectpulse-030-page .projectpulse-030-table th:nth-child(2),
+  #projectpulse-030-page .projectpulse-030-table td:nth-child(2) {
+    position: sticky !important;
+    left: 185px !important;
+    z-index: 5 !important;
+    min-width: 135px !important;
+    max-width: 135px !important;
+    background: #ffffff !important;
+    box-shadow: 1px 0 0 rgba(148, 163, 184, 0.28) !important;
+  }
+
+  #projectpulse-030-page .projectpulse-030-table th:nth-child(2) {
+    background: #e2ebf6 !important;
+    z-index: 7 !important;
+  }
+
+  #projectpulse-030-page .projectpulse-030-preview {
+    max-height: 300px !important;
+    overflow: auto !important;
+    background: #ffffff !important;
+    font-size: 0.93rem !important;
+    line-height: 1.35 !important;
+  }
+
+  #projectpulse-030-page .projectpulse-030-layout > div:nth-child(2) .projectpulse-030-section h3 {
+    display: flex !important;
+    align-items: center !important;
+    gap: 0.5rem !important;
+    margin-bottom: 0.75rem !important;
+  }
+
+  #projectpulse-030-page .projectpulse-030-layout > div:nth-child(2) .projectpulse-030-section h3::after {
+    content: "" !important;
+    flex: 1 !important;
+    height: 1px !important;
+    background: rgba(148, 163, 184, 0.24) !important;
+  }
+
+  #projectpulse-030-page .projectpulse-030-layout > div:first-child::-webkit-scrollbar,
+  #projectpulse-030-page .projectpulse-030-table-wrap::-webkit-scrollbar,
+  #projectpulse-030-page .projectpulse-030-preview::-webkit-scrollbar {
+    width: 10px !important;
+    height: 10px !important;
+  }
+
+  #projectpulse-030-page .projectpulse-030-layout > div:first-child::-webkit-scrollbar-thumb,
+  #projectpulse-030-page .projectpulse-030-table-wrap::-webkit-scrollbar-thumb,
+  #projectpulse-030-page .projectpulse-030-preview::-webkit-scrollbar-thumb {
+    background: rgba(100, 116, 139, 0.45) !important;
+    border-radius: 999px !important;
+  }
+
+  @media (max-width: 1350px) {
+    #projectpulse-030-page .projectpulse-030-layout {
+      grid-template-columns: minmax(360px, 420px) minmax(0, 1fr) !important;
+    }
+
+    #projectpulse-030-page .projectpulse-030-layout > div:first-child {
+      max-width: 420px !important;
+    }
+
+    #projectpulse-030-page > .projectpulse-030-four-grid {
+      grid-template-columns: repeat(2, minmax(180px, 1fr)) !important;
+    }
+  }
+
+  @media (max-width: 1050px) {
+    #projectpulse-030-page .projectpulse-030-page-header {
+      position: static !important;
+    }
+
+    #projectpulse-030-page .projectpulse-030-layout {
+      grid-template-columns: 1fr !important;
+    }
+
+    #projectpulse-030-page .projectpulse-030-layout > div:first-child {
+      position: static !important;
+      max-width: none !important;
+      max-height: none !important;
+      overflow: visible !important;
+    }
+
+    #projectpulse-030-page .projectpulse-030-layout > div:first-child .projectpulse-030-three-grid,
+    #projectpulse-030-page .projectpulse-030-layout > div:first-child .projectpulse-030-four-grid,
+    #projectpulse-030-page .projectpulse-030-layout > div:first-child .projectpulse-030-two-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+  }
+
+  @media (max-width: 720px) {
+    #projectpulse-030-shell {
+      padding: 0.4rem !important;
+    }
+
+    #projectpulse-030-page {
+      padding: 0.6rem !important;
+      border-radius: 16px !important;
+    }
+
+    #projectpulse-030-page .projectpulse-030-layout > div:first-child .projectpulse-030-three-grid,
+    #projectpulse-030-page .projectpulse-030-layout > div:first-child .projectpulse-030-four-grid,
+    #projectpulse-030-page .projectpulse-030-layout > div:first-child .projectpulse-030-two-grid,
+    #projectpulse-030-page > .projectpulse-030-four-grid {
+      grid-template-columns: 1fr !important;
+    }
+  }
+</style>
+<!-- 030_USABLE_REPORTING_LAYOUT_REFRESH_END -->
+
+<!-- 030_RENDERER_DYNAMIC_REPORT_TABLE_PATCH_START -->
+<!-- Original 030 renderer functions now generate report-specific preview columns and rows. -->
+<!-- 030_RENDERER_DYNAMIC_REPORT_TABLE_PATCH_END -->
+
+<!-- 030_DATABASE_BACKED_FRONTEND_PATCH_START -->
+<!-- 030 frontend now uses database-backed /api/reports/030/preview only. Dummy report rows removed. -->
+<!-- 030_DATABASE_BACKED_FRONTEND_PATCH_END -->
+
+
 
 </body>
 </html>

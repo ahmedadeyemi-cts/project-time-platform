@@ -33,21 +33,21 @@ async function fetchJson(path) {
 const TEAM_OPTIONS = [
   {
     teamName: 'Collaboration',
-    departmentName: 'Collaboration Engineering',
+    departmentName: 'Collaboration Engineeringing',
     managerName: 'Ahmed Adeyemi',
     managerEmail: 'ahmed.adeyemi@ussignal.com',
     coordinatorAssigned: false
   },
   {
     teamName: 'Systems',
-    departmentName: 'Systems Engineering',
+    departmentName: 'Systems Engineeringing',
     managerName: 'Ahmed Adeyemi',
     managerEmail: 'ahmed.adeyemi@ussignal.com',
     coordinatorAssigned: false
   },
   {
     teamName: 'Enterprise Networking',
-    departmentName: 'Enterprise Networking Engineering',
+    departmentName: 'Enterprise Networking Engineeringing',
     managerName: 'Matthew Lenoble',
     managerEmail: 'matthew.lenoble@ussignal.com',
     coordinatorAssigned: false
@@ -120,7 +120,7 @@ export default function UserAdministrationPanel() {
     teamName: '',
     officeLocation: '',
     managerEmail: '',
-    roleCodes: ['ENGINEER']
+    roleCodes: ['ENGINEERING']
   });
 
   const [bulkDraft, setBulkDraft] = useState({
@@ -284,7 +284,7 @@ export default function UserAdministrationPanel() {
         teamName: '',
         officeLocation: '',
         managerEmail: '',
-        roleCodes: ['ENGINEER']
+        roleCodes: ['ENGINEERING']
       });
 
       await loadUserAdministration();
@@ -547,7 +547,7 @@ export default function UserAdministrationPanel() {
               <input
                 value={localUserDraft.jobTitle}
                 onChange={(event) => setLocalUserDraft((current) => ({ ...current, jobTitle: event.target.value }))}
-                placeholder="Engineer, Coordinator, Manager, etc."
+                placeholder="Engineering, Coordinator, Manager, etc."
               />
 
               <label>Office location</label>
@@ -884,7 +884,7 @@ export default function UserAdministrationPanel() {
                 placeholder={profileDraft.teamName === 'Back Office' ? 'Coordinator assigned' : 'manager@ussignal.com'}
               />
 
-              
+
               <label>Project Pulse role</label>
               <select
                 value={getSelectedPrimaryRoleCode()}
@@ -969,3 +969,6 @@ export default function UserAdministrationPanel() {
     </div>
   );
 }
+
+
+/* 030_ROLE_CLEANUP_PHASE2_COMPATIBILITY */
