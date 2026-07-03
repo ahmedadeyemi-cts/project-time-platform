@@ -3389,6 +3389,7 @@
       document.documentElement.style.overflow = 'hidden';
       document.body.style.overflow = 'hidden';
       renderShell();
+      loadFilterOptions();
       setTimeout(function () { shell.scrollTop = 0; }, 0);
     } else {
       shell.removeAttribute('data-open');
@@ -7293,7 +7294,7 @@
     var rows = [
       ['Engineer', 'Can draft only own assigned project/time entries; must review/edit/accept before use.', 'Own assigned projects only'],
       ['Project Management', 'Can review assigned project AI draft risk; cannot submit engineer time.', 'Assigned projects'],
-      ['Engineering Team Lead', 'Can review team scope-risk patterns and coaching needs.', 'Team scope'],
+      ['Engineering Lead', 'Can review team scope-risk patterns and coaching needs.', 'Team scope'],
       ['PTC', 'Can review operational readiness and assignment workflow impact.', 'Operational scope'],
       ['Administrator', 'Can review configuration/audit; View-As remains read-only.', 'System-wide audit'],
       ['Executive', 'Receives reporting only; no drafting or approval controls.', 'Reporting only']
@@ -8045,8 +8046,8 @@
     ['Engineer', 'Own time, assigned work, holidays view-only, assigned project workspace, SOW/GSD after assignment, own AI time entry only', 'No Project Info/Allocation, no workflow/export/reconciliation, no View-As writes'],
     ['Project Management', 'Assigned projects, Project Workload, PM validation for assigned project time', 'No global engineer time, no Utilization, no Project Info/Allocation'],
     ['Manager', 'Team approvals, team utilization, holidays management, customer directory view', 'No unrelated-team approvals, no password reset/admin-only controls'],
-    ['Engineering Team Lead', 'Team engineers, assigned work, team/individual utilization', 'No approval/password reset/export/reconciliation'],
-    ['PM Team Lead', 'PMs on team, PM workload, managed projects', 'No approval/password reset/global engineering controls'],
+    ['Engineering Lead', 'Team engineers, assigned work, team/individual utilization', 'No approval/password reset/export/reconciliation'],
+    ['Project Management Lead', 'PMs on team, PM workload, managed projects', 'No approval/password reset/global engineering controls'],
     ['PTC', 'Broad operations, time records, holidays, customers, workflow, export, reconciliation, handoff assignment', 'No admin-only secret management unless also Admin'],
     ['Administrator', 'Full access with View-As read-only preview', 'Cannot approve/submit/write as selected View-As user'],
     ['Executive', 'High-level reporting and workflow status', 'No operational writes'],
@@ -9053,6 +9054,22 @@
   var groupByOptions = ['Customer', 'Project', 'PM', 'Engineer', 'Selected Engineers', 'Team', 'Organization', 'Invoice Number', 'Time Entry Status', 'Approval Status', 'Invoice Status', 'Work Code', 'Work Location', 'External Connection', 'API Area', 'Authentication Event', 'System Component'];
   var exportFormats = ['Preview', 'CSV', 'XLSX', 'PDF', 'Accounting Invoice Extract'];
 
+  var filterOptions = {
+    customers: ['All customers'],
+    projects: ['All projects'],
+    pms: ['All PMs'],
+    engineers: ['All engineers'],
+    selectedEngineers: ['All engineers'],
+    teams: ['All teams'],
+    organizations: ['All organizations'],
+    contractTypes: ['All contract types'],
+    billableOptions: ['All billable statuses', 'Billable', 'Non-billable'],
+    workLocations: ['All work locations'],
+    workCodes: ['All work codes']
+  };
+  var filterOptionsLoaded = false;
+  var filterOptionsLoading = false;
+
   var domains = [
     ['Time Entry Reporting', 'All time entered, submitted, approved, rejected, returned, missing, late, billable, non-billable, AI-assisted, and SOW-aligned time.'],
     ['Accounting / Invoicing', 'Invoice-ready time, non-invoiced time, invoiced amount, rate, hours, PO/quote, CP invoice number, contract type, work code, and work location.'],
@@ -9105,14 +9122,15 @@
     startDate: '',
     endDate: '',
     fiscalPeriod: '',
-    customer: '',
-    project: '',
-    pm: '',
-    engineer: '',
-    selectedEngineers: '',
-    team: '',
-    organization: '',
-    contractType: 'All',
+    customer: 'All customers',
+    project: 'All projects',
+    pm: 'All PMs',
+    engineer: 'All engineers',
+    selectedEngineers: 'All engineers',
+    team: 'All teams',
+    organization: 'All organizations',
+    contractType: 'All contract types',
+    billableStatus: 'All billable statuses',
     timeEntryStatus: 'All',
     approvalStatus: 'All',
     invoiceStatus: 'All',
@@ -9281,8 +9299,59 @@
 
   function optionHtml(values, selected) {
     return values.map(function (value) {
-      return '<option' + (value === selected ? ' selected' : '') + '>' + escapeHtml(value) + '</option>';
+      var label = typeof value === 'string' ? value : (value && (value.label || value.name || value.value)) || '';
+      var optionValue = typeof value === 'string' ? value : (value && (value.value || value.label || value.name)) || '';
+      return '<option value="' + escapeHtml(optionValue) + '"' + (optionValue === selected ? ' selected' : '') + '>' + escapeHtml(label) + '</option>';
     }).join('');
+  }
+
+  async function loadFilterOptions() {
+    if (filterOptionsLoaded || filterOptionsLoading) return;
+
+    filterOptionsLoading = true;
+
+    try {
+      var session = {};
+      try {
+        session = JSON.parse(window.localStorage.getItem('projectPulseAuthSession') || '{}');
+      } catch {}
+
+      var headers = {};
+      if (session.sessionToken) {
+        headers['X-ProjectPulse-Session'] = session.sessionToken;
+      }
+
+      var response = await fetch('/api/reports/030/filter-options', { headers: headers });
+      var payload = await response.json();
+
+      if (response.ok && payload && payload.databaseBacked) {
+        [
+          'customers',
+          'projects',
+          'pms',
+          'engineers',
+          'selectedEngineers',
+          'teams',
+          'organizations',
+          'contractTypes',
+          'billableOptions',
+          'workLocations',
+          'workCodes'
+        ].forEach(function (key) {
+          if (Array.isArray(payload[key]) && payload[key].length) {
+            filterOptions[key] = payload[key];
+          }
+        });
+
+        filterOptionsLoaded = true;
+        saveState();
+        renderShell();
+      }
+    } catch (error) {
+      console.warn('030 filter options could not be loaded', error);
+    } finally {
+      filterOptionsLoading = false;
+    }
   }
 
   function setValue(root, name, value) {
@@ -9324,6 +9393,7 @@
       'team',
       'organization',
       'contractType',
+      'billableStatus',
       'timeEntryStatus',
       'approvalStatus',
       'invoiceStatus',
@@ -9559,7 +9629,8 @@
       'Customer / Project Criteria:\n' +
       '- Customer: ' + (state.customer || 'All scoped customers') + '\n' +
       '- Project: ' + (state.project || 'All scoped projects') + '\n' +
-      '- Contract Type: ' + state.contractType + '\n\n' +
+      '- Contract Type: ' + state.contractType + '\n' +
+      '- Billable Status: ' + state.billableStatus + '\n\n' +
       'Time / Accounting Criteria:\n' +
       '- Time Entry Status: ' + state.timeEntryStatus + '\n' +
       '- Approval Status: ' + state.approvalStatus + '\n' +
@@ -9621,6 +9692,7 @@
           team: state.team,
           organization: state.organization,
           contractType: state.contractType,
+          billableStatus: state.billableStatus,
           timeEntryStatus: state.timeEntryStatus,
           approvalStatus: state.approvalStatus,
           invoiceStatus: state.invoiceStatus,
@@ -9738,10 +9810,10 @@
   }
 
   function roleAudience() {
-    if (state.reportType.includes('Accounting') || state.reportType.includes('Invoice')) return 'Accounting, PTC, Admin, Executive';
-    if (state.reportType.includes('System') || state.reportType.includes('API') || state.reportType.includes('External') || state.reportType.includes('Authentication')) return 'Admin, PTC, Executive';
-    if (state.reportType.includes('Engineer')) return 'Engineer, Manager, Engineering Team Lead, PTC';
-    if (state.reportType.includes('PM')) return 'PM, PM Team Lead, PTC, Executive';
+    if (state.reportType.includes('Accounting') || state.reportType.includes('Invoice')) return 'Accounting, PTC, Super Administrator, Executive';
+    if (state.reportType.includes('System') || state.reportType.includes('API') || state.reportType.includes('External') || state.reportType.includes('Authentication')) return 'Super Administrator, PTC, Executive';
+    if (state.reportType.includes('Engineer')) return 'Engineer, Manager, Engineering Lead, PTC';
+    if (state.reportType.includes('PM')) return 'PM, Project Management Lead, PTC, Executive';
     if (state.reportType.includes('Team')) return 'Manager, Team Lead, PTC, Executive';
     return 'Scoped operational audience';
   }
@@ -9839,18 +9911,19 @@
         '<div class="projectpulse-030-field"><label>Fiscal Period</label><input data-030-field="fiscalPeriod" placeholder="FY2026-Q1 or 2026-07"></div>' +
       '</div>' +
       '<div class="projectpulse-030-three-grid">' +
-        '<div class="projectpulse-030-field"><label>Customer</label><input data-030-field="customer" placeholder="All scoped customers"></div>' +
-        '<div class="projectpulse-030-field"><label>Project</label><input data-030-field="project" placeholder="Project / engagement"></div>' +
-        '<div class="projectpulse-030-field"><label>PM</label><input data-030-field="pm" placeholder="PM name"></div>' +
+        '<div class="projectpulse-030-field"><label>Customer</label><select data-030-field="customer">' + optionHtml(filterOptions.customers, state.customer) + '</select></div>' +
+        '<div class="projectpulse-030-field"><label>Project</label><select data-030-field="project">' + optionHtml(filterOptions.projects, state.project) + '</select></div>' +
+        '<div class="projectpulse-030-field"><label>PM</label><select data-030-field="pm">' + optionHtml(filterOptions.pms, state.pm) + '</select></div>' +
       '</div>' +
       '<div class="projectpulse-030-three-grid">' +
-        '<div class="projectpulse-030-field"><label>Engineer</label><input data-030-field="engineer" placeholder="Engineer name"></div>' +
-        '<div class="projectpulse-030-field"><label>Selected Engineers</label><input data-030-field="selectedEngineers" placeholder="Comma-separated engineers"></div>' +
-        '<div class="projectpulse-030-field"><label>Team</label><input data-030-field="team" placeholder="Team name"></div>' +
+        '<div class="projectpulse-030-field"><label>Engineer</label><select data-030-field="engineer">' + optionHtml(filterOptions.engineers, state.engineer) + '</select></div>' +
+        '<div class="projectpulse-030-field"><label>Selected Engineers</label><select data-030-field="selectedEngineers">' + optionHtml(filterOptions.selectedEngineers, state.selectedEngineers) + '</select></div>' +
+        '<div class="projectpulse-030-field"><label>Team</label><select data-030-field="team">' + optionHtml(filterOptions.teams, state.team) + '</select></div>' +
       '</div>' +
       '<div class="projectpulse-030-three-grid">' +
-        '<div class="projectpulse-030-field"><label>Organization</label><input data-030-field="organization" placeholder="Organization / department"></div>' +
-        '<div class="projectpulse-030-field"><label>Contract Type</label><select data-030-field="contractType">' + optionHtml(['All', 'T&M', 'Fixed Fee', 'Service Request', 'Managed Service', 'Project'], state.contractType) + '</select></div>' +
+        '<div class="projectpulse-030-field"><label>Organization</label><select data-030-field="organization">' + optionHtml(filterOptions.organizations, state.organization) + '</select></div>' +
+        '<div class="projectpulse-030-field"><label>Contract Type</label><select data-030-field="contractType">' + optionHtml(filterOptions.contractTypes, state.contractType) + '</select></div>' +
+        '<div class="projectpulse-030-field"><label>Billable Status</label><select data-030-field="billableStatus">' + optionHtml(filterOptions.billableOptions, state.billableStatus) + '</select></div>' +
         '<div class="projectpulse-030-field"><label>Group By</label><select data-030-field="groupBy">' + optionHtml(groupByOptions, state.groupBy) + '</select></div>' +
       '</div>' +
     '</div>';
@@ -9863,10 +9936,10 @@
         '<div class="projectpulse-030-field"><label>Time Entry Status</label><select data-030-field="timeEntryStatus">' + optionHtml(['All', 'Draft', 'Submitted', 'Approved', 'Rejected', 'Returned', 'Exported', 'Invoiced', 'Missing', 'Late'], state.timeEntryStatus) + '</select></div>' +
         '<div class="projectpulse-030-field"><label>Approval Status</label><select data-030-field="approvalStatus">' + optionHtml(['All', 'Pending PM Validation', 'Pending Manager Approval', 'Approved', 'Rejected', 'Returned'], state.approvalStatus) + '</select></div>' +
         '<div class="projectpulse-030-field"><label>Invoice Status</label><select data-030-field="invoiceStatus">' + optionHtml(['All', 'Invoice Ready', 'Invoiced', 'Not Invoiced', 'Exception', 'Credit / Correction'], state.invoiceStatus) + '</select></div>' +
-        '<div class="projectpulse-030-field"><label>Work Code</label><select data-030-field="workCode">' + optionHtml(['All', 'Consulting', 'Configuration', 'Project Management', 'Support', 'Architecture', 'Training'], state.workCode) + '</select></div>' +
+        '<div class="projectpulse-030-field"><label>Work Code</label><select data-030-field="workCode">' + optionHtml(filterOptions.workCodes, state.workCode) + '</select></div>' +
       '</div>' +
       '<div class="projectpulse-030-four-grid">' +
-        '<div class="projectpulse-030-field"><label>Work Location</label><select data-030-field="workLocation">' + optionHtml(['All', 'Default Work Location', 'Undefined', 'Remote', 'Onsite'], state.workLocation) + '</select></div>' +
+        '<div class="projectpulse-030-field"><label>Work Location</label><select data-030-field="workLocation">' + optionHtml(filterOptions.workLocations, state.workLocation) + '</select></div>' +
         '<div class="projectpulse-030-field"><label>External Connection</label><select data-030-field="externalConnection">' + optionHtml(['All', 'CRM', 'Salesforce', 'Zendesk Sell', 'Claude', 'Azure', 'Brevo', 'SSO/Auth', 'Recipient Safety'], state.externalConnection) + '</select></div>' +
         '<div class="projectpulse-030-field"><label>API Area</label><select data-030-field="apiArea">' + optionHtml(['All', 'Authentication', 'Navigation', 'Dashboard', 'Notifications', 'Email Provider', 'Recipient Safety', 'Readiness', 'CRM', 'SOW/AI'], state.apiArea) + '</select></div>' +
         '<div class="projectpulse-030-field"><label>Authentication Event</label><select data-030-field="authEvent">' + optionHtml(['All', 'SSO Login', 'session_required', 'Forbidden Write', 'View-As', 'Role Access Check', 'Admin Access'], state.authEvent) + '</select></div>' +
@@ -9986,6 +10059,7 @@
       'team',
       'organization',
       'contractType',
+      'billableStatus',
       'timeEntryStatus',
       'approvalStatus',
       'invoiceStatus',
