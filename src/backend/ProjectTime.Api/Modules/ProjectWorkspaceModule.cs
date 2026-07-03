@@ -879,12 +879,12 @@ internal sealed record ProjectWorkspaceAccessContext(
 
     public bool HasRole(string roleCode) => RoleCodes.Contains(roleCode);
 
-    public bool IsAdministrator => HasRole("ADMINISTRATOR");
+    public bool IsAdministrator => (HasRole("SUPER_ADMINISTRATOR") || HasRole("ADMINISTRATOR"));
     public bool IsCoordinator => HasRole("PROJECT_TEAM_COORDINATOR");
     public bool IsExecutive => HasRole("EXECUTIVE");
     public bool IsManager => HasRole("MANAGER");
-    public bool IsEngineeringLead => HasRole("ENGINEERING_TEAM_LEAD");
-    public bool IsProjectManagementLead => HasRole("PROJECT_MANAGEMENT_TEAM_LEAD");
+    public bool IsEngineeringLead => (HasRole("ENGINEERING_LEAD") || HasRole("ENGINEERING_TEAM_LEAD"));
+    public bool IsProjectManagementLead => (HasRole("PROJECT_MANAGEMENT_LEAD") || HasRole("PROJECT_MANAGEMENT_TEAM_LEAD"));
     public bool IsProjectManager => HasRole("PROJECT_MANAGEMENT");
 
     public bool IsBroadScope => IsAdministrator || IsCoordinator || IsExecutive;

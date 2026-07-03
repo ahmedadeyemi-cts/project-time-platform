@@ -793,7 +793,7 @@ const roleWorkspaceModules = [
     route: 'project-workload',
     href: '#project-workload',
     title: 'Project Workload',
-    navLabel: 'Project Workload',
+    navLabel: 'MODULE 018',
     description: 'Project Manager dashboard for active projects, closed projects, project status, assigned project list, and workload risks.',
     permissions: ['VIEW_PROJECT_WORKLOAD', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   },
@@ -801,7 +801,7 @@ const roleWorkspaceModules = [
     route: 'project-workspace',
     href: '#project-workspace',
     title: 'Project Workspace & Engineering Documents',
-    navLabel: 'Project Workspace',
+    navLabel: 'MODULE 019',
     description: 'View project workspace readiness, engineering-visible documents, assignments, and timesheet-context artifacts.',
     permissions: ['VIEW_PROJECT_WORKSPACE', 'VIEW_ENGINEERING_PROJECT_DOCUMENTS', 'VIEW_PROJECT_INTAKE', 'VIEW_RESOURCE_SCHEDULING', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   },
@@ -809,7 +809,7 @@ const roleWorkspaceModules = [
     route: 'project-intake',
     href: '#project-intake',
     title: 'Project Intake & Engineering Resource Requests',
-    navLabel: 'Project Intake',
+    navLabel: 'MODULE 020',
     description: 'Create and review project intake requests, signed date aging, engineering resource demand, capacity, project handoff, and work-task assignment readiness.',
     permissions: ['VIEW_PROJECT_INTAKE', 'MANAGE_PROJECT_INTAKE', 'VIEW_RESOURCE_SCHEDULING', 'MANAGE_RESOURCE_SCHEDULING', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   },
@@ -817,7 +817,7 @@ const roleWorkspaceModules = [
     route: 'customer-directory',
     href: '#customer-directory',
     title: 'Customer Directory',
-    navLabel: 'Customers',
+    navLabel: 'MODULE 021',
     description: 'Manage customer records, contacts, and customer intake/project cost readiness.',
     permissions: ['VIEW_CUSTOMERS', 'MANAGE_CUSTOMERS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   },
@@ -825,7 +825,7 @@ const roleWorkspaceModules = [
     route: 'cost-alerts',
     href: '#cost-alerts',
     title: 'Cost Overrun Alerts',
-    navLabel: 'Cost Alerts',
+    navLabel: 'MODULE 022',
     description: 'Detect missing cost plans, over-assigned projects, and route PM/manager/PTC alerts.',
     permissions: ['VIEW_COST_ALERTS', 'MANAGE_COST_ALERTS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   },
@@ -833,7 +833,7 @@ const roleWorkspaceModules = [
     route: 'time-compliance',
     href: '#time-compliance',
     title: 'Time Compliance & Notification Center',
-    navLabel: 'Time Compliance',
+    navLabel: 'MODULE 023',
     description: 'Production-safe preview for missing weekly time, manager and Project Team Coordinator copy visibility, month-end rules, holiday reminders, and notification history.',
     permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL', 'VIEW_TIME_COMPLIANCE', 'VIEW_AUDIT_HISTORY']
   },
@@ -841,7 +841,7 @@ const roleWorkspaceModules = [
     route: 'timesheet',
     href: '#timesheet',
     title: 'Time Entry',
-    navLabel: 'Timesheet',
+    navLabel: 'MODULE 001',
     description: 'Enter weekly and daily time by project, task, non-project work, and afterhours.',
     permissions: ['VIEW_TIME_ENTRY']
   },
@@ -849,7 +849,7 @@ const roleWorkspaceModules = [
     route: 'manager-approval',
     href: '#manager-approval',
     title: 'Approval Inbox',
-    navLabel: 'Approvals',
+    navLabel: 'MODULE 002',
     description: 'Approve, reject, and review submitted time.',
     permissions: ['VIEW_APPROVAL_INBOX', 'APPROVE_TIME']
   },
@@ -857,7 +857,7 @@ const roleWorkspaceModules = [
     route: 'utilization',
     href: '#utilization',
     title: 'Utilization',
-    navLabel: 'Utilization',
+    navLabel: 'MODULE 003',
     description: 'Review own utilization, manager team utilization, engineering team lead utilization, remaining hours, and work task classification readiness.',
     permissions: ['VIEW_OWN_UTILIZATION', 'VIEW_TEAM_UTILIZATION', 'VIEW_INDIVIDUAL_UTILIZATION']
   },
@@ -865,7 +865,7 @@ const roleWorkspaceModules = [
     route: 'holiday-admin',
     href: '#holiday-admin',
     title: 'Holiday Calendar',
-    navLabel: 'Holidays',
+    navLabel: 'MODULE 004',
     description: 'View or manage company holidays and calendar availability.',
     permissions: ['VIEW_HOLIDAYS', 'MANAGE_HOLIDAYS']
   },
@@ -873,7 +873,7 @@ const roleWorkspaceModules = [
     route: 'project-allocation-info',
     href: '#project-allocation-info',
     title: 'Project Allocation and Info',
-    navLabel: 'Project Info',
+    navLabel: 'MODULE 005',
     description: 'View project allocations, engineer hours, and SOW/GSD documents.',
     permissions: ['VIEW_PROJECT_ALLOCATION_INFO', 'MANAGE_PROJECT_ALLOCATION_INFO', 'MANAGE_ALL']
   },
@@ -881,7 +881,7 @@ const roleWorkspaceModules = [
     route: 'psa-modules',
     href: '#psa-modules',
     title: 'PSA Modules',
-    navLabel: 'Modules',
+    navLabel: 'MODULE 006',
     description: 'Review project intake, resource scheduling, expense management, and executive reporting workflows.',
     permissions: ['VIEW_PROJECT_INTAKE', 'VIEW_RESOURCE_SCHEDULING', 'VIEW_EXPENSES', 'VIEW_EXECUTIVE_REPORTING']
   },
@@ -889,7 +889,7 @@ const roleWorkspaceModules = [
     route: 'workflow',
     href: '#workflow',
     title: 'Workflow',
-    navLabel: 'Workflow',
+    navLabel: 'MODULE 007',
     description: 'Review project approval, account reconciliation, exports, and reporting workflow.',
     permissions: ['PROJECT_TIME_APPROVAL', 'VIEW_APPROVAL_WORKFLOW', 'VIEW_ACCOUNT_RECONCILIATION', 'VIEW_WORKFLOW_OPERATIONAL_READINESS', 'VIEW_WORKFLOW_AUDIT_EVIDENCE', 'EXPORT_TIME_EXCEL', 'EXPORT_TIME_PDF', 'DOWNLOAD_TIME_EXPORT_PACKAGE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   },
@@ -897,7 +897,7 @@ const roleWorkspaceModules = [
     route: 'audit-history',
     href: '#audit-history',
     title: 'Audit / Security History',
-    navLabel: 'Audit',
+    navLabel: 'MODULE 008',
     description: 'Review login history, password reset history, Azure sync failures, notification failures, and system audit events.',
     permissions: ['VIEW_AUDIT_TRAIL', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   },
@@ -905,7 +905,7 @@ const roleWorkspaceModules = [
     route: 'user-admin',
     href: '#user-admin',
     title: 'User Administration',
-    navLabel: 'User Admin',
+    navLabel: 'MODULE 009',
     description: 'Manage users, local passwords, roles, teams, departments, and login access.',
     permissions: ['VIEW_USER_ADMIN', 'MANAGE_USER_ADMIN', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   },
@@ -913,7 +913,7 @@ const roleWorkspaceModules = [
     route: 'azure-admin',
     href: '#azure-admin',
     title: 'Azure / Entra Admin',
-    navLabel: 'Azure Admin',
+    navLabel: 'MODULE 010',
     description: 'Configure Azure SSO, run user sync, and review imported directory users.',
     permissions: ['VIEW_AZURE_ADMIN', 'MANAGE_AZURE_SYNC', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   },
@@ -921,7 +921,7 @@ const roleWorkspaceModules = [
     route: 'work-task-builder',
     href: '#work-task-builder',
     title: 'Work Task Builder',
-    navLabel: 'Work Tasks',
+    navLabel: 'MODULE 011',
     description: 'Build, classify, and assign project, service request, open, and non-project work tasks with billing and utilization treatment.',
     permissions: ['VIEW_WORK_TASK_BUILDER', 'MANAGE_WORK_TASK_BUILDER', 'ASSIGN_WORK_TASKS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   },
@@ -929,7 +929,7 @@ const roleWorkspaceModules = [
     route: 'role-admin',
     href: '#role-admin',
     title: 'Role Administration',
-    navLabel: 'Role Admin',
+    navLabel: 'MODULE 012',
     description: 'Manage users, roles, access, and administrative configuration.',
     permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   },
@@ -937,7 +937,7 @@ const roleWorkspaceModules = [
     route: 'service-control',
     href: '#service-control',
     title: 'Service Control Center',
-    navLabel: 'Services',
+    navLabel: 'MODULE 013',
     description: 'Monitor platform services, API status, recent logs, and controlled restart actions.',
     permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   },
@@ -945,7 +945,7 @@ const roleWorkspaceModules = [
     route: 'backup-dr',
     href: '#backup-dr',
     title: 'Backup / DR Center',
-    navLabel: 'Backup / DR',
+    navLabel: 'MODULE 014',
     description: 'Create and validate full ProjectPulse backup bundles.',
     permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   },
@@ -953,7 +953,7 @@ const roleWorkspaceModules = [
     route: 'restore-validation',
     href: '#restore-validation',
     title: 'Restore Validation',
-    navLabel: 'Restore Validation',
+    navLabel: 'MODULE 015',
     description: 'Validate selected backup restore points without restoring over production.',
     permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   },
@@ -961,7 +961,7 @@ const roleWorkspaceModules = [
     route: 'backup-retention',
     href: '#backup-retention',
     title: 'Backup Retention',
-    navLabel: 'Backup Retention',
+    navLabel: 'MODULE 016',
     description: 'Review and safely remove older backup points with restore-point protection.',
     permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   },
@@ -969,7 +969,7 @@ const roleWorkspaceModules = [
     route: 'replication-sync',
     href: '#replication-sync',
     title: 'Replication & Sync Status',
-    navLabel: 'Replication / Sync',
+    navLabel: 'MODULE 017',
     description: 'Review failover readiness, database role, service health, backup freshness, deployment state, and peer configuration.',
     permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   }
@@ -987,7 +987,7 @@ function userPermissionSet(user) {
 function userIsAdministrator(user) {
   const roles = user?.roles ?? [];
   const permissions = userPermissionSet(user);
-  return permissions.has('MANAGE_ALL') || permissions.has('SYSTEM_ADMINISTRATION') || roles.some((role) => role.roleCode === 'ADMINISTRATOR');
+  return permissions.has('MANAGE_ALL') || permissions.has('SYSTEM_ADMINISTRATION') || roles.some((role) => ['SUPER_ADMINISTRATOR', 'ADMINISTRATOR'].includes(role.roleCode));
 }
 
 function userHasAnyPermission(user, permissions) {
@@ -1013,7 +1013,7 @@ function getVisibleRoleModules(user) {
 function getRoleDisplayName(user) {
   const roles = user?.roles ?? [];
   if (roles.length === 0) return 'Workspace';
-  if (roles.some((role) => role.roleCode === 'ADMINISTRATOR')) return 'Administrator';
+  if (roles.some((role) => ['SUPER_ADMINISTRATOR', 'ADMINISTRATOR'].includes(role.roleCode))) return 'Administrator';
   return roles.map((role) => role.roleName).join(' + ');
 }
 
@@ -1261,6 +1261,7 @@ function getInstalledProjectPulseModuleRegistry() {
     {
       route: 'timesheet',
       title: 'Timesheet',
+    navLabel: 'MODULE 001',
       group: 'Time Management',
       permissions: [],
       description: 'Allows users to enter, save, submit, and review weekly or daily time entries.'
@@ -1268,6 +1269,7 @@ function getInstalledProjectPulseModuleRegistry() {
     {
       route: 'manager-approval',
       title: 'Approval Inbox',
+    navLabel: 'MODULE 002',
       group: 'Approvals',
       permissions: ['APPROVE_TIME', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
       description: 'Lets managers review submitted time, approve valid entries, and return entries that need correction.'
@@ -1275,6 +1277,7 @@ function getInstalledProjectPulseModuleRegistry() {
     {
       route: 'workflow',
       title: 'Approval / Export / Audit Workflow',
+    navLabel: 'MODULE 007',
       group: 'Approvals',
       permissions: ['VIEW_APPROVAL_WORKFLOW', 'PROJECT_TIME_APPROVAL', 'VIEW_ACCOUNT_RECONCILIATION', 'MANAGE_ACCOUNT_RECONCILIATION', 'EXPORT_TIME_EXCEL', 'EXPORT_TIME_PDF', 'VIEW_AUDIT_TRAIL', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
       description: 'Coordinates PM validation, accounting readiness, reconciliation, lock, export preparation, and audit visibility after manager approval.'
@@ -1282,6 +1285,7 @@ function getInstalledProjectPulseModuleRegistry() {
     {
       route: 'utilization',
       title: 'Utilization',
+    navLabel: 'MODULE 003',
       group: 'Resource Management',
       permissions: ['VIEW_UTILIZATION', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
       description: 'Shows billable and utilization-eligible performance against quarterly and annual targets.'
@@ -1289,6 +1293,7 @@ function getInstalledProjectPulseModuleRegistry() {
     {
       route: 'project-workload',
       title: 'Project Workload',
+    navLabel: 'MODULE 018',
       group: 'Project Management',
       permissions: ['VIEW_PROJECT_WORKLOAD', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
       description: 'Shows project managers their active projects, closed projects, status mix, hours, and workload risk.'
@@ -1296,6 +1301,7 @@ function getInstalledProjectPulseModuleRegistry() {
     {
       route: 'project-workspace',
       title: 'Project Workspace',
+    navLabel: 'MODULE 019',
       group: 'Project Delivery',
       permissions: ['VIEW_PROJECT_WORKSPACE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
       description: 'Provides a role-scoped workspace for assigned projects, tasks, documents, assigned hours, used hours, and remaining hours.'
@@ -1303,6 +1309,7 @@ function getInstalledProjectPulseModuleRegistry() {
     {
       route: 'project-intake',
       title: 'Project Intake',
+    navLabel: 'MODULE 020',
       group: 'Project Intake',
       permissions: ['VIEW_PROJECT_INTAKE', 'MANAGE_PROJECT_INTAKE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
       description: 'Captures project requests, customer selection, planned costs, intake documents, signed date aging, triage details, and resource request readiness.'
@@ -1310,6 +1317,7 @@ function getInstalledProjectPulseModuleRegistry() {
     {
       route: 'customer-directory',
       title: 'Customer Directory',
+    navLabel: 'MODULE 021',
       group: 'Customers',
       permissions: ['VIEW_CUSTOMERS', 'MANAGE_CUSTOMERS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
       description: 'Maintains customer records, contacts, and customer data used by project, billing, cost, and reconciliation workflows.'
@@ -1317,6 +1325,7 @@ function getInstalledProjectPulseModuleRegistry() {
     {
       route: 'cost-alerts',
       title: 'Cost Alert Overrun',
+    navLabel: 'MODULE 022',
       group: 'Cost Control',
       permissions: ['VIEW_COST_ALERTS', 'MANAGE_COST_ALERTS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
       description: 'Monitors planned cost, assigned hours, used hours, over-assignment risk, and notification routing for cost overrun alerts.'
@@ -1324,6 +1333,7 @@ function getInstalledProjectPulseModuleRegistry() {
     {
       route: 'time-compliance',
       title: 'Time Compliance',
+    navLabel: 'MODULE 023',
       group: 'Compliance',
       permissions: ['VIEW_TIME_COMPLIANCE', 'MANAGE_TIME_COMPLIANCE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
       description: 'Previews missing time, reminder readiness, manager/PTC visibility, compliance notifications, and month-end time controls.'
@@ -1331,6 +1341,7 @@ function getInstalledProjectPulseModuleRegistry() {
     {
       route: 'holiday-admin',
       title: 'Holiday Management',
+    navLabel: 'MODULE 004',
       group: 'Administration',
       permissions: ['VIEW_HOLIDAYS', 'MANAGE_HOLIDAYS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
       description: 'Manages company holidays, holiday visibility, uploads, and timesheet holiday readiness.'
@@ -1338,6 +1349,7 @@ function getInstalledProjectPulseModuleRegistry() {
     {
       route: 'audit-history',
       title: 'Audit History',
+    navLabel: 'MODULE 008',
       group: 'Audit',
       permissions: ['VIEW_AUDIT_TRAIL', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
       description: 'Shows login, admin, notification, approval, export, service, and system audit events for accountability.'
@@ -1345,6 +1357,7 @@ function getInstalledProjectPulseModuleRegistry() {
     {
       route: 'user-admin',
       title: 'User Administration',
+    navLabel: 'MODULE 009',
       group: 'Security',
       permissions: ['MANAGE_USERS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
       description: 'Manages users, active status, local account settings, role assignments, and access controls.'
@@ -1352,6 +1365,7 @@ function getInstalledProjectPulseModuleRegistry() {
     {
       route: 'work-task-builder',
       title: 'Work Task Builder',
+    navLabel: 'MODULE 011',
       status: 'Active',
       permissions: ['VIEW_WORK_TASK_BUILDER', 'MANAGE_WORK_TASK_BUILDER', 'ASSIGN_WORK_TASKS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
       description: 'Defines work task categories, billing classification, utilization classification, and scoped project task assignment.'
@@ -1359,6 +1373,7 @@ function getInstalledProjectPulseModuleRegistry() {
     {
       route: 'role-admin',
       title: 'Role Administration',
+    navLabel: 'MODULE 012',
       group: 'Security',
       permissions: ['VIEW_ROLE_ADMIN_DIRECTORY', 'MANAGE_ROLES', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
       description: 'Defines roles, shows assigned users, displays permissions by module, and manages role-based security configuration.'
@@ -1366,6 +1381,7 @@ function getInstalledProjectPulseModuleRegistry() {
     {
       route: 'azure-admin',
       title: 'Azure / Entra Administration',
+    navLabel: 'MODULE 010',
       group: 'Security',
       permissions: ['MANAGE_AZURE_AD', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
       description: 'Manages Entra import, reconciliation, sync settings, and identity-readiness checks.'
@@ -1373,6 +1389,7 @@ function getInstalledProjectPulseModuleRegistry() {
     {
       route: 'service-control',
       title: 'Service Control Center',
+    navLabel: 'MODULE 013',
       group: 'Operations',
       permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
       description: 'Provides operational service restart controls, service health checks, and audit-backed service management.'
@@ -1380,6 +1397,7 @@ function getInstalledProjectPulseModuleRegistry() {
     {
       route: 'backup-dr',
       title: 'Backup / DR Center',
+    navLabel: 'MODULE 014',
       group: 'Operations',
       permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
       description: 'Shows backup and disaster recovery readiness, backup state, service backup status, and restore preparedness.'
@@ -1387,6 +1405,7 @@ function getInstalledProjectPulseModuleRegistry() {
     {
       route: 'restore-validation',
       title: 'Restore Validation Center',
+    navLabel: 'MODULE 015',
       group: 'Operations',
       permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
       description: 'Validates restore points, restore readiness, and restore test evidence before relying on backups.'
@@ -1394,6 +1413,7 @@ function getInstalledProjectPulseModuleRegistry() {
     {
       route: 'backup-retention',
       title: 'Backup Retention Center',
+    navLabel: 'MODULE 016',
       group: 'Operations',
       permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
       description: 'Manages backup retention policy, cleanup readiness, and retention compliance visibility.'
@@ -1401,6 +1421,7 @@ function getInstalledProjectPulseModuleRegistry() {
     {
       route: 'replication-sync',
       title: 'Replication / Sync Status',
+    navLabel: 'MODULE 017',
       group: 'Operations',
       permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
       description: 'Shows replication and synchronization status across database, backup, and operational readiness workflows.'
@@ -1408,6 +1429,7 @@ function getInstalledProjectPulseModuleRegistry() {
   {
     route: 'workflow',
     title: 'Workflow Operational Readiness',
+    navLabel: 'MODULE 007',
     group: 'Approval / Export / Audit',
     permissions: ['VIEW_WORKFLOW_OPERATIONAL_READINESS', 'VIEW_APPROVAL_WORKFLOW', 'PROJECT_TIME_APPROVAL', 'VIEW_ACCOUNT_RECONCILIATION', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
     description: 'Shows manager review, PM validation, accounting review, export readiness, role guidance, and workflow stage health.'
@@ -1415,6 +1437,7 @@ function getInstalledProjectPulseModuleRegistry() {
   {
     route: 'workflow',
     title: 'Export Packages',
+    navLabel: 'MODULE 007',
     group: 'Approval / Export / Audit',
     permissions: ['DOWNLOAD_TIME_EXPORT_PACKAGE', 'EXPORT_TIME_EXCEL', 'EXPORT_TIME_PDF', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
     description: 'Generates and downloads CSV/Excel-ready export packages with item counts, hours, package metadata, and audit evidence.'
@@ -1422,6 +1445,7 @@ function getInstalledProjectPulseModuleRegistry() {
   {
     route: 'workflow',
     title: 'Workflow Audit Evidence',
+    navLabel: 'MODULE 007',
     group: 'Approval / Export / Audit',
     permissions: ['VIEW_WORKFLOW_AUDIT_EVIDENCE', 'VIEW_AUDIT_TRAIL', 'VIEW_ACCOUNT_RECONCILIATION', 'PROJECT_TIME_APPROVAL', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
     description: 'Displays detailed audit evidence for approval, reconciliation, lock, and export package events.'
@@ -1429,6 +1453,7 @@ function getInstalledProjectPulseModuleRegistry() {
   {
     route: 'workflow',
     title: 'Audit History Events',
+    navLabel: 'MODULE 007',
     group: 'Approval / Export / Audit',
     permissions: ['VIEW_AUDIT_HISTORY_EVENTS', 'VIEW_WORKFLOW_AUDIT_EVIDENCE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
     description: 'Shows workflow, export, reconciliation, lock, and approval audit history events.'
@@ -1436,6 +1461,7 @@ function getInstalledProjectPulseModuleRegistry() {
   {
     route: 'workflow',
     title: 'Workflow Preflight Validation',
+    navLabel: 'MODULE 007',
     group: 'Approval / Export / Audit',
     permissions: ['VIEW_WORKFLOW_ACTION_CAPABILITIES', 'PROJECT_TIME_APPROVAL', 'VIEW_ACCOUNT_RECONCILIATION', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
     description: 'Shows production workflow preflight checks, role capabilities, eligible statuses, blockers, and readiness evidence.'
@@ -1450,6 +1476,7 @@ function getInstalledProjectPulseModuleRegistry() {
   {
     route: 'workflow',
     title: 'Export Package Readiness Summary',
+    navLabel: 'MODULE 007',
     group: 'Approval / Export / Audit',
     permissions: ['VIEW_EXPORT_PACKAGE_READINESS_SUMMARY', 'DOWNLOAD_TIME_EXPORT_PACKAGE', 'EXPORT_TIME_EXCEL', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
     description: 'Shows export package readiness, generated package metadata, download counts, and last-download evidence.'
@@ -1457,6 +1484,7 @@ function getInstalledProjectPulseModuleRegistry() {
   {
     route: 'workflow',
     title: 'Export Package Evidence Detail',
+    navLabel: 'MODULE 007',
     group: 'Approval / Export / Audit',
     permissions: ['VIEW_EXPORT_PACKAGE_EVIDENCE_DETAIL', 'VIEW_WORKFLOW_AUDIT_EVIDENCE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
     description: 'Connects export packages to item-level and audit evidence detail.'
@@ -1464,6 +1492,7 @@ function getInstalledProjectPulseModuleRegistry() {
   {
     route: 'workflow',
     title: 'Accounting Reconciliation Workbench',
+    navLabel: 'MODULE 007',
     group: 'Approval / Export / Audit',
     permissions: ['VIEW_ACCOUNTING_RECONCILIATION_WORKBENCH', 'MANAGE_ACCOUNT_RECONCILIATION', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
     description: 'Groups accounting reconciliation queues, exception status, missing project/task links, and attention items.'
@@ -1471,6 +1500,7 @@ function getInstalledProjectPulseModuleRegistry() {
   {
     route: 'workflow',
     title: 'Locked Period Audit Evidence',
+    navLabel: 'MODULE 007',
     group: 'Approval / Export / Audit',
     permissions: ['VIEW_LOCKED_PERIOD_AUDIT_EVIDENCE', 'VIEW_WORKFLOW_AUDIT_EVIDENCE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
     description: 'Shows locked and reconciled time evidence for period-close audit review.'
@@ -1478,6 +1508,7 @@ function getInstalledProjectPulseModuleRegistry() {
   {
     route: 'role-admin',
     title: 'Role Access Matrix',
+    navLabel: 'MODULE 012',
     group: 'Security',
     permissions: ['VIEW_ROLE_ACCESS_MATRIX', 'VIEW_ROLE_ADMIN_DIRECTORY', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
     description: 'Shows role-to-permission coverage for governance, route visibility, and role enforcement validation.'
@@ -1505,6 +1536,7 @@ function getInstalledProjectPulseModuleRegistry() {
   {
     route: 'workflow',
     title: 'Workflow Validation Rules',
+    navLabel: 'MODULE 007',
     group: 'Approval / Export / Audit',
     permissions: ['VIEW_WORKFLOW_VALIDATION_RULES', 'VIEW_APPROVAL_WORKFLOW', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
     description: 'Documents workflow validation rules and current evidence for export, audit, and production preflight controls.'
@@ -1512,6 +1544,7 @@ function getInstalledProjectPulseModuleRegistry() {
   {
     route: 'workflow',
     title: 'Workflow Operations Center',
+    navLabel: 'MODULE 007',
     group: 'Approval / Export / Audit',
     permissions: ['VIEW_WORKFLOW_OPERATIONS_CENTER', 'VIEW_APPROVAL_WORKFLOW', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
     description: 'Central status view for workflow operations, audit history, export readiness, reconciliation, and validation.'
@@ -1526,6 +1559,7 @@ function getInstalledProjectPulseModuleRegistry() {
   {
     route: 'workflow',
     title: 'Production Export Evidence',
+    navLabel: 'MODULE 007',
     group: 'Approval / Export / Audit',
     permissions: ['VIEW_PRODUCTION_EXPORT_EVIDENCE', 'DOWNLOAD_TIME_EXPORT_PACKAGE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
     description: 'Shows export package evidence, package download history, audit event counts, and production evidence readiness.'
@@ -1533,6 +1567,7 @@ function getInstalledProjectPulseModuleRegistry() {
   {
     route: 'role-admin',
     title: 'Route Permission Contracts',
+    navLabel: 'MODULE 012',
     group: 'Security',
     permissions: ['VIEW_ROUTE_PERMISSION_CONTRACTS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
     description: 'Defines route-level permission contracts, allowed roles, restricted roles, and production guardrails.'
@@ -1631,7 +1666,7 @@ export default function App() {
     route: 'restore-validation',
     href: '#restore-validation',
     title: 'Restore Validation',
-    navLabel: 'Restore Validation',
+    navLabel: 'MODULE 015',
     description: 'Validate backup integrity, database dump readability, configuration archives, application snapshots, and DR runbook readiness.',
     status: 'Operational',
     group: 'System Operations',
@@ -1643,7 +1678,7 @@ export default function App() {
     route: 'backup-retention',
     href: '#backup-retention',
     title: 'Backup Retention',
-    navLabel: 'Backup Retention',
+    navLabel: 'MODULE 016',
     description: 'Review backup points and safely remove older backups with restore-point protection.',
     status: 'Operational',
     group: 'System Operations',
@@ -1681,7 +1716,7 @@ export default function App() {
     redirectUri: '',
     graphScope: 'User.Read.All Directory.Read.All',
     syncEnabled: false,
-    defaultRoleCode: 'ENGINEER',
+    defaultRoleCode: 'ENGINEERING',
     syncFrequencyHours: 24
   });
   const [azurePreviewUsers, setAzurePreviewUsers] = useState([]);
@@ -2577,7 +2612,7 @@ export default function App() {
           redirectUri: '',
           graphScope: 'User.Read.All Directory.Read.All',
           syncEnabled: false,
-          defaultRoleCode: 'ENGINEER',
+          defaultRoleCode: 'ENGINEERING',
           syncFrequencyHours: 24
         },
         domainFilter: 'ussignal.com'
@@ -2597,7 +2632,7 @@ export default function App() {
           redirectUri: '',
           graphScope: 'User.Read.All Directory.Read.All',
           syncEnabled: false,
-          defaultRoleCode: 'ENGINEER',
+          defaultRoleCode: 'ENGINEERING',
           syncFrequencyHours: 24
         },
         domainFilter: 'all'
@@ -2616,7 +2651,7 @@ export default function App() {
         redirectUri: 'https://projectpulse-test.onenecklab.com/auth/callback',
         graphScope: 'User.Read.All Directory.Read.All',
         syncEnabled: true,
-        defaultRoleCode: 'ENGINEER',
+        defaultRoleCode: 'ENGINEERING',
         syncFrequencyHours: 24
       },
       domainFilter: 'all'
@@ -2703,7 +2738,7 @@ export default function App() {
         redirectUri: configResult.redirectUri ?? '',
         graphScope: configResult.graphScope ?? 'User.Read.All Directory.Read.All',
         syncEnabled: Boolean(configResult.syncEnabled),
-        defaultRoleCode: configResult.defaultRoleCode ?? 'ENGINEER',
+        defaultRoleCode: configResult.defaultRoleCode ?? 'ENGINEERING',
         syncFrequencyHours: configResult.syncFrequencyHours ?? 24
       });
 
@@ -2757,7 +2792,7 @@ export default function App() {
         importSourceType: 'ALL_USERS',
         graphGroupId: '',
         graphFilter: '',
-        defaultRoleCode: azureConfigDraft.defaultRoleCode || 'ENGINEER',
+        defaultRoleCode: azureConfigDraft.defaultRoleCode || 'ENGINEERING',
         disableMissingFromSource: false
       });
 
@@ -3521,7 +3556,7 @@ export default function App() {
   const canViewLocalAdminPasswordResetApprovals =
     hasPermission('MANAGE_ALL') ||
     hasPermission('SYSTEM_ADMINISTRATION') ||
-    currentRoleCodes.includes('ADMINISTRATOR') ||
+    (currentRoleCodes.includes('SUPER_ADMINISTRATOR') || currentRoleCodes.includes('ADMINISTRATOR')) ||
     currentRoleCodes.includes('PROJECT_TEAM_COORDINATOR') ||
     currentRoleCodes.includes('PROJECT_COORDINATOR') ||
     currentRoleCodes.includes('TEAM_COORDINATOR') ||
@@ -4158,7 +4193,7 @@ Analytics - Variphy / Infortel`}
                 value={azureConfigDraft.defaultRoleCode}
                 onChange={(event) => setAzureConfigDraft((current) => ({ ...current, defaultRoleCode: event.target.value }))}
               >
-                {(azureAdminData.roles?.length ? azureAdminData.roles : [{ roleCode: 'ENGINEER', roleName: 'Engineer' }]).map((role) => (
+                {(azureAdminData.roles?.length ? azureAdminData.roles : [{ roleCode: 'ENGINEERING', roleName: 'Engineering' }]).map((role) => (
                   <option value={role.roleCode} key={role.roleCode}>
                     {role.roleName}
                   </option>
@@ -5332,3 +5367,8 @@ Analytics - Variphy / Infortel`}
 </main>
   );
 }
+
+
+/* 030_ROLE_CLEANUP_PHASE2_COMPATIBILITY
+   Frontend recognizes canonical roles while legacy role assignments remain temporarily active.
+*/

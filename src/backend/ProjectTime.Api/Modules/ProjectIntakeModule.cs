@@ -30,7 +30,7 @@ public static class ProjectIntakeModule
         var resourceRequests = await LoadResourceRequestsAsync(connection);
         var capacity = await LoadResourceCapacityAsync(connection);
         var projectManagers = await LoadUsersByRoleAsync(connection, "PROJECT_MANAGEMENT");
-        var engineers = await LoadUsersByRoleAsync(connection, "ENGINEER");
+        var engineers = await LoadUsersByRoleAsync(connection, "ENGINEERING");
 
         return Results.Ok(new
         {
@@ -788,7 +788,7 @@ public static class ProjectIntakeModule
                AND ura.is_active = TRUE
             INNER JOIN app_roles r
                 ON r.app_role_id = ura.app_role_id
-               AND r.role_code = 'ENGINEER'
+               AND r.role_code IN ('ENGINEERING', 'ENGINEER')
             LEFT JOIN resource_profiles rp
                 ON rp.user_id = u.user_id
             LEFT JOIN resource_capacity_plans rcp

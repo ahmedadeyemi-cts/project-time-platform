@@ -335,7 +335,7 @@ async Task ProjectPulseAssignDefaultEngineerRoleAsync(NpgsqlConnection connectio
             @reason,
             TRUE
         FROM app_roles r
-        WHERE r.role_code = 'ENGINEER'
+        WHERE r.role_code IN ('ENGINEERING', 'ENGINEER')
           AND r.is_active = TRUE
         ON CONFLICT (user_id, app_role_id) DO UPDATE
         SET is_active = TRUE,
@@ -692,21 +692,21 @@ app.MapGet("/api/work-tasks/summary", async (HttpContext httpContext) =>
     }
 
     var canViewAll =
-        roles.Contains("ADMINISTRATOR")
+        (roles.Contains("SUPER_ADMINISTRATOR") || roles.Contains("ADMINISTRATOR"))
         || roles.Contains("PROJECT_TEAM_COORDINATOR")
         || permissions.Contains("SYSTEM_ADMINISTRATION")
         || permissions.Contains("MANAGE_ALL");
 
     var isProjectManager =
-        roles.Contains("PROJECT_MANAGER")
+        (roles.Contains("PROJECT_MANAGEMENT") || roles.Contains("PROJECT_MANAGER"))
         || roles.Contains("PROJECT_MANAGEMENT");
 
     var canViewBuilder =
         canViewAll
         || isProjectManager
         || roles.Contains("MANAGER")
-        || roles.Contains("ENGINEERING_TEAM_LEAD")
-        || roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD")
+        || (roles.Contains("ENGINEERING_LEAD") || roles.Contains("ENGINEERING_TEAM_LEAD"))
+        || (roles.Contains("PROJECT_MANAGEMENT_LEAD") || roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD"))
         || permissions.Contains("VIEW_WORK_TASK_BUILDER")
         || permissions.Contains("MANAGE_WORK_TASK_BUILDER")
         || permissions.Contains("ASSIGN_WORK_TASKS");
@@ -908,7 +908,7 @@ app.MapGet("/api/work-tasks/summary", async (HttpContext httpContext) =>
             ON r.app_role_id = ura.app_role_id
            AND r.is_active = TRUE
         WHERE u.is_active = TRUE
-          AND r.role_code = 'ENGINEER'
+          AND r.role_code IN ('ENGINEERING', 'ENGINEER')
         ORDER BY team_name, display_name, u.email;
         """, connection))
     {
@@ -1031,7 +1031,7 @@ app.MapPost("/api/work-tasks/templates", async (HttpContext httpContext) =>
     var canManage = false;
     await using (var accessCommand = new NpgsqlCommand("""
         SELECT BOOL_OR(
-            r.role_code IN ('ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR')
+            r.role_code IN ('SUPER_ADMINISTRATOR', 'ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR')
             OR p.permission_code IN ('MANAGE_WORK_TASK_BUILDER', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL')
         )
         FROM app_user_role_assignments ura
@@ -1242,11 +1242,11 @@ app.MapPost("/api/work-tasks/project-tasks", async (HttpContext httpContext) =>
     await using (var accessCommand = new NpgsqlCommand("""
         SELECT
             BOOL_OR(
-                r.role_code IN ('ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR')
+                r.role_code IN ('SUPER_ADMINISTRATOR', 'ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR')
                 OR p.permission_code IN ('SYSTEM_ADMINISTRATION', 'MANAGE_ALL')
             ) AS can_view_all,
             BOOL_OR(
-                r.role_code IN ('PROJECT_MANAGER', 'PROJECT_MANAGEMENT')
+                r.role_code IN ('PROJECT_MANAGEMENT', 'PROJECT_MANAGER')
                 OR p.permission_code = 'ASSIGN_WORK_TASKS'
             ) AS is_project_manager
         FROM app_user_role_assignments ura
@@ -1432,11 +1432,11 @@ app.MapPost("/api/work-tasks/assignments", async (HttpContext httpContext) =>
     await using (var accessCommand = new NpgsqlCommand("""
         SELECT
             BOOL_OR(
-                r.role_code IN ('ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR')
+                r.role_code IN ('SUPER_ADMINISTRATOR', 'ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR')
                 OR p.permission_code IN ('SYSTEM_ADMINISTRATION', 'MANAGE_ALL')
             ) AS can_view_all,
             BOOL_OR(
-                r.role_code IN ('PROJECT_MANAGER', 'PROJECT_MANAGEMENT')
+                r.role_code IN ('PROJECT_MANAGEMENT', 'PROJECT_MANAGER')
                 OR p.permission_code = 'ASSIGN_WORK_TASKS'
             ) AS is_project_manager
         FROM app_user_role_assignments ura
@@ -1496,7 +1496,7 @@ app.MapPost("/api/work-tasks/assignments", async (HttpContext httpContext) =>
            AND r.is_active = TRUE
         WHERE u.user_id = @engineer_user_id
           AND u.is_active = TRUE
-          AND r.role_code = 'ENGINEER';
+          AND r.role_code IN ('ENGINEERING', 'ENGINEER');
         """, connection))
     {
         engineerCommand.Parameters.AddWithValue("engineer_user_id", engineerUserId.Value);
@@ -2576,16 +2576,16 @@ app.MapGet("/api/project-intake/work-task-handoff", async (HttpContext httpConte
     }
 
     var canViewAll =
-        roles.Contains("ADMINISTRATOR")
+        (roles.Contains("SUPER_ADMINISTRATOR") || roles.Contains("ADMINISTRATOR"))
         || roles.Contains("PROJECT_TEAM_COORDINATOR")
         || permissions.Contains("SYSTEM_ADMINISTRATION")
         || permissions.Contains("MANAGE_ALL");
 
     var canViewManaged =
         roles.Contains("PROJECT_MANAGEMENT")
-        || roles.Contains("PROJECT_MANAGER")
-        || roles.Contains("PM_TEAM_LEAD")
-        || roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD")
+        || (roles.Contains("PROJECT_MANAGEMENT") || roles.Contains("PROJECT_MANAGER"))
+        || (roles.Contains("PROJECT_MANAGEMENT_LEAD") || roles.Contains("PM_TEAM_LEAD"))
+        || (roles.Contains("PROJECT_MANAGEMENT_LEAD") || roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD"))
         || roles.Contains("MANAGER")
         || roles.Contains("PROJECT_COORDINATOR")
         || permissions.Contains("VIEW_PROJECT_INTAKE")
@@ -2595,9 +2595,9 @@ app.MapGet("/api/project-intake/work-task-handoff", async (HttpContext httpConte
     var canManageProjectLinks =
         canViewAll
         || roles.Contains("PROJECT_MANAGEMENT")
-        || roles.Contains("PROJECT_MANAGER")
-        || roles.Contains("PM_TEAM_LEAD")
-        || roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD")
+        || (roles.Contains("PROJECT_MANAGEMENT") || roles.Contains("PROJECT_MANAGER"))
+        || (roles.Contains("PROJECT_MANAGEMENT_LEAD") || roles.Contains("PM_TEAM_LEAD"))
+        || (roles.Contains("PROJECT_MANAGEMENT_LEAD") || roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD"))
         || permissions.Contains("MANAGE_INTAKE_PROJECT_LINKS")
         || permissions.Contains("MANAGE_PROJECT_INTAKE")
         || permissions.Contains("MANAGE_ALL")
@@ -3041,16 +3041,16 @@ app.MapGet("/api/project-intake/project-link-options", async (HttpContext httpCo
     }
 
     var canViewAll =
-        roles.Contains("ADMINISTRATOR")
+        (roles.Contains("SUPER_ADMINISTRATOR") || roles.Contains("ADMINISTRATOR"))
         || roles.Contains("PROJECT_TEAM_COORDINATOR")
         || permissions.Contains("SYSTEM_ADMINISTRATION")
         || permissions.Contains("MANAGE_ALL");
 
     var canViewManaged =
         roles.Contains("PROJECT_MANAGEMENT")
-        || roles.Contains("PROJECT_MANAGER")
-        || roles.Contains("PM_TEAM_LEAD")
-        || roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD")
+        || (roles.Contains("PROJECT_MANAGEMENT") || roles.Contains("PROJECT_MANAGER"))
+        || (roles.Contains("PROJECT_MANAGEMENT_LEAD") || roles.Contains("PM_TEAM_LEAD"))
+        || (roles.Contains("PROJECT_MANAGEMENT_LEAD") || roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD"))
         || permissions.Contains("VIEW_PROJECT_INTAKE")
         || permissions.Contains("VIEW_PROJECT_INTAKE_AGING")
         || permissions.Contains("VIEW_INTAKE_WORK_TASK_HANDOFF")
@@ -3059,9 +3059,9 @@ app.MapGet("/api/project-intake/project-link-options", async (HttpContext httpCo
     var canManageProjectLinks =
         canViewAll
         || roles.Contains("PROJECT_MANAGEMENT")
-        || roles.Contains("PROJECT_MANAGER")
-        || roles.Contains("PM_TEAM_LEAD")
-        || roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD")
+        || (roles.Contains("PROJECT_MANAGEMENT") || roles.Contains("PROJECT_MANAGER"))
+        || (roles.Contains("PROJECT_MANAGEMENT_LEAD") || roles.Contains("PM_TEAM_LEAD"))
+        || (roles.Contains("PROJECT_MANAGEMENT_LEAD") || roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD"))
         || permissions.Contains("MANAGE_INTAKE_PROJECT_LINKS")
         || permissions.Contains("MANAGE_PROJECT_INTAKE");
 
@@ -3320,7 +3320,7 @@ app.MapPost("/api/project-intake/{intakeId:guid}/project-link", async (Guid inta
     }
 
     var canManageAll =
-        roles.Contains("ADMINISTRATOR")
+        (roles.Contains("SUPER_ADMINISTRATOR") || roles.Contains("ADMINISTRATOR"))
         || roles.Contains("PROJECT_TEAM_COORDINATOR")
         || permissions.Contains("SYSTEM_ADMINISTRATION")
         || permissions.Contains("MANAGE_ALL");
@@ -3328,9 +3328,9 @@ app.MapPost("/api/project-intake/{intakeId:guid}/project-link", async (Guid inta
     var canManageProjectLinks =
         canManageAll
         || roles.Contains("PROJECT_MANAGEMENT")
-        || roles.Contains("PROJECT_MANAGER")
-        || roles.Contains("PM_TEAM_LEAD")
-        || roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD")
+        || (roles.Contains("PROJECT_MANAGEMENT") || roles.Contains("PROJECT_MANAGER"))
+        || (roles.Contains("PROJECT_MANAGEMENT_LEAD") || roles.Contains("PM_TEAM_LEAD"))
+        || (roles.Contains("PROJECT_MANAGEMENT_LEAD") || roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD"))
         || permissions.Contains("MANAGE_INTAKE_PROJECT_LINKS")
         || permissions.Contains("MANAGE_PROJECT_INTAKE");
 
@@ -3606,16 +3606,16 @@ app.MapGet("/api/project-intake/resource-assignment-handoff", async (HttpContext
     }
 
     var canViewAll =
-        roles.Contains("ADMINISTRATOR")
+        (roles.Contains("SUPER_ADMINISTRATOR") || roles.Contains("ADMINISTRATOR"))
         || roles.Contains("PROJECT_TEAM_COORDINATOR")
         || permissions.Contains("SYSTEM_ADMINISTRATION")
         || permissions.Contains("MANAGE_ALL");
 
     var canViewManaged =
         roles.Contains("PROJECT_MANAGEMENT")
-        || roles.Contains("PROJECT_MANAGER")
-        || roles.Contains("PM_TEAM_LEAD")
-        || roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD")
+        || (roles.Contains("PROJECT_MANAGEMENT") || roles.Contains("PROJECT_MANAGER"))
+        || (roles.Contains("PROJECT_MANAGEMENT_LEAD") || roles.Contains("PM_TEAM_LEAD"))
+        || (roles.Contains("PROJECT_MANAGEMENT_LEAD") || roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD"))
         || roles.Contains("PROJECT_COORDINATOR")
         || permissions.Contains("VIEW_RESOURCE_ASSIGNMENT_HANDOFF")
         || permissions.Contains("VIEW_INTAKE_WORK_TASK_HANDOFF")
@@ -3626,9 +3626,9 @@ app.MapGet("/api/project-intake/resource-assignment-handoff", async (HttpContext
     var canPromoteResourceAssignments =
         canViewAll
         || roles.Contains("PROJECT_MANAGEMENT")
-        || roles.Contains("PROJECT_MANAGER")
-        || roles.Contains("PM_TEAM_LEAD")
-        || roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD")
+        || (roles.Contains("PROJECT_MANAGEMENT") || roles.Contains("PROJECT_MANAGER"))
+        || (roles.Contains("PROJECT_MANAGEMENT_LEAD") || roles.Contains("PM_TEAM_LEAD"))
+        || (roles.Contains("PROJECT_MANAGEMENT_LEAD") || roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD"))
         || permissions.Contains("MANAGE_RESOURCE_ASSIGNMENT_PROMOTION")
         || permissions.Contains("MANAGE_ENGINEERING_RESOURCE_REQUESTS")
         || permissions.Contains("ASSIGN_WORK_TASKS")
@@ -4125,7 +4125,7 @@ app.MapPost("/api/project-intake/resource-assignment-promotions", async (JsonEle
     }
 
     var canManageAll =
-        roles.Contains("ADMINISTRATOR")
+        (roles.Contains("SUPER_ADMINISTRATOR") || roles.Contains("ADMINISTRATOR"))
         || roles.Contains("PROJECT_TEAM_COORDINATOR")
         || permissions.Contains("SYSTEM_ADMINISTRATION")
         || permissions.Contains("MANAGE_ALL");
@@ -4133,9 +4133,9 @@ app.MapPost("/api/project-intake/resource-assignment-promotions", async (JsonEle
     var canPromoteResourceAssignments =
         canManageAll
         || roles.Contains("PROJECT_MANAGEMENT")
-        || roles.Contains("PROJECT_MANAGER")
-        || roles.Contains("PM_TEAM_LEAD")
-        || roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD")
+        || (roles.Contains("PROJECT_MANAGEMENT") || roles.Contains("PROJECT_MANAGER"))
+        || (roles.Contains("PROJECT_MANAGEMENT_LEAD") || roles.Contains("PM_TEAM_LEAD"))
+        || (roles.Contains("PROJECT_MANAGEMENT_LEAD") || roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD"))
         || permissions.Contains("MANAGE_RESOURCE_ASSIGNMENT_PROMOTION")
         || permissions.Contains("MANAGE_ENGINEERING_RESOURCE_REQUESTS")
         || permissions.Contains("ASSIGN_WORK_TASKS")
@@ -4489,11 +4489,11 @@ app.MapGet("/api/project-intake/aging-summary", async (HttpContext httpContext) 
     await using (var accessCommand = new NpgsqlCommand("""
         SELECT
             BOOL_OR(
-                r.role_code IN ('ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR', 'PROJECT_MANAGER', 'PROJECT_MANAGEMENT', 'PM_TEAM_LEAD', 'PROJECT_MANAGEMENT_TEAM_LEAD')
+                r.role_code IN ('SUPER_ADMINISTRATOR', 'ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR', 'PROJECT_MANAGEMENT', 'PROJECT_MANAGER', 'PROJECT_MANAGEMENT_LEAD', 'PM_TEAM_LEAD', 'PROJECT_MANAGEMENT_TEAM_LEAD')
                 OR p.permission_code IN ('VIEW_PROJECT_INTAKE', 'VIEW_PROJECT_INTAKE_AGING', 'MANAGE_PROJECT_INTAKE', 'MANAGE_PROJECT_INTAKE_AGING', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL')
             ) AS can_view,
             BOOL_OR(
-                r.role_code IN ('ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR')
+                r.role_code IN ('SUPER_ADMINISTRATOR', 'ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR')
                 OR p.permission_code IN ('MANAGE_PROJECT_INTAKE', 'MANAGE_PROJECT_INTAKE_AGING', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL')
             ) AS can_manage
         FROM app_user_role_assignments ura
@@ -4772,7 +4772,7 @@ app.MapPut("/api/project-intake/{intakeId:guid}/post-intake", async (Guid intake
     bool canManage;
     await using (var accessCommand = new NpgsqlCommand("""
         SELECT BOOL_OR(
-            r.role_code IN ('ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR')
+            r.role_code IN ('SUPER_ADMINISTRATOR', 'ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR')
             OR p.permission_code IN ('MANAGE_PROJECT_INTAKE', 'MANAGE_PROJECT_INTAKE_AGING', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL')
         )
         FROM app_user_role_assignments ura
@@ -4936,7 +4936,7 @@ app.MapPost("/api/project-intake/{intakeId:guid}/supporting-documents/upload", a
     bool canManage;
     await using (var accessCommand = new NpgsqlCommand("""
         SELECT BOOL_OR(
-            r.role_code IN ('ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR')
+            r.role_code IN ('SUPER_ADMINISTRATOR', 'ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR')
             OR p.permission_code IN ('MANAGE_PROJECT_INTAKE', 'MANAGE_PROJECT_INTAKE_AGING', 'MANAGE_PROJECT_DOCUMENTS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL')
         )
         FROM app_user_role_assignments ura
@@ -6433,18 +6433,18 @@ app.MapGet("/api/project-management/workload", async (HttpContext httpContext, G
     }
 
     var canViewAll =
-        roles.Contains("ADMINISTRATOR")
+        (roles.Contains("SUPER_ADMINISTRATOR") || roles.Contains("ADMINISTRATOR"))
         || roles.Contains("PROJECT_TEAM_COORDINATOR")
         || permissions.Contains("SYSTEM_ADMINISTRATION")
         || permissions.Contains("MANAGE_ALL");
 
     var isProjectManager =
-        roles.Contains("PROJECT_MANAGER")
+        (roles.Contains("PROJECT_MANAGEMENT") || roles.Contains("PROJECT_MANAGER"))
         || roles.Contains("PROJECT_MANAGEMENT");
 
     var isProjectManagementTeamLead =
-        roles.Contains("PM_TEAM_LEAD")
-        || roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD");
+        (roles.Contains("PROJECT_MANAGEMENT_LEAD") || roles.Contains("PM_TEAM_LEAD"))
+        || (roles.Contains("PROJECT_MANAGEMENT_LEAD") || roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD"));
 
     var canAccess =
         canViewAll
@@ -6478,7 +6478,7 @@ app.MapGet("/api/project-management/workload", async (HttpContext httpContext, G
                     ON r.app_role_id = ura.app_role_id
                    AND r.is_active = TRUE
                 WHERE ura.is_active = TRUE
-                  AND r.role_code IN ('PROJECT_MANAGER', 'PROJECT_MANAGEMENT')
+                  AND r.role_code IN ('PROJECT_MANAGEMENT', 'PROJECT_MANAGER')
             ),
             eligible_pm AS (
                 SELECT user_id FROM project_pm
@@ -6529,7 +6529,7 @@ app.MapGet("/api/project-management/workload", async (HttpContext httpContext, G
                    AND r.is_active = TRUE
                 WHERE tm.effective_start_date <= CURRENT_DATE
                   AND (tm.effective_end_date IS NULL OR tm.effective_end_date >= CURRENT_DATE)
-                  AND r.role_code IN ('PROJECT_MANAGER', 'PROJECT_MANAGEMENT')
+                  AND r.role_code IN ('PROJECT_MANAGEMENT', 'PROJECT_MANAGER')
             ),
             own_pm AS (
                 SELECT @user_id::uuid AS user_id
@@ -6541,7 +6541,7 @@ app.MapGet("/api/project-management/workload", async (HttpContext httpContext, G
                        AND r.is_active = TRUE
                     WHERE ura.user_id = @user_id
                       AND ura.is_active = TRUE
-                      AND r.role_code IN ('PROJECT_MANAGER', 'PROJECT_MANAGEMENT')
+                      AND r.role_code IN ('PROJECT_MANAGEMENT', 'PROJECT_MANAGER')
                 )
             ),
             eligible_pm AS (
@@ -8125,15 +8125,15 @@ app.MapGet("/api/role-admin/summary", async (HttpContext httpContext) =>
 
     var roleDefinitionMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
     {
-        ["ADMINISTRATOR"] = "Full platform administrator. Can manage users, roles, security configuration, system administration, and all modules.",
+        ["SUPER_ADMINISTRATOR"] = "Full platform administrator. Can manage users, roles, security configuration, system administration, and all modules.",
         ["PROJECT_TEAM_COORDINATOR"] = "Operations coordinator with broad project, intake, time, billing, reconciliation, customer, and work-task coordination access.",
         ["PROJECT_MANAGEMENT"] = "Project manager role for managing assigned projects, project workspace activity, project workload, intake aging visibility, work-task assignment, and project validation workflows.",
         ["PROJECT_MANAGER"] = "Legacy or alternate project manager role. Used for assigned project ownership and project-scoped work-task assignment where still present.",
         ["PM_TEAM_LEAD"] = "Project management team lead role. Used to review PM workload and project-management team visibility where configured.",
-        ["PROJECT_MANAGEMENT_TEAM_LEAD"] = "Project management team lead role. Provides team-level visibility for PM workload, intake aging, and related project-management oversight.",
+        ["PROJECT_MANAGEMENT_LEAD"] = "Project management team lead role. Provides team-level visibility for PM workload, intake aging, and related project-management oversight.",
         ["MANAGER"] = "People manager role. Reviews team time, approvals, utilization visibility, and manager-scoped operational activity.",
-        ["ENGINEERING_TEAM_LEAD"] = "Engineering team lead role. Reviews engineering team utilization and assigned engineering work within team scope.",
-        ["ENGINEER"] = "Engineer role. Enters own time, views assigned work, sees own utilization, holidays, and assigned project workspace content.",
+        ["ENGINEERING_LEAD"] = "Engineering team lead role. Reviews engineering team utilization and assigned engineering work within team scope.",
+        ["ENGINEERING"] = "Engineering role. Enters own time, views assigned work, sees own utilization, holidays, and assigned project workspace content.",
         ["EXECUTIVE"] = "Executive/readiness role focused on high-level reporting, workflow visibility, and operational summaries without management write access.",
         ["PMO"] = "Legacy PMO role retained for compatibility where older records still reference it."
     };
@@ -8995,9 +8995,9 @@ async Task<bool> RequestUserCanAccessCostAlertsAsync(HttpContext context, Npgsql
               AND ura.is_active = TRUE
               AND r.is_active = TRUE
               AND (
-                    (NOT @require_manage AND r.role_code IN ('ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR', 'PROJECT_MANAGEMENT', 'PROJECT_MANAGER', 'MANAGER'))
+                    (NOT @require_manage AND r.role_code IN ('SUPER_ADMINISTRATOR', 'ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR', 'PROJECT_MANAGEMENT', 'PROJECT_MANAGER', 'MANAGER'))
                  OR (NOT @require_manage AND p.permission_code IN ('VIEW_COST_ALERTS', 'MANAGE_COST_ALERTS', 'MANAGE_ALL', 'SYSTEM_ADMINISTRATION'))
-                 OR (@require_manage AND r.role_code IN ('ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR'))
+                 OR (@require_manage AND r.role_code IN ('SUPER_ADMINISTRATOR', 'ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR'))
                  OR (@require_manage AND p.permission_code IN ('MANAGE_COST_ALERTS', 'MANAGE_ALL', 'SYSTEM_ADMINISTRATION'))
               )
         );
@@ -9032,7 +9032,7 @@ async Task<bool> RequestUserCanManageCustomersAsync(HttpContext context, NpgsqlC
               AND ura.is_active = TRUE
               AND r.is_active = TRUE
               AND (
-                    r.role_code IN ('ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR')
+                    r.role_code IN ('SUPER_ADMINISTRATOR', 'ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR')
                  OR p.permission_code IN ('MANAGE_CUSTOMERS', 'MANAGE_ALL', 'SYSTEM_ADMINISTRATION')
               )
         );
@@ -9065,7 +9065,7 @@ async Task<bool> RequestUserCanAccessUserAdministrationAsync(HttpContext context
               AND ura.is_active = TRUE
               AND r.is_active = TRUE
               AND (
-                    r.role_code IN ('ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR')
+                    r.role_code IN ('SUPER_ADMINISTRATOR', 'ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR')
                  OR p.permission_code IN ('VIEW_USER_ADMIN', 'MANAGE_USER_ADMIN', 'MANAGE_ALL')
               )
         );
@@ -9100,7 +9100,7 @@ async Task<bool> SessionUserIsAdministratorAsync(NpgsqlConnection connection, Gu
             JOIN app_roles r ON r.app_role_id = ura.app_role_id
             WHERE ura.user_id = @user_id
               AND ura.is_active = TRUE
-              AND r.role_code = 'ADMINISTRATOR'
+              AND r.role_code IN ('SUPER_ADMINISTRATOR', 'ADMINISTRATOR')
               AND r.is_active = TRUE
         );
         """, connection);
@@ -10599,7 +10599,7 @@ app.MapPost("/api/admin/azure/config", async (AzureAdminConfigRequest request, H
             redirect_uri = NULLIF(@redirect_uri, ''),
             graph_scope = COALESCE(NULLIF(@graph_scope, ''), 'User.Read.All Directory.Read.All'),
             sync_enabled = @sync_enabled,
-            default_role_code = COALESCE(NULLIF(@default_role_code, ''), 'ENGINEER'),
+            default_role_code = COALESCE(NULLIF(@default_role_code, ''), 'ENGINEERING'),
             sync_frequency_hours = GREATEST(@sync_frequency_hours, 1),
             updated_by_email = @updated_by_email,
             updated_at = NOW()
@@ -10617,7 +10617,7 @@ app.MapPost("/api/admin/azure/config", async (AzureAdminConfigRequest request, H
     command.Parameters.AddWithValue("redirect_uri", request.RedirectUri?.Trim() ?? "");
     command.Parameters.AddWithValue("graph_scope", request.GraphScope?.Trim() ?? "User.Read.All Directory.Read.All");
     command.Parameters.AddWithValue("sync_enabled", request.SyncEnabled);
-    command.Parameters.AddWithValue("default_role_code", string.IsNullOrWhiteSpace(request.DefaultRoleCode) ? "ENGINEER" : request.DefaultRoleCode.Trim().ToUpperInvariant());
+    command.Parameters.AddWithValue("default_role_code", string.IsNullOrWhiteSpace(request.DefaultRoleCode) ? "ENGINEERING" : request.DefaultRoleCode.Trim().ToUpperInvariant());
     command.Parameters.AddWithValue("sync_frequency_hours", request.SyncFrequencyHours <= 0 ? 24 : request.SyncFrequencyHours);
     command.Parameters.AddWithValue("updated_by_email", updatedBy);
 
@@ -10832,7 +10832,7 @@ app.MapPost("/api/admin/azure/users/import", async (AzureUserImportRequest reque
                 )
                 SELECT @user_id, r.app_role_id, 'Default Engineer role from Azure/Entra import', TRUE
                 FROM app_roles r
-                WHERE r.role_code = 'ENGINEER'
+                WHERE r.role_code IN ('ENGINEERING', 'ENGINEER')
                 ON CONFLICT (user_id, app_role_id) DO UPDATE
                 SET is_active = TRUE,
                     assignment_reason = EXCLUDED.assignment_reason,
@@ -11261,7 +11261,7 @@ app.MapPost("/api/admin/user-admin/users/roles", async (UserAdminRoleUpdateReque
             .Distinct()
             .ToList();
 
-        if (sessionUserId == request.UserId && !cleanRoleCodes.Contains("ADMINISTRATOR"))
+        if (sessionUserId == request.UserId && !(cleanRoleCodes.Contains("SUPER_ADMINISTRATOR") || cleanRoleCodes.Contains("ADMINISTRATOR")))
         {
             await transaction.RollbackAsync();
             return Results.BadRequest(new
@@ -11494,7 +11494,7 @@ app.MapPost("/api/admin/user-admin/users/local", async (UserAdminLocalUserCreate
 
         if (cleanRoleCodes.Count == 0)
         {
-            cleanRoleCodes.Add("ENGINEER");
+            cleanRoleCodes.Add("ENGINEERING");
         }
 
         await using (var userCommand = new NpgsqlCommand("""
@@ -12003,7 +12003,7 @@ app.MapPost("/api/admin/user-admin/users/bulk-update", async (UserAdminBulkUpdat
 
     if (sessionUserId is not null && userIds.Contains(sessionUserId.Value))
     {
-        if (roleMode == "replace" && !cleanRoleCodes.Contains("ADMINISTRATOR"))
+        if (roleMode == "replace" && !(cleanRoleCodes.Contains("SUPER_ADMINISTRATOR") || cleanRoleCodes.Contains("ADMINISTRATOR")))
         {
             return Results.BadRequest(new
             {
@@ -12012,7 +12012,7 @@ app.MapPost("/api/admin/user-admin/users/bulk-update", async (UserAdminBulkUpdat
             });
         }
 
-        if (roleMode == "remove" && cleanRoleCodes.Contains("ADMINISTRATOR"))
+        if (roleMode == "remove" && (cleanRoleCodes.Contains("SUPER_ADMINISTRATOR") || cleanRoleCodes.Contains("ADMINISTRATOR")))
         {
             return Results.BadRequest(new
             {
@@ -14299,7 +14299,7 @@ async Task<bool> ProjectAllocationUserHasPermissionAsync(NpgsqlConnection connec
               AND ura.is_active = TRUE
               AND r.is_active = TRUE
               AND (
-                    r.role_code = 'ADMINISTRATOR'
+                    r.role_code IN ('SUPER_ADMINISTRATOR', 'ADMINISTRATOR')
                  OR p.permission_code = ANY(@permission_codes)
               )
         );
@@ -15198,14 +15198,14 @@ app.MapGet("/api/utilization/engineering-team-summary", async (int? year, Guid? 
     }
 
     var canViewAll =
-        roles.Contains("ADMINISTRATOR")
+        (roles.Contains("SUPER_ADMINISTRATOR") || roles.Contains("ADMINISTRATOR"))
         || roles.Contains("PROJECT_TEAM_COORDINATOR")
         || permissions.Contains("SYSTEM_ADMINISTRATION")
         || permissions.Contains("MANAGE_ALL");
 
-    var isEngineeringTeamLead = roles.Contains("ENGINEERING_TEAM_LEAD");
+    var isEngineeringTeamLead = (roles.Contains("ENGINEERING_LEAD") || roles.Contains("ENGINEERING_TEAM_LEAD"));
     var isManager = roles.Contains("MANAGER");
-    var isEngineer = roles.Contains("ENGINEER");
+    var isEngineer = (roles.Contains("ENGINEERING") || roles.Contains("ENGINEER"));
 
     var canUseTeamScope =
         !canViewAll
@@ -15249,7 +15249,7 @@ app.MapGet("/api/utilization/engineering-team-summary", async (int? year, Guid? 
                 ON r.app_role_id = ura.app_role_id
                AND r.is_active = TRUE
             WHERE u.is_active = TRUE
-              AND r.role_code = 'ENGINEER'
+              AND r.role_code IN ('ENGINEERING', 'ENGINEER')
             ORDER BY team_name, display_name, u.email;
             """, connection);
 
@@ -15322,7 +15322,7 @@ app.MapGet("/api/utilization/engineering-team-summary", async (int? year, Guid? 
             JOIN app_roles r
                 ON r.app_role_id = ura.app_role_id
                AND r.is_active = TRUE
-            WHERE r.role_code = 'ENGINEER'
+            WHERE r.role_code IN ('ENGINEERING', 'ENGINEER')
             ORDER BY team_name, display_name, u.email;
             """, connection);
 
@@ -15652,7 +15652,7 @@ app.MapGet("/api/utilization/manager-team-summary", async (int? year, HttpContex
         sessionRoles = reader.GetFieldValue<string[]>(1).ToList();
     }
 
-    var isAdministrator = sessionRoles.Contains("ADMINISTRATOR");
+    var isAdministrator = (sessionRoles.Contains("SUPER_ADMINISTRATOR") || sessionRoles.Contains("ADMINISTRATOR"));
     var isCoordinator = sessionRoles.Contains("PROJECT_TEAM_COORDINATOR");
     var isManager = sessionRoles.Contains("MANAGER");
 
@@ -15916,7 +15916,7 @@ async Task<bool> ProjectPulseUserIsAzureAdministratorAsync(NpgsqlConnection conn
             WHERE ura.user_id = @user_id
               AND ura.is_active = TRUE
               AND r.is_active = TRUE
-              AND r.role_code = 'ADMINISTRATOR'
+              AND r.role_code IN ('SUPER_ADMINISTRATOR', 'ADMINISTRATOR')
         );
         """, connection);
 
@@ -16858,7 +16858,7 @@ app.MapPost("/api/admin/azure/import-settings", async (HttpContext httpContext, 
     var tenantDomain = (request.TenantDomain ?? "").Trim().ToLowerInvariant();
     var sourceProvider = (request.SourceProvider ?? "ENTRA_ID_TEST").Trim().ToUpperInvariant();
     var importSourceType = (request.ImportSourceType ?? "ALL_USERS").Trim().ToUpperInvariant();
-    var defaultRoleCode = (request.DefaultRoleCode ?? "ENGINEER").Trim().ToUpperInvariant();
+    var defaultRoleCode = (request.DefaultRoleCode ?? "ENGINEERING").Trim().ToUpperInvariant();
 
     if (environmentMode == "production")
     {
@@ -23747,6 +23747,1879 @@ static bool ProjectPulse022CValidSeverity(string severity)
 // 022C Production Notification Preferences + Routing Rules - END
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+// 030_REPORT_API_JSON_SAFE_START
+app.MapPost("/api/reports/030/preview", async (HttpRequest request) =>
+{
+    // 030_REPORT_API_DATABASECONFIG_FROM_ENV_FIX
+    // 030_REPORT_API_SOURCE_TABLE_AND_MESSAGE_FIX
+    var config = DatabaseConfig.FromEnvironment();
+    var missingConfigResult = ValidateConfig(config);
+    if (missingConfigResult is not null)
+    {
+        return missingConfigResult;
+    }
+
+
+    JsonDocument? document = null;
+
+    try
+    {
+        string rawBody = await new StreamReader(request.Body).ReadToEndAsync();
+
+        document = string.IsNullOrWhiteSpace(rawBody)
+            ? JsonDocument.Parse("{}")
+            : JsonDocument.Parse(rawBody);
+
+        JsonElement root = document.RootElement;
+
+        string reportType = ProjectPulse030SafeReadString(root, "reportType", "type", "reportName");
+
+        if (string.IsNullOrWhiteSpace(reportType))
+        {
+            reportType = "Accounting Invoice Detail Report";
+        }
+
+        await using var connection = new NpgsqlConnection(config.ConnectionString);
+        await connection.OpenAsync();
+        var result = await ProjectPulse030BuildSafeDatabaseReportAsync(connection, reportType, root);
+
+        return Results.Json(result);
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new
+        {
+            databaseBacked = true,
+            error = true,
+            reportType = "030 Report Preview",
+            category = "error",
+            sourceTable = "",
+            columns = new[] { "Error" },
+            rows = Array.Empty<object?[]>(),
+            rowCount = 0,
+            message = "Report generation failed. No report rows were returned.",
+            exceptionType = ex.GetType().FullName,
+            detail = ex.Message
+        });
+    }
+    finally
+    {
+        document?.Dispose();
+    }
+});
+// 030_REPORT_API_JSON_SAFE_END
+
+// 030A_READABLE_REPORTING_FILTER_OPTIONS_START
+app.MapGet("/api/reports/030/filter-options", async () =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingConfigResult = ValidateConfig(config);
+    if (missingConfigResult is not null)
+    {
+        return missingConfigResult;
+    }
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var result = await ProjectPulse030LoadReadableFilterOptionsAsync(connection);
+    return Results.Json(result);
+});
+// 030A_READABLE_REPORTING_FILTER_OPTIONS_END
+
+
+// 030_REPORT_API_JSON_SAFE_HELPERS_START
+
+static async Task<NpgsqlConnection> ProjectPulse030OpenConnectionAsync(IServiceProvider services)
+{
+    var dataSource = services.GetService(typeof(NpgsqlDataSource)) as NpgsqlDataSource;
+
+    if (dataSource is not null)
+    {
+        return await dataSource.OpenConnectionAsync();
+    }
+
+    var configuration = services.GetService(typeof(Microsoft.Extensions.Configuration.IConfiguration)) as Microsoft.Extensions.Configuration.IConfiguration;
+
+    var candidates = new[]
+    {
+        configuration?["ConnectionStrings:ProjectPulse"],
+        configuration?["ConnectionStrings:DefaultConnection"],
+        configuration?["ConnectionStrings:ProjectTime"],
+        configuration?["PROJECTPULSE_CONNECTION_STRING"],
+        configuration?["PROJECTTIME_DATABASE_CONNECTION"],
+        configuration?["DATABASE_URL"],
+        Environment.GetEnvironmentVariable("ConnectionStrings__ProjectPulse"),
+        Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection"),
+        Environment.GetEnvironmentVariable("ConnectionStrings__ProjectTime"),
+        Environment.GetEnvironmentVariable("PROJECTPULSE_CONNECTION_STRING"),
+        Environment.GetEnvironmentVariable("PROJECTTIME_DATABASE_CONNECTION"),
+        Environment.GetEnvironmentVariable("DATABASE_URL")
+    };
+
+    string? connectionString = candidates.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+
+    if (string.IsNullOrWhiteSpace(connectionString))
+    {
+        throw new InvalidOperationException("No database connection string or NpgsqlDataSource was available to the 030 reporting API.");
+    }
+
+    var connection = new NpgsqlConnection(connectionString);
+    await connection.OpenAsync();
+
+    return connection;
+}
+
+static string ProjectPulse030SafeReadString(JsonElement root, params string[] names)
+{
+    if (root.ValueKind != JsonValueKind.Object)
+    {
+        return string.Empty;
+    }
+
+    foreach (var name in names)
+    {
+        if (root.TryGetProperty(name, out var element))
+        {
+            if (element.ValueKind == JsonValueKind.String)
+            {
+                return element.GetString() ?? string.Empty;
+            }
+
+            if (element.ValueKind == JsonValueKind.Number || element.ValueKind == JsonValueKind.True || element.ValueKind == JsonValueKind.False)
+            {
+                return element.ToString();
+            }
+        }
+    }
+
+    return string.Empty;
+}
+
+static string ProjectPulse030SafeCategory(string reportType)
+{
+    string value = (reportType ?? string.Empty).ToLowerInvariant();
+
+    if ((value.Contains("t&m") || value.Contains("time and material")) && value.Contains("sales")) return "tm_sales";
+    if (value.Contains("project status") || (value.Contains("billed") && value.Contains("remaining"))) return "project_status";
+    if (value.Contains("certify") || value.Contains("expense")) return "certify";
+    if (value.Contains("utilization") && (value.Contains("over") || value.Contains("under"))) return "utilization_over_under";
+    if (value.Contains("over") && value.Contains("under") && value.Contains("engineer") && (value.Contains("project") || value.Contains("budget"))) return "engineer_over_under";
+    if ((value.Contains("vacation") || value.Contains("pto")) && value.Contains("engineer")) return "pto_used";
+    if (value.Contains("billable") && value.Contains("non")) return "billable_nonbillable";
+    if (value.Contains("unbilled") || value.Contains("invoice readiness")) return "invoice_readiness";
+    if (value.Contains("approval bottleneck")) return "approval_bottleneck";
+    if (value.Contains("missing time") || value.Contains("late timesheet")) return "missing_time";
+    if (value.Contains("margin")) return "project_margin";
+    if (value.Contains("rate") && value.Contains("exception")) return "rate_exception";
+    if (value.Contains("profitability")) return "customer_profitability";
+    if (value.Contains("closeout")) return "closeout_readiness";
+    if (value.Contains("handoff")) return "handoff_quality";
+
+    if (value.Contains("accounting") || value.Contains("invoice")) return "accounting";
+    if (value.Contains("time entry")) return "time";
+    if (value.Contains("customer")) return "customer";
+    if (value.Contains("project report")) return "project";
+    if (value.Contains("pm")) return "pm";
+    if (value.Contains("selected engineer") || value.Contains("engineer")) return "engineer";
+    if (value.Contains("team") || value.Contains("organization")) return "team";
+    if (value.Contains("workflow") || value.Contains("approval") || value.Contains("audit")) return "audit";
+    if (value.Contains("system")) return "system";
+    if (value.Contains("api")) return "api";
+    if (value.Contains("external")) return "external";
+    if (value.Contains("authentication") || value.Contains("security")) return "auth";
+    if (value.Contains("ai") || value.Contains("sow")) return "ai";
+    if (value.Contains("notification")) return "notification";
+    if (value.Contains("uat")) return "uat";
+    if (value.Contains("library")) return "library";
+    if (value.Contains("executive")) return "executive";
+
+    return "accounting";
+}
+
+static async Task<object> ProjectPulse030BuildSafeDatabaseReportAsync(NpgsqlConnection connection, string reportType, JsonElement criteria)
+{
+    string category = ProjectPulse030SafeCategory(reportType);
+
+    var readableReport = await ProjectPulse030BuildReadableJoinedReportAsync(connection, reportType, category, criteria);
+    if (readableReport is not null)
+    {
+        return readableReport;
+    }
+
+    var table = await ProjectPulse030FindSafeReportTableAsync(connection, category);
+
+    if (string.IsNullOrWhiteSpace(table.Schema) || string.IsNullOrWhiteSpace(table.Name))
+    {
+        return new
+        {
+            databaseBacked = true,
+            reportType,
+            category,
+            sourceTable = "",
+            columns = new[] { "Message" },
+            rows = Array.Empty<object?[]>(),
+            rowCount = 0,
+            message = $"No database table is currently configured for report category '{category}'."
+        };
+    }
+
+    var columns = await ProjectPulse030GetSafeColumnsAsync(connection, table.Schema, table.Name);
+
+    if (columns.Count == 0)
+    {
+        return new
+        {
+            databaseBacked = true,
+            reportType,
+            category,
+            sourceTable = $"{table.Schema}.{table.Name}",
+            columns = new[] { "Message" },
+            rows = Array.Empty<object?[]>(),
+            rowCount = 0,
+            message = $"The selected report source '{table.Schema}.{table.Name}' did not expose reportable columns through the database connection."
+        };
+    }
+
+    var selectedColumns = ProjectPulse030SelectSafeColumns(category, columns);
+    var where = ProjectPulse030BuildSafeWhereClause(criteria, selectedColumns);
+
+    string orderBy = selectedColumns.Any(c => string.Equals(c.Name, "created_at", StringComparison.OrdinalIgnoreCase))
+        ? " ORDER BY " + ProjectPulse030Quote("created_at") + " DESC NULLS LAST"
+        : "";
+
+    string sql =
+        "SELECT " + string.Join(", ", selectedColumns.Select(c => ProjectPulse030Quote(c.Name))) +
+        " FROM " + ProjectPulse030Quote(table.Schema) + "." + ProjectPulse030Quote(table.Name) +
+        where.Sql +
+        orderBy +
+        " LIMIT 250;";
+
+    await using var command = new NpgsqlCommand(sql, connection);
+
+    foreach (var parameter in where.Parameters)
+    {
+        command.Parameters.AddWithValue(parameter.Key, parameter.Value);
+    }
+
+    var rows = new List<object?[]>();
+
+    await using (var reader = await command.ExecuteReaderAsync())
+    {
+        while (await reader.ReadAsync())
+        {
+            var row = new object?[selectedColumns.Count];
+
+            for (int i = 0; i < selectedColumns.Count; i++)
+            {
+                row[i] = reader.IsDBNull(i) ? null : ProjectPulse030SafeFormatValue(reader.GetValue(i));
+            }
+
+            rows.Add(row);
+        }
+    }
+
+    string message = rows.Count == 0
+        ? $"No database rows matched the selected criteria from '{table.Schema}.{table.Name}'."
+        : $"Database-backed report generated from '{table.Schema}.{table.Name}'. Rows shown are actual database rows.";
+
+    return new
+    {
+        databaseBacked = true,
+        readable = false,
+        reportType,
+        category,
+        sourceTable = $"{table.Schema}.{table.Name}",
+        columns = selectedColumns.Select(c => ProjectPulse030Display(c.Name)).ToArray(),
+        columnKeys = selectedColumns.Select(c => c.Name).ToArray(),
+        rows,
+        rowCount = rows.Count,
+        message
+    };
+}
+
+
+// 030A_READABLE_REPORTING_JOINED_HELPERS_START
+
+static async Task<object?> ProjectPulse030BuildReadableJoinedReportAsync(NpgsqlConnection connection, string reportType, string category, JsonElement criteria)
+{
+    if (category is "accounting" or "time" or "engineer")
+    {
+        return await ProjectPulse030BuildReadableTimeReportAsync(connection, reportType, category, criteria);
+    }
+
+    if (category is "project" or "pm")
+    {
+        return await ProjectPulse030BuildReadableProjectReportAsync(connection, reportType, category, criteria);
+    }
+
+    if (category is "customer")
+    {
+        return await ProjectPulse030BuildReadableCustomerReportAsync(connection, reportType, category, criteria);
+    }
+
+    if (category is "team")
+    {
+        return await ProjectPulse030BuildReadableTeamReportAsync(connection, reportType, category, criteria);
+    }
+
+    if (category is "tm_sales")
+    {
+        return await ProjectPulse030BuildTmSalesReportAsync(connection, reportType, category, criteria);
+    }
+
+    if (category is "project_status")
+    {
+        return await ProjectPulse030BuildProjectStatusBilledRemainingReportAsync(connection, reportType, category, criteria);
+    }
+
+    if (category is "certify")
+    {
+        return await ProjectPulse030BuildCertifyReadyExpenseReportAsync(connection, reportType, category, criteria);
+    }
+
+    if (category is "engineer_over_under")
+    {
+        return await ProjectPulse030BuildEngineerProjectOverUnderReportAsync(connection, reportType, category, criteria);
+    }
+
+    if (category is "utilization_over_under")
+    {
+        return await ProjectPulse030BuildUtilizationOverUnderReportAsync(connection, reportType, category, criteria);
+    }
+
+    if (category is "pto_used")
+    {
+        return await ProjectPulse030BuildPtoUsedReportAsync(connection, reportType, category, criteria);
+    }
+
+    if (category is "billable_nonbillable")
+    {
+        return await ProjectPulse030BuildBillableNonBillableReportAsync(connection, reportType, category, criteria);
+    }
+
+    if (category is "invoice_readiness")
+    {
+        return await ProjectPulse030BuildInvoiceReadinessReportAsync(connection, reportType, category, criteria);
+    }
+
+    if (category is "approval_bottleneck")
+    {
+        return await ProjectPulse030BuildApprovalBottleneckReportAsync(connection, reportType, category, criteria);
+    }
+
+    if (category is "missing_time")
+    {
+        return await ProjectPulse030BuildMissingTimeReportAsync(connection, reportType, category, criteria);
+    }
+
+    if (category is "project_margin")
+    {
+        return await ProjectPulse030BuildProjectMarginReportAsync(connection, reportType, category, criteria);
+    }
+
+    if (category is "rate_exception")
+    {
+        return await ProjectPulse030BuildRateExceptionReportAsync(connection, reportType, category, criteria);
+    }
+
+    if (category is "customer_profitability")
+    {
+        return await ProjectPulse030BuildCustomerProfitabilityReportAsync(connection, reportType, category, criteria);
+    }
+
+    if (category is "closeout_readiness")
+    {
+        return await ProjectPulse030BuildCloseoutReadinessReportAsync(connection, reportType, category, criteria);
+    }
+
+    if (category is "handoff_quality")
+    {
+        return await ProjectPulse030BuildHandoffQualityReportAsync(connection, reportType, category, criteria);
+    }
+
+    return null;
+}
+
+static async Task<object> ProjectPulse030BuildReadableTimeReportAsync(NpgsqlConnection connection, string reportType, string category, JsonElement criteria)
+{
+    var columns = category == "accounting"
+        ? new List<(string Key, string Label)>
+        {
+            ("engagement_manager", "Engagement Manager"),
+            ("customer", "Customer"),
+            ("engagement_project", "Engagement / Project"),
+            ("contract_type", "Contract Type"),
+            ("po_quote", "PO / Quote"),
+            ("invoicing_instructions", "Invoicing Instructions"),
+            ("cp_invoice_number", "CP Invoice Number"),
+            ("invoice_date", "Invoice Date"),
+            ("category", "Category"),
+            ("item_description", "Item Description"),
+            ("quantity_hours_entered", "Quantity / Hours Entered"),
+            ("rate", "Rate"),
+            ("amount", "Amount"),
+            ("work_code", "Work Code"),
+            ("work_location", "Work Location"),
+            ("billable_status", "Billable Status"),
+            ("invoice_status", "Invoice Status"),
+            ("engineer", "Engineer")
+        }
+        : new List<(string Key, string Label)>
+        {
+            ("engineer", "Engineer"),
+            ("engineer_email", "Engineer Email"),
+            ("customer", "Customer"),
+            ("project_code", "Project Code"),
+            ("project_name", "Project Name"),
+            ("project_manager", "Project Manager"),
+            ("team", "Team"),
+            ("week_start_date", "Week Start Date"),
+            ("timesheet_status", "Timesheet Status"),
+            ("work_date", "Work Date"),
+            ("hours", "Hours"),
+            ("billable_status", "Billable Status"),
+            ("category", "Category"),
+            ("work_item", "Work Item"),
+            ("work_code", "Work Code"),
+            ("work_location_group", "Work Location Group"),
+            ("work_location", "Work Location"),
+            ("time_entry_status", "Time Entry Status"),
+            ("time_type", "Time Type"),
+            ("description", "Description")
+        };
+
+    var where = new List<string>();
+    var parameters = new Dictionary<string, object>();
+
+    ProjectPulse030AddDateRange(criteria, where, parameters, "te.work_date");
+    ProjectPulse030AddReadableTextFilter(criteria, where, parameters, "customer", new[] { "c.client_name", "c.client_code" });
+    ProjectPulse030AddReadableTextFilter(criteria, where, parameters, "project", new[] { "p.project_name", "p.project_code" });
+    ProjectPulse030AddReadableTextFilter(criteria, where, parameters, "pm", new[] { "pm.display_name", "pm.email" });
+    ProjectPulse030AddReadableTextFilter(criteria, where, parameters, "engineer", new[] { "u.display_name", "u.email" });
+    ProjectPulse030AddReadableTextFilter(criteria, where, parameters, "selectedEngineers", new[] { "u.display_name", "u.email" });
+    ProjectPulse030AddReadableTextFilter(criteria, where, parameters, "team", new[] { "tm.team_name", "u.team_name", "u.department", "u.department_name" });
+    ProjectPulse030AddReadableTextFilter(criteria, where, parameters, "organization", new[] { "u.department", "u.department_name" });
+    ProjectPulse030AddReadableTextFilter(criteria, where, parameters, "timeEntryStatus", new[] { "te.status", "ts.status" });
+    ProjectPulse030AddReadableTextFilter(criteria, where, parameters, "approvalStatus", new[] { "te.status", "ts.status" });
+    ProjectPulse030AddReadableTextFilter(criteria, where, parameters, "invoiceStatus", new[] { "ci.invoice_status" });
+    ProjectPulse030AddReadableTextFilter(criteria, where, parameters, "workCode", new[] { "pt.task_code", "npc.category_code", "pt.work_task_category", "pt.billing_classification" });
+    ProjectPulse030AddReadableTextFilter(criteria, where, parameters, "workLocation", new[] { "wlg.group_name", "wl.location_name", "wl.city", "wl.state_region" });
+
+    ProjectPulse030AddBillableFilter(criteria, where, "COALESCE(te.billable, pt.billable, p.billable, FALSE)");
+    ProjectPulse030AddContractTypeFilter(criteria, where);
+
+    string sql = @"
+SELECT
+    COALESCE(pm.display_name, '') AS engagement_manager,
+    COALESCE(c.client_name, '') AS customer,
+    COALESCE(NULLIF(CONCAT_WS(' - ', p.project_code, p.project_name), ' - '), 'Non-project time') AS engagement_project,
+    CASE
+        WHEN te.project_id IS NULL THEN 'Non-Project Time'
+        WHEN COALESCE(p.billable, te.billable, FALSE) THEN 'Billable Project'
+        ELSE 'Non-Billable Project'
+    END AS contract_type,
+    '' AS po_quote,
+    '' AS invoicing_instructions,
+    COALESCE(ci.invoice_number, '') AS cp_invoice_number,
+    COALESCE(ci.generated_at::date, te.work_date) AS invoice_date,
+    COALESCE(npc.category_name, pt.work_task_category, pt.billing_classification, 'Project Work') AS category,
+    COALESCE(NULLIF(te.description, ''), pt.task_name, npc.category_name, '') AS item_description,
+    te.hours AS quantity_hours_entered,
+    NULL::numeric AS rate,
+    NULL::numeric AS amount,
+    COALESCE(pt.task_code, npc.category_code, '') AS work_code,
+    COALESCE(wl.location_name, wlg.group_name, '') AS work_location,
+    CASE WHEN COALESCE(te.billable, pt.billable, p.billable, FALSE) THEN 'Billable' ELSE 'Non-billable' END AS billable_status,
+    COALESCE(ci.invoice_status, 'Not Invoiced') AS invoice_status,
+    COALESCE(u.display_name, '') AS engineer,
+    COALESCE(u.email, '') AS engineer_email,
+    COALESCE(p.project_code, '') AS project_code,
+    COALESCE(p.project_name, '') AS project_name,
+    COALESCE(pm.display_name, '') AS project_manager,
+    COALESCE(tm.team_name, NULLIF(u.team_name, ''), '') AS team,
+    ts.week_start_date,
+    COALESCE(ts.status, '') AS timesheet_status,
+    te.work_date,
+    te.hours,
+    COALESCE(npc.category_name, pt.task_name, 'Project Work') AS work_item,
+    COALESCE(wlg.group_name, '') AS work_location_group,
+    COALESCE(te.status, '') AS time_entry_status,
+    COALESCE(te.time_type, '') AS time_type,
+    te.description
+FROM time_entries te
+LEFT JOIN timesheets ts
+  ON ts.timesheet_id = te.timesheet_id
+LEFT JOIN app_users u
+  ON u.user_id = te.user_id
+LEFT JOIN projects p
+  ON p.project_id = te.project_id
+LEFT JOIN clients c
+  ON c.client_id = p.client_id
+LEFT JOIN app_users pm
+  ON pm.user_id = p.project_manager_user_id
+LEFT JOIN project_tasks pt
+  ON pt.task_id = te.task_id
+LEFT JOIN non_project_time_categories npc
+  ON npc.non_project_time_category_id = te.non_project_time_category_id
+LEFT JOIN work_location_groups wlg
+  ON wlg.work_location_group_id = te.work_location_group_id
+LEFT JOIN work_locations wl
+  ON wl.work_location_id = te.work_location_id
+LEFT JOIN team_memberships tmem
+  ON tmem.user_id = te.user_id
+ AND (tmem.effective_end_date IS NULL OR tmem.effective_end_date >= te.work_date)
+LEFT JOIN teams tm
+  ON tm.team_id = tmem.team_id
+LEFT JOIN client_invoices ci
+  ON ci.project_id = p.project_id
+ AND te.work_date BETWEEN ci.billing_period_start AND ci.billing_period_end
+" + ProjectPulse030WhereSql(where) + @"
+ORDER BY te.work_date DESC NULLS LAST, customer, engagement_project, engineer
+LIMIT 250;";
+
+    return await ProjectPulse030ExecuteReadableReportAsync(connection, reportType, category, "public.time_entries + readable joins", columns, sql, parameters);
+}
+
+static async Task<object> ProjectPulse030BuildReadableProjectReportAsync(NpgsqlConnection connection, string reportType, string category, JsonElement criteria)
+{
+    var columns = new List<(string Key, string Label)>
+    {
+        ("customer", "Customer"),
+        ("project_code", "Project Code"),
+        ("project_name", "Project Name"),
+        ("project_manager", "Project Manager"),
+        ("project_status", "Project Status"),
+        ("billable_status", "Billable Status"),
+        ("start_date", "Start Date"),
+        ("end_date", "End Date"),
+        ("planned_engineering_cost", "Planned Engineering Cost"),
+        ("planned_pm_cost", "Planned PM Cost"),
+        ("planned_total_project_cost", "Planned Total Project Cost"),
+        ("time_entry_count", "Time Entry Count"),
+        ("total_hours", "Total Hours"),
+        ("billable_hours", "Billable Hours"),
+        ("non_billable_hours", "Non-Billable Hours")
+    };
+
+    var where = new List<string>();
+    var parameters = new Dictionary<string, object>();
+
+    ProjectPulse030AddDateRange(criteria, where, parameters, "COALESCE(p.start_date, p.created_at::date)");
+    ProjectPulse030AddReadableTextFilter(criteria, where, parameters, "customer", new[] { "c.client_name", "c.client_code" });
+    ProjectPulse030AddReadableTextFilter(criteria, where, parameters, "project", new[] { "p.project_name", "p.project_code" });
+    ProjectPulse030AddReadableTextFilter(criteria, where, parameters, "pm", new[] { "pm.display_name", "pm.email" });
+    ProjectPulse030AddBillableFilter(criteria, where, "COALESCE(p.billable, FALSE)");
+
+    string sql = @"
+SELECT
+    COALESCE(c.client_name, '') AS customer,
+    COALESCE(p.project_code, '') AS project_code,
+    COALESCE(p.project_name, '') AS project_name,
+    COALESCE(pm.display_name, '') AS project_manager,
+    COALESCE(p.status, '') AS project_status,
+    CASE WHEN COALESCE(p.billable, FALSE) THEN 'Billable' ELSE 'Non-billable' END AS billable_status,
+    p.start_date,
+    p.end_date,
+    p.planned_engineering_cost,
+    p.planned_pm_cost,
+    p.planned_total_project_cost,
+    COUNT(DISTINCT te.time_entry_id)::integer AS time_entry_count,
+    COALESCE(SUM(te.hours), 0) AS total_hours,
+    COALESCE(SUM(CASE WHEN COALESCE(te.billable, p.billable, FALSE) THEN te.hours ELSE 0 END), 0) AS billable_hours,
+    COALESCE(SUM(CASE WHEN COALESCE(te.billable, p.billable, FALSE) THEN 0 ELSE te.hours END), 0) AS non_billable_hours
+FROM projects p
+LEFT JOIN clients c
+  ON c.client_id = p.client_id
+LEFT JOIN app_users pm
+  ON pm.user_id = p.project_manager_user_id
+LEFT JOIN time_entries te
+  ON te.project_id = p.project_id
+" + ProjectPulse030WhereSql(where) + @"
+GROUP BY c.client_name, p.project_code, p.project_name, pm.display_name, p.status, p.billable, p.start_date, p.end_date, p.planned_engineering_cost, p.planned_pm_cost, p.planned_total_project_cost
+ORDER BY c.client_name, p.project_name
+LIMIT 250;";
+
+    return await ProjectPulse030ExecuteReadableReportAsync(connection, reportType, category, "public.projects + readable joins", columns, sql, parameters);
+}
+
+static async Task<object> ProjectPulse030BuildReadableCustomerReportAsync(NpgsqlConnection connection, string reportType, string category, JsonElement criteria)
+{
+    var columns = new List<(string Key, string Label)>
+    {
+        ("customer", "Customer"),
+        ("customer_code", "Customer Code"),
+        ("active_projects", "Active Projects"),
+        ("project_count", "Project Count"),
+        ("time_entry_count", "Time Entry Count"),
+        ("total_hours", "Total Hours"),
+        ("billable_hours", "Billable Hours"),
+        ("non_billable_hours", "Non-Billable Hours"),
+        ("invoice_total", "Invoice Total")
+    };
+
+    var where = new List<string>();
+    var parameters = new Dictionary<string, object>();
+
+    ProjectPulse030AddReadableTextFilter(criteria, where, parameters, "customer", new[] { "c.client_name", "c.client_code" });
+    ProjectPulse030AddReadableTextFilter(criteria, where, parameters, "project", new[] { "p.project_name", "p.project_code" });
+    ProjectPulse030AddBillableFilter(criteria, where, "COALESCE(te.billable, p.billable, FALSE)");
+
+    string sql = @"
+SELECT
+    COALESCE(c.client_name, '') AS customer,
+    COALESCE(c.client_code, '') AS customer_code,
+    COUNT(DISTINCT p.project_id) FILTER (WHERE p.status = 'active')::integer AS active_projects,
+    COUNT(DISTINCT p.project_id)::integer AS project_count,
+    COUNT(DISTINCT te.time_entry_id)::integer AS time_entry_count,
+    COALESCE(SUM(te.hours), 0) AS total_hours,
+    COALESCE(SUM(CASE WHEN COALESCE(te.billable, p.billable, FALSE) THEN te.hours ELSE 0 END), 0) AS billable_hours,
+    COALESCE(SUM(CASE WHEN COALESCE(te.billable, p.billable, FALSE) THEN 0 ELSE te.hours END), 0) AS non_billable_hours,
+    COALESCE(SUM(DISTINCT ci.invoice_total), 0) AS invoice_total
+FROM clients c
+LEFT JOIN projects p
+  ON p.client_id = c.client_id
+LEFT JOIN time_entries te
+  ON te.project_id = p.project_id
+LEFT JOIN client_invoices ci
+  ON ci.project_id = p.project_id
+" + ProjectPulse030WhereSql(where) + @"
+GROUP BY c.client_name, c.client_code
+ORDER BY c.client_name
+LIMIT 250;";
+
+    return await ProjectPulse030ExecuteReadableReportAsync(connection, reportType, category, "public.clients + readable joins", columns, sql, parameters);
+}
+
+static async Task<object> ProjectPulse030BuildReadableTeamReportAsync(NpgsqlConnection connection, string reportType, string category, JsonElement criteria)
+{
+    var columns = new List<(string Key, string Label)>
+    {
+        ("team", "Team"),
+        ("engineer", "Engineer"),
+        ("engineer_email", "Engineer Email"),
+        ("job_title", "Job Title"),
+        ("department", "Department"),
+        ("total_hours", "Total Hours"),
+        ("billable_hours", "Billable Hours"),
+        ("non_billable_hours", "Non-Billable Hours"),
+        ("time_entry_count", "Time Entry Count")
+    };
+
+    var where = new List<string>();
+    var parameters = new Dictionary<string, object>();
+
+    ProjectPulse030AddReadableTextFilter(criteria, where, parameters, "team", new[] { "tm.team_name", "u.team_name" });
+    ProjectPulse030AddReadableTextFilter(criteria, where, parameters, "engineer", new[] { "u.display_name", "u.email" });
+    ProjectPulse030AddReadableTextFilter(criteria, where, parameters, "organization", new[] { "u.department", "u.department_name" });
+    ProjectPulse030AddBillableFilter(criteria, where, "COALESCE(te.billable, FALSE)");
+
+    string sql = @"
+SELECT
+    COALESCE(tm.team_name, NULLIF(u.team_name, ''), '') AS team,
+    COALESCE(u.display_name, '') AS engineer,
+    COALESCE(u.email, '') AS engineer_email,
+    COALESCE(u.job_title, '') AS job_title,
+    COALESCE(u.department, u.department_name, '') AS department,
+    COALESCE(SUM(te.hours), 0) AS total_hours,
+    COALESCE(SUM(CASE WHEN COALESCE(te.billable, FALSE) THEN te.hours ELSE 0 END), 0) AS billable_hours,
+    COALESCE(SUM(CASE WHEN COALESCE(te.billable, FALSE) THEN 0 ELSE te.hours END), 0) AS non_billable_hours,
+    COUNT(DISTINCT te.time_entry_id)::integer AS time_entry_count
+FROM app_users u
+LEFT JOIN team_memberships tmem
+  ON tmem.user_id = u.user_id
+LEFT JOIN teams tm
+  ON tm.team_id = tmem.team_id
+LEFT JOIN time_entries te
+  ON te.user_id = u.user_id
+WHERE u.is_active = TRUE
+" + (where.Count == 0 ? "" : " AND " + string.Join(" AND ", where)) + @"
+GROUP BY tm.team_name, u.team_name, u.display_name, u.email, u.job_title, u.department, u.department_name
+ORDER BY team, engineer
+LIMIT 250;";
+
+    return await ProjectPulse030ExecuteReadableReportAsync(connection, reportType, category, "public.teams + readable joins", columns, sql, parameters);
+}
+
+static async Task<object> ProjectPulse030ExecuteReadableReportAsync(
+    NpgsqlConnection connection,
+    string reportType,
+    string category,
+    string sourceTable,
+    List<(string Key, string Label)> columns,
+    string sql,
+    Dictionary<string, object> parameters)
+{
+    var rows = new List<object?[]>();
+
+    await using var command = new NpgsqlCommand(sql, connection);
+
+    foreach (var parameter in parameters)
+    {
+        command.Parameters.AddWithValue(parameter.Key, parameter.Value);
+    }
+
+    await using (var reader = await command.ExecuteReaderAsync())
+    {
+        while (await reader.ReadAsync())
+        {
+            var row = new object?[columns.Count];
+
+            for (int i = 0; i < columns.Count; i++)
+            {
+                row[i] = reader.IsDBNull(i) ? null : ProjectPulse030SafeFormatValue(reader.GetValue(i));
+            }
+
+            rows.Add(row);
+        }
+    }
+
+    string message = rows.Count == 0
+        ? $"No database rows matched the selected criteria from '{sourceTable}'."
+        : $"Readable database-backed report generated from '{sourceTable}'. Names and labels are shown instead of internal IDs where joins are available.";
+
+    return new
+    {
+        databaseBacked = true,
+        readable = true,
+        reportType,
+        category,
+        sourceTable,
+        columns = columns.Select(c => c.Label).ToArray(),
+        columnKeys = columns.Select(c => c.Key).ToArray(),
+        rows,
+        rowCount = rows.Count,
+        message
+    };
+}
+
+static async Task<object> ProjectPulse030LoadReadableFilterOptionsAsync(NpgsqlConnection connection)
+{
+    var customers = await ProjectPulse030LoadStringOptionsAsync(connection, @"
+SELECT DISTINCT client_name
+FROM clients
+WHERE is_active = TRUE
+  AND NULLIF(TRIM(client_name), '') IS NOT NULL
+ORDER BY client_name;", "All customers");
+
+    var projects = await ProjectPulse030LoadStringOptionsAsync(connection, @"
+SELECT DISTINCT CONCAT_WS(' - ', NULLIF(project_code, ''), NULLIF(project_name, '')) AS label
+FROM projects
+WHERE NULLIF(TRIM(project_name), '') IS NOT NULL
+ORDER BY label;", "All projects");
+
+    var pms = await ProjectPulse030LoadPersonOptionsAsync(connection, @"
+SELECT DISTINCT u.display_name, u.email
+FROM projects p
+JOIN app_users u
+  ON u.user_id = p.project_manager_user_id
+WHERE u.is_active = TRUE
+  AND NULLIF(TRIM(u.display_name), '') IS NOT NULL
+  AND NULLIF(TRIM(u.email), '') IS NOT NULL
+ORDER BY u.display_name, u.email;", "All PMs");
+
+    var engineers = await ProjectPulse030LoadPersonOptionsAsync(connection, @"
+SELECT DISTINCT u.display_name, u.email
+FROM app_users u
+JOIN app_user_role_assignments ura
+  ON ura.user_id = u.user_id
+ AND ura.is_active = TRUE
+JOIN app_roles r
+  ON r.app_role_id = ura.app_role_id
+ AND r.is_active = TRUE
+WHERE u.is_active = TRUE
+  AND u.login_enabled = TRUE
+  AND r.role_code IN ('ENGINEERING', 'ENGINEERING_LEAD', 'MANAGER', 'PROJECT_TEAM_COORDINATOR', 'SUPER_ADMINISTRATOR')
+  AND NULLIF(TRIM(u.display_name), '') IS NOT NULL
+  AND NULLIF(TRIM(u.email), '') IS NOT NULL
+ORDER BY u.display_name, u.email;", "All engineers");
+
+    var teams = await ProjectPulse030LoadStringOptionsAsync(connection, @"
+SELECT DISTINCT team_name
+FROM teams
+WHERE is_active = TRUE
+  AND NULLIF(TRIM(team_name), '') IS NOT NULL
+ORDER BY team_name;", "All teams");
+
+    var organizations = await ProjectPulse030LoadStringOptionsAsync(connection, @"
+SELECT DISTINCT COALESCE(NULLIF(department, ''), NULLIF(department_name, '')) AS label
+FROM app_users
+WHERE is_active = TRUE
+  AND login_enabled = TRUE
+  AND COALESCE(NULLIF(department, ''), NULLIF(department_name, '')) IS NOT NULL
+ORDER BY label;", "All organizations");
+
+    var contractTypes = await ProjectPulse030LoadStringOptionsAsync(connection, @"
+SELECT DISTINCT label
+FROM (
+    SELECT 'T&M' AS label
+    UNION ALL SELECT 'Time and Material'
+    UNION ALL SELECT 'Fixed Bid'
+    UNION ALL SELECT 'Fixed Fee'
+    UNION ALL SELECT 'Service Request'
+    UNION ALL SELECT 'Managed Service'
+    UNION ALL SELECT 'Project'
+    UNION ALL SELECT 'Non-Project Time'
+    UNION ALL
+    SELECT CASE
+        WHEN te.project_id IS NULL THEN 'Non-Project Time'
+        WHEN COALESCE(p.billable, te.billable, FALSE) THEN 'T&M'
+        ELSE 'Non-Billable'
+    END AS label
+    FROM time_entries te
+    LEFT JOIN projects p
+      ON p.project_id = te.project_id
+) source
+WHERE NULLIF(TRIM(label), '') IS NOT NULL
+ORDER BY label;", "All contract types");
+
+    var billableOptions = await ProjectPulse030LoadStringOptionsAsync(connection, @"
+SELECT DISTINCT CASE WHEN COALESCE(billable, FALSE) THEN 'Billable' ELSE 'Non-billable' END AS label
+FROM time_entries
+ORDER BY label;", "All billable statuses");
+
+    var workLocations = await ProjectPulse030LoadStringOptionsAsync(connection, @"
+SELECT DISTINCT COALESCE(wl.location_name, wlg.group_name) AS label
+FROM time_entries te
+LEFT JOIN work_locations wl
+  ON wl.work_location_id = te.work_location_id
+LEFT JOIN work_location_groups wlg
+  ON wlg.work_location_group_id = te.work_location_group_id
+WHERE COALESCE(wl.location_name, wlg.group_name) IS NOT NULL
+ORDER BY label;", "All work locations");
+
+    var workCodes = await ProjectPulse030LoadStringOptionsAsync(connection, @"
+SELECT DISTINCT COALESCE(pt.task_code, npc.category_code) AS label
+FROM time_entries te
+LEFT JOIN project_tasks pt
+  ON pt.task_id = te.task_id
+LEFT JOIN non_project_time_categories npc
+  ON npc.non_project_time_category_id = te.non_project_time_category_id
+WHERE COALESCE(pt.task_code, npc.category_code) IS NOT NULL
+ORDER BY label;", "All work codes");
+
+    return new
+    {
+        databaseBacked = true,
+        customers,
+        projects,
+        pms,
+        engineers,
+        selectedEngineers = engineers,
+        teams,
+        organizations,
+        contractTypes,
+        billableOptions,
+        workLocations,
+        workCodes
+    };
+}
+
+static async Task<string[]> ProjectPulse030LoadStringOptionsAsync(NpgsqlConnection connection, string sql, string allLabel)
+{
+    var values = new List<string> { allLabel };
+
+    await using var command = new NpgsqlCommand(sql, connection);
+    await using var reader = await command.ExecuteReaderAsync();
+
+    while (await reader.ReadAsync())
+    {
+        if (!reader.IsDBNull(0))
+        {
+            string value = reader.GetString(0).Trim();
+            if (!string.IsNullOrWhiteSpace(value) && !values.Contains(value, StringComparer.OrdinalIgnoreCase))
+            {
+                values.Add(value);
+            }
+        }
+    }
+
+    return values.ToArray();
+}
+
+static async Task<object[]> ProjectPulse030LoadPersonOptionsAsync(NpgsqlConnection connection, string sql, string allLabel)
+{
+    var values = new List<object>
+    {
+        new { label = allLabel, value = allLabel }
+    };
+
+    var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { allLabel };
+
+    await using var command = new NpgsqlCommand(sql, connection);
+    await using var reader = await command.ExecuteReaderAsync();
+
+    while (await reader.ReadAsync())
+    {
+        string displayName = reader.IsDBNull(0) ? "" : reader.GetString(0).Trim();
+        string email = reader.IsDBNull(1) ? "" : reader.GetString(1).Trim();
+
+        if (string.IsNullOrWhiteSpace(displayName) || string.IsNullOrWhiteSpace(email))
+        {
+            continue;
+        }
+
+        if (seen.Add(email))
+        {
+            values.Add(new
+            {
+                label = $"{displayName} <{email}>",
+                value = email
+            });
+        }
+    }
+
+    return values.ToArray();
+}
+
+
+static void ProjectPulse030AddDateRange(JsonElement criteria, List<string> where, Dictionary<string, object> parameters, string sqlExpression)
+{
+    string startDate = ProjectPulse030SafeReadString(criteria, "startDate");
+    string endDate = ProjectPulse030SafeReadString(criteria, "endDate");
+
+    if (DateTime.TryParse(startDate, out var parsedStart))
+    {
+        string parameterName = "p" + parameters.Count;
+        parameters[parameterName] = parsedStart.Date;
+        where.Add(sqlExpression + " >= @" + parameterName);
+    }
+
+    if (DateTime.TryParse(endDate, out var parsedEnd))
+    {
+        string parameterName = "p" + parameters.Count;
+        parameters[parameterName] = parsedEnd.Date;
+        where.Add(sqlExpression + " <= @" + parameterName);
+    }
+}
+
+static void ProjectPulse030AddReadableTextFilter(JsonElement criteria, List<string> where, Dictionary<string, object> parameters, string fieldName, string[] sqlExpressions)
+{
+    string value = ProjectPulse030SafeReadString(criteria, fieldName);
+
+    if (ProjectPulse030IsAllValue(value))
+    {
+        return;
+    }
+
+    var terms = value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Where(term => !ProjectPulse030IsAllValue(term))
+        .Take(12)
+        .ToList();
+
+    if (terms.Count == 0)
+    {
+        return;
+    }
+
+    var termGroups = new List<string>();
+
+    foreach (var term in terms)
+    {
+        string parameterName = "p" + parameters.Count;
+        parameters[parameterName] = "%" + term.ToLowerInvariant() + "%";
+
+        termGroups.Add("(" + string.Join(" OR ", sqlExpressions.Select(expression => "LOWER(COALESCE(" + expression + "::text, '')) LIKE @" + parameterName)) + ")");
+    }
+
+    where.Add("(" + string.Join(" OR ", termGroups) + ")");
+}
+
+static void ProjectPulse030AddBillableFilter(JsonElement criteria, List<string> where, string sqlExpression)
+{
+    string value = ProjectPulse030SafeReadString(criteria, "billableStatus", "billable", "billableFilter").ToLowerInvariant();
+
+    if (ProjectPulse030IsAllValue(value))
+    {
+        return;
+    }
+
+    if (value.Contains("non"))
+    {
+        where.Add(sqlExpression + " = FALSE");
+        return;
+    }
+
+    if (value.Contains("billable"))
+    {
+        where.Add(sqlExpression + " = TRUE");
+    }
+}
+
+static void ProjectPulse030AddContractTypeFilter(JsonElement criteria, List<string> where)
+{
+    string value = ProjectPulse030SafeReadString(criteria, "contractType").ToLowerInvariant();
+
+    if (ProjectPulse030IsAllValue(value))
+    {
+        return;
+    }
+
+    if (value.Contains("non-project"))
+    {
+        where.Add("te.project_id IS NULL");
+        return;
+    }
+
+    if (value.Contains("non-billable"))
+    {
+        where.Add("te.project_id IS NOT NULL AND COALESCE(p.billable, te.billable, FALSE) = FALSE");
+        return;
+    }
+
+    if (value.Contains("billable"))
+    {
+        where.Add("te.project_id IS NOT NULL AND COALESCE(p.billable, te.billable, FALSE) = TRUE");
+    }
+}
+
+static bool ProjectPulse030IsAllValue(string? value)
+{
+    if (string.IsNullOrWhiteSpace(value))
+    {
+        return true;
+    }
+
+    string normalized = value.Trim().ToLowerInvariant();
+    return normalized == "all"
+        || normalized.StartsWith("all ")
+        || normalized.Contains("all scoped")
+        || normalized.Contains("not selected")
+        || normalized.Contains("none selected");
+}
+
+static string ProjectPulse030WhereSql(List<string> where)
+{
+    return where.Count == 0 ? "" : "WHERE " + string.Join(" AND ", where);
+}
+
+
+// 030B_INVOICE_EXPORT_BUSINESS_REPORTS_START
+
+static string ProjectPulse030ContractTypeExpression()
+{
+    return @"CASE
+        WHEN te.project_id IS NULL THEN 'Non-Project Time'
+        WHEN LOWER(COALESCE(pt.billing_classification, pt.work_task_category, pt.task_code, '')) LIKE '%fixed%' THEN 'Fixed Bid'
+        WHEN LOWER(COALESCE(pt.billing_classification, pt.work_task_category, pt.task_code, '')) LIKE '%service%' THEN 'Service Request'
+        WHEN LOWER(COALESCE(pt.billing_classification, pt.work_task_category, pt.task_code, '')) LIKE '%managed%' THEN 'Managed Service'
+        WHEN COALESCE(p.billable, te.billable, pt.billable, FALSE) THEN 'T&M'
+        ELSE 'Non-Billable'
+    END";
+}
+
+static async Task<object> ProjectPulse030BuildTmSalesReportAsync(NpgsqlConnection connection, string reportType, string category, JsonElement criteria)
+{
+    var columns = new List<(string Key, string Label)>
+    {
+        ("customer", "Customer"),
+        ("project_code", "Project Code"),
+        ("project_name", "Project Name"),
+        ("sales_contract_type", "Contract Type"),
+        ("project_manager", "Project Manager"),
+        ("engineer", "Engineer"),
+        ("work_date", "Work Date"),
+        ("hours", "Hours"),
+        ("billable_status", "Billable Status"),
+        ("work_code", "Work Code"),
+        ("work_item", "Work Item"),
+        ("description", "Description")
+    };
+
+    var where = ProjectPulse030CommonBusinessWhere(criteria, "te.work_date");
+    where.Sql.Add("COALESCE(te.billable, pt.billable, p.billable, FALSE) = TRUE");
+
+    string sql = @"
+SELECT
+    COALESCE(c.client_name, '') AS customer,
+    COALESCE(p.project_code, '') AS project_code,
+    COALESCE(p.project_name, '') AS project_name,
+    " + ProjectPulse030ContractTypeExpression() + @" AS sales_contract_type,
+    COALESCE(pm.display_name, '') AS project_manager,
+    COALESCE(u.display_name, '') AS engineer,
+    te.work_date,
+    te.hours,
+    CASE WHEN COALESCE(te.billable, pt.billable, p.billable, FALSE) THEN 'Billable' ELSE 'Non-billable' END AS billable_status,
+    COALESCE(pt.task_code, npc.category_code, '') AS work_code,
+    COALESCE(pt.task_name, npc.category_name, '') AS work_item,
+    COALESCE(te.description, '') AS description
+FROM time_entries te
+LEFT JOIN app_users u ON u.user_id = te.user_id
+LEFT JOIN projects p ON p.project_id = te.project_id
+LEFT JOIN clients c ON c.client_id = p.client_id
+LEFT JOIN app_users pm ON pm.user_id = p.project_manager_user_id
+LEFT JOIN project_tasks pt ON pt.task_id = te.task_id
+LEFT JOIN non_project_time_categories npc ON npc.non_project_time_category_id = te.non_project_time_category_id
+" + ProjectPulse030WhereSql(where.Sql) + @"
+ORDER BY customer, project_name, te.work_date DESC
+LIMIT 250;";
+
+    return await ProjectPulse030ExecuteReadableReportAsync(connection, reportType, category, "public.time_entries + T&M sales joins", columns, sql, where.Parameters);
+}
+
+static async Task<object> ProjectPulse030BuildProjectStatusBilledRemainingReportAsync(NpgsqlConnection connection, string reportType, string category, JsonElement criteria)
+{
+    var columns = new List<(string Key, string Label)>
+    {
+        ("customer", "Customer"),
+        ("project_code", "Project Code"),
+        ("project_name", "Project Name"),
+        ("project_manager", "Project Manager"),
+        ("project_status", "Project Status"),
+        ("planned_total_project_cost", "Planned Total Project Cost"),
+        ("billed_cost", "Billed Cost"),
+        ("labor_amount", "Labor Amount"),
+        ("expense_amount", "Expense Amount"),
+        ("remaining_balance", "Remaining Balance"),
+        ("total_hours", "Total Hours"),
+        ("billable_hours", "Billable Hours"),
+        ("non_billable_hours", "Non-Billable Hours")
+    };
+
+    var where = ProjectPulse030CommonProjectWhere(criteria);
+
+    string sql = @"
+SELECT
+    COALESCE(c.client_name, '') AS customer,
+    COALESCE(p.project_code, '') AS project_code,
+    COALESCE(p.project_name, '') AS project_name,
+    COALESCE(pm.display_name, '') AS project_manager,
+    COALESCE(p.status, '') AS project_status,
+    COALESCE(p.planned_total_project_cost, 0) AS planned_total_project_cost,
+    COALESCE(SUM(DISTINCT ci.invoice_total), 0) AS billed_cost,
+    COALESCE(SUM(DISTINCT ci.labor_amount), 0) AS labor_amount,
+    COALESCE(SUM(DISTINCT ci.expense_amount), 0) AS expense_amount,
+    COALESCE(p.planned_total_project_cost, 0) - COALESCE(SUM(DISTINCT ci.invoice_total), 0) AS remaining_balance,
+    COALESCE(SUM(te.hours), 0) AS total_hours,
+    COALESCE(SUM(CASE WHEN COALESCE(te.billable, p.billable, FALSE) THEN te.hours ELSE 0 END), 0) AS billable_hours,
+    COALESCE(SUM(CASE WHEN COALESCE(te.billable, p.billable, FALSE) THEN 0 ELSE te.hours END), 0) AS non_billable_hours
+FROM projects p
+LEFT JOIN clients c ON c.client_id = p.client_id
+LEFT JOIN app_users pm ON pm.user_id = p.project_manager_user_id
+LEFT JOIN client_invoices ci ON ci.project_id = p.project_id
+LEFT JOIN time_entries te ON te.project_id = p.project_id
+" + ProjectPulse030WhereSql(where.Sql) + @"
+GROUP BY c.client_name, p.project_code, p.project_name, pm.display_name, p.status, p.planned_total_project_cost
+ORDER BY customer, project_name
+LIMIT 250;";
+
+    return await ProjectPulse030ExecuteReadableReportAsync(connection, reportType, category, "public.projects + invoices + time", columns, sql, where.Parameters);
+}
+
+static async Task<object> ProjectPulse030BuildCertifyReadyExpenseReportAsync(NpgsqlConnection connection, string reportType, string category, JsonElement criteria)
+{
+    var columns = new List<(string Key, string Label)>
+    {
+        ("engineer", "Engineer"),
+        ("customer", "Customer"),
+        ("project_code", "Project Code"),
+        ("project_name", "Project Name"),
+        ("project_manager", "Project Manager"),
+        ("expense_report_number", "Expense Report Number"),
+        ("expense_report_title", "Expense Report Title"),
+        ("expense_status", "Expense Status"),
+        ("expense_total", "Expense Total"),
+        ("submitted_at", "Submitted At"),
+        ("approved_at", "Approved At"),
+        ("certify_status", "Certify Integration Status")
+    };
+
+    var where = ProjectPulse030CommonProjectWhere(criteria);
+
+    string sql = @"
+SELECT
+    COALESCE(u.display_name, '') AS engineer,
+    COALESCE(c.client_name, '') AS customer,
+    COALESCE(p.project_code, '') AS project_code,
+    COALESCE(p.project_name, '') AS project_name,
+    COALESCE(pm.display_name, '') AS project_manager,
+    COALESCE(er.report_number, '') AS expense_report_number,
+    COALESCE(er.report_title, '') AS expense_report_title,
+    COALESCE(er.report_status, '') AS expense_status,
+    COALESCE(er.report_total, 0) AS expense_total,
+    er.submitted_at,
+    er.approved_at,
+    'Pending Module 031 Certify integration mapping' AS certify_status
+FROM expense_reports er
+LEFT JOIN app_users u ON u.user_id = er.user_id
+LEFT JOIN projects p ON p.project_id = er.project_id
+LEFT JOIN clients c ON c.client_id = p.client_id
+LEFT JOIN app_users pm ON pm.user_id = p.project_manager_user_id
+" + ProjectPulse030WhereSql(where.Sql) + @"
+ORDER BY er.created_at DESC
+LIMIT 250;";
+
+    return await ProjectPulse030ExecuteReadableReportAsync(connection, reportType, category, "public.expense_reports + project joins", columns, sql, where.Parameters);
+}
+
+static async Task<object> ProjectPulse030BuildEngineerProjectOverUnderReportAsync(NpgsqlConnection connection, string reportType, string category, JsonElement criteria)
+{
+    var columns = new List<(string Key, string Label)>
+    {
+        ("engineer", "Engineer"),
+        ("customer", "Customer"),
+        ("project_code", "Project Code"),
+        ("project_name", "Project Name"),
+        ("planned_total_project_cost", "Planned Total Project Cost"),
+        ("hours_entered", "Hours Entered"),
+        ("billed_cost", "Billed Cost"),
+        ("remaining_balance", "Remaining Balance"),
+        ("budget_position", "Budget Position")
+    };
+
+    var where = ProjectPulse030CommonBusinessWhere(criteria, "te.work_date");
+
+    string sql = @"
+SELECT
+    COALESCE(u.display_name, '') AS engineer,
+    COALESCE(c.client_name, '') AS customer,
+    COALESCE(p.project_code, '') AS project_code,
+    COALESCE(p.project_name, '') AS project_name,
+    COALESCE(p.planned_total_project_cost, 0) AS planned_total_project_cost,
+    COALESCE(SUM(te.hours), 0) AS hours_entered,
+    COALESCE(SUM(DISTINCT ci.invoice_total), 0) AS billed_cost,
+    COALESCE(p.planned_total_project_cost, 0) - COALESCE(SUM(DISTINCT ci.invoice_total), 0) AS remaining_balance,
+    CASE
+        WHEN COALESCE(SUM(DISTINCT ci.invoice_total), 0) > COALESCE(p.planned_total_project_cost, 0) THEN 'Over budget'
+        WHEN COALESCE(SUM(DISTINCT ci.invoice_total), 0) < COALESCE(p.planned_total_project_cost, 0) THEN 'Under budget'
+        ELSE 'At budget'
+    END AS budget_position
+FROM time_entries te
+LEFT JOIN app_users u ON u.user_id = te.user_id
+LEFT JOIN projects p ON p.project_id = te.project_id
+LEFT JOIN clients c ON c.client_id = p.client_id
+LEFT JOIN client_invoices ci ON ci.project_id = p.project_id
+" + ProjectPulse030WhereSql(where.Sql) + @"
+GROUP BY u.display_name, c.client_name, p.project_code, p.project_name, p.planned_total_project_cost
+ORDER BY budget_position, customer, project_name, engineer
+LIMIT 250;";
+
+    return await ProjectPulse030ExecuteReadableReportAsync(connection, reportType, category, "public.time_entries + project budget joins", columns, sql, where.Parameters);
+}
+
+static async Task<object> ProjectPulse030BuildUtilizationOverUnderReportAsync(NpgsqlConnection connection, string reportType, string category, JsonElement criteria)
+{
+    // 030C_UTILIZATION_TIME_ENTRY_FALLBACK
+    // Derive utilization directly from time_entries so the report remains useful even when
+    // utilization_weekly_summaries has not yet been populated by a scheduled rollup job.
+    var columns = new List<(string Key, string Label)>
+    {
+        ("engineer", "Engineer"),
+        ("engineer_email", "Engineer Email"),
+        ("team", "Team"),
+        ("period_start_date", "Period Start Date"),
+        ("period_end_date", "Period End Date"),
+        ("billable_hours", "Billable Hours"),
+        ("non_billable_hours", "Non-Billable Hours"),
+        ("pto_hours", "PTO Hours"),
+        ("total_hours", "Total Hours"),
+        ("standard_period_hours", "Standard Period Hours"),
+        ("utilization_percent", "Utilization Percent"),
+        ("utilization_position", "Utilization Position")
+    };
+
+    var where = new List<string>();
+    var parameters = new Dictionary<string, object>();
+
+    ProjectPulse030AddDateRange(criteria, where, parameters, "te.work_date");
+    ProjectPulse030AddReadableTextFilter(criteria, where, parameters, "engineer", new[] { "u.display_name", "u.email" });
+    ProjectPulse030AddReadableTextFilter(criteria, where, parameters, "selectedEngineers", new[] { "u.display_name", "u.email" });
+    ProjectPulse030AddReadableTextFilter(criteria, where, parameters, "team", new[] { "tm.team_name", "u.team_name", "u.department", "u.department_name" });
+    ProjectPulse030AddReadableTextFilter(criteria, where, parameters, "organization", new[] { "u.department", "u.department_name" });
+
+    string sql = @"
+SELECT
+    COALESCE(u.display_name, '') AS engineer,
+    COALESCE(u.email, '') AS engineer_email,
+    COALESCE(tm.team_name, NULLIF(u.team_name, ''), '') AS team,
+    MIN(te.work_date) AS period_start_date,
+    MAX(te.work_date) AS period_end_date,
+    COALESCE(SUM(CASE WHEN COALESCE(te.billable, pt.billable, p.billable, FALSE) THEN te.hours ELSE 0 END), 0) AS billable_hours,
+    COALESCE(SUM(CASE WHEN COALESCE(te.billable, pt.billable, p.billable, FALSE) THEN 0 ELSE te.hours END), 0) AS non_billable_hours,
+    COALESCE(SUM(CASE
+        WHEN LOWER(COALESCE(npc.utilization_bucket, npc.category_code, npc.category_name, '')) IN ('pto', 'vacation', 'holiday')
+          OR LOWER(COALESCE(npc.category_code, npc.category_name, '')) LIKE '%vacation%'
+          OR LOWER(COALESCE(npc.category_code, npc.category_name, '')) LIKE '%holiday%'
+          OR LOWER(COALESCE(npc.category_code, npc.category_name, '')) LIKE '%pto%'
+        THEN te.hours ELSE 0 END), 0) AS pto_hours,
+    COALESCE(SUM(te.hours), 0) AS total_hours,
+    40::numeric AS standard_period_hours,
+    CASE
+        WHEN 40::numeric = 0 THEN 0
+        ELSE ROUND((COALESCE(SUM(CASE WHEN COALESCE(te.billable, pt.billable, p.billable, FALSE) THEN te.hours ELSE 0 END), 0) / 40::numeric) * 100, 2)
+    END AS utilization_percent,
+    CASE
+        WHEN ROUND((COALESCE(SUM(CASE WHEN COALESCE(te.billable, pt.billable, p.billable, FALSE) THEN te.hours ELSE 0 END), 0) / 40::numeric) * 100, 2) >= 100 THEN 'Over target'
+        WHEN ROUND((COALESCE(SUM(CASE WHEN COALESCE(te.billable, pt.billable, p.billable, FALSE) THEN te.hours ELSE 0 END), 0) / 40::numeric) * 100, 2) >= 85 THEN 'Near target'
+        ELSE 'Under target'
+    END AS utilization_position
+FROM time_entries te
+LEFT JOIN app_users u
+  ON u.user_id = te.user_id
+LEFT JOIN projects p
+  ON p.project_id = te.project_id
+LEFT JOIN project_tasks pt
+  ON pt.task_id = te.task_id
+LEFT JOIN non_project_time_categories npc
+  ON npc.non_project_time_category_id = te.non_project_time_category_id
+LEFT JOIN team_memberships tmem
+  ON tmem.user_id = te.user_id
+ AND (tmem.effective_end_date IS NULL OR tmem.effective_end_date >= te.work_date)
+LEFT JOIN teams tm
+  ON tm.team_id = tmem.team_id
+" + ProjectPulse030WhereSql(where) + @"
+GROUP BY u.display_name, u.email, tm.team_name, u.team_name
+ORDER BY engineer, period_start_date DESC
+LIMIT 250;";
+
+    return await ProjectPulse030ExecuteReadableReportAsync(connection, reportType, category, "public.time_entries + utilization fallback joins", columns, sql, parameters);
+}
+
+static async Task<object> ProjectPulse030BuildPtoUsedReportAsync(NpgsqlConnection connection, string reportType, string category, JsonElement criteria)
+{
+    var columns = new List<(string Key, string Label)>
+    {
+        ("engineer", "Engineer"),
+        ("engineer_email", "Engineer Email"),
+        ("pto_category", "PTO / Vacation Category"),
+        ("work_date", "Date"),
+        ("hours", "Hours Used"),
+        ("timesheet_status", "Timesheet Status"),
+        ("time_entry_status", "Time Entry Status")
+    };
+
+    var where = ProjectPulse030CommonBusinessWhere(criteria, "te.work_date");
+    where.Sql.Add("(LOWER(COALESCE(npc.category_code, npc.category_name, npc.utilization_bucket, '')) LIKE '%vacation%' OR LOWER(COALESCE(npc.category_code, npc.category_name, npc.utilization_bucket, '')) LIKE '%pto%' OR LOWER(COALESCE(npc.category_code, npc.category_name, npc.utilization_bucket, '')) LIKE '%holiday%')");
+
+    string sql = @"
+SELECT
+    COALESCE(u.display_name, '') AS engineer,
+    COALESCE(u.email, '') AS engineer_email,
+    COALESCE(npc.category_name, '') AS pto_category,
+    te.work_date,
+    te.hours,
+    COALESCE(ts.status, '') AS timesheet_status,
+    COALESCE(te.status, '') AS time_entry_status
+FROM time_entries te
+LEFT JOIN app_users u ON u.user_id = te.user_id
+LEFT JOIN timesheets ts ON ts.timesheet_id = te.timesheet_id
+LEFT JOIN non_project_time_categories npc ON npc.non_project_time_category_id = te.non_project_time_category_id
+" + ProjectPulse030WhereSql(where.Sql) + @"
+ORDER BY engineer, te.work_date DESC
+LIMIT 250;";
+
+    return await ProjectPulse030ExecuteReadableReportAsync(connection, reportType, category, "public.time_entries + PTO category joins", columns, sql, where.Parameters);
+}
+
+static async Task<object> ProjectPulse030BuildBillableNonBillableReportAsync(NpgsqlConnection connection, string reportType, string category, JsonElement criteria)
+{
+    var columns = new List<(string Key, string Label)>
+    {
+        ("customer", "Customer"),
+        ("project_name", "Project"),
+        ("engineer", "Engineer"),
+        ("team", "Team"),
+        ("billable_hours", "Billable Hours"),
+        ("non_billable_hours", "Non-Billable Hours"),
+        ("total_hours", "Total Hours"),
+        ("billable_percent", "Billable Percent")
+    };
+
+    var where = ProjectPulse030CommonBusinessWhere(criteria, "te.work_date");
+
+    string sql = @"
+SELECT
+    COALESCE(c.client_name, 'No customer') AS customer,
+    COALESCE(p.project_name, 'Non-project time') AS project_name,
+    COALESCE(u.display_name, '') AS engineer,
+    COALESCE(tm.team_name, NULLIF(u.team_name, ''), '') AS team,
+    COALESCE(SUM(CASE WHEN COALESCE(te.billable, p.billable, FALSE) THEN te.hours ELSE 0 END), 0) AS billable_hours,
+    COALESCE(SUM(CASE WHEN COALESCE(te.billable, p.billable, FALSE) THEN 0 ELSE te.hours END), 0) AS non_billable_hours,
+    COALESCE(SUM(te.hours), 0) AS total_hours,
+    CASE WHEN COALESCE(SUM(te.hours), 0) = 0 THEN 0 ELSE ROUND((SUM(CASE WHEN COALESCE(te.billable, p.billable, FALSE) THEN te.hours ELSE 0 END) / SUM(te.hours)) * 100, 2) END AS billable_percent
+FROM time_entries te
+LEFT JOIN app_users u ON u.user_id = te.user_id
+LEFT JOIN projects p ON p.project_id = te.project_id
+LEFT JOIN clients c ON c.client_id = p.client_id
+LEFT JOIN team_memberships tmem ON tmem.user_id = u.user_id
+LEFT JOIN teams tm ON tm.team_id = tmem.team_id
+" + ProjectPulse030WhereSql(where.Sql) + @"
+GROUP BY c.client_name, p.project_name, u.display_name, tm.team_name, u.team_name
+ORDER BY customer, project_name, engineer
+LIMIT 250;";
+
+    return await ProjectPulse030ExecuteReadableReportAsync(connection, reportType, category, "public.time_entries + billable rollup", columns, sql, where.Parameters);
+}
+
+static async Task<object> ProjectPulse030BuildInvoiceReadinessReportAsync(NpgsqlConnection connection, string reportType, string category, JsonElement criteria)
+{
+    return await ProjectPulse030BuildReadableTimeReportAsync(connection, reportType, "accounting", criteria);
+}
+
+static async Task<object> ProjectPulse030BuildApprovalBottleneckReportAsync(NpgsqlConnection connection, string reportType, string category, JsonElement criteria)
+{
+    var columns = new List<(string Key, string Label)>
+    {
+        ("engineer", "Engineer"),
+        ("work_date", "Work Date"),
+        ("day_status", "Day Status"),
+        ("manager", "Manager"),
+        ("submitted_at", "Submitted At"),
+        ("manager_approved_at", "Manager Approved At"),
+        ("pm_approved_at", "PM Approved At"),
+        ("accounting_ready_at", "Accounting Ready At"),
+        ("bottleneck", "Bottleneck")
+    };
+
+    var where = new List<string>();
+    var parameters = new Dictionary<string, object>();
+    ProjectPulse030AddDateRange(criteria, where, parameters, "tds.work_date");
+
+    string sql = @"
+SELECT
+    COALESCE(u.display_name, '') AS engineer,
+    tds.work_date,
+    COALESCE(tds.status, '') AS day_status,
+    COALESCE(m.display_name, '') AS manager,
+    tds.submitted_at,
+    tds.manager_approved_at,
+    tds.pm_approved_at,
+    tds.accounting_ready_at,
+    CASE
+        WHEN tds.submitted_at IS NULL THEN 'Not submitted'
+        WHEN tds.manager_approved_at IS NULL THEN 'Manager approval pending'
+        WHEN tds.pm_approved_at IS NULL THEN 'PM approval pending'
+        WHEN tds.accounting_ready_at IS NULL THEN 'Accounting readiness pending'
+        ELSE 'Ready'
+    END AS bottleneck
+FROM timesheet_day_statuses tds
+LEFT JOIN app_users u ON u.user_id = tds.user_id
+LEFT JOIN app_users m ON m.user_id = tds.manager_user_id
+" + ProjectPulse030WhereSql(where) + @"
+ORDER BY tds.work_date DESC, engineer
+LIMIT 250;";
+
+    return await ProjectPulse030ExecuteReadableReportAsync(connection, reportType, category, "public.timesheet_day_statuses + users", columns, sql, parameters);
+}
+
+static async Task<object> ProjectPulse030BuildMissingTimeReportAsync(NpgsqlConnection connection, string reportType, string category, JsonElement criteria)
+{
+    var columns = new List<(string Key, string Label)>
+    {
+        ("engineer", "Engineer"),
+        ("engineer_email", "Engineer Email"),
+        ("week_start_date", "Week Start Date"),
+        ("week_end_date", "Week End Date"),
+        ("timesheet_status", "Timesheet Status"),
+        ("total_hours", "Total Hours"),
+        ("missing_hours", "Missing Hours")
+    };
+
+    var where = new List<string>();
+    var parameters = new Dictionary<string, object>();
+    ProjectPulse030AddDateRange(criteria, where, parameters, "ts.week_start_date");
+
+    string sql = @"
+SELECT
+    COALESCE(u.display_name, '') AS engineer,
+    COALESCE(u.email, '') AS engineer_email,
+    ts.week_start_date,
+    ts.week_end_date,
+    COALESCE(ts.status, '') AS timesheet_status,
+    COALESCE(SUM(te.hours), 0) AS total_hours,
+    GREATEST(40 - COALESCE(SUM(te.hours), 0), 0) AS missing_hours
+FROM timesheets ts
+LEFT JOIN app_users u ON u.user_id = ts.user_id
+LEFT JOIN time_entries te ON te.timesheet_id = ts.timesheet_id
+" + ProjectPulse030WhereSql(where) + @"
+GROUP BY u.display_name, u.email, ts.week_start_date, ts.week_end_date, ts.status
+HAVING COALESCE(SUM(te.hours), 0) < 40
+ORDER BY ts.week_start_date DESC, engineer
+LIMIT 250;";
+
+    return await ProjectPulse030ExecuteReadableReportAsync(connection, reportType, category, "public.timesheets + time_entries", columns, sql, parameters);
+}
+
+static async Task<object> ProjectPulse030BuildProjectMarginReportAsync(NpgsqlConnection connection, string reportType, string category, JsonElement criteria)
+{
+    return await ProjectPulse030BuildProjectStatusBilledRemainingReportAsync(connection, reportType, category, criteria);
+}
+
+static async Task<object> ProjectPulse030BuildRateExceptionReportAsync(NpgsqlConnection connection, string reportType, string category, JsonElement criteria)
+{
+    var report = await ProjectPulse030BuildReadableTimeReportAsync(connection, reportType, "accounting", criteria);
+    return report;
+}
+
+static async Task<object> ProjectPulse030BuildCustomerProfitabilityReportAsync(NpgsqlConnection connection, string reportType, string category, JsonElement criteria)
+{
+    return await ProjectPulse030BuildReadableCustomerReportAsync(connection, reportType, category, criteria);
+}
+
+static async Task<object> ProjectPulse030BuildCloseoutReadinessReportAsync(NpgsqlConnection connection, string reportType, string category, JsonElement criteria)
+{
+    return await ProjectPulse030BuildProjectStatusBilledRemainingReportAsync(connection, reportType, category, criteria);
+}
+
+static async Task<object> ProjectPulse030BuildHandoffQualityReportAsync(NpgsqlConnection connection, string reportType, string category, JsonElement criteria)
+{
+    return await ProjectPulse030BuildReadableProjectReportAsync(connection, reportType, category, criteria);
+}
+
+static (List<string> Sql, Dictionary<string, object> Parameters) ProjectPulse030CommonBusinessWhere(JsonElement criteria, string dateExpression)
+{
+    var where = new List<string>();
+    var parameters = new Dictionary<string, object>();
+
+    ProjectPulse030AddDateRange(criteria, where, parameters, dateExpression);
+    ProjectPulse030AddReadableTextFilter(criteria, where, parameters, "customer", new[] { "c.client_name", "c.client_code" });
+    ProjectPulse030AddReadableTextFilter(criteria, where, parameters, "project", new[] { "p.project_name", "p.project_code" });
+    ProjectPulse030AddReadableTextFilter(criteria, where, parameters, "pm", new[] { "pm.display_name", "pm.email" });
+    ProjectPulse030AddReadableTextFilter(criteria, where, parameters, "engineer", new[] { "u.display_name", "u.email" });
+    ProjectPulse030AddReadableTextFilter(criteria, where, parameters, "selectedEngineers", new[] { "u.display_name", "u.email" });
+    ProjectPulse030AddReadableTextFilter(criteria, where, parameters, "team", new[] { "tm.team_name", "u.team_name", "u.department", "u.department_name" });
+    ProjectPulse030AddBillableFilter(criteria, where, "COALESCE(te.billable, pt.billable, p.billable, FALSE)");
+    ProjectPulse030AddContractTypeFilter(criteria, where);
+
+    return (where, parameters);
+}
+
+static (List<string> Sql, Dictionary<string, object> Parameters) ProjectPulse030CommonProjectWhere(JsonElement criteria)
+{
+    var where = new List<string>();
+    var parameters = new Dictionary<string, object>();
+
+    ProjectPulse030AddDateRange(criteria, where, parameters, "COALESCE(p.start_date, p.created_at::date)");
+    ProjectPulse030AddReadableTextFilter(criteria, where, parameters, "customer", new[] { "c.client_name", "c.client_code" });
+    ProjectPulse030AddReadableTextFilter(criteria, where, parameters, "project", new[] { "p.project_name", "p.project_code" });
+    ProjectPulse030AddReadableTextFilter(criteria, where, parameters, "pm", new[] { "pm.display_name", "pm.email" });
+    ProjectPulse030AddBillableFilter(criteria, where, "COALESCE(p.billable, FALSE)");
+
+    return (where, parameters);
+}
+
+// 030B_INVOICE_EXPORT_BUSINESS_REPORTS_END
+
+// 030A_READABLE_REPORTING_JOINED_HELPERS_END
+
+static object ProjectPulse030SafeFormatValue(object value)
+{
+    if (value is DateTime dateTime)
+    {
+        return dateTime.ToString("yyyy-MM-dd HH:mm:ss");
+    }
+
+    if (value is DateTimeOffset dateTimeOffset)
+    {
+        return dateTimeOffset.ToString("yyyy-MM-dd HH:mm:ss zzz");
+    }
+
+    if (value is bool boolValue)
+    {
+        return boolValue ? "Yes" : "No";
+    }
+
+    return value;
+}
+
+static string ProjectPulse030Display(string columnName)
+{
+    string cleaned = columnName.Replace("_", " ").Replace("-", " ").Trim();
+
+    if (string.IsNullOrWhiteSpace(cleaned))
+    {
+        return columnName;
+    }
+
+    return string.Join(" ", cleaned.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+        .Select(part => part.Length == 0 ? part : char.ToUpperInvariant(part[0]) + part.Substring(1)));
+}
+
+static string ProjectPulse030Quote(string value)
+{
+    return "\"" + value.Replace("\"", "\"\"") + "\"";
+}
+
+static async Task<(string Schema, string Name)> ProjectPulse030FindSafeReportTableAsync(NpgsqlConnection connection, string category)
+{
+    var tables = new List<(string Schema, string Name, long Estimate)>();
+
+    await using (var command = new NpgsqlCommand(@"
+SELECT
+    schemaname,
+    relname,
+    COALESCE(n_live_tup, 0)::bigint AS row_estimate
+FROM pg_stat_user_tables
+ORDER BY schemaname, relname;", connection))
+    await using (var reader = await command.ExecuteReaderAsync())
+    {
+        while (await reader.ReadAsync())
+        {
+            tables.Add((reader.GetString(0), reader.GetString(1), reader.GetInt64(2)));
+        }
+    }
+
+    string[] preferred = ProjectPulse030PreferredSafeTokens(category);
+    string[] allowedReportingTables = ProjectPulse030AllowedReportingTables(category);
+
+    var scored = tables
+        .Select(t => new
+        {
+            Table = t,
+            Score = ProjectPulse030ScoreSafeTable(category, t.Name, preferred, allowedReportingTables, t.Estimate)
+        })
+        .Where(x => x.Score > 0)
+        .OrderByDescending(x => x.Score)
+        .ThenByDescending(x => x.Table.Estimate)
+        .ThenBy(x => x.Table.Name)
+        .ToList();
+
+    if (scored.Count == 0)
+    {
+        return ("", "");
+    }
+
+    return (scored[0].Table.Schema, scored[0].Table.Name);
+}
+
+static string[] ProjectPulse030PreferredSafeTokens(string category)
+{
+    return category switch
+    {
+        "accounting" => new[] { "invoice", "billing", "export", "time_entry", "time_entries", "timesheet" },
+        "time" => new[] { "time_entry", "time_entries", "timesheet", "time" },
+        "customer" => new[] { "customer", "customers" },
+        "project" => new[] { "project", "projects" },
+        "pm" => new[] { "project", "assignment", "time_entry", "time_entries", "user", "users" },
+        "engineer" => new[] { "time_entry", "time_entries", "timesheet", "user", "users", "assignment" },
+        "team" => new[] { "team", "teams", "user", "users", "time_entry", "time_entries" },
+        "audit" => new[] { "audit", "event", "events", "approval", "export" },
+        "system" => new[] { "reporting_system_health_catalog" },
+        "api" => new[] { "reporting_api_status_catalog" },
+        "external" => new[] { "reporting_external_connection_catalog" },
+        "auth" => new[] { "session", "auth", "login", "view_as", "audit" },
+        "ai" => new[] { "sow_ai_time_entry_drafts", "sow_ai_time_entry_scope_checks", "sow_ai_time_entry_ai_provider_readiness" },
+        "notification" => new[] { "production_notification_events", "time_compliance_notification_delivery_events", "system_email_provider_test_events" },
+        "uat" => new[] { "uat_evidence_capture_events", "uat_workflow_validation_scenarios", "uat_role_validation_matrix" },
+        "library" => new[] { "reporting_saved_report_definitions", "reporting_templates" },
+        "executive" => new[] { "reporting_execution_events", "reporting_data_domains", "project", "time_entry", "invoice" },
+        _ => new[] { "time_entry", "project", "customer" }
+    };
+}
+
+static string[] ProjectPulse030AllowedReportingTables(string category)
+{
+    return category switch
+    {
+        "system" => new[] { "reporting_system_health_catalog" },
+        "api" => new[] { "reporting_api_status_catalog" },
+        "external" => new[] { "reporting_external_connection_catalog" },
+        "library" => new[] { "reporting_saved_report_definitions", "reporting_templates" },
+        "executive" => new[] { "reporting_execution_events", "reporting_data_domains" },
+        _ => Array.Empty<string>()
+    };
+}
+
+static int ProjectPulse030ScoreSafeTable(string category, string tableName, string[] preferredTokens, string[] allowedReportingTables, long rowEstimate)
+{
+    string name = tableName.ToLowerInvariant();
+    int score = 0;
+
+    if (name.StartsWith("reporting_") && !allowedReportingTables.Contains(name))
+    {
+        return 0;
+    }
+
+    foreach (var token in preferredTokens)
+    {
+        string loweredToken = token.ToLowerInvariant();
+
+        if (name == loweredToken)
+        {
+            score += 100;
+        }
+        else if (name.Contains(loweredToken))
+        {
+            score += 35;
+        }
+    }
+
+    if (rowEstimate > 0)
+    {
+        score += 15;
+    }
+
+    if (name.Contains("archive") || name.Contains("backup") || name.Contains("test"))
+    {
+        score -= 30;
+    }
+
+    return score;
+}
+
+static async Task<List<(string Name, string DataType)>> ProjectPulse030GetSafeColumnsAsync(NpgsqlConnection connection, string schema, string table)
+{
+    // 030_REPORT_API_GET_COLUMNS_PG_CATALOG_FIX
+    // Use pg_catalog first, then information_schema as a fallback.
+    var columns = new List<(string Name, string DataType)>();
+
+    await using (var command = new NpgsqlCommand(@"
+SELECT
+    a.attname AS column_name,
+    pg_catalog.format_type(a.atttypid, a.atttypmod) AS data_type
+FROM pg_catalog.pg_attribute a
+JOIN pg_catalog.pg_class c
+  ON c.oid = a.attrelid
+JOIN pg_catalog.pg_namespace n
+  ON n.oid = c.relnamespace
+WHERE n.nspname = @schema
+  AND c.relname = @table
+  AND a.attnum > 0
+  AND NOT a.attisdropped
+ORDER BY a.attnum;", connection))
+    {
+        command.Parameters.AddWithValue("schema", schema);
+        command.Parameters.AddWithValue("table", table);
+
+        await using var reader = await command.ExecuteReaderAsync();
+
+        while (await reader.ReadAsync())
+        {
+            columns.Add((reader.GetString(0), reader.GetString(1)));
+        }
+    }
+
+    if (columns.Count > 0)
+    {
+        return columns;
+    }
+
+    await using (var fallbackCommand = new NpgsqlCommand(@"
+SELECT column_name, data_type
+FROM information_schema.columns
+WHERE table_schema = @schema
+  AND table_name = @table
+ORDER BY ordinal_position;", connection))
+    {
+        fallbackCommand.Parameters.AddWithValue("schema", schema);
+        fallbackCommand.Parameters.AddWithValue("table", table);
+
+        await using var fallbackReader = await fallbackCommand.ExecuteReaderAsync();
+
+        while (await fallbackReader.ReadAsync())
+        {
+            columns.Add((fallbackReader.GetString(0), fallbackReader.GetString(1)));
+        }
+    }
+
+    return columns;
+}
+
+static List<(string Name, string DataType)> ProjectPulse030SelectSafeColumns(string category, List<(string Name, string DataType)> columns)
+{
+    string[] preferred = category switch
+    {
+        "accounting" => new[] { "invoice", "customer", "project", "engagement", "contract", "po", "quote", "description", "hours", "quantity", "rate", "amount", "work", "location", "status", "date", "created", "approved", "exported" },
+        "time" => new[] { "time", "entry", "date", "customer", "project", "engineer", "user", "hours", "status", "billable", "description", "notes", "approved", "submitted", "created" },
+        "customer" => new[] { "customer", "name", "status", "created", "updated" },
+        "project" => new[] { "project", "customer", "pm", "manager", "status", "sow", "gsd", "assignment", "created", "updated" },
+        "pm" => new[] { "pm", "project_manager", "manager", "project", "customer", "status", "created", "updated" },
+        "engineer" => new[] { "engineer", "user", "display", "email", "team", "project", "hours", "status", "created", "updated" },
+        "team" => new[] { "team", "user", "engineer", "manager", "hours", "status", "created", "updated" },
+        "audit" => new[] { "event", "audit", "actor", "role", "action", "status", "created", "timestamp", "notes" },
+        "system" => new[] { "component", "health", "status", "notes", "created" },
+        "api" => new[] { "api", "path", "module", "status", "success", "created" },
+        "external" => new[] { "connection", "provider", "type", "owner", "status", "created" },
+        "auth" => new[] { "auth", "session", "user", "role", "status", "created" },
+        "ai" => new[] { "ai", "sow", "scope", "draft", "engineer", "project", "status", "created" },
+        "notification" => new[] { "notification", "provider", "recipient", "status", "created" },
+        "uat" => new[] { "scenario", "role", "workflow", "evidence", "status", "created" },
+        "library" => new[] { "report", "template", "criteria", "owner", "cadence", "format", "status", "created" },
+        "executive" => new[] { "domain", "name", "description", "audience", "owner", "created" },
+        _ => new[] { "id", "name", "status", "created" }
+    };
+
+    var selected = columns
+        .Select(c => new
+        {
+            Column = c,
+            Score = preferred.Any(p => c.Name.Contains(p, StringComparison.OrdinalIgnoreCase)) ? 20 : 0
+        })
+        .OrderByDescending(x => x.Score)
+        .ThenBy(x => columns.FindIndex(c => c.Name == x.Column.Name))
+        .Select(x => x.Column)
+        .Take(24)
+        .ToList();
+
+    if (selected.Count == 0)
+    {
+        selected = columns.Take(24).ToList();
+    }
+
+    return selected;
+}
+
+static (string Sql, Dictionary<string, object> Parameters) ProjectPulse030BuildSafeWhereClause(JsonElement criteria, List<(string Name, string DataType)> columns)
+{
+    var whereParts = new List<string>();
+    var parameters = new Dictionary<string, object>();
+
+    void AddTextFilter(string fieldName, string[] columnTokens)
+    {
+        string value = ProjectPulse030SafeReadString(criteria, fieldName);
+
+        if (string.IsNullOrWhiteSpace(value) || string.Equals(value, "All", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var matchingColumns = columns
+            .Where(c => columnTokens.Any(token => c.Name.Contains(token, StringComparison.OrdinalIgnoreCase)))
+            .Take(4)
+            .ToList();
+
+        if (matchingColumns.Count == 0)
+        {
+            return;
+        }
+
+        string parameterName = "p" + parameters.Count;
+        parameters[parameterName] = "%" + value + "%";
+
+        whereParts.Add("(" + string.Join(" OR ", matchingColumns.Select(c => ProjectPulse030Quote(c.Name) + "::text ILIKE @" + parameterName)) + ")");
+    }
+
+    AddTextFilter("customer", new[] { "customer", "client" });
+    AddTextFilter("project", new[] { "project", "engagement" });
+    AddTextFilter("pm", new[] { "pm", "project_manager", "manager" });
+    AddTextFilter("engineer", new[] { "engineer", "user", "employee", "display", "email" });
+    AddTextFilter("team", new[] { "team", "department" });
+    AddTextFilter("contractType", new[] { "contract" });
+    AddTextFilter("timeEntryStatus", new[] { "status" });
+    AddTextFilter("approvalStatus", new[] { "approval", "status" });
+    AddTextFilter("invoiceStatus", new[] { "invoice", "status" });
+    AddTextFilter("workCode", new[] { "work_code", "work" });
+    AddTextFilter("workLocation", new[] { "location" });
+
+    return (whereParts.Count == 0 ? "" : " WHERE " + string.Join(" AND ", whereParts), parameters);
+}
+
+// 030_REPORT_API_JSON_SAFE_HELPERS_END
+
+
 app.Run();
 
 
@@ -25888,7 +27761,7 @@ async Task<ApprovalExportWorkflowAccess> LoadApprovalExportWorkflowAccessAsync(N
     }
 
     var canViewAll =
-        roles.Contains("ADMINISTRATOR")
+        (roles.Contains("SUPER_ADMINISTRATOR") || roles.Contains("ADMINISTRATOR"))
         || roles.Contains("PROJECT_TEAM_COORDINATOR")
         || permissions.Contains("SYSTEM_ADMINISTRATION")
         || permissions.Contains("MANAGE_ALL");
@@ -25896,7 +27769,7 @@ async Task<ApprovalExportWorkflowAccess> LoadApprovalExportWorkflowAccessAsync(N
     var canProjectApprove =
         canViewAll
         || roles.Contains("PROJECT_MANAGEMENT")
-        || roles.Contains("PROJECT_MANAGER")
+        || (roles.Contains("PROJECT_MANAGEMENT") || roles.Contains("PROJECT_MANAGER"))
         || permissions.Contains("PROJECT_TIME_APPROVAL");
 
     var canManageAccounting =
@@ -26045,7 +27918,7 @@ internal sealed record LocalLoginRequest(string Username, string Password);
 internal sealed record SsoDevelopmentLoginRequest(string Email);
 internal sealed record SetTemporaryPasswordRequest(Guid ResetRequestId, string Username, string TemporaryPassword);
 internal sealed record ChangeLocalPasswordRequest(string CurrentPassword, string NewPassword);
-internal sealed 
+internal sealed
 record ProjectPulseEntraImportSettings(
     string EnvironmentMode,
     string TenantDomain,
@@ -26298,3 +28171,8 @@ record ProjectPulse022CUserPreference(
     bool EmailEnabled,
     DateTimeOffset? MutedUntilUtc,
     DateTimeOffset UpdatedAt);
+
+
+// 030_ROLE_CLEANUP_PHASE2_COMPATIBILITY
+// Canonical roles are now ENGINEERING, ENGINEERING_LEAD, PROJECT_MANAGEMENT_LEAD, and SUPER_ADMINISTRATOR.
+// Legacy role codes remain temporarily recognized until Phase 3 role retirement is complete.
