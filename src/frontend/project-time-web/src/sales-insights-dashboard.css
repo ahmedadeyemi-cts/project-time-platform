@@ -1,0 +1,316 @@
+.sales-insights-dashboard {
+  margin-top: 0;
+  padding: 1.5rem;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 1.25rem;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.015);
+}
+
+.sales-insights-header,
+.sales-insights-panel-header,
+.sales-insights-two-column {
+  display: flex;
+  gap: 1rem;
+}
+
+.sales-insights-header,
+.sales-insights-panel-header {
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.sales-insights-error {
+  margin: 1rem 0;
+  padding: 0.85rem 1rem;
+  border-radius: 0.85rem;
+  background: rgba(239, 68, 68, 0.12);
+  color: #991b1b;
+  font-weight: 800;
+}
+
+.sales-insights-error p {
+  margin: 0.25rem 0;
+}
+
+.sales-insights-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(185px, 1fr));
+  gap: 1rem;
+  margin: 1rem 0;
+}
+
+.sales-insights-summary-card,
+.sales-insights-panel {
+  padding: 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.74);
+}
+
+.sales-insights-summary-card span,
+.sales-insights-summary-card small {
+  display: block;
+}
+
+.sales-insights-summary-card strong {
+  display: block;
+  margin: 0.35rem 0;
+  font-size: 1.85rem;
+}
+
+.sales-insights-summary-card.safe {
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
+.sales-insights-summary-card.attention {
+  border-color: rgba(245, 158, 11, 0.32);
+}
+
+.sales-insights-summary-card.danger {
+  border-color: rgba(239, 68, 68, 0.32);
+}
+
+.sales-insights-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 900;
+  background: rgba(148, 163, 184, 0.22);
+}
+
+.sales-insights-badge.safe {
+  background: rgba(16, 185, 129, 0.14);
+  color: #047857;
+}
+
+.sales-insights-badge.attention {
+  background: rgba(245, 158, 11, 0.16);
+  color: #92400e;
+}
+
+.sales-insights-badge.danger {
+  background: rgba(239, 68, 68, 0.13);
+  color: #991b1b;
+}
+
+.sales-insights-two-column {
+  align-items: flex-start;
+}
+
+.sales-insights-two-column > * {
+  flex: 1 1 0;
+}
+
+.sales-insights-filters {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(160px, 0.45fr);
+  gap: 0.75rem;
+  margin: 0.85rem 0 1rem;
+  padding: 0.85rem;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 0.85rem;
+  background: rgba(148, 163, 184, 0.08);
+}
+
+.sales-insights-filters label {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 800;
+}
+
+.sales-insights-filters input,
+.sales-insights-filters select {
+  width: 100%;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  border-radius: 0.65rem;
+  background: var(--input-background, #ffffff);
+  color: inherit;
+}
+
+.sales-handoff-list {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.sales-handoff-card {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.9rem;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 0.9rem;
+  background: rgba(248, 250, 252, 0.78);
+}
+
+.sales-handoff-card-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.85rem;
+  align-items: flex-start;
+}
+
+.sales-handoff-card-title span,
+.sales-handoff-card-title small {
+  display: block;
+}
+
+.sales-handoff-card-title span {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #2563eb;
+  font-weight: 900;
+}
+
+.sales-handoff-facts,
+.sales-readiness-strip,
+.sales-signal-grid {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.sales-handoff-facts {
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+}
+
+.sales-handoff-facts span,
+.sales-signal-grid div {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.65rem;
+  border-radius: 0.75rem;
+  background: rgba(255, 255, 255, 0.75);
+}
+
+.sales-handoff-facts strong,
+.sales-signal-grid span {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #64748b;
+}
+
+.sales-readiness-strip {
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+}
+
+.sales-readiness-strip span {
+  padding: 0.45rem 0.55rem;
+  border-radius: 999px;
+  text-align: center;
+  font-size: 0.8rem;
+  font-weight: 900;
+}
+
+.sales-readiness-strip .ready {
+  background: rgba(16, 185, 129, 0.14);
+  color: #047857;
+}
+
+.sales-readiness-strip .attention {
+  background: rgba(245, 158, 11, 0.16);
+  color: #92400e;
+}
+
+.sales-blocker-line {
+  margin: 0;
+  color: #92400e;
+  font-weight: 800;
+}
+
+.sales-blocker-line.ready {
+  color: #047857;
+}
+
+.sales-signal-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 0.85rem;
+}
+
+.sales-signal-grid strong {
+  font-size: 1.4rem;
+}
+
+.sales-customer-signal-list,
+.sales-next-actions {
+  margin-top: 1rem;
+}
+
+.sales-customer-signal-list h4,
+.sales-next-actions h4 {
+  margin: 0 0 0.65rem;
+}
+
+.sales-customer-signal-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 0;
+  border-top: 1px solid rgba(148, 163, 184, 0.28);
+}
+
+.sales-customer-signal-row strong,
+.sales-customer-signal-row small {
+  display: block;
+}
+
+.sales-customer-signal-row span {
+  font-weight: 900;
+  text-align: right;
+}
+
+.sales-next-actions ul {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.sales-next-actions li {
+  margin: 0.45rem 0;
+}
+
+.sales-insights-empty {
+  padding: 1rem;
+  border: 1px dashed rgba(148, 163, 184, 0.45);
+  border-radius: 0.85rem;
+  color: #64748b;
+  background: rgba(248, 250, 252, 0.7);
+}
+
+.app-shell:has(.sales-insights-route-panel) > section:not(.sales-insights-route-panel),
+.app-shell:has(.sales-insights-route-panel) > .module-grid {
+  display: none !important;
+}
+
+.app-shell:has(.sales-insights-route-panel) > .sales-insights-route-panel {
+  display: block !important;
+}
+
+.sales-insights-route-panel {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+@media (max-width: 980px) {
+  .sales-insights-header,
+  .sales-insights-panel-header,
+  .sales-insights-two-column,
+  .sales-handoff-card-title,
+  .sales-customer-signal-row {
+    flex-direction: column;
+  }
+
+  .sales-insights-filters,
+  .sales-signal-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .sales-customer-signal-row span {
+    text-align: left;
+  }
+}

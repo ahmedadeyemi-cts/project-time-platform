@@ -474,6 +474,7 @@ import RestoreValidationCenter from './RestoreValidationCenter.jsx';
 import BackupRetentionCenter from './BackupRetentionCenter.jsx';
 import TimeComplianceCenter from './TimeComplianceCenter.jsx';
 import ProjectIntakeCenter from './ProjectIntakeCenter.jsx';
+import SalesInsightsDashboard from './SalesInsightsDashboard.jsx';
 import CustomerDirectoryCenter from './CustomerDirectoryCenter.jsx';
 import CostOverrunAlertCenter from './CostOverrunAlertCenter.jsx';
 import ProjectWorkspaceCenter from './ProjectWorkspaceCenter.jsx';
@@ -813,6 +814,16 @@ const roleWorkspaceModules = [
     description: 'Create and review project intake requests, signed date aging, engineering resource demand, capacity, project handoff, and work-task assignment readiness.',
     permissions: ['VIEW_PROJECT_INTAKE', 'MANAGE_PROJECT_INTAKE', 'VIEW_RESOURCE_SCHEDULING', 'MANAGE_RESOURCE_SCHEDULING', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   },
+  /* 036_SALES_INSIGHTS_DASHBOARD_START */
+  {
+    route: 'sales-insights',
+    href: '#sales-insights',
+    title: 'Sales Insights Dashboard',
+    navLabel: 'MODULE 036',
+    description: 'Sales-facing view of sold project handoff health, missing documents, PM assignment, engineering assignment readiness, and launch blockers.',
+    permissions: ['VIEW_PROJECT_INTAKE', 'VIEW_CUSTOMERS', 'VIEW_PROJECT_WORKLOAD', 'VIEW_RESOURCE_SCHEDULING', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
+  },
+  /* 036_SALES_INSIGHTS_DASHBOARD_END */
   {
     route: 'customer-directory',
     href: '#customer-directory',
@@ -1109,6 +1120,7 @@ function getNavigationGroup(item) {
     case 'cost-alerts':
     case 'customer-directory':
     case 'project-intake':
+    case 'sales-insights':
       return 'Project Intake';
     case 'time-compliance':
       return 'Time Compliance';
@@ -5626,6 +5638,12 @@ Analytics - Variphy / Infortel`}
       {(activeRoute === 'customer-directory' && canSeeAny(['VIEW_CUSTOMERS', 'MANAGE_CUSTOMERS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
         <section id="customer-directory" className="panel customer-directory-route-panel">
           <CustomerDirectoryCenter canManageCustomers={canSeeAny(['MANAGE_CUSTOMERS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])} />
+        </section>
+      ) : null}
+
+      {(activeRoute === 'sales-insights' && canSeeAny(['VIEW_PROJECT_INTAKE', 'VIEW_CUSTOMERS', 'VIEW_PROJECT_WORKLOAD', 'VIEW_RESOURCE_SCHEDULING', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
+        <section id="sales-insights" className="panel sales-insights-route-panel">
+          <SalesInsightsDashboard />
         </section>
       ) : null}
 
