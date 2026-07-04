@@ -3483,6 +3483,17 @@ export default function App() {
     [roleNavigation, activeRoute]
   );
 
+  // 034_DASHBOARD_MODULE_NUMBERS_PAGE_NAMES_START
+  // Keep module numbers visible on dashboard cards/navigation labels, but show the actual page name
+  // in the opened Workspace header.
+  const activeWorkspaceTitle = useMemo(() => {
+    if (activeRoute === 'dashboard') return 'Dashboard';
+
+    const matchingModule = roleWorkspaceModules.find((module) => module.route === activeRoute);
+    return matchingModule?.title || activeNavigationItem.label || 'Dashboard';
+  }, [activeRoute, activeNavigationItem.label]);
+  // 034_DASHBOARD_MODULE_NUMBERS_PAGE_NAMES_END
+
   useEffect(() => {
     if (activeRoute === 'utilization' && userIsProjectManagementRole(currentUser.data) && !userIsAdministrator(currentUser.data)) {
       window.location.hash = 'project-workload';
@@ -4426,7 +4437,7 @@ Analytics - Variphy / Infortel`}
         <div className="workspace-header-context enterprise-top-context">
           <div>
             <p className="eyebrow">Workspace</p>
-            <h1>{activeNavigationItem.label}</h1>
+            <h1>{activeWorkspaceTitle}</h1>
           </div>
         </div>
 
