@@ -1024,7 +1024,8 @@ function getRoleNavigation(user) {
   routeMap.set('dashboard', {
     route: 'dashboard',
     href: '#dashboard',
-    label: 'Dashboard'
+    label: 'Dashboard',
+    title: 'Dashboard'
   });
 
   modules.forEach((module) => {
@@ -1032,7 +1033,8 @@ function getRoleNavigation(user) {
       routeMap.set(module.route, {
         route: module.route,
         href: module.href,
-        label: module.navLabel
+        label: module.navLabel,
+        title: module.title
       });
     }
   });
@@ -1040,6 +1042,10 @@ function getRoleNavigation(user) {
   return [...routeMap.values()];
 }
 
+
+function getNavigationDisplayLabel(item) {
+  return item?.title || item?.label || 'Dashboard';
+}
 
 function userHasRoleText(user, fragments) {
   const normalizedFragments = fragments.map((fragment) => fragment.toLowerCase());
@@ -3479,19 +3485,14 @@ export default function App() {
   }, [activeRoute]);
 
   const activeNavigationItem = useMemo(
-    () => roleNavigation.find((item) => item.route === activeRoute) ?? { label: 'Dashboard', route: 'dashboard', href: '#dashboard' },
+    () => roleNavigation.find((item) => item.route === activeRoute) ?? { label: 'Dashboard', title: 'Dashboard', route: 'dashboard', href: '#dashboard' },
     [roleNavigation, activeRoute]
   );
 
   // 034_DASHBOARD_MODULE_NUMBERS_PAGE_NAMES_START
-  // Keep module numbers visible on dashboard cards/navigation labels, but show the actual page name
-  // in the opened Workspace header.
-  const activeWorkspaceTitle = useMemo(() => {
-    if (activeRoute === 'dashboard') return 'Dashboard';
-
-    const matchingModule = roleWorkspaceModules.find((module) => module.route === activeRoute);
-    return matchingModule?.title || activeNavigationItem.label || 'Dashboard';
-  }, [activeRoute, activeNavigationItem.label]);
+  // Keep module numbers visible on dashboard cards, but show actual page names
+  // in the opened Workspace header and navigation menus.
+  const activeWorkspaceTitle = useMemo(() => getNavigationDisplayLabel(activeNavigationItem), [activeNavigationItem]);
   // 034_DASHBOARD_MODULE_NUMBERS_PAGE_NAMES_END
 
   useEffect(() => {
@@ -4480,7 +4481,7 @@ Analytics - Variphy / Infortel`}
                             className={activeRoute === item.route ? 'active' : ''}
                             onClick={() => setIsTopMoreNavigationOpen(false)}
                           >
-                            {item.label}
+                            {getNavigationDisplayLabel(item)}
                           </a>
                         ))}
                       </div>
@@ -4557,8 +4558,8 @@ Analytics - Variphy / Infortel`}
                 key={`enterprise-primary-${item.route}`}
                 className={activeRoute === item.route ? 'active' : ''}
               >
-                <span className="enterprise-nav-icon">{item.label.slice(0, 1)}</span>
-                <span className="enterprise-nav-label">{item.label}</span>
+                <span className="enterprise-nav-icon">{getNavigationDisplayLabel(item).slice(0, 1)}</span>
+                <span className="enterprise-nav-label">{getNavigationDisplayLabel(item)}</span>
               </a>
             ))}
           </div>
@@ -4587,8 +4588,8 @@ Analytics - Variphy / Infortel`}
                         key={`enterprise-${group.name}-${item.route}`}
                         className={activeRoute === item.route ? 'active' : ''}
                       >
-                        <span className="enterprise-nav-icon">{item.label.slice(0, 1)}</span>
-                        <span className="enterprise-nav-label">{item.label}</span>
+                        <span className="enterprise-nav-icon">{getNavigationDisplayLabel(item).slice(0, 1)}</span>
+                        <span className="enterprise-nav-label">{getNavigationDisplayLabel(item)}</span>
                       </a>
                     ))}
                   </div>
