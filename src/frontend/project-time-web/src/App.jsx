@@ -1137,6 +1137,525 @@ function getNavigationGroup(item) {
   }
 }
 
+
+/* 031_SOURCE_GLOBAL_SEARCH_START */
+const PROJECT_PULSE_GLOBAL_SEARCH_SESSION_KEY = 'projectPulseAuthSession';
+
+function readProjectPulseGlobalSearchSession() {
+  try {
+    const raw = window.localStorage.getItem(PROJECT_PULSE_GLOBAL_SEARCH_SESSION_KEY);
+    if (!raw) return null;
+
+    const session = JSON.parse(raw);
+    if (!session?.sessionToken) return null;
+    if (session?.expiresAt && Date.now() >= Date.parse(session.expiresAt)) return null;
+
+    return session;
+  } catch {
+    return null;
+  }
+}
+
+function getProjectPulseGlobalSearchHeaders() {
+  const session = readProjectPulseGlobalSearchSession();
+  return session?.sessionToken ? { 'X-ProjectPulse-Session': session.sessionToken } : {};
+}
+
+function projectPulseGlobalSearchText(value) {
+  return String(value ?? '')
+    .toLowerCase()
+    .replace(/[_\-:/|#]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function projectPulseGlobalSearchValue(source, keys) {
+  if (!source) return '';
+
+  for (const key of keys) {
+    const value = source[key];
+    if (value !== null && value !== undefined && String(value).trim()) {
+      return String(value).trim();
+    }
+  }
+
+  return '';
+}
+
+function projectPulseGlobalSearchJoin(parts) {
+  return parts
+    .map((part) => String(part ?? '').trim())
+    .filter(Boolean)
+    .filter((part, index, array) => array.indexOf(part) === index)
+    .join(' · ');
+}
+
+function projectPulseGlobalSearchOptionLabel(option) {
+  if (option && typeof option === 'object') {
+    return option.label || option.name || option.text || option.value || '';
+  }
+
+  return option === null || option === undefined ? '' : String(option);
+}
+
+function projectPulseGlobalSearchOptionValue(option) {
+  if (option && typeof option === 'object') {
+    return option.value || option.email || option.id || option.label || option.name || '';
+  }
+
+  return option === null || option === undefined ? '' : String(option);
+}
+
+function addProjectPulseGlobalSearchItem(items, type, title, subtitle, meta, route, source) {
+  if (!title && !subtitle) return;
+
+  let sourceText = '';
+
+  try {
+    sourceText = JSON.stringify(source || {});
+  } catch {
+    sourceText = '';
+  }
+
+  items.push({
+    type,
+    title: title || subtitle,
+    subtitle: subtitle || '',
+    meta: meta || '',
+    route: route || '#dashboard',
+    sourceText
+  });
+}
+
+async function fetchProjectPulseGlobalSearchJson(path) {
+  const response = await fetch(`${path}${path.includes('?') ? '&' : '?'}_ts=${Date.now()}`, {
+    headers: getProjectPulseGlobalSearchHeaders(),
+    credentials: 'include',
+    cache: 'no-store'
+  });
+
+  const raw = await response.text();
+  let payload = {};
+
+  try {
+    payload = raw ? JSON.parse(raw) : {};
+  } catch {
+    payload = {};
+  }
+
+  if (!response.ok) {
+    throw new Error(`${path} returned HTTP ${response.status}`);
+  }
+
+  return payload;
+}
+
+function buildProjectPulseGlobalSearchItems(workspace, filters, dashboard) {
+  const items = [];
+  const customers = new Map();
+
+  (workspace?.projects || []).forEach((project) => {
+    const projectCode = projectPulseGlobalSearchValue(project, ['projectCode', 'code', 'projectNumber', 'number', 'engagementCode']);
+    const projectName = projectPulseGlobalSearchValue(project, ['projectName', 'name', 'engagementName', 'title']);
+    const customerName = projectPulseGlobalSearchValue(project, ['customerName', 'customer', 'clientName', 'accountName']);
+    const status = projectPulseGlobalSearchValue(project, ['status', 'projectStatus', 'deliveryStatus']);
+    const pm = projectPulseGlobalSearchValue(project, ['projectManagerName', 'pmName', 'projectManager', 'engagementManagerName']);
+    const team = projectPulseGlobalSearchValue(project, ['teamName', 'team', 'department']);
+
+    if (customerName) {
+      customers.set(customerName, { customerName, projectCode, projectName, status });
+    }
+
+    addProjectPulseGlobalSearchItem(
+      items,
+      'Project',
+      projectPulseGlobalSearchJoin([projectCode, projectName]) || 'Project',
+      customerName,
+      projectPulseGlobalSearchJoin([status, pm, team]),
+      '#project-workspace',
+      project
+    );
+  });
+
+  (workspace?.documents || []).forEach((documentItem) => {
+    const fileName = projectPulseGlobalSearchValue(documentItem, ['originalFileName', 'fileName', 'name', 'title']);
+    const projectName = projectPulseGlobalSearchValue(documentItem, ['projectOrIntakeName', 'projectName', 'intakeName']);
+    const projectCode = projectPulseGlobalSearchValue(documentItem, ['projectCode', 'code', 'requestNumber']);
+    const category = projectPulseGlobalSearchValue(documentItem, ['documentCategory', 'category', 'type']);
+    const status = projectPulseGlobalSearchValue(documentItem, ['extractionStatus', 'status']);
+
+    addProjectPulseGlobalSearchItem(
+      items,
+      'Document',
+      fileName || projectPulseGlobalSearchJoin([projectCode, projectName]),
+      projectPulseGlobalSearchJoin([projectCode, projectName]),
+      projectPulseGlobalSearchJoin([category, status]),
+      '#project-workspace',
+      documentItem
+    );
+  });
+
+  (workspace?.assignments || []).forEach((assignment) => {
+    const person = projectPulseGlobalSearchValue(assignment, ['engineerDisplayName', 'assignedUserDisplayName', 'displayName', 'engineerName', 'userEmail']);
+    const projectCode = projectPulseGlobalSearchValue(assignment, ['projectCode', 'code', 'projectNumber']);
+    const projectName = projectPulseGlobalSearchValue(assignment, ['projectName', 'engagementName', 'name']);
+    const role = projectPulseGlobalSearchValue(assignment, ['assignmentRole', 'roleName', 'role', 'workRole']);
+    const status = projectPulseGlobalSearchValue(assignment, ['status', 'assignmentStatus']);
+
+    addProjectPulseGlobalSearchItem(
+      items,
+      'Assignment',
+      projectPulseGlobalSearchJoin([person, role]) || 'Assignment',
+      projectPulseGlobalSearchJoin([projectCode, projectName]),
+      status,
+      '#project-workspace',
+      assignment
+    );
+  });
+
+  (workspace?.resourceRequests || []).forEach((request) => {
+    const requestNumber = projectPulseGlobalSearchValue(request, ['requestNumber', 'intakeNumber', 'resourceRequestNumber', 'id']);
+    const projectName = projectPulseGlobalSearchValue(request, ['projectOrIntakeName', 'projectName', 'intakeName', 'name']);
+    const customerName = projectPulseGlobalSearchValue(request, ['customerName', 'customer', 'clientName']);
+    const role = projectPulseGlobalSearchValue(request, ['requestedRole', 'roleName', 'role']);
+    const status = projectPulseGlobalSearchValue(request, ['status', 'requestStatus']);
+
+    if (customerName) {
+      customers.set(customerName, { customerName, requestNumber, projectName, status });
+    }
+
+    addProjectPulseGlobalSearchItem(
+      items,
+      'Request',
+      projectPulseGlobalSearchJoin([requestNumber, role]) || 'Resource Request',
+      projectPulseGlobalSearchJoin([customerName, projectName]),
+      status,
+      '#project-workspace',
+      request
+    );
+  });
+
+  Array.from(customers.values()).forEach((customer) => {
+    addProjectPulseGlobalSearchItem(
+      items,
+      'Customer',
+      customer.customerName,
+      projectPulseGlobalSearchJoin([customer.projectCode || customer.requestNumber, customer.projectName]),
+      customer.status || 'Customer',
+      '#project-workspace',
+      customer
+    );
+  });
+
+  [
+    ['customers', 'Customer', '#reporting', 'Report filter'],
+    ['projects', 'Project', '#reporting', 'Report filter'],
+    ['pms', 'PM', '#reporting', 'Project manager'],
+    ['engineers', 'Engineer', '#reporting', 'Engineer'],
+    ['teams', 'Team', '#reporting', 'Team'],
+    ['contractTypes', 'Contract', '#reporting', 'Contract type']
+  ].forEach(([key, type, route, meta]) => {
+    (filters?.[key] || []).forEach((option) => {
+      const label = projectPulseGlobalSearchOptionLabel(option);
+      const value = projectPulseGlobalSearchOptionValue(option);
+
+      if (label && !label.toLowerCase().startsWith('all ')) {
+        addProjectPulseGlobalSearchItem(
+          items,
+          type,
+          label,
+          value && value !== label ? value : '',
+          meta,
+          route,
+          option
+        );
+      }
+    });
+  });
+
+  const modules = dashboard?.modules || dashboard?.visibleModules || dashboard?.availableModules || [];
+
+  if (Array.isArray(modules)) {
+    modules.forEach((moduleItem) => {
+      const title = projectPulseGlobalSearchValue(moduleItem, ['title', 'moduleTitle', 'name', 'label']);
+      const key = projectPulseGlobalSearchValue(moduleItem, ['moduleKey', 'key', 'code', 'route']);
+      const route = projectPulseGlobalSearchValue(moduleItem, ['route', 'path', 'href']) || '#dashboard';
+      const description = projectPulseGlobalSearchValue(moduleItem, ['description', 'summary', 'purpose']);
+
+      addProjectPulseGlobalSearchItem(
+        items,
+        'Module',
+        title || key,
+        key,
+        description,
+        route.startsWith('#') ? route : `#${route}`,
+        moduleItem
+      );
+    });
+  }
+
+  const seen = new Set();
+
+  return items.filter((item) => {
+    const key = [item.type, item.title, item.subtitle, item.meta].join('|').toLowerCase();
+
+    if (seen.has(key)) return false;
+
+    seen.add(key);
+    return true;
+  });
+}
+
+function scoreProjectPulseGlobalSearchItem(item, query) {
+  const normalizedQuery = projectPulseGlobalSearchText(query);
+  if (!normalizedQuery) return 0;
+
+  const tokens = normalizedQuery.split(' ').filter(Boolean);
+  const title = projectPulseGlobalSearchText(item.title);
+  const subtitle = projectPulseGlobalSearchText(item.subtitle);
+  const haystack = projectPulseGlobalSearchText([item.type, item.title, item.subtitle, item.meta, item.sourceText].join(' '));
+
+  if (!tokens.every((token) => haystack.includes(token))) return 0;
+
+  let score = 10;
+
+  if (title === normalizedQuery) score += 120;
+  if (title.startsWith(normalizedQuery)) score += 80;
+  if (title.includes(normalizedQuery)) score += 45;
+  if (subtitle.includes(normalizedQuery)) score += 25;
+
+  tokens.forEach((token) => {
+    if (title.startsWith(token)) score += 20;
+    if (title.includes(token)) score += 12;
+    if (haystack.includes(token)) score += 5;
+  });
+
+  if (item.type === 'Project') score += 14;
+  if (item.type === 'Customer') score += 12;
+  if (item.type === 'Engineer' || item.type === 'PM') score += 7;
+
+  return score;
+}
+
+function ProjectPulseGlobalSearch() {
+  const [isOpen, setIsOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [items, setItems] = useState([]);
+  const [hasLoaded, setHasLoaded] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [status, setStatus] = useState('');
+  const [activeIndex, setActiveIndex] = useState(0);
+  const inputRef = useRef(null);
+
+  const results = useMemo(() => {
+    const trimmed = query.trim();
+
+    if (trimmed.length < 2) return [];
+
+    return items
+      .map((item) => ({ item, score: scoreProjectPulseGlobalSearchItem(item, trimmed) }))
+      .filter((entry) => entry.score > 0)
+      .sort((left, right) => right.score - left.score)
+      .slice(0, 12)
+      .map((entry) => entry.item);
+  }, [items, query]);
+
+  async function loadSearchData(force = false) {
+    if (isLoading) return;
+    if (hasLoaded && !force) return;
+
+    const headers = getProjectPulseGlobalSearchHeaders();
+
+    if (!headers['X-ProjectPulse-Session']) {
+      setStatus('Sign in is required before Project Pulse Search can load.');
+      setHasLoaded(false);
+      return;
+    }
+
+    setIsLoading(true);
+    setStatus('Loading Project Pulse Search...');
+
+    try {
+      const [workspace, filters, dashboard] = await Promise.all([
+        fetchProjectPulseGlobalSearchJson('/api/project-workspace/overview').catch(() => ({})),
+        fetchProjectPulseGlobalSearchJson('/api/reports/030/filter-options').catch(() => ({})),
+        fetchProjectPulseGlobalSearchJson('/api/dashboard/module-visibility-smoke').catch(() => ({}))
+      ]);
+
+      const searchItems = buildProjectPulseGlobalSearchItems(workspace, filters, dashboard);
+
+      setItems(searchItems);
+      setHasLoaded(true);
+      setStatus(`${searchItems.length} searchable records loaded`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Project Pulse Search could not load.');
+      setHasLoaded(false);
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  function openSearch() {
+    setIsOpen(true);
+    setTimeout(() => {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }, 0);
+
+    loadSearchData(false);
+  }
+
+  function closeSearch() {
+    setIsOpen(false);
+  }
+
+  function openResult(item) {
+    try {
+      window.localStorage.setItem('projectPulse031SearchLastSelection', JSON.stringify({
+        selectedAt: new Date().toISOString(),
+        type: item.type,
+        title: item.title,
+        subtitle: item.subtitle,
+        meta: item.meta,
+        route: item.route
+      }));
+    } catch {
+      // Non-blocking.
+    }
+
+    closeSearch();
+
+    if (item.route) {
+      window.location.hash = item.route;
+    }
+  }
+
+  useEffect(() => {
+    function handleKeydown(event) {
+      const isMac = navigator.platform?.toLowerCase().includes('mac');
+      const modifierPressed = isMac ? event.metaKey : event.ctrlKey;
+
+      if (modifierPressed && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        openSearch();
+      }
+
+      if (event.key === 'Escape' && isOpen) {
+        closeSearch();
+      }
+    }
+
+    document.addEventListener('keydown', handleKeydown);
+    return () => document.removeEventListener('keydown', handleKeydown);
+  }, [isOpen, hasLoaded, isLoading]);
+
+  useEffect(() => {
+    if (results.length === 0) {
+      setActiveIndex(0);
+      return;
+    }
+
+    setActiveIndex((current) => Math.min(current, results.length - 1));
+  }, [results.length]);
+
+  function handleInputKeydown(event) {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setActiveIndex((current) => Math.min(results.length - 1, current + 1));
+      return;
+    }
+
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setActiveIndex((current) => Math.max(0, current - 1));
+      return;
+    }
+
+    if (event.key === 'Enter' && results[activeIndex]) {
+      event.preventDefault();
+      openResult(results[activeIndex]);
+    }
+  }
+
+  return (
+    <div className="projectpulse-global-search" data-031-real-global-search="true">
+      <button
+        type="button"
+        className="projectpulse-global-search-button"
+        onClick={openSearch}
+        aria-haspopup="dialog"
+        aria-expanded={isOpen}
+      >
+        <span aria-hidden="true">⌕</span>
+        <strong>Search</strong>
+        <kbd>Ctrl K</kbd>
+      </button>
+
+      {isOpen ? (
+        <div className="projectpulse-global-search-backdrop" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) closeSearch();
+        }}>
+          <section className="projectpulse-global-search-modal" role="dialog" aria-modal="true" aria-label="Project Pulse Search">
+            <div className="projectpulse-global-search-header">
+              <div className="projectpulse-global-search-icon" aria-hidden="true">⌕</div>
+              <input
+                ref={inputRef}
+                type="search"
+                value={query}
+                placeholder="Search everything in Project Pulse..."
+                aria-label="Search everything in Project Pulse"
+                autoComplete="off"
+                spellCheck="false"
+                onChange={(event) => setQuery(event.target.value)}
+                onKeyDown={handleInputKeydown}
+              />
+              <button type="button" className="projectpulse-global-search-close" onClick={closeSearch}>
+                Close
+              </button>
+            </div>
+
+            <div className="projectpulse-global-search-meta">
+              <span>Project Pulse Search</span>
+              <span>{isLoading ? 'Loading...' : status || 'Type at least two characters'}</span>
+            </div>
+
+            <div className="projectpulse-global-search-results">
+              {query.trim().length < 2 ? (
+                <p className="projectpulse-global-search-state">
+                  Search projects, customers, project numbers, documents, assignments, resource requests, engineers, PMs, teams, reports, and modules.
+                </p>
+              ) : results.length > 0 ? (
+                results.map((item, index) => (
+                  <button
+                    type="button"
+                    key={`${item.type}-${item.title}-${item.subtitle}-${index}`}
+                    className={index === activeIndex ? 'projectpulse-global-search-result active' : 'projectpulse-global-search-result'}
+                    onMouseEnter={() => setActiveIndex(index)}
+                    onClick={() => openResult(item)}
+                  >
+                    <div className="projectpulse-global-search-result-row">
+                      <strong>{item.title}</strong>
+                      <span>{item.type}</span>
+                    </div>
+                    {item.subtitle ? <p>{item.subtitle}</p> : null}
+                    {item.meta ? <small>{item.meta}</small> : null}
+                  </button>
+                ))
+              ) : (
+                <p className="projectpulse-global-search-state">
+                  No results found for <strong>{query}</strong>.
+                </p>
+              )}
+            </div>
+          </section>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+/* 031_SOURCE_GLOBAL_SEARCH_END */
+
+
 function buildRoleNavigationModel(user, navigationItems) {
   const availableItems = navigationItems ?? [];
   const availableByRoute = new Map();
@@ -3963,6 +4482,7 @@ Analytics - Variphy / Infortel`}
         </nav>
 
         <div className="enterprise-header-utilities">
+          <ProjectPulseGlobalSearch />
         <div className="profile-menu-shell" ref={profileMenuRef}>
           <button
             className="profile-avatar-button"
