@@ -1,5 +1,68 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import './certify-integration-center.css';
+
+/* 038A_CERTIFY_PLACEHOLDER_FRONTEND_START */
+function getStoredProjectPulseAuthSession() {
+  try {
+    const rawSession = window.localStorage.getItem('projectPulseAuthSession');
+    if (!rawSession) return null;
+    const session = JSON.parse(rawSession);
+    if (!session?.sessionToken) return null;
+    if (session?.expiresAt && Date.now() >= Date.parse(session.expiresAt)) return null;
+    return session;
+  } catch {
+    return null;
+  }
+}
+
+function getProjectPulseAuthHeaders() {
+  const session = getStoredProjectPulseAuthSession();
+  return session?.sessionToken ? { 'X-ProjectPulse-Session': session.sessionToken } : {};
+}
+
+async function readCertifyApiErrorMessage(response, path) {
+  const raw = await response.text();
+
+  if (!raw) {
+    return `${path} returned HTTP ${response.status}`;
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    return `${path} returned HTTP ${response.status}: ${parsed.message || parsed.detail || parsed.status || raw}`;
+  } catch {
+    return `${path} returned HTTP ${response.status}: ${raw}`;
+  }
+}
+
+async function fetchCertifyJson(path) {
+  const response = await fetch(path, {
+    headers: getProjectPulseAuthHeaders(),
+    cache: 'no-store'
+  });
+
+  if (!response.ok) {
+    throw new Error(await readCertifyApiErrorMessage(response, path));
+  }
+
+  return response.json();
+}
+
+async function postCertifyJson(path) {
+  const response = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getProjectPulseAuthHeaders() },
+    body: JSON.stringify({})
+  });
+
+  if (!response.ok) {
+    throw new Error(await readCertifyApiErrorMessage(response, path));
+  }
+
+  return response.json();
+}
+/* 038A_CERTIFY_PLACEHOLDER_FRONTEND_END */
+
 
 const readinessItems = [
   {
@@ -172,6 +235,11 @@ export default function CertifyIntegrationCenter() {
   const [syncDirection, setSyncDirection] = useState('Certify to PHD');
   const [cadence, setCadence] = useState('Nightly plus manual refresh');
   const [statusMessage, setStatusMessage] = useState('');
+  const [certifyApiState, setCertifyApiState] = useState({ loading: false, label: '', result: null, error: null });
+  const [certifyConfig, setCertifyConfig] = useState(null);
+  const [certifySyncStatus, setCertifySyncStatus] = useState(null);
+  const [certifyStagedExpenses, setCertifyStagedExpenses] = useState([]);
+  const [certifyExceptions, setCertifyExceptions] = useState([]);
 
   const readinessPercent = useMemo(() => {
     return readinessItems.length === 0 ? 0 : (checkedItems.size / readinessItems.length) * 100;
@@ -191,6 +259,86 @@ export default function CertifyIntegrationCenter() {
 
     return [...groups.values()];
   }, [checkedItems]);
+
+  async function callCertifyPlaceholderEndpoint(label, path, method = 'GET') {
+    setCertifyApiState({ loading: true, label, result: null, error: null });
+
+    try {
+      const result = method === 'POST' ? await postCertifyJson(path) : await fetchCertifyJson(path);
+      setCertifyApiState({ loading: false, label, result, error: null });
+      setStatusMessage(`${label} completed: ${result.message || result.status || 'placeholder response received'}`);
+      return result;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : `${label} failed.`;
+      setCertifyApiState({ loading: false, label, result: null, error: message });
+      setStatusMessage(message);
+      return null;
+    }
+  }
+
+  async function refreshCertifyPlaceholderData(options = {}) {
+    if (!options.silent) {
+      setStatusMessage('Refreshing Certify placeholder status...');
+    }
+
+    const [configResult, statusResult, stagedResult, exceptionResult] = await Promise.allSettled([
+      fetchCertifyJson('/api/certify/config-placeholder'),
+      fetchCertifyJson('/api/certify/sync/status'),
+      fetchCertifyJson('/api/certify/expenses/staged'),
+      fetchCertifyJson('/api/certify/exceptions')
+    ]);
+
+    if (configResult.status === 'fulfilled') {
+      setCertifyConfig(configResult.value);
+    }
+
+    if (statusResult.status === 'fulfilled') {
+      setCertifySyncStatus(statusResult.value);
+    }
+
+    if (stagedResult.status === 'fulfilled') {
+      setCertifyStagedExpenses(stagedResult.value.stagedExpenses ?? []);
+    }
+
+    if (exceptionResult.status === 'fulfilled') {
+      setCertifyExceptions(exceptionResult.value.exceptions ?? []);
+    }
+
+    const failures = [configResult, statusResult, stagedResult, exceptionResult]
+      .filter((result) => result.status === 'rejected')
+      .map((result) => result.reason instanceof Error ? result.reason.message : 'Unknown Certify placeholder loading error.');
+
+    if (failures.length > 0) {
+      setCertifyApiState({ loading: false, label: 'Refresh placeholder status', result: null, error: failures.join(' | ') });
+      if (!options.silent) setStatusMessage(failures.join(' | '));
+      return;
+    }
+
+    if (!options.silent) {
+      setStatusMessage('Certify placeholder status refreshed.');
+    }
+  }
+
+  useEffect(() => {
+    void refreshCertifyPlaceholderData({ silent: true });
+  }, []);
+
+  async function testCertifyConnection() {
+    const result = await callCertifyPlaceholderEndpoint('Test Certify connection placeholder', '/api/certify/test-connection', 'POST');
+    if (result?.config) setCertifyConfig(result.config);
+  }
+
+  async function previewCertifySync() {
+    const result = await callCertifyPlaceholderEndpoint('Preview Certify sync placeholder', '/api/certify/sync/preview', 'POST');
+    if (result?.stagedExpenses) setCertifyStagedExpenses(result.stagedExpenses);
+    if (result?.exceptions) setCertifyExceptions(result.exceptions);
+  }
+
+  async function runCertifySyncPlaceholder() {
+    const result = await callCertifyPlaceholderEndpoint('Run Certify sync placeholder', '/api/certify/sync/run', 'POST');
+    if (result?.stagedExpenses) setCertifyStagedExpenses(result.stagedExpenses);
+    if (result?.exceptions) setCertifyExceptions(result.exceptions);
+  }
 
   function toggleReadinessItem(key) {
     setCheckedItems((current) => {
@@ -253,6 +401,130 @@ export default function CertifyIntegrationCenter() {
       </div>
 
       {statusMessage ? <div className="certify-alert">{statusMessage}</div> : null}
+
+      <article className="certify-panel certify-placeholder-sync-panel">
+        <div className="certify-panel-heading">
+          <div>
+            <h3>Certify sync placeholders</h3>
+            <p className="muted">
+              These controls are wired to safe backend placeholder endpoints. They prepare the import workflow now and can be switched to real Certify API calls after credentials, tenant details, and mapping rules are confirmed.
+            </p>
+          </div>
+          <StatusPill tone={certifyConfig?.configured ? 'safe' : 'attention'}>
+            {certifyConfig?.configured ? 'Config placeholders set' : 'Awaiting Certify config'}
+          </StatusPill>
+        </div>
+
+        <div className="certify-placeholder-actions">
+          <button type="button" className="secondary-action" onClick={() => refreshCertifyPlaceholderData()} disabled={certifyApiState.loading}>
+            Refresh placeholder status
+          </button>
+          <button type="button" className="secondary-action" onClick={testCertifyConnection} disabled={certifyApiState.loading}>
+            Test connection
+          </button>
+          <button type="button" className="secondary-action" onClick={previewCertifySync} disabled={certifyApiState.loading}>
+            Preview sync
+          </button>
+          <button type="button" className="primary-action" onClick={runCertifySyncPlaceholder} disabled={certifyApiState.loading}>
+            Run placeholder sync
+          </button>
+        </div>
+
+        {certifyApiState.loading ? <p className="certify-placeholder-status">Running {certifyApiState.label}...</p> : null}
+        {certifyApiState.error ? <p className="certify-placeholder-error">{certifyApiState.error}</p> : null}
+
+        <div className="certify-placeholder-grid">
+          <article>
+            <span>Live sync</span>
+            <strong>{certifySyncStatus?.canRunLiveSync ? 'Enabled' : 'Blocked'}</strong>
+            <small>{certifySyncStatus?.message || 'Placeholder status has not loaded yet.'}</small>
+          </article>
+          <article>
+            <span>Missing config</span>
+            <strong>{certifyConfig?.missingConfigKeys?.length ?? '...'}</strong>
+            <small>{certifyConfig?.missingConfigKeys?.length ? certifyConfig.missingConfigKeys.join(', ') : 'No missing placeholder keys reported.'}</small>
+          </article>
+          <article>
+            <span>Staged expenses</span>
+            <strong>{certifyStagedExpenses.length}</strong>
+            <small>Placeholder expense records ready for future staging table view.</small>
+          </article>
+          <article>
+            <span>Exceptions</span>
+            <strong>{certifyExceptions.length}</strong>
+            <small>Placeholder exception types expected during real import.</small>
+          </article>
+        </div>
+
+        <div className="certify-placeholder-two-column">
+          <div>
+            <h4>Safe config snapshot</h4>
+            <div className="certify-safe-config-list">
+              <span><strong>Base URL</strong>{certifyConfig?.safeConfig?.baseUrlConfigured ? 'Configured' : 'Missing'}</span>
+              <span><strong>Auth mode</strong>{certifyConfig?.authMode || 'placeholder'}</span>
+              <span><strong>API key</strong>{certifyConfig?.safeConfig?.apiKeyConfigured ? 'Configured server-side' : 'Missing'}</span>
+              <span><strong>Client secret</strong>{certifyConfig?.safeConfig?.clientSecretConfigured ? 'Configured server-side' : 'Missing'}</span>
+              <span><strong>Company ID</strong>{certifyConfig?.safeConfig?.companyIdConfigured ? 'Configured' : 'Missing'}</span>
+              <span><strong>Dry run only</strong>{certifyConfig?.dryRunOnly ? 'True' : 'False'}</span>
+            </div>
+          </div>
+
+          <div>
+            <h4>Placeholder exceptions</h4>
+            <div className="certify-exception-list">
+              {certifyExceptions.length === 0 ? (
+                <p className="muted">No placeholder exceptions loaded yet.</p>
+              ) : (
+                certifyExceptions.map((exception) => (
+                  <article key={exception.exceptionCode}>
+                    <strong>{exception.exceptionCode}</strong>
+                    <span>{exception.severity}</span>
+                    <p>{exception.message}</p>
+                    <small>{exception.resolution}</small>
+                  </article>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="certify-staged-preview">
+          <h4>Placeholder staged expenses</h4>
+          <div className="certify-table-wrap compact">
+            <table className="certify-mapping-table">
+              <thead>
+                <tr>
+                  <th>Report</th>
+                  <th>Employee</th>
+                  <th>Customer</th>
+                  <th>Project</th>
+                  <th>Category</th>
+                  <th>Billing status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {certifyStagedExpenses.length === 0 ? (
+                  <tr>
+                    <td colSpan="6">No placeholder staged expenses loaded yet.</td>
+                  </tr>
+                ) : (
+                  certifyStagedExpenses.map((expense) => (
+                    <tr key={expense.certifyReportId}>
+                      <td><strong>{expense.certifyReportId}</strong></td>
+                      <td>{expense.employeeEmail}</td>
+                      <td>{expense.customerName}</td>
+                      <td>{expense.projectCode}</td>
+                      <td>{expense.expenseCategory}</td>
+                      <td>{expense.billingStatus}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </article>
+
 
       <div className="certify-summary-grid">
         <article>

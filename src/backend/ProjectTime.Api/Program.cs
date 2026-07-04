@@ -25618,6 +25618,190 @@ static (string Sql, Dictionary<string, object> Parameters) ProjectPulse030BuildS
 }
 
 // 030_REPORT_API_JSON_SAFE_HELPERS_END
+/* 038A_CERTIFY_PLACEHOLDER_ENDPOINTS_START */
+var projectPulse038ACertifyRequiredKeys = new[]
+{
+    "CERTIFY_BASE_URL",
+    "CERTIFY_AUTH_MODE",
+    "CERTIFY_COMPANY_ID"
+};
+
+bool ProjectPulse038ACertifyHasValue(string key)
+{
+    return !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(key));
+}
+
+object ProjectPulse038ACertifyConfigSnapshot()
+{
+    var missingKeys = projectPulse038ACertifyRequiredKeys
+        .Where(key => !ProjectPulse038ACertifyHasValue(key))
+        .ToArray();
+
+    var authMode = Environment.GetEnvironmentVariable("CERTIFY_AUTH_MODE") ?? "placeholder";
+    var dryRunOnly = string.Equals(Environment.GetEnvironmentVariable("CERTIFY_DRY_RUN_ONLY") ?? "true", "true", StringComparison.OrdinalIgnoreCase);
+
+    return new
+    {
+        status = "placeholder",
+        connector = "Certify",
+        configured = missingKeys.Length == 0,
+        canRunLiveSync = false,
+        dryRunOnly,
+        authMode,
+        missingConfigKeys = missingKeys,
+        safeConfig = new
+        {
+            baseUrlConfigured = ProjectPulse038ACertifyHasValue("CERTIFY_BASE_URL"),
+            apiKeyConfigured = ProjectPulse038ACertifyHasValue("CERTIFY_API_KEY"),
+            clientIdConfigured = ProjectPulse038ACertifyHasValue("CERTIFY_CLIENT_ID"),
+            clientSecretConfigured = ProjectPulse038ACertifyHasValue("CERTIFY_CLIENT_SECRET"),
+            companyIdConfigured = ProjectPulse038ACertifyHasValue("CERTIFY_COMPANY_ID"),
+            tokenUrlConfigured = ProjectPulse038ACertifyHasValue("CERTIFY_TOKEN_URL"),
+            syncLookbackDays = Environment.GetEnvironmentVariable("CERTIFY_SYNC_LOOKBACK_DAYS") ?? "45",
+            approvedOnly = Environment.GetEnvironmentVariable("CERTIFY_SYNC_APPROVED_ONLY") ?? "true",
+            includeReceipts = Environment.GetEnvironmentVariable("CERTIFY_SYNC_INCLUDE_RECEIPTS") ?? "true",
+            projectCodeField = Environment.GetEnvironmentVariable("CERTIFY_PROJECT_CODE_FIELD") ?? "ProjectCode",
+            customerField = Environment.GetEnvironmentVariable("CERTIFY_CUSTOMER_FIELD") ?? "Customer",
+            billableFlagField = Environment.GetEnvironmentVariable("CERTIFY_BILLABLE_FLAG_FIELD") ?? "Billable"
+        },
+        message = "Certify placeholders are ready. Live sync remains disabled until real server-side credentials and connector logic are implemented.",
+        generatedAt = System.DateTimeOffset.UtcNow
+    };
+}
+
+var projectPulse038APlaceholderExpenses = new[]
+{
+    new
+    {
+        certifyReportId = "CERTIFY-PLACEHOLDER-001",
+        employeeEmail = "employee@example.com",
+        customerName = "Customer mapping pending",
+        projectCode = "PROJECT-CODE-PENDING",
+        reportStatus = "Approved placeholder",
+        expenseCategory = "Travel",
+        amount = 0.00m,
+        currency = "USD",
+        billable = true,
+        mappingStatus = "Placeholder only",
+        billingStatus = "Not ready for billing"
+    },
+    new
+    {
+        certifyReportId = "CERTIFY-PLACEHOLDER-002",
+        employeeEmail = "consultant@example.com",
+        customerName = "Customer mapping pending",
+        projectCode = "PROJECT-CODE-PENDING",
+        reportStatus = "Approved placeholder",
+        expenseCategory = "Meals",
+        amount = 0.00m,
+        currency = "USD",
+        billable = true,
+        mappingStatus = "Placeholder only",
+        billingStatus = "Not ready for billing"
+    }
+};
+
+var projectPulse038APlaceholderExceptions = new[]
+{
+    new
+    {
+        exceptionCode = "MISSING_PROJECT_MAPPING",
+        severity = "High",
+        message = "Certify project/customer field must map to a PHD project before the expense can be billed.",
+        resolution = "Confirm the Certify custom field that stores project code, customer, job number, or cost center."
+    },
+    new
+    {
+        exceptionCode = "MISSING_EMPLOYEE_MAPPING",
+        severity = "Medium",
+        message = "Certify employee identity must map to an active PHD user.",
+        resolution = "Map Certify employee email or employee ID to the PHD user directory."
+    },
+    new
+    {
+        exceptionCode = "MISSING_CATEGORY_MAPPING",
+        severity = "Medium",
+        message = "Certify expense category must map to a PHD billing/accounting category.",
+        resolution = "Create category mapping for billable, reimbursable, non-billable, and receipt-required categories."
+    }
+};
+
+app.MapGet("/api/certify/config-placeholder", () => ProjectPulse038ACertifyConfigSnapshot());
+
+app.MapGet("/api/certify/sync/status", () => new
+{
+    status = "placeholder_ready",
+    connector = "Certify",
+    canRunLiveSync = false,
+    lastSyncStatus = "Not run",
+    lastSyncAt = (string?)null,
+    lastPreviewAt = (string?)null,
+    stagedExpenseCount = projectPulse038APlaceholderExpenses.Length,
+    exceptionCount = projectPulse038APlaceholderExceptions.Length,
+    message = "Placeholder sync endpoints are available. Live Certify API calls are not enabled yet.",
+    config = ProjectPulse038ACertifyConfigSnapshot(),
+    generatedAt = System.DateTimeOffset.UtcNow
+});
+
+app.MapGet("/api/certify/expenses/staged", () => new
+{
+    status = "placeholder",
+    count = projectPulse038APlaceholderExpenses.Length,
+    stagedExpenses = projectPulse038APlaceholderExpenses,
+    message = "These are placeholder records showing the future staged expense shape. They are not imported from Certify.",
+    generatedAt = System.DateTimeOffset.UtcNow
+});
+
+app.MapGet("/api/certify/exceptions", () => new
+{
+    status = "placeholder",
+    count = projectPulse038APlaceholderExceptions.Length,
+    exceptions = projectPulse038APlaceholderExceptions,
+    message = "These are placeholder exception types expected during future Certify expense import.",
+    generatedAt = System.DateTimeOffset.UtcNow
+});
+
+app.MapPost("/api/certify/test-connection", () => new
+{
+    status = "placeholder_connection_test",
+    connector = "Certify",
+    success = false,
+    canRunLiveSync = false,
+    message = "Connection test placeholder completed. Real test requires Certify API credentials and backend connector implementation.",
+    config = ProjectPulse038ACertifyConfigSnapshot(),
+    generatedAt = System.DateTimeOffset.UtcNow
+});
+
+app.MapPost("/api/certify/sync/preview", () => new
+{
+    status = "placeholder_preview_ready",
+    connector = "Certify",
+    mode = "dry_run",
+    canRunLiveSync = false,
+    stagedExpenseCount = projectPulse038APlaceholderExpenses.Length,
+    exceptionCount = projectPulse038APlaceholderExceptions.Length,
+    stagedExpenses = projectPulse038APlaceholderExpenses,
+    exceptions = projectPulse038APlaceholderExceptions,
+    message = "Preview placeholder generated. Real preview will call Certify, stage approved expenses, and flag mapping exceptions.",
+    generatedAt = System.DateTimeOffset.UtcNow
+});
+
+app.MapPost("/api/certify/sync/run", () => new
+{
+    status = "placeholder_run_blocked",
+    connector = "Certify",
+    mode = "dry_run_only",
+    canRunLiveSync = false,
+    stagedExpenseCount = projectPulse038APlaceholderExpenses.Length,
+    exceptionCount = projectPulse038APlaceholderExceptions.Length,
+    stagedExpenses = projectPulse038APlaceholderExpenses,
+    exceptions = projectPulse038APlaceholderExceptions,
+    message = "Live Certify sync is intentionally blocked. Add real credentials, staging tables, and connector logic before enabling imports.",
+    generatedAt = System.DateTimeOffset.UtcNow
+});
+/* 038A_CERTIFY_PLACEHOLDER_ENDPOINTS_END */
+
+
 
 
 app.Run();
