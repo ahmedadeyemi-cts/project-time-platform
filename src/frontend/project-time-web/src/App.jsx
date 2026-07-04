@@ -476,6 +476,7 @@ import TimeComplianceCenter from './TimeComplianceCenter.jsx';
 import ProjectIntakeCenter from './ProjectIntakeCenter.jsx';
 import SalesInsightsDashboard from './SalesInsightsDashboard.jsx';
 import CertifyIntegrationCenter from './CertifyIntegrationCenter.jsx';
+import BillingReadinessCenter from './BillingReadinessCenter.jsx';
 import CustomerDirectoryCenter from './CustomerDirectoryCenter.jsx';
 import CostOverrunAlertCenter from './CostOverrunAlertCenter.jsx';
 import ProjectWorkspaceCenter from './ProjectWorkspaceCenter.jsx';
@@ -966,6 +967,16 @@ const roleWorkspaceModules = [
     permissions: ['VIEW_EXPENSES', 'VIEW_ACCOUNT_RECONCILIATION', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   },
   /* 038_CERTIFY_INTEGRATION_MODULE_END */
+  /* 039_BILLING_READINESS_CENTER_START */
+  {
+    route: 'billing-readiness',
+    href: '#billing-readiness',
+    title: 'Billing Readiness Center',
+    navLabel: 'MODULE 039',
+    description: 'Review project invoice packages and month-end billing runs with approved labor, staged Certify expenses, customer/project mapping, blocked dollars, exception review, and accounting export readiness.',
+    permissions: ['VIEW_ACCOUNT_RECONCILIATION', 'VIEW_APPROVAL_WORKFLOW', 'PROJECT_TIME_APPROVAL', 'VIEW_EXPENSES', 'EXPORT_TIME_EXCEL', 'EXPORT_TIME_PDF', 'DOWNLOAD_TIME_EXPORT_PACKAGE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
+  },
+  /* 039_BILLING_READINESS_CENTER_END */
   {
     route: 'service-control',
     href: '#service-control',
@@ -1172,6 +1183,7 @@ function getNavigationGroup(item) {
       return 'Resilience & Recovery';
 
     case 'workflow':
+    case 'billing-readiness':
       return 'Reports & Workflow';
 
     default:
@@ -5683,6 +5695,12 @@ Analytics - Variphy / Infortel`}
       {(activeRoute === 'certify-integration' && canSeeAny(['VIEW_EXPENSES', 'VIEW_ACCOUNT_RECONCILIATION', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
         <section id="certify-integration" className="panel certify-integration-route-panel">
           <CertifyIntegrationCenter />
+        </section>
+      ) : null}
+
+      {(activeRoute === 'billing-readiness' && canSeeAny(['VIEW_ACCOUNT_RECONCILIATION', 'VIEW_APPROVAL_WORKFLOW', 'PROJECT_TIME_APPROVAL', 'VIEW_EXPENSES', 'EXPORT_TIME_EXCEL', 'EXPORT_TIME_PDF', 'DOWNLOAD_TIME_EXPORT_PACKAGE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
+        <section id="billing-readiness" className="panel billing-readiness-route-panel">
+          <BillingReadinessCenter />
         </section>
       ) : null}
 
