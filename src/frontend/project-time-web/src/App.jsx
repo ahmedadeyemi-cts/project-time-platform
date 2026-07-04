@@ -475,6 +475,7 @@ import BackupRetentionCenter from './BackupRetentionCenter.jsx';
 import TimeComplianceCenter from './TimeComplianceCenter.jsx';
 import ProjectIntakeCenter from './ProjectIntakeCenter.jsx';
 import SalesInsightsDashboard from './SalesInsightsDashboard.jsx';
+import CertifyIntegrationCenter from './CertifyIntegrationCenter.jsx';
 import CustomerDirectoryCenter from './CustomerDirectoryCenter.jsx';
 import CostOverrunAlertCenter from './CostOverrunAlertCenter.jsx';
 import ProjectWorkspaceCenter from './ProjectWorkspaceCenter.jsx';
@@ -955,6 +956,16 @@ const roleWorkspaceModules = [
     permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   },
   /* 037_ROLES_PERMISSIONS_MATRIX_END */
+  /* 038_CERTIFY_INTEGRATION_MODULE_START */
+  {
+    route: 'certify-integration',
+    href: '#certify-integration',
+    title: 'Certify Integration Center',
+    navLabel: 'MODULE 038',
+    description: 'Plan and validate Certify expense integration readiness, employee/project/category mapping, receipt evidence, approval status, exception handling, and accounting handoff.',
+    permissions: ['VIEW_EXPENSES', 'VIEW_ACCOUNT_RECONCILIATION', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
+  },
+  /* 038_CERTIFY_INTEGRATION_MODULE_END */
   {
     route: 'service-control',
     href: '#service-control',
@@ -1136,6 +1147,7 @@ function getNavigationGroup(item) {
     case 'time-compliance':
       return 'Time Compliance';
     case 'psa-modules':
+    case 'certify-integration':
       return 'Project Operations';
 
     case 'audit-history':
@@ -5665,6 +5677,12 @@ Analytics - Variphy / Infortel`}
           <PostIntakeAgingPanel />
         <IntakeWorkTaskHandoffPanel />
         <ResourceAssignmentHandoffPanel />
+        </section>
+      ) : null}
+
+      {(activeRoute === 'certify-integration' && canSeeAny(['VIEW_EXPENSES', 'VIEW_ACCOUNT_RECONCILIATION', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
+        <section id="certify-integration" className="panel certify-integration-route-panel">
+          <CertifyIntegrationCenter />
         </section>
       ) : null}
 
