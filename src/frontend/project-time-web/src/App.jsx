@@ -482,6 +482,7 @@ import ProjectManagerWorkloadCenter from './ProjectManagerWorkloadCenter.jsx';
 import EngineeringTeamLeadUtilizationPanel from './EngineeringTeamLeadUtilizationPanel.jsx';
 import WorkTaskBuilderPanel from './WorkTaskBuilderPanel.jsx';
 import RoleAdminDirectoryPanel from './RoleAdminDirectoryPanel.jsx';
+import RolesPermissionsMatrix from './RolesPermissionsMatrix.jsx';
 import IntakeWorkTaskHandoffPanel from './IntakeWorkTaskHandoffPanel.jsx';
 import ResourceAssignmentHandoffPanel from './ResourceAssignmentHandoffPanel.jsx';
 
@@ -944,6 +945,16 @@ const roleWorkspaceModules = [
     description: 'Manage users, roles, access, and administrative configuration.',
     permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   },
+  /* 037_ROLES_PERMISSIONS_MATRIX_START */
+  {
+    route: 'roles-permissions-matrix',
+    href: '#roles-permissions-matrix',
+    title: 'Roles and Permissions Matrix',
+    navLabel: 'MODULE 037',
+    description: 'Read-only governance matrix showing role definitions, permission grants, recommended access groups, module coverage, and least-privilege review signals.',
+    permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
+  },
+  /* 037_ROLES_PERMISSIONS_MATRIX_END */
   {
     route: 'service-control',
     href: '#service-control',
@@ -1136,6 +1147,7 @@ function getNavigationGroup(item) {
     case 'user-admin':
     case 'azure-admin':
     case 'role-admin':
+    case 'roles-permissions-matrix':
       return 'Admin & Identity';
 
     case 'service-control':
@@ -5835,6 +5847,12 @@ Analytics - Variphy / Infortel`}
         </DataState>
       </section>
 
+
+      {(activeRoute === 'roles-permissions-matrix' && canSeeAny(['SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
+        <section id="roles-permissions-matrix" className="panel roles-permissions-matrix-route-panel">
+          <RolesPermissionsMatrix />
+        </section>
+      ) : null}
 
       {(hasPermission('SYSTEM_ADMINISTRATION') || hasPermission('MANAGE_ALL')) ? (
         <section id="role-admin" className="panel role-admin-panel">
