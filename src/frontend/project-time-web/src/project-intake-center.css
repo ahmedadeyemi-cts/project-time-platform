@@ -684,3 +684,112 @@
   }
 }
 /* 032_PROJECT_INTAKE_RESOURCE_REFINEMENT_CSS_END */
+
+/* 035_PROJECT_INTAKE_GUIDED_LAUNCH_CSS_START */
+.module035-launch-panel {
+  margin: 1rem 0;
+  border-color: rgba(37, 99, 235, 0.22);
+  background: linear-gradient(180deg, rgba(239, 246, 255, 0.72), rgba(255, 255, 255, 0.82));
+}
+
+.module035-launch-meter {
+  height: 0.7rem;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.22);
+  overflow: hidden;
+  margin: 0.85rem 0 1rem;
+}
+
+.module035-launch-meter > div {
+  height: 100%;
+  border-radius: inherit;
+  background: currentColor;
+  opacity: 0.42;
+  transition: width 180ms ease;
+}
+
+.module035-launch-steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 0.75rem;
+}
+
+.module035-launch-step {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.75rem;
+  padding: 0.85rem;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 0.95rem;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.module035-launch-step > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.15rem;
+  height: 2.15rem;
+  border-radius: 999px;
+  font-weight: 900;
+  background: rgba(148, 163, 184, 0.18);
+}
+
+.module035-launch-step.ready {
+  border-color: rgba(16, 185, 129, 0.36);
+}
+
+.module035-launch-step.ready > span {
+  background: rgba(16, 185, 129, 0.16);
+  color: #047857;
+}
+
+.module035-launch-step.attention {
+  border-color: rgba(245, 158, 11, 0.32);
+}
+
+.module035-launch-step.attention > span {
+  background: rgba(245, 158, 11, 0.16);
+  color: #92400e;
+}
+
+.module035-launch-step strong,
+.module035-launch-step small,
+.module035-launch-step em {
+  display: block;
+}
+
+.module035-launch-step small {
+  margin-top: 0.25rem;
+  color: #64748b;
+  line-height: 1.35;
+}
+
+.module035-launch-step em {
+  margin-top: 0.45rem;
+  font-size: 0.82rem;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.module035-launch-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+
+.module035-launch-note {
+  margin: 0.85rem 0 0;
+  padding: 0.75rem 0.85rem;
+  border: 1px dashed rgba(148, 163, 184, 0.45);
+  border-radius: 0.85rem;
+  color: #475569;
+  background: rgba(248, 250, 252, 0.72);
+  font-size: 0.9rem;
+}
+
+.module035-launch-target {
+  scroll-margin-top: 7rem;
+}
+/* 035_PROJECT_INTAKE_GUIDED_LAUNCH_CSS_END */

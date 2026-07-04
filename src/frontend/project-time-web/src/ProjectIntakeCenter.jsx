@@ -409,6 +409,127 @@ export default function ProjectIntakeCenter() {
     }
   ] : [];
 
+  /* 035_PROJECT_INTAKE_GUIDED_LAUNCH_START */
+  const selectedIntakeResourceRequests = useMemo(() => {
+    if (!selectedIntake?.id) return [];
+    return resourceRequests.filter((request) => request.projectIntakeRequestId === selectedIntake.id);
+  }, [resourceRequests, selectedIntake?.id]);
+
+  const selectedIntakeDocumentCount = Number(
+    selectedIntake?.documentCount ??
+    selectedIntake?.documentsCount ??
+    selectedIntake?.sourceDocumentCount ??
+    selectedIntake?.attachedDocumentCount ??
+    0
+  );
+
+  const selectedIntakeHasDocument = Boolean(
+    selectedIntakeDocumentCount > 0 ||
+    selectedIntake?.externalRecordUrl ||
+    selectedIntake?.sourceDocumentUploaded ||
+    selectedIntake?.sourceDocumentReceived ||
+    selectedIntake?.hasSourceDocument ||
+    selectedIntake?.sourceDocumentRequired === false ||
+    intakeFile
+  );
+
+  const selectedIntakePmReady = Boolean(
+    selectedIntake?.assignedPmUserId ||
+    selectedIntake?.assignedPmName ||
+    intakeForm.assignedPmUserId
+  );
+
+  const selectedIntakeCustomerReady = Boolean(
+    selectedIntake?.clientId ||
+    selectedIntake?.clientName ||
+    intakeForm.clientId ||
+    selectedCustomer
+  );
+
+  const selectedIntakeResourceReady = Boolean(
+    selectedIntakeResourceRequests.length > 0 ||
+    (selectedIntake?.id && resourceForm.projectIntakeRequestId === selectedIntake.id)
+  );
+
+  const selectedIntakeEngineerReady = Boolean(
+    selectedResourceAssignedCount > 0 ||
+    selectedDraftEngineerCount > 0 ||
+    selectedIntakeResourceRequests.some((request) => Number(request.assignedEngineerCount ?? 0) > 0)
+  );
+
+  const selectedIntakeWorkspaceReady = Boolean(
+    selectedIntakeCustomerReady &&
+    selectedIntakePmReady &&
+    selectedIntakeHasDocument &&
+    selectedIntakeResourceReady &&
+    selectedIntakeEngineerReady
+  );
+
+  const launchWorkflowSteps = [
+    {
+      key: 'intake',
+      title: 'Create or select intake',
+      ready: Boolean(selectedIntake),
+      helper: selectedIntake
+        ? `${selectedIntake.requestNumber || 'Selected intake'} · ${selectedIntake.requestTitle || 'Untitled request'}`
+        : 'Create a new intake or select an existing one from the intake queue.',
+      action: 'Use the intake form or select an intake below.'
+    },
+    {
+      key: 'customer-document',
+      title: 'Attach customer and source document',
+      ready: selectedIntakeCustomerReady && selectedIntakeHasDocument,
+      helper: selectedIntakeCustomerReady
+        ? `${selectedIntake?.clientName || selectedCustomer?.clientName || intakeForm.clientName || 'Customer selected'} · ${selectedIntakeHasDocument ? 'document/source traceability ready' : 'document still needed'}`
+        : 'Select the customer and upload/trace the SOW, GSD, quote, order form, or source record.',
+      action: 'Confirm customer, source reference, and document visibility.'
+    },
+    {
+      key: 'pm',
+      title: 'Assign Project Manager',
+      ready: selectedIntakePmReady,
+      helper: selectedIntake?.assignedPmName || projectManagers.find((pm) => pm.userId === intakeForm.assignedPmUserId)?.displayName || 'No PM assigned yet.',
+      action: 'Choose the assigned PM on the intake or staged resource request.'
+    },
+    {
+      key: 'resource-request',
+      title: 'Stage engineering resource request',
+      ready: selectedIntakeResourceReady,
+      helper: selectedIntakeResourceRequests.length > 0
+        ? `${selectedIntakeResourceRequests.length} resource request(s) linked to this intake.`
+        : 'No resource request is linked yet.',
+      action: 'Use selected intake, then create the resource request.'
+    },
+    {
+      key: 'engineers',
+      title: 'Assign engineer(s)',
+      ready: selectedIntakeEngineerReady,
+      helper: selectedResourceAssignedCount > 0
+        ? `${selectedResourceAssignedCount} engineer(s) already assigned.`
+        : selectedDraftEngineerCount > 0
+          ? `${selectedDraftEngineerCount} engineer(s) staged in the assignment draft.`
+          : 'Select one or more engineers and allocation mode.',
+      action: 'Select engineers and click Assign engineers.'
+    },
+    {
+      key: 'workspace',
+      title: 'Ready for project workspace',
+      ready: selectedIntakeWorkspaceReady,
+      helper: selectedIntakeWorkspaceReady
+        ? 'Intake has the minimum launch information needed for active delivery.'
+        : 'Complete the prior steps before moving into active project delivery.',
+      action: 'Convert/activate workflow can be wired to backend project creation later.'
+    }
+  ];
+
+  const launchReadyCount = launchWorkflowSteps.filter((step) => step.ready).length;
+  const launchReadyPercent = Math.round((launchReadyCount / launchWorkflowSteps.length) * 100);
+
+  function scrollToLaunchSection(sectionId) {
+    document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  /* 035_PROJECT_INTAKE_GUIDED_LAUNCH_END */
+
   const readyResourceRequests = useMemo(() => {
     return resourceRequests.filter((request) => request.status === 'assigned' || request.status === 'partially_assigned').length;
   }, [resourceRequests]);
@@ -563,10 +684,10 @@ export default function ProjectIntakeCenter() {
           <p className="eyebrow">019M-P</p>
           <h2>Project Intake & Engineering Resource Requests</h2>
           <p className="muted">
-            Workflow for client intake, PM ownership, engineering resource demand, capacity visibility, and assignment readiness.
+            Guided launch workspace for client intake, document handoff, PM ownership, engineering demand, engineer assignment, and project workspace readiness.
           </p>
         </div>
-        <StatusBadge tone="safe">Workflow foundation</StatusBadge>
+        <StatusBadge tone="safe">Guided launch workflow</StatusBadge>
       </div>
 
       {overview.error && <div className="project-intake-error">{overview.error}</div>}
@@ -583,6 +704,46 @@ export default function ProjectIntakeCenter() {
         <article><span>Needs source doc</span><strong>{overview.loading ? '...' : intakeWorkflowMetrics.sourceDocumentRequired}</strong><small>Source document still required</small></article>
         <article><span>Resource-linked</span><strong>{overview.loading ? '...' : intakeWorkflowMetrics.linkedToResourceRequest}</strong><small>Intakes with engineering demand linked</small></article>
       </div>
+
+      <article className="project-intake-panel module035-launch-panel">
+        <div className="project-intake-section-header">
+          <div>
+            <p className="eyebrow">035 guided launch path</p>
+            <h3>Intake to active project workflow</h3>
+            <p className="muted">
+              Use this checklist as the single path from incoming project request to PM ownership, engineering assignment, and project workspace readiness.
+            </p>
+          </div>
+          <StatusBadge tone={launchReadyPercent === 100 ? 'safe' : 'attention'}>{launchReadyCount}/{launchWorkflowSteps.length} ready</StatusBadge>
+        </div>
+
+        <div className="module035-launch-meter" aria-label={`Project launch readiness ${launchReadyPercent}%`}>
+          <div style={{ width: `${launchReadyPercent}%` }} />
+        </div>
+
+        <div className="module035-launch-steps">
+          {launchWorkflowSteps.map((step, index) => (
+            <article className={`module035-launch-step ${step.ready ? 'ready' : 'attention'}`} key={step.key}>
+              <span>{String(index + 1).padStart(2, '0')}</span>
+              <div>
+                <strong>{step.title}</strong>
+                <small>{step.helper}</small>
+                <em>{step.action}</em>
+              </div>
+            </article>
+          ))}
+        </div>
+
+        <div className="module035-launch-actions">
+          <button type="button" className="secondary-action" onClick={() => scrollToLaunchSection('module035-create-intake')}>Go to intake</button>
+          <button type="button" className="secondary-action" onClick={() => scrollToLaunchSection('module035-resource-request')}>Go to resource request</button>
+          <button type="button" className="secondary-action" onClick={() => scrollToLaunchSection('module035-engineer-assignment')}>Go to engineer assignment</button>
+        </div>
+
+        <p className="module035-launch-note">
+          Project closure intentionally stays outside Module 020. Closeout should be handled later in the active project/workload or closeout workflow after delivery is complete.
+        </p>
+      </article>
 
       {selectedIntake && (
         <article className="project-intake-panel intake-readiness-panel">
@@ -634,7 +795,7 @@ export default function ProjectIntakeCenter() {
       )}
 
       <div className="project-intake-two-column">
-        <article className="project-intake-panel">
+        <article id="module035-create-intake" className="project-intake-panel module035-launch-target">
           <h3>Create Project Intake</h3>
           <p className="muted">Salesforce-sourced intake can still include manually uploaded SOW, GSD, and supporting documents.</p>
           <form className="project-intake-form" onSubmit={createIntake}>
@@ -681,7 +842,7 @@ export default function ProjectIntakeCenter() {
           </form>
         </article>
 
-        <article className="project-intake-panel">
+        <article id="module035-resource-request" className="project-intake-panel module035-launch-target">
           <div className="project-intake-section-header compact">
             <div>
               <h3>Create Engineering Resource Request</h3>
@@ -705,7 +866,7 @@ export default function ProjectIntakeCenter() {
         </article>
       </div>
 
-      <article className="project-intake-panel">
+      <article id="module035-engineer-assignment" className="project-intake-panel module035-launch-target">
         <div className="project-intake-section-header">
           <div>
             <h3>Engineering Resource Requests</h3>
