@@ -398,6 +398,13 @@ export default function RolesPermissionsMatrix() {
           <span className="roles-matrix-count">{filteredPermissionRows.length} permissions shown</span>
         </div>
 
+        {/* 037A_PERMISSION_MATRIX_READABILITY_START */}
+        <div className="roles-matrix-scroll-note">
+          <strong>Matrix viewing tip</strong>
+          <span>The Module, Permission, and Description columns stay pinned. Scroll horizontally inside the table to compare role access without losing context.</span>
+        </div>
+        {/* 037A_PERMISSION_MATRIX_READABILITY_END */}
+
         <div className="roles-matrix-toolbar">
           <label>
             Role
@@ -437,7 +444,12 @@ export default function RolesPermissionsMatrix() {
                 <th>Permission</th>
                 <th>Description</th>
                 {visibleRoles.map((role) => (
-                  <th key={`head-${role.roleCode}`} title={role.roleCode}>{role.roleName}</th>
+                  <th className="roles-matrix-role-column" key={`head-${role.roleCode}`} title={`${role.roleName} · ${role.roleCode}`}>
+                    <span className="roles-matrix-role-heading">
+                      <strong>{role.roleName}</strong>
+                      <small>{role.roleCode}</small>
+                    </span>
+                  </th>
                 ))}
               </tr>
             </thead>
@@ -453,8 +465,14 @@ export default function RolesPermissionsMatrix() {
                   {visibleRoles.map((role) => {
                     const granted = row.roleCodes.includes(role.roleCode);
                     return (
-                      <td className={granted ? 'granted' : 'not-granted'} key={`${row.permissionCode}-${role.roleCode}`}>
-                        {granted ? '✓' : '—'}
+                      <td
+                        className={granted ? 'granted' : 'not-granted'}
+                        key={`${row.permissionCode}-${role.roleCode}`}
+                        title={`${role.roleName}: ${granted ? 'Granted' : 'Not granted'}`}
+                      >
+                        <span aria-label={`${role.roleName}: ${granted ? 'Granted' : 'Not granted'}`}>
+                          {granted ? '✓' : '—'}
+                        </span>
                       </td>
                     );
                   })}
