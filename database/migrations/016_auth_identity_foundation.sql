@@ -1,4 +1,4 @@
--- Project Pulse
+-- Project Health Dashboard
 -- Migration: 016_auth_identity_foundation.sql
 -- Purpose: Authentication and identity foundation for Entra SSO, local admin login, and password reset approval workflow.
 
@@ -94,7 +94,7 @@ CREATE TABLE IF NOT EXISTS notification_outbox (
 INSERT INTO auth_identity_providers (provider_code, provider_name, provider_type, authority_url, is_active)
 VALUES
     ('ENTRA_ID', 'Microsoft Entra ID', 'oidc', 'https://login.microsoftonline.com/{tenant}/v2.0', TRUE),
-    ('LOCAL', 'Project Pulse Local Authentication', 'local', NULL, TRUE)
+    ('LOCAL', 'Project Health Dashboard Local Authentication', 'local', NULL, TRUE)
 ON CONFLICT (provider_code) DO UPDATE
 SET provider_name = EXCLUDED.provider_name,
     provider_type = EXCLUDED.provider_type,

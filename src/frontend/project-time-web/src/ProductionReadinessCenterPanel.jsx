@@ -66,7 +66,7 @@ export default function ProductionReadinessCenterPanel() {
 
     try {
       const response = await fetch('/api/production/readiness-command-center', {
-        headers: sessionToken ? { 'X-ProjectPulse-Session': sessionToken } : {}
+        headers: sessionToken ? { 'X-Project Health Dashboard-Session': sessionToken } : {}
       });
 
       const text = await response.text();

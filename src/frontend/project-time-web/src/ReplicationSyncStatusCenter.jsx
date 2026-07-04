@@ -32,7 +32,7 @@ function buildAuthHeaders(authSession, extraHeaders = {}) {
     ...extraHeaders,
     ...(token ? {
       Authorization: `Bearer ${token}`,
-      'X-ProjectPulse-Session': token,
+      'X-Project Health Dashboard-Session': token,
       'X-Project-Pulse-Session': token,
       'X-Session-Token': token
     } : {})
@@ -222,7 +222,7 @@ export default function ReplicationSyncStatusCenter({ authSession }) {
           <p className="replication-sync-eyebrow">System Operations</p>
           <h1>Replication & Sync Status</h1>
           <p>
-            Validate whether this ProjectPulse node is ready for future failover,
+            Validate whether this Project Health Dashboard node is ready for future failover,
             peer synchronization, and disaster recovery operations.
           </p>
         </div>
@@ -256,8 +256,8 @@ export default function ReplicationSyncStatusCenter({ authSession }) {
               <h2>{peerConfigured ? 'Peer-aware DR mode' : 'Single-server readiness mode'}</h2>
               <p>
                 {peerConfigured
-                  ? 'A peer server is configured. ProjectPulse will evaluate peer reachability and future sync readiness.'
-                  : 'No redundant ProjectPulse server is configured yet. This is expected until the second or third server is built.'}
+                  ? 'A peer server is configured. Project Health Dashboard will evaluate peer reachability and future sync readiness.'
+                  : 'No redundant Project Health Dashboard server is configured yet. This is expected until the second or third server is built.'}
               </p>
             </div>
             <StatusBadge status={peerConfigured ? status.peer?.status : 'not_configured'} />
@@ -317,7 +317,7 @@ export default function ReplicationSyncStatusCenter({ authSession }) {
                     type="text"
                     value={settings.peerName}
                     onChange={(event) => updateSetting('peerName', event.target.value)}
-                    placeholder="Example: ProjectPulse DR Node"
+                    placeholder="Example: Project Health Dashboard DR Node"
                   />
                 </label>
 
@@ -332,7 +332,7 @@ export default function ReplicationSyncStatusCenter({ authSession }) {
                 </label>
 
                 <label>
-                  <span>Peer ProjectPulse URL</span>
+                  <span>Peer Project Health Dashboard URL</span>
                   <input
                     type="url"
                     value={settings.peerUrl}

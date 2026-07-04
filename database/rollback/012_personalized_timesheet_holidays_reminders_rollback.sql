@@ -1,4 +1,4 @@
--- Project Pulse
+-- Project Health Dashboard
 -- Rollback: 012_personalized_timesheet_holidays_reminders_rollback.sql
 
 BEGIN;

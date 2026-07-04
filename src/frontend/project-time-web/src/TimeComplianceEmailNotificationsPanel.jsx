@@ -55,7 +55,7 @@ async function fetchJson(path, token, options = {}) {
     headers: {
       Accept: 'application/json',
       'Content-Type': 'application/json',
-      'X-ProjectPulse-Session': token,
+      'X-Project Health Dashboard-Session': token,
       ...(options.headers || {})
     },
     credentials: 'same-origin'
@@ -169,7 +169,7 @@ export default function TimeComplianceEmailNotificationsPanel() {
 
     const confirmed = window.confirm(
       deliveryMode === 'brevo_api' || deliveryMode === 'provider'
-        ? 'Send automatic time-compliance email notifications through the shared ProjectPulse email provider now?'
+        ? 'Send automatic time-compliance email notifications through the shared Project Health Dashboard email provider now?'
         : deliveryMode === 'sendmail'
           ? 'Send automatic time-compliance email notifications through local sendmail now?'
           : 'Record an outbox-only notification run now? No email will be sent.'

@@ -131,7 +131,7 @@ app.MapPost("/api/holidays/import-text", async (HolidayCsvImportRequest request)
             batchCommand.Parameters.AddWithValue("original_filename", string.IsNullOrWhiteSpace(request.Filename) ? $"holiday-upload-{DateTime.UtcNow:yyyyMMddHHmmss}.csv" : request.Filename.Trim());
             batchCommand.Parameters.AddWithValue("uploaded_by_user_id", userId);
             batchCommand.Parameters.AddWithValue("row_count", rows.Count);
-            batchCommand.Parameters.AddWithValue("notes", "Uploaded through Project Pulse holiday admin UI");
+            batchCommand.Parameters.AddWithValue("notes", "Uploaded through Project Health Dashboard holiday admin UI");
             batchId = (Guid)(await batchCommand.ExecuteScalarAsync() ?? throw new InvalidOperationException("Unable to create holiday upload batch."));
         }
 
@@ -406,10 +406,10 @@ if 'id="holiday-admin"' not in app:
         app = app.replace('      <section id="utilization"', holiday_panel + '\n      <section id="utilization"', 1)
 
 # Full-width layout CSS overrides and UI styles.
-if '/* Project Pulse wide ChangePoint-style layout */' not in css:
+if '/* Project Health Dashboard wide ChangePoint-style layout */' not in css:
     css += r'''
 
-/* Project Pulse wide ChangePoint-style layout */
+/* Project Health Dashboard wide ChangePoint-style layout */
 .app-shell {
   max-width: none !important;
   width: 100% !important;

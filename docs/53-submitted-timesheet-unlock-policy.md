@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document records the requested lock and unlock behavior for submitted timesheets in Project Pulse.
+This document records the requested lock and unlock behavior for submitted timesheets in Project Health Dashboard.
 
 ## Date
 

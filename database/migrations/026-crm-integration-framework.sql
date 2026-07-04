@@ -160,7 +160,7 @@ INSERT INTO crm_integration_field_mappings (
     display_order
 )
 VALUES
-('shared', 'Account/Company', 'Name', 'ProjectPulse Customer', 'customer_match', 'Creates or matches onboarded customer record.', TRUE, 10),
+('shared', 'Account/Company', 'Name', 'Project Health Dashboard Customer', 'customer_match', 'Creates or matches onboarded customer record.', TRUE, 10),
 ('shared', 'Opportunity/Deal', 'Name', 'SOW Project / Engagement Name', 'sow_generator', 'Prepopulates the SOW Generator project name.', TRUE, 20),
 ('shared', 'Opportunity/Deal', 'Record ID', 'CRM Reference', 'audit_traceability', 'Preserved for audit and traceability.', TRUE, 30),
 ('shared', 'Quote/Deal', 'Value', 'Estimated Revenue / Planned Cost Context', 'intake_foundation', 'Used for intake readiness and executive visibility.', FALSE, 40),

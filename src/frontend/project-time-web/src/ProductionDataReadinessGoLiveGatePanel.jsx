@@ -89,7 +89,7 @@ function buildGateEvidence(checks, gateState, gateSummary) {
   const blockers = checks.filter((check) => normalizeStatus(check.status) !== 'ready');
 
   return [
-    'Project Pulse - Production Data Go-Live Gate Evidence',
+    'Project Health Dashboard - Production Data Go-Live Gate Evidence',
     `Generated: ${new Date().toLocaleString()}`,
     '',
     `Gate status: ${gateSummary.statusLabel}`,

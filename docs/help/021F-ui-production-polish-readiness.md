@@ -2,7 +2,7 @@
 
 ## Scope
 
-021F creates a static UI production-polish report for ProjectPulse / ChangePoint.
+021F creates a static UI production-polish report for Project Health Dashboard / ChangePoint.
 
 ## Review Areas
 

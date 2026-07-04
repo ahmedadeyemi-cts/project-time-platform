@@ -24,7 +24,7 @@ function buildAuthHeaders(authSession, extraHeaders = {}) {
     ...extraHeaders,
     ...(token ? {
       Authorization: `Bearer ${token}`,
-      'X-ProjectPulse-Session': token,
+      'X-Project Health Dashboard-Session': token,
       'X-Project-Pulse-Session': token,
       'X-Session-Token': token
     } : {})
@@ -203,7 +203,7 @@ export default function RestoreValidationCenter({ authSession }) {
           <p className="restore-validation-eyebrow">System Operations</p>
           <h1>Restore Validation</h1>
           <p>
-            Confirm that ProjectPulse backups are usable before a disaster recovery event.
+            Confirm that Project Health Dashboard backups are usable before a disaster recovery event.
             This validation does not restore over production.
           </p>
         </div>
@@ -236,7 +236,7 @@ export default function RestoreValidationCenter({ authSession }) {
               <span>Safe validation mode</span>
               <h2>Backup inspected without touching production</h2>
               <p>
-                ProjectPulse checks the backup bundle, checksum, database dump, configuration archive,
+                Project Health Dashboard checks the backup bundle, checksum, database dump, configuration archive,
                 application snapshot, and DR runbook. No production restore is performed.
               </p>
             </div>

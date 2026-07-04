@@ -58,13 +58,13 @@ if "const holidayYearOptions = useMemo" not in app:
 # -----------------------------
 # 2) Professional hero section
 # -----------------------------
-hero_pattern = r'''      <section id="dashboard" className="hero">\n        <p className="eyebrow">US Signal Project Pulse</p>\n        <h1>Project Pulse: time, approval, utilization, and accounting workflow</h1>\n        <p className="hero-copy">\n          A focused internal platform for weekly time entry, task-based project assignment, manager approval, project validation, accounting reconciliation, and utilization reporting\.\n        </p>\n      </section>'''
+hero_pattern = r'''      <section id="dashboard" className="hero">\n        <p className="eyebrow">US Signal Project Health Dashboard</p>\n        <h1>Project Health Dashboard: time, approval, utilization, and accounting workflow</h1>\n        <p className="hero-copy">\n          A focused internal platform for weekly time entry, task-based project assignment, manager approval, project validation, accounting reconciliation, and utilization reporting\.\n        </p>\n      </section>'''
 hero_replacement = r'''      <section id="dashboard" className="hero hero-polished">
         <div className="hero-content-block">
-          <p className="eyebrow">US Signal Project Pulse</p>
+          <p className="eyebrow">US Signal Project Health Dashboard</p>
           <h1>Operational command center for time, approvals, utilization, and billing readiness.</h1>
           <p className="hero-copy">
-            Project Pulse brings weekly time entry, task-based project assignment, manager approval, project validation, accounting reconciliation, and utilization reporting into one internal workflow.
+            Project Health Dashboard brings weekly time entry, task-based project assignment, manager approval, project validation, accounting reconciliation, and utilization reporting into one internal workflow.
           </p>
           <div className="hero-pill-row">
             <span>Time entry</span>

@@ -1,11 +1,11 @@
-# Compact Dashboard and ProjectPulse Database Rename
+# Compact Dashboard and Project Health Dashboard Database Rename
 
 ## Purpose
 
-This document records two requested Project Pulse updates:
+This document records two requested Project Health Dashboard updates:
 
 1. Reduce the size of the dashboard hero section so the application feels more like a working platform and less like a large landing page.
-2. Rename the PostgreSQL database to `ProjectPulse`.
+2. Rename the PostgreSQL database to `Project Health Dashboard`.
 
 ## Date
 
@@ -31,7 +31,7 @@ The dashboard hero section was reduced by changing:
 A deployment script was added to rename the application database from the current database name to:
 
 ```text
-ProjectPulse
+Project Health Dashboard
 ```
 
 ## File Added
@@ -43,17 +43,17 @@ ProjectPulse
 The script:
 
 1. Loads database settings from `/opt/project-time-platform/config/postgres.env`.
-2. Stops the Project Pulse API service to release database connections.
+2. Stops the Project Health Dashboard API service to release database connections.
 3. Terminates any active sessions to the old database.
-4. Renames the PostgreSQL database to `ProjectPulse`.
+4. Renames the PostgreSQL database to `Project Health Dashboard`.
 5. Backs up the current `postgres.env` file.
-6. Updates `PTP_DB_NAME=ProjectPulse` in `/opt/project-time-platform/config/postgres.env`.
+6. Updates `PTP_DB_NAME=Project Health Dashboard` in `/opt/project-time-platform/config/postgres.env`.
 7. Validates that the application database user can connect to the renamed database.
 8. Restarts the API service.
 
 ## Important Note
 
-PostgreSQL database names are often lowercase by convention. However, this project is using the requested brand-aligned database name `ProjectPulse`. The script handles the mixed-case name by quoting the database identifier during rename.
+PostgreSQL database names are often lowercase by convention. However, this project is using the requested brand-aligned database name `Project Health Dashboard`. The script handles the mixed-case name by quoting the database identifier during rename.
 
 ## Validation Steps
 
@@ -62,9 +62,9 @@ PostgreSQL database names are often lowercase by convention. However, this proje
 3. Confirm the database connection check succeeds.
 4. Redeploy or restart the API if needed.
 5. Rebuild and restart the frontend.
-6. Open Project Pulse in the browser.
+6. Open Project Health Dashboard in the browser.
 7. Confirm the dashboard hero section is smaller.
-8. Confirm the Database status card displays `ProjectPulse`.
+8. Confirm the Database status card displays `Project Health Dashboard`.
 
 ## Status
 

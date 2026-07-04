@@ -32,7 +32,7 @@ for path in "${ENDPOINTS[@]}"; do
   echo
   echo "--- $path ---"
   HTTP_CODE=$(curl -sS --max-time 30 "http://127.0.0.1:5080$path" \
-    -H "X-ProjectPulse-Session: $SSO_TOKEN" \
+    -H "X-Project Health Dashboard-Session: $SSO_TOKEN" \
     -o /tmp/019m-bl-bu-endpoint.json \
     -w "%{http_code}")
 
@@ -56,7 +56,7 @@ echo
 echo "--- Production preflight validation run ---"
 HTTP_CODE=$(curl -sS --max-time 30 "http://127.0.0.1:5080/api/workflow/preflight-validation/run" \
   -X POST \
-  -H "X-ProjectPulse-Session: $SSO_TOKEN" \
+  -H "X-Project Health Dashboard-Session: $SSO_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"action":"accounting_reconciliation_review","weekStart":"2026-06-21","weekEnd":"2026-07-04"}' \
   -o /tmp/019m-bl-bu-preflight-run.json \
@@ -72,7 +72,7 @@ fi
 
 echo
 echo "--- Engineer negative access checks ---"
-ENGINEER_ONLY_ID="$(sudo -u postgres psql -d ProjectPulse -At <<'SQL'
+ENGINEER_ONLY_ID="$(sudo -u postgres psql -d Project Health Dashboard -At <<'SQL'
 WITH user_roles AS (
     SELECT
         u.user_id,
@@ -113,16 +113,16 @@ if [ -n "$ENGINEER_ONLY_ID" ]; then
     if [[ "$path" == "/api/workflow/preflight-validation/run" ]]; then
       HTTP_CODE=$(curl -sS --max-time 30 "http://127.0.0.1:5080$path" \
         -X POST \
-        -H "X-ProjectPulse-Session: $SSO_TOKEN" \
-        -H "X-ProjectPulse-View-As-User: $ENGINEER_ONLY_ID" \
+        -H "X-Project Health Dashboard-Session: $SSO_TOKEN" \
+        -H "X-Project Health Dashboard-View-As-User: $ENGINEER_ONLY_ID" \
         -H "Content-Type: application/json" \
         -d '{"action":"accounting_reconciliation_review"}' \
         -o /tmp/019m-bl-bu-engineer.json \
         -w "%{http_code}")
     else
       HTTP_CODE=$(curl -sS --max-time 30 "http://127.0.0.1:5080$path" \
-        -H "X-ProjectPulse-Session: $SSO_TOKEN" \
-        -H "X-ProjectPulse-View-As-User: $ENGINEER_ONLY_ID" \
+        -H "X-Project Health Dashboard-Session: $SSO_TOKEN" \
+        -H "X-Project Health Dashboard-View-As-User: $ENGINEER_ONLY_ID" \
         -o /tmp/019m-bl-bu-engineer.json \
         -w "%{http_code}")
     fi

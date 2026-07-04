@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 REPO_ROOT="${PROJECTPULSE_REPO_ROOT:-/opt/project-time-platform/app/project-time-platform}"
-DB_NAME="${PROJECTPULSE_DB_NAME:-ProjectPulse}"
+DB_NAME="${PROJECTPULSE_DB_NAME:-Project Health Dashboard}"
 BACKUP_ROOT="${PROJECTPULSE_BACKUP_ROOT:-/opt/project-time-platform/backups/manual-deploy}"
 PUBLIC_URL="${PROJECTPULSE_PUBLIC_URL:-https://projectpulse-test.onenecklab.com}"
 
@@ -11,7 +11,7 @@ cd "$REPO_ROOT"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 BACKUP_DIR="$BACKUP_ROOT/$STAMP"
 
-echo "== ProjectPulse safe deployment =="
+echo "== Project Health Dashboard safe deployment =="
 echo "Repo: $REPO_ROOT"
 echo "Backup dir: $BACKUP_DIR"
 echo "Public URL: $PUBLIC_URL"

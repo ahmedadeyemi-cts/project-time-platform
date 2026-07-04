@@ -46,7 +46,7 @@ function buildAuthHeaders(authSession, extraHeaders = {}) {
     ...extraHeaders,
     ...(token ? {
       Authorization: `Bearer ${token}`,
-      'X-ProjectPulse-Session': token,
+      'X-Project Health Dashboard-Session': token,
       'X-Project-Pulse-Session': token,
       'X-Session-Token': token
     } : {})
@@ -254,7 +254,7 @@ function ServiceControlCenter({ authSession }) {
           <p className="eyebrow">System Operations</p>
           <h2>Service Control Center</h2>
           <p>
-            Monitor ProjectPulse services, API components, database health, integrations, runtime versions, and administrative restart actions.
+            Monitor Project Health Dashboard services, API components, database health, integrations, runtime versions, and administrative restart actions.
           </p>
         </div>
 

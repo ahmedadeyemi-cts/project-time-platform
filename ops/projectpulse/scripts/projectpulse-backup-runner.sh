@@ -116,12 +116,12 @@ PY
 
     if [ "$STATUS" = "completed" ] && [ "${PROJECTPULSE_BACKUP_NOTIFY_ON_SUCCESS:-false}" = "true" ]; then
       RECIPIENTS="${PROJECTPULSE_BACKUP_SUCCESS_RECIPIENTS:-}"
-      SUBJECT="ProjectPulse backup completed"
+      SUBJECT="Project Health Dashboard backup completed"
     fi
 
     if [ "$STATUS" = "failed" ] && [ "${PROJECTPULSE_BACKUP_NOTIFY_ON_FAILURE:-true}" = "true" ]; then
       RECIPIENTS="${PROJECTPULSE_BACKUP_FAILURE_RECIPIENTS:-}"
-      SUBJECT="ProjectPulse backup failed"
+      SUBJECT="Project Health Dashboard backup failed"
     fi
 
     echo "Notification decision: status=$STATUS notify_success=${PROJECTPULSE_BACKUP_NOTIFY_ON_SUCCESS:-false} notify_failure=${PROJECTPULSE_BACKUP_NOTIFY_ON_FAILURE:-true} recipients=$RECIPIENTS" >> "$OUTPUT_FILE"
@@ -133,7 +133,7 @@ PY
     if [ -n "$RECIPIENTS" ]; then
       BODY_FILE="$(mktemp)"
       {
-        echo "ProjectPulse backup status: $STATUS"
+        echo "Project Health Dashboard backup status: $STATUS"
         echo "Request ID: $REQUEST_ID"
         echo "Started at: $STARTED_AT"
         echo "Completed at: $COMPLETED_AT"

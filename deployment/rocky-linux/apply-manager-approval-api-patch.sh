@@ -151,7 +151,7 @@ static async Task<Guid> GetOrCreateDevelopmentManagerUserIdAsync(NpgsqlConnectio
 {
     const string sql = """
         INSERT INTO app_users (email, display_name, job_title, department, is_active)
-        VALUES ('ahmed.adeyemi@ussignal.com', 'Ahmed Adeyemi', 'Development Manager', 'Project Pulse', TRUE)
+        VALUES ('ahmed.adeyemi@ussignal.com', 'Ahmed Adeyemi', 'Development Manager', 'Project Health Dashboard', TRUE)
         ON CONFLICT (email) DO UPDATE
         SET display_name = EXCLUDED.display_name,
             updated_at = NOW()
@@ -336,8 +336,8 @@ if 'static async Task<Guid> GetOrCreateDevelopmentManagerUserIdAsync' not in api
     api = api.replace('static async Task<Guid> GetOrCreateDevelopmentUserIdAsync', manager_helpers + 'static async Task<Guid> GetOrCreateDevelopmentUserIdAsync', 1)
 else:
     # Make repeated runs repair the helper body created by older patches.
-    api = api.replace("VALUES ('manager@ussignal.local', 'Development Manager', 'Development Manager', 'Project Pulse', TRUE)", "VALUES ('ahmed.adeyemi@ussignal.com', 'Ahmed Adeyemi', 'Development Manager', 'Project Pulse', TRUE)")
-    api = api.replace("VALUES ('ahmed.adeyemi@ussignal.com', 'Development Manager', 'Development Manager', 'Project Pulse', TRUE)", "VALUES ('ahmed.adeyemi@ussignal.com', 'Ahmed Adeyemi', 'Development Manager', 'Project Pulse', TRUE)")
+    api = api.replace("VALUES ('manager@ussignal.local', 'Development Manager', 'Development Manager', 'Project Health Dashboard', TRUE)", "VALUES ('ahmed.adeyemi@ussignal.com', 'Ahmed Adeyemi', 'Development Manager', 'Project Health Dashboard', TRUE)")
+    api = api.replace("VALUES ('ahmed.adeyemi@ussignal.com', 'Development Manager', 'Development Manager', 'Project Health Dashboard', TRUE)", "VALUES ('ahmed.adeyemi@ussignal.com', 'Ahmed Adeyemi', 'Development Manager', 'Project Health Dashboard', TRUE)")
 
 if 'internal sealed record ManagerApprovalActionRequest' not in api:
     api = api.replace('internal sealed record TimesheetSaveRequest', 'internal sealed record ManagerApprovalActionRequest(Guid TimesheetId, DateOnly WorkDate, string? Comment);\n\ninternal sealed record TimesheetSaveRequest', 1)

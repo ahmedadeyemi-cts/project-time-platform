@@ -13,7 +13,7 @@ function getStoredAuthSession() {
 
 function getProjectPulseAuthHeaders() {
   const session = getStoredAuthSession();
-  return session?.sessionToken ? { 'X-ProjectPulse-Session': session.sessionToken } : {};
+  return session?.sessionToken ? { 'X-Project Health Dashboard-Session': session.sessionToken } : {};
 }
 
 async function readApiErrorMessage(response, path) {

@@ -1,4 +1,4 @@
--- Project Pulse
+-- Project Health Dashboard
 -- Migration: 009_project_task_assignment_foundation_seed.sql
 -- Purpose: Seed project/task assignment foundation so Open Tasks can be validated in the engineer timesheet.
 

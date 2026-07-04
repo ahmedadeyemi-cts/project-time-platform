@@ -1,4 +1,4 @@
--- Project Pulse
+-- Project Health Dashboard
 -- Rollback: 009_project_task_assignment_foundation_seed_rollback.sql
 
 BEGIN;

@@ -127,7 +127,7 @@ const routeContext = {
 function getContext(route) {
   return routeContext[route] || {
     page: route || 'Current page',
-    purpose: 'Installed Project Pulse page for the current role.',
+    purpose: 'Installed Project Health Dashboard page for the current role.',
     backend: 'Role-protected application endpoints',
     check: 'Confirm the page loads, navigation works, and role restrictions make sense.'
   };

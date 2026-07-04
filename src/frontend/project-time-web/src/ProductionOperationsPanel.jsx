@@ -195,11 +195,11 @@ function getCurrentRoute() {
 async function fetchProductionJson(path, token, viewAsUserId) {
   const headers = {
     Accept: 'application/json',
-    'X-ProjectPulse-Session': token
+    'X-Project Health Dashboard-Session': token
   };
 
   if (viewAsUserId) {
-    headers['X-ProjectPulse-View-As-User'] = viewAsUserId;
+    headers['X-Project Health Dashboard-View-As-User'] = viewAsUserId;
   }
 
   try {

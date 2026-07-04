@@ -1,5 +1,5 @@
 [Unit]
-Description=ProjectPulse Backup Restore Validation Export
+Description=Project Health Dashboard Backup Restore Validation Export
 
 [Service]
 Type=oneshot

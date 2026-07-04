@@ -617,7 +617,7 @@
 }
 
 
-/* Project Pulse wide ChangePoint-style layout */
+/* Project Health Dashboard wide ChangePoint-style layout */
 .app-shell {
   max-width: none !important;
   width: 100% !important;
@@ -3077,7 +3077,7 @@ body {
   background: var(--pulse-page-bg);
 }
 
-/* Global card consistency across Project Pulse pages */
+/* Global card consistency across Project Health Dashboard pages */
 .section-heading,
 .user-admin-create-card,
 .user-admin-bulk-card,

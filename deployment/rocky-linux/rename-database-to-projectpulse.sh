@@ -4,7 +4,7 @@ set -euo pipefail
 APP_ROOT="/opt/project-time-platform"
 ENV_FILE="$APP_ROOT/config/postgres.env"
 OLD_DEFAULT="project_time_platform"
-NEW_DB_NAME="ProjectPulse"
+NEW_DB_NAME="Project Health Dashboard"
 SERVICE_NAME="projecttime-api.service"
 
 if [ ! -f "$ENV_FILE" ]; then
@@ -82,5 +82,5 @@ PGPASSWORD="$PTP_DB_PASSWORD" psql \
 echo "==> Starting API service"
 sudo systemctl start "$SERVICE_NAME" || true
 
-echo "==> ProjectPulse database rename complete"
+echo "==> Project Health Dashboard database rename complete"
 echo "Backup env file: $backup_file"

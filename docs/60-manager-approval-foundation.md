@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document records the first manager approval workflow foundation for Project Pulse.
+This document records the first manager approval workflow foundation for Project Health Dashboard.
 
 ## Date
 

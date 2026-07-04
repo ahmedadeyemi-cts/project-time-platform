@@ -1,4 +1,4 @@
--- Project Pulse
+-- Project Health Dashboard
 -- Rollback: 007_timesheet_day_submission_status_rollback.sql
 
 BEGIN;

@@ -1,4 +1,4 @@
-# ProjectPulse August Production Readiness Tracker
+# Project Health Dashboard August Production Readiness Tracker
 
 ## Completed Production Readiness Foundation
 
@@ -207,19 +207,19 @@
 ### Added
 - Moved Administrator View-As/User Experience Preview to the global top bar layer.
 - Selected preview user is stored globally and applies across page navigation.
-- All frontend API calls now automatically receive X-ProjectPulse-View-As-User while preview is active.
+- All frontend API calls now automatically receive X-Project Health Dashboard-View-As-User while preview is active.
 - Write API calls are blocked in the browser while preview is active to keep View-As read-only.
 - Workspace-local View-As panel is hidden because preview is now global.
 
 ### Important
-- Backend modules must honor X-ProjectPulse-View-As-User to apply effective-user scoping.
+- Backend modules must honor X-Project Health Dashboard-View-As-User to apply effective-user scoping.
 - Project Workspace already honors this header.
 - Intake, Timesheet, Approvals, Utilization, Expenses, and Reports should be wired next through backend scope enforcement.
 
 ## 019M-X Global Effective User Scope + Timesheet Ownership Guardrail
 
 ### Added
-- Backend now resolves X-ProjectPulse-View-As-User globally for Administrator read-only preview.
+- Backend now resolves X-Project Health Dashboard-View-As-User globally for Administrator read-only preview.
 - Backend blocks write actions while View-As preview is active.
 - GetProjectPulseSessionUserId now returns the effective viewed user when View-As is active.
 - Timesheet, utilization, navigation/security context, and other APIs that depend on session user now use the effective user.
@@ -318,7 +318,7 @@
 ## Mobile Readiness Baseline
 
 ### Added
-- Added a global mobile-readiness stylesheet for Project Pulse.
+- Added a global mobile-readiness stylesheet for Project Health Dashboard.
 - Standardized phone behavior for panels, forms, card grids, navigation, modals, and wide table wrappers.
 - Preserved internal horizontal scrolling for wide operational grids such as timesheets and reporting tables while preventing full-page horizontal overflow.
 - Established mobile responsiveness as a required acceptance check for all new modules going forward.
@@ -675,19 +675,19 @@
 ## 019M-CF Login Page Production Panel Auth Guard
 
 - Added an auth-aware guard to the production workflow operations injector.
-- Prevented Production Readiness / Workflow Operations panels from rendering or calling protected endpoints before a valid Project Pulse session exists.
+- Prevented Production Readiness / Workflow Operations panels from rendering or calling protected endpoints before a valid Project Health Dashboard session exists.
 - Fixed the login-page issue where `#dashboard` could show HTTP 401 `session_required` cards before sign-in.
 
 ## 019M-CF Login Page Auth Guard Scope Repair
 
 - Repaired the production operations injector auth guard so it is available in both module scope and window scope.
 - Prevented the signed-out login page from rendering Production Readiness cards or calling protected readiness endpoints.
-- Added defensive cleanup for injected production panels when no Project Pulse session exists.
+- Added defensive cleanup for injected production panels when no Project Health Dashboard session exists.
 
 ## 019M-CF Clean Auth-Aware Production Operations Injector Repair
 
 - Replaced the production workflow operations injector with a clean auth-aware implementation.
-- Production operations panels are now suppressed until a valid Project Pulse session exists.
+- Production operations panels are now suppressed until a valid Project Health Dashboard session exists.
 - The signed-out login page no longer renders protected readiness panels or 401/request_failed cards.
 - The injector remains active through MutationObserver, route changes, storage changes, focus events, and periodic sync so panels can appear after sign-in.
 - Cleaned dashboard module visibility notes that still exposed legacy non-production terminology in API responses.
@@ -695,7 +695,7 @@
 ## 019M-CF Clean Auth-Aware Production Operations Injector Repair
 
 - Replaced the production workflow operations injector with a clean auth-aware implementation.
-- Production operations panels are now suppressed until a valid Project Pulse session exists.
+- Production operations panels are now suppressed until a valid Project Health Dashboard session exists.
 - The signed-out login page no longer renders protected readiness panels or 401/request_failed cards.
 - The injector remains active through MutationObserver, route changes, storage changes, focus events, and periodic sync so panels can appear after sign-in.
 - Cleaned dashboard module visibility notes that still exposed legacy non-production terminology in API responses.
@@ -704,7 +704,7 @@
 
 - Added `ProductionOperationsPanel.jsx` as the native React implementation for production readiness, workflow operations, and route permission contract panels.
 - Removed the side-effect production operations injector import from `App.jsx`.
-- Preserved signed-out suppression by returning no panel until a valid Project Pulse session exists.
+- Preserved signed-out suppression by returning no panel until a valid Project Health Dashboard session exists.
 - Preserved View-As header forwarding for production operations evidence calls.
 - Kept Dashboard / Navigation / Registry coverage across readiness, registry integrity, module visibility, workflow operations, and role-admin route governance.
 
@@ -780,13 +780,13 @@
 - Preserved automatic engineer notification run records, delivery events, schedule controls, and outbox/sendmail readiness behavior.
 - Preserved Dashboard / Navigation / Registry validation.
 
-## 019M-CK Shared ProjectPulse Email Provider Configuration
+## 019M-CK Shared Project Health Dashboard Email Provider Configuration
 
-- Added `/etc/projectpulse/email.env` as the single global email provider configuration source for ProjectPulse.
+- Added `/etc/projectpulse/email.env` as the single global email provider configuration source for Project Health Dashboard.
 - Added systemd EnvironmentFile wiring through `projecttime-api.service.d/40-projectpulse-email-provider.conf`.
 - Added `/api/system/email-provider/summary` to expose non-secret provider readiness and registered email consumers.
 - Added `system_email_provider_consumers` non-secret registry for current and future email-capable workflows.
-- Refactored Time Compliance automatic notifications to use the shared ProjectPulse email provider instead of owning separate provider settings.
+- Refactored Time Compliance automatic notifications to use the shared Project Health Dashboard email provider instead of owning separate provider settings.
 - Preserved outbox-only mode, Brevo API delivery mode, `.local` recipient blocking, Dashboard / Navigation / Registry validation, and Engineer View-As restrictions.
 
 ## 019M-CL Shared Email Provider Test Harness

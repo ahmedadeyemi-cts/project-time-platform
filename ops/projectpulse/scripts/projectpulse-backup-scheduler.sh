@@ -69,7 +69,7 @@ cat > "$REQUEST_FILE" <<EOF
   "requestedByEmail": "system-scheduler",
   "uploadToSftp": $UPLOAD_SFTP,
   "uploadToAzure": $UPLOAD_AZURE,
-  "reason": "Scheduled $MODE ProjectPulse backup"
+  "reason": "Scheduled $MODE Project Health Dashboard backup"
 }
 EOF
 

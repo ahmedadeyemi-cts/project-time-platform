@@ -44,7 +44,7 @@ async function fetchJson(path, token, options = {}) {
     headers: {
       Accept: 'application/json',
       'Content-Type': 'application/json',
-      'X-ProjectPulse-Session': token,
+      'X-Project Health Dashboard-Session': token,
       ...(options.headers || {})
     },
     credentials: 'same-origin'

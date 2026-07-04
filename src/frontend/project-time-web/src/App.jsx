@@ -4,7 +4,7 @@ import PostIntakeAgingPanel from './PostIntakeAgingPanel.jsx';
 /*
  * 019M-V Global View-As User Experience Preview
  * Admin-only preview selector. Applies a read-only effective user to API calls
- * using X-ProjectPulse-View-As-User. Backend modules opt in by honoring the header.
+ * using X-Project Health Dashboard-View-As-User. Backend modules opt in by honoring the header.
  */
 function installProjectPulseGlobalViewAsPreview() {
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
@@ -90,7 +90,7 @@ function installProjectPulseGlobalViewAsPreview() {
     }
 
     const headers = new Headers(init?.headers || (typeof input !== 'string' ? input?.headers || {} : {}));
-    headers.set('X-ProjectPulse-View-As-User', viewAs.userId);
+    headers.set('X-Project Health Dashboard-View-As-User', viewAs.userId);
 
     return originalFetch(input, {
       ...init,
@@ -281,7 +281,7 @@ function installProjectPulseGlobalViewAsPreview() {
     try {
       const response = await window.__projectPulseOriginalFetch('/api/project-workspace/view-as/users', {
         headers: {
-          'X-ProjectPulse-Session': session.sessionToken
+          'X-Project Health Dashboard-Session': session.sessionToken
         }
       });
 
@@ -355,7 +355,7 @@ function installProjectPulseGlobalViewAsTopbarMount() {
         if (element.id === slotId || element.closest(`#${slotId}`)) return false;
 
         const text = cleanText(element.textContent);
-        if (!text.includes('Project Pulse')) return false;
+        if (!text.includes('Project Health Dashboard')) return false;
         if (!text.includes('Dashboard')) return false;
         if (!text.includes('More')) return false;
 
@@ -631,7 +631,7 @@ function getStoredAuthSession() {
 
 function getProjectPulseAuthHeaders(sessionOverride = null) {
   const session = sessionOverride?.sessionToken ? sessionOverride : getStoredAuthSession();
-  return session?.sessionToken ? { 'X-ProjectPulse-Session': session.sessionToken } : {};
+  return session?.sessionToken ? { 'X-Project Health Dashboard-Session': session.sessionToken } : {};
 }
 
 function hasProjectPulseSession(session) {
@@ -694,7 +694,7 @@ function saveStoredUserPreferences(session, preferences) {
 }
 
 function getInitials(value) {
-  const cleanValue = String(value || 'Project Pulse').replace(/@.*/, '').replace(/[._-]/g, ' ');
+  const cleanValue = String(value || 'Project Health Dashboard').replace(/@.*/, '').replace(/[._-]/g, ' ');
   const parts = cleanValue.split(' ').filter(Boolean);
 
   if (parts.length === 0) return 'PP';
@@ -946,7 +946,7 @@ const roleWorkspaceModules = [
     href: '#backup-dr',
     title: 'Backup / DR Center',
     navLabel: 'MODULE 014',
-    description: 'Create and validate full ProjectPulse backup bundles.',
+    description: 'Create and validate full Project Health Dashboard backup bundles.',
     permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   },
   {
@@ -1158,7 +1158,7 @@ function readProjectPulseGlobalSearchSession() {
 
 function getProjectPulseGlobalSearchHeaders() {
   const session = readProjectPulseGlobalSearchSession();
-  return session?.sessionToken ? { 'X-ProjectPulse-Session': session.sessionToken } : {};
+  return session?.sessionToken ? { 'X-Project Health Dashboard-Session': session.sessionToken } : {};
 }
 
 function projectPulseGlobalSearchText(value) {
@@ -1466,14 +1466,14 @@ function ProjectPulseGlobalSearch() {
 
     const headers = getProjectPulseGlobalSearchHeaders();
 
-    if (!headers['X-ProjectPulse-Session']) {
-      setStatus('Sign in is required before Project Pulse Search can load.');
+    if (!headers['X-Project Health Dashboard-Session']) {
+      setStatus('Sign in is required before Project Health Dashboard Search can load.');
       setHasLoaded(false);
       return;
     }
 
     setIsLoading(true);
-    setStatus('Loading Project Pulse Search...');
+    setStatus('Loading Project Health Dashboard Search...');
 
     try {
       const [workspace, filters, dashboard] = await Promise.all([
@@ -1488,7 +1488,7 @@ function ProjectPulseGlobalSearch() {
       setHasLoaded(true);
       setStatus(`${searchItems.length} searchable records loaded`);
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'Project Pulse Search could not load.');
+      setStatus(error instanceof Error ? error.message : 'Project Health Dashboard Search could not load.');
       setHasLoaded(false);
     } finally {
       setIsLoading(false);
@@ -1595,15 +1595,15 @@ function ProjectPulseGlobalSearch() {
         <div className="projectpulse-global-search-backdrop" onMouseDown={(event) => {
           if (event.target === event.currentTarget) closeSearch();
         }}>
-          <section className="projectpulse-global-search-modal" role="dialog" aria-modal="true" aria-label="Project Pulse Search">
+          <section className="projectpulse-global-search-modal" role="dialog" aria-modal="true" aria-label="Project Health Dashboard Search">
             <div className="projectpulse-global-search-header">
               <div className="projectpulse-global-search-icon" aria-hidden="true">⌕</div>
               <input
                 ref={inputRef}
                 type="search"
                 value={query}
-                placeholder="Search everything in Project Pulse..."
-                aria-label="Search everything in Project Pulse"
+                placeholder="Search everything in Project Health Dashboard..."
+                aria-label="Search everything in Project Health Dashboard"
                 autoComplete="off"
                 spellCheck="false"
                 onChange={(event) => setQuery(event.target.value)}
@@ -1615,7 +1615,7 @@ function ProjectPulseGlobalSearch() {
             </div>
 
             <div className="projectpulse-global-search-meta">
-              <span>Project Pulse Search</span>
+              <span>Project Health Dashboard Search</span>
               <span>{isLoading ? 'Loading...' : status || 'Type at least two characters'}</span>
             </div>
 
@@ -1757,10 +1757,10 @@ function buildRoleNavigationModel(user, navigationItems) {
 function SignalLogo() {
 
   return (
-    <div className="brand-lockup" aria-label="US Signal Project Pulse">
+    <div className="brand-lockup" aria-label="US Signal Project Health Dashboard">
       <img className="brand-logo-image" src={usSignalLogoUrl} alt="US Signal" />
       <div>
-        <strong>Project Pulse</strong>
+        <strong>Project Health Dashboard</strong>
         <small>Time • Approval • Utilization</small>
       </div>
     </div>
@@ -2128,7 +2128,7 @@ function getInstalledModuleDescription(module) {
     'audit-history': 'Shows login, admin, notification, approval, export, and system audit events for accountability and troubleshooting.',
     'time-compliance': 'Previews missing time, reminder scenarios, manager/PTC visibility, compliance notification readiness, and month-end time controls.',
     'holiday-admin': 'Manages company holidays, holiday upload, holiday visibility, and holiday-related timesheet automation.',
-    'user-admin': 'Manages Project Pulse users, roles, active status, local account status, and administrator-controlled access settings.',
+    'user-admin': 'Manages Project Health Dashboard users, roles, active status, local account status, and administrator-controlled access settings.',
     'azure-admin': 'Manages Azure/Entra import, reconciliation, sync settings, and identity-readiness checks.',
     'role-admin': 'Manages application roles, permissions, module access, and role-based security configuration.',
     'service-control': 'Provides operational service restart controls, service health checks, and audit-backed service management.',
@@ -2139,7 +2139,7 @@ function getInstalledModuleDescription(module) {
     'psa-modules': 'Displays PSA workflow modules such as expense, invoice, project, and billing readiness areas as they are connected.'
   };
 
-  return module?.description || descriptions[route] || 'Installed Project Pulse module available to this role. Review the module for workflow details, operational status, and next actions.';
+  return module?.description || descriptions[route] || 'Installed Project Health Dashboard module available to this role. Review the module for workflow details, operational status, and next actions.';
 }
 
 
@@ -2895,7 +2895,7 @@ export default function App() {
     try {
       const result = await postJson('/api/auth/password-reset/request', {
         username,
-        notes: passwordResetNotes || 'Password reset requested from Project Pulse login screen.'
+        notes: passwordResetNotes || 'Password reset requested from Project Health Dashboard login screen.'
       });
 
       setPasswordResetStatus(result.message ?? 'Password reset request queued for approval.');
@@ -4036,7 +4036,7 @@ export default function App() {
       await postJson('/api/admin/users/roles', {
         email,
         roleCodes: [roleCode],
-        reason: 'Updated from Project Pulse role administration screen'
+        reason: 'Updated from Project Health Dashboard role administration screen'
       });
       setRoleAdminStatus(`Updated ${email} to ${roleCode}`);
       await loadRoleAdminData();
@@ -4089,7 +4089,7 @@ export default function App() {
         <section className="auth-landing-panel">
           <div className="auth-brand-block">
             <SignalLogo />
-            <p className="eyebrow">Project Pulse Access</p>
+            <p className="eyebrow">Project Health Dashboard Access</p>
             <h1>Sign in to your role-based workspace</h1>
             <p>
               Use your US Signal email for SSO. Use the local administrator account only for break-glass access when SSO is unavailable.
@@ -4181,7 +4181,7 @@ export default function App() {
             <p className="eyebrow">Password Change Required</p>
             <h1>Set a new local administrator password</h1>
             <p>
-              You signed in with a temporary password. Before accessing Project Pulse, choose a new password for the local administrator account.
+              You signed in with a temporary password. Before accessing Project Health Dashboard, choose a new password for the local administrator account.
             </p>
           </div>
 
@@ -4246,7 +4246,7 @@ export default function App() {
         <div className="session-timeout-backdrop">
           <section className="session-timeout-modal" role="dialog" aria-modal="true" aria-label="Session timeout warning">
             <p className="eyebrow">Session timeout</p>
-            <h2>Your Project Pulse session is about to expire</h2>
+            <h2>Your Project Health Dashboard session is about to expire</h2>
             <p>
               For security, each session is limited to two hours. Extend your session now to continue working, or you will be signed out when the timer reaches zero.
             </p>
@@ -4363,7 +4363,7 @@ Analytics - Variphy / Infortel`}
                   <div className="settings-section-card">
                     <p className="eyebrow">Appearance</p>
                     <h3>Theme preference</h3>
-                    <p>Select how Project Pulse should appear for your account on this browser.</p>
+                    <p>Select how Project Health Dashboard should appear for your account on this browser.</p>
 
                     <div className="theme-choice-grid">
                       <label className={profileDraft.theme === 'light' ? 'theme-choice active' : 'theme-choice'}>
@@ -4508,7 +4508,7 @@ Analytics - Variphy / Infortel`}
                   )}
                 </div>
                 <div>
-                  <strong>{userPreferences.displayNameOverride || currentUser.data?.displayName || authSession?.username || 'Project Pulse User'}</strong>
+                  <strong>{userPreferences.displayNameOverride || currentUser.data?.displayName || authSession?.username || 'Project Health Dashboard User'}</strong>
                   <small>{authSession?.username ?? currentUser.data?.email ?? 'Current user'}</small>
                   <small>{workspaceRoleName}</small>
                 </div>
@@ -4532,7 +4532,7 @@ Analytics - Variphy / Infortel`}
       <aside className="enterprise-sidebar enterprise-sidebar-legacy" aria-label="Workspace navigation">
         <div className="enterprise-sidebar-header">
           <div>
-            <p className="eyebrow">Project Pulse</p>
+            <p className="eyebrow">Project Health Dashboard</p>
             <h2>{workspaceRoleName}</h2>
           </div>
         </div>
@@ -5101,10 +5101,10 @@ Analytics - Variphy / Infortel`}
 
       <section id="dashboard" className="hero hero-polished">
         <div className="hero-content-block">
-          <p className="eyebrow">US Signal Project Pulse</p>
+          <p className="eyebrow">US Signal Project Health Dashboard</p>
           <h1>Operational command center for time, approvals, utilization, and billing readiness.</h1>
           <p className="hero-copy">
-            Project Pulse brings weekly time entry, task-based project assignment, manager approval, project validation, accounting reconciliation, and utilization reporting into one internal workflow.
+            Project Health Dashboard brings weekly time entry, task-based project assignment, manager approval, project validation, accounting reconciliation, and utilization reporting into one internal workflow.
           </p>
           <div className="hero-pill-row">
             <span>Time entry</span>
@@ -5123,7 +5123,7 @@ Analytics - Variphy / Infortel`}
         <article className="status-card">
           <span className="status-label">API</span>
           <strong>{apiHealth.loading ? 'Checking...' : apiHealth.error ? 'Unavailable' : apiHealth.data?.status}</strong>
-          <small>{apiHealth.data?.service ?? apiHealth.error ?? 'Project Pulse API'}</small>
+          <small>{apiHealth.data?.service ?? apiHealth.error ?? 'Project Health Dashboard API'}</small>
         </article>
 
         <article className="status-card">
@@ -5643,7 +5643,7 @@ Analytics - Variphy / Infortel`}
                     <p className="eyebrow">Installed Modules</p>
                     <h2>Role-based module dashboard</h2>
                     <p className="muted">
-                      These are the Project Pulse modules available to your current role. Each card explains what the module is intended to do so new workflow areas are visible from the dashboard.
+                      These are the Project Health Dashboard modules available to your current role. Each card explains what the module is intended to do so new workflow areas are visible from the dashboard.
                     </p>
                   </div>
                   <span className="installed-modules-count">{installedModules.length} available</span>
@@ -5676,7 +5676,7 @@ Analytics - Variphy / Infortel`}
           <div>
             <p className="eyebrow">PSA platform modules</p>
             <h2>Remaining sections foundation</h2>
-            <p className="muted">These sections prepare the rest of Project Pulse beyond time entry: intake, project management, resource scheduling, expenses, invoicing, reporting, and administrative workflow.</p>
+            <p className="muted">These sections prepare the rest of Project Health Dashboard beyond time entry: intake, project management, resource scheduling, expenses, invoicing, reporting, and administrative workflow.</p>
           </div>
           <span className="pill">Foundation ready</span>
         </div>

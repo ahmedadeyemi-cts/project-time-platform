@@ -380,7 +380,7 @@ VALUES
 ('recipient_safety', 'Recipient Safety Gate', 'Email Safety', 'Email recipient policy gate', 'Admin'),
 ('sso_auth', 'SSO / Authentication', 'Authentication', 'User login and session provider', 'Admin'),
 ('nginx_public_frontend', 'Nginx Public Frontend Proxy', 'Infrastructure', 'Public frontend routing', 'Admin'),
-('postgresql', 'PostgreSQL ProjectPulse Database', 'Database', 'Primary application database', 'Admin')
+('postgresql', 'PostgreSQL Project Health Dashboard Database', 'Database', 'Primary application database', 'Admin')
 ON CONFLICT (connection_key) DO UPDATE
 SET connection_name = EXCLUDED.connection_name,
     connection_type = EXCLUDED.connection_type,

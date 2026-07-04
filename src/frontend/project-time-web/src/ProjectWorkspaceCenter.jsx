@@ -21,10 +21,10 @@ function getStoredProjectPulseAuthSession() {
 
 function getProjectPulseAuthHeaders(viewAsUserId = '') {
   const session = getStoredProjectPulseAuthSession();
-  const headers = session?.sessionToken ? { 'X-ProjectPulse-Session': session.sessionToken } : {};
+  const headers = session?.sessionToken ? { 'X-Project Health Dashboard-Session': session.sessionToken } : {};
 
   if (viewAsUserId) {
-    headers['X-ProjectPulse-View-As-User'] = viewAsUserId;
+    headers['X-Project Health Dashboard-View-As-User'] = viewAsUserId;
   }
 
   return headers;

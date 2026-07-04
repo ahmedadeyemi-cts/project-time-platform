@@ -1,4 +1,4 @@
--- ProjectPulse August Demo Users
+-- Project Health Dashboard August Demo Users
 -- Staging/demo only. Creates app users, roles, role assignments, teams,
 -- reporting relationships, and time compliance demo cases.
 

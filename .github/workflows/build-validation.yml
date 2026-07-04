@@ -1,4 +1,4 @@
-name: ProjectPulse Build Validation
+name: Project Health Dashboard Build Validation
 
 on:
   push:

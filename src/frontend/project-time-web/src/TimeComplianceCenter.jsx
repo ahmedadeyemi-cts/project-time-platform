@@ -27,7 +27,7 @@ function getStoredProjectPulseAuthSession() {
 
 function getProjectPulseAuthHeaders() {
   const session = getStoredProjectPulseAuthSession();
-  return session?.sessionToken ? { 'X-ProjectPulse-Session': session.sessionToken } : {};
+  return session?.sessionToken ? { 'X-Project Health Dashboard-Session': session.sessionToken } : {};
 }
 
 
@@ -288,12 +288,12 @@ export default function TimeComplianceCenter() {
         <div className="time-compliance-template-grid">
           <div>
             <strong>Weekly reminder</strong>
-            <span>Reminder: Submit Project Pulse time for week of {weekStart}</span>
+            <span>Reminder: Submit Project Health Dashboard time for week of {weekStart}</span>
             <p>Engineer receives the reminder. Manager and Project Team Coordinator are copied when configured.</p>
           </div>
           <div>
             <strong>Weekly escalation</strong>
-            <span>Escalation: Missing Project Pulse time for week of {weekStart}</span>
+            <span>Escalation: Missing Project Health Dashboard time for week of {weekStart}</span>
             <p>Escalation preview uses the same trusted recipient model and does not send email.</p>
           </div>
           <div>

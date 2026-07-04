@@ -1,4 +1,4 @@
--- Project Pulse
+-- Project Health Dashboard
 -- Migration: 015_department_manager_and_user_switcher.sql
 -- Purpose: Add department-manager structure and seed users for role validation.
 
@@ -45,7 +45,7 @@ SET display_name = EXCLUDED.display_name,
     is_active = TRUE,
     updated_at = NOW();
 
--- Official Project Pulse departments.
+-- Official Project Health Dashboard departments.
 INSERT INTO app_departments (department_code, department_name, department_description, manager_user_id, display_order, is_active)
 VALUES
     ('ENTERPRISE_NETWORKING', 'Enterprise Networking', 'Enterprise Networking delivery and engineering team.', (SELECT user_id FROM app_users WHERE email = 'matthew.lenoble@ussignal.com'), 10, TRUE),

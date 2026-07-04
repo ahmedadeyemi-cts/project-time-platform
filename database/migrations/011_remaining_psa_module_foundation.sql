@@ -1,4 +1,4 @@
--- Project Pulse
+-- Project Health Dashboard
 -- Migration: 011_remaining_psa_module_foundation.sql
 -- Purpose: Add foundation tables and seed data for remaining PSA sections.
 
@@ -179,7 +179,7 @@ SELECT
     'US Signal Internal',
     'USS-PSA-2026',
     'US Signal Professional Services Automation Platform',
-    'Internal request to deliver the Project Pulse PSA platform foundation and phased operational modules.',
+    'Internal request to deliver the Project Health Dashboard PSA platform foundation and phased operational modules.',
     req.user_id,
     pm.user_id,
     'approved',
@@ -266,7 +266,7 @@ SET available_hours = EXCLUDED.available_hours,
 
 -- Seed expense report and item.
 INSERT INTO expense_reports (user_id, project_id, report_number, report_title, report_status, report_total)
-SELECT u.user_id, p.project_id, 'EXP-2026-0001', 'Project Pulse validation expenses', 'draft', 0.00
+SELECT u.user_id, p.project_id, 'EXP-2026-0001', 'Project Health Dashboard validation expenses', 'draft', 0.00
 FROM app_users u
 CROSS JOIN projects p
 WHERE u.email = 'ahmed.adeyemi@ussignal.com'

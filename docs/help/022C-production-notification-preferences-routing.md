@@ -1,7 +1,7 @@
 # 022C Production Notification Preferences + Routing Rules
 
 ## Purpose
-022C adds production notification preference and routing foundations for Project Pulse.
+022C adds production notification preference and routing foundations for Project Health Dashboard.
 
 ## Scope
 - Adds role-aware production notification routing rules.

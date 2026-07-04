@@ -1,7 +1,7 @@
 # 025A SOW Generator + Claude Review
 
 ## What this adds
-This adds the first visible SOW Generator workflow to ProjectPulse.
+This adds the first visible SOW Generator workflow to Project Health Dashboard.
 
 ## Dashboard
 A new dashboard card opens the SOW Generator workspace.

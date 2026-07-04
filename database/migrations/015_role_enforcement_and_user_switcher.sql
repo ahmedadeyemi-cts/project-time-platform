@@ -1,4 +1,4 @@
--- Project Pulse
+-- Project Health Dashboard
 -- Migration: 015_role_enforcement_and_user_switcher.sql
 -- Purpose: Seed development user-switcher accounts and permissions so role enforcement can be validated by role.
 

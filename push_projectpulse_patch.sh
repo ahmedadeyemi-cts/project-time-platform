@@ -26,7 +26,7 @@ case "$PATCH_KEY" in
 esac
 
 echo "============================================================"
-echo "Project Pulse Git Push Helper"
+echo "Project Health Dashboard Git Push Helper"
 echo "Patch:  $COMMIT_MESSAGE"
 echo "Branch: $BRANCH_NAME"
 echo "============================================================"

@@ -44,7 +44,7 @@ const helpTopics = [
   },
   {
     keywords: ['project pulse', 'pulse', 'name', 'system name'],
-    answer: 'Project Pulse is the branded name for this time, approval, utilization, and accounting workflow system.'
+    answer: 'Project Health Dashboard is the branded name for this time, approval, utilization, and accounting workflow system.'
   }
 ];
 
@@ -65,7 +65,7 @@ export default function HelpAssistant() {
   const [messages, setMessages] = useState([
     {
       role: 'assistant',
-      text: 'Hi, I can help with Project Pulse. Ask about time entry, saving drafts, submitting, work locations, utilization, or approvals.'
+      text: 'Hi, I can help with Project Health Dashboard. Ask about time entry, saving drafts, submitting, work locations, utilization, or approvals.'
     }
   ]);
 
@@ -98,10 +98,10 @@ export default function HelpAssistant() {
       </button>
 
       {isOpen ? (
-        <aside className="help-panel" aria-label="Project Pulse help assistant">
+        <aside className="help-panel" aria-label="Project Health Dashboard help assistant">
           <div className="help-header">
             <div>
-              <strong>Project Pulse Help</strong>
+              <strong>Project Health Dashboard Help</strong>
               <span>Ask about the current workflow</span>
             </div>
             <button type="button" onClick={() => setIsOpen(false)} aria-label="Close help assistant">
@@ -134,7 +134,7 @@ export default function HelpAssistant() {
           >
             <input
               value={question}
-              placeholder="Ask Project Pulse for help..."
+              placeholder="Ask Project Health Dashboard for help..."
               onChange={(event) => setQuestion(event.target.value)}
             />
             <button type="submit">Send</button>

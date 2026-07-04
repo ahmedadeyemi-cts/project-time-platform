@@ -20,7 +20,7 @@ Seeded provider placeholders:
 - Salesforce
 - Zendesk Sell
 
-Seeded shared field mappings from CRM records into ProjectPulse workflows.
+Seeded shared field mappings from CRM records into PHD workflows.
 
 ## 026C CRM-to-SOW / CRM-to-Intake Promotion Preview
 Added preview workflow for:

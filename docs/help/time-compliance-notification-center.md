@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The Time Compliance & Notification Center helps ProjectPulse administrators preview missing-time reminders before anything is sent.
+The Time Compliance & Notification Center helps Project Health Dashboard administrators preview missing-time reminders before anything is sent.
 
 ## Demo Scope
 

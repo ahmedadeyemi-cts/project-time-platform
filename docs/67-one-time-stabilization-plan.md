@@ -1,4 +1,4 @@
-# Project Pulse One-Time Stabilization Plan
+# Project Health Dashboard One-Time Stabilization Plan
 
 ## Purpose
 

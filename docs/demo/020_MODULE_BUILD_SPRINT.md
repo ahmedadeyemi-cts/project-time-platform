@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This sprint builds the next set of ProjectPulse modules from the merged 019M foundation. The build approach is intentionally different from the 019M validation sequence: each module will be built and committed, but full end-to-end browser validation will be deferred until the module group is complete.
+This sprint builds the next set of Project Health Dashboard modules from the merged 019M foundation. The build approach is intentionally different from the 019M validation sequence: each module will be built and committed, but full end-to-end browser validation will be deferred until the module group is complete.
 
 ## Build Strategy
 

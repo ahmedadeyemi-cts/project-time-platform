@@ -6,7 +6,7 @@ function getProjectPulseAuthHeaders() {
     const rawSession = window.localStorage.getItem('projectPulseAuthSession');
     if (!rawSession) return {};
     const session = JSON.parse(rawSession);
-    return session?.sessionToken ? { 'X-ProjectPulse-Session': session.sessionToken } : {};
+    return session?.sessionToken ? { 'X-Project Health Dashboard-Session': session.sessionToken } : {};
   } catch {
     return {};
   }
@@ -141,7 +141,7 @@ export default function RoleAdminDirectoryPanel() {
           <div>
             <h3>Permission Modules Summary</h3>
             <p className="section-copy">
-              This read-only summary shows how many role-permission grants exist in each platform module. It helps explain which areas of Project Pulse are controlled by role permissions.
+              This read-only summary shows how many role-permission grants exist in each platform module. It helps explain which areas of Project Health Dashboard are controlled by role permissions.
             </p>
           </div>
         </div>

@@ -28,7 +28,7 @@ function buildAuthHeaders(authSession) {
 
   return token ? {
     Authorization: `Bearer ${token}`,
-    'X-ProjectPulse-Session': token,
+    'X-Project Health Dashboard-Session': token,
     'X-Project-Pulse-Session': token,
     'X-Session-Token': token
   } : {};

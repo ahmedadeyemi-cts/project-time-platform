@@ -363,7 +363,7 @@
       "navLabel": "Backup / DR",
       "group": "",
       "status": "",
-      "description": "Create and validate full ProjectPulse backup bundles.",
+      "description": "Create and validate full Project Health Dashboard backup bundles.",
       "permissions": [
         "SYSTEM_ADMINISTRATION",
         "MANAGE_ALL"

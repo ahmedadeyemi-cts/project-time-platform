@@ -2,7 +2,7 @@
 
 ## Purpose
 
-021 prepares ProjectPulse / ChangePoint for a cleaner end-to-end production readinessnstration and release-readiness pass after the 020 module build sprint.
+021 prepares Project Health Dashboard / ChangePoint for a cleaner end-to-end production readinessnstration and release-readiness pass after the 020 module build sprint.
 
 ## Starting Baseline
 

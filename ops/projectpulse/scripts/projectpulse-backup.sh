@@ -54,7 +54,7 @@ APP_ARCHIVE="$RUN_DIR/$BACKUP_LABEL-app-snapshot.tgz"
 CHECKSUM_FILE="$RUN_DIR/sha256sums.txt"
 
 {
-  echo "ProjectPulse Backup Manifest"
+  echo "Project Health Dashboard Backup Manifest"
   echo "Run ID: $RUN_ID"
   echo "Backup name: $BACKUP_LABEL"
   echo "Created UTC: $(date -u --iso-8601=seconds)"

@@ -1,4 +1,4 @@
--- Project Pulse
+-- Project Health Dashboard
 -- Migration: 014_project_management_role_and_role_admin.sql
 -- Purpose: Consolidate PMO and PM/Project Manager into one Project Management role.
 

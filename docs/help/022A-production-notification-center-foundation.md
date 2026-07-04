@@ -1,6 +1,6 @@
 # 022A Production Notification Center Foundation
 
-This module introduces the production notification center foundation for ProjectPulse.
+This module introduces the production notification center foundation for Project Health Dashboard.
 
 ## What it adds
 

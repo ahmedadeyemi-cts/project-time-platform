@@ -4,7 +4,7 @@ Generated UTC: `2026-06-30T16:26:40.409560+00:00`
 
 ## Purpose
 
-These runbooks define role-based production readiness validation paths for ProjectPulse / ChangePoint. They are designed to confirm that each major persona can access the correct workflows, that restricted actions remain controlled, and that production-critical evidence is visible before release candidate validation.
+These runbooks define role-based production readiness validation paths for Project Health Dashboard / ChangePoint. They are designed to confirm that each major persona can access the correct workflows, that restricted actions remain controlled, and that production-critical evidence is visible before release candidate validation.
 
 ## Execution Guidance
 

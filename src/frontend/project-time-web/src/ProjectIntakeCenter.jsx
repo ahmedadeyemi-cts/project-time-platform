@@ -21,7 +21,7 @@ function getStoredProjectPulseAuthSession() {
 
 function getProjectPulseAuthHeaders() {
   const session = getStoredProjectPulseAuthSession();
-  return session?.sessionToken ? { 'X-ProjectPulse-Session': session.sessionToken } : {};
+  return session?.sessionToken ? { 'X-Project Health Dashboard-Session': session.sessionToken } : {};
 }
 
 async function fetchJson(path) {
@@ -152,7 +152,7 @@ export default function ProjectIntakeCenter() {
     clientName: 'Great Lakes Healthcare',
     opportunityReference: 'OPP-NEW-REQUEST',
     requestTitle: 'New Project Intake',
-    requestDescription: 'Intake request created from the ProjectPulse workflow.',
+    requestDescription: 'Intake request created from the PHD workflow.',
     assignedPmUserId: '',
     priority: 'normal',
     targetStartDate: '2026-08-03',
@@ -179,7 +179,7 @@ export default function ProjectIntakeCenter() {
     targetStartDate: '2026-08-03',
     targetEndDate: '2026-08-28',
     priority: 'normal',
-    notes: 'Engineering resource request created from the ProjectPulse workflow.'
+    notes: 'Engineering resource request created from the PHD workflow.'
   });
 
   async function loadOverview() {

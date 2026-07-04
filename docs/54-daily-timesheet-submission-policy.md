@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document records the change from a fully weekly submit model to a daily submit model for Project Pulse.
+This document records the change from a fully weekly submit model to a daily submit model for Project Health Dashboard.
 
 ## Date
 

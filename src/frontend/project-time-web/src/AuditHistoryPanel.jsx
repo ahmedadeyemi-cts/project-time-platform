@@ -10,7 +10,7 @@ function getProjectPulseAuthHeaders() {
     if (!session?.sessionToken) return {};
 
     return {
-      'X-ProjectPulse-Session': session.sessionToken
+      'X-Project Health Dashboard-Session': session.sessionToken
     };
   } catch {
     return {};

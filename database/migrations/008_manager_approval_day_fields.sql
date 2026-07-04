@@ -1,4 +1,4 @@
--- Project Pulse
+-- Project Health Dashboard
 -- Migration: 008_manager_approval_day_fields.sql
 -- Purpose: Add manager decision metadata to daily timesheet status records.
 

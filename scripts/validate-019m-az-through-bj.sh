@@ -34,7 +34,7 @@ for path in "${ENDPOINTS[@]}"; do
   echo
   echo "--- $path ---"
   curl -sS --max-time 30 "http://127.0.0.1:5080$path" \
-    -H "X-ProjectPulse-Session: $SSO_TOKEN" \
+    -H "X-Project Health Dashboard-Session: $SSO_TOKEN" \
     -o /tmp/019m-az-bj-endpoint.json \
     -w "HTTP %{http_code} bytes %{size_download}\n"
 
@@ -52,7 +52,7 @@ echo
 echo "--- Dry run POST ---"
 curl -sS --max-time 30 "http://127.0.0.1:5080/api/workflow/actions/dry-run" \
   -X POST \
-  -H "X-ProjectPulse-Session: $SSO_TOKEN" \
+  -H "X-Project Health Dashboard-Session: $SSO_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"action":"accounting_reconcile","weekStart":"2026-06-21","weekEnd":"2026-07-04"}' \
   -o /tmp/019m-az-bj-dry-run.json \
@@ -62,7 +62,7 @@ cat /tmp/019m-az-bj-dry-run.json | jq .
 
 echo
 echo "--- Engineer denial checks ---"
-ENGINEER_ONLY_ID="$(sudo -u postgres psql -d ProjectPulse -At <<'SQL'
+ENGINEER_ONLY_ID="$(sudo -u postgres psql -d Project Health Dashboard -At <<'SQL'
 WITH user_roles AS (
     SELECT
         u.user_id,
@@ -103,16 +103,16 @@ if [ -n "$ENGINEER_ONLY_ID" ]; then
     if [[ "$path" == "/api/workflow/actions/dry-run" ]]; then
       curl -sS --max-time 30 "http://127.0.0.1:5080$path" \
         -X POST \
-        -H "X-ProjectPulse-Session: $SSO_TOKEN" \
-        -H "X-ProjectPulse-View-As-User: $ENGINEER_ONLY_ID" \
+        -H "X-Project Health Dashboard-Session: $SSO_TOKEN" \
+        -H "X-Project Health Dashboard-View-As-User: $ENGINEER_ONLY_ID" \
         -H "Content-Type: application/json" \
         -d '{"action":"accounting_reconcile"}' \
         -o /tmp/019m-az-bj-engineer.json \
         -w "HTTP %{http_code} bytes %{size_download}\n"
     else
       curl -sS --max-time 30 "http://127.0.0.1:5080$path" \
-        -H "X-ProjectPulse-Session: $SSO_TOKEN" \
-        -H "X-ProjectPulse-View-As-User: $ENGINEER_ONLY_ID" \
+        -H "X-Project Health Dashboard-Session: $SSO_TOKEN" \
+        -H "X-Project Health Dashboard-View-As-User: $ENGINEER_ONLY_ID" \
         -o /tmp/019m-az-bj-engineer.json \
         -w "HTTP %{http_code} bytes %{size_download}\n"
     fi

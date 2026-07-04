@@ -109,12 +109,12 @@ async function fetchJson(path, token, viewAsUserId, options = {}) {
   const headers = {
     Accept: 'application/json',
     'Content-Type': 'application/json',
-    'X-ProjectPulse-Session': token,
+    'X-Project Health Dashboard-Session': token,
     ...(options.headers || {})
   };
 
   if (viewAsUserId) {
-    headers['X-ProjectPulse-View-As-User'] = viewAsUserId;
+    headers['X-Project Health Dashboard-View-As-User'] = viewAsUserId;
   }
 
   const response = await fetch(path, {
