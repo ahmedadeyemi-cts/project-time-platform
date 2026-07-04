@@ -92,6 +92,40 @@ function getIntakeStatusTone(status) {
   return 'neutral';
 }
 
+
+/* 032_PROJECT_INTAKE_RESOURCE_REFINEMENT_START */
+const RESOURCE_STATUS_OPTIONS = [
+  { value: 'all', label: 'All statuses' },
+  { value: 'new', label: 'New' },
+  { value: 'open', label: 'Open' },
+  { value: 'pending', label: 'Pending' },
+  { value: 'partially_assigned', label: 'Partially assigned' },
+  { value: 'assigned', label: 'Assigned' },
+  { value: 'blocked', label: 'Blocked' },
+  { value: 'cancelled', label: 'Cancelled' }
+];
+
+function getResourceRequestStatusTone(status) {
+  const normalized = normalizeStatus(status);
+
+  if (['assigned', 'fulfilled', 'ready', 'complete', 'completed'].includes(normalized)) return 'safe';
+  if (['blocked', 'cancelled', 'declined', 'rejected'].includes(normalized)) return 'danger';
+  if (['partially_assigned', 'pending', 'review', 'open', 'new', 'draft'].includes(normalized)) return 'attention';
+
+  return 'neutral';
+}
+
+function getEngineerCapacityTone(engineer) {
+  const normalizedStatus = normalizeStatus(engineer?.capacityStatus);
+  const utilization = Number(engineer?.plannedUtilizationPercent ?? 0);
+
+  if (normalizedStatus.includes('over') || normalizedStatus.includes('blocked') || utilization >= 100) return 'danger';
+  if (normalizedStatus.includes('tight') || normalizedStatus.includes('limited') || utilization >= 85) return 'attention';
+
+  return 'safe';
+}
+/* 032_PROJECT_INTAKE_RESOURCE_REFINEMENT_END */
+
 function StatusBadge({ children, tone = 'neutral' }) {
   return <span className={`project-intake-badge ${tone}`}>{children}</span>;
 }
@@ -104,6 +138,8 @@ export default function ProjectIntakeCenter() {
   const [intakeStatusFilter, setIntakeStatusFilter] = useState('all');
   const [selectedIntakeId, setSelectedIntakeId] = useState('');
   const [resourceRequestSearchTerm, setResourceRequestSearchTerm] = useState('');
+  const [resourceStatusFilter, setResourceStatusFilter] = useState('all');
+  const [resourceFunctionFilter, setResourceFunctionFilter] = useState('all');
   const [selectedResourceRequestId, setSelectedResourceRequestId] = useState('');
   const [assignmentDrafts, setAssignmentDrafts] = useState({});
   const [intakeFile, setIntakeFile] = useState(null);
@@ -197,6 +233,18 @@ export default function ProjectIntakeCenter() {
   const engineers = overview.data?.engineers ?? [];
   const customers = customerOverview.data?.customers ?? [];
   const customerContacts = customerOverview.data?.contacts ?? [];
+  const resourceFunctionOptions = useMemo(() => {
+    const values = new Set();
+
+    resourceRequests.forEach((request) => {
+      if (request.requestedFunction) values.add(request.requestedFunction);
+    });
+
+    if (resourceForm.requestedFunction) values.add(resourceForm.requestedFunction);
+
+    return [...values].sort((a, b) => a.localeCompare(b));
+  }, [resourceRequests, resourceForm.requestedFunction]);
+
   const selectedCustomer = customers.find((customer) => customer.clientId === intakeForm.clientId);
   const selectedCustomerContacts = customerContacts.filter((contact) => contact.clientId === intakeForm.clientId);
   const plannedEngineeringCost = Number(intakeForm.plannedEngineeringCost || 0);
@@ -273,14 +321,40 @@ export default function ProjectIntakeCenter() {
     }
   ] : [];
 
+  function applySelectedIntakeToResourceRequest() {
+    if (!selectedIntake) {
+      setActionStatus('Select an intake before staging a resource request.');
+      return;
+    }
+
+    const intakeLabel = selectedIntake.requestNumber || selectedIntake.requestTitle || 'selected intake';
+
+    setResourceForm((current) => ({
+      ...current,
+      projectIntakeRequestId: selectedIntake.id || current.projectIntakeRequestId,
+      assignedPmUserId: selectedIntake.assignedPmUserId || current.assignedPmUserId || '',
+      requestedHours: selectedIntake.estimatedHours ? String(selectedIntake.estimatedHours) : current.requestedHours,
+      targetStartDate: selectedIntake.targetStartDate || current.targetStartDate,
+      targetEndDate: selectedIntake.targetCompletionDate || current.targetEndDate,
+      priority: selectedIntake.priority || current.priority,
+      notes: `Resource request staged from ${intakeLabel}. ${selectedIntake.requestDescription || current.notes || ''}`.trim()
+    }));
+
+    setSelectedResourceRequestId('');
+    setActionStatus(`Resource request form staged from ${intakeLabel}. Review requested function, skills, and target dates before creating.`);
+  }
+
   const filteredResourceRequests = useMemo(() => {
     const search = resourceRequestSearchTerm.trim().toLowerCase();
 
     return resourceRequests.filter((item) => {
+      const matchesStatus = resourceStatusFilter === 'all' || normalizeStatus(item.status) === resourceStatusFilter;
+      const matchesFunction = resourceFunctionFilter === 'all' || String(item.requestedFunction ?? '') === resourceFunctionFilter;
       const haystack = `${item.requestNumber ?? ''} ${item.sourceName ?? ''} ${item.requestedFunction ?? ''} ${item.skillRequirements ?? ''} ${item.assignedPmName ?? ''} ${item.fulfilledByName ?? ''}`.toLowerCase();
-      return !search || haystack.includes(search);
+      const matchesSearch = !search || haystack.includes(search);
+      return matchesStatus && matchesFunction && matchesSearch;
     });
-  }, [resourceRequests, resourceRequestSearchTerm]);
+  }, [resourceRequests, resourceRequestSearchTerm, resourceStatusFilter, resourceFunctionFilter]);
 
   const visibleResourceRequests = useMemo(() => {
     if (selectedResourceRequestId) {
@@ -290,6 +364,50 @@ export default function ProjectIntakeCenter() {
     return filteredResourceRequests.slice(0, 20);
   }, [filteredResourceRequests, selectedResourceRequestId]);
 
+
+  const selectedResourceRequest = resourceRequests.find((item) => item.id === selectedResourceRequestId) ?? visibleResourceRequests[0];
+  const selectedResourceDraft = selectedResourceRequest ? getAssignmentDraft(selectedResourceRequest.id) : null;
+  const selectedDraftEngineerCount = selectedResourceDraft?.engineers?.length ?? 0;
+  const selectedDraftHours = selectedResourceDraft?.engineers?.reduce((total, item) => total + Number(item.allocatedHours || 0), 0) ?? 0;
+  const selectedDraftPercent = selectedResourceDraft?.engineers?.reduce((total, item) => total + Number(item.allocationPercent || 0), 0) ?? 0;
+  const selectedResourceRequestedHours = Number(selectedResourceRequest?.requestedHours ?? 0);
+  const selectedResourceAllocatedHours = Number(selectedResourceRequest?.allocatedHours ?? 0);
+  const selectedResourceAssignedCount = Number(selectedResourceRequest?.assignedEngineerCount ?? 0);
+  const selectedResourceReadinessItems = selectedResourceRequest ? [
+    {
+      label: 'Source linkage',
+      ready: Boolean(selectedResourceRequest.projectIntakeRequestId || selectedResourceRequest.projectId || selectedResourceRequest.sourceName),
+      detail: selectedResourceRequest.sourceName || 'No intake or project source is attached.'
+    },
+    {
+      label: 'PM ownership',
+      ready: Boolean(selectedResourceRequest.assignedPmUserId || selectedResourceRequest.assignedPmName),
+      detail: selectedResourceRequest.assignedPmName ? `${selectedResourceRequest.assignedPmName} owns this request.` : 'No project manager is assigned.'
+    },
+    {
+      label: 'Skills captured',
+      ready: Boolean(String(selectedResourceRequest.skillRequirements ?? '').trim()),
+      detail: selectedResourceRequest.skillRequirements || 'No skill requirements are recorded.'
+    },
+    {
+      label: 'Assignment plan',
+      ready: selectedResourceAssignedCount > 0 || selectedDraftEngineerCount > 0,
+      detail: selectedResourceAssignedCount > 0
+        ? `${selectedResourceAssignedCount} engineer(s) currently assigned.`
+        : selectedDraftEngineerCount > 0
+          ? `${selectedDraftEngineerCount} engineer(s) selected in draft.`
+          : 'No engineer is selected yet.'
+    },
+    {
+      label: 'Allocation coverage',
+      ready: selectedResourceAllocatedHours >= selectedResourceRequestedHours || selectedDraftHours > 0 || selectedDraftPercent > 0 || (selectedDraftEngineerCount > 0 && selectedResourceDraft?.distributionMode !== 'manual'),
+      detail: selectedResourceAllocatedHours > 0
+        ? `${selectedResourceAllocatedHours}/${selectedResourceRequestedHours || 0} hours allocated.`
+        : selectedDraftEngineerCount > 0
+          ? `${selectedResourceDraft?.distributionMode === 'manual' ? `${selectedDraftHours.toFixed(2)} draft hours · ${selectedDraftPercent.toFixed(2)}%.` : 'Automatic split selected; allocation will be calculated on assignment.'}`
+          : 'No allocation split is staged.'
+    }
+  ] : [];
 
   const readyResourceRequests = useMemo(() => {
     return resourceRequests.filter((request) => request.status === 'assigned' || request.status === 'partially_assigned').length;
@@ -475,11 +593,37 @@ export default function ProjectIntakeCenter() {
                 {selectedIntake.requestNumber} · {selectedIntake.requestTitle}
               </p>
             </div>
-            <StatusBadge tone={getIntakeStatusTone(selectedIntake.status)}>{selectedIntake.status || 'Draft'}</StatusBadge>
+            <div className="intake-readiness-actions">
+              <StatusBadge tone={getIntakeStatusTone(selectedIntake.status)}>{selectedIntake.status || 'Draft'}</StatusBadge>
+              <button type="button" className="secondary-action" onClick={applySelectedIntakeToResourceRequest}>Stage resource request</button>
+            </div>
           </div>
           <div className="intake-readiness-grid">
             {selectedIntakeReadinessItems.map((item) => (
               <article className={`intake-readiness-item ${item.ready ? 'ready' : 'attention'}`} key={item.label}>
+                <span>{item.ready ? 'Ready' : 'Needs attention'}</span>
+                <strong>{item.label}</strong>
+                <small>{item.detail}</small>
+              </article>
+            ))}
+          </div>
+        </article>
+      )}
+
+      {selectedResourceRequest && (
+        <article className="project-intake-panel resource-readiness-panel">
+          <div className="project-intake-section-header">
+            <div>
+              <h3>Selected Resource Assignment Readiness</h3>
+              <p className="muted">
+                {selectedResourceRequest.requestNumber} · {selectedResourceRequest.requestedFunction} · {selectedResourceRequest.sourceName}
+              </p>
+            </div>
+            <StatusBadge tone={getResourceRequestStatusTone(selectedResourceRequest.status)}>{selectedResourceRequest.status || 'new'}</StatusBadge>
+          </div>
+          <div className="intake-readiness-grid">
+            {selectedResourceReadinessItems.map((item) => (
+              <article className={`intake-readiness-item resource-readiness-item ${item.ready ? 'ready' : 'attention'}`} key={item.label}>
                 <span>{item.ready ? 'Ready' : 'Needs attention'}</span>
                 <strong>{item.label}</strong>
                 <small>{item.detail}</small>
@@ -538,7 +682,13 @@ export default function ProjectIntakeCenter() {
         </article>
 
         <article className="project-intake-panel">
-          <h3>Create Engineering Resource Request</h3>
+          <div className="project-intake-section-header compact">
+            <div>
+              <h3>Create Engineering Resource Request</h3>
+              <p className="muted">Stage demand from the selected intake, then adjust function, skills, and dates before creating the request.</p>
+            </div>
+            <button type="button" className="secondary-action" onClick={applySelectedIntakeToResourceRequest} disabled={!selectedIntake}>Use selected intake</button>
+          </div>
           <form className="project-intake-form" onSubmit={createResourceRequest}>
             <label>Intake<select value={resourceForm.projectIntakeRequestId} onChange={(event) => setResourceForm({ ...resourceForm, projectIntakeRequestId: event.target.value })}><option value="">No intake link</option>{intakes.map((item) => <option value={item.id} key={item.id}>{item.requestNumber} — {item.requestTitle}</option>)}</select></label>
             <label>Project<select value={resourceForm.projectId} onChange={(event) => setResourceForm({ ...resourceForm, projectId: event.target.value })}><option value="">No project link</option>{projects.map((project) => <option value={project.id} key={project.id}>{project.projectCode} — {project.projectName}</option>)}</select></label>
@@ -564,7 +714,7 @@ export default function ProjectIntakeCenter() {
           <StatusBadge>{filteredResourceRequests.length} matching</StatusBadge>
         </div>
 
-        <div className="queue-control-bar">
+        <div className="queue-control-bar resource-request-controls">
           <label>
             Search resource requests
             <input
@@ -575,6 +725,29 @@ export default function ProjectIntakeCenter() {
                 setSelectedResourceRequestId('');
               }}
             />
+          </label>
+          <label>
+            Status
+            <select value={resourceStatusFilter} onChange={(event) => {
+              setResourceStatusFilter(event.target.value);
+              setSelectedResourceRequestId('');
+            }}>
+              {RESOURCE_STATUS_OPTIONS.map((option) => (
+                <option value={option.value} key={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Function
+            <select value={resourceFunctionFilter} onChange={(event) => {
+              setResourceFunctionFilter(event.target.value);
+              setSelectedResourceRequestId('');
+            }}>
+              <option value="all">All functions</option>
+              {resourceFunctionOptions.map((item) => (
+                <option value={item} key={item}>{item}</option>
+              ))}
+            </select>
           </label>
           <label>
             Select resource request
@@ -591,10 +764,18 @@ export default function ProjectIntakeCenter() {
           {visibleResourceRequests.map((request) => {
             const draft = getAssignmentDraft(request.id);
             const sortedEngineers = getSortedEngineersForRequest(request);
+            const assignedCount = Number(request.assignedEngineerCount ?? 0);
+            const requestedHours = Number(request.requestedHours ?? 0);
+            const allocatedHours = Number(request.allocatedHours ?? 0);
+            const draftHours = draft.engineers.reduce((total, item) => total + Number(item.allocatedHours || 0), 0);
+            const draftPercent = draft.engineers.reduce((total, item) => total + Number(item.allocationPercent || 0), 0);
+            const plannedCoverageHours = draft.distributionMode === 'manual' && draft.engineers.length > 0 ? draftHours : allocatedHours;
+            const assignmentCoveragePercent = requestedHours > 0 ? Math.min(100, Math.round((plannedCoverageHours / requestedHours) * 100)) : 0;
+            const draftReady = draft.engineers.length > 0;
 
             return (
               <div className="resource-request-card" key={request.id}>
-                <div><strong>{request.requestNumber}</strong><StatusBadge tone={request.status === 'assigned' ? 'safe' : 'attention'}>{request.status}</StatusBadge></div>
+                <div><strong>{request.requestNumber}</strong><StatusBadge tone={getResourceRequestStatusTone(request.status)}>{request.status}</StatusBadge></div>
                 <h4>{request.requestedFunction}</h4>
                 <p>{request.sourceName}</p>
                 <small>{request.skillRequirements || 'No skills recorded'}</small>
@@ -604,6 +785,24 @@ export default function ProjectIntakeCenter() {
                   <div><dt>Assigned</dt><dd>{fmt(request.fulfilledByName)} ({request.assignedEngineerCount}/15)</dd></div>
                   <div><dt>Allocated</dt><dd>{request.allocatedHours ?? 0} hrs · {request.allocationPercent ?? 0}%</dd></div>
                 </dl>
+
+                <div className="assignment-health-strip">
+                  <div>
+                    <span>Assignment plan</span>
+                    <strong>{assignedCount > 0 ? `${assignedCount} assigned` : draftReady ? `${draft.engineers.length} staged` : 'Not started'}</strong>
+                    <small>{draftReady ? `${draft.distributionMode.replace('_', ' ')}` : 'Select engineers below'}</small>
+                  </div>
+                  <div>
+                    <span>Coverage</span>
+                    <strong>{assignmentCoveragePercent}%</strong>
+                    <small>{plannedCoverageHours.toFixed(2)} / {requestedHours.toFixed(2)} hrs</small>
+                  </div>
+                  <div>
+                    <span>Manual draft</span>
+                    <strong>{draftHours.toFixed(2)} hrs</strong>
+                    <small>{draftPercent.toFixed(2)}% staged</small>
+                  </div>
+                </div>
 
                 <div className="assignment-editor">
                   <label>Distribution
@@ -622,7 +821,13 @@ export default function ProjectIntakeCenter() {
                         <div className={`engineer-picker-row ${selected ? 'selected' : ''}`} key={`${request.id}-${engineer.userId}`}>
                           <label>
                             <input type="checkbox" checked={selected} onChange={() => toggleEngineer(request.id, engineer.userId)} />
-                            <span><strong>{engineer.displayName}</strong><small>{engineer.primaryFunction} · {engineer.qualifications}</small></span>
+                            <span>
+                               <strong>{engineer.displayName}</strong>
+                               <small>{engineer.primaryFunction} · {engineer.qualifications}</small>
+                               <small className={`engineer-capacity-hint ${getEngineerCapacityTone(engineer)}`}>
+                                 {engineer.assignedHours ?? 0}/{engineer.availableHours ?? 0} hrs · {engineer.plannedUtilizationPercent ?? 0}% planned · {engineer.capacityStatus ?? 'capacity unknown'}
+                               </small>
+                             </span>
                           </label>
                           {selected && draft.distributionMode === 'manual' ? (
                             <div className="allocation-inputs">
