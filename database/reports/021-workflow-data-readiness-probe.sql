@@ -1,5 +1,5 @@
 -- 021E Workflow Data Readiness Probe
--- Run against the target Project Health Dashboard database during production readiness validation.
+-- Run against the target ProjectPulse database during production readiness validation.
 -- This probe does not modify data.
 
 CREATE TEMP TABLE IF NOT EXISTS workflow_data_readiness_probe (

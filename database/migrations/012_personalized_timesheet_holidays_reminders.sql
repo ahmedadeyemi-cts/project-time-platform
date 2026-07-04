@@ -1,4 +1,4 @@
--- Project Health Dashboard
+-- Project Pulse
 -- Migration: 012_personalized_timesheet_holidays_reminders.sql
 -- Purpose: Add hyper-personalized timesheet defaults, holiday upload foundation, and reminder/notification foundation.
 
@@ -187,8 +187,8 @@ VALUES
         'ENGINEERS',
         'weekly',
         'Every Friday at 9:00 AM server/local reminder time by default.',
-        'Reminder: Submit your weekly time in Project Health Dashboard',
-        'Hello {{display_name}},\n\nThis is your weekly reminder to submit your Project Health Dashboard time. All resources are required to submit 40 hours of time each week. If you are taking PTO and a time entry deadline is approaching, your time should be submitted before you take your time off.\n\nReminder: The code "Vacation" should be used for PTO. "Holiday" should be used only for company-paid holidays and your floating holiday.\n\nThank you.'
+        'Reminder: Submit your weekly time in Project Pulse',
+        'Hello {{display_name}},\n\nThis is your weekly reminder to submit your Project Pulse time. All resources are required to submit 40 hours of time each week. If you are taking PTO and a time entry deadline is approaching, your time should be submitted before you take your time off.\n\nReminder: The code "Vacation" should be used for PTO. "Holiday" should be used only for company-paid holidays and your floating holiday.\n\nThank you.'
     ),
     (
         'MONTH_END_PM_REMINDER',
@@ -196,8 +196,8 @@ VALUES
         'PROJECT_MANAGEMENT',
         'month_end_last_friday',
         'Runs on the last Friday of each month.',
-        'Month End Reminder: Project Health Dashboard review',
-        'Hello {{display_name}},\n\nThis is a Month End reminder for the Project Management team. Please review project time, approvals, billing readiness, expenses, and reporting items in Project Health Dashboard.\n\nThank you.'
+        'Month End Reminder: Project Pulse review',
+        'Hello {{display_name}},\n\nThis is a Month End reminder for the Project Management team. Please review project time, approvals, billing readiness, expenses, and reporting items in Project Pulse.\n\nThank you.'
     )
 ON CONFLICT (rule_code) DO UPDATE
 SET rule_name = EXCLUDED.rule_name,

@@ -18,8 +18,8 @@ VALUES
     'ENGINEERS',
     'weekly',
     'Every Monday at 6:00 AM Central. Dry-run preview required before real send.',
-    'Reminder: Submit your weekly time in Project Health Dashboard',
-    'Project Health Dashboard shows that your weekly time has not been submitted. Please review and submit your time. Manager and Project Team Coordinator are copied when configured.',
+    'Reminder: Submit your weekly time in Project Pulse',
+    'Project Pulse shows that your weekly time has not been submitted. Please review and submit your time. Manager and Project Team Coordinator are copied when configured.',
     TRUE
 ),
 (
@@ -28,8 +28,8 @@ VALUES
     'ENGINEERS_MANAGERS_PTC',
     'weekly_escalation',
     'Every Monday at 8:00 AM Central. Dry-run preview required before real send.',
-    'Escalation: Missing weekly time in Project Health Dashboard',
-    'Project Health Dashboard shows missing weekly time after the reminder window. Engineer, manager, and Project Team Coordinator should be included when configured.',
+    'Escalation: Missing weekly time in Project Pulse',
+    'Project Pulse shows missing weekly time after the reminder window. Engineer, manager, and Project Team Coordinator should be included when configured.',
     TRUE
 ),
 (
@@ -38,8 +38,8 @@ VALUES
     'PROJECT_MANAGEMENT',
     'month_end_last_business_day',
     'Runs on the selected last weekday of the month: Monday, Tuesday, Wednesday, Thursday, or Friday. Default: last Friday.',
-    'Month End Reminder: Project Health Dashboard review',
-    'Please review project time, approvals, billing readiness, expenses, and reporting items in Project Health Dashboard before month-end close.',
+    'Month End Reminder: Project Pulse review',
+    'Please review project time, approvals, billing readiness, expenses, and reporting items in Project Pulse before month-end close.',
     TRUE
 ),
 (
@@ -49,7 +49,7 @@ VALUES
     'holiday_7_day',
     'Runs 7 days before active weekday company holidays.',
     'Upcoming company holiday: time entry reminder',
-    'A company holiday is approaching. Please confirm time entry expectations in Project Health Dashboard.',
+    'A company holiday is approaching. Please confirm time entry expectations in Project Pulse.',
     TRUE
 ),
 (
@@ -59,7 +59,7 @@ VALUES
     'holiday_1_day',
     'Runs 1 day before active weekday company holidays.',
     'Company holiday tomorrow: time entry reminder',
-    'A company holiday is tomorrow. Please confirm time entry expectations in Project Health Dashboard.',
+    'A company holiday is tomorrow. Please confirm time entry expectations in Project Pulse.',
     TRUE
 )
 ON CONFLICT (rule_code) DO UPDATE

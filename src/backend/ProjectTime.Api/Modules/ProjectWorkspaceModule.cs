@@ -27,7 +27,7 @@ public static class ProjectWorkspaceModule
             return Results.Json(new
             {
                 status = "session_required",
-                message = "A valid Project Health Dashboard session is required."
+                message = "A valid ProjectPulse session is required."
             }, statusCode: StatusCodes.Status401Unauthorized);
         }
 
@@ -113,7 +113,7 @@ public static class ProjectWorkspaceModule
             return Results.Json(new
             {
                 status = "session_required",
-                message = "A valid Project Health Dashboard session is required."
+                message = "A valid ProjectPulse session is required."
             }, statusCode: StatusCodes.Status401Unauthorized);
         }
 
@@ -195,7 +195,7 @@ public static class ProjectWorkspaceModule
 
     private static Guid? GetViewAsUserId(HttpContext httpContext)
     {
-        if (httpContext.Request.Headers.TryGetValue("X-Project Health Dashboard-View-As-User", out var headerValue)
+        if (httpContext.Request.Headers.TryGetValue("X-ProjectPulse-View-As-User", out var headerValue)
             && Guid.TryParse(headerValue.ToString(), out var headerUserId))
         {
             return headerUserId;
@@ -699,7 +699,7 @@ public static class ProjectWorkspaceModule
             return Results.Json(new
             {
                 status = "session_required",
-                message = "A valid Project Health Dashboard session is required."
+                message = "A valid ProjectPulse session is required."
             }, statusCode: StatusCodes.Status401Unauthorized);
         }
 

@@ -11,7 +11,7 @@
 
 ## Purpose
 
-This document captures the missing Project Health Dashboard / PSA platform scope identified from the USS PSA Project Charter and translates it into a product backlog for implementation.
+This document captures the missing Project Pulse / PSA platform scope identified from the USS PSA Project Charter and translates it into a product backlog for implementation.
 
 The current build has focused heavily on time entry, day-level submission, manager approval, approval locking, and utilization foundations. The charter expands the target solution into a broader Professional Services Automation platform covering the full professional services lifecycle.
 
@@ -36,7 +36,7 @@ The charter scope includes:
 
 ## Current Build Coverage
 
-The current Project Health Dashboard build already covers or partially covers:
+The current Project Pulse build already covers or partially covers:
 
 - Browser-based internal platform shell
 - PostgreSQL-backed application data
@@ -443,12 +443,12 @@ Acceptance criteria:
 
 ## Notes on Naming
 
-The charter uses the name **US Signal Professional Services Automation Platform** and code **USS-PSA-2026**. The current application branding uses **Project Health Dashboard**. These can coexist if Project Health Dashboard is treated as the internal product name for the PSA platform.
+The charter uses the name **US Signal Professional Services Automation Platform** and code **USS-PSA-2026**. The current application branding uses **Project Pulse**. These can coexist if Project Pulse is treated as the internal product name for the PSA platform.
 
 Recommended product naming:
 
 - Formal project name: US Signal Professional Services Automation Platform
-- Internal product/application name: Project Health Dashboard
+- Internal product/application name: Project Pulse
 - Project code: USS-PSA-2026
 
 ## Status

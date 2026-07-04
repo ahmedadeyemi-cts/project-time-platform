@@ -336,13 +336,13 @@
     }
 
     const headers = {
-      "X-Project Health Dashboard-Session": token,
+      "X-ProjectPulse-Session": token,
       ...(options.headers || {})
     };
 
     const viewAsUserId = getViewAsUserId();
     if (viewAsUserId) {
-      headers["X-Project Health Dashboard-View-As-User"] = viewAsUserId;
+      headers["X-ProjectPulse-View-As-User"] = viewAsUserId;
     }
 
     const response = await fetch(path, {
@@ -957,7 +957,7 @@
       body.innerHTML = `
         <div class="projectpulse-022d-card">
           <strong>Sign in required</strong>
-          <p class="projectpulse-022d-muted">The notification center loads after a Project Health Dashboard session is available.</p>
+          <p class="projectpulse-022d-muted">The notification center loads after a ProjectPulse session is available.</p>
         </div>
       `;
       return;
@@ -1528,13 +1528,13 @@
     }
 
     const headers = {
-      "X-Project Health Dashboard-Session": token,
+      "X-ProjectPulse-Session": token,
       ...(options.headers || {})
     };
 
     const viewAsUserId = getViewAsUserId();
     if (viewAsUserId) {
-      headers["X-Project Health Dashboard-View-As-User"] = viewAsUserId;
+      headers["X-ProjectPulse-View-As-User"] = viewAsUserId;
     }
 
     const response = await fetch(path, {
@@ -1886,7 +1886,7 @@
       body.innerHTML = `
         <div class="projectpulse-022d-topbar-card">
           <strong>Sign in required</strong>
-          <p class="projectpulse-022d-topbar-muted">The notification center loads after a Project Health Dashboard session is available.</p>
+          <p class="projectpulse-022d-topbar-muted">The notification center loads after a ProjectPulse session is available.</p>
         </div>
       `;
       return;
@@ -2366,13 +2366,13 @@
     }
 
     const headers = {
-      'X-Project Health Dashboard-Session': token,
+      'X-ProjectPulse-Session': token,
       ...(options.headers || {})
     };
 
     const viewAsUserId = getViewAsUserId();
     if (viewAsUserId) {
-      headers['X-Project Health Dashboard-View-As-User'] = viewAsUserId;
+      headers['X-ProjectPulse-View-As-User'] = viewAsUserId;
     }
 
     const response = await fetch(path, { ...options, headers });
@@ -3247,7 +3247,7 @@
     customerId: customers[0] ? customers[0].id : '',
     customerName: customers[0] ? customers[0].name : '',
     projectName: '',
-    crmSource: 'Manual / Existing Project Health Dashboard Customer',
+    crmSource: 'Manual / Existing PHD Customer',
     opportunityRef: '',
     quoteRef: '',
     solutionArchitect: '',
@@ -3683,7 +3683,7 @@
       'Detected work type: ' + workType + '\n\n' +
       'Solution Architect description:\n' + description + '\n\n' +
       'Research-backed drafting approach:\n' +
-      'In the backend version, Project Health Dashboard should call the shared Claude provider with web/retrieval-enabled research. Claude should search official vendor/product documentation first, then trusted implementation references, and should return source-backed findings before drafting SOW language.\n\n' +
+      'In the backend version, PHD should call the shared Claude provider with web/retrieval-enabled research. Claude should search official vendor/product documentation first, then trusted implementation references, and should return source-backed findings before drafting SOW language.\n\n' +
       'Recommended delivery process steps:\n' +
       steps.map(function (step, index) { return (index + 1) + '. ' + step; }).join('\n') +
       '\n\nItems requiring Solution Architect review:\n' +
@@ -3730,7 +3730,7 @@
         '1. Customer stakeholders will provide timely access, approvals, and required technical information.\n' +
         '2. The approved GSD represents the current technical design baseline.\n' +
         '3. Work outside the signed SOW requires review before assignment.\n' +
-        '4. Project Health Dashboard will use the canonical SOW/GSD document area as the source of truth.\n' +
+        '4. PHD will use the canonical SOW/GSD document area as the source of truth.\n' +
         '5. Claude research output is draft-only and requires Solution Architect review.',
 
       exclusions:
@@ -3749,7 +3749,7 @@
         '- Project type: ' + state.projectType + '\n' +
         '- Detected work type: ' + workType + '\n' +
         '- Signed SOW and GSD remain in the existing Project Hours / SOW-GSD / Engineer Allocation document area.\n' +
-        '- Once Sales marks the SOW signed and uploads the signed SOW/GSD, Project Health Dashboard should notify PTC and Executive stakeholders.'
+        '- Once Sales marks the SOW signed and uploads the signed SOW/GSD, PHD should notify PTC and Executive stakeholders.'
     };
 
     return map[key] || '';
@@ -3832,7 +3832,7 @@
 
   function wordHtml() {
     const title = 'SOW Draft - ' + (state.customerName || 'Customer') + ' - ' + (state.projectName || 'Project');
-    const template = state.templateFileName || state.templateName || 'Default Project Health Dashboard SOW Template';
+    const template = state.templateFileName || state.templateName || 'Default PHD SOW Template';
     let sections = '';
 
     sections += '<h2>Process Research Brief</h2><p>' + escapeHtml(state.researchBrief || 'No research brief generated.').replace(/\n/g, '<br>') + '</p>';
@@ -3844,7 +3844,7 @@
     return '<html><head><meta charset="utf-8"><title>' + escapeHtml(title) + '</title>' +
       '<style>body{font-family:Calibri,Arial,sans-serif;font-size:11pt;color:#111827;}h1{font-size:20pt;}h2{font-size:14pt;color:#0f2a55;border-bottom:1px solid #cbd5e1;padding-bottom:4px;}table{border-collapse:collapse;width:100%;margin-bottom:18px;}td{border:1px solid #cbd5e1;padding:6px;vertical-align:top}.label{background:#f1f5f9;font-weight:bold;width:30%}.notice{background:#fef3c7;border:1px solid #f59e0b;padding:10px;margin-bottom:18px}</style>' +
       '</head><body><h1>' + escapeHtml(title) + '</h1>' +
-      '<div class="notice">This Word-compatible SOW draft was generated from Project Health Dashboard MODULE 025. Claude-assisted research and draft content are draft-only and require Solution Architect review.</div>' +
+      '<div class="notice">This Word-compatible SOW draft was generated from ProjectPulse MODULE 025. Claude-assisted research and draft content are draft-only and require Solution Architect review.</div>' +
       '<table>' +
       '<tr><td class="label">Customer</td><td>' + escapeHtml(state.customerName) + '</td></tr>' +
       '<tr><td class="label">Project</td><td>' + escapeHtml(state.projectName) + '</td></tr>' +
@@ -3886,7 +3886,7 @@
     return 'Subject: Sales Process Completed - ' + (state.customerName || '[Customer]') + ' / ' + (state.projectName || '[Project]') + ' Ready for Project Assignment\n\n' +
       'Hello Project Team Coordinator and Executive Team,\n\n' +
       'Sales has completed the SOW process for ' + (state.customerName || '[Customer]') + ' - ' + (state.projectName || '[Project]') + '.\n\n' +
-      'The signed SOW and GSD have been captured in the existing Project Health Dashboard SOW/GSD project document area so PMs, Engineers, and Leads can access the approved scope from Project Workspace / Engineering Documents.\n\n' +
+      'The signed SOW and GSD have been captured in the existing PHD SOW/GSD project document area so PMs, Engineers, and Leads can access the approved scope from Project Workspace / Engineering Documents.\n\n' +
       'Solution Architect: ' + (state.solutionArchitect || '[Solution Architect]') + '\n' +
       'Sales Owner: ' + (state.salesOwner || '[Sales Owner]') + '\n' +
       'Project Type: ' + (state.projectType || '[Project Type]') + '\n' +
@@ -3937,7 +3937,7 @@
           '<div>' +
             '<div class="projectpulse-025-eyebrow">MODULE 025 · Standalone Research-Backed SOW Generator</div>' +
             '<h2>SOW Generator Workspace</h2>' +
-            '<p>Create, research, review, and prepare a SOW draft while keeping SOW/GSD documents in the existing Project Health Dashboard project document area.</p>' +
+            '<p>Create, research, review, and prepare a SOW draft while keeping SOW/GSD documents in the existing PHD project document area.</p>' +
             '<div class="projectpulse-025-actions">' +
               '<span class="projectpulse-025-pill green">Research-backed scope</span>' +
               '<span class="projectpulse-025-pill blue">Onboarded customer dropdown</span>' +
@@ -3961,7 +3961,7 @@
                 '<div class="projectpulse-025-field"><label>Customer Name</label><select data-025-field="customerId"></select></div>' +
                 '<div class="projectpulse-025-field"><label>Project Type</label><select data-025-field="projectType"><option>Professional Services</option><option>Managed Services</option><option>Implementation</option><option>Consulting</option><option>Service Request</option></select></div>' +
               '</div>' +
-              '<div class="projectpulse-025-field"><label>CRM Source</label><select data-025-field="crmSource"><option>Manual / Existing Project Health Dashboard Customer</option><option>Salesforce Opportunity</option><option>Zendesk Sell Quote / Deal</option></select></div>' +
+              '<div class="projectpulse-025-field"><label>CRM Source</label><select data-025-field="crmSource"><option>Manual / Existing PHD Customer</option><option>Salesforce Opportunity</option><option>Zendesk Sell Quote / Deal</option></select></div>' +
               '<div class="projectpulse-025-field"><label>Project / Engagement Name</label><input data-025-field="projectName" placeholder="Project or engagement name"></div>' +
               '<div class="projectpulse-025-two-grid"><div class="projectpulse-025-field"><label>Opportunity Reference</label><input data-025-field="opportunityRef" placeholder="Salesforce opportunity ID"></div><div class="projectpulse-025-field"><label>Quote Reference</label><input data-025-field="quoteRef" placeholder="Zendesk Sell quote/deal reference"></div></div>' +
               '<div class="projectpulse-025-two-grid"><div class="projectpulse-025-field"><label>Solution Architect</label><input data-025-field="solutionArchitect" placeholder="Solution Architect name"></div><div class="projectpulse-025-field"><label>Sales Owner</label><input data-025-field="salesOwner" placeholder="Sales owner name"></div></div>' +
@@ -4054,7 +4054,7 @@
       setCheck(shell, key, state[key]);
     });
 
-    shell.querySelector('[data-025-template-name]').textContent = state.templateFileName || 'Default Project Health Dashboard SOW template';
+    shell.querySelector('[data-025-template-name]').textContent = state.templateFileName || 'Default PHD SOW template';
     shell.querySelector('[data-025-sow-name]').textContent = state.signedSowFileName || 'Required before handoff email';
     shell.querySelector('[data-025-gsd-name]').textContent = state.gsdFileName || 'Required before PM/Engineer assignment email';
     shell.querySelector('[data-025-research-brief]').textContent = state.researchBrief || 'No research brief generated yet. Click Research Actual Delivery Process.';
@@ -4431,7 +4431,7 @@
   ];
 
   var mappings = [
-    ['Account / Company Name', 'Project Health Dashboard Customer', 'Customer match or onboarding candidate', 'Required'],
+    ['Account / Company Name', 'PHD Customer', 'Customer match or onboarding candidate', 'Required'],
     ['Opportunity / Deal Name', 'SOW Project / Engagement Name', 'Prefill MODULE 025 SOW Generator', 'Required'],
     ['Opportunity / Deal ID', 'CRM Reference', 'Audit traceability', 'Required'],
     ['Quote / Deal Value', 'Estimated Revenue', 'Executive and intake visibility', 'Optional'],
@@ -4771,7 +4771,7 @@
 
   function mappingTableHtml() {
     return '<table class="projectpulse-026-table">' +
-      '<thead><tr><th>CRM Field</th><th>Project Health Dashboard Destination</th><th>Workflow Use</th><th>Promotion</th></tr></thead>' +
+      '<thead><tr><th>CRM Field</th><th>PHD Destination</th><th>Workflow Use</th><th>Promotion</th></tr></thead>' +
       '<tbody>' +
       mappings.map(function (row) {
         return '<tr><td>' + escapeHtml(row[0]) + '</td><td>' + escapeHtml(row[1]) + '</td><td>' + escapeHtml(row[2]) + '</td><td>' + escapeHtml(row[3]) + '</td></tr>';
@@ -4794,7 +4794,7 @@
       '- Estimated Hours: ' + state.estimatedHours + '\n' +
       '- Estimated Revenue: $' + state.estimatedRevenue + '\n' +
       '- Services Summary: ' + state.serviceSummary + '\n\n' +
-      'Project Health Dashboard Output Preview:\n' +
+      'PHD Output Preview:\n' +
       '- Customer match or onboarding candidate: ' + state.sampleAccount + '\n' +
       '- SOW Generator prefill: ' + state.sampleOpportunity + '\n' +
       '- Claude research seed: ' + state.serviceSummary + '\n' +
@@ -4972,7 +4972,7 @@
 
             '<div class="projectpulse-026-section">' +
               '<h3>026C CRM Record Preview</h3>' +
-              '<p>This preview shows how CRM-originated opportunities, deals, quotes, owners, Solution Architects, and service lines flow into Project Health Dashboard.</p>' +
+              '<p>This preview shows how CRM-originated opportunities, deals, quotes, owners, Solution Architects, and service lines flow into ProjectPulse.</p>' +
               '<div class="projectpulse-026-field"><label>Scenario</label><select data-026-field="selectedScenario"><option>Opportunity to SOW</option><option>Quote to Intake</option><option>Signed opportunity to handoff</option><option>CRM record to project document package</option></select></div>' +
               '<div class="projectpulse-026-two-grid"><div class="projectpulse-026-field"><label>Source Record Reference</label><input data-026-field="sourceRecordReference"></div><div class="projectpulse-026-field"><label>Account / Company</label><input data-026-field="sampleAccount"></div></div>' +
               '<div class="projectpulse-026-two-grid"><div class="projectpulse-026-field"><label>Opportunity / Deal</label><input data-026-field="sampleOpportunity"></div><div class="projectpulse-026-field"><label>Quote</label><input data-026-field="sampleQuote"></div></div>' +
@@ -4988,7 +4988,7 @@
               '<p>Use this to close out the CRM Integration Framework phase before moving to MODULE 027.</p>' +
               '<div class="projectpulse-026-checklist">' +
                 '<label><input type="checkbox" data-026-check="providerRegistryReviewed"> Provider registry and placeholder statuses reviewed.</label>' +
-                '<label><input type="checkbox" data-026-check="fieldMappingReviewed"> CRM-to-Project Health Dashboard field mapping reviewed.</label>' +
+                '<label><input type="checkbox" data-026-check="fieldMappingReviewed"> CRM-to-PHD field mapping reviewed.</label>' +
                 '<label><input type="checkbox" data-026-check="securityReviewed"> Server-side credential and security model reviewed.</label>' +
                 '<label><input type="checkbox" data-026-check="noSecretsReviewed"> Confirmed no CRM credentials or API keys are stored in the repository.</label>' +
                 '<label><input type="checkbox" data-026-check="sowMappingReviewed"> CRM-to-SOW Generator mapping reviewed.</label>' +
@@ -5002,7 +5002,7 @@
 
           '<div>' +
             '<div class="projectpulse-026-section white">' +
-              '<h3>CRM to Project Health Dashboard Field Mapping</h3>' +
+              '<h3>CRM to PHD Field Mapping</h3>' +
               mappingTableHtml() +
             '</div>' +
 
@@ -5405,7 +5405,7 @@
 
   var state = {
     intakeReference: 'INTAKE-024-DEMO',
-    sourceSystem: 'Manual / Project Health Dashboard',
+    sourceSystem: 'Manual / PHD',
     sourceRecordReference: 'CRM-OPP-026-DEMO',
     customerName: 'Great Lakes Healthcare',
     projectName: 'Cisco CUCM 11.5 to 15.0 Upgrade',
@@ -5916,7 +5916,7 @@
               '<p>This package can originate manually, from CRM Integration, or from a SOW Generator workflow.</p>' +
               '<div class="projectpulse-024-two-grid">' +
                 '<div class="projectpulse-024-field"><label>Intake Reference</label><input data-024-field="intakeReference"></div>' +
-                '<div class="projectpulse-024-field"><label>Source System</label><select data-024-field="sourceSystem"><option>Manual / Project Health Dashboard</option><option>Salesforce</option><option>Zendesk Sell</option><option>SOW Generator</option><option>CRM Integration Framework</option></select></div>' +
+                '<div class="projectpulse-024-field"><label>Source System</label><select data-024-field="sourceSystem"><option>Manual / PHD</option><option>Salesforce</option><option>Zendesk Sell</option><option>SOW Generator</option><option>CRM Integration Framework</option></select></div>' +
               '</div>' +
               '<div class="projectpulse-024-field"><label>Source Record Reference</label><input data-024-field="sourceRecordReference"></div>' +
               '<div class="projectpulse-024-two-grid">' +
@@ -6832,7 +6832,7 @@
       'Target Start Date: ' + (state.targetStartDate || '[Target start date not set]') + '\n' +
       'Planned Hours: ' + state.estimatedHours + '\n\n' +
       'Required action:\n' +
-      'Review the signed SOW and GSD in Project Health Dashboard Project Workspace / Engineering Documents before starting delivery work.';
+      'Review the signed SOW and GSD in ProjectPulse Project Workspace / Engineering Documents before starting delivery work.';
   }
 
   function assignmentPreview() {
@@ -6862,7 +6862,7 @@
       'Intake Reference: ' + state.intakeReference + '\n' +
       'Customer: ' + state.customerName + '\n' +
       'Project: ' + state.projectName + '\n' +
-      'Actor: Current Project Health Dashboard user\n' +
+      'Actor: Current PHD user\n' +
       'Timestamp: ' + new Date().toISOString() + '\n\n' +
       'Audit storage target:\n' +
       '- signed_sow_handoff_notification_events\n' +
@@ -6996,7 +6996,7 @@
                 '<div class="projectpulse-027-field"><label>Intake Reference</label><input data-027-field="intakeReference"></div>' +
               '</div>' +
               '<div class="projectpulse-027-two-grid">' +
-                '<div class="projectpulse-027-field"><label>CRM Source</label><select data-027-field="crmSource"><option>Manual / Project Health Dashboard</option><option>CRM Integration Framework</option><option>Salesforce</option><option>Zendesk Sell</option><option>SOW Generator</option><option>Sales-to-Delivery Intake</option></select></div>' +
+                '<div class="projectpulse-027-field"><label>CRM Source</label><select data-027-field="crmSource"><option>Manual / PHD</option><option>CRM Integration Framework</option><option>Salesforce</option><option>Zendesk Sell</option><option>SOW Generator</option><option>Sales-to-Delivery Intake</option></select></div>' +
                 '<div class="projectpulse-027-field"><label>CRM Record Reference</label><input data-027-field="crmRecordReference"></div>' +
               '</div>' +
               '<div class="projectpulse-027-two-grid">' +
@@ -9030,7 +9030,7 @@
       '- View-As must not allow submit, approve, reject, export, create, update, delete, or assignment writes as the selected user.\n' +
       '- Forbidden write attempts must return a blocked result and be auditable.\n' +
       '- View-As localStorage key remains projectPulseViewAsUser.\n' +
-      '- API View-As header remains X-Project Health Dashboard-View-As-User.\n\n' +
+      '- API View-As header remains X-ProjectPulse-View-As-User.\n\n' +
       'Expected write result:\n' +
       '403 view_as_read_only or equivalent forbidden response for protected writes.';
 
@@ -10143,7 +10143,7 @@
     }
 
     if (token) {
-      headers['X-Project Health Dashboard-Session'] = token;
+      headers['X-ProjectPulse-Session'] = token;
     }
 
     var viewAsUser = '';
@@ -10156,7 +10156,7 @@
     }
 
     if (viewAsUser) {
-      headers['X-Project Health Dashboard-View-As-User'] = viewAsUser;
+      headers['X-ProjectPulse-View-As-User'] = viewAsUser;
     }
 
     return headers;
@@ -10686,7 +10686,7 @@
       };
 
       if (session.sessionToken) {
-        headers['X-Project Health Dashboard-Session'] = session.sessionToken;
+        headers['X-ProjectPulse-Session'] = session.sessionToken;
       }
 
       var response = await fetch('/api/reports/030/preview', {
@@ -11009,7 +11009,7 @@
 
   async function projectPulse030ForceBrowserFilterLoad() {
     var headers = projectPulse030AuthHeaders();
-    var tokenPresent = !!headers['X-Project Health Dashboard-Session'];
+    var tokenPresent = !!headers['X-ProjectPulse-Session'];
     state.browserFilterDiagnostic = 'Requesting /api/reports/030/filter-options. Token header present: ' + (tokenPresent ? 'yes' : 'no') + '.';
     state.statusType = '';
     state.status = state.browserFilterDiagnostic;

@@ -1,4 +1,4 @@
--- Project Health Dashboard
+-- Project Pulse
 -- Rollback: 008_manager_approval_day_fields_rollback.sql
 
 BEGIN;

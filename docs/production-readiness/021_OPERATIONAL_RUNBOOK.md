@@ -4,7 +4,7 @@ Generated UTC: `2026-06-30T16:53:54.531533+00:00`
 
 ## Purpose
 
-This runbook defines the operational process for release hardening, production readiness validation, backup, deployment, rollback, smoke testing, and evidence capture for Project Health Dashboard / ChangePoint.
+This runbook defines the operational process for release hardening, production readiness validation, backup, deployment, rollback, smoke testing, and evidence capture for ProjectPulse / ChangePoint.
 
 ## Runtime Services
 

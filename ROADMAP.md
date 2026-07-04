@@ -1,6 +1,6 @@
-# Project Health Dashboard PSA Production Roadmap
+# ProjectPulse PSA Production Roadmap
 
-This roadmap tracks the remaining modules needed to mature Project Health Dashboard into a robust ChangePoint replacement. It reflects the current implementation direction and the expanded requirements around time compliance, reporting, Emburse Certify, project delivery, accounting, help, production hardening, staging, test-data reset controls, Azure migration, long-term capacity planning, and future multi-server readiness.
+This roadmap tracks the remaining modules needed to mature ProjectPulse into a robust ChangePoint replacement. It reflects the current implementation direction and the expanded requirements around time compliance, reporting, Emburse Certify, project delivery, accounting, help, production hardening, staging, test-data reset controls, Azure migration, long-term capacity planning, and future multi-server readiness.
 
 ## Current Foundation
 
@@ -245,7 +245,7 @@ Scope:
 
 ### 019M-W — Salesforce CRM Handoff
 
-Goal: support Salesforce opportunity handoff into Project Health Dashboard.
+Goal: support Salesforce opportunity handoff into ProjectPulse.
 
 Scope:
 
@@ -268,18 +268,18 @@ Scope:
 - Retry/backoff
 - Sync failure logging
 
-### 019M-Y — Project Health Dashboard Charter v2.0 Documentation Update
+### 019M-Y — ProjectPulse Charter v2.0 Documentation Update
 
 Goal: update the PSA charter to reflect the actual implementation stack and expanded production roadmap.
 
 Scope:
 
-- Update stack from the original proposed stack to the current Project Health Dashboard implementation direction
+- Update stack from the original proposed stack to the current ProjectPulse implementation direction
 - Document .NET API, React/Vite frontend, PostgreSQL, Linux/systemd operations, internal auth/session model, backup/DR, restore validation, replication readiness, Help Center, Claude Enterprise future integration, Enterprise GitHub migration, notification center, reporting/accountability, staging, test data reset, Azure migration, long-term capacity planning, and production hardening
 
 ### 019M-Z — Production Security Hardening & Enterprise GitHub Readiness
 
-Goal: prepare Project Health Dashboard for production and future enterprise GitHub ownership.
+Goal: prepare ProjectPulse for production and future enterprise GitHub ownership.
 
 Scope:
 
@@ -374,7 +374,7 @@ Scope:
 
 ## Automation Strategy
 
-Project Health Dashboard should use automation to reduce repetitive manual work and support around-the-clock progress.
+ProjectPulse should use automation to reduce repetitive manual work and support around-the-clock progress.
 
 Recommended automation layers:
 

@@ -268,7 +268,7 @@
       "file": "src/frontend/project-time-web/src/HelpAssistant.jsx",
       "line": 137,
       "pattern": "placeholder",
-      "text": "placeholder=\"Ask Project Health Dashboard for help...\""
+      "text": "placeholder=\"Ask Project Pulse for help...\""
     },
     {
       "file": "src/frontend/project-time-web/src/IntakeWorkTaskHandoffPanel.jsx",
@@ -352,7 +352,7 @@
       "file": "src/frontend/project-time-web/src/ReplicationSyncStatusCenter.jsx",
       "line": 320,
       "pattern": "placeholder",
-      "text": "placeholder=\"Example: Project Health Dashboard DR Node\""
+      "text": "placeholder=\"Example: ProjectPulse DR Node\""
     },
     {
       "file": "src/frontend/project-time-web/src/ReplicationSyncStatusCenter.jsx",

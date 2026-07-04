@@ -1,4 +1,4 @@
--- Project Health Dashboard
+-- Project Pulse
 -- Migration: 010_psa_demo_assignment_visibility.sql
 -- Purpose: Make seeded PSA project task assignments visible during current validation weeks.
 --

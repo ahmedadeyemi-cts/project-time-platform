@@ -28,7 +28,7 @@ VALUES
     (
         'TIME_COMPLIANCE_ENGINEER_NOTIFICATIONS',
         'Time Compliance Engineer Notifications',
-        'Sends engineer missing-time reminders, manager copy notices, escalation notices, and delivery evidence from the shared Project Health Dashboard email provider.',
+        'Sends engineer missing-time reminders, manager copy notices, escalation notices, and delivery evidence from the shared ProjectPulse email provider.',
         'time-compliance',
         ARRAY['VIEW_TIME_COMPLIANCE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']::text[],
         ARRAY['outbox_only', 'brevo_api']::text[],
@@ -37,7 +37,7 @@ VALUES
     (
         'LOCAL_ADMIN_PASSWORD_RESET_NOTICES',
         'Local Admin Password Reset Notices',
-        'Future consumer for temporary-password and reset-completion notification messages using the shared Project Health Dashboard email provider.',
+        'Future consumer for temporary-password and reset-completion notification messages using the shared ProjectPulse email provider.',
         'manager-approval',
         ARRAY['SYSTEM_ADMINISTRATION', 'MANAGE_ALL']::text[],
         ARRAY['outbox_only', 'brevo_api']::text[],

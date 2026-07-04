@@ -1,4 +1,4 @@
--- Project Health Dashboard
+-- Project Pulse
 -- Rollback: 011_remaining_psa_module_foundation_rollback.sql
 
 BEGIN;

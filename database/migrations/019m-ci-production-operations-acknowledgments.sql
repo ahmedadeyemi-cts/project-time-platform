@@ -27,7 +27,7 @@ CREATE INDEX IF NOT EXISTS idx_prod_ops_ack_active
     ON production_operations_acknowledgments(is_active)
     WHERE is_active = true;
 
--- Runtime grants for the Project Health Dashboard API database login roles.
+-- Runtime grants for the ProjectPulse API database login roles.
 DO $$
 DECLARE
     role_record record;

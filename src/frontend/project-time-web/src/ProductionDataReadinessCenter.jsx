@@ -64,7 +64,7 @@ export default function ProductionDataReadinessCenter() {
 
     try {
       const response = await fetch('/api/production-data-readiness', {
-        headers: sessionToken ? { 'X-Project Health Dashboard-Session': sessionToken } : {}
+        headers: sessionToken ? { 'X-ProjectPulse-Session': sessionToken } : {}
       });
 
       const text = await response.text();

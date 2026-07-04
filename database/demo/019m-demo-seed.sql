@@ -1,4 +1,4 @@
--- Project Health Dashboard August demo seed data
+-- ProjectPulse August demo seed data
 -- Staging/demo only. Do not run in production without review.
 
 DO $$
@@ -30,7 +30,7 @@ BEGIN
     SELECT user_id INTO v_ptc_id FROM app_users WHERE email = 'project.team.coordinator@ussignal.local';
 
     INSERT INTO teams (team_name, team_description, is_active)
-    VALUES ('Demo Delivery', 'Demo team for August Project Health Dashboard walkthrough.', TRUE)
+    VALUES ('Demo Delivery', 'Demo team for August ProjectPulse walkthrough.', TRUE)
     ON CONFLICT (team_name) DO UPDATE
     SET team_description = EXCLUDED.team_description,
         is_active = TRUE,

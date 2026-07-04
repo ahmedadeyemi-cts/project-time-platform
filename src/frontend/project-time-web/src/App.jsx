@@ -4,7 +4,7 @@ import PostIntakeAgingPanel from './PostIntakeAgingPanel.jsx';
 /*
  * 019M-V Global View-As User Experience Preview
  * Admin-only preview selector. Applies a read-only effective user to API calls
- * using X-Project Health Dashboard-View-As-User. Backend modules opt in by honoring the header.
+ * using X-ProjectPulse-View-As-User. Backend modules opt in by honoring the header.
  */
 function installProjectPulseGlobalViewAsPreview() {
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
@@ -90,7 +90,7 @@ function installProjectPulseGlobalViewAsPreview() {
     }
 
     const headers = new Headers(init?.headers || (typeof input !== 'string' ? input?.headers || {} : {}));
-    headers.set('X-Project Health Dashboard-View-As-User', viewAs.userId);
+    headers.set('X-ProjectPulse-View-As-User', viewAs.userId);
 
     return originalFetch(input, {
       ...init,
@@ -281,7 +281,7 @@ function installProjectPulseGlobalViewAsPreview() {
     try {
       const response = await window.__projectPulseOriginalFetch('/api/project-workspace/view-as/users', {
         headers: {
-          'X-Project Health Dashboard-Session': session.sessionToken
+          'X-ProjectPulse-Session': session.sessionToken
         }
       });
 
@@ -631,7 +631,7 @@ function getStoredAuthSession() {
 
 function getProjectPulseAuthHeaders(sessionOverride = null) {
   const session = sessionOverride?.sessionToken ? sessionOverride : getStoredAuthSession();
-  return session?.sessionToken ? { 'X-Project Health Dashboard-Session': session.sessionToken } : {};
+  return session?.sessionToken ? { 'X-ProjectPulse-Session': session.sessionToken } : {};
 }
 
 function hasProjectPulseSession(session) {
@@ -946,7 +946,7 @@ const roleWorkspaceModules = [
     href: '#backup-dr',
     title: 'Backup / DR Center',
     navLabel: 'MODULE 014',
-    description: 'Create and validate full Project Health Dashboard backup bundles.',
+    description: 'Create and validate full PHD backup bundles.',
     permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   },
   {
@@ -1158,7 +1158,7 @@ function readProjectPulseGlobalSearchSession() {
 
 function getProjectPulseGlobalSearchHeaders() {
   const session = readProjectPulseGlobalSearchSession();
-  return session?.sessionToken ? { 'X-Project Health Dashboard-Session': session.sessionToken } : {};
+  return session?.sessionToken ? { 'X-ProjectPulse-Session': session.sessionToken } : {};
 }
 
 function projectPulseGlobalSearchText(value) {
@@ -1466,14 +1466,14 @@ function ProjectPulseGlobalSearch() {
 
     const headers = getProjectPulseGlobalSearchHeaders();
 
-    if (!headers['X-Project Health Dashboard-Session']) {
-      setStatus('Sign in is required before Project Health Dashboard Search can load.');
+    if (!headers['X-ProjectPulse-Session']) {
+      setStatus('Sign in is required before PHD Search can load.');
       setHasLoaded(false);
       return;
     }
 
     setIsLoading(true);
-    setStatus('Loading Project Health Dashboard Search...');
+    setStatus('Loading PHD Search...');
 
     try {
       const [workspace, filters, dashboard] = await Promise.all([
@@ -1488,7 +1488,7 @@ function ProjectPulseGlobalSearch() {
       setHasLoaded(true);
       setStatus(`${searchItems.length} searchable records loaded`);
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'Project Health Dashboard Search could not load.');
+      setStatus(error instanceof Error ? error.message : 'PHD Search could not load.');
       setHasLoaded(false);
     } finally {
       setIsLoading(false);
@@ -1595,7 +1595,7 @@ function ProjectPulseGlobalSearch() {
         <div className="projectpulse-global-search-backdrop" onMouseDown={(event) => {
           if (event.target === event.currentTarget) closeSearch();
         }}>
-          <section className="projectpulse-global-search-modal" role="dialog" aria-modal="true" aria-label="Project Health Dashboard Search">
+          <section className="projectpulse-global-search-modal" role="dialog" aria-modal="true" aria-label="PHD Search">
             <div className="projectpulse-global-search-header">
               <div className="projectpulse-global-search-icon" aria-hidden="true">⌕</div>
               <input
@@ -1615,7 +1615,7 @@ function ProjectPulseGlobalSearch() {
             </div>
 
             <div className="projectpulse-global-search-meta">
-              <span>Project Health Dashboard Search</span>
+              <span>PHD Search</span>
               <span>{isLoading ? 'Loading...' : status || 'Type at least two characters'}</span>
             </div>
 
@@ -1757,7 +1757,7 @@ function buildRoleNavigationModel(user, navigationItems) {
 function SignalLogo() {
 
   return (
-    <div className="brand-lockup" aria-label="US Signal Project Health Dashboard">
+    <div className="brand-lockup" aria-label="Project Health Dashboard">
       <img className="brand-logo-image" src={usSignalLogoUrl} alt="US Signal" />
       <div>
         <strong>Project Health Dashboard</strong>
@@ -4036,7 +4036,7 @@ export default function App() {
       await postJson('/api/admin/users/roles', {
         email,
         roleCodes: [roleCode],
-        reason: 'Updated from Project Health Dashboard role administration screen'
+        reason: 'Updated from PHD role administration screen'
       });
       setRoleAdminStatus(`Updated ${email} to ${roleCode}`);
       await loadRoleAdminData();
@@ -4089,7 +4089,7 @@ export default function App() {
         <section className="auth-landing-panel">
           <div className="auth-brand-block">
             <SignalLogo />
-            <p className="eyebrow">Project Health Dashboard Access</p>
+            <p className="eyebrow">PHD Access</p>
             <h1>Sign in to your role-based workspace</h1>
             <p>
               Use your US Signal email for SSO. Use the local administrator account only for break-glass access when SSO is unavailable.
@@ -4246,7 +4246,7 @@ export default function App() {
         <div className="session-timeout-backdrop">
           <section className="session-timeout-modal" role="dialog" aria-modal="true" aria-label="Session timeout warning">
             <p className="eyebrow">Session timeout</p>
-            <h2>Your Project Health Dashboard session is about to expire</h2>
+            <h2>Your PHD session is about to expire</h2>
             <p>
               For security, each session is limited to two hours. Extend your session now to continue working, or you will be signed out when the timer reaches zero.
             </p>
@@ -4363,7 +4363,7 @@ Analytics - Variphy / Infortel`}
                   <div className="settings-section-card">
                     <p className="eyebrow">Appearance</p>
                     <h3>Theme preference</h3>
-                    <p>Select how Project Health Dashboard should appear for your account on this browser.</p>
+                    <p>Select how PHD should appear for your account on this browser.</p>
 
                     <div className="theme-choice-grid">
                       <label className={profileDraft.theme === 'light' ? 'theme-choice active' : 'theme-choice'}>
@@ -4508,7 +4508,7 @@ Analytics - Variphy / Infortel`}
                   )}
                 </div>
                 <div>
-                  <strong>{userPreferences.displayNameOverride || currentUser.data?.displayName || authSession?.username || 'Project Health Dashboard User'}</strong>
+                  <strong>{userPreferences.displayNameOverride || currentUser.data?.displayName || authSession?.username || 'PHD User'}</strong>
                   <small>{authSession?.username ?? currentUser.data?.email ?? 'Current user'}</small>
                   <small>{workspaceRoleName}</small>
                 </div>
@@ -5101,10 +5101,10 @@ Analytics - Variphy / Infortel`}
 
       <section id="dashboard" className="hero hero-polished">
         <div className="hero-content-block">
-          <p className="eyebrow">US Signal Project Health Dashboard</p>
+          <p className="eyebrow">Project Health Dashboard</p>
           <h1>Operational command center for time, approvals, utilization, and billing readiness.</h1>
           <p className="hero-copy">
-            Project Health Dashboard brings weekly time entry, task-based project assignment, manager approval, project validation, accounting reconciliation, and utilization reporting into one internal workflow.
+            PHD brings weekly time entry, task-based project assignment, manager approval, project validation, accounting reconciliation, and utilization reporting into one internal workflow.
           </p>
           <div className="hero-pill-row">
             <span>Time entry</span>
@@ -5123,7 +5123,7 @@ Analytics - Variphy / Infortel`}
         <article className="status-card">
           <span className="status-label">API</span>
           <strong>{apiHealth.loading ? 'Checking...' : apiHealth.error ? 'Unavailable' : apiHealth.data?.status}</strong>
-          <small>{apiHealth.data?.service ?? apiHealth.error ?? 'Project Health Dashboard API'}</small>
+          <small>{apiHealth.data?.service ?? apiHealth.error ?? 'PHD API'}</small>
         </article>
 
         <article className="status-card">
@@ -5643,7 +5643,7 @@ Analytics - Variphy / Infortel`}
                     <p className="eyebrow">Installed Modules</p>
                     <h2>Role-based module dashboard</h2>
                     <p className="muted">
-                      These are the Project Health Dashboard modules available to your current role. Each card explains what the module is intended to do so new workflow areas are visible from the dashboard.
+                      These are the PHD modules available to your current role. Each card explains what the module is intended to do so new workflow areas are visible from the dashboard.
                     </p>
                   </div>
                   <span className="installed-modules-count">{installedModules.length} available</span>

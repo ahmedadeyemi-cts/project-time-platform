@@ -1,4 +1,4 @@
--- Project Health Dashboard
+-- Project Pulse
 -- Migration: 007_timesheet_day_submission_status.sql
 -- Purpose: Track submitted, locked, and unlocked state at the individual work-day level.
 

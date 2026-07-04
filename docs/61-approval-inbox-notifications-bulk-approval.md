@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document records the Approval Inbox update for Project Health Dashboard.
+This document records the Approval Inbox update for Project Pulse.
 
 ## Date
 

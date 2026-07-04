@@ -56,7 +56,7 @@ if "async function loadRoleAdminData" not in app:
       await postJson('/api/admin/users/roles', {
         email,
         roleCodes: [roleCode],
-        reason: 'Updated from Project Health Dashboard role administration screen'
+        reason: 'Updated from Project Pulse role administration screen'
       });
       setRoleAdminStatus(`Updated ${email} to ${roleCode}`);
       await loadRoleAdminData();

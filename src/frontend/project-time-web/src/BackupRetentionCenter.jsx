@@ -26,7 +26,7 @@ function buildAuthHeaders(authSession, extraHeaders = {}) {
     ...extraHeaders,
     ...(token ? {
       Authorization: `Bearer ${token}`,
-      'X-Project Health Dashboard-Session': token,
+      'X-ProjectPulse-Session': token,
       'X-Project-Pulse-Session': token,
       'X-Session-Token': token
     } : {})
@@ -185,7 +185,7 @@ export default function BackupRetentionCenter({ authSession }) {
           <p className="backup-retention-eyebrow">System Operations</p>
           <h1>Backup Retention</h1>
           <p>
-            Review Project Health Dashboard backup points and safely remove older backups when they are no longer needed.
+            Review PHD backup points and safely remove older backups when they are no longer needed.
           </p>
         </div>
 
@@ -216,7 +216,7 @@ export default function BackupRetentionCenter({ authSession }) {
               <span>Safe deletion controls</span>
               <h2>Manual cleanup with restore-point protection</h2>
               <p>
-                Project Health Dashboard protects the last remaining backup and the restore point currently selected in Restore Validation.
+                PHD protects the last remaining backup and the restore point currently selected in Restore Validation.
               </p>
             </div>
             <StatusBadge status={status.backupCount > 0 ? 'ready' : 'warning'} />

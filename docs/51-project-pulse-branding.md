@@ -1,8 +1,8 @@
-# Project Health Dashboard Branding
+# Project Pulse Branding
 
 ## Purpose
 
-This document records the branding decision to call the system `Project Health Dashboard`.
+This document records the branding decision to call the system `Project Pulse`.
 
 ## Date
 
@@ -13,14 +13,14 @@ This document records the branding decision to call the system `Project Health D
 The system name is now:
 
 ```text
-Project Health Dashboard
+Project Pulse
 ```
 
 The name is intended to be short, memorable, and easy for engineers and project stakeholders to reference.
 
 ## Brand Meaning
 
-Project Health Dashboard reflects the system's purpose:
+Project Pulse reflects the system's purpose:
 
 - Time entry heartbeat
 - Project-task assignment visibility
@@ -39,21 +39,21 @@ Project Health Dashboard reflects the system's purpose:
 
 - `deployment/rocky-linux/apply-project-pulse-branding-patch.sh`
 
-The patch script updates the main React app display labels to use Project Health Dashboard.
+The patch script updates the main React app display labels to use Project Pulse.
 
 ## UI Label Direction
 
 The preferred display should be:
 
 ```text
-Project Health Dashboard
+Project Pulse
 Time • Approval • Utilization
 ```
 
 For longer descriptions, use:
 
 ```text
-Project Health Dashboard: time, approval, utilization, and accounting workflow
+Project Pulse: time, approval, utilization, and accounting workflow
 ```
 
 ## Status

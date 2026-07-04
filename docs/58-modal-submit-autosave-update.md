@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document records the requested update to improve the time-entry modal in Project Health Dashboard.
+This document records the requested update to improve the time-entry modal in Project Pulse.
 
 ## Date
 
@@ -34,7 +34,7 @@ This keeps the day submission action visible and easier to find.
 
 ### Autosave on Close
 
-When an engineer enters time and then closes the modal or clicks outside of it, Project Health Dashboard now attempts to save the weekly draft automatically.
+When an engineer enters time and then closes the modal or clicks outside of it, Project Pulse now attempts to save the weekly draft automatically.
 
 The autosave uses the existing draft-save API:
 

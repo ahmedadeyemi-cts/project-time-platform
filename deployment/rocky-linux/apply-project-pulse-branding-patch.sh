@@ -16,10 +16,10 @@ app_file = Path('/opt/project-time-platform/app/project-time-platform/src/fronte
 app = app_file.read_text()
 
 replacements = {
-    'Project Time Platform</strong>': 'Project Health Dashboard</strong>',
-    'US Signal Project Time Platform': 'US Signal Project Health Dashboard',
-    'Time, approval, utilization, and accounting workflow foundation': 'Project Health Dashboard: time, approval, utilization, and accounting workflow',
-    'Project Time Platform API': 'Project Health Dashboard API',
+    'Project Time Platform</strong>': 'Project Pulse</strong>',
+    'US Signal Project Time Platform': 'US Signal Project Pulse',
+    'Time, approval, utilization, and accounting workflow foundation': 'Project Pulse: time, approval, utilization, and accounting workflow',
+    'Project Time Platform API': 'Project Pulse API',
 }
 
 for old, new in replacements.items():
@@ -28,5 +28,5 @@ for old, new in replacements.items():
 app_file.write_text(app)
 PY
 
-echo "==> Project Health Dashboard branding patch applied"
-echo "==> Validate with: grep -R \"Project Health Dashboard\" src/frontend/project-time-web/src/App.jsx src/frontend/project-time-web/index.html"
+echo "==> Project Pulse branding patch applied"
+echo "==> Validate with: grep -R \"Project Pulse\" src/frontend/project-time-web/src/App.jsx src/frontend/project-time-web/index.html"

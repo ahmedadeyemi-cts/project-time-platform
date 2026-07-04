@@ -5,7 +5,7 @@ function getProjectPulseAuthHeaders() {
     const rawSession = window.localStorage.getItem('projectPulseAuthSession');
     if (!rawSession) return {};
     const session = JSON.parse(rawSession);
-    return session?.sessionToken ? { 'X-Project Health Dashboard-Session': session.sessionToken } : {};
+    return session?.sessionToken ? { 'X-ProjectPulse-Session': session.sessionToken } : {};
   } catch {
     return {};
   }
@@ -461,7 +461,7 @@ export default function UserAdministrationPanel() {
         <div className="user-admin-create-hero">
           <div>
             <p className="eyebrow">Local user</p>
-            <h2>Create local Project Health Dashboard user</h2>
+            <h2>Create local PHD user</h2>
             <p className="section-copy">
               Manual creation is restricted to @ussignal.local accounts. Use Azure Admin import for @ussignal.com and @onenecklab.com users.
             </p>
@@ -885,7 +885,7 @@ export default function UserAdministrationPanel() {
               />
 
 
-              <label>Project Health Dashboard role</label>
+              <label>PHD role</label>
               <select
                 value={getSelectedPrimaryRoleCode()}
                 onChange={(event) => updateSelectedPrimaryRole(event.target.value)}

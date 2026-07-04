@@ -2,7 +2,7 @@
 
 ## Scope
 
-021E creates a workflow data readiness report for the production-critical Project Health Dashboard / ChangePoint workflows.
+021E creates a workflow data readiness report for the production-critical ProjectPulse / ChangePoint workflows.
 
 ## Workflow Areas Covered
 

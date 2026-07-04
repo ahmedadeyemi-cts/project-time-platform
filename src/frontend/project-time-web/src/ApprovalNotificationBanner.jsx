@@ -9,7 +9,7 @@ function getProjectPulseSessionHeaders() {
 
     const session = JSON.parse(raw);
     return session?.sessionToken
-      ? { 'X-Project Health Dashboard-Session': session.sessionToken }
+      ? { 'X-ProjectPulse-Session': session.sessionToken }
       : {};
   } catch {
     return {};

@@ -154,7 +154,7 @@ These are not automatic failures. They identify strings that should be reviewed 
 | `src/frontend/project-time-web/src/BackupRetentionCenter.jsx` | 269 | `placeholder` | placeholder="Example: Removing older backup after newer restore point was validated." |
 | `src/frontend/project-time-web/src/CostOverrunAlertCenter.jsx` | 300 | `placeholder` | placeholder="Optional acknowledgement, resolution, or routing note" |
 | `src/frontend/project-time-web/src/CustomerDirectoryCenter.jsx` | 320 | `placeholder` | placeholder="Search customer or code..." |
-| `src/frontend/project-time-web/src/HelpAssistant.jsx` | 137 | `placeholder` | placeholder="Ask Project Health Dashboard for help..." |
+| `src/frontend/project-time-web/src/HelpAssistant.jsx` | 137 | `placeholder` | placeholder="Ask Project Pulse for help..." |
 | `src/frontend/project-time-web/src/IntakeWorkTaskHandoffPanel.jsx` | 277 | `placeholder` | placeholder="Why is this the correct project link?" |
 | `src/frontend/project-time-web/src/LocalAdminPasswordResetApprovalsPanel.jsx` | 287 | `placeholder` | placeholder="Set temporary password" |
 | `src/frontend/project-time-web/src/PostIntakeAgingPanel.jsx` | 288 | `placeholder` | <textarea rows={3} value={editDraft.updateNote} onChange={(event) => setEditDraft((current) => ({ ...current, updateNote: event.target.value }))} placeholder="Explain what changed after intake..." /> |
@@ -168,7 +168,7 @@ These are not automatic failures. They identify strings that should be reviewed 
 | `src/frontend/project-time-web/src/ProjectIntakeCenter.jsx` | 669 | `placeholder` | placeholder="Hours" |
 | `src/frontend/project-time-web/src/ProjectIntakeCenter.jsx` | 678 | `placeholder` | placeholder="%" |
 | `src/frontend/project-time-web/src/ProjectIntakeCenter.jsx` | 716 | `placeholder` | placeholder="Search request, client, title, opportunity, source ID..." |
-| `src/frontend/project-time-web/src/ReplicationSyncStatusCenter.jsx` | 320 | `placeholder` | placeholder="Example: Project Health Dashboard DR Node" |
+| `src/frontend/project-time-web/src/ReplicationSyncStatusCenter.jsx` | 320 | `placeholder` | placeholder="Example: ProjectPulse DR Node" |
 | `src/frontend/project-time-web/src/ReplicationSyncStatusCenter.jsx` | 330 | `placeholder` | placeholder="Example: 10.20.30.40" |
 | `src/frontend/project-time-web/src/ReplicationSyncStatusCenter.jsx` | 340 | `placeholder` | placeholder="https://projectpulse-dr.example.com" |
 | `src/frontend/project-time-web/src/ResourceAssignmentHandoffPanel.jsx` | 278 | `placeholder` | placeholder="Search request, project, PM, function, or readiness..." |

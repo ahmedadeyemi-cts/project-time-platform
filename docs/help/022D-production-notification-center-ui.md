@@ -1,7 +1,7 @@
 # 022D Production Notification Center UI + Preference Controls
 
 ## Purpose
-022D makes the production notification backend visible and manageable from the Project Health Dashboard frontend.
+022D makes the production notification backend visible and manageable from the Project Pulse frontend.
 
 ## Scope
 - Adds a Production Notification Center dashboard shortcut.

@@ -2,7 +2,7 @@
 
 ## Scope
 
-021D creates role-based production readiness runbooks for the main Project Health Dashboard / ChangePoint operating personas.
+021D creates role-based production readiness runbooks for the main ProjectPulse / ChangePoint operating personas.
 
 ## Personas Covered
 

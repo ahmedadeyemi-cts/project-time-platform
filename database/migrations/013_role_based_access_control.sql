@@ -1,4 +1,4 @@
--- Project Health Dashboard
+-- Project Pulse
 -- Migration: 013_role_based_access_control.sql
 -- Purpose: Role-based access control foundation for role-specific pages, modules, and workflow capabilities.
 
@@ -76,7 +76,7 @@ SET role_name = EXCLUDED.role_name,
 
 INSERT INTO app_permissions (permission_code, permission_name, module_code, permission_description)
 VALUES
-    ('VIEW_DASHBOARD', 'View dashboard', 'dashboard', 'Access the main Project Health Dashboard dashboard.'),
+    ('VIEW_DASHBOARD', 'View dashboard', 'dashboard', 'Access the main Project Pulse dashboard.'),
     ('VIEW_TIME_ENTRY', 'View time entry', 'time', 'View the time entry workspace.'),
     ('EDIT_OWN_TIME', 'Edit own time', 'time', 'Create and edit own draft/correction time entries.'),
     ('SUBMIT_OWN_TIME', 'Submit own time', 'time', 'Submit own time for approval.'),

@@ -1,4 +1,4 @@
--- Project Health Dashboard
+-- Project Pulse
 -- Rollback: 010_psa_demo_assignment_visibility_rollback.sql
 
 BEGIN;

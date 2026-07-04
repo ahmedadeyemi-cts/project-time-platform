@@ -21,7 +21,7 @@ api = api.replace(
     'var comment = string.IsNullOrWhiteSpace(request.Comment) ? DBNull.Value : request.Comment.Trim();',
     'object comment = string.IsNullOrWhiteSpace(request.Comment) ? DBNull.Value : request.Comment.Trim();')
 api = api.replace('manager@ussignal.local', 'ahmed.adeyemi@ussignal.com')
-api = api.replace("VALUES ('ahmed.adeyemi@ussignal.com', 'Development Manager', 'Development Manager', 'Project Health Dashboard', TRUE)", "VALUES ('ahmed.adeyemi@ussignal.com', 'Ahmed Adeyemi', 'Development Manager', 'Project Health Dashboard', TRUE)")
+api = api.replace("VALUES ('ahmed.adeyemi@ussignal.com', 'Development Manager', 'Development Manager', 'Project Pulse', TRUE)", "VALUES ('ahmed.adeyemi@ussignal.com', 'Ahmed Adeyemi', 'Development Manager', 'Project Pulse', TRUE)")
 
 summary_endpoint = r'''
 app.MapGet("/api/manager/approval-summary", async () =>

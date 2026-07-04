@@ -1,4 +1,4 @@
-# Project Health Dashboard Personalization, Holidays, and Reminder Package
+# Project Pulse Personalization, Holidays, and Reminder Package
 
 ## Purpose
 

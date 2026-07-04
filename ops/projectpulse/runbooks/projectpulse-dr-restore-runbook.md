@@ -1,8 +1,8 @@
-# Project Health Dashboard Disaster Recovery Restore Runbook
+# ProjectPulse Disaster Recovery Restore Runbook
 
 ## Purpose
 
-This runbook documents the controlled steps for validating and restoring Project Health Dashboard from a backup bundle.
+This runbook documents the controlled steps for validating and restoring ProjectPulse from a backup bundle.
 
 ## Current safe validation scope
 
@@ -19,11 +19,11 @@ The Restore Validation process does not restore over production. It validates:
 
 ## Manual restore warning
 
-Do not restore directly into the production Project Health Dashboard database without an approved maintenance window, stakeholder approval, and a verified rollback plan.
+Do not restore directly into the production ProjectPulse database without an approved maintenance window, stakeholder approval, and a verified rollback plan.
 
 ## High-level restore sequence
 
-1. Stop Project Health Dashboard services on the target restore node.
+1. Stop ProjectPulse services on the target restore node.
 2. Copy the selected backup bundle and checksum file to the target node.
 3. Validate checksum.
 4. Extract the backup bundle to a temporary restore directory.
@@ -36,4 +36,4 @@ Do not restore directly into the production Project Health Dashboard database wi
 
 ## Future enhancement
 
-A non-production restore sandbox can later be added so Project Health Dashboard can perform automated test restores without touching production.
+A non-production restore sandbox can later be added so ProjectPulse can perform automated test restores without touching production.

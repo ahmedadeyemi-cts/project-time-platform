@@ -66,7 +66,7 @@ modules_section = r'''
           <div>
             <p className="eyebrow">PSA platform modules</p>
             <h2>Remaining sections foundation</h2>
-            <p className="muted">These sections prepare the rest of Project Health Dashboard beyond time entry: intake, project management, resource scheduling, expenses, invoicing, reporting, and administrative workflow.</p>
+            <p className="muted">These sections prepare the rest of Project Pulse beyond time entry: intake, project management, resource scheduling, expenses, invoicing, reporting, and administrative workflow.</p>
           </div>
           <span className="pill">Foundation ready</span>
         </div>

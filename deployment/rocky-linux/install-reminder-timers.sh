@@ -13,7 +13,7 @@ chmod +x "$SCHEDULER"
 
 sudo tee /etc/systemd/system/project-pulse-weekly-engineer-reminder.service >/dev/null <<EOF
 [Unit]
-Description=Project Health Dashboard Weekly Engineer Reminder Queue
+Description=Project Pulse Weekly Engineer Reminder Queue
 After=projecttime-api.service
 Requires=projecttime-api.service
 
@@ -26,7 +26,7 @@ EOF
 
 sudo tee /etc/systemd/system/project-pulse-weekly-engineer-reminder.timer >/dev/null <<EOF
 [Unit]
-Description=Run Project Health Dashboard weekly engineer reminder every Friday
+Description=Run Project Pulse weekly engineer reminder every Friday
 
 [Timer]
 OnCalendar=Fri *-*-* 09:00:00
@@ -39,7 +39,7 @@ EOF
 
 sudo tee /etc/systemd/system/project-pulse-month-end-pm-reminder.service >/dev/null <<EOF
 [Unit]
-Description=Project Health Dashboard Month-End PM Reminder Queue
+Description=Project Pulse Month-End PM Reminder Queue
 After=projecttime-api.service
 Requires=projecttime-api.service
 
@@ -52,7 +52,7 @@ EOF
 
 sudo tee /etc/systemd/system/project-pulse-month-end-pm-reminder.timer >/dev/null <<EOF
 [Unit]
-Description=Run Project Health Dashboard month-end PM reminder check every Friday
+Description=Run Project Pulse month-end PM reminder check every Friday
 
 [Timer]
 OnCalendar=Fri *-*-* 09:05:00

@@ -131,8 +131,8 @@ BEGIN
       (
         v_internal_client_id,
         'USS-DEMO-INTAKE',
-        'Project Health Dashboard Intake and Resource Workflow',
-        'Internal Project Health Dashboard demo workspace for intake, engineering requests, capacity, and assignment readiness.',
+        'ProjectPulse Intake and Resource Workflow',
+        'Internal ProjectPulse demo workspace for intake, engineering requests, capacity, and assignment readiness.',
         v_header_id,
         'active',
         DATE '2026-07-06',

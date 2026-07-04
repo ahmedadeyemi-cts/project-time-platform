@@ -1,6 +1,6 @@
 -- 030R-canonical-role-model-cleanup.sql
 -- Purpose:
---   Canonicalize Project Health Dashboard roles into the approved production role model.
+--   Canonicalize ProjectPulse roles into the approved production role model.
 --   This migration is idempotent and safe to re-run.
 --
 -- Canonical roles:

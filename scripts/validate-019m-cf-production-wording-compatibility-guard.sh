@@ -178,7 +178,7 @@ for path in "${API_PATHS[@]}"; do
   echo
   echo "--- $path ---"
   HTTP_CODE=$(curl -sS --max-time 45 "http://127.0.0.1:5080$path" \
-    -H "X-Project Health Dashboard-Session: $SSO_TOKEN" \
+    -H "X-ProjectPulse-Session: $SSO_TOKEN" \
     -o "$out" \
     -w "%{http_code}")
 
@@ -261,7 +261,7 @@ do
   echo
   echo "--- $path ---"
   HTTP_CODE=$(curl -sS --max-time 45 "http://127.0.0.1:5080$path" \
-    -H "X-Project Health Dashboard-Session: $SSO_TOKEN" \
+    -H "X-ProjectPulse-Session: $SSO_TOKEN" \
     -o /tmp/projectpulse-019m-cf-registry.json \
     -w "%{http_code}")
 
@@ -276,7 +276,7 @@ done
 
 echo
 echo "===== ENGINEER VIEW-AS NEGATIVE ACCESS VALIDATION ====="
-ENGINEER_ONLY_ID="$(sudo -u postgres psql -d Project Health Dashboard -At <<'SQL'
+ENGINEER_ONLY_ID="$(sudo -u postgres psql -d ProjectPulse -At <<'SQL'
 WITH user_roles AS (
     SELECT
         u.user_id,
@@ -322,8 +322,8 @@ do
   echo
   echo "--- Engineer View-As $path ---"
   HTTP_CODE=$(curl -sS --max-time 45 "http://127.0.0.1:5080$path" \
-    -H "X-Project Health Dashboard-Session: $SSO_TOKEN" \
-    -H "X-Project Health Dashboard-View-As-User: $ENGINEER_ONLY_ID" \
+    -H "X-ProjectPulse-Session: $SSO_TOKEN" \
+    -H "X-ProjectPulse-View-As-User: $ENGINEER_ONLY_ID" \
     -o /tmp/projectpulse-019m-cf-engineer-denial.json \
     -w "%{http_code}")
 

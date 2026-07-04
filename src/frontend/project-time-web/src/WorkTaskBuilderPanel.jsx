@@ -6,7 +6,7 @@ function getProjectPulseAuthHeaders(extra = {}) {
     const rawSession = window.localStorage.getItem('projectPulseAuthSession');
     if (!rawSession) return extra;
     const session = JSON.parse(rawSession);
-    return session?.sessionToken ? { ...extra, 'X-Project Health Dashboard-Session': session.sessionToken } : extra;
+    return session?.sessionToken ? { ...extra, 'X-ProjectPulse-Session': session.sessionToken } : extra;
   } catch {
     return extra;
   }

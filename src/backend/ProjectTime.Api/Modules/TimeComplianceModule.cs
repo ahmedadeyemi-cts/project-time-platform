@@ -368,19 +368,19 @@ public static class TimeComplianceModule
 
             var scenarioLabel = scenario.Replace('_', ' ');
             var subject = scenario.Contains("escalation", StringComparison.OrdinalIgnoreCase)
-                ? $"Escalation: Missing Project Health Dashboard time for week of {weekStart:yyyy-MM-dd}"
-                : $"Reminder: Submit Project Health Dashboard time for week of {weekStart:yyyy-MM-dd}";
+                ? $"Escalation: Missing Project Pulse time for week of {weekStart:yyyy-MM-dd}"
+                : $"Reminder: Submit Project Pulse time for week of {weekStart:yyyy-MM-dd}";
 
             var body = $"""
                 Notification preview only. No email was sent.
 
-                Project Health Dashboard shows missing or unsubmitted time for {displayName} for the week of {weekStart:yyyy-MM-dd} through {weekEnd:yyyy-MM-dd}.
+                Project Pulse shows missing or unsubmitted time for {displayName} for the week of {weekStart:yyyy-MM-dd} through {weekEnd:yyyy-MM-dd}.
 
                 Current timesheet status: {timesheetStatus}
                 Current recorded hours: {totalHours:0.00}
 
                 Scenario: {scenarioLabel}
-                Required next step: Review and submit time in Project Health Dashboard.
+                Required next step: Review and submit time in Project Pulse.
                 """;
 
             missingSubmissions.Add(new TimeCompliancePreviewItem(

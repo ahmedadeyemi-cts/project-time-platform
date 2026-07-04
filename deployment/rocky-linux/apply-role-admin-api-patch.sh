@@ -163,7 +163,7 @@ app.MapPost("/api/admin/users/roles", async (UserRoleAssignmentRequest request) 
                 """, connection, transaction);
             assignCommand.Parameters.AddWithValue("user_id", targetUserId);
             assignCommand.Parameters.AddWithValue("assigned_by_user_id", adminUserId);
-            assignCommand.Parameters.AddWithValue("assignment_reason", string.IsNullOrWhiteSpace(request.Reason) ? "Role updated from Project Health Dashboard role administration" : request.Reason.Trim());
+            assignCommand.Parameters.AddWithValue("assignment_reason", string.IsNullOrWhiteSpace(request.Reason) ? "Role updated from Project Pulse role administration" : request.Reason.Trim());
             assignCommand.Parameters.AddWithValue("role_code", roleCode);
             await assignCommand.ExecuteNonQueryAsync();
         }

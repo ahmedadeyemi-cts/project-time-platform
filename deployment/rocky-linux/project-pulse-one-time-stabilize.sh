@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Project Health Dashboard one-time stabilization script
+# Project Pulse one-time stabilization script
 # Usage:
 #   ./deployment/rocky-linux/project-pulse-one-time-stabilize.sh 45.19.161.17
 #
@@ -38,7 +38,7 @@ run_if_exists() {
   fi
 }
 
-log "Starting Project Health Dashboard one-time stabilization"
+log "Starting Project Pulse one-time stabilization"
 echo "Repository: $REPO_DIR"
 echo "Allowed public source IP: $ALLOWED_SOURCE_IP"
 echo "Public frontend port: $PUBLIC_PORT"
@@ -154,7 +154,7 @@ PY
 log "Installing restricted public frontend server script"
 cat > deployment/rocky-linux/serve-frontend-public-restricted.py <<'PY'
 #!/usr/bin/env python3
-"""Restricted public frontend server for Project Health Dashboard validation."""
+"""Restricted public frontend server for Project Pulse validation."""
 
 from __future__ import annotations
 
@@ -200,7 +200,7 @@ def parse_allowed_ips(value: str) -> set[str]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Serve Project Health Dashboard frontend publicly with source-IP restriction.")
+    parser = argparse.ArgumentParser(description="Serve Project Pulse frontend publicly with source-IP restriction.")
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=5173)
     parser.add_argument("--allowed-source-ip", default=os.environ.get("PROJECT_PULSE_ALLOWED_SOURCE_IP", "45.19.161.17"))
@@ -249,7 +249,7 @@ fi
 log "Installing and starting restricted public frontend systemd service"
 sudo tee /etc/systemd/system/projecttime-frontend-public.service >/dev/null <<EOF
 [Unit]
-Description=Project Health Dashboard Restricted Public Frontend
+Description=Project Pulse Restricted Public Frontend
 After=network.target projecttime-api.service
 Requires=projecttime-api.service
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Project Health Dashboard remaining sections one-time script
+# Project Pulse remaining sections one-time script
 # Usage:
 #   ./deployment/rocky-linux/project-pulse-remaining-sections-one-time.sh
 
@@ -31,7 +31,7 @@ run_if_exists() {
 main() {
   exec > >(tee "$LOG_FILE") 2>&1
 
-  log "Starting Project Health Dashboard remaining sections implementation"
+  log "Starting Project Pulse remaining sections implementation"
 
   if [ ! -d "$REPO_DIR/.git" ]; then
     echo "ERROR: $REPO_DIR is not a Git repository."

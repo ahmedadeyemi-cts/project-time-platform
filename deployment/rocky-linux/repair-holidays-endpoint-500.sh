@@ -138,8 +138,8 @@ SET auto_add_holidays = TRUE,
 
 INSERT INTO reminder_rules (rule_code, rule_name, recipient_group_code, rule_type, cadence_description, subject_template, body_template)
 VALUES
-    ('WEEKLY_ENGINEER_TIME_REMINDER', 'Weekly engineer time reminder', 'ENGINEERS', 'weekly', 'Every Friday at 9:00 AM by default.', 'Reminder: Submit your weekly time in Project Health Dashboard', 'All resources are required to submit 40 hours of time each week. Use Vacation for PTO. Use Holiday only for company-paid holidays and floating holidays.'),
-    ('MONTH_END_PM_REMINDER', 'Month-end project management reminder', 'PROJECT_MANAGEMENT', 'month_end_last_friday', 'Runs on the last Friday of each month.', 'Month End Reminder: Project Health Dashboard review', 'This is a Month End reminder for the Project Management team. Please review project time, approvals, billing readiness, expenses, and reporting items in Project Health Dashboard.')
+    ('WEEKLY_ENGINEER_TIME_REMINDER', 'Weekly engineer time reminder', 'ENGINEERS', 'weekly', 'Every Friday at 9:00 AM by default.', 'Reminder: Submit your weekly time in Project Pulse', 'All resources are required to submit 40 hours of time each week. Use Vacation for PTO. Use Holiday only for company-paid holidays and floating holidays.'),
+    ('MONTH_END_PM_REMINDER', 'Month-end project management reminder', 'PROJECT_MANAGEMENT', 'month_end_last_friday', 'Runs on the last Friday of each month.', 'Month End Reminder: Project Pulse review', 'This is a Month End reminder for the Project Management team. Please review project time, approvals, billing readiness, expenses, and reporting items in Project Pulse.')
 ON CONFLICT (rule_code) DO UPDATE
 SET rule_name = EXCLUDED.rule_name,
     recipient_group_code = EXCLUDED.recipient_group_code,

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This package prepares the next foundation layer of Project Health Dashboard beyond the validated time-entry and manager-approval workflow.
+This package prepares the next foundation layer of Project Pulse beyond the validated time-entry and manager-approval workflow.
 
 The sections covered are:
 
@@ -73,7 +73,7 @@ reporting_snapshots
 
 ## UI Added
 
-A new Project Health Dashboard module foundation panel is inserted before the Utilization section. It shows summary cards for:
+A new Project Pulse module foundation panel is inserted before the Utilization section. It shows summary cards for:
 
 - Project Intake
 - Project Management

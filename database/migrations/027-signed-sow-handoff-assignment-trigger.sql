@@ -167,7 +167,7 @@ VALUES
     'assignment_triggered',
     'assigned_pm_engineers',
     'Project Assignment Ready - {{customer_name}} / {{project_name}}',
-    'You have been assigned to the project delivery package. Review the signed SOW and GSD in Project Health Dashboard Project Workspace / Engineering Documents before starting delivery work.',
+    'You have been assigned to the project delivery package. Review the signed SOW and GSD in ProjectPulse Project Workspace / Engineering Documents before starting delivery work.',
     TRUE,
     TRUE
 )

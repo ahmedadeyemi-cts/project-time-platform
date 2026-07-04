@@ -101,7 +101,7 @@ export default function HelpAssistant() {
         <aside className="help-panel" aria-label="Project Health Dashboard help assistant">
           <div className="help-header">
             <div>
-              <strong>Project Health Dashboard Help</strong>
+              <strong>PHD Help</strong>
               <span>Ask about the current workflow</span>
             </div>
             <button type="button" onClick={() => setIsOpen(false)} aria-label="Close help assistant">
@@ -134,7 +134,7 @@ export default function HelpAssistant() {
           >
             <input
               value={question}
-              placeholder="Ask Project Health Dashboard for help..."
+              placeholder="Ask PHD for help..."
               onChange={(event) => setQuestion(event.target.value)}
             />
             <button type="submit">Send</button>

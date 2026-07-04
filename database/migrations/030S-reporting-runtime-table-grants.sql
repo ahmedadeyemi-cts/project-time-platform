@@ -1,13 +1,13 @@
 -- 030S-reporting-runtime-table-grants.sql
 -- Purpose:
---   Grant the Project Health Dashboard runtime database role access to 030 reporting tables.
+--   Grant the ProjectPulse runtime database role access to 030 reporting tables.
 --   The 030 report preview endpoint reads from reporting_* tables. These tables
 --   may be created by migrations under postgres ownership, so the runtime API
 --   database user needs explicit privileges.
 --
 -- Scope:
 --   Grants DML access to non-superuser login roles only. Application-level
---   authorization remains enforced by Project Health Dashboard roles and permissions.
+--   authorization remains enforced by ProjectPulse roles and permissions.
 
 DO $$
 DECLARE
