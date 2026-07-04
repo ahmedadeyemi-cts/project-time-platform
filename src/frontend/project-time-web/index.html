@@ -10025,11 +10025,42 @@
     }
   }
 
-  function optionHtml(values, selected) {
-    return values.map(function (value) {
-      var label = typeof value === 'string' ? value : (value && (value.label || value.name || value.value)) || '';
-      var optionValue = typeof value === 'string' ? value : (value && (value.value || value.label || value.name)) || '';
-      return '<option value="' + escapeHtml(optionValue) + '"' + (optionValue === selected ? ' selected' : '') + '>' + escapeHtml(label) + '</option>';
+  function filterOptionLabel(option) {
+    if (option && typeof option === 'object') {
+      return option.label || option.name || option.text || option.value || '';
+    }
+
+    return option == null ? '' : String(option);
+  }
+
+  function filterOptionValue(option) {
+    if (option && typeof option === 'object') {
+      return option.value || option.email || option.id || option.label || option.name || '';
+    }
+
+    return option == null ? '' : String(option);
+  }
+
+  function filterOptionIsAll(option, allValue) {
+    var value = filterOptionValue(option);
+    var label = filterOptionLabel(option);
+
+    return value === allValue || label === allValue;
+  }
+
+  function optionHtml(options, selected) {
+    var items = Array.isArray(options) && options.length ? options : [];
+    var selectedValue = selected == null ? '' : String(selected);
+
+    return items.map(function (option) {
+      var value = filterOptionValue(option);
+      var label = filterOptionLabel(option);
+      var isSelected = value === selectedValue || label === selectedValue;
+
+      if (!label && value) label = value;
+      if (!value && label) value = label;
+
+      return '<option value="' + escapeHtml(value) + '"' + (isSelected ? ' selected' : '') + '>' + escapeHtml(label) + '</option>';
     }).join('');
   }
 
@@ -10041,40 +10072,89 @@
     }
   }
 
-  function projectPulse030AuthHeaders() {
-    var headers = {};
-    var knownSessionKeys = [
+  function projectPulse030ReadJsonStorage(key, storage) {
+    try {
+      return JSON.parse((storage || window.localStorage).getItem(key) || '{}');
+    } catch {
+      return {};
+    }
+  }
+
+  function projectPulse030FindTokenInStorage(storage) {
+    if (!storage) return '';
+
+    var knownKeys = [
       'projectPulseAuthSession',
       'projectPulseSession',
-      'projectPulseSessionToken'
+      'projectPulseSessionToken',
+      'projectPulseSessionState',
+      'projectPulseUserSession',
+      'authSession',
+      'sessionToken'
     ];
 
-    knownSessionKeys.forEach(function (key) {
-      if (headers['X-ProjectPulse-Session']) return;
-
-      var raw = window.localStorage.getItem(key) || '';
-      var parsed = projectPulse030ReadJsonStorage(key);
-      var token = parsed.sessionToken || parsed.token || parsed.accessToken || raw;
+    for (var i = 0; i < knownKeys.length; i += 1) {
+      var key = knownKeys[i];
+      var raw = storage.getItem(key) || '';
+      var parsed = projectPulse030ReadJsonStorage(key, storage);
+      var token = parsed.sessionToken ||
+        parsed.token ||
+        parsed.accessToken ||
+        parsed.projectPulseSessionToken ||
+        parsed.session_token ||
+        raw;
 
       if (token && String(token).length > 20) {
-        headers['X-ProjectPulse-Session'] = token;
-      }
-    });
-
-    if (!headers['X-ProjectPulse-Session']) {
-      for (var index = 0; index < window.localStorage.length; index += 1) {
-        var key = window.localStorage.key(index);
-        var parsed = projectPulse030ReadJsonStorage(key);
-        var token = parsed.sessionToken || parsed.token || parsed.accessToken;
-
-        if (token && String(token).length > 20) {
-          headers['X-ProjectPulse-Session'] = token;
-          break;
-        }
+        return String(token);
       }
     }
 
-    var viewAsUser = window.localStorage.getItem('projectPulseViewAsUser') || '';
+    for (var index = 0; index < storage.length; index += 1) {
+      var storageKey = storage.key(index);
+      var rawValue = storage.getItem(storageKey) || '';
+      var parsedValue = projectPulse030ReadJsonStorage(storageKey, storage);
+      var discovered = parsedValue.sessionToken ||
+        parsedValue.token ||
+        parsedValue.accessToken ||
+        parsedValue.projectPulseSessionToken ||
+        parsedValue.session_token;
+
+      if (discovered && String(discovered).length > 20) {
+        return String(discovered);
+      }
+
+      if (rawValue && rawValue.length > 20 && rawValue.length < 500 && /^[A-Za-z0-9._-]+$/.test(rawValue)) {
+        return rawValue;
+      }
+    }
+
+    return '';
+  }
+
+  function projectPulse030AuthHeaders() {
+    var headers = {};
+    var token = '';
+
+    try {
+      token = projectPulse030FindTokenInStorage(window.localStorage) ||
+        projectPulse030FindTokenInStorage(window.sessionStorage);
+    } catch {
+      token = '';
+    }
+
+    if (token) {
+      headers['X-ProjectPulse-Session'] = token;
+    }
+
+    var viewAsUser = '';
+    try {
+      viewAsUser = window.localStorage.getItem('projectPulseViewAsUser') ||
+        window.sessionStorage.getItem('projectPulseViewAsUser') ||
+        '';
+    } catch {
+      viewAsUser = '';
+    }
+
     if (viewAsUser) {
       headers['X-ProjectPulse-View-As-User'] = viewAsUser;
     }
@@ -10084,7 +10164,7 @@
 
   async function loadFilterOptions(force) {
     if (filterOptionsLoading) return;
-    if (!force && (filterOptionsLoaded || filterOptionsAttempted)) return;
+    if (!force && filterOptionsLoaded) return;
 
     filterOptionsLoading = true;
     filterOptionsAttempted = true;
@@ -10093,13 +10173,22 @@
     try {
       var response = await fetch('/api/reports/030/filter-options?_ts=' + Date.now(), {
         headers: projectPulse030AuthHeaders(),
+        credentials: 'include',
         cache: 'no-store'
       });
 
-      var payload = await response.json();
+      var payload = await response.json().catch(function () {
+        return {};
+      });
 
       if (!response.ok || !payload || !payload.databaseBacked) {
-        filterOptionsLastError = payload && payload.message ? payload.message : 'Filter lists could not be loaded from the database.';
+        filterOptionsLoaded = false;
+        filterOptionsLastError = payload && payload.message
+          ? payload.message
+          : 'Filter lists could not be loaded from the database. HTTP ' + response.status;
+
+        state.statusType = 'warning';
+        state.status = filterOptionsLastError;
         saveState();
         renderShell();
         return;
@@ -10124,11 +10213,44 @@
       });
 
       filterOptionsLoaded = true;
+      filterOptionsAttempted = false;
       filterOptionsLastError = '';
+
+      [
+        { key: 'customer', all: 'All customers', options: filterOptions.customers },
+        { key: 'project', all: 'All projects', options: filterOptions.projects },
+        { key: 'pm', all: 'All PMs', options: filterOptions.pms },
+        { key: 'engineer', all: 'All engineers', options: filterOptions.engineers },
+        { key: 'team', all: 'All teams', options: filterOptions.teams },
+        { key: 'organization', all: 'All organizations', options: filterOptions.organizations },
+        { key: 'contractType', all: 'All contract types', options: filterOptions.contractTypes },
+        { key: 'billableStatus', all: 'All billable statuses', options: filterOptions.billableOptions },
+        { key: 'workLocation', all: 'All work locations', options: filterOptions.workLocations },
+        { key: 'workCode', all: 'All work codes', options: filterOptions.workCodes }
+      ].forEach(function (mapping) {
+        var values = (mapping.options || []).map(filterOptionValue);
+        if (!values.includes(state[mapping.key])) {
+          state[mapping.key] = mapping.all;
+        }
+      });
+
+      state.statusType = 'success';
+      state.status = 'Database filter lists loaded: ' +
+        (filterOptions.customers || []).length + ' customers, ' +
+        (filterOptions.projects || []).length + ' projects, ' +
+        (filterOptions.pms || []).length + ' PMs, ' +
+        (filterOptions.engineers || []).length + ' engineers, ' +
+        (filterOptions.teams || []).length + ' teams.';
+
       saveState();
       renderShell();
+      setTimeout(projectPulse030ApplyFilterOptionsToVisibleDom, 0);
+      setTimeout(projectPulse030ApplyFilterOptionsToVisibleDom, 250);
     } catch (error) {
+      filterOptionsLoaded = false;
       filterOptionsLastError = error && error.message ? error.message : 'Filter lists could not be loaded.';
+      state.statusType = 'warning';
+      state.status = filterOptionsLastError;
       console.warn('030 filter options could not be loaded', error);
       saveState();
       renderShell();
@@ -10148,18 +10270,28 @@
   function selectedEngineerCheckboxHtml() {
     var selected = selectedEngineerValues();
     var values = (filterOptions.selectedEngineers || filterOptions.engineers || ['All engineers'])
-      .filter(function (value) { return value && value !== 'All engineers'; });
+      .filter(function (option) {
+        return !filterOptionIsAll(option, 'All engineers') && filterOptionValue(option);
+      });
 
     if (!values.length) {
-      return '<div class="projectpulse-030-checkbox-panel"><label><input type="checkbox" checked disabled> All engineers</label></div>';
+      return '<details class="projectpulse-030-multiselect"><summary>No engineer list loaded yet</summary>' +
+        '<div class="projectpulse-030-checkbox-panel"><label><input type="checkbox" checked disabled> All engineers</label></div>' +
+        '</details>' +
+        '<div class="projectpulse-030-filter-status">Click Refresh Filter Lists to load database-backed engineer names.</div>';
     }
 
-    return '<div class="projectpulse-030-checkbox-panel" data-030-selected-engineers-panel>' +
+    return '<details class="projectpulse-030-multiselect" data-030-selected-engineers-dropdown>' +
+      '<summary data-030-selected-engineer-summary>' + escapeHtml(selectedEngineerSummaryText()) + '</summary>' +
+      '<div class="projectpulse-030-checkbox-panel" data-030-selected-engineers-panel>' +
       '<label><input type="checkbox" data-030-selected-engineer-all' + (!selected.length ? ' checked' : '') + '> All engineers</label>' +
-      values.map(function (value) {
-        return '<label><input type="checkbox" data-030-selected-engineer value="' + escapeHtml(value) + '"' + (selected.includes(value) ? ' checked' : '') + '> ' + escapeHtml(value) + '</label>';
+      values.map(function (option) {
+        var value = filterOptionValue(option);
+        var label = filterOptionLabel(option);
+        return '<label><input type="checkbox" data-030-selected-engineer value="' + escapeHtml(value) + '"' + (selected.includes(value) ? ' checked' : '') + '> ' + escapeHtml(label) + '</label>';
       }).join('') +
-      '</div>';
+      '</div>' +
+      '</details>';
   }
 
   function captureSelectedEngineerCheckboxes() {
@@ -10785,6 +10917,176 @@
       '</tbody></table></div>';
   }
 
+  function filterLoadStatusHtml() {
+    var message = filterOptionsLoaded
+      ? 'Database-backed filter lists are loaded. Use the dropdowns to isolate Customer, Project, PM, Engineer, Team, or Selected Engineers.'
+      : (filterOptionsLoading
+        ? 'Loading database-backed filter lists...'
+        : (filterOptionsLastError || 'Click Refresh Filter Lists to load Customer, Project, PM, Engineer, Team, and Selected Engineer values.'));
+
+    return '<div class="projectpulse-030-filter-status" data-030-filter-load-status>' + escapeHtml(message) + '</div>';
+  }
+
+
+  function projectPulse030FilterDiagnosticsHtml() {
+    return '<div class="projectpulse-030-filter-status" data-030-browser-filter-diagnostics>' +
+      '<strong>Browser filter loader:</strong> ' + escapeHtml(state.browserFilterDiagnostic || 'Not checked yet.') +
+      '</div>' +
+      '<div class="projectpulse-030-actions" style="margin-top:.65rem;">' +
+        '<button type="button" class="projectpulse-030-button primary" data-030-force-browser-filters>Load Current Database Filters</button>' +
+      '</div>';
+  }
+
+  function projectPulse030SetSelectDomOptions(shell, field, options, allValue) {
+    var select = shell.querySelector('[data-030-field="' + field + '"]');
+    if (!select || !Array.isArray(options) || options.length < 1) return 0;
+
+    var current = select.value || allValue || filterOptionValue(options[0]);
+    var values = options.map(filterOptionValue);
+    var nextValue = values.includes(current) ? current : filterOptionValue(options[0]);
+
+    select.innerHTML = options.map(function (option) {
+      var value = filterOptionValue(option);
+      var label = filterOptionLabel(option);
+      if (!label && value) label = value;
+      if (!value && label) value = label;
+      return '<option value="' + escapeHtml(value) + '">' + escapeHtml(label) + '</option>';
+    }).join('');
+
+    select.value = nextValue;
+    select.setAttribute('data-030-direct-hydrated', String(options.length));
+    return options.length;
+  }
+
+  function projectPulse030RenderSelectedEngineerDom(shell) {
+    var container = shell.querySelector('[data-030-selected-engineers-dropdown]');
+    var field = shell.querySelector('[data-030-field="selectedEngineers"]');
+    var wrapper = null;
+
+    if (container) {
+      wrapper = container.parentElement;
+    } else {
+      var labels = Array.from(shell.querySelectorAll('.projectpulse-030-field label'));
+      var selectedLabel = labels.find(function (label) {
+        return String(label.textContent || '').trim().toLowerCase() === 'selected engineers';
+      });
+      wrapper = selectedLabel ? selectedLabel.parentElement : null;
+    }
+
+    if (!wrapper) return 0;
+
+    var html = selectedEngineerCheckboxHtml();
+    var existingLabel = wrapper.querySelector('label');
+    wrapper.innerHTML = '<label>Selected Engineers</label>' + html;
+
+    return (filterOptions.selectedEngineers || filterOptions.engineers || []).length;
+  }
+
+  function projectPulse030ApplyFilterOptionsToVisibleDom() {
+    var shell = document.getElementById(shellId);
+    if (!shell) return;
+
+    var counts = {
+      customers: projectPulse030SetSelectDomOptions(shell, 'customer', filterOptions.customers, 'All customers'),
+      projects: projectPulse030SetSelectDomOptions(shell, 'project', filterOptions.projects, 'All projects'),
+      pms: projectPulse030SetSelectDomOptions(shell, 'pm', filterOptions.pms, 'All PMs'),
+      engineers: projectPulse030SetSelectDomOptions(shell, 'engineer', filterOptions.engineers, 'All engineers'),
+      teams: projectPulse030SetSelectDomOptions(shell, 'team', filterOptions.teams, 'All teams'),
+      selectedEngineers: projectPulse030RenderSelectedEngineerDom(shell)
+    };
+
+    var diagnostic = shell.querySelector('[data-030-browser-filter-diagnostics]');
+    if (diagnostic) {
+      diagnostic.innerHTML = '<strong>Browser filter loader:</strong> Direct DOM hydrated. ' +
+        'Customers=' + counts.customers +
+        ', Projects=' + counts.projects +
+        ', PMs=' + counts.pms +
+        ', Engineers=' + counts.engineers +
+        ', Selected Engineers=' + counts.selectedEngineers +
+        ', Teams=' + counts.teams + '.';
+    }
+  }
+
+  async function projectPulse030ForceBrowserFilterLoad() {
+    var headers = projectPulse030AuthHeaders();
+    var tokenPresent = !!headers['X-ProjectPulse-Session'];
+    state.browserFilterDiagnostic = 'Requesting /api/reports/030/filter-options. Token header present: ' + (tokenPresent ? 'yes' : 'no') + '.';
+    state.statusType = '';
+    state.status = state.browserFilterDiagnostic;
+    saveState();
+    renderShell();
+
+    try {
+      var response = await fetch('/api/reports/030/filter-options?_ts=' + Date.now(), {
+        headers: headers,
+        credentials: 'include',
+        cache: 'no-store'
+      });
+
+      var rawText = await response.text();
+      var payload = {};
+
+      try {
+        payload = rawText ? JSON.parse(rawText) : {};
+      } catch {
+        payload = {};
+      }
+
+      if (!response.ok || !payload || !payload.databaseBacked) {
+        state.browserFilterDiagnostic = 'FAILED: HTTP ' + response.status + '. Token header present: ' + (tokenPresent ? 'yes' : 'no') + '. Response preview: ' + rawText.slice(0, 180);
+        state.statusType = 'warning';
+        state.status = state.browserFilterDiagnostic;
+        saveState();
+        renderShell();
+        return;
+      }
+
+      [
+        'customers',
+        'projects',
+        'pms',
+        'engineers',
+        'selectedEngineers',
+        'teams',
+        'organizations',
+        'contractTypes',
+        'billableOptions',
+        'workLocations',
+        'workCodes'
+      ].forEach(function (key) {
+        if (Array.isArray(payload[key]) && payload[key].length) {
+          filterOptions[key] = payload[key];
+        }
+      });
+
+      filterOptionsLoaded = true;
+      filterOptionsAttempted = false;
+      filterOptionsLastError = '';
+
+      state.browserFilterDiagnostic = 'SUCCESS: HTTP ' + response.status +
+        '. Customers=' + (filterOptions.customers || []).length +
+        ', Projects=' + (filterOptions.projects || []).length +
+        ', PMs=' + (filterOptions.pms || []).length +
+        ', Engineers=' + (filterOptions.engineers || []).length +
+        ', Selected Engineers=' + (filterOptions.selectedEngineers || []).length +
+        ', Teams=' + (filterOptions.teams || []).length + '.';
+
+      state.statusType = 'success';
+      state.status = state.browserFilterDiagnostic;
+      saveState();
+      renderShell();
+
+      setTimeout(projectPulse030ApplyFilterOptionsToVisibleDom, 0);
+      setTimeout(projectPulse030ApplyFilterOptionsToVisibleDom, 250);
+    } catch (error) {
+      state.browserFilterDiagnostic = 'FAILED: ' + (error && error.message ? error.message : 'Unknown browser fetch error.');
+      state.statusType = 'warning';
+      state.status = state.browserFilterDiagnostic;
+      saveState();
+      renderShell();
+    }
+  }
+
   function criteriaBuilderHtml() {
     return '<div class="projectpulse-030-section">' +
       '<h3>030A Reporting Criteria Builder</h3>' +
@@ -10814,6 +11116,8 @@
         '<div class="projectpulse-030-field"><label>Billable Status</label><select data-030-field="billableStatus">' + optionHtml(filterOptions.billableOptions, state.billableStatus) + '</select></div>' +
         '<div class="projectpulse-030-field"><label>Group By</label><select data-030-field="groupBy">' + optionHtml(groupByOptions, state.groupBy) + '</select></div>' +
       '</div>' +
+      filterLoadStatusHtml() +
+      projectPulse030FilterDiagnosticsHtml() +
     '</div>';
   }
 
@@ -11033,7 +11337,17 @@
         filterOptionsLoaded = false;
         filterOptionsAttempted = false;
         filterOptionsLastError = '';
-        loadFilterOptions(true);
+        projectPulse030ForceBrowserFilterLoad();
+      });
+    }
+
+    var forceBrowserFiltersButton = shell.querySelector('[data-030-force-browser-filters]');
+    if (forceBrowserFiltersButton) {
+      forceBrowserFiltersButton.addEventListener('click', function () {
+        filterOptionsLoaded = false;
+        filterOptionsAttempted = false;
+        filterOptionsLastError = '';
+        projectPulse030ForceBrowserFilterLoad();
       });
     }
     shell.querySelector('[data-030-csv-export]').addEventListener('click', exportVisibleReportCsv);
