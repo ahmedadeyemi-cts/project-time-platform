@@ -5769,3 +5769,52 @@ body:has(.app-shell.route-work-task-builder) .app-shell.route-work-task-builder 
   }
 }
 /* 031_SOURCE_GLOBAL_SEARCH_STYLES_END */
+
+/* 039C_APPROVAL_INDICATOR_CSS_START */
+.project-pulse-approval-actionable-badge {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.55rem;
+  height: 1.55rem;
+  padding: 0 0.55rem;
+  border-radius: 999px;
+  background: #dc2626 !important;
+  color: #ffffff !important;
+  font-size: 0.78rem;
+  font-weight: 950;
+  line-height: 1;
+  box-shadow: 0 12px 26px rgba(220, 38, 38, 0.28);
+}
+
+.project-pulse-approval-actionable-badge.nav {
+  margin-left: 0.45rem;
+}
+
+.project-pulse-approval-actionable-badge.is-hidden {
+  display: none !important;
+}
+
+.project-pulse-approval-card-has-pending {
+  border-color: rgba(220, 38, 38, 0.42) !important;
+  box-shadow: 0 18px 40px rgba(220, 38, 38, 0.12) !important;
+}
+
+.project-pulse-reset-queue-panel {
+  position: static !important;
+  inset: auto !important;
+  right: auto !important;
+  top: auto !important;
+  bottom: auto !important;
+  z-index: auto !important;
+  width: auto !important;
+  max-width: none !important;
+  margin: 1rem 0 !important;
+  transform: none !important;
+  float: none !important;
+}
+
+.project-pulse-reset-queue-panel.is-hidden {
+  display: none !important;
+}
+/* 039C_APPROVAL_INDICATOR_CSS_END */

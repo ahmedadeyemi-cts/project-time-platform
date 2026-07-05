@@ -680,6 +680,193 @@ function resetProjectPulseViewportForRoute(route = getRouteFromHash()) {
 installProjectPulseManualScrollRestoration();
 /* 039A_ROUTE_REFRESH_RESTORE_END */
 
+/* 039C_APPROVAL_INDICATOR_FIX_START */
+function getProjectPulseCountAfterLabel(text, labels) {
+  const normalizedText = String(text || '').replace(/\s+/g, ' ');
+
+  for (const label of labels) {
+    const escapedLabel = String(label).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const match = normalizedText.match(new RegExp(`${escapedLabel}\\s*[:\\-]?\\s*(\\d+)`, 'i'));
+    if (match) return Number(match[1] || 0);
+  }
+
+  return 0;
+}
+
+function findProjectPulseSmallestContainerWithText(requiredTextValues) {
+  const required = requiredTextValues.map((value) => String(value).toLowerCase());
+
+  return [...document.querySelectorAll('section, article, div')]
+    .filter((element) => {
+      const text = String(element.textContent || '').toLowerCase();
+      return required.every((value) => text.includes(value));
+    })
+    .sort((a, b) => String(a.textContent || '').length - String(b.textContent || '').length)[0] || null;
+}
+
+function getProjectPulseActionableApprovalCounts() {
+  const managerPanel = document.getElementById('manager-approval');
+
+  const submittedTimePanel =
+    findProjectPulseSmallestContainerWithText(['Submitted time awaiting review', 'Pending:'])
+    || managerPanel;
+
+  const localAdminPanel =
+    findProjectPulseSmallestContainerWithText(['Local admin password reset approvals', 'Pending approval'])
+    || managerPanel;
+
+  const submittedTimeText = submittedTimePanel?.textContent || '';
+  const localAdminText = localAdminPanel?.textContent || '';
+
+  const submittedTimePending = getProjectPulseCountAfterLabel(submittedTimeText, [
+    'Submitted time pending',
+    'Pending'
+  ]);
+
+  const localResetPendingApproval = getProjectPulseCountAfterLabel(localAdminText, [
+    'Pending approval'
+  ]);
+
+  const localResetReadyForTempPassword = getProjectPulseCountAfterLabel(localAdminText, [
+    'Ready for temp password',
+    'Ready for temp-password'
+  ]);
+
+  return {
+    submittedTimePending,
+    localResetPendingApproval,
+    localResetReadyForTempPassword,
+    actionableTotal: submittedTimePending + localResetPendingApproval + localResetReadyForTempPassword
+  };
+}
+
+function getProjectPulseApprovalDashboardCard() {
+  return [...document.querySelectorAll('article, section, div')]
+    .filter((element) => {
+      const text = String(element.textContent || '');
+      return text.includes('MODULE 002') && text.includes('Approval Inbox');
+    })
+    .sort((a, b) => String(a.textContent || '').length - String(b.textContent || '').length)[0] || null;
+}
+
+function getOrCreateProjectPulseApprovalBadge(container) {
+  if (!container) return null;
+
+  let badge = container.querySelector('[data-project-pulse-approval-actionable-badge="true"]');
+
+  if (!badge) {
+    badge = [...container.querySelectorAll('span, strong, small, div')]
+      .filter((element) => /^\s*\d+\s*$/.test(String(element.textContent || '')))
+      .filter((element) => String(element.textContent || '').trim() !== '002')
+      .sort((a, b) => String(a.textContent || '').length - String(b.textContent || '').length)[0] || null;
+  }
+
+  if (!badge) {
+    badge = document.createElement('span');
+    const moduleLabel = [...container.querySelectorAll('span, strong, small, p, div')]
+      .find((element) => String(element.textContent || '').trim() === 'MODULE 002');
+
+    if (moduleLabel?.parentElement) {
+      moduleLabel.parentElement.insertBefore(badge, moduleLabel.nextSibling);
+    } else {
+      container.insertBefore(badge, container.firstChild);
+    }
+  }
+
+  badge.dataset.projectPulseApprovalActionableBadge = 'true';
+  badge.classList.add('project-pulse-approval-actionable-badge');
+  return badge;
+}
+
+function normalizeProjectPulseApprovalBadge() {
+  const counts = getProjectPulseActionableApprovalCounts();
+  const dashboardCard = getProjectPulseApprovalDashboardCard();
+  const managerLinks = [...document.querySelectorAll('a[href="#manager-approval"]')];
+
+  if (dashboardCard) {
+    dashboardCard.classList.toggle('project-pulse-approval-card-has-pending', counts.actionableTotal > 0);
+
+    const badge = getOrCreateProjectPulseApprovalBadge(dashboardCard);
+    if (badge) {
+      badge.textContent = counts.actionableTotal > 0 ? String(counts.actionableTotal) : '';
+      badge.classList.toggle('is-hidden', counts.actionableTotal <= 0);
+      badge.setAttribute('aria-label', counts.actionableTotal > 0 ? `${counts.actionableTotal} actionable approval item(s)` : 'No actionable approval items');
+    }
+  }
+
+  managerLinks.forEach((link) => {
+    let badge = link.querySelector('[data-project-pulse-approval-actionable-badge="true"]');
+
+    if (!badge) {
+      badge = document.createElement('span');
+      badge.dataset.projectPulseApprovalActionableBadge = 'true';
+      badge.className = 'project-pulse-approval-actionable-badge nav';
+      link.appendChild(badge);
+    }
+
+    badge.textContent = counts.actionableTotal > 0 ? String(counts.actionableTotal) : '';
+    badge.classList.toggle('is-hidden', counts.actionableTotal <= 0);
+  });
+
+  return counts;
+}
+
+function normalizeProjectPulseResetQueuePanel() {
+  const counts = getProjectPulseActionableApprovalCounts();
+
+  const resetQueuePanel = findProjectPulseSmallestContainerWithText([
+    'Clear ready temp-password requests',
+    'Total local reset requests'
+  ]);
+
+  if (!resetQueuePanel) return counts;
+
+  resetQueuePanel.classList.add('project-pulse-reset-queue-panel');
+
+  const hasActionableResetWork =
+    counts.localResetPendingApproval > 0 ||
+    counts.localResetReadyForTempPassword > 0;
+
+  resetQueuePanel.classList.toggle('is-hidden', !hasActionableResetWork);
+  resetQueuePanel.setAttribute('aria-hidden', hasActionableResetWork ? 'false' : 'true');
+
+  return counts;
+}
+
+function normalizeProjectPulseApprovalUi() {
+  normalizeProjectPulseApprovalBadge();
+  normalizeProjectPulseResetQueuePanel();
+}
+
+function installProjectPulseApprovalUiNormalizer() {
+  if (window.__projectPulseApprovalUiNormalizerInstalled) return;
+  window.__projectPulseApprovalUiNormalizerInstalled = true;
+
+  const run = () => window.requestAnimationFrame(normalizeProjectPulseApprovalUi);
+
+  run();
+  window.setTimeout(run, 250);
+  window.setTimeout(run, 750);
+  window.setTimeout(run, 1500);
+
+  window.addEventListener('hashchange', run);
+  window.addEventListener('pageshow', run);
+  window.addEventListener('focus', run);
+
+  try {
+    const observer = new MutationObserver(() => run());
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      characterData: true
+    });
+    window.__projectPulseApprovalUiNormalizerObserver = observer;
+  } catch {
+    window.setInterval(run, 2000);
+  }
+}
+/* 039C_APPROVAL_INDICATOR_FIX_END */
+
 
 function getStoredAuthSession() {
   try {
@@ -2315,6 +2502,19 @@ export default function App() {
     resetProjectPulseViewportForRoute(activeRoute);
   }, [activeRoute]);
   /* 039A_ROUTE_REFRESH_RESTORE_EFFECT_END */
+
+  /* 039C_APPROVAL_INDICATOR_EFFECT_START */
+  useEffect(() => {
+    installProjectPulseApprovalUiNormalizer();
+    normalizeProjectPulseApprovalUi();
+  }, []);
+
+  useEffect(() => {
+    normalizeProjectPulseApprovalUi();
+    const timeoutId = window.setTimeout(normalizeProjectPulseApprovalUi, 500);
+    return () => window.clearTimeout(timeoutId);
+  }, [activeRoute, authSession?.sessionToken, currentUser.status]);
+  /* 039C_APPROVAL_INDICATOR_EFFECT_END */
 
 
 
