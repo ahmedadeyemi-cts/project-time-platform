@@ -401,3 +401,55 @@
   overflow-anchor: none;
 }
 /* 040A_CLOSEOUT_SCROLL_CONTAINMENT_CSS_END */
+
+/* 040B_CLOSEOUT_ROUTE_ISOLATION_CSS_START */
+html[data-project-pulse-active-route="project-closeout"],
+body[data-project-pulse-active-route="project-closeout"] {
+  overflow-x: hidden;
+  overflow-y: auto;
+  scroll-behavior: auto !important;
+  overflow-anchor: none;
+}
+
+html[data-project-pulse-active-route="project-closeout"] .app-main > .panel:not(.project-closeout-route-panel),
+html[data-project-pulse-active-route="project-closeout"] .workspace-content > .panel:not(.project-closeout-route-panel),
+html[data-project-pulse-active-route="project-closeout"] main > .panel:not(.project-closeout-route-panel),
+body[data-project-pulse-active-route="project-closeout"] .app-main > .panel:not(.project-closeout-route-panel),
+body[data-project-pulse-active-route="project-closeout"] .workspace-content > .panel:not(.project-closeout-route-panel),
+body[data-project-pulse-active-route="project-closeout"] main > .panel:not(.project-closeout-route-panel) {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+html[data-project-pulse-active-route="project-closeout"] .project-closeout-route-panel,
+body[data-project-pulse-active-route="project-closeout"] .project-closeout-route-panel {
+  display: block !important;
+  visibility: visible !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow: visible !important;
+  contain: layout paint;
+  overflow-anchor: none;
+}
+
+html[data-project-pulse-active-route="project-closeout"] .project-closeout-center,
+body[data-project-pulse-active-route="project-closeout"] .project-closeout-center {
+  max-height: none !important;
+  overflow: visible !important;
+  padding-bottom: 2rem;
+}
+
+html[data-project-pulse-active-route="project-closeout"] .role-dashboard-panel,
+body[data-project-pulse-active-route="project-closeout"] .role-dashboard-panel,
+html[data-project-pulse-active-route="project-closeout"] .production-data-readiness-route-panel,
+body[data-project-pulse-active-route="project-closeout"] .production-data-readiness-route-panel,
+html[data-project-pulse-active-route="project-closeout"] .production-readiness-route-panel,
+body[data-project-pulse-active-route="project-closeout"] .production-readiness-route-panel,
+html[data-project-pulse-active-route="project-closeout"] .user-admin-panel,
+body[data-project-pulse-active-route="project-closeout"] .user-admin-panel,
+html[data-project-pulse-active-route="project-closeout"] .azure-admin-panel,
+body[data-project-pulse-active-route="project-closeout"] .azure-admin-panel {
+  display: none !important;
+}
+/* 040B_CLOSEOUT_ROUTE_ISOLATION_CSS_END */

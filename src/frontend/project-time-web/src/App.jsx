@@ -2836,6 +2836,25 @@ export default function App() {
   }, [activeRoute]);
   /* 039A_ROUTE_REFRESH_RESTORE_EFFECT_END */
 
+  /* 040B_ACTIVE_ROUTE_DATASET_START */
+  useEffect(() => {
+    const normalizedRoute = String(activeRoute || 'dashboard').replace('#', '') || 'dashboard';
+
+    document.documentElement.dataset.projectPulseActiveRoute = normalizedRoute;
+    document.body.dataset.projectPulseActiveRoute = normalizedRoute;
+
+    return () => {
+      if (document.documentElement.dataset.projectPulseActiveRoute === normalizedRoute) {
+        delete document.documentElement.dataset.projectPulseActiveRoute;
+      }
+
+      if (document.body.dataset.projectPulseActiveRoute === normalizedRoute) {
+        delete document.body.dataset.projectPulseActiveRoute;
+      }
+    };
+  }, [activeRoute]);
+  /* 040B_ACTIVE_ROUTE_DATASET_END */
+
   /* 039D_APPROVAL_INIT_CRASH_FIX */
   /* 039C_APPROVAL_INDICATOR_EFFECT_START */
   useEffect(() => {

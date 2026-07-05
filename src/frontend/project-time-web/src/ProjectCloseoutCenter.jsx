@@ -604,6 +604,35 @@ export default function ProjectCloseoutCenter() {
   }, []);
   /* 040A_CLOSEOUT_ROUTE_TOP_END */
 
+  /* 040B_CLOSEOUT_HEIGHT_GUARD_START */
+  useEffect(() => {
+    const routePanel = document.querySelector('.project-closeout-route-panel');
+    const center = document.querySelector('.project-closeout-center');
+
+    if (!routePanel || !center) return undefined;
+
+    routePanel.style.overflowAnchor = 'none';
+    center.style.overflowAnchor = 'none';
+
+    const trimExcessiveSpacer = () => {
+      const viewportHeight = window.innerHeight || 900;
+      const centerHeight = center.getBoundingClientRect().height;
+      const maxReasonableHeight = Math.max(1800, viewportHeight * 3.25);
+
+      if (centerHeight > maxReasonableHeight) {
+        center.style.maxHeight = `${maxReasonableHeight}px`;
+        center.style.overflow = 'auto';
+        center.style.overscrollBehavior = 'contain';
+      }
+    };
+
+    trimExcessiveSpacer();
+    const timer = window.setTimeout(trimExcessiveSpacer, 500);
+
+    return () => window.clearTimeout(timer);
+  }, [selectedProjectKey, payload.loading]);
+  /* 040B_CLOSEOUT_HEIGHT_GUARD_END */
+
   const projects = useMemo(() => {
     if (!payload.data) return [];
 
