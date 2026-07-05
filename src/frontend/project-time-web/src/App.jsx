@@ -910,16 +910,29 @@ function normalizeProjectPulseResetQueuePanel() {
   return counts;
 }
 
+/* 040A_APPROVAL_NORMALIZER_ROUTE_SCOPE_START */
+function shouldNormalizeProjectPulseApprovalUiForCurrentRoute() {
+  const route = String(getRouteFromHash() || 'dashboard').replace('#', '') || 'dashboard';
+
+  return route === 'dashboard' || route === 'manager-approval';
+}
+
 function normalizeProjectPulseApprovalUi() {
+  if (!shouldNormalizeProjectPulseApprovalUiForCurrentRoute()) return;
+
   normalizeProjectPulseApprovalBadge();
   normalizeProjectPulseResetQueuePanel();
 }
+/* 040A_APPROVAL_NORMALIZER_ROUTE_SCOPE_END */
 
 function installProjectPulseApprovalUiNormalizer() {
   if (window.__projectPulseApprovalUiNormalizerInstalled) return;
   window.__projectPulseApprovalUiNormalizerInstalled = true;
 
-  const run = () => window.requestAnimationFrame(normalizeProjectPulseApprovalUi);
+  const run = () => {
+    if (!shouldNormalizeProjectPulseApprovalUiForCurrentRoute()) return;
+    window.requestAnimationFrame(normalizeProjectPulseApprovalUi);
+  };
 
   run();
   window.setTimeout(run, 250);

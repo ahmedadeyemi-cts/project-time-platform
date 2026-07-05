@@ -101,19 +101,38 @@ function titleCase(value) {
     .replace(/\b\w/g, (letter) => letter.toUpperCase()) || 'Not specified';
 }
 
-function collectObjects(payload, collector = []) {
+/* 040A_CLOSEOUT_SCROLL_CONTAINMENT_START */
+function collectObjects(payload, collector = [], options = {}) {
+  const depth = Number(options.depth ?? 0);
+  const maxDepth = Number(options.maxDepth ?? 5);
+  const maxObjects = Number(options.maxObjects ?? 1200);
+  const seen = options.seen ?? new WeakSet();
+
   if (!payload || typeof payload !== 'object') return collector;
+  if (collector.length >= maxObjects) return collector;
+  if (depth > maxDepth) return collector;
+
+  try {
+    if (seen.has(payload)) return collector;
+    seen.add(payload);
+  } catch {
+    // Primitive or non-weakset-compatible value; ignore.
+  }
 
   if (Array.isArray(payload)) {
-    payload.forEach((item) => collectObjects(item, collector));
+    payload.slice(0, maxObjects).forEach((item) => {
+      if (collector.length < maxObjects) {
+        collectObjects(item, collector, { depth: depth + 1, maxDepth, maxObjects, seen });
+      }
+    });
     return collector;
   }
 
   collector.push(payload);
 
   Object.values(payload).forEach((value) => {
-    if (value && typeof value === 'object') {
-      collectObjects(value, collector);
+    if (collector.length < maxObjects && value && typeof value === 'object') {
+      collectObjects(value, collector, { depth: depth + 1, maxDepth, maxObjects, seen });
     }
   });
 
@@ -123,28 +142,37 @@ function collectObjects(payload, collector = []) {
 function looksLikeProject(item) {
   if (!item || typeof item !== 'object') return false;
 
-  const keys = Object.keys(item).join(' ').toLowerCase();
-  const values = [
-    item.projectCode,
-    item.projectNumber,
-    item.projectName,
-    item.name,
-    item.customerName,
-    item.clientName,
-    item.accountName,
-    item.projectManagerName,
-    item.salesExecutiveName,
-    item.solutionArchitectName
-  ].join(' ').toLowerCase();
-
-  return (
-    keys.includes('project') ||
-    Boolean(item.projectId) ||
-    Boolean(item.projectCode) ||
-    Boolean(item.projectNumber) ||
-    (values.includes('project') && (item.customerName || item.clientName || item.accountName))
+  const explicitProjectIdentifier = Boolean(
+    item.projectId ||
+    item.projectCode ||
+    item.projectNumber ||
+    item.projectNo ||
+    item.projectKey
   );
+
+  const hasProjectName = Boolean(item.projectName || item.name || item.title || item.displayName);
+  const hasCustomer = Boolean(item.customerName || item.clientName || item.accountName || item.companyName);
+  const hasProjectOwner = Boolean(
+    item.projectManagerName ||
+    item.pmName ||
+    item.salesExecutiveName ||
+    item.solutionArchitectName
+  );
+
+  const recordType = normalizeStatus(item.recordType ?? item.type ?? item.entityType ?? item.objectType);
+  const isProjectRecordType = ['project', 'customer_project', 'project_summary', 'project_workspace'].includes(recordType);
+
+  const taskOnlyRecord = Boolean(item.taskId || item.taskName || item.workTaskId || item.workTaskName) &&
+    !hasProjectName &&
+    !hasCustomer &&
+    !hasProjectOwner &&
+    !isProjectRecordType;
+
+  if (taskOnlyRecord) return false;
+
+  return explicitProjectIdentifier && (hasProjectName || hasCustomer || hasProjectOwner || isProjectRecordType);
 }
+/* 040A_CLOSEOUT_SCROLL_CONTAINMENT_END */
 
 function getFirstValue(item, keys) {
   for (const key of keys) {
@@ -214,9 +242,11 @@ function normalizeProjectCandidate(item, source) {
 
 function extractProjectCandidates(payloads) {
   const projectsByKey = new Map();
+  const maxCandidates = 80;
 
   payloads.forEach(({ payload, source }) => {
-    collectObjects(payload).forEach((item) => {
+    collectObjects(payload, [], { maxDepth: 5, maxObjects: 1200 }).forEach((item) => {
+      if (projectsByKey.size >= maxCandidates) return;
       if (!looksLikeProject(item)) return;
 
       const normalized = normalizeProjectCandidate(item, source);
@@ -238,14 +268,15 @@ function extractProjectCandidates(payloads) {
             String(value).trim() !== '0'
           ))
         ),
-        source: `${existing.source}, ${normalized.source}`
+        source: Array.from(new Set(`${existing.source}, ${normalized.source}`.split(',').map((value) => value.trim()).filter(Boolean))).join(', ')
       });
     });
   });
 
   return [...projectsByKey.values()]
     .filter((project) => project.projectCode !== 'Unnumbered project' || project.projectName !== 'Unnamed project')
-    .sort((a, b) => a.customerName.localeCompare(b.customerName) || a.projectCode.localeCompare(b.projectCode));
+    .sort((a, b) => a.customerName.localeCompare(b.customerName) || a.projectCode.localeCompare(b.projectCode))
+    .slice(0, maxCandidates);
 }
 
 function countActionableApprovals(payload) {
@@ -543,6 +574,35 @@ export default function ProjectCloseoutCenter() {
   useEffect(() => {
     loadCloseoutData();
   }, []);
+
+  /* 040A_CLOSEOUT_ROUTE_TOP_START */
+  useEffect(() => {
+    const resetTargets = [
+      window,
+      document.scrollingElement,
+      document.documentElement,
+      document.body,
+      document.querySelector('.app-main'),
+      document.querySelector('.workspace-content'),
+      document.querySelector('.project-closeout-route-panel')
+    ].filter(Boolean);
+
+    window.requestAnimationFrame(() => {
+      resetTargets.forEach((target) => {
+        try {
+          if (target === window) {
+            target.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+          } else {
+            target.scrollTop = 0;
+            target.scrollLeft = 0;
+          }
+        } catch {
+          // Ignore non-scrollable targets.
+        }
+      });
+    });
+  }, []);
+  /* 040A_CLOSEOUT_ROUTE_TOP_END */
 
   const projects = useMemo(() => {
     if (!payload.data) return [];

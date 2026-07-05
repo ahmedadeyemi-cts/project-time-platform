@@ -351,3 +351,53 @@
     flex: 1;
   }
 }
+
+/* 040A_CLOSEOUT_SCROLL_CONTAINMENT_CSS_START */
+.project-closeout-route-panel {
+  overflow-anchor: none;
+}
+
+.project-closeout-center {
+  min-height: 0;
+  max-width: 100%;
+  overflow-anchor: none;
+  contain: layout paint;
+}
+
+.project-closeout-toolbar,
+.project-closeout-summary-grid,
+.project-closeout-detail-grid,
+.project-closeout-card {
+  min-height: 0;
+  overflow-anchor: none;
+}
+
+.project-closeout-toolbar select {
+  max-width: 100%;
+}
+
+.project-closeout-checklist {
+  max-height: min(620px, 70vh);
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding-right: 0.25rem;
+}
+
+.project-closeout-stakeholder-list {
+  max-height: min(520px, 62vh);
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding-right: 0.25rem;
+}
+
+.project-closeout-notification-card pre {
+  max-height: min(520px, 62vh);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.project-closeout-profile-list,
+.project-closeout-summary-card {
+  overflow-anchor: none;
+}
+/* 040A_CLOSEOUT_SCROLL_CONTAINMENT_CSS_END */
