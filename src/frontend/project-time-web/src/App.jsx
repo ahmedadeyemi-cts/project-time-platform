@@ -2503,6 +2503,7 @@ export default function App() {
   }, [activeRoute]);
   /* 039A_ROUTE_REFRESH_RESTORE_EFFECT_END */
 
+  /* 039D_APPROVAL_INIT_CRASH_FIX */
   /* 039C_APPROVAL_INDICATOR_EFFECT_START */
   useEffect(() => {
     installProjectPulseApprovalUiNormalizer();
@@ -2513,7 +2514,7 @@ export default function App() {
     normalizeProjectPulseApprovalUi();
     const timeoutId = window.setTimeout(normalizeProjectPulseApprovalUi, 500);
     return () => window.clearTimeout(timeoutId);
-  }, [activeRoute, authSession?.sessionToken, currentUser.status]);
+  }, [activeRoute, authSession?.sessionToken]);
   /* 039C_APPROVAL_INDICATOR_EFFECT_END */
 
 
