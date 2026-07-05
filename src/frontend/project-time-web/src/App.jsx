@@ -614,6 +614,73 @@ function getRouteFromHash() {
   return hash.replace('#', '') || 'dashboard';
 }
 
+/* 039A_ROUTE_REFRESH_RESTORE_START */
+function installProjectPulseManualScrollRestoration() {
+  try {
+    if ('scrollRestoration' in window.history) {
+      window.history.scrollRestoration = 'manual';
+    }
+  } catch {
+    // Browser does not support manual scroll restoration or blocked access.
+  }
+}
+
+function resetProjectPulseViewportForRoute(route = getRouteFromHash()) {
+  const normalizedRoute = String(route || 'dashboard').replace('#', '') || 'dashboard';
+
+  const resetNow = () => {
+    try {
+      window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    } catch {
+      window.scrollTo(0, 0);
+    }
+
+    const possibleScrollTargets = [
+      document.scrollingElement,
+      document.documentElement,
+      document.body,
+      document.querySelector('.app-shell'),
+      document.querySelector('.app-layout'),
+      document.querySelector('.app-main'),
+      document.querySelector('.workspace-shell'),
+      document.querySelector('.workspace-body'),
+      document.querySelector('.workspace-content'),
+      document.querySelector('.installed-modules-dashboard-panel')
+    ].filter(Boolean);
+
+    possibleScrollTargets.forEach((target) => {
+      try {
+        target.scrollTop = 0;
+        target.scrollLeft = 0;
+      } catch {
+        // Ignore non-scrollable targets.
+      }
+    });
+
+    const activePanel = normalizedRoute === 'dashboard'
+      ? document.querySelector('.installed-modules-dashboard-panel')
+      : document.getElementById(normalizedRoute);
+
+    if (activePanel) {
+      try {
+        activePanel.scrollIntoView({ block: 'start', inline: 'nearest', behavior: 'auto' });
+        window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+      } catch {
+        // Ignore scrollIntoView edge cases.
+      }
+    }
+  };
+
+  window.requestAnimationFrame(() => {
+    resetNow();
+    window.requestAnimationFrame(resetNow);
+  });
+}
+
+installProjectPulseManualScrollRestoration();
+/* 039A_ROUTE_REFRESH_RESTORE_END */
+
+
 function getStoredAuthSession() {
   try {
     const rawSession = window.localStorage.getItem('projectPulseAuthSession');
@@ -2228,6 +2295,28 @@ export default function App() {
   const [profileSettingsStatus, setProfileSettingsStatus] = useState('');
   const [sessionWarning, setSessionWarning] = useState({ visible: false, remainingMs: 0 });
   const [activeRoute, setActiveRoute] = useState(() => normalizeRoute(window.location.hash));
+
+  /* 039A_ROUTE_REFRESH_RESTORE_EFFECT_START */
+  useEffect(() => {
+    installProjectPulseManualScrollRestoration();
+
+    const handlePageShow = () => resetProjectPulseViewportForRoute(getRouteFromHash());
+    const handleHashRefresh = () => resetProjectPulseViewportForRoute(getRouteFromHash());
+
+    window.addEventListener('pageshow', handlePageShow);
+    window.addEventListener('popstate', handleHashRefresh);
+
+    return () => {
+      window.removeEventListener('pageshow', handlePageShow);
+      window.removeEventListener('popstate', handleHashRefresh);
+    };
+  }, []);
+
+  useEffect(() => {
+    resetProjectPulseViewportForRoute(activeRoute);
+  }, [activeRoute]);
+  /* 039A_ROUTE_REFRESH_RESTORE_EFFECT_END */
+
 
   useEffect(() => {
     window.requestAnimationFrame(() => {
