@@ -1,0 +1,353 @@
+.project-closeout-center {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.project-closeout-hero {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 1.25rem;
+  padding: 1.5rem;
+  border: 1px solid rgba(148, 163, 184, 0.26);
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at top left, rgba(59, 130, 246, 0.16), transparent 34rem),
+    linear-gradient(135deg, rgba(15, 23, 42, 0.96), rgba(30, 41, 59, 0.9));
+  color: #f8fafc;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.16);
+}
+
+.project-closeout-hero h1 {
+  margin: 0.15rem 0 0.55rem;
+  font-size: clamp(1.65rem, 2vw, 2.35rem);
+}
+
+.project-closeout-hero p {
+  max-width: 72ch;
+  margin: 0;
+  color: rgba(226, 232, 240, 0.88);
+  line-height: 1.65;
+}
+
+.project-closeout-stage {
+  min-width: 180px;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 0.35rem;
+  padding: 1rem;
+  border-radius: 20px;
+  border: 1px solid rgba(248, 250, 252, 0.2);
+  background: rgba(15, 23, 42, 0.36);
+}
+
+.project-closeout-stage span {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(226, 232, 240, 0.78);
+}
+
+.project-closeout-stage strong {
+  font-size: 1.45rem;
+}
+
+.project-closeout-stage.stage-ready,
+.project-closeout-pill.stage-ready {
+  background: rgba(22, 163, 74, 0.16);
+  color: #bbf7d0;
+  border-color: rgba(34, 197, 94, 0.32);
+}
+
+.project-closeout-stage.stage-blocked,
+.project-closeout-pill.stage-blocked {
+  background: rgba(220, 38, 38, 0.16);
+  color: #fecaca;
+  border-color: rgba(248, 113, 113, 0.32);
+}
+
+.project-closeout-stage.stage-review,
+.project-closeout-pill.stage-review {
+  background: rgba(245, 158, 11, 0.16);
+  color: #fde68a;
+  border-color: rgba(251, 191, 36, 0.34);
+}
+
+.project-closeout-guardrail,
+.project-closeout-warning,
+.project-closeout-error,
+.project-closeout-copy-status {
+  display: grid;
+  gap: 0.3rem;
+  padding: 1rem 1.1rem;
+  border-radius: 18px;
+  border: 1px solid rgba(59, 130, 246, 0.22);
+  background: rgba(239, 246, 255, 0.8);
+  color: #1e3a8a;
+}
+
+.project-closeout-warning {
+  border-color: rgba(245, 158, 11, 0.32);
+  background: rgba(255, 251, 235, 0.88);
+  color: #92400e;
+}
+
+.project-closeout-warning ul {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.project-closeout-error {
+  border-color: rgba(220, 38, 38, 0.28);
+  background: rgba(254, 242, 242, 0.9);
+  color: #991b1b;
+}
+
+.project-closeout-toolbar {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem;
+  border-radius: 20px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(255, 255, 255, 0.84);
+}
+
+.project-closeout-toolbar label {
+  display: grid;
+  gap: 0.45rem;
+  flex: 1;
+  font-size: 0.82rem;
+  font-weight: 800;
+  color: #334155;
+}
+
+.project-closeout-toolbar select {
+  width: 100%;
+  min-height: 2.75rem;
+  border: 1px solid rgba(148, 163, 184, 0.36);
+  border-radius: 14px;
+  padding: 0 0.85rem;
+  background: #fff;
+  color: #0f172a;
+}
+
+.project-closeout-actions {
+  display: flex;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.project-closeout-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.project-closeout-summary-card,
+.project-closeout-card {
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.08);
+}
+
+.project-closeout-summary-card {
+  display: grid;
+  gap: 0.4rem;
+  padding: 1rem;
+}
+
+.project-closeout-summary-card span,
+.project-closeout-card .eyebrow {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 900;
+  color: #64748b;
+}
+
+.project-closeout-summary-card strong {
+  font-size: 1.65rem;
+  color: #0f172a;
+}
+
+.project-closeout-summary-card small {
+  color: #64748b;
+  line-height: 1.45;
+}
+
+.project-closeout-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+  gap: 1rem;
+}
+
+.project-closeout-card {
+  padding: 1.1rem;
+}
+
+.project-closeout-card-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.project-closeout-card-heading h2 {
+  margin: 0.15rem 0 0;
+  color: #0f172a;
+}
+
+.project-closeout-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 1.9rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: rgba(241, 245, 249, 0.88);
+  color: #334155;
+  font-size: 0.76rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.project-closeout-profile-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+  margin: 0;
+}
+
+.project-closeout-profile-list div {
+  padding: 0.8rem;
+  border-radius: 16px;
+  background: rgba(248, 250, 252, 0.92);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+}
+
+.project-closeout-profile-list dt {
+  margin-bottom: 0.2rem;
+  color: #64748b;
+  font-size: 0.75rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.project-closeout-profile-list dd {
+  margin: 0;
+  color: #0f172a;
+  font-weight: 800;
+}
+
+.project-closeout-stakeholder-list,
+.project-closeout-checklist {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.project-closeout-stakeholder,
+.project-closeout-check {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.85rem;
+  border-radius: 16px;
+  background: rgba(248, 250, 252, 0.92);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+}
+
+.project-closeout-stakeholder strong {
+  color: #0f172a;
+}
+
+.project-closeout-stakeholder span,
+.project-closeout-stakeholder small,
+.project-closeout-check small {
+  color: #64748b;
+}
+
+.project-closeout-check {
+  grid-template-columns: 88px 1fr;
+  align-items: start;
+}
+
+.project-closeout-check > span {
+  display: inline-flex;
+  justify-content: center;
+  padding: 0.3rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 950;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.project-closeout-check.status-ready > span {
+  background: rgba(22, 163, 74, 0.12);
+  color: #15803d;
+}
+
+.project-closeout-check.status-blocked > span {
+  background: rgba(220, 38, 38, 0.12);
+  color: #b91c1c;
+}
+
+.project-closeout-check.status-review > span {
+  background: rgba(245, 158, 11, 0.14);
+  color: #b45309;
+}
+
+.project-closeout-check strong {
+  color: #0f172a;
+}
+
+.project-closeout-empty {
+  padding: 1rem;
+  border-radius: 16px;
+  background: rgba(248, 250, 252, 0.92);
+  border: 1px dashed rgba(148, 163, 184, 0.42);
+  color: #64748b;
+  line-height: 1.55;
+}
+
+.project-closeout-notification-card pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+  padding: 1rem;
+  border-radius: 16px;
+  background: #0f172a;
+  color: #e2e8f0;
+  line-height: 1.6;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.86rem;
+}
+
+@media (max-width: 960px) {
+  .project-closeout-hero,
+  .project-closeout-toolbar,
+  .project-closeout-card-heading {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .project-closeout-summary-grid,
+  .project-closeout-detail-grid,
+  .project-closeout-profile-list {
+    grid-template-columns: 1fr;
+  }
+
+  .project-closeout-actions {
+    width: 100%;
+  }
+
+  .project-closeout-actions button {
+    flex: 1;
+  }
+}

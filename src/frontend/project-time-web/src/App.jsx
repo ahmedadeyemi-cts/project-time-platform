@@ -477,6 +477,7 @@ import ProjectIntakeCenter from './ProjectIntakeCenter.jsx';
 import SalesInsightsDashboard from './SalesInsightsDashboard.jsx';
 import CertifyIntegrationCenter from './CertifyIntegrationCenter.jsx';
 import BillingReadinessCenter from './BillingReadinessCenter.jsx';
+import ProjectCloseoutCenter from './ProjectCloseoutCenter.jsx';
 import CustomerDirectoryCenter from './CustomerDirectoryCenter.jsx';
 import CostOverrunAlertCenter from './CostOverrunAlertCenter.jsx';
 import ProjectWorkspaceCenter from './ProjectWorkspaceCenter.jsx';
@@ -1539,6 +1540,16 @@ const roleWorkspaceModules = [
     permissions: ['VIEW_ACCOUNT_RECONCILIATION', 'VIEW_APPROVAL_WORKFLOW', 'PROJECT_TIME_APPROVAL', 'VIEW_EXPENSES', 'EXPORT_TIME_EXCEL', 'EXPORT_TIME_PDF', 'DOWNLOAD_TIME_EXPORT_PACKAGE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   },
   /* 039_BILLING_READINESS_CENTER_END */
+  /* 040_PROJECT_CLOSEOUT_CENTER_START */
+  {
+    route: 'project-closeout',
+    href: '#project-closeout',
+    title: 'Project Closeout Center',
+    navLabel: 'MODULE 040',
+    description: 'Review closeout readiness, cleared approvals, billing readiness, Certify expense exceptions, stakeholder notification audience, lessons-learned reminder, and closeout evidence export before marking a project complete.',
+    permissions: ['VIEW_PROJECT_WORKSPACE', 'VIEW_PROJECT_INTAKE', 'VIEW_APPROVAL_WORKFLOW', 'PROJECT_TIME_APPROVAL', 'VIEW_ACCOUNT_RECONCILIATION', 'VIEW_EXPENSES', 'EXPORT_TIME_EXCEL', 'DOWNLOAD_TIME_EXPORT_PACKAGE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
+  },
+  /* 040_PROJECT_CLOSEOUT_CENTER_END */
   {
     route: 'service-control',
     href: '#service-control',
@@ -1746,6 +1757,7 @@ function getNavigationGroup(item) {
 
     case 'workflow':
     case 'billing-readiness':
+    case 'project-closeout':
       return 'Reports & Workflow';
 
     default:
@@ -5746,6 +5758,12 @@ Analytics - Variphy / Infortel`}
 
 {(activeRoute === 'audit-history' && (hasPermission('VIEW_AUDIT_TRAIL') || hasPermission('SYSTEM_ADMINISTRATION') || hasPermission('MANAGE_ALL'))) ? (
         <AuditHistoryPanel />
+      ) : null}
+
+      {(activeRoute === 'project-closeout' && canSeeAny(['VIEW_PROJECT_WORKSPACE', 'VIEW_PROJECT_INTAKE', 'VIEW_APPROVAL_WORKFLOW', 'PROJECT_TIME_APPROVAL', 'VIEW_ACCOUNT_RECONCILIATION', 'VIEW_EXPENSES', 'EXPORT_TIME_EXCEL', 'DOWNLOAD_TIME_EXPORT_PACKAGE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
+        <section id="project-closeout" className="panel project-closeout-route-panel">
+          <ProjectCloseoutCenter />
+        </section>
       ) : null}
 
       <section id="role-dashboard" className="panel role-dashboard-panel">
