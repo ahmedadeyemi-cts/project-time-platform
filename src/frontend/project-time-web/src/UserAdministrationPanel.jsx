@@ -30,36 +30,21 @@ async function fetchJson(path) {
 }
 
 
+/* 041C_USER_EMAIL_EDIT_TEAM_CATALOG_START */
 const TEAM_OPTIONS = [
-  {
-    teamName: 'Collaboration',
-    departmentName: 'Collaboration Engineeringing',
-    managerName: 'Ahmed Adeyemi',
-    managerEmail: 'ahmed.adeyemi@ussignal.com',
-    coordinatorAssigned: false
-  },
-  {
-    teamName: 'Systems',
-    departmentName: 'Systems Engineeringing',
-    managerName: 'Ahmed Adeyemi',
-    managerEmail: 'ahmed.adeyemi@ussignal.com',
-    coordinatorAssigned: false
-  },
-  {
-    teamName: 'Enterprise Networking',
-    departmentName: 'Enterprise Networking Engineeringing',
-    managerName: 'Matthew Lenoble',
-    managerEmail: 'matthew.lenoble@ussignal.com',
-    coordinatorAssigned: false
-  },
-  {
-    teamName: 'Back Office',
-    departmentName: 'Back Office',
-    managerName: 'Project and Team Coordinators',
-    managerEmail: '',
-    coordinatorAssigned: true
-  }
+  { teamName: 'Collaboration Engineering', departmentName: 'Collaboration Engineering', managerName: '', managerEmail: '', coordinatorAssigned: false },
+  { teamName: 'Systems Engineering', departmentName: 'Systems Engineering', managerName: '', managerEmail: '', coordinatorAssigned: false },
+  { teamName: 'Enterprise Network Engineering', departmentName: 'Enterprise Network Engineering', managerName: '', managerEmail: '', coordinatorAssigned: false },
+  { teamName: 'Sales', departmentName: 'Sales', managerName: '', managerEmail: '', coordinatorAssigned: false },
+  { teamName: 'Project Management', departmentName: 'Project Management Office', managerName: '', managerEmail: '', coordinatorAssigned: false },
+  { teamName: 'Account Executive/Sales', departmentName: 'Account Executive/Sales', managerName: '', managerEmail: '', coordinatorAssigned: false },
+  { teamName: 'Solution Architecture', departmentName: 'Solution Architecture', managerName: '', managerEmail: '', coordinatorAssigned: false },
+  { teamName: 'Accounting', departmentName: 'Accounting', managerName: '', managerEmail: '', coordinatorAssigned: false },
+  { teamName: 'Executive', departmentName: 'Executive', managerName: '', managerEmail: '', coordinatorAssigned: false },
+  { teamName: 'Resale', departmentName: 'Resale', managerName: '', managerEmail: '', coordinatorAssigned: false },
+  { teamName: 'Human Resources', departmentName: 'Human Resources', managerName: '', managerEmail: '', coordinatorAssigned: false }
 ];
+/* 041C_USER_EMAIL_EDIT_TEAM_CATALOG_END */
 
 function applyTeamSelectionToDraft(current, teamName) {
   const team = TEAM_OPTIONS.find((item) => item.teamName === teamName);
@@ -79,13 +64,13 @@ function applyTeamSelectionToDraft(current, teamName) {
 function getTeamManagerLabel(teamName) {
   const team = TEAM_OPTIONS.find((item) => item.teamName === teamName);
 
-  if (!team) return 'Select a team to populate manager information.';
+  if (!team) return 'Select a team to populate department information.';
 
-  if (team.coordinatorAssigned) {
-    return 'Back Office is assigned to Project and Team Coordinators and does not have a direct manager.';
+  if (team.managerName && team.managerEmail) {
+    return `${team.managerName} is the manager for ${team.departmentName}.`;
   }
 
-  return `${team.managerName} is the manager for ${team.departmentName}.`;
+  return `${team.departmentName} selected. Add manager email when it is known.`;
 }
 
 
@@ -352,6 +337,12 @@ export default function UserAdministrationPanel() {
         managerEmail: profileDraft.managerEmail ?? '',
         loginEnabled: Boolean(profileDraft.loginEnabled),
         isActive: Boolean(profileDraft.isActive)
+      });
+
+      await postJson('/api/admin/user-admin/users/email', {
+        userId: profileDraft.userId,
+        email: String(profileDraft.email ?? '').trim().toLowerCase(),
+        reason: 'Updated from User Administration profile section.'
       });
 
       const roleResult = await postJson('/api/admin/user-admin/users/roles', {
@@ -849,7 +840,14 @@ export default function UserAdministrationPanel() {
               <input value={profileDraft.displayName ?? ''} onChange={(event) => setProfileDraft((current) => ({ ...current, displayName: event.target.value }))} />
 
               <label>Email</label>
-              <input value={profileDraft.email ?? ''} disabled />
+              <input
+                value={profileDraft.email ?? ''}
+                onChange={(event) => setProfileDraft((current) => ({ ...current, email: event.target.value }))}
+                placeholder="name@example.com"
+              />
+              <div className="user-admin-helper-text">
+                Used for notifications, closeout emails, PM assignment alerts, and test/demo recipient validation.
+              </div>
 
               <label>Job title</label>
               <input value={profileDraft.jobTitle ?? ''} onChange={(event) => setProfileDraft((current) => ({ ...current, jobTitle: event.target.value }))} />

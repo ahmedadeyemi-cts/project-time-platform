@@ -11185,6 +11185,110 @@ app.MapGet("/api/admin/user-admin/users", async (HttpContext httpContext) =>
     });
 });
 
+
+/* 041C_USER_ADMIN_EMAIL_UPDATE_ENDPOINT_START */
+app.MapPost("/api/admin/user-admin/users/email", async (System.Text.Json.JsonElement payload, HttpContext httpContext) =>
+{
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new
+        {
+            status = "session_required",
+            message = "Missing session token."
+        }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var userIdText = ProjectPulseJsonString(payload, "userId") ?? "";
+    var requestedEmail = (ProjectPulseJsonString(payload, "email") ?? "").Trim().ToLowerInvariant();
+
+    if (!Guid.TryParse(userIdText, out var userId))
+    {
+        return Results.BadRequest(new
+        {
+            status = "invalid_user",
+            message = "A valid userId is required before updating email."
+        });
+    }
+
+    if (string.IsNullOrWhiteSpace(requestedEmail) || !System.Text.RegularExpressions.Regex.IsMatch(requestedEmail, @"^[^@\s]+@[^@\s]+\.[^@\s]+$"))
+    {
+        return Results.BadRequest(new
+        {
+            status = "invalid_email",
+            message = "Enter a valid email address before saving the user profile."
+        });
+    }
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "User Administration is restricted to administrators and project/team coordinators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    await using (var duplicateCommand = new NpgsqlCommand("""
+        SELECT COUNT(*)
+        FROM app_users
+        WHERE lower(email) = lower(@email)
+          AND user_id <> @user_id;
+        """, connection))
+    {
+        duplicateCommand.Parameters.AddWithValue("email", requestedEmail);
+        duplicateCommand.Parameters.AddWithValue("user_id", userId);
+
+        var duplicateCount = Convert.ToInt32(await duplicateCommand.ExecuteScalarAsync() ?? 0);
+
+        if (duplicateCount > 0)
+        {
+            return Results.Conflict(new
+            {
+                status = "duplicate_email",
+                message = "Another user already has this email address."
+            });
+        }
+    }
+
+    await using var updateCommand = new NpgsqlCommand("""
+        UPDATE app_users
+        SET email = @email,
+            updated_at = NOW()
+        WHERE user_id = @user_id;
+        """, connection);
+
+    updateCommand.Parameters.AddWithValue("email", requestedEmail);
+    updateCommand.Parameters.AddWithValue("user_id", userId);
+
+    var rows = await updateCommand.ExecuteNonQueryAsync();
+
+    if (rows == 0)
+    {
+        return Results.NotFound(new
+        {
+            status = "user_not_found",
+            message = "The selected user could not be found."
+        });
+    }
+
+    return Results.Ok(new
+    {
+        status = "user_email_updated",
+        message = "User email updated.",
+        userId,
+        email = requestedEmail
+    });
+});
+/* 041C_USER_ADMIN_EMAIL_UPDATE_ENDPOINT_END */
+
 app.MapPost("/api/admin/user-admin/users/profile", async (UserAdminProfileUpdateRequest request, HttpContext httpContext) =>
 {
     var config = DatabaseConfig.FromEnvironment();
