@@ -478,6 +478,7 @@ import SalesInsightsDashboard from './SalesInsightsDashboard.jsx';
 import CertifyIntegrationCenter from './CertifyIntegrationCenter.jsx';
 import BillingReadinessCenter from './BillingReadinessCenter.jsx';
 import ProjectCloseoutCenter from './ProjectCloseoutCenter.jsx';
+import CloseoutEmailAutomationCenter from './CloseoutEmailAutomationCenter.jsx';
 import CustomerDirectoryCenter from './CustomerDirectoryCenter.jsx';
 import CostOverrunAlertCenter from './CostOverrunAlertCenter.jsx';
 import ProjectWorkspaceCenter from './ProjectWorkspaceCenter.jsx';
@@ -1563,6 +1564,16 @@ const roleWorkspaceModules = [
     permissions: ['VIEW_PROJECT_WORKSPACE', 'VIEW_PROJECT_INTAKE', 'VIEW_APPROVAL_WORKFLOW', 'PROJECT_TIME_APPROVAL', 'VIEW_ACCOUNT_RECONCILIATION', 'VIEW_EXPENSES', 'EXPORT_TIME_EXCEL', 'DOWNLOAD_TIME_EXPORT_PACKAGE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   },
   /* 040_PROJECT_CLOSEOUT_CENTER_END */
+  /* 041_CLOSEOUT_EMAIL_AUTOMATION_START */
+  {
+    route: 'closeout-email',
+    href: '#closeout-email',
+    title: 'Closeout Email Automation Center',
+    navLabel: 'MODULE 041',
+    description: 'Queue and audit the automatic project closeout email to the project team, Project Manager, and Account Executive or Sales Rep, including the named PM lessons-learned reminder.',
+    permissions: ['VIEW_PROJECT_WORKSPACE', 'VIEW_PROJECT_INTAKE', 'VIEW_APPROVAL_WORKFLOW', 'PROJECT_TIME_APPROVAL', 'VIEW_ACCOUNT_RECONCILIATION', 'VIEW_EXPENSES', 'EXPORT_TIME_EXCEL', 'DOWNLOAD_TIME_EXPORT_PACKAGE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
+  },
+  /* 041_CLOSEOUT_EMAIL_AUTOMATION_END */
   {
     route: 'service-control',
     href: '#service-control',
@@ -1771,6 +1782,7 @@ function getNavigationGroup(item) {
     case 'workflow':
     case 'billing-readiness':
     case 'project-closeout':
+    case 'closeout-email':
       return 'Reports & Workflow';
 
     default:
@@ -5795,6 +5807,12 @@ Analytics - Variphy / Infortel`}
       {(activeRoute === 'project-closeout' && canSeeAny(['VIEW_PROJECT_WORKSPACE', 'VIEW_PROJECT_INTAKE', 'VIEW_APPROVAL_WORKFLOW', 'PROJECT_TIME_APPROVAL', 'VIEW_ACCOUNT_RECONCILIATION', 'VIEW_EXPENSES', 'EXPORT_TIME_EXCEL', 'DOWNLOAD_TIME_EXPORT_PACKAGE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
         <section id="project-closeout" className="panel project-closeout-route-panel">
           <ProjectCloseoutCenter />
+        </section>
+      ) : null}
+
+      {(activeRoute === 'closeout-email' && canSeeAny(['VIEW_PROJECT_WORKSPACE', 'VIEW_PROJECT_INTAKE', 'VIEW_APPROVAL_WORKFLOW', 'PROJECT_TIME_APPROVAL', 'VIEW_ACCOUNT_RECONCILIATION', 'VIEW_EXPENSES', 'EXPORT_TIME_EXCEL', 'DOWNLOAD_TIME_EXPORT_PACKAGE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
+        <section id="closeout-email" className="panel closeout-email-route-panel">
+          <CloseoutEmailAutomationCenter />
         </section>
       ) : null}
 
