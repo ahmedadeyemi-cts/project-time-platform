@@ -5818,3 +5818,29 @@ body:has(.app-shell.route-work-task-builder) .app-shell.route-work-task-builder 
   display: none !important;
 }
 /* 039C_APPROVAL_INDICATOR_CSS_END */
+
+/* 039E_ACTIONABLE_APPROVAL_COUNT_CSS_START */
+.project-pulse-approval-actionable-badge.is-hidden,
+.nav-pending-badge.is-hidden,
+.project-pulse-reset-queue-panel.is-hidden {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+.project-pulse-reset-queue-panel.is-hidden,
+.project-pulse-reset-queue-panel[aria-hidden="true"] {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+.project-pulse-reset-queue-panel {
+  max-width: min(520px, 94vw);
+}
+
+.role-dashboard-card:not(.project-pulse-approval-card-has-pending) .nav-pending-badge:empty,
+.role-dashboard-card:not(.project-pulse-approval-card-has-pending) .project-pulse-approval-actionable-badge:empty {
+  display: none !important;
+}
+/* 039E_ACTIONABLE_APPROVAL_COUNT_CSS_END */

@@ -705,6 +705,17 @@ function findProjectPulseSmallestContainerWithText(requiredTextValues) {
 }
 
 function getProjectPulseActionableApprovalCounts() {
+  /* 039E_ACTIONABLE_APPROVAL_COUNT_DOM_CACHE */
+  const cachedCounts = getProjectPulseCachedApprovalActionableCounts();
+  if (cachedCounts) {
+    return {
+      submittedTimePending: Number(cachedCounts.submittedTimePending ?? 0),
+      localResetPendingApproval: Number(cachedCounts.localResetPendingApproval ?? 0),
+      localResetReadyForTempPassword: Number(cachedCounts.localResetReadyForTempPassword ?? 0),
+      actionableTotal: Number(cachedCounts.actionableTotal ?? 0)
+    };
+  }
+
   const managerPanel = document.getElementById('manager-approval');
 
   const submittedTimePanel =
@@ -780,32 +791,56 @@ function getOrCreateProjectPulseApprovalBadge(container) {
 
 function normalizeProjectPulseApprovalBadge() {
   const counts = getProjectPulseActionableApprovalCounts();
-  const dashboardCard = getProjectPulseApprovalDashboardCard();
+
+  const dashboardCard =
+    document.querySelector('a.role-dashboard-card[href="#manager-approval"]') ||
+    document.querySelector('a[href="#manager-approval"]') ||
+    getProjectPulseApprovalDashboardCard();
+
   const managerLinks = [...document.querySelectorAll('a[href="#manager-approval"]')];
 
   if (dashboardCard) {
     dashboardCard.classList.toggle('project-pulse-approval-card-has-pending', counts.actionableTotal > 0);
 
-    const badge = getOrCreateProjectPulseApprovalBadge(dashboardCard);
-    if (badge) {
-      badge.textContent = counts.actionableTotal > 0 ? String(counts.actionableTotal) : '';
-      badge.classList.toggle('is-hidden', counts.actionableTotal <= 0);
-      badge.setAttribute('aria-label', counts.actionableTotal > 0 ? `${counts.actionableTotal} actionable approval item(s)` : 'No actionable approval items');
+    const staleBadges = [...dashboardCard.querySelectorAll('.nav-pending-badge, [data-project-pulse-approval-actionable-badge="true"]')];
+
+    if (counts.actionableTotal <= 0) {
+      staleBadges.forEach((badge) => {
+        badge.textContent = '';
+        badge.classList.add('is-hidden');
+        badge.setAttribute('aria-hidden', 'true');
+        badge.style.display = 'none';
+      });
+    } else {
+      const badge = staleBadges[0] || getOrCreateProjectPulseApprovalBadge(dashboardCard);
+      if (badge) {
+        badge.dataset.projectPulseApprovalActionableBadge = 'true';
+        badge.classList.add('project-pulse-approval-actionable-badge');
+        badge.classList.remove('is-hidden');
+        badge.style.display = '';
+        badge.textContent = String(counts.actionableTotal);
+        badge.setAttribute('aria-hidden', 'false');
+        badge.setAttribute('aria-label', `${counts.actionableTotal} actionable approval item(s)`);
+      }
     }
   }
 
   managerLinks.forEach((link) => {
     let badge = link.querySelector('[data-project-pulse-approval-actionable-badge="true"]');
 
-    if (!badge) {
+    if (!badge && counts.actionableTotal > 0) {
       badge = document.createElement('span');
       badge.dataset.projectPulseApprovalActionableBadge = 'true';
       badge.className = 'project-pulse-approval-actionable-badge nav';
       link.appendChild(badge);
     }
 
-    badge.textContent = counts.actionableTotal > 0 ? String(counts.actionableTotal) : '';
-    badge.classList.toggle('is-hidden', counts.actionableTotal <= 0);
+    if (badge) {
+      badge.textContent = counts.actionableTotal > 0 ? String(counts.actionableTotal) : '';
+      badge.classList.toggle('is-hidden', counts.actionableTotal <= 0);
+      badge.setAttribute('aria-hidden', counts.actionableTotal > 0 ? 'false' : 'true');
+      badge.style.display = counts.actionableTotal > 0 ? '' : 'none';
+    }
   });
 
   return counts;
@@ -814,21 +849,62 @@ function normalizeProjectPulseApprovalBadge() {
 function normalizeProjectPulseResetQueuePanel() {
   const counts = getProjectPulseActionableApprovalCounts();
 
-  const resetQueuePanel = findProjectPulseSmallestContainerWithText([
+  const clearButtons = [...document.querySelectorAll('button')]
+    .filter((button) => String(button.textContent || '').toLowerCase().includes('clear ready reset queue'));
+
+  const panels = clearButtons.map((button) => {
+    let best = button;
+
+    for (let index = 0; index < 8 && best?.parentElement; index += 1) {
+      const parent = best.parentElement;
+      const text = String(parent.textContent || '').toLowerCase();
+      const style = window.getComputedStyle(parent);
+      const rect = parent.getBoundingClientRect();
+
+      best = parent;
+
+      if (
+        text.includes('reset queue') ||
+        text.includes('ready temp') ||
+        style.position === 'fixed' ||
+        style.position === 'absolute' ||
+        rect.width >= 260
+      ) {
+        break;
+      }
+    }
+
+    return best;
+  }).filter(Boolean);
+
+  const legacyPanel = findProjectPulseSmallestContainerWithText([
     'Clear ready temp-password requests',
     'Total local reset requests'
   ]);
 
-  if (!resetQueuePanel) return counts;
+  if (legacyPanel) panels.push(legacyPanel);
 
-  resetQueuePanel.classList.add('project-pulse-reset-queue-panel');
+  const uniquePanels = [...new Set(panels)];
 
   const hasActionableResetWork =
-    counts.localResetPendingApproval > 0 ||
-    counts.localResetReadyForTempPassword > 0;
+    Number(counts.localResetPendingApproval || 0) > 0 ||
+    Number(counts.localResetReadyForTempPassword || 0) > 0;
 
-  resetQueuePanel.classList.toggle('is-hidden', !hasActionableResetWork);
-  resetQueuePanel.setAttribute('aria-hidden', hasActionableResetWork ? 'false' : 'true');
+  uniquePanels.forEach((panel) => {
+    panel.classList.add('project-pulse-reset-queue-panel');
+    panel.classList.toggle('is-hidden', !hasActionableResetWork);
+    panel.setAttribute('aria-hidden', hasActionableResetWork ? 'false' : 'true');
+
+    if (!hasActionableResetWork) {
+      panel.style.display = 'none';
+      panel.style.visibility = 'hidden';
+      panel.style.pointerEvents = 'none';
+    } else {
+      panel.style.display = '';
+      panel.style.visibility = '';
+      panel.style.pointerEvents = '';
+    }
+  });
 
   return counts;
 }
@@ -866,6 +942,238 @@ function installProjectPulseApprovalUiNormalizer() {
   }
 }
 /* 039C_APPROVAL_INDICATOR_FIX_END */
+
+/* 039E_ACTIONABLE_APPROVAL_COUNT_START */
+function normalizeProjectPulseApprovalStatus(value) {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replaceAll('-', '_')
+    .replaceAll(' ', '_');
+}
+
+function isProjectPulseClosedApprovalStatus(status) {
+  const normalized = normalizeProjectPulseApprovalStatus(status);
+  return [
+    'approved',
+    'declined',
+    'rejected',
+    'completed',
+    'complete',
+    'closed',
+    'resolved',
+    'cancelled',
+    'canceled',
+    'expired',
+    'ready',
+    'draft'
+  ].includes(normalized);
+}
+
+function objectLooksLikeProjectPulseTimeApproval(item) {
+  const haystack = Object.keys(item || {}).join(' ').toLowerCase();
+  return (
+    haystack.includes('workdate') ||
+    haystack.includes('work_date') ||
+    haystack.includes('timesheet') ||
+    haystack.includes('timeentry') ||
+    haystack.includes('time_entry') ||
+    haystack.includes('submitted')
+  );
+}
+
+function objectLooksLikeProjectPulseLocalReset(item) {
+  const haystack = [
+    ...Object.keys(item || {}),
+    item?.requestType,
+    item?.type,
+    item?.category,
+    item?.queueName,
+    item?.approvalType,
+    item?.username,
+    item?.userName,
+    item?.localUsername,
+    item?.message,
+    item?.notes
+  ].join(' ').toLowerCase();
+
+  return (
+    haystack.includes('password') ||
+    haystack.includes('reset') ||
+    haystack.includes('temp') ||
+    haystack.includes('local')
+  );
+}
+
+function collectProjectPulseObjects(payload, collector = []) {
+  if (!payload || typeof payload !== 'object') return collector;
+
+  if (Array.isArray(payload)) {
+    payload.forEach((item) => collectProjectPulseObjects(item, collector));
+    return collector;
+  }
+
+  collector.push(payload);
+
+  Object.values(payload).forEach((value) => {
+    if (value && typeof value === 'object') {
+      collectProjectPulseObjects(value, collector);
+    }
+  });
+
+  return collector;
+}
+
+function readProjectPulseNumericFields(payload, patterns, exclusions = []) {
+  let total = 0;
+
+  function visit(value, path = '') {
+    if (!value || typeof value !== 'object') return;
+
+    if (Array.isArray(value)) {
+      value.forEach((item, index) => visit(item, `${path}.${index}`));
+      return;
+    }
+
+    Object.entries(value).forEach(([key, entryValue]) => {
+      const normalizedKey = String(key || '').toLowerCase();
+      const fullPath = `${path}.${normalizedKey}`;
+      const excluded = exclusions.some((pattern) => pattern.test(fullPath));
+
+      if (!excluded && typeof entryValue === 'number' && patterns.some((pattern) => pattern.test(fullPath))) {
+        total += Number(entryValue || 0);
+      }
+
+      if (entryValue && typeof entryValue === 'object') {
+        visit(entryValue, fullPath);
+      }
+    });
+  }
+
+  visit(payload);
+  return total;
+}
+
+function deriveProjectPulseActionableApprovalCounts(primaryPayload, secondaryPayload = null) {
+  const payloads = [primaryPayload, secondaryPayload].filter(Boolean);
+  const objects = payloads.flatMap((payload) => collectProjectPulseObjects(payload));
+
+  const submittedTimeObjects = objects.filter((item) => {
+    const status = normalizeProjectPulseApprovalStatus(item.status ?? item.approvalStatus ?? item.dayStatus ?? item.workflowStatus);
+    if (!status || isProjectPulseClosedApprovalStatus(status)) return false;
+
+    return objectLooksLikeProjectPulseTimeApproval(item) && [
+      'submitted',
+      'pending',
+      'pending_approval',
+      'manager_pending',
+      'awaiting_review',
+      'awaiting_manager_review'
+    ].includes(status);
+  });
+
+  const localResetPendingObjects = objects.filter((item) => {
+    const status = normalizeProjectPulseApprovalStatus(item.status ?? item.approvalStatus ?? item.workflowStatus);
+    if (!status || isProjectPulseClosedApprovalStatus(status)) return false;
+
+    return objectLooksLikeProjectPulseLocalReset(item) && [
+      'pending',
+      'pending_approval',
+      'requested',
+      'awaiting_approval'
+    ].includes(status);
+  });
+
+  const localResetReadyObjects = objects.filter((item) => {
+    const status = normalizeProjectPulseApprovalStatus(item.status ?? item.approvalStatus ?? item.workflowStatus);
+    if (!status || isProjectPulseClosedApprovalStatus(status)) return false;
+
+    return objectLooksLikeProjectPulseLocalReset(item) && [
+      'ready_for_temp_password',
+      'ready_for_temporary_password',
+      'temp_password_ready',
+      'temporary_password_ready'
+    ].includes(status);
+  });
+
+  const submittedTimeNumeric = payloads.reduce((total, payload) => total + readProjectPulseNumericFields(payload, [
+    /submitted.*time.*pending/,
+    /manager.*approval.*pending/,
+    /submitted.*pending/,
+    /pending.*submitted/,
+    /pendingcount$/
+  ], [
+    /total/,
+    /local/,
+    /reset/,
+    /password/,
+    /ready/
+  ]), 0);
+
+  const localResetPendingNumeric = payloads.reduce((total, payload) => total + readProjectPulseNumericFields(payload, [
+    /local.*reset.*pending.*approval/,
+    /reset.*pending.*approval/,
+    /pending.*approval/
+  ], [
+    /total/,
+    /time/,
+    /submitted/,
+    /ready/
+  ]), 0);
+
+  const localResetReadyNumeric = payloads.reduce((total, payload) => total + readProjectPulseNumericFields(payload, [
+    /ready.*temp/,
+    /ready.*temporary/,
+    /temp.*ready/,
+    /temporary.*ready/
+  ], [
+    /total/
+  ]), 0);
+
+  const submittedTimePending = Math.max(submittedTimeObjects.length, submittedTimeNumeric);
+  const localResetPendingApproval = Math.max(localResetPendingObjects.length, localResetPendingNumeric);
+  const localResetReadyForTempPassword = Math.max(localResetReadyObjects.length, localResetReadyNumeric);
+
+  const counts = {
+    submittedTimePending,
+    localResetPendingApproval,
+    localResetReadyForTempPassword,
+    actionableTotal: submittedTimePending + localResetPendingApproval + localResetReadyForTempPassword,
+    updatedAt: Date.now()
+  };
+
+  return counts;
+}
+
+function setProjectPulseApprovalActionableCounts(counts) {
+  try {
+    window.__projectPulseApprovalActionableCounts = {
+      submittedTimePending: Number(counts?.submittedTimePending ?? 0),
+      localResetPendingApproval: Number(counts?.localResetPendingApproval ?? 0),
+      localResetReadyForTempPassword: Number(counts?.localResetReadyForTempPassword ?? 0),
+      actionableTotal: Number(counts?.actionableTotal ?? 0),
+      updatedAt: Date.now()
+    };
+
+    window.dispatchEvent(new CustomEvent('projectpulse:approval-actionable-counts-updated', {
+      detail: window.__projectPulseApprovalActionableCounts
+    }));
+  } catch {
+    // Ignore event/cache restrictions.
+  }
+}
+
+function getProjectPulseCachedApprovalActionableCounts() {
+  try {
+    const cached = window.__projectPulseApprovalActionableCounts;
+    if (!cached) return null;
+    if (cached.updatedAt && Date.now() - Number(cached.updatedAt) > 120000) return null;
+    return cached;
+  } catch {
+    return null;
+  }
+}
+/* 039E_ACTIONABLE_APPROVAL_COUNT_END */
 
 
 function getStoredAuthSession() {
@@ -3760,39 +4068,62 @@ export default function App() {
       setAzureAdminStatus(error instanceof Error ? error.message : 'Unable to reconcile Entra users.');
     }
   }
-
-
-
+  /* 039E_ACTIONABLE_APPROVAL_COUNT_EFFECT_START */
   useEffect(() => {
     let cancelled = false;
 
     async function loadApprovalPendingCount() {
       if (!authSession?.sessionToken) {
+        setProjectPulseApprovalActionableCounts({
+          submittedTimePending: 0,
+          localResetPendingApproval: 0,
+          localResetReadyForTempPassword: 0,
+          actionableTotal: 0
+        });
         setApprovalPendingCount(0);
         return;
       }
 
       try {
-        const result = await fetchJson('/api/manager/approval-count');
+        const [detailResult, summaryResult] = await Promise.allSettled([
+          fetchJson('/api/manager/approvals'),
+          fetchJson('/api/manager/approval-count')
+        ]);
+
+        const detailPayload = detailResult.status === 'fulfilled' ? detailResult.value : null;
+        const summaryPayload = summaryResult.status === 'fulfilled' ? summaryResult.value : null;
+        const counts = deriveProjectPulseActionableApprovalCounts(detailPayload, summaryPayload);
+
         if (!cancelled) {
-          setApprovalPendingCount(Number(result.totalPendingCount ?? 0));
+          setProjectPulseApprovalActionableCounts(counts);
+          setApprovalPendingCount(Number(counts.actionableTotal ?? 0));
+          window.setTimeout(normalizeProjectPulseApprovalUi, 100);
+          window.setTimeout(normalizeProjectPulseApprovalUi, 600);
         }
       } catch {
         if (!cancelled) {
+          setProjectPulseApprovalActionableCounts({
+            submittedTimePending: 0,
+            localResetPendingApproval: 0,
+            localResetReadyForTempPassword: 0,
+            actionableTotal: 0
+          });
           setApprovalPendingCount(0);
+          window.setTimeout(normalizeProjectPulseApprovalUi, 100);
         }
       }
     }
 
     loadApprovalPendingCount();
 
-    const intervalId = window.setInterval(loadApprovalPendingCount, 60000);
+    const intervalId = window.setInterval(loadApprovalPendingCount, 30000);
 
     return () => {
       cancelled = true;
       window.clearInterval(intervalId);
     };
   }, [authSession?.sessionToken, activeRoute]);
+  /* 039E_ACTIONABLE_APPROVAL_COUNT_EFFECT_END */
 
 
 
