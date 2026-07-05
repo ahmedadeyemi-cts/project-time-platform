@@ -48,6 +48,34 @@ async function fetchJson(path) {
   return response.json();
 }
 
+/* 041A_CLOSEOUT_AUTOMATIC_SEND_START */
+async function postJson(path, body) {
+  const response = await fetch(path, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...getProjectPulseAuthHeaders()
+    },
+    body: JSON.stringify(body)
+  });
+
+  const raw = await response.text();
+  let parsed = {};
+
+  try {
+    parsed = raw ? JSON.parse(raw) : {};
+  } catch {
+    parsed = { message: raw };
+  }
+
+  if (!response.ok && response.status !== 202) {
+    throw new Error(parsed.message || `${path} returned HTTP ${response.status}`);
+  }
+
+  return parsed;
+}
+/* 041A_CLOSEOUT_AUTOMATIC_SEND_END */
+
 function csvEscape(value) {
   const text = String(value ?? '');
   return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
@@ -320,10 +348,12 @@ function buildCloseoutEmail(project, recipients, auditFacts) {
     const role = recipient.role.toLowerCase();
     return role.includes('sales') || role.includes('account executive');
   });
-  const projectTeam = recipients.filter((recipient) => {
+  const solutionArchitects = recipients.filter((recipient) => recipient.role.toLowerCase().includes('architect'));
+  const engineers = recipients.filter((recipient) => {
     const role = recipient.role.toLowerCase();
-    return role.includes('project team') || role.includes('engineer') || role.includes('architect');
+    return role.includes('project team') || role.includes('engineer');
   });
+  const projectTeam = uniqueRecipients([...solutionArchitects, ...engineers]);
 
   const pmName = pm?.name || project.projectManagerName || 'Project Manager';
   const customerName = project.customerName || 'the customer';
@@ -332,7 +362,7 @@ function buildCloseoutEmail(project, recipients, auditFacts) {
 
   const body = `Hello Project Team,
 
-Project ${project.projectCode} for ${customerName} has reached closeout notification readiness in Project Health Dashboard.
+Project ${project.projectCode} for ${customerName} has been closed out by the Project Manager in Project Health Dashboard. This automatic notice is being sent to the full project closeout team so everyone is aware the project is moving into closure.
 
 Project: ${project.projectName}
 Customer: ${customerName}
@@ -340,10 +370,12 @@ Current project status: ${project.status || 'Not specified'}
 
 ${pmName}, please schedule the required lessons learned session with ${customerName}. The session should review how the project went, what went well, what could be improved, and any follow-up items that should be captured before the project is archived.
 
-Required closeout audience:
-- Project Manager: ${pm?.name || project.projectManagerName || 'Not identified'}${pm?.email ? ` <${pm.email}>` : ''}
-- Account Executive / Sales Rep: ${sales.length ? sales.map((recipient) => `${recipient.name || recipient.email}${recipient.email ? ` <${recipient.email}>` : ''}`).join('; ') : 'Not identified'}
-- Project Team: ${projectTeam.length ? projectTeam.map((recipient) => `${recipient.name || recipient.email}${recipient.email ? ` <${recipient.email}>` : ''}`).join('; ') : 'Not identified'}
+Required closeout audience from intake and project assignment tracking:
+- PM Assignment: ${pm?.name || project.projectManagerName || 'Not identified'}${pm?.email ? ` <${pm.email}>` : ''}
+- Engineer(s) Assignment: ${engineers.length ? engineers.map((recipient) => `${recipient.name || recipient.email}${recipient.email ? ` <${recipient.email}>` : ''}`).join('; ') : 'Not identified'}
+- Sales Executive / Account Executive: ${sales.length ? sales.map((recipient) => `${recipient.name || recipient.email}${recipient.email ? ` <${recipient.email}>` : ''}`).join('; ') : 'Not identified'}
+- Solution Architect: ${solutionArchitects.length ? solutionArchitects.map((recipient) => `${recipient.name || recipient.email}${recipient.email ? ` <${recipient.email}>` : ''}`).join('; ') : 'Not identified'}
+- Project Team Distribution: ${projectTeam.length ? projectTeam.map((recipient) => `${recipient.name || recipient.email}${recipient.email ? ` <${recipient.email}>` : ''}`).join('; ') : 'Not identified'}
 
 Closeout readiness snapshot:
 - Pending approvals: ${auditFacts.pendingApprovals}
@@ -542,35 +574,69 @@ export default function CloseoutEmailAutomationCenter() {
       detail: teamRecipients.length ? `${teamRecipients.length} project team recipient(s) detected.` : 'No project team recipient detected.'
     },
     {
-      label: 'Automatic email audit',
+      label: 'Intake team tracking',
+      status: pmRecipient?.name && salesRecipients.length && teamRecipients.length ? 'Ready' : 'Review',
+      detail: 'Closeout requires PM Assignment, Engineer(s) Assignment, Sales Executive name, and Solution Architect name to be tracked from intake through closure.'
+    },
+    {
+      label: 'Automatic email send audit',
       status: 'Ready',
-      detail: 'Queueing captures project, recipients, PM reminder, sender, timestamp, and message body.'
+      detail: 'Automatic send captures project, PM assignment, engineer assignment, Sales Executive / Account Executive, Solution Architect, sender, timestamp, recipients, and message body.'
     }
   ];
 
-  function queueAutomaticEmail() {
+  async function sendAutomaticCloseoutEmail() {
     if (!selectedProject) return;
 
-    const entry = {
-      id: `closeout-email-${Date.now()}`,
-      status: 'Queued for automatic closeout email',
-      projectCode: selectedProject.projectCode,
-      projectName: selectedProject.projectName,
-      customerName: selectedProject.customerName,
-      projectManagerName: pmRecipient?.name || selectedProject.projectManagerName || 'Project Manager',
-      recipientCount: emailReadyRecipients.length,
-      recipients,
-      subject: emailDraft.subject,
-      body: emailDraft.body,
-      triggeredBy: getCurrentSessionUser(),
-      generatedAt: new Date().toISOString()
-    };
+    const projectManagerName = pmRecipient?.name || selectedProject.projectManagerName || 'Project Manager';
 
-    const nextEntries = [entry, ...auditEntries].slice(0, 60);
-    writeAuditLog(nextEntries);
-    setAuditEntries(nextEntries);
+    setStatus(`Sending automatic closeout email for ${selectedProject.projectCode}. PM lessons-learned reminder is addressed to ${projectManagerName}.`);
 
-    setStatus(`Automatic closeout email queued for ${emailReadyRecipients.length} recipient(s). PM reminder is addressed to ${entry.projectManagerName}.`);
+    try {
+      const response = await postJson('/api/project-closeout/email/send', {
+        projectCode: selectedProject.projectCode,
+        projectName: selectedProject.projectName,
+        customerName: selectedProject.customerName,
+        projectStatus: selectedProject.status,
+        projectManagerName,
+        projectManagerEmail: pmRecipient?.email || selectedProject.projectManagerEmail || '',
+        recipients,
+        subject: emailDraft.subject,
+        body: emailDraft.body,
+        triggeredBy: getCurrentSessionUser()
+      });
+
+      const entry = {
+        id: `closeout-email-${Date.now()}`,
+        status: response.sent ? 'Automatic closeout email sent' : `Automatic closeout email ${response.status || 'queued'}`,
+        projectCode: selectedProject.projectCode,
+        projectName: selectedProject.projectName,
+        customerName: selectedProject.customerName,
+        projectManagerName,
+        recipientCount: Number(response.recipientCount ?? emailReadyRecipients.length),
+        recipients,
+        subject: emailDraft.subject,
+        body: emailDraft.body,
+        triggeredBy: getCurrentSessionUser(),
+        generatedAt: new Date().toISOString(),
+        backendStatus: response.status,
+        backendMessage: response.message,
+        backendAuditPath: response.auditPath,
+        backendOutboxPath: response.outboxPath
+      };
+
+      const nextEntries = [entry, ...auditEntries].slice(0, 60);
+      writeAuditLog(nextEntries);
+      setAuditEntries(nextEntries);
+
+      if (response.sent) {
+        setStatus(`Automatic closeout email sent to ${entry.recipientCount} recipient(s). ${projectManagerName} was reminded to schedule lessons learned with ${selectedProject.customerName}.`);
+      } else {
+        setStatus(`Closeout email was not sent by SMTP/sendmail yet. Backend status: ${response.status}. Audit/outbox evidence was recorded.`);
+      }
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Automatic closeout email send failed.');
+    }
   }
 
   async function copyEmailBody() {
@@ -598,9 +664,9 @@ export default function CloseoutEmailAutomationCenter() {
           <p className="eyebrow">Module 041</p>
           <h1>Closeout Email Automation Center</h1>
           <p>
-            Prepare and queue the automatic project closeout email to the project team, Project Manager,
-            and Account Executive or Sales Rep. The message names the PM and reminds them to schedule
-            the required lessons learned with the customer.
+            Automatically send the project closeout email when the PM closes the project out. The message goes
+            to the project team, Project Manager, Sales Executive / Account Executive, and Solution Architect,
+            and it names the PM directly for the required lessons learned with the customer.
           </p>
         </div>
         <div className="closeout-email-hero-metric">
@@ -612,8 +678,8 @@ export default function CloseoutEmailAutomationCenter() {
       <section className="closeout-email-guardrail">
         <strong>Automation guardrail</strong>
         <span>
-          This workflow creates a controlled PHD closeout email queue and audit evidence. It does not finalize accounting,
-          send an invoice, or replace customer acceptance evidence.
+          This workflow sends the automatic PHD closeout email and records audit evidence. It does not finalize accounting,
+          send an invoice, close the project in PSA/accounting, or replace customer acceptance evidence.
         </span>
       </section>
 
@@ -644,8 +710,8 @@ export default function CloseoutEmailAutomationCenter() {
           <button type="button" className="secondary-action" onClick={loadData} disabled={payload.loading}>
             {payload.loading ? 'Refreshing...' : 'Refresh data'}
           </button>
-          <button type="button" className="primary-action" onClick={queueAutomaticEmail} disabled={!selectedProject || emailReadyRecipients.length === 0}>
-            Queue automatic email
+          <button type="button" className="primary-action" onClick={sendAutomaticCloseoutEmail} disabled={!selectedProject || emailReadyRecipients.length === 0}>
+            PM closeout complete - send automatic email
           </button>
         </div>
       </section>
@@ -761,7 +827,7 @@ export default function CloseoutEmailAutomationCenter() {
             <div className="closeout-email-card-heading">
               <div>
                 <p className="eyebrow">Audit evidence</p>
-                <h2>Closeout email queue history</h2>
+                <h2>Automatic closeout email send history</h2>
               </div>
               <button type="button" className="secondary-action" onClick={exportAuditCsv} disabled={auditEntries.length === 0}>
                 Export email audit CSV
@@ -770,7 +836,7 @@ export default function CloseoutEmailAutomationCenter() {
 
             <div className="closeout-email-audit-list">
               {auditEntries.length === 0 ? (
-                <div className="closeout-email-empty">No closeout email queue events recorded in this browser yet.</div>
+                <div className="closeout-email-empty">No automatic closeout email send events recorded in this browser yet.</div>
               ) : (
                 auditEntries.map((entry) => (
                   <div className="closeout-email-audit-row" key={entry.id}>

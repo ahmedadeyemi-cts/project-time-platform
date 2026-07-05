@@ -25804,7 +25804,354 @@ app.MapPost("/api/certify/sync/run", () => new
 
 
 
+
+/* 041A_SERVER_CLOSEOUT_EMAIL_SEND_START */
+app.MapPost("/api/project-closeout/email/send", async (Microsoft.AspNetCore.Http.HttpContext httpContext) =>
+{
+    var sessionToken = httpContext.Request.Headers.TryGetValue("X-ProjectPulse-Session", out var sessionValues)
+        ? sessionValues.ToString()
+        : string.Empty;
+
+    if (string.IsNullOrWhiteSpace(sessionToken))
+    {
+        return Microsoft.AspNetCore.Http.Results.Json(
+            new { status = "session_required", message = "Missing session token." },
+            statusCode: 401);
+    }
+
+    System.Text.Json.JsonDocument document;
+
+    try
+    {
+        document = await System.Text.Json.JsonDocument.ParseAsync(httpContext.Request.Body);
+    }
+    catch
+    {
+        return Microsoft.AspNetCore.Http.Results.Json(
+            new { status = "invalid_request", message = "Closeout email request body must be valid JSON." },
+            statusCode: 400);
+    }
+
+    using (document)
+    {
+        var root = document.RootElement;
+
+        var projectCode = ProjectPulse041AGetJsonString(root, "projectCode");
+        var projectName = ProjectPulse041AGetJsonString(root, "projectName");
+        var customerName = ProjectPulse041AGetJsonString(root, "customerName");
+        var projectManagerName = ProjectPulse041AGetJsonString(root, "projectManagerName");
+        var triggeredBy = ProjectPulse041AGetJsonString(root, "triggeredBy");
+        var subject = ProjectPulse041AGetJsonString(root, "subject");
+        var body = ProjectPulse041AGetJsonString(root, "body");
+
+        var allRecipients = ProjectPulse041AExtractRecipients(root);
+        var recipientMap = new System.Collections.Generic.Dictionary<string, (string Role, string Name, string Email)>(System.StringComparer.OrdinalIgnoreCase);
+
+        foreach (var recipient in allRecipients)
+        {
+            if (!ProjectPulse041AIsEmail(recipient.Email)) continue;
+
+            if (!recipientMap.ContainsKey(recipient.Email))
+            {
+                recipientMap[recipient.Email] = recipient;
+            }
+        }
+
+        var emailRecipients = new System.Collections.Generic.List<(string Role, string Name, string Email)>(recipientMap.Values);
+
+        if (string.IsNullOrWhiteSpace(projectCode) || string.IsNullOrWhiteSpace(customerName))
+        {
+            return Microsoft.AspNetCore.Http.Results.Json(
+                new { status = "invalid_request", message = "Project code and customer name are required for automatic closeout email." },
+                statusCode: 400);
+        }
+
+        if (string.IsNullOrWhiteSpace(subject) || string.IsNullOrWhiteSpace(body))
+        {
+            return Microsoft.AspNetCore.Http.Results.Json(
+                new { status = "invalid_request", message = "Email subject and body are required for automatic closeout email." },
+                statusCode: 400);
+        }
+
+        if (emailRecipients.Count == 0)
+        {
+            return Microsoft.AspNetCore.Http.Results.Json(
+                new { status = "no_recipients", message = "No email-ready project team recipients were provided." },
+                statusCode: 400);
+        }
+
+        var sendResult = await ProjectPulse041ASendCloseoutEmailAsync(emailRecipients, subject, body, projectCode, customerName);
+
+        var dataRoot = System.Environment.GetEnvironmentVariable("PROJECTPULSE_DATA_DIR");
+        if (string.IsNullOrWhiteSpace(dataRoot))
+        {
+            dataRoot = System.IO.Path.Combine(System.IO.Directory.GetCurrentDirectory(), "data");
+        }
+
+        var auditDir = System.IO.Path.Combine(dataRoot, "project-closeout-email-audit");
+        System.IO.Directory.CreateDirectory(auditDir);
+
+        var auditFileName = $"{System.DateTimeOffset.UtcNow:yyyyMMddHHmmssfff}-{ProjectPulse041ASafeFilePart(projectCode)}.json";
+        var auditPath = System.IO.Path.Combine(auditDir, auditFileName);
+
+        var auditPayload = new
+        {
+            status = sendResult.Status,
+            sent = sendResult.Sent,
+            detail = sendResult.Detail,
+            projectCode,
+            projectName,
+            customerName,
+            projectManagerName,
+            triggeredBy,
+            generatedAt = System.DateTimeOffset.UtcNow,
+            recipientCount = emailRecipients.Count,
+            recipients = emailRecipients.Select(recipient => new
+            {
+                recipient.Role,
+                recipient.Name,
+                recipient.Email
+            }).ToList(),
+            subject,
+            body,
+            outboxPath = sendResult.OutboxPath
+        };
+
+        await System.IO.File.WriteAllTextAsync(
+            auditPath,
+            System.Text.Json.JsonSerializer.Serialize(auditPayload, new System.Text.Json.JsonSerializerOptions
+            {
+                WriteIndented = true
+            }));
+
+        return Microsoft.AspNetCore.Http.Results.Json(
+            new
+            {
+                status = sendResult.Status,
+                sent = sendResult.Sent,
+                message = sendResult.Detail,
+                auditPath,
+                outboxPath = sendResult.OutboxPath,
+                recipientCount = emailRecipients.Count
+            },
+            statusCode: sendResult.Sent ? 200 : 202);
+    }
+}).WithName("ProjectPulse041ASendCloseoutEmail");
+/* 041A_SERVER_CLOSEOUT_EMAIL_SEND_END */
+
+static string ProjectPulse041AGetJsonString(System.Text.Json.JsonElement root, string propertyName)
+{
+    if (root.ValueKind != System.Text.Json.JsonValueKind.Object) return string.Empty;
+
+    if (!root.TryGetProperty(propertyName, out var value)) return string.Empty;
+
+    if (value.ValueKind == System.Text.Json.JsonValueKind.String)
+    {
+        return value.GetString() ?? string.Empty;
+    }
+
+    return value.ToString() ?? string.Empty;
+}
+
+static System.Collections.Generic.List<(string Role, string Name, string Email)> ProjectPulse041AExtractRecipients(System.Text.Json.JsonElement root)
+{
+    var recipients = new System.Collections.Generic.List<(string Role, string Name, string Email)>();
+
+    if (root.ValueKind != System.Text.Json.JsonValueKind.Object) return recipients;
+    if (!root.TryGetProperty("recipients", out var recipientsElement)) return recipients;
+    if (recipientsElement.ValueKind != System.Text.Json.JsonValueKind.Array) return recipients;
+
+    foreach (var item in recipientsElement.EnumerateArray())
+    {
+        if (item.ValueKind != System.Text.Json.JsonValueKind.Object) continue;
+
+        recipients.Add((
+            Role: ProjectPulse041AGetJsonString(item, "role"),
+            Name: ProjectPulse041AGetJsonString(item, "name"),
+            Email: ProjectPulse041AGetJsonString(item, "email")));
+    }
+
+    return recipients;
+}
+
+static bool ProjectPulse041AIsEmail(string? value)
+{
+    if (string.IsNullOrWhiteSpace(value)) return false;
+
+    return System.Text.RegularExpressions.Regex.IsMatch(
+        value.Trim(),
+        @"^[^\s@]+@[^\s@]+\.[^\s@]+$",
+        System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+}
+
+static string ProjectPulse041ASafeFilePart(string value)
+{
+    var normalized = System.Text.RegularExpressions.Regex.Replace(value ?? string.Empty, @"[^A-Za-z0-9_.-]+", "-").Trim('-');
+    return string.IsNullOrWhiteSpace(normalized) ? "project" : normalized;
+}
+
+static async System.Threading.Tasks.Task<(bool Sent, string Status, string Detail, string? OutboxPath)> ProjectPulse041ASendCloseoutEmailAsync(
+    System.Collections.Generic.List<(string Role, string Name, string Email)> recipients,
+    string subject,
+    string body,
+    string projectCode,
+    string customerName)
+{
+    var smtpHost = System.Environment.GetEnvironmentVariable("PROJECTPULSE_SMTP_HOST")
+        ?? System.Environment.GetEnvironmentVariable("SMTP_HOST");
+
+    var smtpFrom = System.Environment.GetEnvironmentVariable("PROJECTPULSE_SMTP_FROM")
+        ?? System.Environment.GetEnvironmentVariable("SMTP_FROM")
+        ?? "project-health-dashboard@localhost";
+
+    if (!string.IsNullOrWhiteSpace(smtpHost))
+    {
+        var smtpPortText = System.Environment.GetEnvironmentVariable("PROJECTPULSE_SMTP_PORT")
+            ?? System.Environment.GetEnvironmentVariable("SMTP_PORT")
+            ?? "25";
+
+        var smtpPort = int.TryParse(smtpPortText, out var parsedPort) ? parsedPort : 25;
+        var smtpUser = System.Environment.GetEnvironmentVariable("PROJECTPULSE_SMTP_USER")
+            ?? System.Environment.GetEnvironmentVariable("SMTP_USER");
+        var smtpPassword = System.Environment.GetEnvironmentVariable("PROJECTPULSE_SMTP_PASSWORD")
+            ?? System.Environment.GetEnvironmentVariable("SMTP_PASSWORD");
+        var smtpSslText = System.Environment.GetEnvironmentVariable("PROJECTPULSE_SMTP_SSL")
+            ?? System.Environment.GetEnvironmentVariable("SMTP_SSL")
+            ?? "false";
+
+        using var message = new System.Net.Mail.MailMessage
+        {
+            From = new System.Net.Mail.MailAddress(smtpFrom),
+            Subject = subject,
+            Body = body,
+            IsBodyHtml = false
+        };
+
+        foreach (var recipient in recipients)
+        {
+            message.To.Add(new System.Net.Mail.MailAddress(recipient.Email, string.IsNullOrWhiteSpace(recipient.Name) ? recipient.Email : recipient.Name));
+        }
+
+        using var smtp = new System.Net.Mail.SmtpClient(smtpHost, smtpPort)
+        {
+            EnableSsl = string.Equals(smtpSslText, "true", System.StringComparison.OrdinalIgnoreCase)
+                || string.Equals(smtpSslText, "1", System.StringComparison.OrdinalIgnoreCase)
+                || string.Equals(smtpSslText, "yes", System.StringComparison.OrdinalIgnoreCase)
+        };
+
+        if (!string.IsNullOrWhiteSpace(smtpUser))
+        {
+            smtp.Credentials = new System.Net.NetworkCredential(smtpUser, smtpPassword ?? string.Empty);
+        }
+
+        try
+        {
+            await smtp.SendMailAsync(message);
+            return (true, "sent", "Automatic closeout email sent through configured SMTP.", null);
+        }
+        catch (System.Exception ex)
+        {
+            var fallback = await ProjectPulse041AWriteOutboxEmailAsync(recipients, subject, body, projectCode, "smtp-failed");
+            return (false, "queued_smtp_failed", $"SMTP send failed and the message was written to outbox: {ex.Message}", fallback);
+        }
+    }
+
+    var sendmailPath = System.Environment.GetEnvironmentVariable("PROJECTPULSE_SENDMAIL_PATH") ?? "/usr/sbin/sendmail";
+
+    if (System.IO.File.Exists(sendmailPath))
+    {
+        var rawEmail = ProjectPulse041ABuildRawEmail(recipients, smtpFrom, subject, body);
+
+        try
+        {
+            var processInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = sendmailPath,
+                Arguments = "-t -oi",
+                RedirectStandardInput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false
+            };
+
+            using var process = System.Diagnostics.Process.Start(processInfo);
+
+            if (process is not null)
+            {
+                await process.StandardInput.WriteAsync(rawEmail);
+                process.StandardInput.Close();
+                var error = await process.StandardError.ReadToEndAsync();
+                await process.WaitForExitAsync();
+
+                if (process.ExitCode == 0)
+                {
+                    return (true, "sent", "Automatic closeout email sent through local sendmail.", null);
+                }
+
+                var fallback = await ProjectPulse041AWriteOutboxEmailAsync(recipients, subject, body, projectCode, "sendmail-failed");
+                return (false, "queued_sendmail_failed", $"sendmail exited with code {process.ExitCode}: {error}", fallback);
+            }
+        }
+        catch (System.Exception ex)
+        {
+            var fallback = await ProjectPulse041AWriteOutboxEmailAsync(recipients, subject, body, projectCode, "sendmail-exception");
+            return (false, "queued_sendmail_exception", $"sendmail failed and the message was written to outbox: {ex.Message}", fallback);
+        }
+    }
+
+    var outboxPath = await ProjectPulse041AWriteOutboxEmailAsync(recipients, subject, body, projectCode, "missing-mailer");
+    return (false, "queued_not_sent_missing_mailer", "No SMTP host or sendmail binary is configured. Message was written to the closeout email outbox.", outboxPath);
+}
+
+static string ProjectPulse041ABuildRawEmail(
+    System.Collections.Generic.List<(string Role, string Name, string Email)> recipients,
+    string from,
+    string subject,
+    string body)
+{
+    var builder = new System.Text.StringBuilder();
+
+    builder.AppendLine($"From: {from}");
+    builder.AppendLine($"To: {string.Join(", ", recipients.Select(recipient => recipient.Email))}");
+    builder.AppendLine($"Subject: {subject}");
+    builder.AppendLine("MIME-Version: 1.0");
+    builder.AppendLine("Content-Type: text/plain; charset=utf-8");
+    builder.AppendLine();
+    builder.AppendLine(body);
+
+    return builder.ToString();
+}
+
+static async System.Threading.Tasks.Task<string> ProjectPulse041AWriteOutboxEmailAsync(
+    System.Collections.Generic.List<(string Role, string Name, string Email)> recipients,
+    string subject,
+    string body,
+    string projectCode,
+    string reason)
+{
+    var dataRoot = System.Environment.GetEnvironmentVariable("PROJECTPULSE_DATA_DIR");
+
+    if (string.IsNullOrWhiteSpace(dataRoot))
+    {
+        dataRoot = System.IO.Path.Combine(System.IO.Directory.GetCurrentDirectory(), "data");
+    }
+
+    var outboxDir = System.IO.Path.Combine(dataRoot, "project-closeout-email-outbox");
+    System.IO.Directory.CreateDirectory(outboxDir);
+
+    var outboxPath = System.IO.Path.Combine(
+        outboxDir,
+        $"{System.DateTimeOffset.UtcNow:yyyyMMddHHmmssfff}-{ProjectPulse041ASafeFilePart(projectCode)}-{ProjectPulse041ASafeFilePart(reason)}.eml");
+
+    await System.IO.File.WriteAllTextAsync(
+        outboxPath,
+        ProjectPulse041ABuildRawEmail(recipients, "project-health-dashboard@localhost", subject, body));
+
+    return outboxPath;
+}
+
 app.Run();
+
+
 
 
 static bool CanEngineerUnlockDay(string? status, DateTimeOffset? submittedAt)

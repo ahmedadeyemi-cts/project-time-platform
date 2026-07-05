@@ -1570,7 +1570,7 @@ const roleWorkspaceModules = [
     href: '#closeout-email',
     title: 'Closeout Email Automation Center',
     navLabel: 'MODULE 041',
-    description: 'Queue and audit the automatic project closeout email to the project team, Project Manager, and Account Executive or Sales Rep, including the named PM lessons-learned reminder.',
+    description: 'Automatically send and audit the PM closeout email to the project team, PM assignment, engineer assignment, Sales Executive or Account Executive, and Solution Architect when the PM closes the project out, including the named PM lessons-learned reminder.',
     permissions: ['VIEW_PROJECT_WORKSPACE', 'VIEW_PROJECT_INTAKE', 'VIEW_APPROVAL_WORKFLOW', 'PROJECT_TIME_APPROVAL', 'VIEW_ACCOUNT_RECONCILIATION', 'VIEW_EXPENSES', 'EXPORT_TIME_EXCEL', 'DOWNLOAD_TIME_EXPORT_PACKAGE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   },
   /* 041_CLOSEOUT_EMAIL_AUTOMATION_END */
