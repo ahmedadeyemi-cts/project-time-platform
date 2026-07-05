@@ -25990,6 +25990,85 @@ static string ProjectPulse041ASafeFilePart(string value)
     return string.IsNullOrWhiteSpace(normalized) ? "project" : normalized;
 }
 
+
+/* 041B_BREVO_API_HELPERS_START */
+static async System.Threading.Tasks.Task<(bool Sent, string Status, string Detail, string? OutboxPath)> ProjectPulse041BSendBrevoApiEmailAsync(
+    System.Collections.Generic.List<(string Role, string Name, string Email)> recipients,
+    string subject,
+    string body,
+    string projectCode,
+    string customerName,
+    string brevoApiKey)
+{
+    var apiUrl = System.Environment.GetEnvironmentVariable("PROJECTPULSE_BREVO_API_URL");
+
+    if (string.IsNullOrWhiteSpace(apiUrl))
+    {
+        apiUrl = "https://api.brevo.com/v3/smtp/email";
+    }
+
+    var senderEmail = System.Environment.GetEnvironmentVariable("PROJECTPULSE_BREVO_SENDER_EMAIL")
+        ?? System.Environment.GetEnvironmentVariable("PROJECTPULSE_SMTP_FROM")
+        ?? System.Environment.GetEnvironmentVariable("SMTP_FROM")
+        ?? "project-health-dashboard@localhost";
+
+    var senderName = System.Environment.GetEnvironmentVariable("PROJECTPULSE_BREVO_SENDER_NAME")
+        ?? "Project Health Dashboard";
+
+    var payload = new
+    {
+        sender = new
+        {
+            email = senderEmail,
+            name = senderName
+        },
+        to = recipients
+            .Where(recipient => ProjectPulse041AIsEmail(recipient.Email))
+            .Select(recipient => new
+            {
+                email = recipient.Email,
+                name = string.IsNullOrWhiteSpace(recipient.Name) ? recipient.Email : recipient.Name
+            })
+            .ToList(),
+        subject,
+        textContent = body
+    };
+
+    if (payload.to.Count == 0)
+    {
+        return (false, "no_recipients", "No email-ready recipients were available for Brevo API delivery.", null);
+    }
+
+    var json = System.Text.Json.JsonSerializer.Serialize(payload);
+
+    using var httpClient = new System.Net.Http.HttpClient();
+    using var request = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Post, apiUrl);
+
+    request.Headers.TryAddWithoutValidation("api-key", brevoApiKey);
+    request.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+    request.Content = new System.Net.Http.StringContent(json, System.Text.Encoding.UTF8, "application/json");
+
+    try
+    {
+        using var response = await httpClient.SendAsync(request);
+        var responseText = await response.Content.ReadAsStringAsync();
+
+        if (response.IsSuccessStatusCode)
+        {
+            return (true, "sent_brevo_api", $"Automatic closeout email sent through Brevo API. Response: {responseText}", null);
+        }
+
+        var fallback = await ProjectPulse041AWriteOutboxEmailAsync(recipients, subject, body, projectCode, "brevo-api-failed");
+        return (false, "queued_brevo_api_failed", $"Brevo API returned HTTP {(int)response.StatusCode}: {responseText}", fallback);
+    }
+    catch (System.Exception ex)
+    {
+        var fallback = await ProjectPulse041AWriteOutboxEmailAsync(recipients, subject, body, projectCode, "brevo-api-exception");
+        return (false, "queued_brevo_api_exception", $"Brevo API delivery failed and the message was written to outbox: {ex.Message}", fallback);
+    }
+}
+/* 041B_BREVO_API_HELPERS_END */
+
 static async System.Threading.Tasks.Task<(bool Sent, string Status, string Detail, string? OutboxPath)> ProjectPulse041ASendCloseoutEmailAsync(
     System.Collections.Generic.List<(string Role, string Name, string Email)> recipients,
     string subject,
@@ -25997,6 +26076,16 @@ static async System.Threading.Tasks.Task<(bool Sent, string Status, string Detai
     string projectCode,
     string customerName)
 {
+    /* 041B_BREVO_API_EMAIL_DELIVERY_START */
+    var brevoApiKey = System.Environment.GetEnvironmentVariable("PROJECTPULSE_BREVO_API_KEY")
+        ?? System.Environment.GetEnvironmentVariable("BREVO_API_KEY");
+
+    if (!string.IsNullOrWhiteSpace(brevoApiKey))
+    {
+        return await ProjectPulse041BSendBrevoApiEmailAsync(recipients, subject, body, projectCode, customerName, brevoApiKey);
+    }
+    /* 041B_BREVO_API_EMAIL_DELIVERY_END */
+
     var smtpHost = System.Environment.GetEnvironmentVariable("PROJECTPULSE_SMTP_HOST")
         ?? System.Environment.GetEnvironmentVariable("SMTP_HOST");
 
