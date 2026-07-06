@@ -26410,35 +26410,48 @@ static async System.Threading.Tasks.Task<(bool Sent, string Status, string Detai
     var senderName = System.Environment.GetEnvironmentVariable("PROJECTPULSE_BREVO_SENDER_NAME")
         ?? "Project Health Dashboard";
 
-    var payload = new
-    {
-        sender = new
-        {
-            email = senderEmail,
-            name = senderName
-        },
-        to = recipients
-            .Where(recipient => ProjectPulse041AIsEmail(recipient.Email))
-            .Select(recipient => new
-            {
-                email = recipient.Email,
-                name = string.IsNullOrWhiteSpace(recipient.Name) ? recipient.Email : recipient.Name
-            })
-            .ToList(),
-        cc = ccRecipients
-            .Where(recipient => ProjectPulse041AIsEmail(recipient.Email))
-            .Select(recipient => new
-            {
-                email = recipient.Email,
-                name = string.IsNullOrWhiteSpace(recipient.Name) ? recipient.Email : recipient.Name
-            })
-            .ToArray(),
+    /* 041L_BREVO_OMIT_EMPTY_CC_START */
+    var brevoToRecipients = new System.Text.Json.Nodes.JsonArray();
 
-        subject,
-        textContent = body
+    foreach (var recipient in recipients.Where(recipient => ProjectPulse041AIsEmail(recipient.Email)))
+    {
+        brevoToRecipients.Add(new System.Text.Json.Nodes.JsonObject
+        {
+            ["email"] = recipient.Email,
+            ["name"] = string.IsNullOrWhiteSpace(recipient.Name) ? recipient.Email : recipient.Name
+        });
+    }
+
+    var payload = new System.Text.Json.Nodes.JsonObject
+    {
+        ["sender"] = new System.Text.Json.Nodes.JsonObject
+        {
+            ["email"] = senderEmail,
+            ["name"] = senderName
+        },
+        ["to"] = brevoToRecipients,
+        ["subject"] = subject,
+        ["textContent"] = body
     };
 
-    if (payload.to.Count == 0)
+    var brevoCcRecipients = new System.Text.Json.Nodes.JsonArray();
+
+    foreach (var recipient in ccRecipients.Where(recipient => ProjectPulse041AIsEmail(recipient.Email)))
+    {
+        brevoCcRecipients.Add(new System.Text.Json.Nodes.JsonObject
+        {
+            ["email"] = recipient.Email,
+            ["name"] = string.IsNullOrWhiteSpace(recipient.Name) ? recipient.Email : recipient.Name
+        });
+    }
+
+    if (brevoCcRecipients.Count > 0)
+    {
+        payload["cc"] = brevoCcRecipients;
+    }
+    /* 041L_BREVO_OMIT_EMPTY_CC_END */
+
+    if (brevoToRecipients.Count == 0)
     {
         return (false, "no_recipients", "No email-ready recipients were available for Brevo API delivery.", null);
     }
