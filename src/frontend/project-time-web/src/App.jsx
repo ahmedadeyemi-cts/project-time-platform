@@ -452,6 +452,7 @@ installProjectPulseGlobalViewAsTopbarMount();
 
 
 /* 042A_EFFECTIVE_SESSION_VISIBILITY_START */
+/* 042C_EFFECTIVE_SESSION_SECURITY_TELEMETRY_START */
 function installProjectPulseEffectiveSessionVisibilityPanel() {
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
   if (window.__projectPulseEffectiveSessionVisibilityInstalled) return;
@@ -460,28 +461,10 @@ function installProjectPulseEffectiveSessionVisibilityPanel() {
 
   const AUTH_STORAGE_KEY = 'projectPulseAuthSession';
   const VIEW_AS_STORAGE_KEY = 'projectPulseViewAsUser';
+  const COLLAPSED_STORAGE_KEY = 'projectPulseEffectiveSessionPanelCollapsed';
+  const OBSERVED_SESSION_STORAGE_KEY = 'projectPulseEffectiveSessionObservedStart';
   const PANEL_ID = 'projectpulse-effective-session-panel';
   const STYLE_ID = 'projectpulse-effective-session-panel-style';
-  const COLLAPSED_STORAGE_KEY = 'projectPulseEffectiveSessionPanelCollapsed';
-
-  /* 042B_EFFECTIVE_SESSION_COLLAPSE_START */
-  const readCollapsed = () => {
-    try {
-      const raw = window.localStorage.getItem(COLLAPSED_STORAGE_KEY);
-      return raw === null ? true : raw === 'true';
-    } catch {
-      return true;
-    }
-  };
-
-  const writeCollapsed = (collapsed) => {
-    try {
-      window.localStorage.setItem(COLLAPSED_STORAGE_KEY, collapsed ? 'true' : 'false');
-    } catch {
-      // Ignore localStorage persistence issues.
-    }
-  };
-  /* 042B_EFFECTIVE_SESSION_COLLAPSE_END */
 
   const escapeHtml = (value) => String(value ?? '')
     .replaceAll('&', '&amp;')
@@ -499,6 +482,31 @@ function installProjectPulseEffectiveSessionVisibilityPanel() {
     }
   };
 
+  const writeJsonStorage = (key, value) => {
+    try {
+      window.localStorage.setItem(key, JSON.stringify(value));
+    } catch {
+      // Ignore localStorage persistence issues.
+    }
+  };
+
+  const readCollapsed = () => {
+    try {
+      const raw = window.localStorage.getItem(COLLAPSED_STORAGE_KEY);
+      return raw === null ? true : raw === 'true';
+    } catch {
+      return true;
+    }
+  };
+
+  const writeCollapsed = (collapsed) => {
+    try {
+      window.localStorage.setItem(COLLAPSED_STORAGE_KEY, collapsed ? 'true' : 'false');
+    } catch {
+      // Ignore localStorage persistence issues.
+    }
+  };
+
   const readSession = () => {
     const session = readJsonStorage(AUTH_STORAGE_KEY);
     if (!session?.sessionToken) return null;
@@ -509,6 +517,82 @@ function installProjectPulseEffectiveSessionVisibilityPanel() {
   const readViewAs = () => {
     const viewAs = readJsonStorage(VIEW_AS_STORAGE_KEY);
     return viewAs?.userId ? viewAs : null;
+  };
+
+  const hashToken = (token = '') => {
+    const value = String(token || '');
+    let hash = 0;
+
+    for (let index = 0; index < value.length; index += 1) {
+      hash = ((hash << 5) - hash) + value.charCodeAt(index);
+      hash |= 0;
+    }
+
+    return Math.abs(hash).toString(16);
+  };
+
+  const getObservedSessionStart = (session) => {
+    if (!session?.sessionToken) return null;
+
+    const fingerprint = hashToken(session.sessionToken);
+    const stored = readJsonStorage(OBSERVED_SESSION_STORAGE_KEY);
+    const storedDate = stored?.startedAt ? Date.parse(stored.startedAt) : NaN;
+
+    if (stored?.fingerprint === fingerprint && Number.isFinite(storedDate)) {
+      return new Date(stored.startedAt);
+    }
+
+    const explicitStart = session.createdAt || session.issuedAt || session.signedInAt || session.loginAt || session.authenticatedAt;
+    const explicitDate = explicitStart ? Date.parse(explicitStart) : NaN;
+    const startedAt = Number.isFinite(explicitDate) ? new Date(explicitDate) : new Date();
+
+    writeJsonStorage(OBSERVED_SESSION_STORAGE_KEY, {
+      fingerprint,
+      startedAt: startedAt.toISOString()
+    });
+
+    return startedAt;
+  };
+
+  const formatDuration = (milliseconds) => {
+    if (!Number.isFinite(milliseconds) || milliseconds < 0) return 'Unknown';
+
+    const totalSeconds = Math.floor(milliseconds / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+
+    if (hours > 0) return `${hours}h ${minutes}m`;
+    if (minutes > 0) return `${minutes}m ${seconds}s`;
+    return `${seconds}s`;
+  };
+
+  const getSessionAge = (session) => {
+    const startedAt = getObservedSessionStart(session);
+    if (!startedAt) return 'Unknown';
+    return formatDuration(Date.now() - startedAt.getTime());
+  };
+
+  const getSessionExpiry = (session) => {
+    if (!session?.expiresAt) return 'Not provided';
+
+    const expiryMs = Date.parse(session.expiresAt);
+    if (!Number.isFinite(expiryMs)) return 'Invalid expiry';
+    if (Date.now() >= expiryMs) return 'Expired';
+
+    return formatDuration(expiryMs - Date.now());
+  };
+
+  const getExpiryClass = (session) => {
+    if (!session?.expiresAt) return 'neutral';
+
+    const expiryMs = Date.parse(session.expiresAt);
+    if (!Number.isFinite(expiryMs)) return 'warning';
+
+    const remaining = expiryMs - Date.now();
+    if (remaining <= 0) return 'danger';
+    if (remaining <= 10 * 60 * 1000) return 'warning';
+    return 'ok';
   };
 
   const getRoute = () => String(window.location.hash || '#dashboard').replace(/^#/, '') || 'dashboard';
@@ -554,10 +638,10 @@ function installProjectPulseEffectiveSessionVisibilityPanel() {
     style.textContent = `
       #projectpulse-effective-session-panel {
         position: fixed;
-        right: 1.15rem;
+        left: 1.15rem;
         bottom: 1.15rem;
         z-index: 9998;
-        width: min(420px, calc(100vw - 2rem));
+        width: min(460px, calc(100vw - 2rem));
         border: 1px solid rgba(59, 130, 246, 0.32);
         border-radius: 18px;
         background: rgba(15, 23, 42, 0.94);
@@ -577,12 +661,27 @@ function installProjectPulseEffectiveSessionVisibilityPanel() {
         background: rgba(120, 53, 15, 0.96);
       }
 
-      /* 042B_EFFECTIVE_SESSION_COLLAPSE_CSS_START */
+      #projectpulse-effective-session-panel.expiry-warning {
+        border-color: rgba(245, 158, 11, 0.9);
+      }
+
+      #projectpulse-effective-session-panel.expiry-danger {
+        border-color: rgba(248, 113, 113, 0.95);
+      }
+
       #projectpulse-effective-session-panel.collapsed {
         width: auto;
-        max-width: min(360px, calc(100vw - 2rem));
+        max-width: min(390px, calc(100vw - 2rem));
         padding: 0.55rem 0.65rem;
         border-radius: 999px;
+      }
+
+      #projectpulse-effective-session-panel .effective-session-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 0.75rem;
+        margin-bottom: 0.55rem;
       }
 
       #projectpulse-effective-session-panel.collapsed .effective-session-header {
@@ -590,15 +689,28 @@ function installProjectPulseEffectiveSessionVisibilityPanel() {
         align-items: center;
       }
 
+      #projectpulse-effective-session-panel h3 {
+        margin: 0;
+        color: #fff;
+        font-size: 0.92rem;
+        line-height: 1.2;
+      }
+
       #projectpulse-effective-session-panel.collapsed h3 {
-        font-size: 0.78rem;
+        max-width: 220px;
+        overflow: hidden;
+        text-overflow: ellipsis;
         white-space: nowrap;
+        font-size: 0.78rem;
       }
 
-      #projectpulse-effective-session-panel.collapsed p {
-        display: none;
+      #projectpulse-effective-session-panel p {
+        margin: 0.22rem 0 0;
+        color: rgba(248, 250, 252, 0.78);
+        line-height: 1.35;
       }
 
+      #projectpulse-effective-session-panel.collapsed p,
       #projectpulse-effective-session-panel.collapsed .effective-session-grid,
       #projectpulse-effective-session-panel.collapsed .effective-session-actions,
       #projectpulse-effective-session-panel.collapsed .effective-session-status {
@@ -610,27 +722,9 @@ function installProjectPulseEffectiveSessionVisibilityPanel() {
         align-items: center;
         gap: 0.35rem;
       }
-      /* 042B_EFFECTIVE_SESSION_COLLAPSE_CSS_END */
 
-      #projectpulse-effective-session-panel .effective-session-header {
-        display: flex;
-        align-items: flex-start;
-        justify-content: space-between;
-        gap: 0.75rem;
-        margin-bottom: 0.55rem;
-      }
-
-      #projectpulse-effective-session-panel h3 {
-        margin: 0;
-        color: #fff;
-        font-size: 0.92rem;
-        line-height: 1.2;
-      }
-
-      #projectpulse-effective-session-panel p {
-        margin: 0.22rem 0 0;
-        color: rgba(248, 250, 252, 0.78);
-        line-height: 1.35;
+      #projectpulse-effective-session-panel.collapsed #projectpulse-effective-session-refresh {
+        display: none;
       }
 
       #projectpulse-effective-session-panel .effective-session-grid {
@@ -646,6 +740,18 @@ function installProjectPulseEffectiveSessionVisibilityPanel() {
         padding: 0.48rem;
         background: rgba(255, 255, 255, 0.07);
         min-width: 0;
+      }
+
+      #projectpulse-effective-session-panel .effective-session-grid div.security-ok {
+        border-color: rgba(34, 197, 94, 0.34);
+      }
+
+      #projectpulse-effective-session-panel .effective-session-grid div.security-warning {
+        border-color: rgba(245, 158, 11, 0.56);
+      }
+
+      #projectpulse-effective-session-panel .effective-session-grid div.security-danger {
+        border-color: rgba(248, 113, 113, 0.72);
       }
 
       #projectpulse-effective-session-panel span {
@@ -669,6 +775,7 @@ function installProjectPulseEffectiveSessionVisibilityPanel() {
         display: flex;
         align-items: center;
         justify-content: flex-end;
+        flex-wrap: wrap;
         gap: 0.45rem;
         margin-top: 0.7rem;
       }
@@ -736,7 +843,29 @@ function installProjectPulseEffectiveSessionVisibilityPanel() {
       .join(', ');
   };
 
-  const renderPanel = (state) => {
+  const getActualUserName = (session, data = {}) => (
+    data.actualUsername
+    || data.actualDisplayName
+    || data.actualEmail
+    || data.sessionUsername
+    || data.sessionDisplayName
+    || data.sessionEmail
+    || session?.username
+    || session?.displayName
+    || session?.email
+    || 'Signed-in user'
+  );
+
+  const getEffectiveUserName = (data = {}) => (
+    data.effectiveUsername
+    || data.effectiveDisplayName
+    || data.effectiveEmail
+    || data.displayName
+    || data.email
+    || 'Loading effective user'
+  );
+
+  const renderPanel = (state = {}) => {
     const panel = ensurePanel();
 
     if (!shouldShowPanel()) {
@@ -745,24 +874,38 @@ function installProjectPulseEffectiveSessionVisibilityPanel() {
       return;
     }
 
+    const session = readSession();
     const viewAs = readViewAs();
-    const data = state?.data ?? {};
+    const data = state?.data ?? window.__projectPulseEffectiveSessionLastData ?? {};
     const roles = Array.isArray(data.roles) ? data.roles : [];
     const permissions = Array.isArray(data.permissions) ? data.permissions : [];
-    const effectiveName = data.effectiveDisplayName || data.displayName || data.effectiveEmail || data.email || 'Loading effective user';
-    const actualName = data.actualDisplayName || data.actualEmail || data.sessionEmail || 'Signed-in user';
+    const effectiveName = getEffectiveUserName(data);
+    const actualName = getActualUserName(session, data);
+    const collapsed = readCollapsed();
+    const expiryClass = getExpiryClass(session);
+    const sessionAge = getSessionAge(session);
+    const expiryText = getSessionExpiry(session);
+    const viewAsGuard = viewAs ? 'Active - write actions blocked' : 'Inactive';
+    const sessionHeaderStatus = session?.sessionToken ? 'Present - token hidden' : 'Missing';
     const mode = viewAs ? 'View-As read-only' : 'Actual session';
     const modeDetail = viewAs
       ? `Previewing ${viewAs.displayName || viewAs.email || viewAs.userId}`
       : 'No View-As override active';
 
-    const collapsed = readCollapsed();
-    panel.className = `${viewAs ? 'view-as-active ' : ''}${collapsed ? 'collapsed' : ''}`.trim();
+    window.__projectPulseEffectiveSessionLastState = state;
+    window.__projectPulseEffectiveSessionLastData = data;
+
+    panel.className = [
+      viewAs ? 'view-as-active' : '',
+      collapsed ? 'collapsed' : '',
+      expiryClass === 'warning' ? 'expiry-warning' : '',
+      expiryClass === 'danger' ? 'expiry-danger' : ''
+    ].filter(Boolean).join(' ');
 
     panel.innerHTML = `
       <div class="effective-session-header">
         <div>
-          <h3>Effective session</h3>
+          <h3>${escapeHtml(collapsed ? `Session: ${actualName}` : 'Effective session')}</h3>
           <p>${escapeHtml(mode)} · ${escapeHtml(modeDetail)}</p>
         </div>
         <div class="effective-session-header-actions">
@@ -777,8 +920,16 @@ function installProjectPulseEffectiveSessionVisibilityPanel() {
           <strong>${escapeHtml(effectiveName)}</strong>
         </div>
         <div>
-          <span>Actual session</span>
+          <span>Signed-in username</span>
           <strong>${escapeHtml(actualName)}</strong>
+        </div>
+        <div>
+          <span>Session age</span>
+          <strong>${escapeHtml(sessionAge)}</strong>
+        </div>
+        <div class="${expiryClass === 'danger' ? 'security-danger' : expiryClass === 'warning' ? 'security-warning' : 'security-ok'}">
+          <span>Session expires in</span>
+          <strong>${escapeHtml(expiryText)}</strong>
         </div>
         <div>
           <span>Roles</span>
@@ -788,21 +939,40 @@ function installProjectPulseEffectiveSessionVisibilityPanel() {
           <span>Permissions</span>
           <strong>${permissions.length}</strong>
         </div>
+        <div class="${viewAs ? 'security-warning' : 'security-ok'}">
+          <span>View-As guard</span>
+          <strong>${escapeHtml(viewAsGuard)}</strong>
+        </div>
+        <div class="${session?.sessionToken ? 'security-ok' : 'security-danger'}">
+          <span>Session token</span>
+          <strong>${escapeHtml(sessionHeaderStatus)}</strong>
+        </div>
       </div>
 
       <div class="effective-session-actions">
         <button type="button" id="projectpulse-effective-session-write-test">Test write lock</button>
+        <button type="button" id="projectpulse-effective-session-copy">Copy safe diagnostics</button>
+        ${viewAs ? '<button type="button" id="projectpulse-effective-session-clear-view-as">Clear View-As</button>' : ''}
       </div>
 
-      <div class="effective-session-status">${escapeHtml(state?.message || 'Effective session loaded.')}</div>
+      <div class="effective-session-status">${escapeHtml(state?.message || 'Effective session loaded. Tokens are never displayed in this panel.')}</div>
     `;
 
     panel.querySelector('#projectpulse-effective-session-refresh')?.addEventListener('click', loadEffectiveSession);
+
     panel.querySelector('#projectpulse-effective-session-toggle')?.addEventListener('click', () => {
       writeCollapsed(!readCollapsed());
-      renderPanel(state);
+      renderPanel(window.__projectPulseEffectiveSessionLastState || state);
     });
+
     panel.querySelector('#projectpulse-effective-session-write-test')?.addEventListener('click', testWriteLock);
+    panel.querySelector('#projectpulse-effective-session-copy')?.addEventListener('click', copySafeDiagnostics);
+
+    panel.querySelector('#projectpulse-effective-session-clear-view-as')?.addEventListener('click', () => {
+      window.localStorage.removeItem(VIEW_AS_STORAGE_KEY);
+      window.dispatchEvent(new CustomEvent('projectpulse:view-as-changed'));
+      window.location.reload();
+    });
   };
 
   async function loadEffectiveSession() {
@@ -837,8 +1007,8 @@ function installProjectPulseEffectiveSessionVisibilityPanel() {
 
       renderPanel({
         data,
-        message: data.isViewAs
-          ? 'Backend effective-session confirms View-As role context.'
+        message: readViewAs()
+          ? 'Backend effective-session confirms View-As role context. Write actions remain blocked while previewing.'
           : 'Backend effective-session confirms the signed-in role context.'
       });
     } catch (error) {
@@ -849,7 +1019,10 @@ function installProjectPulseEffectiveSessionVisibilityPanel() {
   }
 
   async function testWriteLock() {
-    renderPanel({ message: 'Testing write lock...' });
+    renderPanel({
+      data: window.__projectPulseEffectiveSessionLastData,
+      message: 'Testing write lock...'
+    });
 
     try {
       const response = await window.fetch('/api/security/role-enforcement-smoke/write-attempt', {
@@ -858,7 +1031,7 @@ function installProjectPulseEffectiveSessionVisibilityPanel() {
           'Content-Type': 'application/json',
           ...buildHeaders()
         },
-        body: JSON.stringify({ source: '042A_EFFECTIVE_SESSION_PANEL' })
+        body: JSON.stringify({ source: '042_EFFECTIVE_SESSION_SECURITY_PANEL' })
       });
 
       const raw = await response.text();
@@ -873,14 +1046,50 @@ function installProjectPulseEffectiveSessionVisibilityPanel() {
       const expectedViewAsBlock = readViewAs() && response.status === 403;
 
       renderPanel({
-        data,
+        data: window.__projectPulseEffectiveSessionLastData,
         message: expectedViewAsBlock
           ? `Write lock confirmed: HTTP ${response.status} ${data.status || data.message || ''}`
           : `Write test returned HTTP ${response.status}: ${data.status || data.message || 'No message'}`
       });
     } catch (error) {
       renderPanel({
+        data: window.__projectPulseEffectiveSessionLastData,
         message: error instanceof Error ? error.message : 'Unable to test write lock.'
+      });
+    }
+  }
+
+  async function copySafeDiagnostics() {
+    const session = readSession();
+    const viewAs = readViewAs();
+    const data = window.__projectPulseEffectiveSessionLastData ?? {};
+    const roles = Array.isArray(data.roles) ? data.roles : [];
+    const permissions = Array.isArray(data.permissions) ? data.permissions : [];
+
+    const diagnostics = {
+      route: getRoute(),
+      mode: viewAs ? 'view_as_read_only' : 'actual_session',
+      signedInUsername: getActualUserName(session, data),
+      effectiveUser: getEffectiveUserName(data),
+      roles: roles.map((role) => role.roleCode || role.roleName).filter(Boolean),
+      permissionCount: permissions.length,
+      sessionAge: getSessionAge(session),
+      sessionExpiresIn: getSessionExpiry(session),
+      viewAsActive: Boolean(viewAs),
+      sessionTokenDisplayed: false,
+      generatedAt: new Date().toISOString()
+    };
+
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(diagnostics, null, 2));
+      renderPanel({
+        data,
+        message: 'Safe diagnostics copied. Session token was not included.'
+      });
+    } catch {
+      renderPanel({
+        data,
+        message: 'Unable to copy diagnostics automatically. Browser clipboard permission may be blocked.'
       });
     }
   }
@@ -895,10 +1104,18 @@ function installProjectPulseEffectiveSessionVisibilityPanel() {
   window.addEventListener('projectpulse:auth-session-ready', scheduleLoad);
   window.addEventListener('projectpulse:view-as-changed', scheduleLoad);
 
+  window.clearInterval(window.__projectPulseEffectiveSessionTicker);
+  window.__projectPulseEffectiveSessionTicker = window.setInterval(() => {
+    if (shouldShowPanel() && window.__projectPulseEffectiveSessionLastState) {
+      renderPanel(window.__projectPulseEffectiveSessionLastState);
+    }
+  }, 30000);
+
   scheduleLoad();
 }
 
 installProjectPulseEffectiveSessionVisibilityPanel();
+/* 042C_EFFECTIVE_SESSION_SECURITY_TELEMETRY_END */
 /* 042A_EFFECTIVE_SESSION_VISIBILITY_END */
 
 
