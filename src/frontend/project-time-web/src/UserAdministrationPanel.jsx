@@ -46,7 +46,59 @@ const TEAM_OPTIONS = [
 ];
 /* 041C_USER_EMAIL_EDIT_TEAM_CATALOG_END */
 
-function applyTeamSelectionToDraft(current, teamName) {
+
+/* 041D_DEPARTMENT_DROPDOWN_EXEC_MANAGER_START */
+function getDepartmentOptions(referenceDepartments = []) {
+  const values = new Set();
+
+  TEAM_OPTIONS.forEach((team) => {
+    if (team.departmentName) values.add(team.departmentName);
+  });
+
+  (referenceDepartments ?? []).forEach((department) => {
+    if (department) values.add(department);
+  });
+
+  return [...values].filter(Boolean).sort((a, b) => a.localeCompare(b));
+}
+
+function isExecutiveUser(user) {
+  const team = String(user?.teamName ?? '').toLowerCase();
+  const department = String(user?.departmentName ?? '').toLowerCase();
+  const roleText = [
+    ...(user?.roleCodes ?? []),
+    ...(user?.roleNames ?? [])
+  ].join(' ').toLowerCase();
+
+  return team.includes('executive') || department.includes('executive') || roleText.includes('executive');
+}
+
+function getExecutiveManagerUser(users = []) {
+  return (users ?? []).find((user) => isExecutiveUser(user) && user?.email)
+    ?? (users ?? []).find((user) => String(user?.teamName ?? '').toLowerCase().includes('executive') && user?.email)
+    ?? null;
+}
+
+function resolveManagerEmailForTeam(team, users = [], currentManagerEmail = '') {
+  if (team?.managerEmail) return team.managerEmail;
+
+  const executiveManager = getExecutiveManagerUser(users);
+  if (executiveManager?.email) return executiveManager.email;
+
+  return currentManagerEmail ?? '';
+}
+
+function getExecutiveManagerLabel(users = []) {
+  const executiveManager = getExecutiveManagerUser(users);
+
+  if (!executiveManager?.email) {
+    return 'No Executive manager user is available yet. Assign one user to the Executive team, then selecting a team will auto-populate that manager email.';
+  }
+
+  return `${executiveManager.displayName || executiveManager.email} is available as the default Executive manager.`;
+}
+
+function applyTeamSelectionWithManager(current, teamName, users = []) {
   const team = TEAM_OPTIONS.find((item) => item.teamName === teamName);
 
   if (!team) {
@@ -57,20 +109,31 @@ function applyTeamSelectionToDraft(current, teamName) {
     ...current,
     teamName: team.teamName,
     departmentName: team.departmentName,
-    managerEmail: team.managerEmail
+    managerEmail: resolveManagerEmailForTeam(team, users, current.managerEmail)
   };
 }
+/* 041D_DEPARTMENT_DROPDOWN_EXEC_MANAGER_END */
 
-function getTeamManagerLabel(teamName) {
+function applyTeamSelectionToDraft(current, teamName, users = []) {
+  return applyTeamSelectionWithManager(current, teamName, users);
+}
+
+function getTeamManagerLabel(teamName, users = []) {
   const team = TEAM_OPTIONS.find((item) => item.teamName === teamName);
 
-  if (!team) return 'Select a team to populate department information.';
+  if (!team) return 'Select a team to populate department and manager information.';
 
   if (team.managerName && team.managerEmail) {
     return `${team.managerName} is the manager for ${team.departmentName}.`;
   }
 
-  return `${team.departmentName} selected. Add manager email when it is known.`;
+  const executiveManager = getExecutiveManagerUser(users);
+
+  if (executiveManager?.email) {
+    return `${team.departmentName} selected. ${executiveManager.displayName || executiveManager.email} from Executive is assigned as the default manager.`;
+  }
+
+  return `${team.departmentName} selected. Add an Executive user to auto-populate manager email.`;
 }
 
 
@@ -172,6 +235,16 @@ export default function UserAdministrationPanel() {
   const selectedUser = useMemo(
     () => data.users.find((user) => user.userId === selectedUserId) ?? null,
     [data.users, selectedUserId]
+  );
+
+  const departmentOptions = useMemo(
+    () => getDepartmentOptions(data.departments),
+    [data.departments]
+  );
+
+  const executiveManagerLabel = useMemo(
+    () => getExecutiveManagerLabel(data.users),
+    [data.users]
   );
 
   const allVisibleSelected = data.users.length > 0 && selectedUserIds.length === data.users.length;
@@ -511,13 +584,7 @@ export default function UserAdministrationPanel() {
               <select
                 value={localUserDraft.teamName}
                 onChange={(event) => {
-                  const nextTeam = TEAM_OPTIONS.find((team) => team.teamName === event.target.value);
-                  setLocalUserDraft((current) => ({
-                    ...current,
-                    teamName: event.target.value,
-                    departmentName: nextTeam?.departmentName ?? current.departmentName,
-                    managerEmail: nextTeam?.managerEmail ?? current.managerEmail
-                  }));
+                  setLocalUserDraft((current) => applyTeamSelectionWithManager(current, event.target.value, data.users));
                 }}
               >
                 <option value="">Select team</option>
@@ -527,12 +594,15 @@ export default function UserAdministrationPanel() {
               </select>
 
               <label>Department</label>
-              <input
-                list="local-user-admin-departments"
+              <select
                 value={localUserDraft.departmentName}
                 onChange={(event) => setLocalUserDraft((current) => ({ ...current, departmentName: event.target.value }))}
-                placeholder="Department"
-              />
+              >
+                <option value="">Select department</option>
+                {departmentOptions.map((department) => (
+                  <option value={department} key={department}>{department}</option>
+                ))}
+              </select>
 
               <label>Job title</label>
               <input
@@ -601,9 +671,7 @@ export default function UserAdministrationPanel() {
           </div>
         </div>
 
-        <datalist id="local-user-admin-departments">
-          {data.departments.map((item) => <option value={item} key={item} />)}
-        </datalist>
+
       </div>
 
       <div className={isBulkUpdateOpen ? 'user-admin-bulk-card compact-bulk-card open' : 'user-admin-bulk-card compact-bulk-card'}>
@@ -656,12 +724,15 @@ export default function UserAdministrationPanel() {
                 />
                 Apply department
               </label>
-              <input
-                list="bulk-user-admin-departments"
+              <select
                 value={bulkDraft.departmentName}
                 onChange={(event) => setBulkDraft((current) => ({ ...current, departmentName: event.target.value }))}
-                placeholder="Department"
-              />
+              >
+                <option value="">Select department</option>
+                {departmentOptions.map((department) => (
+                  <option value={department} key={department}>{department}</option>
+                ))}
+              </select>
 
               <label className="checkbox-row">
                 <input
@@ -676,12 +747,9 @@ export default function UserAdministrationPanel() {
                 onChange={(event) => {
                   const nextTeam = TEAM_OPTIONS.find((team) => team.teamName === event.target.value);
                   setBulkDraft((current) => ({
-                    ...current,
-                    teamName: event.target.value,
+                    ...applyTeamSelectionWithManager(current, event.target.value, data.users),
                     applyDepartmentName: Boolean(nextTeam) ? true : current.applyDepartmentName,
-                    departmentName: nextTeam?.departmentName ?? current.departmentName,
-                    applyManagerEmail: Boolean(nextTeam) ? true : current.applyManagerEmail,
-                    managerEmail: nextTeam?.managerEmail ?? current.managerEmail
+                    applyManagerEmail: Boolean(nextTeam) ? true : current.applyManagerEmail
                   }));
                 }}
               >
@@ -716,7 +784,7 @@ export default function UserAdministrationPanel() {
               <input
                 value={bulkDraft.managerEmail}
                 onChange={(event) => setBulkDraft((current) => ({ ...current, managerEmail: event.target.value }))}
-                placeholder={bulkDraft.teamName === 'Back Office' ? 'Coordinator assigned' : 'manager@ussignal.com'}
+                placeholder="executive.manager@example.com"
               />
 
               <label className="checkbox-row">
@@ -795,9 +863,7 @@ export default function UserAdministrationPanel() {
               </div>
             </div>
 
-            <datalist id="bulk-user-admin-departments">
-              {data.departments.map((item) => <option value={item} key={item} />)}
-            </datalist>
+
           </div>
         )}
       </div>
@@ -853,15 +919,17 @@ export default function UserAdministrationPanel() {
               <input value={profileDraft.jobTitle ?? ''} onChange={(event) => setProfileDraft((current) => ({ ...current, jobTitle: event.target.value }))} />
 
               <label>Department</label>
-              <input list="user-admin-departments" value={profileDraft.departmentName ?? ''} onChange={(event) => setProfileDraft((current) => ({ ...current, departmentName: event.target.value }))} />
-              <datalist id="user-admin-departments">
-                {data.departments.map((item) => <option value={item} key={item} />)}
-              </datalist>
+              <select value={profileDraft.departmentName ?? ''} onChange={(event) => setProfileDraft((current) => ({ ...current, departmentName: event.target.value }))}>
+                <option value="">Select department</option>
+                {departmentOptions.map((department) => (
+                  <option value={department} key={department}>{department}</option>
+                ))}
+              </select>
 
               <label>Team</label>
               <select
                 value={profileDraft.teamName ?? ''}
-                onChange={(event) => setProfileDraft((current) => applyTeamSelectionToDraft(current, event.target.value))}
+                onChange={(event) => setProfileDraft((current) => applyTeamSelectionToDraft(current, event.target.value, data.users))}
               >
                 <option value="">Select team</option>
                 {TEAM_OPTIONS.map((team) => (
@@ -869,7 +937,9 @@ export default function UserAdministrationPanel() {
                 ))}
               </select>
               <div className="user-admin-helper-text">
-                {getTeamManagerLabel(profileDraft.teamName)}
+                {getTeamManagerLabel(profileDraft.teamName, data.users)}
+                <br />
+                {executiveManagerLabel}
               </div>
 
               <label>Office location</label>
@@ -879,7 +949,7 @@ export default function UserAdministrationPanel() {
               <input
                 value={profileDraft.managerEmail ?? ''}
                 onChange={(event) => setProfileDraft((current) => ({ ...current, managerEmail: event.target.value }))}
-                placeholder={profileDraft.teamName === 'Back Office' ? 'Coordinator assigned' : 'manager@ussignal.com'}
+                placeholder="executive.manager@example.com"
               />
 
 
