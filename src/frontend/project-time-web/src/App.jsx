@@ -7465,3 +7465,144 @@ Analytics - Variphy / Infortel`}
 /* 030_ROLE_CLEANUP_PHASE2_COMPATIBILITY
    Frontend recognizes canonical roles while legacy role assignments remain temporarily active.
 */
+
+/* 050B_FINAL_BROWSER_API_SESSION_HEADER_BRIDGE_START */
+function getProjectPulse050BFinalBrowserSessionToken() {
+  try {
+    const session = JSON.parse(window.localStorage.getItem('projectPulseAuthSession') || 'null');
+
+    return session?.sessionToken
+      || session?.token
+      || session?.accessToken
+      || '';
+  } catch {
+    return '';
+  }
+}
+
+function isProjectPulse050BProtectedApiUrl(rawUrl) {
+  try {
+    if (!rawUrl) return false;
+
+    const url = new URL(rawUrl, window.location.origin);
+
+    return url.origin === window.location.origin && url.pathname.startsWith('/api/');
+  } catch {
+    return false;
+  }
+}
+
+function applyProjectPulse050BSessionHeaders(headers) {
+  const token = getProjectPulse050BFinalBrowserSessionToken();
+
+  if (!token) {
+    return headers;
+  }
+
+  if (headers instanceof Headers) {
+    if (!headers.has('X-ProjectPulse-Session')) headers.set('X-ProjectPulse-Session', token);
+    if (!headers.has('X-Project-Pulse-Session')) headers.set('X-Project-Pulse-Session', token);
+    if (!headers.has('X-Session-Token')) headers.set('X-Session-Token', token);
+    if (!headers.has('Authorization')) headers.set('Authorization', `Bearer ${token}`);
+    return headers;
+  }
+
+  const nextHeaders = { ...(headers || {}) };
+
+  if (!nextHeaders['X-ProjectPulse-Session']) nextHeaders['X-ProjectPulse-Session'] = token;
+  if (!nextHeaders['X-Project-Pulse-Session']) nextHeaders['X-Project-Pulse-Session'] = token;
+  if (!nextHeaders['X-Session-Token']) nextHeaders['X-Session-Token'] = token;
+  if (!nextHeaders.Authorization) nextHeaders.Authorization = `Bearer ${token}`;
+
+  return nextHeaders;
+}
+
+function installProjectPulse050BFinalFetchBridge() {
+  if (typeof window === 'undefined' || typeof window.fetch !== 'function') {
+    return;
+  }
+
+  const currentFetch = window.fetch;
+
+  if (currentFetch.__projectPulse050BFinalWrapped) {
+    return;
+  }
+
+  const wrappedFetch = async (input, init = {}) => {
+    const rawUrl = typeof input === 'string' ? input : input?.url;
+
+    if (!isProjectPulse050BProtectedApiUrl(rawUrl)) {
+      return currentFetch(input, init);
+    }
+
+    const headers = applyProjectPulse050BSessionHeaders(
+      new Headers(init?.headers || (input instanceof Request ? input.headers : undefined))
+    );
+
+    return currentFetch(input, {
+      ...init,
+      headers
+    });
+  };
+
+  wrappedFetch.__projectPulse050BFinalWrapped = true;
+  window.fetch = wrappedFetch;
+}
+
+function installProjectPulse050BFinalXhrBridge() {
+  if (typeof window === 'undefined' || typeof window.XMLHttpRequest === 'undefined') {
+    return;
+  }
+
+  const xhrPrototype = window.XMLHttpRequest.prototype;
+
+  if (xhrPrototype.__projectPulse050BFinalWrapped) {
+    return;
+  }
+
+  const nativeOpen = xhrPrototype.open;
+  const nativeSend = xhrPrototype.send;
+
+  xhrPrototype.open = function projectPulse050BXhrOpen(method, url, async, user, password) {
+    this.__projectPulse050BRequestUrl = url;
+    return nativeOpen.call(this, method, url, async, user, password);
+  };
+
+  xhrPrototype.send = function projectPulse050BXhrSend(body) {
+    if (isProjectPulse050BProtectedApiUrl(this.__projectPulse050BRequestUrl)) {
+      const token = getProjectPulse050BFinalBrowserSessionToken();
+
+      if (token) {
+        try {
+          this.setRequestHeader('X-ProjectPulse-Session', token);
+          this.setRequestHeader('X-Project-Pulse-Session', token);
+          this.setRequestHeader('X-Session-Token', token);
+          this.setRequestHeader('Authorization', `Bearer ${token}`);
+        } catch {
+          // Preserve original request behavior if the browser refuses header mutation.
+        }
+      }
+    }
+
+    return nativeSend.call(this, body);
+  };
+
+  xhrPrototype.__projectPulse050BFinalWrapped = true;
+}
+
+function installProjectPulse050BFinalBrowserApiSessionBridge() {
+  installProjectPulse050BFinalFetchBridge();
+  installProjectPulse050BFinalXhrBridge();
+}
+
+if (typeof window !== 'undefined') {
+  installProjectPulse050BFinalBrowserApiSessionBridge();
+
+  window.setTimeout(installProjectPulse050BFinalBrowserApiSessionBridge, 0);
+  window.setTimeout(installProjectPulse050BFinalBrowserApiSessionBridge, 250);
+  window.setTimeout(installProjectPulse050BFinalBrowserApiSessionBridge, 1000);
+  window.setTimeout(installProjectPulse050BFinalBrowserApiSessionBridge, 3000);
+
+  window.addEventListener('storage', installProjectPulse050BFinalBrowserApiSessionBridge);
+}
+/* 050B_FINAL_BROWSER_API_SESSION_HEADER_BRIDGE_END */
