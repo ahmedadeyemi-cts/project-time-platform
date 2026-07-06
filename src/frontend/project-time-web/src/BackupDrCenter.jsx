@@ -1,6 +1,34 @@
 import { useEffect, useMemo, useState } from 'react';
 import './backup-dr-center.css';
 
+
+/* 043C_PROFILE_PREFERENCES_BACKUP_READINESS_FRONTEND_START */
+function getProjectPulse043CBackupReadinessAuthHeaders() {
+  try {
+    const session = JSON.parse(window.localStorage.getItem('projectPulseAuthSession') || 'null');
+    const token = session?.sessionToken || '';
+
+    return token ? { 'X-ProjectPulse-Session': token } : {};
+  } catch {
+    return {};
+  }
+}
+
+async function fetchProfilePreferenceBackupReadiness() {
+  const response = await fetch('/api/profile/preferences/backup-readiness', {
+    headers: getProjectPulse043CBackupReadinessAuthHeaders()
+  });
+
+  const payload = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(payload.message || `Profile preference backup readiness returned HTTP ${response.status}`);
+  }
+
+  return payload;
+}
+/* 043C_PROFILE_PREFERENCES_BACKUP_READINESS_FRONTEND_END */
+
 function statusClass(value) {
   const normalized = String(value ?? '').toLowerCase();
   if (['ready', 'healthy', 'ok', 'completed', 'settings_saved'].includes(normalized)) return 'healthy';
@@ -60,7 +88,39 @@ const defaultSettingsForm = {
   scheduleUploadToAzure: false
 };
 
-function BackupDrCenter({ authSession }) {
+function BackupDrCenter({
+ authSession }) {
+  const [profilePreferenceBackupReadiness, setProfilePreferenceBackupReadiness] = useState({
+    loading: true,
+    data: null,
+    error: null
+  });
+
+  async function loadProfilePreferenceBackupReadiness() {
+    setProfilePreferenceBackupReadiness((current) => ({ ...current, loading: true, error: null }));
+
+    try {
+      const result = await fetchProfilePreferenceBackupReadiness();
+
+      setProfilePreferenceBackupReadiness({
+        loading: false,
+        data: result,
+        error: null
+      });
+    } catch (error) {
+      setProfilePreferenceBackupReadiness({
+        loading: false,
+        data: null,
+        error: error instanceof Error ? error.message : 'Unable to load profile preference backup readiness.'
+      });
+    }
+  }
+
+  useEffect(() => {
+    loadProfilePreferenceBackupReadiness();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const [backupState, setBackupState] = useState({ loading: true, data: null, error: null });
   const [settingsState, setSettingsState] = useState({
     loading: true,
@@ -341,6 +401,65 @@ function BackupDrCenter({ authSession }) {
 
   return (
     <section id="backup-dr-center" className="panel backup-dr-center">
+      {/* 043C_PROFILE_PREFERENCES_BACKUP_READINESS_UI_START */}
+      <section className="profile-preferences-backup-readiness-card">
+        <div>
+          <p className="eyebrow">043C Backup/Restore Coverage</p>
+          <h2>Profile preference backup readiness</h2>
+          <p>
+            Confirms profile pictures are protected by database backup/restore through the app_users profile preference columns. This evidence view never displays the image payload.
+          </p>
+        </div>
+
+        <div className="profile-preferences-backup-readiness-actions">
+          <button type="button" className="secondary-action" onClick={loadProfilePreferenceBackupReadiness}>
+            Refresh profile backup check
+          </button>
+        </div>
+
+        {profilePreferenceBackupReadiness.loading ? (
+          <div className="manager-empty-state">Checking profile preference backup coverage...</div>
+        ) : profilePreferenceBackupReadiness.error ? (
+          <div className="error-text">{profilePreferenceBackupReadiness.error}</div>
+        ) : (
+          <>
+            <div className="profile-preferences-backup-readiness-grid">
+              <article>
+                <span>Status</span>
+                <strong>{profilePreferenceBackupReadiness.data?.status ?? 'unknown'}</strong>
+                <small>{profilePreferenceBackupReadiness.data?.backupCoverage ?? 'Backup coverage unavailable'}</small>
+              </article>
+              <article>
+                <span>Profile photo column</span>
+                <strong>{profilePreferenceBackupReadiness.data?.columnChecks?.profilePhotoDataUrlColumnPresent ? 'Present' : 'Missing'}</strong>
+                <small>profile_photo_data_url</small>
+              </article>
+              <article>
+                <span>Updated-at column</span>
+                <strong>{profilePreferenceBackupReadiness.data?.columnChecks?.profilePhotoUpdatedAtColumnPresent ? 'Present' : 'Missing'}</strong>
+                <small>profile_photo_updated_at</small>
+              </article>
+              <article>
+                <span>Active users</span>
+                <strong>{profilePreferenceBackupReadiness.data?.counts?.activeUserCount ?? 0}</strong>
+                <small>{profilePreferenceBackupReadiness.data?.counts?.activeUsersWithProfilePhotos ?? 0} with profile photos</small>
+              </article>
+            </div>
+
+            <div className="profile-preferences-backup-readiness-note">
+              <strong>Restore requirement:</strong>
+              <span>{profilePreferenceBackupReadiness.data?.restoreCoverage ?? 'Restore coverage unavailable.'}</span>
+            </div>
+
+            <div className="profile-preferences-backup-readiness-note">
+              <strong>Sensitive data policy:</strong>
+              <span>{profilePreferenceBackupReadiness.data?.sensitiveDataPolicy ?? 'Readiness response does not expose profile image payloads.'}</span>
+            </div>
+          </>
+        )}
+      </section>
+      {/* 043C_PROFILE_PREFERENCES_BACKUP_READINESS_UI_END */}
+
       <div className="backup-dr-hero">
         <div>
           <p className="eyebrow">System Operations</p>

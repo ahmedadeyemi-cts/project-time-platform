@@ -7914,6 +7914,146 @@ app.MapPost("/api/profile/preferences", async (System.Text.Json.JsonElement payl
 }).WithName("ProjectPulse043BSaveProfilePreferences");
 /* 043B_PROFILE_IMAGE_PERSISTENCE_API_END */
 
+/* 043C_PROFILE_PREFERENCES_BACKUP_READINESS_API_START */
+app.MapGet("/api/profile/preferences/backup-readiness", async (HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var config = DatabaseConfig.FromEnvironment();
+    var validation = ValidateConfig(config);
+    if (validation is not null) return validation;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    /* 043C_PROFILE_PREFERENCES_BACKUP_READINESS_ACCESS_REPAIR_V2 */
+    var canViewBackupReadiness = false;
+
+    await using (var accessCommand = new NpgsqlCommand("""
+        SELECT EXISTS (
+            SELECT 1
+            FROM app_users u
+            JOIN app_user_role_assignments ura
+                ON ura.user_id = u.user_id
+               AND ura.is_active = TRUE
+            JOIN app_roles r
+                ON r.app_role_id = ura.app_role_id
+               AND r.is_active = TRUE
+            WHERE u.user_id = @user_id
+              AND u.is_active = TRUE
+              AND r.role_code IN ('SUPER_ADMINISTRATOR', 'ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR')
+        );
+        """, connection))
+    {
+        accessCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+        canViewBackupReadiness = Convert.ToBoolean(await accessCommand.ExecuteScalarAsync() ?? false);
+    }
+
+    if (!canViewBackupReadiness)
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Backup readiness evidence is restricted to administrators and project/team coordinators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    await ProjectPulse043BEnsureProfileColumnsAsync(connection);
+
+    await using var command = new NpgsqlCommand("""
+        SELECT
+            (
+                SELECT COUNT(*)::bigint
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'app_users'
+                  AND column_name = 'profile_photo_data_url'
+            ) AS profile_photo_data_url_column_count,
+            (
+                SELECT COUNT(*)::bigint
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'app_users'
+                  AND column_name = 'profile_photo_updated_at'
+            ) AS profile_photo_updated_at_column_count,
+            (
+                SELECT COUNT(*)::bigint
+                FROM app_users
+                WHERE is_active = TRUE
+            ) AS active_user_count,
+            (
+                SELECT COUNT(*)::bigint
+                FROM app_users
+                WHERE is_active = TRUE
+                  AND NULLIF(profile_photo_data_url, '') IS NOT NULL
+            ) AS active_users_with_profile_photos,
+            (
+                SELECT MAX(profile_photo_updated_at)
+                FROM app_users
+                WHERE profile_photo_updated_at IS NOT NULL
+            ) AS last_profile_photo_updated_at;
+        """, connection);
+
+    await using var reader = await command.ExecuteReaderAsync();
+
+    if (!await reader.ReadAsync())
+    {
+        return Results.Json(new
+        {
+            status = "readiness_unavailable",
+            message = "Profile preference backup readiness could not be calculated."
+        }, statusCode: StatusCodes.Status500InternalServerError);
+    }
+
+    var profilePhotoDataUrlColumnPresent = reader.GetInt64(0) > 0;
+    var profilePhotoUpdatedAtColumnPresent = reader.GetInt64(1) > 0;
+    var activeUserCount = reader.GetInt64(2);
+    var activeUsersWithProfilePhotos = reader.GetInt64(3);
+    var lastProfilePhotoUpdatedAt = reader.IsDBNull(4) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(4);
+
+    var ready = profilePhotoDataUrlColumnPresent && profilePhotoUpdatedAtColumnPresent;
+
+    return Results.Ok(new
+    {
+        status = ready ? "ready" : "schema_gap",
+        module = "043C Profile Preferences Backup/Restore Readiness",
+        backupCoverage = "database_backup_includes_app_users_profile_preference_columns",
+        restoreCoverage = "standard_database_restore_restores_profile_photo_data_url_and_profile_photo_updated_at",
+        sensitiveDataPolicy = "readiness_response_never_returns_profile_photo_data_url_payloads",
+        tableName = "public.app_users",
+        requiredColumns = new[]
+        {
+            "profile_photo_data_url",
+            "profile_photo_updated_at"
+        },
+        columnChecks = new
+        {
+            profilePhotoDataUrlColumnPresent,
+            profilePhotoUpdatedAtColumnPresent
+        },
+        counts = new
+        {
+            activeUserCount,
+            activeUsersWithProfilePhotos
+        },
+        lastProfilePhotoUpdatedAt,
+        productionChecklist = new[]
+        {
+            "Confirm database backup includes public.app_users.",
+            "Confirm profile_photo_data_url and profile_photo_updated_at exist before go-live.",
+            "Restore validation must confirm the columns exist after restore.",
+            "Do not store profile photos in frontend dist, tmp, browser-only storage, or deployment folders."
+        }
+    });
+}).WithName("ProjectPulse043CProfilePreferencesBackupReadiness");
+/* 043C_PROFILE_PREFERENCES_BACKUP_READINESS_API_END */
+
+
 app.MapGet("/api/security/me", async (HttpContext httpContext) =>
 {
     var config = DatabaseConfig.FromEnvironment();
