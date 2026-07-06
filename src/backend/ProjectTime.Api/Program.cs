@@ -11535,8 +11535,12 @@ app.MapPost("/api/project-closeout/email/send", async (Microsoft.AspNetCore.Http
         var subject = ProjectPulse041AGetJsonString(root, "subject");
         var body = ProjectPulse041AGetJsonString(root, "body");
 
+        /* 041K_CLOSEOUT_EMAIL_CC_SUPPORT_START */
         var allRecipients = ProjectPulse041AExtractRecipients(root);
+        var allCcRecipients = ProjectPulse041AExtractCcRecipients(root);
+
         var recipientMap = new System.Collections.Generic.Dictionary<string, (string Role, string Name, string Email)>(System.StringComparer.OrdinalIgnoreCase);
+        var ccRecipientMap = new System.Collections.Generic.Dictionary<string, (string Role, string Name, string Email)>(System.StringComparer.OrdinalIgnoreCase);
 
         foreach (var recipient in allRecipients)
         {
@@ -11548,7 +11552,20 @@ app.MapPost("/api/project-closeout/email/send", async (Microsoft.AspNetCore.Http
             }
         }
 
+        foreach (var recipient in allCcRecipients)
+        {
+            if (!ProjectPulse041AIsEmail(recipient.Email)) continue;
+            if (recipientMap.ContainsKey(recipient.Email)) continue;
+
+            if (!ccRecipientMap.ContainsKey(recipient.Email))
+            {
+                ccRecipientMap[recipient.Email] = recipient;
+            }
+        }
+
         var emailRecipients = new System.Collections.Generic.List<(string Role, string Name, string Email)>(recipientMap.Values);
+        var ccEmailRecipients = new System.Collections.Generic.List<(string Role, string Name, string Email)>(ccRecipientMap.Values);
+        /* 041K_CLOSEOUT_EMAIL_CC_SUPPORT_END */
 
         if (string.IsNullOrWhiteSpace(projectCode) || string.IsNullOrWhiteSpace(customerName))
         {
@@ -11571,7 +11588,7 @@ app.MapPost("/api/project-closeout/email/send", async (Microsoft.AspNetCore.Http
                 statusCode: 400);
         }
 
-        var sendResult = await ProjectPulse041ASendCloseoutEmailAsync(emailRecipients, subject, body, projectCode, customerName);
+        var sendResult = await ProjectPulse041ASendCloseoutEmailAsync(emailRecipients, ccEmailRecipients, subject, body, projectCode, customerName);
 
         var dataRoot = System.Environment.GetEnvironmentVariable("PROJECTPULSE_DATA_DIR");
         if (string.IsNullOrWhiteSpace(dataRoot))
@@ -11597,7 +11614,14 @@ app.MapPost("/api/project-closeout/email/send", async (Microsoft.AspNetCore.Http
             triggeredBy,
             generatedAt = System.DateTimeOffset.UtcNow,
             recipientCount = emailRecipients.Count,
+            ccRecipientCount = ccEmailRecipients.Count,
             recipients = emailRecipients.Select(recipient => new
+            {
+                recipient.Role,
+                recipient.Name,
+                recipient.Email
+            }).ToList(),
+            ccRecipients = ccEmailRecipients.Select(recipient => new
             {
                 recipient.Role,
                 recipient.Name,
@@ -11623,7 +11647,8 @@ app.MapPost("/api/project-closeout/email/send", async (Microsoft.AspNetCore.Http
                 message = sendResult.Detail,
                 auditPath,
                 outboxPath = sendResult.OutboxPath,
-                recipientCount = emailRecipients.Count
+                recipientCount = emailRecipients.Count,
+                ccRecipientCount = ccEmailRecipients.Count
             },
             statusCode: sendResult.Sent ? 200 : 202);
     }
@@ -26310,20 +26335,34 @@ static string ProjectPulse041AGetJsonString(System.Text.Json.JsonElement root, s
 
 static System.Collections.Generic.List<(string Role, string Name, string Email)> ProjectPulse041AExtractRecipients(System.Text.Json.JsonElement root)
 {
+    return ProjectPulse041AExtractRecipientArray(root, "recipients", "Project Team");
+}
+
+static System.Collections.Generic.List<(string Role, string Name, string Email)> ProjectPulse041AExtractCcRecipients(System.Text.Json.JsonElement root)
+{
+    return ProjectPulse041AExtractRecipientArray(root, "ccRecipients", "CC");
+}
+
+static System.Collections.Generic.List<(string Role, string Name, string Email)> ProjectPulse041AExtractRecipientArray(System.Text.Json.JsonElement root, string propertyName, string defaultRole)
+{
     var recipients = new System.Collections.Generic.List<(string Role, string Name, string Email)>();
 
     if (root.ValueKind != System.Text.Json.JsonValueKind.Object) return recipients;
-    if (!root.TryGetProperty("recipients", out var recipientsElement)) return recipients;
+    if (!root.TryGetProperty(propertyName, out var recipientsElement)) return recipients;
     if (recipientsElement.ValueKind != System.Text.Json.JsonValueKind.Array) return recipients;
 
     foreach (var item in recipientsElement.EnumerateArray())
     {
         if (item.ValueKind != System.Text.Json.JsonValueKind.Object) continue;
 
+        var role = ProjectPulse041AGetJsonString(item, "role");
+        var name = ProjectPulse041AGetJsonString(item, "name");
+        var email = ProjectPulse041AGetJsonString(item, "email");
+
         recipients.Add((
-            Role: ProjectPulse041AGetJsonString(item, "role"),
-            Name: ProjectPulse041AGetJsonString(item, "name"),
-            Email: ProjectPulse041AGetJsonString(item, "email")));
+            Role: string.IsNullOrWhiteSpace(role) ? defaultRole : role,
+            Name: string.IsNullOrWhiteSpace(name) ? email : name,
+            Email: email));
     }
 
     return recipients;
@@ -26349,6 +26388,7 @@ static string ProjectPulse041ASafeFilePart(string value)
 /* 041B_BREVO_API_HELPERS_START */
 static async System.Threading.Tasks.Task<(bool Sent, string Status, string Detail, string? OutboxPath)> ProjectPulse041BSendBrevoApiEmailAsync(
     System.Collections.Generic.List<(string Role, string Name, string Email)> recipients,
+    System.Collections.Generic.List<(string Role, string Name, string Email)> ccRecipients,
     string subject,
     string body,
     string projectCode,
@@ -26385,6 +26425,15 @@ static async System.Threading.Tasks.Task<(bool Sent, string Status, string Detai
                 name = string.IsNullOrWhiteSpace(recipient.Name) ? recipient.Email : recipient.Name
             })
             .ToList(),
+        cc = ccRecipients
+            .Where(recipient => ProjectPulse041AIsEmail(recipient.Email))
+            .Select(recipient => new
+            {
+                email = recipient.Email,
+                name = string.IsNullOrWhiteSpace(recipient.Name) ? recipient.Email : recipient.Name
+            })
+            .ToArray(),
+
         subject,
         textContent = body
     };
@@ -26413,12 +26462,12 @@ static async System.Threading.Tasks.Task<(bool Sent, string Status, string Detai
             return (true, "sent_brevo_api", $"Automatic closeout email sent through Brevo API. Response: {responseText}", null);
         }
 
-        var fallback = await ProjectPulse041AWriteOutboxEmailAsync(recipients, subject, body, projectCode, "brevo-api-failed");
+        var fallback = await ProjectPulse041AWriteOutboxEmailAsync(recipients, ccRecipients, subject, body, projectCode, "brevo-api-failed");
         return (false, "queued_brevo_api_failed", $"Brevo API returned HTTP {(int)response.StatusCode}: {responseText}", fallback);
     }
     catch (System.Exception ex)
     {
-        var fallback = await ProjectPulse041AWriteOutboxEmailAsync(recipients, subject, body, projectCode, "brevo-api-exception");
+        var fallback = await ProjectPulse041AWriteOutboxEmailAsync(recipients, ccRecipients, subject, body, projectCode, "brevo-api-exception");
         return (false, "queued_brevo_api_exception", $"Brevo API delivery failed and the message was written to outbox: {ex.Message}", fallback);
     }
 }
@@ -26426,6 +26475,7 @@ static async System.Threading.Tasks.Task<(bool Sent, string Status, string Detai
 
 static async System.Threading.Tasks.Task<(bool Sent, string Status, string Detail, string? OutboxPath)> ProjectPulse041ASendCloseoutEmailAsync(
     System.Collections.Generic.List<(string Role, string Name, string Email)> recipients,
+    System.Collections.Generic.List<(string Role, string Name, string Email)> ccRecipients,
     string subject,
     string body,
     string projectCode,
@@ -26437,7 +26487,7 @@ static async System.Threading.Tasks.Task<(bool Sent, string Status, string Detai
 
     if (!string.IsNullOrWhiteSpace(brevoApiKey))
     {
-        return await ProjectPulse041BSendBrevoApiEmailAsync(recipients, subject, body, projectCode, customerName, brevoApiKey);
+        return await ProjectPulse041BSendBrevoApiEmailAsync(recipients, ccRecipients, subject, body, projectCode, customerName, brevoApiKey);
     }
     /* 041B_BREVO_API_EMAIL_DELIVERY_END */
 
@@ -26476,6 +26526,11 @@ static async System.Threading.Tasks.Task<(bool Sent, string Status, string Detai
             message.To.Add(new System.Net.Mail.MailAddress(recipient.Email, string.IsNullOrWhiteSpace(recipient.Name) ? recipient.Email : recipient.Name));
         }
 
+        foreach (var recipient in ccRecipients)
+        {
+            message.CC.Add(new System.Net.Mail.MailAddress(recipient.Email, string.IsNullOrWhiteSpace(recipient.Name) ? recipient.Email : recipient.Name));
+        }
+
         using var smtp = new System.Net.Mail.SmtpClient(smtpHost, smtpPort)
         {
             EnableSsl = string.Equals(smtpSslText, "true", System.StringComparison.OrdinalIgnoreCase)
@@ -26495,7 +26550,7 @@ static async System.Threading.Tasks.Task<(bool Sent, string Status, string Detai
         }
         catch (System.Exception ex)
         {
-            var fallback = await ProjectPulse041AWriteOutboxEmailAsync(recipients, subject, body, projectCode, "smtp-failed");
+            var fallback = await ProjectPulse041AWriteOutboxEmailAsync(recipients, ccRecipients, subject, body, projectCode, "smtp-failed");
             return (false, "queued_smtp_failed", $"SMTP send failed and the message was written to outbox: {ex.Message}", fallback);
         }
     }
@@ -26504,7 +26559,7 @@ static async System.Threading.Tasks.Task<(bool Sent, string Status, string Detai
 
     if (System.IO.File.Exists(sendmailPath))
     {
-        var rawEmail = ProjectPulse041ABuildRawEmail(recipients, smtpFrom, subject, body);
+        var rawEmail = ProjectPulse041ABuildRawEmail(recipients, ccRecipients, smtpFrom, subject, body);
 
         try
         {
@@ -26531,23 +26586,24 @@ static async System.Threading.Tasks.Task<(bool Sent, string Status, string Detai
                     return (true, "sent", "Automatic closeout email sent through local sendmail.", null);
                 }
 
-                var fallback = await ProjectPulse041AWriteOutboxEmailAsync(recipients, subject, body, projectCode, "sendmail-failed");
+                var fallback = await ProjectPulse041AWriteOutboxEmailAsync(recipients, ccRecipients, subject, body, projectCode, "sendmail-failed");
                 return (false, "queued_sendmail_failed", $"sendmail exited with code {process.ExitCode}: {error}", fallback);
             }
         }
         catch (System.Exception ex)
         {
-            var fallback = await ProjectPulse041AWriteOutboxEmailAsync(recipients, subject, body, projectCode, "sendmail-exception");
+            var fallback = await ProjectPulse041AWriteOutboxEmailAsync(recipients, ccRecipients, subject, body, projectCode, "sendmail-exception");
             return (false, "queued_sendmail_exception", $"sendmail failed and the message was written to outbox: {ex.Message}", fallback);
         }
     }
 
-    var outboxPath = await ProjectPulse041AWriteOutboxEmailAsync(recipients, subject, body, projectCode, "missing-mailer");
+    var outboxPath = await ProjectPulse041AWriteOutboxEmailAsync(recipients, ccRecipients, subject, body, projectCode, "missing-mailer");
     return (false, "queued_not_sent_missing_mailer", "No SMTP host or sendmail binary is configured. Message was written to the closeout email outbox.", outboxPath);
 }
 
 static string ProjectPulse041ABuildRawEmail(
     System.Collections.Generic.List<(string Role, string Name, string Email)> recipients,
+    System.Collections.Generic.List<(string Role, string Name, string Email)> ccRecipients,
     string from,
     string subject,
     string body)
@@ -26556,6 +26612,12 @@ static string ProjectPulse041ABuildRawEmail(
 
     builder.AppendLine($"From: {from}");
     builder.AppendLine($"To: {string.Join(", ", recipients.Select(recipient => recipient.Email))}");
+
+    if (ccRecipients.Count > 0)
+    {
+        builder.AppendLine($"Cc: {string.Join(", ", ccRecipients.Select(recipient => recipient.Email))}");
+    }
+
     builder.AppendLine($"Subject: {subject}");
     builder.AppendLine("MIME-Version: 1.0");
     builder.AppendLine("Content-Type: text/plain; charset=utf-8");
@@ -26567,6 +26629,7 @@ static string ProjectPulse041ABuildRawEmail(
 
 static async System.Threading.Tasks.Task<string> ProjectPulse041AWriteOutboxEmailAsync(
     System.Collections.Generic.List<(string Role, string Name, string Email)> recipients,
+    System.Collections.Generic.List<(string Role, string Name, string Email)> ccRecipients,
     string subject,
     string body,
     string projectCode,
@@ -26588,7 +26651,7 @@ static async System.Threading.Tasks.Task<string> ProjectPulse041AWriteOutboxEmai
 
     await System.IO.File.WriteAllTextAsync(
         outboxPath,
-        ProjectPulse041ABuildRawEmail(recipients, "project-health-dashboard@localhost", subject, body));
+        ProjectPulse041ABuildRawEmail(recipients, ccRecipients, "project-health-dashboard@localhost", subject, body));
 
     return outboxPath;
 }

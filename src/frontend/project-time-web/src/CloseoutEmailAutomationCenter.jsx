@@ -433,6 +433,66 @@ function enrichRecipientsWithUserDirectory(recipients, userDirectory) {
 }
 /* 041H_CLOSEOUT_USER_DIRECTORY_EMAIL_RESOLUTION_END */
 
+/* 041K_CLOSEOUT_EDITABLE_RECIPIENTS_CC_START */
+function closeoutRecipientOverrideKey(recipient) {
+  const role = normalizeDirectoryKey(recipient.role || 'Project Team');
+  const name = normalizeDirectoryKey(recipient.name);
+  const email = normalizeDirectoryKey(recipient.email);
+
+  return `${role}|${name || email || 'recipient'}`;
+}
+
+function applyCloseoutRecipientOverrides(recipients, overrides) {
+  return uniqueRecipients(
+    recipients.map((recipient) => {
+      const key = closeoutRecipientOverrideKey(recipient);
+      const overrideEmail = normalizeText(overrides[key]);
+
+      if (!overrideEmail) {
+        return recipient;
+      }
+
+      return {
+        ...recipient,
+        email: overrideEmail,
+        manuallyEdited: true
+      };
+    })
+  );
+}
+
+function parseCloseoutCcRecipients(value) {
+  return uniqueRecipients(
+    String(value ?? '')
+      .split(/[\n,;]+/)
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+      .map((entry) => {
+        const bracketMatch = entry.match(/^(.*?)<([^>]+)>$/);
+        const email = bracketMatch ? bracketMatch[2].trim() : entry.trim();
+        const name = bracketMatch ? bracketMatch[1].trim() : '';
+
+        return {
+          role: 'CC',
+          name: normalizeText(name || email),
+          email: normalizeText(email)
+        };
+      })
+      .filter((recipient) => recipient.email)
+  );
+}
+
+function closeoutRecipientNeedsReview(recipient) {
+  const email = normalizeText(recipient.email);
+
+  if (!email) return true;
+  if (!isEmail(email)) return true;
+  if (email.toLowerCase().endsWith('.local')) return true;
+
+  return false;
+}
+/* 041K_CLOSEOUT_EDITABLE_RECIPIENTS_CC_END */
+
 function extractProjectTeam(project, payloads) {
   const recipients = [
     recipientFromFields(project, 'Project Manager', ['projectManagerName'], ['projectManagerEmail']),
@@ -534,7 +594,7 @@ function createMailtoUrl(recipients, subject, body) {
 
 function buildAuditCsv(entries) {
   const rows = [
-    ['Timestamp', 'Status', 'Project Code', 'Customer', 'PM', 'Recipient Count', 'Triggered By', 'Subject'],
+    ['Timestamp', 'Status', 'Project Code', 'Customer', 'PM', 'Recipient Count', 'CC Count', 'Triggered By', 'Subject'],
     ...entries.map((entry) => [
       entry.generatedAt,
       entry.status,
@@ -542,6 +602,7 @@ function buildAuditCsv(entries) {
       entry.customerName,
       entry.projectManagerName,
       entry.recipientCount,
+      entry.ccRecipientCount ?? 0,
       entry.triggeredBy,
       entry.subject
     ])
@@ -550,9 +611,18 @@ function buildAuditCsv(entries) {
   return rows.map((row) => row.map(csvEscape).join(',')).join('\n');
 }
 
+
+/* 041K_CLOSEOUT_EDITABLE_RECIPIENTS_CC_STYLE_NOTE
+   Styles are class-based and intentionally rely on the existing closeout-email card theme.
+   If a stricter visual layout is needed later, these classes can be moved into the closeout stylesheet:
+   closeout-email-inline-editor, closeout-email-review-text, closeout-email-cc-editor, closeout-email-cc-preview.
+*/
+
 export default function CloseoutEmailAutomationCenter() {
   const [payload, setPayload] = useState({ loading: true, error: null, data: null });
   const [userDirectoryPayload, setUserDirectoryPayload] = useState({ loading: true, users: [], error: null });
+  const [recipientEmailOverrides, setRecipientEmailOverrides] = useState({});
+  const [ccDraft, setCcDraft] = useState('');
   const [selectedProjectKey, setSelectedProjectKey] = useState('');
   const [status, setStatus] = useState('');
   const [auditEntries, setAuditEntries] = useState(() => readAuditLog());
@@ -658,19 +728,26 @@ export default function CloseoutEmailAutomationCenter() {
 
   const userDirectory = useMemo(() => buildUserDirectory(userDirectoryPayload.users), [userDirectoryPayload.users]);
 
-  const recipients = useMemo(() => {
+  const detectedRecipients = useMemo(() => {
     if (!payload.data || !selectedProject) return [];
 
-    const detectedRecipients = extractProjectTeam(selectedProject, [
+    const rawRecipients = extractProjectTeam(selectedProject, [
       payload.data.workspace,
       payload.data.intake,
       payload.data.customers
     ]);
 
-    return enrichRecipientsWithUserDirectory(detectedRecipients, userDirectory);
+    return enrichRecipientsWithUserDirectory(rawRecipients, userDirectory);
   }, [payload.data, selectedProject, userDirectory]);
 
+  const recipients = useMemo(() => {
+    return applyCloseoutRecipientOverrides(detectedRecipients, recipientEmailOverrides);
+  }, [detectedRecipients, recipientEmailOverrides]);
+
+  const ccRecipients = useMemo(() => parseCloseoutCcRecipients(ccDraft), [ccDraft]);
+
   const emailReadyRecipients = useMemo(() => recipients.filter((recipient) => isEmail(recipient.email)), [recipients]);
+  const ccEmailReadyRecipients = useMemo(() => ccRecipients.filter((recipient) => isEmail(recipient.email)), [ccRecipients]);
 
   const auditFacts = useMemo(() => {
     return {
@@ -746,6 +823,7 @@ export default function CloseoutEmailAutomationCenter() {
         projectManagerName,
         projectManagerEmail: pmRecipient?.email || selectedProject.projectManagerEmail || '',
         recipients,
+        ccRecipients,
         subject: emailDraft.subject,
         body: emailDraft.body,
         triggeredBy: getCurrentSessionUser()
@@ -759,7 +837,9 @@ export default function CloseoutEmailAutomationCenter() {
         customerName: selectedProject.customerName,
         projectManagerName,
         recipientCount: Number(response.recipientCount ?? emailReadyRecipients.length),
+        ccRecipientCount: Number(response.ccRecipientCount ?? ccEmailReadyRecipients.length),
         recipients,
+        ccRecipients,
         subject: emailDraft.subject,
         body: emailDraft.body,
         triggeredBy: getCurrentSessionUser(),
@@ -775,7 +855,7 @@ export default function CloseoutEmailAutomationCenter() {
       setAuditEntries(nextEntries);
 
       if (response.sent) {
-        setStatus(`Automatic closeout email sent to ${entry.recipientCount} recipient(s). ${projectManagerName} was reminded to schedule lessons learned with ${selectedProject.customerName}.`);
+        setStatus(`Automatic closeout email sent to ${entry.recipientCount} recipient(s) with ${entry.ccRecipientCount || 0} CC recipient(s). ${projectManagerName} was reminded to schedule lessons learned with ${selectedProject.customerName}.`);
       } else {
         setStatus(`Closeout email was not sent by SMTP/sendmail yet. Backend status: ${response.status}. Audit/outbox evidence was recorded.`);
       }
@@ -816,7 +896,7 @@ export default function CloseoutEmailAutomationCenter() {
         </div>
         <div className="closeout-email-hero-metric">
           <span>Email-ready recipients</span>
-          <strong>{emailReadyRecipients.length}</strong>
+          <strong>{emailReadyRecipients.length}{ccEmailReadyRecipients.length ? ` + ${ccEmailReadyRecipients.length} CC` : ''}</strong>
         </div>
       </section>
 
@@ -855,7 +935,7 @@ export default function CloseoutEmailAutomationCenter() {
           <button type="button" className="secondary-action" onClick={loadData} disabled={payload.loading}>
             {payload.loading ? 'Refreshing...' : 'Refresh data'}
           </button>
-          <button type="button" className="primary-action" onClick={sendAutomaticCloseoutEmail} disabled={!selectedProject || emailReadyRecipients.length === 0}>
+          <button type="button" className="primary-action" onClick={sendAutomaticCloseoutEmail} disabled={!selectedProject || emailReadyRecipients.length === 0 || recipients.some(closeoutRecipientNeedsReview)}>
             PM closeout complete - send automatic email
           </button>
         </div>
@@ -913,14 +993,52 @@ export default function CloseoutEmailAutomationCenter() {
                 {recipients.length === 0 ? (
                   <div className="closeout-email-empty">No recipients were detected for this project.</div>
                 ) : (
-                  recipients.map((recipient) => (
-                    <div className={isEmail(recipient.email) ? 'closeout-email-recipient ready' : 'closeout-email-recipient review'} key={`${recipient.role}-${recipient.email || recipient.name}`}>
-                      <strong>{recipient.role}</strong>
-                      <span>{recipient.name || 'Name not recorded'}</span>
-                      <small>{recipient.email || 'Email not recorded'}</small>
-                    </div>
-                  ))
+                  recipients.map((recipient) => {
+                    const overrideKey = closeoutRecipientOverrideKey(recipient);
+                    const needsReview = closeoutRecipientNeedsReview(recipient);
+
+                    return (
+                      <div className={needsReview ? 'closeout-email-recipient review' : 'closeout-email-recipient ready'} key={`${recipient.role}-${recipient.email || recipient.name}`}>
+                        <strong>{recipient.role}</strong>
+                        <span>{recipient.name || 'Name not recorded'}</span>
+                        <label className="closeout-email-inline-editor">
+                          <small>Email</small>
+                          <input
+                            value={recipient.email || ''}
+                            placeholder="name@example.com"
+                            onChange={(event) => setRecipientEmailOverrides((current) => ({
+                              ...current,
+                              [overrideKey]: event.target.value
+                            }))}
+                          />
+                        </label>
+                        {needsReview ? <small className="closeout-email-review-text">Review or replace this email before sending.</small> : null}
+                      </div>
+                    );
+                  })
                 )}
+              </div>
+
+              <div className="closeout-email-cc-editor">
+                <label>
+                  <strong>Additional CC recipients</strong>
+                  <span>Enter comma, semicolon, or line-separated emails. You can use Name &lt;email@domain.com&gt; format.</span>
+                  <textarea
+                    value={ccDraft}
+                    placeholder="example.person@company.com\nAnother Person <another.person@company.com>"
+                    onChange={(event) => setCcDraft(event.target.value)}
+                    rows={4}
+                  />
+                </label>
+
+                {ccRecipients.length ? (
+                  <div className="closeout-email-cc-preview">
+                    <strong>{ccEmailReadyRecipients.length} CC email-ready</strong>
+                    {ccRecipients.map((recipient) => (
+                      <small key={`${recipient.name}-${recipient.email}`}>{recipient.name} · {recipient.email}</small>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             </article>
 
