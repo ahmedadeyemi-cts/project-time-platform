@@ -95,20 +95,36 @@ app.Use(async (httpContext, next) =>
 
     if (isApiRoute && !isExempt && isProtectedCriticalRoute && isUnsafeApiMethod)
     {
+        /* 051E_WRITE_GUARD_DIRECT_SESSION_VALIDATION_START */
         var sessionUserId = GetProjectPulseSessionUserId(httpContext);
 
         if (sessionUserId is null)
         {
-            httpContext.Response.StatusCode = StatusCodes.Status401Unauthorized;
-            httpContext.Response.ContentType = "application/json";
-            await httpContext.Response.WriteAsJsonAsync(new
+            var validation = await ValidateProjectPulseSessionAsync(httpContext);
+
+            if (!validation.IsValid || validation.UserId is null)
             {
-                status = "session_required",
-                message = "Missing session token.",
-                guard = "050_critical_write_route_session_required"
-            });
-            return;
+                httpContext.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                httpContext.Response.ContentType = "application/json";
+                await httpContext.Response.WriteAsJsonAsync(new
+                {
+                    status = "session_required",
+                    message = validation.Message ?? "Missing session token.",
+                    guard = "051E_critical_write_route_session_validation_failed"
+                });
+                return;
+            }
+
+            httpContext.Items["ProjectPulseSessionUserId"] = validation.UserId.Value;
+            httpContext.Items["ProjectPulseSessionEmail"] = validation.Email ?? string.Empty;
+            httpContext.Items["ProjectPulseSessionProvider"] = validation.ProviderCode ?? string.Empty;
+
+            if (validation.ExpiresAt is not null)
+            {
+                httpContext.Items["ProjectPulseSessionExpiresAt"] = validation.ExpiresAt.Value;
+            }
         }
+        /* 051E_WRITE_GUARD_DIRECT_SESSION_VALIDATION_END */
     }
 
     await next();
