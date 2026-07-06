@@ -111,6 +111,89 @@ static string ProjectPulseSecureToken(int byteLength = 32)
     return ProjectPulseBase64UrlEncode(RandomNumberGenerator.GetBytes(byteLength));
 }
 
+
+/* 043B_PROFILE_IMAGE_PERSISTENCE_HELPERS_START */
+static async Task ProjectPulse043BEnsureProfileColumnsAsync(NpgsqlConnection connection)
+{
+    await using var command = new NpgsqlCommand("""
+        ALTER TABLE app_users
+        ADD COLUMN IF NOT EXISTS profile_photo_data_url TEXT;
+
+        ALTER TABLE app_users
+        ADD COLUMN IF NOT EXISTS profile_photo_updated_at TIMESTAMPTZ;
+        """, connection);
+
+    await command.ExecuteNonQueryAsync();
+}
+
+static string? ProjectPulse043BJsonString(System.Text.Json.JsonElement element, string propertyName)
+{
+    if (element.ValueKind != System.Text.Json.JsonValueKind.Object) return null;
+
+    return element.TryGetProperty(propertyName, out var value) && value.ValueKind == System.Text.Json.JsonValueKind.String
+        ? value.GetString()
+        : null;
+}
+
+static (bool Valid, string Message) ProjectPulse043BValidateProfilePhotoDataUrl(string? value)
+{
+    if (string.IsNullOrWhiteSpace(value))
+    {
+        return (true, "Profile picture removal is valid.");
+    }
+
+    if (!value.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase))
+    {
+        return (false, "Profile picture must be uploaded as an image data URL.");
+    }
+
+    var commaIndex = value.IndexOf(',');
+
+    if (commaIndex <= 0)
+    {
+        return (false, "Profile picture data URL is missing the base64 payload.");
+    }
+
+    var metadata = value[..commaIndex].ToLowerInvariant();
+    var base64Payload = value[(commaIndex + 1)..];
+
+    var allowedPrefixes = new[]
+    {
+        "data:image/png;base64",
+        "data:image/jpeg;base64",
+        "data:image/jpg;base64",
+        "data:image/webp;base64",
+        "data:image/gif;base64"
+    };
+
+    if (!allowedPrefixes.Any(prefix => metadata == prefix))
+    {
+        return (false, "Profile picture must be PNG, JPG, JPEG, WEBP, or GIF.");
+    }
+
+    try
+    {
+        var bytes = Convert.FromBase64String(base64Payload);
+
+        if (bytes.Length > 2 * 1024 * 1024)
+        {
+            return (false, "Profile picture must be smaller than 2 MB.");
+        }
+
+        if (bytes.Length == 0)
+        {
+            return (false, "Profile picture payload is empty.");
+        }
+    }
+    catch
+    {
+        return (false, "Profile picture payload is not valid base64.");
+    }
+
+    return (true, "Profile picture is valid.");
+}
+/* 043B_PROFILE_IMAGE_PERSISTENCE_HELPERS_END */
+
 static string? ProjectPulseJsonString(JsonElement element, string propertyName)
 {
     if (!element.TryGetProperty(propertyName, out var property))
@@ -7711,6 +7794,125 @@ app.MapPost("/api/holidays/import-text", async (HolidayCsvImportRequest request,
     }
 });
 
+
+
+/* 043B_PROFILE_IMAGE_PERSISTENCE_API_START */
+app.MapGet("/api/profile/preferences", async (HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var config = DatabaseConfig.FromEnvironment();
+    var validation = ValidateConfig(config);
+    if (validation is not null) return validation;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    await ProjectPulse043BEnsureProfileColumnsAsync(connection);
+
+    await using var command = new NpgsqlCommand("""
+        SELECT
+            COALESCE(profile_photo_data_url, '') AS profile_photo_data_url,
+            profile_photo_updated_at
+        FROM app_users
+        WHERE user_id = @user_id
+          AND is_active = TRUE;
+        """, connection);
+
+    command.Parameters.AddWithValue("user_id", sessionUserId.Value);
+
+    await using var reader = await command.ExecuteReaderAsync();
+
+    if (!await reader.ReadAsync())
+    {
+        return Results.NotFound(new { status = "not_found", message = "Signed-in user profile was not found." });
+    }
+
+    var profilePhotoDataUrl = reader.GetString(0);
+
+    return Results.Ok(new
+    {
+        status = "ok",
+        profilePhotoDataUrl,
+        hasPersistedProfilePhoto = !string.IsNullOrWhiteSpace(profilePhotoDataUrl),
+        profilePhotoUpdatedAt = reader.IsDBNull(1) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(1),
+        storage = "database_app_users_profile_photo_data_url"
+    });
+}).WithName("ProjectPulse043BGetProfilePreferences");
+
+app.MapPost("/api/profile/preferences", async (System.Text.Json.JsonElement payload, HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var profilePhotoDataUrl = ProjectPulse043BJsonString(payload, "profilePhotoDataUrl") ?? "";
+    profilePhotoDataUrl = profilePhotoDataUrl.Trim();
+
+    var validationResult = ProjectPulse043BValidateProfilePhotoDataUrl(profilePhotoDataUrl);
+
+    if (!validationResult.Valid)
+    {
+        return Results.BadRequest(new { status = "invalid_profile_photo", message = validationResult.Message });
+    }
+
+    var config = DatabaseConfig.FromEnvironment();
+    var validation = ValidateConfig(config);
+    if (validation is not null) return validation;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    await ProjectPulse043BEnsureProfileColumnsAsync(connection);
+
+    await using var command = new NpgsqlCommand("""
+        UPDATE app_users
+        SET profile_photo_data_url = NULLIF(@profile_photo_data_url, ''),
+            profile_photo_updated_at = CASE
+                WHEN NULLIF(@profile_photo_data_url, '') IS NULL THEN NULL
+                ELSE NOW()
+            END,
+            updated_at = NOW()
+        WHERE user_id = @user_id
+          AND is_active = TRUE
+        RETURNING
+            COALESCE(profile_photo_data_url, '') AS profile_photo_data_url,
+            profile_photo_updated_at;
+        """, connection);
+
+    command.Parameters.AddWithValue("user_id", sessionUserId.Value);
+    command.Parameters.AddWithValue("profile_photo_data_url", profilePhotoDataUrl);
+
+    await using var reader = await command.ExecuteReaderAsync();
+
+    if (!await reader.ReadAsync())
+    {
+        return Results.NotFound(new { status = "not_found", message = "Signed-in user profile was not found." });
+    }
+
+    var savedProfilePhotoDataUrl = reader.GetString(0);
+
+    return Results.Ok(new
+    {
+        status = string.IsNullOrWhiteSpace(savedProfilePhotoDataUrl) ? "profile_photo_removed" : "profile_photo_saved",
+        message = string.IsNullOrWhiteSpace(savedProfilePhotoDataUrl)
+            ? "Profile picture removed from persistent profile storage."
+            : "Profile picture saved to persistent profile storage.",
+        profilePhotoDataUrl = savedProfilePhotoDataUrl,
+        hasPersistedProfilePhoto = !string.IsNullOrWhiteSpace(savedProfilePhotoDataUrl),
+        profilePhotoUpdatedAt = reader.IsDBNull(1) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(1),
+        storage = "database_app_users_profile_photo_data_url"
+    });
+}).WithName("ProjectPulse043BSaveProfilePreferences");
+/* 043B_PROFILE_IMAGE_PERSISTENCE_API_END */
 
 app.MapGet("/api/security/me", async (HttpContext httpContext) =>
 {

@@ -1904,6 +1904,53 @@ function clearAuthSession() {
 
 
 
+
+/* 043B_PROFILE_IMAGE_PERSISTENCE_FRONTEND_START */
+function isProjectPulseProfilePhotoDataUrl(value) {
+  return String(value ?? '').startsWith('data:image/');
+}
+
+async function loadPersistentProfilePreferences(session) {
+  if (!session?.sessionToken) return null;
+
+  const response = await fetch('/api/profile/preferences', {
+    headers: getProjectPulseAuthHeaders(session)
+  });
+
+  if (!response.ok) {
+    throw new Error(`Profile preference load returned HTTP ${response.status}`);
+  }
+
+  return response.json();
+}
+
+async function savePersistentProfilePreferences(session, preferences) {
+  if (!session?.sessionToken) return preferences;
+
+  const response = await fetch('/api/profile/preferences', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...getProjectPulseAuthHeaders(session)
+    },
+    body: JSON.stringify({
+      profilePhotoDataUrl: preferences?.profilePhotoDataUrl ?? ''
+    })
+  });
+
+  const result = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(result.message || `Profile preference save returned HTTP ${response.status}`);
+  }
+
+  return {
+    ...preferences,
+    profilePhotoDataUrl: result.profilePhotoDataUrl ?? ''
+  };
+}
+/* 043B_PROFILE_IMAGE_PERSISTENCE_FRONTEND_END */
+
 function getPreferenceStorageKey(session) {
   const username = session?.username || 'anonymous';
   return `projectPulseUserPreferences:${username.toLowerCase()}`;
@@ -4030,6 +4077,44 @@ export default function App() {
   }, [authSession]);
 
 
+  /* 043B_PROFILE_IMAGE_PERSISTENCE_LOAD_EFFECT_START */
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadServerProfilePreferences() {
+      if (!authSession?.sessionToken) return;
+
+      try {
+        const serverPreferences = await loadPersistentProfilePreferences(authSession);
+        if (cancelled || !serverPreferences) return;
+
+        const serverProfilePhotoDataUrl = serverPreferences.profilePhotoDataUrl ?? '';
+
+        if (serverProfilePhotoDataUrl) {
+          setUserPreferences((current) => ({
+            ...current,
+            profilePhotoDataUrl: serverProfilePhotoDataUrl
+          }));
+
+          setProfileDraft((current) => ({
+            ...current,
+            profilePhotoDataUrl: serverProfilePhotoDataUrl
+          }));
+        }
+      } catch {
+        // Keep local preferences available if backend preference load is unavailable.
+      }
+    }
+
+    loadServerProfilePreferences();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authSession?.sessionToken, authSession?.username]);
+  /* 043B_PROFILE_IMAGE_PERSISTENCE_LOAD_EFFECT_END */
+
+
   useEffect(() => {
     if (!isProfileMenuOpen) return;
 
@@ -4100,22 +4185,30 @@ export default function App() {
     setProfileSettingsStatus('');
   }
 
-  function saveProfileSettings(event) {
+  async function saveProfileSettings(event) {
     event.preventDefault();
 
-    const savedPreferences = {
-      ...profileDraft,
-      theme: profileDraft.theme === 'dark' ? 'dark' : 'light'
-    };
+    setProfileSettingsStatus('Saving profile settings...');
 
     try {
+      const persistentPreferences = await savePersistentProfilePreferences(authSession, {
+        ...profileDraft,
+        theme: profileDraft.theme === 'dark' ? 'dark' : 'light'
+      });
+
+      const savedPreferences = {
+        ...persistentPreferences,
+        theme: persistentPreferences.theme === 'dark' ? 'dark' : 'light'
+      };
+
       saveStoredUserPreferences(authSession, savedPreferences);
       setUserPreferences(savedPreferences);
+      setProfileDraft(savedPreferences);
       setTheme(savedPreferences.theme);
-      setProfileSettingsStatus('Profile settings saved.');
+      setProfileSettingsStatus('Profile settings saved to persistent profile storage.');
       setIsSettingsOpen(false);
-    } catch {
-      setProfileSettingsStatus('Unable to save profile settings. Try using a smaller profile picture.');
+    } catch (error) {
+      setProfileSettingsStatus(error instanceof Error ? error.message : 'Unable to save profile settings. Try using a smaller profile picture.');
     }
   }
 
@@ -5731,7 +5824,7 @@ export default function App() {
                         accept="image/*"
                         onChange={handleProfilePhotoUpload}
                       />
-                      <small>Use a small square image. Current limit is 2 MB.</small>
+                      <small>Use a small square image. Current limit is 2 MB. Pictures are saved to persistent profile storage after you select Save settings.</small>
                       <button type="button" className="secondary-action" onClick={removeProfilePhoto}>
                         Remove picture
                       </button>
