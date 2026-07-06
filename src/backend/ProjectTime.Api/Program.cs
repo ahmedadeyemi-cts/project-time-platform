@@ -86,7 +86,14 @@ app.Use(async (httpContext, next) =>
         normalizedPath.Equals(prefix, StringComparison.OrdinalIgnoreCase)
         || normalizedPath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
 
-    if (isApiRoute && !isExempt && isProtectedCriticalRoute)
+    /* 050C_RELAX_DASHBOARD_READ_ROUTE_SESSION_GUARD */
+    var isUnsafeApiMethod =
+        HttpMethods.IsPost(httpContext.Request.Method)
+        || HttpMethods.IsPut(httpContext.Request.Method)
+        || HttpMethods.IsPatch(httpContext.Request.Method)
+        || HttpMethods.IsDelete(httpContext.Request.Method);
+
+    if (isApiRoute && !isExempt && isProtectedCriticalRoute && isUnsafeApiMethod)
     {
         var sessionUserId = GetProjectPulseSessionUserId(httpContext);
 
@@ -98,7 +105,7 @@ app.Use(async (httpContext, next) =>
             {
                 status = "session_required",
                 message = "Missing session token.",
-                guard = "050_critical_route_session_required"
+                guard = "050_critical_write_route_session_required"
             });
             return;
         }
