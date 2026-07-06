@@ -1,6 +1,83 @@
 import HelpAssistant from './HelpAssistant.jsx';
 import PostIntakeAgingPanel from './PostIntakeAgingPanel.jsx';
 
+
+
+/* 050A_BROWSER_API_SESSION_HEADER_BRIDGE_START */
+function getProjectPulse050ABrowserSessionToken() {
+  try {
+    const session = JSON.parse(window.localStorage.getItem('projectPulseAuthSession') || 'null');
+
+    return session?.sessionToken
+      || session?.token
+      || session?.accessToken
+      || '';
+  } catch {
+    return '';
+  }
+}
+
+function isProjectPulse050AApiRequest(input) {
+  try {
+    const rawUrl = typeof input === 'string' ? input : input?.url;
+
+    if (!rawUrl) return false;
+
+    const url = new URL(rawUrl, window.location.origin);
+
+    return url.origin === window.location.origin && url.pathname.startsWith('/api/');
+  } catch {
+    return false;
+  }
+}
+
+function installProjectPulse050ABrowserApiSessionHeaderBridge() {
+  if (typeof window === 'undefined' || window.__projectPulse050ABrowserApiSessionHeaderBridgeInstalled) {
+    return;
+  }
+
+  const nativeFetch = window.fetch.bind(window);
+
+  window.fetch = async (input, init = {}) => {
+    if (!isProjectPulse050AApiRequest(input)) {
+      return nativeFetch(input, init);
+    }
+
+    const token = getProjectPulse050ABrowserSessionToken();
+
+    if (!token) {
+      return nativeFetch(input, init);
+    }
+
+    const headers = new Headers(init?.headers || (input instanceof Request ? input.headers : undefined));
+
+    if (!headers.has('X-ProjectPulse-Session')) {
+      headers.set('X-ProjectPulse-Session', token);
+    }
+
+    if (!headers.has('X-Project-Pulse-Session')) {
+      headers.set('X-Project-Pulse-Session', token);
+    }
+
+    if (!headers.has('X-Session-Token')) {
+      headers.set('X-Session-Token', token);
+    }
+
+    if (!headers.has('Authorization')) {
+      headers.set('Authorization', `Bearer ${token}`);
+    }
+
+    return nativeFetch(input, {
+      ...init,
+      headers
+    });
+  };
+
+  window.__projectPulse050ABrowserApiSessionHeaderBridgeInstalled = true;
+}
+
+installProjectPulse050ABrowserApiSessionHeaderBridge();
+/* 050A_BROWSER_API_SESSION_HEADER_BRIDGE_END */
 /*
  * 019M-V Global View-As User Experience Preview
  * Admin-only preview selector. Applies a read-only effective user to API calls
