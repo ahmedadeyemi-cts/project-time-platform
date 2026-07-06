@@ -5516,7 +5516,7 @@ export default function App() {
       const result = await postJson('/api/timesheets/day/submit', {
         weekStart: selectedWeekStart,
         workDate: selectedCell.date,
-        entries: dayEntries
+        entries: buildTimesheetPayload().entries.filter((entry) => entry.workDate === selectedCell.date) /* 051B_DAY_SUBMIT_ENTRIES_FIX */
       });
       setTimesheet({ loading: false, data: result.timesheet, error: null });
       setSubmissionStatus(`${selectedCell.date} submitted (${formatNumber(dayTotal)} hours).`);

@@ -2131,6 +2131,9 @@ app.MapGet("/api/timesheets/week", async (DateOnly? weekStart, HttpContext httpC
     }
 
     var userId = sessionUserId.Value;
+    /* 051B_HOLIDAY_AUTO_SUBMIT_ON_WEEK_LOAD */
+    await ProjectPulse051BAutoSubmitEligibleHolidaysForWeekAsync(connection, userId, start);
+
     var payload = await BuildTimesheetWeekPayloadAsync(connection, userId, start);
 
     return Results.Ok(payload);
@@ -2176,14 +2179,16 @@ app.MapPost("/api/timesheets/week/draft", async (TimesheetSaveRequest request, H
         var start = GetSundayForDate(request.WeekStart);
         var existingStatus = await GetTimesheetStatusAsync(connection, transaction, userId, start);
 
-        if (existingStatus is "reconciled" or "locked")
+        /* 051B_WEEK_DRAFT_IMMUTABLE_STATUS_GUARD */
+        if (ProjectPulse051BIsImmutableTimesheetWeekStatus(existingStatus))
         {
-            return Results.Conflict(new
+            await transaction.RollbackAsync();
+            return Results.Json(new
             {
                 status = "timesheet_not_editable",
                 currentStatus = existingStatus,
-                message = "Locked or reconciled timesheets cannot be edited."
-            });
+                message = "Submitted, approved, accounting-ready, reconciled, or locked timesheets cannot be edited by the engineer."
+            }, statusCode: StatusCodes.Status409Conflict);
         }
 
         var timesheetId = await UpsertDraftShellForEditableSaveAsync(connection, transaction, userId, start);
@@ -2331,14 +2336,18 @@ app.MapPost("/api/timesheets/day/submit", async (TimesheetDaySubmitRequest reque
         var timesheetId = await UpsertDraftTimesheetAsync(connection, transaction, userId, weekStart);
         var dayState = await GetTimesheetDayStatusAsync(connection, transaction, timesheetId, request.WorkDate);
 
-        if (dayState.Status == "submitted")
+        /* 051B_DAY_SUBMIT_IMMUTABLE_STATUS_GUARD */
+        if (ProjectPulse051BIsImmutableTimesheetDayStatus(dayState.Status))
         {
-            return Results.Conflict(new
+            await transaction.RollbackAsync();
+            return Results.Json(new
             {
-                status = "day_already_submitted",
+                status = "day_not_editable",
                 currentStatus = dayState.Status,
-                message = "This day is already submitted. Use Unlock within two hours, or contact your manager after two hours."
-            });
+                message = dayState.Status == "submitted"
+                    ? "This day is already submitted. Use Unlock within two hours, or contact your manager after two hours."
+                    : "This day has already moved into approval, accounting, reconciliation, or lock status and cannot be rewritten by the engineer."
+            }, statusCode: StatusCodes.Status409Conflict);
         }
 
         await ReplaceDayTimeEntriesAsync(connection, transaction, timesheetId, userId, request.WorkDate, request.Entries, "submitted");
@@ -28202,6 +28211,249 @@ static async Task<Guid> GetOrCreateDevelopmentUserIdAsync(NpgsqlConnection conne
     return (Guid)(await command.ExecuteScalarAsync() ?? throw new InvalidOperationException("Unable to create development user."));
 }
 
+
+
+/* 051B_TIME_ENTRY_CRITICAL_REPAIR_START */
+static bool ProjectPulse051BIsImmutableTimesheetDayStatus(string? status)
+{
+    return string.Equals(status, "submitted", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(status, "manager_approved", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(status, "pm_approved", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(status, "accounting_ready", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(status, "reconciled", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(status, "locked", StringComparison.OrdinalIgnoreCase);
+}
+
+static bool ProjectPulse051BIsEditableTimesheetDayStatus(string? status)
+{
+    return string.IsNullOrWhiteSpace(status)
+        || string.Equals(status, "draft", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(status, "manager_declined", StringComparison.OrdinalIgnoreCase);
+}
+
+static bool ProjectPulse051BIsImmutableTimesheetWeekStatus(string? status)
+{
+    return string.Equals(status, "submitted", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(status, "manager_approved", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(status, "pm_approved", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(status, "accounting_ready", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(status, "reconciled", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(status, "locked", StringComparison.OrdinalIgnoreCase);
+}
+
+static async Task<Guid?> ProjectPulse051BGetHolidayCategoryIdAsync(NpgsqlConnection connection, NpgsqlTransaction transaction)
+{
+    await using var command = new NpgsqlCommand("""
+        SELECT non_project_time_category_id
+        FROM non_project_time_categories
+        WHERE is_active = TRUE
+          AND (
+                UPPER(COALESCE(category_code, '')) = 'HOLIDAY'
+             OR UPPER(COALESCE(category_name, '')) = 'HOLIDAY'
+             OR LOWER(COALESCE(category_name, '')) LIKE '%holiday%'
+          )
+        ORDER BY
+            CASE WHEN UPPER(COALESCE(category_code, '')) = 'HOLIDAY' THEN 0 ELSE 1 END,
+            category_name
+        LIMIT 1;
+        """, connection, transaction);
+
+    var result = await command.ExecuteScalarAsync();
+
+    return result is Guid holidayCategoryId ? holidayCategoryId : null;
+}
+
+static async Task<bool> ProjectPulse051BUserIsHolidayAutoSubmitEligibleAsync(NpgsqlConnection connection, Guid userId)
+{
+    await using var command = new NpgsqlCommand("""
+        SELECT EXISTS (
+            SELECT 1
+            FROM app_users u
+            JOIN app_user_role_assignments ura
+                ON ura.user_id = u.user_id
+               AND ura.is_active = TRUE
+            JOIN app_roles r
+                ON r.app_role_id = ura.app_role_id
+               AND r.is_active = TRUE
+            WHERE u.user_id = @user_id
+              AND u.is_active = TRUE
+              AND r.role_code IN (
+                    'ENGINEER',
+                    'ENGINEERING',
+                    'PROJECT_MANAGER',
+                    'PROJECT_MANAGEMENT',
+                    'PM_TEAM_LEAD',
+                    'PROJECT_MANAGEMENT_LEAD'
+              )
+        );
+        """, connection);
+
+    command.Parameters.AddWithValue("user_id", userId);
+
+    return Convert.ToBoolean(await command.ExecuteScalarAsync() ?? false);
+}
+
+static async Task<int> ProjectPulse051BAutoSubmitEligibleHolidaysForWeekAsync(NpgsqlConnection connection, Guid userId, DateOnly weekStart)
+{
+    if (!await ProjectPulse051BUserIsHolidayAutoSubmitEligibleAsync(connection, userId))
+    {
+        return 0;
+    }
+
+    var weekEnd = weekStart.AddDays(6);
+    var submittedCount = 0;
+
+    await using var transaction = await connection.BeginTransactionAsync();
+
+    try
+    {
+        var timesheetId = await UpsertDraftTimesheetAsync(connection, transaction, userId, weekStart);
+        var holidayCategoryId = await ProjectPulse051BGetHolidayCategoryIdAsync(connection, transaction);
+
+        if (holidayCategoryId is null)
+        {
+            await transaction.CommitAsync();
+            return 0;
+        }
+
+        var holidays = new List<(DateOnly HolidayDate, string HolidayName, decimal Hours)>();
+
+        await using (var holidayCommand = new NpgsqlCommand("""
+            SELECT holiday_date, holiday_name, auto_populate_hours
+            FROM company_holidays
+            WHERE is_active = TRUE
+              AND is_floating_holiday = FALSE
+              AND holiday_date BETWEEN @week_start AND @week_end
+              AND EXTRACT(ISODOW FROM holiday_date) BETWEEN 1 AND 5
+            ORDER BY holiday_date;
+            """, connection, transaction))
+        {
+            holidayCommand.Parameters.AddWithValue("week_start", weekStart);
+            holidayCommand.Parameters.AddWithValue("week_end", weekEnd);
+
+            await using var reader = await holidayCommand.ExecuteReaderAsync();
+
+            while (await reader.ReadAsync())
+            {
+                holidays.Add((
+                    reader.GetFieldValue<DateOnly>(0),
+                    reader.GetString(1),
+                    reader.GetDecimal(2)
+                ));
+            }
+        }
+
+        foreach (var holiday in holidays)
+        {
+            var dayState = await GetTimesheetDayStatusAsync(connection, transaction, timesheetId, holiday.HolidayDate);
+
+            if (!ProjectPulse051BIsEditableTimesheetDayStatus(dayState.Status))
+            {
+                continue;
+            }
+
+            var hasNonHolidayManualTime = false;
+
+            await using (var manualCommand = new NpgsqlCommand("""
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM time_entries
+                    WHERE timesheet_id = @timesheet_id
+                      AND user_id = @user_id
+                      AND work_date = @work_date
+                      AND (
+                            project_id IS NOT NULL
+                         OR task_id IS NOT NULL
+                         OR non_project_time_category_id IS DISTINCT FROM @holiday_category_id
+                      )
+                      AND COALESCE(status, 'draft') NOT IN ('manager_declined', 'rejected', 'voided')
+                );
+                """, connection, transaction))
+            {
+                manualCommand.Parameters.AddWithValue("timesheet_id", timesheetId);
+                manualCommand.Parameters.AddWithValue("user_id", userId);
+                manualCommand.Parameters.AddWithValue("work_date", holiday.HolidayDate);
+                manualCommand.Parameters.AddWithValue("holiday_category_id", holidayCategoryId.Value);
+
+                hasNonHolidayManualTime = Convert.ToBoolean(await manualCommand.ExecuteScalarAsync() ?? false);
+            }
+
+            if (hasNonHolidayManualTime)
+            {
+                continue;
+            }
+
+            await using (var deleteCommand = new NpgsqlCommand("""
+                DELETE FROM time_entries
+                WHERE timesheet_id = @timesheet_id
+                  AND user_id = @user_id
+                  AND work_date = @work_date
+                  AND non_project_time_category_id = @holiday_category_id
+                  AND COALESCE(status, 'draft') IN ('draft', 'manager_declined');
+                """, connection, transaction))
+            {
+                deleteCommand.Parameters.AddWithValue("timesheet_id", timesheetId);
+                deleteCommand.Parameters.AddWithValue("user_id", userId);
+                deleteCommand.Parameters.AddWithValue("work_date", holiday.HolidayDate);
+                deleteCommand.Parameters.AddWithValue("holiday_category_id", holidayCategoryId.Value);
+
+                await deleteCommand.ExecuteNonQueryAsync();
+            }
+
+            await using (var insertCommand = new NpgsqlCommand("""
+                INSERT INTO time_entries (
+                    timesheet_id,
+                    user_id,
+                    non_project_time_category_id,
+                    work_date,
+                    hours,
+                    time_type,
+                    description,
+                    status,
+                    created_at,
+                    updated_at
+                )
+                VALUES (
+                    @timesheet_id,
+                    @user_id,
+                    @holiday_category_id,
+                    @work_date,
+                    @hours,
+                    'normal',
+                    @description,
+                    'submitted',
+                    NOW(),
+                    NOW()
+                );
+                """, connection, transaction))
+            {
+                insertCommand.Parameters.AddWithValue("timesheet_id", timesheetId);
+                insertCommand.Parameters.AddWithValue("user_id", userId);
+                insertCommand.Parameters.AddWithValue("holiday_category_id", holidayCategoryId.Value);
+                insertCommand.Parameters.AddWithValue("work_date", holiday.HolidayDate);
+                insertCommand.Parameters.AddWithValue("hours", holiday.Hours <= 0 ? 8.00m : holiday.Hours);
+                insertCommand.Parameters.AddWithValue("description", string.IsNullOrWhiteSpace(holiday.HolidayName) ? "Company holiday" : holiday.HolidayName);
+
+                await insertCommand.ExecuteNonQueryAsync();
+            }
+
+            await MarkTimesheetDaySubmittedAsync(connection, transaction, timesheetId, userId, holiday.HolidayDate);
+            await InsertAuditLogAsync(connection, transaction, userId, "timesheet_holiday_auto_submitted", "timesheet", timesheetId);
+
+            submittedCount++;
+        }
+
+        await transaction.CommitAsync();
+
+        return submittedCount;
+    }
+    catch
+    {
+        await transaction.RollbackAsync();
+        throw;
+    }
+}
+/* 051B_TIME_ENTRY_CRITICAL_REPAIR_END */
 
 static async Task<string?> GetTimesheetStatusAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid userId, DateOnly weekStart)
 {
