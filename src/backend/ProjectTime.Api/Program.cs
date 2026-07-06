@@ -11494,6 +11494,143 @@ app.MapPost("/api/admin/user-admin/users/email", async (System.Text.Json.JsonEle
 /* 041F_EMAIL_RESOLUTION_FALLBACK_END */
 /* 041E_EMAIL_ROUTE_REPAIR_END */
 
+
+/* 041I_CLOSEOUT_EMAIL_ACTIVE_ROUTE_ZONE_START */
+/* 041A_SERVER_CLOSEOUT_EMAIL_SEND_START */
+app.MapPost("/api/project-closeout/email/send", async (Microsoft.AspNetCore.Http.HttpContext httpContext) =>
+{
+    var sessionToken = httpContext.Request.Headers.TryGetValue("X-ProjectPulse-Session", out var sessionValues)
+        ? sessionValues.ToString()
+        : string.Empty;
+
+    if (string.IsNullOrWhiteSpace(sessionToken))
+    {
+        return Microsoft.AspNetCore.Http.Results.Json(
+            new { status = "session_required", message = "Missing session token." },
+            statusCode: 401);
+    }
+
+    System.Text.Json.JsonDocument document;
+
+    try
+    {
+        document = await System.Text.Json.JsonDocument.ParseAsync(httpContext.Request.Body);
+    }
+    catch
+    {
+        return Microsoft.AspNetCore.Http.Results.Json(
+            new { status = "invalid_request", message = "Closeout email request body must be valid JSON." },
+            statusCode: 400);
+    }
+
+    using (document)
+    {
+        var root = document.RootElement;
+
+        var projectCode = ProjectPulse041AGetJsonString(root, "projectCode");
+        var projectName = ProjectPulse041AGetJsonString(root, "projectName");
+        var customerName = ProjectPulse041AGetJsonString(root, "customerName");
+        var projectManagerName = ProjectPulse041AGetJsonString(root, "projectManagerName");
+        var triggeredBy = ProjectPulse041AGetJsonString(root, "triggeredBy");
+        var subject = ProjectPulse041AGetJsonString(root, "subject");
+        var body = ProjectPulse041AGetJsonString(root, "body");
+
+        var allRecipients = ProjectPulse041AExtractRecipients(root);
+        var recipientMap = new System.Collections.Generic.Dictionary<string, (string Role, string Name, string Email)>(System.StringComparer.OrdinalIgnoreCase);
+
+        foreach (var recipient in allRecipients)
+        {
+            if (!ProjectPulse041AIsEmail(recipient.Email)) continue;
+
+            if (!recipientMap.ContainsKey(recipient.Email))
+            {
+                recipientMap[recipient.Email] = recipient;
+            }
+        }
+
+        var emailRecipients = new System.Collections.Generic.List<(string Role, string Name, string Email)>(recipientMap.Values);
+
+        if (string.IsNullOrWhiteSpace(projectCode) || string.IsNullOrWhiteSpace(customerName))
+        {
+            return Microsoft.AspNetCore.Http.Results.Json(
+                new { status = "invalid_request", message = "Project code and customer name are required for automatic closeout email." },
+                statusCode: 400);
+        }
+
+        if (string.IsNullOrWhiteSpace(subject) || string.IsNullOrWhiteSpace(body))
+        {
+            return Microsoft.AspNetCore.Http.Results.Json(
+                new { status = "invalid_request", message = "Email subject and body are required for automatic closeout email." },
+                statusCode: 400);
+        }
+
+        if (emailRecipients.Count == 0)
+        {
+            return Microsoft.AspNetCore.Http.Results.Json(
+                new { status = "no_recipients", message = "No email-ready project team recipients were provided." },
+                statusCode: 400);
+        }
+
+        var sendResult = await ProjectPulse041ASendCloseoutEmailAsync(emailRecipients, subject, body, projectCode, customerName);
+
+        var dataRoot = System.Environment.GetEnvironmentVariable("PROJECTPULSE_DATA_DIR");
+        if (string.IsNullOrWhiteSpace(dataRoot))
+        {
+            dataRoot = System.IO.Path.Combine(System.IO.Directory.GetCurrentDirectory(), "data");
+        }
+
+        var auditDir = System.IO.Path.Combine(dataRoot, "project-closeout-email-audit");
+        System.IO.Directory.CreateDirectory(auditDir);
+
+        var auditFileName = $"{System.DateTimeOffset.UtcNow:yyyyMMddHHmmssfff}-{ProjectPulse041ASafeFilePart(projectCode)}.json";
+        var auditPath = System.IO.Path.Combine(auditDir, auditFileName);
+
+        var auditPayload = new
+        {
+            status = sendResult.Status,
+            sent = sendResult.Sent,
+            detail = sendResult.Detail,
+            projectCode,
+            projectName,
+            customerName,
+            projectManagerName,
+            triggeredBy,
+            generatedAt = System.DateTimeOffset.UtcNow,
+            recipientCount = emailRecipients.Count,
+            recipients = emailRecipients.Select(recipient => new
+            {
+                recipient.Role,
+                recipient.Name,
+                recipient.Email
+            }).ToList(),
+            subject,
+            body,
+            outboxPath = sendResult.OutboxPath
+        };
+
+        await System.IO.File.WriteAllTextAsync(
+            auditPath,
+            System.Text.Json.JsonSerializer.Serialize(auditPayload, new System.Text.Json.JsonSerializerOptions
+            {
+                WriteIndented = true
+            }));
+
+        return Microsoft.AspNetCore.Http.Results.Json(
+            new
+            {
+                status = sendResult.Status,
+                sent = sendResult.Sent,
+                message = sendResult.Detail,
+                auditPath,
+                outboxPath = sendResult.OutboxPath,
+                recipientCount = emailRecipients.Count
+            },
+            statusCode: sendResult.Sent ? 200 : 202);
+    }
+}).WithName("ProjectPulse041ASendCloseoutEmail");
+/* 041A_SERVER_CLOSEOUT_EMAIL_SEND_END */
+/* 041I_CLOSEOUT_EMAIL_ACTIVE_ROUTE_ZONE_END */
+
 app.MapPost("/api/admin/user-admin/users/profile", async (UserAdminProfileUpdateRequest request, HttpContext httpContext) =>
 {
     var config = DatabaseConfig.FromEnvironment();
@@ -26153,139 +26290,9 @@ app.MapPost("/api/certify/sync/run", () => new
 
 
 
-/* 041A_SERVER_CLOSEOUT_EMAIL_SEND_START */
-app.MapPost("/api/project-closeout/email/send", async (Microsoft.AspNetCore.Http.HttpContext httpContext) =>
-{
-    var sessionToken = httpContext.Request.Headers.TryGetValue("X-ProjectPulse-Session", out var sessionValues)
-        ? sessionValues.ToString()
-        : string.Empty;
 
-    if (string.IsNullOrWhiteSpace(sessionToken))
-    {
-        return Microsoft.AspNetCore.Http.Results.Json(
-            new { status = "session_required", message = "Missing session token." },
-            statusCode: 401);
-    }
 
-    System.Text.Json.JsonDocument document;
 
-    try
-    {
-        document = await System.Text.Json.JsonDocument.ParseAsync(httpContext.Request.Body);
-    }
-    catch
-    {
-        return Microsoft.AspNetCore.Http.Results.Json(
-            new { status = "invalid_request", message = "Closeout email request body must be valid JSON." },
-            statusCode: 400);
-    }
-
-    using (document)
-    {
-        var root = document.RootElement;
-
-        var projectCode = ProjectPulse041AGetJsonString(root, "projectCode");
-        var projectName = ProjectPulse041AGetJsonString(root, "projectName");
-        var customerName = ProjectPulse041AGetJsonString(root, "customerName");
-        var projectManagerName = ProjectPulse041AGetJsonString(root, "projectManagerName");
-        var triggeredBy = ProjectPulse041AGetJsonString(root, "triggeredBy");
-        var subject = ProjectPulse041AGetJsonString(root, "subject");
-        var body = ProjectPulse041AGetJsonString(root, "body");
-
-        var allRecipients = ProjectPulse041AExtractRecipients(root);
-        var recipientMap = new System.Collections.Generic.Dictionary<string, (string Role, string Name, string Email)>(System.StringComparer.OrdinalIgnoreCase);
-
-        foreach (var recipient in allRecipients)
-        {
-            if (!ProjectPulse041AIsEmail(recipient.Email)) continue;
-
-            if (!recipientMap.ContainsKey(recipient.Email))
-            {
-                recipientMap[recipient.Email] = recipient;
-            }
-        }
-
-        var emailRecipients = new System.Collections.Generic.List<(string Role, string Name, string Email)>(recipientMap.Values);
-
-        if (string.IsNullOrWhiteSpace(projectCode) || string.IsNullOrWhiteSpace(customerName))
-        {
-            return Microsoft.AspNetCore.Http.Results.Json(
-                new { status = "invalid_request", message = "Project code and customer name are required for automatic closeout email." },
-                statusCode: 400);
-        }
-
-        if (string.IsNullOrWhiteSpace(subject) || string.IsNullOrWhiteSpace(body))
-        {
-            return Microsoft.AspNetCore.Http.Results.Json(
-                new { status = "invalid_request", message = "Email subject and body are required for automatic closeout email." },
-                statusCode: 400);
-        }
-
-        if (emailRecipients.Count == 0)
-        {
-            return Microsoft.AspNetCore.Http.Results.Json(
-                new { status = "no_recipients", message = "No email-ready project team recipients were provided." },
-                statusCode: 400);
-        }
-
-        var sendResult = await ProjectPulse041ASendCloseoutEmailAsync(emailRecipients, subject, body, projectCode, customerName);
-
-        var dataRoot = System.Environment.GetEnvironmentVariable("PROJECTPULSE_DATA_DIR");
-        if (string.IsNullOrWhiteSpace(dataRoot))
-        {
-            dataRoot = System.IO.Path.Combine(System.IO.Directory.GetCurrentDirectory(), "data");
-        }
-
-        var auditDir = System.IO.Path.Combine(dataRoot, "project-closeout-email-audit");
-        System.IO.Directory.CreateDirectory(auditDir);
-
-        var auditFileName = $"{System.DateTimeOffset.UtcNow:yyyyMMddHHmmssfff}-{ProjectPulse041ASafeFilePart(projectCode)}.json";
-        var auditPath = System.IO.Path.Combine(auditDir, auditFileName);
-
-        var auditPayload = new
-        {
-            status = sendResult.Status,
-            sent = sendResult.Sent,
-            detail = sendResult.Detail,
-            projectCode,
-            projectName,
-            customerName,
-            projectManagerName,
-            triggeredBy,
-            generatedAt = System.DateTimeOffset.UtcNow,
-            recipientCount = emailRecipients.Count,
-            recipients = emailRecipients.Select(recipient => new
-            {
-                recipient.Role,
-                recipient.Name,
-                recipient.Email
-            }).ToList(),
-            subject,
-            body,
-            outboxPath = sendResult.OutboxPath
-        };
-
-        await System.IO.File.WriteAllTextAsync(
-            auditPath,
-            System.Text.Json.JsonSerializer.Serialize(auditPayload, new System.Text.Json.JsonSerializerOptions
-            {
-                WriteIndented = true
-            }));
-
-        return Microsoft.AspNetCore.Http.Results.Json(
-            new
-            {
-                status = sendResult.Status,
-                sent = sendResult.Sent,
-                message = sendResult.Detail,
-                auditPath,
-                outboxPath = sendResult.OutboxPath,
-                recipientCount = emailRecipients.Count
-            },
-            statusCode: sendResult.Sent ? 200 : 202);
-    }
-}).WithName("ProjectPulse041ASendCloseoutEmail");
-/* 041A_SERVER_CLOSEOUT_EMAIL_SEND_END */
 
 static string ProjectPulse041AGetJsonString(System.Text.Json.JsonElement root, string propertyName)
 {
