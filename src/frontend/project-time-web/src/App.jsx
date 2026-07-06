@@ -1105,7 +1105,8 @@ function installProjectPulseEffectiveSessionVisibilityPanel() {
       const response = await window.fetch('/api/security/role-enforcement-smoke/write-attempt', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+      ...getProjectPulse051CActiveSessionHeaders(typeof authSession !== 'undefined' ? authSession : null),
+      'Content-Type': 'application/json',
           ...buildHeaders()
         },
         body: JSON.stringify({ source: '042_EFFECTIVE_SESSION_SECURITY_PANEL' })
@@ -1342,7 +1343,9 @@ async function fetchJson(path, sessionOverride = null) {
 async function postJson(path, payload, sessionOverride = null) {
   const response = await fetch(path, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...getProjectPulseAuthHeaders(sessionOverride) },
+    headers: {
+      ...getProjectPulse051CActiveSessionHeaders(typeof authSession !== 'undefined' ? authSession : null),
+      'Content-Type': 'application/json', ...getProjectPulseAuthHeaders(sessionOverride) },
     body: JSON.stringify(payload)
   });
 
@@ -1957,6 +1960,45 @@ function getStoredAuthSession() {
   }
 }
 
+
+/* 051C_POST_JSON_SESSION_HEADER_REPAIR_START */
+function getProjectPulse051CActiveSessionHeaders(explicitSession = null) {
+  let session = explicitSession || null;
+
+  if (!session && typeof getStoredProjectPulseAuthSession === 'function') {
+    try {
+      session = getStoredProjectPulseAuthSession();
+    } catch {
+      session = null;
+    }
+  }
+
+  if (!session && typeof window !== 'undefined') {
+    try {
+      session = JSON.parse(window.localStorage.getItem('projectPulseAuthSession') || 'null');
+    } catch {
+      session = null;
+    }
+  }
+
+  const token = session?.sessionToken
+    || session?.token
+    || session?.accessToken
+    || '';
+
+  if (!token) {
+    return {};
+  }
+
+  return {
+    'X-ProjectPulse-Session': token,
+    'X-Project-Pulse-Session': token,
+    'X-Session-Token': token,
+    Authorization: `Bearer ${token}`
+  };
+}
+/* 051C_POST_JSON_SESSION_HEADER_REPAIR_END */
+
 function getProjectPulseAuthHeaders(sessionOverride = null) {
   const session = sessionOverride?.sessionToken ? sessionOverride : getStoredAuthSession();
   return session?.sessionToken ? { 'X-ProjectPulse-Session': session.sessionToken } : {};
@@ -2007,6 +2049,7 @@ async function savePersistentProfilePreferences(session, preferences) {
   const response = await fetch('/api/profile/preferences', {
     method: 'POST',
     headers: {
+      ...getProjectPulse051CActiveSessionHeaders(typeof authSession !== 'undefined' ? authSession : null),
       'Content-Type': 'application/json',
       ...getProjectPulseAuthHeaders(session)
     },
