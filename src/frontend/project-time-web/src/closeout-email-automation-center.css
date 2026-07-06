@@ -381,3 +381,76 @@ body[data-project-pulse-active-route="closeout-email"] .azure-admin-panel {
     grid-template-columns: 1fr;
   }
 }
+
+/* 041N_CLOSEOUT_EMAIL_AUDIT_LAYOUT_FIX_START */
+.closeout-email-audit-row.closeout-email-audit-row-041n {
+  display: grid !important;
+  grid-template-columns: minmax(320px, 0.85fr) minmax(520px, 1.65fr) !important;
+  align-items: start !important;
+  gap: 1rem !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+  padding: 1rem !important;
+  border: 1px solid rgba(148, 163, 184, 0.28) !important;
+  border-radius: 18px !important;
+  background: rgba(248, 250, 252, 0.96) !important;
+  overflow: hidden !important;
+  white-space: normal !important;
+  word-break: normal !important;
+  overflow-wrap: anywhere !important;
+  writing-mode: horizontal-tb !important;
+}
+
+.closeout-email-audit-main-041n,
+.closeout-email-audit-meta-041n {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  gap: 0.35rem !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  white-space: normal !important;
+  word-break: normal !important;
+  overflow-wrap: anywhere !important;
+  writing-mode: horizontal-tb !important;
+}
+
+.closeout-email-audit-title-041n {
+  display: block !important;
+  width: 100% !important;
+  min-width: 14rem !important;
+  max-width: 100% !important;
+  line-height: 1.35 !important;
+  white-space: normal !important;
+  word-break: normal !important;
+  overflow-wrap: anywhere !important;
+  writing-mode: horizontal-tb !important;
+}
+
+.closeout-email-audit-row-041n span,
+.closeout-email-audit-row-041n small {
+  display: block !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  line-height: 1.45 !important;
+  white-space: normal !important;
+  word-break: normal !important;
+  overflow-wrap: anywhere !important;
+  writing-mode: horizontal-tb !important;
+}
+
+.closeout-email-audit-row-041n small strong {
+  display: inline !important;
+  width: auto !important;
+  min-width: 0 !important;
+  white-space: nowrap !important;
+}
+
+@media (max-width: 1000px) {
+  .closeout-email-audit-row.closeout-email-audit-row-041n {
+    grid-template-columns: 1fr !important;
+  }
+}
+/* 041N_CLOSEOUT_EMAIL_AUDIT_LAYOUT_FIX_END */

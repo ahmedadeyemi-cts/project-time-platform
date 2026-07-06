@@ -1226,19 +1226,22 @@ export default function CloseoutEmailAutomationCenter() {
                 <div className="closeout-email-empty">No automatic closeout email send events recorded in this browser yet.</div>
               ) : (
                 auditEntries.map((entry) => (
-                  <div className="closeout-email-audit-row" key={entry.id}>
-                    <div>
-                      <strong>{entry.projectCode} • {entry.customerName}</strong>
+                  <div className="closeout-email-audit-row closeout-email-audit-row-041n" key={entry.id}>
+                    {/* 041N_CLOSEOUT_EMAIL_AUDIT_LAYOUT_MARKUP_START */}
+                    <div className="closeout-email-audit-main-041n">
+                      <strong className="closeout-email-audit-title-041n">{entry.projectCode || 'Unknown project'} • {entry.customerName || 'Customer not recorded'}</strong>
                       <span>{entry.status}</span>
-                      <small>{entry.generatedAt} • Triggered by {entry.triggeredBy}</small>
+                      <small>{entry.generatedAt ? new Date(entry.generatedAt).toLocaleString() : 'Timestamp not recorded'} • Triggered by {entry.triggeredBy || 'Not recorded'}</small>
                     </div>
-                    <div>
-                      <small>PM: {entry.projectManagerName}</small>
-                      <small>Recipients: {entry.recipientCount}{entry.ccRecipientCount ? ` + ${entry.ccRecipientCount} CC` : ''}</small>
-                      {entry.backendStatus ? <small>Provider: {entry.backendStatus}</small> : null}
-                      {entry.backendMessage ? <small title={entry.backendMessage}>Detail: {closeoutAuditShortText(entry.backendMessage)}</small> : null}
-                      {entry.backendAuditPath ? <small>Audit: {entry.backendAuditPath}</small> : null}
+
+                    <div className="closeout-email-audit-meta-041n">
+                      <small><strong>PM:</strong> {entry.projectManagerName || 'Not recorded'}</small>
+                      <small><strong>Recipients:</strong> {entry.recipientCount}{entry.ccRecipientCount ? ` + ${entry.ccRecipientCount} CC` : ''}</small>
+                      {entry.backendStatus ? <small><strong>Provider:</strong> {entry.backendStatus}</small> : null}
+                      {entry.backendMessage ? <small title={entry.backendMessage}><strong>Detail:</strong> {closeoutAuditShortText(entry.backendMessage)}</small> : null}
+                      {entry.backendAuditPath ? <small><strong>Audit:</strong> {entry.backendAuditPath}</small> : null}
                     </div>
+                    {/* 041N_CLOSEOUT_EMAIL_AUDIT_LAYOUT_MARKUP_END */}
                   </div>
                 ))
               )}
