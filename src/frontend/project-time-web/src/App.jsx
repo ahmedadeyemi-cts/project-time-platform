@@ -449,6 +449,396 @@ function installProjectPulseGlobalViewAsTopbarMount() {
 }
 
 installProjectPulseGlobalViewAsTopbarMount();
+
+
+/* 042A_EFFECTIVE_SESSION_VISIBILITY_START */
+function installProjectPulseEffectiveSessionVisibilityPanel() {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+  if (window.__projectPulseEffectiveSessionVisibilityInstalled) return;
+
+  window.__projectPulseEffectiveSessionVisibilityInstalled = true;
+
+  const AUTH_STORAGE_KEY = 'projectPulseAuthSession';
+  const VIEW_AS_STORAGE_KEY = 'projectPulseViewAsUser';
+  const PANEL_ID = 'projectpulse-effective-session-panel';
+  const STYLE_ID = 'projectpulse-effective-session-panel-style';
+
+  const escapeHtml = (value) => String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+
+  const readJsonStorage = (key) => {
+    try {
+      const raw = window.localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const readSession = () => {
+    const session = readJsonStorage(AUTH_STORAGE_KEY);
+    if (!session?.sessionToken) return null;
+    if (session?.expiresAt && Date.now() >= Date.parse(session.expiresAt)) return null;
+    return session;
+  };
+
+  const readViewAs = () => {
+    const viewAs = readJsonStorage(VIEW_AS_STORAGE_KEY);
+    return viewAs?.userId ? viewAs : null;
+  };
+
+  const getRoute = () => String(window.location.hash || '#dashboard').replace(/^#/, '') || 'dashboard';
+
+  const shouldShowPanel = () => {
+    const route = getRoute();
+    const viewAs = readViewAs();
+
+    return Boolean(
+      readSession()
+      && (
+        viewAs
+        || route === 'dashboard'
+        || route === 'role-admin'
+        || route === 'roles-permissions-matrix'
+      )
+    );
+  };
+
+  const buildHeaders = () => {
+    const session = readSession();
+    const viewAs = readViewAs();
+    const headers = {};
+
+    if (session?.sessionToken) {
+      headers['X-ProjectPulse-Session'] = session.sessionToken;
+    }
+
+    if (viewAs?.userId) {
+      headers['X-ProjectPulse-View-As-User'] = viewAs.userId;
+    }
+
+    return headers;
+  };
+
+  const getFetch = () => window.__projectPulseOriginalFetch || window.fetch.bind(window);
+
+  const injectStyles = () => {
+    if (document.getElementById(STYLE_ID)) return;
+
+    const style = document.createElement('style');
+    style.id = STYLE_ID;
+    style.textContent = `
+      #projectpulse-effective-session-panel {
+        position: fixed;
+        right: 1.15rem;
+        bottom: 1.15rem;
+        z-index: 9998;
+        width: min(420px, calc(100vw - 2rem));
+        border: 1px solid rgba(59, 130, 246, 0.32);
+        border-radius: 18px;
+        background: rgba(15, 23, 42, 0.94);
+        color: #f8fafc;
+        box-shadow: 0 22px 50px rgba(15, 23, 42, 0.34);
+        backdrop-filter: blur(16px);
+        padding: 0.85rem;
+        font-size: 0.78rem;
+      }
+
+      #projectpulse-effective-session-panel.hidden {
+        display: none;
+      }
+
+      #projectpulse-effective-session-panel.view-as-active {
+        border-color: rgba(245, 158, 11, 0.78);
+        background: rgba(120, 53, 15, 0.96);
+      }
+
+      #projectpulse-effective-session-panel .effective-session-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 0.75rem;
+        margin-bottom: 0.55rem;
+      }
+
+      #projectpulse-effective-session-panel h3 {
+        margin: 0;
+        color: #fff;
+        font-size: 0.92rem;
+        line-height: 1.2;
+      }
+
+      #projectpulse-effective-session-panel p {
+        margin: 0.22rem 0 0;
+        color: rgba(248, 250, 252, 0.78);
+        line-height: 1.35;
+      }
+
+      #projectpulse-effective-session-panel .effective-session-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.48rem;
+        margin-top: 0.65rem;
+      }
+
+      #projectpulse-effective-session-panel .effective-session-grid div {
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 12px;
+        padding: 0.48rem;
+        background: rgba(255, 255, 255, 0.07);
+        min-width: 0;
+      }
+
+      #projectpulse-effective-session-panel span {
+        display: block;
+        color: rgba(248, 250, 252, 0.68);
+        font-size: 0.68rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        font-weight: 800;
+      }
+
+      #projectpulse-effective-session-panel strong {
+        display: block;
+        margin-top: 0.14rem;
+        color: #fff;
+        line-height: 1.3;
+        overflow-wrap: anywhere;
+      }
+
+      #projectpulse-effective-session-panel .effective-session-actions {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 0.45rem;
+        margin-top: 0.7rem;
+      }
+
+      #projectpulse-effective-session-panel button {
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.12);
+        color: #fff;
+        font-weight: 900;
+        font-size: 0.72rem;
+        padding: 0.35rem 0.56rem;
+        cursor: pointer;
+      }
+
+      #projectpulse-effective-session-panel button:hover {
+        background: rgba(255, 255, 255, 0.2);
+      }
+
+      #projectpulse-effective-session-panel .effective-session-status {
+        margin-top: 0.5rem;
+        color: rgba(248, 250, 252, 0.78);
+        line-height: 1.35;
+        overflow-wrap: anywhere;
+      }
+
+      @media (max-width: 780px) {
+        #projectpulse-effective-session-panel {
+          left: 0.75rem;
+          right: 0.75rem;
+          bottom: 0.75rem;
+          width: auto;
+        }
+
+        #projectpulse-effective-session-panel .effective-session-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    `;
+
+    document.head.appendChild(style);
+  };
+
+  const ensurePanel = () => {
+    injectStyles();
+
+    let panel = document.getElementById(PANEL_ID);
+
+    if (!panel) {
+      panel = document.createElement('section');
+      panel.id = PANEL_ID;
+      panel.setAttribute('aria-live', 'polite');
+      document.body.appendChild(panel);
+    }
+
+    return panel;
+  };
+
+  const summarizeRoles = (roles = []) => {
+    if (!Array.isArray(roles) || roles.length === 0) return 'No active role';
+    return roles
+      .map((role) => role.roleName || role.roleCode)
+      .filter(Boolean)
+      .slice(0, 4)
+      .join(', ');
+  };
+
+  const renderPanel = (state) => {
+    const panel = ensurePanel();
+
+    if (!shouldShowPanel()) {
+      panel.className = 'hidden';
+      panel.innerHTML = '';
+      return;
+    }
+
+    const viewAs = readViewAs();
+    const data = state?.data ?? {};
+    const roles = Array.isArray(data.roles) ? data.roles : [];
+    const permissions = Array.isArray(data.permissions) ? data.permissions : [];
+    const effectiveName = data.effectiveDisplayName || data.displayName || data.effectiveEmail || data.email || 'Loading effective user';
+    const actualName = data.actualDisplayName || data.actualEmail || data.sessionEmail || 'Signed-in user';
+    const mode = viewAs ? 'View-As read-only' : 'Actual session';
+    const modeDetail = viewAs
+      ? `Previewing ${viewAs.displayName || viewAs.email || viewAs.userId}`
+      : 'No View-As override active';
+
+    panel.className = viewAs ? 'view-as-active' : '';
+
+    panel.innerHTML = `
+      <div class="effective-session-header">
+        <div>
+          <h3>Effective session</h3>
+          <p>${escapeHtml(mode)} · ${escapeHtml(modeDetail)}</p>
+        </div>
+        <button type="button" id="projectpulse-effective-session-refresh">Refresh</button>
+      </div>
+
+      <div class="effective-session-grid">
+        <div>
+          <span>Effective user</span>
+          <strong>${escapeHtml(effectiveName)}</strong>
+        </div>
+        <div>
+          <span>Actual session</span>
+          <strong>${escapeHtml(actualName)}</strong>
+        </div>
+        <div>
+          <span>Roles</span>
+          <strong>${escapeHtml(summarizeRoles(roles))}</strong>
+        </div>
+        <div>
+          <span>Permissions</span>
+          <strong>${permissions.length}</strong>
+        </div>
+      </div>
+
+      <div class="effective-session-actions">
+        <button type="button" id="projectpulse-effective-session-write-test">Test write lock</button>
+      </div>
+
+      <div class="effective-session-status">${escapeHtml(state?.message || 'Effective session loaded.')}</div>
+    `;
+
+    panel.querySelector('#projectpulse-effective-session-refresh')?.addEventListener('click', loadEffectiveSession);
+    panel.querySelector('#projectpulse-effective-session-write-test')?.addEventListener('click', testWriteLock);
+  };
+
+  async function loadEffectiveSession() {
+    if (!shouldShowPanel()) {
+      renderPanel({ message: '' });
+      return;
+    }
+
+    renderPanel({ message: 'Loading effective session...' });
+
+    try {
+      const response = await getFetch()('/api/security/effective-session', {
+        headers: buildHeaders()
+      });
+
+      const raw = await response.text();
+      let data = {};
+
+      try {
+        data = raw ? JSON.parse(raw) : {};
+      } catch {
+        data = { message: raw };
+      }
+
+      if (!response.ok) {
+        renderPanel({
+          data,
+          message: data.message || data.status || `/api/security/effective-session returned HTTP ${response.status}`
+        });
+        return;
+      }
+
+      renderPanel({
+        data,
+        message: data.isViewAs
+          ? 'Backend effective-session confirms View-As role context.'
+          : 'Backend effective-session confirms the signed-in role context.'
+      });
+    } catch (error) {
+      renderPanel({
+        message: error instanceof Error ? error.message : 'Unable to load effective session.'
+      });
+    }
+  }
+
+  async function testWriteLock() {
+    renderPanel({ message: 'Testing write lock...' });
+
+    try {
+      const response = await window.fetch('/api/security/role-enforcement-smoke/write-attempt', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...buildHeaders()
+        },
+        body: JSON.stringify({ source: '042A_EFFECTIVE_SESSION_PANEL' })
+      });
+
+      const raw = await response.text();
+      let data = {};
+
+      try {
+        data = raw ? JSON.parse(raw) : {};
+      } catch {
+        data = { message: raw };
+      }
+
+      const expectedViewAsBlock = readViewAs() && response.status === 403;
+
+      renderPanel({
+        data,
+        message: expectedViewAsBlock
+          ? `Write lock confirmed: HTTP ${response.status} ${data.status || data.message || ''}`
+          : `Write test returned HTTP ${response.status}: ${data.status || data.message || 'No message'}`
+      });
+    } catch (error) {
+      renderPanel({
+        message: error instanceof Error ? error.message : 'Unable to test write lock.'
+      });
+    }
+  }
+
+  const scheduleLoad = () => {
+    window.clearTimeout(window.__projectPulseEffectiveSessionVisibilityTimer);
+    window.__projectPulseEffectiveSessionVisibilityTimer = window.setTimeout(loadEffectiveSession, 150);
+  };
+
+  window.addEventListener('hashchange', scheduleLoad);
+  window.addEventListener('storage', scheduleLoad);
+  window.addEventListener('projectpulse:auth-session-ready', scheduleLoad);
+  window.addEventListener('projectpulse:view-as-changed', scheduleLoad);
+
+  scheduleLoad();
+}
+
+installProjectPulseEffectiveSessionVisibilityPanel();
+/* 042A_EFFECTIVE_SESSION_VISIBILITY_END */
+
+
 // 022F_TOPBAR_VIEWAS_MOUNT_END
 
 // 022E_REAL_VIEWAS_PLACEMENT_CONFIRMED: placement controlled by timesheet.css top-bar override.
