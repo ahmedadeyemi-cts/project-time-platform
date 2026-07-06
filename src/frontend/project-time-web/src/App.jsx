@@ -1999,6 +1999,106 @@ function getProjectPulse051CActiveSessionHeaders(explicitSession = null) {
 }
 /* 051C_POST_JSON_SESSION_HEADER_REPAIR_END */
 
+/* 051D_FORCE_TIME_ENTRY_POST_SESSION_START */
+function getProjectPulse051DTimeEntrySessionToken() {
+  if (typeof window === 'undefined') {
+    return '';
+  }
+
+  const candidateKeys = [
+    'projectPulseAuthSession',
+    'ProjectPulseAuthSession',
+    'projectPulseSession'
+  ];
+
+  for (const key of candidateKeys) {
+    try {
+      const raw = window.localStorage.getItem(key) || window.sessionStorage.getItem(key);
+
+      if (!raw) {
+        continue;
+      }
+
+      const session = JSON.parse(raw);
+      const token = session?.sessionToken
+        || session?.token
+        || session?.accessToken
+        || session?.session_token
+        || '';
+
+      if (token) {
+        return token;
+      }
+    } catch {
+      // Try the next possible storage location.
+    }
+  }
+
+  try {
+    const storedSession = typeof getStoredProjectPulseAuthSession === 'function'
+      ? getStoredProjectPulseAuthSession()
+      : null;
+
+    return storedSession?.sessionToken
+      || storedSession?.token
+      || storedSession?.accessToken
+      || '';
+  } catch {
+    return '';
+  }
+}
+
+function getProjectPulse051DTimeEntryPostHeaders() {
+  const token = getProjectPulse051DTimeEntrySessionToken();
+
+  const headers = {
+    'Content-Type': 'application/json',
+    'X-ProjectPulse-Client-Guard': token ? '051D_TIME_ENTRY_POST_WITH_SESSION' : '051D_TIME_ENTRY_POST_NO_SESSION'
+  };
+
+  if (token) {
+    headers['X-ProjectPulse-Session'] = token;
+    headers['X-Project-Pulse-Session'] = token;
+    headers['X-Session-Token'] = token;
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  return headers;
+}
+
+async function postProjectPulse051DTimeEntryJson(path, payload) {
+  const response = await fetch(path, {
+    method: 'POST',
+    headers: getProjectPulse051DTimeEntryPostHeaders(),
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    let detail = '';
+
+    try {
+      const text = await response.text();
+
+      if (text) {
+        try {
+          const parsed = JSON.parse(text);
+          detail = parsed?.message || parsed?.status || text;
+        } catch {
+          detail = text;
+        }
+      }
+    } catch {
+      detail = response.statusText || 'Request failed';
+    }
+
+    throw new Error(`${path} returned HTTP ${response.status}: ${detail || response.statusText}`);
+  }
+
+  return response.json();
+}
+/* 051D_FORCE_TIME_ENTRY_POST_SESSION_END */
+
+
 function getProjectPulseAuthHeaders(sessionOverride = null) {
   const session = sessionOverride?.sessionToken ? sessionOverride : getStoredAuthSession();
   return session?.sessionToken ? { 'X-ProjectPulse-Session': session.sessionToken } : {};
@@ -5446,7 +5546,7 @@ export default function App() {
     try {
       const hours = Number.parseFloat(selectedEntry.hours);
 
-      const result = await postJson('/api/timesheets/ai-description-suggestions', {
+      const result = await postProjectPulse051DTimeEntryJson('/api/timesheets/ai-description-suggestions', {
         workDate: selectedCell.date,
         timeType: selectedCell.type,
         rowType: selectedRow.type,
@@ -5503,7 +5603,7 @@ export default function App() {
     setSaveStatus(statusMessage);
 
     try {
-      const result = await postJson('/api/timesheets/week/draft', payload);
+      const result = await postProjectPulse051DTimeEntryJson('/api/timesheets/week/draft', payload);
       setTimesheet({ loading: false, data: result.timesheet, error: null });
       setSubmissionStatus(statusToLabel(result.timesheet?.status, grandTotal));
       setSaveStatus('Draft autosaved');
@@ -5527,7 +5627,7 @@ export default function App() {
         return;
       }
 
-      const result = await postJson('/api/timesheets/week/draft', payload);
+      const result = await postProjectPulse051DTimeEntryJson('/api/timesheets/week/draft', payload);
       setTimesheet({ loading: false, data: result.timesheet, error: null });
       setSubmissionStatus(statusToLabel(result.timesheet?.status, grandTotal));
       setSaveStatus('Draft saved');
@@ -5556,7 +5656,7 @@ export default function App() {
     setSaveStatus(`Submitting ${selectedCell.date}...`);
 
     try {
-      const result = await postJson('/api/timesheets/day/submit', {
+      const result = await postProjectPulse051DTimeEntryJson('/api/timesheets/day/submit', {
         weekStart: selectedWeekStart,
         workDate: selectedCell.date,
         entries: buildTimesheetPayload().entries.filter((entry) => entry.workDate === selectedCell.date) /* 051B_DAY_SUBMIT_ENTRIES_FIX */
@@ -5580,7 +5680,7 @@ export default function App() {
     setSaveStatus(`Requesting unlock for ${selectedCell.date}...`);
 
     try {
-      const result = await postJson('/api/timesheets/day/unlock', {
+      const result = await postProjectPulse051DTimeEntryJson('/api/timesheets/day/unlock', {
         weekStart: selectedWeekStart,
         workDate: selectedCell.date
       });
@@ -5615,7 +5715,7 @@ export default function App() {
         return;
       }
 
-      const result = await postJson('/api/timesheets/week/draft', payload);
+      const result = await postProjectPulse051DTimeEntryJson('/api/timesheets/week/draft', payload);
       setTimesheet({ loading: false, data: result.timesheet, error: null });
       setSubmissionStatus(statusToLabel(result.timesheet?.status, grandTotal));
       setSaveStatus('Weekly draft saved. Submit each day from the time-entry window when the day reaches 8.00 hours.');
