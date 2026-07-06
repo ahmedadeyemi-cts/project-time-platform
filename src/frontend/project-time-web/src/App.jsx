@@ -462,6 +462,26 @@ function installProjectPulseEffectiveSessionVisibilityPanel() {
   const VIEW_AS_STORAGE_KEY = 'projectPulseViewAsUser';
   const PANEL_ID = 'projectpulse-effective-session-panel';
   const STYLE_ID = 'projectpulse-effective-session-panel-style';
+  const COLLAPSED_STORAGE_KEY = 'projectPulseEffectiveSessionPanelCollapsed';
+
+  /* 042B_EFFECTIVE_SESSION_COLLAPSE_START */
+  const readCollapsed = () => {
+    try {
+      const raw = window.localStorage.getItem(COLLAPSED_STORAGE_KEY);
+      return raw === null ? true : raw === 'true';
+    } catch {
+      return true;
+    }
+  };
+
+  const writeCollapsed = (collapsed) => {
+    try {
+      window.localStorage.setItem(COLLAPSED_STORAGE_KEY, collapsed ? 'true' : 'false');
+    } catch {
+      // Ignore localStorage persistence issues.
+    }
+  };
+  /* 042B_EFFECTIVE_SESSION_COLLAPSE_END */
 
   const escapeHtml = (value) => String(value ?? '')
     .replaceAll('&', '&amp;')
@@ -556,6 +576,41 @@ function installProjectPulseEffectiveSessionVisibilityPanel() {
         border-color: rgba(245, 158, 11, 0.78);
         background: rgba(120, 53, 15, 0.96);
       }
+
+      /* 042B_EFFECTIVE_SESSION_COLLAPSE_CSS_START */
+      #projectpulse-effective-session-panel.collapsed {
+        width: auto;
+        max-width: min(360px, calc(100vw - 2rem));
+        padding: 0.55rem 0.65rem;
+        border-radius: 999px;
+      }
+
+      #projectpulse-effective-session-panel.collapsed .effective-session-header {
+        margin-bottom: 0;
+        align-items: center;
+      }
+
+      #projectpulse-effective-session-panel.collapsed h3 {
+        font-size: 0.78rem;
+        white-space: nowrap;
+      }
+
+      #projectpulse-effective-session-panel.collapsed p {
+        display: none;
+      }
+
+      #projectpulse-effective-session-panel.collapsed .effective-session-grid,
+      #projectpulse-effective-session-panel.collapsed .effective-session-actions,
+      #projectpulse-effective-session-panel.collapsed .effective-session-status {
+        display: none;
+      }
+
+      #projectpulse-effective-session-panel .effective-session-header-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+      }
+      /* 042B_EFFECTIVE_SESSION_COLLAPSE_CSS_END */
 
       #projectpulse-effective-session-panel .effective-session-header {
         display: flex;
@@ -701,7 +756,8 @@ function installProjectPulseEffectiveSessionVisibilityPanel() {
       ? `Previewing ${viewAs.displayName || viewAs.email || viewAs.userId}`
       : 'No View-As override active';
 
-    panel.className = viewAs ? 'view-as-active' : '';
+    const collapsed = readCollapsed();
+    panel.className = `${viewAs ? 'view-as-active ' : ''}${collapsed ? 'collapsed' : ''}`.trim();
 
     panel.innerHTML = `
       <div class="effective-session-header">
@@ -709,7 +765,10 @@ function installProjectPulseEffectiveSessionVisibilityPanel() {
           <h3>Effective session</h3>
           <p>${escapeHtml(mode)} · ${escapeHtml(modeDetail)}</p>
         </div>
-        <button type="button" id="projectpulse-effective-session-refresh">Refresh</button>
+        <div class="effective-session-header-actions">
+          <button type="button" id="projectpulse-effective-session-refresh">Refresh</button>
+          <button type="button" id="projectpulse-effective-session-toggle">${collapsed ? 'Expand' : 'Minimize'}</button>
+        </div>
       </div>
 
       <div class="effective-session-grid">
@@ -739,6 +798,10 @@ function installProjectPulseEffectiveSessionVisibilityPanel() {
     `;
 
     panel.querySelector('#projectpulse-effective-session-refresh')?.addEventListener('click', loadEffectiveSession);
+    panel.querySelector('#projectpulse-effective-session-toggle')?.addEventListener('click', () => {
+      writeCollapsed(!readCollapsed());
+      renderPanel(state);
+    });
     panel.querySelector('#projectpulse-effective-session-write-test')?.addEventListener('click', testWriteLock);
   };
 
