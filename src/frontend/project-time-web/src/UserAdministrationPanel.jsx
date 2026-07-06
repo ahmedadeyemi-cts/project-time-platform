@@ -428,11 +428,15 @@ export default function UserAdministrationPanel() {
     setStatus('Saving user email, profile, and role...');
 
     try {
+      /* 041F_EMAIL_UPDATE_IDENTITY_FALLBACK_START */
       const emailResult = await postJson('/api/admin/user-admin/users/email', {
         userId: profileDraft.userId,
+        previousEmail: selectedUser?.email ?? profileDraft.email ?? '',
+        displayName: profileDraft.displayName ?? selectedUser?.displayName ?? '',
         email: cleanEmail,
         reason: 'Updated from User Administration profile section.'
       });
+      /* 041F_EMAIL_UPDATE_IDENTITY_FALLBACK_END */
 
       const profileResult = await postJson('/api/admin/user-admin/users/profile', {
         userId: profileDraft.userId,

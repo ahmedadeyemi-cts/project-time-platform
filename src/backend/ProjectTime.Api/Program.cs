@@ -11192,6 +11192,7 @@ app.MapGet("/api/admin/user-admin/users", async (HttpContext httpContext) =>
 
 
 /* 041E_EMAIL_ROUTE_REPAIR_START */
+/* 041F_EMAIL_RESOLUTION_FALLBACK_START */
 app.MapPost("/api/admin/user-admin/users/email", async (System.Text.Json.JsonElement payload, HttpContext httpContext) =>
 {
     var config = DatabaseConfig.FromEnvironment();
@@ -11205,11 +11206,20 @@ app.MapPost("/api/admin/user-admin/users/email", async (System.Text.Json.JsonEle
     }
 
     var userIdText = ProjectPulseJsonString(payload, "userId") ?? "";
+    var previousEmail = (ProjectPulseJsonString(payload, "previousEmail") ?? "").Trim().ToLowerInvariant();
+    var displayName = (ProjectPulseJsonString(payload, "displayName") ?? "").Trim();
     var requestedEmail = (ProjectPulseJsonString(payload, "email") ?? "").Trim().ToLowerInvariant();
 
-    if (!Guid.TryParse(userIdText, out var userId))
+    Guid? requestedUserId = null;
+
+    if (!string.IsNullOrWhiteSpace(userIdText))
     {
-        return Results.BadRequest(new { status = "invalid_user", message = "A valid userId is required before updating email." });
+        if (!Guid.TryParse(userIdText, out var parsedUserId))
+        {
+            return Results.BadRequest(new { status = "invalid_user", message = "A valid userId is required before updating email." });
+        }
+
+        requestedUserId = parsedUserId;
     }
 
     if (string.IsNullOrWhiteSpace(requestedEmail) || !System.Text.RegularExpressions.Regex.IsMatch(requestedEmail, @"^[^@\s]+@[^@\s]+\.[^@\s]+$"))
@@ -11225,22 +11235,93 @@ app.MapPost("/api/admin/user-admin/users/email", async (System.Text.Json.JsonEle
         return Results.Json(new { status = "access_denied", message = "User Administration is restricted to administrators and project/team coordinators." }, statusCode: StatusCodes.Status403Forbidden);
     }
 
+    Guid? resolvedUserId = null;
     string? oldEmail = null;
+    string? resolvedDisplayName = null;
+    string resolvedBy = "none";
 
-    await using (var oldEmailCommand = new NpgsqlCommand("""
-        SELECT email
-        FROM app_users
-        WHERE user_id = @user_id;
-        """, connection))
+    if (requestedUserId is not null)
     {
-        oldEmailCommand.Parameters.AddWithValue("user_id", userId);
-        oldEmail = (await oldEmailCommand.ExecuteScalarAsync())?.ToString();
+        await using var byIdCommand = new NpgsqlCommand("""
+            SELECT user_id, email, display_name
+            FROM app_users
+            WHERE user_id = @user_id
+            LIMIT 1;
+            """, connection);
+
+        byIdCommand.Parameters.AddWithValue("user_id", requestedUserId.Value);
+
+        await using var byIdReader = await byIdCommand.ExecuteReaderAsync();
+
+        if (await byIdReader.ReadAsync())
+        {
+            resolvedUserId = byIdReader.GetGuid(0);
+            oldEmail = byIdReader.IsDBNull(1) ? null : byIdReader.GetString(1);
+            resolvedDisplayName = byIdReader.IsDBNull(2) ? null : byIdReader.GetString(2);
+            resolvedBy = "userId";
+        }
     }
 
-    if (string.IsNullOrWhiteSpace(oldEmail))
+    if (resolvedUserId is null && !string.IsNullOrWhiteSpace(previousEmail))
     {
-        return Results.NotFound(new { status = "user_not_found", message = "The selected user could not be found." });
+        await using var byEmailCommand = new NpgsqlCommand("""
+            SELECT user_id, email, display_name
+            FROM app_users
+            WHERE lower(email) = lower(@previous_email)
+            ORDER BY is_active DESC, display_name
+            LIMIT 1;
+            """, connection);
+
+        byEmailCommand.Parameters.AddWithValue("previous_email", previousEmail);
+
+        await using var byEmailReader = await byEmailCommand.ExecuteReaderAsync();
+
+        if (await byEmailReader.ReadAsync())
+        {
+            resolvedUserId = byEmailReader.GetGuid(0);
+            oldEmail = byEmailReader.IsDBNull(1) ? null : byEmailReader.GetString(1);
+            resolvedDisplayName = byEmailReader.IsDBNull(2) ? null : byEmailReader.GetString(2);
+            resolvedBy = "previousEmail";
+        }
     }
+
+    if (resolvedUserId is null && !string.IsNullOrWhiteSpace(displayName))
+    {
+        await using var byNameCommand = new NpgsqlCommand("""
+            SELECT user_id, email, display_name
+            FROM app_users
+            WHERE lower(display_name) = lower(@display_name)
+            ORDER BY is_active DESC, email
+            LIMIT 1;
+            """, connection);
+
+        byNameCommand.Parameters.AddWithValue("display_name", displayName);
+
+        await using var byNameReader = await byNameCommand.ExecuteReaderAsync();
+
+        if (await byNameReader.ReadAsync())
+        {
+            resolvedUserId = byNameReader.GetGuid(0);
+            oldEmail = byNameReader.IsDBNull(1) ? null : byNameReader.GetString(1);
+            resolvedDisplayName = byNameReader.IsDBNull(2) ? null : byNameReader.GetString(2);
+            resolvedBy = "displayName";
+        }
+    }
+
+    if (resolvedUserId is null)
+    {
+        return Results.BadRequest(new
+        {
+            status = "user_email_target_not_found",
+            message = "The selected user could not be resolved for email update. Refresh User Administration and try again.",
+            suppliedUserId = userIdText,
+            previousEmail,
+            displayName
+        });
+    }
+
+    var userId = resolvedUserId.Value;
+    oldEmail ??= previousEmail;
 
     await using (var duplicateCommand = new NpgsqlCommand("""
         SELECT COUNT(*)
@@ -11260,13 +11341,27 @@ app.MapPost("/api/admin/user-admin/users/email", async (System.Text.Json.JsonEle
         }
     }
 
-    await using (var usernameDuplicateCommand = new NpgsqlCommand("""
+    var hasLocalAccountTable = false;
+
+    await using (var tableCommand = new NpgsqlCommand("""
         SELECT COUNT(*)
-        FROM auth_local_accounts
-        WHERE lower(username) = lower(@email)
-          AND user_id <> @user_id;
+        FROM information_schema.tables
+        WHERE table_schema = 'public'
+          AND table_name = 'auth_local_accounts';
         """, connection))
     {
+        hasLocalAccountTable = Convert.ToInt32(await tableCommand.ExecuteScalarAsync() ?? 0) > 0;
+    }
+
+    if (hasLocalAccountTable)
+    {
+        await using var usernameDuplicateCommand = new NpgsqlCommand("""
+            SELECT COUNT(*)
+            FROM auth_local_accounts
+            WHERE lower(username) = lower(@email)
+              AND user_id <> @user_id;
+            """, connection);
+
         usernameDuplicateCommand.Parameters.AddWithValue("email", requestedEmail);
         usernameDuplicateCommand.Parameters.AddWithValue("user_id", userId);
 
@@ -11291,29 +11386,24 @@ app.MapPost("/api/admin/user-admin/users/email", async (System.Text.Json.JsonEle
         {
             updateCommand.Parameters.AddWithValue("email", requestedEmail);
             updateCommand.Parameters.AddWithValue("user_id", userId);
-
-            var rows = await updateCommand.ExecuteNonQueryAsync();
-
-            if (rows == 0)
-            {
-                await transaction.RollbackAsync();
-                return Results.NotFound(new { status = "user_not_found", message = "The selected user could not be found." });
-            }
+            await updateCommand.ExecuteNonQueryAsync();
         }
 
         var propagationUpdates = new List<object>();
 
         if (!string.Equals(oldEmail, requestedEmail, StringComparison.OrdinalIgnoreCase))
         {
-            await using (var localUsernameCommand = new NpgsqlCommand("""
-                UPDATE auth_local_accounts
-                SET username = @new_email
-                WHERE user_id = @user_id
-                  AND lower(username) = lower(@old_email);
-                """, connection, transaction))
+            if (hasLocalAccountTable)
             {
+                await using var localUsernameCommand = new NpgsqlCommand("""
+                    UPDATE auth_local_accounts
+                    SET username = @new_email
+                    WHERE user_id = @user_id
+                      AND lower(username) = lower(@old_email);
+                    """, connection, transaction);
+
                 localUsernameCommand.Parameters.AddWithValue("new_email", requestedEmail);
-                localUsernameCommand.Parameters.AddWithValue("old_email", oldEmail);
+                localUsernameCommand.Parameters.AddWithValue("old_email", oldEmail ?? "");
                 localUsernameCommand.Parameters.AddWithValue("user_id", userId);
 
                 var localRows = await localUsernameCommand.ExecuteNonQueryAsync();
@@ -11364,7 +11454,7 @@ app.MapPost("/api/admin/user-admin/users/email", async (System.Text.Json.JsonEle
 
                 await using var propagateCommand = new NpgsqlCommand(sql, connection, transaction);
                 propagateCommand.Parameters.AddWithValue("new_email", requestedEmail);
-                propagateCommand.Parameters.AddWithValue("old_email", oldEmail);
+                propagateCommand.Parameters.AddWithValue("old_email", oldEmail ?? "");
 
                 var affected = await propagateCommand.ExecuteNonQueryAsync();
 
@@ -11384,6 +11474,8 @@ app.MapPost("/api/admin/user-admin/users/email", async (System.Text.Json.JsonEle
                 ? $"User email updated and propagated to {propagationUpdates.Count} email reference column(s)."
                 : "User email updated.",
             userId,
+            displayName = resolvedDisplayName,
+            resolvedBy,
             oldEmail,
             email = requestedEmail,
             propagatedEmailReferences = propagationUpdates
@@ -11399,6 +11491,7 @@ app.MapPost("/api/admin/user-admin/users/email", async (System.Text.Json.JsonEle
             statusCode: StatusCodes.Status500InternalServerError);
     }
 });
+/* 041F_EMAIL_RESOLUTION_FALLBACK_END */
 /* 041E_EMAIL_ROUTE_REPAIR_END */
 
 app.MapPost("/api/admin/user-admin/users/profile", async (UserAdminProfileUpdateRequest request, HttpContext httpContext) =>
