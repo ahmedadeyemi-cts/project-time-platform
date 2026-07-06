@@ -29,6 +29,23 @@ async function fetchProfilePreferenceBackupReadiness() {
 }
 /* 043C_PROFILE_PREFERENCES_BACKUP_READINESS_FRONTEND_END */
 
+/* 043D_PROFILE_PICTURE_PRODUCTION_VALIDATION_FRONTEND_START */
+async function fetchProfilePictureProductionValidation() {
+  const response = await fetch('/api/profile/preferences/production-validation', {
+    headers: getProjectPulse043CBackupReadinessAuthHeaders()
+  });
+
+  const payload = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(payload.message || `Profile picture production validation returned HTTP ${response.status}`);
+  }
+
+  return payload;
+}
+/* 043D_PROFILE_PICTURE_PRODUCTION_VALIDATION_FRONTEND_END */
+
+
 function statusClass(value) {
   const normalized = String(value ?? '').toLowerCase();
   if (['ready', 'healthy', 'ok', 'completed', 'settings_saved'].includes(normalized)) return 'healthy';
@@ -120,6 +137,40 @@ function BackupDrCenter({
     loadProfilePreferenceBackupReadiness();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+
+  /* 043D_PROFILE_PICTURE_PRODUCTION_VALIDATION_STATE_START */
+  const [profilePictureProductionValidation, setProfilePictureProductionValidation] = useState({
+    loading: true,
+    data: null,
+    error: null
+  });
+
+  async function loadProfilePictureProductionValidation() {
+    setProfilePictureProductionValidation((current) => ({ ...current, loading: true, error: null }));
+
+    try {
+      const result = await fetchProfilePictureProductionValidation();
+
+      setProfilePictureProductionValidation({
+        loading: false,
+        data: result,
+        error: null
+      });
+    } catch (error) {
+      setProfilePictureProductionValidation({
+        loading: false,
+        data: null,
+        error: error instanceof Error ? error.message : 'Unable to load profile picture production validation.'
+      });
+    }
+  }
+
+  useEffect(() => {
+    loadProfilePictureProductionValidation();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  /* 043D_PROFILE_PICTURE_PRODUCTION_VALIDATION_STATE_END */
 
   const [backupState, setBackupState] = useState({ loading: true, data: null, error: null });
   const [settingsState, setSettingsState] = useState({
@@ -459,6 +510,73 @@ function BackupDrCenter({
         )}
       </section>
       {/* 043C_PROFILE_PREFERENCES_BACKUP_READINESS_UI_END */}
+
+      {/* 043D_PROFILE_PICTURE_PRODUCTION_VALIDATION_UI_START */}
+      <section className="profile-picture-production-validation-card">
+        <div>
+          <p className="eyebrow">043D Production Validation</p>
+          <h2>Profile picture production validation</h2>
+          <p>
+            Confirms the signed-in user&apos;s profile picture is persisted in backend storage and that validation output never exposes the actual image payload.
+          </p>
+        </div>
+
+        <div className="profile-picture-production-validation-actions">
+          <button type="button" className="secondary-action" onClick={loadProfilePictureProductionValidation}>
+            Refresh profile picture validation
+          </button>
+        </div>
+
+        {profilePictureProductionValidation.loading ? (
+          <div className="manager-empty-state">Checking profile picture production readiness...</div>
+        ) : profilePictureProductionValidation.error ? (
+          <div className="error-text">{profilePictureProductionValidation.error}</div>
+        ) : (
+          <>
+            <div className="profile-picture-production-validation-grid">
+              <article>
+                <span>Status</span>
+                <strong>{profilePictureProductionValidation.data?.status ?? 'unknown'}</strong>
+                <small>{profilePictureProductionValidation.data?.storage?.deploymentRisk ?? 'Storage risk unavailable'}</small>
+              </article>
+              <article>
+                <span>Current user photo</span>
+                <strong>{profilePictureProductionValidation.data?.currentUser?.hasPersistedProfilePhoto ? 'Persisted' : 'Not uploaded'}</strong>
+                <small>{profilePictureProductionValidation.data?.currentUser?.profilePhotoUpdatedAt ?? 'No saved profile photo timestamp'}</small>
+              </article>
+              <article>
+                <span>Storage mode</span>
+                <strong>{profilePictureProductionValidation.data?.storage?.mode ?? 'unknown'}</strong>
+                <small>{profilePictureProductionValidation.data?.storage?.tableName ?? 'Storage table unavailable'}</small>
+              </article>
+              <article>
+                <span>Payload returned</span>
+                <strong>{profilePictureProductionValidation.data?.currentUser?.profilePhotoPayloadReturned ? 'Yes' : 'No'}</strong>
+                <small>Validation metadata only; no base64 image payload should appear here.</small>
+              </article>
+            </div>
+
+            <div className="profile-picture-production-validation-checks">
+              {(profilePictureProductionValidation.data?.validationChecks ?? []).map((check) => (
+                <article key={check.code}>
+                  <strong>{check.label}</strong>
+                  <span>{check.status}</span>
+                  <small>{check.evidence}</small>
+                </article>
+              ))}
+            </div>
+
+            <div className="profile-picture-production-validation-note">
+              <strong>Production test:</strong>
+              <span>
+                Upload a profile picture, save it, hard refresh, sign out/sign in, and redeploy. This validation should continue to show backend persistence without exposing the image payload.
+              </span>
+            </div>
+          </>
+        )}
+      </section>
+      {/* 043D_PROFILE_PICTURE_PRODUCTION_VALIDATION_UI_END */}
+
 
       <div className="backup-dr-hero">
         <div>

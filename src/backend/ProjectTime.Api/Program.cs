@@ -8053,6 +8053,127 @@ app.MapGet("/api/profile/preferences/backup-readiness", async (HttpContext httpC
 }).WithName("ProjectPulse043CProfilePreferencesBackupReadiness");
 /* 043C_PROFILE_PREFERENCES_BACKUP_READINESS_API_END */
 
+/* 043D_PROFILE_PICTURE_PRODUCTION_VALIDATION_API_START */
+app.MapGet("/api/profile/preferences/production-validation", async (HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var config = DatabaseConfig.FromEnvironment();
+    var validation = ValidateConfig(config);
+    if (validation is not null) return validation;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    await ProjectPulse043BEnsureProfileColumnsAsync(connection);
+
+    await using var command = new NpgsqlCommand("""
+        SELECT
+            COALESCE(NULLIF(profile_photo_data_url, ''), '') <> '' AS has_persisted_profile_photo,
+            profile_photo_updated_at,
+            OCTET_LENGTH(COALESCE(profile_photo_data_url, ''))::bigint AS profile_photo_payload_bytes,
+            COALESCE(NULLIF(email, ''), '') AS email,
+            COALESCE(NULLIF(display_name, ''), '') AS display_name
+        FROM app_users
+        WHERE user_id = @user_id
+          AND is_active = TRUE;
+        """, connection);
+
+    command.Parameters.AddWithValue("user_id", sessionUserId.Value);
+
+    await using var reader = await command.ExecuteReaderAsync();
+
+    if (!await reader.ReadAsync())
+    {
+        return Results.NotFound(new
+        {
+            status = "not_found",
+            message = "Signed-in user profile was not found for profile picture production validation."
+        });
+    }
+
+    var hasPersistedProfilePhoto = reader.GetBoolean(0);
+    var profilePhotoUpdatedAt = reader.IsDBNull(1) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(1);
+    var profilePhotoPayloadBytes = reader.GetInt64(2);
+    var email = reader.GetString(3);
+    var displayName = reader.GetString(4);
+
+    return Results.Ok(new
+    {
+        status = hasPersistedProfilePhoto ? "ready" : "pending_profile_photo_upload",
+        module = "043D Profile Picture Production Validation",
+        currentUser = new
+        {
+            email,
+            displayName = string.IsNullOrWhiteSpace(displayName) ? email : displayName,
+            hasPersistedProfilePhoto,
+            profilePhotoUpdatedAt,
+            profilePhotoPayloadBytes,
+            profilePhotoPayloadReturned = false
+        },
+        storage = new
+        {
+            mode = "database",
+            tableName = "public.app_users",
+            columns = new[]
+            {
+                "profile_photo_data_url",
+                "profile_photo_updated_at"
+            },
+            redeploySafe = true,
+            deploymentRisk = "not_stored_in_frontend_dist_tmp_or_browser_only_storage"
+        },
+        validationChecks = new[]
+        {
+            new
+            {
+                code = "backend_persistence",
+                label = "Backend persistence",
+                status = "ready",
+                evidence = "Profile photo metadata is resolved from public.app_users."
+            },
+            new
+            {
+                code = "redeploy_survivability",
+                label = "Redeploy survivability",
+                status = "ready",
+                evidence = "Profile pictures are stored outside frontend build output and API publish folders."
+            },
+            new
+            {
+                code = "current_user_profile_photo",
+                label = "Current user profile picture",
+                status = hasPersistedProfilePhoto ? "ready" : "pending_profile_photo_upload",
+                evidence = hasPersistedProfilePhoto
+                    ? "The signed-in user has a persisted profile picture."
+                    : "Upload and save a profile picture, then refresh this validation."
+            },
+            new
+            {
+                code = "payload_redaction",
+                label = "Payload redaction",
+                status = "ready",
+                evidence = "This validation response returns metadata only and does not return the profile image/base64 payload."
+            }
+        },
+        manualProductionValidation = new[]
+        {
+            "Upload a profile picture under My profile and save it.",
+            "Hard refresh the browser and confirm the picture remains.",
+            "Sign out and sign back in, then confirm the picture remains.",
+            "Run the active deployment script after saving the picture, then confirm the picture remains.",
+            "Confirm this validation endpoint still reports profilePhotoPayloadReturned=false."
+        }
+    });
+}).WithName("ProjectPulse043DProfilePictureProductionValidation");
+/* 043D_PROFILE_PICTURE_PRODUCTION_VALIDATION_API_END */
+
+
 
 app.MapGet("/api/security/me", async (HttpContext httpContext) =>
 {
