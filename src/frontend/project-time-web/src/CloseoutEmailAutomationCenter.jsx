@@ -315,6 +315,124 @@ function recipientFromFields(item, role, nameKeys, emailKeys) {
   };
 }
 
+/* 041H_CLOSEOUT_USER_DIRECTORY_EMAIL_RESOLUTION_START */
+function closeoutUserDirectoryAuthHeaders() {
+  try {
+    const rawSession = window.localStorage.getItem('projectPulseAuthSession');
+    if (!rawSession) return {};
+
+    const session = JSON.parse(rawSession);
+    const sessionToken = session?.sessionToken || session?.token || '';
+
+    return sessionToken ? { 'X-ProjectPulse-Session': sessionToken } : {};
+  } catch {
+    return {};
+  }
+}
+
+async function loadCloseoutUserDirectory() {
+  const response = await fetch('/api/admin/user-admin/users', {
+    headers: {
+      ...closeoutUserDirectoryAuthHeaders(),
+      Accept: 'application/json'
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`/api/admin/user-admin/users returned HTTP ${response.status}`);
+  }
+
+  const data = await response.json();
+  return Array.isArray(data?.users) ? data.users : [];
+}
+
+function normalizeDirectoryKey(value) {
+  return normalizeText(value).toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function buildUserDirectory(users) {
+  const directory = new Map();
+
+  (Array.isArray(users) ? users : []).forEach((user) => {
+    const email = normalizeText(user.email);
+    const displayName = normalizeText(user.displayName || user.name || user.fullName);
+    const localUsername = normalizeText(user.localUsername);
+    const sourceProvider = normalizeText(user.sourceProvider);
+
+    const normalizedUser = {
+      email,
+      displayName,
+      localUsername,
+      sourceProvider,
+      teamName: normalizeText(user.teamName),
+      departmentName: normalizeText(user.departmentName),
+      roleCodes: Array.isArray(user.roleCodes) ? user.roleCodes : [],
+      roleNames: Array.isArray(user.roleNames) ? user.roleNames : []
+    };
+
+    [
+      displayName,
+      email,
+      localUsername
+    ].forEach((keyValue) => {
+      const key = normalizeDirectoryKey(keyValue);
+      if (!key) return;
+
+      const existing = directory.get(key);
+
+      if (!existing || (!isEmail(existing.email) && isEmail(normalizedUser.email))) {
+        directory.set(key, normalizedUser);
+      }
+    });
+  });
+
+  return directory;
+}
+
+function resolveRecipientFromUserDirectory(recipient, userDirectory) {
+  const currentEmail = normalizeText(recipient.email);
+  const currentName = normalizeText(recipient.name);
+
+  if (isEmail(currentEmail)) {
+    return {
+      ...recipient,
+      name: currentName,
+      email: currentEmail
+    };
+  }
+
+  const candidateKeys = [
+    currentName,
+    currentEmail
+  ].map(normalizeDirectoryKey).filter(Boolean);
+
+  for (const key of candidateKeys) {
+    const user = userDirectory.get(key);
+
+    if (user && isEmail(user.email)) {
+      return {
+        ...recipient,
+        name: currentName || user.displayName,
+        email: user.email,
+        userDirectoryResolved: true
+      };
+    }
+  }
+
+  return {
+    ...recipient,
+    name: currentName,
+    email: currentEmail
+  };
+}
+
+function enrichRecipientsWithUserDirectory(recipients, userDirectory) {
+  return uniqueRecipients(
+    recipients.map((recipient) => resolveRecipientFromUserDirectory(recipient, userDirectory))
+  );
+}
+/* 041H_CLOSEOUT_USER_DIRECTORY_EMAIL_RESOLUTION_END */
+
 function extractProjectTeam(project, payloads) {
   const recipients = [
     recipientFromFields(project, 'Project Manager', ['projectManagerName'], ['projectManagerEmail']),
@@ -434,6 +552,7 @@ function buildAuditCsv(entries) {
 
 export default function CloseoutEmailAutomationCenter() {
   const [payload, setPayload] = useState({ loading: true, error: null, data: null });
+  const [userDirectoryPayload, setUserDirectoryPayload] = useState({ loading: true, users: [], error: null });
   const [selectedProjectKey, setSelectedProjectKey] = useState('');
   const [status, setStatus] = useState('');
   const [auditEntries, setAuditEntries] = useState(() => readAuditLog());
@@ -511,19 +630,45 @@ export default function CloseoutEmailAutomationCenter() {
     }
   }, [projects, selectedProjectKey]);
 
+  useEffect(() => {
+    let isMounted = true;
+
+    loadCloseoutUserDirectory()
+      .then((users) => {
+        if (!isMounted) return;
+        setUserDirectoryPayload({ loading: false, users, error: null });
+      })
+      .catch((error) => {
+        if (!isMounted) return;
+        setUserDirectoryPayload({
+          loading: false,
+          users: [],
+          error: error instanceof Error ? error.message : 'Unable to load User Administration directory.'
+        });
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const selectedProject = useMemo(() => {
     return projects.find((project) => project.key === selectedProjectKey) ?? projects[0] ?? null;
   }, [projects, selectedProjectKey]);
 
+  const userDirectory = useMemo(() => buildUserDirectory(userDirectoryPayload.users), [userDirectoryPayload.users]);
+
   const recipients = useMemo(() => {
     if (!payload.data || !selectedProject) return [];
 
-    return extractProjectTeam(selectedProject, [
+    const detectedRecipients = extractProjectTeam(selectedProject, [
       payload.data.workspace,
       payload.data.intake,
       payload.data.customers
     ]);
-  }, [payload.data, selectedProject]);
+
+    return enrichRecipientsWithUserDirectory(detectedRecipients, userDirectory);
+  }, [payload.data, selectedProject, userDirectory]);
 
   const emailReadyRecipients = useMemo(() => recipients.filter((recipient) => isEmail(recipient.email)), [recipients]);
 
