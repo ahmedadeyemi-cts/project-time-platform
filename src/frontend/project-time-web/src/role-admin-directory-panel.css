@@ -521,3 +521,10 @@
   }
 }
 /* 042E_ROLE_ADMIN_UX_CLEANUP_CSS_END */
+
+/* 042F_LEGACY_ROLE_ASSIGNMENT_REMOVAL_CSS_START */
+.role-admin-overview-callout-grid article:first-child {
+  border-color: rgba(37, 99, 235, 0.28);
+  background: linear-gradient(180deg, rgba(239, 246, 255, 0.96), rgba(255, 255, 255, 0.96));
+}
+/* 042F_LEGACY_ROLE_ASSIGNMENT_REMOVAL_CSS_END */

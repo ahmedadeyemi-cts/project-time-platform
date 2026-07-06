@@ -7252,49 +7252,8 @@ Analytics - Variphy / Infortel`}
 
       {(hasPermission('SYSTEM_ADMINISTRATION') || hasPermission('MANAGE_ALL')) ? (
         <section id="role-admin" className="panel role-admin-panel">
+          {/* 042F_ROLE_ADMIN_ROUTE_SIMPLIFIED */}
           <RoleAdminDirectoryPanel />
-          <div className="section-header compact">
-            <div>
-              <p className="eyebrow">Administration</p>
-              <h2 id="role-admin-assignments">User role administration</h2>{/* 042E_ROLE_ADMIN_ASSIGNMENTS_ANCHOR */}
-              <p className="muted">Assign each user to the workspace role that controls their available views and actions. PMO and PM/Project Manager have been consolidated as Project Management.</p>
-            </div>
-            <span className="pill">{roleAdminUsers.data?.count ?? 0} users</span>
-          </div>
-
-          {roleAdminUsers.error || roleAdminRoles.error ? <p className="error-text">{roleAdminUsers.error ?? roleAdminRoles.error}</p> : null}
-          <p className="muted">{roleAdminStatus}</p>
-
-          <div className="role-admin-table" role="table" aria-label="User role assignments">
-            <div className="role-admin-row role-admin-header" role="row">
-              <div role="columnheader">User</div>
-              <div role="columnheader">Current role</div>
-              <div role="columnheader">Assign role</div>
-            </div>
-            {(roleAdminUsers.data?.users ?? []).map((user) => (
-              <div className="role-admin-row" role="row" key={user.email}>
-                <div role="cell">
-                  <strong>{user.displayName}</strong>
-                  <span>{user.email}</span>
-                  <small>{user.jobTitle || 'No title'}{user.department ? ` • ${user.department}` : ''}</small>
-                </div>
-                <div role="cell">
-                  <span className="role-chip">{user.roleNames?.length ? user.roleNames.join(', ') : 'No role assigned'}</span>
-                </div>
-                <div role="cell">
-                  <select
-                    value={user.roleCodes?.[0] ?? ''}
-                    onChange={(event) => void updateUserRole(user.email, event.target.value)}
-                  >
-                    <option value="" disabled>Select role</option>
-                    {(roleAdminRoles.data?.roles ?? []).map((role) => (
-                      <option value={role.roleCode} key={role.roleCode}>{role.roleName}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            ))}
-          </div>
         </section>
       ) : null}
 

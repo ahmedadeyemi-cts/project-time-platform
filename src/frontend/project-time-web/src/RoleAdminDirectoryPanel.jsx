@@ -370,6 +370,7 @@ export default function RoleAdminDirectoryPanel() {
 
       {payload.error ? <div className="error-text">{payload.error}</div> : null}
 
+      {/* 042F_LEGACY_ROLE_ASSIGNMENT_REMOVAL_START */}
       {/* 042E_ROLE_ADMIN_UX_CLEANUP_START */}
       <div className="role-admin-section-tabs" role="tablist" aria-label="Role administration sections">
         <button
@@ -393,9 +394,10 @@ export default function RoleAdminDirectoryPanel() {
         >
           Restricted Route Enforcement
         </button>
-        <a href="#role-admin-assignments">User role assignments</a>
+        <a href="#user-admin">Open User Administration</a>
       </div>
       {/* 042E_ROLE_ADMIN_UX_CLEANUP_END */}
+      {/* 042F_LEGACY_ROLE_ASSIGNMENT_REMOVAL_END */}
 
       {activeSecuritySection === 'overview' ? (
         <>
@@ -403,8 +405,8 @@ export default function RoleAdminDirectoryPanel() {
             <article>
               <span>Step 1</span>
               <strong>Assign users to the right role</strong>
-              <p>Use the User role assignments area below to add, remove, or replace role assignments.</p>
-              <a href="#role-admin-assignments">Go to user role assignments</a>
+              <p>User role changes are managed in the dedicated User Administration workflow, where user profile, team, department, manager, login, and role updates stay together.</p>
+              <a href="#user-admin">Open User Administration</a>
             </article>
             <article>
               <span>Step 2</span>
