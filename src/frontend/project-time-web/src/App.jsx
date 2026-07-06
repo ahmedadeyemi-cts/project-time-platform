@@ -4088,9 +4088,9 @@ export default function App() {
           fetchJson('/api/project-intake/summary', authSession),
           fetchJson('/api/project-management/summary', authSession),
           fetchJson(`/api/resource-scheduling/capacity?weekStart=${selectedWeekStart}`, authSession),
-          fetchJson('/api/expenses/summary', authSession),
-          fetchJson('/api/invoicing/summary', authSession),
-          fetchJson('/api/reporting/executive-dashboard', authSession)
+          (canViewExecutiveOrAccountingSummaries ? fetchJson('/api/expenses/summary', authSession) : Promise.resolve({ count: 0, skipped: '052C_restricted_for_effective_role' })),
+          (canViewExecutiveOrAccountingSummaries ? fetchJson('/api/invoicing/summary', authSession) : Promise.resolve({ count: 0, skipped: '052C_restricted_for_effective_role' })),
+          (canViewExecutiveOrAccountingSummaries ? fetchJson('/api/reporting/executive-dashboard', authSession) : Promise.resolve({ count: 0, skipped: '052C_restricted_for_effective_role' }))
         ]);
 
         if (!cancelled) {
@@ -5787,6 +5787,14 @@ export default function App() {
 
   const roleNames = securityContext.data?.roles?.map((role) => role.roleName).join(', ') || 'No role assigned';
   const workspaceFeatures = securityContext.data?.features ?? [];
+  /* 052C_STOP_RESTRICTED_EAGER_LOADS_START */
+  const canViewAdminProductionReadiness =
+    canSeeAny(['VIEW_PRODUCTION_READINESS_COMMAND_CENTER', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']);
+
+  const canViewExecutiveOrAccountingSummaries =
+    canSeeAny(['VIEW_EXPENSES', 'VIEW_ACCOUNT_RECONCILIATION', 'VIEW_EXECUTIVE_REPORTING', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']);
+/* 052C_STOP_RESTRICTED_EAGER_LOADS_END */
+
   const canManageHolidays = hasPermission('MANAGE_HOLIDAYS') || hasPermission('MANAGE_ALL');
   const canViewHolidayCalendar = hasPermission('VIEW_HOLIDAYS') || canManageHolidays;
   const canViewPsaModules = canSeeAny(['VIEW_PROJECT_INTAKE', 'VIEW_RESOURCE_SCHEDULING', 'VIEW_EXPENSES', 'VIEW_EXECUTIVE_REPORTING', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']);
@@ -6311,13 +6319,17 @@ Analytics - Variphy / Infortel`}
 
       <PageContextGuide activeRoute={activeRoute} />
 
-      <section id="production-data-readiness" className="panel production-data-readiness-route-panel">
-        <ProductionDataReadinessCenter />
-      </section>
+      {(activeRoute === 'production-data-readiness' && canViewAdminProductionReadiness) ? (
+        <section id="production-data-readiness" className="panel production-data-readiness-route-panel">
+          <ProductionDataReadinessCenter />
+        </section>
+      ) : null}
 
-      <section id="production-readiness" className="panel production-readiness-route-panel">
-        <ProductionReadinessCenterPanel />
-      </section>
+      {(activeRoute === 'production-readiness' && canViewAdminProductionReadiness) ? (
+        <section id="production-readiness" className="panel production-readiness-route-panel">
+          <ProductionReadinessCenterPanel />
+        </section>
+      ) : null}
 
 <section id="user-admin" className="panel user-admin-panel">
         <UserAdministrationPanel />
