@@ -403,3 +403,121 @@
   }
 }
 /* 042D_ROLE_ENFORCEMENT_VALIDATION_MATRIX_CSS_END */
+
+/* 042E_ROLE_ADMIN_UX_CLEANUP_CSS_START */
+.role-admin-section-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin: 1rem 0;
+  padding: 0.55rem;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 999px;
+  background: rgba(248, 250, 252, 0.92);
+}
+
+.role-admin-section-tabs button,
+.role-admin-section-tabs a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.25rem;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 999px;
+  background: #fff;
+  color: #334155;
+  padding: 0.45rem 0.8rem;
+  font-weight: 900;
+  font-size: 0.82rem;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.role-admin-section-tabs button.active {
+  border-color: rgba(37, 99, 235, 0.46);
+  background: #dbeafe;
+  color: #1d4ed8;
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.12);
+}
+
+.role-admin-section-tabs a {
+  margin-left: auto;
+  background: #0f172a;
+  color: #fff;
+}
+
+.role-admin-overview-callout-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.85rem;
+  margin: 1rem 0;
+}
+
+.role-admin-overview-callout-grid article {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  min-width: 0;
+  border: 1px solid rgba(14, 165, 233, 0.22);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.94);
+  padding: 1rem;
+}
+
+.role-admin-overview-callout-grid span {
+  color: #0369a1;
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.role-admin-overview-callout-grid strong {
+  color: #0f172a;
+  font-size: 1rem;
+  line-height: 1.25;
+}
+
+.role-admin-overview-callout-grid p {
+  margin: 0;
+  color: #64748b;
+  line-height: 1.45;
+}
+
+.role-admin-overview-callout-grid button,
+.role-admin-overview-callout-grid a {
+  align-self: flex-start;
+  margin-top: auto;
+  border: 1px solid rgba(37, 99, 235, 0.32);
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  padding: 0.42rem 0.7rem;
+  font-weight: 900;
+  font-size: 0.78rem;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.role-validation-matrix-panel .section-copy {
+  max-width: 980px;
+}
+
+.role-validation-table td:first-child strong {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 980px) {
+  .role-admin-overview-callout-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .role-admin-section-tabs {
+    border-radius: 22px;
+  }
+
+  .role-admin-section-tabs a {
+    margin-left: 0;
+  }
+}
+/* 042E_ROLE_ADMIN_UX_CLEANUP_CSS_END */

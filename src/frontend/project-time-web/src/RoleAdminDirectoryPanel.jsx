@@ -261,6 +261,7 @@ export default function RoleAdminDirectoryPanel() {
   const [validationPayload, setValidationPayload] = useState({ loading: true, data: null, error: null });
   const [selectedRoleCode, setSelectedRoleCode] = useState('all');
   const [permissionSearch, setPermissionSearch] = useState('');
+  const [activeSecuritySection, setActiveSecuritySection] = useState('overview');
 
   async function loadDirectory() {
     setPayload((current) => ({ ...current, loading: true, error: null }));
@@ -359,15 +360,65 @@ export default function RoleAdminDirectoryPanel() {
       <div className="section-heading">
         <div>
           <p className="eyebrow">019M-AQ</p>
-          <h2>Role Directory & Permission Visibility</h2>
+          <h2>Role / Security Administration</h2>
           <p className="section-copy">
-            Review what each role means, who is assigned to it, and which permissions are granted by module. The module summary is read-only; role assignment changes remain controlled by the existing administration workflow below.
+            Review users, roles, permission coverage, and restricted route enforcement in focused sections. The restricted route matrix is security evidence only; normal role capabilities are reviewed separately from administrative guardrails.
           </p>
         </div>
         <button type="button" className="secondary-action" onClick={loadDirectory}>Refresh</button>
       </div>
 
       {payload.error ? <div className="error-text">{payload.error}</div> : null}
+
+      {/* 042E_ROLE_ADMIN_UX_CLEANUP_START */}
+      <div className="role-admin-section-tabs" role="tablist" aria-label="Role administration sections">
+        <button
+          type="button"
+          className={activeSecuritySection === 'overview' ? 'active' : ''}
+          onClick={() => setActiveSecuritySection('overview')}
+        >
+          Overview
+        </button>
+        <button
+          type="button"
+          className={activeSecuritySection === 'roles' ? 'active' : ''}
+          onClick={() => setActiveSecuritySection('roles')}
+        >
+          Roles & Permissions
+        </button>
+        <button
+          type="button"
+          className={activeSecuritySection === 'restricted-routes' ? 'active' : ''}
+          onClick={() => setActiveSecuritySection('restricted-routes')}
+        >
+          Restricted Route Enforcement
+        </button>
+        <a href="#role-admin-assignments">User role assignments</a>
+      </div>
+      {/* 042E_ROLE_ADMIN_UX_CLEANUP_END */}
+
+      {activeSecuritySection === 'overview' ? (
+        <>
+          <div className="role-admin-overview-callout-grid">
+            <article>
+              <span>Step 1</span>
+              <strong>Assign users to the right role</strong>
+              <p>Use the User role assignments area below to add, remove, or replace role assignments.</p>
+              <a href="#role-admin-assignments">Go to user role assignments</a>
+            </article>
+            <article>
+              <span>Step 2</span>
+              <strong>Review role permissions</strong>
+              <p>Use Roles & Permissions to inspect what each role means, who has it, and which permissions are granted.</p>
+              <button type="button" onClick={() => setActiveSecuritySection('roles')}>Open roles</button>
+            </article>
+            <article>
+              <span>Step 3</span>
+              <strong>Validate restricted routes</strong>
+              <p>Use Restricted Route Enforcement to confirm administrative, security, workflow, and export routes are blocked for roles that should not reach them.</p>
+              <button type="button" onClick={() => setActiveSecuritySection('restricted-routes')}>Open restricted routes</button>
+            </article>
+          </div>
 
       <div className="role-directory-summary-grid">
         <article>
@@ -407,9 +458,14 @@ export default function RoleAdminDirectoryPanel() {
         </div>
       </div>
 
+        </>
+      ) : null}
+
+      {activeSecuritySection === 'roles' ? (
+        <>
       <div className="role-directory-section-heading">
         <div>
-          <h3>Role Directory</h3>
+          <h3>Roles & Permissions Directory</h3>
           <p className="section-copy">
             Each role below shows its plain-language purpose, assigned team members, and the exact permissions granted by module.
           </p>
@@ -500,13 +556,17 @@ export default function RoleAdminDirectoryPanel() {
       ) : null}
 
 
+        </>
+      ) : null}
+
+      {activeSecuritySection === 'restricted-routes' ? (
       <section className="role-validation-matrix-panel">
         <div className="role-directory-section-heading">
           <div>
             <p className="eyebrow">042D</p>
-            <h3>Role Enforcement Validation Matrix</h3>
+            <h3>Restricted Route Enforcement Matrix</h3>
             <p className="section-copy">
-              Validate route permission contracts against key production roles. This is a read-only security evidence view that helps confirm restricted routes stay blocked for roles that should not reach them.
+              Validate administrative, security, workflow, export, and production-readiness route contracts against key production roles. This is not a full capability matrix; Engineer may be blocked here while still retaining normal access to time entry, assigned work, and engineering workspace areas.
             </p>
           </div>
           <button type="button" className="secondary-action" onClick={loadRoleValidationMatrix}>Refresh validation</button>
@@ -552,7 +612,7 @@ export default function RoleAdminDirectoryPanel() {
             </div>
 
             <div className="role-validation-scroll-note">
-              <span>Allowed means the role is explicitly allowed or has a required permission. Blocked means the contract restricts the role or the role lacks required access. Review means the route contract needs more detail.</span>
+              <span>This matrix focuses on restricted routes only. Allowed means the role is explicitly allowed or has a required permission. Blocked means the role is intentionally excluded from that protected route or lacks required access. Review means the route contract needs more detail.</span>
             </div>
 
             <div className="role-validation-table-wrap">
@@ -605,6 +665,7 @@ export default function RoleAdminDirectoryPanel() {
           </>
         )}
       </section>
+      ) : null}
     </section>
   );
 }

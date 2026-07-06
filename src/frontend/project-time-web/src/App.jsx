@@ -7256,7 +7256,7 @@ Analytics - Variphy / Infortel`}
           <div className="section-header compact">
             <div>
               <p className="eyebrow">Administration</p>
-              <h2>User role administration</h2>
+              <h2 id="role-admin-assignments">User role administration</h2>{/* 042E_ROLE_ADMIN_ASSIGNMENTS_ANCHOR */}
               <p className="muted">Assign each user to the workspace role that controls their available views and actions. PMO and PM/Project Manager have been consolidated as Project Management.</p>
             </div>
             <span className="pill">{roleAdminUsers.data?.count ?? 0} users</span>
