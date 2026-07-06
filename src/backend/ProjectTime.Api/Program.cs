@@ -11495,6 +11495,119 @@ app.MapPost("/api/admin/user-admin/users/email", async (System.Text.Json.JsonEle
 /* 041E_EMAIL_ROUTE_REPAIR_END */
 
 
+
+/* 041M_CLOSEOUT_EMAIL_AUDIT_API_START */
+app.MapGet("/api/project-closeout/email/audit", async (Microsoft.AspNetCore.Http.HttpContext httpContext, int? limit) =>
+{
+    var sessionToken = httpContext.Request.Headers.TryGetValue("X-ProjectPulse-Session", out var sessionValues)
+        ? sessionValues.ToString()
+        : string.Empty;
+
+    if (string.IsNullOrWhiteSpace(sessionToken))
+    {
+        return Microsoft.AspNetCore.Http.Results.Json(
+            new { status = "session_required", message = "Missing session token." },
+            statusCode: 401);
+    }
+
+    var dataRoot = System.Environment.GetEnvironmentVariable("PROJECTPULSE_DATA_DIR");
+
+    if (string.IsNullOrWhiteSpace(dataRoot))
+    {
+        dataRoot = System.IO.Path.Combine(System.IO.Directory.GetCurrentDirectory(), "data");
+    }
+
+    var auditDir = System.IO.Path.Combine(dataRoot, "project-closeout-email-audit");
+    var take = System.Math.Clamp(limit.GetValueOrDefault(60), 1, 200);
+    var entries = new System.Collections.Generic.List<object>();
+
+    if (!System.IO.Directory.Exists(auditDir))
+    {
+        return Microsoft.AspNetCore.Http.Results.Json(new
+        {
+            status = "ok",
+            auditDirectory = auditDir,
+            entries
+        });
+    }
+
+    var files = System.IO.Directory
+        .EnumerateFiles(auditDir, "*.json")
+        .Select(file => new
+        {
+            File = file,
+            LastWriteUtc = System.IO.File.GetLastWriteTimeUtc(file)
+        })
+        .OrderByDescending(item => item.LastWriteUtc)
+        .Take(take)
+        .ToList();
+
+    foreach (var item in files)
+    {
+        try
+        {
+            var raw = await System.IO.File.ReadAllTextAsync(item.File);
+            using var document = System.Text.Json.JsonDocument.Parse(raw);
+            var root = document.RootElement;
+
+            entries.Add(new
+            {
+                auditFile = System.IO.Path.GetFileName(item.File),
+                auditPath = item.File,
+                lastWriteUtc = item.LastWriteUtc.ToString("O"),
+                status = ProjectPulse041MJsonString(root, "status"),
+                sent = ProjectPulse041MJsonBool(root, "sent"),
+                detail = ProjectPulse041MJsonString(root, "detail"),
+                projectCode = ProjectPulse041MJsonString(root, "projectCode"),
+                projectName = ProjectPulse041MJsonString(root, "projectName"),
+                customerName = ProjectPulse041MJsonString(root, "customerName"),
+                projectManagerName = ProjectPulse041MJsonString(root, "projectManagerName"),
+                triggeredBy = ProjectPulse041MJsonString(root, "triggeredBy"),
+                generatedAt = ProjectPulse041MJsonString(root, "generatedAt"),
+                recipientCount = ProjectPulse041MJsonInt(root, "recipientCount"),
+                ccRecipientCount = ProjectPulse041MJsonInt(root, "ccRecipientCount"),
+                subject = ProjectPulse041MJsonString(root, "subject"),
+                outboxPath = ProjectPulse041MJsonString(root, "outboxPath"),
+                recipients = ProjectPulse041MJsonRecipients(root, "recipients"),
+                ccRecipients = ProjectPulse041MJsonRecipients(root, "ccRecipients")
+            });
+        }
+        catch (System.Exception ex)
+        {
+            entries.Add(new
+            {
+                auditFile = System.IO.Path.GetFileName(item.File),
+                auditPath = item.File,
+                lastWriteUtc = item.LastWriteUtc.ToString("O"),
+                status = "audit_read_error",
+                sent = false,
+                detail = ex.Message,
+                projectCode = "",
+                projectName = "",
+                customerName = "",
+                projectManagerName = "",
+                triggeredBy = "",
+                generatedAt = item.LastWriteUtc.ToString("O"),
+                recipientCount = 0,
+                ccRecipientCount = 0,
+                subject = "",
+                outboxPath = "",
+                recipients = System.Array.Empty<object>(),
+                ccRecipients = System.Array.Empty<object>()
+            });
+        }
+    }
+
+    return Microsoft.AspNetCore.Http.Results.Json(new
+    {
+        status = "ok",
+        auditDirectory = auditDir,
+        count = entries.Count,
+        entries
+    });
+}).WithName("ProjectPulse041MCloseoutEmailAudit");
+/* 041M_CLOSEOUT_EMAIL_AUDIT_API_END */
+
 /* 041I_CLOSEOUT_EMAIL_ACTIVE_ROUTE_ZONE_START */
 /* 041A_SERVER_CLOSEOUT_EMAIL_SEND_START */
 app.MapPost("/api/project-closeout/email/send", async (Microsoft.AspNetCore.Http.HttpContext httpContext) =>
@@ -26318,6 +26431,93 @@ app.MapPost("/api/certify/sync/run", () => new
 
 
 
+
+
+/* 041M_CLOSEOUT_EMAIL_AUDIT_HELPERS_START */
+static string ProjectPulse041MJsonString(System.Text.Json.JsonElement root, string propertyName)
+{
+    if (root.ValueKind != System.Text.Json.JsonValueKind.Object) return string.Empty;
+    if (!root.TryGetProperty(propertyName, out var value)) return string.Empty;
+
+    if (value.ValueKind == System.Text.Json.JsonValueKind.String)
+    {
+        return value.GetString() ?? string.Empty;
+    }
+
+    if (value.ValueKind == System.Text.Json.JsonValueKind.Null || value.ValueKind == System.Text.Json.JsonValueKind.Undefined)
+    {
+        return string.Empty;
+    }
+
+    return value.ToString() ?? string.Empty;
+}
+
+static bool ProjectPulse041MJsonBool(System.Text.Json.JsonElement root, string propertyName)
+{
+    if (root.ValueKind != System.Text.Json.JsonValueKind.Object) return false;
+    if (!root.TryGetProperty(propertyName, out var value)) return false;
+
+    if (value.ValueKind == System.Text.Json.JsonValueKind.True) return true;
+    if (value.ValueKind == System.Text.Json.JsonValueKind.False) return false;
+
+    if (value.ValueKind == System.Text.Json.JsonValueKind.String
+        && bool.TryParse(value.GetString(), out var parsed))
+    {
+        return parsed;
+    }
+
+    return false;
+}
+
+static int ProjectPulse041MJsonInt(System.Text.Json.JsonElement root, string propertyName)
+{
+    if (root.ValueKind != System.Text.Json.JsonValueKind.Object) return 0;
+    if (!root.TryGetProperty(propertyName, out var value)) return 0;
+
+    if (value.ValueKind == System.Text.Json.JsonValueKind.Number
+        && value.TryGetInt32(out var parsedNumber))
+    {
+        return parsedNumber;
+    }
+
+    if (value.ValueKind == System.Text.Json.JsonValueKind.String
+        && int.TryParse(value.GetString(), out var parsedString))
+    {
+        return parsedString;
+    }
+
+    return 0;
+}
+
+static System.Collections.Generic.List<object> ProjectPulse041MJsonRecipients(System.Text.Json.JsonElement root, string propertyName)
+{
+    var recipients = new System.Collections.Generic.List<object>();
+
+    if (root.ValueKind != System.Text.Json.JsonValueKind.Object) return recipients;
+    if (!root.TryGetProperty(propertyName, out var arrayElement)) return recipients;
+    if (arrayElement.ValueKind != System.Text.Json.JsonValueKind.Array) return recipients;
+
+    foreach (var item in arrayElement.EnumerateArray())
+    {
+        if (item.ValueKind != System.Text.Json.JsonValueKind.Object) continue;
+
+        recipients.Add(new
+        {
+            role = ProjectPulse041MJsonString(item, "Role") is { Length: > 0 } roleUpper
+                ? roleUpper
+                : ProjectPulse041MJsonString(item, "role"),
+            name = ProjectPulse041MJsonString(item, "Name") is { Length: > 0 } nameUpper
+                ? nameUpper
+                : ProjectPulse041MJsonString(item, "name"),
+            email = ProjectPulse041MJsonString(item, "Email") is { Length: > 0 } emailUpper
+                ? emailUpper
+                : ProjectPulse041MJsonString(item, "email")
+        });
+    }
+
+    return recipients;
+}
+/* 041M_CLOSEOUT_EMAIL_AUDIT_HELPERS_END */
 
 static string ProjectPulse041AGetJsonString(System.Text.Json.JsonElement root, string propertyName)
 {

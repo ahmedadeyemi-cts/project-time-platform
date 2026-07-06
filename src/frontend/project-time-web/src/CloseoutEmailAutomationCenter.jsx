@@ -594,16 +594,20 @@ function createMailtoUrl(recipients, subject, body) {
 
 function buildAuditCsv(entries) {
   const rows = [
-    ['Timestamp', 'Status', 'Project Code', 'Customer', 'PM', 'Recipient Count', 'CC Count', 'Triggered By', 'Subject'],
+    ['Timestamp', 'Status', 'Backend Status', 'Backend Message', 'Project Code', 'Customer', 'PM', 'Recipient Count', 'CC Count', 'Triggered By', 'Audit File', 'Outbox Path', 'Subject'],
     ...entries.map((entry) => [
       entry.generatedAt,
       entry.status,
+      entry.backendStatus ?? '',
+      entry.backendMessage ?? '',
       entry.projectCode,
       entry.customerName,
       entry.projectManagerName,
       entry.recipientCount,
       entry.ccRecipientCount ?? 0,
       entry.triggeredBy,
+      entry.backendAuditPath ?? '',
+      entry.backendOutboxPath ?? '',
       entry.subject
     ])
   ];
@@ -611,6 +615,84 @@ function buildAuditCsv(entries) {
   return rows.map((row) => row.map(csvEscape).join(',')).join('\n');
 }
 
+
+
+/* 041M_CLOSEOUT_EMAIL_AUDIT_VISIBILITY_START */
+async function loadCloseoutEmailAuditEntries() {
+  const response = await fetch('/api/project-closeout/email/audit?limit=60', {
+    headers: {
+      ...closeoutUserDirectoryAuthHeaders(),
+      Accept: 'application/json'
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`/api/project-closeout/email/audit returned HTTP ${response.status}`);
+  }
+
+  return response.json();
+}
+
+function normalizeBackendCloseoutAuditEntry(entry) {
+  const auditFile = normalizeText(entry.auditFile);
+  const generatedAt = normalizeText(entry.generatedAt || entry.lastWriteUtc || new Date().toISOString());
+  const backendStatus = normalizeText(entry.status);
+  const backendMessage = normalizeText(entry.detail);
+
+  return {
+    id: `backend-closeout-email-${auditFile || generatedAt || Math.random()}`,
+    status: entry.sent ? 'Automatic closeout email sent' : `Automatic closeout email ${backendStatus || 'recorded'}`,
+    projectCode: normalizeText(entry.projectCode),
+    projectName: normalizeText(entry.projectName),
+    customerName: normalizeText(entry.customerName),
+    projectManagerName: normalizeText(entry.projectManagerName),
+    recipientCount: Number(entry.recipientCount ?? 0),
+    ccRecipientCount: Number(entry.ccRecipientCount ?? 0),
+    recipients: Array.isArray(entry.recipients) ? entry.recipients : [],
+    ccRecipients: Array.isArray(entry.ccRecipients) ? entry.ccRecipients : [],
+    subject: normalizeText(entry.subject),
+    body: '',
+    triggeredBy: normalizeText(entry.triggeredBy),
+    generatedAt,
+    backendStatus,
+    backendMessage,
+    backendAuditPath: auditFile || normalizeText(entry.auditPath),
+    backendOutboxPath: normalizeText(entry.outboxPath)
+  };
+}
+
+function normalizeBackendCloseoutAuditEntries(data) {
+  return (Array.isArray(data?.entries) ? data.entries : [])
+    .map(normalizeBackendCloseoutAuditEntry)
+    .filter((entry) => entry.projectCode || entry.backendStatus || entry.generatedAt);
+}
+
+function mergeCloseoutAuditEntries(localEntries, backendEntries) {
+  const byKey = new Map();
+
+  [...backendEntries, ...localEntries].forEach((entry) => {
+    const key = entry.id || `${entry.projectCode}|${entry.generatedAt}|${entry.backendStatus || entry.status}`;
+
+    if (!key) return;
+
+    if (!byKey.has(key)) {
+      byKey.set(key, entry);
+    }
+  });
+
+  return Array.from(byKey.values())
+    .sort((left, right) => String(right.generatedAt || '').localeCompare(String(left.generatedAt || '')))
+    .slice(0, 60);
+}
+
+function closeoutAuditShortText(value, maxLength = 180) {
+  const text = normalizeText(value);
+
+  if (!text) return '';
+
+  return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
+}
+/* 041M_CLOSEOUT_EMAIL_AUDIT_VISIBILITY_END */
 
 /* 041K_CLOSEOUT_EDITABLE_RECIPIENTS_CC_STYLE_NOTE
    Styles are class-based and intentionally rely on the existing closeout-email card theme.
@@ -626,6 +708,7 @@ export default function CloseoutEmailAutomationCenter() {
   const [selectedProjectKey, setSelectedProjectKey] = useState('');
   const [status, setStatus] = useState('');
   const [auditEntries, setAuditEntries] = useState(() => readAuditLog());
+  const [backendAuditPayload, setBackendAuditPayload] = useState({ loading: true, entries: [], error: null });
 
   async function loadData() {
     setPayload((current) => ({ ...current, loading: true, error: null }));
@@ -714,6 +797,32 @@ export default function CloseoutEmailAutomationCenter() {
           loading: false,
           users: [],
           error: error instanceof Error ? error.message : 'Unable to load User Administration directory.'
+        });
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    loadCloseoutEmailAuditEntries()
+      .then((data) => {
+        if (!isMounted) return;
+
+        const backendEntries = normalizeBackendCloseoutAuditEntries(data);
+        setBackendAuditPayload({ loading: false, entries: backendEntries, error: null });
+        setAuditEntries((current) => mergeCloseoutAuditEntries(current, backendEntries));
+      })
+      .catch((error) => {
+        if (!isMounted) return;
+
+        setBackendAuditPayload({
+          loading: false,
+          entries: [],
+          error: error instanceof Error ? error.message : 'Unable to load closeout email audit history.'
         });
       });
 
@@ -851,8 +960,23 @@ export default function CloseoutEmailAutomationCenter() {
       };
 
       const nextEntries = [entry, ...auditEntries].slice(0, 60);
-      writeAuditLog(nextEntries);
-      setAuditEntries(nextEntries);
+      const mergedAuditEntries = mergeCloseoutAuditEntries(nextEntries, backendAuditPayload.entries);
+      writeAuditLog(mergedAuditEntries);
+      setAuditEntries(mergedAuditEntries);
+
+      loadCloseoutEmailAuditEntries()
+        .then((data) => {
+          const backendEntries = normalizeBackendCloseoutAuditEntries(data);
+          setBackendAuditPayload({ loading: false, entries: backendEntries, error: null });
+          setAuditEntries((current) => mergeCloseoutAuditEntries(current, backendEntries));
+        })
+        .catch((auditError) => {
+          setBackendAuditPayload((current) => ({
+            ...current,
+            loading: false,
+            error: auditError instanceof Error ? auditError.message : 'Unable to refresh closeout email audit history.'
+          }));
+        });
 
       if (response.sent) {
         setStatus(`Automatic closeout email sent to ${entry.recipientCount} recipient(s) with ${entry.ccRecipientCount || 0} CC recipient(s). ${projectManagerName} was reminded to schedule lessons learned with ${selectedProject.customerName}.`);
@@ -1110,7 +1234,10 @@ export default function CloseoutEmailAutomationCenter() {
                     </div>
                     <div>
                       <small>PM: {entry.projectManagerName}</small>
-                      <small>Recipients: {entry.recipientCount}</small>
+                      <small>Recipients: {entry.recipientCount}{entry.ccRecipientCount ? ` + ${entry.ccRecipientCount} CC` : ''}</small>
+                      {entry.backendStatus ? <small>Provider: {entry.backendStatus}</small> : null}
+                      {entry.backendMessage ? <small title={entry.backendMessage}>Detail: {closeoutAuditShortText(entry.backendMessage)}</small> : null}
+                      {entry.backendAuditPath ? <small>Audit: {entry.backendAuditPath}</small> : null}
                     </div>
                   </div>
                 ))
