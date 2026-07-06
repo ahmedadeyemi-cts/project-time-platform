@@ -9157,18 +9157,22 @@ async Task<bool> ApplyProjectPulseViewAsContextAsync(HttpContext context, Projec
     await using var connection = new NpgsqlConnection(BuildProjectPulseViewAsConnectionString());
     await connection.OpenAsync();
 
-    var actualIsAdministrator = await ProjectPulseViewAsUserHasRoleAsync(connection, validation.UserId.Value, "ADMINISTRATOR");
+    /* 052B_ALLOW_SUPER_ADMINISTRATOR_VIEW_AS_START */
+    var actualCanUseViewAs =
+        await ProjectPulseViewAsUserHasRoleAsync(connection, validation.UserId.Value, "ADMINISTRATOR")
+        || await ProjectPulseViewAsUserHasRoleAsync(connection, validation.UserId.Value, "SUPER_ADMINISTRATOR");
 
-    if (!actualIsAdministrator)
+    if (!actualCanUseViewAs)
     {
         context.Response.StatusCode = StatusCodes.Status403Forbidden;
         await context.Response.WriteAsJsonAsync(new
         {
             status = "view_as_forbidden",
-            message = "Only Administrators can use View-As preview."
+            message = "Only Administrators or Super Administrators can use View-As preview."
         });
         return false;
     }
+    /* 052B_ALLOW_SUPER_ADMINISTRATOR_VIEW_AS_END */
 
     if (!string.Equals(method, "GET", StringComparison.OrdinalIgnoreCase)
         && !string.Equals(method, "HEAD", StringComparison.OrdinalIgnoreCase)
