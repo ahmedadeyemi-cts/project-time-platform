@@ -11508,9 +11508,46 @@ app.MapPost("/api/admin/user-admin/users/profile", async (UserAdminProfileUpdate
         return Results.Json(new { status = "access_denied", message = "User Administration is restricted to administrators and project/team coordinators." }, statusCode: StatusCodes.Status403Forbidden);
     }
 
+    /* 041G_PROFILE_ENDPOINT_EMAIL_SAVE_BACKEND_START */
+    var requestedProfileEmail = request.Email?.Trim().ToLowerInvariant() ?? "";
+
+    if (string.IsNullOrWhiteSpace(requestedProfileEmail)
+        || !System.Text.RegularExpressions.Regex.IsMatch(requestedProfileEmail, @"^[^@\s]+@[^@\s]+\.[^@\s]+$"))
+    {
+        return Results.BadRequest(new
+        {
+            status = "invalid_email",
+            message = "Enter a valid email address before saving the user profile."
+        });
+    }
+
+    await using (var duplicateEmailCommand = new NpgsqlCommand("""
+        SELECT COUNT(*)
+        FROM app_users
+        WHERE lower(email) = lower(@email)
+          AND user_id <> @user_id;
+        """, connection))
+    {
+        duplicateEmailCommand.Parameters.AddWithValue("email", requestedProfileEmail);
+        duplicateEmailCommand.Parameters.AddWithValue("user_id", request.UserId);
+
+        var duplicateEmailCount = Convert.ToInt32(await duplicateEmailCommand.ExecuteScalarAsync() ?? 0);
+
+        if (duplicateEmailCount > 0)
+        {
+            return Results.Conflict(new
+            {
+                status = "duplicate_email",
+                message = "Another user already has this email address."
+            });
+        }
+    }
+    /* 041G_PROFILE_ENDPOINT_EMAIL_SAVE_BACKEND_END */
+
     await using var command = new NpgsqlCommand("""
         UPDATE app_users
-        SET display_name = COALESCE(NULLIF(@display_name, ''), display_name),
+        SET email = @email,
+            display_name = COALESCE(NULLIF(@display_name, ''), display_name),
             job_title = NULLIF(@job_title, ''),
             department_name = NULLIF(@department_name, ''),
             team_name = NULLIF(@team_name, ''),
@@ -11523,6 +11560,7 @@ app.MapPost("/api/admin/user-admin/users/profile", async (UserAdminProfileUpdate
         """, connection);
 
     command.Parameters.AddWithValue("user_id", request.UserId);
+    command.Parameters.AddWithValue("email", requestedProfileEmail);
     command.Parameters.AddWithValue("display_name", request.DisplayName?.Trim() ?? "");
     command.Parameters.AddWithValue("job_title", request.JobTitle?.Trim() ?? "");
     command.Parameters.AddWithValue("department_name", request.DepartmentName?.Trim() ?? "");
@@ -11542,7 +11580,7 @@ app.MapPost("/api/admin/user-admin/users/profile", async (UserAdminProfileUpdate
     return Results.Ok(new
     {
         status = "user_profile_updated",
-        message = "User profile, department, team, and login status were updated."
+        message = "User email, profile, department, team, and login status were updated."
     });
 });
 
@@ -28801,6 +28839,7 @@ internal sealed record UserAdminBulkUpdateRequest(
 
 internal sealed record UserAdminProfileUpdateRequest(
     Guid UserId,
+    string? Email,
     string? DisplayName,
     string? JobTitle,
     string? DepartmentName,

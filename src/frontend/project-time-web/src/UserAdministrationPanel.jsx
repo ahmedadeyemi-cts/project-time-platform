@@ -428,16 +428,7 @@ export default function UserAdministrationPanel() {
     setStatus('Saving user email, profile, and role...');
 
     try {
-      /* 041F_EMAIL_UPDATE_IDENTITY_FALLBACK_START */
-      const emailResult = await postJson('/api/admin/user-admin/users/email', {
-        userId: profileDraft.userId,
-        previousEmail: selectedUser?.email ?? profileDraft.email ?? '',
-        displayName: profileDraft.displayName ?? selectedUser?.displayName ?? '',
-        email: cleanEmail,
-        reason: 'Updated from User Administration profile section.'
-      });
-      /* 041F_EMAIL_UPDATE_IDENTITY_FALLBACK_END */
-
+      /* 041G_PROFILE_ENDPOINT_EMAIL_SAVE_START */
       const profileResult = await postJson('/api/admin/user-admin/users/profile', {
         userId: profileDraft.userId,
         email: cleanEmail,
@@ -450,6 +441,7 @@ export default function UserAdministrationPanel() {
         loginEnabled: Boolean(profileDraft.loginEnabled),
         isActive: Boolean(profileDraft.isActive)
       });
+      /* 041G_PROFILE_ENDPOINT_EMAIL_SAVE_END */
 
       const roleResult = await postJson('/api/admin/user-admin/users/roles', {
         userId: profileDraft.userId,
@@ -457,7 +449,7 @@ export default function UserAdministrationPanel() {
         reason: 'Updated from User Administration profile section.'
       });
 
-      setStatus(emailResult.message ?? profileResult.message ?? roleResult.message ?? 'User email, profile, and role saved.');
+      setStatus(profileResult.message ?? roleResult.message ?? 'User email, profile, and role saved.');
       await loadUserAdministration();
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Unable to save user email, profile, and role.');
