@@ -256,6 +256,242 @@ function buildRoleValidationMatrix(payload) {
 }
 /* 042D_ROLE_ENFORCEMENT_VALIDATION_MATRIX_END */
 
+/* 042G_ROLE_CAPABILITY_MATRIX_START */
+const ROLE_CAPABILITY_COLUMNS = [
+  { roleCode: 'ENGINEERING', label: 'Engineer', aliases: ['ENGINEERING', 'ENGINEER'] },
+  { roleCode: 'MANAGER', label: 'Manager', aliases: ['MANAGER', 'ENGINEERING_LEAD', 'ENGINEERING_TEAM_LEAD'] },
+  { roleCode: 'PROJECT_MANAGEMENT', label: 'PM', aliases: ['PROJECT_MANAGEMENT', 'PROJECT_MANAGER', 'PROJECT_MANAGEMENT_LEAD', 'PM_TEAM_LEAD', 'PROJECT_MANAGEMENT_TEAM_LEAD'] },
+  { roleCode: 'PROJECT_TEAM_COORDINATOR', label: 'PTC', aliases: ['PROJECT_TEAM_COORDINATOR'] },
+  { roleCode: 'ACCOUNTING', label: 'Accounting', aliases: ['ACCOUNTING', 'BILLING', 'FINANCE'] },
+  { roleCode: 'EXECUTIVE', label: 'Executive', aliases: ['EXECUTIVE'] },
+  { roleCode: 'SUPER_ADMINISTRATOR', label: 'Admin', aliases: ['SUPER_ADMINISTRATOR', 'ADMINISTRATOR'] }
+];
+
+const ROLE_CAPABILITY_DEFINITIONS = [
+  {
+    key: 'dashboard',
+    area: 'Workspace',
+    capability: 'View dashboard',
+    engineerIntent: 'Engineers should be able to view the dashboard.',
+    expectedRoles: ['ENGINEERING', 'MANAGER', 'PROJECT_MANAGEMENT', 'PROJECT_TEAM_COORDINATOR', 'ACCOUNTING', 'EXECUTIVE', 'SUPER_ADMINISTRATOR'],
+    requiredPermissions: [],
+    acceptablePermissions: ['VIEW_TIME_ENTRY', 'VIEW_PROJECT_WORKSPACE', 'VIEW_OWN_UTILIZATION', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    note: 'Dashboard visibility is baseline workspace access. It may not have a dedicated permission code.'
+  },
+  {
+    key: 'time-entry',
+    area: 'Time',
+    capability: 'Enter and submit own time',
+    engineerIntent: 'Engineers must be able to put in their own time.',
+    expectedRoles: ['ENGINEERING', 'MANAGER', 'PROJECT_MANAGEMENT', 'PROJECT_TEAM_COORDINATOR', 'SUPER_ADMINISTRATOR'],
+    requiredPermissions: ['VIEW_TIME_ENTRY'],
+    acceptablePermissions: ['EDIT_OWN_TIME', 'SUBMIT_TIME', 'MANAGE_ALL', 'SYSTEM_ADMINISTRATION'],
+    note: 'Engineer should have time-entry visibility and own-time edit/submit capability.'
+  },
+  {
+    key: 'assigned-projects',
+    area: 'Projects',
+    capability: 'See projects assigned to them',
+    engineerIntent: 'Engineers should only see projects assigned to them or scoped to their engineering work.',
+    expectedRoles: ['ENGINEERING', 'MANAGER', 'PROJECT_MANAGEMENT', 'PROJECT_TEAM_COORDINATOR', 'SUPER_ADMINISTRATOR'],
+    requiredPermissions: ['VIEW_PROJECT_WORKSPACE'],
+    acceptablePermissions: ['VIEW_ENGINEERING_PROJECT_DOCUMENTS', 'VIEW_PROJECT_INTAKE', 'MANAGE_ALL', 'SYSTEM_ADMINISTRATION'],
+    note: 'Engineer access should be scoped to assigned project workspace content.'
+  },
+  {
+    key: 'project-documents',
+    area: 'Projects',
+    capability: 'View assigned project documents',
+    engineerIntent: 'Engineers should view project documents only when assigned to the project.',
+    expectedRoles: ['ENGINEERING', 'MANAGER', 'PROJECT_MANAGEMENT', 'PROJECT_TEAM_COORDINATOR', 'SUPER_ADMINISTRATOR'],
+    requiredPermissions: ['VIEW_ENGINEERING_PROJECT_DOCUMENTS'],
+    acceptablePermissions: ['VIEW_PROJECT_WORKSPACE', 'VIEW_PROJECT_ALLOCATION_INFO', 'MANAGE_ALL', 'SYSTEM_ADMINISTRATION'],
+    note: 'Document access should stay assignment-scoped.'
+  },
+  {
+    key: 'calendar-read-only',
+    area: 'Calendar',
+    capability: 'View calendar without modifying it',
+    engineerIntent: 'Engineers should see the calendar but should not be able to modify calendar settings.',
+    expectedRoles: ['ENGINEERING', 'MANAGER', 'PROJECT_MANAGEMENT', 'PROJECT_TEAM_COORDINATOR', 'EXECUTIVE', 'SUPER_ADMINISTRATOR'],
+    requiredPermissions: ['VIEW_HOLIDAYS'],
+    acceptablePermissions: ['VIEW_CALENDAR', 'VIEW_RESOURCE_SCHEDULING', 'MANAGE_ALL', 'SYSTEM_ADMINISTRATION'],
+    restrictedPermissions: ['MANAGE_HOLIDAYS', 'MANAGE_CALENDAR', 'MANAGE_RESOURCE_SCHEDULING'],
+    note: 'Engineer should be read-only for calendar-style views.'
+  },
+  {
+    key: 'calendar-sync',
+    area: 'Calendar',
+    capability: 'Sync calendar',
+    engineerIntent: 'Engineers should be able to sync their calendar.',
+    expectedRoles: ['ENGINEERING', 'MANAGER', 'PROJECT_MANAGEMENT', 'PROJECT_TEAM_COORDINATOR', 'SUPER_ADMINISTRATOR'],
+    requiredPermissions: ['SYNC_CALENDAR'],
+    acceptablePermissions: ['SYNC_OWN_CALENDAR', 'MANAGE_CALENDAR_SYNC', 'MANAGE_ALL', 'SYSTEM_ADMINISTRATION'],
+    note: 'If this shows Gap, the permission or backend sync route still needs to be created or mapped.'
+  },
+  {
+    key: 'ai-time-entry',
+    area: 'AI / Time',
+    capability: 'Use AI with time entry',
+    engineerIntent: 'Engineers should be able to use AI assistance while entering time.',
+    expectedRoles: ['ENGINEERING', 'MANAGER', 'PROJECT_MANAGEMENT', 'PROJECT_TEAM_COORDINATOR', 'SUPER_ADMINISTRATOR'],
+    requiredPermissions: ['USE_TIME_ENTRY_AI'],
+    acceptablePermissions: ['USE_AI_TIME_ENTRY', 'AI_TIME_ENTRY_ASSIST', 'MANAGE_ALL', 'SYSTEM_ADMINISTRATION'],
+    note: 'If this shows Gap, the AI time-entry permission or route contract still needs mapping.'
+  },
+  {
+    key: 'own-utilization',
+    area: 'Utilization',
+    capability: 'View own utilization',
+    engineerIntent: 'Engineers should see utilization for themselves only.',
+    expectedRoles: ['ENGINEERING', 'MANAGER', 'PROJECT_MANAGEMENT', 'PROJECT_TEAM_COORDINATOR', 'EXECUTIVE', 'SUPER_ADMINISTRATOR'],
+    requiredPermissions: ['VIEW_OWN_UTILIZATION'],
+    acceptablePermissions: ['VIEW_INDIVIDUAL_UTILIZATION', 'VIEW_UTILIZATION', 'MANAGE_ALL', 'SYSTEM_ADMINISTRATION'],
+    restrictedPermissions: ['VIEW_TEAM_UTILIZATION'],
+    note: 'Engineer should not automatically receive team-wide utilization unless also a lead/manager.'
+  },
+  {
+    key: 'expense-upload',
+    area: 'Expenses',
+    capability: 'Upload expenses via CSV or Excel',
+    engineerIntent: 'Engineers should be able to upload their expense entries from CSV or Excel.',
+    expectedRoles: ['ENGINEERING', 'MANAGER', 'PROJECT_MANAGEMENT', 'PROJECT_TEAM_COORDINATOR', 'ACCOUNTING', 'SUPER_ADMINISTRATOR'],
+    requiredPermissions: ['UPLOAD_EXPENSES'],
+    acceptablePermissions: ['IMPORT_EXPENSES_CSV', 'IMPORT_EXPENSES_EXCEL', 'MANAGE_EXPENSES', 'MANAGE_ALL', 'SYSTEM_ADMINISTRATION'],
+    note: 'If this shows Gap, the expense upload permission or import route still needs mapping.'
+  }
+];
+
+function normalizeCapabilityPermission(value) {
+  return String(value ?? '').trim().toUpperCase();
+}
+
+function collectRolePermissionCodes(role) {
+  const codes = new Set();
+
+  (role?.permissionsByModule ?? []).forEach((module) => {
+    (module?.permissions ?? []).forEach((permission) => {
+      const code = normalizeCapabilityPermission(permission.permissionCode ?? permission.permission_code ?? permission);
+      if (code) codes.add(code);
+    });
+  });
+
+  return codes;
+}
+
+function roleMatchesCapabilityColumn(role, column) {
+  const roleCode = normalizeCapabilityPermission(role?.roleCode ?? role?.role_code);
+  const aliases = new Set([column.roleCode, ...(column.aliases ?? [])].map(normalizeCapabilityPermission));
+  return aliases.has(roleCode);
+}
+
+function buildRolePermissionIndex(roles) {
+  const index = new Map();
+
+  ROLE_CAPABILITY_COLUMNS.forEach((column) => {
+    const permissionSet = new Set();
+
+    (roles ?? [])
+      .filter((role) => roleMatchesCapabilityColumn(role, column))
+      .forEach((role) => {
+        collectRolePermissionCodes(role).forEach((permission) => permissionSet.add(permission));
+      });
+
+    index.set(column.roleCode, permissionSet);
+  });
+
+  return index;
+}
+
+function roleIsExpectedForCapability(capability, column) {
+  const expected = new Set((capability.expectedRoles ?? []).map(normalizeCapabilityPermission));
+  const aliases = new Set([column.roleCode, ...(column.aliases ?? [])].map(normalizeCapabilityPermission));
+  return [...aliases].some((roleCode) => expected.has(roleCode));
+}
+
+function permissionSetHasAny(permissionSet, permissions) {
+  return normalizeStringArray(permissions).some((permission) => permissionSet.has(normalizeCapabilityPermission(permission)));
+}
+
+function evaluateRoleCapability(capability, column, permissionIndex) {
+  const expected = roleIsExpectedForCapability(capability, column);
+  const permissions = permissionIndex.get(column.roleCode) ?? new Set();
+  const required = normalizeStringArray(capability.requiredPermissions);
+  const acceptable = normalizeStringArray(capability.acceptablePermissions);
+  const restricted = normalizeStringArray(capability.restrictedPermissions);
+  const hasRequired = required.length === 0 || permissionSetHasAny(permissions, required);
+  const hasAcceptable = acceptable.length === 0 || permissionSetHasAny(permissions, acceptable);
+  const hasRestricted = permissionSetHasAny(permissions, restricted);
+  const hasAdminOverride = permissionSetHasAny(permissions, ['MANAGE_ALL', 'SYSTEM_ADMINISTRATION']);
+
+  if (!expected) {
+    return {
+      status: 'not-expected',
+      label: 'Not expected',
+      detail: 'This role is not intended for this capability.'
+    };
+  }
+
+  if (hasRestricted && !hasAdminOverride) {
+    return {
+      status: 'overscoped',
+      label: 'Over-scoped',
+      detail: 'Role has a permission that should stay restricted for this capability.'
+    };
+  }
+
+  if (required.length === 0 && (hasAcceptable || acceptable.length === 0)) {
+    return {
+      status: 'expected',
+      label: 'Expected',
+      detail: capability.note || 'Baseline role behavior.'
+    };
+  }
+
+  if (hasRequired || hasAcceptable || hasAdminOverride) {
+    return {
+      status: 'configured',
+      label: 'Configured',
+      detail: 'Current permission grants support this capability.'
+    };
+  }
+
+  return {
+    status: 'gap',
+    label: 'Gap',
+    detail: `Missing one of: ${[...required, ...acceptable].filter(Boolean).join(', ') || 'capability permission mapping'}`
+  };
+}
+
+function buildRoleCapabilityMatrix(roles) {
+  const permissionIndex = buildRolePermissionIndex(roles ?? []);
+
+  const rows = ROLE_CAPABILITY_DEFINITIONS.map((capability) => ({
+    ...capability,
+    verdicts: ROLE_CAPABILITY_COLUMNS.map((column) => ({
+      roleCode: column.roleCode,
+      label: column.label,
+      ...evaluateRoleCapability(capability, column, permissionIndex)
+    }))
+  }));
+
+  const engineerColumn = ROLE_CAPABILITY_COLUMNS.find((column) => column.roleCode === 'ENGINEERING');
+  const engineerVerdicts = rows.map((row) => row.verdicts.find((verdict) => verdict.roleCode === engineerColumn.roleCode)).filter(Boolean);
+
+  return {
+    rows,
+    summary: {
+      capabilityCount: rows.length,
+      engineerConfiguredCount: engineerVerdicts.filter((verdict) => ['configured', 'expected'].includes(verdict.status)).length,
+      engineerGapCount: engineerVerdicts.filter((verdict) => verdict.status === 'gap').length,
+      engineerOverScopedCount: engineerVerdicts.filter((verdict) => verdict.status === 'overscoped').length,
+      roleCount: ROLE_CAPABILITY_COLUMNS.length
+    }
+  };
+}
+/* 042G_ROLE_CAPABILITY_MATRIX_END */
+
+
 export default function RoleAdminDirectoryPanel() {
   const [payload, setPayload] = useState({ loading: true, data: null, error: null });
   const [validationPayload, setValidationPayload] = useState({ loading: true, data: null, error: null });
@@ -319,6 +555,11 @@ export default function RoleAdminDirectoryPanel() {
   const roleValidationMatrix = useMemo(
     () => buildRoleValidationMatrix(validationPayload.data ?? {}),
     [validationPayload.data]
+  );
+
+  const roleCapabilityMatrix = useMemo(
+    () => buildRoleCapabilityMatrix(roles),
+    [roles]
   );
 
   const filteredRoles = useMemo(() => {
@@ -389,6 +630,13 @@ export default function RoleAdminDirectoryPanel() {
         </button>
         <button
           type="button"
+          className={activeSecuritySection === 'capabilities' ? 'active' : ''}
+          onClick={() => setActiveSecuritySection('capabilities')}
+        >
+          Role Capabilities
+        </button>
+        <button
+          type="button"
           className={activeSecuritySection === 'restricted-routes' ? 'active' : ''}
           onClick={() => setActiveSecuritySection('restricted-routes')}
         >
@@ -416,6 +664,12 @@ export default function RoleAdminDirectoryPanel() {
             </article>
             <article>
               <span>Step 3</span>
+              <strong>Review role capabilities</strong>
+              <p>Use Role Capabilities to confirm normal work access, starting with the Engineer baseline for time, assigned projects, read-only calendar, utilization, expense upload, AI time entry, and assigned documents.</p>
+              <button type="button" onClick={() => setActiveSecuritySection('capabilities')}>Open capabilities</button>
+            </article>
+            <article>
+              <span>Step 4</span>
               <strong>Validate restricted routes</strong>
               <p>Use Restricted Route Enforcement to confirm administrative, security, workflow, and export routes are blocked for roles that should not reach them.</p>
               <button type="button" onClick={() => setActiveSecuritySection('restricted-routes')}>Open restricted routes</button>
@@ -559,6 +813,99 @@ export default function RoleAdminDirectoryPanel() {
 
 
         </>
+      ) : null}
+
+      {activeSecuritySection === 'capabilities' ? (
+        <section className="role-capability-matrix-panel">
+          <div className="role-directory-section-heading">
+            <div>
+              <p className="eyebrow">042G</p>
+              <h3>Role Capability Matrix</h3>
+              <p className="section-copy">
+                Review what each role should be able to do during normal work. This matrix is separate from restricted-route enforcement. The Engineer baseline follows the required logic for time entry, assigned projects, read-only calendar, calendar sync, AI-assisted time entry, own utilization, expense upload, dashboard access, and assigned project documents.
+              </p>
+            </div>
+          </div>
+
+          <div className="role-capability-summary-grid">
+            <article>
+              <span>Capabilities</span>
+              <strong>{roleCapabilityMatrix.summary.capabilityCount}</strong>
+              <small>Normal work capabilities tracked</small>
+            </article>
+            <article>
+              <span>Roles compared</span>
+              <strong>{roleCapabilityMatrix.summary.roleCount}</strong>
+              <small>Engineer, Manager, PM, PTC, Accounting, Executive, Admin</small>
+            </article>
+            <article>
+              <span>Engineer configured</span>
+              <strong>{roleCapabilityMatrix.summary.engineerConfiguredCount}</strong>
+              <small>Configured or baseline expected</small>
+            </article>
+            <article>
+              <span>Engineer gaps</span>
+              <strong>{roleCapabilityMatrix.summary.engineerGapCount}</strong>
+              <small>Permission or route mapping still needed</small>
+            </article>
+            <article>
+              <span>Engineer over-scope</span>
+              <strong>{roleCapabilityMatrix.summary.engineerOverScopedCount}</strong>
+              <small>Restricted permission detected</small>
+            </article>
+          </div>
+
+          <div className="role-capability-engineer-baseline">
+            <strong>Engineer baseline</strong>
+            <span>Engineers should enter their own time, see assigned projects, view calendar read-only, sync calendar, use AI with time entry, see only their own utilization, view dashboard, upload expenses through CSV/Excel, and view assigned project documents.</span>
+          </div>
+
+          <div className="role-capability-scroll-note">
+            <span>Configured means current permissions support the capability. Gap means a permission or backend route mapping still needs to be created or assigned. Over-scoped means the role has a permission that should remain restricted for that capability.</span>
+          </div>
+
+          <div className="role-capability-table-wrap">
+            <table className="role-capability-table">
+              <thead>
+                <tr>
+                  <th>Capability</th>
+                  <th>Engineer intent</th>
+                  <th>Permission signals</th>
+                  {ROLE_CAPABILITY_COLUMNS.map((role) => (
+                    <th key={`capability-head-${role.roleCode}`}>{role.label}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {roleCapabilityMatrix.rows.map((row) => (
+                  <tr key={row.key}>
+                    <td>
+                      <strong>{row.capability}</strong>
+                      <small>{row.area}</small>
+                    </td>
+                    <td>{row.engineerIntent}</td>
+                    <td>
+                      <div className="role-capability-chip-list">
+                        {[...(row.requiredPermissions ?? []), ...(row.acceptablePermissions ?? [])].map((permission) => (
+                          <span key={`${row.key}-${permission}`}>{permission}</span>
+                        ))}
+                        {(!row.requiredPermissions?.length && !row.acceptablePermissions?.length) ? <small>Baseline workspace access</small> : null}
+                      </div>
+                    </td>
+                    {row.verdicts.map((verdict) => (
+                      <td key={`${row.key}-${verdict.roleCode}`}>
+                        <span className={`role-capability-verdict ${verdict.status}`} title={verdict.detail}>
+                          {verdict.label}
+                        </span>
+                        <small>{verdict.detail}</small>
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
       ) : null}
 
       {activeSecuritySection === 'restricted-routes' ? (
