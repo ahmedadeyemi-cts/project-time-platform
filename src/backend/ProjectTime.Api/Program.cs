@@ -16,6 +16,99 @@ builder.Services.AddProblemDetails();
 
 var app = builder.Build();
 
+/* 050_CRITICAL_LAUNCH_BLOCKER_PRODUCTION_GUARD_START */
+var projectPulse050BlockedDevRouteTokens = new[]
+{
+    "dev-login",
+    "development-login",
+    "development/session",
+    "dev/session",
+    "debug-login",
+    "mint-session",
+    "impersonate",
+    "bypass-auth"
+};
+
+var projectPulse050SessionExemptPrefixes = new[]
+{
+    "/health",
+    "/api/auth/",
+    "/api/public/",
+    "/api/bootstrap/",
+    "/api/app-config",
+    "/api/config"
+};
+
+var projectPulse050SessionRequiredPrefixes = new[]
+{
+    "/api/admin/",
+    "/api/accounting/",
+    "/api/approval",
+    "/api/approvals",
+    "/api/manager/",
+    "/api/profile/",
+    "/api/project-closeout/",
+    "/api/security/",
+    "/api/time",
+    "/api/timesheet",
+    "/api/timesheets",
+    "/api/utilization",
+    "/api/workflow",
+    "/api/projects",
+    "/api/project"
+};
+
+app.Use(async (httpContext, next) =>
+{
+    var requestPath = httpContext.Request.Path.Value ?? string.Empty;
+    var normalizedPath = requestPath.ToLowerInvariant();
+
+    if (normalizedPath.StartsWith("/api/", StringComparison.OrdinalIgnoreCase)
+        && projectPulse050BlockedDevRouteTokens.Any(token => normalizedPath.Contains(token, StringComparison.OrdinalIgnoreCase)))
+    {
+        httpContext.Response.StatusCode = StatusCodes.Status404NotFound;
+        httpContext.Response.ContentType = "application/json";
+        await httpContext.Response.WriteAsJsonAsync(new
+        {
+            status = "not_found",
+            message = "Route is not available in this environment.",
+            guard = "050_dev_auth_shortcut_blocked"
+        });
+        return;
+    }
+
+    var isApiRoute = normalizedPath.StartsWith("/api/", StringComparison.OrdinalIgnoreCase);
+    var isExempt = projectPulse050SessionExemptPrefixes.Any(prefix =>
+        normalizedPath.Equals(prefix, StringComparison.OrdinalIgnoreCase)
+        || normalizedPath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+
+    var isProtectedCriticalRoute = projectPulse050SessionRequiredPrefixes.Any(prefix =>
+        normalizedPath.Equals(prefix, StringComparison.OrdinalIgnoreCase)
+        || normalizedPath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+
+    if (isApiRoute && !isExempt && isProtectedCriticalRoute)
+    {
+        var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+
+        if (sessionUserId is null)
+        {
+            httpContext.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            httpContext.Response.ContentType = "application/json";
+            await httpContext.Response.WriteAsJsonAsync(new
+            {
+                status = "session_required",
+                message = "Missing session token.",
+                guard = "050_critical_route_session_required"
+            });
+            return;
+        }
+    }
+
+    await next();
+});
+/* 050_CRITICAL_LAUNCH_BLOCKER_PRODUCTION_GUARD_END */
+
+
 app.Use(async (context, next) =>
 {
     if (context.Request.Method.Equals("OPTIONS", StringComparison.OrdinalIgnoreCase) ||

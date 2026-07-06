@@ -256,3 +256,34 @@ echo "Browser validation recommended after backend route changes:"
 echo "- Hard refresh $PUBLIC_BASE_URL"
 echo "- Test the changed workflow using DevTools Network"
 # 041J_ACTIVE_DEPLOY_STANDARD_END
+
+# 050_RELEASE_MANIFEST_START
+if [ -n "${API_PUBLISHED:-}" ] && [ -d "${API_PUBLISHED:-}" ]; then
+  RELEASE_MANIFEST="${API_PUBLISHED}/projectpulse-release-manifest.json"
+  RELEASE_GIT_COMMIT="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
+  RELEASE_GIT_SHORT="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+  RELEASE_GIT_SUBJECT="$(git log -1 --pretty=%s 2>/dev/null | sed 's/"/\\"/g' || echo unknown)"
+  RELEASE_API_DLL="${API_PUBLISHED}/ProjectTime.Api.dll"
+  RELEASE_API_SHA256="missing"
+
+  if [ -f "$RELEASE_API_DLL" ]; then
+    RELEASE_API_SHA256="$(sha256sum "$RELEASE_API_DLL" | awk '{print $1}')"
+  fi
+
+  cat > "$RELEASE_MANIFEST" <<JSON
+{
+  "product": "Project Health Dashboard (PHD)",
+  "internalProject": "ProjectPulse",
+  "module": "050 critical launch blocker release manifest",
+  "gitCommit": "$RELEASE_GIT_COMMIT",
+  "gitShort": "$RELEASE_GIT_SHORT",
+  "gitSubject": "$RELEASE_GIT_SUBJECT",
+  "apiDllSha256": "$RELEASE_API_SHA256",
+  "apiPublishedPath": "$API_PUBLISHED",
+  "deployedAtUtc": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+}
+JSON
+
+  echo "Release manifest written: $RELEASE_MANIFEST"
+fi
+# 050_RELEASE_MANIFEST_END
