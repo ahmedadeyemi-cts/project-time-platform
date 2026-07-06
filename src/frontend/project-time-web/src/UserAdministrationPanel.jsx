@@ -48,92 +48,115 @@ const TEAM_OPTIONS = [
 
 
 /* 041D_DEPARTMENT_DROPDOWN_EXEC_MANAGER_START */
-function getDepartmentOptions(referenceDepartments = []) {
-  const values = new Set();
+/* 041E_EMAIL_ROUTE_MANAGER_MAP_START */
+const APPROVED_DEPARTMENT_OPTIONS = [
+  'Collaboration Engineering',
+  'Systems Engineering',
+  'Enterprise Network Engineering',
+  'Sales',
+  'Project Management Office',
+  'Account Executive/Sales',
+  'Solution Architecture',
+  'Accounting',
+  'Executive',
+  'Resale',
+  'Human Resources'
+];
 
-  TEAM_OPTIONS.forEach((team) => {
-    if (team.departmentName) values.add(team.departmentName);
-  });
+const TEAM_MANAGER_NAME_MAP = {
+  'Collaboration Engineering': 'Ahmed Adeyemi',
+  'Systems Engineering': 'Ahmed Adeyemi',
+  'Enterprise Network Engineering': 'Matthew Lenoble',
+  'Project Management': 'Matthew Lenoble'
+};
 
-  (referenceDepartments ?? []).forEach((department) => {
-    if (department) values.add(department);
-  });
+const MANAGER_ROLE_MANAGER_NAME = 'Darren Olson';
 
-  return [...values].filter(Boolean).sort((a, b) => a.localeCompare(b));
+function getDepartmentOptions() {
+  return APPROVED_DEPARTMENT_OPTIONS;
 }
 
-function isExecutiveUser(user) {
-  const team = String(user?.teamName ?? '').toLowerCase();
-  const department = String(user?.departmentName ?? '').toLowerCase();
-  const roleText = [
-    ...(user?.roleCodes ?? []),
-    ...(user?.roleNames ?? [])
-  ].join(' ').toLowerCase();
+function findUserByDisplayName(users = [], displayName = '') {
+  const target = String(displayName ?? '').trim().toLowerCase();
+  if (!target) return null;
 
-  return team.includes('executive') || department.includes('executive') || roleText.includes('executive');
-}
-
-function getExecutiveManagerUser(users = []) {
-  return (users ?? []).find((user) => isExecutiveUser(user) && user?.email)
-    ?? (users ?? []).find((user) => String(user?.teamName ?? '').toLowerCase().includes('executive') && user?.email)
+  return (users ?? []).find((user) => String(user?.displayName ?? '').trim().toLowerCase() === target)
+    ?? (users ?? []).find((user) => String(user?.displayName ?? '').toLowerCase().includes(target))
     ?? null;
 }
 
-function resolveManagerEmailForTeam(team, users = [], currentManagerEmail = '') {
-  if (team?.managerEmail) return team.managerEmail;
+function selectedRoleIsManager(roleCodes = [], roles = []) {
+  const normalizedCodes = (roleCodes ?? []).map((code) => String(code ?? '').toLowerCase());
+  const selectedRoles = (roles ?? []).filter((role) => normalizedCodes.includes(String(role?.roleCode ?? '').toLowerCase()));
+  const roleText = [
+    ...normalizedCodes,
+    ...selectedRoles.map((role) => String(role?.roleName ?? '').toLowerCase())
+  ].join(' ');
 
-  const executiveManager = getExecutiveManagerUser(users);
-  if (executiveManager?.email) return executiveManager.email;
-
-  return currentManagerEmail ?? '';
+  return /\bmanager\b/.test(roleText);
 }
 
-function getExecutiveManagerLabel(users = []) {
-  const executiveManager = getExecutiveManagerUser(users);
+function resolveManagerNameForSelection(teamName, roleCodes = [], users = [], roles = []) {
+  if (selectedRoleIsManager(roleCodes, roles)) return MANAGER_ROLE_MANAGER_NAME;
+  return TEAM_MANAGER_NAME_MAP[teamName] ?? '';
+}
 
-  if (!executiveManager?.email) {
-    return 'No Executive manager user is available yet. Assign one user to the Executive team, then selecting a team will auto-populate that manager email.';
+function resolveManagerEmailForSelection(teamName, roleCodes = [], users = [], roles = [], currentManagerEmail = '') {
+  const managerName = resolveManagerNameForSelection(teamName, roleCodes, users, roles);
+  if (!managerName) return currentManagerEmail ?? '';
+
+  const managerUser = findUserByDisplayName(users, managerName);
+  return managerUser?.email ?? currentManagerEmail ?? '';
+}
+
+function getManagerRuleLabel(teamName, roleCodes = [], users = [], roles = []) {
+  const managerName = resolveManagerNameForSelection(teamName, roleCodes, users, roles);
+
+  if (!teamName && !selectedRoleIsManager(roleCodes, roles)) {
+    return 'Select a team and PHD role to populate department and manager information.';
   }
 
-  return `${executiveManager.displayName || executiveManager.email} is available as the default Executive manager.`;
+  if (!managerName) {
+    return 'No automatic manager rule is assigned for this team/role combination. Enter manager email manually if needed.';
+  }
+
+  const managerUser = findUserByDisplayName(users, managerName);
+
+  if (managerUser?.email) return `Manager rule: ${managerName} <${managerUser.email}>`;
+
+  return `Manager rule: ${managerName}. Add or update this user email in User Administration to auto-populate the Manager Email field.`;
 }
 
-function applyTeamSelectionWithManager(current, teamName, users = []) {
+function applyTeamSelectionWithManager(current, teamName, roleCodes = [], users = [], roles = []) {
   const team = TEAM_OPTIONS.find((item) => item.teamName === teamName);
 
-  if (!team) {
-    return { ...current, teamName };
-  }
+  if (!team) return { ...current, teamName };
 
   return {
     ...current,
     teamName: team.teamName,
     departmentName: team.departmentName,
-    managerEmail: resolveManagerEmailForTeam(team, users, current.managerEmail)
+    managerEmail: resolveManagerEmailForSelection(team.teamName, roleCodes, users, roles, current.managerEmail)
   };
 }
+
+function applyRoleSelectionWithManager(current, roleCodes = [], users = [], roles = []) {
+  if (!current) return current;
+
+  return {
+    ...current,
+    managerEmail: resolveManagerEmailForSelection(current.teamName, roleCodes, users, roles, current.managerEmail)
+  };
+}
+/* 041E_EMAIL_ROUTE_MANAGER_MAP_END */
 /* 041D_DEPARTMENT_DROPDOWN_EXEC_MANAGER_END */
 
-function applyTeamSelectionToDraft(current, teamName, users = []) {
-  return applyTeamSelectionWithManager(current, teamName, users);
+function applyTeamSelectionToDraft(current, teamName, roleCodes = [], users = [], roles = []) {
+  return applyTeamSelectionWithManager(current, teamName, roleCodes, users, roles);
 }
 
-function getTeamManagerLabel(teamName, users = []) {
-  const team = TEAM_OPTIONS.find((item) => item.teamName === teamName);
-
-  if (!team) return 'Select a team to populate department and manager information.';
-
-  if (team.managerName && team.managerEmail) {
-    return `${team.managerName} is the manager for ${team.departmentName}.`;
-  }
-
-  const executiveManager = getExecutiveManagerUser(users);
-
-  if (executiveManager?.email) {
-    return `${team.departmentName} selected. ${executiveManager.displayName || executiveManager.email} from Executive is assigned as the default manager.`;
-  }
-
-  return `${team.departmentName} selected. Add an Executive user to auto-populate manager email.`;
+function getTeamManagerLabel(teamName, roleCodes = [], users = [], roles = []) {
+  return getManagerRuleLabel(teamName, roleCodes, users, roles);
 }
 
 
@@ -238,13 +261,8 @@ export default function UserAdministrationPanel() {
   );
 
   const departmentOptions = useMemo(
-    () => getDepartmentOptions(data.departments),
-    [data.departments]
-  );
-
-  const executiveManagerLabel = useMemo(
-    () => getExecutiveManagerLabel(data.users),
-    [data.users]
+    () => getDepartmentOptions(),
+    []
   );
 
   const allVisibleSelected = data.users.length > 0 && selectedUserIds.length === data.users.length;
@@ -284,7 +302,9 @@ export default function UserAdministrationPanel() {
   }
 
   function updateSelectedPrimaryRole(roleCode) {
-    setSelectedRoleCodes(roleCode ? [roleCode] : []);
+    const nextRoleCodes = roleCode ? [roleCode] : [];
+    setSelectedRoleCodes(nextRoleCodes);
+    setProfileDraft((current) => applyRoleSelectionWithManager(current, nextRoleCodes, data.users, data.roles));
   }
 
   function toggleBulkRole(roleCode) {
@@ -397,11 +417,26 @@ export default function UserAdministrationPanel() {
 
   async function saveProfile() {
     if (!profileDraft) return;
-    setStatus('Saving user profile and role...');
+
+    const cleanEmail = String(profileDraft.email ?? '').trim().toLowerCase();
+
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(cleanEmail)) {
+      setStatus('Enter a valid email address before saving the profile.');
+      return;
+    }
+
+    setStatus('Saving user email, profile, and role...');
 
     try {
+      const emailResult = await postJson('/api/admin/user-admin/users/email', {
+        userId: profileDraft.userId,
+        email: cleanEmail,
+        reason: 'Updated from User Administration profile section.'
+      });
+
       const profileResult = await postJson('/api/admin/user-admin/users/profile', {
         userId: profileDraft.userId,
+        email: cleanEmail,
         displayName: profileDraft.displayName,
         jobTitle: profileDraft.jobTitle ?? '',
         departmentName: profileDraft.departmentName ?? '',
@@ -412,22 +447,16 @@ export default function UserAdministrationPanel() {
         isActive: Boolean(profileDraft.isActive)
       });
 
-      await postJson('/api/admin/user-admin/users/email', {
-        userId: profileDraft.userId,
-        email: String(profileDraft.email ?? '').trim().toLowerCase(),
-        reason: 'Updated from User Administration profile section.'
-      });
-
       const roleResult = await postJson('/api/admin/user-admin/users/roles', {
         userId: profileDraft.userId,
         roleCodes: selectedRoleCodes,
         reason: 'Updated from User Administration profile section.'
       });
 
-      setStatus(roleResult.message ?? profileResult.message ?? 'User profile and role saved.');
+      setStatus(emailResult.message ?? profileResult.message ?? roleResult.message ?? 'User email, profile, and role saved.');
       await loadUserAdministration();
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'Unable to save user profile and role.');
+      setStatus(error instanceof Error ? error.message : 'Unable to save user email, profile, and role.');
     }
   }
 
@@ -584,7 +613,7 @@ export default function UserAdministrationPanel() {
               <select
                 value={localUserDraft.teamName}
                 onChange={(event) => {
-                  setLocalUserDraft((current) => applyTeamSelectionWithManager(current, event.target.value, data.users));
+                  setLocalUserDraft((current) => applyTeamSelectionWithManager(current, event.target.value, current.roleCodes, data.users, data.roles));
                 }}
               >
                 <option value="">Select team</option>
@@ -747,7 +776,7 @@ export default function UserAdministrationPanel() {
                 onChange={(event) => {
                   const nextTeam = TEAM_OPTIONS.find((team) => team.teamName === event.target.value);
                   setBulkDraft((current) => ({
-                    ...applyTeamSelectionWithManager(current, event.target.value, data.users),
+                    ...applyTeamSelectionWithManager(current, event.target.value, current.roleCodes, data.users, data.roles),
                     applyDepartmentName: Boolean(nextTeam) ? true : current.applyDepartmentName,
                     applyManagerEmail: Boolean(nextTeam) ? true : current.applyManagerEmail
                   }));
@@ -929,7 +958,7 @@ export default function UserAdministrationPanel() {
               <label>Team</label>
               <select
                 value={profileDraft.teamName ?? ''}
-                onChange={(event) => setProfileDraft((current) => applyTeamSelectionToDraft(current, event.target.value, data.users))}
+                onChange={(event) => setProfileDraft((current) => applyTeamSelectionToDraft(current, event.target.value, selectedRoleCodes, data.users, data.roles))}
               >
                 <option value="">Select team</option>
                 {TEAM_OPTIONS.map((team) => (
@@ -937,9 +966,7 @@ export default function UserAdministrationPanel() {
                 ))}
               </select>
               <div className="user-admin-helper-text">
-                {getTeamManagerLabel(profileDraft.teamName, data.users)}
-                <br />
-                {executiveManagerLabel}
+                {getManagerRuleLabel(profileDraft.teamName, selectedRoleCodes, data.users, data.roles)}
               </div>
 
               <label>Office location</label>
