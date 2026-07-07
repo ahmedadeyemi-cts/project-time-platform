@@ -2735,6 +2735,9 @@ app.MapPost("/api/manager/approvals/unlock", async (ManagerApprovalActionRequest
                 updated_at = NOW()
             WHERE timesheet_id = @timesheet_id
               AND work_date = @work_date
+              /* 054C_MANAGER_UNLOCK_STATUS_IMMUTABILITY_GUARD */
+              AND status IN ('submitted', 'manager_approved', 'manager_declined')
+              AND status NOT IN ('accounting_ready', 'reconciled', 'locked', 'exported')
             RETURNING timesheet_day_status_id;
             """;
 
@@ -2749,13 +2752,13 @@ app.MapPost("/api/manager/approvals/unlock", async (ManagerApprovalActionRequest
         {
             return Results.NotFound(new
             {
-                status = "not_found",
-                message = "No day-level timesheet status record was found for the selected item."
+                status = "manager_unlock_not_allowed",
+                message = "Only submitted, manager-approved, or manager-declined days can be manager-unlocked. Accounting-ready, reconciled, locked, or exported days cannot be reverted."
             });
         }
 
         await using var entryCommand = new NpgsqlCommand(
-            "UPDATE time_entries SET status = 'draft', updated_at = NOW() WHERE timesheet_id = @timesheet_id AND work_date = @work_date;",
+            "UPDATE time_entries SET status = 'draft', updated_at = NOW() WHERE timesheet_id = @timesheet_id AND work_date = @work_date AND status IN ('submitted', 'manager_approved', 'manager_declined');",
             connection,
             transaction);
         entryCommand.Parameters.AddWithValue("timesheet_id", request.TimesheetId);
@@ -19672,6 +19675,29 @@ app.MapPost("/api/workflow/approval-items/action", async (ApprovalExportWorkflow
     }
     /* 054B_WORKFLOW_SELF_APPROVAL_AND_SCOPE_GUARD_END */
 
+    /* 054C_WORKFLOW_TRANSITION_IMMUTABILITY_PREFLIGHT_START */
+    var workflowCurrentStatus = await ProjectPulse054CGetTimesheetDayStatusAsync(connection, null, request.TimesheetId, request.WorkDate);
+    if (workflowCurrentStatus is null)
+    {
+        return Results.Json(new
+        {
+            status = "workflow_item_not_found",
+            message = "The selected workflow day does not have a day-level status record."
+        }, statusCode: StatusCodes.Status404NotFound);
+    }
+
+    if (!ProjectPulse054CWorkflowTransitionAllowed(normalizedAction, workflowCurrentStatus))
+    {
+        return Results.Json(new
+        {
+            status = "workflow_transition_not_allowed",
+            currentStatus = workflowCurrentStatus,
+            requestedAction = normalizedAction,
+            message = "The requested workflow transition is not allowed from the current status. Duplicate, backward, locked, reconciled, or exported transitions are blocked."
+        }, statusCode: StatusCodes.Status409Conflict);
+    }
+    /* 054C_WORKFLOW_TRANSITION_IMMUTABILITY_PREFLIGHT_END */
+
     await using var transaction = await connection.BeginTransactionAsync();
 
     try
@@ -19694,6 +19720,7 @@ app.MapPost("/api/workflow/approval-items/action", async (ApprovalExportWorkflow
                 updated_at = NOW()
             WHERE tds.timesheet_id = @timesheet_id
               AND tds.work_date = @work_date
+              AND tds.status = @current_status
               AND tds.status = ANY(@allowed_statuses)
               AND (
                     @can_view_all
@@ -19715,6 +19742,7 @@ app.MapPost("/api/workflow/approval-items/action", async (ApprovalExportWorkflow
         command.Parameters.AddWithValue("timesheet_id", request.TimesheetId);
         command.Parameters.AddWithValue("work_date", request.WorkDate);
         command.Parameters.AddWithValue("allowed_statuses", allowedStatuses);
+        command.Parameters.AddWithValue("current_status", workflowCurrentStatus);
         command.Parameters.AddWithValue("can_view_all", access.CanViewAll || access.CanManageAccounting);
 
         var statusId = (Guid?)(await command.ExecuteScalarAsync());
@@ -19735,12 +19763,14 @@ app.MapPost("/api/workflow/approval-items/action", async (ApprovalExportWorkflow
             SET status = @target_status,
                 updated_at = NOW()
             WHERE timesheet_id = @timesheet_id
-              AND work_date = @work_date;
+              AND work_date = @work_date
+              AND status = @current_status;
             """, connection, transaction))
         {
             entryCommand.Parameters.AddWithValue("target_status", targetStatus);
             entryCommand.Parameters.AddWithValue("timesheet_id", request.TimesheetId);
             entryCommand.Parameters.AddWithValue("work_date", request.WorkDate);
+            entryCommand.Parameters.AddWithValue("current_status", workflowCurrentStatus);
             await entryCommand.ExecuteNonQueryAsync();
         }
 
@@ -20287,7 +20317,7 @@ app.MapPost("/api/time-exports", async (TimeWorkflowExportCreateRequest request,
                 COALESCE(SUM(hours), 0)::numeric AS total_hours
             FROM time_entries
             WHERE work_date BETWEEN @week_start AND @week_end
-              AND status IN ('pm_approved', 'accounting_ready', 'reconciled', 'locked');
+              AND status IN ('accounting_ready', 'reconciled', 'locked');
             """, connection, transaction))
         {
             countCommand.Parameters.AddWithValue("week_start", start);
@@ -20298,6 +20328,16 @@ app.MapPost("/api/time-exports", async (TimeWorkflowExportCreateRequest request,
 
             itemCount = reader.GetInt32(0);
             totalHours = reader.GetDecimal(1);
+        }
+
+        if (itemCount <= 0)
+        {
+            await transaction.RollbackAsync();
+            return Results.Json(new
+            {
+                status = "no_export_ready_time",
+                message = "No accounting-ready, reconciled, or locked time entries are available for the selected export period. Project-manager-approved time must be moved to accounting-ready before export."
+            }, statusCode: StatusCodes.Status409Conflict);
         }
 
         var exportId = Guid.Empty;
@@ -28366,6 +28406,43 @@ static IReadOnlyList<string> ValidateTimesheetRequest(TimesheetSaveRequest reque
 
 
 
+/* 054C_WORKFLOW_IMMUTABILITY_HELPERS_START */
+static async Task<string?> ProjectPulse054CGetTimesheetDayStatusAsync(NpgsqlConnection connection, NpgsqlTransaction? transaction, Guid timesheetId, DateOnly workDate)
+{
+    await using var command = new NpgsqlCommand("""
+        SELECT status
+        FROM timesheet_day_statuses
+        WHERE timesheet_id = @timesheet_id
+          AND work_date = @work_date;
+        """, connection);
+
+    if (transaction is not null)
+    {
+        command.Transaction = transaction;
+    }
+
+    command.Parameters.AddWithValue("timesheet_id", timesheetId);
+    command.Parameters.AddWithValue("work_date", workDate);
+
+    var value = await command.ExecuteScalarAsync();
+    return value as string;
+}
+
+static bool ProjectPulse054CWorkflowTransitionAllowed(string normalizedAction, string? currentStatus)
+{
+    var status = (currentStatus ?? string.Empty).Trim().ToLowerInvariant();
+
+    return normalizedAction switch
+    {
+        "pm_approve" => status == "manager_approved",
+        "accounting_ready" => status is "manager_approved" or "pm_approved",
+        "reconcile" => status is "accounting_ready" or "pm_approved",
+        "lock" => status is "accounting_ready" or "reconciled",
+        _ => false
+    };
+}
+/* 054C_WORKFLOW_IMMUTABILITY_HELPERS_END */
+
 /* 054B_APPROVAL_AUTHORITY_HELPERS_START */
 static async Task<bool> ProjectPulse054BUserCanManageManagerApprovalsAsync(NpgsqlConnection connection, NpgsqlTransaction? transaction, Guid userId)
 {
@@ -28597,7 +28674,7 @@ static async Task<IResult> ProcessManagerBulkApprovalAsync(ManagerBulkApprovalRe
             if (statusId is null) continue;
 
             await using var entryUpdateCommand = new NpgsqlCommand(
-                "UPDATE time_entries SET status = 'manager_approved', updated_at = NOW() WHERE timesheet_id = @timesheet_id AND work_date = @work_date;",
+                "UPDATE time_entries SET status = 'manager_approved', updated_at = NOW() WHERE timesheet_id = @timesheet_id AND work_date = @work_date AND status = 'submitted';",
                 connection,
                 transaction);
             entryUpdateCommand.Parameters.AddWithValue("timesheet_id", item.TimesheetId);
@@ -28789,7 +28866,7 @@ static async Task<IResult> ProcessManagerApprovalActionAsync(
         }
 
         await using var entryUpdateCommand = new NpgsqlCommand(
-            "UPDATE time_entries SET status = @target_status, updated_at = NOW() WHERE timesheet_id = @timesheet_id AND work_date = @work_date;",
+            "UPDATE time_entries SET status = @target_status, updated_at = NOW() WHERE timesheet_id = @timesheet_id AND work_date = @work_date AND status = 'submitted';",
             connection,
             transaction);
         entryUpdateCommand.Parameters.AddWithValue("target_status", targetStatus);
