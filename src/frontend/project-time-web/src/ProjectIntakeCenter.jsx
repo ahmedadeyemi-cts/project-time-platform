@@ -154,6 +154,10 @@ export default function ProjectIntakeCenter() {
     requestTitle: 'New Project Intake',
     requestDescription: 'Intake request created from the ProjectPulse workflow.',
     assignedPmUserId: '',
+    /* 053I_INTAKE_AE_SA_UI_STATE_START */
+    accountExecutiveUserId: '',
+    solutionArchitectUserId: '',
+    /* 053I_INTAKE_AE_SA_UI_STATE_END */
     priority: 'normal',
     targetStartDate: '2026-08-03',
     targetCompletionDate: '2026-09-25',
@@ -226,6 +230,14 @@ export default function ProjectIntakeCenter() {
   }, []);
 
   const projectManagers = overview.data?.projectManagers ?? [];
+
+  /* 053I_INTAKE_AE_SA_UI_START */
+
+  const accountExecutives = overview.data?.accountExecutives ?? [];
+
+  const solutionArchitects = overview.data?.solutionArchitects ?? [];
+
+  /* 053I_INTAKE_AE_SA_UI_END */
   const projects = overview.data?.projects ?? [];
   const intakes = overview.data?.intakes ?? [];
   const resourceRequests = overview.data?.resourceRequests ?? [];
@@ -605,6 +617,8 @@ export default function ProjectIntakeCenter() {
         clientId: intakeForm.clientId || null,
         clientName: selectedCustomer?.clientName ?? intakeForm.clientName,
         assignedPmUserId: intakeForm.assignedPmUserId || null,
+        accountExecutiveUserId: intakeForm.accountExecutiveUserId || null,
+        solutionArchitectUserId: intakeForm.solutionArchitectUserId || null,
         sourceSystem: intakeForm.intakeSource === 'salesforce' ? 'Salesforce' : intakeForm.sourceSystem || null,
         externalRecordType: intakeForm.intakeSource === 'salesforce' ? 'Opportunity' : intakeForm.externalRecordType || null,
         estimatedHours: Number(intakeForm.estimatedHours || 0),
@@ -822,6 +836,10 @@ export default function ProjectIntakeCenter() {
             <label>Opportunity reference<input value={intakeForm.opportunityReference} onChange={(event) => setIntakeForm({ ...intakeForm, opportunityReference: event.target.value })} /></label>
             <label>Request title<input value={intakeForm.requestTitle} onChange={(event) => setIntakeForm({ ...intakeForm, requestTitle: event.target.value })} /></label>
             <label>Assigned PM<select value={intakeForm.assignedPmUserId} onChange={(event) => setIntakeForm({ ...intakeForm, assignedPmUserId: event.target.value })}><option value="">Unassigned</option>{projectManagers.map((pm) => <option value={pm.userId} key={pm.userId}>{pm.displayName} · {pm.jobTitle}</option>)}</select></label>
+
+            <label>Account Executive<select value={intakeForm.accountExecutiveUserId} onChange={(event) => setIntakeForm({ ...intakeForm, accountExecutiveUserId: event.target.value })}><option value="">Select Account Executive</option>{accountExecutives.map((ae) => <option value={ae.userId} key={ae.userId}>{ae.displayName} · {ae.jobTitle || ae.email}</option>)}</select></label>
+
+            <label>Solution Architect<select value={intakeForm.solutionArchitectUserId} onChange={(event) => setIntakeForm({ ...intakeForm, solutionArchitectUserId: event.target.value })}><option value="">Select Solution Architect</option>{solutionArchitects.map((architect) => <option value={architect.userId} key={architect.userId}>{architect.displayName} · {architect.jobTitle || architect.email}</option>)}</select></label>
             <label>Intake source<select value={intakeForm.intakeSource} onChange={(event) => setIntakeForm({ ...intakeForm, intakeSource: event.target.value })}><option value="manual_entry">Manual entry</option><option value="manual_upload">Manual upload</option><option value="salesforce">Salesforce</option></select></label>
             <label>Source / unique ID<input value={intakeForm.externalReferenceId} placeholder={intakeForm.intakeSource === 'salesforce' ? 'Salesforce Opportunity ID' : 'Optional source reference'} onChange={(event) => setIntakeForm({ ...intakeForm, externalReferenceId: event.target.value })} /></label>
             <label>Source URL<input value={intakeForm.externalRecordUrl} onChange={(event) => setIntakeForm({ ...intakeForm, externalRecordUrl: event.target.value })} /></label>

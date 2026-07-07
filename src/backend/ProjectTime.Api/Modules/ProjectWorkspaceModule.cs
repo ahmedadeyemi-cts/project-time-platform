@@ -331,6 +331,13 @@ public static class ProjectWorkspaceModule
                 p.end_date AS end_date,
                 p.billable AS billable,
                 pm.display_name AS project_manager_name,
+                pm.email AS project_manager_email,
+                /* 053I_WORKSPACE_AE_SA_START */
+                ae.display_name AS account_executive_name,
+                ae.email AS account_executive_email,
+                sa.display_name AS solution_architect_name,
+                sa.email AS solution_architect_email,
+                /* 053I_WORKSPACE_AE_SA_END */
                 COUNT(DISTINCT pt.task_id)::bigint AS task_count,
                 COUNT(DISTINCT pa.project_assignment_id)::bigint AS assignment_count,
                 /* 053F_SCOPED_PROJECT_DOCUMENT_COUNT_START */
@@ -358,6 +365,8 @@ public static class ProjectWorkspaceModule
             FROM projects p
             LEFT JOIN clients c ON c.client_id = p.client_id
             LEFT JOIN app_users pm ON pm.user_id = p.project_manager_user_id
+            LEFT JOIN app_users ae ON ae.user_id = p.account_executive_user_id
+            LEFT JOIN app_users sa ON sa.user_id = p.solution_architect_user_id
             LEFT JOIN project_tasks pt ON pt.project_id = p.project_id AND pt.is_active = TRUE
             LEFT JOIN project_assignments pa ON pa.project_id = p.project_id
             LEFT JOIN project_intake_documents d ON d.project_id = p.project_id
@@ -381,7 +390,7 @@ public static class ProjectWorkspaceModule
                     @can_view_team_scope = TRUE
                     AND p.project_manager_user_id IN (SELECT user_id FROM team_members)
                 )
-            GROUP BY p.project_id, p.project_code, p.project_name, c.client_name, p.status, p.start_date, p.end_date, p.billable, pm.display_name
+            GROUP BY p.project_id, p.project_code, p.project_name, c.client_name, p.status, p.start_date, p.end_date, p.billable, pm.display_name, pm.email, ae.display_name, ae.email, sa.display_name, sa.email
             ORDER BY p.created_at DESC
             LIMIT 100;
             """;
@@ -406,6 +415,13 @@ public static class ProjectWorkspaceModule
                 ReadDateOnlyOrNull(reader, O("end_date")),
                 reader.GetBoolean(O("billable")),
                 S("project_manager_name"),
+                S("project_manager_email"),
+                S("account_executive_name"),
+                S("account_executive_email"),
+                S("account_executive_name"),
+                S("account_executive_email"),
+                S("solution_architect_name"),
+                S("solution_architect_email"),
                 reader.GetInt64(O("task_count")),
                 reader.GetInt64(O("assignment_count")),
                 reader.GetInt64(O("document_count"))));
@@ -941,6 +957,13 @@ internal sealed record ProjectWorkspaceProject(
     DateOnly? EndDate,
     bool Billable,
     string? ProjectManagerName,
+    string? ProjectManagerEmail,
+    string? SalesExecutiveName,
+    string? SalesExecutiveEmail,
+    string? AccountExecutiveName,
+    string? AccountExecutiveEmail,
+    string? SolutionArchitectName,
+    string? SolutionArchitectEmail,
     long TaskCount,
     long AssignmentCount,
     long DocumentCount);

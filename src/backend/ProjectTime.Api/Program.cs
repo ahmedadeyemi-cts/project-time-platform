@@ -3910,6 +3910,24 @@ app.MapPost("/api/project-intake/{intakeId:guid}/project-link", async (Guid inta
         }
 
         await transaction.CommitAsync();
+        /* 053I_PROJECT_LINK_AE_SA_SYNC_START */
+        await using (var projectPulse053IOwnerSyncCommand = new NpgsqlCommand("""
+            UPDATE projects p
+            SET account_executive_user_id = COALESCE(pir.account_executive_user_id, p.account_executive_user_id),
+                solution_architect_user_id = COALESCE(pir.solution_architect_user_id, p.solution_architect_user_id),
+                updated_at = NOW()
+            FROM project_intake_requests pir
+            WHERE pir.project_intake_request_id = @intake_id
+              AND p.project_id = @project_id;
+            """, connection))
+        {
+            projectPulse053IOwnerSyncCommand.Parameters.AddWithValue("intake_id", intakeId);
+            projectPulse053IOwnerSyncCommand.Parameters.AddWithValue("project_id", projectId);
+            await projectPulse053IOwnerSyncCommand.ExecuteNonQueryAsync();
+        }
+        /* 053I_PROJECT_LINK_AE_SA_SYNC_END */
+
+
 
         return Results.Ok(new
         {

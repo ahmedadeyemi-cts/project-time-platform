@@ -31,6 +31,16 @@ public static class ProjectIntakeModule
         var capacity = await LoadResourceCapacityAsync(connection);
         var projectManagers = await LoadUsersByRoleAsync(connection, "PROJECT_MANAGEMENT");
         var engineers = await LoadUsersByRoleAsync(connection, "ENGINEERING");
+        /* 053I_INTAKE_AE_SA_START */
+        var accountExecutives = await LoadUsersByRoleOrProfileAsync(
+            connection,
+            new[] { "SALES" },
+            new[] { "account executive", "sales", "account manager" });
+        var solutionArchitects = await LoadUsersByRoleOrProfileAsync(
+            connection,
+            new[] { "SOLUTION_ARCHITECT" },
+            new[] { "solution architect", "architect" });
+        /* 053I_INTAKE_AE_SA_END */
 
         return Results.Ok(new
         {
@@ -51,6 +61,8 @@ public static class ProjectIntakeModule
             capacity,
             projectManagers,
             engineers,
+            accountExecutives,
+            solutionArchitects,
             guardrails = new[]
             {
                 "Workflow is production-shaped; integrations are enabled only after approval.",
@@ -121,6 +133,10 @@ public static class ProjectIntakeModule
                 request_title,
                 request_description,
                 assigned_pm_user_id,
+                /* 053I_INTAKE_AE_SA_INSERT_COLUMNS_START */
+                account_executive_user_id,
+                solution_architect_user_id,
+                /* 053I_INTAKE_AE_SA_INSERT_COLUMNS_END */
                 intake_status,
                 priority,
                 target_start_date,
@@ -146,6 +162,10 @@ public static class ProjectIntakeModule
                 @request_title,
                 @request_description,
                 @assigned_pm_user_id,
+                /* 053I_INTAKE_AE_SA_INSERT_VALUES_START */
+                @account_executive_user_id,
+                @solution_architect_user_id,
+                /* 053I_INTAKE_AE_SA_INSERT_VALUES_END */
                 'new',
                 @priority,
                 @target_start_date,
@@ -174,6 +194,10 @@ public static class ProjectIntakeModule
         command.Parameters.AddWithValue("request_title", request.RequestTitle.Trim());
         command.Parameters.AddWithValue("request_description", string.IsNullOrWhiteSpace(request.RequestDescription) ? DBNull.Value : request.RequestDescription.Trim());
         command.Parameters.AddWithValue("assigned_pm_user_id", request.AssignedPmUserId is null ? DBNull.Value : request.AssignedPmUserId);
+        /* 053I_INTAKE_AE_SA_PARAMETERS_START */
+        command.Parameters.AddWithValue("account_executive_user_id", request.AccountExecutiveUserId is null ? DBNull.Value : request.AccountExecutiveUserId.Value);
+        command.Parameters.AddWithValue("solution_architect_user_id", request.SolutionArchitectUserId is null ? DBNull.Value : request.SolutionArchitectUserId.Value);
+        /* 053I_INTAKE_AE_SA_PARAMETERS_END */
         command.Parameters.AddWithValue("priority", string.IsNullOrWhiteSpace(request.Priority) ? "normal" : request.Priority.Trim());
         command.Parameters.AddWithValue("target_start_date", request.TargetStartDate is null ? DBNull.Value : request.TargetStartDate);
         command.Parameters.AddWithValue("target_completion_date", request.TargetCompletionDate is null ? DBNull.Value : request.TargetCompletionDate);
@@ -559,6 +583,12 @@ public static class ProjectIntakeModule
                 pir.estimated_hours AS estimated_hours,
                 pm.display_name AS assigned_pm_name,
                 pm.email AS assigned_pm_email,
+                /* 053I_INTAKE_AE_SA_SELECT_FIELDS_START */
+                ae.display_name AS account_executive_name,
+                ae.email AS account_executive_email,
+                sa.display_name AS solution_architect_name,
+                sa.email AS solution_architect_email,
+                /* 053I_INTAKE_AE_SA_SELECT_FIELDS_END */
                 pir.created_at AS created_at,
                 COALESCE(pir.intake_source, 'manual_entry') AS intake_source,
                 pir.source_system AS source_system,
@@ -573,6 +603,8 @@ public static class ProjectIntakeModule
                 COALESCE(pir.planned_total_project_cost, 0)::numeric AS planned_total_project_cost
             FROM project_intake_requests pir
             LEFT JOIN app_users pm ON pm.user_id = pir.assigned_pm_user_id
+            LEFT JOIN app_users ae ON ae.user_id = pir.account_executive_user_id
+            LEFT JOIN app_users sa ON sa.user_id = pir.solution_architect_user_id
             LEFT JOIN (
                 SELECT project_intake_request_id, COUNT(*)::bigint AS document_count
                 FROM project_intake_documents
@@ -605,6 +637,12 @@ public static class ProjectIntakeModule
                 reader.IsDBNull(O("estimated_hours")) ? null : reader.GetDecimal(O("estimated_hours")),
                 S("assigned_pm_name"),
                 S("assigned_pm_email"),
+                /* 053I_INTAKE_AE_SA_SUMMARY_VALUES_START */
+                S("account_executive_name"),
+                S("account_executive_email"),
+                S("solution_architect_name"),
+                S("solution_architect_email"),
+                /* 053I_INTAKE_AE_SA_SUMMARY_VALUES_END */
                 ReadDateTimeOffset(reader, O("created_at")),
                 reader.GetString(O("intake_source")),
                 S("source_system"),
@@ -638,14 +676,22 @@ public static class ProjectIntakeModule
                 p.end_date AS end_date,
                 p.billable AS billable,
                 pm.display_name AS project_manager_name,
+                /* 053I_PROJECT_AE_SA_SELECT_FIELDS_START */
+                ae.display_name AS account_executive_name,
+                ae.email AS account_executive_email,
+                sa.display_name AS solution_architect_name,
+                sa.email AS solution_architect_email,
+                /* 053I_PROJECT_AE_SA_SELECT_FIELDS_END */
                 COUNT(DISTINCT pt.task_id)::bigint AS task_count,
                 COUNT(DISTINCT pa.project_assignment_id)::bigint AS assignment_count
             FROM projects p
             LEFT JOIN clients c ON c.client_id = p.client_id
             LEFT JOIN app_users pm ON pm.user_id = p.project_manager_user_id
+            LEFT JOIN app_users ae ON ae.user_id = p.account_executive_user_id
+            LEFT JOIN app_users sa ON sa.user_id = p.solution_architect_user_id
             LEFT JOIN project_tasks pt ON pt.project_id = p.project_id AND pt.is_active = TRUE
             LEFT JOIN project_assignments pa ON pa.project_id = p.project_id
-            GROUP BY p.project_id, p.project_code, p.project_name, c.client_name, p.status, p.start_date, p.end_date, p.billable, pm.display_name
+            GROUP BY p.project_id, p.project_code, p.project_name, c.client_name, p.status, p.start_date, p.end_date, p.billable, pm.display_name, ae.display_name, ae.email, sa.display_name, sa.email
             ORDER BY p.created_at DESC
             LIMIT 50;
             """;
@@ -668,6 +714,12 @@ public static class ProjectIntakeModule
                 ReadDateOnlyOrNull(reader, O("end_date")),
                 reader.GetBoolean(O("billable")),
                 S("project_manager_name"),
+                /* 053I_PROJECT_AE_SA_SUMMARY_VALUES_START */
+                S("account_executive_name"),
+                S("account_executive_email"),
+                S("solution_architect_name"),
+                S("solution_architect_email"),
+                /* 053I_PROJECT_AE_SA_SUMMARY_VALUES_END */
                 reader.GetInt64(O("task_count")),
                 reader.GetInt64(O("assignment_count"))));
         }
@@ -837,6 +889,58 @@ public static class ProjectIntakeModule
         return rows;
     }
 
+    /* 053I_AE_SA_USER_OPTION_HELPER_START */
+    private static async Task<List<UserOption>> LoadUsersByRoleOrProfileAsync(NpgsqlConnection connection, string[] roleCodes, string[] profileTerms)
+    {
+        var rows = new List<UserOption>();
+
+        const string sql = """
+            SELECT DISTINCT
+                u.user_id,
+                COALESCE(NULLIF(u.display_name, ''), u.email) AS display_name,
+                u.email,
+                COALESCE(NULLIF(u.job_title, ''), NULLIF(u.role_name, ''), NULLIF(u.department_name, ''), NULLIF(u.department, ''), '')
+            FROM app_users u
+            LEFT JOIN app_user_role_assignments ura
+                ON ura.user_id = u.user_id
+               AND ura.is_active = TRUE
+            LEFT JOIN app_roles r
+                ON r.app_role_id = ura.app_role_id
+               AND r.is_active = TRUE
+            WHERE u.is_active = TRUE
+              AND COALESCE(u.login_enabled, TRUE) = TRUE
+              AND (
+                    r.role_code = ANY(@role_codes)
+                 OR EXISTS (
+                        SELECT 1
+                        FROM unnest(@profile_terms) AS profile_term(term)
+                        WHERE LOWER(
+                            COALESCE(u.job_title, '') || ' ' ||
+                            COALESCE(u.role_name, '') || ' ' ||
+                            COALESCE(u.department_name, '') || ' ' ||
+                            COALESCE(u.department, '') || ' ' ||
+                            COALESCE(u.team_name, '')
+                        ) LIKE '%' || LOWER(profile_term.term) || '%'
+                    )
+              )
+            ORDER BY display_name, u.email;
+            """;
+
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("role_codes", roleCodes);
+        command.Parameters.AddWithValue("profile_terms", profileTerms);
+
+        await using var reader = await command.ExecuteReaderAsync();
+
+        while (await reader.ReadAsync())
+        {
+            rows.Add(new UserOption(reader.GetGuid(0), reader.GetString(1), reader.GetString(2), reader.GetString(3)));
+        }
+
+        return rows;
+    }
+    /* 053I_AE_SA_USER_OPTION_HELPER_END */
+
     private static async Task<List<UserOption>> LoadUsersByRoleAsync(NpgsqlConnection connection, string roleCode)
     {
         var rows = new List<UserOption>();
@@ -937,6 +1041,10 @@ internal sealed record ProjectIntakeCreateRequest(
     string RequestTitle,
     string? RequestDescription,
     Guid? AssignedPmUserId,
+    /* 053I_INTAKE_AE_SA_RECORD_FIELDS_START */
+    Guid? AccountExecutiveUserId,
+    Guid? SolutionArchitectUserId,
+    /* 053I_INTAKE_AE_SA_RECORD_FIELDS_END */
     string? Priority,
     DateOnly? TargetStartDate,
     DateOnly? TargetCompletionDate,
@@ -980,6 +1088,12 @@ internal sealed record IntakeSummary(
     decimal? EstimatedHours,
     string? AssignedPmName,
     string? AssignedPmEmail,
+    /* 053I_INTAKE_AE_SA_SUMMARY_FIELDS_START */
+    string? AccountExecutiveName,
+    string? AccountExecutiveEmail,
+    string? SolutionArchitectName,
+    string? SolutionArchitectEmail,
+    /* 053I_INTAKE_AE_SA_SUMMARY_FIELDS_END */
     DateTimeOffset CreatedAt,
     string IntakeSource,
     string? SourceSystem,
@@ -1003,6 +1117,12 @@ internal sealed record ProjectSummary(
     DateOnly? EndDate,
     bool Billable,
     string? ProjectManagerName,
+    /* 053I_PROJECT_AE_SA_SUMMARY_FIELDS_START */
+    string? AccountExecutiveName,
+    string? AccountExecutiveEmail,
+    string? SolutionArchitectName,
+    string? SolutionArchitectEmail,
+    /* 053I_PROJECT_AE_SA_SUMMARY_FIELDS_END */
     long TaskCount,
     long AssignmentCount);
 

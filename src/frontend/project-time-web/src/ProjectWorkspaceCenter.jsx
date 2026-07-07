@@ -198,6 +198,10 @@ export default function ProjectWorkspaceCenter() {
               <p>{project.clientName}</p>
               <dl>
                 <div><dt>PM</dt><dd>{fmt(project.projectManagerName)}</dd></div>
+                {/* 053I_WORKSPACE_AE_SA_UI_START */}
+                <div><dt>Account Executive</dt><dd>{fmt(project.accountExecutiveName || project.salesExecutiveName)}</dd></div>
+                <div><dt>Solution Architect</dt><dd>{fmt(project.solutionArchitectName)}</dd></div>
+                {/* 053I_WORKSPACE_AE_SA_UI_END */}
                 <div><dt>Tasks</dt><dd>{project.taskCount}</dd></div>
                 <div><dt>Assignments</dt><dd>{project.assignmentCount}</dd></div>
                 <div><dt>Documents</dt><dd>{project.documentCount}</dd></div>
