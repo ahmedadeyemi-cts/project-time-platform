@@ -1435,19 +1435,14 @@ app.MapPost("/api/work-tasks/project-tasks", async (HttpContext httpContext) =>
     await using var connection = new NpgsqlConnection(config.ConnectionString);
     await connection.OpenAsync();
 
-    var canViewAll = false;
-    var isProjectManager = false;
+    /* 053D_RESTRICT_PROJECT_TASK_CREATION_TO_PTC_START */
+    var canManageProjectTaskCreation = false;
 
     await using (var accessCommand = new NpgsqlCommand("""
-        SELECT
-            BOOL_OR(
-                r.role_code IN ('SUPER_ADMINISTRATOR', 'ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR')
-                OR p.permission_code IN ('SYSTEM_ADMINISTRATION', 'MANAGE_ALL')
-            ) AS can_view_all,
-            BOOL_OR(
-                r.role_code IN ('PROJECT_MANAGEMENT', 'PROJECT_MANAGER')
-                OR p.permission_code = 'ASSIGN_WORK_TASKS'
-            ) AS is_project_manager
+        SELECT COALESCE(BOOL_OR(
+            r.role_code IN ('SUPER_ADMINISTRATOR', 'ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR')
+            OR p.permission_code IN ('MANAGE_WORK_TASK_BUILDER', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL')
+        ), FALSE) AS can_manage_project_task_creation
         FROM app_user_role_assignments ura
         JOIN app_roles r
             ON r.app_role_id = ura.app_role_id
@@ -1461,16 +1456,19 @@ app.MapPost("/api/work-tasks/project-tasks", async (HttpContext httpContext) =>
         """, connection))
     {
         accessCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
-        await using var reader = await accessCommand.ExecuteReaderAsync();
-        await reader.ReadAsync();
-        canViewAll = !reader.IsDBNull(0) && reader.GetBoolean(0);
-        isProjectManager = !reader.IsDBNull(1) && reader.GetBoolean(1);
+        var result = await accessCommand.ExecuteScalarAsync();
+        canManageProjectTaskCreation = result is bool value && value;
     }
 
-    if (!canViewAll && !isProjectManager)
+    if (!canManageProjectTaskCreation)
     {
-        return Results.Json(new { status = "access_denied", message = "Only Administrators, Project Team Coordinators, and assigned Project Managers can create project work tasks." }, statusCode: StatusCodes.Status403Forbidden);
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Project task creation is restricted to Project Team Coordinators and Administrators. Project Managers may assign engineers only to existing PTC-created tasks."
+        }, statusCode: StatusCodes.Status403Forbidden);
     }
+    /* 053D_RESTRICT_PROJECT_TASK_CREATION_TO_PTC_END */
 
     await using (var scopeCommand = new NpgsqlCommand("""
         SELECT COUNT(*)
@@ -1480,7 +1478,7 @@ app.MapPost("/api/work-tasks/project-tasks", async (HttpContext httpContext) =>
         """, connection))
     {
         scopeCommand.Parameters.AddWithValue("project_id", projectId.Value);
-        scopeCommand.Parameters.AddWithValue("can_view_all", canViewAll);
+        scopeCommand.Parameters.AddWithValue("can_view_all", canManageProjectTaskCreation);
         scopeCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
 
         var count = Convert.ToInt32(await scopeCommand.ExecuteScalarAsync() ?? 0);
