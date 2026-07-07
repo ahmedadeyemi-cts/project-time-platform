@@ -927,6 +927,7 @@ app.MapGet("/api/work-tasks/summary", async (HttpContext httpContext) =>
         || permissions.Contains("ASSIGN_WORK_TASKS");
 
     var canAssignTasks = canAssignWorkTasks;
+    var assignmentDefaultHourlyCost = ProjectPulse053HGetDefaultEngineeringHourlyCost();
     /* 053E_PM_ASSIGNMENT_ONLY_ACCESS_FLAGS_END */
 
     if (!canViewBuilder)
@@ -1026,7 +1027,12 @@ app.MapGet("/api/work-tasks/summary", async (HttpContext httpContext) =>
             COALESCE(pt.service_request_number, '') AS service_request_number,
             COALESCE(ar.assigned_engineer_count, 0)::bigint AS assigned_engineer_count,
             COALESCE(ar.assigned_hours, 0)::numeric AS assigned_hours,
-            COALESCE(ur.used_hours, 0)::numeric AS used_hours
+            COALESCE(ur.used_hours, 0)::numeric AS used_hours,
+            /* 053H_WORK_TASK_SUMMARY_COST_FIELDS_START */
+            COALESCE(p.planned_engineering_cost, 0)::numeric AS planned_engineering_cost,
+            COALESCE(p.planned_pm_cost, 0)::numeric AS planned_pm_cost,
+            COALESCE(p.planned_total_project_cost, 0)::numeric AS planned_total_project_cost
+            /* 053H_WORK_TASK_SUMMARY_COST_FIELDS_END */
         FROM projects p
         LEFT JOIN clients c
             ON c.client_id = p.client_id
@@ -1066,6 +1072,13 @@ app.MapGet("/api/work-tasks/summary", async (HttpContext httpContext) =>
                     projectBillable = reader.GetBoolean(5),
                     projectManagerUserId = reader.IsDBNull(6) ? (Guid?)null : reader.GetGuid(6),
                     projectManagerName = reader.GetString(7),
+                    /* 053H_WORK_TASK_SUMMARY_COST_PAYLOAD_START */
+                    plannedEngineeringCost = reader.GetDecimal(23),
+                    plannedPmCost = reader.GetDecimal(24),
+                    plannedTotalProjectCost = reader.GetDecimal(25),
+                    assignmentBudget = reader.GetDecimal(23) > 0m ? reader.GetDecimal(23) : reader.GetDecimal(25),
+                    assignmentDefaultHourlyCost,
+                    /* 053H_WORK_TASK_SUMMARY_COST_PAYLOAD_END */
                     tasks = new List<object>()
                 };
 
@@ -1186,7 +1199,8 @@ app.MapGet("/api/work-tasks/summary", async (HttpContext httpContext) =>
             canManageTemplates,
             canCreateProjectTasks,
             canAssignWorkTasks,
-            canAssignTasks
+            canAssignTasks,
+            assignmentDefaultHourlyCost
         },
         classifications = new
         {
@@ -1766,6 +1780,86 @@ app.MapPost("/api/work-tasks/assignments", async (HttpContext httpContext) =>
         }
     }
 
+    /* 053H_ASSIGNMENT_COST_GUARDRAIL_START */
+    var defaultEngineeringHourlyCost = ProjectPulse053HGetDefaultEngineeringHourlyCost();
+    var proposedAssignmentHours = Math.Max(assignedHours, 0m);
+    var proposedAssignmentCost = proposedAssignmentHours * defaultEngineeringHourlyCost;
+    decimal plannedEngineeringCost;
+    decimal plannedTotalProjectCost;
+    decimal existingAssignedHours;
+
+    await using (var costGuardrailCommand = new NpgsqlCommand("""
+        SELECT
+            COALESCE(p.planned_engineering_cost, 0)::numeric AS planned_engineering_cost,
+            COALESCE(p.planned_total_project_cost, 0)::numeric AS planned_total_project_cost,
+            COALESCE(SUM(COALESCE(pa.assigned_hours, 0)), 0)::numeric AS existing_assigned_hours
+        FROM projects p
+        LEFT JOIN project_assignments pa
+            ON pa.project_id = p.project_id
+        WHERE p.project_id = @project_id
+        GROUP BY p.project_id, p.planned_engineering_cost, p.planned_total_project_cost;
+        """, connection))
+    {
+        costGuardrailCommand.Parameters.AddWithValue("project_id", projectId.Value);
+
+        await using var costReader = await costGuardrailCommand.ExecuteReaderAsync();
+
+        if (!await costReader.ReadAsync())
+        {
+            return Results.Json(new
+            {
+                status = "validation_error",
+                message = "The selected project could not be found for assignment cost validation."
+            }, statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        plannedEngineeringCost = costReader.GetDecimal(0);
+        plannedTotalProjectCost = costReader.GetDecimal(1);
+        existingAssignedHours = costReader.GetDecimal(2);
+    }
+
+    var assignmentBudget = plannedEngineeringCost > 0m ? plannedEngineeringCost : plannedTotalProjectCost;
+    var existingEstimatedAssignmentCost = existingAssignedHours * defaultEngineeringHourlyCost;
+    var projectedEstimatedAssignmentCost = existingEstimatedAssignmentCost + proposedAssignmentCost;
+    var remainingAssignmentBudget = assignmentBudget - existingEstimatedAssignmentCost;
+
+    if (proposedAssignmentCost > 0m && assignmentBudget <= 0m)
+    {
+        return Results.Json(new
+        {
+            status = "assignment_cost_plan_missing",
+            message = "This project does not have a planned engineering or total project cost loaded. Add the cost allocation before assigning additional engineer hours.",
+            projectId,
+            plannedEngineeringCost,
+            plannedTotalProjectCost,
+            existingAssignedHours,
+            defaultEngineeringHourlyCost,
+            proposedAssignmentHours,
+            proposedAssignmentCost
+        }, statusCode: StatusCodes.Status409Conflict);
+    }
+
+    if (proposedAssignmentCost > 0m && projectedEstimatedAssignmentCost > assignmentBudget)
+    {
+        return Results.Json(new
+        {
+            status = "assignment_cost_exceeds_budget",
+            message = "This assignment would exceed the project cost allocation. Reduce assigned hours or update the project allocation before assigning the engineer.",
+            projectId,
+            assignmentBudget,
+            plannedEngineeringCost,
+            plannedTotalProjectCost,
+            existingAssignedHours,
+            defaultEngineeringHourlyCost,
+            existingEstimatedAssignmentCost,
+            proposedAssignmentHours,
+            proposedAssignmentCost,
+            projectedEstimatedAssignmentCost,
+            remainingAssignmentBudget
+        }, statusCode: StatusCodes.Status409Conflict);
+    }
+    /* 053H_ASSIGNMENT_COST_GUARDRAIL_END */
+
     await using var command = new NpgsqlCommand("""
         INSERT INTO project_assignments (
             project_id,
@@ -1818,7 +1912,20 @@ app.MapPost("/api/work-tasks/assignments", async (HttpContext httpContext) =>
         assignedHours,
         allocationPercent,
         effectiveStartDate,
-        effectiveEndDate
+        effectiveEndDate,
+        costGuardrail = new
+        {
+            assignmentBudget,
+            plannedEngineeringCost,
+            plannedTotalProjectCost,
+            existingAssignedHours,
+            defaultEngineeringHourlyCost,
+            existingEstimatedAssignmentCost,
+            proposedAssignmentHours,
+            proposedAssignmentCost,
+            projectedEstimatedAssignmentCost,
+            remainingAssignmentBudget = assignmentBudget - projectedEstimatedAssignmentCost
+        }
     });
 });
 
@@ -28440,6 +28547,20 @@ static async Task<IResult> ProcessManagerApprovalActionAsync(
     }
 }
 
+
+/* 053H_ASSIGNMENT_COST_GUARDRAIL_HELPER_START */
+static decimal ProjectPulse053HGetDefaultEngineeringHourlyCost()
+{
+    var configuredValue = Environment.GetEnvironmentVariable("PTP_DEFAULT_ENGINEERING_HOURLY_COST");
+
+    if (decimal.TryParse(configuredValue, out var parsedValue) && parsedValue > 0m)
+    {
+        return parsedValue;
+    }
+
+    return 150m;
+}
+/* 053H_ASSIGNMENT_COST_GUARDRAIL_HELPER_END */
 
 static async Task<List<object>> LoadOpenAssignedProjectTasksAsync(NpgsqlConnection connection, Guid userId, DateOnly weekStart, DateOnly weekEnd)
 {

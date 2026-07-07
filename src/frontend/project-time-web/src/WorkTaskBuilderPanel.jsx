@@ -42,6 +42,18 @@ function formatNumber(value) {
   return Number(value ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
+/* 053H_ASSIGNMENT_COST_GUARDRAIL_UI_MONEY_START */
+function formatMoney(value) {
+  const number = Number(value ?? 0);
+  return number.toLocaleString(undefined, {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 0
+  });
+}
+/* 053H_ASSIGNMENT_COST_GUARDRAIL_UI_MONEY_END */
+
+
 function labelFrom(value) {
   return String(value ?? '')
     .replaceAll('_', ' ')
@@ -120,6 +132,36 @@ export default function WorkTaskBuilderPanel() {
   const classifications = data?.classifications ?? {};
   const selectedProjectForAssignment = projects.find((project) => project.projectId === assignmentForm.projectId);
   const selectedProjectTasks = selectedProjectForAssignment?.tasks ?? [];
+  /* 053H_ASSIGNMENT_COST_GUARDRAIL_UI_START */
+  const assignmentDefaultHourlyCost = Number(access.assignmentDefaultHourlyCost ?? selectedProjectForAssignment?.assignmentDefaultHourlyCost ?? 150);
+  const selectedProjectAssignmentBudget = Number(
+    selectedProjectForAssignment?.assignmentBudget ??
+    (Number(selectedProjectForAssignment?.plannedEngineeringCost ?? 0) > 0
+      ? selectedProjectForAssignment?.plannedEngineeringCost
+      : selectedProjectForAssignment?.plannedTotalProjectCost) ??
+    0
+  );
+  const selectedProjectAssignedEstimatedCost = selectedProjectTasks.reduce(
+    (total, task) => total + (Number(task.assignedHours ?? 0) * assignmentDefaultHourlyCost),
+    0
+  );
+  const proposedAssignmentHours = Number(assignmentForm.assignedHours || 0);
+  const proposedAssignmentEstimatedCost = Math.max(proposedAssignmentHours, 0) * assignmentDefaultHourlyCost;
+  const projectedAssignmentEstimatedCost = selectedProjectAssignedEstimatedCost + proposedAssignmentEstimatedCost;
+  const remainingAssignmentBudget = selectedProjectAssignmentBudget - selectedProjectAssignedEstimatedCost;
+  const projectedRemainingAssignmentBudget = selectedProjectAssignmentBudget - projectedAssignmentEstimatedCost;
+  const assignmentCostPlanMissing = Boolean(
+    selectedProjectForAssignment &&
+    proposedAssignmentEstimatedCost > 0 &&
+    selectedProjectAssignmentBudget <= 0
+  );
+  const assignmentBudgetExceeded = Boolean(
+    selectedProjectForAssignment &&
+    selectedProjectAssignmentBudget > 0 &&
+    proposedAssignmentEstimatedCost > 0 &&
+    projectedAssignmentEstimatedCost > selectedProjectAssignmentBudget
+  );
+  /* 053H_ASSIGNMENT_COST_GUARDRAIL_UI_END */
 
   const projectOptions = useMemo(() => projects.filter((project) => (project.tasks ?? []).length >= 0), [projects]);
 
@@ -390,6 +432,20 @@ export default function WorkTaskBuilderPanel() {
                 Assigned hours
                 <input type="number" min="0" step="0.25" value={assignmentForm.assignedHours} onChange={(event) => setAssignmentForm({ ...assignmentForm, assignedHours: event.target.value })} />
               </label>
+              {selectedProjectForAssignment ? (
+                <div className="section-copy">
+                  <strong>Assignment cost guardrail:</strong>{' '}
+                  Budget {formatMoney(selectedProjectAssignmentBudget)} · Existing estimate {formatMoney(selectedProjectAssignedEstimatedCost)} · Proposed {formatMoney(proposedAssignmentEstimatedCost)} · Remaining after assignment {formatMoney(projectedRemainingAssignmentBudget)}.
+                  <br />
+                  <small>Default engineering cost rate: {formatMoney(assignmentDefaultHourlyCost)} / hour.</small>
+                  {assignmentCostPlanMissing ? (
+                    <span className="error-text"> Add a project cost allocation before assigning engineer hours.</span>
+                  ) : null}
+                  {assignmentBudgetExceeded ? (
+                    <span className="error-text"> This assignment exceeds the project allocation.</span>
+                  ) : null}
+                </div>
+              ) : null}
               <label>
                 Allocation percent
                 <input type="number" min="0" max="100" step="1" value={assignmentForm.allocationPercent} onChange={(event) => setAssignmentForm({ ...assignmentForm, allocationPercent: event.target.value })} />
@@ -406,7 +462,7 @@ export default function WorkTaskBuilderPanel() {
                 Assignment notes
                 <textarea value={assignmentForm.assignmentNotes} onChange={(event) => setAssignmentForm({ ...assignmentForm, assignmentNotes: event.target.value })} rows={3} />
               </label>
-              <button type="submit" className="primary-action">Assign engineer</button>
+              <button type="submit" className="primary-action" disabled={assignmentCostPlanMissing || assignmentBudgetExceeded}>Assign engineer</button>
             </form>
           ) : (
             <p className="section-copy">This role can review classifications and readiness but cannot assign engineers to work tasks.</p>
