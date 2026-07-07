@@ -914,10 +914,20 @@ app.MapGet("/api/work-tasks/summary", async (HttpContext httpContext) =>
         canViewAll
         || permissions.Contains("MANAGE_WORK_TASK_BUILDER");
 
-    var canAssignTasks =
+    /* 053E_PM_ASSIGNMENT_ONLY_ACCESS_FLAGS_START */
+    var canCreateProjectTasks =
+        canViewAll
+        || permissions.Contains("MANAGE_WORK_TASK_BUILDER")
+        || permissions.Contains("SYSTEM_ADMINISTRATION")
+        || permissions.Contains("MANAGE_ALL");
+
+    var canAssignWorkTasks =
         canViewAll
         || isProjectManager
         || permissions.Contains("ASSIGN_WORK_TASKS");
+
+    var canAssignTasks = canAssignWorkTasks;
+    /* 053E_PM_ASSIGNMENT_ONLY_ACCESS_FLAGS_END */
 
     if (!canViewBuilder)
     {
@@ -1174,6 +1184,8 @@ app.MapGet("/api/work-tasks/summary", async (HttpContext httpContext) =>
             canViewAll,
             isProjectManager,
             canManageTemplates,
+            canCreateProjectTasks,
+            canAssignWorkTasks,
             canAssignTasks
         },
         classifications = new
@@ -1681,6 +1693,56 @@ app.MapPost("/api/work-tasks/assignments", async (HttpContext httpContext) =>
             return Results.Json(new { status = "access_denied", message = "The selected project/task is not within your assignment scope." }, statusCode: StatusCodes.Status403Forbidden);
         }
     }
+
+    /* 053E_ASSIGNMENT_ROUTE_BLOCK_CLOSED_PROJECTS_START */
+    await using (var projectStateCommand = new NpgsqlCommand("""
+        SELECT
+            COALESCE(p.status, '') AS project_status,
+            COALESCE(pt.is_active, FALSE) AS task_is_active
+        FROM projects p
+        JOIN project_tasks pt
+            ON pt.project_id = p.project_id
+           AND pt.task_id = @task_id
+        WHERE p.project_id = @project_id;
+        """, connection))
+    {
+        projectStateCommand.Parameters.AddWithValue("project_id", projectId.Value);
+        projectStateCommand.Parameters.AddWithValue("task_id", taskId.Value);
+
+        await using var reader = await projectStateCommand.ExecuteReaderAsync();
+
+        if (!await reader.ReadAsync())
+        {
+            return Results.Json(new
+            {
+                status = "validation_error",
+                message = "The selected project/task could not be found."
+            }, statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        var projectStatus = reader.IsDBNull(0) ? "" : reader.GetString(0);
+        var taskIsActive = !reader.IsDBNull(1) && reader.GetBoolean(1);
+        var projectStatusLower = projectStatus.Trim().ToLowerInvariant();
+
+        if (projectStatusLower is "closed" or "complete" or "completed" or "done" or "archived" or "cancelled" or "canceled")
+        {
+            return Results.Json(new
+            {
+                status = "project_closed",
+                message = "This project is closed or archived. Future engineer assignments cannot be added to closed projects."
+            }, statusCode: StatusCodes.Status409Conflict);
+        }
+
+        if (!taskIsActive)
+        {
+            return Results.Json(new
+            {
+                status = "task_inactive",
+                message = "The selected task is inactive and cannot receive new engineer assignments."
+            }, statusCode: StatusCodes.Status409Conflict);
+        }
+    }
+    /* 053E_ASSIGNMENT_ROUTE_BLOCK_CLOSED_PROJECTS_END */
 
     await using (var engineerCommand = new NpgsqlCommand("""
         SELECT COUNT(*)

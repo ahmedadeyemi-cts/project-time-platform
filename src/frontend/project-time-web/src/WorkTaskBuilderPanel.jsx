@@ -105,6 +105,15 @@ export default function WorkTaskBuilderPanel() {
 
   const data = payload.data;
   const access = data?.access ?? {};
+  /* 053E_PM_ASSIGNMENT_ONLY_UI_FLAGS_START */
+  const canCreateProjectTasks = Boolean(
+    access.canCreateProjectTasks ??
+    access.canManageProjectTaskCreation ??
+    access.canManageTemplates ??
+    access.canViewAll
+  );
+  const canAssignWorkTasks = Boolean(access.canAssignWorkTasks ?? access.canAssignTasks);
+  /* 053E_PM_ASSIGNMENT_ONLY_UI_FLAGS_END */
   const projects = data?.projects ?? [];
   const engineers = data?.engineers ?? [];
   const templates = data?.templates ?? [];
@@ -291,112 +300,116 @@ export default function WorkTaskBuilderPanel() {
           <div className="section-heading compact">
             <div>
               <h3>Project work tasks</h3>
-              <p className="section-copy">Project Managers can create and assign tasks only inside their project scope. PTC/Admin can work across all projects.</p>
+              <p className="section-copy">Project Team Coordinators create project tasks during intake/setup. Project Managers assign engineers only to existing PTC-created tasks inside their assigned project scope.</p>
             </div>
           </div>
 
-          {access.canAssignTasks ? (
-            <>
-              <form className="work-task-form" onSubmit={handleProjectTaskSubmit}>
-                <h4>Create project work task</h4>
+          {canCreateProjectTasks ? (
+            <form className="work-task-form" onSubmit={handleProjectTaskSubmit}>
+              <h4>Create project work task</h4>
+              <label>
+                Project
+                <select value={projectTaskForm.projectId} onChange={(event) => setProjectTaskForm({ ...projectTaskForm, projectId: event.target.value })} required>
+                  <option value="">Select project</option>
+                  {projectOptions.map((project) => (
+                    <option value={project.projectId} key={project.projectId}>{project.projectCode} · {project.projectName}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Task name
+                <input value={projectTaskForm.taskName} onChange={(event) => setProjectTaskForm({ ...projectTaskForm, taskName: event.target.value })} required />
+              </label>
+              <label>
+                Description
+                <textarea value={projectTaskForm.taskDescription} onChange={(event) => setProjectTaskForm({ ...projectTaskForm, taskDescription: event.target.value })} rows={3} />
+              </label>
+              <label>
+                Task category
+                <select value={projectTaskForm.taskCategory} onChange={(event) => setProjectTaskForm({ ...projectTaskForm, taskCategory: event.target.value })}>
+                  {(classifications.taskCategories ?? []).map((item) => <option value={item.value} key={item.value}>{item.label}</option>)}
+                </select>
+              </label>
+              <label>
+                Billing classification
+                <select value={projectTaskForm.billingClassification} onChange={(event) => syncUtilizationFromBilling(event.target.value, setProjectTaskForm)}>
+                  {(classifications.billingClassifications ?? []).map((item) => <option value={item.value} key={item.value}>{item.label}</option>)}
+                </select>
+              </label>
+              <label>
+                Utilization classification
+                <select value={projectTaskForm.utilizationClassification} onChange={(event) => setProjectTaskForm({ ...projectTaskForm, utilizationClassification: event.target.value })}>
+                  {(classifications.utilizationClassifications ?? []).map((item) => <option value={item.value} key={item.value}>{item.label}</option>)}
+                </select>
+              </label>
+              {projectTaskForm.taskCategory === 'service_request_task' ? (
                 <label>
-                  Project
-                  <select value={projectTaskForm.projectId} onChange={(event) => setProjectTaskForm({ ...projectTaskForm, projectId: event.target.value })} required>
-                    <option value="">Select project</option>
-                    {projectOptions.map((project) => (
-                      <option value={project.projectId} key={project.projectId}>{project.projectCode} · {project.projectName}</option>
-                    ))}
-                  </select>
+                  Service request number
+                  <input value={projectTaskForm.serviceRequestNumber} onChange={(event) => setProjectTaskForm({ ...projectTaskForm, serviceRequestNumber: event.target.value })} />
                 </label>
-                <label>
-                  Task name
-                  <input value={projectTaskForm.taskName} onChange={(event) => setProjectTaskForm({ ...projectTaskForm, taskName: event.target.value })} required />
-                </label>
-                <label>
-                  Description
-                  <textarea value={projectTaskForm.taskDescription} onChange={(event) => setProjectTaskForm({ ...projectTaskForm, taskDescription: event.target.value })} rows={3} />
-                </label>
-                <label>
-                  Task category
-                  <select value={projectTaskForm.taskCategory} onChange={(event) => setProjectTaskForm({ ...projectTaskForm, taskCategory: event.target.value })}>
-                    {(classifications.taskCategories ?? []).map((item) => <option value={item.value} key={item.value}>{item.label}</option>)}
-                  </select>
-                </label>
-                <label>
-                  Billing classification
-                  <select value={projectTaskForm.billingClassification} onChange={(event) => syncUtilizationFromBilling(event.target.value, setProjectTaskForm)}>
-                    {(classifications.billingClassifications ?? []).map((item) => <option value={item.value} key={item.value}>{item.label}</option>)}
-                  </select>
-                </label>
-                <label>
-                  Utilization classification
-                  <select value={projectTaskForm.utilizationClassification} onChange={(event) => setProjectTaskForm({ ...projectTaskForm, utilizationClassification: event.target.value })}>
-                    {(classifications.utilizationClassifications ?? []).map((item) => <option value={item.value} key={item.value}>{item.label}</option>)}
-                  </select>
-                </label>
-                {projectTaskForm.taskCategory === 'service_request_task' ? (
-                  <label>
-                    Service request number
-                    <input value={projectTaskForm.serviceRequestNumber} onChange={(event) => setProjectTaskForm({ ...projectTaskForm, serviceRequestNumber: event.target.value })} />
-                  </label>
-                ) : null}
-                <button type="submit" className="primary-action">Create task</button>
-              </form>
-
-              <form className="work-task-form" onSubmit={handleAssignmentSubmit}>
-                <h4>Assign work task</h4>
-                <label>
-                  Project
-                  <select value={assignmentForm.projectId} onChange={(event) => setAssignmentForm({ ...assignmentForm, projectId: event.target.value, taskId: '' })} required>
-                    <option value="">Select project</option>
-                    {projectOptions.map((project) => (
-                      <option value={project.projectId} key={project.projectId}>{project.projectCode} · {project.projectName}</option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Task
-                  <select value={assignmentForm.taskId} onChange={(event) => setAssignmentForm({ ...assignmentForm, taskId: event.target.value })} required>
-                    <option value="">Select task</option>
-                    {selectedProjectTasks.map((task) => (
-                      <option value={task.taskId} key={task.taskId}>{task.taskCode} · {task.taskName}</option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Engineer
-                  <select value={assignmentForm.engineerUserId} onChange={(event) => setAssignmentForm({ ...assignmentForm, engineerUserId: event.target.value })} required>
-                    <option value="">Select engineer</option>
-                    {engineers.map((engineer) => (
-                      <option value={engineer.userId} key={engineer.userId}>{engineer.displayName} · {engineer.teamName}</option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Assigned hours
-                  <input type="number" min="0" step="0.25" value={assignmentForm.assignedHours} onChange={(event) => setAssignmentForm({ ...assignmentForm, assignedHours: event.target.value })} />
-                </label>
-                <label>
-                  Allocation percent
-                  <input type="number" min="0" max="100" step="1" value={assignmentForm.allocationPercent} onChange={(event) => setAssignmentForm({ ...assignmentForm, allocationPercent: event.target.value })} />
-                </label>
-                <label>
-                  Start date
-                  <input type="date" value={assignmentForm.effectiveStartDate} onChange={(event) => setAssignmentForm({ ...assignmentForm, effectiveStartDate: event.target.value })} required />
-                </label>
-                <label>
-                  End date
-                  <input type="date" value={assignmentForm.effectiveEndDate} onChange={(event) => setAssignmentForm({ ...assignmentForm, effectiveEndDate: event.target.value })} />
-                </label>
-                <label>
-                  Assignment notes
-                  <textarea value={assignmentForm.assignmentNotes} onChange={(event) => setAssignmentForm({ ...assignmentForm, assignmentNotes: event.target.value })} rows={3} />
-                </label>
-                <button type="submit" className="primary-action">Assign task</button>
-              </form>
-            </>
+              ) : null}
+              <button type="submit" className="primary-action">Create task</button>
+            </form>
           ) : (
-            <p className="section-copy">This role can review classifications and readiness but cannot create or assign work tasks.</p>
+            <p className="section-copy">
+              Task creation is restricted to Project Team Coordinators and Administrators. Project Managers can assign engineers to the existing tasks created during intake/setup.
+            </p>
+          )}
+
+          {canAssignWorkTasks ? (
+            <form className="work-task-form" onSubmit={handleAssignmentSubmit}>
+              <h4>Assign engineer to existing task</h4>
+              <label>
+                Project
+                <select value={assignmentForm.projectId} onChange={(event) => setAssignmentForm({ ...assignmentForm, projectId: event.target.value, taskId: '' })} required>
+                  <option value="">Select project</option>
+                  {projectOptions.map((project) => (
+                    <option value={project.projectId} key={project.projectId}>{project.projectCode} · {project.projectName}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Task
+                <select value={assignmentForm.taskId} onChange={(event) => setAssignmentForm({ ...assignmentForm, taskId: event.target.value })} required>
+                  <option value="">Select task</option>
+                  {selectedProjectTasks.map((task) => (
+                    <option value={task.taskId} key={task.taskId}>{task.taskCode} · {task.taskName}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Engineer
+                <select value={assignmentForm.engineerUserId} onChange={(event) => setAssignmentForm({ ...assignmentForm, engineerUserId: event.target.value })} required>
+                  <option value="">Select engineer</option>
+                  {engineers.map((engineer) => (
+                    <option value={engineer.userId} key={engineer.userId}>{engineer.displayName} · {engineer.teamName}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Assigned hours
+                <input type="number" min="0" step="0.25" value={assignmentForm.assignedHours} onChange={(event) => setAssignmentForm({ ...assignmentForm, assignedHours: event.target.value })} />
+              </label>
+              <label>
+                Allocation percent
+                <input type="number" min="0" max="100" step="1" value={assignmentForm.allocationPercent} onChange={(event) => setAssignmentForm({ ...assignmentForm, allocationPercent: event.target.value })} />
+              </label>
+              <label>
+                Start date
+                <input type="date" value={assignmentForm.effectiveStartDate} onChange={(event) => setAssignmentForm({ ...assignmentForm, effectiveStartDate: event.target.value })} required />
+              </label>
+              <label>
+                End date
+                <input type="date" value={assignmentForm.effectiveEndDate} onChange={(event) => setAssignmentForm({ ...assignmentForm, effectiveEndDate: event.target.value })} />
+              </label>
+              <label>
+                Assignment notes
+                <textarea value={assignmentForm.assignmentNotes} onChange={(event) => setAssignmentForm({ ...assignmentForm, assignmentNotes: event.target.value })} rows={3} />
+              </label>
+              <button type="submit" className="primary-action">Assign engineer</button>
+            </form>
+          ) : (
+            <p className="section-copy">This role can review classifications and readiness but cannot assign engineers to work tasks.</p>
           )}
         </div>
       </div>
