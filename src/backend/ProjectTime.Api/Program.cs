@@ -1935,7 +1935,8 @@ app.MapGet("/api/assignments/available-tasks", async (DateOnly? weekStart, HttpC
            AND resource_alloc.user_id = pa.user_id
         WHERE pa.user_id = @user_id
           AND pt.is_active = TRUE
-          AND p.status NOT IN ('cancelled', 'archived')
+          /* 053G_HIDE_CLOSED_PROJECTS_FROM_AVAILABLE_TASKS */
+          AND lower(COALESCE(p.status, 'active')) NOT IN ('closed', 'complete', 'completed', 'done', 'cancelled', 'canceled', 'archived')
         ORDER BY c.client_name, p.project_code, pt.task_code, pt.task_name;
         """;
 
@@ -12146,6 +12147,236 @@ app.MapPost("/api/admin/user-admin/users/email", async (System.Text.Json.JsonEle
 /* 041F_EMAIL_RESOLUTION_FALLBACK_END */
 /* 041E_EMAIL_ROUTE_REPAIR_END */
 
+
+
+
+/* 053G_PROJECT_CLOSE_ENDPOINT_START */
+app.MapPost("/api/projects/{projectId:guid}/close", async (Guid projectId, HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+
+    if (sessionUserId is null)
+    {
+        return Results.Json(new
+        {
+            status = "session_required",
+            message = "Missing session token."
+        }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var closeDate = DateOnly.FromDateTime(DateTime.UtcNow.Date);
+    var closeReason = string.Empty;
+
+    if (httpContext.Request.ContentLength.GetValueOrDefault() > 0)
+    {
+        try
+        {
+            using var document = await JsonDocument.ParseAsync(httpContext.Request.Body);
+            var root = document.RootElement;
+
+            if (root.TryGetProperty("closeDate", out var closeDateProperty)
+                && closeDateProperty.ValueKind == JsonValueKind.String
+                && DateOnly.TryParse(closeDateProperty.GetString(), out var parsedCloseDate))
+            {
+                closeDate = parsedCloseDate;
+            }
+
+            if (root.TryGetProperty("closedDate", out var closedDateProperty)
+                && closedDateProperty.ValueKind == JsonValueKind.String
+                && DateOnly.TryParse(closedDateProperty.GetString(), out var parsedClosedDate))
+            {
+                closeDate = parsedClosedDate;
+            }
+
+            if (root.TryGetProperty("closeReason", out var closeReasonProperty)
+                && closeReasonProperty.ValueKind == JsonValueKind.String)
+            {
+                closeReason = closeReasonProperty.GetString()?.Trim() ?? string.Empty;
+            }
+
+            if (string.IsNullOrWhiteSpace(closeReason)
+                && root.TryGetProperty("closureNote", out var closureNoteProperty)
+                && closureNoteProperty.ValueKind == JsonValueKind.String)
+            {
+                closeReason = closureNoteProperty.GetString()?.Trim() ?? string.Empty;
+            }
+        }
+        catch
+        {
+            return Results.Json(new
+            {
+                status = "invalid_request",
+                message = "Project close request body must be valid JSON when a body is provided."
+            }, statusCode: StatusCodes.Status400BadRequest);
+        }
+    }
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+    await using var transaction = await connection.BeginTransactionAsync();
+
+    try
+    {
+        var roles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var permissions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        await using (var accessCommand = new NpgsqlCommand("""
+            SELECT
+                r.role_code,
+                COALESCE(p.permission_code, '') AS permission_code
+            FROM app_user_role_assignments ura
+            JOIN app_roles r
+                ON r.app_role_id = ura.app_role_id
+               AND r.is_active = TRUE
+            LEFT JOIN app_role_permissions rp
+                ON rp.app_role_id = r.app_role_id
+            LEFT JOIN app_permissions p
+                ON p.app_permission_id = rp.app_permission_id
+            WHERE ura.user_id = @user_id
+              AND ura.is_active = TRUE;
+            """, connection, transaction))
+        {
+            accessCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+
+            await using var accessReader = await accessCommand.ExecuteReaderAsync();
+
+            while (await accessReader.ReadAsync())
+            {
+                roles.Add(accessReader.GetString(0));
+
+                if (!accessReader.IsDBNull(1) && !string.IsNullOrWhiteSpace(accessReader.GetString(1)))
+                {
+                    permissions.Add(accessReader.GetString(1));
+                }
+            }
+        }
+
+        string projectCode;
+        string projectName;
+        string projectStatus;
+        Guid? projectManagerUserId;
+
+        await using (var projectCommand = new NpgsqlCommand("""
+            SELECT
+                COALESCE(project_code, '') AS project_code,
+                COALESCE(project_name, '') AS project_name,
+                COALESCE(status, '') AS status,
+                project_manager_user_id
+            FROM projects
+            WHERE project_id = @project_id;
+            """, connection, transaction))
+        {
+            projectCommand.Parameters.AddWithValue("project_id", projectId);
+
+            await using var projectReader = await projectCommand.ExecuteReaderAsync();
+
+            if (!await projectReader.ReadAsync())
+            {
+                await transaction.RollbackAsync();
+
+                return Results.Json(new
+                {
+                    status = "not_found",
+                    message = "Project was not found."
+                }, statusCode: StatusCodes.Status404NotFound);
+            }
+
+            projectCode = projectReader.GetString(0);
+            projectName = projectReader.GetString(1);
+            projectStatus = projectReader.GetString(2);
+            projectManagerUserId = projectReader.IsDBNull(3) ? null : projectReader.GetGuid(3);
+        }
+
+        var currentStatusLower = projectStatus.Trim().ToLowerInvariant();
+
+        if (currentStatusLower is "closed" or "complete" or "completed" or "done" or "archived" or "cancelled" or "canceled")
+        {
+            await transaction.RollbackAsync();
+
+            return Results.Json(new
+            {
+                status = "project_already_closed",
+                projectId,
+                projectCode,
+                projectName,
+                currentStatus = projectStatus,
+                message = "This project is already closed, archived, or cancelled."
+            }, statusCode: StatusCodes.Status409Conflict);
+        }
+
+        var canCloseAllProjects =
+            roles.Contains("SUPER_ADMINISTRATOR")
+            || roles.Contains("ADMINISTRATOR")
+            || roles.Contains("PROJECT_TEAM_COORDINATOR")
+            || permissions.Contains("SYSTEM_ADMINISTRATION")
+            || permissions.Contains("MANAGE_ALL")
+            || permissions.Contains("MANAGE_PROJECT_INTAKE")
+            || permissions.Contains("MANAGE_PROJECT_COORDINATION")
+            || permissions.Contains("MANAGE_PROJECT_ASSIGNMENTS");
+
+        var isProjectManagerRole =
+            roles.Contains("PROJECT_MANAGEMENT")
+            || roles.Contains("PROJECT_MANAGER");
+
+        var isAssignedProjectManager =
+            projectManagerUserId.HasValue
+            && projectManagerUserId.Value == sessionUserId.Value;
+
+        if (!canCloseAllProjects && !(isProjectManagerRole && isAssignedProjectManager))
+        {
+            await transaction.RollbackAsync();
+
+            return Results.Json(new
+            {
+                status = "access_denied",
+                message = "Only the assigned Project Manager, Project Team Coordinator, or Administrator can close this project."
+            }, statusCode: StatusCodes.Status403Forbidden);
+        }
+
+        await using (var closeCommand = new NpgsqlCommand("""
+            UPDATE projects
+            SET status = 'closed',
+                end_date = @close_date,
+                updated_at = NOW()
+            WHERE project_id = @project_id;
+            """, connection, transaction))
+        {
+            closeCommand.Parameters.AddWithValue("project_id", projectId);
+            closeCommand.Parameters.AddWithValue("close_date", closeDate);
+            await closeCommand.ExecuteNonQueryAsync();
+        }
+
+        await InsertAuditLogAsync(connection, transaction, sessionUserId.Value, "project_closed", "project", projectId);
+
+        await transaction.CommitAsync();
+
+        return Results.Ok(new
+        {
+            status = "project_closed",
+            projectId,
+            projectCode,
+            projectName,
+            closedDate = closeDate,
+            closedByUserId = sessionUserId.Value,
+            closeReason,
+            message = "Project closed. Future time-entry task options will no longer include this project; historical time and documents remain available."
+        });
+    }
+    catch (Exception ex)
+    {
+        await transaction.RollbackAsync();
+
+        return Results.Problem(
+            title: "Failed to close project",
+            detail: ex.Message,
+            statusCode: StatusCodes.Status500InternalServerError);
+    }
+});
+/* 053G_PROJECT_CLOSE_ENDPOINT_END */
 
 
 /* 041M_CLOSEOUT_EMAIL_AUDIT_API_START */
@@ -28237,7 +28468,8 @@ static async Task<List<object>> LoadOpenAssignedProjectTasksAsync(NpgsqlConnecti
         LEFT JOIN clients c ON c.client_id = p.client_id
         LEFT JOIN app_users pm ON pm.user_id = p.project_manager_user_id
         WHERE pa.user_id = @user_id
-          AND p.status = 'active'
+          /* 053G_HIDE_CLOSED_PROJECTS_FROM_OPEN_TASKS */
+          AND lower(COALESCE(p.status, 'active')) = 'active'
           AND pt.is_active = TRUE
         ORDER BY p.project_code, pt.task_code;
         """;
