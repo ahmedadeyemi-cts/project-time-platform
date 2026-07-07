@@ -167,7 +167,8 @@ public static class ProjectWorkspaceModule
                 "Administrator View-As preview is read-only.",
                 "View-As preview records both the administrator and effective viewed user.",
                 "Engineers see only directly assigned work.",
-                "PMs see only projects they manage.",
+                "PMs see all documents for projects they manage.",
+                "Legacy PROJECT_MANAGER and PROJECT_MANAGEMENT roles share managed-project workspace scope.",
                 "Project Team Coordinators, Executives, and Administrators have broader visibility based on role."
             }
         });
@@ -332,7 +333,28 @@ public static class ProjectWorkspaceModule
                 pm.display_name AS project_manager_name,
                 COUNT(DISTINCT pt.task_id)::bigint AS task_count,
                 COUNT(DISTINCT pa.project_assignment_id)::bigint AS assignment_count,
-                COUNT(DISTINCT d.project_intake_document_id) FILTER (WHERE d.is_active = TRUE)::bigint AS document_count
+                /* 053F_SCOPED_PROJECT_DOCUMENT_COUNT_START */
+                COUNT(DISTINCT d.project_intake_document_id) FILTER (
+                    WHERE d.is_active = TRUE
+                      AND (
+                          @is_broad_scope = TRUE
+                          OR (@can_view_managed_projects = TRUE AND p.project_manager_user_id = @user_id)
+                          OR (
+                              COALESCE(d.engineering_visible, FALSE) = TRUE
+                              AND EXISTS (
+                                  SELECT 1
+                                  FROM project_assignments doc_self_pa
+                                  WHERE doc_self_pa.project_id = p.project_id
+                                    AND doc_self_pa.user_id = @user_id
+                              )
+                          )
+                          OR (
+                              @can_view_team_scope = TRUE
+                              AND COALESCE(d.engineering_visible, FALSE) = TRUE
+                          )
+                      )
+                )::bigint AS document_count
+                /* 053F_SCOPED_PROJECT_DOCUMENT_COUNT_END */
             FROM projects p
             LEFT JOIN clients c ON c.client_id = p.client_id
             LEFT JOIN app_users pm ON pm.user_id = p.project_manager_user_id
@@ -885,7 +907,9 @@ internal sealed record ProjectWorkspaceAccessContext(
     public bool IsManager => HasRole("MANAGER");
     public bool IsEngineeringLead => (HasRole("ENGINEERING_LEAD") || HasRole("ENGINEERING_TEAM_LEAD"));
     public bool IsProjectManagementLead => (HasRole("PROJECT_MANAGEMENT_LEAD") || HasRole("PROJECT_MANAGEMENT_TEAM_LEAD"));
-    public bool IsProjectManager => HasRole("PROJECT_MANAGEMENT");
+    /* 053F_PROJECT_MANAGER_DOCUMENT_SCOPE_START */
+    public bool IsProjectManager => HasRole("PROJECT_MANAGEMENT") || HasRole("PROJECT_MANAGER");
+    /* 053F_PROJECT_MANAGER_DOCUMENT_SCOPE_END */
 
     public bool IsBroadScope => IsAdministrator || IsCoordinator || IsExecutive;
     public bool CanViewManagedProjects => IsBroadScope || IsProjectManager || IsProjectManagementLead || IsCoordinator;
