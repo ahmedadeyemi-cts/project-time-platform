@@ -19170,16 +19170,22 @@ app.MapGet("/api/workflow/operational-readiness", async (HttpContext httpContext
         await using var reader = await auditCommand.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
-            var preview = reader.GetString(6);
+            var action = reader.GetString(2);
+            var entityType = reader.GetString(3);
+            var rawPreview = reader.GetString(6);
+            var evidencePreview = ProjectPulse054EBuildAuditEvidencePreview(action, entityType, null, rawPreview);
+
             auditEvidence.Add(new
             {
                 auditLogId = reader.GetGuid(0),
                 actorName = reader.GetString(1),
-                action = reader.GetString(2),
-                entityType = reader.GetString(3),
+                action,
+                entityType,
                 entityId = reader.IsDBNull(4) ? (Guid?)null : reader.GetGuid(4),
                 createdAt = reader.GetDateTime(5),
-                evidencePreview = preview.Length > 240 ? preview[..240] + "..." : preview
+                workflowCategory = ProjectPulse054EAuditCategory(action, entityType),
+                sourceModule = ProjectPulse054EAuditSourceModule(action, entityType),
+                evidencePreview = ProjectPulse054ETruncate(evidencePreview, 360)
             });
         }
     }
@@ -19825,24 +19831,46 @@ app.MapGet("/api/time-exports", async (HttpContext httpContext) =>
 
     await using (var command = new NpgsqlCommand("""
         SELECT
-            time_workflow_export_id,
-            export_format,
-            week_start,
-            week_end,
-            export_status,
-            requested_by_email,
-            item_count,
-            total_hours,
-            file_name,
-            notes,
-            created_at,
-            COALESCE(package_download_count, 0) AS package_download_count,
-            package_last_downloaded_at,
-            package_generated_at,
-            COALESCE(package_content_type, 'text/csv') AS package_content_type,
-            COALESCE(package_file_extension, 'csv') AS package_file_extension
-        FROM time_workflow_exports
-        ORDER BY created_at DESC
+            e.time_workflow_export_id,
+            e.export_format,
+            e.week_start,
+            e.week_end,
+            e.export_status,
+            e.requested_by_email,
+            e.item_count,
+            e.total_hours,
+            e.file_name,
+            e.notes,
+            e.created_at,
+            COALESCE(e.package_download_count, 0) AS package_download_count,
+            e.package_last_downloaded_at,
+            e.package_generated_at,
+            COALESCE(e.package_content_type, 'text/csv') AS package_content_type,
+            COALESCE(e.package_file_extension, 'csv') AS package_file_extension,
+            COALESCE(m.package_sha256, '') AS package_sha256,
+            COALESCE(m.package_snapshot_item_count, 0)::int AS package_snapshot_item_count,
+            COALESCE((
+                SELECT COUNT(*)::int
+                FROM time_workflow_export_items i
+                WHERE i.time_workflow_export_id = e.time_workflow_export_id
+            ), 0) AS snapshot_item_count,
+            COALESCE((
+                SELECT SUM(i.hours)::numeric
+                FROM time_workflow_export_items i
+                WHERE i.time_workflow_export_id = e.time_workflow_export_id
+            ), 0)::numeric AS snapshot_total_hours,
+            CASE
+                WHEN EXISTS (
+                    SELECT 1
+                    FROM time_workflow_export_items i
+                    WHERE i.time_workflow_export_id = e.time_workflow_export_id
+                ) THEN 'snapshot'
+                ELSE 'legacy_live_fallback'
+            END AS snapshot_source
+        FROM time_workflow_exports e
+        LEFT JOIN time_workflow_export_metadata m
+            ON m.time_workflow_export_id = e.time_workflow_export_id
+        ORDER BY e.created_at DESC
         LIMIT 100;
         """, connection))
     {
@@ -19868,6 +19896,12 @@ app.MapGet("/api/time-exports", async (HttpContext httpContext) =>
                 packageGeneratedAt = reader.IsDBNull(13) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(13),
                 packageContentType = reader.IsDBNull(14) ? "text/csv" : reader.GetString(14),
                 packageFileExtension = reader.IsDBNull(15) ? "csv" : reader.GetString(15),
+                packageSha256 = reader.IsDBNull(16) ? "" : reader.GetString(16),
+                packageSnapshotItemCount = reader.GetInt32(17),
+                snapshotItemCount = reader.GetInt32(18),
+                snapshotTotalHours = reader.GetDecimal(19),
+                snapshotSource = reader.GetString(20),
+                evidenceReady = reader.GetInt32(18) > 0 || !string.IsNullOrWhiteSpace(reader.IsDBNull(16) ? "" : reader.GetString(16)),
                 downloadReady = true
             });
         }
@@ -20661,17 +20695,23 @@ app.MapGet("/api/audit-history/events", async (HttpContext httpContext, string? 
         {
             var oldPreview = reader.GetString(6);
             var newPreview = reader.GetString(7);
+            var actionValue = reader.GetString(2);
+            var entityTypeValue = reader.GetString(3);
+            var evidencePreview = ProjectPulse054EBuildAuditEvidencePreview(actionValue, entityTypeValue, oldPreview, newPreview);
 
             events.Add(new
             {
                 auditLogId = reader.GetGuid(0),
                 actorName = reader.GetString(1),
-                action = reader.GetString(2),
-                entityType = reader.GetString(3),
+                action = actionValue,
+                entityType = entityTypeValue,
                 entityId = reader.IsDBNull(4) ? (Guid?)null : reader.GetGuid(4),
                 createdAt = reader.GetFieldValue<DateTimeOffset>(5),
-                oldValuePreview = oldPreview.Length > 320 ? oldPreview[..320] + "..." : oldPreview,
-                newValuePreview = newPreview.Length > 320 ? newPreview[..320] + "..." : newPreview
+                workflowCategory = ProjectPulse054EAuditCategory(actionValue, entityTypeValue),
+                sourceModule = ProjectPulse054EAuditSourceModule(actionValue, entityTypeValue),
+                evidencePreview = ProjectPulse054ETruncate(evidencePreview, 420),
+                oldValuePreview = ProjectPulse054ETruncate(oldPreview, 320),
+                newValuePreview = ProjectPulse054ETruncate(newPreview, 320)
             });
         }
     }
@@ -22216,6 +22256,7 @@ app.MapGet("/api/navigation/registry-integrity", async (HttpContext httpContext)
     });
 });
 
+
 app.MapGet("/api/export-packages/evidence-summary", async (HttpContext httpContext) =>
 {
     var sessionUserId = GetProjectPulseSessionUserId(httpContext);
@@ -22237,6 +22278,7 @@ app.MapGet("/api/export-packages/evidence-summary", async (HttpContext httpConte
         return Results.Json(new { status = "access_denied", message = "Production export evidence is restricted to export/accounting roles." }, statusCode: StatusCodes.Status403Forbidden);
     }
 
+    /* 054E_EXPORT_EVIDENCE_SUMMARY_START */
     var packages = new List<object>();
     await using (var command = new NpgsqlCommand("""
         SELECT
@@ -22250,30 +22292,39 @@ app.MapGet("/api/export-packages/evidence-summary", async (HttpContext httpConte
             e.file_name,
             e.created_at,
             e.package_generated_at,
-            e.package_download_count,
+            COALESCE(e.package_download_count, 0) AS package_download_count,
             e.package_last_downloaded_at,
             COALESCE(e.package_content_type, 'text/csv') AS package_content_type,
             COALESCE(e.package_file_extension, 'csv') AS package_file_extension,
-            COUNT(al.audit_log_id)::bigint AS audit_event_count
+            COALESCE((
+                SELECT COUNT(*)::bigint
+                FROM audit_logs al
+                WHERE al.entity_id = e.time_workflow_export_id
+                  AND (al.action ILIKE '%export%' OR al.action ILIKE '%download%')
+            ), 0) AS audit_event_count,
+            COALESCE(m.package_sha256, '') AS package_sha256,
+            COALESCE(m.package_snapshot_item_count, 0)::int AS package_snapshot_item_count,
+            COALESCE((
+                SELECT COUNT(*)::int
+                FROM time_workflow_export_items i
+                WHERE i.time_workflow_export_id = e.time_workflow_export_id
+            ), 0) AS snapshot_item_count,
+            COALESCE((
+                SELECT SUM(i.hours)::numeric
+                FROM time_workflow_export_items i
+                WHERE i.time_workflow_export_id = e.time_workflow_export_id
+            ), 0)::numeric AS snapshot_total_hours,
+            CASE
+                WHEN EXISTS (
+                    SELECT 1
+                    FROM time_workflow_export_items i
+                    WHERE i.time_workflow_export_id = e.time_workflow_export_id
+                ) THEN 'snapshot'
+                ELSE 'legacy_live_fallback'
+            END AS snapshot_source
         FROM time_workflow_exports e
-        LEFT JOIN audit_logs al
-            ON al.entity_id = e.time_workflow_export_id
-           AND (al.action ILIKE '%export%' OR al.action ILIKE '%download%')
-        GROUP BY
-            e.time_workflow_export_id,
-            e.export_format,
-            e.week_start,
-            e.week_end,
-            e.export_status,
-            e.item_count,
-            e.total_hours,
-            e.file_name,
-            e.created_at,
-            e.package_generated_at,
-            e.package_download_count,
-            e.package_last_downloaded_at,
-            e.package_content_type,
-            e.package_file_extension
+        LEFT JOIN time_workflow_export_metadata m
+            ON m.time_workflow_export_id = e.time_workflow_export_id
         ORDER BY e.created_at DESC
         LIMIT 100;
         """, connection))
@@ -22281,6 +22332,11 @@ app.MapGet("/api/export-packages/evidence-summary", async (HttpContext httpConte
         await using var reader = await command.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
+            var auditEventCount = reader.GetInt64(14);
+            var packageDownloadCount = reader.GetInt32(10);
+            var packageSha256 = reader.GetString(15);
+            var snapshotItemCount = reader.GetInt32(17);
+
             packages.Add(new
             {
                 exportId = reader.GetGuid(0),
@@ -22293,27 +22349,42 @@ app.MapGet("/api/export-packages/evidence-summary", async (HttpContext httpConte
                 fileName = reader.IsDBNull(7) ? null : reader.GetString(7),
                 createdAt = reader.GetFieldValue<DateTimeOffset>(8),
                 packageGeneratedAt = reader.IsDBNull(9) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(9),
-                packageDownloadCount = reader.GetInt32(10),
+                packageDownloadCount,
                 packageLastDownloadedAt = reader.IsDBNull(11) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(11),
                 packageContentType = reader.GetString(12),
                 packageFileExtension = reader.GetString(13),
-                auditEventCount = reader.GetInt64(14),
-                productionEvidenceReady = reader.GetInt64(14) > 0 || reader.GetInt32(10) > 0
+                auditEventCount,
+                packageSha256,
+                packageSnapshotItemCount = reader.GetInt32(16),
+                snapshotItemCount,
+                snapshotTotalHours = reader.GetDecimal(18),
+                snapshotSource = reader.GetString(19),
+                checksumAvailable = !string.IsNullOrWhiteSpace(packageSha256),
+                snapshotBacked = snapshotItemCount > 0,
+                productionEvidenceReady = auditEventCount > 0 || packageDownloadCount > 0 || snapshotItemCount > 0 || !string.IsNullOrWhiteSpace(packageSha256)
             });
         }
     }
 
+    var evidenceReadyCount = packages.Count(package => (bool)package.GetType().GetProperty("productionEvidenceReady")!.GetValue(package)!);
+    var downloadedPackageCount = packages.Count(package => (int)package.GetType().GetProperty("packageDownloadCount")!.GetValue(package)! > 0);
+    var snapshotBackedPackageCount = packages.Count(package => (bool)package.GetType().GetProperty("snapshotBacked")!.GetValue(package)!);
+    var checksumAvailableCount = packages.Count(package => (bool)package.GetType().GetProperty("checksumAvailable")!.GetValue(package)!);
+
     return Results.Ok(new
     {
-        module = "019M-BU Production Export Evidence Expansion",
+        module = "054E Production Export Evidence Visibility",
         summary = new
         {
             packageCount = packages.Count,
-            evidenceReadyCount = packages.Count(package => (bool)package.GetType().GetProperty("productionEvidenceReady")!.GetValue(package)!),
-            downloadedPackageCount = packages.Count(package => (int)package.GetType().GetProperty("packageDownloadCount")!.GetValue(package)! > 0)
+            evidenceReadyCount,
+            downloadedPackageCount,
+            snapshotBackedPackageCount,
+            checksumAvailableCount
         },
         packages
     });
+    /* 054E_EXPORT_EVIDENCE_SUMMARY_END */
 });
 
 app.MapGet("/api/workflow/operations-ui-data", async (HttpContext httpContext) =>
@@ -28476,6 +28547,102 @@ static IReadOnlyList<string> ValidateTimesheetRequest(TimesheetSaveRequest reque
 }
 
 
+
+/* 054E_AUDIT_EXPORT_VISIBILITY_HELPERS_START */
+static string ProjectPulse054ETruncate(string? value, int maxLength)
+{
+    var text = value ?? string.Empty;
+    if (text.Length <= maxLength)
+    {
+        return text;
+    }
+
+    return text[..maxLength] + "...";
+}
+
+static string ProjectPulse054EAuditCategory(string action, string entityType)
+{
+    var value = $"{action} {entityType}".ToLowerInvariant();
+
+    if (value.Contains("export") || value.Contains("download") || value.Contains("package"))
+    {
+        return "export_package";
+    }
+
+    if (value.Contains("reconcili"))
+    {
+        return "reconciliation";
+    }
+
+    if (value.Contains("lock"))
+    {
+        return "lock";
+    }
+
+    if (value.Contains("declin") || value.Contains("reject") || value.Contains("return"))
+    {
+        return "decline_return";
+    }
+
+    if (value.Contains("approval") || value.Contains("approved") || value.Contains("manager") || value.Contains("pm_"))
+    {
+        return "approval";
+    }
+
+    if (value.Contains("time") || value.Contains("timesheet"))
+    {
+        return "time_entry";
+    }
+
+    return "general_audit";
+}
+
+static string ProjectPulse054EAuditSourceModule(string action, string entityType)
+{
+    var value = $"{action} {entityType}".ToLowerInvariant();
+
+    if (value.Contains("time_workflow_export") || value.Contains("export") || value.Contains("download"))
+    {
+        return "Approval / Export / Audit";
+    }
+
+    if (value.Contains("timesheet") || value.Contains("time_entry"))
+    {
+        return "Time Entry / Approval Workflow";
+    }
+
+    if (value.Contains("project"))
+    {
+        return "Project Workflow";
+    }
+
+    return "Audit History";
+}
+
+static string ProjectPulse054EBuildAuditEvidencePreview(string action, string entityType, string? oldValue, string? newValue)
+{
+    var category = ProjectPulse054EAuditCategory(action, entityType);
+    var payload = string.IsNullOrWhiteSpace(newValue) ? oldValue ?? string.Empty : newValue ?? string.Empty;
+
+    var prefix = category switch
+    {
+        "export_package" => "Export package evidence",
+        "reconciliation" => "Reconciliation evidence",
+        "lock" => "Lock evidence",
+        "decline_return" => "Decline/return evidence",
+        "approval" => "Approval evidence",
+        "time_entry" => "Time-entry evidence",
+        _ => "Audit evidence"
+    };
+
+    if (string.IsNullOrWhiteSpace(payload))
+    {
+        return $"{prefix}: {action} recorded for {entityType}.";
+    }
+
+    return $"{prefix}: {ProjectPulse054ETruncate(payload, 360)}";
+}
+/* 054E_AUDIT_EXPORT_VISIBILITY_HELPERS_END */
 
 /* 054D_EXPORT_SNAPSHOT_HELPERS_START */
 static async Task<List<Dictionary<string, object?>>> ProjectPulse054DLoadExportSnapshotItemsAsync(

@@ -343,6 +343,9 @@ export default function ApprovalExportAuditWorkflowCenter() {
             <article key={event.auditLogId}>
               <strong>{labelStatus(event.action)}</strong>
               <small>{event.entityType} · {event.actorName} · {formatWorkflowDate(event.createdAt)}</small>
+              {/* 054E_AUDIT_EVIDENCE_CONTEXT_UI_START */}
+              <small>{event.workflowCategory || 'audit'} · {event.sourceModule || 'Audit History'}</small>
+              {/* 054E_AUDIT_EVIDENCE_CONTEXT_UI_END */}
               <p>{event.evidencePreview || 'Audit event recorded.'}</p>
             </article>
           ))}
@@ -471,6 +474,14 @@ export default function ApprovalExportAuditWorkflowCenter() {
                     <p>
                       Download-ready: {item.downloadReady ? 'Yes' : 'No'} · Downloads: {formatNumber(item.packageDownloadCount)}
                     </p>
+                    {/* 054E_EXPORT_SNAPSHOT_UI_START */}
+                    <p>
+                      Snapshot source: {item.snapshotSource || 'Not recorded'} · Snapshot items: {formatNumber(item.snapshotItemCount ?? item.packageSnapshotItemCount ?? 0)}
+                    </p>
+                    <p>
+                      Snapshot hours: {formatNumber(item.snapshotTotalHours ?? 0)} · Checksum: {item.packageSha256 ? `${String(item.packageSha256).slice(0, 16)}...` : 'Not recorded'}
+                    </p>
+                    {/* 054E_EXPORT_SNAPSHOT_UI_END */}
                   </div>
                   <button type="button" className="secondary-action" onClick={() => downloadExportPackage(item)}>
                     Download CSV package
