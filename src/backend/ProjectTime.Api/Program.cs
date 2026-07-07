@@ -19884,6 +19884,8 @@ app.MapGet("/api/time-exports", async (HttpContext httpContext) =>
 
 
 // 019M-AW Export Package Generation + Download Readiness
+
+// 019M-AW Export Package Generation + Download Readiness
 app.MapGet("/api/time-exports/{exportId:guid}/download", async (Guid exportId, HttpContext httpContext) =>
 {
     var sessionUserId = GetProjectPulseSessionUserId(httpContext);
@@ -19941,123 +19943,106 @@ app.MapGet("/api/time-exports/{exportId:guid}/download", async (Guid exportId, H
     var start = weekStart ?? GetSundayForDate(DateOnly.FromDateTime(DateTime.UtcNow));
     var end = weekEnd ?? start.AddDays(6);
 
-    var csv = new System.Text.StringBuilder();
-    csv.AppendLine("Export Id,Export Format,Week Start,Week End,Work Date,Employee Name,Employee Email,Project Code,Project Name,Task Code,Task Name,Hours,Billable,Status,Description");
+    /* 054D_EXPORT_DOWNLOAD_SNAPSHOT_START */
+    var items = await ProjectPulse054DLoadExportSnapshotItemsAsync(connection, null, exportId);
+    var snapshotSource = "snapshot";
 
-    var itemCount = 0;
-    decimal totalHours = 0;
-
-    await using (var itemCommand = new NpgsqlCommand("""
-        SELECT
-            te.work_date,
-            COALESCE(employee.display_name, employee.email, '') AS employee_name,
-            employee.email AS employee_email,
-            COALESCE(p.project_code, '') AS project_code,
-            COALESCE(p.project_name, '') AS project_name,
-            COALESCE(pt.task_code, '') AS task_code,
-            COALESCE(pt.task_name, '') AS task_name,
-            te.hours,
-            te.billable,
-            te.status,
-            COALESCE(te.description, '') AS description
-        FROM time_entries te
-        JOIN app_users employee
-            ON employee.user_id = te.user_id
-        LEFT JOIN projects p
-            ON p.project_id = te.project_id
-        LEFT JOIN project_tasks pt
-            ON pt.task_id = te.task_id
-        WHERE te.work_date BETWEEN @week_start AND @week_end
-          AND te.status IN ('accounting_ready', 'reconciled', 'locked')
-        ORDER BY te.work_date, employee.display_name, p.project_code, pt.task_code;
-        """, connection))
+    if (items.Count == 0)
     {
-        itemCommand.Parameters.AddWithValue("week_start", start);
-        itemCommand.Parameters.AddWithValue("week_end", end);
+        snapshotSource = "legacy_live_fallback";
+        items = await ProjectPulse054DLoadLegacyLiveExportItemsAsync(connection, null, start, end);
+    }
 
-        await using var reader = await itemCommand.ExecuteReaderAsync();
-        while (await reader.ReadAsync())
+    var csv = ProjectPulse054DBuildExportCsv(exportId, exportFormat, start, end, items);
+    var packageSha256 = ProjectPulse054DComputeSha256(csv);
+    var storedPackageSha256 = await ProjectPulse054DGetStoredPackageShaAsync(connection, null, exportId);
+    var itemCount = items.Count;
+    var totalHours = items.Sum(item => ProjectPulse054DDecimal(item, "hours"));
+    /* 054D_EXPORT_DOWNLOAD_SNAPSHOT_END */
+
+    await using var transaction = await connection.BeginTransactionAsync();
+
+    try
+    {
+        await using (var updateCommand = new NpgsqlCommand("""
+            UPDATE time_workflow_exports
+            SET package_content_type = 'text/csv',
+                package_file_extension = 'csv',
+                package_download_count = COALESCE(package_download_count, 0) + 1,
+                package_last_downloaded_at = NOW(),
+                package_last_downloaded_by_user_id = @user_id,
+                updated_at = NOW()
+            WHERE time_workflow_export_id = @export_id;
+            """, connection, transaction))
         {
-            itemCount++;
-            totalHours += reader.GetDecimal(7);
-
-            var fields = new[]
-            {
-                ProjectPulseCsvField(exportId),
-                ProjectPulseCsvField(exportFormat),
-                ProjectPulseCsvField(start),
-                ProjectPulseCsvField(end),
-                ProjectPulseCsvField(reader.GetFieldValue<DateOnly>(0)),
-                ProjectPulseCsvField(reader.GetString(1)),
-                ProjectPulseCsvField(reader.GetString(2)),
-                ProjectPulseCsvField(reader.GetString(3)),
-                ProjectPulseCsvField(reader.GetString(4)),
-                ProjectPulseCsvField(reader.GetString(5)),
-                ProjectPulseCsvField(reader.GetString(6)),
-                ProjectPulseCsvField(reader.GetDecimal(7)),
-                ProjectPulseCsvField(reader.GetBoolean(8) ? "Yes" : "No"),
-                ProjectPulseCsvField(reader.GetString(9)),
-                ProjectPulseCsvField(reader.GetString(10))
-            };
-
-            csv.AppendLine(string.Join(",", fields));
+            updateCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+            updateCommand.Parameters.AddWithValue("export_id", exportId);
+            await updateCommand.ExecuteNonQueryAsync();
         }
-    }
 
-    await using (var updateCommand = new NpgsqlCommand("""
-        UPDATE time_workflow_exports
-        SET package_generated_at = COALESCE(package_generated_at, NOW()),
-            package_content_type = 'text/csv',
-            package_file_extension = 'csv',
-            package_download_count = COALESCE(package_download_count, 0) + 1,
-            package_last_downloaded_at = NOW(),
-            package_last_downloaded_by_user_id = @user_id,
-            item_count = @item_count,
-            total_hours = @total_hours,
-            updated_at = NOW()
-        WHERE time_workflow_export_id = @export_id;
-        """, connection))
-    {
-        updateCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
-        updateCommand.Parameters.AddWithValue("export_id", exportId);
-        updateCommand.Parameters.AddWithValue("item_count", itemCount);
-        updateCommand.Parameters.AddWithValue("total_hours", totalHours);
-        await updateCommand.ExecuteNonQueryAsync();
-    }
-
-    await using (var auditCommand = new NpgsqlCommand("""
-        INSERT INTO audit_logs (
-            actor_user_id,
-            action,
-            entity_type,
-            entity_id,
-            new_value
-        )
-        VALUES (
-            @actor_user_id,
-            'time_export_package_downloaded',
-            'time_workflow_export',
-            @entity_id,
-            @new_value::jsonb
-        );
-        """, connection))
-    {
-        var auditValue = JsonSerializer.Serialize(new
-        {
+        await ProjectPulse054DUpsertExportMetadataAsync(
+            connection,
+            transaction,
             exportId,
-            exportFormat,
-            weekStart = start,
-            weekEnd = end,
-            itemCount,
-            totalHours,
-            packageContentType = "text/csv",
-            generatedAtUtc = DateTimeOffset.UtcNow
-        });
+            storedPackageSha256 ?? packageSha256,
+            JsonSerializer.Serialize(new
+            {
+                exportId,
+                exportFormat,
+                weekStart = start,
+                weekEnd = end,
+                itemCount,
+                totalHours,
+                packageSha256 = storedPackageSha256 ?? packageSha256,
+                snapshotSource,
+                lastDownloadedAtUtc = DateTimeOffset.UtcNow
+            }),
+            itemCount);
 
-        auditCommand.Parameters.AddWithValue("actor_user_id", sessionUserId.Value);
-        auditCommand.Parameters.AddWithValue("entity_id", exportId);
-        auditCommand.Parameters.AddWithValue("new_value", auditValue);
-        await auditCommand.ExecuteNonQueryAsync();
+        await using (var auditCommand = new NpgsqlCommand("""
+            INSERT INTO audit_logs (
+                actor_user_id,
+                action,
+                entity_type,
+                entity_id,
+                new_value
+            )
+            VALUES (
+                @actor_user_id,
+                'time_export_package_downloaded',
+                'time_workflow_export',
+                @entity_id,
+                @new_value::jsonb
+            );
+            """, connection, transaction))
+        {
+            var auditValue = JsonSerializer.Serialize(new
+            {
+                exportId,
+                exportFormat,
+                weekStart = start,
+                weekEnd = end,
+                itemCount,
+                totalHours,
+                packageContentType = "text/csv",
+                packageSha256,
+                storedPackageSha256,
+                snapshotSource,
+                downloadedAtUtc = DateTimeOffset.UtcNow
+            });
+
+            auditCommand.Parameters.AddWithValue("actor_user_id", sessionUserId.Value);
+            auditCommand.Parameters.AddWithValue("entity_id", exportId);
+            auditCommand.Parameters.AddWithValue("new_value", auditValue);
+            await auditCommand.ExecuteNonQueryAsync();
+        }
+
+        await transaction.CommitAsync();
+    }
+    catch
+    {
+        await transaction.RollbackAsync();
+        throw;
     }
 
     var baseName = string.IsNullOrWhiteSpace(fileName)
@@ -20065,11 +20050,12 @@ app.MapGet("/api/time-exports/{exportId:guid}/download", async (Guid exportId, H
         : System.IO.Path.GetFileNameWithoutExtension(fileName);
 
     var downloadFileName = $"{baseName}.csv";
-    var bytes = System.Text.Encoding.UTF8.GetBytes(csv.ToString());
+    var bytes = System.Text.Encoding.UTF8.GetBytes(csv);
 
     return Results.File(bytes, "text/csv; charset=utf-8", downloadFileName);
 });
 
+// 019M-AY Workflow Export Audit Evidence Detail
 
 // 019M-AY Workflow Export Audit Evidence Detail
 app.MapGet("/api/time-exports/{exportId:guid}/details", async (Guid exportId, HttpContext httpContext) =>
@@ -20100,6 +20086,10 @@ app.MapGet("/api/time-exports/{exportId:guid}/details", async (Guid exportId, Ht
     object? exportRecord = null;
     DateOnly start = GetSundayForDate(DateOnly.FromDateTime(DateTime.UtcNow));
     DateOnly end = start.AddDays(6);
+
+    var metadata = await ProjectPulse054DLoadExportMetadataAsync(connection, null, exportId);
+    var packageSha256 = metadata.PackageSha256;
+    var packageSnapshotItemCount = metadata.PackageSnapshotItemCount;
 
     await using (var exportCommand = new NpgsqlCommand("""
         SELECT
@@ -20156,60 +20146,24 @@ app.MapGet("/api/time-exports/{exportId:guid}/details", async (Guid exportId, Ht
             packageGeneratedAt = reader.IsDBNull(13) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(13),
             packageContentType = reader.IsDBNull(14) ? "text/csv" : reader.GetString(14),
             packageFileExtension = reader.IsDBNull(15) ? "csv" : reader.GetString(15),
+            packageSha256,
+            packageSnapshotItemCount,
             downloadReady = true
         };
     }
 
-    var items = new List<object>();
-    await using (var itemCommand = new NpgsqlCommand("""
-        SELECT
-            te.time_entry_id,
-            te.work_date,
-            COALESCE(employee.display_name, employee.email, '') AS employee_name,
-            employee.email,
-            COALESCE(p.project_code, '') AS project_code,
-            COALESCE(p.project_name, '') AS project_name,
-            COALESCE(pt.task_code, '') AS task_code,
-            COALESCE(pt.task_name, '') AS task_name,
-            te.hours,
-            te.billable,
-            te.status,
-            COALESCE(te.description, '') AS description
-        FROM time_entries te
-        JOIN app_users employee
-            ON employee.user_id = te.user_id
-        LEFT JOIN projects p
-            ON p.project_id = te.project_id
-        LEFT JOIN project_tasks pt
-            ON pt.task_id = te.task_id
-        WHERE te.work_date BETWEEN @week_start AND @week_end
-          AND te.status IN ('accounting_ready', 'reconciled', 'locked')
-        ORDER BY te.work_date, employee.display_name, p.project_code, pt.task_code;
-        """, connection))
-    {
-        itemCommand.Parameters.AddWithValue("week_start", start);
-        itemCommand.Parameters.AddWithValue("week_end", end);
+    /* 054D_EXPORT_DETAILS_SNAPSHOT_START */
+    var snapshotItems = await ProjectPulse054DLoadExportSnapshotItemsAsync(connection, null, exportId);
+    var snapshotSource = "snapshot";
 
-        await using var reader = await itemCommand.ExecuteReaderAsync();
-        while (await reader.ReadAsync())
-        {
-            items.Add(new
-            {
-                timeEntryId = reader.GetGuid(0),
-                workDate = reader.GetFieldValue<DateOnly>(1),
-                employeeName = reader.GetString(2),
-                employeeEmail = reader.GetString(3),
-                projectCode = reader.GetString(4),
-                projectName = reader.GetString(5),
-                taskCode = reader.GetString(6),
-                taskName = reader.GetString(7),
-                hours = reader.GetDecimal(8),
-                billable = reader.GetBoolean(9),
-                status = reader.GetString(10),
-                description = reader.GetString(11)
-            });
-        }
+    if (snapshotItems.Count == 0)
+    {
+        snapshotSource = "legacy_live_fallback";
+        snapshotItems = await ProjectPulse054DLoadLegacyLiveExportItemsAsync(connection, null, start, end);
     }
+
+    var items = snapshotItems.Select(ProjectPulse054DExportSnapshotItemDto).ToList();
+    /* 054D_EXPORT_DETAILS_SNAPSHOT_END */
 
     var auditEvidence = new List<object>();
     await using (var auditCommand = new NpgsqlCommand("""
@@ -20265,13 +20219,17 @@ app.MapGet("/api/time-exports/{exportId:guid}/details", async (Guid exportId, Ht
         {
             downloadReady = true,
             downloadUrl = $"/api/time-exports/{exportId}/download",
-            itemCount = items.Count,
-            totalHours = items.Sum(item => (decimal)item.GetType().GetProperty("hours")!.GetValue(item)!)
+            itemCount = snapshotItems.Count,
+            totalHours = snapshotItems.Sum(item => ProjectPulse054DDecimal(item, "hours")),
+            packageSha256,
+            packageSnapshotItemCount,
+            snapshotSource
         },
         items,
         auditEvidence
     });
 });
+
 
 app.MapPost("/api/time-exports", async (TimeWorkflowExportCreateRequest request, HttpContext httpContext) =>
 {
@@ -20289,7 +20247,7 @@ app.MapPost("/api/time-exports", async (TimeWorkflowExportCreateRequest request,
 
     var start = request.WeekStart ?? GetSundayForDate(DateOnly.FromDateTime(DateTime.UtcNow));
     var end = request.WeekEnd ?? start.AddDays(6);
-    var notes = string.IsNullOrWhiteSpace(request.Notes) ? $"Prepared {exportFormat.ToUpperInvariant()} export foundation record." : request.Notes.Trim();
+    var notes = string.IsNullOrWhiteSpace(request.Notes) ? $"Prepared {exportFormat.ToUpperInvariant()} export snapshot package." : request.Notes.Trim();
 
     var config = DatabaseConfig.FromEnvironment();
     var missingResult = ValidateConfig(config);
@@ -20308,38 +20266,6 @@ app.MapPost("/api/time-exports", async (TimeWorkflowExportCreateRequest request,
 
     try
     {
-        int itemCount;
-        decimal totalHours;
-
-        await using (var countCommand = new NpgsqlCommand("""
-            SELECT
-                COUNT(*)::int AS item_count,
-                COALESCE(SUM(hours), 0)::numeric AS total_hours
-            FROM time_entries
-            WHERE work_date BETWEEN @week_start AND @week_end
-              AND status IN ('accounting_ready', 'reconciled', 'locked');
-            """, connection, transaction))
-        {
-            countCommand.Parameters.AddWithValue("week_start", start);
-            countCommand.Parameters.AddWithValue("week_end", end);
-
-            await using var reader = await countCommand.ExecuteReaderAsync();
-            await reader.ReadAsync();
-
-            itemCount = reader.GetInt32(0);
-            totalHours = reader.GetDecimal(1);
-        }
-
-        if (itemCount <= 0)
-        {
-            await transaction.RollbackAsync();
-            return Results.Json(new
-            {
-                status = "no_export_ready_time",
-                message = "No accounting-ready, reconciled, or locked time entries are available for the selected export period. Project-manager-approved time must be moved to accounting-ready before export."
-            }, statusCode: StatusCodes.Status409Conflict);
-        }
-
         var exportId = Guid.Empty;
         var requestedByEmail = GetProjectPulseSessionEmail(httpContext) ?? "unknown";
         var fileName = $"projectpulse-time-export-{start:yyyyMMdd}-{end:yyyyMMdd}.csv";
@@ -20367,8 +20293,8 @@ app.MapPost("/api/time-exports", async (TimeWorkflowExportCreateRequest request,
                 'prepared',
                 @requested_by_user_id,
                 @requested_by_email,
-                @item_count,
-                @total_hours,
+                0,
+                0,
                 @file_name,
                 @notes,
                 NOW(),
@@ -20383,15 +20309,159 @@ app.MapPost("/api/time-exports", async (TimeWorkflowExportCreateRequest request,
             insertCommand.Parameters.AddWithValue("week_end", end);
             insertCommand.Parameters.AddWithValue("requested_by_user_id", sessionUserId.Value);
             insertCommand.Parameters.AddWithValue("requested_by_email", requestedByEmail);
-            insertCommand.Parameters.AddWithValue("item_count", itemCount);
-            insertCommand.Parameters.AddWithValue("total_hours", totalHours);
             insertCommand.Parameters.AddWithValue("file_name", fileName);
             insertCommand.Parameters.AddWithValue("notes", notes);
 
             exportId = (Guid)(await insertCommand.ExecuteScalarAsync() ?? Guid.Empty);
         }
 
-        await InsertAuditLogAsync(connection, transaction, sessionUserId.Value, $"time_export_{exportFormat}_prepared", "time_workflow_export", exportId);
+        /* 054D_EXPORT_PREPARE_SNAPSHOT_START */
+        await using (var snapshotCommand = new NpgsqlCommand("""
+            INSERT INTO time_workflow_export_items (
+                time_workflow_export_id,
+                time_entry_id,
+                work_date,
+                employee_name,
+                employee_email,
+                project_code,
+                project_name,
+                task_code,
+                task_name,
+                hours,
+                billable,
+                status,
+                description,
+                snapshot_payload,
+                source_updated_at
+            )
+            SELECT
+                @export_id,
+                te.time_entry_id,
+                te.work_date,
+                COALESCE(employee.display_name, employee.email, '') AS employee_name,
+                COALESCE(employee.email, '') AS employee_email,
+                COALESCE(p.project_code, '') AS project_code,
+                COALESCE(p.project_name, '') AS project_name,
+                COALESCE(pt.task_code, '') AS task_code,
+                COALESCE(pt.task_name, '') AS task_name,
+                te.hours,
+                te.billable,
+                te.status,
+                COALESCE(te.description, '') AS description,
+                jsonb_build_object(
+                    'timeEntryId', te.time_entry_id,
+                    'timesheetId', te.timesheet_id,
+                    'userId', te.user_id,
+                    'projectId', te.project_id,
+                    'taskId', te.task_id,
+                    'workDate', te.work_date,
+                    'hours', te.hours,
+                    'billable', te.billable,
+                    'status', te.status,
+                    'sourceUpdatedAt', te.updated_at
+                ) AS snapshot_payload,
+                te.updated_at
+            FROM time_entries te
+            JOIN app_users employee
+                ON employee.user_id = te.user_id
+            LEFT JOIN projects p
+                ON p.project_id = te.project_id
+            LEFT JOIN project_tasks pt
+                ON pt.task_id = te.task_id
+            WHERE te.work_date BETWEEN @week_start AND @week_end
+              AND te.status IN ('accounting_ready', 'reconciled', 'locked')
+            ORDER BY te.work_date, employee.display_name, p.project_code, pt.task_code;
+            """, connection, transaction))
+        {
+            snapshotCommand.Parameters.AddWithValue("export_id", exportId);
+            snapshotCommand.Parameters.AddWithValue("week_start", start);
+            snapshotCommand.Parameters.AddWithValue("week_end", end);
+            await snapshotCommand.ExecuteNonQueryAsync();
+        }
+
+        var snapshotItems = await ProjectPulse054DLoadExportSnapshotItemsAsync(connection, transaction, exportId);
+        if (snapshotItems.Count <= 0)
+        {
+            await transaction.RollbackAsync();
+            return Results.Json(new
+            {
+                status = "no_export_ready_time",
+                message = "No accounting-ready, reconciled, or locked time entries are available for the selected export period. Project-manager-approved time must be moved to accounting-ready before export."
+            }, statusCode: StatusCodes.Status409Conflict);
+        }
+
+        var itemCount = snapshotItems.Count;
+        var totalHours = snapshotItems.Sum(item => ProjectPulse054DDecimal(item, "hours"));
+        var csv = ProjectPulse054DBuildExportCsv(exportId, exportFormat, start, end, snapshotItems);
+        var packageSha256 = ProjectPulse054DComputeSha256(csv);
+        var packageSnapshot = JsonSerializer.Serialize(new
+        {
+            exportId,
+            exportFormat,
+            weekStart = start,
+            weekEnd = end,
+            itemCount,
+            totalHours,
+            packageSha256,
+            preparedAtUtc = DateTimeOffset.UtcNow,
+            snapshotSource = "time_workflow_export_items"
+        });
+
+        await using (var updateCommand = new NpgsqlCommand("""
+            UPDATE time_workflow_exports
+            SET item_count = @item_count,
+                total_hours = @total_hours,
+                updated_at = NOW()
+            WHERE time_workflow_export_id = @export_id;
+            """, connection, transaction))
+        {
+            updateCommand.Parameters.AddWithValue("export_id", exportId);
+            updateCommand.Parameters.AddWithValue("item_count", itemCount);
+            updateCommand.Parameters.AddWithValue("total_hours", totalHours);
+            await updateCommand.ExecuteNonQueryAsync();
+        }
+
+        await ProjectPulse054DUpsertExportMetadataAsync(connection, transaction, exportId, packageSha256, packageSnapshot, itemCount);
+
+        await using (var auditCommand = new NpgsqlCommand("""
+            INSERT INTO audit_logs (
+                actor_user_id,
+                action,
+                entity_type,
+                entity_id,
+                new_value
+            )
+            VALUES (
+                @actor_user_id,
+                @action,
+                'time_workflow_export',
+                @entity_id,
+                @new_value::jsonb
+            );
+            """, connection, transaction))
+        {
+            var auditValue = JsonSerializer.Serialize(new
+            {
+                exportId,
+                exportFormat,
+                weekStart = start,
+                weekEnd = end,
+                itemCount,
+                totalHours,
+                fileName,
+                packageSha256,
+                snapshotItemCount = itemCount,
+                packageGeneratedAtUtc = DateTimeOffset.UtcNow,
+                immutableSnapshot = true
+            });
+
+            auditCommand.Parameters.AddWithValue("actor_user_id", sessionUserId.Value);
+            auditCommand.Parameters.AddWithValue("action", $"time_export_{exportFormat}_prepared");
+            auditCommand.Parameters.AddWithValue("entity_id", exportId);
+            auditCommand.Parameters.AddWithValue("new_value", auditValue);
+            await auditCommand.ExecuteNonQueryAsync();
+        }
+        /* 054D_EXPORT_PREPARE_SNAPSHOT_END */
 
         await transaction.CommitAsync();
 
@@ -20405,7 +20475,9 @@ app.MapPost("/api/time-exports", async (TimeWorkflowExportCreateRequest request,
             itemCount,
             totalHours,
             fileName,
-            message = $"{exportFormat.ToUpperInvariant()} export package record prepared. Download-ready CSV package is available from export history."
+            packageSha256,
+            snapshotItemCount = itemCount,
+            message = $"{exportFormat.ToUpperInvariant()} export package snapshot prepared. Download-ready CSV package is available from export history."
         });
     }
     catch (Exception ex)
@@ -20418,7 +20490,6 @@ app.MapPost("/api/time-exports", async (TimeWorkflowExportCreateRequest request,
             statusCode: StatusCodes.Status500InternalServerError);
     }
 });
-
 
 app.MapTimeComplianceEndpoints();
 app.MapProjectIntakeEndpoints();
@@ -28405,6 +28476,317 @@ static IReadOnlyList<string> ValidateTimesheetRequest(TimesheetSaveRequest reque
 }
 
 
+
+/* 054D_EXPORT_SNAPSHOT_HELPERS_START */
+static async Task<List<Dictionary<string, object?>>> ProjectPulse054DLoadExportSnapshotItemsAsync(
+    NpgsqlConnection connection,
+    NpgsqlTransaction? transaction,
+    Guid exportId)
+{
+    var items = new List<Dictionary<string, object?>>();
+
+    await using var command = new NpgsqlCommand("""
+        SELECT
+            time_entry_id,
+            work_date,
+            employee_name,
+            employee_email,
+            project_code,
+            project_name,
+            task_code,
+            task_name,
+            hours,
+            billable,
+            status,
+            description
+        FROM time_workflow_export_items
+        WHERE time_workflow_export_id = @export_id
+        ORDER BY work_date, employee_name, project_code, task_code, time_entry_id;
+        """, connection);
+
+    if (transaction is not null)
+    {
+        command.Transaction = transaction;
+    }
+
+    command.Parameters.AddWithValue("export_id", exportId);
+
+    await using var reader = await command.ExecuteReaderAsync();
+    while (await reader.ReadAsync())
+    {
+        items.Add(new Dictionary<string, object?>
+        {
+            ["timeEntryId"] = reader.IsDBNull(0) ? null : reader.GetGuid(0),
+            ["workDate"] = reader.GetFieldValue<DateOnly>(1),
+            ["employeeName"] = reader.GetString(2),
+            ["employeeEmail"] = reader.GetString(3),
+            ["projectCode"] = reader.GetString(4),
+            ["projectName"] = reader.GetString(5),
+            ["taskCode"] = reader.GetString(6),
+            ["taskName"] = reader.GetString(7),
+            ["hours"] = reader.GetDecimal(8),
+            ["billable"] = reader.GetBoolean(9),
+            ["status"] = reader.GetString(10),
+            ["description"] = reader.GetString(11)
+        });
+    }
+
+    return items;
+}
+
+static async Task<List<Dictionary<string, object?>>> ProjectPulse054DLoadLegacyLiveExportItemsAsync(
+    NpgsqlConnection connection,
+    NpgsqlTransaction? transaction,
+    DateOnly start,
+    DateOnly end)
+{
+    var items = new List<Dictionary<string, object?>>();
+
+    await using var command = new NpgsqlCommand("""
+        SELECT
+            te.time_entry_id,
+            te.work_date,
+            COALESCE(employee.display_name, employee.email, '') AS employee_name,
+            COALESCE(employee.email, '') AS employee_email,
+            COALESCE(p.project_code, '') AS project_code,
+            COALESCE(p.project_name, '') AS project_name,
+            COALESCE(pt.task_code, '') AS task_code,
+            COALESCE(pt.task_name, '') AS task_name,
+            te.hours,
+            te.billable,
+            te.status,
+            COALESCE(te.description, '') AS description
+        FROM time_entries te
+        JOIN app_users employee
+            ON employee.user_id = te.user_id
+        LEFT JOIN projects p
+            ON p.project_id = te.project_id
+        LEFT JOIN project_tasks pt
+            ON pt.task_id = te.task_id
+        WHERE te.work_date BETWEEN @week_start AND @week_end
+          AND te.status IN ('accounting_ready', 'reconciled', 'locked')
+        ORDER BY te.work_date, employee.display_name, p.project_code, pt.task_code;
+        """, connection);
+
+    if (transaction is not null)
+    {
+        command.Transaction = transaction;
+    }
+
+    command.Parameters.AddWithValue("week_start", start);
+    command.Parameters.AddWithValue("week_end", end);
+
+    await using var reader = await command.ExecuteReaderAsync();
+    while (await reader.ReadAsync())
+    {
+        items.Add(new Dictionary<string, object?>
+        {
+            ["timeEntryId"] = reader.GetGuid(0),
+            ["workDate"] = reader.GetFieldValue<DateOnly>(1),
+            ["employeeName"] = reader.GetString(2),
+            ["employeeEmail"] = reader.GetString(3),
+            ["projectCode"] = reader.GetString(4),
+            ["projectName"] = reader.GetString(5),
+            ["taskCode"] = reader.GetString(6),
+            ["taskName"] = reader.GetString(7),
+            ["hours"] = reader.GetDecimal(8),
+            ["billable"] = reader.GetBoolean(9),
+            ["status"] = reader.GetString(10),
+            ["description"] = reader.GetString(11)
+        });
+    }
+
+    return items;
+}
+
+static string ProjectPulse054DBuildExportCsv(
+    Guid exportId,
+    string exportFormat,
+    DateOnly start,
+    DateOnly end,
+    IReadOnlyList<Dictionary<string, object?>> items)
+{
+    var csv = new System.Text.StringBuilder();
+    csv.AppendLine("Export Id,Export Format,Week Start,Week End,Work Date,Employee Name,Employee Email,Project Code,Project Name,Task Code,Task Name,Hours,Billable,Status,Description");
+
+    foreach (var item in items)
+    {
+        var fields = new[]
+        {
+            ProjectPulseCsvField(exportId),
+            ProjectPulseCsvField(exportFormat),
+            ProjectPulseCsvField(start),
+            ProjectPulseCsvField(end),
+            ProjectPulseCsvField(ProjectPulse054DDateOnly(item, "workDate")),
+            ProjectPulseCsvField(ProjectPulse054DString(item, "employeeName")),
+            ProjectPulseCsvField(ProjectPulse054DString(item, "employeeEmail")),
+            ProjectPulseCsvField(ProjectPulse054DString(item, "projectCode")),
+            ProjectPulseCsvField(ProjectPulse054DString(item, "projectName")),
+            ProjectPulseCsvField(ProjectPulse054DString(item, "taskCode")),
+            ProjectPulseCsvField(ProjectPulse054DString(item, "taskName")),
+            ProjectPulseCsvField(ProjectPulse054DDecimal(item, "hours")),
+            ProjectPulseCsvField(ProjectPulse054DBool(item, "billable") ? "Yes" : "No"),
+            ProjectPulseCsvField(ProjectPulse054DString(item, "status")),
+            ProjectPulseCsvField(ProjectPulse054DString(item, "description"))
+        };
+
+        csv.AppendLine(string.Join(",", fields));
+    }
+
+    return csv.ToString();
+}
+
+static string ProjectPulse054DComputeSha256(string value)
+{
+    var bytes = System.Text.Encoding.UTF8.GetBytes(value);
+    var hash = System.Security.Cryptography.SHA256.HashData(bytes);
+    return Convert.ToHexString(hash).ToLowerInvariant();
+}
+
+static object ProjectPulse054DExportSnapshotItemDto(Dictionary<string, object?> item)
+{
+    return new
+    {
+        timeEntryId = ProjectPulse054DNullable(item, "timeEntryId"),
+        workDate = ProjectPulse054DDateOnly(item, "workDate"),
+        employeeName = ProjectPulse054DString(item, "employeeName"),
+        employeeEmail = ProjectPulse054DString(item, "employeeEmail"),
+        projectCode = ProjectPulse054DString(item, "projectCode"),
+        projectName = ProjectPulse054DString(item, "projectName"),
+        taskCode = ProjectPulse054DString(item, "taskCode"),
+        taskName = ProjectPulse054DString(item, "taskName"),
+        hours = ProjectPulse054DDecimal(item, "hours"),
+        billable = ProjectPulse054DBool(item, "billable"),
+        status = ProjectPulse054DString(item, "status"),
+        description = ProjectPulse054DString(item, "description")
+    };
+}
+
+static object? ProjectPulse054DNullable(Dictionary<string, object?> item, string key)
+{
+    return item.TryGetValue(key, out var value) ? value : null;
+}
+
+static string ProjectPulse054DString(Dictionary<string, object?> item, string key)
+{
+    if (!item.TryGetValue(key, out var value) || value is null || value is DBNull)
+    {
+        return string.Empty;
+    }
+
+    return Convert.ToString(value) ?? string.Empty;
+}
+
+static decimal ProjectPulse054DDecimal(Dictionary<string, object?> item, string key)
+{
+    if (!item.TryGetValue(key, out var value) || value is null || value is DBNull)
+    {
+        return 0m;
+    }
+
+    return value is decimal decimalValue ? decimalValue : Convert.ToDecimal(value);
+}
+
+static bool ProjectPulse054DBool(Dictionary<string, object?> item, string key)
+{
+    if (!item.TryGetValue(key, out var value) || value is null || value is DBNull)
+    {
+        return false;
+    }
+
+    return value is bool boolValue ? boolValue : Convert.ToBoolean(value);
+}
+
+static DateOnly ProjectPulse054DDateOnly(Dictionary<string, object?> item, string key)
+{
+    if (!item.TryGetValue(key, out var value) || value is null || value is DBNull)
+    {
+        return DateOnly.FromDateTime(DateTime.UtcNow.Date);
+    }
+
+    return value is DateOnly dateOnlyValue
+        ? dateOnlyValue
+        : DateOnly.FromDateTime(Convert.ToDateTime(value));
+}
+
+static async Task<(string? PackageSha256, int PackageSnapshotItemCount)> ProjectPulse054DLoadExportMetadataAsync(
+    NpgsqlConnection connection,
+    NpgsqlTransaction? transaction,
+    Guid exportId)
+{
+    await using var command = new NpgsqlCommand("""
+        SELECT package_sha256, COALESCE(package_snapshot_item_count, 0)
+        FROM time_workflow_export_metadata
+        WHERE time_workflow_export_id = @export_id;
+        """, connection);
+
+    if (transaction is not null)
+    {
+        command.Transaction = transaction;
+    }
+
+    command.Parameters.AddWithValue("export_id", exportId);
+
+    await using var reader = await command.ExecuteReaderAsync();
+    if (!await reader.ReadAsync())
+    {
+        return (null, 0);
+    }
+
+    return (
+        reader.IsDBNull(0) ? null : reader.GetString(0),
+        reader.GetInt32(1));
+}
+
+static async Task<string?> ProjectPulse054DGetStoredPackageShaAsync(
+    NpgsqlConnection connection,
+    NpgsqlTransaction? transaction,
+    Guid exportId)
+{
+    var metadata = await ProjectPulse054DLoadExportMetadataAsync(connection, transaction, exportId);
+    return metadata.PackageSha256;
+}
+
+static async Task ProjectPulse054DUpsertExportMetadataAsync(
+    NpgsqlConnection connection,
+    NpgsqlTransaction transaction,
+    Guid exportId,
+    string packageSha256,
+    string packageSnapshot,
+    int itemCount)
+{
+    await using var command = new NpgsqlCommand("""
+        INSERT INTO time_workflow_export_metadata (
+            time_workflow_export_id,
+            package_sha256,
+            package_snapshot,
+            package_snapshot_item_count,
+            updated_at
+        )
+        VALUES (
+            @export_id,
+            @package_sha256,
+            @package_snapshot::jsonb,
+            @item_count,
+            NOW()
+        )
+        ON CONFLICT (time_workflow_export_id) DO UPDATE
+        SET package_sha256 = COALESCE(time_workflow_export_metadata.package_sha256, EXCLUDED.package_sha256),
+            package_snapshot = COALESCE(time_workflow_export_metadata.package_snapshot, EXCLUDED.package_snapshot),
+            package_snapshot_item_count = CASE
+                WHEN time_workflow_export_metadata.package_snapshot_item_count = 0 THEN EXCLUDED.package_snapshot_item_count
+                ELSE time_workflow_export_metadata.package_snapshot_item_count
+            END,
+            updated_at = NOW();
+        """, connection, transaction);
+
+    command.Parameters.AddWithValue("export_id", exportId);
+    command.Parameters.AddWithValue("package_sha256", packageSha256);
+    command.Parameters.AddWithValue("package_snapshot", packageSnapshot);
+    command.Parameters.AddWithValue("item_count", itemCount);
+    await command.ExecuteNonQueryAsync();
+}
+/* 054D_EXPORT_SNAPSHOT_HELPERS_END */
 
 /* 054C_WORKFLOW_IMMUTABILITY_HELPERS_START */
 static async Task<string?> ProjectPulse054CGetTimesheetDayStatusAsync(NpgsqlConnection connection, NpgsqlTransaction? transaction, Guid timesheetId, DateOnly workDate)
