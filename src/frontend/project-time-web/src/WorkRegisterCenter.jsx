@@ -344,14 +344,16 @@ export default function WorkRegisterCenter() {
     };
 
     // 055C_3_WORK_REGISTER_CHANGED_FIELD_PAYLOAD_START
+    /* 055C_4_CASE_INSENSITIVE_CHANGED_FIELD_START */
     const addIfChanged = (field, originalValue = '') => {
       const nextValue = String(editForm[field] ?? '').trim();
       const priorValue = String(originalValue ?? '').trim();
 
-      if (nextValue && nextValue !== priorValue) {
+      if (nextValue && nextValue.toLowerCase() !== priorValue.toLowerCase()) {
         payload[field] = nextValue;
       }
     };
+    /* 055C_4_CASE_INSENSITIVE_CHANGED_FIELD_END */
 
     const addIfSelected = (field) => {
       const nextValue = String(editForm[field] ?? '').trim();
@@ -727,7 +729,7 @@ export default function WorkRegisterCenter() {
                   disabled={!canEditWorkRegister}
                 >
                   <option value="">Keep current / not set</option>
-                  {statusEditOptions.map((value) => <option value={value} key={value}>{value}</option>)}
+                  {statusEditOptions.map((value) => <option value={value} key={value}>{labelize(value)}</option>)}
                 </select>
               </label>
 

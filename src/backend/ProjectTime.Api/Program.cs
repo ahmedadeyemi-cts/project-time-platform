@@ -5773,6 +5773,37 @@ app.MapGet("/api/work-register/edit-foundation", async (HttpContext httpContext)
         }
     }
 
+
+    async Task<List<string>> LoadProjectStatusOptionsAsync(NpgsqlConnection dbConnection)
+    {
+        var statuses = new List<string>();
+
+        await using (var statusCommand = new NpgsqlCommand("""
+            SELECT DISTINCT COALESCE(status, '')
+            FROM projects
+            WHERE NULLIF(TRIM(COALESCE(status, '')), '') IS NOT NULL
+            ORDER BY 1;
+            """, dbConnection))
+        await using (var statusReader = await statusCommand.ExecuteReaderAsync())
+        {
+            while (await statusReader.ReadAsync())
+            {
+                var value = statusReader.GetString(0).Trim();
+                if (!string.IsNullOrWhiteSpace(value) && !statuses.Contains(value, StringComparer.OrdinalIgnoreCase))
+                {
+                    statuses.Add(value);
+                }
+            }
+        }
+
+        if (statuses.Count == 0)
+        {
+            statuses.Add("active");
+        }
+
+        return statuses;
+    }
+
     return Results.Ok(new
     {
         status = "work_register_edit_foundation_loaded",
@@ -5791,17 +5822,9 @@ app.MapGet("/api/work-register/edit-foundation", async (HttpContext httpContext)
             "Pre-Sales",
             "Other"
         },
-        statuses = new[]
-        {
-            "Active",
-            "Draft",
-            "In Progress",
-            "On Hold",
-            "Pending Closeout",
-            "Closed",
-            "Archived",
-            "Cancelled"
-        }
+        /* 055C_4_WORK_REGISTER_DB_STATUS_OPTIONS_START */
+        statuses = await LoadProjectStatusOptionsAsync(connection)
+        /* 055C_4_WORK_REGISTER_DB_STATUS_OPTIONS_END */
     });
 });
 
@@ -6068,7 +6091,32 @@ app.MapPost("/api/work-register/projects/update", async (HttpContext httpContext
         WHERE {QuoteIdent(idColumn)} = @project_id;
         """;
 
-    var affected = await updateCommand.ExecuteNonQueryAsync();
+    int affected;
+    try
+    {
+        /* 055C_4_WORK_REGISTER_STATUS_CONSTRAINT_GUARD_START */
+        affected = await updateCommand.ExecuteNonQueryAsync();
+        /* 055C_4_WORK_REGISTER_STATUS_CONSTRAINT_GUARD_END */
+    }
+    catch (PostgresException postgresException)
+    {
+        await transaction.RollbackAsync();
+
+        var isProjectStatusConstraint =
+            string.Equals(postgresException.ConstraintName, "chk_project_status", StringComparison.OrdinalIgnoreCase)
+            || postgresException.MessageText.Contains("chk_project_status", StringComparison.OrdinalIgnoreCase);
+
+        return Results.Json(new
+        {
+            status = isProjectStatusConstraint ? "invalid_project_status" : "project_update_failed",
+            message = isProjectStatusConstraint
+                ? "The selected project status is not allowed by the database. Refresh the page and choose one of the available status values."
+                : "Project setup update failed validation.",
+            postgresException.SqlState,
+            postgresException.ConstraintName
+        }, statusCode: StatusCodes.Status400BadRequest);
+    }
+
     if (affected == 0)
     {
         await transaction.RollbackAsync();
