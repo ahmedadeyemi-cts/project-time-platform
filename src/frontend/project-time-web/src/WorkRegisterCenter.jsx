@@ -142,6 +142,11 @@ export default function WorkRegisterCenter() {
 
   const [taskAssignmentForms, setTaskAssignmentForms] = useState({});
   const [taskAssignmentStatus, setTaskAssignmentStatus] = useState('');
+
+  const [multiEngineerTasks, setMultiEngineerTasks] = useState({});
+  const [taskRosterForms, setTaskRosterForms] = useState({});
+  // 055C_7_MULTI_ENGINEER_ROSTER
+
   // 055C_6_TASK_ENGINEER_ASSIGNMENT
 
   // 055C_5_WORK_REGISTER_DETAIL_TABS
@@ -326,6 +331,8 @@ export default function WorkRegisterCenter() {
     setEditStatus('');
     setActiveDrawerTab('setup');
     setTaskAssignmentForms({});
+    setTaskRosterForms({});
+    setMultiEngineerTasks({});
     setTaskAssignmentStatus('');
     loadProjectDetails(item);
     setEditForm({
@@ -353,6 +360,8 @@ export default function WorkRegisterCenter() {
     setActiveDrawerTab('setup');
     setProjectDetails({ loading: false, data: null, error: null });
     setTaskAssignmentForms({});
+    setTaskRosterForms({});
+    setMultiEngineerTasks({});
     setTaskAssignmentStatus('');
   }
 
@@ -361,6 +370,32 @@ export default function WorkRegisterCenter() {
       ...current,
       [field]: value
     }));
+  }
+
+
+
+  function isFlexibleTaskClassificationWorkType(workType) {
+    const type = normalize(workType);
+    return type.includes('internal') ||
+      type.includes('pre-sales') ||
+      type.includes('presales') ||
+      type.includes('non-billable') ||
+      type.includes('other');
+  }
+
+  function shouldShowTaskClassificationControls(task) {
+    const key = taskAssignmentKey(task);
+    return isFlexibleTaskClassificationWorkType(selectedWorkItem?.workType) ||
+      taskRosterForms[key]?.showClassification === true ||
+      taskAssignmentForms[key]?.showClassification === true;
+  }
+
+  function projectTaskDefaultBillable() {
+    return !isFlexibleTaskClassificationWorkType(selectedWorkItem?.workType);
+  }
+
+  function projectTaskDefaultUtilizationEligible() {
+    return true;
   }
 
 
@@ -433,6 +468,260 @@ export default function WorkRegisterCenter() {
       }));
     } catch (error) {
       setTaskAssignmentStatus(error instanceof Error ? error.message : 'Unable to save task assignment.');
+    }
+  }
+
+
+
+  function initialRosterRows(task) {
+    const active = Array.isArray(task?.assignedEngineers) ? task.assignedEngineers : [];
+
+    if (active.length > 0) {
+      return active.slice(0, 20).map((engineer, index) => ({
+        assignedUserId: engineer.assignedUserId || '',
+        allocatedHours: engineer.allocatedHours ?? task.allocatedHours ?? 0,
+        allocationPercent: engineer.allocationPercent || '',
+        billable: String(engineer.billable ?? task.billable).toLowerCase() === 'true' || projectTaskDefaultBillable(),
+        utilizationEligible: String(engineer.utilizationEligible ?? task.utilizationEligible).toLowerCase() === 'true' || projectTaskDefaultUtilizationEligible(),
+        effectiveStartDate: engineer.effectiveStartDate ? dateOnly(engineer.effectiveStartDate) : new Date().toISOString().slice(0, 10),
+        isPrimary: engineer.isPrimary === true || index === 0
+      }));
+    }
+
+    return [{
+      assignedUserId: task?.assignedUserId || '',
+      allocatedHours: task?.allocatedHours ?? 0,
+      allocationPercent: '',
+      billable: projectTaskDefaultBillable(),
+      utilizationEligible: projectTaskDefaultUtilizationEligible(),
+      effectiveStartDate: new Date().toISOString().slice(0, 10),
+      isPrimary: true
+    }];
+  }
+
+  function rosterRowsForTask(task) {
+    const key = taskAssignmentKey(task);
+    return taskRosterForms[key]?.rows ?? initialRosterRows(task);
+  }
+
+  function rosterReasonForTask(task) {
+    const key = taskAssignmentKey(task);
+    return taskRosterForms[key]?.changeReason ?? '';
+  }
+
+  function ensureTaskRosterState(task) {
+    const key = taskAssignmentKey(task);
+
+    setTaskRosterForms((current) => {
+      if (current[key]?.rows) return current;
+
+      return {
+        ...current,
+        [key]: {
+          rows: initialRosterRows(task),
+          changeReason: '',
+          showClassification: false
+        }
+      };
+    });
+  }
+
+  function toggleMultiEngineerTask(task, enabled) {
+    const key = taskAssignmentKey(task);
+
+    setMultiEngineerTasks((current) => ({
+      ...current,
+      [key]: enabled
+    }));
+
+    if (enabled) {
+      ensureTaskRosterState(task);
+    }
+  }
+
+  function addRosterEngineer(task) {
+    const key = taskAssignmentKey(task);
+    const rows = rosterRowsForTask(task);
+
+    if (rows.length >= 20) {
+      setTaskAssignmentStatus('A task can have a maximum of 20 active engineers.');
+      return;
+    }
+
+    setTaskRosterForms((current) => ({
+      ...current,
+      [key]: {
+        ...(current[key] ?? {}),
+        rows: [
+          ...rows,
+          {
+            assignedUserId: '',
+            allocatedHours: 0,
+            allocationPercent: '',
+            billable: projectTaskDefaultBillable(),
+            utilizationEligible: projectTaskDefaultUtilizationEligible(),
+            effectiveStartDate: new Date().toISOString().slice(0, 10),
+            isPrimary: rows.length === 0
+          }
+        ],
+        changeReason: current[key]?.changeReason ?? '',
+        showClassification: current[key]?.showClassification ?? false
+      }
+    }));
+  }
+
+  function updateRosterEngineer(task, index, field, value) {
+    const key = taskAssignmentKey(task);
+    const rows = [...rosterRowsForTask(task)];
+
+    rows[index] = {
+      ...rows[index],
+      [field]: value
+    };
+
+    if (field === 'isPrimary' && value === true) {
+      rows.forEach((row, rowIndex) => {
+        row.isPrimary = rowIndex === index;
+      });
+    }
+
+    setTaskRosterForms((current) => ({
+      ...current,
+      [key]: {
+        ...(current[key] ?? {}),
+        rows,
+        changeReason: current[key]?.changeReason ?? '',
+        showClassification: current[key]?.showClassification ?? false
+      }
+    }));
+  }
+
+  function removeRosterEngineer(task, index) {
+    const key = taskAssignmentKey(task);
+    let rows = rosterRowsForTask(task).filter((_, rowIndex) => rowIndex !== index);
+
+    if (rows.length > 0 && !rows.some((row) => row.isPrimary)) {
+      rows = rows.map((row, rowIndex) => ({ ...row, isPrimary: rowIndex === 0 }));
+    }
+
+    setTaskRosterForms((current) => ({
+      ...current,
+      [key]: {
+        ...(current[key] ?? {}),
+        rows,
+        changeReason: current[key]?.changeReason ?? '',
+        showClassification: current[key]?.showClassification ?? false
+      }
+    }));
+  }
+
+  function updateRosterReason(task, value) {
+    const key = taskAssignmentKey(task);
+    setTaskRosterForms((current) => ({
+      ...current,
+      [key]: {
+        ...(current[key] ?? {}),
+        rows: current[key]?.rows ?? initialRosterRows(task),
+        changeReason: value,
+        showClassification: current[key]?.showClassification ?? false
+      }
+    }));
+  }
+
+  function toggleRosterClassification(task, enabled) {
+    const key = taskAssignmentKey(task);
+    setTaskRosterForms((current) => ({
+      ...current,
+      [key]: {
+        ...(current[key] ?? {}),
+        rows: current[key]?.rows ?? initialRosterRows(task),
+        changeReason: current[key]?.changeReason ?? '',
+        showClassification: enabled
+      }
+    }));
+  }
+
+  async function saveTaskRoster(task) {
+    if (!selectedWorkItem || !task?.taskId) {
+      setTaskAssignmentStatus('Task roster cannot be saved because the task does not have an ID.');
+      return;
+    }
+
+    if (!canEditWorkRegister) {
+      setTaskAssignmentStatus('This tab is view-only for your role. Only Project Team Coordinators, Administrators, and Super Administrators can save task rosters.');
+      return;
+    }
+
+    const rows = rosterRowsForTask(task)
+      .filter((row) => String(row.assignedUserId || '').trim());
+
+    const changeReason = rosterReasonForTask(task).trim();
+
+    if (!changeReason) {
+      setTaskAssignmentStatus('Change reason is required before saving a multi-engineer roster.');
+      return;
+    }
+
+    if (rows.length === 0) {
+      setTaskAssignmentStatus('Add at least one engineer before saving the roster.');
+      return;
+    }
+
+    if (rows.length > 20) {
+      setTaskAssignmentStatus('A task can have a maximum of 20 active engineers.');
+      return;
+    }
+
+    const duplicates = rows
+      .map((row) => row.assignedUserId)
+      .filter((value, index, list) => list.indexOf(value) !== index);
+
+    if (duplicates.length > 0) {
+      setTaskAssignmentStatus('The same engineer cannot be listed more than once on the same active roster.');
+      return;
+    }
+
+    const percentTotal = rows.reduce((sum, row) => sum + Number(row.allocationPercent || 0), 0);
+    if (percentTotal > 100) {
+      setTaskAssignmentStatus('Total allocation percentage cannot exceed 100%.');
+      return;
+    }
+
+    const payload = {
+      projectId: selectedWorkItem.workId,
+      taskId: task.taskId,
+      taskName: task.taskName,
+      changeReason,
+      effectiveStartDate: rows[0]?.effectiveStartDate || new Date().toISOString().slice(0, 10),
+      assignments: rows.map((row, index) => ({
+        assignedUserId: row.assignedUserId,
+        allocatedHours: Number(row.allocatedHours || 0),
+        allocationPercent: row.allocationPercent === '' ? null : Number(row.allocationPercent || 0),
+        billable: row.billable !== false,
+        utilizationEligible: row.utilizationEligible !== false,
+        effectiveStartDate: row.effectiveStartDate || new Date().toISOString().slice(0, 10),
+        isPrimary: row.isPrimary === true || index === 0
+      }))
+    };
+
+    setTaskAssignmentStatus(`Saving ${rows.length} engineer assignment(s) for ${task.taskName}...`);
+
+    try {
+      const result = await postJson('/api/work-register/tasks/assignments/roster/save', payload);
+      setTaskAssignmentStatus(result.message || 'Multi-engineer roster saved.');
+      await loadProjectDetails(selectedWorkItem);
+      await load();
+
+      const key = taskAssignmentKey(task);
+      setTaskRosterForms((current) => ({
+        ...current,
+        [key]: {
+          ...(current[key] ?? {}),
+          changeReason: ''
+        }
+      }));
+    } catch (error) {
+      setTaskAssignmentStatus(error instanceof Error ? error.message : 'Unable to save multi-engineer roster.');
     }
   }
 
@@ -922,7 +1211,8 @@ export default function WorkRegisterCenter() {
               <div className="work-register-detail-panel">
                 <h4>Tasks & Engineer Assignments</h4>
                 <p className="muted">
-                  PTC/Admin can assign or reassign engineers for future work. Historical time entries remain tied to the engineer who originally entered the time.
+                  Simple mode keeps one engineer per task. Select “Multiple engineers on this task” only when the task needs an advanced roster.
+                  Normal project tasks default to Billable + Utilization eligible.
                 </p>
 
                 {taskAssignmentStatus ? (
@@ -934,10 +1224,13 @@ export default function WorkRegisterCenter() {
                     const key = taskAssignmentKey(task);
                     const selectedEngineerId = taskAssignmentValue(task, 'assignedUserId', task.assignedUserId || '');
                     const selectedAllocatedHours = taskAssignmentValue(task, 'allocatedHours', task.allocatedHours ?? 0);
-                    const selectedBillable = taskAssignmentValue(task, 'billable', String(task.billable).toLowerCase() === 'true');
-                    const selectedUtilization = taskAssignmentValue(task, 'utilizationEligible', String(task.utilizationEligible).toLowerCase() === 'true');
+                    const selectedBillable = taskAssignmentValue(task, 'billable', String(task.billable).toLowerCase() === 'true' || projectTaskDefaultBillable());
+                    const selectedUtilization = taskAssignmentValue(task, 'utilizationEligible', String(task.utilizationEligible).toLowerCase() === 'true' || projectTaskDefaultUtilizationEligible());
                     const selectedEffectiveDate = taskAssignmentValue(task, 'effectiveStartDate', new Date().toISOString().slice(0, 10));
                     const selectedReason = taskAssignmentValue(task, 'changeReason', '');
+                    const isMultiEngineer = multiEngineerTasks[key] === true || Number(task.activeEngineerCount || 0) > 1;
+                    const rosterRows = rosterRowsForTask(task);
+                    const showClassification = shouldShowTaskClassificationControls(task);
 
                     return (
                       <article className="work-register-task-assignment-card" key={key}>
@@ -945,85 +1238,249 @@ export default function WorkRegisterCenter() {
                           <strong>{task.taskName}</strong>
                           <small>Status: {labelize(task.status || 'not set')}</small>
                           <small>Current engineer: {task.assignedUserName || 'Not assigned'}</small>
+                          <small>Active engineers: {task.activeEngineerCount || rosterRows.filter((row) => row.assignedUserId).length || 0} / 20</small>
                           <small>Assignment source: {labelize(task.assignmentSource || 'project_tasks')}</small>
                         </div>
 
-                        <label>
-                          Engineer
-                          <select
-                            value={selectedEngineerId}
-                            onChange={(event) => updateTaskAssignmentForm(task, 'assignedUserId', event.target.value)}
+                        <label className="checkbox-line full-width">
+                          <input
+                            type="checkbox"
+                            checked={isMultiEngineer}
+                            onChange={(event) => toggleMultiEngineerTask(task, event.target.checked)}
                             disabled={!canEditWorkRegister || !task.taskId}
-                          >
-                            <option value="">Unassigned / remove future assignment</option>
-                            {engineerOptions.map((user) => (
-                              <option value={user.userId} key={user.userId}>
-                                {user.displayName} {user.isActive === false ? '- inactive' : ''}
-                              </option>
+                          />
+                          Multiple engineers on this task
+                        </label>
+
+                        {!isMultiEngineer ? (
+                          <>
+                            <label>
+                              Engineer
+                              <select
+                                value={selectedEngineerId}
+                                onChange={(event) => updateTaskAssignmentForm(task, 'assignedUserId', event.target.value)}
+                                disabled={!canEditWorkRegister || !task.taskId}
+                              >
+                                <option value="">Unassigned / remove future assignment</option>
+                                {engineerOptions.map((user) => (
+                                  <option value={user.userId} key={user.userId}>
+                                    {user.displayName} {user.isActive === false ? '- inactive' : ''}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+
+                            <label>
+                              Allocated hours
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.25"
+                                value={selectedAllocatedHours}
+                                onChange={(event) => updateTaskAssignmentForm(task, 'allocatedHours', event.target.value)}
+                                disabled={!canEditWorkRegister || !task.taskId}
+                              />
+                            </label>
+
+                            <label>
+                              Effective date
+                              <input
+                                type="date"
+                                value={selectedEffectiveDate}
+                                onChange={(event) => updateTaskAssignmentForm(task, 'effectiveStartDate', event.target.value)}
+                                disabled={!canEditWorkRegister || !task.taskId}
+                              />
+                            </label>
+
+                            {showClassification ? (
+                              <>
+                                <label className="checkbox-line">
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedBillable}
+                                    onChange={(event) => updateTaskAssignmentForm(task, 'billable', event.target.checked)}
+                                    disabled={!canEditWorkRegister || !task.taskId}
+                                  />
+                                  Billable
+                                </label>
+
+                                <label className="checkbox-line">
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedUtilization}
+                                    onChange={(event) => updateTaskAssignmentForm(task, 'utilizationEligible', event.target.checked)}
+                                    disabled={!canEditWorkRegister || !task.taskId}
+                                  />
+                                  Utilization eligible
+                                </label>
+                              </>
+                            ) : (
+                              <div className="work-register-default-classification">
+                                Default: Billable + Utilization eligible
+                                <button type="button" onClick={() => updateTaskAssignmentForm(task, 'showClassification', true)} disabled={!canEditWorkRegister}>
+                                  Override classification
+                                </button>
+                              </div>
+                            )}
+
+                            <label className="full-width">
+                              Change reason
+                              <textarea
+                                rows={2}
+                                value={selectedReason}
+                                onChange={(event) => updateTaskAssignmentForm(task, 'changeReason', event.target.value)}
+                                placeholder="Required. Example: Reassigned future task work because previous engineer left the organization."
+                                disabled={!canEditWorkRegister || !task.taskId}
+                              />
+                            </label>
+
+                            <div className="work-register-task-assignment-actions">
+                              {canEditWorkRegister ? (
+                                <button type="button" className="primary-action" onClick={() => saveTaskAssignment(task)} disabled={!task.taskId}>
+                                  Save task assignment
+                                </button>
+                              ) : null}
+                            </div>
+                          </>
+                        ) : (
+                          <div className="work-register-roster-panel full-width">
+                            <div className="work-register-roster-toolbar">
+                              <strong>Multi-engineer roster</strong>
+                              <span>{rosterRows.filter((row) => row.assignedUserId).length} / 20 active engineers</span>
+                              {canEditWorkRegister ? (
+                                <button type="button" className="secondary-action" onClick={() => addRosterEngineer(task)}>
+                                  Add engineer
+                                </button>
+                              ) : null}
+                            </div>
+
+                            {!isFlexibleTaskClassificationWorkType(selectedWorkItem?.workType) ? (
+                              <div className="work-register-default-classification">
+                                Project task default: Billable + Utilization eligible.
+                                <button type="button" onClick={() => toggleRosterClassification(task, true)} disabled={!canEditWorkRegister}>
+                                  Override classification
+                                </button>
+                              </div>
+                            ) : null}
+
+                            {rosterRows.map((row, index) => (
+                              <div className="work-register-roster-row" key={`${key}-roster-${index}`}>
+                                <label>
+                                  Engineer
+                                  <select
+                                    value={row.assignedUserId || ''}
+                                    onChange={(event) => updateRosterEngineer(task, index, 'assignedUserId', event.target.value)}
+                                    disabled={!canEditWorkRegister || !task.taskId}
+                                  >
+                                    <option value="">Select engineer</option>
+                                    {engineerOptions.map((user) => (
+                                      <option value={user.userId} key={user.userId}>
+                                        {user.displayName} {user.isActive === false ? '- inactive' : ''}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+
+                                <label>
+                                  Hours
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="0.25"
+                                    value={row.allocatedHours ?? 0}
+                                    onChange={(event) => updateRosterEngineer(task, index, 'allocatedHours', event.target.value)}
+                                    disabled={!canEditWorkRegister || !task.taskId}
+                                  />
+                                </label>
+
+                                <label>
+                                  Allocation %
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max="100"
+                                    step="0.01"
+                                    value={row.allocationPercent ?? ''}
+                                    onChange={(event) => updateRosterEngineer(task, index, 'allocationPercent', event.target.value)}
+                                    disabled={!canEditWorkRegister || !task.taskId}
+                                  />
+                                </label>
+
+                                <label>
+                                  Effective date
+                                  <input
+                                    type="date"
+                                    value={row.effectiveStartDate || new Date().toISOString().slice(0, 10)}
+                                    onChange={(event) => updateRosterEngineer(task, index, 'effectiveStartDate', event.target.value)}
+                                    disabled={!canEditWorkRegister || !task.taskId}
+                                  />
+                                </label>
+
+                                <label className="checkbox-line">
+                                  <input
+                                    type="checkbox"
+                                    checked={row.isPrimary === true}
+                                    onChange={(event) => updateRosterEngineer(task, index, 'isPrimary', event.target.checked)}
+                                    disabled={!canEditWorkRegister || !task.taskId}
+                                  />
+                                  Primary
+                                </label>
+
+                                {(isFlexibleTaskClassificationWorkType(selectedWorkItem?.workType) || taskRosterForms[key]?.showClassification === true) ? (
+                                  <>
+                                    <label className="checkbox-line">
+                                      <input
+                                        type="checkbox"
+                                        checked={row.billable !== false}
+                                        onChange={(event) => updateRosterEngineer(task, index, 'billable', event.target.checked)}
+                                        disabled={!canEditWorkRegister || !task.taskId}
+                                      />
+                                      Billable
+                                    </label>
+
+                                    <label className="checkbox-line">
+                                      <input
+                                        type="checkbox"
+                                        checked={row.utilizationEligible !== false}
+                                        onChange={(event) => updateRosterEngineer(task, index, 'utilizationEligible', event.target.checked)}
+                                        disabled={!canEditWorkRegister || !task.taskId}
+                                      />
+                                      Utilization
+                                    </label>
+                                  </>
+                                ) : null}
+
+                                <button
+                                  type="button"
+                                  className="secondary-action danger"
+                                  onClick={() => removeRosterEngineer(task, index)}
+                                  disabled={!canEditWorkRegister || rosterRows.length <= 1}
+                                >
+                                  Remove row
+                                </button>
+                              </div>
                             ))}
-                          </select>
-                        </label>
 
-                        <label>
-                          Allocated hours
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.25"
-                            value={selectedAllocatedHours}
-                            onChange={(event) => updateTaskAssignmentForm(task, 'allocatedHours', event.target.value)}
-                            disabled={!canEditWorkRegister || !task.taskId}
-                          />
-                        </label>
+                            <label className="full-width">
+                              Roster change reason
+                              <textarea
+                                rows={2}
+                                value={rosterReasonForTask(task)}
+                                onChange={(event) => updateRosterReason(task, event.target.value)}
+                                placeholder="Required. Example: Added engineers for migration weekend coverage."
+                                disabled={!canEditWorkRegister || !task.taskId}
+                              />
+                            </label>
 
-                        <label>
-                          Effective date
-                          <input
-                            type="date"
-                            value={selectedEffectiveDate}
-                            onChange={(event) => updateTaskAssignmentForm(task, 'effectiveStartDate', event.target.value)}
-                            disabled={!canEditWorkRegister || !task.taskId}
-                          />
-                        </label>
-
-                        <label className="checkbox-line">
-                          <input
-                            type="checkbox"
-                            checked={selectedBillable}
-                            onChange={(event) => updateTaskAssignmentForm(task, 'billable', event.target.checked)}
-                            disabled={!canEditWorkRegister || !task.taskId}
-                          />
-                          Billable
-                        </label>
-
-                        <label className="checkbox-line">
-                          <input
-                            type="checkbox"
-                            checked={selectedUtilization}
-                            onChange={(event) => updateTaskAssignmentForm(task, 'utilizationEligible', event.target.checked)}
-                            disabled={!canEditWorkRegister || !task.taskId}
-                          />
-                          Utilization eligible
-                        </label>
-
-                        <label className="full-width">
-                          Change reason
-                          <textarea
-                            rows={2}
-                            value={selectedReason}
-                            onChange={(event) => updateTaskAssignmentForm(task, 'changeReason', event.target.value)}
-                            placeholder="Required. Example: Reassigned future task work because previous engineer left the organization."
-                            disabled={!canEditWorkRegister || !task.taskId}
-                          />
-                        </label>
-
-                        <div className="work-register-task-assignment-actions">
-                          {canEditWorkRegister ? (
-                            <button type="button" className="primary-action" onClick={() => saveTaskAssignment(task)} disabled={!task.taskId}>
-                              Save task assignment
-                            </button>
-                          ) : null}
-                        </div>
+                            <div className="work-register-task-assignment-actions">
+                              {canEditWorkRegister ? (
+                                <button type="button" className="primary-action" onClick={() => saveTaskRoster(task)} disabled={!task.taskId}>
+                                  Save multi-engineer roster
+                                </button>
+                              ) : null}
+                            </div>
+                          </div>
+                        )}
                       </article>
                     );
                   })}

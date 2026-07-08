@@ -5679,6 +5679,528 @@ app.MapGet("/api/project-intake/summary", async () =>
 
 
 
+
+/* 055C_7_MULTI_ENGINEER_ROSTER_API_START */
+app.MapPost("/api/work-register/tasks/assignments/roster/save", async (HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token.", guard = "055C7_multi_engineer_roster_session_required" }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    using var document = await JsonDocument.ParseAsync(httpContext.Request.Body);
+    var root = document.RootElement;
+
+    string ReadString(string name, string fallback = "")
+    {
+        return root.TryGetProperty(name, out var value) && value.ValueKind != JsonValueKind.Null
+            ? (value.GetString() ?? fallback).Trim()
+            : fallback;
+    }
+
+    Guid? ReadGuid(string name)
+    {
+        if (!root.TryGetProperty(name, out var value) || value.ValueKind == JsonValueKind.Null)
+        {
+            return null;
+        }
+
+        if (value.ValueKind == JsonValueKind.String && Guid.TryParse(value.GetString(), out var parsed))
+        {
+            return parsed;
+        }
+
+        return null;
+    }
+
+    DateTime ReadDateFrom(JsonElement parent, string name, DateTime fallback)
+    {
+        if (!parent.TryGetProperty(name, out var value) || value.ValueKind == JsonValueKind.Null)
+        {
+            return fallback;
+        }
+
+        if (value.ValueKind == JsonValueKind.String && DateTime.TryParse(value.GetString(), out var parsed))
+        {
+            return DateTime.SpecifyKind(parsed.Date, DateTimeKind.Utc);
+        }
+
+        return fallback;
+    }
+
+    Guid? ReadGuidFrom(JsonElement parent, string name)
+    {
+        if (!parent.TryGetProperty(name, out var value) || value.ValueKind == JsonValueKind.Null)
+        {
+            return null;
+        }
+
+        if (value.ValueKind == JsonValueKind.String && Guid.TryParse(value.GetString(), out var parsed))
+        {
+            return parsed;
+        }
+
+        return null;
+    }
+
+    decimal? ReadDecimalFrom(JsonElement parent, string name)
+    {
+        if (!parent.TryGetProperty(name, out var value) || value.ValueKind == JsonValueKind.Null)
+        {
+            return null;
+        }
+
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetDecimal(out var parsedNumber))
+        {
+            return parsedNumber;
+        }
+
+        if (value.ValueKind == JsonValueKind.String && decimal.TryParse(value.GetString(), out var parsedString))
+        {
+            return parsedString;
+        }
+
+        return null;
+    }
+
+    bool ReadBoolFrom(JsonElement parent, string name, bool fallback)
+    {
+        if (!parent.TryGetProperty(name, out var value) || value.ValueKind == JsonValueKind.Null)
+        {
+            return fallback;
+        }
+
+        if (value.ValueKind == JsonValueKind.True) return true;
+        if (value.ValueKind == JsonValueKind.False) return false;
+
+        if (value.ValueKind == JsonValueKind.String && bool.TryParse(value.GetString(), out var parsed))
+        {
+            return parsed;
+        }
+
+        return fallback;
+    }
+
+    static string QuoteIdent(string identifier)
+    {
+        return "\"" + identifier.Replace("\"", "\"\"") + "\"";
+    }
+
+    static string? FindColumn(Dictionary<string, string> columns, params string[] candidates)
+    {
+        foreach (var candidate in candidates)
+        {
+            if (columns.ContainsKey(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return null;
+    }
+
+    var projectId = ReadGuid("projectId");
+    var taskIdText = ReadString("taskId");
+    var taskName = ReadString("taskName", "Untitled task");
+    var changeReason = ReadString("changeReason");
+    var rosterBatchId = Guid.NewGuid();
+
+    if (projectId is null)
+    {
+        return Results.BadRequest(new { status = "validation_failed", message = "Project ID is required." });
+    }
+
+    if (string.IsNullOrWhiteSpace(taskIdText))
+    {
+        return Results.BadRequest(new { status = "validation_failed", message = "Task ID is required." });
+    }
+
+    if (string.IsNullOrWhiteSpace(changeReason))
+    {
+        return Results.BadRequest(new { status = "validation_failed", message = "Change reason is required for multi-engineer roster audit history." });
+    }
+
+    if (!root.TryGetProperty("assignments", out var assignmentsElement) || assignmentsElement.ValueKind != JsonValueKind.Array)
+    {
+        return Results.BadRequest(new { status = "validation_failed", message = "Assignments array is required." });
+    }
+
+    var defaultEffectiveDate = DateTime.UtcNow.Date;
+    if (root.TryGetProperty("effectiveStartDate", out var effectiveElement)
+        && effectiveElement.ValueKind == JsonValueKind.String
+        && DateTime.TryParse(effectiveElement.GetString(), out var parsedEffective))
+    {
+        defaultEffectiveDate = DateTime.SpecifyKind(parsedEffective.Date, DateTimeKind.Utc);
+    }
+
+    var assignments = new List<(Guid AssignedUserId, decimal? AllocatedHours, decimal? AllocationPercent, bool Billable, bool UtilizationEligible, DateTime EffectiveStartDate, bool IsPrimary)>();
+    var duplicateGuard = new HashSet<Guid>();
+
+    foreach (var assignment in assignmentsElement.EnumerateArray())
+    {
+        var assignedUserId = ReadGuidFrom(assignment, "assignedUserId");
+        if (assignedUserId is null)
+        {
+            continue;
+        }
+
+        if (!duplicateGuard.Add(assignedUserId.Value))
+        {
+            return Results.BadRequest(new
+            {
+                status = "duplicate_engineer_assignment",
+                message = "The same engineer cannot be active more than once on the same task."
+            });
+        }
+
+        assignments.Add((
+            assignedUserId.Value,
+            ReadDecimalFrom(assignment, "allocatedHours"),
+            ReadDecimalFrom(assignment, "allocationPercent"),
+            ReadBoolFrom(assignment, "billable", true),
+            ReadBoolFrom(assignment, "utilizationEligible", true),
+            ReadDateFrom(assignment, "effectiveStartDate", defaultEffectiveDate),
+            ReadBoolFrom(assignment, "isPrimary", assignments.Count == 0)
+        ));
+    }
+
+    if (assignments.Count == 0)
+    {
+        return Results.BadRequest(new { status = "validation_failed", message = "At least one engineer is required for a multi-engineer roster." });
+    }
+
+    if (assignments.Count > 20)
+    {
+        return Results.BadRequest(new
+        {
+            status = "maximum_engineers_exceeded",
+            message = "A task can have a maximum of 20 active engineers."
+        });
+    }
+
+    var percentTotal = assignments
+        .Where(assignment => assignment.AllocationPercent is not null)
+        .Sum(assignment => assignment.AllocationPercent!.Value);
+
+    if (percentTotal > 100m)
+    {
+        return Results.BadRequest(new
+        {
+            status = "allocation_percent_exceeded",
+            message = "Total allocation percentage cannot exceed 100%."
+        });
+    }
+
+    var dbConfig = DatabaseConfig.FromEnvironment();
+
+    await using var connection = new NpgsqlConnection(dbConfig.ConnectionString);
+    await connection.OpenAsync();
+
+    var canEditWorkRegister = false;
+    await using (var accessCommand = new NpgsqlCommand("""
+        SELECT EXISTS (
+            SELECT 1
+            FROM app_user_role_assignments ura
+            JOIN app_roles r
+              ON r.app_role_id = ura.app_role_id
+            WHERE ura.user_id = @user_id
+              AND ura.is_active = TRUE
+              AND r.is_active = TRUE
+              AND r.role_code IN (
+                  'SUPER_ADMINISTRATOR',
+                  'ADMINISTRATOR',
+                  'PROJECT_TEAM_COORDINATOR'
+              )
+        );
+        """, connection))
+    {
+        accessCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+        canEditWorkRegister = Convert.ToBoolean(await accessCommand.ExecuteScalarAsync() ?? false);
+    }
+
+    if (!canEditWorkRegister)
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Only Project Team Coordinators, Administrators, and Super Administrators can manage multi-engineer task rosters. Solution Architects are view-only."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var projectTaskColumns = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+    await using (var columnCommand = new NpgsqlCommand("""
+        SELECT column_name, data_type
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'project_tasks';
+        """, connection))
+    await using (var reader = await columnCommand.ExecuteReaderAsync())
+    {
+        while (await reader.ReadAsync())
+        {
+            projectTaskColumns[reader.GetString(0)] = reader.GetString(1);
+        }
+    }
+
+    var idColumn = FindColumn(projectTaskColumns, "project_task_id", "task_id", "id");
+    var projectColumn = FindColumn(projectTaskColumns, "project_id", "work_item_id", "parent_project_id");
+
+    await using var transaction = await connection.BeginTransactionAsync();
+
+    var oldTaskJson = "{}";
+    if (idColumn is not null)
+    {
+        var whereProject = projectColumn is not null ? $"AND {QuoteIdent(projectColumn)}::text = @project_id_text" : "";
+
+        await using var oldTaskCommand = new NpgsqlCommand($"""
+            SELECT to_jsonb(t)::text
+            FROM public.project_tasks t
+            WHERE {QuoteIdent(idColumn)}::text = @task_id_text
+              {whereProject}
+            LIMIT 1;
+            """, connection, transaction);
+
+        oldTaskCommand.Parameters.AddWithValue("task_id_text", taskIdText);
+        oldTaskCommand.Parameters.AddWithValue("project_id_text", projectId.Value.ToString());
+
+        oldTaskJson = Convert.ToString(await oldTaskCommand.ExecuteScalarAsync() ?? "{}") ?? "{}";
+        if (string.IsNullOrWhiteSpace(oldTaskJson))
+        {
+            oldTaskJson = "{}";
+        }
+    }
+
+    var previousActiveAssignmentsJson = "[]";
+    await using (var previousJsonCommand = new NpgsqlCommand("""
+        SELECT COALESCE(jsonb_agg(to_jsonb(h) ORDER BY h.created_at DESC), '[]'::jsonb)::text
+        FROM work_register_task_assignment_history h
+        WHERE h.project_id = @project_id
+          AND h.task_id_text = @task_id_text
+          AND h.assignment_status = 'active';
+        """, connection, transaction))
+    {
+        previousJsonCommand.Parameters.AddWithValue("project_id", projectId.Value);
+        previousJsonCommand.Parameters.AddWithValue("task_id_text", taskIdText);
+        previousActiveAssignmentsJson = Convert.ToString(await previousJsonCommand.ExecuteScalarAsync() ?? "[]") ?? "[]";
+    }
+
+    await using (var closeCommand = new NpgsqlCommand("""
+        UPDATE work_register_task_assignment_history
+        SET assignment_status = 'superseded',
+            effective_end_date = @effective_end_date
+        WHERE project_id = @project_id
+          AND task_id_text = @task_id_text
+          AND assignment_status = 'active';
+        """, connection, transaction))
+    {
+        closeCommand.Parameters.AddWithValue("project_id", projectId.Value);
+        closeCommand.Parameters.AddWithValue("task_id_text", taskIdText);
+        closeCommand.Parameters.Add("effective_end_date", NpgsqlTypes.NpgsqlDbType.Date).Value = defaultEffectiveDate.AddDays(-1);
+        await closeCommand.ExecuteNonQueryAsync();
+    }
+
+    foreach (var assignment in assignments)
+    {
+        var newSnapshot = JsonSerializer.Serialize(new
+        {
+            projectId = projectId.Value,
+            taskIdText,
+            taskName,
+            assignment.AssignedUserId,
+            assignment.AllocatedHours,
+            assignment.AllocationPercent,
+            assignment.Billable,
+            assignment.UtilizationEligible,
+            assignment.EffectiveStartDate,
+            assignment.IsPrimary,
+            rosterBatchId,
+            changeReason
+        });
+
+        await using var insertCommand = new NpgsqlCommand("""
+            INSERT INTO work_register_task_assignment_history (
+                work_register_task_assignment_history_id,
+                project_id,
+                task_id_text,
+                task_name_snapshot,
+                assigned_user_id,
+                previous_assigned_user_id,
+                allocated_hours,
+                allocation_percent,
+                billable,
+                utilization_eligible,
+                assignment_role,
+                assignment_status,
+                effective_start_date,
+                roster_batch_id,
+                is_primary,
+                change_reason,
+                changed_by_user_id,
+                old_value_json,
+                new_value_json
+            )
+            VALUES (
+                @history_id,
+                @project_id,
+                @task_id_text,
+                @task_name_snapshot,
+                @assigned_user_id,
+                NULL,
+                @allocated_hours,
+                @allocation_percent,
+                @billable,
+                @utilization_eligible,
+                'engineer',
+                'active',
+                @effective_start_date,
+                @roster_batch_id,
+                @is_primary,
+                @change_reason,
+                @changed_by_user_id,
+                CAST(@old_value_json AS jsonb),
+                CAST(@new_value_json AS jsonb)
+            );
+            """, connection, transaction);
+
+        insertCommand.Parameters.AddWithValue("history_id", Guid.NewGuid());
+        insertCommand.Parameters.AddWithValue("project_id", projectId.Value);
+        insertCommand.Parameters.AddWithValue("task_id_text", taskIdText);
+        insertCommand.Parameters.AddWithValue("task_name_snapshot", taskName);
+        insertCommand.Parameters.Add("assigned_user_id", NpgsqlTypes.NpgsqlDbType.Uuid).Value = assignment.AssignedUserId;
+        insertCommand.Parameters.Add("allocated_hours", NpgsqlTypes.NpgsqlDbType.Numeric).Value = assignment.AllocatedHours is null ? DBNull.Value : assignment.AllocatedHours.Value;
+        insertCommand.Parameters.Add("allocation_percent", NpgsqlTypes.NpgsqlDbType.Numeric).Value = assignment.AllocationPercent is null ? DBNull.Value : assignment.AllocationPercent.Value;
+        insertCommand.Parameters.Add("billable", NpgsqlTypes.NpgsqlDbType.Boolean).Value = assignment.Billable;
+        insertCommand.Parameters.Add("utilization_eligible", NpgsqlTypes.NpgsqlDbType.Boolean).Value = assignment.UtilizationEligible;
+        insertCommand.Parameters.Add("effective_start_date", NpgsqlTypes.NpgsqlDbType.Date).Value = assignment.EffectiveStartDate;
+        insertCommand.Parameters.Add("roster_batch_id", NpgsqlTypes.NpgsqlDbType.Uuid).Value = rosterBatchId;
+        insertCommand.Parameters.Add("is_primary", NpgsqlTypes.NpgsqlDbType.Boolean).Value = assignment.IsPrimary;
+        insertCommand.Parameters.AddWithValue("change_reason", changeReason);
+        insertCommand.Parameters.AddWithValue("changed_by_user_id", sessionUserId.Value);
+        insertCommand.Parameters.AddWithValue("old_value_json", previousActiveAssignmentsJson);
+        insertCommand.Parameters.AddWithValue("new_value_json", newSnapshot);
+        await insertCommand.ExecuteNonQueryAsync();
+    }
+
+    var primaryAssignment = assignments.FirstOrDefault(assignment => assignment.IsPrimary) == default
+        ? assignments.First()
+        : assignments.First(assignment => assignment.IsPrimary);
+
+    var updatedProjectTask = false;
+    if (idColumn is not null)
+    {
+        var updateClauses = new List<string>();
+        await using var updateTaskCommand = new NpgsqlCommand();
+        updateTaskCommand.Connection = connection;
+        updateTaskCommand.Transaction = transaction;
+        updateTaskCommand.Parameters.AddWithValue("task_id_text", taskIdText);
+        updateTaskCommand.Parameters.AddWithValue("project_id_text", projectId.Value.ToString());
+
+        void AddUpdate(string? column, string parameterName, object? value)
+        {
+            if (column is null) return;
+
+            updateClauses.Add($"{QuoteIdent(column)} = @{parameterName}");
+            updateTaskCommand.Parameters.AddWithValue(parameterName, value ?? DBNull.Value);
+        }
+
+        var assignedColumn = FindColumn(projectTaskColumns, "assigned_user_id", "engineer_user_id", "resource_user_id", "owner_user_id", "user_id");
+        var allocatedColumn = FindColumn(projectTaskColumns, "allocated_hours", "planned_hours", "estimated_hours", "hours");
+        var billableColumn = FindColumn(projectTaskColumns, "billable", "is_billable", "billable_default");
+        var utilizationColumn = FindColumn(projectTaskColumns, "utilization_eligible", "is_utilization_eligible", "utilization_eligible_default");
+
+        AddUpdate(assignedColumn, "assigned_user_id", primaryAssignment.AssignedUserId);
+
+        var totalAllocatedHours = assignments
+            .Where(assignment => assignment.AllocatedHours is not null)
+            .Sum(assignment => assignment.AllocatedHours!.Value);
+
+        if (totalAllocatedHours > 0)
+        {
+            AddUpdate(allocatedColumn, "allocated_hours", totalAllocatedHours);
+        }
+
+        AddUpdate(billableColumn, "billable", assignments.All(assignment => assignment.Billable));
+        AddUpdate(utilizationColumn, "utilization_eligible", assignments.Any(assignment => assignment.UtilizationEligible));
+
+        if (updateClauses.Count > 0)
+        {
+            var whereProject = projectColumn is not null ? $"AND {QuoteIdent(projectColumn)}::text = @project_id_text" : "";
+
+            updateTaskCommand.CommandText = $"""
+                UPDATE public.project_tasks
+                SET {string.Join(", ", updateClauses)}
+                WHERE {QuoteIdent(idColumn)}::text = @task_id_text
+                  {whereProject};
+                """;
+
+            updatedProjectTask = await updateTaskCommand.ExecuteNonQueryAsync() > 0;
+        }
+    }
+
+    var auditSnapshot = JsonSerializer.Serialize(new
+    {
+        projectId = projectId.Value,
+        taskIdText,
+        taskName,
+        rosterBatchId,
+        engineerCount = assignments.Count,
+        totalAllocatedHours = assignments.Where(assignment => assignment.AllocatedHours is not null).Sum(assignment => assignment.AllocatedHours!.Value),
+        totalAllocationPercent = percentTotal,
+        changeReason
+    });
+
+    await using (var auditCommand = new NpgsqlCommand("""
+        INSERT INTO work_register_change_history (
+            work_register_change_history_id,
+            source_table,
+            work_id,
+            action,
+            change_summary,
+            changed_fields_csv,
+            changed_by_user_id,
+            old_value_json,
+            new_value_json
+        )
+        VALUES (
+            @history_id,
+            'projects',
+            @work_id,
+            'multi_engineer_task_roster_saved',
+            @change_summary,
+            @changed_fields_csv,
+            @changed_by_user_id,
+            CAST(@old_value_json AS jsonb),
+            CAST(@new_value_json AS jsonb)
+        );
+        """, connection, transaction))
+    {
+        auditCommand.Parameters.AddWithValue("history_id", Guid.NewGuid());
+        auditCommand.Parameters.AddWithValue("work_id", projectId.Value);
+        auditCommand.Parameters.AddWithValue("change_summary", changeReason);
+        auditCommand.Parameters.AddWithValue("changed_fields_csv", "Multi-Engineer Task Roster, Allocated Hours, Allocation Percent, Billable, Utilization Eligible");
+        auditCommand.Parameters.AddWithValue("changed_by_user_id", sessionUserId.Value);
+        auditCommand.Parameters.AddWithValue("old_value_json", previousActiveAssignmentsJson);
+        auditCommand.Parameters.AddWithValue("new_value_json", auditSnapshot);
+        await auditCommand.ExecuteNonQueryAsync();
+    }
+
+    await transaction.CommitAsync();
+
+    return Results.Ok(new
+    {
+        status = "multi_engineer_task_roster_saved",
+        projectId = projectId.Value,
+        taskId = taskIdText,
+        rosterBatchId,
+        activeEngineerCount = assignments.Count,
+        updatedProjectTask,
+        message = $"Saved {assignments.Count} active engineer assignment(s) for this task. Historical assignment rows were preserved."
+    });
+});
+/* 055C_7_MULTI_ENGINEER_ROSTER_API_END */
+
+
 /* 055C_6_TASK_ENGINEER_ASSIGNMENT_API_START */
 app.MapPost("/api/work-register/tasks/assignments/update", async (HttpContext httpContext) =>
 {
@@ -6323,8 +6845,8 @@ app.MapGet("/api/work-register/projects/{projectId:guid}/details", async (Guid p
     var changeRows = await LoadRowsByProjectAsync("work_register_change_history", 500, "work_id");
     var taskAssignmentRows = await LoadRowsByProjectAsync("work_register_task_assignment_history", 5000, "project_id");
 
-    /* 055C_6_DETAILS_ASSIGNMENT_OVERLAY_START */
-    var activeAssignmentsByTask = new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
+    /* 055C_7_DETAILS_MULTI_ENGINEER_ROSTER_START */
+    var activeAssignmentsByTask = new Dictionary<string, List<Dictionary<string, string>>>(StringComparer.OrdinalIgnoreCase);
     foreach (var assignment in taskAssignmentRows)
     {
         var taskId = Pick(assignment, "task_id_text");
@@ -6338,7 +6860,12 @@ app.MapGet("/api/work-register/projects/{projectId:guid}/details", async (Guid p
             continue;
         }
 
-        activeAssignmentsByTask[taskId] = assignment;
+        if (!activeAssignmentsByTask.ContainsKey(taskId))
+        {
+            activeAssignmentsByTask[taskId] = new List<Dictionary<string, string>>();
+        }
+
+        activeAssignmentsByTask[taskId].Add(assignment);
     }
 
     var tasks = taskRows.Select(task =>
@@ -6346,39 +6873,82 @@ app.MapGet("/api/work-register/projects/{projectId:guid}/details", async (Guid p
         var taskId = Pick(task, "project_task_id", "task_id", "id");
         var taskName = Pick(task, "task_name", "name", "title", "description", "work_task_name");
 
-        var assignedUserId = Pick(task, "assigned_user_id", "engineer_user_id", "resource_user_id", "owner_user_id", "user_id");
-        var assignedUserName = UserName(assignedUserId, Pick(task, "assigned_to_name", "engineer_name", "resource_name"));
+        var baseAssignedUserId = Pick(task, "assigned_user_id", "engineer_user_id", "resource_user_id", "owner_user_id", "user_id");
+        var baseAssignedUserName = UserName(baseAssignedUserId, Pick(task, "assigned_to_name", "engineer_name", "resource_name"));
         var allocatedHours = PickDecimal(task, "allocated_hours", "planned_hours", "estimated_hours", "hours");
         var billable = Pick(task, "billable", "is_billable", "billable_default");
         var utilizationEligible = Pick(task, "utilization_eligible", "is_utilization_eligible", "utilization_eligible_default");
         var assignmentSource = "project_tasks";
 
-        if (!string.IsNullOrWhiteSpace(taskId) && activeAssignmentsByTask.TryGetValue(taskId, out var sidecarAssignment))
+        var assignedEngineers = new List<object>();
+
+        if (!string.IsNullOrWhiteSpace(taskId) && activeAssignmentsByTask.TryGetValue(taskId, out var sidecarAssignments))
         {
-            var sidecarAssignedUserId = Pick(sidecarAssignment, "assigned_user_id");
-            var sidecarAllocatedHours = PickDecimal(sidecarAssignment, "allocated_hours");
-            var sidecarBillable = Pick(sidecarAssignment, "billable");
-            var sidecarUtilizationEligible = Pick(sidecarAssignment, "utilization_eligible");
-
-            assignedUserId = sidecarAssignedUserId;
-            assignedUserName = UserName(sidecarAssignedUserId, assignedUserName);
-
-            if (sidecarAllocatedHours > 0)
-            {
-                allocatedHours = sidecarAllocatedHours;
-            }
-
-            if (!string.IsNullOrWhiteSpace(sidecarBillable))
-            {
-                billable = sidecarBillable;
-            }
-
-            if (!string.IsNullOrWhiteSpace(sidecarUtilizationEligible))
-            {
-                utilizationEligible = sidecarUtilizationEligible;
-            }
-
             assignmentSource = "work_register_task_assignment_history";
+            allocatedHours = sidecarAssignments
+                .Select(assignment => PickDecimal(assignment, "allocated_hours"))
+                .Where(value => value > 0)
+                .DefaultIfEmpty(allocatedHours)
+                .Sum();
+
+            foreach (var assignment in sidecarAssignments)
+            {
+                var sidecarAssignedUserId = Pick(assignment, "assigned_user_id");
+                var allocationPercent = PickDecimal(assignment, "allocation_percent");
+                var sidecarAllocatedHours = PickDecimal(assignment, "allocated_hours");
+                var sidecarBillable = Pick(assignment, "billable");
+                var sidecarUtilizationEligible = Pick(assignment, "utilization_eligible");
+
+                assignedEngineers.Add(new
+                {
+                    assignedUserId = sidecarAssignedUserId,
+                    assignedUserName = UserName(sidecarAssignedUserId),
+                    allocatedHours = sidecarAllocatedHours,
+                    allocationPercent,
+                    billable = sidecarBillable,
+                    utilizationEligible = sidecarUtilizationEligible,
+                    isPrimary = string.Equals(Pick(assignment, "is_primary"), "true", StringComparison.OrdinalIgnoreCase),
+                    effectiveStartDate = Pick(assignment, "effective_start_date"),
+                    assignmentSource = "work_register_task_assignment_history"
+                });
+            }
+
+            var primary = sidecarAssignments.FirstOrDefault(assignment => string.Equals(Pick(assignment, "is_primary"), "true", StringComparison.OrdinalIgnoreCase))
+                ?? sidecarAssignments.FirstOrDefault();
+
+            if (primary is not null)
+            {
+                baseAssignedUserId = Pick(primary, "assigned_user_id");
+                baseAssignedUserName = UserName(baseAssignedUserId, baseAssignedUserName);
+
+                var primaryBillable = Pick(primary, "billable");
+                var primaryUtilizationEligible = Pick(primary, "utilization_eligible");
+
+                if (!string.IsNullOrWhiteSpace(primaryBillable))
+                {
+                    billable = primaryBillable;
+                }
+
+                if (!string.IsNullOrWhiteSpace(primaryUtilizationEligible))
+                {
+                    utilizationEligible = primaryUtilizationEligible;
+                }
+            }
+        }
+        else if (!string.IsNullOrWhiteSpace(baseAssignedUserId))
+        {
+            assignedEngineers.Add(new
+            {
+                assignedUserId = baseAssignedUserId,
+                assignedUserName = baseAssignedUserName,
+                allocatedHours,
+                allocationPercent = 0m,
+                billable,
+                utilizationEligible,
+                isPrimary = true,
+                effectiveStartDate = "",
+                assignmentSource = "project_tasks"
+            });
         }
 
         return new
@@ -6386,16 +6956,18 @@ app.MapGet("/api/work-register/projects/{projectId:guid}/details", async (Guid p
             taskId,
             taskName = string.IsNullOrWhiteSpace(taskName) ? "Untitled task" : taskName,
             status = Pick(task, "status", "task_status", "state"),
-            assignedUserId,
-            assignedUserName,
+            assignedUserId = baseAssignedUserId,
+            assignedUserName = baseAssignedUserName,
             allocatedHours,
             billable,
             utilizationEligible,
+            activeEngineerCount = assignedEngineers.Count,
+            assignedEngineers,
             assignmentSource,
             source = task
         };
     }).ToList();
-    /* 055C_6_DETAILS_ASSIGNMENT_OVERLAY_END */
+    /* 055C_7_DETAILS_MULTI_ENGINEER_ROSTER_END */
 
     var documents = documentRows.Select(document =>
     {
@@ -7236,7 +7808,7 @@ app.MapGet("/api/work-register/overview", async (HttpContext httpContext) =>
 
         assignedEngineers = assignedEngineers
             .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Take(8)
+            .Take(20)
             .ToList();
 
         var totalCost =

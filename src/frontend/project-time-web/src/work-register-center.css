@@ -563,3 +563,96 @@ body[data-projectpulse-active-route="work-register"] #work-register .work-regist
   border-color: rgba(148, 163, 184, 0.3);
 }
 /* 055C_6_TASK_ENGINEER_ASSIGNMENT_END */
+
+/* 055C_7_MULTI_ENGINEER_ROSTER_START */
+.work-register-roster-panel {
+  display: grid;
+  gap: 0.75rem;
+  border: 1px solid rgba(37, 99, 235, 0.18);
+  border-radius: 16px;
+  padding: 0.75rem;
+  background: #eff6ff;
+}
+
+.work-register-roster-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.work-register-roster-toolbar span {
+  border-radius: 999px;
+  background: #ffffff;
+  color: #1d4ed8;
+  font-weight: 800;
+  padding: 0.35rem 0.65rem;
+  font-size: 0.78rem;
+}
+
+.work-register-roster-row {
+  display: grid;
+  grid-template-columns: 1.3fr 0.55fr 0.55fr 0.8fr repeat(3, auto) auto;
+  gap: 0.55rem;
+  align-items: end;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 14px;
+  background: #ffffff;
+  padding: 0.65rem;
+}
+
+.work-register-default-classification {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  align-items: center;
+  border-radius: 14px;
+  background: #ecfdf5;
+  color: #166534;
+  font-weight: 800;
+  padding: 0.65rem;
+}
+
+.work-register-default-classification button {
+  border: 1px solid rgba(34, 197, 94, 0.36);
+  border-radius: 999px;
+  background: #ffffff;
+  color: #166534;
+  font-weight: 800;
+  cursor: pointer;
+  padding: 0.3rem 0.6rem;
+}
+
+.secondary-action.danger {
+  color: #b91c1c;
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+@media (max-width: 1200px) {
+  .work-register-roster-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .work-register-roster-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+[data-theme="dark"] .work-register-roster-panel {
+  background: rgba(30, 64, 175, 0.18);
+  border-color: rgba(96, 165, 250, 0.25);
+}
+
+[data-theme="dark"] .work-register-roster-row,
+[data-theme="dark"] .work-register-roster-toolbar span {
+  background: rgba(15, 23, 42, 0.92);
+}
+
+[data-theme="dark"] .work-register-default-classification {
+  background: rgba(20, 83, 45, 0.38);
+  color: #bbf7d0;
+}
+/* 055C_7_MULTI_ENGINEER_ROSTER_END */
