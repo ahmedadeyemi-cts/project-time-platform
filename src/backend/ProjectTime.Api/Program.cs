@@ -5676,6 +5676,479 @@ app.MapGet("/api/project-intake/summary", async () =>
 
 
 
+
+/* 055C_2_WORK_REGISTER_EDIT_API_START */
+app.MapGet("/api/work-register/edit-foundation", async (HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token.", guard = "055C2_work_register_edit_session_required" }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var dbConfig = DatabaseConfig.FromEnvironment();
+
+    await using var connection = new NpgsqlConnection(dbConfig.ConnectionString);
+    await connection.OpenAsync();
+
+    var canEditWorkRegister = false;
+    await using (var accessCommand = new NpgsqlCommand("""
+        SELECT EXISTS (
+            SELECT 1
+            FROM app_user_role_assignments ura
+            JOIN app_roles r
+              ON r.app_role_id = ura.app_role_id
+            WHERE ura.user_id = @user_id
+              AND ura.is_active = TRUE
+              AND r.is_active = TRUE
+              AND r.role_code IN (
+                  'SUPER_ADMINISTRATOR',
+                  'ADMINISTRATOR',
+                  'PROJECT_TEAM_COORDINATOR'
+              )
+        );
+        """, connection))
+    {
+        accessCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+        canEditWorkRegister = Convert.ToBoolean(await accessCommand.ExecuteScalarAsync() ?? false);
+    }
+
+    var customers = new List<object>();
+    await using (var customerCommand = new NpgsqlCommand("""
+        SELECT
+            client_id,
+            COALESCE(client_name, '') AS client_name,
+            COALESCE(client_code, '') AS client_code,
+            COALESCE(is_active, TRUE) AS is_active
+        FROM clients
+        ORDER BY COALESCE(is_active, TRUE) DESC, client_name, client_code;
+        """, connection))
+    await using (var reader = await customerCommand.ExecuteReaderAsync())
+    {
+        while (await reader.ReadAsync())
+        {
+            customers.Add(new
+            {
+                clientId = reader.GetGuid(0),
+                clientName = reader.GetString(1),
+                clientCode = reader.GetString(2),
+                isActive = reader.GetBoolean(3)
+            });
+        }
+    }
+
+    var users = new List<object>();
+    await using (var userCommand = new NpgsqlCommand("""
+        SELECT
+            u.user_id,
+            COALESCE(u.display_name, u.email, '') AS display_name,
+            COALESCE(u.email, '') AS email,
+            COALESCE(u.is_active, TRUE) AS is_active,
+            COALESCE(string_agg(DISTINCT r.role_code, ',' ORDER BY r.role_code), '') AS role_codes
+        FROM app_users u
+        LEFT JOIN app_user_role_assignments ura
+          ON ura.user_id = u.user_id
+         AND ura.is_active = TRUE
+        LEFT JOIN app_roles r
+          ON r.app_role_id = ura.app_role_id
+         AND r.is_active = TRUE
+        GROUP BY u.user_id, u.display_name, u.email, u.is_active
+        ORDER BY COALESCE(u.is_active, TRUE) DESC, display_name, email;
+        """, connection))
+    await using (var reader = await userCommand.ExecuteReaderAsync())
+    {
+        while (await reader.ReadAsync())
+        {
+            var roleCodes = reader.GetString(4)
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+            users.Add(new
+            {
+                userId = reader.GetGuid(0),
+                displayName = reader.GetString(1),
+                email = reader.GetString(2),
+                isActive = reader.GetBoolean(3),
+                roleCodes
+            });
+        }
+    }
+
+    return Results.Ok(new
+    {
+        status = "work_register_edit_foundation_loaded",
+        canEditWorkRegister,
+        editAllowedRoles = new[] { "SUPER_ADMINISTRATOR", "ADMINISTRATOR", "PROJECT_TEAM_COORDINATOR" },
+        viewOnlyRoles = new[] { "SOLUTION_ARCHITECT", "PROJECT_MANAGER", "ENGINEER", "ACCOUNT_EXECUTIVE", "SAA" },
+        customers,
+        users,
+        contractTypes = new[]
+        {
+            "Fixed Price",
+            "T&M",
+            "Time and Material",
+            "Internal",
+            "Non-billable",
+            "Pre-Sales",
+            "Other"
+        },
+        statuses = new[]
+        {
+            "Active",
+            "Draft",
+            "In Progress",
+            "On Hold",
+            "Pending Closeout",
+            "Closed",
+            "Archived",
+            "Cancelled"
+        }
+    });
+});
+
+app.MapPost("/api/work-register/projects/update", async (HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token.", guard = "055C2_work_register_update_session_required" }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    using var document = await JsonDocument.ParseAsync(httpContext.Request.Body);
+    var root = document.RootElement;
+
+    string ReadString(string name, string fallback = "")
+    {
+        return root.TryGetProperty(name, out var value) && value.ValueKind != JsonValueKind.Null
+            ? (value.GetString() ?? fallback).Trim()
+            : fallback;
+    }
+
+    bool HasNonBlankString(string name, out string value)
+    {
+        value = "";
+        if (!root.TryGetProperty(name, out var element) || element.ValueKind == JsonValueKind.Null)
+        {
+            return false;
+        }
+
+        value = element.GetString()?.Trim() ?? "";
+        return !string.IsNullOrWhiteSpace(value);
+    }
+
+    Guid? ReadGuid(string name)
+    {
+        if (!root.TryGetProperty(name, out var value) || value.ValueKind == JsonValueKind.Null)
+        {
+            return null;
+        }
+
+        if (value.ValueKind == JsonValueKind.String && Guid.TryParse(value.GetString(), out var parsed))
+        {
+            return parsed;
+        }
+
+        return null;
+    }
+
+    DateTime? ReadDate(string name)
+    {
+        if (!root.TryGetProperty(name, out var value) || value.ValueKind == JsonValueKind.Null)
+        {
+            return null;
+        }
+
+        if (value.ValueKind == JsonValueKind.String && DateTime.TryParse(value.GetString(), out var parsed))
+        {
+            return DateTime.SpecifyKind(parsed.Date, DateTimeKind.Utc);
+        }
+
+        return null;
+    }
+
+    static string QuoteIdent(string identifier)
+    {
+        return "\"" + identifier.Replace("\"", "\"\"") + "\"";
+    }
+
+    var sourceTable = ReadString("sourceTable", "projects").ToLowerInvariant();
+    if (sourceTable != "projects")
+    {
+        return Results.BadRequest(new
+        {
+            status = "unsupported_source_table",
+            message = "055C.2 currently supports editing records from the projects table. Project intake and task reassignment will be handled in later stages."
+        });
+    }
+
+    var projectId = ReadGuid("workId") ?? ReadGuid("projectId");
+    if (projectId is null)
+    {
+        return Results.BadRequest(new { status = "validation_failed", message = "Project ID is required." });
+    }
+
+    var editReason = ReadString("editReason");
+    if (string.IsNullOrWhiteSpace(editReason))
+    {
+        return Results.BadRequest(new { status = "validation_failed", message = "Edit reason is required for audit history." });
+    }
+
+    var dbConfig = DatabaseConfig.FromEnvironment();
+
+    await using var connection = new NpgsqlConnection(dbConfig.ConnectionString);
+    await connection.OpenAsync();
+
+    var canEditWorkRegister = false;
+    await using (var accessCommand = new NpgsqlCommand("""
+        SELECT EXISTS (
+            SELECT 1
+            FROM app_user_role_assignments ura
+            JOIN app_roles r
+              ON r.app_role_id = ura.app_role_id
+            WHERE ura.user_id = @user_id
+              AND ura.is_active = TRUE
+              AND r.is_active = TRUE
+              AND r.role_code IN (
+                  'SUPER_ADMINISTRATOR',
+                  'ADMINISTRATOR',
+                  'PROJECT_TEAM_COORDINATOR'
+              )
+        );
+        """, connection))
+    {
+        accessCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+        canEditWorkRegister = Convert.ToBoolean(await accessCommand.ExecuteScalarAsync() ?? false);
+    }
+
+    if (!canEditWorkRegister)
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Only Project Team Coordinators, Administrators, and Super Administrators can edit Work Register setup fields. Solution Architects are view-only."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var projectColumns = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+    await using (var columnCommand = new NpgsqlCommand("""
+        SELECT column_name, data_type
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'projects';
+        """, connection))
+    await using (var reader = await columnCommand.ExecuteReaderAsync())
+    {
+        while (await reader.ReadAsync())
+        {
+            projectColumns[reader.GetString(0)] = reader.GetString(1);
+        }
+    }
+
+    string? FindColumn(params string[] candidates)
+    {
+        foreach (var candidate in candidates)
+        {
+            if (projectColumns.ContainsKey(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return null;
+    }
+
+    var idColumn = FindColumn("project_id", "id", "work_item_id");
+    if (idColumn is null)
+    {
+        return Results.Json(new { status = "schema_not_supported", message = "Could not locate a project ID column." }, statusCode: StatusCodes.Status500InternalServerError);
+    }
+
+    var updates = new List<(string Column, object Value, string Label)>();
+
+    void AddGuidUpdate(string propertyName, string label, params string[] columns)
+    {
+        var value = ReadGuid(propertyName);
+        if (value is null)
+        {
+            return;
+        }
+
+        var column = FindColumn(columns);
+        if (column is not null)
+        {
+            updates.Add((column, value.Value, label));
+        }
+    }
+
+    void AddStringUpdate(string propertyName, string label, params string[] columns)
+    {
+        if (!HasNonBlankString(propertyName, out var value))
+        {
+            return;
+        }
+
+        var column = FindColumn(columns);
+        if (column is not null)
+        {
+            updates.Add((column, value, label));
+        }
+    }
+
+    void AddDateUpdate(string propertyName, string label, params string[] columns)
+    {
+        var value = ReadDate(propertyName);
+        if (value is null)
+        {
+            return;
+        }
+
+        var column = FindColumn(columns);
+        if (column is not null)
+        {
+            updates.Add((column, value.Value, label));
+        }
+    }
+
+    AddGuidUpdate("clientId", "Customer", "client_id", "customer_id");
+    AddStringUpdate("contractType", "Contract Type", "contract_type", "billing_type", "pricing_model");
+    AddGuidUpdate("projectManagerUserId", "Project Manager", "project_manager_user_id", "pm_user_id", "assigned_pm_user_id");
+    AddGuidUpdate("projectCoordinatorUserId", "Project Coordinator", "project_coordinator_user_id", "ptc_user_id", "coordinator_user_id");
+    AddGuidUpdate("accountExecutiveUserId", "Account Executive", "account_executive_user_id", "ae_user_id", "sales_executive_user_id");
+    AddGuidUpdate("solutionArchitectUserId", "Solution Architect", "solution_architect_user_id", "sa_user_id", "architect_user_id");
+    AddGuidUpdate("insideSalesUserId", "Inside Sales / SAA", "inside_sales_user_id", "saa_user_id");
+    AddDateUpdate("projectStartDate", "Project Start Date", "project_start_date", "start_date", "planned_start_date");
+    AddDateUpdate("estimatedEndDate", "Estimated End Date", "estimated_end_date", "project_end_date", "planned_end_date", "end_date");
+    AddDateUpdate("sowSignedDate", "SOW Signed Date", "sow_signed_date", "signed_date");
+    AddStringUpdate("status", "Status", "status", "project_status", "state");
+
+    var updatedAtColumn = FindColumn("updated_at", "modified_at");
+    if (updatedAtColumn is not null)
+    {
+        updates.Add((updatedAtColumn, DateTimeOffset.UtcNow, "Updated At"));
+    }
+
+    var updatedByColumn = FindColumn("updated_by_user_id", "modified_by_user_id");
+    if (updatedByColumn is not null)
+    {
+        updates.Add((updatedByColumn, sessionUserId.Value, "Updated By"));
+    }
+
+    if (updates.Count == 0)
+    {
+        return Results.BadRequest(new
+        {
+            status = "no_supported_updates",
+            message = "No supported project fields were supplied or the current projects table does not contain those fields."
+        });
+    }
+
+    await using var transaction = await connection.BeginTransactionAsync();
+
+    string oldValueJson;
+    await using (var oldCommand = new NpgsqlCommand($"""
+        SELECT to_jsonb(p)::text
+        FROM public.projects p
+        WHERE {QuoteIdent(idColumn)} = @project_id
+        LIMIT 1;
+        """, connection, transaction))
+    {
+        oldCommand.Parameters.AddWithValue("project_id", projectId.Value);
+        oldValueJson = Convert.ToString(await oldCommand.ExecuteScalarAsync() ?? "") ?? "";
+    }
+
+    if (string.IsNullOrWhiteSpace(oldValueJson))
+    {
+        await transaction.RollbackAsync();
+        return Results.NotFound(new { status = "project_not_found", message = "Project was not found." });
+    }
+
+    var setClauses = new List<string>();
+    await using var updateCommand = new NpgsqlCommand();
+    updateCommand.Connection = connection;
+    updateCommand.Transaction = transaction;
+    updateCommand.Parameters.AddWithValue("project_id", projectId.Value);
+
+    for (var index = 0; index < updates.Count; index++)
+    {
+        var parameterName = $"p{index}";
+        setClauses.Add($"{QuoteIdent(updates[index].Column)} = @{parameterName}");
+        updateCommand.Parameters.AddWithValue(parameterName, updates[index].Value);
+    }
+
+    updateCommand.CommandText = $"""
+        UPDATE public.projects
+        SET {string.Join(", ", setClauses)}
+        WHERE {QuoteIdent(idColumn)} = @project_id;
+        """;
+
+    var affected = await updateCommand.ExecuteNonQueryAsync();
+    if (affected == 0)
+    {
+        await transaction.RollbackAsync();
+        return Results.NotFound(new { status = "project_not_found", message = "Project was not updated." });
+    }
+
+    string newValueJson;
+    await using (var newCommand = new NpgsqlCommand($"""
+        SELECT to_jsonb(p)::text
+        FROM public.projects p
+        WHERE {QuoteIdent(idColumn)} = @project_id
+        LIMIT 1;
+        """, connection, transaction))
+    {
+        newCommand.Parameters.AddWithValue("project_id", projectId.Value);
+        newValueJson = Convert.ToString(await newCommand.ExecuteScalarAsync() ?? "") ?? "";
+    }
+
+    var changedFieldsCsv = string.Join(", ", updates.Select(update => update.Label).Distinct());
+
+    await using (var historyCommand = new NpgsqlCommand("""
+        INSERT INTO work_register_change_history (
+            work_register_change_history_id,
+            source_table,
+            work_id,
+            action,
+            change_summary,
+            changed_fields_csv,
+            changed_by_user_id,
+            old_value_json,
+            new_value_json
+        )
+        VALUES (
+            @history_id,
+            'projects',
+            @work_id,
+            'project_setup_updated',
+            @change_summary,
+            @changed_fields_csv,
+            @changed_by_user_id,
+            @old_value_json::jsonb,
+            @new_value_json::jsonb
+        );
+        """, connection, transaction))
+    {
+        historyCommand.Parameters.AddWithValue("history_id", Guid.NewGuid());
+        historyCommand.Parameters.AddWithValue("work_id", projectId.Value);
+        historyCommand.Parameters.AddWithValue("change_summary", editReason);
+        historyCommand.Parameters.AddWithValue("changed_fields_csv", changedFieldsCsv);
+        historyCommand.Parameters.AddWithValue("changed_by_user_id", sessionUserId.Value);
+        historyCommand.Parameters.AddWithValue("old_value_json", oldValueJson);
+        historyCommand.Parameters.AddWithValue("new_value_json", newValueJson);
+        await historyCommand.ExecuteNonQueryAsync();
+    }
+
+    await transaction.CommitAsync();
+
+    return Results.Ok(new
+    {
+        status = "project_setup_updated",
+        projectId = projectId.Value,
+        changedFields = updates.Select(update => update.Label).Distinct().ToArray(),
+        message = "Project setup updated from Work Register. Historical audit snapshot was preserved."
+    });
+});
+/* 055C_2_WORK_REGISTER_EDIT_API_END */
+
+
 /* 055C_WORK_REGISTER_API_START */
 app.MapGet("/api/work-register/overview", async (HttpContext httpContext) =>
 {

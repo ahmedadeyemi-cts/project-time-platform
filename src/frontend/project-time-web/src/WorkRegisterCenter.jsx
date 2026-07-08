@@ -53,6 +53,28 @@ async function fetchJson(url) {
   return response.json();
 }
 
+
+async function postJson(url, payload) {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    let message = `HTTP ${response.status}`;
+    try {
+      const error = await response.json();
+      message = error.message || error.status || message;
+    } catch {
+      // Ignore non-JSON responses.
+    }
+    throw new Error(message);
+  }
+
+  return response.json();
+}
+
 function money(value) {
   const numberValue = Number(value ?? 0);
   return numberValue.toLocaleString(undefined, {
@@ -83,6 +105,23 @@ function uniqueValues(items, getter) {
     .sort((a, b) => String(a).localeCompare(String(b)));
 }
 
+
+function userHasAnyRole(user, roleCodes) {
+  const assigned = new Set((user?.roleCodes ?? []).map((roleCode) => String(roleCode).toUpperCase()));
+  return roleCodes.some((roleCode) => assigned.has(String(roleCode).toUpperCase()));
+}
+
+function activeUsersByRole(users, roleCodes) {
+  const activeUsers = users.filter((user) => user.isActive !== false);
+  const filtered = activeUsers.filter((user) => userHasAnyRole(user, roleCodes));
+  return filtered.length ? filtered : activeUsers;
+}
+
+function dateOnly(value) {
+  if (!value) return '';
+  return String(value).slice(0, 10);
+}
+
 export default function WorkRegisterCenter() {
   const [payload, setPayload] = useState({ loading: true, data: null, error: null });
   const [searchTerm, setSearchTerm] = useState('');
@@ -92,6 +131,13 @@ export default function WorkRegisterCenter() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [personFilter, setPersonFilter] = useState('all');
   const [burnFilter, setBurnFilter] = useState('all');
+
+  const [editFoundation, setEditFoundation] = useState({ loading: true, data: null, error: null });
+  const [selectedWorkItem, setSelectedWorkItem] = useState(null);
+  const [editForm, setEditForm] = useState({});
+  const [editStatus, setEditStatus] = useState('');
+  // 055C_2_WORK_REGISTER_EDIT_DRAWER
+
 
   useLayoutEffect(() => {
     const focusWorkRegisterRoute = () => {
@@ -111,6 +157,22 @@ export default function WorkRegisterCenter() {
     return () => timers.forEach((timer) => window.clearTimeout(timer));
   }, []);
 
+
+  async function loadEditFoundation() {
+    setEditFoundation((current) => ({ ...current, loading: true, error: null }));
+
+    try {
+      const data = await fetchJson('/api/work-register/edit-foundation');
+      setEditFoundation({ loading: false, data, error: null });
+    } catch (error) {
+      setEditFoundation({
+        loading: false,
+        data: null,
+        error: error instanceof Error ? error.message : 'Unable to load edit foundation.'
+      });
+    }
+  }
+
   async function load() {
     setPayload((current) => ({ ...current, loading: true, error: null }));
 
@@ -128,6 +190,7 @@ export default function WorkRegisterCenter() {
 
   useEffect(() => {
     load();
+    loadEditFoundation();
   }, []);
 
   const workItems = payload.data?.workItems ?? [];
@@ -211,6 +274,107 @@ export default function WorkRegisterCenter() {
   const customerOptions = uniqueValues(workItems, (item) => item.customerName);
   const statusOptions = uniqueValues(workItems, (item) => item.status);
   const burnOptions = uniqueValues(workItems, (item) => item.burnStatus);
+
+
+  const canEditWorkRegister = editFoundation.data?.canEditWorkRegister === true;
+  const editCustomerOptions = editFoundation.data?.customers ?? [];
+  const userOptions = editFoundation.data?.users ?? [];
+  const contractOptions = editFoundation.data?.contractTypes ?? [];
+  const statusEditOptions = editFoundation.data?.statuses ?? [];
+
+  const pmOptions = activeUsersByRole(userOptions, ['PROJECT_MANAGER', 'PROJECT_MANAGEMENT', 'PROJECT_MANAGEMENT_LEAD', 'PM_TEAM_LEAD']);
+  const pcOptions = activeUsersByRole(userOptions, ['PROJECT_TEAM_COORDINATOR', 'PROJECT_COORDINATOR', 'PROJECT_MANAGEMENT']);
+  const aeOptions = activeUsersByRole(userOptions, ['ACCOUNT_EXECUTIVE', 'SALES', 'SALES_EXECUTIVE', 'AE']);
+  const saOptions = activeUsersByRole(userOptions, ['SOLUTION_ARCHITECT', 'SA', 'ARCHITECT', 'ANALYST_DEV_ARCHITECT']);
+  const saaOptions = activeUsersByRole(userOptions, ['SAA', 'INSIDE_SALES', 'SALES_SUPPORT', 'SALES']);
+
+  function openEditDrawer(item) {
+    setSelectedWorkItem(item);
+    setEditStatus('');
+    setEditForm({
+      workId: item.workId,
+      sourceTable: item.sourceTable,
+      clientId: item.customerId || '',
+      contractType: item.contractType || '',
+      projectManagerUserId: '',
+      projectCoordinatorUserId: '',
+      accountExecutiveUserId: '',
+      solutionArchitectUserId: '',
+      insideSalesUserId: '',
+      projectStartDate: dateOnly(item.startDate),
+      estimatedEndDate: dateOnly(item.estimatedEndDate),
+      sowSignedDate: dateOnly(item.sowSignedDate),
+      status: item.status || '',
+      editReason: ''
+    });
+  }
+
+  function closeEditDrawer() {
+    setSelectedWorkItem(null);
+    setEditForm({});
+    setEditStatus('');
+  }
+
+  function updateEditField(field, value) {
+    setEditForm((current) => ({
+      ...current,
+      [field]: value
+    }));
+  }
+
+  async function saveProjectSetup(event) {
+    event.preventDefault();
+
+    if (!selectedWorkItem) return;
+
+    if (!canEditWorkRegister) {
+      setEditStatus('This page is view-only for your role. Only Project Team Coordinators, Administrators, and Super Administrators can save changes.');
+      return;
+    }
+
+    if (!editForm.editReason?.trim()) {
+      setEditStatus('Edit reason is required.');
+      return;
+    }
+
+    const payload = {
+      workId: selectedWorkItem.workId,
+      sourceTable: selectedWorkItem.sourceTable,
+      editReason: editForm.editReason.trim()
+    };
+
+    [
+      'clientId',
+      'contractType',
+      'projectManagerUserId',
+      'projectCoordinatorUserId',
+      'accountExecutiveUserId',
+      'solutionArchitectUserId',
+      'insideSalesUserId',
+      'projectStartDate',
+      'estimatedEndDate',
+      'sowSignedDate',
+      'status'
+    ].forEach((field) => {
+      if (editForm[field]) {
+        payload[field] = editForm[field];
+      }
+    });
+
+    setEditStatus('Saving project setup...');
+
+    try {
+      const result = await postJson('/api/work-register/projects/update', payload);
+      setEditStatus(result.message || 'Project setup saved.');
+      await load();
+      window.setTimeout(() => {
+        closeEditDrawer();
+      }, 800);
+    } catch (error) {
+      setEditStatus(error instanceof Error ? error.message : 'Unable to save project setup.');
+    }
+  }
+
 
   return (
     <section className="work-register-center">
@@ -336,6 +500,10 @@ export default function WorkRegisterCenter() {
                   <strong>{item.customerName || 'No customer linked'}</strong>
                   <small>{item.workName}</small>
                   <small>{item.contractType ? `Contract: ${labelize(item.contractType)}` : 'Contract: not set'}</small>
+
+                  <button type="button" className="work-register-row-action" onClick={() => openEditDrawer(item)}>
+                    {canEditWorkRegister ? 'Edit work' : 'View details'}
+                  </button>
                 </td>
                 <td>
                   <span className={`work-register-pill lifecycle-${normalize(item.lifecycle)}`}>
@@ -402,6 +570,198 @@ export default function WorkRegisterCenter() {
           </tbody>
         </table>
       </div>
+
+      {selectedWorkItem ? (
+        <div className="work-register-drawer-backdrop" role="presentation">
+          <aside className="work-register-drawer" aria-label="Work Register project setup editor">
+            <div className="work-register-drawer-header">
+              <div>
+                <p className="eyebrow">{canEditWorkRegister ? 'Edit Project Setup' : 'View Project Setup'}</p>
+                <h3>{selectedWorkItem.workName}</h3>
+                <p className="muted">
+                  {selectedWorkItem.customerName || 'No customer linked'} · {labelize(selectedWorkItem.sourceTable)}
+                </p>
+              </div>
+              <button type="button" className="secondary-action" onClick={closeEditDrawer}>Close</button>
+            </div>
+
+            <div className={canEditWorkRegister ? 'work-register-edit-notice allowed' : 'work-register-edit-notice'}>
+              {canEditWorkRegister
+                ? 'Project Team Coordinator/Admin edit mode. All saves require a reason and are audited.'
+                : 'View-only mode. Solution Architects, PMs, Engineers, Sales, and SAA cannot edit Work Register setup fields.'}
+            </div>
+
+            {editFoundation.error ? (
+              <div className="work-register-banner error">{editFoundation.error}</div>
+            ) : null}
+
+            {editStatus ? (
+              <div className="work-register-banner">{editStatus}</div>
+            ) : null}
+
+            <form className="work-register-edit-form" onSubmit={saveProjectSetup}>
+              <label>
+                Customer
+                <select
+                  value={editForm.clientId || ''}
+                  onChange={(event) => updateEditField('clientId', event.target.value)}
+                  disabled={!canEditWorkRegister}
+                >
+                  <option value="">Keep current / not linked</option>
+                  {editCustomerOptions.map((customer) => (
+                    <option value={customer.clientId} key={customer.clientId}>
+                      {customer.clientName} {customer.clientCode ? `(${customer.clientCode})` : ''}{customer.isActive === false ? ' - inactive' : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                Contract type
+                <select
+                  value={editForm.contractType || ''}
+                  onChange={(event) => updateEditField('contractType', event.target.value)}
+                  disabled={!canEditWorkRegister}
+                >
+                  <option value="">Keep current / not set</option>
+                  {contractOptions.map((value) => <option value={value} key={value}>{value}</option>)}
+                </select>
+              </label>
+
+              <label>
+                Project Manager
+                <select
+                  value={editForm.projectManagerUserId || ''}
+                  onChange={(event) => updateEditField('projectManagerUserId', event.target.value)}
+                  disabled={!canEditWorkRegister}
+                >
+                  <option value="">Keep current: {selectedWorkItem.projectManager || 'Not assigned'}</option>
+                  {pmOptions.map((user) => (
+                    <option value={user.userId} key={user.userId}>{user.displayName} {user.isActive === false ? '- inactive' : ''}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                Project Coordinator
+                <select
+                  value={editForm.projectCoordinatorUserId || ''}
+                  onChange={(event) => updateEditField('projectCoordinatorUserId', event.target.value)}
+                  disabled={!canEditWorkRegister}
+                >
+                  <option value="">Keep current: {selectedWorkItem.projectCoordinator || 'Not assigned'}</option>
+                  {pcOptions.map((user) => (
+                    <option value={user.userId} key={user.userId}>{user.displayName} {user.isActive === false ? '- inactive' : ''}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                Account Executive / AE
+                <select
+                  value={editForm.accountExecutiveUserId || ''}
+                  onChange={(event) => updateEditField('accountExecutiveUserId', event.target.value)}
+                  disabled={!canEditWorkRegister}
+                >
+                  <option value="">Keep current: {selectedWorkItem.accountExecutive || 'Not assigned'}</option>
+                  {aeOptions.map((user) => (
+                    <option value={user.userId} key={user.userId}>{user.displayName} {user.isActive === false ? '- inactive' : ''}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                Solution Architect / SA
+                <select
+                  value={editForm.solutionArchitectUserId || ''}
+                  onChange={(event) => updateEditField('solutionArchitectUserId', event.target.value)}
+                  disabled={!canEditWorkRegister}
+                >
+                  <option value="">Keep current: {selectedWorkItem.solutionArchitect || 'Not assigned'}</option>
+                  {saOptions.map((user) => (
+                    <option value={user.userId} key={user.userId}>{user.displayName} {user.isActive === false ? '- inactive' : ''}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                Inside Sales / SAA
+                <select
+                  value={editForm.insideSalesUserId || ''}
+                  onChange={(event) => updateEditField('insideSalesUserId', event.target.value)}
+                  disabled={!canEditWorkRegister}
+                >
+                  <option value="">Keep current: {selectedWorkItem.insideSales || 'Not assigned'}</option>
+                  {saaOptions.map((user) => (
+                    <option value={user.userId} key={user.userId}>{user.displayName} {user.isActive === false ? '- inactive' : ''}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                Status
+                <select
+                  value={editForm.status || ''}
+                  onChange={(event) => updateEditField('status', event.target.value)}
+                  disabled={!canEditWorkRegister}
+                >
+                  <option value="">Keep current / not set</option>
+                  {statusEditOptions.map((value) => <option value={value} key={value}>{value}</option>)}
+                </select>
+              </label>
+
+              <label>
+                Project start date
+                <input
+                  type="date"
+                  value={editForm.projectStartDate || ''}
+                  onChange={(event) => updateEditField('projectStartDate', event.target.value)}
+                  disabled={!canEditWorkRegister}
+                />
+              </label>
+
+              <label>
+                Estimated end date
+                <input
+                  type="date"
+                  value={editForm.estimatedEndDate || ''}
+                  onChange={(event) => updateEditField('estimatedEndDate', event.target.value)}
+                  disabled={!canEditWorkRegister}
+                />
+              </label>
+
+              <label>
+                SOW signed date
+                <input
+                  type="date"
+                  value={editForm.sowSignedDate || ''}
+                  onChange={(event) => updateEditField('sowSignedDate', event.target.value)}
+                  disabled={!canEditWorkRegister}
+                />
+              </label>
+
+              <label className="full-width">
+                Edit reason
+                <textarea
+                  rows={3}
+                  value={editForm.editReason || ''}
+                  onChange={(event) => updateEditField('editReason', event.target.value)}
+                  placeholder="Required. Example: Reassigned PM because prior PM left organization."
+                  disabled={!canEditWorkRegister}
+                />
+              </label>
+
+              <div className="work-register-drawer-actions">
+                {canEditWorkRegister ? (
+                  <button type="submit" className="primary-action">Save changes</button>
+                ) : null}
+                <button type="button" className="secondary-action" onClick={closeEditDrawer}>Cancel</button>
+              </div>
+            </form>
+          </aside>
+        </div>
+      ) : null}
+
     </section>
   );
 }

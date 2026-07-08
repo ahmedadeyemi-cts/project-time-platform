@@ -263,3 +263,136 @@ body[data-projectpulse-active-route="work-register"] #work-register .work-regist
 [data-theme="dark"] .work-register-table thead th {
   background: #0f172a;
 }
+
+/* 055C_2_WORK_REGISTER_EDIT_DRAWER_START */
+.work-register-row-action {
+  margin-top: 0.45rem;
+  border: 1px solid rgba(37, 99, 235, 0.35);
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-weight: 800;
+  font-size: 0.75rem;
+  padding: 0.32rem 0.6rem;
+  cursor: pointer;
+}
+
+.work-register-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  justify-content: flex-end;
+  background: rgba(15, 23, 42, 0.38);
+  backdrop-filter: blur(3px);
+}
+
+.work-register-drawer {
+  width: min(760px, 96vw);
+  height: 100vh;
+  overflow: auto;
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: -28px 0 70px rgba(15, 23, 42, 0.24);
+  padding: 1rem;
+  display: grid;
+  align-content: start;
+  gap: 0.85rem;
+}
+
+.work-register-drawer-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.24);
+  padding-bottom: 0.75rem;
+}
+
+.work-register-drawer-header h3 {
+  margin: 0;
+}
+
+.work-register-edit-notice {
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 14px;
+  padding: 0.75rem;
+  background: #f8fafc;
+  color: #475569;
+  font-weight: 700;
+}
+
+.work-register-edit-notice.allowed {
+  background: #ecfdf5;
+  color: #166534;
+  border-color: rgba(34, 197, 94, 0.32);
+}
+
+.work-register-edit-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.work-register-edit-form label {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 800;
+  color: #334155;
+  font-size: 0.84rem;
+}
+
+.work-register-edit-form input,
+.work-register-edit-form select,
+.work-register-edit-form textarea {
+  width: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  border-radius: 12px;
+  padding: 0.6rem 0.7rem;
+  background: #ffffff;
+  color: #0f172a;
+}
+
+.work-register-edit-form input:disabled,
+.work-register-edit-form select:disabled,
+.work-register-edit-form textarea:disabled {
+  background: #f1f5f9;
+  color: #64748b;
+  cursor: not-allowed;
+}
+
+.work-register-edit-form .full-width,
+.work-register-drawer-actions {
+  grid-column: 1 / -1;
+}
+
+.work-register-drawer-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.65rem;
+  padding-top: 0.5rem;
+}
+
+@media (max-width: 760px) {
+  .work-register-edit-form {
+    grid-template-columns: 1fr;
+  }
+}
+
+[data-theme="dark"] .work-register-drawer {
+  background: #0f172a;
+  color: #e2e8f0;
+}
+
+[data-theme="dark"] .work-register-edit-notice {
+  background: rgba(30, 41, 59, 0.78);
+  color: #cbd5e1;
+}
+
+[data-theme="dark"] .work-register-edit-form input,
+[data-theme="dark"] .work-register-edit-form select,
+[data-theme="dark"] .work-register-edit-form textarea {
+  background: rgba(15, 23, 42, 0.92);
+  color: #e2e8f0;
+  border-color: rgba(148, 163, 184, 0.3);
+}
+/* 055C_2_WORK_REGISTER_EDIT_DRAWER_END */
