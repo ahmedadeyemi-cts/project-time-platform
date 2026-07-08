@@ -5680,6 +5680,364 @@ app.MapGet("/api/project-intake/summary", async () =>
 
 
 
+
+/* 055C_8_CHANGE_ORDER_COSTING_API_START */
+app.MapPost("/api/work-register/projects/change-orders/save", async (HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token.", guard = "055C8_change_order_session_required" }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    using var document = await JsonDocument.ParseAsync(httpContext.Request.Body);
+    var root = document.RootElement;
+
+    string ReadString(string name, string fallback = "")
+    {
+        return root.TryGetProperty(name, out var value) && value.ValueKind != JsonValueKind.Null
+            ? (value.GetString() ?? fallback).Trim()
+            : fallback;
+    }
+
+    Guid? ReadGuid(string name)
+    {
+        if (!root.TryGetProperty(name, out var value) || value.ValueKind == JsonValueKind.Null)
+        {
+            return null;
+        }
+
+        if (value.ValueKind == JsonValueKind.String && Guid.TryParse(value.GetString(), out var parsed))
+        {
+            return parsed;
+        }
+
+        return null;
+    }
+
+    DateTime ReadDate(string name)
+    {
+        if (!root.TryGetProperty(name, out var value) || value.ValueKind == JsonValueKind.Null)
+        {
+            return DateTime.UtcNow.Date;
+        }
+
+        if (value.ValueKind == JsonValueKind.String && DateTime.TryParse(value.GetString(), out var parsed))
+        {
+            return DateTime.SpecifyKind(parsed.Date, DateTimeKind.Utc);
+        }
+
+        return DateTime.UtcNow.Date;
+    }
+
+    static decimal ReadDecimalFrom(JsonElement parent, string name)
+    {
+        if (!parent.TryGetProperty(name, out var value) || value.ValueKind == JsonValueKind.Null)
+        {
+            return 0m;
+        }
+
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetDecimal(out var parsedNumber))
+        {
+            return parsedNumber;
+        }
+
+        if (value.ValueKind == JsonValueKind.String && decimal.TryParse(value.GetString(), out var parsedString))
+        {
+            return parsedString;
+        }
+
+        return 0m;
+    }
+
+    static bool ReadBoolFrom(JsonElement parent, string name, bool fallback)
+    {
+        if (!parent.TryGetProperty(name, out var value) || value.ValueKind == JsonValueKind.Null)
+        {
+            return fallback;
+        }
+
+        if (value.ValueKind == JsonValueKind.True) return true;
+        if (value.ValueKind == JsonValueKind.False) return false;
+
+        if (value.ValueKind == JsonValueKind.String && bool.TryParse(value.GetString(), out var parsed))
+        {
+            return parsed;
+        }
+
+        return fallback;
+    }
+
+    static string ReadStringFrom(JsonElement parent, string name, string fallback = "")
+    {
+        return parent.TryGetProperty(name, out var value) && value.ValueKind != JsonValueKind.Null
+            ? (value.GetString() ?? fallback).Trim()
+            : fallback;
+    }
+
+    var projectId = ReadGuid("projectId");
+    var changeOrderNumber = ReadString("changeOrderNumber");
+    var title = ReadString("title", "Change Order");
+    var statusValue = ReadString("status", "approved");
+    var changeOrderDate = ReadDate("changeOrderDate");
+    var approvalReference = ReadString("approvalReference");
+    var reason = ReadString("reason");
+
+    if (projectId is null)
+    {
+        return Results.BadRequest(new { status = "validation_failed", message = "Project ID is required." });
+    }
+
+    if (string.IsNullOrWhiteSpace(title))
+    {
+        return Results.BadRequest(new { status = "validation_failed", message = "Change order title is required." });
+    }
+
+    if (string.IsNullOrWhiteSpace(reason))
+    {
+        return Results.BadRequest(new { status = "validation_failed", message = "Reason is required for change order audit history." });
+    }
+
+    if (!root.TryGetProperty("lines", out var linesElement) || linesElement.ValueKind != JsonValueKind.Array)
+    {
+        return Results.BadRequest(new { status = "validation_failed", message = "Change order cost lines are required." });
+    }
+
+    var lines = new List<(string LineType, string Description, decimal Quantity, decimal UnitRate, decimal Amount, bool Billable, bool UtilizationEligible)>();
+
+    foreach (var line in linesElement.EnumerateArray())
+    {
+        var lineType = ReadStringFrom(line, "lineType", "other");
+        var description = ReadStringFrom(line, "description", lineType);
+        var quantity = ReadDecimalFrom(line, "quantity");
+        var unitRate = ReadDecimalFrom(line, "unitRate");
+        var amount = ReadDecimalFrom(line, "amount");
+
+        if (amount <= 0m && quantity > 0m && unitRate > 0m)
+        {
+            amount = Math.Round(quantity * unitRate, 2);
+        }
+
+        if (amount <= 0m)
+        {
+            continue;
+        }
+
+        lines.Add((
+            lineType,
+            description,
+            quantity,
+            unitRate,
+            amount,
+            ReadBoolFrom(line, "billable", true),
+            ReadBoolFrom(line, "utilizationEligible", true)
+        ));
+    }
+
+    if (lines.Count == 0)
+    {
+        return Results.BadRequest(new { status = "validation_failed", message = "At least one change order cost line must have an amount greater than zero." });
+    }
+
+    if (lines.Count > 50)
+    {
+        return Results.BadRequest(new { status = "maximum_lines_exceeded", message = "A change order can contain a maximum of 50 cost lines." });
+    }
+
+    var totalAmount = lines.Sum(line => line.Amount);
+
+    var dbConfig = DatabaseConfig.FromEnvironment();
+
+    await using var connection = new NpgsqlConnection(dbConfig.ConnectionString);
+    await connection.OpenAsync();
+
+    var canEditWorkRegister = false;
+    await using (var accessCommand = new NpgsqlCommand("""
+        SELECT EXISTS (
+            SELECT 1
+            FROM app_user_role_assignments ura
+            JOIN app_roles r
+              ON r.app_role_id = ura.app_role_id
+            WHERE ura.user_id = @user_id
+              AND ura.is_active = TRUE
+              AND r.is_active = TRUE
+              AND r.role_code IN (
+                  'SUPER_ADMINISTRATOR',
+                  'ADMINISTRATOR',
+                  'PROJECT_TEAM_COORDINATOR'
+              )
+        );
+        """, connection))
+    {
+        accessCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+        canEditWorkRegister = Convert.ToBoolean(await accessCommand.ExecuteScalarAsync() ?? false);
+    }
+
+    if (!canEditWorkRegister)
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Only Project Team Coordinators, Administrators, and Super Administrators can add change orders. Solution Architects are view-only."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    await using var transaction = await connection.BeginTransactionAsync();
+
+    var changeOrderId = Guid.NewGuid();
+
+    var newSnapshot = JsonSerializer.Serialize(new
+    {
+        projectId = projectId.Value,
+        changeOrderNumber,
+        title,
+        status = statusValue,
+        changeOrderDate,
+        approvalReference,
+        reason,
+        totalAmount,
+        lines = lines.Select(line => new
+        {
+            line.LineType,
+            line.Description,
+            line.Quantity,
+            line.UnitRate,
+            line.Amount,
+            line.Billable,
+            line.UtilizationEligible
+        }).ToList()
+    });
+
+    await using (var orderCommand = new NpgsqlCommand("""
+        INSERT INTO work_register_change_orders (
+            work_register_change_order_id,
+            project_id,
+            change_order_number,
+            title,
+            status,
+            change_order_date,
+            approval_reference,
+            reason,
+            total_amount,
+            created_by_user_id
+        )
+        VALUES (
+            @change_order_id,
+            @project_id,
+            @change_order_number,
+            @title,
+            @status,
+            @change_order_date,
+            @approval_reference,
+            @reason,
+            @total_amount,
+            @created_by_user_id
+        );
+        """, connection, transaction))
+    {
+        orderCommand.Parameters.AddWithValue("change_order_id", changeOrderId);
+        orderCommand.Parameters.AddWithValue("project_id", projectId.Value);
+        orderCommand.Parameters.AddWithValue("change_order_number", changeOrderNumber);
+        orderCommand.Parameters.AddWithValue("title", title);
+        orderCommand.Parameters.AddWithValue("status", statusValue);
+        orderCommand.Parameters.Add("change_order_date", NpgsqlTypes.NpgsqlDbType.Date).Value = changeOrderDate;
+        orderCommand.Parameters.AddWithValue("approval_reference", approvalReference);
+        orderCommand.Parameters.AddWithValue("reason", reason);
+        orderCommand.Parameters.AddWithValue("total_amount", totalAmount);
+        orderCommand.Parameters.AddWithValue("created_by_user_id", sessionUserId.Value);
+        await orderCommand.ExecuteNonQueryAsync();
+    }
+
+    foreach (var line in lines)
+    {
+        await using var lineCommand = new NpgsqlCommand("""
+            INSERT INTO work_register_change_order_lines (
+                work_register_change_order_line_id,
+                work_register_change_order_id,
+                project_id,
+                line_type,
+                description,
+                quantity,
+                unit_rate,
+                amount,
+                billable,
+                utilization_eligible
+            )
+            VALUES (
+                @line_id,
+                @change_order_id,
+                @project_id,
+                @line_type,
+                @description,
+                @quantity,
+                @unit_rate,
+                @amount,
+                @billable,
+                @utilization_eligible
+            );
+            """, connection, transaction);
+
+        lineCommand.Parameters.AddWithValue("line_id", Guid.NewGuid());
+        lineCommand.Parameters.AddWithValue("change_order_id", changeOrderId);
+        lineCommand.Parameters.AddWithValue("project_id", projectId.Value);
+        lineCommand.Parameters.AddWithValue("line_type", line.LineType);
+        lineCommand.Parameters.AddWithValue("description", line.Description);
+        lineCommand.Parameters.AddWithValue("quantity", line.Quantity);
+        lineCommand.Parameters.AddWithValue("unit_rate", line.UnitRate);
+        lineCommand.Parameters.AddWithValue("amount", line.Amount);
+        lineCommand.Parameters.AddWithValue("billable", line.Billable);
+        lineCommand.Parameters.AddWithValue("utilization_eligible", line.UtilizationEligible);
+        await lineCommand.ExecuteNonQueryAsync();
+    }
+
+    await using (var auditCommand = new NpgsqlCommand("""
+        INSERT INTO work_register_change_history (
+            work_register_change_history_id,
+            source_table,
+            work_id,
+            action,
+            change_summary,
+            changed_fields_csv,
+            changed_by_user_id,
+            old_value_json,
+            new_value_json
+        )
+        VALUES (
+            @history_id,
+            'projects',
+            @work_id,
+            'change_order_added',
+            @change_summary,
+            @changed_fields_csv,
+            @changed_by_user_id,
+            '{}'::jsonb,
+            CAST(@new_value_json AS jsonb)
+        );
+        """, connection, transaction))
+    {
+        auditCommand.Parameters.AddWithValue("history_id", Guid.NewGuid());
+        auditCommand.Parameters.AddWithValue("work_id", projectId.Value);
+        auditCommand.Parameters.AddWithValue("change_summary", $"{title} - {totalAmount:C}");
+        auditCommand.Parameters.AddWithValue("changed_fields_csv", "Change Order, PM Cost, Engineering Cost, Travel, Materials, Total Amount");
+        auditCommand.Parameters.AddWithValue("changed_by_user_id", sessionUserId.Value);
+        auditCommand.Parameters.AddWithValue("new_value_json", newSnapshot);
+        await auditCommand.ExecuteNonQueryAsync();
+    }
+
+    await transaction.CommitAsync();
+
+    return Results.Ok(new
+    {
+        status = "change_order_saved",
+        projectId = projectId.Value,
+        changeOrderId,
+        totalAmount,
+        message = $"Change order saved for {totalAmount:C}."
+    });
+});
+/* 055C_8_CHANGE_ORDER_COSTING_API_END */
+
+
 /* 055C_7_MULTI_ENGINEER_ROSTER_API_START */
 app.MapPost("/api/work-register/tasks/assignments/roster/save", async (HttpContext httpContext) =>
 {
@@ -6844,6 +7202,8 @@ app.MapGet("/api/work-register/projects/{projectId:guid}/details", async (Guid p
     var timeRows = await LoadRowsByProjectAsync("time_entries", 100000, "project_id", "work_item_id", "parent_project_id");
     var changeRows = await LoadRowsByProjectAsync("work_register_change_history", 500, "work_id");
     var taskAssignmentRows = await LoadRowsByProjectAsync("work_register_task_assignment_history", 5000, "project_id");
+    var changeOrderRows = await LoadRowsByProjectAsync("work_register_change_orders", 1000, "project_id");
+    var changeOrderLineRows = await LoadRowsByProjectAsync("work_register_change_order_lines", 5000, "project_id");
 
     /* 055C_7_DETAILS_MULTI_ENGINEER_ROSTER_START */
     var activeAssignmentsByTask = new Dictionary<string, List<Dictionary<string, string>>>(StringComparer.OrdinalIgnoreCase);
@@ -7010,6 +7370,51 @@ app.MapGet("/api/work-register/projects/{projectId:guid}/details", async (Guid p
         };
     }).ToList();
 
+    /* 055C_8_DETAILS_CHANGE_ORDER_COSTING_START */
+    var changeOrderLinesByOrder = changeOrderLineRows
+        .GroupBy(line => Pick(line, "work_register_change_order_id"))
+        .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.OrdinalIgnoreCase);
+
+    var changeOrders = changeOrderRows.Select(order =>
+    {
+        var changeOrderId = Pick(order, "work_register_change_order_id");
+        var orderLines = changeOrderLinesByOrder.TryGetValue(changeOrderId, out var matchedLines)
+            ? matchedLines
+            : new List<Dictionary<string, string>>();
+
+        var lines = orderLines.Select(line => new
+        {
+            lineId = Pick(line, "work_register_change_order_line_id"),
+            lineType = Pick(line, "line_type"),
+            description = Pick(line, "description"),
+            quantity = PickDecimal(line, "quantity"),
+            unitRate = PickDecimal(line, "unit_rate"),
+            amount = PickDecimal(line, "amount"),
+            billable = Pick(line, "billable"),
+            utilizationEligible = Pick(line, "utilization_eligible")
+        }).ToList();
+
+        var lineTotal = lines.Sum(line => line.amount);
+        var orderTotal = lineTotal > 0 ? lineTotal : PickDecimal(order, "total_amount");
+
+        return new
+        {
+            changeOrderId,
+            changeOrderNumber = Pick(order, "change_order_number"),
+            title = Pick(order, "title"),
+            status = Pick(order, "status"),
+            changeOrderDate = Pick(order, "change_order_date"),
+            approvalReference = Pick(order, "approval_reference"),
+            reason = Pick(order, "reason"),
+            totalAmount = orderTotal,
+            createdAt = Pick(order, "created_at"),
+            lines
+        };
+    }).OrderByDescending(order => order.changeOrderDate).ToList();
+
+    var changeOrderTotal = changeOrders.Sum(order => order.totalAmount);
+    /* 055C_8_DETAILS_CHANGE_ORDER_COSTING_END */
+
     var totalHours = timeByUser.Values.Sum();
 
     return Results.Ok(new
@@ -7032,6 +7437,13 @@ app.MapGet("/api/work-register/projects/{projectId:guid}/details", async (Guid p
             .OrderByDescending(pair => pair.Value)
             .Select(pair => new { userName = pair.Key, hours = pair.Value })
             .ToList(),
+        changeOrders,
+        costingSummary = new
+        {
+            changeOrderCount = changeOrders.Count,
+            changeOrderTotal,
+            totalKnownCost = PickDecimal(project, "total_cost", "budget_amount", "approved_budget", "project_budget") + changeOrderTotal
+        },
         changeHistory
     });
 });

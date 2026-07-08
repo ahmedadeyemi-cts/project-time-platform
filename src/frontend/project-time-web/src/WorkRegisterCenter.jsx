@@ -145,6 +145,26 @@ export default function WorkRegisterCenter() {
 
   const [multiEngineerTasks, setMultiEngineerTasks] = useState({});
   const [taskRosterForms, setTaskRosterForms] = useState({});
+
+  const [changeOrderForm, setChangeOrderForm] = useState({
+    enabled: false,
+    changeOrderNumber: '',
+    title: '',
+    changeOrderDate: new Date().toISOString().slice(0, 10),
+    approvalReference: '',
+    reason: '',
+    lines: [
+      { lineType: 'pm_normal', description: 'PM normal hours', quantity: 0, unitRate: 190, amount: '', billable: true, utilizationEligible: true },
+      { lineType: 'pm_afterhours', description: 'PM after-hours', quantity: 0, unitRate: 285, amount: '', billable: true, utilizationEligible: true },
+      { lineType: 'engineering_normal', description: 'Engineering normal hours', quantity: 0, unitRate: 225, amount: '', billable: true, utilizationEligible: true },
+      { lineType: 'engineering_afterhours', description: 'Engineering after-hours', quantity: 0, unitRate: 337.5, amount: '', billable: true, utilizationEligible: true },
+      { lineType: 'travel', description: 'Travel', quantity: 0, unitRate: 95, amount: '', billable: true, utilizationEligible: true },
+      { lineType: 'materials_other', description: 'Materials / other', quantity: 1, unitRate: 0, amount: '', billable: true, utilizationEligible: true }
+    ]
+  });
+  const [changeOrderStatus, setChangeOrderStatus] = useState('');
+  // 055C_8_CHANGE_ORDER_COSTING
+
   // 055C_7_MULTI_ENGINEER_ROSTER
 
   // 055C_6_TASK_ENGINEER_ASSIGNMENT
@@ -334,6 +354,7 @@ export default function WorkRegisterCenter() {
     setTaskRosterForms({});
     setMultiEngineerTasks({});
     setTaskAssignmentStatus('');
+    setChangeOrderStatus('');
     loadProjectDetails(item);
     setEditForm({
       workId: item.workId,
@@ -722,6 +743,119 @@ export default function WorkRegisterCenter() {
       }));
     } catch (error) {
       setTaskAssignmentStatus(error instanceof Error ? error.message : 'Unable to save multi-engineer roster.');
+    }
+  }
+
+
+
+  function resetChangeOrderForm() {
+    setChangeOrderForm({
+      enabled: false,
+      changeOrderNumber: '',
+      title: '',
+      changeOrderDate: new Date().toISOString().slice(0, 10),
+      approvalReference: '',
+      reason: '',
+      lines: [
+        { lineType: 'pm_normal', description: 'PM normal hours', quantity: 0, unitRate: 190, amount: '', billable: true, utilizationEligible: true },
+        { lineType: 'pm_afterhours', description: 'PM after-hours', quantity: 0, unitRate: 285, amount: '', billable: true, utilizationEligible: true },
+        { lineType: 'engineering_normal', description: 'Engineering normal hours', quantity: 0, unitRate: 225, amount: '', billable: true, utilizationEligible: true },
+        { lineType: 'engineering_afterhours', description: 'Engineering after-hours', quantity: 0, unitRate: 337.5, amount: '', billable: true, utilizationEligible: true },
+        { lineType: 'travel', description: 'Travel', quantity: 0, unitRate: 95, amount: '', billable: true, utilizationEligible: true },
+        { lineType: 'materials_other', description: 'Materials / other', quantity: 1, unitRate: 0, amount: '', billable: true, utilizationEligible: true }
+      ]
+    });
+  }
+
+  function changeOrderLineAmount(line) {
+    const manualAmount = Number(line.amount || 0);
+    if (manualAmount > 0) return manualAmount;
+
+    return Number(line.quantity || 0) * Number(line.unitRate || 0);
+  }
+
+  function changeOrderTotal() {
+    return changeOrderForm.lines.reduce((sum, line) => sum + changeOrderLineAmount(line), 0);
+  }
+
+  function updateChangeOrderField(field, value) {
+    setChangeOrderForm((current) => ({
+      ...current,
+      [field]: value
+    }));
+  }
+
+  function updateChangeOrderLine(index, field, value) {
+    setChangeOrderForm((current) => {
+      const lines = [...current.lines];
+      lines[index] = {
+        ...lines[index],
+        [field]: value
+      };
+
+      return {
+        ...current,
+        lines
+      };
+    });
+  }
+
+  async function saveChangeOrder() {
+    if (!selectedWorkItem?.workId) {
+      setChangeOrderStatus('No project is selected.');
+      return;
+    }
+
+    if (!canEditWorkRegister) {
+      setChangeOrderStatus('This tab is view-only for your role. Only PTC/Admin can save change orders.');
+      return;
+    }
+
+    if (!changeOrderForm.title.trim()) {
+      setChangeOrderStatus('Change order title is required.');
+      return;
+    }
+
+    if (!changeOrderForm.reason.trim()) {
+      setChangeOrderStatus('Reason is required for change order audit history.');
+      return;
+    }
+
+    const lines = changeOrderForm.lines
+      .map((line) => ({
+        ...line,
+        quantity: Number(line.quantity || 0),
+        unitRate: Number(line.unitRate || 0),
+        amount: Number(line.amount || 0) > 0 ? Number(line.amount || 0) : changeOrderLineAmount(line)
+      }))
+      .filter((line) => line.amount > 0);
+
+    if (lines.length === 0) {
+      setChangeOrderStatus('Enter at least one PM, engineering, travel, material, or other amount.');
+      return;
+    }
+
+    const payload = {
+      projectId: selectedWorkItem.workId,
+      changeOrderNumber: changeOrderForm.changeOrderNumber,
+      title: changeOrderForm.title,
+      status: 'approved',
+      changeOrderDate: changeOrderForm.changeOrderDate || new Date().toISOString().slice(0, 10),
+      approvalReference: changeOrderForm.approvalReference,
+      reason: changeOrderForm.reason,
+      lines
+    };
+
+    setChangeOrderStatus(`Saving change order for ${money(changeOrderTotal())}...`);
+
+    try {
+      const result = await postJson('/api/work-register/projects/change-orders/save', payload);
+      setChangeOrderStatus(result.message || 'Change order saved.');
+      await loadProjectDetails(selectedWorkItem);
+      await load();
+      resetChangeOrderForm();
+    } catch (error) {
+      setChangeOrderStatus(error instanceof Error ? error.message : 'Unable to save change order.');
     }
   }
 
@@ -1495,13 +1629,157 @@ export default function WorkRegisterCenter() {
             {activeDrawerTab === 'costing' ? (
               <div className="work-register-detail-panel">
                 <h4>Costing / Change Orders</h4>
-                <p className="muted">This tab prepares the change-order model. The next costing patch will add approved budget revisions without overwriting the original baseline.</p>
+                <p className="muted">
+                  Change orders are added as revisions. The original project baseline remains preserved, and each change order writes to the audit trail.
+                </p>
+
+                {changeOrderStatus ? (
+                  <div className="work-register-banner">{changeOrderStatus}</div>
+                ) : null}
+
                 <div className="work-register-detail-summary">
                   <span>Total hours used: <strong>{hours(projectDetails.data?.summary?.totalHours ?? selectedWorkItem.usedHours)}</strong></span>
                   <span>Current total cost: <strong>{money(selectedWorkItem.totalCost)}</strong></span>
-                  <span>Cost used: <strong>{money(selectedWorkItem.costUsed)}</strong></span>
-                  <span>Remaining: <strong>{money(selectedWorkItem.remainingCost)}</strong></span>
+                  <span>Approved change orders: <strong>{money(projectDetails.data?.costingSummary?.changeOrderTotal ?? 0)}</strong></span>
+                  <span>Known total with change orders: <strong>{money((Number(selectedWorkItem.totalCost || 0)) + Number(projectDetails.data?.costingSummary?.changeOrderTotal ?? 0))}</strong></span>
                 </div>
+
+                <label className="checkbox-line work-register-change-order-toggle">
+                  <input
+                    type="checkbox"
+                    checked={changeOrderForm.enabled}
+                    onChange={(event) => updateChangeOrderField('enabled', event.target.checked)}
+                    disabled={!canEditWorkRegister}
+                  />
+                  This project has a change order
+                </label>
+
+                {changeOrderForm.enabled ? (
+                  <div className="work-register-change-order-form">
+                    <div className="work-register-edit-grid">
+                      <label>
+                        Change order number
+                        <input
+                          type="text"
+                          value={changeOrderForm.changeOrderNumber}
+                          onChange={(event) => updateChangeOrderField('changeOrderNumber', event.target.value)}
+                          placeholder="CO-001"
+                        />
+                      </label>
+
+                      <label>
+                        Change order title
+                        <input
+                          type="text"
+                          value={changeOrderForm.title}
+                          onChange={(event) => updateChangeOrderField('title', event.target.value)}
+                          placeholder="Additional engineering hours"
+                        />
+                      </label>
+
+                      <label>
+                        Change order date
+                        <input
+                          type="date"
+                          value={changeOrderForm.changeOrderDate}
+                          onChange={(event) => updateChangeOrderField('changeOrderDate', event.target.value)}
+                        />
+                      </label>
+
+                      <label>
+                        Approval/reference
+                        <input
+                          type="text"
+                          value={changeOrderForm.approvalReference}
+                          onChange={(event) => updateChangeOrderField('approvalReference', event.target.value)}
+                          placeholder="Customer email, PO, signed CO, ticket, etc."
+                        />
+                      </label>
+                    </div>
+
+                    <div className="work-register-change-order-lines">
+                      {changeOrderForm.lines.map((line, index) => (
+                        <article key={`${line.lineType}-${index}`} className="work-register-change-order-line">
+                          <strong>{line.description}</strong>
+
+                          <label>
+                            Hours / Qty
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.25"
+                              value={line.quantity}
+                              onChange={(event) => updateChangeOrderLine(index, 'quantity', event.target.value)}
+                            />
+                          </label>
+
+                          <label>
+                            Rate
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={line.unitRate}
+                              onChange={(event) => updateChangeOrderLine(index, 'unitRate', event.target.value)}
+                            />
+                          </label>
+
+                          <label>
+                            Manual amount
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={line.amount}
+                              onChange={(event) => updateChangeOrderLine(index, 'amount', event.target.value)}
+                              placeholder="Optional"
+                            />
+                          </label>
+
+                          <span>{money(changeOrderLineAmount(line))}</span>
+                        </article>
+                      ))}
+                    </div>
+
+                    <div className="work-register-change-order-total">
+                      <span>Change order total</span>
+                      <strong>{money(changeOrderTotal())}</strong>
+                    </div>
+
+                    <label className="full-width">
+                      Reason / audit note
+                      <textarea
+                        rows={3}
+                        value={changeOrderForm.reason}
+                        onChange={(event) => updateChangeOrderField('reason', event.target.value)}
+                        placeholder="Required. Example: Customer approved additional engineering and PM hours for scope expansion."
+                      />
+                    </label>
+
+                    <div className="work-register-task-assignment-actions">
+                      <button type="button" className="primary-action" onClick={saveChangeOrder} disabled={!canEditWorkRegister}>
+                        Save change order
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+
+                <h5>Existing change orders</h5>
+                <div className="work-register-detail-grid">
+                  {(projectDetails.data?.changeOrders ?? []).map((order) => (
+                    <article key={order.changeOrderId || order.title}>
+                      <strong>{order.changeOrderNumber ? `${order.changeOrderNumber} - ${order.title}` : order.title}</strong>
+                      <small>Status: {labelize(order.status || 'approved')}</small>
+                      <small>Date: {order.changeOrderDate || 'not set'}</small>
+                      <small>Total: {money(order.totalAmount)}</small>
+                      <small>Reference: {order.approvalReference || 'not set'}</small>
+                    </article>
+                  ))}
+                  {projectDetails.data && (projectDetails.data.changeOrders ?? []).length === 0 ? (
+                    <p className="muted">No change orders have been entered for this work item yet.</p>
+                  ) : null}
+                </div>
+
                 <h5>Time by person</h5>
                 <div className="work-register-detail-grid">
                   {(projectDetails.data?.timeSummary ?? []).map((item) => (

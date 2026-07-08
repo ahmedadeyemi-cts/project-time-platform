@@ -656,3 +656,109 @@ body[data-projectpulse-active-route="work-register"] #work-register .work-regist
   color: #bbf7d0;
 }
 /* 055C_7_MULTI_ENGINEER_ROSTER_END */
+
+/* 055C_8_CHANGE_ORDER_COSTING_START */
+.work-register-change-order-toggle {
+  border: 1px solid rgba(37, 99, 235, 0.22);
+  border-radius: 14px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-weight: 900;
+  padding: 0.75rem;
+}
+
+.work-register-change-order-form {
+  display: grid;
+  gap: 0.85rem;
+  border: 1px solid rgba(37, 99, 235, 0.22);
+  border-radius: 18px;
+  background: #f8fafc;
+  padding: 0.9rem;
+}
+
+.work-register-change-order-lines {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.work-register-change-order-line {
+  display: grid;
+  grid-template-columns: 1.25fr 0.55fr 0.55fr 0.65fr 0.55fr;
+  gap: 0.55rem;
+  align-items: end;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 14px;
+  background: #ffffff;
+  padding: 0.65rem;
+}
+
+.work-register-change-order-line label {
+  display: grid;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: #334155;
+}
+
+.work-register-change-order-line input,
+.work-register-change-order-form textarea,
+.work-register-change-order-form input {
+  width: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  border-radius: 12px;
+  padding: 0.55rem 0.65rem;
+  background: #ffffff;
+  color: #0f172a;
+}
+
+.work-register-change-order-line span {
+  border-radius: 999px;
+  background: #ecfdf5;
+  color: #166534;
+  font-weight: 900;
+  padding: 0.45rem 0.65rem;
+  text-align: center;
+}
+
+.work-register-change-order-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-radius: 16px;
+  background: #0f5f9f;
+  color: #ffffff;
+  padding: 0.85rem;
+  font-weight: 900;
+}
+
+@media (max-width: 960px) {
+  .work-register-change-order-line {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .work-register-change-order-line {
+    grid-template-columns: 1fr;
+  }
+}
+
+[data-theme="dark"] .work-register-change-order-toggle,
+[data-theme="dark"] .work-register-change-order-form {
+  background: rgba(30, 64, 175, 0.18);
+  border-color: rgba(96, 165, 250, 0.25);
+}
+
+[data-theme="dark"] .work-register-change-order-line {
+  background: rgba(15, 23, 42, 0.92);
+  border-color: rgba(148, 163, 184, 0.22);
+}
+
+[data-theme="dark"] .work-register-change-order-line input,
+[data-theme="dark"] .work-register-change-order-form textarea,
+[data-theme="dark"] .work-register-change-order-form input {
+  background: rgba(15, 23, 42, 0.92);
+  color: #e2e8f0;
+  border-color: rgba(148, 163, 184, 0.3);
+}
+/* 055C_8_CHANGE_ORDER_COSTING_END */
