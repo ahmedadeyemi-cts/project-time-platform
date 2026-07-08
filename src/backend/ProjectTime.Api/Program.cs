@@ -5681,6 +5681,411 @@ app.MapGet("/api/project-intake/summary", async () =>
 
 
 
+
+/* 055C_9_DOCUMENT_MANAGEMENT_API_START */
+app.MapPost("/api/work-register/projects/documents/save", async (HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token.", guard = "055C9_document_save_session_required" }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    using var document = await JsonDocument.ParseAsync(httpContext.Request.Body);
+    var root = document.RootElement;
+
+    string ReadString(string name, string fallback = "")
+    {
+        return root.TryGetProperty(name, out var value) && value.ValueKind != JsonValueKind.Null
+            ? (value.GetString() ?? fallback).Trim()
+            : fallback;
+    }
+
+    Guid? ReadGuid(string name)
+    {
+        if (!root.TryGetProperty(name, out var value) || value.ValueKind == JsonValueKind.Null)
+        {
+            return null;
+        }
+
+        if (value.ValueKind == JsonValueKind.String && Guid.TryParse(value.GetString(), out var parsed))
+        {
+            return parsed;
+        }
+
+        return null;
+    }
+
+    DateTime? ReadNullableDate(string name)
+    {
+        if (!root.TryGetProperty(name, out var value) || value.ValueKind == JsonValueKind.Null)
+        {
+            return null;
+        }
+
+        if (value.ValueKind == JsonValueKind.String && DateTime.TryParse(value.GetString(), out var parsed))
+        {
+            return DateTime.SpecifyKind(parsed.Date, DateTimeKind.Utc);
+        }
+
+        return null;
+    }
+
+    var projectId = ReadGuid("projectId");
+    var documentName = ReadString("documentName");
+    var documentType = ReadString("documentType", "Other");
+    var documentReference = ReadString("documentReference");
+    var versionLabel = ReadString("versionLabel");
+    var visibility = ReadString("visibility", "project_team");
+    var relatedChangeOrderId = ReadGuid("relatedChangeOrderId");
+    var effectiveDate = ReadNullableDate("effectiveDate");
+    var notes = ReadString("notes");
+    var reason = ReadString("reason");
+
+    if (projectId is null)
+    {
+        return Results.BadRequest(new { status = "validation_failed", message = "Project ID is required." });
+    }
+
+    if (string.IsNullOrWhiteSpace(documentName))
+    {
+        return Results.BadRequest(new { status = "validation_failed", message = "Document name is required." });
+    }
+
+    if (string.IsNullOrWhiteSpace(documentType))
+    {
+        return Results.BadRequest(new { status = "validation_failed", message = "Document type is required." });
+    }
+
+    if (string.IsNullOrWhiteSpace(reason))
+    {
+        return Results.BadRequest(new { status = "validation_failed", message = "Reason is required for document audit history." });
+    }
+
+    var dbConfig = DatabaseConfig.FromEnvironment();
+
+    await using var connection = new NpgsqlConnection(dbConfig.ConnectionString);
+    await connection.OpenAsync();
+
+    var canEditWorkRegister = false;
+    await using (var accessCommand = new NpgsqlCommand("""
+        SELECT EXISTS (
+            SELECT 1
+            FROM app_user_role_assignments ura
+            JOIN app_roles r
+              ON r.app_role_id = ura.app_role_id
+            WHERE ura.user_id = @user_id
+              AND ura.is_active = TRUE
+              AND r.is_active = TRUE
+              AND r.role_code IN (
+                  'SUPER_ADMINISTRATOR',
+                  'ADMINISTRATOR',
+                  'PROJECT_TEAM_COORDINATOR'
+              )
+        );
+        """, connection))
+    {
+        accessCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+        canEditWorkRegister = Convert.ToBoolean(await accessCommand.ExecuteScalarAsync() ?? false);
+    }
+
+    if (!canEditWorkRegister)
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Only Project Team Coordinators, Administrators, and Super Administrators can manage Work Register documents. Solution Architects are view-only."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    await using var transaction = await connection.BeginTransactionAsync();
+
+    var workRegisterDocumentId = Guid.NewGuid();
+
+    var newSnapshot = JsonSerializer.Serialize(new
+    {
+        projectId = projectId.Value,
+        workRegisterDocumentId,
+        documentName,
+        documentType,
+        documentReference,
+        versionLabel,
+        visibility,
+        relatedChangeOrderId,
+        effectiveDate,
+        notes,
+        reason
+    });
+
+    await using (var insertCommand = new NpgsqlCommand("""
+        INSERT INTO work_register_documents (
+            work_register_document_id,
+            project_id,
+            document_name,
+            document_type,
+            document_reference,
+            version_label,
+            status,
+            visibility,
+            related_change_order_id,
+            effective_date,
+            notes,
+            created_by_user_id
+        )
+        VALUES (
+            @document_id,
+            @project_id,
+            @document_name,
+            @document_type,
+            @document_reference,
+            @version_label,
+            'active',
+            @visibility,
+            @related_change_order_id,
+            @effective_date,
+            @notes,
+            @created_by_user_id
+        );
+        """, connection, transaction))
+    {
+        insertCommand.Parameters.AddWithValue("document_id", workRegisterDocumentId);
+        insertCommand.Parameters.AddWithValue("project_id", projectId.Value);
+        insertCommand.Parameters.AddWithValue("document_name", documentName);
+        insertCommand.Parameters.AddWithValue("document_type", documentType);
+        insertCommand.Parameters.AddWithValue("document_reference", documentReference);
+        insertCommand.Parameters.AddWithValue("version_label", versionLabel);
+        insertCommand.Parameters.AddWithValue("visibility", visibility);
+        insertCommand.Parameters.Add("related_change_order_id", NpgsqlTypes.NpgsqlDbType.Uuid).Value = relatedChangeOrderId is null ? DBNull.Value : relatedChangeOrderId.Value;
+        insertCommand.Parameters.Add("effective_date", NpgsqlTypes.NpgsqlDbType.Date).Value = effectiveDate is null ? DBNull.Value : effectiveDate.Value;
+        insertCommand.Parameters.AddWithValue("notes", notes);
+        insertCommand.Parameters.AddWithValue("created_by_user_id", sessionUserId.Value);
+        await insertCommand.ExecuteNonQueryAsync();
+    }
+
+    await using (var auditCommand = new NpgsqlCommand("""
+        INSERT INTO work_register_change_history (
+            work_register_change_history_id,
+            source_table,
+            work_id,
+            action,
+            change_summary,
+            changed_fields_csv,
+            changed_by_user_id,
+            old_value_json,
+            new_value_json
+        )
+        VALUES (
+            @history_id,
+            'projects',
+            @work_id,
+            'document_registered',
+            @change_summary,
+            @changed_fields_csv,
+            @changed_by_user_id,
+            '{}'::jsonb,
+            CAST(@new_value_json AS jsonb)
+        );
+        """, connection, transaction))
+    {
+        auditCommand.Parameters.AddWithValue("history_id", Guid.NewGuid());
+        auditCommand.Parameters.AddWithValue("work_id", projectId.Value);
+        auditCommand.Parameters.AddWithValue("change_summary", $"{documentType}: {documentName}");
+        auditCommand.Parameters.AddWithValue("changed_fields_csv", "Document Name, Document Type, Reference, Version, Visibility, Notes");
+        auditCommand.Parameters.AddWithValue("changed_by_user_id", sessionUserId.Value);
+        auditCommand.Parameters.AddWithValue("new_value_json", newSnapshot);
+        await auditCommand.ExecuteNonQueryAsync();
+    }
+
+    await transaction.CommitAsync();
+
+    return Results.Ok(new
+    {
+        status = "document_registered",
+        projectId = projectId.Value,
+        workRegisterDocumentId,
+        message = "Document registered and audit history saved."
+    });
+});
+
+app.MapPost("/api/work-register/projects/documents/archive", async (HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token.", guard = "055C9_document_archive_session_required" }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    using var document = await JsonDocument.ParseAsync(httpContext.Request.Body);
+    var root = document.RootElement;
+
+    string ReadString(string name, string fallback = "")
+    {
+        return root.TryGetProperty(name, out var value) && value.ValueKind != JsonValueKind.Null
+            ? (value.GetString() ?? fallback).Trim()
+            : fallback;
+    }
+
+    Guid? ReadGuid(string name)
+    {
+        if (!root.TryGetProperty(name, out var value) || value.ValueKind == JsonValueKind.Null)
+        {
+            return null;
+        }
+
+        if (value.ValueKind == JsonValueKind.String && Guid.TryParse(value.GetString(), out var parsed))
+        {
+            return parsed;
+        }
+
+        return null;
+    }
+
+    var projectId = ReadGuid("projectId");
+    var documentId = ReadGuid("documentId");
+    var reason = ReadString("reason");
+
+    if (projectId is null || documentId is null)
+    {
+        return Results.BadRequest(new { status = "validation_failed", message = "Project ID and document ID are required." });
+    }
+
+    if (string.IsNullOrWhiteSpace(reason))
+    {
+        return Results.BadRequest(new { status = "validation_failed", message = "Archive reason is required." });
+    }
+
+    var dbConfig = DatabaseConfig.FromEnvironment();
+
+    await using var connection = new NpgsqlConnection(dbConfig.ConnectionString);
+    await connection.OpenAsync();
+
+    var canEditWorkRegister = false;
+    await using (var accessCommand = new NpgsqlCommand("""
+        SELECT EXISTS (
+            SELECT 1
+            FROM app_user_role_assignments ura
+            JOIN app_roles r
+              ON r.app_role_id = ura.app_role_id
+            WHERE ura.user_id = @user_id
+              AND ura.is_active = TRUE
+              AND r.is_active = TRUE
+              AND r.role_code IN (
+                  'SUPER_ADMINISTRATOR',
+                  'ADMINISTRATOR',
+                  'PROJECT_TEAM_COORDINATOR'
+              )
+        );
+        """, connection))
+    {
+        accessCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+        canEditWorkRegister = Convert.ToBoolean(await accessCommand.ExecuteScalarAsync() ?? false);
+    }
+
+    if (!canEditWorkRegister)
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Only Project Team Coordinators, Administrators, and Super Administrators can archive Work Register documents. Solution Architects are view-only."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    await using var transaction = await connection.BeginTransactionAsync();
+
+    var oldSnapshot = "{}";
+    await using (var oldCommand = new NpgsqlCommand("""
+        SELECT COALESCE(to_jsonb(d), '{}'::jsonb)::text
+        FROM work_register_documents d
+        WHERE d.work_register_document_id = @document_id
+          AND d.project_id = @project_id
+        LIMIT 1;
+        """, connection, transaction))
+    {
+        oldCommand.Parameters.AddWithValue("document_id", documentId.Value);
+        oldCommand.Parameters.AddWithValue("project_id", projectId.Value);
+        oldSnapshot = Convert.ToString(await oldCommand.ExecuteScalarAsync() ?? "{}") ?? "{}";
+    }
+
+    await using (var updateCommand = new NpgsqlCommand("""
+        UPDATE work_register_documents
+        SET status = 'archived',
+            archived_by_user_id = @archived_by_user_id,
+            archived_at = NOW(),
+            archive_reason = @archive_reason
+        WHERE work_register_document_id = @document_id
+          AND project_id = @project_id
+          AND status = 'active';
+        """, connection, transaction))
+    {
+        updateCommand.Parameters.AddWithValue("document_id", documentId.Value);
+        updateCommand.Parameters.AddWithValue("project_id", projectId.Value);
+        updateCommand.Parameters.AddWithValue("archived_by_user_id", sessionUserId.Value);
+        updateCommand.Parameters.AddWithValue("archive_reason", reason);
+
+        var affected = await updateCommand.ExecuteNonQueryAsync();
+        if (affected == 0)
+        {
+            await transaction.RollbackAsync();
+            return Results.NotFound(new { status = "document_not_found_or_already_archived", message = "The document was not found or is already archived." });
+        }
+    }
+
+    var newSnapshot = JsonSerializer.Serialize(new
+    {
+        projectId = projectId.Value,
+        documentId = documentId.Value,
+        status = "archived",
+        reason
+    });
+
+    await using (var auditCommand = new NpgsqlCommand("""
+        INSERT INTO work_register_change_history (
+            work_register_change_history_id,
+            source_table,
+            work_id,
+            action,
+            change_summary,
+            changed_fields_csv,
+            changed_by_user_id,
+            old_value_json,
+            new_value_json
+        )
+        VALUES (
+            @history_id,
+            'projects',
+            @work_id,
+            'document_archived',
+            @change_summary,
+            @changed_fields_csv,
+            @changed_by_user_id,
+            CAST(@old_value_json AS jsonb),
+            CAST(@new_value_json AS jsonb)
+        );
+        """, connection, transaction))
+    {
+        auditCommand.Parameters.AddWithValue("history_id", Guid.NewGuid());
+        auditCommand.Parameters.AddWithValue("work_id", projectId.Value);
+        auditCommand.Parameters.AddWithValue("change_summary", reason);
+        auditCommand.Parameters.AddWithValue("changed_fields_csv", "Document Status, Archive Reason");
+        auditCommand.Parameters.AddWithValue("changed_by_user_id", sessionUserId.Value);
+        auditCommand.Parameters.AddWithValue("old_value_json", oldSnapshot);
+        auditCommand.Parameters.AddWithValue("new_value_json", newSnapshot);
+        await auditCommand.ExecuteNonQueryAsync();
+    }
+
+    await transaction.CommitAsync();
+
+    return Results.Ok(new
+    {
+        status = "document_archived",
+        projectId = projectId.Value,
+        documentId = documentId.Value,
+        message = "Document archived and audit history saved."
+    });
+});
+/* 055C_9_DOCUMENT_MANAGEMENT_API_END */
+
+
 /* 055C_8_CHANGE_ORDER_COSTING_API_START */
 app.MapPost("/api/work-register/projects/change-orders/save", async (HttpContext httpContext) =>
 {
@@ -7199,6 +7604,8 @@ app.MapGet("/api/work-register/projects/{projectId:guid}/details", async (Guid p
 
     var taskRows = await LoadRowsByProjectAsync("project_tasks", 1000, "project_id", "work_item_id", "parent_project_id");
     var documentRows = await LoadRowsByProjectAsync("project_documents", 1000, "project_id", "work_item_id", "parent_project_id");
+    var workRegisterDocumentRows = await LoadRowsByProjectAsync("work_register_documents", 1000, "project_id");
+    /* 055C_9_DETAILS_DOCUMENT_MANAGEMENT_LOAD */
     var timeRows = await LoadRowsByProjectAsync("time_entries", 100000, "project_id", "work_item_id", "parent_project_id");
     var changeRows = await LoadRowsByProjectAsync("work_register_change_history", 500, "work_id");
     var taskAssignmentRows = await LoadRowsByProjectAsync("work_register_task_assignment_history", 5000, "project_id");
@@ -7329,18 +7736,53 @@ app.MapGet("/api/work-register/projects/{projectId:guid}/details", async (Guid p
     }).ToList();
     /* 055C_7_DETAILS_MULTI_ENGINEER_ROSTER_END */
 
-    var documents = documentRows.Select(document =>
+    /* 055C_9_DETAILS_DOCUMENT_MANAGEMENT_START */
+    var documents = new List<object>();
+
+    foreach (var document in documentRows)
     {
-        return new
+        documents.Add(new
         {
             documentId = Pick(document, "project_document_id", "document_id", "id"),
             fileName = Pick(document, "file_name", "filename", "name", "document_name", "title"),
             documentType = Pick(document, "document_type", "type", "category"),
             visibility = Pick(document, "visibility", "document_visibility", "access_level"),
             uploadedAt = Pick(document, "uploaded_at", "created_at", "linked_at"),
+            documentReference = Pick(document, "document_reference", "file_url", "url", "path", "document_path"),
+            versionLabel = Pick(document, "version_label", "version"),
+            status = Pick(document, "status"),
+            effectiveDate = Pick(document, "effective_date"),
+            notes = Pick(document, "notes", "description"),
+            sourceTable = "project_documents",
+            canArchive = false,
             source = document
-        };
-    }).ToList();
+        });
+    }
+
+    foreach (var document in workRegisterDocumentRows)
+    {
+        var statusValue = Pick(document, "status");
+
+        documents.Add(new
+        {
+            documentId = Pick(document, "work_register_document_id"),
+            fileName = Pick(document, "document_name"),
+            documentType = Pick(document, "document_type"),
+            visibility = Pick(document, "visibility"),
+            uploadedAt = Pick(document, "created_at"),
+            documentReference = Pick(document, "document_reference"),
+            versionLabel = Pick(document, "version_label"),
+            status = statusValue,
+            effectiveDate = Pick(document, "effective_date"),
+            notes = Pick(document, "notes"),
+            archiveReason = Pick(document, "archive_reason"),
+            archivedAt = Pick(document, "archived_at"),
+            sourceTable = "work_register_documents",
+            canArchive = string.Equals(statusValue, "active", StringComparison.OrdinalIgnoreCase),
+            source = document
+        });
+    }
+    /* 055C_9_DETAILS_DOCUMENT_MANAGEMENT_END */
 
     var timeByUser = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
     foreach (var time in timeRows)

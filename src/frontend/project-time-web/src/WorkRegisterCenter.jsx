@@ -163,6 +163,20 @@ export default function WorkRegisterCenter() {
     ]
   });
   const [changeOrderStatus, setChangeOrderStatus] = useState('');
+
+  const [documentForm, setDocumentForm] = useState({
+    documentName: '',
+    documentType: 'SOW',
+    documentReference: '',
+    versionLabel: '',
+    visibility: 'project_team',
+    effectiveDate: new Date().toISOString().slice(0, 10),
+    notes: '',
+    reason: ''
+  });
+  const [documentStatus, setDocumentStatus] = useState('');
+  // 055C_9_DOCUMENT_MANAGEMENT
+
   // 055C_8_CHANGE_ORDER_COSTING
 
   // 055C_7_MULTI_ENGINEER_ROSTER
@@ -355,6 +369,7 @@ export default function WorkRegisterCenter() {
     setMultiEngineerTasks({});
     setTaskAssignmentStatus('');
     setChangeOrderStatus('');
+    setDocumentStatus('');
     loadProjectDetails(item);
     setEditForm({
       workId: item.workId,
@@ -856,6 +871,113 @@ export default function WorkRegisterCenter() {
       resetChangeOrderForm();
     } catch (error) {
       setChangeOrderStatus(error instanceof Error ? error.message : 'Unable to save change order.');
+    }
+  }
+
+
+
+  function resetDocumentForm() {
+    setDocumentForm({
+      documentName: '',
+      documentType: 'SOW',
+      documentReference: '',
+      versionLabel: '',
+      visibility: 'project_team',
+      effectiveDate: new Date().toISOString().slice(0, 10),
+      notes: '',
+      reason: ''
+    });
+  }
+
+  function updateDocumentField(field, value) {
+    setDocumentForm((current) => ({
+      ...current,
+      [field]: value
+    }));
+  }
+
+  async function saveDocumentRegistration() {
+    if (!selectedWorkItem?.workId) {
+      setDocumentStatus('No project is selected.');
+      return;
+    }
+
+    if (!canEditWorkRegister) {
+      setDocumentStatus('This tab is view-only for your role. Only PTC/Admin can manage documents.');
+      return;
+    }
+
+    if (!documentForm.documentName.trim()) {
+      setDocumentStatus('Document name is required.');
+      return;
+    }
+
+    if (!documentForm.documentType.trim()) {
+      setDocumentStatus('Document type is required.');
+      return;
+    }
+
+    if (!documentForm.reason.trim()) {
+      setDocumentStatus('Reason is required for document audit history.');
+      return;
+    }
+
+    const payload = {
+      projectId: selectedWorkItem.workId,
+      documentName: documentForm.documentName,
+      documentType: documentForm.documentType,
+      documentReference: documentForm.documentReference,
+      versionLabel: documentForm.versionLabel,
+      visibility: documentForm.visibility,
+      effectiveDate: documentForm.effectiveDate || null,
+      notes: documentForm.notes,
+      reason: documentForm.reason
+    };
+
+    setDocumentStatus(`Saving document ${documentForm.documentName}...`);
+
+    try {
+      const result = await postJson('/api/work-register/projects/documents/save', payload);
+      setDocumentStatus(result.message || 'Document registered.');
+      await loadProjectDetails(selectedWorkItem);
+      await load();
+      resetDocumentForm();
+    } catch (error) {
+      setDocumentStatus(error instanceof Error ? error.message : 'Unable to save document.');
+    }
+  }
+
+  async function archiveWorkRegisterDocument(document) {
+    if (!selectedWorkItem?.workId || !document?.documentId) {
+      setDocumentStatus('Document cannot be archived because required IDs are missing.');
+      return;
+    }
+
+    if (!canEditWorkRegister) {
+      setDocumentStatus('This tab is view-only for your role. Only PTC/Admin can archive documents.');
+      return;
+    }
+
+    const reason = window.prompt(`Archive ${document.fileName || 'this document'}? Enter archive reason:`);
+    if (!reason || !reason.trim()) {
+      setDocumentStatus('Archive cancelled. Reason is required.');
+      return;
+    }
+
+    setDocumentStatus(`Archiving ${document.fileName || 'document'}...`);
+
+    try {
+      const result = await postJson('/api/work-register/projects/documents/archive', {
+        projectId: selectedWorkItem.workId,
+        documentId: document.documentId,
+        reason
+      });
+
+      setDocumentStatus(result.message || 'Document archived.');
+      await loadProjectDetails(selectedWorkItem);
+      await load();
+    } catch (error) {
+      setDocumentStatus(error instanceof Error ? error.message : 'Unable to archive document.');
     }
   }
 
@@ -1798,16 +1920,146 @@ export default function WorkRegisterCenter() {
             {activeDrawerTab === 'documents' ? (
               <div className="work-register-detail-panel">
                 <h4>Documents</h4>
-                <p className="muted">This tab is read-only in 055C.5. The document-management patch will add upload/link/change-order document controls for PTC/Admin.</p>
-                <div className="work-register-detail-grid">
+                <p className="muted">
+                  Register or link project documents from Work Register. This preserves the document history and writes document changes to the audit tab.
+                </p>
+
+                {documentStatus ? (
+                  <div className="work-register-banner">{documentStatus}</div>
+                ) : null}
+
+                {canEditWorkRegister ? (
+                  <div className="work-register-document-form">
+                    <h5>Add / link document</h5>
+
+                    <div className="work-register-edit-grid">
+                      <label>
+                        Document name
+                        <input
+                          type="text"
+                          value={documentForm.documentName}
+                          onChange={(event) => updateDocumentField('documentName', event.target.value)}
+                          placeholder="Signed SOW, GSD, CO-001 approval, etc."
+                        />
+                      </label>
+
+                      <label>
+                        Document type
+                        <select
+                          value={documentForm.documentType}
+                          onChange={(event) => updateDocumentField('documentType', event.target.value)}
+                        >
+                          {['SOW', 'GSD', 'Change Order', 'Customer Approval', 'Project Plan', 'Technical Document', 'Closeout', 'Other'].map((type) => (
+                            <option value={type} key={type}>{type}</option>
+                          ))}
+                        </select>
+                      </label>
+
+                      <label>
+                        Document reference / link
+                        <input
+                          type="text"
+                          value={documentForm.documentReference}
+                          onChange={(event) => updateDocumentField('documentReference', event.target.value)}
+                          placeholder="SharePoint/Drive URL, file path, ticket link, or document reference"
+                        />
+                      </label>
+
+                      <label>
+                        Version
+                        <input
+                          type="text"
+                          value={documentForm.versionLabel}
+                          onChange={(event) => updateDocumentField('versionLabel', event.target.value)}
+                          placeholder="v1, signed, final, rev-2"
+                        />
+                      </label>
+
+                      <label>
+                        Visibility
+                        <select
+                          value={documentForm.visibility}
+                          onChange={(event) => updateDocumentField('visibility', event.target.value)}
+                        >
+                          <option value="project_team">Project team</option>
+                          <option value="ptc_admin_only">PTC/Admin only</option>
+                          <option value="pm_ptc_admin">PM/PTC/Admin</option>
+                          <option value="engineering_team">Engineering team</option>
+                        </select>
+                      </label>
+
+                      <label>
+                        Effective date
+                        <input
+                          type="date"
+                          value={documentForm.effectiveDate}
+                          onChange={(event) => updateDocumentField('effectiveDate', event.target.value)}
+                        />
+                      </label>
+                    </div>
+
+                    <label className="full-width">
+                      Notes
+                      <textarea
+                        rows={2}
+                        value={documentForm.notes}
+                        onChange={(event) => updateDocumentField('notes', event.target.value)}
+                        placeholder="Optional context for this document."
+                      />
+                    </label>
+
+                    <label className="full-width">
+                      Reason / audit note
+                      <textarea
+                        rows={2}
+                        value={documentForm.reason}
+                        onChange={(event) => updateDocumentField('reason', event.target.value)}
+                        placeholder="Required. Example: Added customer-approved CO-001 supporting document."
+                      />
+                    </label>
+
+                    <div className="work-register-task-assignment-actions">
+                      <button type="button" className="primary-action" onClick={saveDocumentRegistration}>
+                        Save document
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="muted">Document management is view-only for this role.</p>
+                )}
+
+                <h5>Registered documents</h5>
+                <div className="work-register-document-list">
                   {(projectDetails.data?.documents ?? []).map((document) => (
-                    <article key={document.documentId || document.fileName}>
-                      <strong>{document.fileName || 'Untitled document'}</strong>
-                      <small>Type: {labelize(document.documentType || 'not set')}</small>
-                      <small>Visibility: {labelize(document.visibility || 'not set')}</small>
-                      <small>Uploaded: {document.uploadedAt || 'not set'}</small>
+                    <article className={`work-register-document-card ${String(document.status || '').toLowerCase() === 'archived' ? 'archived' : ''}`} key={`${document.sourceTable}-${document.documentId || document.fileName}`}>
+                      <div>
+                        <strong>{document.fileName || 'Untitled document'}</strong>
+                        <small>Type: {labelize(document.documentType || 'not set')}</small>
+                        <small>Status: {labelize(document.status || 'active')}</small>
+                        <small>Visibility: {labelize(document.visibility || 'not set')}</small>
+                        <small>Version: {document.versionLabel || 'not set'}</small>
+                        <small>Effective: {document.effectiveDate || 'not set'}</small>
+                        <small>Added: {document.uploadedAt || 'not set'}</small>
+                        {document.notes ? <small>Notes: {document.notes}</small> : null}
+                        {document.archiveReason ? <small>Archive reason: {document.archiveReason}</small> : null}
+                      </div>
+
+                      <div className="work-register-document-actions">
+                        {document.documentReference ? (
+                          <a href={document.documentReference} target="_blank" rel="noreferrer">
+                            Open reference
+                          </a>
+                        ) : null}
+
+                        {canEditWorkRegister && document.canArchive ? (
+                          <button type="button" className="secondary-action danger" onClick={() => archiveWorkRegisterDocument(document)}>
+                            Archive
+                          </button>
+                        ) : null}
+                      </div>
                     </article>
                   ))}
+
                   {projectDetails.data && (projectDetails.data.documents ?? []).length === 0 ? (
                     <p className="muted">No project documents were found for this work item.</p>
                   ) : null}

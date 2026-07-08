@@ -762,3 +762,104 @@ body[data-projectpulse-active-route="work-register"] #work-register .work-regist
   border-color: rgba(148, 163, 184, 0.3);
 }
 /* 055C_8_CHANGE_ORDER_COSTING_END */
+
+/* 055C_9_DOCUMENT_MANAGEMENT_START */
+.work-register-document-form {
+  display: grid;
+  gap: 0.85rem;
+  border: 1px solid rgba(37, 99, 235, 0.22);
+  border-radius: 18px;
+  background: #f8fafc;
+  padding: 0.9rem;
+}
+
+.work-register-document-form h5 {
+  margin: 0;
+}
+
+.work-register-document-form input,
+.work-register-document-form select,
+.work-register-document-form textarea {
+  width: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  border-radius: 12px;
+  padding: 0.55rem 0.65rem;
+  background: #ffffff;
+  color: #0f172a;
+}
+
+.work-register-document-list {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.work-register-document-card {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.85rem;
+  align-items: start;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 16px;
+  background: #ffffff;
+  padding: 0.85rem;
+}
+
+.work-register-document-card.archived {
+  opacity: 0.68;
+  background: #f1f5f9;
+}
+
+.work-register-document-card > div:first-child {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.work-register-document-card small {
+  color: #64748b;
+}
+
+.work-register-document-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.work-register-document-actions a {
+  border: 1px solid rgba(37, 99, 235, 0.22);
+  border-radius: 999px;
+  color: #1d4ed8;
+  background: #eff6ff;
+  font-weight: 900;
+  padding: 0.4rem 0.65rem;
+  text-decoration: none;
+}
+
+@media (max-width: 760px) {
+  .work-register-document-card {
+    grid-template-columns: 1fr;
+  }
+
+  .work-register-document-actions {
+    justify-content: flex-start;
+  }
+}
+
+[data-theme="dark"] .work-register-document-form,
+[data-theme="dark"] .work-register-document-card {
+  background: rgba(30, 41, 59, 0.78);
+  border-color: rgba(148, 163, 184, 0.22);
+}
+
+[data-theme="dark"] .work-register-document-card.archived {
+  background: rgba(15, 23, 42, 0.65);
+}
+
+[data-theme="dark"] .work-register-document-form input,
+[data-theme="dark"] .work-register-document-form select,
+[data-theme="dark"] .work-register-document-form textarea {
+  background: rgba(15, 23, 42, 0.92);
+  color: #e2e8f0;
+  border-color: rgba(148, 163, 184, 0.3);
+}
+/* 055C_9_DOCUMENT_MANAGEMENT_END */
