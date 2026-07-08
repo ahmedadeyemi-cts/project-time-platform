@@ -139,6 +139,11 @@ export default function WorkRegisterCenter() {
 
   const [activeDrawerTab, setActiveDrawerTab] = useState('setup');
   const [projectDetails, setProjectDetails] = useState({ loading: false, data: null, error: null });
+
+  const [taskAssignmentForms, setTaskAssignmentForms] = useState({});
+  const [taskAssignmentStatus, setTaskAssignmentStatus] = useState('');
+  // 055C_6_TASK_ENGINEER_ASSIGNMENT
+
   // 055C_5_WORK_REGISTER_DETAIL_TABS
 
   // 055C_2_WORK_REGISTER_EDIT_DRAWER
@@ -292,6 +297,8 @@ export default function WorkRegisterCenter() {
   const aeOptions = activeUsersByRole(userOptions, ['ACCOUNT_EXECUTIVE', 'SALES', 'SALES_EXECUTIVE', 'AE']);
   const saOptions = activeUsersByRole(userOptions, ['SOLUTION_ARCHITECT', 'SA', 'ARCHITECT', 'ANALYST_DEV_ARCHITECT']);
   const saaOptions = activeUsersByRole(userOptions, ['SAA', 'INSIDE_SALES', 'SALES_SUPPORT', 'SALES']);
+  const engineerOptions = activeUsersByRole(userOptions, ['ENGINEER', 'ENGINEERING', 'CONSULT_ENGINEER', 'ASSOCIATE_ENGINEER', 'SME_ENGINEER', 'ANALYST_DEV_ARCHITECT']);
+
 
 
   async function loadProjectDetails(item) {
@@ -318,6 +325,8 @@ export default function WorkRegisterCenter() {
     setSelectedWorkItem(item);
     setEditStatus('');
     setActiveDrawerTab('setup');
+    setTaskAssignmentForms({});
+    setTaskAssignmentStatus('');
     loadProjectDetails(item);
     setEditForm({
       workId: item.workId,
@@ -343,6 +352,8 @@ export default function WorkRegisterCenter() {
     setEditStatus('');
     setActiveDrawerTab('setup');
     setProjectDetails({ loading: false, data: null, error: null });
+    setTaskAssignmentForms({});
+    setTaskAssignmentStatus('');
   }
 
   function updateEditField(field, value) {
@@ -351,6 +362,80 @@ export default function WorkRegisterCenter() {
       [field]: value
     }));
   }
+
+
+  function taskAssignmentKey(task) {
+    return task?.taskId || task?.taskName || 'unknown-task';
+  }
+
+  function taskAssignmentValue(task, field, fallback = '') {
+    const key = taskAssignmentKey(task);
+    return taskAssignmentForms[key]?.[field] ?? fallback;
+  }
+
+  function updateTaskAssignmentForm(task, field, value) {
+    const key = taskAssignmentKey(task);
+    setTaskAssignmentForms((current) => ({
+      ...current,
+      [key]: {
+        ...(current[key] ?? {}),
+        [field]: value
+      }
+    }));
+  }
+
+  async function saveTaskAssignment(task) {
+    if (!selectedWorkItem || !task?.taskId) {
+      setTaskAssignmentStatus('Task assignment cannot be saved because the task does not have an ID.');
+      return;
+    }
+
+    if (!canEditWorkRegister) {
+      setTaskAssignmentStatus('This tab is view-only for your role. Only Project Team Coordinators, Administrators, and Super Administrators can save task assignments.');
+      return;
+    }
+
+    const key = taskAssignmentKey(task);
+    const form = taskAssignmentForms[key] ?? {};
+    const changeReason = String(form.changeReason ?? '').trim();
+
+    if (!changeReason) {
+      setTaskAssignmentStatus('Change reason is required before saving a task assignment.');
+      return;
+    }
+
+    const payload = {
+      projectId: selectedWorkItem.workId,
+      taskId: task.taskId,
+      taskName: task.taskName,
+      assignedUserId: form.assignedUserId ?? task.assignedUserId ?? '',
+      allocatedHours: form.allocatedHours ?? task.allocatedHours ?? 0,
+      billable: form.billable ?? (String(task.billable).toLowerCase() === 'true'),
+      utilizationEligible: form.utilizationEligible ?? (String(task.utilizationEligible).toLowerCase() === 'true'),
+      effectiveStartDate: form.effectiveStartDate || new Date().toISOString().slice(0, 10),
+      changeReason
+    };
+
+    setTaskAssignmentStatus(`Saving assignment for ${task.taskName}...`);
+
+    try {
+      const result = await postJson('/api/work-register/tasks/assignments/update', payload);
+      setTaskAssignmentStatus(result.message || 'Task assignment saved.');
+      await loadProjectDetails(selectedWorkItem);
+      await load();
+
+      setTaskAssignmentForms((current) => ({
+        ...current,
+        [key]: {
+          ...current[key],
+          changeReason: ''
+        }
+      }));
+    } catch (error) {
+      setTaskAssignmentStatus(error instanceof Error ? error.message : 'Unable to save task assignment.');
+    }
+  }
+
 
   async function saveProjectSetup(event) {
     event.preventDefault();
@@ -836,17 +921,113 @@ export default function WorkRegisterCenter() {
             {activeDrawerTab === 'tasks' ? (
               <div className="work-register-detail-panel">
                 <h4>Tasks & Engineer Assignments</h4>
-                <p className="muted">This tab is read-only in 055C.5. The next patch will add PTC-controlled task-level engineer assignment and reassignment.</p>
-                <div className="work-register-detail-grid">
-                  {(projectDetails.data?.tasks ?? []).map((task) => (
-                    <article key={task.taskId || task.taskName}>
-                      <strong>{task.taskName}</strong>
-                      <small>Status: {labelize(task.status || 'not set')}</small>
-                      <small>Engineer: {task.assignedUserName || 'Not assigned'}</small>
-                      <small>Allocated hours: {hours(task.allocatedHours)}</small>
-                      <small>Billable: {task.billable || 'not set'} · Utilization: {task.utilizationEligible || 'not set'}</small>
-                    </article>
-                  ))}
+                <p className="muted">
+                  PTC/Admin can assign or reassign engineers for future work. Historical time entries remain tied to the engineer who originally entered the time.
+                </p>
+
+                {taskAssignmentStatus ? (
+                  <div className="work-register-banner">{taskAssignmentStatus}</div>
+                ) : null}
+
+                <div className="work-register-task-assignment-list">
+                  {(projectDetails.data?.tasks ?? []).map((task) => {
+                    const key = taskAssignmentKey(task);
+                    const selectedEngineerId = taskAssignmentValue(task, 'assignedUserId', task.assignedUserId || '');
+                    const selectedAllocatedHours = taskAssignmentValue(task, 'allocatedHours', task.allocatedHours ?? 0);
+                    const selectedBillable = taskAssignmentValue(task, 'billable', String(task.billable).toLowerCase() === 'true');
+                    const selectedUtilization = taskAssignmentValue(task, 'utilizationEligible', String(task.utilizationEligible).toLowerCase() === 'true');
+                    const selectedEffectiveDate = taskAssignmentValue(task, 'effectiveStartDate', new Date().toISOString().slice(0, 10));
+                    const selectedReason = taskAssignmentValue(task, 'changeReason', '');
+
+                    return (
+                      <article className="work-register-task-assignment-card" key={key}>
+                        <div>
+                          <strong>{task.taskName}</strong>
+                          <small>Status: {labelize(task.status || 'not set')}</small>
+                          <small>Current engineer: {task.assignedUserName || 'Not assigned'}</small>
+                          <small>Assignment source: {labelize(task.assignmentSource || 'project_tasks')}</small>
+                        </div>
+
+                        <label>
+                          Engineer
+                          <select
+                            value={selectedEngineerId}
+                            onChange={(event) => updateTaskAssignmentForm(task, 'assignedUserId', event.target.value)}
+                            disabled={!canEditWorkRegister || !task.taskId}
+                          >
+                            <option value="">Unassigned / remove future assignment</option>
+                            {engineerOptions.map((user) => (
+                              <option value={user.userId} key={user.userId}>
+                                {user.displayName} {user.isActive === false ? '- inactive' : ''}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+
+                        <label>
+                          Allocated hours
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.25"
+                            value={selectedAllocatedHours}
+                            onChange={(event) => updateTaskAssignmentForm(task, 'allocatedHours', event.target.value)}
+                            disabled={!canEditWorkRegister || !task.taskId}
+                          />
+                        </label>
+
+                        <label>
+                          Effective date
+                          <input
+                            type="date"
+                            value={selectedEffectiveDate}
+                            onChange={(event) => updateTaskAssignmentForm(task, 'effectiveStartDate', event.target.value)}
+                            disabled={!canEditWorkRegister || !task.taskId}
+                          />
+                        </label>
+
+                        <label className="checkbox-line">
+                          <input
+                            type="checkbox"
+                            checked={selectedBillable}
+                            onChange={(event) => updateTaskAssignmentForm(task, 'billable', event.target.checked)}
+                            disabled={!canEditWorkRegister || !task.taskId}
+                          />
+                          Billable
+                        </label>
+
+                        <label className="checkbox-line">
+                          <input
+                            type="checkbox"
+                            checked={selectedUtilization}
+                            onChange={(event) => updateTaskAssignmentForm(task, 'utilizationEligible', event.target.checked)}
+                            disabled={!canEditWorkRegister || !task.taskId}
+                          />
+                          Utilization eligible
+                        </label>
+
+                        <label className="full-width">
+                          Change reason
+                          <textarea
+                            rows={2}
+                            value={selectedReason}
+                            onChange={(event) => updateTaskAssignmentForm(task, 'changeReason', event.target.value)}
+                            placeholder="Required. Example: Reassigned future task work because previous engineer left the organization."
+                            disabled={!canEditWorkRegister || !task.taskId}
+                          />
+                        </label>
+
+                        <div className="work-register-task-assignment-actions">
+                          {canEditWorkRegister ? (
+                            <button type="button" className="primary-action" onClick={() => saveTaskAssignment(task)} disabled={!task.taskId}>
+                              Save task assignment
+                            </button>
+                          ) : null}
+                        </div>
+                      </article>
+                    );
+                  })}
+
                   {projectDetails.data && (projectDetails.data.tasks ?? []).length === 0 ? (
                     <p className="muted">No project tasks were found for this work item.</p>
                   ) : null}

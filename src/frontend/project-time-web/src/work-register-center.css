@@ -479,3 +479,87 @@ body[data-projectpulse-active-route="work-register"] #work-register .work-regist
   color: #e2e8f0;
 }
 /* 055C_5_WORK_REGISTER_DETAIL_TABS_END */
+
+/* 055C_6_TASK_ENGINEER_ASSIGNMENT_START */
+.work-register-task-assignment-list {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.work-register-task-assignment-card {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr 0.7fr 0.8fr;
+  gap: 0.65rem;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 16px;
+  background: #f8fafc;
+  padding: 0.85rem;
+}
+
+.work-register-task-assignment-card > div {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.work-register-task-assignment-card small {
+  color: #64748b;
+}
+
+.work-register-task-assignment-card label {
+  display: grid;
+  gap: 0.3rem;
+  font-weight: 800;
+  color: #334155;
+  font-size: 0.82rem;
+}
+
+.work-register-task-assignment-card input,
+.work-register-task-assignment-card select,
+.work-register-task-assignment-card textarea {
+  width: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  border-radius: 12px;
+  padding: 0.55rem 0.65rem;
+  background: #ffffff;
+  color: #0f172a;
+}
+
+.work-register-task-assignment-card .checkbox-line {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.work-register-task-assignment-card .checkbox-line input {
+  width: auto;
+}
+
+.work-register-task-assignment-card .full-width,
+.work-register-task-assignment-actions {
+  grid-column: 1 / -1;
+}
+
+.work-register-task-assignment-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+@media (max-width: 920px) {
+  .work-register-task-assignment-card {
+    grid-template-columns: 1fr;
+  }
+}
+
+[data-theme="dark"] .work-register-task-assignment-card {
+  background: rgba(30, 41, 59, 0.78);
+  border-color: rgba(148, 163, 184, 0.22);
+}
+
+[data-theme="dark"] .work-register-task-assignment-card input,
+[data-theme="dark"] .work-register-task-assignment-card select,
+[data-theme="dark"] .work-register-task-assignment-card textarea {
+  background: rgba(15, 23, 42, 0.92);
+  color: #e2e8f0;
+  border-color: rgba(148, 163, 184, 0.3);
+}
+/* 055C_6_TASK_ENGINEER_ASSIGNMENT_END */
