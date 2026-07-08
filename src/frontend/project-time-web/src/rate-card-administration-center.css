@@ -316,3 +316,208 @@ body[data-projectpulse-active-route="rate-card-administration"] .rate-card-admin
   display: grid !important;
 }
 /* 055B_1_RATE_CARD_ROUTE_ISOLATION_END */
+
+/* 055B_2_COMPACT_RATE_CARD_LAYOUT_START */
+.rate-card-tabbar {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  align-items: center;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.92);
+  padding: 0.65rem;
+  position: sticky;
+  top: 0;
+  z-index: 8;
+  box-shadow: 0 12px 26px rgba(15, 23, 42, 0.07);
+}
+
+.rate-card-tabbar button {
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #334155;
+  font-weight: 800;
+  padding: 0.55rem 0.9rem;
+  cursor: pointer;
+}
+
+.rate-card-tabbar button.active {
+  background: #0f5f9f;
+  border-color: #0f5f9f;
+  color: #ffffff;
+}
+
+.rate-card-admin-section-hidden {
+  display: none !important;
+}
+
+.rate-card-administration-route-panel {
+  overflow: hidden;
+}
+
+.rate-card-admin-center {
+  gap: 0.75rem;
+}
+
+.rate-card-admin-header {
+  padding: 0.95rem 1rem;
+}
+
+.rate-card-admin-header h2 {
+  font-size: 1.35rem;
+}
+
+.rate-card-admin-header .muted {
+  margin-bottom: 0;
+}
+
+.rate-card-admin-summary {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  padding: 0.65rem;
+}
+
+.rate-card-admin-summary article {
+  padding: 0.65rem;
+}
+
+.rate-card-admin-summary strong {
+  font-size: 1.05rem;
+}
+
+.rate-card-priority-panel {
+  padding: 0.75rem 1rem;
+}
+
+.rate-card-priority-panel ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  list-style: none;
+  padding-left: 0;
+  margin-top: 0.55rem;
+}
+
+.rate-card-priority-panel li {
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #3730a3;
+  padding: 0.35rem 0.65rem;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.rate-card-admin-toolbar {
+  position: sticky;
+  top: 3.6rem;
+  z-index: 7;
+  padding: 0.75rem;
+}
+
+.rate-card-admin-layout {
+  min-height: 0;
+  max-height: calc(100vh - 500px);
+  overflow: hidden;
+}
+
+.rate-card-admin-panel,
+.rate-card-lines-panel {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.rate-card-list {
+  max-height: calc(100vh - 585px);
+  min-height: 260px;
+  overflow: auto;
+}
+
+.rate-line-table-wrap {
+  max-height: calc(100vh - 585px);
+  min-height: 260px;
+  overflow: auto;
+}
+
+.rate-line-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: #ffffff;
+}
+
+.forms-layout {
+  max-height: calc(100vh - 420px);
+  overflow: auto;
+}
+
+.forms-layout .rate-card-admin-panel {
+  overflow: visible;
+}
+
+.rate-change-list {
+  max-height: calc(100vh - 430px);
+  overflow: auto;
+}
+
+body[data-projectpulse-active-route="rate-card-administration"] .installed-module-info,
+body[data-projectpulse-active-route="rate-card-administration"] .module-info-panel {
+  max-height: 150px;
+  overflow: auto;
+}
+
+@media (max-height: 850px) {
+  .rate-card-admin-header .muted,
+  .rate-card-priority-panel {
+    display: none;
+  }
+
+  .rate-card-admin-layout,
+  .forms-layout {
+    max-height: calc(100vh - 350px);
+  }
+
+  .rate-card-list,
+  .rate-line-table-wrap {
+    max-height: calc(100vh - 430px);
+  }
+}
+
+@media (max-width: 1100px) {
+  .rate-card-admin-layout,
+  .forms-layout {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .rate-card-list,
+  .rate-line-table-wrap,
+  .rate-change-list {
+    max-height: 520px;
+  }
+
+  .rate-card-admin-toolbar,
+  .rate-card-tabbar {
+    position: static;
+  }
+}
+
+[data-theme="dark"] .rate-card-tabbar {
+  background: rgba(15, 23, 42, 0.94);
+  border-color: rgba(148, 163, 184, 0.22);
+}
+
+[data-theme="dark"] .rate-card-tabbar button {
+  background: rgba(30, 41, 59, 0.78);
+  color: #e2e8f0;
+}
+
+[data-theme="dark"] .rate-line-table thead th {
+  background: #0f172a;
+}
+
+[data-theme="dark"] .rate-card-priority-panel li {
+  background: rgba(30, 64, 175, 0.28);
+  color: #bfdbfe;
+}
+/* 055B_2_COMPACT_RATE_CARD_LAYOUT_END */

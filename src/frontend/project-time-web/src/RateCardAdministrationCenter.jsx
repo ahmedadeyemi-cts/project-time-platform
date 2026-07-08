@@ -142,6 +142,7 @@ export default function RateCardAdministrationCenter() {
   const [cardForm, setCardForm] = useState(emptyCardForm);
   const [lineForm, setLineForm] = useState(emptyLineForm);
   const [actionStatus, setActionStatus] = useState('');
+  const [activePanel, setActivePanel] = useState('rates'); // 055B_2_COMPACT_RATE_CARD_TABS
 
   async function load() {
     setPayload((current) => ({ ...current, loading: true, error: null }));
@@ -211,6 +212,7 @@ export default function RateCardAdministrationCenter() {
   const emergencyLines = rateLines.filter((line) => line.isEmergency);
 
   function editCard(card) {
+    setActivePanel('edit');
     setSelectedRateCardId(card.rateCardId);
     setCardForm({
       rateCardId: card.rateCardId ?? '',
@@ -228,6 +230,7 @@ export default function RateCardAdministrationCenter() {
   }
 
   function editLine(line) {
+    setActivePanel('edit');
     setSelectedRateCardId(line.rateCardId);
     setLineForm({
       rateLineId: line.rateLineId ?? '',
@@ -383,6 +386,21 @@ export default function RateCardAdministrationCenter() {
         </ol>
       </div>
 
+
+      {/* 055B_2_COMPACT_RATE_CARD_TABS_START */}
+      <div className="rate-card-tabbar" role="tablist" aria-label="Rate Card Administration sections">
+        <button type="button" className={activePanel === 'rates' ? 'active' : ''} onClick={() => setActivePanel('rates')}>
+          Rate cards & lines
+        </button>
+        <button type="button" className={activePanel === 'edit' ? 'active' : ''} onClick={() => setActivePanel('edit')}>
+          Add / edit rates
+        </button>
+        <button type="button" className={activePanel === 'history' ? 'active' : ''} onClick={() => setActivePanel('history')}>
+          Change history
+        </button>
+      </div>
+      {/* 055B_2_COMPACT_RATE_CARD_TABS_END */}
+
       <div className="rate-card-admin-toolbar">
         <label>
           Search
@@ -417,7 +435,7 @@ export default function RateCardAdministrationCenter() {
         <button type="button" className="secondary-action" onClick={load}>Refresh</button>
       </div>
 
-      <div className="rate-card-admin-layout">
+      <div className={`rate-card-admin-layout ${activePanel === 'rates' ? '' : 'rate-card-admin-section-hidden'}`}>
         <article className="rate-card-admin-panel">
           <div className="rate-card-panel-heading">
             <h3>Rate cards</h3>
@@ -525,7 +543,7 @@ export default function RateCardAdministrationCenter() {
         </article>
       </div>
 
-      <div className="rate-card-admin-layout forms-layout">
+      <div className={`rate-card-admin-layout forms-layout ${activePanel === 'edit' ? '' : 'rate-card-admin-section-hidden'}`}>
         <article className="rate-card-admin-panel">
           <h3>{cardForm.rateCardId ? 'Edit rate card' : 'Add customer-specific rate card'}</h3>
           <form className="rate-card-form" onSubmit={saveCard}>
@@ -709,7 +727,7 @@ export default function RateCardAdministrationCenter() {
         </article>
       </div>
 
-      <article className="rate-card-admin-panel">
+      <article className={`rate-card-admin-panel ${activePanel === 'history' ? '' : 'rate-card-admin-section-hidden'}`}>
         <h3>Recent rate changes</h3>
         <div className="rate-change-list">
           {recentChanges.map((item) => (
