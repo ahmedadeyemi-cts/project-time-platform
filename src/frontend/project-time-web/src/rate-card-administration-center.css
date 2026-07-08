@@ -536,3 +536,72 @@ body[data-projectpulse-active-route="rate-card-administration"] .rate-card-admin
   min-height: calc(100vh - 40px);
 }
 /* 055B_3_RATE_CARD_ROUTE_FOCUS_END */
+
+/* 055B_4_RATE_CARD_ROUTE_HARD_ISOLATION_START */
+/*
+  The app shell historically renders many dashboard/module panels in one long page.
+  When the SPA route is rate-card-administration, hide every sibling panel except
+  the Rate Card Administration route panel so the route behaves like a real page.
+*/
+body[data-projectpulse-active-route="rate-card-administration"] section.panel:not(#rate-card-administration):not(.rate-card-administration-route-panel) {
+  display: none !important;
+}
+
+body[data-projectpulse-active-route="rate-card-administration"] main > section:not(#rate-card-administration):not(.rate-card-administration-route-panel),
+body[data-projectpulse-active-route="rate-card-administration"] .app-main > section:not(#rate-card-administration):not(.rate-card-administration-route-panel),
+body[data-projectpulse-active-route="rate-card-administration"] .dashboard-main > section:not(#rate-card-administration):not(.rate-card-administration-route-panel),
+body[data-projectpulse-active-route="rate-card-administration"] .workspace-main > section:not(#rate-card-administration):not(.rate-card-administration-route-panel) {
+  display: none !important;
+}
+
+body[data-projectpulse-active-route="rate-card-administration"] #rate-card-administration,
+body[data-projectpulse-active-route="rate-card-administration"] .rate-card-administration-route-panel {
+  display: block !important;
+  visibility: visible !important;
+  min-height: auto !important;
+  margin-top: 0 !important;
+}
+
+body[data-projectpulse-active-route="rate-card-administration"] #rate-card-administration .rate-card-admin-center {
+  display: grid !important;
+}
+
+body[data-projectpulse-active-route="rate-card-administration"] .rate-card-administration-route-panel + section,
+body[data-projectpulse-active-route="rate-card-administration"] #rate-card-administration + section {
+  display: none !important;
+}
+
+/* Hide common legacy/dashboard module containers that are not wrapped as section.panel. */
+body[data-projectpulse-active-route="rate-card-administration"] .hero,
+body[data-projectpulse-active-route="rate-card-administration"] .module-card,
+body[data-projectpulse-active-route="rate-card-administration"] .module-grid,
+body[data-projectpulse-active-route="rate-card-administration"] .role-workspace,
+body[data-projectpulse-active-route="rate-card-administration"] .role-workspace-grid,
+body[data-projectpulse-active-route="rate-card-administration"] .command-center,
+body[data-projectpulse-active-route="rate-card-administration"] .dashboard-overview,
+body[data-projectpulse-active-route="rate-card-administration"] .notification-center,
+body[data-projectpulse-active-route="rate-card-administration"] .reporting-center,
+body[data-projectpulse-active-route="rate-card-administration"] .azure-admin,
+body[data-projectpulse-active-route="rate-card-administration"] .entra-admin,
+body[data-projectpulse-active-route="rate-card-administration"] .user-admin,
+body[data-projectpulse-active-route="rate-card-administration"] .utilization-center {
+  display: none !important;
+}
+
+/* But never hide those classes if they appear inside the rate card page later. */
+body[data-projectpulse-active-route="rate-card-administration"] #rate-card-administration .hero,
+body[data-projectpulse-active-route="rate-card-administration"] #rate-card-administration .module-card,
+body[data-projectpulse-active-route="rate-card-administration"] #rate-card-administration .module-grid,
+body[data-projectpulse-active-route="rate-card-administration"] #rate-card-administration .role-workspace,
+body[data-projectpulse-active-route="rate-card-administration"] #rate-card-administration .role-workspace-grid,
+body[data-projectpulse-active-route="rate-card-administration"] #rate-card-administration .command-center,
+body[data-projectpulse-active-route="rate-card-administration"] #rate-card-administration .dashboard-overview,
+body[data-projectpulse-active-route="rate-card-administration"] #rate-card-administration .notification-center,
+body[data-projectpulse-active-route="rate-card-administration"] #rate-card-administration .reporting-center,
+body[data-projectpulse-active-route="rate-card-administration"] #rate-card-administration .azure-admin,
+body[data-projectpulse-active-route="rate-card-administration"] #rate-card-administration .entra-admin,
+body[data-projectpulse-active-route="rate-card-administration"] #rate-card-administration .user-admin,
+body[data-projectpulse-active-route="rate-card-administration"] #rate-card-administration .utilization-center {
+  display: revert !important;
+}
+/* 055B_4_RATE_CARD_ROUTE_HARD_ISOLATION_END */
