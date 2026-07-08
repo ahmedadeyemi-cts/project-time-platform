@@ -1229,6 +1229,7 @@ import ProjectCloseoutCenter from './ProjectCloseoutCenter.jsx';
 import CloseoutEmailAutomationCenter from './CloseoutEmailAutomationCenter.jsx';
 import CustomerDirectoryCenter from './CustomerDirectoryCenter.jsx';
 import RateCardAdministrationCenter from './RateCardAdministrationCenter.jsx';
+import WorkRegisterCenter from './WorkRegisterCenter.jsx';
 import CostOverrunAlertCenter from './CostOverrunAlertCenter.jsx';
 import ProjectWorkspaceCenter from './ProjectWorkspaceCenter.jsx';
 import ProjectManagerWorkloadCenter from './ProjectManagerWorkloadCenter.jsx';
@@ -2342,6 +2343,17 @@ const roleWorkspaceModules = [
     permissions: ['VIEW_PROJECT_INTAKE', 'VIEW_CUSTOMERS', 'VIEW_PROJECT_WORKLOAD', 'VIEW_RESOURCE_SCHEDULING', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   },
   /* 036_SALES_INSIGHTS_DASHBOARD_END */
+  /* 055C_WORK_REGISTER_NAV_START */
+  {
+    route: 'work-register',
+    href: '#work-register',
+    title: 'Work Register',
+    navLabel: 'MODULE 055C',
+    description: 'Search and filter active, closed, archived, and historical work across customers, projects, intakes, stakeholders, tasks, documents, hours, and cost indicators.',
+    permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL', 'MANAGE_PROJECT_INTAKE', 'VIEW_CUSTOMERS', 'MANAGE_CUSTOMERS', 'VIEW_REPORTS', 'MANAGE_REPORTS', 'MANAGE_TIME', 'APPROVE_TIME'],
+    roleCodes: ['PROJECT_TEAM_COORDINATOR', 'PROJECT_MANAGER', 'PROJECT_MANAGEMENT', 'ENGINEER', 'ENGINEERING', 'SALES', 'ACCOUNT_EXECUTIVE', 'SOLUTION_ARCHITECT', 'SA', 'SAA', 'INSIDE_SALES']
+  },
+  /* 055C_WORK_REGISTER_NAV_END */
   /* 055B_RATE_CARD_ADMIN_NAV_START */
   {
     route: 'rate-card-administration',
@@ -2702,6 +2714,8 @@ function getNavigationGroup(item) {
       return 'Project Workspace';
     case 'cost-alerts':
     case 'customer-directory':
+    case 'work-register':
+      return 'Work Register';
     case 'rate-card-administration':
       return 'Rate Card Administration';
     case 'project-intake':
@@ -3730,6 +3744,7 @@ function getInstalledModuleDescription(module) {
     'manager-approval': 'Lets managers review submitted time, approve valid days, return days for correction, and monitor pending approval counts.',
     'project-workspace': 'Gives engineers and project roles a scoped project workspace with assigned projects, tasks, documents, assigned hours, used hours, and remaining hours.',
     'project-intake': 'Captures project intake requests, customer selection, planned costs, documents, triage information, and resource request readiness.',
+    'work-register': 'Searches active, closed, archived, and historical work across customers, stakeholders, tasks, documents, hours, and costs.',
     'rate-card-administration': 'Manages standard, customer-specific, Toyota, Hyundai, service request, emergency, and travel rate cards.',
     'customer-directory': 'Maintains customer/account records, customer contacts, and customer data used by intake, project, cost, billing, and reconciliation workflows.',
     'cost-alerts': 'Monitors project planned cost, assigned hours, used hours, over-assignment risk, and notification routing for cost overrun alerts.',
@@ -7395,6 +7410,40 @@ Analytics - Variphy / Infortel`}
       ) : null}
 
       
+        const canViewWorkRegister =
+    canSeeAny(['SYSTEM_ADMINISTRATION', 'MANAGE_ALL', 'MANAGE_PROJECT_INTAKE', 'VIEW_CUSTOMERS', 'MANAGE_CUSTOMERS', 'VIEW_REPORTS', 'MANAGE_REPORTS', 'MANAGE_TIME', 'APPROVE_TIME']) ||
+    currentRoleCodes.some((roleCode) => [
+      'PROJECT_TEAM_COORDINATOR',
+      'PROJECT_MANAGER',
+      'PROJECT_MANAGEMENT',
+      'ENGINEER',
+      'ENGINEERING',
+      'SALES',
+      'ACCOUNT_EXECUTIVE',
+      'SOLUTION_ARCHITECT',
+      'SA',
+      'SAA',
+      'INSIDE_SALES'
+    ].includes(roleCode));
+
+      {/* 055C_WORK_REGISTER_ROUTE_START */}
+      {activeRoute === 'work-register' ? (
+        canViewWorkRegister ? (
+          <section id="work-register" className="panel work-register-route-panel">
+            <WorkRegisterCenter />
+          </section>
+        ) : (
+          <section id="work-register" className="panel work-register-route-panel">
+            <div className="work-register-center">
+              <div className="work-register-banner error">
+                Work Register access is restricted to authorized ProjectPulse users.
+              </div>
+            </div>
+          </section>
+        )
+      ) : null}
+      {/* 055C_WORK_REGISTER_ROUTE_END */}
+
       {/* 055B_RATE_CARD_ADMIN_ROUTE_START */}
       {activeRoute === 'rate-card-administration' ? (
         canManageRateCards ? (

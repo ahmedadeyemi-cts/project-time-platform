@@ -1,0 +1,265 @@
+.work-register-center {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.work-register-header,
+.work-register-summary,
+.work-register-toolbar,
+.work-register-totalbar,
+.work-register-table-wrap {
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
+}
+
+.work-register-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.15rem;
+}
+
+.work-register-header h2 {
+  margin: 0;
+  font-size: 1.45rem;
+}
+
+.work-register-center .muted,
+.work-register-table small,
+.work-register-summary small,
+.work-register-summary span {
+  color: #64748b;
+}
+
+.work-register-banner {
+  border-radius: 14px;
+  padding: 0.85rem 1rem;
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid rgba(59, 130, 246, 0.26);
+}
+
+.work-register-banner.error {
+  background: #fef2f2;
+  color: #b91c1c;
+  border-color: rgba(239, 68, 68, 0.28);
+}
+
+.work-register-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.65rem;
+  padding: 0.75rem;
+}
+
+.work-register-summary article {
+  display: grid;
+  gap: 0.25rem;
+  border-radius: 14px;
+  padding: 0.75rem;
+  background: #f8fafc;
+}
+
+.work-register-summary strong {
+  font-size: 1.25rem;
+}
+
+.work-register-toolbar {
+  display: grid;
+  grid-template-columns: 2fr repeat(6, minmax(145px, 1fr));
+  gap: 0.65rem;
+  align-items: end;
+  padding: 0.75rem;
+  position: sticky;
+  top: 0;
+  z-index: 7;
+}
+
+.work-register-toolbar label {
+  display: grid;
+  gap: 0.3rem;
+  font-weight: 800;
+  color: #334155;
+  font-size: 0.82rem;
+}
+
+.work-register-toolbar input,
+.work-register-toolbar select {
+  width: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  border-radius: 12px;
+  padding: 0.55rem 0.65rem;
+  background: #ffffff;
+  color: #0f172a;
+}
+
+.work-register-totalbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  padding: 0.65rem;
+}
+
+.work-register-totalbar span {
+  border-radius: 999px;
+  padding: 0.4rem 0.7rem;
+  background: #eef2ff;
+  color: #3730a3;
+  font-size: 0.82rem;
+}
+
+.work-register-table-wrap {
+  overflow: auto;
+  max-height: calc(100vh - 360px);
+}
+
+.work-register-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 1360px;
+  font-size: 0.84rem;
+}
+
+.work-register-table th,
+.work-register-table td {
+  border-bottom: 1px solid rgba(148, 163, 184, 0.24);
+  padding: 0.7rem;
+  vertical-align: top;
+  text-align: left;
+}
+
+.work-register-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  background: #ffffff;
+}
+
+.work-register-table td strong,
+.work-register-table td small {
+  display: block;
+}
+
+.work-register-pill,
+.burn-pill {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 0.25rem 0.55rem;
+  margin: 0 0.25rem 0.25rem 0;
+  background: #f1f5f9;
+  color: #334155;
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.lifecycle-active {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.lifecycle-closed {
+  background: #e2e8f0;
+  color: #334155;
+}
+
+.burn-normal {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.burn-watch {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.burn-warning {
+  background: #ffedd5;
+  color: #9a3412;
+}
+
+.burn-critical,
+.burn-overrun {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.engineer-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.engineer-list span {
+  border-radius: 999px;
+  padding: 0.25rem 0.5rem;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-weight: 700;
+  font-size: 0.75rem;
+}
+
+/* 055C_WORK_REGISTER_ROUTE_ISOLATION_START */
+body[data-projectpulse-active-route="work-register"] section.panel:not(#work-register):not(.work-register-route-panel) {
+  display: none !important;
+}
+
+body[data-projectpulse-active-route="work-register"] main > section:not(#work-register):not(.work-register-route-panel),
+body[data-projectpulse-active-route="work-register"] .app-main > section:not(#work-register):not(.work-register-route-panel),
+body[data-projectpulse-active-route="work-register"] .dashboard-main > section:not(#work-register):not(.work-register-route-panel),
+body[data-projectpulse-active-route="work-register"] .workspace-main > section:not(#work-register):not(.work-register-route-panel) {
+  display: none !important;
+}
+
+body[data-projectpulse-active-route="work-register"] #work-register,
+body[data-projectpulse-active-route="work-register"] .work-register-route-panel {
+  display: block !important;
+  visibility: visible !important;
+  min-height: auto !important;
+  margin-top: 0 !important;
+}
+
+body[data-projectpulse-active-route="work-register"] #work-register .work-register-center {
+  display: grid !important;
+}
+/* 055C_WORK_REGISTER_ROUTE_ISOLATION_END */
+
+@media (max-width: 1200px) {
+  .work-register-summary,
+  .work-register-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .work-register-header {
+    flex-direction: column;
+  }
+
+  .work-register-table-wrap {
+    max-height: 620px;
+  }
+}
+
+[data-theme="dark"] .work-register-header,
+[data-theme="dark"] .work-register-summary,
+[data-theme="dark"] .work-register-toolbar,
+[data-theme="dark"] .work-register-totalbar,
+[data-theme="dark"] .work-register-table-wrap {
+  background: rgba(15, 23, 42, 0.94);
+  border-color: rgba(148, 163, 184, 0.22);
+}
+
+[data-theme="dark"] .work-register-summary article {
+  background: rgba(30, 41, 59, 0.78);
+}
+
+[data-theme="dark"] .work-register-toolbar input,
+[data-theme="dark"] .work-register-toolbar select {
+  background: rgba(15, 23, 42, 0.92);
+  color: #e2e8f0;
+  border-color: rgba(148, 163, 184, 0.3);
+}
+
+[data-theme="dark"] .work-register-table thead th {
+  background: #0f172a;
+}

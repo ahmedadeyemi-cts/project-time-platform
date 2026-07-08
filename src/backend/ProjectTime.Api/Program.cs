@@ -5675,6 +5675,358 @@ app.MapGet("/api/project-intake/summary", async () =>
 
 
 
+
+/* 055C_WORK_REGISTER_API_START */
+app.MapGet("/api/work-register/overview", async (HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token.", guard = "055C_work_register_session_required" }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var dbConfig = DatabaseConfig.FromEnvironment();
+
+    await using var connection = new NpgsqlConnection(dbConfig.ConnectionString);
+    await connection.OpenAsync();
+
+    async Task<bool> TableExistsAsync(string tableName)
+    {
+        await using var command = new NpgsqlCommand("SELECT to_regclass(@table_name) IS NOT NULL;", connection);
+        command.Parameters.AddWithValue("table_name", $"public.{tableName}");
+        return Convert.ToBoolean(await command.ExecuteScalarAsync() ?? false);
+    }
+
+    static string JsonValueToString(JsonElement element)
+    {
+        return element.ValueKind switch
+        {
+            JsonValueKind.String => element.GetString() ?? "",
+            JsonValueKind.Number => element.ToString(),
+            JsonValueKind.True => "true",
+            JsonValueKind.False => "false",
+            JsonValueKind.Null => "",
+            JsonValueKind.Undefined => "",
+            _ => element.ToString()
+        };
+    }
+
+    static string Pick(IReadOnlyDictionary<string, string> row, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            if (row.TryGetValue(name, out var value) && !string.IsNullOrWhiteSpace(value))
+            {
+                return value.Trim();
+            }
+        }
+
+        return "";
+    }
+
+    static decimal PickDecimal(IReadOnlyDictionary<string, string> row, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            if (row.TryGetValue(name, out var value) && decimal.TryParse(value, out var parsed))
+            {
+                return parsed;
+            }
+        }
+
+        return 0m;
+    }
+
+    static bool IsClosedStatus(string status)
+    {
+        var value = (status ?? "").Trim().ToLowerInvariant();
+        return value.Contains("closed")
+            || value.Contains("complete")
+            || value.Contains("completed")
+            || value.Contains("archived")
+            || value.Contains("cancelled")
+            || value.Contains("canceled")
+            || value.Contains("invoice ready")
+            || value.Contains("done");
+    }
+
+    static bool IsOpenTaskStatus(string status)
+    {
+        var value = (status ?? "").Trim().ToLowerInvariant();
+        return !(value.Contains("closed")
+            || value.Contains("complete")
+            || value.Contains("completed")
+            || value.Contains("cancelled")
+            || value.Contains("canceled")
+            || value.Contains("done"));
+    }
+
+    async Task<List<Dictionary<string, string>>> LoadRowsAsync(string tableName, int limit)
+    {
+        var rows = new List<Dictionary<string, string>>();
+        if (!await TableExistsAsync(tableName))
+        {
+            return rows;
+        }
+
+        await using var command = new NpgsqlCommand($"SELECT to_jsonb(t)::text FROM public.{tableName} t LIMIT @limit;", connection);
+        command.Parameters.AddWithValue("limit", limit);
+
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var json = reader.GetString(0);
+            using var document = JsonDocument.Parse(json);
+            var row = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var property in document.RootElement.EnumerateObject())
+            {
+                row[property.Name] = JsonValueToString(property.Value);
+            }
+
+            rows.Add(row);
+        }
+
+        return rows;
+    }
+
+    var clientRows = await LoadRowsAsync("clients", 10000);
+    var userRows = await LoadRowsAsync("app_users", 10000);
+    var projectRows = await LoadRowsAsync("projects", 5000);
+    var intakeRows = await LoadRowsAsync("project_intakes", 5000);
+    var taskRows = await LoadRowsAsync("project_tasks", 50000);
+    var documentRows = await LoadRowsAsync("project_documents", 50000);
+    var timeRows = await LoadRowsAsync("time_entries", 100000);
+
+    var clientsById = new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
+    foreach (var row in clientRows)
+    {
+        var clientId = Pick(row, "client_id", "customer_id", "id");
+        if (!string.IsNullOrWhiteSpace(clientId) && !clientsById.ContainsKey(clientId))
+        {
+            clientsById[clientId] = row;
+        }
+    }
+
+    var usersById = new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
+    foreach (var row in userRows)
+    {
+        var userId = Pick(row, "user_id", "app_user_id", "id");
+        if (!string.IsNullOrWhiteSpace(userId) && !usersById.ContainsKey(userId))
+        {
+            usersById[userId] = row;
+        }
+    }
+
+    string ClientName(string clientId, string fallback = "")
+    {
+        if (!string.IsNullOrWhiteSpace(clientId) && clientsById.TryGetValue(clientId, out var client))
+        {
+            return Pick(client, "client_name", "customer_name", "name", "display_name");
+        }
+
+        return fallback;
+    }
+
+    string UserName(string userId, string fallback = "")
+    {
+        if (!string.IsNullOrWhiteSpace(userId) && usersById.TryGetValue(userId, out var user))
+        {
+            return Pick(user, "display_name", "full_name", "name", "email", "user_name");
+        }
+
+        return fallback;
+    }
+
+    var tasksByProject = new Dictionary<string, List<Dictionary<string, string>>>(StringComparer.OrdinalIgnoreCase);
+    foreach (var row in taskRows)
+    {
+        var projectId = Pick(row, "project_id", "work_item_id", "parent_project_id");
+        if (string.IsNullOrWhiteSpace(projectId)) continue;
+
+        if (!tasksByProject.ContainsKey(projectId))
+        {
+            tasksByProject[projectId] = new List<Dictionary<string, string>>();
+        }
+
+        tasksByProject[projectId].Add(row);
+    }
+
+    var documentsByProject = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+    foreach (var row in documentRows)
+    {
+        var projectId = Pick(row, "project_id", "work_item_id", "parent_project_id");
+        if (string.IsNullOrWhiteSpace(projectId)) continue;
+
+        documentsByProject[projectId] = documentsByProject.TryGetValue(projectId, out var current) ? current + 1 : 1;
+    }
+
+    var hoursByProject = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+    foreach (var row in timeRows)
+    {
+        var projectId = Pick(row, "project_id", "work_item_id", "parent_project_id");
+        if (string.IsNullOrWhiteSpace(projectId)) continue;
+
+        var hours = PickDecimal(row, "hours", "duration_hours", "time_hours", "actual_hours", "entered_hours");
+        hoursByProject[projectId] = hoursByProject.TryGetValue(projectId, out var current) ? current + hours : hours;
+    }
+
+    var workItems = new List<object>();
+
+    foreach (var project in projectRows)
+    {
+        var projectId = Pick(project, "project_id", "id", "work_item_id");
+        if (string.IsNullOrWhiteSpace(projectId)) continue;
+
+        var clientId = Pick(project, "client_id", "customer_id");
+        var status = Pick(project, "status", "project_status", "state");
+        var workName = Pick(project, "project_name", "name", "title", "work_name", "request_name");
+
+        tasksByProject.TryGetValue(projectId, out var projectTasks);
+        projectTasks ??= new List<Dictionary<string, string>>();
+
+        var taskCount = projectTasks.Count;
+        var openTaskCount = projectTasks.Count(task => IsOpenTaskStatus(Pick(task, "status", "task_status", "state")));
+        var closedTaskCount = taskCount - openTaskCount;
+
+        var assignedEngineers = projectTasks
+            .Select(task => UserName(Pick(task, "assigned_user_id", "engineer_user_id", "resource_user_id", "owner_user_id"), Pick(task, "assigned_to_name", "engineer_name", "resource_name")))
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(8)
+            .ToList();
+
+        var totalCost =
+            PickDecimal(project, "total_project_cost", "project_total_cost", "budget_amount", "total_cost", "project_list_price");
+
+        var costUsed =
+            PickDecimal(project, "cost_used", "actual_cost", "consumed_cost", "used_cost");
+
+        var remainingCost =
+            PickDecimal(project, "remaining_cost", "cost_remaining", "budget_remaining");
+
+        var usedHours = hoursByProject.TryGetValue(projectId, out var projectHours) ? projectHours : 0m;
+
+        var allocatedHours =
+            PickDecimal(project, "total_project_hours", "allocated_hours", "project_hours", "hours_associated", "total_hours");
+
+        var burnPercent = totalCost > 0 && costUsed > 0
+            ? Math.Round((costUsed / totalCost) * 100m, 1)
+            : (allocatedHours > 0 && usedHours > 0 ? Math.Round((usedHours / allocatedHours) * 100m, 1) : 0m);
+
+        var burnStatus = burnPercent >= 100 ? "overrun"
+            : burnPercent >= 95 ? "critical"
+            : burnPercent >= 85 ? "warning"
+            : burnPercent >= 70 ? "watch"
+            : "normal";
+
+        workItems.Add(new
+        {
+            workId = projectId,
+            workType = Pick(project, "work_type", "project_type", "type", "intake_type") is { Length: > 0 } workType ? workType : "Project",
+            workName = string.IsNullOrWhiteSpace(workName) ? "Untitled Work Item" : workName,
+            customerName = ClientName(clientId, Pick(project, "customer_name", "client_name")),
+            customerId = clientId,
+            status = string.IsNullOrWhiteSpace(status) ? "unknown" : status,
+            lifecycle = IsClosedStatus(status) ? "closed" : "active",
+            contractType = Pick(project, "contract_type", "billing_type", "pricing_model"),
+            projectManager = UserName(Pick(project, "project_manager_user_id", "pm_user_id", "assigned_pm_user_id"), Pick(project, "project_manager_name", "pm_name")),
+            projectCoordinator = UserName(Pick(project, "project_coordinator_user_id", "ptc_user_id", "coordinator_user_id"), Pick(project, "project_coordinator_name", "coordinator_name")),
+            accountExecutive = UserName(Pick(project, "account_executive_user_id", "ae_user_id", "sales_executive_user_id"), Pick(project, "account_executive_name", "ae_name", "sales_executive_name")),
+            solutionArchitect = UserName(Pick(project, "solution_architect_user_id", "sa_user_id", "architect_user_id"), Pick(project, "solution_architect_name", "sa_name", "architect_name")),
+            insideSales = UserName(Pick(project, "inside_sales_user_id", "saa_user_id"), Pick(project, "inside_sales_name", "saa_name")),
+            assignedEngineers,
+            startDate = Pick(project, "project_start_date", "start_date", "planned_start_date"),
+            estimatedEndDate = Pick(project, "estimated_end_date", "project_end_date", "planned_end_date", "end_date"),
+            closedDate = Pick(project, "closed_at", "closed_date", "completed_at", "archived_at"),
+            sowSignedDate = Pick(project, "sow_signed_date", "signed_date"),
+            taskCount,
+            openTaskCount,
+            closedTaskCount,
+            documentCount = documentsByProject.TryGetValue(projectId, out var docCount) ? docCount : 0,
+            allocatedHours,
+            usedHours,
+            engineeringHoursAllocated = PickDecimal(project, "engineering_hours", "total_engineering_hours", "engineering_allocated_hours"),
+            pmHoursAllocated = PickDecimal(project, "project_management_hours", "pm_hours", "total_project_oversight_hours"),
+            totalCost,
+            costUsed,
+            remainingCost,
+            burnPercent,
+            burnStatus,
+            sourceTable = "projects"
+        });
+    }
+
+    foreach (var intake in intakeRows)
+    {
+        var intakeId = Pick(intake, "project_intake_id", "intake_id", "id");
+        if (string.IsNullOrWhiteSpace(intakeId)) continue;
+
+        var existingProjectId = Pick(intake, "project_id");
+        if (!string.IsNullOrWhiteSpace(existingProjectId)) continue;
+
+        var status = Pick(intake, "status", "intake_status", "state");
+        var clientId = Pick(intake, "client_id", "customer_id");
+
+        workItems.Add(new
+        {
+            workId = intakeId,
+            workType = Pick(intake, "work_type", "intake_type", "project_type") is { Length: > 0 } workType ? workType : "Project Intake",
+            workName = Pick(intake, "project_name", "name", "title", "request_name") is { Length: > 0 } name ? name : "Untitled Intake",
+            customerName = ClientName(clientId, Pick(intake, "customer_name", "client_name")),
+            customerId = clientId,
+            status = string.IsNullOrWhiteSpace(status) ? "draft" : status,
+            lifecycle = IsClosedStatus(status) ? "closed" : "active",
+            contractType = Pick(intake, "contract_type", "billing_type", "pricing_model"),
+            projectManager = UserName(Pick(intake, "project_manager_user_id", "pm_user_id"), Pick(intake, "project_manager_name", "pm_name")),
+            projectCoordinator = UserName(Pick(intake, "project_coordinator_user_id", "ptc_user_id"), Pick(intake, "project_coordinator_name", "coordinator_name")),
+            accountExecutive = UserName(Pick(intake, "account_executive_user_id", "ae_user_id", "sales_executive_user_id"), Pick(intake, "account_executive_name", "ae_name", "sales_executive_name")),
+            solutionArchitect = UserName(Pick(intake, "solution_architect_user_id", "sa_user_id", "architect_user_id"), Pick(intake, "solution_architect_name", "sa_name", "architect_name")),
+            insideSales = UserName(Pick(intake, "inside_sales_user_id", "saa_user_id"), Pick(intake, "inside_sales_name", "saa_name")),
+            assignedEngineers = Array.Empty<string>(),
+            startDate = Pick(intake, "project_start_date", "start_date", "planned_start_date"),
+            estimatedEndDate = Pick(intake, "estimated_end_date", "project_end_date", "planned_end_date", "end_date"),
+            closedDate = Pick(intake, "closed_at", "closed_date", "completed_at", "archived_at"),
+            sowSignedDate = Pick(intake, "sow_signed_date", "signed_date"),
+            taskCount = 0,
+            openTaskCount = 0,
+            closedTaskCount = 0,
+            documentCount = 0,
+            allocatedHours = PickDecimal(intake, "total_project_hours", "allocated_hours", "project_hours", "hours_associated", "total_hours"),
+            usedHours = 0,
+            engineeringHoursAllocated = PickDecimal(intake, "engineering_hours", "total_engineering_hours", "engineering_allocated_hours"),
+            pmHoursAllocated = PickDecimal(intake, "project_management_hours", "pm_hours", "total_project_oversight_hours"),
+            totalCost = PickDecimal(intake, "total_project_cost", "project_total_cost", "budget_amount", "total_cost", "project_list_price"),
+            costUsed = 0,
+            remainingCost = PickDecimal(intake, "remaining_cost", "cost_remaining", "budget_remaining"),
+            burnPercent = 0,
+            burnStatus = "normal",
+            sourceTable = "project_intakes"
+        });
+    }
+
+    var itemList = workItems.ToList();
+
+    var summary = new
+    {
+        total = itemList.Count,
+        active = itemList.Count(item => Convert.ToString(item.GetType().GetProperty("lifecycle")?.GetValue(item)) == "active"),
+        closed = itemList.Count(item => Convert.ToString(item.GetType().GetProperty("lifecycle")?.GetValue(item)) == "closed"),
+        projects = itemList.Count(item => Convert.ToString(item.GetType().GetProperty("workType")?.GetValue(item))?.Equals("Project", StringComparison.OrdinalIgnoreCase) == true),
+        intakes = itemList.Count(item => Convert.ToString(item.GetType().GetProperty("sourceTable")?.GetValue(item)) == "project_intakes")
+    };
+
+    return Results.Ok(new
+    {
+        status = "work_register_loaded",
+        generatedAtUtc = DateTimeOffset.UtcNow,
+        summary,
+        workItems = itemList
+    });
+});
+/* 055C_WORK_REGISTER_API_END */
+
+
 /* 055B_RATE_CARD_ADMIN_API_START */
 app.MapGet("/api/rate-cards/admin/foundation", async (HttpContext httpContext) =>
 {
