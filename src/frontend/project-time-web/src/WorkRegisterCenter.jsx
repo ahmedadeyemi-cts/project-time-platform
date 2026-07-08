@@ -136,6 +136,11 @@ export default function WorkRegisterCenter() {
   const [selectedWorkItem, setSelectedWorkItem] = useState(null);
   const [editForm, setEditForm] = useState({});
   const [editStatus, setEditStatus] = useState('');
+
+  const [activeDrawerTab, setActiveDrawerTab] = useState('setup');
+  const [projectDetails, setProjectDetails] = useState({ loading: false, data: null, error: null });
+  // 055C_5_WORK_REGISTER_DETAIL_TABS
+
   // 055C_2_WORK_REGISTER_EDIT_DRAWER
 
 
@@ -288,9 +293,32 @@ export default function WorkRegisterCenter() {
   const saOptions = activeUsersByRole(userOptions, ['SOLUTION_ARCHITECT', 'SA', 'ARCHITECT', 'ANALYST_DEV_ARCHITECT']);
   const saaOptions = activeUsersByRole(userOptions, ['SAA', 'INSIDE_SALES', 'SALES_SUPPORT', 'SALES']);
 
+
+  async function loadProjectDetails(item) {
+    if (!item?.workId || item.sourceTable !== 'projects') {
+      setProjectDetails({ loading: false, data: null, error: 'Detail tabs currently support project records. Intake detail tabs will be added later.' });
+      return;
+    }
+
+    setProjectDetails({ loading: true, data: null, error: null });
+
+    try {
+      const data = await fetchJson(`/api/work-register/projects/${item.workId}/details`);
+      setProjectDetails({ loading: false, data, error: null });
+    } catch (error) {
+      setProjectDetails({
+        loading: false,
+        data: null,
+        error: error instanceof Error ? error.message : 'Unable to load project details.'
+      });
+    }
+  }
+
   function openEditDrawer(item) {
     setSelectedWorkItem(item);
     setEditStatus('');
+    setActiveDrawerTab('setup');
+    loadProjectDetails(item);
     setEditForm({
       workId: item.workId,
       sourceTable: item.sourceTable,
@@ -313,6 +341,8 @@ export default function WorkRegisterCenter() {
     setSelectedWorkItem(null);
     setEditForm({});
     setEditStatus('');
+    setActiveDrawerTab('setup');
+    setProjectDetails({ loading: false, data: null, error: null });
   }
 
   function updateEditField(field, value) {
@@ -622,6 +652,25 @@ export default function WorkRegisterCenter() {
               <div className="work-register-banner">{editStatus}</div>
             ) : null}
 
+            {/* 055C_5_WORK_REGISTER_DETAIL_TABS_START */}
+            <div className="work-register-drawer-tabs" role="tablist" aria-label="Work detail sections">
+              <button type="button" className={activeDrawerTab === 'setup' ? 'active' : ''} onClick={() => setActiveDrawerTab('setup')}>Setup</button>
+              <button type="button" className={activeDrawerTab === 'tasks' ? 'active' : ''} onClick={() => setActiveDrawerTab('tasks')}>Tasks & Engineers</button>
+              <button type="button" className={activeDrawerTab === 'costing' ? 'active' : ''} onClick={() => setActiveDrawerTab('costing')}>Costing / Change Orders</button>
+              <button type="button" className={activeDrawerTab === 'documents' ? 'active' : ''} onClick={() => setActiveDrawerTab('documents')}>Documents</button>
+              <button type="button" className={activeDrawerTab === 'audit' ? 'active' : ''} onClick={() => setActiveDrawerTab('audit')}>Audit</button>
+            </div>
+            {/* 055C_5_WORK_REGISTER_DETAIL_TABS_END */}
+
+            {projectDetails.error ? (
+              <div className="work-register-banner error">{projectDetails.error}</div>
+            ) : null}
+
+            {projectDetails.loading ? (
+              <div className="work-register-banner">Loading project detail tabs...</div>
+            ) : null}
+
+            {activeDrawerTab === 'setup' ? (
             <form className="work-register-edit-form" onSubmit={saveProjectSetup}>
               <label>
                 Customer
@@ -780,7 +829,96 @@ export default function WorkRegisterCenter() {
                 ) : null}
                 <button type="button" className="secondary-action" onClick={closeEditDrawer}>Cancel</button>
               </div>
+
             </form>
+            ) : null}
+
+            {activeDrawerTab === 'tasks' ? (
+              <div className="work-register-detail-panel">
+                <h4>Tasks & Engineer Assignments</h4>
+                <p className="muted">This tab is read-only in 055C.5. The next patch will add PTC-controlled task-level engineer assignment and reassignment.</p>
+                <div className="work-register-detail-grid">
+                  {(projectDetails.data?.tasks ?? []).map((task) => (
+                    <article key={task.taskId || task.taskName}>
+                      <strong>{task.taskName}</strong>
+                      <small>Status: {labelize(task.status || 'not set')}</small>
+                      <small>Engineer: {task.assignedUserName || 'Not assigned'}</small>
+                      <small>Allocated hours: {hours(task.allocatedHours)}</small>
+                      <small>Billable: {task.billable || 'not set'} · Utilization: {task.utilizationEligible || 'not set'}</small>
+                    </article>
+                  ))}
+                  {projectDetails.data && (projectDetails.data.tasks ?? []).length === 0 ? (
+                    <p className="muted">No project tasks were found for this work item.</p>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+
+            {activeDrawerTab === 'costing' ? (
+              <div className="work-register-detail-panel">
+                <h4>Costing / Change Orders</h4>
+                <p className="muted">This tab prepares the change-order model. The next costing patch will add approved budget revisions without overwriting the original baseline.</p>
+                <div className="work-register-detail-summary">
+                  <span>Total hours used: <strong>{hours(projectDetails.data?.summary?.totalHours ?? selectedWorkItem.usedHours)}</strong></span>
+                  <span>Current total cost: <strong>{money(selectedWorkItem.totalCost)}</strong></span>
+                  <span>Cost used: <strong>{money(selectedWorkItem.costUsed)}</strong></span>
+                  <span>Remaining: <strong>{money(selectedWorkItem.remainingCost)}</strong></span>
+                </div>
+                <h5>Time by person</h5>
+                <div className="work-register-detail-grid">
+                  {(projectDetails.data?.timeSummary ?? []).map((item) => (
+                    <article key={item.userName}>
+                      <strong>{item.userName}</strong>
+                      <small>{hours(item.hours)} hours</small>
+                    </article>
+                  ))}
+                  {projectDetails.data && (projectDetails.data.timeSummary ?? []).length === 0 ? (
+                    <p className="muted">No time entries were found for this work item.</p>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+
+            {activeDrawerTab === 'documents' ? (
+              <div className="work-register-detail-panel">
+                <h4>Documents</h4>
+                <p className="muted">This tab is read-only in 055C.5. The document-management patch will add upload/link/change-order document controls for PTC/Admin.</p>
+                <div className="work-register-detail-grid">
+                  {(projectDetails.data?.documents ?? []).map((document) => (
+                    <article key={document.documentId || document.fileName}>
+                      <strong>{document.fileName || 'Untitled document'}</strong>
+                      <small>Type: {labelize(document.documentType || 'not set')}</small>
+                      <small>Visibility: {labelize(document.visibility || 'not set')}</small>
+                      <small>Uploaded: {document.uploadedAt || 'not set'}</small>
+                    </article>
+                  ))}
+                  {projectDetails.data && (projectDetails.data.documents ?? []).length === 0 ? (
+                    <p className="muted">No project documents were found for this work item.</p>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+
+            {activeDrawerTab === 'audit' ? (
+              <div className="work-register-detail-panel">
+                <h4>Audit History</h4>
+                <p className="muted">Project setup edits are written to the Work Register audit sidecar table.</p>
+                <div className="work-register-detail-grid">
+                  {(projectDetails.data?.changeHistory ?? []).map((event, index) => (
+                    <article key={`${event.changedAt}-${index}`}>
+                      <strong>{labelize(event.action || 'change')}</strong>
+                      <small>{event.changeSummary || 'No summary provided'}</small>
+                      <small>Fields: {event.changedFields || 'not listed'}</small>
+                      <small>By: {event.changedBy || 'Unknown'} · {event.changedAt || 'not set'}</small>
+                    </article>
+                  ))}
+                  {projectDetails.data && (projectDetails.data.changeHistory ?? []).length === 0 ? (
+                    <p className="muted">No Work Register audit events were found for this work item yet.</p>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+
           </aside>
         </div>
       ) : null}

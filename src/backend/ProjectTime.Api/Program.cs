@@ -5677,6 +5677,314 @@ app.MapGet("/api/project-intake/summary", async () =>
 
 
 
+
+/* 055C_5_WORK_REGISTER_DETAIL_TABS_API_START */
+app.MapGet("/api/work-register/projects/{projectId:guid}/details", async (Guid projectId, HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token.", guard = "055C5_work_register_details_session_required" }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var dbConfig = DatabaseConfig.FromEnvironment();
+
+    await using var connection = new NpgsqlConnection(dbConfig.ConnectionString);
+    await connection.OpenAsync();
+
+    static string QuoteIdent(string identifier)
+    {
+        return "\"" + identifier.Replace("\"", "\"\"") + "\"";
+    }
+
+    static string JsonValueToString(JsonElement element)
+    {
+        return element.ValueKind switch
+        {
+            JsonValueKind.String => element.GetString() ?? "",
+            JsonValueKind.Number => element.ToString(),
+            JsonValueKind.True => "true",
+            JsonValueKind.False => "false",
+            JsonValueKind.Null => "",
+            JsonValueKind.Undefined => "",
+            _ => element.ToString()
+        };
+    }
+
+    static string Pick(IReadOnlyDictionary<string, string> row, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            if (row.TryGetValue(name, out var value) && !string.IsNullOrWhiteSpace(value))
+            {
+                return value.Trim();
+            }
+        }
+
+        return "";
+    }
+
+    static decimal PickDecimal(IReadOnlyDictionary<string, string> row, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            if (row.TryGetValue(name, out var value) && decimal.TryParse(value, out var parsed))
+            {
+                return parsed;
+            }
+        }
+
+        return 0m;
+    }
+
+    async Task<bool> TableExistsAsync(string tableName)
+    {
+        await using var command = new NpgsqlCommand("SELECT to_regclass(@table_name) IS NOT NULL;", connection);
+        command.Parameters.AddWithValue("table_name", $"public.{tableName}");
+        return Convert.ToBoolean(await command.ExecuteScalarAsync() ?? false);
+    }
+
+    async Task<Dictionary<string, string>> TableColumnsAsync(string tableName)
+    {
+        var columns = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        if (!await TableExistsAsync(tableName))
+        {
+            return columns;
+        }
+
+        await using var command = new NpgsqlCommand("""
+            SELECT column_name, data_type
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = @table_name;
+            """, connection);
+        command.Parameters.AddWithValue("table_name", tableName);
+
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            columns[reader.GetString(0)] = reader.GetString(1);
+        }
+
+        return columns;
+    }
+
+    static string? FindColumn(Dictionary<string, string> columns, params string[] candidates)
+    {
+        foreach (var candidate in candidates)
+        {
+            if (columns.ContainsKey(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return null;
+    }
+
+    async Task<List<Dictionary<string, string>>> LoadRowsByProjectAsync(string tableName, int limit, params string[] projectColumnCandidates)
+    {
+        var rows = new List<Dictionary<string, string>>();
+        var columns = await TableColumnsAsync(tableName);
+        if (columns.Count == 0)
+        {
+            return rows;
+        }
+
+        var projectColumn = FindColumn(columns, projectColumnCandidates);
+        if (projectColumn is null)
+        {
+            return rows;
+        }
+
+        await using var command = new NpgsqlCommand($"""
+            SELECT to_jsonb(t)::text
+            FROM public.{QuoteIdent(tableName)} t
+            WHERE {QuoteIdent(projectColumn)} = @project_id
+            LIMIT @limit;
+            """, connection);
+
+        command.Parameters.AddWithValue("project_id", projectId);
+        command.Parameters.AddWithValue("limit", limit);
+
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var json = reader.GetString(0);
+            using var document = JsonDocument.Parse(json);
+            var row = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var property in document.RootElement.EnumerateObject())
+            {
+                row[property.Name] = JsonValueToString(property.Value);
+            }
+
+            rows.Add(row);
+        }
+
+        return rows;
+    }
+
+    async Task<Dictionary<string, string>?> LoadProjectAsync()
+    {
+        var columns = await TableColumnsAsync("projects");
+        var idColumn = FindColumn(columns, "project_id", "id", "work_item_id");
+
+        if (idColumn is null)
+        {
+            return null;
+        }
+
+        await using var command = new NpgsqlCommand($"""
+            SELECT to_jsonb(p)::text
+            FROM public.projects p
+            WHERE {QuoteIdent(idColumn)} = @project_id
+            LIMIT 1;
+            """, connection);
+        command.Parameters.AddWithValue("project_id", projectId);
+
+        var json = Convert.ToString(await command.ExecuteScalarAsync() ?? "") ?? "";
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return null;
+        }
+
+        using var document = JsonDocument.Parse(json);
+        var row = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var property in document.RootElement.EnumerateObject())
+        {
+            row[property.Name] = JsonValueToString(property.Value);
+        }
+
+        return row;
+    }
+
+    var usersById = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+    if (await TableExistsAsync("app_users"))
+    {
+        await using var userCommand = new NpgsqlCommand("""
+            SELECT user_id::text, COALESCE(display_name, email, user_id::text)
+            FROM app_users;
+            """, connection);
+
+        await using var userReader = await userCommand.ExecuteReaderAsync();
+        while (await userReader.ReadAsync())
+        {
+            usersById[userReader.GetString(0)] = userReader.GetString(1);
+        }
+    }
+
+    string UserName(string userId, string fallback = "")
+    {
+        if (!string.IsNullOrWhiteSpace(userId) && usersById.TryGetValue(userId, out var name))
+        {
+            return name;
+        }
+
+        return fallback;
+    }
+
+    var project = await LoadProjectAsync();
+    if (project is null)
+    {
+        return Results.NotFound(new { status = "project_not_found", message = "Project was not found." });
+    }
+
+    var taskRows = await LoadRowsByProjectAsync("project_tasks", 1000, "project_id", "work_item_id", "parent_project_id");
+    var documentRows = await LoadRowsByProjectAsync("project_documents", 1000, "project_id", "work_item_id", "parent_project_id");
+    var timeRows = await LoadRowsByProjectAsync("time_entries", 100000, "project_id", "work_item_id", "parent_project_id");
+    var changeRows = await LoadRowsByProjectAsync("work_register_change_history", 500, "work_id");
+
+    var tasks = taskRows.Select(task =>
+    {
+        var assignedUserId = Pick(task, "assigned_user_id", "engineer_user_id", "resource_user_id", "owner_user_id", "user_id");
+        var taskName = Pick(task, "task_name", "name", "title", "description", "work_task_name");
+
+        return new
+        {
+            taskId = Pick(task, "project_task_id", "task_id", "id"),
+            taskName = string.IsNullOrWhiteSpace(taskName) ? "Untitled task" : taskName,
+            status = Pick(task, "status", "task_status", "state"),
+            assignedUserId,
+            assignedUserName = UserName(assignedUserId, Pick(task, "assigned_to_name", "engineer_name", "resource_name")),
+            allocatedHours = PickDecimal(task, "allocated_hours", "planned_hours", "estimated_hours", "hours"),
+            billable = Pick(task, "billable", "is_billable", "billable_default"),
+            utilizationEligible = Pick(task, "utilization_eligible", "is_utilization_eligible", "utilization_eligible_default"),
+            source = task
+        };
+    }).ToList();
+
+    var documents = documentRows.Select(document =>
+    {
+        return new
+        {
+            documentId = Pick(document, "project_document_id", "document_id", "id"),
+            fileName = Pick(document, "file_name", "filename", "name", "document_name", "title"),
+            documentType = Pick(document, "document_type", "type", "category"),
+            visibility = Pick(document, "visibility", "document_visibility", "access_level"),
+            uploadedAt = Pick(document, "uploaded_at", "created_at", "linked_at"),
+            source = document
+        };
+    }).ToList();
+
+    var timeByUser = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+    foreach (var time in timeRows)
+    {
+        var userId = Pick(time, "user_id", "employee_user_id", "engineer_user_id", "resource_user_id");
+        var userName = UserName(userId, Pick(time, "user_name", "employee_name", "engineer_name", "resource_name"));
+        if (string.IsNullOrWhiteSpace(userName))
+        {
+            userName = "Unknown user";
+        }
+
+        var enteredHours = PickDecimal(time, "hours", "duration_hours", "time_hours", "actual_hours", "entered_hours");
+        timeByUser[userName] = timeByUser.TryGetValue(userName, out var current) ? current + enteredHours : enteredHours;
+    }
+
+    var changeHistory = changeRows.Select(change =>
+    {
+        var changedByUserId = Pick(change, "changed_by_user_id", "user_id");
+        return new
+        {
+            action = Pick(change, "action"),
+            changeSummary = Pick(change, "change_summary"),
+            changedFields = Pick(change, "changed_fields_csv"),
+            changedBy = UserName(changedByUserId, Pick(change, "changed_by", "changed_by_name")),
+            changedAt = Pick(change, "changed_at"),
+            source = change
+        };
+    }).ToList();
+
+    var totalHours = timeByUser.Values.Sum();
+
+    return Results.Ok(new
+    {
+        status = "work_register_project_details_loaded",
+        projectId,
+        generatedAtUtc = DateTimeOffset.UtcNow,
+        project,
+        summary = new
+        {
+            taskCount = tasks.Count,
+            documentCount = documents.Count,
+            timeEntryCount = timeRows.Count,
+            totalHours,
+            auditEventCount = changeHistory.Count
+        },
+        tasks,
+        documents,
+        timeSummary = timeByUser
+            .OrderByDescending(pair => pair.Value)
+            .Select(pair => new { userName = pair.Key, hours = pair.Value })
+            .ToList(),
+        changeHistory
+    });
+});
+/* 055C_5_WORK_REGISTER_DETAIL_TABS_API_END */
+
+
 /* 055C_2_WORK_REGISTER_EDIT_API_START */
 app.MapGet("/api/work-register/edit-foundation", async (HttpContext httpContext) =>
 {
