@@ -5805,6 +5805,7 @@ app.MapGet("/api/work-register/edit-foundation", async (HttpContext httpContext)
     });
 });
 
+/* 055C_3_WORK_REGISTER_UPDATE_500_REPAIR_START */
 app.MapPost("/api/work-register/projects/update", async (HttpContext httpContext) =>
 {
     var sessionUserId = GetProjectPulseSessionUserId(httpContext);
@@ -6019,19 +6020,6 @@ app.MapPost("/api/work-register/projects/update", async (HttpContext httpContext
     AddDateUpdate("estimatedEndDate", "Estimated End Date", "estimated_end_date", "project_end_date", "planned_end_date", "end_date");
     AddDateUpdate("sowSignedDate", "SOW Signed Date", "sow_signed_date", "signed_date");
     AddStringUpdate("status", "Status", "status", "project_status", "state");
-
-    var updatedAtColumn = FindColumn("updated_at", "modified_at");
-    if (updatedAtColumn is not null)
-    {
-        updates.Add((updatedAtColumn, DateTimeOffset.UtcNow, "Updated At"));
-    }
-
-    var updatedByColumn = FindColumn("updated_by_user_id", "modified_by_user_id");
-    if (updatedByColumn is not null)
-    {
-        updates.Add((updatedByColumn, sessionUserId.Value, "Updated By"));
-    }
-
     if (updates.Count == 0)
     {
         return Results.BadRequest(new
@@ -6121,8 +6109,8 @@ app.MapPost("/api/work-register/projects/update", async (HttpContext httpContext
             @change_summary,
             @changed_fields_csv,
             @changed_by_user_id,
-            @old_value_json::jsonb,
-            @new_value_json::jsonb
+            CAST(@old_value_json AS jsonb),
+            CAST(@new_value_json AS jsonb)
         );
         """, connection, transaction))
     {
@@ -6146,6 +6134,7 @@ app.MapPost("/api/work-register/projects/update", async (HttpContext httpContext
         message = "Project setup updated from Work Register. Historical audit snapshot was preserved."
     });
 });
+/* 055C_3_WORK_REGISTER_UPDATE_500_REPAIR_END */
 /* 055C_2_WORK_REGISTER_EDIT_API_END */
 
 

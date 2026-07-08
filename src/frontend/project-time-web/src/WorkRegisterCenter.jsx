@@ -343,23 +343,44 @@ export default function WorkRegisterCenter() {
       editReason: editForm.editReason.trim()
     };
 
-    [
-      'clientId',
-      'contractType',
-      'projectManagerUserId',
-      'projectCoordinatorUserId',
-      'accountExecutiveUserId',
-      'solutionArchitectUserId',
-      'insideSalesUserId',
-      'projectStartDate',
-      'estimatedEndDate',
-      'sowSignedDate',
-      'status'
-    ].forEach((field) => {
-      if (editForm[field]) {
-        payload[field] = editForm[field];
+    // 055C_3_WORK_REGISTER_CHANGED_FIELD_PAYLOAD_START
+    const addIfChanged = (field, originalValue = '') => {
+      const nextValue = String(editForm[field] ?? '').trim();
+      const priorValue = String(originalValue ?? '').trim();
+
+      if (nextValue && nextValue !== priorValue) {
+        payload[field] = nextValue;
       }
-    });
+    };
+
+    const addIfSelected = (field) => {
+      const nextValue = String(editForm[field] ?? '').trim();
+
+      if (nextValue) {
+        payload[field] = nextValue;
+      }
+    };
+
+    addIfChanged('clientId', selectedWorkItem.customerId || '');
+    addIfChanged('contractType', selectedWorkItem.contractType || '');
+    addIfChanged('projectStartDate', dateOnly(selectedWorkItem.startDate));
+    addIfChanged('estimatedEndDate', dateOnly(selectedWorkItem.estimatedEndDate));
+    addIfChanged('sowSignedDate', dateOnly(selectedWorkItem.sowSignedDate));
+    addIfChanged('status', selectedWorkItem.status || '');
+
+    // User dropdowns start as blank, meaning "keep current".
+    // Send only if PTC/Admin intentionally selects a replacement.
+    addIfSelected('projectManagerUserId');
+    addIfSelected('projectCoordinatorUserId');
+    addIfSelected('accountExecutiveUserId');
+    addIfSelected('solutionArchitectUserId');
+    addIfSelected('insideSalesUserId');
+
+    if (Object.keys(payload).length <= 3) {
+      setEditStatus('No setup changes were selected. Choose at least one field to update.');
+      return;
+    }
+    // 055C_3_WORK_REGISTER_CHANGED_FIELD_PAYLOAD_END
 
     setEditStatus('Saving project setup...');
 
