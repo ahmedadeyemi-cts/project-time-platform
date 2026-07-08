@@ -299,3 +299,20 @@
   color: #e2e8f0;
   border-color: rgba(148, 163, 184, 0.3);
 }
+
+/* 055B_1_RATE_CARD_ROUTE_ISOLATION_START */
+body[data-projectpulse-active-route="rate-card-administration"] [class*="user-admin"],
+body[data-projectpulse-active-route="rate-card-administration"] section#user-admin,
+body[data-projectpulse-active-route="rate-card-administration"] .user-admin-route-panel,
+body[data-projectpulse-active-route="rate-card-administration"] #project-allocation-info,
+body[data-projectpulse-active-route="rate-card-administration"] .project-allocation-info-panel,
+body[data-projectpulse-active-route="rate-card-administration"] #psa-modules,
+body[data-projectpulse-active-route="rate-card-administration"] .module-foundation-panel {
+  display: none !important;
+}
+
+body[data-projectpulse-active-route="rate-card-administration"] .rate-card-administration-route-panel,
+body[data-projectpulse-active-route="rate-card-administration"] .rate-card-admin-center {
+  display: grid !important;
+}
+/* 055B_1_RATE_CARD_ROUTE_ISOLATION_END */

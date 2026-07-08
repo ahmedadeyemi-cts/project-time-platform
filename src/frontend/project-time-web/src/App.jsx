@@ -3783,6 +3783,19 @@ export default function App() {
   const [profileSettingsStatus, setProfileSettingsStatus] = useState('');
   const [sessionWarning, setSessionWarning] = useState({ visible: false, remainingMs: 0 });
   const [activeRoute, setActiveRoute] = useState(() => normalizeRoute(window.location.hash));
+
+  /* 055B_1_ACTIVE_ROUTE_BODY_DATASET_START */
+  useEffect(() => {
+    const routeKey = activeRoute || 'dashboard';
+    document.body.dataset.projectpulseActiveRoute = routeKey;
+
+    return () => {
+      if (document.body.dataset.projectpulseActiveRoute === routeKey) {
+        delete document.body.dataset.projectpulseActiveRoute;
+      }
+    };
+  }, [activeRoute]);
+  /* 055B_1_ACTIVE_ROUTE_BODY_DATASET_END */
   /* 039A_ROUTE_REFRESH_RESTORE_EFFECT_START */
   useEffect(() => {
     installProjectPulseManualScrollRestoration();
@@ -7381,15 +7394,26 @@ Analytics - Variphy / Infortel`}
         </section>
       ) : null}
 
+      
       {/* 055B_RATE_CARD_ADMIN_ROUTE_START */}
-      {(activeRoute === 'rate-card-administration' && canManageRateCards) ? (
-        <section id="rate-card-administration" className="panel rate-card-administration-route-panel">
-          <RateCardAdministrationCenter />
-        </section>
+      {activeRoute === 'rate-card-administration' ? (
+        canManageRateCards ? (
+          <section id="rate-card-administration" className="panel rate-card-administration-route-panel">
+            <RateCardAdministrationCenter />
+          </section>
+        ) : (
+          <section id="rate-card-administration" className="panel rate-card-administration-route-panel">
+            <div className="rate-card-admin-center">
+              <div className="rate-card-admin-banner error">
+                Rate Card Administration is restricted to Super Administrators, Administrators, Project Team Coordinators, and Solution Architects.
+              </div>
+            </div>
+          </section>
+        )
       ) : null}
       {/* 055B_RATE_CARD_ADMIN_ROUTE_END */}
 
-      {(activeRoute === 'customer-directory' && canSeeAny(['VIEW_CUSTOMERS', 'MANAGE_CUSTOMERS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
+{(activeRoute === 'customer-directory' && canSeeAny(['VIEW_CUSTOMERS', 'MANAGE_CUSTOMERS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
         <section id="customer-directory" className="panel customer-directory-route-panel">
           <CustomerDirectoryCenter canManageCustomers={canSeeAny(['MANAGE_CUSTOMERS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])} />
         </section>
