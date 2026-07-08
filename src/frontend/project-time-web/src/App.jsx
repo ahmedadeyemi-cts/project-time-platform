@@ -5853,6 +5853,26 @@ export default function App() {
     currentRoleCodes.includes('SOLUTION_ARCHITECT') ||
     currentRoleCodes.includes('SA') ||
     currentRoleCodes.includes('ARCHITECT');
+
+  /* 055C_1_WORK_REGISTER_ACCESS_SCOPE_START */
+  const canViewWorkRegister =
+    canSeeAny(['SYSTEM_ADMINISTRATION', 'MANAGE_ALL', 'MANAGE_PROJECT_INTAKE', 'VIEW_CUSTOMERS', 'MANAGE_CUSTOMERS', 'VIEW_REPORTS', 'MANAGE_REPORTS', 'MANAGE_TIME', 'APPROVE_TIME']) ||
+    currentRoleCodes.some((roleCode) => [
+      'SUPER_ADMINISTRATOR',
+      'ADMINISTRATOR',
+      'PROJECT_TEAM_COORDINATOR',
+      'PROJECT_MANAGER',
+      'PROJECT_MANAGEMENT',
+      'ENGINEER',
+      'ENGINEERING',
+      'SALES',
+      'ACCOUNT_EXECUTIVE',
+      'SOLUTION_ARCHITECT',
+      'SA',
+      'SAA',
+      'INSIDE_SALES'
+    ].includes(roleCode));
+  /* 055C_1_WORK_REGISTER_ACCESS_SCOPE_END */
   const canViewManagerApprovalPanel = hasPermission('APPROVE_TIME') || hasPermission('REJECT_TIME') || hasPermission('MANAGE_ALL') || hasPermission('SYSTEM_ADMINISTRATION');
   const canViewLocalAdminPasswordResetApprovals =
     hasPermission('MANAGE_ALL') ||
@@ -7408,23 +7428,6 @@ Analytics - Variphy / Infortel`}
           <CostOverrunAlertCenter canManageCostAlerts={canSeeAny(['MANAGE_COST_ALERTS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])} />
         </section>
       ) : null}
-
-      
-        const canViewWorkRegister =
-    canSeeAny(['SYSTEM_ADMINISTRATION', 'MANAGE_ALL', 'MANAGE_PROJECT_INTAKE', 'VIEW_CUSTOMERS', 'MANAGE_CUSTOMERS', 'VIEW_REPORTS', 'MANAGE_REPORTS', 'MANAGE_TIME', 'APPROVE_TIME']) ||
-    currentRoleCodes.some((roleCode) => [
-      'PROJECT_TEAM_COORDINATOR',
-      'PROJECT_MANAGER',
-      'PROJECT_MANAGEMENT',
-      'ENGINEER',
-      'ENGINEERING',
-      'SALES',
-      'ACCOUNT_EXECUTIVE',
-      'SOLUTION_ARCHITECT',
-      'SA',
-      'SAA',
-      'INSIDE_SALES'
-    ].includes(roleCode));
 
       {/* 055C_WORK_REGISTER_ROUTE_START */}
       {activeRoute === 'work-register' ? (
