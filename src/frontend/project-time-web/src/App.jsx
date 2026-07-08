@@ -1228,6 +1228,7 @@ import BillingReadinessCenter from './BillingReadinessCenter.jsx';
 import ProjectCloseoutCenter from './ProjectCloseoutCenter.jsx';
 import CloseoutEmailAutomationCenter from './CloseoutEmailAutomationCenter.jsx';
 import CustomerDirectoryCenter from './CustomerDirectoryCenter.jsx';
+import RateCardAdministrationCenter from './RateCardAdministrationCenter.jsx';
 import CostOverrunAlertCenter from './CostOverrunAlertCenter.jsx';
 import ProjectWorkspaceCenter from './ProjectWorkspaceCenter.jsx';
 import ProjectManagerWorkloadCenter from './ProjectManagerWorkloadCenter.jsx';
@@ -2341,6 +2342,17 @@ const roleWorkspaceModules = [
     permissions: ['VIEW_PROJECT_INTAKE', 'VIEW_CUSTOMERS', 'VIEW_PROJECT_WORKLOAD', 'VIEW_RESOURCE_SCHEDULING', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   },
   /* 036_SALES_INSIGHTS_DASHBOARD_END */
+  /* 055B_RATE_CARD_ADMIN_NAV_START */
+  {
+    route: 'rate-card-administration',
+    href: '#rate-card-administration',
+    title: 'Rate Card Administration',
+    navLabel: 'MODULE 055B',
+    description: 'Manage standard, Toyota, Hyundai, customer-specific, service request, emergency, travel, and GSD-imported rate cards with audit history.',
+    permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL', 'MANAGE_PROJECT_INTAKE'],
+    roleCodes: ['PROJECT_TEAM_COORDINATOR', 'SOLUTION_ARCHITECT']
+  },
+  /* 055B_RATE_CARD_ADMIN_NAV_END */
   {
     route: 'customer-directory',
     href: '#customer-directory',
@@ -2579,7 +2591,11 @@ function userHasAnyPermission(user, permissions) {
 function getVisibleRoleModules(user) {
   if (!user) return [];
 
-  const modules = roleWorkspaceModules.filter((module) => userHasAnyPermission(user, module.permissions));
+  const assignedRoleCodes = new Set((user?.roles ?? []).map((role) => String(role.roleCode ?? '').toUpperCase()));
+  const modules = roleWorkspaceModules.filter((module) => (
+    userHasAnyPermission(user, module.permissions) ||
+    (module.roleCodes ?? []).some((roleCode) => assignedRoleCodes.has(String(roleCode).toUpperCase()))
+  ));
 
   if (userIsProjectManagementRole(user) && !userIsAdministrator(user)) {
     return modules.filter((module) => module.route !== 'utilization');
@@ -2686,6 +2702,8 @@ function getNavigationGroup(item) {
       return 'Project Workspace';
     case 'cost-alerts':
     case 'customer-directory':
+    case 'rate-card-administration':
+      return 'Rate Card Administration';
     case 'project-intake':
     case 'sales-insights':
       return 'Project Intake';
@@ -3712,6 +3730,7 @@ function getInstalledModuleDescription(module) {
     'manager-approval': 'Lets managers review submitted time, approve valid days, return days for correction, and monitor pending approval counts.',
     'project-workspace': 'Gives engineers and project roles a scoped project workspace with assigned projects, tasks, documents, assigned hours, used hours, and remaining hours.',
     'project-intake': 'Captures project intake requests, customer selection, planned costs, documents, triage information, and resource request readiness.',
+    'rate-card-administration': 'Manages standard, customer-specific, Toyota, Hyundai, service request, emergency, and travel rate cards.',
     'customer-directory': 'Maintains customer/account records, customer contacts, and customer data used by intake, project, cost, billing, and reconciliation workflows.',
     'cost-alerts': 'Monitors project planned cost, assigned hours, used hours, over-assignment risk, and notification routing for cost overrun alerts.',
     workflow: 'Coordinates PM validation, accounting readiness, reconciliation, locking, export preparation, and audit visibility after manager approval.',
@@ -5800,6 +5819,12 @@ export default function App() {
   const canViewPsaModules = canSeeAny(['VIEW_PROJECT_INTAKE', 'VIEW_RESOURCE_SCHEDULING', 'VIEW_EXPENSES', 'VIEW_EXECUTIVE_REPORTING', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']);
   const currentRoleCodes = securityContext.data?.roles?.map((role) => String(role.roleCode ?? '').toUpperCase()) ?? [];
   const currentRoleNames = securityContext.data?.roles?.map((role) => String(role.roleName ?? '').toLowerCase()) ?? [];
+  const canManageRateCards =
+    canSeeAny(['SYSTEM_ADMINISTRATION', 'MANAGE_ALL', 'MANAGE_PROJECT_INTAKE']) ||
+    currentRoleCodes.includes('PROJECT_TEAM_COORDINATOR') ||
+    currentRoleCodes.includes('SOLUTION_ARCHITECT') ||
+    currentRoleCodes.includes('SA') ||
+    currentRoleCodes.includes('ARCHITECT');
   const canViewManagerApprovalPanel = hasPermission('APPROVE_TIME') || hasPermission('REJECT_TIME') || hasPermission('MANAGE_ALL') || hasPermission('SYSTEM_ADMINISTRATION');
   const canViewLocalAdminPasswordResetApprovals =
     hasPermission('MANAGE_ALL') ||
@@ -7355,6 +7380,14 @@ Analytics - Variphy / Infortel`}
           <CostOverrunAlertCenter canManageCostAlerts={canSeeAny(['MANAGE_COST_ALERTS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])} />
         </section>
       ) : null}
+
+      {/* 055B_RATE_CARD_ADMIN_ROUTE_START */}
+      {(activeRoute === 'rate-card-administration' && canManageRateCards) ? (
+        <section id="rate-card-administration" className="panel rate-card-administration-route-panel">
+          <RateCardAdministrationCenter />
+        </section>
+      ) : null}
+      {/* 055B_RATE_CARD_ADMIN_ROUTE_END */}
 
       {(activeRoute === 'customer-directory' && canSeeAny(['VIEW_CUSTOMERS', 'MANAGE_CUSTOMERS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
         <section id="customer-directory" className="panel customer-directory-route-panel">

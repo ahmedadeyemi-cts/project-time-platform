@@ -1,0 +1,301 @@
+.rate-card-admin-center {
+  display: grid;
+  gap: 1rem;
+}
+
+.rate-card-admin-header,
+.rate-card-admin-summary,
+.rate-card-admin-layout,
+.rate-card-admin-toolbar,
+.rate-card-priority-panel,
+.rate-card-admin-panel {
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
+}
+
+.rate-card-admin-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.25rem;
+}
+
+.rate-card-admin-header h2,
+.rate-card-admin-panel h3,
+.rate-card-priority-panel h3 {
+  margin: 0;
+}
+
+.rate-card-admin-mode,
+.rate-status {
+  align-self: flex-start;
+  border-radius: 999px;
+  padding: 0.35rem 0.7rem;
+  background: #eef2ff;
+  color: #3730a3;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.rate-status.retired {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.rate-status.emergency {
+  display: inline-block;
+  margin-left: 0.25rem;
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.rate-card-admin-banner {
+  border-radius: 14px;
+  padding: 0.85rem 1rem;
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid rgba(59, 130, 246, 0.26);
+}
+
+.rate-card-admin-banner.error {
+  background: #fef2f2;
+  color: #b91c1c;
+  border-color: rgba(239, 68, 68, 0.28);
+}
+
+.rate-card-admin-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+  padding: 1rem;
+}
+
+.rate-card-admin-summary article {
+  border-radius: 14px;
+  padding: 0.9rem;
+  background: #f8fafc;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.rate-card-admin-summary span,
+.rate-card-admin-summary small,
+.rate-card-panel-heading .muted,
+.rate-card-admin-center .muted {
+  color: #64748b;
+}
+
+.rate-card-admin-summary strong {
+  font-size: 1.4rem;
+}
+
+.rate-card-priority-panel {
+  padding: 1rem 1.25rem;
+}
+
+.rate-card-priority-panel ol {
+  margin-bottom: 0;
+}
+
+.rate-card-admin-toolbar {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr auto;
+  gap: 0.75rem;
+  align-items: end;
+  padding: 1rem;
+}
+
+.rate-card-admin-toolbar label,
+.rate-card-form label {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 700;
+  font-size: 0.86rem;
+  color: #334155;
+}
+
+.rate-card-admin-toolbar input,
+.rate-card-admin-toolbar select,
+.rate-card-form input,
+.rate-card-form select,
+.rate-card-form textarea {
+  width: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  border-radius: 12px;
+  padding: 0.6rem 0.7rem;
+  background: #ffffff;
+  color: #0f172a;
+}
+
+.rate-card-admin-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.95fr) minmax(0, 2.05fr);
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.rate-card-admin-layout.forms-layout {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.rate-card-admin-panel {
+  padding: 1rem;
+}
+
+.rate-card-panel-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.rate-card-list {
+  display: grid;
+  gap: 0.55rem;
+  max-height: 640px;
+  overflow: auto;
+}
+
+.rate-card-list-item {
+  text-align: left;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 14px;
+  background: #f8fafc;
+  padding: 0.8rem;
+  cursor: pointer;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.rate-card-list-item.selected {
+  border-color: #2563eb;
+  background: #eff6ff;
+}
+
+.rate-card-list-item span,
+.rate-card-list-item small,
+.rate-line-table small {
+  color: #64748b;
+}
+
+.rate-line-table-wrap {
+  overflow: auto;
+}
+
+.rate-line-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+
+.rate-line-table th,
+.rate-line-table td {
+  border-bottom: 1px solid rgba(148, 163, 184, 0.24);
+  padding: 0.65rem;
+  vertical-align: top;
+  text-align: left;
+}
+
+.rate-line-table td strong,
+.rate-line-table td small {
+  display: block;
+}
+
+.inactive-line {
+  opacity: 0.6;
+}
+
+.rate-card-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.rate-card-form .full-width,
+.rate-card-form-actions {
+  grid-column: 1 / -1;
+}
+
+.checkbox-line {
+  display: flex !important;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+}
+
+.checkbox-line input {
+  width: auto;
+}
+
+.rate-card-form-actions {
+  display: flex;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.rate-change-list {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.rate-change-row {
+  display: grid;
+  gap: 0.2rem;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 12px;
+  padding: 0.75rem;
+  background: #f8fafc;
+}
+
+.rate-change-row small {
+  color: #64748b;
+}
+
+.secondary-action.danger {
+  color: #b91c1c;
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+@media (max-width: 1100px) {
+  .rate-card-admin-summary,
+  .rate-card-admin-layout,
+  .rate-card-admin-layout.forms-layout,
+  .rate-card-admin-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .rate-card-admin-header {
+    flex-direction: column;
+  }
+}
+
+[data-theme="dark"] .rate-card-admin-header,
+[data-theme="dark"] .rate-card-admin-summary,
+[data-theme="dark"] .rate-card-admin-layout,
+[data-theme="dark"] .rate-card-admin-toolbar,
+[data-theme="dark"] .rate-card-priority-panel,
+[data-theme="dark"] .rate-card-admin-panel {
+  background: rgba(15, 23, 42, 0.94);
+  border-color: rgba(148, 163, 184, 0.22);
+}
+
+[data-theme="dark"] .rate-card-list-item,
+[data-theme="dark"] .rate-card-admin-summary article,
+[data-theme="dark"] .rate-change-row {
+  background: rgba(30, 41, 59, 0.78);
+}
+
+[data-theme="dark"] .rate-card-list-item.selected {
+  background: rgba(30, 64, 175, 0.28);
+}
+
+[data-theme="dark"] .rate-card-admin-toolbar input,
+[data-theme="dark"] .rate-card-admin-toolbar select,
+[data-theme="dark"] .rate-card-form input,
+[data-theme="dark"] .rate-card-form select,
+[data-theme="dark"] .rate-card-form textarea {
+  background: rgba(15, 23, 42, 0.92);
+  color: #e2e8f0;
+  border-color: rgba(148, 163, 184, 0.3);
+}

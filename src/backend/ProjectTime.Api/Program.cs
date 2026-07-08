@@ -5674,6 +5674,854 @@ app.MapGet("/api/project-intake/summary", async () =>
 });
 
 
+
+/* 055B_RATE_CARD_ADMIN_API_START */
+app.MapGet("/api/rate-cards/admin/foundation", async (HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var dbConfig = DatabaseConfig.FromEnvironment();
+    await using var connection = new NpgsqlConnection(dbConfig.ConnectionString);
+    await connection.OpenAsync();
+
+    var canManageRateCards = false;
+    await using (var accessCommand = new NpgsqlCommand("""
+        SELECT EXISTS (
+            SELECT 1
+            FROM app_user_role_assignments ura
+            JOIN app_roles r
+              ON r.app_role_id = ura.app_role_id
+            WHERE ura.user_id = @user_id
+              AND ura.is_active = TRUE
+              AND r.is_active = TRUE
+              AND r.role_code IN (
+                  'SUPER_ADMINISTRATOR',
+                  'ADMINISTRATOR',
+                  'PROJECT_TEAM_COORDINATOR',
+                  'SOLUTION_ARCHITECT',
+                  'SA',
+                  'ARCHITECT'
+              )
+        );
+        """, connection))
+    {
+        accessCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+        canManageRateCards = Convert.ToBoolean(await accessCommand.ExecuteScalarAsync() ?? false);
+    }
+
+    if (!canManageRateCards)
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Rate Card Administration is restricted to Super Administrators, Administrators, Project Team Coordinators, and Solution Architects."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var customers = new List<object>();
+    await using (var customerCommand = new NpgsqlCommand("""
+        SELECT
+            client_id,
+            COALESCE(client_name, '') AS client_name,
+            COALESCE(client_code, '') AS client_code,
+            COALESCE(is_active, TRUE) AS is_active
+        FROM clients
+        ORDER BY COALESCE(is_active, TRUE) DESC, client_name, client_code;
+        """, connection))
+    await using (var reader = await customerCommand.ExecuteReaderAsync())
+    {
+        while (await reader.ReadAsync())
+        {
+            customers.Add(new
+            {
+                clientId = reader.GetGuid(0),
+                clientName = reader.GetString(1),
+                clientCode = reader.GetString(2),
+                isActive = reader.GetBoolean(3)
+            });
+        }
+    }
+
+    var rateCards = new List<object>();
+    await using (var cardCommand = new NpgsqlCommand("""
+        SELECT
+            rc.rate_card_id,
+            rc.rate_card_code,
+            rc.rate_card_name,
+            rc.rate_card_type,
+            COALESCE(rc.client_id::text, '') AS client_id_text,
+            COALESCE(c.client_name, rc.customer_name_snapshot, '') AS customer_name,
+            rc.status,
+            rc.effective_start_date::text,
+            COALESCE(rc.effective_end_date::text, '') AS effective_end_date_text,
+            rc.source_system,
+            rc.description,
+            rc.is_system_seeded,
+            COALESCE(COUNT(rcl.rate_line_id), 0)::bigint AS line_count,
+            COALESCE(SUM(CASE WHEN rcl.is_active THEN 1 ELSE 0 END), 0)::bigint AS active_line_count,
+            rc.updated_at
+        FROM work_rate_cards rc
+        LEFT JOIN clients c
+          ON c.client_id = rc.client_id
+        LEFT JOIN work_rate_card_lines rcl
+          ON rcl.rate_card_id = rc.rate_card_id
+        GROUP BY rc.rate_card_id, c.client_name
+        ORDER BY
+            CASE rc.rate_card_code
+                WHEN 'STANDARD_COMPANY_RATES' THEN 1
+                WHEN 'TOYOTA_SPECIAL_RATES' THEN 2
+                WHEN 'HYUNDAI_SPECIAL_RATES' THEN 3
+                WHEN 'SERVICE_REQUEST_STANDARD' THEN 4
+                WHEN 'SERVICE_REQUEST_EMERGENCY' THEN 5
+                ELSE 20
+            END,
+            rc.rate_card_name;
+        """, connection))
+    await using (var reader = await cardCommand.ExecuteReaderAsync())
+    {
+        while (await reader.ReadAsync())
+        {
+            rateCards.Add(new
+            {
+                rateCardId = reader.GetGuid(0),
+                rateCardCode = reader.GetString(1),
+                rateCardName = reader.GetString(2),
+                rateCardType = reader.GetString(3),
+                clientId = reader.GetString(4),
+                customerName = reader.GetString(5),
+                status = reader.GetString(6),
+                effectiveStartDate = reader.GetString(7),
+                effectiveEndDate = reader.GetString(8),
+                sourceSystem = reader.GetString(9),
+                description = reader.GetString(10),
+                isSystemSeeded = reader.GetBoolean(11),
+                lineCount = reader.GetInt64(12),
+                activeLineCount = reader.GetInt64(13),
+                updatedAt = reader.GetFieldValue<DateTimeOffset>(14)
+            });
+        }
+    }
+
+    var rateLines = new List<object>();
+    await using (var lineCommand = new NpgsqlCommand("""
+        SELECT
+            rate_line_id,
+            rate_card_id,
+            sku_code,
+            display_name,
+            description,
+            labor_category,
+            time_type,
+            unit_type,
+            rate_amount,
+            minimum_billing_hours,
+            remote_minimum_hours,
+            onsite_minimum_hours,
+            daytime_minimum_hours,
+            afterhours_weekend_holiday_minimum_hours,
+            business_hours_text,
+            billable_default,
+            utilization_eligible_default,
+            is_emergency,
+            is_travel,
+            override_allowed,
+            is_active,
+            display_order,
+            notes,
+            updated_at
+        FROM work_rate_card_lines
+        ORDER BY display_order, labor_category, time_type, sku_code;
+        """, connection))
+    await using (var reader = await lineCommand.ExecuteReaderAsync())
+    {
+        while (await reader.ReadAsync())
+        {
+            rateLines.Add(new
+            {
+                rateLineId = reader.GetGuid(0),
+                rateCardId = reader.GetGuid(1),
+                skuCode = reader.GetString(2),
+                displayName = reader.GetString(3),
+                description = reader.GetString(4),
+                laborCategory = reader.GetString(5),
+                timeType = reader.GetString(6),
+                unitType = reader.GetString(7),
+                rateAmount = reader.GetDecimal(8),
+                minimumBillingHours = reader.GetDecimal(9),
+                remoteMinimumHours = reader.GetDecimal(10),
+                onsiteMinimumHours = reader.GetDecimal(11),
+                daytimeMinimumHours = reader.GetDecimal(12),
+                afterhoursWeekendHolidayMinimumHours = reader.GetDecimal(13),
+                businessHoursText = reader.GetString(14),
+                billableDefault = reader.GetBoolean(15),
+                utilizationEligibleDefault = reader.GetBoolean(16),
+                isEmergency = reader.GetBoolean(17),
+                isTravel = reader.GetBoolean(18),
+                overrideAllowed = reader.GetBoolean(19),
+                isActive = reader.GetBoolean(20),
+                displayOrder = reader.GetInt32(21),
+                notes = reader.GetString(22),
+                updatedAt = reader.GetFieldValue<DateTimeOffset>(23)
+            });
+        }
+    }
+
+    var recentChanges = new List<object>();
+    await using (var historyCommand = new NpgsqlCommand("""
+        SELECT
+            h.rate_card_change_history_id,
+            h.entity_type,
+            h.entity_id,
+            h.action,
+            h.change_summary,
+            COALESCE(u.display_name, u.email, '') AS changed_by,
+            h.changed_at
+        FROM work_rate_card_change_history h
+        LEFT JOIN app_users u
+          ON u.user_id = h.changed_by_user_id
+        ORDER BY h.changed_at DESC
+        LIMIT 50;
+        """, connection))
+    await using (var reader = await historyCommand.ExecuteReaderAsync())
+    {
+        while (await reader.ReadAsync())
+        {
+            recentChanges.Add(new
+            {
+                historyId = reader.GetGuid(0),
+                entityType = reader.GetString(1),
+                entityId = reader.GetGuid(2),
+                action = reader.GetString(3),
+                changeSummary = reader.GetString(4),
+                changedBy = reader.GetString(5),
+                changedAt = reader.GetFieldValue<DateTimeOffset>(6)
+            });
+        }
+    }
+
+    return Results.Ok(new
+    {
+        status = "rate_card_foundation_loaded",
+        access = new
+        {
+            canManageRateCards = true,
+            allowedRoles = new[] { "SUPER_ADMINISTRATOR", "ADMINISTRATOR", "PROJECT_TEAM_COORDINATOR", "SOLUTION_ARCHITECT" }
+        },
+        ratePriority = new[]
+        {
+            "GSD-imported rate",
+            "Customer-specific rate card such as Toyota or Hyundai",
+            "Service Request or Emergency rate card",
+            "Standard company rate card",
+            "Manual override with required reason and audit history"
+        },
+        serviceRequestRules = new
+        {
+            firstAvailableRate = 225.00m,
+            emergencyRate = 450.00m,
+            remoteMinimumHours = 0.5m,
+            onsiteMinimumHours = 1.0m,
+            emergencyDaytimeMinimumHours = 2.0m,
+            emergencyAfterhoursWeekendHolidayMinimumHours = 4.0m,
+            travelRate = 95.00m,
+            standardBusinessHours = "8:00am - 5:00pm, Monday through Friday"
+        },
+        customers,
+        rateCards,
+        rateLines,
+        recentChanges
+    });
+});
+
+app.MapPost("/api/rate-cards/admin/cards", async (HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token.", guard = "055B_rate_card_admin_session_required" }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    using var document = await JsonDocument.ParseAsync(httpContext.Request.Body);
+    var root = document.RootElement;
+
+    string ReadString(string name, string fallback = "")
+    {
+        return root.TryGetProperty(name, out var value) && value.ValueKind != JsonValueKind.Null
+            ? (value.GetString() ?? fallback).Trim()
+            : fallback;
+    }
+
+    Guid? ReadGuid(string name)
+    {
+        if (!root.TryGetProperty(name, out var value) || value.ValueKind == JsonValueKind.Null) return null;
+        if (value.ValueKind == JsonValueKind.String && Guid.TryParse(value.GetString(), out var parsed)) return parsed;
+        return null;
+    }
+
+    DateOnly? ReadDate(string name)
+    {
+        if (!root.TryGetProperty(name, out var value) || value.ValueKind == JsonValueKind.Null) return null;
+        if (value.ValueKind == JsonValueKind.String && DateOnly.TryParse(value.GetString(), out var parsed)) return parsed;
+        return null;
+    }
+
+    var rateCardId = ReadGuid("rateCardId") ?? Guid.NewGuid();
+    var rateCardCode = ReadString("rateCardCode").ToUpperInvariant().Replace(" ", "_");
+    var rateCardName = ReadString("rateCardName");
+    var rateCardType = ReadString("rateCardType", "customer_specific").ToLowerInvariant();
+    var clientId = ReadGuid("clientId");
+    var status = ReadString("status", "active").ToLowerInvariant();
+    var effectiveStartDate = ReadDate("effectiveStartDate") ?? DateOnly.FromDateTime(DateTime.UtcNow.Date);
+    var effectiveEndDate = ReadDate("effectiveEndDate");
+    var description = ReadString("description");
+    var changeReason = ReadString("changeReason", "Rate card saved from Rate Card Administration.");
+
+    if (string.IsNullOrWhiteSpace(rateCardName) || string.IsNullOrWhiteSpace(rateCardCode))
+    {
+        return Results.BadRequest(new { status = "validation_failed", message = "Rate card name and code are required." });
+    }
+
+    var dbConfig = DatabaseConfig.FromEnvironment();
+    await using var connection = new NpgsqlConnection(dbConfig.ConnectionString);
+    await connection.OpenAsync();
+
+    var canManageRateCards = false;
+    await using (var accessCommand = new NpgsqlCommand("""
+        SELECT EXISTS (
+            SELECT 1
+            FROM app_user_role_assignments ura
+            JOIN app_roles r
+              ON r.app_role_id = ura.app_role_id
+            WHERE ura.user_id = @user_id
+              AND ura.is_active = TRUE
+              AND r.is_active = TRUE
+              AND r.role_code IN ('SUPER_ADMINISTRATOR','ADMINISTRATOR','PROJECT_TEAM_COORDINATOR','SOLUTION_ARCHITECT','SA','ARCHITECT')
+        );
+        """, connection))
+    {
+        accessCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+        canManageRateCards = Convert.ToBoolean(await accessCommand.ExecuteScalarAsync() ?? false);
+    }
+
+    if (!canManageRateCards)
+    {
+        return Results.Json(new { status = "access_denied", message = "Only Super Administrators, Administrators, Project Team Coordinators, and Solution Architects can change rate cards." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    await using var transaction = await connection.BeginTransactionAsync();
+
+    string customerNameSnapshot = "";
+    if (clientId is not null)
+    {
+        await using var customerCommand = new NpgsqlCommand("SELECT COALESCE(client_name, '') FROM clients WHERE client_id = @client_id;", connection, transaction);
+        customerCommand.Parameters.AddWithValue("client_id", clientId.Value);
+        customerNameSnapshot = Convert.ToString(await customerCommand.ExecuteScalarAsync() ?? "") ?? "";
+    }
+
+    await using (var command = new NpgsqlCommand("""
+        INSERT INTO work_rate_cards (
+            rate_card_id,
+            rate_card_code,
+            rate_card_name,
+            rate_card_type,
+            client_id,
+            customer_name_snapshot,
+            status,
+            effective_start_date,
+            effective_end_date,
+            source_system,
+            description,
+            is_system_seeded,
+            created_by_user_id,
+            updated_by_user_id
+        )
+        VALUES (
+            @rate_card_id,
+            @rate_card_code,
+            @rate_card_name,
+            @rate_card_type,
+            @client_id,
+            NULLIF(@customer_name_snapshot, ''),
+            @status,
+            @effective_start_date,
+            @effective_end_date,
+            'rate_card_administration',
+            @description,
+            FALSE,
+            @user_id,
+            @user_id
+        )
+        ON CONFLICT (rate_card_code) DO UPDATE
+        SET rate_card_name = EXCLUDED.rate_card_name,
+            rate_card_type = EXCLUDED.rate_card_type,
+            client_id = EXCLUDED.client_id,
+            customer_name_snapshot = EXCLUDED.customer_name_snapshot,
+            status = EXCLUDED.status,
+            effective_start_date = EXCLUDED.effective_start_date,
+            effective_end_date = EXCLUDED.effective_end_date,
+            description = EXCLUDED.description,
+            updated_by_user_id = EXCLUDED.updated_by_user_id,
+            updated_at = NOW()
+        RETURNING rate_card_id;
+        """, connection, transaction))
+    {
+        command.Parameters.AddWithValue("rate_card_id", rateCardId);
+        command.Parameters.AddWithValue("rate_card_code", rateCardCode);
+        command.Parameters.AddWithValue("rate_card_name", rateCardName);
+        command.Parameters.AddWithValue("rate_card_type", rateCardType);
+        command.Parameters.AddWithValue("client_id", clientId is null ? DBNull.Value : clientId.Value);
+        command.Parameters.AddWithValue("customer_name_snapshot", customerNameSnapshot);
+        command.Parameters.AddWithValue("status", status);
+        command.Parameters.Add("effective_start_date", NpgsqlTypes.NpgsqlDbType.Date).Value = effectiveStartDate;
+        command.Parameters.Add("effective_end_date", NpgsqlTypes.NpgsqlDbType.Date).Value = effectiveEndDate is null ? DBNull.Value : effectiveEndDate.Value;
+        command.Parameters.AddWithValue("description", description);
+        command.Parameters.AddWithValue("user_id", sessionUserId.Value);
+
+        rateCardId = (Guid)(await command.ExecuteScalarAsync() ?? rateCardId);
+    }
+
+    await using (var historyCommand = new NpgsqlCommand("""
+        INSERT INTO work_rate_card_change_history (
+            rate_card_change_history_id,
+            entity_type,
+            entity_id,
+            action,
+            change_summary,
+            changed_by_user_id,
+            new_value_json
+        )
+        VALUES (
+            @history_id,
+            'rate_card',
+            @entity_id,
+            'rate_card_saved',
+            @change_summary,
+            @user_id,
+            jsonb_build_object(
+                'rateCardCode', @rate_card_code,
+                'rateCardName', @rate_card_name,
+                'rateCardType', @rate_card_type,
+                'status', @status,
+                'changeReason', @change_reason
+            )
+        );
+        """, connection, transaction))
+    {
+        historyCommand.Parameters.AddWithValue("history_id", Guid.NewGuid());
+        historyCommand.Parameters.AddWithValue("entity_id", rateCardId);
+        historyCommand.Parameters.AddWithValue("change_summary", changeReason);
+        historyCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+        historyCommand.Parameters.AddWithValue("rate_card_code", rateCardCode);
+        historyCommand.Parameters.AddWithValue("rate_card_name", rateCardName);
+        historyCommand.Parameters.AddWithValue("rate_card_type", rateCardType);
+        historyCommand.Parameters.AddWithValue("status", status);
+        historyCommand.Parameters.AddWithValue("change_reason", changeReason);
+        await historyCommand.ExecuteNonQueryAsync();
+    }
+
+    await transaction.CommitAsync();
+
+    return Results.Ok(new
+    {
+        status = "rate_card_saved",
+        rateCardId,
+        rateCardCode,
+        message = "Rate card saved. Existing launched projects keep their historical rate snapshots; new work can use this rate card going forward."
+    });
+});
+
+app.MapPost("/api/rate-cards/admin/lines", async (HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token.", guard = "055B_rate_card_admin_session_required" }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    using var document = await JsonDocument.ParseAsync(httpContext.Request.Body);
+    var root = document.RootElement;
+
+    string ReadString(string name, string fallback = "")
+    {
+        return root.TryGetProperty(name, out var value) && value.ValueKind != JsonValueKind.Null
+            ? (value.GetString() ?? fallback).Trim()
+            : fallback;
+    }
+
+    Guid? ReadGuid(string name)
+    {
+        if (!root.TryGetProperty(name, out var value) || value.ValueKind == JsonValueKind.Null) return null;
+        if (value.ValueKind == JsonValueKind.String && Guid.TryParse(value.GetString(), out var parsed)) return parsed;
+        return null;
+    }
+
+    decimal ReadDecimal(string name, decimal fallback = 0m)
+    {
+        if (!root.TryGetProperty(name, out var value) || value.ValueKind == JsonValueKind.Null) return fallback;
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetDecimal(out var parsedNumber)) return parsedNumber;
+        if (value.ValueKind == JsonValueKind.String && decimal.TryParse(value.GetString(), out var parsedString)) return parsedString;
+        return fallback;
+    }
+
+    bool ReadBool(string name, bool fallback = false)
+    {
+        if (!root.TryGetProperty(name, out var value) || value.ValueKind == JsonValueKind.Null) return fallback;
+        if (value.ValueKind == JsonValueKind.True) return true;
+        if (value.ValueKind == JsonValueKind.False) return false;
+        if (value.ValueKind == JsonValueKind.String && bool.TryParse(value.GetString(), out var parsed)) return parsed;
+        return fallback;
+    }
+
+    int ReadInt(string name, int fallback = 100)
+    {
+        if (!root.TryGetProperty(name, out var value) || value.ValueKind == JsonValueKind.Null) return fallback;
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var parsedNumber)) return parsedNumber;
+        if (value.ValueKind == JsonValueKind.String && int.TryParse(value.GetString(), out var parsedString)) return parsedString;
+        return fallback;
+    }
+
+    var rateLineId = ReadGuid("rateLineId") ?? Guid.NewGuid();
+    var rateCardId = ReadGuid("rateCardId");
+    var skuCode = ReadString("skuCode");
+    var displayName = ReadString("displayName", skuCode);
+    var description = ReadString("description");
+    var laborCategory = ReadString("laborCategory", "engineering").ToLowerInvariant();
+    var timeType = ReadString("timeType", "normal").ToLowerInvariant();
+    var unitType = ReadString("unitType", "hour").ToLowerInvariant();
+    var rateAmount = ReadDecimal("rateAmount", 0m);
+    var minimumBillingHours = ReadDecimal("minimumBillingHours", 0m);
+    var remoteMinimumHours = ReadDecimal("remoteMinimumHours", 0m);
+    var onsiteMinimumHours = ReadDecimal("onsiteMinimumHours", 0m);
+    var daytimeMinimumHours = ReadDecimal("daytimeMinimumHours", 0m);
+    var afterhoursWeekendHolidayMinimumHours = ReadDecimal("afterhoursWeekendHolidayMinimumHours", 0m);
+    var businessHoursText = ReadString("businessHoursText");
+    var billableDefault = ReadBool("billableDefault", true);
+    var utilizationEligibleDefault = ReadBool("utilizationEligibleDefault", true);
+    var isEmergency = ReadBool("isEmergency", false);
+    var isTravel = ReadBool("isTravel", laborCategory == "travel");
+    var overrideAllowed = ReadBool("overrideAllowed", true);
+    var isActive = ReadBool("isActive", true);
+    var displayOrder = ReadInt("displayOrder", 100);
+    var notes = ReadString("notes");
+    var changeReason = ReadString("changeReason", "Rate line saved from Rate Card Administration.");
+
+    if (rateCardId is null || string.IsNullOrWhiteSpace(skuCode) || string.IsNullOrWhiteSpace(displayName))
+    {
+        return Results.BadRequest(new { status = "validation_failed", message = "Rate card, SKU code, and display name are required." });
+    }
+
+    var dbConfig = DatabaseConfig.FromEnvironment();
+    await using var connection = new NpgsqlConnection(dbConfig.ConnectionString);
+    await connection.OpenAsync();
+
+    var canManageRateCards = false;
+    await using (var accessCommand = new NpgsqlCommand("""
+        SELECT EXISTS (
+            SELECT 1
+            FROM app_user_role_assignments ura
+            JOIN app_roles r
+              ON r.app_role_id = ura.app_role_id
+            WHERE ura.user_id = @user_id
+              AND ura.is_active = TRUE
+              AND r.is_active = TRUE
+              AND r.role_code IN ('SUPER_ADMINISTRATOR','ADMINISTRATOR','PROJECT_TEAM_COORDINATOR','SOLUTION_ARCHITECT','SA','ARCHITECT')
+        );
+        """, connection))
+    {
+        accessCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+        canManageRateCards = Convert.ToBoolean(await accessCommand.ExecuteScalarAsync() ?? false);
+    }
+
+    if (!canManageRateCards)
+    {
+        return Results.Json(new { status = "access_denied", message = "Only Super Administrators, Administrators, Project Team Coordinators, and Solution Architects can change rate lines." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    await using var transaction = await connection.BeginTransactionAsync();
+
+    await using (var command = new NpgsqlCommand("""
+        INSERT INTO work_rate_card_lines (
+            rate_line_id,
+            rate_card_id,
+            sku_code,
+            display_name,
+            description,
+            labor_category,
+            time_type,
+            unit_type,
+            rate_amount,
+            minimum_billing_hours,
+            remote_minimum_hours,
+            onsite_minimum_hours,
+            daytime_minimum_hours,
+            afterhours_weekend_holiday_minimum_hours,
+            business_hours_text,
+            billable_default,
+            utilization_eligible_default,
+            is_emergency,
+            is_travel,
+            override_allowed,
+            is_active,
+            display_order,
+            notes,
+            created_by_user_id,
+            updated_by_user_id
+        )
+        VALUES (
+            @rate_line_id,
+            @rate_card_id,
+            @sku_code,
+            @display_name,
+            @description,
+            @labor_category,
+            @time_type,
+            @unit_type,
+            @rate_amount,
+            @minimum_billing_hours,
+            @remote_minimum_hours,
+            @onsite_minimum_hours,
+            @daytime_minimum_hours,
+            @afterhours_weekend_holiday_minimum_hours,
+            @business_hours_text,
+            @billable_default,
+            @utilization_eligible_default,
+            @is_emergency,
+            @is_travel,
+            @override_allowed,
+            @is_active,
+            @display_order,
+            @notes,
+            @user_id,
+            @user_id
+        )
+        ON CONFLICT (rate_card_id, sku_code, time_type) DO UPDATE
+        SET display_name = EXCLUDED.display_name,
+            description = EXCLUDED.description,
+            labor_category = EXCLUDED.labor_category,
+            unit_type = EXCLUDED.unit_type,
+            rate_amount = EXCLUDED.rate_amount,
+            minimum_billing_hours = EXCLUDED.minimum_billing_hours,
+            remote_minimum_hours = EXCLUDED.remote_minimum_hours,
+            onsite_minimum_hours = EXCLUDED.onsite_minimum_hours,
+            daytime_minimum_hours = EXCLUDED.daytime_minimum_hours,
+            afterhours_weekend_holiday_minimum_hours = EXCLUDED.afterhours_weekend_holiday_minimum_hours,
+            business_hours_text = EXCLUDED.business_hours_text,
+            billable_default = EXCLUDED.billable_default,
+            utilization_eligible_default = EXCLUDED.utilization_eligible_default,
+            is_emergency = EXCLUDED.is_emergency,
+            is_travel = EXCLUDED.is_travel,
+            override_allowed = EXCLUDED.override_allowed,
+            is_active = EXCLUDED.is_active,
+            display_order = EXCLUDED.display_order,
+            notes = EXCLUDED.notes,
+            updated_by_user_id = EXCLUDED.updated_by_user_id,
+            updated_at = NOW()
+        RETURNING rate_line_id;
+        """, connection, transaction))
+    {
+        command.Parameters.AddWithValue("rate_line_id", rateLineId);
+        command.Parameters.AddWithValue("rate_card_id", rateCardId.Value);
+        command.Parameters.AddWithValue("sku_code", skuCode);
+        command.Parameters.AddWithValue("display_name", displayName);
+        command.Parameters.AddWithValue("description", description);
+        command.Parameters.AddWithValue("labor_category", laborCategory);
+        command.Parameters.AddWithValue("time_type", timeType);
+        command.Parameters.AddWithValue("unit_type", unitType);
+        command.Parameters.AddWithValue("rate_amount", rateAmount);
+        command.Parameters.AddWithValue("minimum_billing_hours", minimumBillingHours);
+        command.Parameters.AddWithValue("remote_minimum_hours", remoteMinimumHours);
+        command.Parameters.AddWithValue("onsite_minimum_hours", onsiteMinimumHours);
+        command.Parameters.AddWithValue("daytime_minimum_hours", daytimeMinimumHours);
+        command.Parameters.AddWithValue("afterhours_weekend_holiday_minimum_hours", afterhoursWeekendHolidayMinimumHours);
+        command.Parameters.AddWithValue("business_hours_text", businessHoursText);
+        command.Parameters.AddWithValue("billable_default", billableDefault);
+        command.Parameters.AddWithValue("utilization_eligible_default", utilizationEligibleDefault);
+        command.Parameters.AddWithValue("is_emergency", isEmergency);
+        command.Parameters.AddWithValue("is_travel", isTravel);
+        command.Parameters.AddWithValue("override_allowed", overrideAllowed);
+        command.Parameters.AddWithValue("is_active", isActive);
+        command.Parameters.AddWithValue("display_order", displayOrder);
+        command.Parameters.AddWithValue("notes", notes);
+        command.Parameters.AddWithValue("user_id", sessionUserId.Value);
+
+        rateLineId = (Guid)(await command.ExecuteScalarAsync() ?? rateLineId);
+    }
+
+    await using (var historyCommand = new NpgsqlCommand("""
+        INSERT INTO work_rate_card_change_history (
+            rate_card_change_history_id,
+            entity_type,
+            entity_id,
+            action,
+            change_summary,
+            changed_by_user_id,
+            new_value_json
+        )
+        VALUES (
+            @history_id,
+            'rate_line',
+            @entity_id,
+            'rate_line_saved',
+            @change_summary,
+            @user_id,
+            jsonb_build_object(
+                'skuCode', @sku_code,
+                'displayName', @display_name,
+                'rateAmount', @rate_amount,
+                'timeType', @time_type,
+                'laborCategory', @labor_category,
+                'changeReason', @change_reason
+            )
+        );
+        """, connection, transaction))
+    {
+        historyCommand.Parameters.AddWithValue("history_id", Guid.NewGuid());
+        historyCommand.Parameters.AddWithValue("entity_id", rateLineId);
+        historyCommand.Parameters.AddWithValue("change_summary", changeReason);
+        historyCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+        historyCommand.Parameters.AddWithValue("sku_code", skuCode);
+        historyCommand.Parameters.AddWithValue("display_name", displayName);
+        historyCommand.Parameters.AddWithValue("rate_amount", rateAmount);
+        historyCommand.Parameters.AddWithValue("time_type", timeType);
+        historyCommand.Parameters.AddWithValue("labor_category", laborCategory);
+        historyCommand.Parameters.AddWithValue("change_reason", changeReason);
+        await historyCommand.ExecuteNonQueryAsync();
+    }
+
+    await transaction.CommitAsync();
+
+    return Results.Ok(new
+    {
+        status = "rate_line_saved",
+        rateLineId,
+        rateCardId,
+        skuCode,
+        rateAmount,
+        message = "Rate line saved. Existing launched projects keep their historical rate snapshots; new work can use this rate going forward."
+    });
+});
+
+app.MapPost("/api/rate-cards/admin/lines/retire", async (HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token.", guard = "055B_rate_card_admin_session_required" }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    using var document = await JsonDocument.ParseAsync(httpContext.Request.Body);
+    var root = document.RootElement;
+
+    if (!root.TryGetProperty("rateLineId", out var rateLineElement)
+        || rateLineElement.ValueKind != JsonValueKind.String
+        || !Guid.TryParse(rateLineElement.GetString(), out var rateLineId))
+    {
+        return Results.BadRequest(new { status = "validation_failed", message = "rateLineId is required." });
+    }
+
+    var retireReason = root.TryGetProperty("retireReason", out var reasonElement) && reasonElement.ValueKind == JsonValueKind.String
+        ? reasonElement.GetString()?.Trim() ?? "Rate line retired."
+        : "Rate line retired.";
+
+    var dbConfig = DatabaseConfig.FromEnvironment();
+    await using var connection = new NpgsqlConnection(dbConfig.ConnectionString);
+    await connection.OpenAsync();
+
+    var canManageRateCards = false;
+    await using (var accessCommand = new NpgsqlCommand("""
+        SELECT EXISTS (
+            SELECT 1
+            FROM app_user_role_assignments ura
+            JOIN app_roles r
+              ON r.app_role_id = ura.app_role_id
+            WHERE ura.user_id = @user_id
+              AND ura.is_active = TRUE
+              AND r.is_active = TRUE
+              AND r.role_code IN ('SUPER_ADMINISTRATOR','ADMINISTRATOR','PROJECT_TEAM_COORDINATOR','SOLUTION_ARCHITECT','SA','ARCHITECT')
+        );
+        """, connection))
+    {
+        accessCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+        canManageRateCards = Convert.ToBoolean(await accessCommand.ExecuteScalarAsync() ?? false);
+    }
+
+    if (!canManageRateCards)
+    {
+        return Results.Json(new { status = "access_denied", message = "Only Super Administrators, Administrators, Project Team Coordinators, and Solution Architects can retire rate lines." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    await using var transaction = await connection.BeginTransactionAsync();
+
+    var affected = 0;
+    await using (var command = new NpgsqlCommand("""
+        UPDATE work_rate_card_lines
+        SET is_active = FALSE,
+            notes = CASE
+                WHEN NULLIF(TRIM(COALESCE(notes, '')), '') IS NULL THEN @reason
+                ELSE notes || E'\n' || @reason
+            END,
+            updated_by_user_id = @user_id,
+            updated_at = NOW()
+        WHERE rate_line_id = @rate_line_id;
+        """, connection, transaction))
+    {
+        command.Parameters.AddWithValue("rate_line_id", rateLineId);
+        command.Parameters.AddWithValue("reason", retireReason);
+        command.Parameters.AddWithValue("user_id", sessionUserId.Value);
+        affected = await command.ExecuteNonQueryAsync();
+    }
+
+    if (affected == 0)
+    {
+        await transaction.RollbackAsync();
+        return Results.NotFound(new { status = "rate_line_not_found", message = "Rate line was not found." });
+    }
+
+    await using (var historyCommand = new NpgsqlCommand("""
+        INSERT INTO work_rate_card_change_history (
+            rate_card_change_history_id,
+            entity_type,
+            entity_id,
+            action,
+            change_summary,
+            changed_by_user_id,
+            new_value_json
+        )
+        VALUES (
+            @history_id,
+            'rate_line',
+            @entity_id,
+            'rate_line_retired',
+            @change_summary,
+            @user_id,
+            jsonb_build_object('retireReason', @reason)
+        );
+        """, connection, transaction))
+    {
+        historyCommand.Parameters.AddWithValue("history_id", Guid.NewGuid());
+        historyCommand.Parameters.AddWithValue("entity_id", rateLineId);
+        historyCommand.Parameters.AddWithValue("change_summary", retireReason);
+        historyCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+        historyCommand.Parameters.AddWithValue("reason", retireReason);
+        await historyCommand.ExecuteNonQueryAsync();
+    }
+
+    await transaction.CommitAsync();
+
+    return Results.Ok(new
+    {
+        status = "rate_line_retired",
+        rateLineId,
+        message = "Rate line retired. Historical project/task snapshots remain reportable."
+    });
+});
+/* 055B_RATE_CARD_ADMIN_API_END */
+
+
 app.MapGet("/api/customers/overview", async (HttpContext httpContext) =>
 {
     var sessionUserId = GetProjectPulseSessionUserId(httpContext);
