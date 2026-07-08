@@ -521,3 +521,18 @@ body[data-projectpulse-active-route="rate-card-administration"] .module-info-pan
   color: #bfdbfe;
 }
 /* 055B_2_COMPACT_RATE_CARD_LAYOUT_END */
+
+/* 055B_3_RATE_CARD_ROUTE_FOCUS_START */
+body[data-projectpulse-active-route="rate-card-administration"] {
+  scroll-behavior: auto !important;
+}
+
+body[data-projectpulse-active-route="rate-card-administration"] .rate-card-administration-route-panel {
+  scroll-margin-top: 12px;
+  margin-top: 0 !important;
+}
+
+body[data-projectpulse-active-route="rate-card-administration"] .rate-card-admin-center {
+  min-height: calc(100vh - 40px);
+}
+/* 055B_3_RATE_CARD_ROUTE_FOCUS_END */

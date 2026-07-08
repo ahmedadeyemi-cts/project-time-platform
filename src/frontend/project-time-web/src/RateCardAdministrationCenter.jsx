@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import './rate-card-administration-center.css';
 
 const emptyCardForm = {
@@ -143,6 +143,36 @@ export default function RateCardAdministrationCenter() {
   const [lineForm, setLineForm] = useState(emptyLineForm);
   const [actionStatus, setActionStatus] = useState('');
   const [activePanel, setActivePanel] = useState('rates'); // 055B_2_COMPACT_RATE_CARD_TABS
+
+  /* 055B_3_RATE_CARD_ROUTE_FOCUS_START */
+  useLayoutEffect(() => {
+    const focusRateCardRoute = () => {
+      const routePanel =
+        document.getElementById('rate-card-administration') ||
+        document.querySelector('.rate-card-administration-route-panel');
+
+      if (!routePanel) return;
+
+      const top = Math.max(0, routePanel.getBoundingClientRect().top + window.scrollY - 12);
+      window.scrollTo({ top, behavior: 'auto' });
+      routePanel.setAttribute('tabindex', '-1');
+    };
+
+    focusRateCardRoute();
+
+    const focusTimers = [
+      window.setTimeout(focusRateCardRoute, 50),
+      window.setTimeout(focusRateCardRoute, 200),
+      window.setTimeout(focusRateCardRoute, 600),
+      window.setTimeout(focusRateCardRoute, 1200)
+    ];
+
+    return () => {
+      focusTimers.forEach((timer) => window.clearTimeout(timer));
+    };
+  }, []);
+  /* 055B_3_RATE_CARD_ROUTE_FOCUS_END */
+
 
   async function load() {
     setPayload((current) => ({ ...current, loading: true, error: null }));
