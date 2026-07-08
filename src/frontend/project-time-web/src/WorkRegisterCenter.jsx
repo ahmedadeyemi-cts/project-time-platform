@@ -175,6 +175,10 @@ export default function WorkRegisterCenter() {
     reason: ''
   });
   const [documentStatus, setDocumentStatus] = useState('');
+
+  const [documentUploadStatus, setDocumentUploadStatus] = useState('');
+  // 055C_10_LOCAL_DOCUMENT_UPLOAD
+
   // 055C_9_DOCUMENT_MANAGEMENT
 
   // 055C_8_CHANGE_ORDER_COSTING
@@ -370,6 +374,7 @@ export default function WorkRegisterCenter() {
     setTaskAssignmentStatus('');
     setChangeOrderStatus('');
     setDocumentStatus('');
+    setDocumentUploadStatus('');
     loadProjectDetails(item);
     setEditForm({
       workId: item.workId,
@@ -895,6 +900,145 @@ export default function WorkRegisterCenter() {
       [field]: value
     }));
   }
+
+
+  function getWorkRegisterUploadAuthHeaders() {
+    const headers = {};
+
+    try {
+      if (typeof getStoredProjectPulseAuthSession === 'function') {
+        const storedSession = getStoredProjectPulseAuthSession();
+        const sessionToken = storedSession?.sessionToken || storedSession?.token || storedSession?.id || '';
+        if (sessionToken) {
+          headers['X-ProjectPulse-Session'] = sessionToken;
+        }
+      }
+    } catch {
+      // Fall back to localStorage below.
+    }
+
+    try {
+      const rawSession = window.localStorage.getItem('projectPulseAuthSession');
+      if (rawSession && !headers['X-ProjectPulse-Session']) {
+        try {
+          const parsed = JSON.parse(rawSession);
+          const sessionToken = parsed?.sessionToken || parsed?.token || parsed?.id || '';
+          if (sessionToken) {
+            headers['X-ProjectPulse-Session'] = sessionToken;
+          }
+        } catch {
+          headers['X-ProjectPulse-Session'] = rawSession;
+        }
+      }
+
+      const viewAsUser = window.localStorage.getItem('projectPulseViewAsUser');
+      if (viewAsUser) {
+        headers['X-ProjectPulse-View-As-User'] = viewAsUser;
+      }
+    } catch {
+      // Ignore browser storage failures.
+    }
+
+    return headers;
+  }
+
+  async function uploadLocalDocument(event) {
+    event.preventDefault();
+
+    if (!selectedWorkItem?.workId) {
+      setDocumentUploadStatus('No project is selected.');
+      return;
+    }
+
+    if (!canEditWorkRegister) {
+      setDocumentUploadStatus('This tab is view-only for your role. Only PTC/Admin can upload documents.');
+      return;
+    }
+
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+    const file = formData.get('file');
+
+    if (!(file instanceof File) || !file.name) {
+      setDocumentUploadStatus('Choose a local file to upload.');
+      return;
+    }
+
+    if (!String(formData.get('documentType') || '').trim()) {
+      setDocumentUploadStatus('Document type is required.');
+      return;
+    }
+
+    if (!String(formData.get('reason') || '').trim()) {
+      setDocumentUploadStatus('Reason is required for document upload audit history.');
+      return;
+    }
+
+    formData.set('projectId', selectedWorkItem.workId);
+
+    if (!String(formData.get('documentName') || '').trim()) {
+      formData.set('documentName', file.name);
+    }
+
+    setDocumentUploadStatus(`Uploading ${file.name}...`);
+
+    try {
+      const response = await fetch('/api/work-register/projects/documents/upload', {
+        method: 'POST',
+        headers: getWorkRegisterUploadAuthHeaders(),
+        body: formData
+      });
+
+      const result = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(result.message || `HTTP ${response.status}`);
+      }
+
+      setDocumentUploadStatus(result.message || 'Local document uploaded.');
+      form.reset();
+      await loadProjectDetails(selectedWorkItem);
+      await load();
+    } catch (error) {
+      setDocumentUploadStatus(error instanceof Error ? error.message : 'Unable to upload local document.');
+    }
+  }
+
+  async function openWorkRegisterDocument(document) {
+    const downloadUrl = document?.downloadUrl || '';
+    const reference = document?.documentReference || '';
+
+    if (downloadUrl) {
+      setDocumentStatus(`Opening ${document.fileName || 'document'}...`);
+
+      try {
+        const response = await fetch(downloadUrl, {
+          method: 'GET',
+          headers: getWorkRegisterUploadAuthHeaders()
+        });
+
+        if (!response.ok) {
+          const result = await response.json().catch(() => ({}));
+          throw new Error(result.message || `HTTP ${response.status}`);
+        }
+
+        const blob = await response.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        window.open(blobUrl, '_blank', 'noopener,noreferrer');
+        window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+        setDocumentStatus('');
+      } catch (error) {
+        setDocumentStatus(error instanceof Error ? error.message : 'Unable to open uploaded document.');
+      }
+
+      return;
+    }
+
+    if (reference) {
+      window.open(reference, '_blank', 'noopener,noreferrer');
+    }
+  }
+
 
   async function saveDocumentRegistration() {
     if (!selectedWorkItem?.workId) {
@@ -2028,6 +2172,84 @@ export default function WorkRegisterCenter() {
                   <p className="muted">Document management is view-only for this role.</p>
                 )}
 
+
+                {canEditWorkRegister ? (
+                  <form className="work-register-document-upload-form" onSubmit={uploadLocalDocument}>
+                    <h5>Browse and upload local file</h5>
+                    <p className="muted">Use this when the document is on your computer. Use the link/reference section above when the document already lives in SharePoint, Drive, a ticket, or another system.</p>
+
+                    {documentUploadStatus ? (
+                      <div className="work-register-banner">{documentUploadStatus}</div>
+                    ) : null}
+
+                    <div className="work-register-edit-grid">
+                      <label>
+                        Local file
+                        <input type="file" name="file" required />
+                      </label>
+
+                      <label>
+                        Document name
+                        <input
+                          type="text"
+                          name="documentName"
+                          placeholder="Optional; defaults to selected file name"
+                        />
+                      </label>
+
+                      <label>
+                        Document type
+                        <select name="documentType" defaultValue="SOW">
+                          {['SOW', 'GSD', 'Change Order', 'Customer Approval', 'Project Plan', 'Technical Document', 'Closeout', 'Other'].map((type) => (
+                            <option value={type} key={type}>{type}</option>
+                          ))}
+                        </select>
+                      </label>
+
+                      <label>
+                        Version
+                        <input type="text" name="versionLabel" placeholder="v1, signed, final, rev-2" />
+                      </label>
+
+                      <label>
+                        Visibility
+                        <select name="visibility" defaultValue="project_team">
+                          <option value="project_team">Project team</option>
+                          <option value="ptc_admin_only">PTC/Admin only</option>
+                          <option value="pm_ptc_admin">PM/PTC/Admin</option>
+                          <option value="engineering_team">Engineering team</option>
+                        </select>
+                      </label>
+
+                      <label>
+                        Effective date
+                        <input type="date" name="effectiveDate" defaultValue={new Date().toISOString().slice(0, 10)} />
+                      </label>
+                    </div>
+
+                    <label className="full-width">
+                      Notes
+                      <textarea name="notes" rows={2} placeholder="Optional context for this uploaded document." />
+                    </label>
+
+                    <label className="full-width">
+                      Reason / audit note
+                      <textarea
+                        name="reason"
+                        rows={2}
+                        required
+                        placeholder="Required. Example: Uploaded signed SOW from customer."
+                      />
+                    </label>
+
+                    <div className="work-register-task-assignment-actions">
+                      <button type="submit" className="primary-action">
+                        Upload local file
+                      </button>
+                    </div>
+                  </form>
+                ) : null}
+
                 <h5>Registered documents</h5>
                 <div className="work-register-document-list">
                   {(projectDetails.data?.documents ?? []).map((document) => (
@@ -2038,6 +2260,9 @@ export default function WorkRegisterCenter() {
                         <small>Status: {labelize(document.status || 'active')}</small>
                         <small>Visibility: {labelize(document.visibility || 'not set')}</small>
                         <small>Version: {document.versionLabel || 'not set'}</small>
+                        <small>Source: {labelize(document.uploadSource || document.sourceTable || 'link')}</small>
+                        {document.originalFileName ? <small>File: {document.originalFileName}</small> : null}
+                        {document.fileSizeBytes ? <small>Size: {Number(document.fileSizeBytes).toLocaleString()} bytes</small> : null}
                         <small>Effective: {document.effectiveDate || 'not set'}</small>
                         <small>Added: {document.uploadedAt || 'not set'}</small>
                         {document.notes ? <small>Notes: {document.notes}</small> : null}
@@ -2045,10 +2270,10 @@ export default function WorkRegisterCenter() {
                       </div>
 
                       <div className="work-register-document-actions">
-                        {document.documentReference ? (
-                          <a href={document.documentReference} target="_blank" rel="noreferrer">
-                            Open reference
-                          </a>
+                        {(document.documentReference || document.downloadUrl) ? (
+                          <button type="button" className="secondary-action" onClick={() => openWorkRegisterDocument(document)}>
+                            {document.downloadUrl ? 'Open uploaded file' : 'Open reference'}
+                          </button>
                         ) : null}
 
                         {canEditWorkRegister && document.canArchive ? (

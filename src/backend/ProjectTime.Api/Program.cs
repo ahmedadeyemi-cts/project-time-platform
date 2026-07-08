@@ -5682,6 +5682,335 @@ app.MapGet("/api/project-intake/summary", async () =>
 
 
 
+
+/* 055C_10_LOCAL_DOCUMENT_UPLOAD_API_START */
+app.MapPost("/api/work-register/projects/documents/upload", async (HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token.", guard = "055C10_document_upload_session_required" }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    if (!httpContext.Request.HasFormContentType)
+    {
+        return Results.BadRequest(new { status = "invalid_upload", message = "Upload must be sent as multipart/form-data." });
+    }
+
+    var form = await httpContext.Request.ReadFormAsync();
+    var file = form.Files.GetFile("file") ?? form.Files.FirstOrDefault();
+
+    string ReadFormString(string name, string fallback = "")
+    {
+        return form.TryGetValue(name, out var values) ? (values.ToString() ?? fallback).Trim() : fallback;
+    }
+
+    Guid? ReadFormGuid(string name)
+    {
+        var value = ReadFormString(name);
+        return Guid.TryParse(value, out var parsed) ? parsed : null;
+    }
+
+    DateTime? ReadFormDate(string name)
+    {
+        var value = ReadFormString(name);
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        return DateTime.TryParse(value, out var parsed)
+            ? DateTime.SpecifyKind(parsed.Date, DateTimeKind.Utc)
+            : null;
+    }
+
+    string SafeFileName(string value)
+    {
+        var fileName = System.IO.Path.GetFileName(value ?? "uploaded-document");
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            fileName = "uploaded-document";
+        }
+
+        foreach (var invalid in System.IO.Path.GetInvalidFileNameChars())
+        {
+            fileName = fileName.Replace(invalid, '_');
+        }
+
+        fileName = fileName.Replace(" ", "_").Trim();
+
+        if (fileName.Length > 180)
+        {
+            var extension = System.IO.Path.GetExtension(fileName);
+            var baseName = System.IO.Path.GetFileNameWithoutExtension(fileName);
+            fileName = baseName[..Math.Min(baseName.Length, 140)] + extension;
+        }
+
+        return fileName;
+    }
+
+    var projectId = ReadFormGuid("projectId");
+    var documentName = ReadFormString("documentName");
+    var documentType = ReadFormString("documentType", "Other");
+    var versionLabel = ReadFormString("versionLabel");
+    var visibility = ReadFormString("visibility", "project_team");
+    var effectiveDate = ReadFormDate("effectiveDate");
+    var notes = ReadFormString("notes");
+    var reason = ReadFormString("reason");
+
+    if (projectId is null)
+    {
+        return Results.BadRequest(new { status = "validation_failed", message = "Project ID is required." });
+    }
+
+    if (file is null || file.Length <= 0)
+    {
+        return Results.BadRequest(new { status = "validation_failed", message = "Choose a local file to upload." });
+    }
+
+    if (file.Length > 50L * 1024L * 1024L)
+    {
+        return Results.BadRequest(new { status = "file_too_large", message = "Document uploads are limited to 50 MB." });
+    }
+
+    var originalFileName = SafeFileName(file.FileName);
+    if (string.IsNullOrWhiteSpace(documentName))
+    {
+        documentName = originalFileName;
+    }
+
+    if (string.IsNullOrWhiteSpace(reason))
+    {
+        return Results.BadRequest(new { status = "validation_failed", message = "Reason is required for document upload audit history." });
+    }
+
+    var dbConfig = DatabaseConfig.FromEnvironment();
+
+    await using var connection = new NpgsqlConnection(dbConfig.ConnectionString);
+    await connection.OpenAsync();
+
+    var canEditWorkRegister = false;
+    await using (var accessCommand = new NpgsqlCommand("""
+        SELECT EXISTS (
+            SELECT 1
+            FROM app_user_role_assignments ura
+            JOIN app_roles r
+              ON r.app_role_id = ura.app_role_id
+            WHERE ura.user_id = @user_id
+              AND ura.is_active = TRUE
+              AND r.is_active = TRUE
+              AND r.role_code IN (
+                  'SUPER_ADMINISTRATOR',
+                  'ADMINISTRATOR',
+                  'PROJECT_TEAM_COORDINATOR'
+              )
+        );
+        """, connection))
+    {
+        accessCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+        canEditWorkRegister = Convert.ToBoolean(await accessCommand.ExecuteScalarAsync() ?? false);
+    }
+
+    if (!canEditWorkRegister)
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Only Project Team Coordinators, Administrators, and Super Administrators can upload Work Register documents. Solution Architects are view-only."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var workRegisterDocumentId = Guid.NewGuid();
+    var uploadRoot = GetProjectPulseUploadRoot();
+    var projectFolder = System.IO.Path.Combine(uploadRoot, "work-register-documents", projectId.Value.ToString("N"));
+    System.IO.Directory.CreateDirectory(projectFolder);
+
+    var storedFileName = $"{workRegisterDocumentId:N}_{originalFileName}";
+    var storedFilePath = System.IO.Path.Combine(projectFolder, storedFileName);
+    var downloadReference = $"/api/work-register/projects/documents/{workRegisterDocumentId}/download";
+
+    await using (var fileStream = System.IO.File.Create(storedFilePath))
+    {
+        await file.CopyToAsync(fileStream);
+    }
+
+    await using var transaction = await connection.BeginTransactionAsync();
+
+    var newSnapshot = JsonSerializer.Serialize(new
+    {
+        projectId = projectId.Value,
+        workRegisterDocumentId,
+        documentName,
+        documentType,
+        versionLabel,
+        visibility,
+        effectiveDate,
+        notes,
+        reason,
+        uploadSource = "local_file",
+        originalFileName,
+        storedFilePath,
+        file.ContentType,
+        file.Length,
+        downloadReference
+    });
+
+    await using (var insertCommand = new NpgsqlCommand("""
+        INSERT INTO work_register_documents (
+            work_register_document_id,
+            project_id,
+            document_name,
+            document_type,
+            document_reference,
+            version_label,
+            status,
+            visibility,
+            effective_date,
+            notes,
+            created_by_user_id,
+            upload_source,
+            original_file_name,
+            stored_file_path,
+            content_type,
+            file_size_bytes
+        )
+        VALUES (
+            @document_id,
+            @project_id,
+            @document_name,
+            @document_type,
+            @document_reference,
+            @version_label,
+            'active',
+            @visibility,
+            @effective_date,
+            @notes,
+            @created_by_user_id,
+            'local_file',
+            @original_file_name,
+            @stored_file_path,
+            @content_type,
+            @file_size_bytes
+        );
+        """, connection, transaction))
+    {
+        insertCommand.Parameters.AddWithValue("document_id", workRegisterDocumentId);
+        insertCommand.Parameters.AddWithValue("project_id", projectId.Value);
+        insertCommand.Parameters.AddWithValue("document_name", documentName);
+        insertCommand.Parameters.AddWithValue("document_type", documentType);
+        insertCommand.Parameters.AddWithValue("document_reference", downloadReference);
+        insertCommand.Parameters.AddWithValue("version_label", versionLabel);
+        insertCommand.Parameters.AddWithValue("visibility", visibility);
+        insertCommand.Parameters.Add("effective_date", NpgsqlTypes.NpgsqlDbType.Date).Value = effectiveDate is null ? DBNull.Value : effectiveDate.Value;
+        insertCommand.Parameters.AddWithValue("notes", notes);
+        insertCommand.Parameters.AddWithValue("created_by_user_id", sessionUserId.Value);
+        insertCommand.Parameters.AddWithValue("original_file_name", originalFileName);
+        insertCommand.Parameters.AddWithValue("stored_file_path", storedFilePath);
+        insertCommand.Parameters.AddWithValue("content_type", string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType);
+        insertCommand.Parameters.AddWithValue("file_size_bytes", file.Length);
+        await insertCommand.ExecuteNonQueryAsync();
+    }
+
+    await using (var auditCommand = new NpgsqlCommand("""
+        INSERT INTO work_register_change_history (
+            work_register_change_history_id,
+            source_table,
+            work_id,
+            action,
+            change_summary,
+            changed_fields_csv,
+            changed_by_user_id,
+            old_value_json,
+            new_value_json
+        )
+        VALUES (
+            @history_id,
+            'projects',
+            @work_id,
+            'document_uploaded',
+            @change_summary,
+            @changed_fields_csv,
+            @changed_by_user_id,
+            '{}'::jsonb,
+            CAST(@new_value_json AS jsonb)
+        );
+        """, connection, transaction))
+    {
+        auditCommand.Parameters.AddWithValue("history_id", Guid.NewGuid());
+        auditCommand.Parameters.AddWithValue("work_id", projectId.Value);
+        auditCommand.Parameters.AddWithValue("change_summary", $"{documentType}: {documentName} uploaded");
+        auditCommand.Parameters.AddWithValue("changed_fields_csv", "Local File Upload, Document Name, Document Type, Version, Visibility, File Size");
+        auditCommand.Parameters.AddWithValue("changed_by_user_id", sessionUserId.Value);
+        auditCommand.Parameters.AddWithValue("new_value_json", newSnapshot);
+        await auditCommand.ExecuteNonQueryAsync();
+    }
+
+    await transaction.CommitAsync();
+
+    return Results.Ok(new
+    {
+        status = "document_uploaded",
+        projectId = projectId.Value,
+        workRegisterDocumentId,
+        documentName,
+        originalFileName,
+        fileSizeBytes = file.Length,
+        downloadReference,
+        message = "Local document uploaded and audit history saved."
+    });
+}).DisableAntiforgery();
+
+app.MapGet("/api/work-register/projects/documents/{documentId:guid}/download", async (Guid documentId, HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token.", guard = "055C10_document_download_session_required" }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var dbConfig = DatabaseConfig.FromEnvironment();
+
+    await using var connection = new NpgsqlConnection(dbConfig.ConnectionString);
+    await connection.OpenAsync();
+
+    await using var command = new NpgsqlCommand("""
+        SELECT
+            COALESCE(stored_file_path, ''),
+            COALESCE(original_file_name, document_name, 'document'),
+            COALESCE(content_type, 'application/octet-stream')
+        FROM work_register_documents
+        WHERE work_register_document_id = @document_id
+          AND status = 'active'
+        LIMIT 1;
+        """, connection);
+
+    command.Parameters.AddWithValue("document_id", documentId);
+
+    await using var reader = await command.ExecuteReaderAsync();
+    if (!await reader.ReadAsync())
+    {
+        return Results.NotFound(new { status = "document_not_found", message = "Document was not found or is archived." });
+    }
+
+    var storedFilePath = reader.GetString(0);
+    var originalFileName = reader.GetString(1);
+    var contentType = reader.GetString(2);
+
+    if (string.IsNullOrWhiteSpace(storedFilePath) || !System.IO.File.Exists(storedFilePath))
+    {
+        return Results.NotFound(new { status = "stored_file_not_found", message = "The stored document file could not be found on the server." });
+    }
+
+    return Results.File(
+        path: storedFilePath,
+        contentType: string.IsNullOrWhiteSpace(contentType) ? "application/octet-stream" : contentType,
+        fileDownloadName: string.IsNullOrWhiteSpace(originalFileName) ? "document" : originalFileName,
+        enableRangeProcessing: true
+    );
+});
+/* 055C_10_LOCAL_DOCUMENT_UPLOAD_API_END */
+
+
 /* 055C_9_DOCUMENT_MANAGEMENT_API_START */
 app.MapPost("/api/work-register/projects/documents/save", async (HttpContext httpContext) =>
 {
@@ -7771,6 +8100,14 @@ app.MapGet("/api/work-register/projects/{projectId:guid}/details", async (Guid p
             visibility = Pick(document, "visibility"),
             uploadedAt = Pick(document, "created_at"),
             documentReference = Pick(document, "document_reference"),
+            downloadUrl = !string.IsNullOrWhiteSpace(Pick(document, "stored_file_path"))
+                ? $"/api/work-register/projects/documents/{Pick(document, "work_register_document_id")}/download"
+                : "",
+            uploadSource = Pick(document, "upload_source"),
+            originalFileName = Pick(document, "original_file_name"),
+            contentType = Pick(document, "content_type"),
+            fileSizeBytes = PickDecimal(document, "file_size_bytes"),
+            /* 055C_10_DETAILS_LOCAL_DOCUMENT_UPLOAD_FIELDS */
             versionLabel = Pick(document, "version_label"),
             status = statusValue,
             effectiveDate = Pick(document, "effective_date"),

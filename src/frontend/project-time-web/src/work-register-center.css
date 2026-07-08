@@ -863,3 +863,46 @@ body[data-projectpulse-active-route="work-register"] #work-register .work-regist
   border-color: rgba(148, 163, 184, 0.3);
 }
 /* 055C_9_DOCUMENT_MANAGEMENT_END */
+
+/* 055C_10_LOCAL_DOCUMENT_UPLOAD_START */
+.work-register-document-upload-form {
+  display: grid;
+  gap: 0.85rem;
+  border: 1px solid rgba(14, 165, 233, 0.28);
+  border-radius: 18px;
+  background: #f0f9ff;
+  padding: 0.9rem;
+}
+
+.work-register-document-upload-form h5 {
+  margin: 0;
+}
+
+.work-register-document-upload-form input,
+.work-register-document-upload-form select,
+.work-register-document-upload-form textarea {
+  width: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  border-radius: 12px;
+  padding: 0.55rem 0.65rem;
+  background: #ffffff;
+  color: #0f172a;
+}
+
+.work-register-document-upload-form input[type="file"] {
+  padding: 0.45rem;
+}
+
+[data-theme="dark"] .work-register-document-upload-form {
+  background: rgba(12, 74, 110, 0.28);
+  border-color: rgba(125, 211, 252, 0.25);
+}
+
+[data-theme="dark"] .work-register-document-upload-form input,
+[data-theme="dark"] .work-register-document-upload-form select,
+[data-theme="dark"] .work-register-document-upload-form textarea {
+  background: rgba(15, 23, 42, 0.92);
+  color: #e2e8f0;
+  border-color: rgba(148, 163, 184, 0.3);
+}
+/* 055C_10_LOCAL_DOCUMENT_UPLOAD_END */
