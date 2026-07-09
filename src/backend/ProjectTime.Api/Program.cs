@@ -6704,6 +6704,8 @@ app.MapPost("/api/work-register/intake/packages/upload", async (HttpContext http
             work_register_intake_package_id,
             intake_status,
             requested_work_type,
+            contract_type,
+            customer_id,
             source_mode,
             customer_hint,
             project_name_hint,
@@ -6728,12 +6730,13 @@ app.MapPost("/api/work-register/intake/packages/upload", async (HttpContext http
             @created_by_user_id,
             NOW()
         );
+        /* 055D_2D_REPAIRED_INTAKE_PACKAGE_INSERT */
         """, connection, transaction))
     {
         packageCommand.Parameters.AddWithValue("intake_package_id", intakePackageId);
         packageCommand.Parameters.AddWithValue("requested_work_type", requestedWorkType);
-        packageCommand.Parameters.AddWithValue("contract_type", contractType);
-        packageCommand.Parameters.Add("customer_id", NpgsqlTypes.NpgsqlDbType.Uuid).Value = customerId.Value;
+        packageCommand.Parameters.AddWithValue("contract_type", string.IsNullOrWhiteSpace(contractType) ? "Fixed Price" : contractType);
+        packageCommand.Parameters.Add("customer_id", NpgsqlTypes.NpgsqlDbType.Uuid).Value = customerId is null ? DBNull.Value : customerId.Value;
         packageCommand.Parameters.AddWithValue("customer_hint", customerHint);
         packageCommand.Parameters.AddWithValue("project_name_hint", projectNameHint);
         packageCommand.Parameters.AddWithValue("notes", notes);

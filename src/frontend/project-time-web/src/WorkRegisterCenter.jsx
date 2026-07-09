@@ -190,6 +190,7 @@ export default function WorkRegisterCenter() {
   // 055D_2A_GSD_XLSX_EXTRACTION_REVIEW
   // 055D_2B_INTAKE_UI_REPAIR
   // 055D_2C_CURRENT_EXTRACTION_REPAIR
+  // 055D_2E_UPLOAD_EXTRACT_CURRENT_GSD
 
   const [intakeForm, setIntakeForm] = useState({
     requestedWorkType: 'Project',
@@ -1260,7 +1261,7 @@ export default function WorkRegisterCenter() {
   }
 
   async function runIntakeExtraction(intakePackageId) {
-    setIntakeReviewStatus('Running current XLSX GSD extraction...');
+    setIntakeReviewStatus('Running current GSD extraction...');
 
     try {
       const result = await postJson(`/api/work-register/intake/packages/${intakePackageId}/extract`, {});
@@ -1281,8 +1282,21 @@ export default function WorkRegisterCenter() {
 
       setSelectedIntakeReview(reviewPayload);
       setIntakeReviewForm(reviewFormFromExtracted(reviewPayload));
-      setIntakeReviewStatus(result.message || 'Current extraction completed. Review the extracted mapping below.');
-      await loadIntakePackages();
+      setIntakePackages((current) => current.map((pkg) => (
+        String(pkg.intakePackageId) === String(intakePackageId)
+          ? {
+              ...pkg,
+              projectNameHint: result.extractedData?.projectName || pkg.projectNameHint,
+              extractionStatus: result.extractionStatus,
+              reviewStatus: 'needs_review'
+            }
+          : pkg
+      )));
+
+      const rateCount = Array.isArray(result.extractedData?.rates) ? result.extractedData.rates.length : 0;
+      const taskCount = Array.isArray(result.extractedData?.tasks) ? result.extractedData.tasks.length : 0;
+
+      setIntakeReviewStatus(`${result.message || 'Current extraction completed.'} Rates found: ${rateCount}. Tasks found: ${taskCount}.`);
     } catch (error) {
       setIntakeReviewStatus(error instanceof Error ? error.message : 'Unable to run intake extraction.');
     }
@@ -1532,15 +1546,22 @@ export default function WorkRegisterCenter() {
       return;
     }
 
-    const selectedCustomer = selectedIntakeCustomerSafe();
+    const customerSelect = form.elements.customerId;
+    const visibleCustomerName = customerSelect?.selectedOptions?.[0]?.textContent?.trim() || 'Selected customer';
 
     Object.entries(intakeForm).forEach(([key, value]) => {
       formData.set(key, String(value ?? ''));
     });
 
-    formData.set('customerName', selectedCustomer ? intakeCustomerOptionName(selectedCustomer) : '');
+    formData.set('customerName', visibleCustomerName);
 
-    setIntakeWizardStatus('Uploading GSD/SOW intake package...');
+    setSelectedIntakeReview(null);
+    setIntakeReviewForm(null);
+    setIntakePackages([]);
+    setIntakeWizardStatus('Uploading intake package...');
+    setIntakeReviewStatus('Uploading current GSD/SOW package...');
+
+    let uploadedPackage = null;
 
     try {
       const response = await fetch('/api/work-register/intake/packages/upload', {
@@ -1549,42 +1570,72 @@ export default function WorkRegisterCenter() {
         body: formData
       });
 
-      const result = await response.json().catch(() => ({}));
+      const uploadResult = await response.json().catch(() => ({}));
 
       if (!response.ok) {
-        throw new Error(result.message || `HTTP ${response.status}`);
+        throw new Error(uploadResult.message || `Upload failed with HTTP ${response.status}`);
       }
 
-      setIntakePackageResult(result);
-      setSelectedIntakeReview(null);
-      setIntakeReviewForm(null);
-      setIntakePackages([{
-        intakePackageId: result.intakePackageId,
-        requestedWorkType: result.requestedWorkType,
-        contractType: result.contractType,
-        customerId: result.customerId,
-        customerHint: result.customerHint,
-        projectNameHint: result.projectNameHint || 'New intake package',
-        extractionStatus: result.extractionStatus || 'pending_parser',
+      uploadedPackage = {
+        intakePackageId: uploadResult.intakePackageId,
+        requestedWorkType: uploadResult.requestedWorkType,
+        contractType: uploadResult.contractType || intakeForm.contractType,
+        customerId: uploadResult.customerId || intakeForm.customerId,
+        customerHint: visibleCustomerName,
+        projectNameHint: uploadResult.projectNameHint || 'New intake package',
+        extractionStatus: 'pending_parser',
         reviewStatus: 'not_started',
-        documentCount: result.uploadedDocumentCount || 0
+        documentCount: uploadResult.uploadedDocumentCount || 0
+      };
+
+      setIntakePackageResult({
+        ...uploadResult,
+        customerHint: visibleCustomerName
+      });
+      setIntakePackages([uploadedPackage]);
+      setIntakeWizardStatus('Intake package uploaded. Running GSD extraction now...');
+      setIntakeReviewStatus('Running current GSD extraction...');
+
+      const extractResult = await postJson(`/api/work-register/intake/packages/${uploadResult.intakePackageId}/extract`, {});
+
+      const reviewPayload = {
+        package: {
+          ...uploadedPackage,
+          customerHint: visibleCustomerName,
+          extractedJson: JSON.stringify(extractResult.extractedData || {}),
+          reviewedJson: '{}',
+          extractionStatus: extractResult.extractionStatus,
+          reviewStatus: 'needs_review'
+        },
+        documents: extractResult.extractedData?.documents || [],
+        extractedData: extractResult.extractedData || {}
+      };
+
+      setSelectedIntakeReview(reviewPayload);
+      setIntakeReviewForm(reviewFormFromExtracted(reviewPayload));
+      setIntakePackages([{
+        ...uploadedPackage,
+        projectNameHint: extractResult.extractedData?.projectName || uploadedPackage.projectNameHint,
+        extractionStatus: extractResult.extractionStatus,
+        reviewStatus: 'needs_review'
       }]);
-      setIntakeWizardStatus(result.message || 'Intake package uploaded.');
+
       form.reset();
       setIntakeForm(defaultIntakeForm());
-      setIntakeForm({
-        requestedWorkType: 'Project',
-        contractType: 'Fixed Price',
-        customerId: '',
-        projectNameHint: '',
-        skipGsd: false,
-        skipSow: false,
-        notes: '',
-        reason: ''
-      });
-      await loadIntakePackages();
+
+      const rateCount = Array.isArray(extractResult.extractedData?.rates) ? extractResult.extractedData.rates.length : 0;
+      const taskCount = Array.isArray(extractResult.extractedData?.tasks) ? extractResult.extractedData.tasks.length : 0;
+
+      setIntakeWizardStatus('Intake package uploaded and extracted.');
+      setIntakeReviewStatus(`${extractResult.message || 'Current extraction completed.'} Rates found: ${rateCount}. Tasks found: ${taskCount}.`);
     } catch (error) {
-      setIntakeWizardStatus(error instanceof Error ? error.message : 'Unable to upload intake package.');
+      const message = error instanceof Error ? error.message : 'Unable to upload and extract intake package.';
+      setIntakeWizardStatus(message);
+      setIntakeReviewStatus(message);
+
+      if (uploadedPackage) {
+        setIntakePackages([uploadedPackage]);
+      }
     }
   }
 
@@ -2012,6 +2063,13 @@ export default function WorkRegisterCenter() {
                   </label>
                 </div>
 
+                <div className="work-register-intake-primary-submit" data-marker="055D_2E_PRIMARY_UPLOAD_BUTTON">
+                  <button type="submit" className="primary-action">
+                    Upload and extract current intake package
+                  </button>
+                  <span className="muted">This creates the package and immediately extracts the current GSD/SOW for review.</span>
+                </div>
+
                 {intakeRequiresProjectDocuments() ? (
                   <div className="work-register-intake-checkboxes">
                     <label className="checkbox-line">
@@ -2161,7 +2219,7 @@ export default function WorkRegisterCenter() {
                       ) : (
 
 
-                        <p className="muted">Upload the source documents first. Extraction/review will become active after the package is created.</p>
+                        <p className="muted">Upload the source documents using the button above. The system creates the intake package and immediately extracts this current GSD/SOW.</p>
 
 
                       )}
@@ -2371,7 +2429,7 @@ export default function WorkRegisterCenter() {
                       <button type="button" className="secondary-action" onClick={resetIntakeWizard}>Reset</button>
 
 
-                      <button type="submit" className="primary-action">Upload intake package</button>
+                      <button type="submit" className="primary-action">Upload and extract intake package</button>
 
 
                     </div>
