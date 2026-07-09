@@ -192,6 +192,7 @@ export default function WorkRegisterCenter() {
   // 055D_2C_CURRENT_EXTRACTION_REPAIR
   // 055D_2E_UPLOAD_EXTRACT_CURRENT_GSD
   // 055D_2F_RATE_TASK_REVIEW_TABLES
+  // 055D_2G_CONSOLIDATED_GSD_PARSER
 
   const [intakeForm, setIntakeForm] = useState({
     requestedWorkType: 'Project',
@@ -2118,8 +2119,8 @@ export default function WorkRegisterCenter() {
                       onChange={(event) => updateIntakeField('contractType', event.target.value)}
                       name="contractType"
                     >
-                      <option value="Fixed Price">Fixed Price (FP)</option>
-                      <option value="Time and Material">Time and Material (TM)</option>
+                      <option value="FP">Fixed Price (FP)</option>
+                      <option value="TM">Time and Material (TM)</option>
                       <option value="Internal">Internal</option>
                       <option value="Presales">Presales</option>
                       <option value="Other">Other</option>
@@ -2514,7 +2515,7 @@ export default function WorkRegisterCenter() {
                         <strong>{calculatedGsdTaskHoursTotal().toLocaleString()} hrs</strong>
                       </div>
                       <div>
-                        <span>Rate source</span>
+                        <span>Task source</span>
                         <strong>GSD snapshot</strong>
                       </div>
                     </div>
@@ -2592,7 +2593,7 @@ export default function WorkRegisterCenter() {
                       <div className="work-register-gsd-review-table-header">
                         <div>
                           <h5>Task / Hours Review</h5>
-                          <p className="muted">These tasks will be used to create Work Register tasks in 055D.3.</p>
+                          <p className="muted">Standard GSDs use Totals Sheet. Toyota/Hyundai GSDs use Milestone Summary Breakdown. These tasks will be used to create Work Register tasks in 055D.3.</p>
                         </div>
                         <button type="button" className="secondary-action" onClick={addGsdTaskRow}>
                           Add task row

@@ -6096,10 +6096,26 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
 
     
 
-    /* 055D_2C_TARGETED_GSD_WORKBOOK_PARSER_START */
-    static bool LooksNumeric(string value)
+
+    /* 055D_2G_CONSOLIDATED_GSD_PARSER_START */
+    static string NormalizeContractTypeForIntake(string value)
     {
-        return TryDecimal(value ?? "") is not null;
+        var normalized = NormalizeLabel(value);
+
+        if (normalized is "tm" or "tandm" or "timeandmaterial" or "timeandmaterials" or "timeampmaterial" or "timeampmaterials")
+        {
+            return "TM";
+        }
+
+        if (normalized is "fp" or "fixedprice")
+        {
+            return "FP";
+        }
+
+        if (normalized.Contains("presale")) return "Presales";
+        if (normalized.Contains("internal")) return "Internal";
+
+        return string.IsNullOrWhiteSpace(value) ? "FP" : value.Trim();
     }
 
     static string GetCell(Dictionary<(int Row, int Col), string> sheet, int row, int col)
@@ -6107,7 +6123,39 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
         return sheet.TryGetValue((row, col), out var value) ? CleanCell(value) : "";
     }
 
-    static List<object> ExtractRates(Dictionary<string, Dictionary<(int Row, int Col), string>> workbook)
+    static decimal NumberOrZero(string value)
+    {
+        return TryDecimal(value) ?? 0m;
+    }
+
+    static bool LooksLikeToyotaHyundaiGsd(Dictionary<(int Row, int Col), string> summary)
+    {
+        var client = FindLabelValue(summary, "Client Name", "Customer", "Customer Name");
+        var project = FindLabelValue(summary, "Project Name", "Work Name");
+        var combined = NormalizeLabel(client + " " + project);
+
+        return combined.Contains("toyota")
+            || combined.Contains("tmna")
+            || combined.Contains("tmma")
+            || combined.Contains("lexus")
+            || combined.Contains("hyundai")
+            || combined.Contains("haea")
+            || combined.Contains("hma")
+            || combined.Contains("hatci")
+            || combined.Contains("kia")
+            || combined.Contains("kus");
+    }
+
+    static string MilestoneCleanName(string value)
+    {
+        var clean = CleanCell(value);
+        clean = System.Text.RegularExpressions.Regex.Replace(clean, @"\s*-\s*LABOR\s*$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        clean = System.Text.RegularExpressions.Regex.Replace(clean, @"\s*-\s*TRAVEL\s*$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        clean = System.Text.RegularExpressions.Regex.Replace(clean, @"\s*-\s*MATERIALS.*$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        return clean.Trim();
+    }
+
+    static List<object> ExtractRates(Dictionary<string, Dictionary<(int Row, int Col), string>> workbook, string contractType)
     {
         var rates = new List<object>();
 
@@ -6116,34 +6164,55 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
             return rates;
         }
 
-        for (var row = 1; row <= 250; row++)
-        {
-            var rateText = GetCell(sell, row, 2);
-            var hoursText = GetCell(sell, row, 3);
-            var sku = GetCell(sell, row, 4);
-            var description = GetCell(sell, row, 5);
+        var normalizedContract = NormalizeContractTypeForIntake(contractType);
+        var activeSection = "";
 
+        for (var row = 1; row <= 350; row++)
+        {
+            var rowText = string.Join(" ", Enumerable.Range(1, 10).Select(col => GetCell(sell, row, col))).Trim();
+            var rowNormalized = NormalizeLabel(rowText);
+
+            if (rowNormalized.Contains("timeandmaterial") || rowNormalized.Contains("timeampmaterial") || rowNormalized.Contains("tandm"))
+            {
+                activeSection = "TM";
+            }
+
+            if (rowNormalized.Contains("fixedprice"))
+            {
+                activeSection = "FP";
+            }
+
+            var sku = GetCell(sell, row, 4);
             if (string.IsNullOrWhiteSpace(sku) || !sku.StartsWith("ON-", StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }
 
-            var rate = TryDecimal(rateText) ?? 0m;
-            var hours = TryDecimal(hoursText) ?? 0m;
+            if ((normalizedContract == "TM" && activeSection == "FP") || (normalizedContract == "FP" && activeSection == "TM"))
+            {
+                continue;
+            }
 
-            if (rate <= 0m && hours <= 0m)
+            var rate = NumberOrZero(GetCell(sell, row, 2));
+            var hours = NumberOrZero(GetCell(sell, row, 3));
+            var description = GetCell(sell, row, 5);
+
+            if (rate == 0m && hours == 0m)
             {
                 continue;
             }
 
             rates.Add(new
             {
+                include = true,
                 source = "SELL SKUs",
+                contractType = normalizedContract,
                 row,
                 sku,
                 description,
                 rate,
                 hours,
+                extendedAmount = rate * hours,
                 billable = true
             });
         }
@@ -6151,69 +6220,191 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
         return rates;
     }
 
-    static List<object> ExtractTasks(Dictionary<string, Dictionary<(int Row, int Col), string>> workbook)
+    static List<object> ExtractTasksFromTotalsSheet(Dictionary<string, Dictionary<(int Row, int Col), string>> workbook)
     {
         var tasks = new List<object>();
-        var phaseSheets = new[] { "Plan", "Design", "Implement", "Validate", "Release" };
 
-        foreach (var phase in phaseSheets)
+        if (!workbook.TryGetValue("Totals Sheet", out var sheet))
         {
-            if (!workbook.TryGetValue(phase, out var sheet))
+            return tasks;
+        }
+
+        var inBreakout = false;
+
+        for (var row = 1; row <= 180; row++)
+        {
+            var rowText = string.Join(" ", Enumerable.Range(1, 8).Select(col => GetCell(sheet, row, col))).Trim();
+            var normalized = NormalizeLabel(rowText);
+
+            if (normalized.Contains("phasebreakouttotals") || normalized.Contains("milestonebreakouttotals"))
+            {
+                inBreakout = true;
+                continue;
+            }
+
+            if (!inBreakout)
             {
                 continue;
             }
 
-            for (var row = 1; row <= 250; row++)
+            if (normalized.Contains("totalprojectlabor") || normalized.Contains("overalltotals") || normalized.Contains("invoicingbreakouttotals"))
             {
-                var taskName = GetCell(sheet, row, 1);
-                var regularText = GetCell(sheet, row, 2);
-                var overtimeText = GetCell(sheet, row, 3);
-                var reserveText = GetCell(sheet, row, 4);
-                var role = GetCell(sheet, row, 5);
-                var travelRequired = GetCell(sheet, row, 6);
-                var notes = GetCell(sheet, row, 7);
+                break;
+            }
 
-                if (string.IsNullOrWhiteSpace(taskName))
+            var phaseLabel = GetCell(sheet, row, 2);
+            if (string.IsNullOrWhiteSpace(phaseLabel))
+            {
+                phaseLabel = GetCell(sheet, row, 1);
+            }
+
+            if (string.IsNullOrWhiteSpace(phaseLabel))
+            {
+                continue;
+            }
+
+            var normalizedPhase = NormalizeLabel(phaseLabel);
+            var isPhase =
+                normalizedPhase is "plan" or "design" or "implement" or "validate" or "release"
+                || normalizedPhase.StartsWith("milestone")
+                || normalizedPhase.Contains("milestone");
+
+            if (!isPhase)
+            {
+                continue;
+            }
+
+            var hours = NumberOrZero(GetCell(sheet, row, 3));
+            var otHours = NumberOrZero(GetCell(sheet, row, 4));
+            var laborAndTravel = NumberOrZero(GetCell(sheet, row, 5));
+
+            if (hours == 0m && otHours == 0m && laborAndTravel == 0m)
+            {
+                continue;
+            }
+
+            tasks.Add(new
+            {
+                include = true,
+                source = "Totals Sheet",
+                phase = phaseLabel,
+                taskName = phaseLabel,
+                engineeringRole = "Consolidated phase total",
+                regularHours = hours,
+                overtimeHours = otHours,
+                reserveHours = 0m,
+                pmHours = 0m,
+                pmReserveHours = 0m,
+                totalHours = hours + otHours,
+                laborListPrice = laborAndTravel,
+                billable = true,
+                utilizationEligible = true,
+                engineers = new List<object>()
+            });
+        }
+
+        return tasks;
+    }
+
+    static List<object> ExtractTasksFromMilestoneSummaryBreakdown(Dictionary<string, Dictionary<(int Row, int Col), string>> workbook)
+    {
+        var tasks = new List<object>();
+
+        if (!workbook.TryGetValue("Milestone Summary Breakdown", out var sheet))
+        {
+            return tasks;
+        }
+
+        void AddBlock(int titleRow, int titleCol, int resourceCol, int regularCol, int otCol, int reserveCol, int pmCol, int pmReserveCol, int priceCol)
+        {
+            var title = MilestoneCleanName(GetCell(sheet, titleRow, titleCol));
+            if (string.IsNullOrWhiteSpace(title))
+            {
+                return;
+            }
+
+            for (var row = titleRow + 1; row <= titleRow + 20; row++)
+            {
+                var resource = GetCell(sheet, row, resourceCol);
+
+                if (!resource.Equals("TOTAL LABOR", StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
 
-                if (taskName.StartsWith("[", StringComparison.Ordinal)
-                    || string.Equals(taskName, "Task Name", StringComparison.OrdinalIgnoreCase)
-                    || taskName.Contains("bullet details", StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
+                var regular = NumberOrZero(GetCell(sheet, row, regularCol));
+                var ot = NumberOrZero(GetCell(sheet, row, otCol));
+                var reserve = NumberOrZero(GetCell(sheet, row, reserveCol));
+                var pm = NumberOrZero(GetCell(sheet, row, pmCol));
+                var pmReserve = NumberOrZero(GetCell(sheet, row, pmReserveCol));
+                var laborPrice = NumberOrZero(GetCell(sheet, row, priceCol));
+                var totalHours = regular + ot + reserve + pm + pmReserve;
 
-                var regular = TryDecimal(regularText) ?? 0m;
-                var overtime = TryDecimal(overtimeText) ?? 0m;
-                var reserve = TryDecimal(reserveText) ?? 0m;
-
-                if (regular <= 0m && overtime <= 0m && reserve <= 0m)
+                if (totalHours == 0m && laborPrice == 0m)
                 {
-                    continue;
+                    return;
                 }
 
                 tasks.Add(new
                 {
-                    phase,
-                    row,
-                    taskName = taskName.Length > 180 ? taskName[..180] : taskName,
-                    regularHours = regular,
-                    overtimeHours = overtime,
-                    reserveHours = reserve,
-                    totalHours = regular + overtime + reserve,
-                    engineeringRole = role,
-                    travelRequired,
-                    notes,
+                    include = true,
+                    source = "Milestone Summary Breakdown",
+                    phase = title,
+                    taskName = title,
+                    engineeringRole = "Consolidated milestone labor",
+                    regularHours = regular + pm,
+                    overtimeHours = ot,
+                    reserveHours = reserve + pmReserve,
+                    pmHours = pm,
+                    pmReserveHours = pmReserve,
+                    totalHours,
+                    laborListPrice = laborPrice,
                     billable = true,
                     utilizationEligible = true,
                     engineers = new List<object>()
                 });
+
+                return;
+            }
+        }
+
+        for (var row = 1; row <= 180; row++)
+        {
+            var leftTitle = GetCell(sheet, row, 2);
+            var rightTitle = GetCell(sheet, row, 11);
+
+            if (leftTitle.EndsWith("- LABOR", StringComparison.OrdinalIgnoreCase))
+            {
+                AddBlock(row, 2, 2, 3, 4, 5, 6, 7, 8);
+            }
+
+            if (rightTitle.EndsWith("- LABOR", StringComparison.OrdinalIgnoreCase))
+            {
+                AddBlock(row, 11, 11, 12, 13, 14, 15, 16, 17);
             }
         }
 
         return tasks;
+    }
+
+    static List<object> ExtractConsolidatedTasks(Dictionary<string, Dictionary<(int Row, int Col), string>> workbook, Dictionary<(int Row, int Col), string> summary)
+    {
+        if (LooksLikeToyotaHyundaiGsd(summary))
+        {
+            var milestoneTasks = ExtractTasksFromMilestoneSummaryBreakdown(workbook);
+            if (milestoneTasks.Count > 0)
+            {
+                return milestoneTasks;
+            }
+        }
+
+        var totalsTasks = ExtractTasksFromTotalsSheet(workbook);
+        if (totalsTasks.Count > 0)
+        {
+            return totalsTasks;
+        }
+
+        return ExtractTasksFromMilestoneSummaryBreakdown(workbook);
     }
 
     static List<object> ExtractPhaseTotals(Dictionary<string, Dictionary<(int Row, int Col), string>> workbook)
@@ -6225,29 +6416,27 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
             return totals;
         }
 
-        for (var row = 1; row <= 120; row++)
+        for (var row = 1; row <= 180; row++)
         {
-            var phase = GetCell(sheet, row, 2);
-            var normalized = NormalizeLabel(phase);
+            var rowText = string.Join(" ", Enumerable.Range(1, 8).Select(col => GetCell(sheet, row, col))).Trim();
+            var normalized = NormalizeLabel(rowText);
 
-            if (normalized is not ("plan" or "design" or "implement" or "validate" or "release"))
+            if (normalized.Contains("totalprojectlabor") || normalized.Contains("overalltotals") || normalized.Contains("totalproject"))
             {
-                continue;
+                totals.Add(new
+                {
+                    source = "Totals Sheet",
+                    row,
+                    label = rowText,
+                    amount = NumberOrZero(GetCell(sheet, row, 3))
+                });
             }
-
-            totals.Add(new
-            {
-                phase,
-                row,
-                hours = TryDecimal(GetCell(sheet, row, 3)) ?? 0m,
-                overtimeHours = TryDecimal(GetCell(sheet, row, 4)) ?? 0m,
-                laborAndTravel = TryDecimal(GetCell(sheet, row, 5)) ?? 0m
-            });
         }
 
         return totals;
     }
-    /* 055D_2C_TARGETED_GSD_WORKBOOK_PARSER_END */
+    /* 055D_2G_CONSOLIDATED_GSD_PARSER_END */
+
 
 
     var parserNotes = new List<string>();
@@ -6274,12 +6463,15 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
             workbook.TryGetValue("Summary", out var summary);
             summary ??= new Dictionary<(int Row, int Col), string>();
 
+            var rawContractType = FindLabelValue(summary, "Contract Type");
+            var normalizedContractType = NormalizeContractTypeForIntake(string.IsNullOrWhiteSpace(rawContractType) ? contractType : rawContractType);
+
             extractedData = new Dictionary<string, object>
             {
                 ["extractionStatus"] = "extracted_needs_review",
                 ["parserVersion"] = "055D.2A_xlsx_gsd_parser",
                 ["requestedWorkType"] = requestedWorkType,
-                ["contractType"] = string.IsNullOrWhiteSpace(FindLabelValue(summary, "Contract Type")) ? contractType : FindLabelValue(summary, "Contract Type"),
+                ["contractType"] = normalizedContractType,
                 ["customerId"] = customerIdText,
                 ["customerName"] = string.IsNullOrWhiteSpace(FindLabelValue(summary, "Client Name", "Customer", "Customer Name")) ? customerHint : FindLabelValue(summary, "Client Name", "Customer", "Customer Name"),
                 ["projectName"] = string.IsNullOrWhiteSpace(FindLabelValue(summary, "Project Name", "Work Name")) ? projectNameHint : FindLabelValue(summary, "Project Name", "Work Name"),
@@ -6292,8 +6484,8 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
                 ["travelHours"] = FindLabelValue(summary, "Travel Hours"),
                 ["projectListPrice"] = FindLabelValue(summary, "Project List Price"),
                 ["workLocation"] = FindLabelValue(summary, "Work Location"),
-                ["rates"] = ExtractRates(workbook),
-                ["tasks"] = ExtractTasks(workbook),
+                ["rates"] = ExtractRates(workbook, normalizedContractType),
+                ["tasks"] = ExtractConsolidatedTasks(workbook, summary),
                 ["phaseTotals"] = ExtractPhaseTotals(workbook),
                 ["documents"] = documents.Select(d => new { d.DocumentId, d.DocumentType, d.OriginalFileName, d.ContentType, d.FileSizeBytes }).ToList(),
                 ["parserNotes"] = parserNotes.Concat(new[] { "Extracted from XLSX GSD workbook. Review customer mapping, people mapping, rates, tasks, and hours before committing to Work Register." }).ToList()
@@ -6312,7 +6504,7 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
         ["extractionStatus"] = "needs_manual_review",
         ["parserVersion"] = "055D.2A_xlsx_gsd_parser",
         ["requestedWorkType"] = requestedWorkType,
-        ["contractType"] = contractType,
+        ["contractType"] = NormalizeContractTypeForIntake(contractType),
         ["customerId"] = customerIdText,
         ["customerName"] = customerHint,
         ["projectName"] = projectNameHint,

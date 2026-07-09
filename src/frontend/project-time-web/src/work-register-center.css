@@ -1379,3 +1379,9 @@ body[data-projectpulse-active-route="work-register"] #work-register .work-regist
   color: #bbf7d0;
 }
 /* 055D_2F_RATE_TASK_REVIEW_TABLES_END */
+
+/* 055D_2G_CONSOLIDATED_GSD_PARSER_START */
+.work-register-gsd-review-table .muted {
+  line-height: 1.35;
+}
+/* 055D_2G_CONSOLIDATED_GSD_PARSER_END */
