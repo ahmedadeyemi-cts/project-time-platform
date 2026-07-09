@@ -1173,3 +1173,19 @@ body[data-projectpulse-active-route="work-register"] #work-register .work-regist
   min-height: 7rem;
 }
 /* 055D_2A_GSD_XLSX_EXTRACTION_REVIEW_END */
+
+/* 055D_2B_INTAKE_UI_PARSER_REPAIR_START */
+.work-register-intake-form .work-register-edit-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.work-register-intake-review-panel textarea {
+  min-height: 7rem;
+}
+
+@media (max-width: 760px) {
+  .work-register-intake-form .work-register-edit-grid {
+    grid-template-columns: 1fr;
+  }
+}
+/* 055D_2B_INTAKE_UI_PARSER_REPAIR_END */

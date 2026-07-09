@@ -188,6 +188,7 @@ export default function WorkRegisterCenter() {
   const [intakeReviewForm, setIntakeReviewForm] = useState(null);
   // 055D_2_GSD_EXTRACTION_REVIEW
   // 055D_2A_GSD_XLSX_EXTRACTION_REVIEW
+  // 055D_2B_INTAKE_UI_REPAIR
 
   const [intakeForm, setIntakeForm] = useState({
     requestedWorkType: 'Project',
@@ -1190,6 +1191,7 @@ export default function WorkRegisterCenter() {
       travelHours: data.travelHours || '',
       ratesText: prettyIntakeJson(data.rates || []),
       tasksText: prettyIntakeJson(data.tasks || []),
+      phaseTotalsText: prettyIntakeJson(data.phaseTotals || []),
       parserNotesText: prettyIntakeJson(data.parserNotes || [])
     };
   }
@@ -1337,15 +1339,9 @@ export default function WorkRegisterCenter() {
   }
 
 
-  function updateIntakeField(field, value) {
-    setIntakeForm((current) => ({
-      ...current,
-      [field]: value
-    }));
-  }
 
-  function resetIntakeWizard() {
-    setIntakeForm({
+  function defaultIntakeForm() {
+    return {
       requestedWorkType: 'Project',
       contractType: 'Fixed Price',
       customerId: '',
@@ -1354,9 +1350,36 @@ export default function WorkRegisterCenter() {
       skipSow: false,
       notes: '',
       reason: ''
-    });
+    };
+  }
+
+  function intakeCustomerOptionId(customer) {
+    return customer?.customerId || customer?.id || customer?.value || customer?.customer_id || '';
+  }
+
+  function intakeCustomerOptionName(customer) {
+    return customer?.customerName || customer?.name || customer?.label || customer?.displayName || customer?.customer_name || 'Selected customer';
+  }
+
+  function selectedIntakeCustomer() {
+    return editCustomerOptions.find((customer) => String(intakeCustomerOptionId(customer)) === String(intakeForm.customerId));
+  }
+
+
+  function updateIntakeField(field, value) {
+    setIntakeForm((current) => ({
+      ...current,
+      [field]: value
+    }));
+  }
+
+  function resetIntakeWizard() {
+    setIntakeForm(defaultIntakeForm());
     setIntakePackageResult(null);
+    setSelectedIntakeReview(null);
+    setIntakeReviewForm(null);
     setIntakeWizardStatus('');
+    setIntakeReviewStatus('');
   }
 
   function intakeRequiresProjectDocuments() {
@@ -1423,6 +1446,10 @@ export default function WorkRegisterCenter() {
       setIntakePackageResult(result);
       setIntakeWizardStatus(result.message || 'Intake package uploaded.');
       form.reset();
+      setIntakeForm(defaultIntakeForm());
+      setSelectedIntakeReview(null);
+      setIntakeReviewForm(null);
+      await loadIntakePackages();
       setIntakeForm({
         requestedWorkType: 'Project',
         contractType: 'Fixed Price',
@@ -1784,252 +1811,109 @@ export default function WorkRegisterCenter() {
 
 
                     <section>
-
-
-                      <h4>1. Work type and source documents</h4>
-
-
-                      <div className="work-register-edit-grid">
-
-
-                        <label>
-
-
-                          Work type
-
-
-                          <select
-
-
-                            value={intakeForm.requestedWorkType}
-
-
-                            onChange={(event) => updateIntakeField('requestedWorkType', event.target.value)}
-
-
-                            name="requestedWorkType"
-
-
-                          >
-
-
-                            {['Project', 'Service Request', 'Internal Project', 'IQS', 'Pre-Sales', 'Other'].map((type) => (
-
-
-                              <option value={type} key={type}>{type}</option>
-
-
-                            ))}
-
-
-                          </select>
-
-
-                        </label>
-
-
-      
-
-
-                        <label>
-
-
-                          Customer
-
-
-                          <input
-
-
-                            type="text"
-
-
-                            name="customerHint"
-
-
-                            value={intakeForm.customerHint}
-
-
-                            onChange={(event) => updateIntakeField('customerHint', event.target.value)}
-
-
-                            placeholder="Optional; parser will try to extract from GSD"
-
-
-                          />
-
-
-                        </label>
-
-
-      
-
-
-                        <label>
-
-
-                          Project / Work Name
-
-
-                          <input
-
-
-                            type="text"
-
-
-                            name="projectNameHint"
-
-
-                            value={intakeForm.projectNameHint}
-
-
-                            onChange={(event) => updateIntakeField('projectNameHint', event.target.value)}
-
-
-                            placeholder="Optional; parser will try to extract from GSD/SOW"
-
-
-                          />
-
-
-                        </label>
-
-
-                      </div>
-
-
-      
-
-
-                      <div className="work-register-intake-upload-grid">
-
-
-                        <label className="work-register-intake-upload-card">
-
-
-                          <strong>GSD upload</strong>
-
-
-                          <small>Primary source for AE, SA, SAA, rates, tasks, and hours.</small>
-
-
-                          <input type="file" name="gsdFile" />
-
-
-                        </label>
-
-
-      
-
-
-                        <label className="work-register-intake-upload-card">
-
-
-                          <strong>SOW upload</strong>
-
-
-                          <small>Source for scope, project name, customer approval context, and contractual support.</small>
-
-
-                          <input type="file" name="sowFile" />
-
-
-                        </label>
-
-
-      
-
-
-                        <label className="work-register-intake-upload-card">
-
-
-                          <strong>Optional approval / PO / email</strong>
-
-
-                          <small>Use for customer approval, PO, signed email, or supporting intake evidence.</small>
-
-
-                          <input type="file" name="approvalFile" />
-
-
-                        </label>
-
-
-                      </div>
-
-
-      
-
-
-                      {intakeRequiresProjectDocuments() ? (
-
-
-                        <div className="work-register-intake-checkboxes">
-
-
-                          <label className="checkbox-line">
-
-
-                            <input
-
-
-                              type="checkbox"
-
-
-                              checked={intakeForm.skipGsd}
-
-
-                              onChange={(event) => updateIntakeField('skipGsd', event.target.checked)}
-
-
-                            />
-
-
-                            No GSD available / manual intake
-
-
-                          </label>
-
-
-      
-
-
-                          <label className="checkbox-line">
-
-
-                            <input
-
-
-                              type="checkbox"
-
-
-                              checked={intakeForm.skipSow}
-
-
-                              onChange={(event) => updateIntakeField('skipSow', event.target.checked)}
-
-
-                            />
-
-
-                            No SOW available yet
-
-
-                          </label>
-
-
-                        </div>
-
-
-                      ) : (
-
-
-                        <p className="muted">GSD/SOW are optional for this work type. Service Requests can proceed by manual intake in a later step.</p>
-
-
-                      )}
-
-
-                    </section>
+                <h4>1. Work type and source documents</h4>
+                <div className="work-register-edit-grid">
+                  <label>
+                    Work type
+                    <select
+                      value={intakeForm.requestedWorkType}
+                      onChange={(event) => updateIntakeField('requestedWorkType', event.target.value)}
+                      name="requestedWorkType"
+                    >
+                      {['Project', 'Service Request', 'Internal Project', 'IQS', 'Pre-Sales', 'Other'].map((type) => (
+                        <option value={type} key={type}>{type}</option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label>
+                    Contract type
+                    <select
+                      value={intakeForm.contractType}
+                      onChange={(event) => updateIntakeField('contractType', event.target.value)}
+                      name="contractType"
+                    >
+                      <option value="Fixed Price">Fixed Price (FP)</option>
+                      <option value="Time and Material">Time and Material (TM)</option>
+                      <option value="Internal">Internal</option>
+                      <option value="Presales">Presales</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </label>
+
+                  <label>
+                    Customer
+                    <select
+                      name="customerId"
+                      value={intakeForm.customerId}
+                      onChange={(event) => updateIntakeField('customerId', event.target.value)}
+                      required
+                    >
+                      <option value="">Select customer from Customer Directory</option>
+                      {editCustomerOptions.map((customer) => (
+                        <option value={intakeCustomerOptionId(customer)} key={intakeCustomerOptionId(customer)}>
+                          {intakeCustomerOptionName(customer)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label>
+                    Project / Work Name
+                    <input
+                      type="text"
+                      name="projectNameHint"
+                      value={intakeForm.projectNameHint}
+                      onChange={(event) => updateIntakeField('projectNameHint', event.target.value)}
+                      placeholder="Optional; GSD extraction should populate this"
+                    />
+                  </label>
+                </div>
+
+                <div className="work-register-intake-upload-grid">
+                  <label className="work-register-intake-upload-card">
+                    <strong>GSD upload</strong>
+                    <small>Primary source for AE, SA, SAA, rates, tasks, and hours.</small>
+                    <input type="file" name="gsdFile" />
+                  </label>
+
+                  <label className="work-register-intake-upload-card">
+                    <strong>SOW upload</strong>
+                    <small>Source for scope, project name, customer approval context, and contractual support.</small>
+                    <input type="file" name="sowFile" />
+                  </label>
+
+                  <label className="work-register-intake-upload-card">
+                    <strong>Optional approval / PO / email</strong>
+                    <small>Use for customer approval, PO, signed email, or supporting intake evidence.</small>
+                    <input type="file" name="approvalFile" />
+                  </label>
+                </div>
+
+                {intakeRequiresProjectDocuments() ? (
+                  <div className="work-register-intake-checkboxes">
+                    <label className="checkbox-line">
+                      <input
+                        type="checkbox"
+                        checked={intakeForm.skipGsd}
+                        onChange={(event) => updateIntakeField('skipGsd', event.target.checked)}
+                      />
+                      No GSD available / manual intake
+                    </label>
+
+                    <label className="checkbox-line">
+                      <input
+                        type="checkbox"
+                        checked={intakeForm.skipSow}
+                        onChange={(event) => updateIntakeField('skipSow', event.target.checked)}
+                      />
+                      No SOW available yet
+                    </label>
+                  </div>
+                ) : (
+                  <p className="muted">GSD/SOW are optional for this work type. Service Requests can proceed by manual intake in a later step.</p>
+                )}
+              </section>
 
 
       
