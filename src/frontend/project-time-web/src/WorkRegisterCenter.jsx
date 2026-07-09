@@ -181,6 +181,13 @@ export default function WorkRegisterCenter() {
   const [intakeWizardOpen, setIntakeWizardOpen] = useState(false);
   const [intakeWizardStatus, setIntakeWizardStatus] = useState('');
   const [intakePackageResult, setIntakePackageResult] = useState(null);
+
+  const [intakePackages, setIntakePackages] = useState([]);
+  const [intakeReviewStatus, setIntakeReviewStatus] = useState('');
+  const [selectedIntakeReview, setSelectedIntakeReview] = useState(null);
+  const [intakeReviewForm, setIntakeReviewForm] = useState(null);
+  // 055D_2_GSD_EXTRACTION_REVIEW
+
   const [intakeForm, setIntakeForm] = useState({
     requestedWorkType: 'Project',
     customerHint: '',
@@ -1142,6 +1149,178 @@ export default function WorkRegisterCenter() {
 
 
 
+
+  function parseIntakeJson(value) {
+    if (!value) return {};
+
+    if (typeof value === 'object') return value;
+
+    try {
+      return JSON.parse(value);
+    } catch {
+      return {};
+    }
+  }
+
+  function prettyIntakeJson(value) {
+    try {
+      return JSON.stringify(value ?? [], null, 2);
+    } catch {
+      return '[]';
+    }
+  }
+
+  function reviewFormFromExtracted(packageData) {
+    const extracted = parseIntakeJson(packageData?.package?.reviewedJson);
+    const fallback = parseIntakeJson(packageData?.package?.extractedJson);
+    const data = Object.keys(extracted).length > 0 ? extracted : fallback;
+
+    return {
+      projectName: data.projectName || packageData?.package?.projectNameHint || '',
+      customerName: data.customerName || packageData?.package?.customerHint || '',
+      accountExecutiveName: data.accountExecutiveName || '',
+      solutionArchitectName: data.solutionArchitectName || '',
+      insideSalesName: data.insideSalesName || '',
+      requestedWorkType: data.requestedWorkType || packageData?.package?.requestedWorkType || 'Project',
+      contractType: data.contractType || 'Fixed Price',
+      pmHours: data.pmHours || '',
+      engineeringHours: data.engineeringHours || '',
+      travelHours: data.travelHours || '',
+      ratesText: prettyIntakeJson(data.rates || []),
+      tasksText: prettyIntakeJson(data.tasks || []),
+      parserNotesText: prettyIntakeJson(data.parserNotes || [])
+    };
+  }
+
+  async function loadIntakePackages() {
+    setIntakeReviewStatus('Loading intake packages...');
+
+    try {
+      const response = await fetch('/api/work-register/intake/packages/recent', {
+        method: 'GET',
+        headers: getWorkRegisterUploadAuthHeaders()
+      });
+
+      const result = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(result.message || `HTTP ${response.status}`);
+      }
+
+      setIntakePackages(result.packages || []);
+      setIntakeReviewStatus(`Loaded ${(result.packages || []).length} intake package(s).`);
+    } catch (error) {
+      setIntakeReviewStatus(error instanceof Error ? error.message : 'Unable to load intake packages.');
+    }
+  }
+
+  async function openIntakeReview(intakePackageId) {
+    setIntakeReviewStatus('Loading intake review...');
+
+    try {
+      const response = await fetch(`/api/work-register/intake/packages/${intakePackageId}/review`, {
+        method: 'GET',
+        headers: getWorkRegisterUploadAuthHeaders()
+      });
+
+      const result = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(result.message || `HTTP ${response.status}`);
+      }
+
+      setSelectedIntakeReview(result);
+      setIntakeReviewForm(reviewFormFromExtracted(result));
+      setIntakeReviewStatus('Intake review loaded.');
+    } catch (error) {
+      setIntakeReviewStatus(error instanceof Error ? error.message : 'Unable to load intake review.');
+    }
+  }
+
+  async function runIntakeExtraction(intakePackageId) {
+    setIntakeReviewStatus('Running GSD/SOW extraction...');
+
+    try {
+      const result = await postJson(`/api/work-register/intake/packages/${intakePackageId}/extract`, {});
+      setIntakeReviewStatus(result.message || 'Extraction completed.');
+      await openIntakeReview(intakePackageId);
+      await loadIntakePackages();
+    } catch (error) {
+      setIntakeReviewStatus(error instanceof Error ? error.message : 'Unable to run intake extraction.');
+    }
+  }
+
+  function updateIntakeReviewForm(field, value) {
+    setIntakeReviewForm((current) => ({
+      ...(current ?? {}),
+      [field]: value
+    }));
+  }
+
+  async function saveIntakeReviewMapping() {
+    const packageId = selectedIntakeReview?.package?.intakePackageId;
+    if (!packageId) {
+      setIntakeReviewStatus('Select an intake package first.');
+      return;
+    }
+
+    let rates = [];
+    let tasks = [];
+    let parserNotes = [];
+
+    try {
+      rates = JSON.parse(intakeReviewForm?.ratesText || '[]');
+    } catch {
+      setIntakeReviewStatus('Rates must be valid JSON.');
+      return;
+    }
+
+    try {
+      tasks = JSON.parse(intakeReviewForm?.tasksText || '[]');
+    } catch {
+      setIntakeReviewStatus('Tasks must be valid JSON.');
+      return;
+    }
+
+    try {
+      parserNotes = JSON.parse(intakeReviewForm?.parserNotesText || '[]');
+    } catch {
+      parserNotes = [];
+    }
+
+    const reviewedData = {
+      projectName: intakeReviewForm?.projectName || '',
+      customerName: intakeReviewForm?.customerName || '',
+      accountExecutiveName: intakeReviewForm?.accountExecutiveName || '',
+      solutionArchitectName: intakeReviewForm?.solutionArchitectName || '',
+      insideSalesName: intakeReviewForm?.insideSalesName || '',
+      requestedWorkType: intakeReviewForm?.requestedWorkType || 'Project',
+      contractType: intakeReviewForm?.contractType || 'Fixed Price',
+      pmHours: intakeReviewForm?.pmHours || '',
+      engineeringHours: intakeReviewForm?.engineeringHours || '',
+      travelHours: intakeReviewForm?.travelHours || '',
+      rates,
+      tasks,
+      parserNotes,
+      reviewSource: '055D.2_ptc_review_mapping'
+    };
+
+    setIntakeReviewStatus('Saving reviewed intake mapping...');
+
+    try {
+      const result = await postJson(`/api/work-register/intake/packages/${packageId}/review/save`, {
+        reviewedData
+      });
+
+      setIntakeReviewStatus(result.message || 'Reviewed intake mapping saved.');
+      await openIntakeReview(packageId);
+      await loadIntakePackages();
+    } catch (error) {
+      setIntakeReviewStatus(error instanceof Error ? error.message : 'Unable to save intake review mapping.');
+    }
+  }
+
+
   function updateIntakeField(field, value) {
     setIntakeForm((current) => ({
       ...current,
@@ -1951,7 +2130,192 @@ export default function WorkRegisterCenter() {
       
 
 
+      
+              <section>
+                <h4>4. GSD extraction and review mapping</h4>
+                <p className="muted">
+                  Run extraction after upload, then review and correct the mapping before it becomes a Work Register record.
+                  This step prepares project name, customer, AE, SA, SAA, rates, tasks, and hours for 055D.3.
+                </p>
+
+                {intakeReviewStatus ? (
+                  <div className="work-register-banner">{intakeReviewStatus}</div>
+                ) : null}
+
+                <div className="work-register-intake-review-toolbar">
+                  <button type="button" className="secondary-action" onClick={loadIntakePackages}>
+                    Load intake packages
+                  </button>
+                  {intakePackageResult?.intakePackageId ? (
+                    <button type="button" className="secondary-action" onClick={() => openIntakeReview(intakePackageResult.intakePackageId)}>
+                      Review last uploaded package
+                    </button>
+                  ) : null}
+                </div>
+
+                <div className="work-register-intake-package-list">
+                  {intakePackages.map((pkg) => (
+                    <article key={pkg.intakePackageId}>
+                      <div>
+                        <strong>{pkg.projectNameHint || 'Pending project name'}</strong>
+                        <small>Package: {pkg.intakePackageId}</small>
+                        <small>Type: {pkg.requestedWorkType}</small>
+                        <small>Customer hint: {pkg.customerHint || 'not set'}</small>
+                        <small>Documents: {pkg.documentCount}</small>
+                        <small>Extraction: {labelize(pkg.extractionStatus || 'not started')}</small>
+                        <small>Review: {labelize(pkg.reviewStatus || 'not started')}</small>
+                      </div>
+                      <div>
+                        <button type="button" className="secondary-action" onClick={() => runIntakeExtraction(pkg.intakePackageId)}>
+                          Extract
+                        </button>
+                        <button type="button" className="secondary-action" onClick={() => openIntakeReview(pkg.intakePackageId)}>
+                          Review
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+
+                {selectedIntakeReview && intakeReviewForm ? (
+                  <div className="work-register-intake-review-panel">
+                    <h5>Review extracted mapping</h5>
+
+                    <div className="work-register-edit-grid">
+                      <label>
+                        Project / work name
+                        <input
+                          type="text"
+                          value={intakeReviewForm.projectName}
+                          onChange={(event) => updateIntakeReviewForm('projectName', event.target.value)}
+                        />
+                      </label>
+
+                      <label>
+                        Customer
+                        <input
+                          type="text"
+                          value={intakeReviewForm.customerName}
+                          onChange={(event) => updateIntakeReviewForm('customerName', event.target.value)}
+                        />
+                      </label>
+
+                      <label>
+                        AE
+                        <input
+                          type="text"
+                          value={intakeReviewForm.accountExecutiveName}
+                          onChange={(event) => updateIntakeReviewForm('accountExecutiveName', event.target.value)}
+                        />
+                      </label>
+
+                      <label>
+                        SA
+                        <input
+                          type="text"
+                          value={intakeReviewForm.solutionArchitectName}
+                          onChange={(event) => updateIntakeReviewForm('solutionArchitectName', event.target.value)}
+                        />
+                      </label>
+
+                      <label>
+                        SAA / Inside Sales
+                        <input
+                          type="text"
+                          value={intakeReviewForm.insideSalesName}
+                          onChange={(event) => updateIntakeReviewForm('insideSalesName', event.target.value)}
+                        />
+                      </label>
+
+                      <label>
+                        Work type
+                        <select
+                          value={intakeReviewForm.requestedWorkType}
+                          onChange={(event) => updateIntakeReviewForm('requestedWorkType', event.target.value)}
+                        >
+                          {['Project', 'Service Request', 'Internal Project', 'IQS', 'Pre-Sales', 'Other'].map((type) => (
+                            <option value={type} key={type}>{type}</option>
+                          ))}
+                        </select>
+                      </label>
+
+                      <label>
+                        Contract type
+                        <select
+                          value={intakeReviewForm.contractType}
+                          onChange={(event) => updateIntakeReviewForm('contractType', event.target.value)}
+                        >
+                          {['Fixed Price', 'T&M', 'Internal', 'Pre-Sales', 'Other'].map((type) => (
+                            <option value={type} key={type}>{type}</option>
+                          ))}
+                        </select>
+                      </label>
+
+                      <label>
+                        PM hours
+                        <input
+                          type="text"
+                          value={intakeReviewForm.pmHours}
+                          onChange={(event) => updateIntakeReviewForm('pmHours', event.target.value)}
+                        />
+                      </label>
+
+                      <label>
+                        Engineering hours
+                        <input
+                          type="text"
+                          value={intakeReviewForm.engineeringHours}
+                          onChange={(event) => updateIntakeReviewForm('engineeringHours', event.target.value)}
+                        />
+                      </label>
+
+                      <label>
+                        Travel hours
+                        <input
+                          type="text"
+                          value={intakeReviewForm.travelHours}
+                          onChange={(event) => updateIntakeReviewForm('travelHours', event.target.value)}
+                        />
+                      </label>
+                    </div>
+
+                    <label>
+                      Rates JSON
+                      <textarea
+                        rows={7}
+                        value={intakeReviewForm.ratesText}
+                        onChange={(event) => updateIntakeReviewForm('ratesText', event.target.value)}
+                      />
+                    </label>
+
+                    <label>
+                      Tasks / hours JSON
+                      <textarea
+                        rows={7}
+                        value={intakeReviewForm.tasksText}
+                        onChange={(event) => updateIntakeReviewForm('tasksText', event.target.value)}
+                      />
+                    </label>
+
+                    <label>
+                      Parser notes JSON
+                      <textarea
+                        rows={4}
+                        value={intakeReviewForm.parserNotesText}
+                        onChange={(event) => updateIntakeReviewForm('parserNotesText', event.target.value)}
+                      />
+                    </label>
+
                     <div className="work-register-create-actions">
+                      <button type="button" className="primary-action" onClick={saveIntakeReviewMapping}>
+                        Save reviewed mapping
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+              </section>
+
+              <div className="work-register-create-actions">
 
 
                       <button type="button" className="secondary-action" onClick={resetIntakeWizard}>Reset</button>

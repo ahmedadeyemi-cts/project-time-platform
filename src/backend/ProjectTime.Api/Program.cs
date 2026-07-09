@@ -5684,6 +5684,670 @@ app.MapGet("/api/project-intake/summary", async () =>
 
 
 
+
+/* 055D_2_GSD_EXTRACTION_REVIEW_API_START */
+app.MapGet("/api/work-register/intake/packages/recent", async (HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token.", guard = "055D2_intake_recent_session_required" }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var dbConfig = DatabaseConfig.FromEnvironment();
+
+    await using var connection = new NpgsqlConnection(dbConfig.ConnectionString);
+    await connection.OpenAsync();
+
+    var canManageIntake = false;
+    await using (var accessCommand = new NpgsqlCommand("""
+        SELECT EXISTS (
+            SELECT 1
+            FROM app_user_role_assignments ura
+            JOIN app_roles r
+              ON r.app_role_id = ura.app_role_id
+            WHERE ura.user_id = @user_id
+              AND ura.is_active = TRUE
+              AND r.is_active = TRUE
+              AND r.role_code IN (
+                  'SUPER_ADMINISTRATOR',
+                  'ADMINISTRATOR',
+                  'PROJECT_TEAM_COORDINATOR'
+              )
+        );
+        """, connection))
+    {
+        accessCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+        canManageIntake = Convert.ToBoolean(await accessCommand.ExecuteScalarAsync() ?? false);
+    }
+
+    if (!canManageIntake)
+    {
+        return Results.Json(new { status = "access_denied", message = "Only PTC/Admin can review intake packages." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var packages = new List<object>();
+
+    await using var command = new NpgsqlCommand("""
+        SELECT
+            p.work_register_intake_package_id,
+            p.intake_status,
+            p.requested_work_type,
+            p.customer_hint,
+            p.project_name_hint,
+            p.extraction_status,
+            p.review_status,
+            p.created_at,
+            COUNT(d.work_register_intake_document_id) AS document_count
+        FROM work_register_intake_packages p
+        LEFT JOIN work_register_intake_documents d
+          ON d.work_register_intake_package_id = p.work_register_intake_package_id
+        GROUP BY
+            p.work_register_intake_package_id,
+            p.intake_status,
+            p.requested_work_type,
+            p.customer_hint,
+            p.project_name_hint,
+            p.extraction_status,
+            p.review_status,
+            p.created_at
+        ORDER BY p.created_at DESC
+        LIMIT 50;
+        """, connection);
+
+    await using var reader = await command.ExecuteReaderAsync();
+    while (await reader.ReadAsync())
+    {
+        packages.Add(new
+        {
+            intakePackageId = reader.GetGuid(0),
+            intakeStatus = reader.GetString(1),
+            requestedWorkType = reader.GetString(2),
+            customerHint = reader.GetString(3),
+            projectNameHint = reader.GetString(4),
+            extractionStatus = reader.GetString(5),
+            reviewStatus = reader.GetString(6),
+            createdAt = reader.GetDateTime(7),
+            documentCount = reader.GetInt64(8)
+        });
+    }
+
+    return Results.Ok(new
+    {
+        status = "intake_packages_loaded",
+        packages
+    });
+});
+
+app.MapGet("/api/work-register/intake/packages/{intakePackageId:guid}/review", async (Guid intakePackageId, HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token.", guard = "055D2_intake_review_session_required" }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var dbConfig = DatabaseConfig.FromEnvironment();
+
+    await using var connection = new NpgsqlConnection(dbConfig.ConnectionString);
+    await connection.OpenAsync();
+
+    var canManageIntake = false;
+    await using (var accessCommand = new NpgsqlCommand("""
+        SELECT EXISTS (
+            SELECT 1
+            FROM app_user_role_assignments ura
+            JOIN app_roles r
+              ON r.app_role_id = ura.app_role_id
+            WHERE ura.user_id = @user_id
+              AND ura.is_active = TRUE
+              AND r.is_active = TRUE
+              AND r.role_code IN (
+                  'SUPER_ADMINISTRATOR',
+                  'ADMINISTRATOR',
+                  'PROJECT_TEAM_COORDINATOR'
+              )
+        );
+        """, connection))
+    {
+        accessCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+        canManageIntake = Convert.ToBoolean(await accessCommand.ExecuteScalarAsync() ?? false);
+    }
+
+    if (!canManageIntake)
+    {
+        return Results.Json(new { status = "access_denied", message = "Only PTC/Admin can review intake packages." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    object? package = null;
+
+    await using (var packageCommand = new NpgsqlCommand("""
+        SELECT
+            work_register_intake_package_id,
+            intake_status,
+            requested_work_type,
+            source_mode,
+            customer_hint,
+            project_name_hint,
+            notes,
+            extraction_status,
+            COALESCE(extracted_json, '{}'::jsonb)::text,
+            review_status,
+            COALESCE(reviewed_json, '{}'::jsonb)::text,
+            created_at
+        FROM work_register_intake_packages
+        WHERE work_register_intake_package_id = @intake_package_id
+        LIMIT 1;
+        """, connection))
+    {
+        packageCommand.Parameters.AddWithValue("intake_package_id", intakePackageId);
+
+        await using var reader = await packageCommand.ExecuteReaderAsync();
+        if (await reader.ReadAsync())
+        {
+            package = new
+            {
+                intakePackageId = reader.GetGuid(0),
+                intakeStatus = reader.GetString(1),
+                requestedWorkType = reader.GetString(2),
+                sourceMode = reader.GetString(3),
+                customerHint = reader.GetString(4),
+                projectNameHint = reader.GetString(5),
+                notes = reader.GetString(6),
+                extractionStatus = reader.GetString(7),
+                extractedJson = reader.GetString(8),
+                reviewStatus = reader.GetString(9),
+                reviewedJson = reader.GetString(10),
+                createdAt = reader.GetDateTime(11)
+            };
+        }
+    }
+
+    if (package is null)
+    {
+        return Results.NotFound(new { status = "intake_package_not_found", message = "Intake package was not found." });
+    }
+
+    var documents = new List<object>();
+
+    await using (var documentCommand = new NpgsqlCommand("""
+        SELECT
+            work_register_intake_document_id,
+            document_type,
+            original_file_name,
+            content_type,
+            file_size_bytes,
+            created_at
+        FROM work_register_intake_documents
+        WHERE work_register_intake_package_id = @intake_package_id
+        ORDER BY
+            CASE document_type
+              WHEN 'GSD' THEN 1
+              WHEN 'SOW' THEN 2
+              ELSE 3
+            END,
+            created_at;
+        """, connection))
+    {
+        documentCommand.Parameters.AddWithValue("intake_package_id", intakePackageId);
+
+        await using var reader = await documentCommand.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            documents.Add(new
+            {
+                documentId = reader.GetGuid(0),
+                documentType = reader.GetString(1),
+                originalFileName = reader.GetString(2),
+                contentType = reader.GetString(3),
+                fileSizeBytes = reader.GetInt64(4),
+                createdAt = reader.GetDateTime(5)
+            });
+        }
+    }
+
+    return Results.Ok(new
+    {
+        status = "intake_review_loaded",
+        package,
+        documents
+    });
+});
+
+app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract", async (Guid intakePackageId, HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token.", guard = "055D2_intake_extract_session_required" }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var dbConfig = DatabaseConfig.FromEnvironment();
+
+    await using var connection = new NpgsqlConnection(dbConfig.ConnectionString);
+    await connection.OpenAsync();
+
+    var canManageIntake = false;
+    await using (var accessCommand = new NpgsqlCommand("""
+        SELECT EXISTS (
+            SELECT 1
+            FROM app_user_role_assignments ura
+            JOIN app_roles r
+              ON r.app_role_id = ura.app_role_id
+            WHERE ura.user_id = @user_id
+              AND ura.is_active = TRUE
+              AND r.is_active = TRUE
+              AND r.role_code IN (
+                  'SUPER_ADMINISTRATOR',
+                  'ADMINISTRATOR',
+                  'PROJECT_TEAM_COORDINATOR'
+              )
+        );
+        """, connection))
+    {
+        accessCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+        canManageIntake = Convert.ToBoolean(await accessCommand.ExecuteScalarAsync() ?? false);
+    }
+
+    if (!canManageIntake)
+    {
+        return Results.Json(new { status = "access_denied", message = "Only PTC/Admin can extract intake packages." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    string requestedWorkType = "";
+    string customerHint = "";
+    string projectNameHint = "";
+
+    await using (var packageCommand = new NpgsqlCommand("""
+        SELECT requested_work_type, customer_hint, project_name_hint
+        FROM work_register_intake_packages
+        WHERE work_register_intake_package_id = @intake_package_id
+        LIMIT 1;
+        """, connection))
+    {
+        packageCommand.Parameters.AddWithValue("intake_package_id", intakePackageId);
+
+        await using var reader = await packageCommand.ExecuteReaderAsync();
+        if (!await reader.ReadAsync())
+        {
+            return Results.NotFound(new { status = "intake_package_not_found", message = "Intake package was not found." });
+        }
+
+        requestedWorkType = reader.GetString(0);
+        customerHint = reader.GetString(1);
+        projectNameHint = reader.GetString(2);
+    }
+
+    var documents = new List<(Guid DocumentId, string DocumentType, string OriginalFileName, string StoredFilePath, string ContentType, long FileSizeBytes)>();
+
+    await using (var documentCommand = new NpgsqlCommand("""
+        SELECT
+            work_register_intake_document_id,
+            document_type,
+            original_file_name,
+            stored_file_path,
+            content_type,
+            file_size_bytes
+        FROM work_register_intake_documents
+        WHERE work_register_intake_package_id = @intake_package_id
+        ORDER BY
+            CASE document_type
+              WHEN 'GSD' THEN 1
+              WHEN 'SOW' THEN 2
+              ELSE 3
+            END,
+            created_at;
+        """, connection))
+    {
+        documentCommand.Parameters.AddWithValue("intake_package_id", intakePackageId);
+
+        await using var reader = await documentCommand.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            documents.Add((
+                reader.GetGuid(0),
+                reader.GetString(1),
+                reader.GetString(2),
+                reader.GetString(3),
+                reader.GetString(4),
+                reader.GetInt64(5)
+            ));
+        }
+    }
+
+    static bool IsTextLike(string path, string contentType)
+    {
+        var extension = System.IO.Path.GetExtension(path).ToLowerInvariant();
+        return contentType.StartsWith("text/", StringComparison.OrdinalIgnoreCase)
+            || contentType.Contains("json", StringComparison.OrdinalIgnoreCase)
+            || contentType.Contains("xml", StringComparison.OrdinalIgnoreCase)
+            || extension is ".txt" or ".csv" or ".json" or ".xml" or ".html" or ".htm" or ".md" or ".tsv";
+    }
+
+    static string CleanValue(string value)
+    {
+        return (value ?? "")
+            .Replace("\t", " ")
+            .Trim()
+            .Trim('-', ':', '=', '|')
+            .Trim();
+    }
+
+    static string ExtractLabeledValue(string source, params string[] labels)
+    {
+        foreach (var label in labels)
+        {
+            var pattern = $@"(?im)^\s*{System.Text.RegularExpressions.Regex.Escape(label)}\s*(?:\:|\-|\=|\|)\s*(?<value>.+?)\s*$";
+            var match = System.Text.RegularExpressions.Regex.Match(source, pattern);
+            if (match.Success)
+            {
+                return CleanValue(match.Groups["value"].Value);
+            }
+        }
+
+        return "";
+    }
+
+    static decimal? ExtractDecimalFromLine(string line)
+    {
+        var match = System.Text.RegularExpressions.Regex.Match(line, @"(?<!\d)(?<number>\d{1,6}(?:\.\d{1,2})?)(?!\d)");
+        if (match.Success && decimal.TryParse(match.Groups["number"].Value, out var value))
+        {
+            return value;
+        }
+
+        return null;
+    }
+
+    var combinedText = new System.Text.StringBuilder();
+    var parserNotes = new List<string>();
+
+    foreach (var document in documents)
+    {
+        if (!System.IO.File.Exists(document.StoredFilePath))
+        {
+            parserNotes.Add($"{document.DocumentType} file not found on disk: {document.OriginalFileName}");
+            continue;
+        }
+
+        if (!IsTextLike(document.StoredFilePath, document.ContentType))
+        {
+            parserNotes.Add($"{document.DocumentType} file '{document.OriginalFileName}' is not text-like. 055D.2 kept it for review; a file-specific parser is needed for this format.");
+            continue;
+        }
+
+        var fileInfo = new System.IO.FileInfo(document.StoredFilePath);
+        if (fileInfo.Length > 2L * 1024L * 1024L)
+        {
+            parserNotes.Add($"{document.DocumentType} file '{document.OriginalFileName}' is text-like but larger than parser preview limit.");
+            continue;
+        }
+
+        try
+        {
+            combinedText.AppendLine($"--- {document.DocumentType}: {document.OriginalFileName} ---");
+            combinedText.AppendLine(await System.IO.File.ReadAllTextAsync(document.StoredFilePath));
+            combinedText.AppendLine();
+        }
+        catch (Exception ex)
+        {
+            parserNotes.Add($"{document.DocumentType} file '{document.OriginalFileName}' could not be read: {ex.Message}");
+        }
+    }
+
+    var sourceText = combinedText.ToString();
+
+    var extractedProjectName = ExtractLabeledValue(sourceText, "Project Name", "Project", "Work Name", "Engagement Name");
+    var extractedCustomer = ExtractLabeledValue(sourceText, "Customer", "Client", "Account", "End Customer");
+    var extractedAe = ExtractLabeledValue(sourceText, "Account Executive", "AE", "Sales Executive");
+    var extractedSa = ExtractLabeledValue(sourceText, "Solution Architect", "SA", "Architect");
+    var extractedSaa = ExtractLabeledValue(sourceText, "SAA", "Inside Sales", "Sales Administrator", "Sales Admin");
+    var extractedPmHours = ExtractLabeledValue(sourceText, "PM Hours", "Project Manager Hours", "Project Management Hours");
+    var extractedEngineeringHours = ExtractLabeledValue(sourceText, "Engineering Hours", "Engineer Hours", "Implementation Hours");
+    var extractedTravelHours = ExtractLabeledValue(sourceText, "Travel Hours", "Travel");
+
+    var rates = new List<object>();
+    var tasks = new List<object>();
+
+    foreach (var rawLine in sourceText.Split('\n'))
+    {
+        var line = CleanValue(rawLine);
+        if (string.IsNullOrWhiteSpace(line))
+        {
+            continue;
+        }
+
+        var lower = line.ToLowerInvariant();
+
+        if (rates.Count < 50 && (line.Contains('$') || lower.Contains("rate") || lower.Contains("afterhours") || lower.Contains("after hours")))
+        {
+            var rateValue = ExtractDecimalFromLine(line);
+            rates.Add(new
+            {
+                description = line,
+                rate = rateValue
+            });
+        }
+
+        if (tasks.Count < 80 && (lower.Contains("hour") || lower.Contains("hrs") || lower.Contains(" hr")))
+        {
+            var hourValue = ExtractDecimalFromLine(line);
+            if (hourValue is not null)
+            {
+                tasks.Add(new
+                {
+                    taskName = line.Length > 120 ? line[..120] : line,
+                    hours = hourValue.Value
+                });
+            }
+        }
+    }
+
+    var extractionStatus = string.IsNullOrWhiteSpace(sourceText)
+        ? "needs_manual_review"
+        : "extracted_needs_review";
+
+    if (string.IsNullOrWhiteSpace(sourceText))
+    {
+        parserNotes.Add("No text could be extracted from the uploaded GSD/SOW files. Review mapping can still be entered manually.");
+    }
+
+    var extractedData = new
+    {
+        extractionStatus,
+        parserVersion = "055D.2_lightweight_text_parser",
+        requestedWorkType,
+        projectName = string.IsNullOrWhiteSpace(extractedProjectName) ? projectNameHint : extractedProjectName,
+        customerName = string.IsNullOrWhiteSpace(extractedCustomer) ? customerHint : extractedCustomer,
+        accountExecutiveName = extractedAe,
+        solutionArchitectName = extractedSa,
+        insideSalesName = extractedSaa,
+        pmHours = extractedPmHours,
+        engineeringHours = extractedEngineeringHours,
+        travelHours = extractedTravelHours,
+        rates,
+        tasks,
+        parserNotes,
+        documents = documents.Select(document => new
+        {
+            document.DocumentId,
+            document.DocumentType,
+            document.OriginalFileName,
+            document.ContentType,
+            document.FileSizeBytes
+        }).ToList()
+    };
+
+    var extractedJson = JsonSerializer.Serialize(extractedData);
+
+    await using var transaction = await connection.BeginTransactionAsync();
+
+    await using (var updateCommand = new NpgsqlCommand("""
+        UPDATE work_register_intake_packages
+        SET extraction_status = @extraction_status,
+            extracted_json = CAST(@extracted_json AS jsonb),
+            updated_at = NOW()
+        WHERE work_register_intake_package_id = @intake_package_id;
+        """, connection, transaction))
+    {
+        updateCommand.Parameters.AddWithValue("intake_package_id", intakePackageId);
+        updateCommand.Parameters.AddWithValue("extraction_status", extractionStatus);
+        updateCommand.Parameters.AddWithValue("extracted_json", extractedJson);
+        await updateCommand.ExecuteNonQueryAsync();
+    }
+
+    await using (var historyCommand = new NpgsqlCommand("""
+        INSERT INTO work_register_intake_history (
+            work_register_intake_history_id,
+            work_register_intake_package_id,
+            action,
+            summary,
+            changed_by_user_id,
+            payload_json
+        )
+        VALUES (
+            @history_id,
+            @intake_package_id,
+            'gsd_sow_extraction_run',
+            @summary,
+            @changed_by_user_id,
+            CAST(@payload_json AS jsonb)
+        );
+        """, connection, transaction))
+    {
+        historyCommand.Parameters.AddWithValue("history_id", Guid.NewGuid());
+        historyCommand.Parameters.AddWithValue("intake_package_id", intakePackageId);
+        historyCommand.Parameters.AddWithValue("summary", $"Extraction completed with status {extractionStatus}.");
+        historyCommand.Parameters.AddWithValue("changed_by_user_id", sessionUserId.Value);
+        historyCommand.Parameters.AddWithValue("payload_json", extractedJson);
+        await historyCommand.ExecuteNonQueryAsync();
+    }
+
+    await transaction.CommitAsync();
+
+    return Results.Ok(new
+    {
+        status = "intake_extraction_completed",
+        intakePackageId,
+        extractionStatus,
+        extractedData,
+        message = extractionStatus == "extracted_needs_review"
+            ? "Extraction completed. Review and correct the mapping before committing to Work Register."
+            : "Extraction could not read structured text from the uploaded files. Enter mapping manually before committing to Work Register."
+    });
+});
+
+app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/review/save", async (Guid intakePackageId, HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token.", guard = "055D2_intake_review_save_session_required" }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    using var document = await JsonDocument.ParseAsync(httpContext.Request.Body);
+    var root = document.RootElement;
+
+    var reviewedDataJson = root.TryGetProperty("reviewedData", out var reviewedData)
+        ? reviewedData.GetRawText()
+        : root.GetRawText();
+
+    var dbConfig = DatabaseConfig.FromEnvironment();
+
+    await using var connection = new NpgsqlConnection(dbConfig.ConnectionString);
+    await connection.OpenAsync();
+
+    var canManageIntake = false;
+    await using (var accessCommand = new NpgsqlCommand("""
+        SELECT EXISTS (
+            SELECT 1
+            FROM app_user_role_assignments ura
+            JOIN app_roles r
+              ON r.app_role_id = ura.app_role_id
+            WHERE ura.user_id = @user_id
+              AND ura.is_active = TRUE
+              AND r.is_active = TRUE
+              AND r.role_code IN (
+                  'SUPER_ADMINISTRATOR',
+                  'ADMINISTRATOR',
+                  'PROJECT_TEAM_COORDINATOR'
+              )
+        );
+        """, connection))
+    {
+        accessCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+        canManageIntake = Convert.ToBoolean(await accessCommand.ExecuteScalarAsync() ?? false);
+    }
+
+    if (!canManageIntake)
+    {
+        return Results.Json(new { status = "access_denied", message = "Only PTC/Admin can save intake review mapping." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    await using var transaction = await connection.BeginTransactionAsync();
+
+    var affected = 0;
+    await using (var updateCommand = new NpgsqlCommand("""
+        UPDATE work_register_intake_packages
+        SET review_status = 'reviewed',
+            reviewed_json = CAST(@reviewed_json AS jsonb),
+            reviewed_by_user_id = @reviewed_by_user_id,
+            reviewed_at = NOW(),
+            updated_at = NOW()
+        WHERE work_register_intake_package_id = @intake_package_id;
+        """, connection, transaction))
+    {
+        updateCommand.Parameters.AddWithValue("intake_package_id", intakePackageId);
+        updateCommand.Parameters.AddWithValue("reviewed_json", reviewedDataJson);
+        updateCommand.Parameters.AddWithValue("reviewed_by_user_id", sessionUserId.Value);
+        affected = await updateCommand.ExecuteNonQueryAsync();
+    }
+
+    if (affected == 0)
+    {
+        await transaction.RollbackAsync();
+        return Results.NotFound(new { status = "intake_package_not_found", message = "Intake package was not found." });
+    }
+
+    await using (var historyCommand = new NpgsqlCommand("""
+        INSERT INTO work_register_intake_history (
+            work_register_intake_history_id,
+            work_register_intake_package_id,
+            action,
+            summary,
+            changed_by_user_id,
+            payload_json
+        )
+        VALUES (
+            @history_id,
+            @intake_package_id,
+            'intake_review_mapping_saved',
+            'PTC/Admin saved reviewed intake mapping.',
+            @changed_by_user_id,
+            CAST(@payload_json AS jsonb)
+        );
+        """, connection, transaction))
+    {
+        historyCommand.Parameters.AddWithValue("history_id", Guid.NewGuid());
+        historyCommand.Parameters.AddWithValue("intake_package_id", intakePackageId);
+        historyCommand.Parameters.AddWithValue("changed_by_user_id", sessionUserId.Value);
+        historyCommand.Parameters.AddWithValue("payload_json", reviewedDataJson);
+        await historyCommand.ExecuteNonQueryAsync();
+    }
+
+    await transaction.CommitAsync();
+
+    return Results.Ok(new
+    {
+        status = "intake_review_mapping_saved",
+        intakePackageId,
+        reviewStatus = "reviewed",
+        message = "Reviewed intake mapping saved. Next step is committing the reviewed package to Work Register."
+    });
+});
+/* 055D_2_GSD_EXTRACTION_REVIEW_API_END */
+
+
 /* 055D_1_INTAKE_WIZARD_GSD_SOW_API_START */
 app.MapPost("/api/work-register/intake/packages/upload", async (HttpContext httpContext) =>
 {
