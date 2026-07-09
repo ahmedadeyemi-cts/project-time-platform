@@ -1189,3 +1189,9 @@ body[data-projectpulse-active-route="work-register"] #work-register .work-regist
   }
 }
 /* 055D_2B_INTAKE_UI_PARSER_REPAIR_END */
+
+/* 055D_2C_CURRENT_EXTRACTION_REPAIR_START */
+.work-register-intake-review-panel select {
+  min-height: 2.4rem;
+}
+/* 055D_2C_CURRENT_EXTRACTION_REPAIR_END */

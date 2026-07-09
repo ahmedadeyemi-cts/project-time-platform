@@ -6095,121 +6095,57 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
     }
 
     
-    /* 055D_2B_BROAD_GSD_ROW_SCAN_START */
+
+    /* 055D_2C_TARGETED_GSD_WORKBOOK_PARSER_START */
     static bool LooksNumeric(string value)
     {
         return TryDecimal(value ?? "") is not null;
     }
 
-    static IEnumerable<IGrouping<int, KeyValuePair<(int Row, int Col), string>>> SheetRows(Dictionary<(int Row, int Col), string> sheet)
+    static string GetCell(Dictionary<(int Row, int Col), string> sheet, int row, int col)
     {
-        return sheet
-            .Where(kvp => !string.IsNullOrWhiteSpace(kvp.Value))
-            .GroupBy(kvp => kvp.Key.Row)
-            .OrderBy(group => group.Key);
-    }
-
-    static List<string> RowValues(IGrouping<int, KeyValuePair<(int Row, int Col), string>> row)
-    {
-        return row
-            .OrderBy(kvp => kvp.Key.Col)
-            .Select(kvp => CleanCell(kvp.Value))
-            .Where(value => !string.IsNullOrWhiteSpace(value))
-            .ToList();
-    }
-
-    static string FirstSku(IEnumerable<string> values)
-    {
-        return values.FirstOrDefault(value => value.StartsWith("ON-", StringComparison.OrdinalIgnoreCase)) ?? "";
-    }
-
-    static List<decimal> RowNumbers(IEnumerable<string> values)
-    {
-        return values
-            .Select(value => TryDecimal(value))
-            .Where(value => value is not null)
-            .Select(value => value!.Value)
-            .ToList();
-    }
-
-    static string BestDescription(IEnumerable<string> values, string sku = "")
-    {
-        return values
-            .Where(value => !string.Equals(value, sku, StringComparison.OrdinalIgnoreCase))
-            .Where(value => !LooksNumeric(value))
-            .Where(value =>
-            {
-                var normalized = NormalizeLabel(value);
-                return normalized is not "rate" and not "hours" and not "hrs" and not "qty" and not "quantity" and not "total";
-            })
-            .OrderByDescending(value => value.Length)
-            .FirstOrDefault() ?? "";
+        return sheet.TryGetValue((row, col), out var value) ? CleanCell(value) : "";
     }
 
     static List<object> ExtractRates(Dictionary<string, Dictionary<(int Row, int Col), string>> workbook)
     {
         var rates = new List<object>();
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var sheetPair in workbook)
+        if (!workbook.TryGetValue("SELL SKUs", out var sell))
         {
-            var sheetName = sheetPair.Key;
-            var sheet = sheetPair.Value;
+            return rates;
+        }
 
-            foreach (var row in SheetRows(sheet))
+        for (var row = 1; row <= 250; row++)
+        {
+            var rateText = GetCell(sell, row, 2);
+            var hoursText = GetCell(sell, row, 3);
+            var sku = GetCell(sell, row, 4);
+            var description = GetCell(sell, row, 5);
+
+            if (string.IsNullOrWhiteSpace(sku) || !sku.StartsWith("ON-", StringComparison.OrdinalIgnoreCase))
             {
-                var values = RowValues(row);
-                if (values.Count == 0)
-                {
-                    continue;
-                }
-
-                var joined = string.Join(" | ", values);
-                var normalizedJoined = NormalizeLabel(joined);
-                var sku = FirstSku(values);
-                var numbers = RowNumbers(values);
-
-                var looksLikeRateRow =
-                    !string.IsNullOrWhiteSpace(sku)
-                    || normalizedJoined.Contains("rate")
-                    || normalizedJoined.Contains("afterhours")
-                    || normalizedJoined.Contains("afterhour")
-                    || normalizedJoined.Contains("travel")
-                    || normalizedJoined.Contains("engineer")
-                    || normalizedJoined.Contains("projectmanager")
-                    || normalizedJoined.Contains("projectcoord");
-
-                if (!looksLikeRateRow || numbers.Count == 0)
-                {
-                    continue;
-                }
-
-                var description = BestDescription(values, sku);
-                var rate = numbers.FirstOrDefault(number => number > 0m);
-                var hours = numbers.Count > 1 ? numbers.LastOrDefault(number => number >= 0m) : (decimal?)null;
-                var key = $"{sheetName}|{sku}|{description}|{rate}|{hours}|{row.Key}";
-
-                if (!seen.Add(key))
-                {
-                    continue;
-                }
-
-                rates.Add(new
-                {
-                    source = sheetName,
-                    row = row.Key,
-                    sku,
-                    description = string.IsNullOrWhiteSpace(description) ? joined : description,
-                    rate,
-                    hours,
-                    raw = joined
-                });
-
-                if (rates.Count >= 120)
-                {
-                    return rates;
-                }
+                continue;
             }
+
+            var rate = TryDecimal(rateText) ?? 0m;
+            var hours = TryDecimal(hoursText) ?? 0m;
+
+            if (rate <= 0m && hours <= 0m)
+            {
+                continue;
+            }
+
+            rates.Add(new
+            {
+                source = "SELL SKUs",
+                row,
+                sku,
+                description,
+                rate,
+                hours,
+                billable = true
+            });
         }
 
         return rates;
@@ -6218,71 +6154,24 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
     static List<object> ExtractTasks(Dictionary<string, Dictionary<(int Row, int Col), string>> workbook)
     {
         var tasks = new List<object>();
-        var preferredSheets = new HashSet<string>(new[] { "Plan", "Design", "Implement", "Validate", "Release" }, StringComparer.OrdinalIgnoreCase);
+        var phaseSheets = new[] { "Plan", "Design", "Implement", "Validate", "Release" };
 
-        foreach (var sheetPair in workbook)
+        foreach (var phase in phaseSheets)
         {
-            var sheetName = sheetPair.Key;
-
-            if (!preferredSheets.Contains(sheetName)
-                && !sheetName.Contains("Plan", StringComparison.OrdinalIgnoreCase)
-                && !sheetName.Contains("Design", StringComparison.OrdinalIgnoreCase)
-                && !sheetName.Contains("Implement", StringComparison.OrdinalIgnoreCase)
-                && !sheetName.Contains("Validate", StringComparison.OrdinalIgnoreCase)
-                && !sheetName.Contains("Release", StringComparison.OrdinalIgnoreCase)
-                && !sheetName.Contains("Task", StringComparison.OrdinalIgnoreCase)
-                && !sheetName.Contains("Totals", StringComparison.OrdinalIgnoreCase))
+            if (!workbook.TryGetValue(phase, out var sheet))
             {
                 continue;
             }
 
-            foreach (var row in SheetRows(sheetPair.Value))
+            for (var row = 1; row <= 250; row++)
             {
-                var values = RowValues(row);
-                if (values.Count == 0)
-                {
-                    continue;
-                }
-
-                var joined = string.Join(" | ", values);
-                var normalizedJoined = NormalizeLabel(joined);
-
-                if (normalizedJoined.Contains("totalprojecthours")
-                    || normalizedJoined.Contains("totalengineeringhours")
-                    || normalizedJoined.Contains("projectlistprice")
-                    || normalizedJoined is "plan" or "design" or "implement" or "validate" or "release")
-                {
-                    continue;
-                }
-
-                if (normalizedJoined.Contains("regularhours")
-                    || normalizedJoined.Contains("overtime")
-                    || normalizedJoined.Contains("reserve")
-                    || normalizedJoined.Contains("role")
-                    || normalizedJoined.Contains("header"))
-                {
-                    continue;
-                }
-
-                var numbers = RowNumbers(values)
-                    .Where(number => number >= 0m && number <= 1000m)
-                    .ToList();
-
-                if (numbers.Count == 0)
-                {
-                    continue;
-                }
-
-                var textValues = values
-                    .Where(value => !LooksNumeric(value))
-                    .Where(value => !value.StartsWith("ON-", StringComparison.OrdinalIgnoreCase))
-                    .Where(value => NormalizeLabel(value) is not "yes" and not "no")
-                    .ToList();
-
-                var taskName = textValues
-                    .Where(value => value.Length >= 3)
-                    .OrderByDescending(value => value.Length)
-                    .FirstOrDefault();
+                var taskName = GetCell(sheet, row, 1);
+                var regularText = GetCell(sheet, row, 2);
+                var overtimeText = GetCell(sheet, row, 3);
+                var reserveText = GetCell(sheet, row, 4);
+                var role = GetCell(sheet, row, 5);
+                var travelRequired = GetCell(sheet, row, 6);
+                var notes = GetCell(sheet, row, 7);
 
                 if (string.IsNullOrWhiteSpace(taskName))
                 {
@@ -6290,40 +6179,37 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
                 }
 
                 if (taskName.StartsWith("[", StringComparison.Ordinal)
-                    || taskName.Contains("example", StringComparison.OrdinalIgnoreCase)
-                    || taskName.Contains("instruction", StringComparison.OrdinalIgnoreCase))
+                    || string.Equals(taskName, "Task Name", StringComparison.OrdinalIgnoreCase)
+                    || taskName.Contains("bullet details", StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
 
-                var totalHours = numbers.Sum();
+                var regular = TryDecimal(regularText) ?? 0m;
+                var overtime = TryDecimal(overtimeText) ?? 0m;
+                var reserve = TryDecimal(reserveText) ?? 0m;
+
+                if (regular <= 0m && overtime <= 0m && reserve <= 0m)
+                {
+                    continue;
+                }
 
                 tasks.Add(new
                 {
-                    phase = sheetName,
-                    row = row.Key,
-                    taskName = taskName.Length > 160 ? taskName[..160] : taskName,
-                    regularHours = numbers.Count >= 1 ? numbers[0] : 0m,
-                    overtimeHours = numbers.Count >= 2 ? numbers[1] : 0m,
-                    reserveHours = numbers.Count >= 3 ? numbers[2] : 0m,
-                    totalHours,
-                    engineeringRole = textValues.FirstOrDefault(value =>
-                        value.Contains("Engineer", StringComparison.OrdinalIgnoreCase)
-                        || value.Contains("Architect", StringComparison.OrdinalIgnoreCase)
-                        || value.Contains("PM", StringComparison.OrdinalIgnoreCase)) ?? "",
-                    travelRequired = textValues.FirstOrDefault(value =>
-                        string.Equals(value, "Yes", StringComparison.OrdinalIgnoreCase)
-                        || string.Equals(value, "No", StringComparison.OrdinalIgnoreCase)) ?? "",
-                    notes = joined,
+                    phase,
+                    row,
+                    taskName = taskName.Length > 180 ? taskName[..180] : taskName,
+                    regularHours = regular,
+                    overtimeHours = overtime,
+                    reserveHours = reserve,
+                    totalHours = regular + overtime + reserve,
+                    engineeringRole = role,
+                    travelRequired,
+                    notes,
                     billable = true,
                     utilizationEligible = true,
                     engineers = new List<object>()
                 });
-
-                if (tasks.Count >= 200)
-                {
-                    return tasks;
-                }
             }
         }
 
@@ -6334,48 +6220,35 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
     {
         var totals = new List<object>();
 
-        foreach (var sheetPair in workbook)
+        if (!workbook.TryGetValue("Totals Sheet", out var sheet))
         {
-            if (!sheetPair.Key.Contains("Total", StringComparison.OrdinalIgnoreCase))
+            return totals;
+        }
+
+        for (var row = 1; row <= 120; row++)
+        {
+            var phase = GetCell(sheet, row, 2);
+            var normalized = NormalizeLabel(phase);
+
+            if (normalized is not ("plan" or "design" or "implement" or "validate" or "release"))
             {
                 continue;
             }
 
-            foreach (var row in SheetRows(sheetPair.Value))
+            totals.Add(new
             {
-                var values = RowValues(row);
-                if (values.Count == 0)
-                {
-                    continue;
-                }
-
-                var joined = string.Join(" | ", values);
-                var normalizedJoined = NormalizeLabel(joined);
-                var phase = values.FirstOrDefault(value =>
-                    NormalizeLabel(value) is "plan" or "design" or "implement" or "validate" or "release");
-
-                if (string.IsNullOrWhiteSpace(phase))
-                {
-                    continue;
-                }
-
-                var numbers = RowNumbers(values);
-
-                totals.Add(new
-                {
-                    phase,
-                    row = row.Key,
-                    hours = numbers.Count >= 1 ? numbers[0] : 0m,
-                    overtimeHours = numbers.Count >= 2 ? numbers[1] : 0m,
-                    laborAndTravel = numbers.Count >= 3 ? numbers[2] : 0m,
-                    raw = joined
-                });
-            }
+                phase,
+                row,
+                hours = TryDecimal(GetCell(sheet, row, 3)) ?? 0m,
+                overtimeHours = TryDecimal(GetCell(sheet, row, 4)) ?? 0m,
+                laborAndTravel = TryDecimal(GetCell(sheet, row, 5)) ?? 0m
+            });
         }
 
         return totals;
     }
-    /* 055D_2B_BROAD_GSD_ROW_SCAN_END */
+    /* 055D_2C_TARGETED_GSD_WORKBOOK_PARSER_END */
+
 
     var parserNotes = new List<string>();
     Dictionary<string, object>? extractedData = null;
@@ -6468,8 +6341,13 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
         UPDATE work_register_intake_packages
         SET extraction_status = @extraction_status,
             extracted_json = CAST(@extracted_json AS jsonb),
+            review_status = 'needs_review',
+            reviewed_json = '{}'::jsonb,
+            reviewed_by_user_id = NULL,
+            reviewed_at = NULL,
             updated_at = NOW()
         WHERE work_register_intake_package_id = @intake_package_id;
+        /* 055D_2C_RESET_REVIEW_ON_EXTRACT */
         """, connection, transaction))
     {
         updateCommand.Parameters.AddWithValue("intake_package_id", intakePackageId);

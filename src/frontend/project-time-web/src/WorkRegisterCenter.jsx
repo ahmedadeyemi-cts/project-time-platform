@@ -189,6 +189,7 @@ export default function WorkRegisterCenter() {
   // 055D_2_GSD_EXTRACTION_REVIEW
   // 055D_2A_GSD_XLSX_EXTRACTION_REVIEW
   // 055D_2B_INTAKE_UI_REPAIR
+  // 055D_2C_CURRENT_EXTRACTION_REPAIR
 
   const [intakeForm, setIntakeForm] = useState({
     requestedWorkType: 'Project',
@@ -1173,22 +1174,32 @@ export default function WorkRegisterCenter() {
     }
   }
 
-  function reviewFormFromExtracted(packageData) {
-    const extracted = parseIntakeJson(packageData?.package?.reviewedJson);
-    const fallback = parseIntakeJson(packageData?.package?.extractedJson);
-    const data = Object.keys(extracted).length > 0 ? extracted : fallback;
+  function reviewFormFromExtracted(packageData, options = {}) {
+    const extractedData = packageData?.extractedData || null;
+    const savedReviewed = parseIntakeJson(packageData?.package?.reviewedJson);
+    const savedExtracted = parseIntakeJson(packageData?.package?.extractedJson);
+
+    const data = extractedData
+      || (options.preferReviewed && Object.keys(savedReviewed).length > 0 ? savedReviewed : null)
+      || savedExtracted
+      || savedReviewed
+      || {};
 
     return {
       projectName: data.projectName || packageData?.package?.projectNameHint || '',
+      customerId: data.customerId || packageData?.package?.customerId || '',
       customerName: data.customerName || packageData?.package?.customerHint || '',
       accountExecutiveName: data.accountExecutiveName || '',
       solutionArchitectName: data.solutionArchitectName || '',
       insideSalesName: data.insideSalesName || '',
       requestedWorkType: data.requestedWorkType || packageData?.package?.requestedWorkType || 'Project',
-      contractType: data.contractType || 'Fixed Price',
+      contractType: data.contractType || packageData?.package?.contractType || 'Fixed Price',
       pmHours: data.pmHours || '',
       engineeringHours: data.engineeringHours || '',
+      totalProjectHours: data.totalProjectHours || '',
       travelHours: data.travelHours || '',
+      projectListPrice: data.projectListPrice || '',
+      workLocation: data.workLocation || '',
       ratesText: prettyIntakeJson(data.rates || []),
       tasksText: prettyIntakeJson(data.tasks || []),
       phaseTotalsText: prettyIntakeJson(data.phaseTotals || []),
@@ -1197,7 +1208,7 @@ export default function WorkRegisterCenter() {
   }
 
   async function loadIntakePackages() {
-    setIntakeReviewStatus('Loading intake packages...');
+    setIntakeReviewStatus('Loading active intake packages...');
 
     try {
       const response = await fetch('/api/work-register/intake/packages/recent', {
@@ -1211,8 +1222,15 @@ export default function WorkRegisterCenter() {
         throw new Error(result.message || `HTTP ${response.status}`);
       }
 
-      setIntakePackages(result.packages || []);
-      setIntakeReviewStatus(`Loaded ${(result.packages || []).length} intake package(s).`);
+      const allPackages = result.packages || [];
+      const currentPackageId = intakePackageResult?.intakePackageId || '';
+      const activePackages = allPackages.filter((pkg) => (
+        String(pkg.intakePackageId) === String(currentPackageId)
+        || String(pkg.reviewStatus || '').toLowerCase() !== 'reviewed'
+      ));
+
+      setIntakePackages(activePackages);
+      setIntakeReviewStatus(`Loaded ${activePackages.length} active intake package(s). Reviewed packages are hidden to prevent stale mappings.`);
     } catch (error) {
       setIntakeReviewStatus(error instanceof Error ? error.message : 'Unable to load intake packages.');
     }
@@ -1234,7 +1252,7 @@ export default function WorkRegisterCenter() {
       }
 
       setSelectedIntakeReview(result);
-      setIntakeReviewForm(reviewFormFromExtracted(result));
+      setIntakeReviewForm(reviewFormFromExtracted(result, { preferReviewed: true }));
       setIntakeReviewStatus('Intake review loaded.');
     } catch (error) {
       setIntakeReviewStatus(error instanceof Error ? error.message : 'Unable to load intake review.');
@@ -1242,12 +1260,28 @@ export default function WorkRegisterCenter() {
   }
 
   async function runIntakeExtraction(intakePackageId) {
-    setIntakeReviewStatus('Running XLSX GSD extraction...');
+    setIntakeReviewStatus('Running current XLSX GSD extraction...');
 
     try {
       const result = await postJson(`/api/work-register/intake/packages/${intakePackageId}/extract`, {});
-      setIntakeReviewStatus(result.message || 'Extraction completed.');
-      await openIntakeReview(intakePackageId);
+
+      const currentPackage = intakePackages.find((pkg) => String(pkg.intakePackageId) === String(intakePackageId)) || {};
+      const reviewPayload = {
+        package: {
+          ...currentPackage,
+          intakePackageId,
+          extractedJson: JSON.stringify(result.extractedData || {}),
+          reviewedJson: '{}',
+          extractionStatus: result.extractionStatus,
+          reviewStatus: 'needs_review'
+        },
+        documents: result.extractedData?.documents || [],
+        extractedData: result.extractedData || {}
+      };
+
+      setSelectedIntakeReview(reviewPayload);
+      setIntakeReviewForm(reviewFormFromExtracted(reviewPayload));
+      setIntakeReviewStatus(result.message || 'Current extraction completed. Review the extracted mapping below.');
       await loadIntakePackages();
     } catch (error) {
       setIntakeReviewStatus(error instanceof Error ? error.message : 'Unable to run intake extraction.');
@@ -1366,6 +1400,84 @@ export default function WorkRegisterCenter() {
   }
 
 
+
+  function intakeValueToTextSafe(value) {
+    if (value === null || value === undefined) return '';
+    if (typeof value === 'string') return value.trim();
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+    return '';
+  }
+
+  function intakeLooksLikeGuidSafe(value) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || '').trim());
+  }
+
+  function intakeCustomerOptionNameSafe(customer) {
+    if (typeof customer === 'string') return customer.trim();
+
+    const preferredKeys = [
+      'customerName', 'customer_name', 'customerDisplayName', 'customer_display_name',
+      'name', 'displayName', 'display_name', 'label', 'text',
+      'companyName', 'company_name', 'accountName', 'account_name',
+      'clientName', 'client_name', 'legalName', 'legal_name',
+      'organizationName', 'organization_name', 'title', 'description'
+    ];
+
+    for (const key of preferredKeys) {
+      const value = intakeValueToTextSafe(customer?.[key]);
+      if (value && value !== 'Selected customer') return value;
+    }
+
+    const entries = Object.entries(customer || {});
+    const nonIdValue = entries
+      .map(([key, value]) => [key, intakeValueToTextSafe(value)])
+      .find(([key, value]) => (
+        value
+        && value !== 'Selected customer'
+        && !/id|uuid|guid/i.test(key)
+        && !intakeLooksLikeGuidSafe(value)
+        && !value.includes('@')
+      ));
+
+    if (nonIdValue) return nonIdValue[1];
+
+    const anyValue = entries
+      .map(([, value]) => intakeValueToTextSafe(value))
+      .find((value) => value && value !== 'Selected customer');
+
+    return anyValue || 'Customer record missing display name';
+  }
+
+  function intakeCustomerOptionIdSafe(customer) {
+    if (typeof customer === 'string') return customer.trim();
+
+    const preferredKeys = [
+      'customerId', 'customerID', 'customer_id', 'id', 'value', 'key',
+      'customerDirectoryId', 'customer_directory_id', 'directoryCustomerId',
+      'workCustomerId', 'accountId', 'account_id', 'clientId', 'client_id',
+      'organizationId', 'organization_id'
+    ];
+
+    for (const key of preferredKeys) {
+      const value = intakeValueToTextSafe(customer?.[key]);
+      if (value) return value;
+    }
+
+    const entries = Object.entries(customer || {});
+    const idValue = entries
+      .map(([key, value]) => [key, intakeValueToTextSafe(value)])
+      .find(([key, value]) => value && /id|uuid|guid/i.test(key));
+
+    if (idValue) return idValue[1];
+
+    return intakeCustomerOptionNameSafe(customer);
+  }
+
+  function selectedIntakeCustomerSafe() {
+    return editCustomerOptions.find((customer) => String(intakeCustomerOptionIdSafe(customer)) === String(intakeForm.customerId));
+  }
+
+
   function updateIntakeField(field, value) {
     setIntakeForm((current) => ({
       ...current,
@@ -1420,7 +1532,7 @@ export default function WorkRegisterCenter() {
       return;
     }
 
-    const selectedCustomer = selectedIntakeCustomer();
+    const selectedCustomer = selectedIntakeCustomerSafe();
 
     Object.entries(intakeForm).forEach(([key, value]) => {
       formData.set(key, String(value ?? ''));
@@ -1444,12 +1556,22 @@ export default function WorkRegisterCenter() {
       }
 
       setIntakePackageResult(result);
+      setSelectedIntakeReview(null);
+      setIntakeReviewForm(null);
+      setIntakePackages([{
+        intakePackageId: result.intakePackageId,
+        requestedWorkType: result.requestedWorkType,
+        contractType: result.contractType,
+        customerId: result.customerId,
+        customerHint: result.customerHint,
+        projectNameHint: result.projectNameHint || 'New intake package',
+        extractionStatus: result.extractionStatus || 'pending_parser',
+        reviewStatus: 'not_started',
+        documentCount: result.uploadedDocumentCount || 0
+      }]);
       setIntakeWizardStatus(result.message || 'Intake package uploaded.');
       form.reset();
       setIntakeForm(defaultIntakeForm());
-      setSelectedIntakeReview(null);
-      setIntakeReviewForm(null);
-      await loadIntakePackages();
       setIntakeForm({
         requestedWorkType: 'Project',
         contractType: 'Fixed Price',
@@ -1851,8 +1973,8 @@ export default function WorkRegisterCenter() {
                     >
                       <option value="">Select customer from Customer Directory</option>
                       {editCustomerOptions.map((customer) => (
-                        <option value={intakeCustomerOptionId(customer)} key={intakeCustomerOptionId(customer)}>
-                          {intakeCustomerOptionName(customer)}
+                        <option value={intakeCustomerOptionIdSafe(customer)} key={intakeCustomerOptionIdSafe(customer)}>
+                          {intakeCustomerOptionNameSafe(customer)}
                         </option>
                       ))}
                     </select>
@@ -2113,12 +2235,19 @@ export default function WorkRegisterCenter() {
                       </label>
 
                       <label>
-                        Customer
-                        <input
-                          type="text"
-                          value={intakeReviewForm.customerName}
-                          onChange={(event) => updateIntakeReviewForm('customerName', event.target.value)}
-                        />
+                        Matched customer
+                        <select
+                          value={intakeReviewForm.customerId}
+                          onChange={(event) => updateIntakeReviewForm('customerId', event.target.value)}
+                          required
+                        >
+                          <option value="">Select customer from Customer Directory</option>
+                          {editCustomerOptions.map((customer) => (
+                            <option value={intakeCustomerOptionIdSafe(customer)} key={intakeCustomerOptionIdSafe(customer)}>
+                              {intakeCustomerOptionNameSafe(customer)}
+                            </option>
+                          ))}
+                        </select>
                       </label>
 
                       <label>
