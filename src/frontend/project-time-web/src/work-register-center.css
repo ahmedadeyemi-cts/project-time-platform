@@ -1385,3 +1385,9 @@ body[data-projectpulse-active-route="work-register"] #work-register .work-regist
   line-height: 1.35;
 }
 /* 055D_2G_CONSOLIDATED_GSD_PARSER_END */
+
+/* 055D_2H_HYUNDAI_TOYOTA_RATE_TASK_REPAIR_START */
+.work-register-gsd-review-table-header .muted {
+  max-width: 48rem;
+}
+/* 055D_2H_HYUNDAI_TOYOTA_RATE_TASK_REPAIR_END */

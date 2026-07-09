@@ -193,6 +193,7 @@ export default function WorkRegisterCenter() {
   // 055D_2E_UPLOAD_EXTRACT_CURRENT_GSD
   // 055D_2F_RATE_TASK_REVIEW_TABLES
   // 055D_2G_CONSOLIDATED_GSD_PARSER
+  // 055D_2H_HYUNDAI_TOYOTA_RATE_TASK_REPAIR
 
   const [intakeForm, setIntakeForm] = useState({
     requestedWorkType: 'Project',
@@ -2593,7 +2594,7 @@ export default function WorkRegisterCenter() {
                       <div className="work-register-gsd-review-table-header">
                         <div>
                           <h5>Task / Hours Review</h5>
-                          <p className="muted">Standard GSDs use Totals Sheet. Toyota/Hyundai GSDs use Milestone Summary Breakdown. These tasks will be used to create Work Register tasks in 055D.3.</p>
+                          <p className="muted">Standard GSDs use Totals Sheet. Toyota/Hyundai GSDs use Milestone Summary Breakdown with engineering, PM, reserve, and travel breakdowns preserved.</p>
                         </div>
                         <button type="button" className="secondary-action" onClick={addGsdTaskRow}>
                           Add task row

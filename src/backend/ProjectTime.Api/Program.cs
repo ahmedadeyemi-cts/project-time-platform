@@ -6097,7 +6097,8 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
     
 
 
-    /* 055D_2G_CONSOLIDATED_GSD_PARSER_START */
+
+    /* 055D_2H_HYUNDAI_TOYOTA_RATE_TASK_REPAIR_START */
     static string NormalizeContractTypeForIntake(string value)
     {
         var normalized = NormalizeLabel(value);
@@ -6126,6 +6127,20 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
     static decimal NumberOrZero(string value)
     {
         return TryDecimal(value) ?? 0m;
+    }
+
+    static decimal FirstNumberInRange(Dictionary<(int Row, int Col), string> sheet, int row, int startCol, int endCol)
+    {
+        for (var col = startCol; col <= endCol; col++)
+        {
+            var number = TryDecimal(GetCell(sheet, row, col));
+            if (number is not null)
+            {
+                return number.Value;
+            }
+        }
+
+        return 0m;
     }
 
     static bool LooksLikeToyotaHyundaiGsd(Dictionary<(int Row, int Col), string> summary)
@@ -6157,19 +6172,20 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
 
     static List<object> ExtractRates(Dictionary<string, Dictionary<(int Row, int Col), string>> workbook, string contractType)
     {
-        var rates = new List<object>();
+        var pricedRates = new List<object>();
+        var availableRates = new List<object>();
 
         if (!workbook.TryGetValue("SELL SKUs", out var sell))
         {
-            return rates;
+            return pricedRates;
         }
 
         var normalizedContract = NormalizeContractTypeForIntake(contractType);
         var activeSection = "";
 
-        for (var row = 1; row <= 350; row++)
+        for (var row = 1; row <= 400; row++)
         {
-            var rowText = string.Join(" ", Enumerable.Range(1, 10).Select(col => GetCell(sell, row, col))).Trim();
+            var rowText = string.Join(" ", Enumerable.Range(1, 12).Select(col => GetCell(sell, row, col))).Trim();
             var rowNormalized = NormalizeLabel(rowText);
 
             if (rowNormalized.Contains("timeandmaterial") || rowNormalized.Contains("timeampmaterial") || rowNormalized.Contains("tandm"))
@@ -6182,8 +6198,21 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
                 activeSection = "FP";
             }
 
-            var sku = GetCell(sell, row, 4);
-            if (string.IsNullOrWhiteSpace(sku) || !sku.StartsWith("ON-", StringComparison.OrdinalIgnoreCase))
+            var skuCol = 0;
+            var sku = "";
+
+            for (var col = 1; col <= 12; col++)
+            {
+                var candidate = GetCell(sell, row, col);
+                if (candidate.StartsWith("ON-", StringComparison.OrdinalIgnoreCase))
+                {
+                    skuCol = col;
+                    sku = candidate;
+                    break;
+                }
+            }
+
+            if (skuCol == 0)
             {
                 continue;
             }
@@ -6193,31 +6222,66 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
                 continue;
             }
 
-            var rate = NumberOrZero(GetCell(sell, row, 2));
-            var hours = NumberOrZero(GetCell(sell, row, 3));
-            var description = GetCell(sell, row, 5);
+            var leftNumbers = new List<(int Col, decimal Value)>();
+            for (var col = skuCol - 1; col >= 1; col--)
+            {
+                var number = TryDecimal(GetCell(sell, row, col));
+                if (number is not null)
+                {
+                    leftNumbers.Add((col, number.Value));
+                }
+            }
+
+            var hours = leftNumbers.Count >= 1 ? leftNumbers[0].Value : 0m;
+            var rate = leftNumbers.Count >= 2 ? leftNumbers[1].Value : 0m;
+
+            var description = "";
+            for (var col = skuCol + 1; col <= skuCol + 5; col++)
+            {
+                description = GetCell(sell, row, col);
+                if (!string.IsNullOrWhiteSpace(description))
+                {
+                    break;
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(description))
+            {
+                description = sku;
+            }
 
             if (rate == 0m && hours == 0m)
             {
                 continue;
             }
 
-            rates.Add(new
+            var rowObject = new
             {
                 include = true,
                 source = "SELL SKUs",
                 contractType = normalizedContract,
+                priceSection = activeSection,
                 row,
                 sku,
                 description,
                 rate,
                 hours,
                 extendedAmount = rate * hours,
-                billable = true
-            });
+                billable = true,
+                pricingUse = hours > 0m ? "Priced GSD line" : "Available rate only"
+            };
+
+            if (hours > 0m)
+            {
+                pricedRates.Add(rowObject);
+            }
+            else
+            {
+                availableRates.Add(rowObject);
+            }
         }
 
-        return rates;
+        return pricedRates.Concat(availableRates).ToList();
     }
 
     static List<object> ExtractTasksFromTotalsSheet(Dictionary<string, Dictionary<(int Row, int Col), string>> workbook)
@@ -6276,7 +6340,7 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
 
             var hours = NumberOrZero(GetCell(sheet, row, 3));
             var otHours = NumberOrZero(GetCell(sheet, row, 4));
-            var laborAndTravel = NumberOrZero(GetCell(sheet, row, 5));
+            var laborAndTravel = FirstNumberInRange(sheet, row, 5, 7);
 
             if (hours == 0m && otHours == 0m && laborAndTravel == 0m)
             {
@@ -6295,6 +6359,7 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
                 reserveHours = 0m,
                 pmHours = 0m,
                 pmReserveHours = 0m,
+                travelHours = 0m,
                 totalHours = hours + otHours,
                 laborListPrice = laborAndTravel,
                 billable = true,
@@ -6315,7 +6380,7 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
             return tasks;
         }
 
-        void AddBlock(int titleRow, int titleCol, int resourceCol, int regularCol, int otCol, int reserveCol, int pmCol, int pmReserveCol, int priceCol)
+        void AddLaborBlock(int titleRow, int titleCol, int resourceCol, int regularCol, int otCol, int reserveCol, int pmCol, int pmReserveCol, int priceCol)
         {
             var title = MilestoneCleanName(GetCell(sheet, titleRow, titleCol));
             if (string.IsNullOrWhiteSpace(title))
@@ -6323,9 +6388,40 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
                 return;
             }
 
-            for (var row = titleRow + 1; row <= titleRow + 20; row++)
+            for (var row = titleRow + 1; row <= titleRow + 22; row++)
             {
                 var resource = GetCell(sheet, row, resourceCol);
+
+                if (resource.Equals("Travel Time", StringComparison.OrdinalIgnoreCase))
+                {
+                    var travelLaborHours = NumberOrZero(GetCell(sheet, row, regularCol));
+                    var travelLaborPrice = FirstNumberInRange(sheet, row, priceCol, priceCol + 2);
+
+                    if (travelLaborHours > 0m || travelLaborPrice > 0m)
+                    {
+                        tasks.Add(new
+                        {
+                            include = true,
+                            source = "Milestone Summary Breakdown",
+                            phase = title,
+                            taskName = $"{title} - Travel Time",
+                            engineeringRole = $"Travel labor hours {travelLaborHours}",
+                            regularHours = travelLaborHours,
+                            overtimeHours = 0m,
+                            reserveHours = 0m,
+                            pmHours = 0m,
+                            pmReserveHours = 0m,
+                            travelHours = travelLaborHours,
+                            totalHours = travelLaborHours,
+                            laborListPrice = travelLaborPrice,
+                            billable = true,
+                            utilizationEligible = true,
+                            engineers = new List<object>()
+                        });
+                    }
+
+                    continue;
+                }
 
                 if (!resource.Equals("TOTAL LABOR", StringComparison.OrdinalIgnoreCase))
                 {
@@ -6337,7 +6433,7 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
                 var reserve = NumberOrZero(GetCell(sheet, row, reserveCol));
                 var pm = NumberOrZero(GetCell(sheet, row, pmCol));
                 var pmReserve = NumberOrZero(GetCell(sheet, row, pmReserveCol));
-                var laborPrice = NumberOrZero(GetCell(sheet, row, priceCol));
+                var laborPrice = FirstNumberInRange(sheet, row, priceCol, priceCol + 2);
                 var totalHours = regular + ot + reserve + pm + pmReserve;
 
                 if (totalHours == 0m && laborPrice == 0m)
@@ -6350,13 +6446,14 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
                     include = true,
                     source = "Milestone Summary Breakdown",
                     phase = title,
-                    taskName = title,
-                    engineeringRole = "Consolidated milestone labor",
-                    regularHours = regular + pm,
+                    taskName = $"{title} - Labor",
+                    engineeringRole = $"Eng Reg {regular}; Eng OT {ot}; Eng Rsv {reserve}; PM {pm}; PM Rsv {pmReserve}",
+                    regularHours = regular,
                     overtimeHours = ot,
-                    reserveHours = reserve + pmReserve,
+                    reserveHours = reserve,
                     pmHours = pm,
                     pmReserveHours = pmReserve,
+                    travelHours = 0m,
                     totalHours,
                     laborListPrice = laborPrice,
                     billable = true,
@@ -6368,19 +6465,78 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
             }
         }
 
-        for (var row = 1; row <= 180; row++)
+        void AddTravelBlock(int titleRow, int titleCol, int resourceCol, int travelHoursCol, int priceCol)
+        {
+            var title = MilestoneCleanName(GetCell(sheet, titleRow, titleCol));
+            if (string.IsNullOrWhiteSpace(title))
+            {
+                return;
+            }
+
+            for (var row = titleRow + 1; row <= titleRow + 22; row++)
+            {
+                var resource = GetCell(sheet, row, resourceCol);
+
+                if (!resource.Equals("TOTAL TRAVEL", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var travelHours = NumberOrZero(GetCell(sheet, row, travelHoursCol));
+                var travelPrice = FirstNumberInRange(sheet, row, priceCol, priceCol + 2);
+
+                if (travelHours == 0m && travelPrice == 0m)
+                {
+                    return;
+                }
+
+                tasks.Add(new
+                {
+                    include = true,
+                    source = "Milestone Summary Breakdown",
+                    phase = title,
+                    taskName = $"{title} - Travel Expense",
+                    engineeringRole = $"Travel expense hours {travelHours}",
+                    regularHours = travelHours,
+                    overtimeHours = 0m,
+                    reserveHours = 0m,
+                    pmHours = 0m,
+                    pmReserveHours = 0m,
+                    travelHours,
+                    totalHours = travelHours,
+                    laborListPrice = travelPrice,
+                    billable = true,
+                    utilizationEligible = true,
+                    engineers = new List<object>()
+                });
+
+                return;
+            }
+        }
+
+        for (var row = 1; row <= 220; row++)
         {
             var leftTitle = GetCell(sheet, row, 2);
             var rightTitle = GetCell(sheet, row, 11);
 
             if (leftTitle.EndsWith("- LABOR", StringComparison.OrdinalIgnoreCase))
             {
-                AddBlock(row, 2, 2, 3, 4, 5, 6, 7, 8);
+                AddLaborBlock(row, 2, 2, 3, 4, 5, 6, 7, 8);
             }
 
             if (rightTitle.EndsWith("- LABOR", StringComparison.OrdinalIgnoreCase))
             {
-                AddBlock(row, 11, 11, 12, 13, 14, 15, 16, 17);
+                AddLaborBlock(row, 11, 11, 12, 13, 14, 15, 16, 17);
+            }
+
+            if (leftTitle.EndsWith("- TRAVEL", StringComparison.OrdinalIgnoreCase))
+            {
+                AddTravelBlock(row, 2, 2, 5, 9);
+            }
+
+            if (rightTitle.EndsWith("- TRAVEL", StringComparison.OrdinalIgnoreCase))
+            {
+                AddTravelBlock(row, 11, 11, 14, 18);
             }
         }
 
@@ -6428,14 +6584,15 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
                     source = "Totals Sheet",
                     row,
                     label = rowText,
-                    amount = NumberOrZero(GetCell(sheet, row, 3))
+                    amount = FirstNumberInRange(sheet, row, 3, 7)
                 });
             }
         }
 
         return totals;
     }
-    /* 055D_2G_CONSOLIDATED_GSD_PARSER_END */
+    /* 055D_2H_HYUNDAI_TOYOTA_RATE_TASK_REPAIR_END */
+
 
 
 
