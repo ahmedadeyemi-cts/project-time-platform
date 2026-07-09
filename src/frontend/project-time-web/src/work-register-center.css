@@ -906,3 +906,186 @@ body[data-projectpulse-active-route="work-register"] #work-register .work-regist
   border-color: rgba(148, 163, 184, 0.3);
 }
 /* 055C_10_LOCAL_DOCUMENT_UPLOAD_END */
+
+/* 055D_1_INTAKE_WIZARD_GSD_SOW_START */
+.work-register-create-button {
+  position: fixed;
+  right: 1.25rem;
+  bottom: 1.25rem;
+  z-index: 40;
+  border: 0;
+  border-radius: 999px;
+  background: #0f5f9f;
+  color: #ffffff;
+  font-weight: 900;
+  box-shadow: 0 16px 40px rgba(15, 95, 159, 0.26);
+  cursor: pointer;
+  padding: 0.8rem 1.1rem;
+}
+
+.work-register-create-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  justify-content: flex-end;
+  background: rgba(15, 23, 42, 0.42);
+}
+
+.work-register-create-wizard {
+  width: min(980px, 98vw);
+  height: 100vh;
+  overflow: auto;
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: -24px 0 60px rgba(15, 23, 42, 0.22);
+  padding: 1rem;
+}
+
+.work-register-create-wizard > header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.28);
+  padding-bottom: 0.8rem;
+}
+
+.work-register-create-wizard > header span {
+  color: #0f5f9f;
+  font-size: 0.75rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.work-register-create-wizard > header h3 {
+  margin: 0.2rem 0;
+}
+
+.work-register-create-wizard > header p {
+  margin: 0;
+  color: #64748b;
+}
+
+.work-register-create-wizard > header button {
+  align-self: start;
+  border: 1px solid rgba(148, 163, 184, 0.38);
+  border-radius: 999px;
+  background: #ffffff;
+  color: #334155;
+  cursor: pointer;
+  font-weight: 900;
+  padding: 0.45rem 0.75rem;
+}
+
+.work-register-intake-form {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.work-register-intake-form section {
+  display: grid;
+  gap: 0.75rem;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 18px;
+  background: #f8fafc;
+  padding: 0.9rem;
+}
+
+.work-register-intake-form section h4 {
+  margin: 0;
+}
+
+.work-register-intake-form label {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.84rem;
+  font-weight: 900;
+  color: #334155;
+}
+
+.work-register-intake-form input,
+.work-register-intake-form select,
+.work-register-intake-form textarea {
+  width: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  border-radius: 12px;
+  padding: 0.55rem 0.65rem;
+  background: #ffffff;
+  color: #0f172a;
+}
+
+.work-register-intake-upload-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.work-register-intake-upload-card {
+  border: 1px dashed rgba(14, 165, 233, 0.5);
+  border-radius: 16px;
+  background: #f0f9ff;
+  padding: 0.8rem;
+}
+
+.work-register-intake-upload-card small {
+  color: #64748b;
+}
+
+.work-register-intake-checkboxes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.work-register-intake-result {
+  display: grid;
+  gap: 0.25rem;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  border-radius: 16px;
+  background: #ecfdf5;
+  color: #166534;
+  padding: 0.8rem;
+}
+
+.work-register-create-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.65rem;
+  padding-bottom: 2rem;
+}
+
+@media (max-width: 860px) {
+  .work-register-intake-upload-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .work-register-create-wizard {
+    width: 100vw;
+  }
+}
+
+[data-theme="dark"] .work-register-create-wizard {
+  background: #0f172a;
+  color: #e2e8f0;
+}
+
+[data-theme="dark"] .work-register-intake-form section {
+  background: rgba(30, 41, 59, 0.78);
+  border-color: rgba(148, 163, 184, 0.22);
+}
+
+[data-theme="dark"] .work-register-intake-upload-card {
+  background: rgba(12, 74, 110, 0.28);
+  border-color: rgba(125, 211, 252, 0.25);
+}
+
+[data-theme="dark"] .work-register-intake-form input,
+[data-theme="dark"] .work-register-intake-form select,
+[data-theme="dark"] .work-register-intake-form textarea,
+[data-theme="dark"] .work-register-create-wizard > header button {
+  background: rgba(15, 23, 42, 0.92);
+  color: #e2e8f0;
+  border-color: rgba(148, 163, 184, 0.3);
+}
+/* 055D_1_INTAKE_WIZARD_GSD_SOW_END */

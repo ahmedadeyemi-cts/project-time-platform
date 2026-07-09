@@ -177,6 +177,21 @@ export default function WorkRegisterCenter() {
   const [documentStatus, setDocumentStatus] = useState('');
 
   const [documentUploadStatus, setDocumentUploadStatus] = useState('');
+
+  const [intakeWizardOpen, setIntakeWizardOpen] = useState(false);
+  const [intakeWizardStatus, setIntakeWizardStatus] = useState('');
+  const [intakePackageResult, setIntakePackageResult] = useState(null);
+  const [intakeForm, setIntakeForm] = useState({
+    requestedWorkType: 'Project',
+    customerHint: '',
+    projectNameHint: '',
+    skipGsd: false,
+    skipSow: false,
+    notes: '',
+    reason: ''
+  });
+  // 055D_1_INTAKE_WIZARD_GSD_SOW
+
   // 055C_10_LOCAL_DOCUMENT_UPLOAD
 
   // 055C_9_DOCUMENT_MANAGEMENT
@@ -1126,6 +1141,89 @@ export default function WorkRegisterCenter() {
   }
 
 
+
+  function updateIntakeField(field, value) {
+    setIntakeForm((current) => ({
+      ...current,
+      [field]: value
+    }));
+  }
+
+  function resetIntakeWizard() {
+    setIntakeForm({
+      requestedWorkType: 'Project',
+      customerHint: '',
+      projectNameHint: '',
+      skipGsd: false,
+      skipSow: false,
+      notes: '',
+      reason: ''
+    });
+    setIntakePackageResult(null);
+    setIntakeWizardStatus('');
+  }
+
+  function intakeRequiresProjectDocuments() {
+    const type = String(intakeForm.requestedWorkType || '').toLowerCase();
+    return type === 'project' || type === 'iqs';
+  }
+
+  async function uploadInitialIntakePackage(event) {
+    event.preventDefault();
+
+    if (!canEditWorkRegister) {
+      setIntakeWizardStatus('Only PTC/Admin can create intake packages.');
+      return;
+    }
+
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+    const gsdFile = formData.get('gsdFile');
+    const sowFile = formData.get('sowFile');
+
+    if (intakeRequiresProjectDocuments() && !intakeForm.skipGsd && (!(gsdFile instanceof File) || !gsdFile.name)) {
+      setIntakeWizardStatus('Upload the GSD or check “No GSD available / manual intake.”');
+      return;
+    }
+
+    if (intakeRequiresProjectDocuments() && !intakeForm.skipSow && (!(sowFile instanceof File) || !sowFile.name)) {
+      setIntakeWizardStatus('Upload the SOW or check “No SOW available yet.”');
+      return;
+    }
+
+    if (!String(intakeForm.reason || '').trim()) {
+      setIntakeWizardStatus('Intake reason is required for audit history.');
+      return;
+    }
+
+    Object.entries(intakeForm).forEach(([key, value]) => {
+      formData.set(key, String(value ?? ''));
+    });
+
+    setIntakeWizardStatus('Uploading GSD/SOW intake package...');
+
+    try {
+      const response = await fetch('/api/work-register/intake/packages/upload', {
+        method: 'POST',
+        headers: getWorkRegisterUploadAuthHeaders(),
+        body: formData
+      });
+
+      const result = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(result.message || `HTTP ${response.status}`);
+      }
+
+      setIntakePackageResult(result);
+      setIntakeWizardStatus(result.message || 'Intake package uploaded.');
+      form.reset();
+    } catch (error) {
+      setIntakeWizardStatus(error instanceof Error ? error.message : 'Unable to upload intake package.');
+    }
+  }
+
+
   async function saveProjectSetup(event) {
     event.preventDefault();
 
@@ -1397,6 +1495,491 @@ export default function WorkRegisterCenter() {
           </tbody>
         </table>
       </div>
+
+
+
+            {canEditWorkRegister ? (
+
+
+              <button type="button" className="work-register-create-button" onClick={() => setIntakeWizardOpen(true)}>
+
+
+                Create Work / Intake
+
+
+              </button>
+
+
+            ) : null}
+
+
+      
+
+
+            {intakeWizardOpen ? (
+
+
+              <div className="work-register-create-overlay">
+
+
+                <aside className="work-register-create-wizard">
+
+
+                  <header>
+
+
+                    <div>
+
+
+                      <span>INITIAL INTAKE WIZARD</span>
+
+
+                      <h3>Upload GSD/SOW and start work onboarding</h3>
+
+
+                      <p>Start here so the PTC can upload source documents first. GSD extraction will populate project name, AE, SA, SAA, rates, tasks, and hours in the next parser step.</p>
+
+
+                    </div>
+
+
+                    <button type="button" onClick={() => setIntakeWizardOpen(false)}>Close</button>
+
+
+                  </header>
+
+
+      
+
+
+                  {intakeWizardStatus ? (
+
+
+                    <div className="work-register-banner">{intakeWizardStatus}</div>
+
+
+                  ) : null}
+
+
+      
+
+
+                  <form className="work-register-intake-form" onSubmit={uploadInitialIntakePackage}>
+
+
+                    <section>
+
+
+                      <h4>1. Work type and source documents</h4>
+
+
+                      <div className="work-register-edit-grid">
+
+
+                        <label>
+
+
+                          Work type
+
+
+                          <select
+
+
+                            value={intakeForm.requestedWorkType}
+
+
+                            onChange={(event) => updateIntakeField('requestedWorkType', event.target.value)}
+
+
+                            name="requestedWorkType"
+
+
+                          >
+
+
+                            {['Project', 'Service Request', 'Internal Project', 'IQS', 'Pre-Sales', 'Other'].map((type) => (
+
+
+                              <option value={type} key={type}>{type}</option>
+
+
+                            ))}
+
+
+                          </select>
+
+
+                        </label>
+
+
+      
+
+
+                        <label>
+
+
+                          Customer hint
+
+
+                          <input
+
+
+                            type="text"
+
+
+                            name="customerHint"
+
+
+                            value={intakeForm.customerHint}
+
+
+                            onChange={(event) => updateIntakeField('customerHint', event.target.value)}
+
+
+                            placeholder="Optional; parser will try to extract from GSD"
+
+
+                          />
+
+
+                        </label>
+
+
+      
+
+
+                        <label>
+
+
+                          Project/work name hint
+
+
+                          <input
+
+
+                            type="text"
+
+
+                            name="projectNameHint"
+
+
+                            value={intakeForm.projectNameHint}
+
+
+                            onChange={(event) => updateIntakeField('projectNameHint', event.target.value)}
+
+
+                            placeholder="Optional; parser will try to extract from GSD/SOW"
+
+
+                          />
+
+
+                        </label>
+
+
+                      </div>
+
+
+      
+
+
+                      <div className="work-register-intake-upload-grid">
+
+
+                        <label className="work-register-intake-upload-card">
+
+
+                          <strong>GSD upload</strong>
+
+
+                          <small>Primary source for AE, SA, SAA, rates, tasks, and hours.</small>
+
+
+                          <input type="file" name="gsdFile" />
+
+
+                        </label>
+
+
+      
+
+
+                        <label className="work-register-intake-upload-card">
+
+
+                          <strong>SOW upload</strong>
+
+
+                          <small>Source for scope, project name, customer approval context, and contractual support.</small>
+
+
+                          <input type="file" name="sowFile" />
+
+
+                        </label>
+
+
+      
+
+
+                        <label className="work-register-intake-upload-card">
+
+
+                          <strong>Optional approval / PO / email</strong>
+
+
+                          <small>Use for customer approval, PO, signed email, or supporting intake evidence.</small>
+
+
+                          <input type="file" name="approvalFile" />
+
+
+                        </label>
+
+
+                      </div>
+
+
+      
+
+
+                      {intakeRequiresProjectDocuments() ? (
+
+
+                        <div className="work-register-intake-checkboxes">
+
+
+                          <label className="checkbox-line">
+
+
+                            <input
+
+
+                              type="checkbox"
+
+
+                              checked={intakeForm.skipGsd}
+
+
+                              onChange={(event) => updateIntakeField('skipGsd', event.target.checked)}
+
+
+                            />
+
+
+                            No GSD available / manual intake
+
+
+                          </label>
+
+
+      
+
+
+                          <label className="checkbox-line">
+
+
+                            <input
+
+
+                              type="checkbox"
+
+
+                              checked={intakeForm.skipSow}
+
+
+                              onChange={(event) => updateIntakeField('skipSow', event.target.checked)}
+
+
+                            />
+
+
+                            No SOW available yet
+
+
+                          </label>
+
+
+                        </div>
+
+
+                      ) : (
+
+
+                        <p className="muted">GSD/SOW are optional for this work type. Service Requests can proceed by manual intake in a later step.</p>
+
+
+                      )}
+
+
+                    </section>
+
+
+      
+
+
+                    <section>
+
+
+                      <h4>2. Intake notes and audit reason</h4>
+
+
+                      <label>
+
+
+                        Notes
+
+
+                        <textarea
+
+
+                          rows={3}
+
+
+                          name="notes"
+
+
+                          value={intakeForm.notes}
+
+
+                          onChange={(event) => updateIntakeField('notes', event.target.value)}
+
+
+                          placeholder="Optional intake notes for PTC/Admin review."
+
+
+                        />
+
+
+                      </label>
+
+
+      
+
+
+                      <label>
+
+
+                        Intake reason
+
+
+                        <textarea
+
+
+                          rows={3}
+
+
+                          name="reason"
+
+
+                          value={intakeForm.reason}
+
+
+                          onChange={(event) => updateIntakeField('reason', event.target.value)}
+
+
+                          placeholder="Required. Example: New customer project submitted with GSD and signed SOW."
+
+
+                          required
+
+
+                        />
+
+
+                      </label>
+
+
+                    </section>
+
+
+      
+
+
+                    <section>
+
+
+                      <h4>3. Extraction and review status</h4>
+
+
+                      {intakePackageResult ? (
+
+
+                        <div className="work-register-intake-result">
+
+
+                          <strong>Intake package uploaded</strong>
+
+
+                          <small>Package ID: {intakePackageResult.intakePackageId}</small>
+
+
+                          <small>Requested work type: {intakePackageResult.requestedWorkType}</small>
+
+
+                          <small>Project/work hint: {intakePackageResult.projectNameHint || 'Pending parser'}</small>
+
+
+                          <small>Customer hint: {intakePackageResult.customerHint || 'Pending parser'}</small>
+
+
+                          <small>Documents uploaded: {intakePackageResult.uploadedDocumentCount}</small>
+
+
+                          <small>Extraction status: {labelize(intakePackageResult.extractionStatus || 'pending parser')}</small>
+
+
+                          <p className="muted">055D.2 will parse the GSD/SOW and populate AE, SA, SAA, rates, hours, and tasks for review before committing to Work Register.</p>
+
+
+                        </div>
+
+
+                      ) : (
+
+
+                        <p className="muted">Upload the source documents first. Extraction/review will become active after the package is created.</p>
+
+
+                      )}
+
+
+                    </section>
+
+
+      
+
+
+                    <div className="work-register-create-actions">
+
+
+                      <button type="button" className="secondary-action" onClick={resetIntakeWizard}>Reset</button>
+
+
+                      <button type="submit" className="primary-action">Upload intake package</button>
+
+
+                    </div>
+
+
+                  </form>
+
+
+                </aside>
+
+
+              </div>
+
+
+            ) : null}
+
+
+      
+
+
+      
+
 
       {selectedWorkItem ? (
         <div className="work-register-drawer-backdrop" role="presentation">

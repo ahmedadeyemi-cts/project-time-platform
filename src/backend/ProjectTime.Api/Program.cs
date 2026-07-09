@@ -5683,6 +5683,356 @@ app.MapGet("/api/project-intake/summary", async () =>
 
 
 
+
+/* 055D_1_INTAKE_WIZARD_GSD_SOW_API_START */
+app.MapPost("/api/work-register/intake/packages/upload", async (HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token.", guard = "055D1_intake_upload_session_required" }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    if (!httpContext.Request.HasFormContentType)
+    {
+        return Results.BadRequest(new { status = "invalid_upload", message = "Intake package must be sent as multipart/form-data." });
+    }
+
+    var form = await httpContext.Request.ReadFormAsync();
+
+    string ReadFormString(string name, string fallback = "")
+    {
+        return form.TryGetValue(name, out var values) ? (values.ToString() ?? fallback).Trim() : fallback;
+    }
+
+    bool ReadFormBool(string name, bool fallback = false)
+    {
+        var value = ReadFormString(name);
+        return string.IsNullOrWhiteSpace(value) ? fallback : bool.TryParse(value, out var parsed) ? parsed : fallback;
+    }
+
+    string SafeFileName(string value)
+    {
+        var fileName = System.IO.Path.GetFileName(value ?? "uploaded-document");
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            fileName = "uploaded-document";
+        }
+
+        foreach (var invalid in System.IO.Path.GetInvalidFileNameChars())
+        {
+            fileName = fileName.Replace(invalid, '_');
+        }
+
+        fileName = fileName.Replace(" ", "_").Trim();
+
+        if (fileName.Length > 180)
+        {
+            var extension = System.IO.Path.GetExtension(fileName);
+            var baseName = System.IO.Path.GetFileNameWithoutExtension(fileName);
+            fileName = baseName[..Math.Min(baseName.Length, 140)] + extension;
+        }
+
+        return fileName;
+    }
+
+    string FileNameWithoutExtension(string value)
+    {
+        var clean = SafeFileName(value);
+        var without = System.IO.Path.GetFileNameWithoutExtension(clean);
+        return string.IsNullOrWhiteSpace(without) ? clean : without.Replace("_", " ");
+    }
+
+    var requestedWorkType = ReadFormString("requestedWorkType", "Project");
+    var customerHint = ReadFormString("customerHint");
+    var projectNameHint = ReadFormString("projectNameHint");
+    var notes = ReadFormString("notes");
+    var reason = ReadFormString("reason");
+    var skipGsd = ReadFormBool("skipGsd", false);
+    var skipSow = ReadFormBool("skipSow", false);
+
+    var gsdFile = form.Files.GetFile("gsdFile");
+    var sowFile = form.Files.GetFile("sowFile");
+    var approvalFile = form.Files.GetFile("approvalFile");
+
+    var isProjectLike = string.Equals(requestedWorkType, "Project", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(requestedWorkType, "IQS", StringComparison.OrdinalIgnoreCase);
+
+    if (string.IsNullOrWhiteSpace(reason))
+    {
+        return Results.BadRequest(new { status = "validation_failed", message = "Intake reason is required for audit history." });
+    }
+
+    if (isProjectLike && !skipGsd && (gsdFile is null || gsdFile.Length <= 0))
+    {
+        return Results.BadRequest(new { status = "gsd_required", message = "GSD upload is expected for Project/IQS intake. Check 'No GSD available' only when this must be created manually." });
+    }
+
+    if (isProjectLike && !skipSow && (sowFile is null || sowFile.Length <= 0))
+    {
+        return Results.BadRequest(new { status = "sow_required", message = "SOW upload is expected for Project/IQS intake. Check 'No SOW available' only when this work type does not require it yet." });
+    }
+
+    foreach (var uploadedFile in new[] { gsdFile, sowFile, approvalFile })
+    {
+        if (uploadedFile is not null && uploadedFile.Length > 50L * 1024L * 1024L)
+        {
+            return Results.BadRequest(new { status = "file_too_large", message = $"File {uploadedFile.FileName} exceeds the 50 MB upload limit." });
+        }
+    }
+
+    var dbConfig = DatabaseConfig.FromEnvironment();
+
+    await using var connection = new NpgsqlConnection(dbConfig.ConnectionString);
+    await connection.OpenAsync();
+
+    var canCreateIntake = false;
+    await using (var accessCommand = new NpgsqlCommand("""
+        SELECT EXISTS (
+            SELECT 1
+            FROM app_user_role_assignments ura
+            JOIN app_roles r
+              ON r.app_role_id = ura.app_role_id
+            WHERE ura.user_id = @user_id
+              AND ura.is_active = TRUE
+              AND r.is_active = TRUE
+              AND r.role_code IN (
+                  'SUPER_ADMINISTRATOR',
+                  'ADMINISTRATOR',
+                  'PROJECT_TEAM_COORDINATOR'
+              )
+        );
+        """, connection))
+    {
+        accessCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+        canCreateIntake = Convert.ToBoolean(await accessCommand.ExecuteScalarAsync() ?? false);
+    }
+
+    if (!canCreateIntake)
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Only Project Team Coordinators, Administrators, and Super Administrators can create intake packages."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var intakePackageId = Guid.NewGuid();
+    var uploadRoot = GetProjectPulseUploadRoot();
+    var intakeFolder = System.IO.Path.Combine(uploadRoot, "work-register-intake", intakePackageId.ToString("N"));
+    System.IO.Directory.CreateDirectory(intakeFolder);
+
+    async Task<(Guid DocumentId, string DocumentType, string OriginalFileName, string StoredFilePath, string ContentType, long FileSizeBytes)?> SaveIntakeFileAsync(IFormFile? file, string documentType)
+    {
+        if (file is null || file.Length <= 0)
+        {
+            return null;
+        }
+
+        var documentId = Guid.NewGuid();
+        var originalFileName = SafeFileName(file.FileName);
+        var storedFileName = $"{documentId:N}_{originalFileName}";
+        var storedFilePath = System.IO.Path.Combine(intakeFolder, storedFileName);
+
+        await using (var stream = System.IO.File.Create(storedFilePath))
+        {
+            await file.CopyToAsync(stream);
+        }
+
+        return (
+            documentId,
+            documentType,
+            originalFileName,
+            storedFilePath,
+            string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType,
+            file.Length
+        );
+    }
+
+    var savedDocuments = new List<(Guid DocumentId, string DocumentType, string OriginalFileName, string StoredFilePath, string ContentType, long FileSizeBytes)>();
+
+    var savedGsd = await SaveIntakeFileAsync(gsdFile, "GSD");
+    if (savedGsd is not null) savedDocuments.Add(savedGsd.Value);
+
+    var savedSow = await SaveIntakeFileAsync(sowFile, "SOW");
+    if (savedSow is not null) savedDocuments.Add(savedSow.Value);
+
+    var savedApproval = await SaveIntakeFileAsync(approvalFile, "Customer Approval");
+    if (savedApproval is not null) savedDocuments.Add(savedApproval.Value);
+
+    if (string.IsNullOrWhiteSpace(projectNameHint) && savedGsd is not null)
+    {
+        projectNameHint = FileNameWithoutExtension(savedGsd.Value.OriginalFileName);
+    }
+
+    if (string.IsNullOrWhiteSpace(projectNameHint) && savedSow is not null)
+    {
+        projectNameHint = FileNameWithoutExtension(savedSow.Value.OriginalFileName);
+    }
+
+    var extractionPayload = JsonSerializer.Serialize(new
+    {
+        extractionStatus = "pending_parser",
+        parserStage = "055D.1_upload_only",
+        message = "GSD/SOW files are stored. 055D.2 will extract customer, project name, AE, SA, SAA, rates, tasks, and hours.",
+        requestedWorkType,
+        customerHint,
+        projectNameHint,
+        uploadedDocuments = savedDocuments.Select(document => new
+        {
+            document.DocumentId,
+            document.DocumentType,
+            document.OriginalFileName,
+            document.ContentType,
+            document.FileSizeBytes
+        }).ToList()
+    });
+
+    await using var transaction = await connection.BeginTransactionAsync();
+
+    await using (var packageCommand = new NpgsqlCommand("""
+        INSERT INTO work_register_intake_packages (
+            work_register_intake_package_id,
+            intake_status,
+            requested_work_type,
+            source_mode,
+            customer_hint,
+            project_name_hint,
+            notes,
+            extraction_status,
+            extracted_json,
+            created_by_user_id,
+            updated_at
+        )
+        VALUES (
+            @intake_package_id,
+            'uploaded',
+            @requested_work_type,
+            'gsd_sow_upload',
+            @customer_hint,
+            @project_name_hint,
+            @notes,
+            'pending_parser',
+            CAST(@extracted_json AS jsonb),
+            @created_by_user_id,
+            NOW()
+        );
+        """, connection, transaction))
+    {
+        packageCommand.Parameters.AddWithValue("intake_package_id", intakePackageId);
+        packageCommand.Parameters.AddWithValue("requested_work_type", requestedWorkType);
+        packageCommand.Parameters.AddWithValue("customer_hint", customerHint);
+        packageCommand.Parameters.AddWithValue("project_name_hint", projectNameHint);
+        packageCommand.Parameters.AddWithValue("notes", notes);
+        packageCommand.Parameters.AddWithValue("extracted_json", extractionPayload);
+        packageCommand.Parameters.AddWithValue("created_by_user_id", sessionUserId.Value);
+        await packageCommand.ExecuteNonQueryAsync();
+    }
+
+    foreach (var savedDocument in savedDocuments)
+    {
+        await using var documentCommand = new NpgsqlCommand("""
+            INSERT INTO work_register_intake_documents (
+                work_register_intake_document_id,
+                work_register_intake_package_id,
+                document_type,
+                original_file_name,
+                stored_file_path,
+                content_type,
+                file_size_bytes,
+                uploaded_by_user_id
+            )
+            VALUES (
+                @document_id,
+                @intake_package_id,
+                @document_type,
+                @original_file_name,
+                @stored_file_path,
+                @content_type,
+                @file_size_bytes,
+                @uploaded_by_user_id
+            );
+            """, connection, transaction);
+
+        documentCommand.Parameters.AddWithValue("document_id", savedDocument.DocumentId);
+        documentCommand.Parameters.AddWithValue("intake_package_id", intakePackageId);
+        documentCommand.Parameters.AddWithValue("document_type", savedDocument.DocumentType);
+        documentCommand.Parameters.AddWithValue("original_file_name", savedDocument.OriginalFileName);
+        documentCommand.Parameters.AddWithValue("stored_file_path", savedDocument.StoredFilePath);
+        documentCommand.Parameters.AddWithValue("content_type", savedDocument.ContentType);
+        documentCommand.Parameters.AddWithValue("file_size_bytes", savedDocument.FileSizeBytes);
+        documentCommand.Parameters.AddWithValue("uploaded_by_user_id", sessionUserId.Value);
+        await documentCommand.ExecuteNonQueryAsync();
+    }
+
+    var historyPayload = JsonSerializer.Serialize(new
+    {
+        intakePackageId,
+        requestedWorkType,
+        customerHint,
+        projectNameHint,
+        notes,
+        reason,
+        documents = savedDocuments.Select(document => new
+        {
+            document.DocumentId,
+            document.DocumentType,
+            document.OriginalFileName,
+            document.FileSizeBytes
+        }).ToList()
+    });
+
+    await using (var historyCommand = new NpgsqlCommand("""
+        INSERT INTO work_register_intake_history (
+            work_register_intake_history_id,
+            work_register_intake_package_id,
+            action,
+            summary,
+            changed_by_user_id,
+            payload_json
+        )
+        VALUES (
+            @history_id,
+            @intake_package_id,
+            'intake_documents_uploaded',
+            @summary,
+            @changed_by_user_id,
+            CAST(@payload_json AS jsonb)
+        );
+        """, connection, transaction))
+    {
+        historyCommand.Parameters.AddWithValue("history_id", Guid.NewGuid());
+        historyCommand.Parameters.AddWithValue("intake_package_id", intakePackageId);
+        historyCommand.Parameters.AddWithValue("summary", $"Initial intake package uploaded with {savedDocuments.Count} document(s).");
+        historyCommand.Parameters.AddWithValue("changed_by_user_id", sessionUserId.Value);
+        historyCommand.Parameters.AddWithValue("payload_json", historyPayload);
+        await historyCommand.ExecuteNonQueryAsync();
+    }
+
+    await transaction.CommitAsync();
+
+    return Results.Ok(new
+    {
+        status = "intake_package_uploaded",
+        intakePackageId,
+        requestedWorkType,
+        customerHint,
+        projectNameHint,
+        extractionStatus = "pending_parser",
+        uploadedDocumentCount = savedDocuments.Count,
+        documents = savedDocuments.Select(document => new
+        {
+            documentId = document.DocumentId,
+            documentType = document.DocumentType,
+            originalFileName = document.OriginalFileName,
+            fileSizeBytes = document.FileSizeBytes
+        }).ToList(),
+        message = "Initial intake package uploaded. GSD/SOW extraction will be handled in the next parser step."
+    });
+}).DisableAntiforgery();
+/* 055D_1_INTAKE_WIZARD_GSD_SOW_API_END */
+
+
 /* 055C_10_LOCAL_DOCUMENT_UPLOAD_API_START */
 app.MapPost("/api/work-register/projects/documents/upload", async (HttpContext httpContext) =>
 {
