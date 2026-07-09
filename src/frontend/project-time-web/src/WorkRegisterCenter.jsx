@@ -191,6 +191,7 @@ export default function WorkRegisterCenter() {
   // 055D_2B_INTAKE_UI_REPAIR
   // 055D_2C_CURRENT_EXTRACTION_REPAIR
   // 055D_2E_UPLOAD_EXTRACT_CURRENT_GSD
+  // 055D_2F_RATE_TASK_REVIEW_TABLES
 
   const [intakeForm, setIntakeForm] = useState({
     requestedWorkType: 'Project',
@@ -1302,6 +1303,117 @@ export default function WorkRegisterCenter() {
     }
   }
 
+
+  function parseIntakeReviewArrayField(fieldName) {
+    try {
+      const parsed = JSON.parse(intakeReviewForm?.[fieldName] || '[]');
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function setIntakeReviewArrayField(fieldName, rows) {
+    setIntakeReviewForm((current) => ({
+      ...(current ?? {}),
+      [fieldName]: JSON.stringify(rows ?? [], null, 2)
+    }));
+  }
+
+  function updateIntakeReviewArrayItem(fieldName, index, key, value) {
+    const rows = parseIntakeReviewArrayField(fieldName);
+    rows[index] = {
+      ...(rows[index] ?? {}),
+      [key]: value
+    };
+    setIntakeReviewArrayField(fieldName, rows);
+  }
+
+  function numberFromReviewValue(value) {
+    if (value === null || value === undefined || value === '') return 0;
+    const parsed = Number(String(value).replace(/[$,]/g, ''));
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  function moneyReviewValue(value) {
+    const number = numberFromReviewValue(value);
+    return number.toLocaleString(undefined, {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+  }
+
+  function intakeRateExtended(rate) {
+    const rateAmount = numberFromReviewValue(rate?.rate ?? rate?.rateAmount ?? rate?.unitRate);
+    const hours = numberFromReviewValue(rate?.hours ?? rate?.quantity ?? rate?.qty);
+    return rateAmount * hours;
+  }
+
+  function intakeTaskTotal(task) {
+    const regular = numberFromReviewValue(task?.regularHours ?? task?.hours);
+    const overtime = numberFromReviewValue(task?.overtimeHours);
+    const reserve = numberFromReviewValue(task?.reserveHours);
+    const explicitTotal = numberFromReviewValue(task?.totalHours);
+    return explicitTotal || regular + overtime + reserve;
+  }
+
+  function gsdRateRows() {
+    return parseIntakeReviewArrayField('ratesText');
+  }
+
+  function gsdTaskRows() {
+    return parseIntakeReviewArrayField('tasksText');
+  }
+
+  function includedGsdRateRows() {
+    return gsdRateRows().filter((rate) => rate?.include !== false);
+  }
+
+  function includedGsdTaskRows() {
+    return gsdTaskRows().filter((task) => task?.include !== false);
+  }
+
+  function calculatedGsdRateTotal() {
+    return includedGsdRateRows().reduce((sum, rate) => sum + intakeRateExtended(rate), 0);
+  }
+
+  function calculatedGsdTaskHoursTotal() {
+    return includedGsdTaskRows().reduce((sum, task) => sum + intakeTaskTotal(task), 0);
+  }
+
+  function addGsdRateRow() {
+    const rows = gsdRateRows();
+    rows.push({
+      include: true,
+      source: 'manual_review',
+      sku: '',
+      description: '',
+      rate: 0,
+      hours: 0
+    });
+    setIntakeReviewArrayField('ratesText', rows);
+  }
+
+  function addGsdTaskRow() {
+    const rows = gsdTaskRows();
+    rows.push({
+      include: true,
+      phase: 'Review',
+      taskName: '',
+      engineeringRole: '',
+      regularHours: 0,
+      overtimeHours: 0,
+      reserveHours: 0,
+      billable: true,
+      utilizationEligible: true,
+      engineers: []
+    });
+    setIntakeReviewArrayField('tasksText', rows);
+  }
+
+
   function updateIntakeReviewForm(field, value) {
     setIntakeReviewForm((current) => ({
       ...(current ?? {}),
@@ -2387,6 +2499,183 @@ export default function WorkRegisterCenter() {
                       </label>
                     </div>
 
+
+                    <div className="work-register-gsd-review-summary">
+                      <div>
+                        <span>GSD project list price</span>
+                        <strong>{moneyReviewValue(intakeReviewForm.projectListPrice)}</strong>
+                      </div>
+                      <div>
+                        <span>Calculated rate total</span>
+                        <strong>{moneyReviewValue(calculatedGsdRateTotal())}</strong>
+                      </div>
+                      <div>
+                        <span>Task hours total</span>
+                        <strong>{calculatedGsdTaskHoursTotal().toLocaleString()} hrs</strong>
+                      </div>
+                      <div>
+                        <span>Rate source</span>
+                        <strong>GSD snapshot</strong>
+                      </div>
+                    </div>
+
+                    <div className="work-register-gsd-review-table">
+                      <div className="work-register-gsd-review-table-header">
+                        <div>
+                          <h5>GSD Rate Review</h5>
+                          <p className="muted">These rows become the project-specific rate snapshot when the intake is committed to Work Register.</p>
+                        </div>
+                        <button type="button" className="secondary-action" onClick={addGsdRateRow}>
+                          Add rate row
+                        </button>
+                      </div>
+
+                      {gsdRateRows().length > 0 ? (
+                        <div className="work-register-gsd-rate-grid">
+                          <div className="work-register-gsd-grid-heading">Use</div>
+                          <div className="work-register-gsd-grid-heading">SKU</div>
+                          <div className="work-register-gsd-grid-heading">Description / Role</div>
+                          <div className="work-register-gsd-grid-heading">Rate</div>
+                          <div className="work-register-gsd-grid-heading">Hours</div>
+                          <div className="work-register-gsd-grid-heading">Extended</div>
+
+                          {gsdRateRows().map((rate, index) => (
+                            <div className="work-register-gsd-grid-row" key={`gsd-rate-${index}`}>
+                              <label className="checkbox-line">
+                                <input
+                                  type="checkbox"
+                                  checked={rate?.include !== false}
+                                  onChange={(event) => updateIntakeReviewArrayItem('ratesText', index, 'include', event.target.checked)}
+                                />
+                              </label>
+
+                              <input
+                                type="text"
+                                value={rate?.sku || ''}
+                                onChange={(event) => updateIntakeReviewArrayItem('ratesText', index, 'sku', event.target.value)}
+                                placeholder="SKU"
+                              />
+
+                              <input
+                                type="text"
+                                value={rate?.description || rate?.role || ''}
+                                onChange={(event) => updateIntakeReviewArrayItem('ratesText', index, 'description', event.target.value)}
+                                placeholder="Description / role"
+                              />
+
+                              <input
+                                type="number"
+                                step="0.01"
+                                value={rate?.rate ?? rate?.rateAmount ?? rate?.unitRate ?? 0}
+                                onChange={(event) => updateIntakeReviewArrayItem('ratesText', index, 'rate', Number(event.target.value || 0))}
+                              />
+
+                              <input
+                                type="number"
+                                step="0.25"
+                                value={rate?.hours ?? rate?.quantity ?? rate?.qty ?? 0}
+                                onChange={(event) => updateIntakeReviewArrayItem('ratesText', index, 'hours', Number(event.target.value || 0))}
+                              />
+
+                              <strong>{moneyReviewValue(intakeRateExtended(rate))}</strong>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="work-register-gsd-empty-review">
+                          No GSD rate rows were extracted. Add rate rows manually or rerun extraction after confirming the GSD format.
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="work-register-gsd-review-table">
+                      <div className="work-register-gsd-review-table-header">
+                        <div>
+                          <h5>Task / Hours Review</h5>
+                          <p className="muted">These tasks will be used to create Work Register tasks in 055D.3.</p>
+                        </div>
+                        <button type="button" className="secondary-action" onClick={addGsdTaskRow}>
+                          Add task row
+                        </button>
+                      </div>
+
+                      {gsdTaskRows().length > 0 ? (
+                        <div className="work-register-gsd-task-grid">
+                          <div className="work-register-gsd-grid-heading">Use</div>
+                          <div className="work-register-gsd-grid-heading">Phase</div>
+                          <div className="work-register-gsd-grid-heading">Task</div>
+                          <div className="work-register-gsd-grid-heading">Role</div>
+                          <div className="work-register-gsd-grid-heading">Regular</div>
+                          <div className="work-register-gsd-grid-heading">OT</div>
+                          <div className="work-register-gsd-grid-heading">Reserve</div>
+                          <div className="work-register-gsd-grid-heading">Total</div>
+
+                          {gsdTaskRows().map((task, index) => (
+                            <div className="work-register-gsd-grid-row" key={`gsd-task-${index}`}>
+                              <label className="checkbox-line">
+                                <input
+                                  type="checkbox"
+                                  checked={task?.include !== false}
+                                  onChange={(event) => updateIntakeReviewArrayItem('tasksText', index, 'include', event.target.checked)}
+                                />
+                              </label>
+
+                              <input
+                                type="text"
+                                value={task?.phase || ''}
+                                onChange={(event) => updateIntakeReviewArrayItem('tasksText', index, 'phase', event.target.value)}
+                                placeholder="Phase"
+                              />
+
+                              <input
+                                type="text"
+                                value={task?.taskName || ''}
+                                onChange={(event) => updateIntakeReviewArrayItem('tasksText', index, 'taskName', event.target.value)}
+                                placeholder="Task name"
+                              />
+
+                              <input
+                                type="text"
+                                value={task?.engineeringRole || task?.role || ''}
+                                onChange={(event) => updateIntakeReviewArrayItem('tasksText', index, 'engineeringRole', event.target.value)}
+                                placeholder="Role"
+                              />
+
+                              <input
+                                type="number"
+                                step="0.25"
+                                value={task?.regularHours ?? task?.hours ?? 0}
+                                onChange={(event) => updateIntakeReviewArrayItem('tasksText', index, 'regularHours', Number(event.target.value || 0))}
+                              />
+
+                              <input
+                                type="number"
+                                step="0.25"
+                                value={task?.overtimeHours ?? 0}
+                                onChange={(event) => updateIntakeReviewArrayItem('tasksText', index, 'overtimeHours', Number(event.target.value || 0))}
+                              />
+
+                              <input
+                                type="number"
+                                step="0.25"
+                                value={task?.reserveHours ?? 0}
+                                onChange={(event) => updateIntakeReviewArrayItem('tasksText', index, 'reserveHours', Number(event.target.value || 0))}
+                              />
+
+                              <strong>{intakeTaskTotal(task).toLocaleString()} hrs</strong>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="work-register-gsd-empty-review">
+                          No task rows were extracted. Add task rows manually or rerun extraction after confirming the GSD format.
+                        </div>
+                      )}
+                    </div>
+
+                    <details className="work-register-gsd-json-details">
+                      <summary>Advanced: raw extracted JSON</summary>
+
                     <label>
                       Rates JSON
                       <textarea
@@ -2413,6 +2702,7 @@ export default function WorkRegisterCenter() {
                         onChange={(event) => updateIntakeReviewForm('parserNotesText', event.target.value)}
                       />
                     </label>
+                    </details>
 
                     <div className="work-register-create-actions">
                       <button type="button" className="primary-action" onClick={saveIntakeReviewMapping}>

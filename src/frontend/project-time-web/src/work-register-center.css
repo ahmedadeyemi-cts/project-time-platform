@@ -1222,3 +1222,160 @@ body[data-projectpulse-active-route="work-register"] #work-register .work-regist
   border-color: rgba(147, 197, 253, 0.25);
 }
 /* 055D_2E_UPLOAD_EXTRACT_CURRENT_GSD_END */
+
+/* 055D_2F_RATE_TASK_REVIEW_TABLES_START */
+.work-register-gsd-review-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.work-register-gsd-review-summary > div {
+  display: grid;
+  gap: 0.2rem;
+  border: 1px solid rgba(34, 197, 94, 0.24);
+  border-radius: 14px;
+  background: #ffffff;
+  padding: 0.75rem;
+}
+
+.work-register-gsd-review-summary span {
+  color: #64748b;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.work-register-gsd-review-summary strong {
+  color: #0f172a;
+  font-size: 1rem;
+}
+
+.work-register-gsd-review-table {
+  display: grid;
+  gap: 0.7rem;
+  border: 1px solid rgba(14, 165, 233, 0.22);
+  border-radius: 16px;
+  background: #f8fafc;
+  padding: 0.8rem;
+}
+
+.work-register-gsd-review-table-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 0.75rem;
+}
+
+.work-register-gsd-review-table-header h5 {
+  margin: 0;
+}
+
+.work-register-gsd-rate-grid,
+.work-register-gsd-task-grid {
+  display: grid;
+  gap: 0.35rem;
+  overflow-x: auto;
+}
+
+.work-register-gsd-rate-grid {
+  grid-template-columns: 4rem minmax(12rem, 0.8fr) minmax(18rem, 2fr) minmax(7rem, 0.7fr) minmax(7rem, 0.7fr) minmax(8rem, 0.8fr);
+}
+
+.work-register-gsd-task-grid {
+  grid-template-columns: 4rem minmax(8rem, 0.7fr) minmax(20rem, 2fr) minmax(12rem, 1fr) minmax(6rem, 0.55fr) minmax(6rem, 0.55fr) minmax(6rem, 0.55fr) minmax(7rem, 0.7fr);
+}
+
+.work-register-gsd-grid-heading {
+  color: #475569;
+  font-size: 0.78rem;
+  font-weight: 900;
+  padding: 0 0.25rem;
+}
+
+.work-register-gsd-grid-row {
+  display: contents;
+}
+
+.work-register-gsd-grid-row input,
+.work-register-gsd-grid-row select {
+  min-width: 0;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 10px;
+  background: #ffffff;
+  color: #0f172a;
+  padding: 0.45rem 0.5rem;
+}
+
+.work-register-gsd-grid-row strong {
+  display: flex;
+  align-items: center;
+  min-height: 2.25rem;
+  border-radius: 10px;
+  background: #ecfdf5;
+  color: #166534;
+  padding: 0.45rem 0.55rem;
+}
+
+.work-register-gsd-empty-review {
+  border: 1px dashed rgba(245, 158, 11, 0.45);
+  border-radius: 14px;
+  background: #fffbeb;
+  color: #92400e;
+  font-weight: 800;
+  padding: 0.75rem;
+}
+
+.work-register-gsd-json-details {
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.68);
+  padding: 0.75rem;
+}
+
+.work-register-gsd-json-details summary {
+  cursor: pointer;
+  font-weight: 900;
+  color: #334155;
+}
+
+.work-register-gsd-json-details[open] {
+  display: grid;
+  gap: 0.75rem;
+}
+
+@media (max-width: 980px) {
+  .work-register-gsd-review-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .work-register-gsd-review-summary {
+    grid-template-columns: 1fr;
+  }
+}
+
+[data-theme="dark"] .work-register-gsd-review-summary > div,
+[data-theme="dark"] .work-register-gsd-review-table,
+[data-theme="dark"] .work-register-gsd-json-details {
+  background: rgba(30, 41, 59, 0.78);
+  border-color: rgba(148, 163, 184, 0.22);
+}
+
+[data-theme="dark"] .work-register-gsd-review-summary strong,
+[data-theme="dark"] .work-register-gsd-grid-row input,
+[data-theme="dark"] .work-register-gsd-grid-row select {
+  color: #e2e8f0;
+}
+
+[data-theme="dark"] .work-register-gsd-grid-row input,
+[data-theme="dark"] .work-register-gsd-grid-row select {
+  background: rgba(15, 23, 42, 0.92);
+  border-color: rgba(148, 163, 184, 0.3);
+}
+
+[data-theme="dark"] .work-register-gsd-grid-row strong {
+  background: rgba(20, 83, 45, 0.35);
+  color: #bbf7d0;
+}
+/* 055D_2F_RATE_TASK_REVIEW_TABLES_END */
