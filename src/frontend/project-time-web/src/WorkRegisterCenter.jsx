@@ -187,10 +187,12 @@ export default function WorkRegisterCenter() {
   const [selectedIntakeReview, setSelectedIntakeReview] = useState(null);
   const [intakeReviewForm, setIntakeReviewForm] = useState(null);
   // 055D_2_GSD_EXTRACTION_REVIEW
+  // 055D_2A_GSD_XLSX_EXTRACTION_REVIEW
 
   const [intakeForm, setIntakeForm] = useState({
     requestedWorkType: 'Project',
-    customerHint: '',
+    contractType: 'Fixed Price',
+    customerId: '',
     projectNameHint: '',
     skipGsd: false,
     skipSow: false,
@@ -1238,7 +1240,7 @@ export default function WorkRegisterCenter() {
   }
 
   async function runIntakeExtraction(intakePackageId) {
-    setIntakeReviewStatus('Running GSD/SOW extraction...');
+    setIntakeReviewStatus('Running XLSX GSD extraction...');
 
     try {
       const result = await postJson(`/api/work-register/intake/packages/${intakePackageId}/extract`, {});
@@ -1321,6 +1323,20 @@ export default function WorkRegisterCenter() {
   }
 
 
+
+  function intakeCustomerOptionId(customer) {
+    return customer?.customerId || customer?.id || customer?.value || customer?.customer_id || '';
+  }
+
+  function intakeCustomerOptionName(customer) {
+    return customer?.customerName || customer?.name || customer?.label || customer?.displayName || customer?.customer_name || 'Selected customer';
+  }
+
+  function selectedIntakeCustomer() {
+    return editCustomerOptions.find((customer) => String(intakeCustomerOptionId(customer)) === String(intakeForm.customerId));
+  }
+
+
   function updateIntakeField(field, value) {
     setIntakeForm((current) => ({
       ...current,
@@ -1331,7 +1347,8 @@ export default function WorkRegisterCenter() {
   function resetIntakeWizard() {
     setIntakeForm({
       requestedWorkType: 'Project',
-      customerHint: '',
+      contractType: 'Fixed Price',
+      customerId: '',
       projectNameHint: '',
       skipGsd: false,
       skipSow: false,
@@ -1370,14 +1387,23 @@ export default function WorkRegisterCenter() {
       return;
     }
 
+    if (!intakeForm.customerId) {
+      setIntakeWizardStatus('Select a customer from the Customer Directory. If the customer does not exist, onboard the customer first.');
+      return;
+    }
+
     if (!String(intakeForm.reason || '').trim()) {
       setIntakeWizardStatus('Intake reason is required for audit history.');
       return;
     }
 
+    const selectedCustomer = selectedIntakeCustomer();
+
     Object.entries(intakeForm).forEach(([key, value]) => {
       formData.set(key, String(value ?? ''));
     });
+
+    formData.set('customerName', selectedCustomer ? intakeCustomerOptionName(selectedCustomer) : '');
 
     setIntakeWizardStatus('Uploading GSD/SOW intake package...');
 
@@ -1397,6 +1423,17 @@ export default function WorkRegisterCenter() {
       setIntakePackageResult(result);
       setIntakeWizardStatus(result.message || 'Intake package uploaded.');
       form.reset();
+      setIntakeForm({
+        requestedWorkType: 'Project',
+        contractType: 'Fixed Price',
+        customerId: '',
+        projectNameHint: '',
+        skipGsd: false,
+        skipSow: false,
+        notes: '',
+        reason: ''
+      });
+      await loadIntakePackages();
     } catch (error) {
       setIntakeWizardStatus(error instanceof Error ? error.message : 'Unable to upload intake package.');
     }
@@ -1797,7 +1834,7 @@ export default function WorkRegisterCenter() {
                         <label>
 
 
-                          Customer hint
+                          Customer
 
 
                           <input
@@ -1830,7 +1867,7 @@ export default function WorkRegisterCenter() {
                         <label>
 
 
-                          Project/work name hint
+                          Project / Work Name
 
 
                           <input
@@ -2097,10 +2134,10 @@ export default function WorkRegisterCenter() {
                           <small>Requested work type: {intakePackageResult.requestedWorkType}</small>
 
 
-                          <small>Project/work hint: {intakePackageResult.projectNameHint || 'Pending parser'}</small>
+                          <small>Project / Work Name: {intakePackageResult.projectNameHint || 'Pending parser'}</small>
 
 
-                          <small>Customer hint: {intakePackageResult.customerHint || 'Pending parser'}</small>
+                          <small>Customer: {intakePackageResult.customerHint || 'Pending parser'}</small>
 
 
                           <small>Documents uploaded: {intakePackageResult.uploadedDocumentCount}</small>
@@ -2134,7 +2171,7 @@ export default function WorkRegisterCenter() {
               <section>
                 <h4>4. GSD extraction and review mapping</h4>
                 <p className="muted">
-                  Run extraction after upload, then review and correct the mapping before it becomes a Work Register record.
+                  Run XLSX GSD extraction after upload, then review and correct the mapping before it becomes a Work Register record.
                   This step prepares project name, customer, AE, SA, SAA, rates, tasks, and hours for 055D.3.
                 </p>
 
@@ -2160,7 +2197,7 @@ export default function WorkRegisterCenter() {
                         <strong>{pkg.projectNameHint || 'Pending project name'}</strong>
                         <small>Package: {pkg.intakePackageId}</small>
                         <small>Type: {pkg.requestedWorkType}</small>
-                        <small>Customer hint: {pkg.customerHint || 'not set'}</small>
+                        <small>Customer: {pkg.customerHint || 'not set'}</small>
                         <small>Documents: {pkg.documentCount}</small>
                         <small>Extraction: {labelize(pkg.extractionStatus || 'not started')}</small>
                         <small>Review: {labelize(pkg.reviewStatus || 'not started')}</small>

@@ -5685,46 +5685,19 @@ app.MapGet("/api/project-intake/summary", async () =>
 
 
 
-/* 055D_2_GSD_EXTRACTION_REVIEW_API_START */
+
+/* 055D_2A_GSD_XLSX_EXTRACTION_REVIEW_API_START */
 app.MapGet("/api/work-register/intake/packages/recent", async (HttpContext httpContext) =>
 {
     var sessionUserId = GetProjectPulseSessionUserId(httpContext);
     if (sessionUserId is null)
     {
-        return Results.Json(new { status = "session_required", message = "Missing session token.", guard = "055D2_intake_recent_session_required" }, statusCode: StatusCodes.Status401Unauthorized);
+        return Results.Json(new { status = "session_required", message = "Missing session token.", guard = "055D2A_intake_recent_session_required" }, statusCode: StatusCodes.Status401Unauthorized);
     }
 
     var dbConfig = DatabaseConfig.FromEnvironment();
-
     await using var connection = new NpgsqlConnection(dbConfig.ConnectionString);
     await connection.OpenAsync();
-
-    var canManageIntake = false;
-    await using (var accessCommand = new NpgsqlCommand("""
-        SELECT EXISTS (
-            SELECT 1
-            FROM app_user_role_assignments ura
-            JOIN app_roles r
-              ON r.app_role_id = ura.app_role_id
-            WHERE ura.user_id = @user_id
-              AND ura.is_active = TRUE
-              AND r.is_active = TRUE
-              AND r.role_code IN (
-                  'SUPER_ADMINISTRATOR',
-                  'ADMINISTRATOR',
-                  'PROJECT_TEAM_COORDINATOR'
-              )
-        );
-        """, connection))
-    {
-        accessCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
-        canManageIntake = Convert.ToBoolean(await accessCommand.ExecuteScalarAsync() ?? false);
-    }
-
-    if (!canManageIntake)
-    {
-        return Results.Json(new { status = "access_denied", message = "Only PTC/Admin can review intake packages." }, statusCode: StatusCodes.Status403Forbidden);
-    }
 
     var packages = new List<object>();
 
@@ -5733,10 +5706,12 @@ app.MapGet("/api/work-register/intake/packages/recent", async (HttpContext httpC
             p.work_register_intake_package_id,
             p.intake_status,
             p.requested_work_type,
+            COALESCE(p.contract_type, 'Fixed Price'),
+            p.customer_id,
             p.customer_hint,
             p.project_name_hint,
             p.extraction_status,
-            p.review_status,
+            COALESCE(p.review_status, 'not_started'),
             p.created_at,
             COUNT(d.work_register_intake_document_id) AS document_count
         FROM work_register_intake_packages p
@@ -5746,6 +5721,8 @@ app.MapGet("/api/work-register/intake/packages/recent", async (HttpContext httpC
             p.work_register_intake_package_id,
             p.intake_status,
             p.requested_work_type,
+            p.contract_type,
+            p.customer_id,
             p.customer_hint,
             p.project_name_hint,
             p.extraction_status,
@@ -5763,20 +5740,18 @@ app.MapGet("/api/work-register/intake/packages/recent", async (HttpContext httpC
             intakePackageId = reader.GetGuid(0),
             intakeStatus = reader.GetString(1),
             requestedWorkType = reader.GetString(2),
-            customerHint = reader.GetString(3),
-            projectNameHint = reader.GetString(4),
-            extractionStatus = reader.GetString(5),
-            reviewStatus = reader.GetString(6),
-            createdAt = reader.GetDateTime(7),
-            documentCount = reader.GetInt64(8)
+            contractType = reader.GetString(3),
+            customerId = reader.IsDBNull(4) ? "" : reader.GetGuid(4).ToString(),
+            customerHint = reader.GetString(5),
+            projectNameHint = reader.GetString(6),
+            extractionStatus = reader.GetString(7),
+            reviewStatus = reader.GetString(8),
+            createdAt = reader.GetDateTime(9),
+            documentCount = reader.GetInt64(10)
         });
     }
 
-    return Results.Ok(new
-    {
-        status = "intake_packages_loaded",
-        packages
-    });
+    return Results.Ok(new { status = "intake_packages_loaded", packages });
 });
 
 app.MapGet("/api/work-register/intake/packages/{intakePackageId:guid}/review", async (Guid intakePackageId, HttpContext httpContext) =>
@@ -5784,40 +5759,12 @@ app.MapGet("/api/work-register/intake/packages/{intakePackageId:guid}/review", a
     var sessionUserId = GetProjectPulseSessionUserId(httpContext);
     if (sessionUserId is null)
     {
-        return Results.Json(new { status = "session_required", message = "Missing session token.", guard = "055D2_intake_review_session_required" }, statusCode: StatusCodes.Status401Unauthorized);
+        return Results.Json(new { status = "session_required", message = "Missing session token.", guard = "055D2A_intake_review_session_required" }, statusCode: StatusCodes.Status401Unauthorized);
     }
 
     var dbConfig = DatabaseConfig.FromEnvironment();
-
     await using var connection = new NpgsqlConnection(dbConfig.ConnectionString);
     await connection.OpenAsync();
-
-    var canManageIntake = false;
-    await using (var accessCommand = new NpgsqlCommand("""
-        SELECT EXISTS (
-            SELECT 1
-            FROM app_user_role_assignments ura
-            JOIN app_roles r
-              ON r.app_role_id = ura.app_role_id
-            WHERE ura.user_id = @user_id
-              AND ura.is_active = TRUE
-              AND r.is_active = TRUE
-              AND r.role_code IN (
-                  'SUPER_ADMINISTRATOR',
-                  'ADMINISTRATOR',
-                  'PROJECT_TEAM_COORDINATOR'
-              )
-        );
-        """, connection))
-    {
-        accessCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
-        canManageIntake = Convert.ToBoolean(await accessCommand.ExecuteScalarAsync() ?? false);
-    }
-
-    if (!canManageIntake)
-    {
-        return Results.Json(new { status = "access_denied", message = "Only PTC/Admin can review intake packages." }, statusCode: StatusCodes.Status403Forbidden);
-    }
 
     object? package = null;
 
@@ -5826,13 +5773,15 @@ app.MapGet("/api/work-register/intake/packages/{intakePackageId:guid}/review", a
             work_register_intake_package_id,
             intake_status,
             requested_work_type,
+            COALESCE(contract_type, 'Fixed Price'),
+            customer_id,
             source_mode,
             customer_hint,
             project_name_hint,
             notes,
             extraction_status,
             COALESCE(extracted_json, '{}'::jsonb)::text,
-            review_status,
+            COALESCE(review_status, 'not_started'),
             COALESCE(reviewed_json, '{}'::jsonb)::text,
             created_at
         FROM work_register_intake_packages
@@ -5850,15 +5799,17 @@ app.MapGet("/api/work-register/intake/packages/{intakePackageId:guid}/review", a
                 intakePackageId = reader.GetGuid(0),
                 intakeStatus = reader.GetString(1),
                 requestedWorkType = reader.GetString(2),
-                sourceMode = reader.GetString(3),
-                customerHint = reader.GetString(4),
-                projectNameHint = reader.GetString(5),
-                notes = reader.GetString(6),
-                extractionStatus = reader.GetString(7),
-                extractedJson = reader.GetString(8),
-                reviewStatus = reader.GetString(9),
-                reviewedJson = reader.GetString(10),
-                createdAt = reader.GetDateTime(11)
+                contractType = reader.GetString(3),
+                customerId = reader.IsDBNull(4) ? "" : reader.GetGuid(4).ToString(),
+                sourceMode = reader.GetString(5),
+                customerHint = reader.GetString(6),
+                projectNameHint = reader.GetString(7),
+                notes = reader.GetString(8),
+                extractionStatus = reader.GetString(9),
+                extractedJson = reader.GetString(10),
+                reviewStatus = reader.GetString(11),
+                reviewedJson = reader.GetString(12),
+                createdAt = reader.GetDateTime(13)
             };
         }
     }
@@ -5906,12 +5857,7 @@ app.MapGet("/api/work-register/intake/packages/{intakePackageId:guid}/review", a
         }
     }
 
-    return Results.Ok(new
-    {
-        status = "intake_review_loaded",
-        package,
-        documents
-    });
+    return Results.Ok(new { status = "intake_review_loaded", package, documents });
 });
 
 app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract", async (Guid intakePackageId, HttpContext httpContext) =>
@@ -5919,47 +5865,25 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
     var sessionUserId = GetProjectPulseSessionUserId(httpContext);
     if (sessionUserId is null)
     {
-        return Results.Json(new { status = "session_required", message = "Missing session token.", guard = "055D2_intake_extract_session_required" }, statusCode: StatusCodes.Status401Unauthorized);
+        return Results.Json(new { status = "session_required", message = "Missing session token.", guard = "055D2A_intake_extract_session_required" }, statusCode: StatusCodes.Status401Unauthorized);
     }
 
     var dbConfig = DatabaseConfig.FromEnvironment();
-
     await using var connection = new NpgsqlConnection(dbConfig.ConnectionString);
     await connection.OpenAsync();
 
-    var canManageIntake = false;
-    await using (var accessCommand = new NpgsqlCommand("""
-        SELECT EXISTS (
-            SELECT 1
-            FROM app_user_role_assignments ura
-            JOIN app_roles r
-              ON r.app_role_id = ura.app_role_id
-            WHERE ura.user_id = @user_id
-              AND ura.is_active = TRUE
-              AND r.is_active = TRUE
-              AND r.role_code IN (
-                  'SUPER_ADMINISTRATOR',
-                  'ADMINISTRATOR',
-                  'PROJECT_TEAM_COORDINATOR'
-              )
-        );
-        """, connection))
-    {
-        accessCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
-        canManageIntake = Convert.ToBoolean(await accessCommand.ExecuteScalarAsync() ?? false);
-    }
-
-    if (!canManageIntake)
-    {
-        return Results.Json(new { status = "access_denied", message = "Only PTC/Admin can extract intake packages." }, statusCode: StatusCodes.Status403Forbidden);
-    }
-
     string requestedWorkType = "";
+    string contractType = "";
     string customerHint = "";
     string projectNameHint = "";
+    string customerIdText = "";
 
     await using (var packageCommand = new NpgsqlCommand("""
-        SELECT requested_work_type, customer_hint, project_name_hint
+        SELECT requested_work_type,
+               COALESCE(contract_type, 'Fixed Price'),
+               customer_hint,
+               project_name_hint,
+               customer_id
         FROM work_register_intake_packages
         WHERE work_register_intake_package_id = @intake_package_id
         LIMIT 1;
@@ -5974,8 +5898,10 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
         }
 
         requestedWorkType = reader.GetString(0);
-        customerHint = reader.GetString(1);
-        projectNameHint = reader.GetString(2);
+        contractType = reader.GetString(1);
+        customerHint = reader.GetString(2);
+        projectNameHint = reader.GetString(3);
+        customerIdText = reader.IsDBNull(4) ? "" : reader.GetGuid(4).ToString();
     }
 
     var documents = new List<(Guid DocumentId, string DocumentType, string OriginalFileName, string StoredFilePath, string ContentType, long FileSizeBytes)>();
@@ -6004,63 +5930,303 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
         await using var reader = await documentCommand.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
-            documents.Add((
-                reader.GetGuid(0),
-                reader.GetString(1),
-                reader.GetString(2),
-                reader.GetString(3),
-                reader.GetString(4),
-                reader.GetInt64(5)
-            ));
+            documents.Add((reader.GetGuid(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetInt64(5)));
         }
     }
 
-    static bool IsTextLike(string path, string contentType)
+    static string CleanCell(string? value)
     {
-        var extension = System.IO.Path.GetExtension(path).ToLowerInvariant();
-        return contentType.StartsWith("text/", StringComparison.OrdinalIgnoreCase)
-            || contentType.Contains("json", StringComparison.OrdinalIgnoreCase)
-            || contentType.Contains("xml", StringComparison.OrdinalIgnoreCase)
-            || extension is ".txt" or ".csv" or ".json" or ".xml" or ".html" or ".htm" or ".md" or ".tsv";
+        return (value ?? "").Replace("\r", "\n").Replace("\t", " ").Trim();
     }
 
-    static string CleanValue(string value)
+    static string NormalizeLabel(string value)
     {
-        return (value ?? "")
-            .Replace("\t", " ")
-            .Trim()
-            .Trim('-', ':', '=', '|')
-            .Trim();
+        return new string((value ?? "").Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
     }
 
-    static string ExtractLabeledValue(string source, params string[] labels)
+    static decimal? TryDecimal(string value)
     {
-        foreach (var label in labels)
+        var clean = (value ?? "").Replace("$", "").Replace(",", "").Trim();
+        if (decimal.TryParse(clean, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var parsed))
         {
-            var pattern = $@"(?im)^\s*{System.Text.RegularExpressions.Regex.Escape(label)}\s*(?:\:|\-|\=|\|)\s*(?<value>.+?)\s*$";
-            var match = System.Text.RegularExpressions.Regex.Match(source, pattern);
-            if (match.Success)
+            return parsed;
+        }
+
+        var match = System.Text.RegularExpressions.Regex.Match(clean, @"(?<!\d)(?<number>\d{1,8}(?:\.\d{1,2})?)(?!\d)");
+        if (match.Success && decimal.TryParse(match.Groups["number"].Value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var parsedMatch))
+        {
+            return parsedMatch;
+        }
+
+        return null;
+    }
+
+    static int ColumnLettersToNumber(string letters)
+    {
+        var result = 0;
+        foreach (var character in letters.ToUpperInvariant())
+        {
+            if (character < 'A' || character > 'Z') continue;
+            result = result * 26 + (character - 'A' + 1);
+        }
+        return result;
+    }
+
+    static string CellValue(System.Xml.Linq.XElement cell, System.Collections.Generic.IReadOnlyList<string> sharedStrings)
+    {
+        var ns = cell.Name.Namespace;
+        var type = cell.Attribute("t")?.Value ?? "";
+        var value = cell.Element(ns + "v")?.Value ?? "";
+
+        if (type == "s" && int.TryParse(value, out var sharedIndex) && sharedIndex >= 0 && sharedIndex < sharedStrings.Count)
+        {
+            return CleanCell(sharedStrings[sharedIndex]);
+        }
+
+        if (type == "inlineStr")
+        {
+            return CleanCell(string.Concat(cell.Descendants(ns + "t").Select(t => t.Value)));
+        }
+
+        return CleanCell(value);
+    }
+
+    static Dictionary<string, Dictionary<(int Row, int Col), string>> ReadXlsxSheets(string filePath)
+    {
+        var sheets = new Dictionary<string, Dictionary<(int Row, int Col), string>>(StringComparer.OrdinalIgnoreCase);
+
+        using var archive = System.IO.Compression.ZipFile.OpenRead(filePath);
+
+        var sharedStrings = new List<string>();
+        var sharedStringsEntry = archive.GetEntry("xl/sharedStrings.xml");
+        if (sharedStringsEntry is not null)
+        {
+            using var sharedStream = sharedStringsEntry.Open();
+            var sharedDoc = System.Xml.Linq.XDocument.Load(sharedStream);
+            var ns = sharedDoc.Root?.Name.Namespace ?? System.Xml.Linq.XNamespace.None;
+            foreach (var si in sharedDoc.Descendants(ns + "si"))
             {
-                return CleanValue(match.Groups["value"].Value);
+                sharedStrings.Add(CleanCell(string.Concat(si.Descendants(ns + "t").Select(t => t.Value))));
+            }
+        }
+
+        var workbookEntry = archive.GetEntry("xl/workbook.xml") ?? throw new InvalidOperationException("workbook.xml not found.");
+        var relsEntry = archive.GetEntry("xl/_rels/workbook.xml.rels") ?? throw new InvalidOperationException("workbook relationships not found.");
+
+        System.Xml.Linq.XDocument workbookDoc;
+        using (var workbookStream = workbookEntry.Open())
+        {
+            workbookDoc = System.Xml.Linq.XDocument.Load(workbookStream);
+        }
+
+        System.Xml.Linq.XDocument relsDoc;
+        using (var relsStream = relsEntry.Open())
+        {
+            relsDoc = System.Xml.Linq.XDocument.Load(relsStream);
+        }
+
+        var relsNs = relsDoc.Root?.Name.Namespace ?? System.Xml.Linq.XNamespace.None;
+        var relMap = relsDoc.Descendants(relsNs + "Relationship")
+            .Where(rel => rel.Attribute("Id") is not null && rel.Attribute("Target") is not null)
+            .ToDictionary(rel => rel.Attribute("Id")!.Value, rel => rel.Attribute("Target")!.Value);
+
+        var workbookNs = workbookDoc.Root?.Name.Namespace ?? System.Xml.Linq.XNamespace.None;
+        var relationshipNs = System.Xml.Linq.XNamespace.Get("http://schemas.openxmlformats.org/officeDocument/2006/relationships");
+
+        foreach (var sheet in workbookDoc.Descendants(workbookNs + "sheet"))
+        {
+            var sheetName = sheet.Attribute("name")?.Value ?? "";
+            var relId = sheet.Attribute(relationshipNs + "id")?.Value ?? "";
+            if (string.IsNullOrWhiteSpace(sheetName) || string.IsNullOrWhiteSpace(relId) || !relMap.TryGetValue(relId, out var target))
+            {
+                continue;
+            }
+
+            target = target.Replace("\\", "/").TrimStart('/');
+            var sheetPath = target.StartsWith("xl/", StringComparison.OrdinalIgnoreCase) ? target : "xl/" + target;
+            var sheetEntry = archive.GetEntry(sheetPath);
+            if (sheetEntry is null) continue;
+
+            var cells = new Dictionary<(int Row, int Col), string>();
+            using var sheetStream = sheetEntry.Open();
+            var sheetDoc = System.Xml.Linq.XDocument.Load(sheetStream);
+            var sheetNs = sheetDoc.Root?.Name.Namespace ?? System.Xml.Linq.XNamespace.None;
+
+            foreach (var cell in sheetDoc.Descendants(sheetNs + "c"))
+            {
+                var reference = cell.Attribute("r")?.Value ?? "";
+                var letters = new string(reference.TakeWhile(char.IsLetter).ToArray());
+                var digits = new string(reference.SkipWhile(char.IsLetter).TakeWhile(char.IsDigit).ToArray());
+
+                if (!int.TryParse(digits, out var row) || string.IsNullOrWhiteSpace(letters)) continue;
+
+                var col = ColumnLettersToNumber(letters);
+                var value = CellValue(cell, sharedStrings);
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    cells[(row, col)] = value;
+                }
+            }
+
+            sheets[sheetName] = cells;
+        }
+
+        return sheets;
+    }
+
+    static string FindLabelValue(Dictionary<(int Row, int Col), string> sheet, params string[] labels)
+    {
+        var normalizedLabels = labels.Select(NormalizeLabel).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var cell in sheet.OrderBy(kvp => kvp.Key.Row).ThenBy(kvp => kvp.Key.Col))
+        {
+            if (!normalizedLabels.Contains(NormalizeLabel(cell.Value))) continue;
+
+            for (var col = cell.Key.Col + 1; col <= cell.Key.Col + 5; col++)
+            {
+                if (sheet.TryGetValue((cell.Key.Row, col), out var value) && !string.IsNullOrWhiteSpace(value))
+                {
+                    return value;
+                }
             }
         }
 
         return "";
     }
 
-    static decimal? ExtractDecimalFromLine(string line)
+    static List<object> ExtractRates(Dictionary<string, Dictionary<(int Row, int Col), string>> workbook)
     {
-        var match = System.Text.RegularExpressions.Regex.Match(line, @"(?<!\d)(?<number>\d{1,6}(?:\.\d{1,2})?)(?!\d)");
-        if (match.Success && decimal.TryParse(match.Groups["number"].Value, out var value))
+        var rates = new List<object>();
+
+        if (workbook.TryGetValue("SELL SKUs", out var sell))
         {
-            return value;
+            for (var row = 1; row <= 200; row++)
+            {
+                sell.TryGetValue((row, 2), out var rateText);
+                sell.TryGetValue((row, 3), out var hoursText);
+                sell.TryGetValue((row, 4), out var sku);
+                sell.TryGetValue((row, 5), out var description);
+
+                if (string.IsNullOrWhiteSpace(sku) || !sku.StartsWith("ON-", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                rates.Add(new
+                {
+                    source = "SELL SKUs",
+                    sku,
+                    description = description ?? "",
+                    rate = TryDecimal(rateText ?? ""),
+                    hours = TryDecimal(hoursText ?? "")
+                });
+            }
         }
 
-        return null;
+        if (workbook.TryGetValue("Summary", out var summary))
+        {
+            foreach (var cell in summary)
+            {
+                var role = cell.Value;
+                var normalized = NormalizeLabel(role);
+                if (normalized.Contains("engineer") || normalized.Contains("projectmanager") || normalized.Contains("travel") || normalized.Contains("afterhours"))
+                {
+                    if (summary.TryGetValue((cell.Key.Row, cell.Key.Col + 1), out var rateText))
+                    {
+                        var rate = TryDecimal(rateText);
+                        if (rate is not null)
+                        {
+                            rates.Add(new { source = "Summary", role, rate = rate.Value });
+                        }
+                    }
+                }
+            }
+        }
+
+        return rates;
     }
 
-    var combinedText = new System.Text.StringBuilder();
+    static List<object> ExtractTasks(Dictionary<string, Dictionary<(int Row, int Col), string>> workbook)
+    {
+        var tasks = new List<object>();
+        var phaseSheets = new[] { "Plan", "Design", "Implement", "Validate", "Release" };
+
+        foreach (var phase in phaseSheets)
+        {
+            if (!workbook.TryGetValue(phase, out var sheet)) continue;
+
+            for (var row = 1; row <= 200; row++)
+            {
+                sheet.TryGetValue((row, 1), out var taskName);
+                sheet.TryGetValue((row, 2), out var regularText);
+                sheet.TryGetValue((row, 3), out var overtimeText);
+                sheet.TryGetValue((row, 4), out var reserveText);
+                sheet.TryGetValue((row, 5), out var role);
+                sheet.TryGetValue((row, 6), out var travelRequired);
+                sheet.TryGetValue((row, 7), out var notes);
+
+                taskName = CleanCell(taskName);
+                if (string.IsNullOrWhiteSpace(taskName) || taskName.StartsWith("[", StringComparison.Ordinal)) continue;
+
+                var regular = TryDecimal(regularText ?? "") ?? 0m;
+                var overtime = TryDecimal(overtimeText ?? "") ?? 0m;
+                var reserve = TryDecimal(reserveText ?? "") ?? 0m;
+
+                if (regular == 0m && overtime == 0m && reserve == 0m) continue;
+
+                tasks.Add(new
+                {
+                    phase,
+                    taskName,
+                    regularHours = regular,
+                    overtimeHours = overtime,
+                    reserveHours = reserve,
+                    totalHours = regular + overtime + reserve,
+                    engineeringRole = role ?? "",
+                    travelRequired = travelRequired ?? "",
+                    notes = notes ?? "",
+                    billable = true,
+                    utilizationEligible = true,
+                    engineers = new List<object>()
+                });
+            }
+        }
+
+        return tasks;
+    }
+
+    static List<object> ExtractPhaseTotals(Dictionary<string, Dictionary<(int Row, int Col), string>> workbook)
+    {
+        var totals = new List<object>();
+        if (!workbook.TryGetValue("Totals Sheet", out var sheet)) return totals;
+
+        for (var row = 1; row <= 120; row++)
+        {
+            sheet.TryGetValue((row, 2), out var label);
+            sheet.TryGetValue((row, 3), out var hours);
+            sheet.TryGetValue((row, 4), out var overtimeHours);
+            sheet.TryGetValue((row, 5), out var laborTravel);
+
+            if (string.IsNullOrWhiteSpace(label)) continue;
+
+            var normalized = NormalizeLabel(label);
+            if (normalized is "plan" or "design" or "implement" or "validate" or "release")
+            {
+                totals.Add(new
+                {
+                    phase = label,
+                    hours = TryDecimal(hours ?? "") ?? 0m,
+                    overtimeHours = TryDecimal(overtimeHours ?? "") ?? 0m,
+                    laborAndTravel = TryDecimal(laborTravel ?? "") ?? 0m
+                });
+            }
+        }
+
+        return totals;
+    }
+
     var parserNotes = new List<string>();
+    Dictionary<string, object>? extractedData = null;
 
     foreach (var document in documents)
     {
@@ -6070,114 +6236,78 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
             continue;
         }
 
-        if (!IsTextLike(document.StoredFilePath, document.ContentType))
+        var extension = System.IO.Path.GetExtension(document.StoredFilePath).ToLowerInvariant();
+        if (extension != ".xlsx" && extension != ".xlsm")
         {
-            parserNotes.Add($"{document.DocumentType} file '{document.OriginalFileName}' is not text-like. 055D.2 kept it for review; a file-specific parser is needed for this format.");
-            continue;
-        }
-
-        var fileInfo = new System.IO.FileInfo(document.StoredFilePath);
-        if (fileInfo.Length > 2L * 1024L * 1024L)
-        {
-            parserNotes.Add($"{document.DocumentType} file '{document.OriginalFileName}' is text-like but larger than parser preview limit.");
+            parserNotes.Add($"{document.DocumentType} file '{document.OriginalFileName}' is not an XLSX GSD. It remains attached for review.");
             continue;
         }
 
         try
         {
-            combinedText.AppendLine($"--- {document.DocumentType}: {document.OriginalFileName} ---");
-            combinedText.AppendLine(await System.IO.File.ReadAllTextAsync(document.StoredFilePath));
-            combinedText.AppendLine();
+            var workbook = ReadXlsxSheets(document.StoredFilePath);
+            workbook.TryGetValue("Summary", out var summary);
+            summary ??= new Dictionary<(int Row, int Col), string>();
+
+            extractedData = new Dictionary<string, object>
+            {
+                ["extractionStatus"] = "extracted_needs_review",
+                ["parserVersion"] = "055D.2A_xlsx_gsd_parser",
+                ["requestedWorkType"] = requestedWorkType,
+                ["contractType"] = string.IsNullOrWhiteSpace(FindLabelValue(summary, "Contract Type")) ? contractType : FindLabelValue(summary, "Contract Type"),
+                ["customerId"] = customerIdText,
+                ["customerName"] = string.IsNullOrWhiteSpace(FindLabelValue(summary, "Client Name", "Customer", "Customer Name")) ? customerHint : FindLabelValue(summary, "Client Name", "Customer", "Customer Name"),
+                ["projectName"] = string.IsNullOrWhiteSpace(FindLabelValue(summary, "Project Name", "Work Name")) ? projectNameHint : FindLabelValue(summary, "Project Name", "Work Name"),
+                ["accountExecutiveName"] = FindLabelValue(summary, "AE", "Account Executive"),
+                ["solutionArchitectName"] = FindLabelValue(summary, "SA", "Solution Architect"),
+                ["insideSalesName"] = FindLabelValue(summary, "SAA", "Inside Sales"),
+                ["pmHours"] = FindLabelValue(summary, "Total Project Oversight Hours", "Proj Oversight Hours"),
+                ["engineeringHours"] = FindLabelValue(summary, "Total Engineering Hours"),
+                ["totalProjectHours"] = FindLabelValue(summary, "Total Project Hours"),
+                ["travelHours"] = FindLabelValue(summary, "Travel Hours"),
+                ["projectListPrice"] = FindLabelValue(summary, "Project List Price"),
+                ["workLocation"] = FindLabelValue(summary, "Work Location"),
+                ["rates"] = ExtractRates(workbook),
+                ["tasks"] = ExtractTasks(workbook),
+                ["phaseTotals"] = ExtractPhaseTotals(workbook),
+                ["documents"] = documents.Select(d => new { d.DocumentId, d.DocumentType, d.OriginalFileName, d.ContentType, d.FileSizeBytes }).ToList(),
+                ["parserNotes"] = parserNotes.Concat(new[] { "Extracted from XLSX GSD workbook. Review customer mapping, people mapping, rates, tasks, and hours before committing to Work Register." }).ToList()
+            };
+
+            break;
         }
         catch (Exception ex)
         {
-            parserNotes.Add($"{document.DocumentType} file '{document.OriginalFileName}' could not be read: {ex.Message}");
+            parserNotes.Add($"{document.DocumentType} XLSX parser failed for {document.OriginalFileName}: {ex.Message}");
         }
     }
 
-    var sourceText = combinedText.ToString();
-
-    var extractedProjectName = ExtractLabeledValue(sourceText, "Project Name", "Project", "Work Name", "Engagement Name");
-    var extractedCustomer = ExtractLabeledValue(sourceText, "Customer", "Client", "Account", "End Customer");
-    var extractedAe = ExtractLabeledValue(sourceText, "Account Executive", "AE", "Sales Executive");
-    var extractedSa = ExtractLabeledValue(sourceText, "Solution Architect", "SA", "Architect");
-    var extractedSaa = ExtractLabeledValue(sourceText, "SAA", "Inside Sales", "Sales Administrator", "Sales Admin");
-    var extractedPmHours = ExtractLabeledValue(sourceText, "PM Hours", "Project Manager Hours", "Project Management Hours");
-    var extractedEngineeringHours = ExtractLabeledValue(sourceText, "Engineering Hours", "Engineer Hours", "Implementation Hours");
-    var extractedTravelHours = ExtractLabeledValue(sourceText, "Travel Hours", "Travel");
-
-    var rates = new List<object>();
-    var tasks = new List<object>();
-
-    foreach (var rawLine in sourceText.Split('\n'))
+    extractedData ??= new Dictionary<string, object>
     {
-        var line = CleanValue(rawLine);
-        if (string.IsNullOrWhiteSpace(line))
-        {
-            continue;
-        }
-
-        var lower = line.ToLowerInvariant();
-
-        if (rates.Count < 50 && (line.Contains('$') || lower.Contains("rate") || lower.Contains("afterhours") || lower.Contains("after hours")))
-        {
-            var rateValue = ExtractDecimalFromLine(line);
-            rates.Add(new
-            {
-                description = line,
-                rate = rateValue
-            });
-        }
-
-        if (tasks.Count < 80 && (lower.Contains("hour") || lower.Contains("hrs") || lower.Contains(" hr")))
-        {
-            var hourValue = ExtractDecimalFromLine(line);
-            if (hourValue is not null)
-            {
-                tasks.Add(new
-                {
-                    taskName = line.Length > 120 ? line[..120] : line,
-                    hours = hourValue.Value
-                });
-            }
-        }
-    }
-
-    var extractionStatus = string.IsNullOrWhiteSpace(sourceText)
-        ? "needs_manual_review"
-        : "extracted_needs_review";
-
-    if (string.IsNullOrWhiteSpace(sourceText))
-    {
-        parserNotes.Add("No text could be extracted from the uploaded GSD/SOW files. Review mapping can still be entered manually.");
-    }
-
-    var extractedData = new
-    {
-        extractionStatus,
-        parserVersion = "055D.2_lightweight_text_parser",
-        requestedWorkType,
-        projectName = string.IsNullOrWhiteSpace(extractedProjectName) ? projectNameHint : extractedProjectName,
-        customerName = string.IsNullOrWhiteSpace(extractedCustomer) ? customerHint : extractedCustomer,
-        accountExecutiveName = extractedAe,
-        solutionArchitectName = extractedSa,
-        insideSalesName = extractedSaa,
-        pmHours = extractedPmHours,
-        engineeringHours = extractedEngineeringHours,
-        travelHours = extractedTravelHours,
-        rates,
-        tasks,
-        parserNotes,
-        documents = documents.Select(document => new
-        {
-            document.DocumentId,
-            document.DocumentType,
-            document.OriginalFileName,
-            document.ContentType,
-            document.FileSizeBytes
-        }).ToList()
+        ["extractionStatus"] = "needs_manual_review",
+        ["parserVersion"] = "055D.2A_xlsx_gsd_parser",
+        ["requestedWorkType"] = requestedWorkType,
+        ["contractType"] = contractType,
+        ["customerId"] = customerIdText,
+        ["customerName"] = customerHint,
+        ["projectName"] = projectNameHint,
+        ["accountExecutiveName"] = "",
+        ["solutionArchitectName"] = "",
+        ["insideSalesName"] = "",
+        ["pmHours"] = "",
+        ["engineeringHours"] = "",
+        ["totalProjectHours"] = "",
+        ["travelHours"] = "",
+        ["projectListPrice"] = "",
+        ["workLocation"] = "",
+        ["rates"] = new List<object>(),
+        ["tasks"] = new List<object>(),
+        ["phaseTotals"] = new List<object>(),
+        ["documents"] = documents.Select(d => new { d.DocumentId, d.DocumentType, d.OriginalFileName, d.ContentType, d.FileSizeBytes }).ToList(),
+        ["parserNotes"] = parserNotes.Count > 0 ? parserNotes : new List<string> { "No XLSX GSD was found. Enter/review mapping manually." }
     };
 
+    var extractionStatus = Convert.ToString(extractedData["extractionStatus"]) ?? "needs_manual_review";
     var extractedJson = JsonSerializer.Serialize(extractedData);
 
     await using var transaction = await connection.BeginTransactionAsync();
@@ -6208,7 +6338,7 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
         VALUES (
             @history_id,
             @intake_package_id,
-            'gsd_sow_extraction_run',
+            'gsd_xlsx_extraction_run',
             @summary,
             @changed_by_user_id,
             CAST(@payload_json AS jsonb)
@@ -6217,7 +6347,7 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
     {
         historyCommand.Parameters.AddWithValue("history_id", Guid.NewGuid());
         historyCommand.Parameters.AddWithValue("intake_package_id", intakePackageId);
-        historyCommand.Parameters.AddWithValue("summary", $"Extraction completed with status {extractionStatus}.");
+        historyCommand.Parameters.AddWithValue("summary", $"XLSX extraction completed with status {extractionStatus}.");
         historyCommand.Parameters.AddWithValue("changed_by_user_id", sessionUserId.Value);
         historyCommand.Parameters.AddWithValue("payload_json", extractedJson);
         await historyCommand.ExecuteNonQueryAsync();
@@ -6232,8 +6362,8 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
         extractionStatus,
         extractedData,
         message = extractionStatus == "extracted_needs_review"
-            ? "Extraction completed. Review and correct the mapping before committing to Work Register."
-            : "Extraction could not read structured text from the uploaded files. Enter mapping manually before committing to Work Register."
+            ? "XLSX GSD extraction completed. Review and correct the mapping before committing to Work Register."
+            : "Extraction needs manual review. Enter mapping manually before committing to Work Register."
     });
 });
 
@@ -6242,48 +6372,16 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/review/sa
     var sessionUserId = GetProjectPulseSessionUserId(httpContext);
     if (sessionUserId is null)
     {
-        return Results.Json(new { status = "session_required", message = "Missing session token.", guard = "055D2_intake_review_save_session_required" }, statusCode: StatusCodes.Status401Unauthorized);
+        return Results.Json(new { status = "session_required", message = "Missing session token.", guard = "055D2A_intake_review_save_session_required" }, statusCode: StatusCodes.Status401Unauthorized);
     }
 
     using var document = await JsonDocument.ParseAsync(httpContext.Request.Body);
     var root = document.RootElement;
-
-    var reviewedDataJson = root.TryGetProperty("reviewedData", out var reviewedData)
-        ? reviewedData.GetRawText()
-        : root.GetRawText();
+    var reviewedDataJson = root.TryGetProperty("reviewedData", out var reviewedData) ? reviewedData.GetRawText() : root.GetRawText();
 
     var dbConfig = DatabaseConfig.FromEnvironment();
-
     await using var connection = new NpgsqlConnection(dbConfig.ConnectionString);
     await connection.OpenAsync();
-
-    var canManageIntake = false;
-    await using (var accessCommand = new NpgsqlCommand("""
-        SELECT EXISTS (
-            SELECT 1
-            FROM app_user_role_assignments ura
-            JOIN app_roles r
-              ON r.app_role_id = ura.app_role_id
-            WHERE ura.user_id = @user_id
-              AND ura.is_active = TRUE
-              AND r.is_active = TRUE
-              AND r.role_code IN (
-                  'SUPER_ADMINISTRATOR',
-                  'ADMINISTRATOR',
-                  'PROJECT_TEAM_COORDINATOR'
-              )
-        );
-        """, connection))
-    {
-        accessCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
-        canManageIntake = Convert.ToBoolean(await accessCommand.ExecuteScalarAsync() ?? false);
-    }
-
-    if (!canManageIntake)
-    {
-        return Results.Json(new { status = "access_denied", message = "Only PTC/Admin can save intake review mapping." }, statusCode: StatusCodes.Status403Forbidden);
-    }
-
     await using var transaction = await connection.BeginTransactionAsync();
 
     var affected = 0;
@@ -6345,7 +6443,8 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/review/sa
         message = "Reviewed intake mapping saved. Next step is committing the reviewed package to Work Register."
     });
 });
-/* 055D_2_GSD_EXTRACTION_REVIEW_API_END */
+/* 055D_2A_GSD_XLSX_EXTRACTION_REVIEW_API_END */
+
 
 
 /* 055D_1_INTAKE_WIZARD_GSD_SOW_API_START */
@@ -6407,11 +6506,20 @@ app.MapPost("/api/work-register/intake/packages/upload", async (HttpContext http
         return string.IsNullOrWhiteSpace(without) ? clean : without.Replace("_", " ");
     }
 
+    Guid? ReadFormGuid(string name)
+    {
+        var value = ReadFormString(name);
+        return Guid.TryParse(value, out var parsed) ? parsed : null;
+    }
+
     var requestedWorkType = ReadFormString("requestedWorkType", "Project");
-    var customerHint = ReadFormString("customerHint");
+    var contractType = ReadFormString("contractType", "Fixed Price");
+    var customerId = ReadFormGuid("customerId");
+    var customerHint = ReadFormString("customerName", ReadFormString("customerHint"));
     var projectNameHint = ReadFormString("projectNameHint");
     var notes = ReadFormString("notes");
     var reason = ReadFormString("reason");
+    /* 055D_2A_INTAKE_UPLOAD_CUSTOMER_CONTRACT_PATCH */
     var skipGsd = ReadFormBool("skipGsd", false);
     var skipSow = ReadFormBool("skipSow", false);
 
@@ -6421,6 +6529,11 @@ app.MapPost("/api/work-register/intake/packages/upload", async (HttpContext http
 
     var isProjectLike = string.Equals(requestedWorkType, "Project", StringComparison.OrdinalIgnoreCase)
         || string.Equals(requestedWorkType, "IQS", StringComparison.OrdinalIgnoreCase);
+
+    if (customerId is null)
+    {
+        return Results.BadRequest(new { status = "customer_required", message = "Select a customer from the Customer Directory before creating an intake package. If the customer does not exist, onboard the customer first." });
+    }
 
     if (string.IsNullOrWhiteSpace(reason))
     {
@@ -6540,6 +6653,8 @@ app.MapPost("/api/work-register/intake/packages/upload", async (HttpContext http
         parserStage = "055D.1_upload_only",
         message = "GSD/SOW files are stored. 055D.2 will extract customer, project name, AE, SA, SAA, rates, tasks, and hours.",
         requestedWorkType,
+        contractType,
+        customerId,
         customerHint,
         projectNameHint,
         uploadedDocuments = savedDocuments.Select(document => new
@@ -6572,6 +6687,8 @@ app.MapPost("/api/work-register/intake/packages/upload", async (HttpContext http
             @intake_package_id,
             'uploaded',
             @requested_work_type,
+            @contract_type,
+            @customer_id,
             'gsd_sow_upload',
             @customer_hint,
             @project_name_hint,
@@ -6585,6 +6702,8 @@ app.MapPost("/api/work-register/intake/packages/upload", async (HttpContext http
     {
         packageCommand.Parameters.AddWithValue("intake_package_id", intakePackageId);
         packageCommand.Parameters.AddWithValue("requested_work_type", requestedWorkType);
+        packageCommand.Parameters.AddWithValue("contract_type", contractType);
+        packageCommand.Parameters.Add("customer_id", NpgsqlTypes.NpgsqlDbType.Uuid).Value = customerId.Value;
         packageCommand.Parameters.AddWithValue("customer_hint", customerHint);
         packageCommand.Parameters.AddWithValue("project_name_hint", projectNameHint);
         packageCommand.Parameters.AddWithValue("notes", notes);
@@ -6680,6 +6799,8 @@ app.MapPost("/api/work-register/intake/packages/upload", async (HttpContext http
         status = "intake_package_uploaded",
         intakePackageId,
         requestedWorkType,
+        contractType,
+        customerId,
         customerHint,
         projectNameHint,
         extractionStatus = "pending_parser",

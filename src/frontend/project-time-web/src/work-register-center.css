@@ -1167,3 +1167,9 @@ body[data-projectpulse-active-route="work-register"] #work-register .work-regist
   border-color: rgba(74, 222, 128, 0.22);
 }
 /* 055D_2_GSD_EXTRACTION_REVIEW_END */
+
+/* 055D_2A_GSD_XLSX_EXTRACTION_REVIEW_START */
+.work-register-intake-review-panel textarea {
+  min-height: 7rem;
+}
+/* 055D_2A_GSD_XLSX_EXTRACTION_REVIEW_END */
