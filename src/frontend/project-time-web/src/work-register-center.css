@@ -1403,3 +1403,169 @@ body[data-projectpulse-active-route="work-register"] #work-register .work-regist
   max-width: 56rem;
 }
 /* 055D_2I_REPAIRED_TOTALS_ROLLUP_SKU_MAPPING_END */
+
+/* 055D_3_INTAKE_ASSIGNMENT_REVIEW_START */
+.work-register-intake-assignment-review {
+  display: grid;
+  gap: 0.9rem;
+  border: 1px solid rgba(99, 102, 241, 0.24);
+  border-radius: 16px;
+  background: #eef2ff;
+  padding: 0.85rem;
+}
+
+.work-register-assignment-lead-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.work-register-intake-task-assignment-list {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.work-register-intake-task-assignment-card {
+  display: grid;
+  gap: 0.7rem;
+  border: 1px solid rgba(129, 140, 248, 0.28);
+  border-radius: 14px;
+  background: #ffffff;
+  padding: 0.75rem;
+}
+
+.work-register-intake-task-assignment-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 0.8rem;
+}
+
+.work-register-intake-task-assignment-heading > div {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.work-register-intake-task-assignment-heading span {
+  color: #64748b;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.work-register-intake-task-assignment-roster {
+  display: grid;
+  grid-template-columns: 5rem minmax(18rem, 2fr) minmax(7rem, 0.7fr) minmax(8rem, 0.75fr) minmax(8rem, 0.75fr);
+  gap: 0.35rem;
+  overflow-x: auto;
+}
+
+.work-register-assignment-grid-heading {
+  color: #475569;
+  font-size: 0.78rem;
+  font-weight: 900;
+  padding: 0 0.25rem;
+}
+
+.work-register-assignment-grid-row {
+  display: contents;
+}
+
+.work-register-assignment-grid-row select,
+.work-register-assignment-grid-row input {
+  min-width: 0;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 10px;
+  background: #ffffff;
+  color: #0f172a;
+  padding: 0.45rem 0.5rem;
+}
+
+.work-register-intake-task-assignment-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  color: #334155;
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+@media (max-width: 880px) {
+  .work-register-assignment-lead-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .work-register-intake-task-assignment-heading,
+  .work-register-intake-task-assignment-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
+[data-theme="dark"] .work-register-intake-assignment-review {
+  background: rgba(49, 46, 129, 0.25);
+  border-color: rgba(129, 140, 248, 0.28);
+}
+
+[data-theme="dark"] .work-register-intake-task-assignment-card {
+  background: rgba(15, 23, 42, 0.82);
+  border-color: rgba(129, 140, 248, 0.25);
+}
+
+[data-theme="dark"] .work-register-assignment-grid-row select,
+[data-theme="dark"] .work-register-assignment-grid-row input {
+  background: rgba(15, 23, 42, 0.92);
+  border-color: rgba(148, 163, 184, 0.3);
+  color: #e2e8f0;
+}
+/* 055D_3_INTAKE_ASSIGNMENT_REVIEW_END */
+
+/* 055D_3A_ASSIGNMENT_POOL_REPAIR_START */
+.work-register-intake-assignment-review select {
+  min-height: 2.35rem;
+}
+/* 055D_3A_ASSIGNMENT_POOL_REPAIR_END */
+
+/* 055D_3B_ROLE_BASED_ASSIGNMENT_POOLS_START */
+.work-register-assignment-save-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  border: 1px solid rgba(37, 99, 235, 0.22);
+  border-radius: 14px;
+  background: #eff6ff;
+  padding: 0.75rem;
+}
+
+.work-register-assignment-save-bar .muted {
+  margin: 0;
+  max-width: 42rem;
+}
+
+.work-register-assignment-pool-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  color: #475569;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.work-register-assignment-pool-counts span {
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 999px;
+  background: #ffffff;
+  padding: 0.35rem 0.65rem;
+}
+
+[data-theme="dark"] .work-register-assignment-save-bar {
+  background: rgba(30, 64, 175, 0.24);
+  border-color: rgba(147, 197, 253, 0.25);
+}
+
+[data-theme="dark"] .work-register-assignment-pool-counts span {
+  background: rgba(15, 23, 42, 0.9);
+  border-color: rgba(148, 163, 184, 0.25);
+}
+/* 055D_3B_ROLE_BASED_ASSIGNMENT_POOLS_END */

@@ -196,6 +196,9 @@ export default function WorkRegisterCenter() {
   // 055D_2H_HYUNDAI_TOYOTA_RATE_TASK_REPAIR
   // 055D_2I_TOYOTA_HYUNDAI_TOTALS_PRICING
   // 055D_2I_REPAIRED_TOTALS_ROLLUP_SKU_MAPPING
+  // 055D_3_INTAKE_ASSIGNMENT_REVIEW
+  // 055D_3B_ROLE_BASED_ASSIGNMENT_POOLS
+  // 055D_3A_ASSIGNMENT_POOL_REPAIR
 
   const [intakeForm, setIntakeForm] = useState({
     requestedWorkType: 'Project',
@@ -1418,6 +1421,329 @@ export default function WorkRegisterCenter() {
   }
 
 
+
+  function intakeUserValueToText(value) {
+    if (value === null || value === undefined) return '';
+    if (typeof value === 'string') return value.trim();
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+    return '';
+  }
+
+  function intakeUserOptionId(user) {
+    if (typeof user === 'string') return user.trim();
+
+    const preferredKeys = [
+      'userId', 'userID', 'user_id', 'id', 'value', 'key',
+      'employeeId', 'employee_id', 'personId', 'person_id',
+      'accountId', 'account_id', 'entraObjectId', 'entra_object_id'
+    ];
+
+    for (const key of preferredKeys) {
+      const value = intakeUserValueToText(user?.[key]);
+      if (value) return value;
+    }
+
+    const idEntry = Object.entries(user || {})
+      .map(([key, value]) => [key, intakeUserValueToText(value)])
+      .find(([key, value]) => value && /id|uuid|guid/i.test(key));
+
+    if (idEntry) return idEntry[1];
+
+    return intakeUserOptionName(user);
+  }
+
+  function intakeUserOptionName(user) {
+    if (typeof user === 'string') return user.trim();
+
+    const preferredKeys = [
+      'displayName', 'display_name', 'fullName', 'full_name',
+      'name', 'label', 'text', 'userName', 'user_name',
+      'email', 'mail', 'upn', 'principalName', 'principal_name'
+    ];
+
+    for (const key of preferredKeys) {
+      const value = intakeUserValueToText(user?.[key]);
+      if (value) return value;
+    }
+
+    const anyValue = Object.entries(user || {})
+      .map(([, value]) => intakeUserValueToText(value))
+      .find(Boolean);
+
+    return anyValue || 'Unnamed user';
+  }
+
+  function intakeFlattenUserValue(value, depth = 0) {
+    if (value === null || value === undefined || depth > 4) return '';
+
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      return String(value);
+    }
+
+    if (Array.isArray(value)) {
+      return value.map((item) => intakeFlattenUserValue(item, depth + 1)).join(' ');
+    }
+
+    if (typeof value === 'object') {
+      return Object.entries(value)
+        .map(([key, nestedValue]) => `${key} ${intakeFlattenUserValue(nestedValue, depth + 1)}`)
+        .join(' ');
+    }
+
+    return '';
+  }
+
+  function intakeNormalizePoolText(value) {
+    return String(value || '')
+      .toLowerCase()
+      .replace(/[_/-]+/g, ' ')
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function intakeUserPoolText(user) {
+    const targetedKeys = [
+      'role', 'roles', 'roleName', 'role_name', 'phdRole', 'phd_role', 'PHDRole', 'PHD_Role',
+      'phdRoles', 'phd_roles', 'applicationRole', 'application_role', 'applicationRoles',
+      'team', 'teams', 'teamName', 'team_name', 'teamRole', 'team_role',
+      'group', 'groups', 'department', 'departments', 'practice', 'practiceName',
+      'resourceType', 'resource_type', 'resourceRole', 'resource_role',
+      'jobTitle', 'job_title', 'title', 'discipline', 'serviceLine', 'service_line'
+    ];
+
+    const targetedText = targetedKeys
+      .map((key) => intakeFlattenUserValue(user?.[key]))
+      .join(' ');
+
+    const fullObjectText = intakeFlattenUserValue(user);
+
+    return intakeNormalizePoolText(`${targetedText} ${fullObjectText}`);
+  }
+
+
+  function intakeUserOptionRole(user) {
+    return intakeUserPoolText(user);
+  }
+
+  function collectIntakeUserOptions() {
+    const collections = [];
+
+    const maybePush = (value) => {
+      if (Array.isArray(value)) {
+        collections.push(value);
+      }
+    };
+
+    if (typeof editUserOptions !== 'undefined') maybePush(editUserOptions);
+    if (typeof editUsers !== 'undefined') maybePush(editUsers);
+    if (typeof userOptions !== 'undefined') maybePush(userOptions);
+    if (typeof activeUserOptions !== 'undefined') maybePush(activeUserOptions);
+    if (typeof workRegisterUserOptions !== 'undefined') maybePush(workRegisterUserOptions);
+    if (typeof assignmentUserOptions !== 'undefined') maybePush(assignmentUserOptions);
+    if (typeof workRegisterAssignmentUserOptions !== 'undefined') maybePush(workRegisterAssignmentUserOptions);
+
+    if (typeof projectManagerOptions !== 'undefined') maybePush(projectManagerOptions);
+    if (typeof projectCoordinatorOptions !== 'undefined') maybePush(projectCoordinatorOptions);
+    if (typeof projectManagementOptions !== 'undefined') maybePush(projectManagementOptions);
+    if (typeof projectManagementTeamOptions !== 'undefined') maybePush(projectManagementTeamOptions);
+
+    if (typeof engineerOptions !== 'undefined') maybePush(engineerOptions);
+    if (typeof editEngineerOptions !== 'undefined') maybePush(editEngineerOptions);
+    if (typeof engineeringOptions !== 'undefined') maybePush(engineeringOptions);
+    if (typeof engineeringPoolOptions !== 'undefined') maybePush(engineeringPoolOptions);
+    if (typeof resourceOptions !== 'undefined') maybePush(resourceOptions);
+    if (typeof activeResourceOptions !== 'undefined') maybePush(activeResourceOptions);
+
+    const merged = [];
+    const seen = new Set();
+
+    collections.flat().forEach((user) => {
+      const id = intakeUserOptionId(user);
+      const name = intakeUserOptionName(user);
+
+      if (!id || !name) return;
+
+      const key = `${id}|${name}`;
+      if (seen.has(key)) return;
+
+      seen.add(key);
+      merged.push(user);
+    });
+
+    return merged.sort((a, b) => intakeUserOptionName(a).localeCompare(intakeUserOptionName(b)));
+  }
+
+  function intakeAssignableUsers(kind = 'all') {
+    const users = collectIntakeUserOptions();
+
+    if (kind === 'all') return users;
+
+    const normalizedKind = String(kind || '').toLowerCase();
+
+    const projectManagementMatchers = [
+      'project management',
+      'project manager',
+      'pmo',
+      'project team coordinator',
+      'project management team lead',
+      'project management manager'
+    ];
+
+    const engineeringMatchers = [
+      'engineering',
+      'engineering team lead'
+    ];
+
+    const matchesAny = (text, matchers) => matchers.some((matcher) => {
+      const normalizedMatcher = intakeNormalizePoolText(matcher);
+      return text === normalizedMatcher
+        || text.includes(normalizedMatcher)
+        || text.split(' ').includes(normalizedMatcher);
+    });
+
+    const filtered = users.filter((user) => {
+      const poolText = intakeUserPoolText(user);
+
+      if (normalizedKind === 'pm' || normalizedKind === 'pc' || normalizedKind === 'projectmanagement') {
+        return matchesAny(poolText, projectManagementMatchers);
+      }
+
+      if (normalizedKind === 'engineer' || normalizedKind === 'engineering') {
+        return matchesAny(poolText, engineeringMatchers);
+      }
+
+      return true;
+    });
+
+    return filtered;
+  }
+
+  function blankTaskAssignment(task = {}, primary = false) {
+    return {
+      engineerUserId: '',
+      engineerName: '',
+      hours: numberFromReviewValue(task?.totalHours || task?.regularHours || 0),
+      allocationPercent: primary ? 100 : 0,
+      isPrimary: primary,
+      notes: ''
+    };
+  }
+
+  function taskAssignmentRows(task) {
+    if (Array.isArray(task?.assignments) && task.assignments.length > 0) {
+      return task.assignments;
+    }
+
+    if (task?.engineerUserId || task?.primaryEngineerUserId) {
+      return [{
+        engineerUserId: task.engineerUserId || task.primaryEngineerUserId,
+        engineerName: task.engineerName || task.primaryEngineerName || '',
+        hours: numberFromReviewValue(task.totalHours || task.regularHours || 0),
+        allocationPercent: 100,
+        isPrimary: true,
+        notes: ''
+      }];
+    }
+
+    return [blankTaskAssignment(task, true)];
+  }
+
+  function updateTaskAssignmentMode(taskIndex, multiple) {
+    const tasks = gsdTaskRows();
+    const task = tasks[taskIndex] || {};
+    const assignments = taskAssignmentRows(task);
+
+    tasks[taskIndex] = {
+      ...task,
+      assignmentMode: multiple ? 'multiple' : 'single',
+      assignments: multiple ? assignments : [assignments[0] || blankTaskAssignment(task, true)]
+    };
+
+    setIntakeReviewArrayField('tasksText', tasks);
+  }
+
+  function updateTaskAssignment(taskIndex, assignmentIndex, key, value) {
+    const tasks = gsdTaskRows();
+    const task = tasks[taskIndex] || {};
+    const assignments = taskAssignmentRows(task);
+
+    assignments[assignmentIndex] = {
+      ...(assignments[assignmentIndex] || blankTaskAssignment(task, assignmentIndex === 0)),
+      [key]: value
+    };
+
+    if (key === 'engineerUserId') {
+      const user = intakeAssignableUsers('engineer').find((option) => String(intakeUserOptionId(option)) === String(value));
+      assignments[assignmentIndex].engineerName = user ? intakeUserOptionName(user) : '';
+    }
+
+    if (key === 'isPrimary' && value === true) {
+      assignments.forEach((assignment, index) => {
+        assignment.isPrimary = index === assignmentIndex;
+      });
+    }
+
+    if (!assignments.some((assignment) => assignment.isPrimary) && assignments.length > 0) {
+      assignments[0].isPrimary = true;
+    }
+
+    tasks[taskIndex] = {
+      ...task,
+      assignmentMode: assignments.length > 1 ? 'multiple' : (task.assignmentMode || 'single'),
+      assignments
+    };
+
+    setIntakeReviewArrayField('tasksText', tasks);
+  }
+
+  function addTaskAssignmentRow(taskIndex) {
+    const tasks = gsdTaskRows();
+    const task = tasks[taskIndex] || {};
+    const assignments = taskAssignmentRows(task);
+
+    assignments.push({
+      ...blankTaskAssignment(task, false),
+      hours: 0,
+      allocationPercent: 0
+    });
+
+    tasks[taskIndex] = {
+      ...task,
+      assignmentMode: 'multiple',
+      assignments
+    };
+
+    setIntakeReviewArrayField('tasksText', tasks);
+  }
+
+  function removeTaskAssignmentRow(taskIndex, assignmentIndex) {
+    const tasks = gsdTaskRows();
+    const task = tasks[taskIndex] || {};
+    const assignments = taskAssignmentRows(task).filter((_, index) => index !== assignmentIndex);
+
+    if (assignments.length === 0) {
+      assignments.push(blankTaskAssignment(task, true));
+    }
+
+    if (!assignments.some((assignment) => assignment.isPrimary)) {
+      assignments[0].isPrimary = true;
+    }
+
+    tasks[taskIndex] = {
+      ...task,
+      assignmentMode: assignments.length > 1 ? 'multiple' : 'single',
+      assignments
+    };
+
+    setIntakeReviewArrayField('tasksText', tasks);
+  }
+
+  function taskAssignmentHoursTotal(task) {
+    return taskAssignmentRows(task).reduce((sum, assignment) => sum + numberFromReviewValue(assignment.hours), 0);
+  }
+
+
   function updateIntakeReviewForm(field, value) {
     setIntakeReviewForm((current) => ({
       ...(current ?? {}),
@@ -1426,65 +1752,115 @@ export default function WorkRegisterCenter() {
   }
 
   async function saveIntakeReviewMapping() {
-    const packageId = selectedIntakeReview?.package?.intakePackageId;
-    if (!packageId) {
-      setIntakeReviewStatus('Select an intake package first.');
+    if (!selectedIntakeReview || !intakeReviewForm) {
+      setIntakeReviewStatus('Load or extract an intake package before saving the reviewed mapping.');
+      return;
+    }
+
+    const intakePackageId =
+      selectedIntakeReview?.package?.intakePackageId
+      || selectedIntakeReview?.intakePackageId
+      || intakePackageResult?.intakePackageId;
+
+    if (!intakePackageId) {
+      setIntakeReviewStatus('Unable to determine intake package ID for review save.');
       return;
     }
 
     let rates = [];
     let tasks = [];
     let parserNotes = [];
+    let phaseTotals = [];
 
     try {
-      rates = JSON.parse(intakeReviewForm?.ratesText || '[]');
-    } catch {
-      setIntakeReviewStatus('Rates must be valid JSON.');
+      rates = JSON.parse(intakeReviewForm.ratesText || '[]');
+      tasks = JSON.parse(intakeReviewForm.tasksText || '[]');
+      parserNotes = JSON.parse(intakeReviewForm.parserNotesText || '[]');
+      phaseTotals = JSON.parse(intakeReviewForm.phaseTotalsText || '[]');
+    } catch (error) {
+      setIntakeReviewStatus('Rates, tasks, phase totals, and parser notes must contain valid JSON before saving.');
       return;
     }
 
-    try {
-      tasks = JSON.parse(intakeReviewForm?.tasksText || '[]');
-    } catch {
-      setIntakeReviewStatus('Tasks must be valid JSON.');
-      return;
-    }
+    const pmUser = intakeAssignableUsers('pm').find((user) => String(intakeUserOptionId(user)) === String(intakeReviewForm.projectManagerUserId));
+    const pcUser = intakeAssignableUsers('pc').find((user) => String(intakeUserOptionId(user)) === String(intakeReviewForm.projectCoordinatorUserId));
 
-    try {
-      parserNotes = JSON.parse(intakeReviewForm?.parserNotesText || '[]');
-    } catch {
-      parserNotes = [];
-    }
+    const normalizedTasks = tasks.map((task) => {
+      const assignments = taskAssignmentRows(task).map((assignment) => {
+        const user = intakeAssignableUsers('engineer').find((option) => String(intakeUserOptionId(option)) === String(assignment.engineerUserId));
+
+        return {
+          ...assignment,
+          engineerName: user ? intakeUserOptionName(user) : (assignment.engineerName || ''),
+          hours: numberFromReviewValue(assignment.hours),
+          allocationPercent: numberFromReviewValue(assignment.allocationPercent),
+          isPrimary: assignment.isPrimary === true
+        };
+      });
+
+      if (assignments.length > 0 && !assignments.some((assignment) => assignment.isPrimary)) {
+        assignments[0].isPrimary = true;
+      }
+
+      return {
+        ...task,
+        assignmentMode: assignments.length > 1 ? 'multiple' : 'single',
+        assignments
+      };
+    });
 
     const reviewedData = {
-      projectName: intakeReviewForm?.projectName || '',
-      customerName: intakeReviewForm?.customerName || '',
-      accountExecutiveName: intakeReviewForm?.accountExecutiveName || '',
-      solutionArchitectName: intakeReviewForm?.solutionArchitectName || '',
-      insideSalesName: intakeReviewForm?.insideSalesName || '',
-      requestedWorkType: intakeReviewForm?.requestedWorkType || 'Project',
-      contractType: intakeReviewForm?.contractType || 'Fixed Price',
-      pmHours: intakeReviewForm?.pmHours || '',
-      engineeringHours: intakeReviewForm?.engineeringHours || '',
-      travelHours: intakeReviewForm?.travelHours || '',
+      projectName: intakeReviewForm.projectName,
+      customerId: intakeReviewForm.customerId,
+      customerName: intakeReviewForm.customerName,
+      accountExecutiveName: intakeReviewForm.accountExecutiveName,
+      solutionArchitectName: intakeReviewForm.solutionArchitectName,
+      insideSalesName: intakeReviewForm.insideSalesName,
+      requestedWorkType: intakeReviewForm.requestedWorkType,
+      contractType: intakeReviewForm.contractType,
+      pmHours: intakeReviewForm.pmHours,
+      engineeringHours: intakeReviewForm.engineeringHours,
+      totalProjectHours: intakeReviewForm.totalProjectHours,
+      travelHours: intakeReviewForm.travelHours,
+      projectListPrice: intakeReviewForm.projectListPrice,
+      workLocation: intakeReviewForm.workLocation,
       rates,
-      tasks,
+      tasks: normalizedTasks,
+      phaseTotals,
       parserNotes,
-      reviewSource: '055D.2_ptc_review_mapping'
+      assignmentPlan: {
+        projectManagerUserId: intakeReviewForm.projectManagerUserId || '',
+        projectManagerName: pmUser ? intakeUserOptionName(pmUser) : '',
+        projectCoordinatorUserId: intakeReviewForm.projectCoordinatorUserId || '',
+        projectCoordinatorName: pcUser ? intakeUserOptionName(pcUser) : '',
+        taskAssignments: normalizedTasks.map((task) => ({
+          taskName: task.taskName,
+          phase: task.phase,
+          assignmentMode: task.assignmentMode,
+          assignments: task.assignments || []
+        }))
+      }
     };
 
-    setIntakeReviewStatus('Saving reviewed intake mapping...');
+    setIntakeReviewStatus('Saving reviewed mapping and assignment plan...');
 
     try {
-      const result = await postJson(`/api/work-register/intake/packages/${packageId}/review/save`, {
+      const result = await postJson(`/api/work-register/intake/packages/${intakePackageId}/review/save`, {
         reviewedData
       });
 
-      setIntakeReviewStatus(result.message || 'Reviewed intake mapping saved.');
-      await openIntakeReview(packageId);
+      setIntakeReviewForm((current) => ({
+        ...(current ?? {}),
+        tasksText: JSON.stringify(normalizedTasks, null, 2),
+        ratesText: JSON.stringify(rates, null, 2),
+        phaseTotalsText: JSON.stringify(phaseTotals, null, 2),
+        parserNotesText: JSON.stringify(parserNotes, null, 2)
+      }));
+
+      setIntakeReviewStatus(result.message || 'Reviewed mapping and assignment plan saved.');
       await loadIntakePackages();
     } catch (error) {
-      setIntakeReviewStatus(error instanceof Error ? error.message : 'Unable to save intake review mapping.');
+      setIntakeReviewStatus(error instanceof Error ? error.message : 'Unable to save reviewed mapping and assignment plan.');
     }
   }
 
@@ -2677,6 +3053,150 @@ export default function WorkRegisterCenter() {
                       )}
                     </div>
 
+
+                    <div className="work-register-intake-assignment-review">
+                      <div className="work-register-gsd-review-table-header">
+                        <div>
+                          <h5>Assignment Review</h5>
+                          <p className="muted">Assign PM, Project Coordinator / Project Management Team, and engineer ownership before this intake is committed into Work Register.</p>
+                        </div>
+                      </div>
+
+                      <div className="work-register-assignment-lead-grid">
+                        <label>
+                          Project Manager
+                          <select
+                            value={intakeReviewForm.projectManagerUserId || ''}
+                            onChange={(event) => updateIntakeReviewForm('projectManagerUserId', event.target.value)}
+                          >
+                            <option value="">Select PM / Project Management Team member</option>
+                            {intakeAssignableUsers('pm').map((user) => (
+                              <option value={intakeUserOptionId(user)} key={intakeUserOptionId(user)}>
+                                {intakeUserOptionName(user)}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+
+                        <label>
+                          Project Coordinator / Project Management Team
+                          <select
+                            value={intakeReviewForm.projectCoordinatorUserId || ''}
+                            onChange={(event) => updateIntakeReviewForm('projectCoordinatorUserId', event.target.value)}
+                          >
+                            <option value="">Select PC / Project Management Team member</option>
+                            {intakeAssignableUsers('pc').map((user) => (
+                              <option value={intakeUserOptionId(user)} key={intakeUserOptionId(user)}>
+                                {intakeUserOptionName(user)}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+
+                      <div className="work-register-assignment-pool-counts" data-marker="055D_3B_POOL_COUNTS">
+                        <span>PM/PC pool: <strong>{intakeAssignableUsers('pm').length}</strong></span>
+                        <span>Engineering pool: <strong>{intakeAssignableUsers('engineer').length}</strong></span>
+                      </div>
+
+                      <div className="work-register-assignment-save-bar" data-marker="055D_3B_ASSIGNMENT_SAVE_BUTTON">
+                        <button type="button" className="primary-action" onClick={saveIntakeReviewMapping}>
+                          Save Assignment Configuration
+                        </button>
+                        <span className="muted">Saves PM/PC selections, engineer assignments, multi-engineer rosters, rates, and task review back to the intake package.</span>
+                      </div>
+
+                      <div className="work-register-intake-task-assignment-list">
+                        {gsdTaskRows().filter((task) => task?.include !== false).map((task, taskIndex) => (
+                          <div className="work-register-intake-task-assignment-card" key={`intake-assignment-${taskIndex}`}>
+                            <div className="work-register-intake-task-assignment-heading">
+                              <div>
+                                <strong>{task.taskName || task.phase || `Task ${taskIndex + 1}`}</strong>
+                                <span>{task.phase || 'No phase'} · {intakeTaskTotal(task).toLocaleString()} hrs · {moneyReviewValue(task.laborListPrice || 0)}</span>
+                              </div>
+
+                              <label className="checkbox-line">
+                                <input
+                                  type="checkbox"
+                                  checked={(task.assignmentMode || 'single') === 'multiple'}
+                                  onChange={(event) => updateTaskAssignmentMode(taskIndex, event.target.checked)}
+                                />
+                                Multiple engineers
+                              </label>
+                            </div>
+
+                            <div className="work-register-intake-task-assignment-roster">
+                              <div className="work-register-assignment-grid-heading">Primary</div>
+                              <div className="work-register-assignment-grid-heading">Engineer</div>
+                              <div className="work-register-assignment-grid-heading">Hours</div>
+                              <div className="work-register-assignment-grid-heading">Allocation %</div>
+                              <div className="work-register-assignment-grid-heading">Action</div>
+
+                              {taskAssignmentRows(task).map((assignment, assignmentIndex) => (
+                                <div className="work-register-assignment-grid-row" key={`intake-assignment-${taskIndex}-${assignmentIndex}`}>
+                                  <label className="checkbox-line">
+                                    <input
+                                      type="radio"
+                                      name={`primary-engineer-${taskIndex}`}
+                                      checked={assignment.isPrimary === true}
+                                      onChange={() => updateTaskAssignment(taskIndex, assignmentIndex, 'isPrimary', true)}
+                                    />
+                                  </label>
+
+                                  <select
+                                    value={assignment.engineerUserId || ''}
+                                    onChange={(event) => updateTaskAssignment(taskIndex, assignmentIndex, 'engineerUserId', event.target.value)}
+                                  >
+                                    <option value="">Select Engineering / Engineering Team Lead resource</option>
+                                    {intakeAssignableUsers('engineer').map((user) => (
+                                      <option value={intakeUserOptionId(user)} key={intakeUserOptionId(user)}>
+                                        {intakeUserOptionName(user)}
+                                      </option>
+                                    ))}
+                                  </select>
+
+                                  <input
+                                    type="number"
+                                    step="0.25"
+                                    value={assignment.hours ?? 0}
+                                    onChange={(event) => updateTaskAssignment(taskIndex, assignmentIndex, 'hours', Number(event.target.value || 0))}
+                                  />
+
+                                  <input
+                                    type="number"
+                                    step="1"
+                                    min="0"
+                                    max="100"
+                                    value={assignment.allocationPercent ?? 0}
+                                    onChange={(event) => updateTaskAssignment(taskIndex, assignmentIndex, 'allocationPercent', Number(event.target.value || 0))}
+                                  />
+
+                                  <button
+                                    type="button"
+                                    className="secondary-action"
+                                    onClick={() => removeTaskAssignmentRow(taskIndex, assignmentIndex)}
+                                    disabled={taskAssignmentRows(task).length <= 1}
+                                  >
+                                    Remove
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+
+                            <div className="work-register-intake-task-assignment-footer">
+                              <span>
+                                Assigned hours: <strong>{taskAssignmentHoursTotal(task).toLocaleString()} hrs</strong>
+                              </span>
+                              <button type="button" className="secondary-action" onClick={() => addTaskAssignmentRow(taskIndex)}>
+                                Add engineer
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+
                     <details className="work-register-gsd-json-details">
                       <summary>Advanced: raw extracted JSON</summary>
 
@@ -2710,7 +3230,7 @@ export default function WorkRegisterCenter() {
 
                     <div className="work-register-create-actions">
                       <button type="button" className="primary-action" onClick={saveIntakeReviewMapping}>
-                        Save reviewed mapping
+                        Save reviewed mapping and assignments
                       </button>
                     </div>
                   </div>
@@ -2838,7 +3358,7 @@ export default function WorkRegisterCenter() {
               </label>
 
               <label>
-                Project Coordinator
+                Project Coordinator / Project Management Team
                 <select
                   value={editForm.projectCoordinatorUserId || ''}
                   onChange={(event) => updateEditField('projectCoordinatorUserId', event.target.value)}
@@ -3121,7 +3641,7 @@ export default function WorkRegisterCenter() {
                                     onChange={(event) => updateRosterEngineer(task, index, 'assignedUserId', event.target.value)}
                                     disabled={!canEditWorkRegister || !task.taskId}
                                   >
-                                    <option value="">Select engineer</option>
+                                    <option value="">Select Engineering / Engineering Team Lead resource</option>
                                     {engineerOptions.map((user) => (
                                       <option value={user.userId} key={user.userId}>
                                         {user.displayName} {user.isActive === false ? '- inactive' : ''}
