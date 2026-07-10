@@ -194,6 +194,7 @@ export default function WorkRegisterCenter() {
   // 055D_2F_RATE_TASK_REVIEW_TABLES
   // 055D_2G_CONSOLIDATED_GSD_PARSER
   // 055D_2H_HYUNDAI_TOYOTA_RATE_TASK_REPAIR
+  // 055D_2I_TOYOTA_HYUNDAI_TOTALS_PRICING
 
   const [intakeForm, setIntakeForm] = useState({
     requestedWorkType: 'Project',
@@ -2524,7 +2525,7 @@ export default function WorkRegisterCenter() {
                     <div className="work-register-gsd-review-table">
                       <div className="work-register-gsd-review-table-header">
                         <div>
-                          <h5>GSD Rate Review</h5>
+                          <h5>GSD Pricing / Rate Review</h5>
                           <p className="muted">These rows become the project-specific rate snapshot when the intake is committed to Work Register.</p>
                         </div>
                         <button type="button" className="secondary-action" onClick={addGsdRateRow}>

@@ -1391,3 +1391,9 @@ body[data-projectpulse-active-route="work-register"] #work-register .work-regist
   max-width: 48rem;
 }
 /* 055D_2H_HYUNDAI_TOYOTA_RATE_TASK_REPAIR_END */
+
+/* 055D_2I_TOYOTA_HYUNDAI_TOTALS_PRICING_START */
+.work-register-gsd-review-table-header .muted {
+  max-width: 52rem;
+}
+/* 055D_2I_TOYOTA_HYUNDAI_TOTALS_PRICING_END */
