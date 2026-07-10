@@ -195,6 +195,7 @@ export default function WorkRegisterCenter() {
   // 055D_2G_CONSOLIDATED_GSD_PARSER
   // 055D_2H_HYUNDAI_TOYOTA_RATE_TASK_REPAIR
   // 055D_2I_TOYOTA_HYUNDAI_TOTALS_PRICING
+  // 055D_2I_REPAIRED_TOTALS_ROLLUP_SKU_MAPPING
 
   const [intakeForm, setIntakeForm] = useState({
     requestedWorkType: 'Project',
@@ -2595,7 +2596,7 @@ export default function WorkRegisterCenter() {
                       <div className="work-register-gsd-review-table-header">
                         <div>
                           <h5>Task / Hours Review</h5>
-                          <p className="muted">Standard GSDs use Totals Sheet. Toyota/Hyundai GSDs use Milestone Summary Breakdown with engineering, PM, reserve, and travel breakdowns preserved.</p>
+                          <p className="muted">Task rows are consolidated from Totals Sheet Resource Totals. PM and Engineering roles with hours and cost become tasks; travel is shown in pricing only.</p>
                         </div>
                         <button type="button" className="secondary-action" onClick={addGsdTaskRow}>
                           Add task row

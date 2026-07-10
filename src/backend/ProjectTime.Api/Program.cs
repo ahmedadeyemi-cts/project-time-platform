@@ -6099,7 +6099,8 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
 
 
 
-    /* 055D_2I_TOYOTA_HYUNDAI_TOTALS_PRICING_START */
+
+    /* 055D_2I_REPAIRED_TOTALS_ROLLUP_SKU_MAPPING_START */
     static string NormalizeContractTypeForIntake(string value)
     {
         var normalized = NormalizeLabel(value);
@@ -6162,190 +6163,110 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
             || combined.Contains("kus");
     }
 
-    static string MilestoneCleanName(string value)
+    static bool IsPmRole(string role)
     {
-        var clean = CleanCell(value);
-        clean = System.Text.RegularExpressions.Regex.Replace(clean, @"\s*-\s*LABOR\s*$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-        clean = System.Text.RegularExpressions.Regex.Replace(clean, @"\s*-\s*TRAVEL\s*$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-        clean = System.Text.RegularExpressions.Regex.Replace(clean, @"\s*-\s*MATERIALS.*$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-        return clean.Trim();
+        var normalized = NormalizeLabel(role);
+
+        return normalized.Contains("projectmgr")
+            || normalized.Contains("projectmanager")
+            || normalized.Contains("pmgr")
+            || normalized.Contains("pcoord")
+            || normalized.Contains("projectcoord")
+            || normalized.Contains("psched")
+            || normalized.Contains("projectsched");
     }
 
-    static string RoleSkuCode(string role, string rateType)
+    static bool IsTravelRole(string role)
     {
-        var normalizedRole = NormalizeLabel(role);
-        var suffix = rateType.Equals("Overtime", StringComparison.OrdinalIgnoreCase) ? "-OT" : "";
-
-        if (normalizedRole.Contains("badevarch") || normalizedRole.Contains("analyst") || normalizedRole.Contains("architect"))
-        {
-            return "GSD-BADEVARCH" + suffix;
-        }
-
-        if (normalizedRole.Contains("senior") || normalizedRole.Contains("sme"))
-        {
-            return "GSD-SME-ENGINEER" + suffix;
-        }
-
-        if (normalizedRole.Contains("consult"))
-        {
-            return "GSD-CONSULT-ENGINEER" + suffix;
-        }
-
-        if (normalizedRole.Contains("assoc"))
-        {
-            return "GSD-ASSOC-ENGINEER" + suffix;
-        }
-
-        if (normalizedRole.Contains("projectmgr") || normalizedRole.Contains("projectmanager"))
-        {
-            return "GSD-PROJECT-MGR" + suffix;
-        }
-
-        if (normalizedRole.Contains("projectcoord"))
-        {
-            return "GSD-PROJECT-COORD" + suffix;
-        }
-
-        if (normalizedRole.Contains("projectsched"))
-        {
-            return "GSD-PROJECT-SCHED" + suffix;
-        }
-
-        if (normalizedRole.Contains("travel"))
-        {
-            return "GSD-TRAVEL";
-        }
-
-        return "GSD-" + System.Text.RegularExpressions.Regex.Replace(role.ToUpperInvariant(), @"[^A-Z0-9]+", "-").Trim('-') + suffix;
+        var normalized = NormalizeLabel(role);
+        return normalized.Contains("travel");
     }
 
-    static List<object> ExtractTotalsSheetPricingRows(Dictionary<string, Dictionary<(int Row, int Col), string>> workbook)
+    static string RoleFamily(string role)
     {
-        var rows = new List<object>();
+        var normalized = NormalizeLabel(role);
 
-        if (!workbook.TryGetValue("Totals Sheet", out var sheet))
+        if (normalized.Contains("badevarch") || normalized.Contains("analyst") || normalized.Contains("architect"))
         {
-            return rows;
+            return "analystdevarch";
         }
 
-        var inResourceTotals = false;
-
-        for (var row = 1; row <= 120; row++)
+        if (normalized.Contains("senior") || normalized.Contains("sme"))
         {
-            var rowText = string.Join(" ", Enumerable.Range(1, 12).Select(col => GetCell(sheet, row, col))).Trim();
-            var normalized = NormalizeLabel(rowText);
-
-            if (normalized.Contains("resourcetotals"))
-            {
-                inResourceTotals = true;
-                continue;
-            }
-
-            if (!inResourceTotals)
-            {
-                continue;
-            }
-
-            if (normalized.Contains("phasebreakouttotals") || normalized.Contains("milestonebreakouttotals") || normalized.Contains("invoicingbreakouttotals"))
-            {
-                break;
-            }
-
-            var role = GetCell(sheet, row, 2);
-            if (string.IsNullOrWhiteSpace(role))
-            {
-                role = GetCell(sheet, row, 1);
-            }
-
-            if (string.IsNullOrWhiteSpace(role))
-            {
-                continue;
-            }
-
-            var normalizedRole = NormalizeLabel(role);
-            if (normalizedRole.Contains("resourcerole")
-                || normalizedRole.Contains("totals")
-                || normalizedRole.Contains("regularhours")
-                || normalizedRole.Contains("overtimehours"))
-            {
-                continue;
-            }
-
-            var regularHours = NumberOrZero(GetCell(sheet, row, 3));
-            var overtimeHours = NumberOrZero(GetCell(sheet, row, 4));
-            var regularTotal = FirstNumberInRange(sheet, row, 5, 7);
-            var overtimeTotal = FirstNumberInRange(sheet, row, 8, 9);
-            var overallTotal = FirstNumberInRange(sheet, row, 10, 12);
-
-            if (overallTotal == 0m)
-            {
-                overallTotal = regularTotal + overtimeTotal;
-            }
-
-            if (regularHours == 0m && overtimeHours == 0m && regularTotal == 0m && overtimeTotal == 0m && overallTotal == 0m)
-            {
-                continue;
-            }
-
-            if (regularHours > 0m || regularTotal > 0m)
-            {
-                var derivedRate = regularHours > 0m ? regularTotal / regularHours : 0m;
-
-                rows.Add(new
-                {
-                    include = true,
-                    source = "Totals Sheet Resource Totals",
-                    pricingUse = "Authoritative GSD pricing rollup",
-                    contractType = "GSD",
-                    row,
-                    sku = RoleSkuCode(role, "Regular"),
-                    description = $"{role} - Regular / Standard",
-                    rate = Math.Round(derivedRate, 2),
-                    hours = regularHours,
-                    extendedAmount = regularTotal,
-                    billable = true
-                });
-            }
-
-            if (overtimeHours > 0m || overtimeTotal > 0m)
-            {
-                var derivedOtRate = overtimeHours > 0m ? overtimeTotal / overtimeHours : 0m;
-
-                rows.Add(new
-                {
-                    include = true,
-                    source = "Totals Sheet Resource Totals",
-                    pricingUse = "Authoritative GSD pricing rollup",
-                    contractType = "GSD",
-                    row,
-                    sku = RoleSkuCode(role, "Overtime"),
-                    description = $"{role} - Overtime / Afterhours",
-                    rate = Math.Round(derivedOtRate, 2),
-                    hours = overtimeHours,
-                    extendedAmount = overtimeTotal,
-                    billable = true
-                });
-            }
+            return "sme";
         }
 
-        return rows;
+        if (normalized.Contains("consult"))
+        {
+            return "consult";
+        }
+
+        if (normalized.Contains("assoc"))
+        {
+            return "assoc";
+        }
+
+        if (IsPmRole(role))
+        {
+            if (normalized.Contains("coord") || normalized.Contains("pcoord")) return "projectcoord";
+            if (normalized.Contains("sched") || normalized.Contains("psched")) return "projectsched";
+            return "projectmanager";
+        }
+
+        if (normalized.Contains("travel"))
+        {
+            return "travel";
+        }
+
+        return normalized;
     }
 
-    static List<object> ExtractSellSkuRateCatalogRows(Dictionary<string, Dictionary<(int Row, int Col), string>> workbook, string contractType, bool includePricedRows)
+    static bool SkuMatchesRole(string sku, string description, string role, bool overtime)
     {
-        var rows = new List<object>();
+        var combined = NormalizeLabel(sku + " " + description);
+        var family = RoleFamily(role);
 
+        if (overtime && !combined.Contains("afterhours"))
+        {
+            return false;
+        }
+
+        if (!overtime && combined.Contains("afterhours"))
+        {
+            return false;
+        }
+
+        return family switch
+        {
+            "analystdevarch" => combined.Contains("analystdevarch") || combined.Contains("badevarch"),
+            "sme" => combined.Contains("sme"),
+            "consult" => combined.Contains("consult"),
+            "assoc" => combined.Contains("assoc"),
+            "projectmanager" => combined.Contains("projectmanager") || combined.Contains("projectmgr"),
+            "projectcoord" => combined.Contains("projectcoord"),
+            "projectsched" => combined.Contains("projectsched") || combined.Contains("projectsched"),
+            "travel" => combined.Contains("travel"),
+            _ => combined.Contains(family)
+        };
+    }
+
+    static (string Sku, string Description, decimal CatalogRate, decimal CatalogHours) FindSellSkuMatch(
+        Dictionary<string, Dictionary<(int Row, int Col), string>> workbook,
+        string role,
+        bool overtime,
+        string contractType)
+    {
         if (!workbook.TryGetValue("SELL SKUs", out var sell))
         {
-            return rows;
+            return ("", "", 0m, 0m);
         }
 
         var normalizedContract = NormalizeContractTypeForIntake(contractType);
         var activeSection = "";
 
-        for (var row = 1; row <= 400; row++)
+        for (var row = 1; row <= 450; row++)
         {
-            var rowText = string.Join(" ", Enumerable.Range(1, 12).Select(col => GetCell(sell, row, col))).Trim();
+            var rowText = string.Join(" ", Enumerable.Range(1, 14).Select(col => GetCell(sell, row, col))).Trim();
             var rowNormalized = NormalizeLabel(rowText);
 
             if (rowNormalized.Contains("timeandmaterial") || rowNormalized.Contains("timeampmaterial") || rowNormalized.Contains("tandm"))
@@ -6361,7 +6282,358 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
             var skuCol = 0;
             var sku = "";
 
-            for (var col = 1; col <= 12; col++)
+            for (var col = 1; col <= 14; col++)
+            {
+                var candidate = GetCell(sell, row, col);
+                if (candidate.StartsWith("ON-", StringComparison.OrdinalIgnoreCase))
+                {
+                    skuCol = col;
+                    sku = candidate;
+                    break;
+                }
+            }
+
+            if (skuCol == 0)
+            {
+                continue;
+            }
+
+            if ((normalizedContract == "TM" && activeSection == "FP") || (normalizedContract == "FP" && activeSection == "TM"))
+            {
+                continue;
+            }
+
+            var description = "";
+            for (var col = skuCol + 1; col <= skuCol + 5; col++)
+            {
+                description = GetCell(sell, row, col);
+                if (!string.IsNullOrWhiteSpace(description))
+                {
+                    break;
+                }
+            }
+
+            if (!SkuMatchesRole(sku, description, role, overtime))
+            {
+                continue;
+            }
+
+            var leftNumbers = new List<(int Col, decimal Value)>();
+            for (var col = skuCol - 1; col >= 1; col--)
+            {
+                var number = TryDecimal(GetCell(sell, row, col));
+                if (number is not null)
+                {
+                    leftNumbers.Add((col, number.Value));
+                }
+            }
+
+            var catalogHours = leftNumbers.Count >= 1 ? leftNumbers[0].Value : 0m;
+            var catalogRate = leftNumbers.Count >= 2 ? leftNumbers[1].Value : 0m;
+
+            return (sku, string.IsNullOrWhiteSpace(description) ? sku : description, catalogRate, catalogHours);
+        }
+
+        return ("", "", 0m, 0m);
+    }
+
+    static (string Sku, string Description) FindExpenseSkuMatch(
+        Dictionary<string, Dictionary<(int Row, int Col), string>> workbook,
+        string expenseType,
+        string contractType)
+    {
+        if (!workbook.TryGetValue("SELL SKUs", out var sell))
+        {
+            return ("", "");
+        }
+
+        var normalizedContract = NormalizeContractTypeForIntake(contractType);
+        var activeSection = "";
+        var wanted = NormalizeLabel(expenseType);
+
+        for (var row = 1; row <= 450; row++)
+        {
+            var rowText = string.Join(" ", Enumerable.Range(1, 14).Select(col => GetCell(sell, row, col))).Trim();
+            var rowNormalized = NormalizeLabel(rowText);
+
+            if (rowNormalized.Contains("timeandmaterial") || rowNormalized.Contains("timeampmaterial") || rowNormalized.Contains("tandm"))
+            {
+                activeSection = "TM";
+            }
+
+            if (rowNormalized.Contains("fixedprice"))
+            {
+                activeSection = "FP";
+            }
+
+            var skuCol = 0;
+            var sku = "";
+
+            for (var col = 1; col <= 14; col++)
+            {
+                var candidate = GetCell(sell, row, col);
+                if (candidate.StartsWith("ON-", StringComparison.OrdinalIgnoreCase))
+                {
+                    skuCol = col;
+                    sku = candidate;
+                    break;
+                }
+            }
+
+            if (skuCol == 0)
+            {
+                continue;
+            }
+
+            if ((normalizedContract == "TM" && activeSection == "FP") || (normalizedContract == "FP" && activeSection == "TM"))
+            {
+                continue;
+            }
+
+            var description = "";
+            for (var col = skuCol + 1; col <= skuCol + 5; col++)
+            {
+                description = GetCell(sell, row, col);
+                if (!string.IsNullOrWhiteSpace(description))
+                {
+                    break;
+                }
+            }
+
+            var combined = NormalizeLabel(sku + " " + description);
+
+            if (wanted.Contains("travel") && (combined.Contains("perdiem") || combined.Contains("travel")))
+            {
+                return (sku, string.IsNullOrWhiteSpace(description) ? sku : description);
+            }
+
+            if (wanted.Contains("material") && combined.Contains("material"))
+            {
+                return (sku, string.IsNullOrWhiteSpace(description) ? sku : description);
+            }
+
+            if (wanted.Contains("shipping") && combined.Contains("shipping"))
+            {
+                return (sku, string.IsNullOrWhiteSpace(description) ? sku : description);
+            }
+        }
+
+        return ("", "");
+    }
+
+    static (int HeaderRow, int RoleCol, int RegHoursCol, int OtHoursCol, int RegTotalCol, int OtTotalCol, int OverallTotalCol) FindResourceTotalsHeader(
+        Dictionary<(int Row, int Col), string> sheet)
+    {
+        for (var row = 1; row <= 80; row++)
+        {
+            var roleCol = 0;
+            var regHoursCol = 0;
+            var otHoursCol = 0;
+            var regTotalCol = 0;
+            var otTotalCol = 0;
+            var overallTotalCol = 0;
+
+            for (var col = 1; col <= 14; col++)
+            {
+                var normalized = NormalizeLabel(GetCell(sheet, row, col));
+
+                if (normalized.Contains("resourcerole")) roleCol = col;
+                if (normalized.Contains("regularhours")) regHoursCol = col;
+                if (normalized.Contains("overtimehours")) otHoursCol = col;
+                if (normalized.Contains("regulartotals")) regTotalCol = col;
+                if (normalized.Contains("overtimetotals")) otTotalCol = col;
+                if (normalized.Contains("overalltotals")) overallTotalCol = col;
+            }
+
+            if (roleCol > 0 && regHoursCol > 0 && otHoursCol > 0 && regTotalCol > 0)
+            {
+                return (row, roleCol, regHoursCol, otHoursCol, regTotalCol, otTotalCol, overallTotalCol);
+            }
+        }
+
+        return (0, 0, 0, 0, 0, 0, 0);
+    }
+
+    static List<object> ExtractTotalsSheetPricingRows(
+        Dictionary<string, Dictionary<(int Row, int Col), string>> workbook,
+        string contractType)
+    {
+        var rows = new List<object>();
+
+        if (!workbook.TryGetValue("Totals Sheet", out var sheet))
+        {
+            return rows;
+        }
+
+        var header = FindResourceTotalsHeader(sheet);
+        if (header.HeaderRow == 0)
+        {
+            return rows;
+        }
+
+        for (var row = header.HeaderRow + 1; row <= header.HeaderRow + 40; row++)
+        {
+            var rowText = string.Join(" ", Enumerable.Range(1, 14).Select(col => GetCell(sheet, row, col))).Trim();
+            var normalized = NormalizeLabel(rowText);
+
+            if (normalized.Contains("phasebreakouttotals") || normalized.Contains("milestonebreakouttotals") || normalized.Contains("invoicingbreakouttotals"))
+            {
+                break;
+            }
+
+            var role = GetCell(sheet, row, header.RoleCol);
+
+            if (string.IsNullOrWhiteSpace(role))
+            {
+                continue;
+            }
+
+            var normalizedRole = NormalizeLabel(role);
+            if (normalizedRole.Contains("total") || normalizedRole.Contains("resourcerole"))
+            {
+                continue;
+            }
+
+            var regularHours = NumberOrZero(GetCell(sheet, row, header.RegHoursCol));
+            var overtimeHours = NumberOrZero(GetCell(sheet, row, header.OtHoursCol));
+
+            var regularTotalEnd = header.OtTotalCol > 0 ? header.OtTotalCol - 1 : header.RegTotalCol + 2;
+            var overtimeTotalEnd = header.OverallTotalCol > 0 ? header.OverallTotalCol - 1 : header.OtTotalCol + 2;
+
+            var regularTotal = FirstNumberInRange(sheet, row, header.RegTotalCol, Math.Max(header.RegTotalCol, regularTotalEnd));
+            var overtimeTotal = header.OtTotalCol > 0
+                ? FirstNumberInRange(sheet, row, header.OtTotalCol, Math.Max(header.OtTotalCol, overtimeTotalEnd))
+                : 0m;
+
+            if (regularHours > 0m && regularTotal > 0m)
+            {
+                var skuMatch = FindSellSkuMatch(workbook, role, overtime: false, contractType);
+                var derivedRate = regularTotal / regularHours;
+
+                rows.Add(new
+                {
+                    include = true,
+                    source = "Totals Sheet Resource Totals",
+                    pricingUse = "Authoritative GSD pricing rollup",
+                    contractType = NormalizeContractTypeForIntake(contractType),
+                    row,
+                    sku = string.IsNullOrWhiteSpace(skuMatch.Sku) ? $"GSD-{RoleFamily(role).ToUpperInvariant()}" : skuMatch.Sku,
+                    description = $"{role} - Regular / Standard",
+                    rate = Math.Round(derivedRate, 2),
+                    hours = regularHours,
+                    extendedAmount = regularTotal,
+                    billable = true
+                });
+            }
+
+            if (overtimeHours > 0m && overtimeTotal > 0m)
+            {
+                var skuMatch = FindSellSkuMatch(workbook, role, overtime: true, contractType);
+                var derivedRate = overtimeTotal / overtimeHours;
+
+                rows.Add(new
+                {
+                    include = true,
+                    source = "Totals Sheet Resource Totals",
+                    pricingUse = "Authoritative GSD pricing rollup",
+                    contractType = NormalizeContractTypeForIntake(contractType),
+                    row,
+                    sku = string.IsNullOrWhiteSpace(skuMatch.Sku) ? $"GSD-{RoleFamily(role).ToUpperInvariant()}-OT" : skuMatch.Sku,
+                    description = $"{role} - Overtime / Afterhours",
+                    rate = Math.Round(derivedRate, 2),
+                    hours = overtimeHours,
+                    extendedAmount = overtimeTotal,
+                    billable = true
+                });
+            }
+        }
+
+        for (var row = 1; row <= 140; row++)
+        {
+            var label = "";
+            var labelCol = 0;
+
+            for (var col = 1; col <= 6; col++)
+            {
+                var candidate = GetCell(sheet, row, col);
+                var normalizedCandidate = NormalizeLabel(candidate);
+
+                if (normalizedCandidate is "travelexpense" or "materialexpense" or "shippingexpense")
+                {
+                    label = candidate;
+                    labelCol = col;
+                    break;
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(label))
+            {
+                continue;
+            }
+
+            var amount = FirstNumberInRange(sheet, row, labelCol + 1, labelCol + 5);
+            if (amount <= 0m)
+            {
+                continue;
+            }
+
+            var expenseSku = FindExpenseSkuMatch(workbook, label, contractType);
+            var sku = !string.IsNullOrWhiteSpace(expenseSku.Sku)
+                ? expenseSku.Sku
+                : $"GSD-{NormalizeLabel(label).ToUpperInvariant()}";
+
+            rows.Add(new
+            {
+                include = true,
+                source = "Totals Sheet Overall Totals",
+                pricingUse = "Authoritative GSD expense rollup",
+                contractType = NormalizeContractTypeForIntake(contractType),
+                row,
+                sku,
+                description = label,
+                rate = amount,
+                hours = 1m,
+                extendedAmount = amount,
+                billable = true
+            });
+        }
+
+        return rows;
+    }
+
+    static List<object> ExtractSellSkuRateCatalogRows(
+        Dictionary<string, Dictionary<(int Row, int Col), string>> workbook,
+        string contractType)
+    {
+        var rows = new List<object>();
+
+        if (!workbook.TryGetValue("SELL SKUs", out var sell))
+        {
+            return rows;
+        }
+
+        var normalizedContract = NormalizeContractTypeForIntake(contractType);
+        var activeSection = "";
+
+        for (var row = 1; row <= 450; row++)
+        {
+            var rowText = string.Join(" ", Enumerable.Range(1, 14).Select(col => GetCell(sell, row, col))).Trim();
+            var rowNormalized = NormalizeLabel(rowText);
+
+            if (rowNormalized.Contains("timeandmaterial") || rowNormalized.Contains("timeampmaterial") || rowNormalized.Contains("tandm"))
+            {
+                activeSection = "TM";
+            }
+
+            if (rowNormalized.Contains("fixedprice"))
+            {
+                activeSection = "FP";
+            }
+
+            var skuCol = 0;
+            var sku = "";
+
+            for (var col = 1; col <= 14; col++)
             {
                 var candidate = GetCell(sell, row, col);
                 if (candidate.StartsWith("ON-", StringComparison.OrdinalIgnoreCase))
@@ -6395,6 +6667,11 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
             var hours = leftNumbers.Count >= 1 ? leftNumbers[0].Value : 0m;
             var rate = leftNumbers.Count >= 2 ? leftNumbers[1].Value : 0m;
 
+            if (hours > 0m)
+            {
+                continue;
+            }
+
             var description = "";
             for (var col = skuCol + 1; col <= skuCol + 5; col++)
             {
@@ -6405,60 +6682,52 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
                 }
             }
 
-            if (string.IsNullOrWhiteSpace(description))
-            {
-                description = sku;
-            }
-
-            if (rate == 0m && hours == 0m)
-            {
-                continue;
-            }
-
-            if (!includePricedRows && hours > 0m)
+            if (rate <= 0m)
             {
                 continue;
             }
 
             rows.Add(new
             {
-                include = includePricedRows && hours > 0m,
+                include = false,
                 source = "SELL SKUs",
-                pricingUse = hours > 0m ? "Priced SKU line" : "Available rate catalog",
+                pricingUse = "Available rate catalog",
                 contractType = normalizedContract,
                 priceSection = activeSection,
                 row,
                 sku,
-                description,
+                description = string.IsNullOrWhiteSpace(description) ? sku : description,
                 rate,
-                hours,
-                extendedAmount = rate * hours,
+                hours = 0m,
+                extendedAmount = 0m,
                 billable = true
             });
         }
 
-        return rows;
+        return rows.Take(25).ToList();
     }
 
-    static List<object> ExtractRates(Dictionary<string, Dictionary<(int Row, int Col), string>> workbook, string contractType, Dictionary<(int Row, int Col), string> summary)
+    static List<object> ExtractRates(
+        Dictionary<string, Dictionary<(int Row, int Col), string>> workbook,
+        string contractType,
+        Dictionary<(int Row, int Col), string> summary)
     {
-        if (LooksLikeToyotaHyundaiGsd(summary))
-        {
-            var totalsRows = ExtractTotalsSheetPricingRows(workbook);
-            if (totalsRows.Count > 0)
-            {
-                var catalogRows = ExtractSellSkuRateCatalogRows(workbook, contractType, includePricedRows: false)
-                    .Take(30)
-                    .ToList();
+        var pricingRows = ExtractTotalsSheetPricingRows(workbook, contractType);
 
-                return totalsRows.Concat(catalogRows).ToList();
-            }
+        if (pricingRows.Count > 0)
+        {
+            var catalogRows = LooksLikeToyotaHyundaiGsd(summary)
+                ? ExtractSellSkuRateCatalogRows(workbook, contractType)
+                : new List<object>();
+
+            return pricingRows.Concat(catalogRows).ToList();
         }
 
-        return ExtractSellSkuRateCatalogRows(workbook, contractType, includePricedRows: true);
+        return ExtractSellSkuRateCatalogRows(workbook, contractType);
     }
 
-    static List<object> ExtractTasksFromTotalsSheet(Dictionary<string, Dictionary<(int Row, int Col), string>> workbook)
+    static List<object> ExtractTasksFromTotalsSheetResourceRows(
+        Dictionary<string, Dictionary<(int Row, int Col), string>> workbook)
     {
         var tasks = new List<object>();
 
@@ -6467,274 +6736,110 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
             return tasks;
         }
 
-        var inBreakout = false;
-
-        for (var row = 1; row <= 180; row++)
-        {
-            var rowText = string.Join(" ", Enumerable.Range(1, 8).Select(col => GetCell(sheet, row, col))).Trim();
-            var normalized = NormalizeLabel(rowText);
-
-            if (normalized.Contains("phasebreakouttotals") || normalized.Contains("milestonebreakouttotals"))
-            {
-                inBreakout = true;
-                continue;
-            }
-
-            if (!inBreakout)
-            {
-                continue;
-            }
-
-            if (normalized.Contains("totalprojectlabor") || normalized.Contains("overalltotals") || normalized.Contains("invoicingbreakouttotals"))
-            {
-                break;
-            }
-
-            var phaseLabel = GetCell(sheet, row, 2);
-            if (string.IsNullOrWhiteSpace(phaseLabel))
-            {
-                phaseLabel = GetCell(sheet, row, 1);
-            }
-
-            if (string.IsNullOrWhiteSpace(phaseLabel))
-            {
-                continue;
-            }
-
-            var normalizedPhase = NormalizeLabel(phaseLabel);
-            var isPhase =
-                normalizedPhase is "plan" or "design" or "implement" or "validate" or "release"
-                || normalizedPhase.StartsWith("milestone")
-                || normalizedPhase.Contains("milestone");
-
-            if (!isPhase)
-            {
-                continue;
-            }
-
-            var hours = NumberOrZero(GetCell(sheet, row, 3));
-            var otHours = NumberOrZero(GetCell(sheet, row, 4));
-            var laborAndTravel = FirstNumberInRange(sheet, row, 5, 7);
-
-            if (hours == 0m && otHours == 0m && laborAndTravel == 0m)
-            {
-                continue;
-            }
-
-            tasks.Add(new
-            {
-                include = true,
-                source = "Totals Sheet",
-                phase = phaseLabel,
-                taskName = phaseLabel,
-                engineeringRole = "Consolidated phase total",
-                regularHours = hours,
-                overtimeHours = otHours,
-                reserveHours = 0m,
-                pmHours = 0m,
-                pmReserveHours = 0m,
-                travelHours = 0m,
-                totalHours = hours + otHours,
-                laborListPrice = laborAndTravel,
-                billable = true,
-                utilizationEligible = true,
-                engineers = new List<object>()
-            });
-        }
-
-        return tasks;
-    }
-
-    static List<object> ExtractTasksFromMilestoneSummaryBreakdown(Dictionary<string, Dictionary<(int Row, int Col), string>> workbook)
-    {
-        var tasks = new List<object>();
-
-        if (!workbook.TryGetValue("Milestone Summary Breakdown", out var sheet))
+        var header = FindResourceTotalsHeader(sheet);
+        if (header.HeaderRow == 0)
         {
             return tasks;
         }
 
-        void AddLaborBlock(int titleRow, int titleCol, int resourceCol, int regularCol, int otCol, int reserveCol, int pmCol, int pmReserveCol, int priceCol)
+        for (var row = header.HeaderRow + 1; row <= header.HeaderRow + 40; row++)
         {
-            var title = MilestoneCleanName(GetCell(sheet, titleRow, titleCol));
-            if (string.IsNullOrWhiteSpace(title))
+            var rowText = string.Join(" ", Enumerable.Range(1, 14).Select(col => GetCell(sheet, row, col))).Trim();
+            var normalized = NormalizeLabel(rowText);
+
+            if (normalized.Contains("phasebreakouttotals") || normalized.Contains("milestonebreakouttotals") || normalized.Contains("invoicingbreakouttotals"))
             {
-                return;
+                break;
             }
 
-            for (var row = titleRow + 1; row <= titleRow + 22; row++)
+            var role = GetCell(sheet, row, header.RoleCol);
+
+            if (string.IsNullOrWhiteSpace(role))
             {
-                var resource = GetCell(sheet, row, resourceCol);
+                continue;
+            }
 
-                if (resource.Equals("Travel Time", StringComparison.OrdinalIgnoreCase))
-                {
-                    var travelLaborHours = NumberOrZero(GetCell(sheet, row, regularCol));
-                    var travelLaborPrice = FirstNumberInRange(sheet, row, priceCol, priceCol + 2);
+            var normalizedRole = NormalizeLabel(role);
+            if (normalizedRole.Contains("total") || normalizedRole.Contains("resourcerole") || IsTravelRole(role))
+            {
+                continue;
+            }
 
-                    if (travelLaborHours > 0m || travelLaborPrice > 0m)
-                    {
-                        tasks.Add(new
-                        {
-                            include = true,
-                            source = "Milestone Summary Breakdown",
-                            phase = title,
-                            taskName = $"{title} - Travel Time",
-                            engineeringRole = $"Travel labor hours {travelLaborHours}",
-                            regularHours = travelLaborHours,
-                            overtimeHours = 0m,
-                            reserveHours = 0m,
-                            pmHours = 0m,
-                            pmReserveHours = 0m,
-                            travelHours = travelLaborHours,
-                            totalHours = travelLaborHours,
-                            laborListPrice = travelLaborPrice,
-                            billable = true,
-                            utilizationEligible = true,
-                            engineers = new List<object>()
-                        });
-                    }
+            var regularHours = NumberOrZero(GetCell(sheet, row, header.RegHoursCol));
+            var overtimeHours = NumberOrZero(GetCell(sheet, row, header.OtHoursCol));
 
-                    continue;
-                }
+            var regularTotalEnd = header.OtTotalCol > 0 ? header.OtTotalCol - 1 : header.RegTotalCol + 2;
+            var overtimeTotalEnd = header.OverallTotalCol > 0 ? header.OverallTotalCol - 1 : header.OtTotalCol + 2;
 
-                if (!resource.Equals("TOTAL LABOR", StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
+            var regularTotal = FirstNumberInRange(sheet, row, header.RegTotalCol, Math.Max(header.RegTotalCol, regularTotalEnd));
+            var overtimeTotal = header.OtTotalCol > 0
+                ? FirstNumberInRange(sheet, row, header.OtTotalCol, Math.Max(header.OtTotalCol, overtimeTotalEnd))
+                : 0m;
 
-                var regular = NumberOrZero(GetCell(sheet, row, regularCol));
-                var ot = NumberOrZero(GetCell(sheet, row, otCol));
-                var reserve = NumberOrZero(GetCell(sheet, row, reserveCol));
-                var pm = NumberOrZero(GetCell(sheet, row, pmCol));
-                var pmReserve = NumberOrZero(GetCell(sheet, row, pmReserveCol));
-                var laborPrice = FirstNumberInRange(sheet, row, priceCol, priceCol + 2);
-                var totalHours = regular + ot + reserve + pm + pmReserve;
+            var taskFamily = IsPmRole(role) ? "Project Management" : "Engineering";
 
-                if (totalHours == 0m && laborPrice == 0m)
-                {
-                    return;
-                }
-
+            if (regularHours > 0m && regularTotal > 0m)
+            {
                 tasks.Add(new
                 {
                     include = true,
-                    source = "Milestone Summary Breakdown",
-                    phase = title,
-                    taskName = $"{title} - Labor",
-                    engineeringRole = $"Eng Reg {regular}; Eng OT {ot}; Eng Rsv {reserve}; PM {pm}; PM Rsv {pmReserve}",
-                    regularHours = regular,
-                    overtimeHours = ot,
-                    reserveHours = reserve,
-                    pmHours = pm,
-                    pmReserveHours = pmReserve,
+                    source = "Totals Sheet Resource Totals",
+                    phase = taskFamily,
+                    taskName = $"{taskFamily} - {role}",
+                    engineeringRole = $"{role} - Regular / Standard",
+                    regularHours,
+                    overtimeHours = 0m,
+                    reserveHours = 0m,
+                    pmHours = IsPmRole(role) ? regularHours : 0m,
+                    pmReserveHours = 0m,
                     travelHours = 0m,
-                    totalHours,
-                    laborListPrice = laborPrice,
+                    totalHours = regularHours,
+                    laborListPrice = regularTotal,
                     billable = true,
                     utilizationEligible = true,
                     engineers = new List<object>()
                 });
-
-                return;
-            }
-        }
-
-        void AddTravelBlock(int titleRow, int titleCol, int resourceCol, int travelHoursCol, int priceCol)
-        {
-            var title = MilestoneCleanName(GetCell(sheet, titleRow, titleCol));
-            if (string.IsNullOrWhiteSpace(title))
-            {
-                return;
             }
 
-            for (var row = titleRow + 1; row <= titleRow + 22; row++)
+            if (overtimeHours > 0m && overtimeTotal > 0m)
             {
-                var resource = GetCell(sheet, row, resourceCol);
-
-                if (!resource.Equals("TOTAL TRAVEL", StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                var travelHours = NumberOrZero(GetCell(sheet, row, travelHoursCol));
-                var travelPrice = FirstNumberInRange(sheet, row, priceCol, priceCol + 2);
-
-                if (travelHours == 0m && travelPrice == 0m)
-                {
-                    return;
-                }
-
                 tasks.Add(new
                 {
                     include = true,
-                    source = "Milestone Summary Breakdown",
-                    phase = title,
-                    taskName = $"{title} - Travel Expense",
-                    engineeringRole = $"Travel expense hours {travelHours}",
-                    regularHours = travelHours,
-                    overtimeHours = 0m,
+                    source = "Totals Sheet Resource Totals",
+                    phase = taskFamily,
+                    taskName = $"{taskFamily} - {role} Afterhours",
+                    engineeringRole = $"{role} - Overtime / Afterhours",
+                    regularHours = 0m,
+                    overtimeHours,
                     reserveHours = 0m,
                     pmHours = 0m,
                     pmReserveHours = 0m,
-                    travelHours,
-                    totalHours = travelHours,
-                    laborListPrice = travelPrice,
+                    travelHours = 0m,
+                    totalHours = overtimeHours,
+                    laborListPrice = overtimeTotal,
                     billable = true,
                     utilizationEligible = true,
                     engineers = new List<object>()
                 });
-
-                return;
-            }
-        }
-
-        for (var row = 1; row <= 220; row++)
-        {
-            var leftTitle = GetCell(sheet, row, 2);
-            var rightTitle = GetCell(sheet, row, 11);
-
-            if (leftTitle.EndsWith("- LABOR", StringComparison.OrdinalIgnoreCase))
-            {
-                AddLaborBlock(row, 2, 2, 3, 4, 5, 6, 7, 8);
-            }
-
-            if (rightTitle.EndsWith("- LABOR", StringComparison.OrdinalIgnoreCase))
-            {
-                AddLaborBlock(row, 11, 11, 12, 13, 14, 15, 16, 17);
-            }
-
-            if (leftTitle.EndsWith("- TRAVEL", StringComparison.OrdinalIgnoreCase))
-            {
-                AddTravelBlock(row, 2, 2, 5, 9);
-            }
-
-            if (rightTitle.EndsWith("- TRAVEL", StringComparison.OrdinalIgnoreCase))
-            {
-                AddTravelBlock(row, 11, 11, 14, 18);
             }
         }
 
         return tasks;
     }
 
-    static List<object> ExtractConsolidatedTasks(Dictionary<string, Dictionary<(int Row, int Col), string>> workbook, Dictionary<(int Row, int Col), string> summary)
+    static List<object> ExtractConsolidatedTasks(
+        Dictionary<string, Dictionary<(int Row, int Col), string>> workbook,
+        Dictionary<(int Row, int Col), string> summary)
     {
-        if (LooksLikeToyotaHyundaiGsd(summary))
-        {
-            var milestoneTasks = ExtractTasksFromMilestoneSummaryBreakdown(workbook);
-            if (milestoneTasks.Count > 0)
-            {
-                return milestoneTasks;
-            }
-        }
+        var totalsTasks = ExtractTasksFromTotalsSheetResourceRows(workbook);
 
-        var totalsTasks = ExtractTasksFromTotalsSheet(workbook);
         if (totalsTasks.Count > 0)
         {
             return totalsTasks;
         }
 
-        return ExtractTasksFromMilestoneSummaryBreakdown(workbook);
+        return new List<object>();
     }
 
     static List<object> ExtractPhaseTotals(Dictionary<string, Dictionary<(int Row, int Col), string>> workbook)
@@ -6748,24 +6853,30 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
 
         for (var row = 1; row <= 180; row++)
         {
-            var rowText = string.Join(" ", Enumerable.Range(1, 8).Select(col => GetCell(sheet, row, col))).Trim();
+            var rowText = string.Join(" ", Enumerable.Range(1, 10).Select(col => GetCell(sheet, row, col))).Trim();
             var normalized = NormalizeLabel(rowText);
 
-            if (normalized.Contains("totalprojectlabor") || normalized.Contains("overalltotals") || normalized.Contains("totalproject"))
+            if (normalized.Contains("totalprojectlabor")
+                || normalized.Contains("overalltotals")
+                || normalized.Contains("travelexpense")
+                || normalized.Contains("materialexpense")
+                || normalized.Contains("shippingexpense")
+                || normalized.Contains("totalproject"))
             {
                 totals.Add(new
                 {
                     source = "Totals Sheet",
                     row,
                     label = rowText,
-                    amount = FirstNumberInRange(sheet, row, 3, 12)
+                    amount = FirstNumberInRange(sheet, row, 1, 10)
                 });
             }
         }
 
         return totals;
     }
-    /* 055D_2I_TOYOTA_HYUNDAI_TOTALS_PRICING_END */
+    /* 055D_2I_REPAIRED_TOTALS_ROLLUP_SKU_MAPPING_END */
+
 
 
 
