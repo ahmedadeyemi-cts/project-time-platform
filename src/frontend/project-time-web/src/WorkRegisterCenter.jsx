@@ -246,6 +246,104 @@ export default function WorkRegisterCenter() {
   }, []);
 
 
+
+  // 055D_4Q_EDIT_SAVE_PROJECT_IDENTITY
+  function projectPulseAttachEditSaveIdentity(payload = {}) {
+    const sources = [];
+
+    function addSource(source) {
+      if (source && typeof source === 'object') {
+        sources.push(source);
+      }
+    }
+
+    addSource(payload);
+    addSource(payload.project);
+    addSource(payload.work);
+    addSource(payload.item);
+    addSource(payload.row);
+    addSource(payload.record);
+    addSource(payload.selectedProject);
+    addSource(payload.selectedWorkRegisterProject);
+    addSource(payload.editProject);
+    addSource(payload.editingProject);
+    addSource(payload.editForm);
+    addSource(payload.form);
+    addSource(payload.values);
+    addSource(payload.setup);
+    addSource(payload.setupForm);
+
+    addSource(typeof selectedProject !== 'undefined' ? selectedProject : null);
+    addSource(typeof selectedWorkRegisterProject !== 'undefined' ? selectedWorkRegisterProject : null);
+    addSource(typeof selectedWork !== 'undefined' ? selectedWork : null);
+    addSource(typeof selectedWorkItem !== 'undefined' ? selectedWorkItem : null);
+    addSource(typeof selectedWorkRegisterItem !== 'undefined' ? selectedWorkRegisterItem : null);
+    addSource(typeof selectedProjectDetail !== 'undefined' ? selectedProjectDetail : null);
+    addSource(typeof activeProject !== 'undefined' ? activeProject : null);
+    addSource(typeof currentProject !== 'undefined' ? currentProject : null);
+    addSource(typeof projectDetail !== 'undefined' ? projectDetail : null);
+    addSource(typeof editProject !== 'undefined' ? editProject : null);
+    addSource(typeof editingProject !== 'undefined' ? editingProject : null);
+    addSource(typeof editWork !== 'undefined' ? editWork : null);
+    addSource(typeof workRegisterEditProject !== 'undefined' ? workRegisterEditProject : null);
+    addSource(typeof workRegisterProjectEditForm !== 'undefined' ? workRegisterProjectEditForm : null);
+    addSource(typeof workRegisterEditForm !== 'undefined' ? workRegisterEditForm : null);
+    addSource(typeof projectEditForm !== 'undefined' ? projectEditForm : null);
+    addSource(typeof setupForm !== 'undefined' ? setupForm : null);
+    addSource(typeof activeWorkRegisterProject !== 'undefined' ? activeWorkRegisterProject : null);
+    addSource(typeof intakePackageResult !== 'undefined' ? intakePackageResult : null);
+
+    const identity = {};
+
+    for (const source of sources) {
+      const projectId =
+        source.projectId
+        || source.project_id
+        || source.id
+        || source.workId
+        || source.work_id
+        || source.workRegisterProjectId
+        || source.selectedProjectId
+        || source.selectedWorkRegisterProjectId;
+
+      if (projectId && !identity.projectId) {
+        identity.projectId = projectId;
+      }
+
+      const projectCode =
+        source.projectCode
+        || source.project_code
+        || source.workCode
+        || source.work_code
+        || source.code;
+
+      if (projectCode && !identity.projectCode) {
+        identity.projectCode = projectCode;
+      }
+
+      const projectName =
+        source.projectName
+        || source.project_name
+        || source.name;
+
+      if (projectName && !identity.projectName) {
+        identity.projectName = projectName;
+      }
+    }
+
+    const mergedPayload = {
+      ...identity,
+      ...payload,
+      projectId: payload.projectId || payload.project_id || payload.id || identity.projectId,
+      projectCode: payload.projectCode || payload.project_code || identity.projectCode,
+      projectName: payload.projectName || payload.project_name || payload.name || identity.projectName
+    };
+
+    console.info('ProjectPulse edit-save payload', mergedPayload);
+
+    return mergedPayload;
+  }
+
   async function loadEditFoundation() {
     setEditFoundation((current) => ({ ...current, loading: true, error: null }));
 
@@ -2197,7 +2295,7 @@ export default function WorkRegisterCenter() {
     setEditStatus('Saving project setup...');
 
     try {
-      const result = await postJson('/api/work-register/projects/update', payload);
+      const result = await postJson('/api/work-register/projects/update', projectPulseAttachEditSaveIdentity(payload));
       setEditStatus(result.message || 'Project setup saved.');
       await load();
       window.setTimeout(() => {

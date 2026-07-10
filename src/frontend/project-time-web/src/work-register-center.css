@@ -1569,3 +1569,67 @@ body[data-projectpulse-active-route="work-register"] #work-register .work-regist
   border-color: rgba(148, 163, 184, 0.25);
 }
 /* 055D_3B_ROLE_BASED_ASSIGNMENT_POOLS_END */
+
+/* 055D_4E_RECOVER_INTAKE_UI_DIAGNOSE_SAVE_START */
+button[data-marker="055D_4E_TEST_FINAL_SAVE_BUTTON"] {
+  pointer-events: auto;
+  cursor: pointer;
+}
+/* 055D_4E_RECOVER_INTAKE_UI_DIAGNOSE_SAVE_END */
+
+/* 055D_4F1_SAVE_DIAGNOSTIC_PM_POOL_START */
+button[data-marker="055D_4E_TEST_FINAL_SAVE_BUTTON"] {
+  pointer-events: auto;
+  cursor: pointer;
+  position: relative;
+  z-index: 5;
+}
+/* 055D_4F1_SAVE_DIAGNOSTIC_PM_POOL_END */
+
+/* 055D_4G_FINAL_SAVE_ALLOCATION_SYNC_START */
+button[data-marker="055D_4E_TEST_FINAL_SAVE_BUTTON"] {
+  font-weight: 900;
+  min-width: 18rem;
+}
+/* 055D_4G_FINAL_SAVE_ALLOCATION_SYNC_END */
+
+/* 055D_4J_SAVE_COMPLETION_BANNER_START */
+.projectpulse-save-completed-banner {
+  position: fixed;
+  top: 1.25rem;
+  right: 1.25rem;
+  z-index: 99999;
+  max-width: 32rem;
+  padding: 1rem 1.15rem;
+  border-radius: 16px;
+  background: #0f766e;
+  color: #ffffff;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.28);
+  font-weight: 900;
+  line-height: 1.35;
+  opacity: 0;
+  transform: translateY(-12px);
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.projectpulse-save-completed-banner-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+[data-theme="dark"] .projectpulse-save-completed-banner {
+  background: #14b8a6;
+  color: #042f2e;
+}
+/* 055D_4J_SAVE_COMPLETION_BANNER_END */
+
+/* 055D_4K_FINANCIAL_VISIBILITY_START */
+.work-register-financial-warning {
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  background: rgba(245, 158, 11, 0.08);
+  color: #92400e;
+  border-radius: 12px;
+  padding: 0.75rem;
+  font-weight: 800;
+}
+/* 055D_4K_FINANCIAL_VISIBILITY_END */
