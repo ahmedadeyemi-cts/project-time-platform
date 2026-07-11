@@ -13,6 +13,10 @@ Last updated: 2026-07-11
 - Current public hostname: `projectpulse-test.onenecklab.com`
 - Source remains the active environment until Azure cutover is validated.
 
+### Source-code checkpoint warning
+
+The source server still contains uncommitted application changes beyond GitHub commit `5a221da`. Those changes include the completed Work Register fixes and lifecycle work. They must be reviewed, sanitized, committed, and pushed before the application image is built for Azure. The Azure infrastructure branch does not replace that source-code checkpoint.
+
 ## Azure subscription
 
 - Subscription name: `Azure subscription 1`
@@ -145,6 +149,43 @@ Both application managed identities have `AcrPull` permission.
 
 Both vaults use Azure RBAC and purge protection. Public access remains temporarily enabled for migration administration. Each regional application identity has `Key Vault Secrets User` on its regional vault.
 
+## Geo-redundant document storage
+
+- Storage account: `stphdtest7825cc`
+- Type: StorageV2
+- Redundancy: `Standard_RAGZRS`
+- Primary region: West US 3
+- Secondary region: East US
+- Primary status at validation: available
+- Secondary status at validation: available
+- Public Blob access: disabled
+- Shared-key authorization: disabled
+- Minimum TLS: TLS 1.2
+- Public network endpoint: temporarily enabled for migration administration
+- West private endpoint: `pe-phd-test-blob-westus3`
+- East private endpoint: `pe-phd-test-blob-eastus`
+
+### Storage protection
+
+- Blob versioning: enabled
+- Blob soft delete: 30 days
+- Container soft delete: 30 days
+- Change feed: enabled with 90-day retention
+- Last-access tracking: enabled
+- Project documents and intake content tier to Cool after 90 days
+- Migration and backup content tiers to Cool after 30 days
+- Current base blobs are not automatically deleted by the lifecycle policy
+
+### Private containers
+
+- `project-documents`
+- `work-register-intake`
+- `migration-staging`
+- `database-exports`
+- `application-backups`
+
+Both regional application managed identities have `Storage Blob Data Contributor`. The signed-in migration administrator has `Storage Blob Data Owner`.
+
 ## Private DNS zones
 
 The following private DNS zones are created and linked to both VNets:
@@ -157,13 +198,38 @@ The following private DNS zones are created and linked to both VNets:
 - `privatelink.westus3.azurecontainerapps.io`
 - `privatelink.eastus.azurecontainerapps.io`
 
+## Completed phase results
+
+| Phase | Result |
+|---|---|
+| AZ-01 | Source discovery completed; no source changes made |
+| AZ-02A | Subscription and West US 3 availability confirmed |
+| AZ-03 | Two-region VNets, subnets, NSGs, route tables, peering, and private DNS created |
+| AZ-03B | Four static public IPs, two NAT Gateways, and Application Gateway subnets created |
+| AZ-04 | Regional monitoring and managed identities created |
+| AZ-04B | Premium geo-replicated ACR, regional Key Vaults, RBAC, and private endpoints created |
+| AZ-05A | RA-GZRS storage, protection controls, containers, lifecycle policy, RBAC, and private endpoints created |
+
 ## Known execution notes
 
 1. AZ-03 completed resource creation successfully but its final `az network vnet list` validation command failed because the installed Azure CLI required `--resource-group`. No network resources needed to be recreated.
 2. The first AZ-04 attempt stopped at ACR creation because the installed CLI did not accept `--data-endpoint-enabled true` during `az acr create`.
 3. AZ-04B continued safely, created the ACR and the remaining shared services, and completed successfully.
-4. Do not rerun completed scripts unless the script is explicitly idempotent and the reason for rerunning is documented.
+4. AZ-05A completed without corrective action. The change-feed retention argument produced a preview warning only.
+5. Do not rerun completed scripts unless the script is explicitly idempotent and the reason for rerunning is documented.
 
 ## Next action
 
-Run AZ-05A to create geo-redundant document storage. After storage validation, proceed to AZ-05B for PostgreSQL Flexible Server, storage autogrow, primary-region HA, and the East US cross-region replica.
+Proceed to AZ-05B for Azure Database for PostgreSQL Flexible Server:
+
+- PostgreSQL 16 primary in West US 3
+- General Purpose compute
+- 32 GiB initial storage
+- Storage autogrow enabled
+- 35-day backup retention
+- Zone-redundant high availability where subscription and regional capacity permit
+- Private delegated subnet and private DNS
+- East US asynchronous cross-region replica
+- Virtual read/write endpoint or documented controlled connection-target failover
+
+Do not create Container Apps or Cloudflare records until the database foundation is healthy and the source-code checkpoint is complete.
