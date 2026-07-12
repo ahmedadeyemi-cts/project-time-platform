@@ -197,6 +197,9 @@ The following private DNS zones are created and linked to both VNets:
 - `privatelink.vaultcore.azure.net`
 - `privatelink.westus3.azurecontainerapps.io`
 - `privatelink.eastus.azurecontainerapps.io`
+- `jollywave-6212cd8b.westus3.azurecontainerapps.io`
+
+The generated West Container Apps zone contains a wildcard A record pointing to `10.30.0.167`. Its West and East VNet links both report `Completed`.
 
 ## PostgreSQL primary
 
@@ -225,6 +228,9 @@ The East US PostgreSQL read replica is deferred because Azure reports a subscrip
 - Infrastructure subnet: `vnet-phd-test-westus3/snet-aca-infrastructure`
 - Default domain: `jollywave-6212cd8b.westus3.azurecontainerapps.io`
 - Static internal IP: `10.30.0.167`
+- Private DNS wildcard: `*.jollywave-6212cd8b.westus3.azurecontainerapps.io -> 10.30.0.167`
+- West VNet DNS link: `Completed`
+- East VNet DNS link: `Completed`
 - Application images deployed: no
 - Container apps deployed: no
 
@@ -245,6 +251,7 @@ The first AZ-06B validation displayed `LOCATION_MATCH=no` because Azure returned
 | AZ-05C2 | Initial PostgreSQL source export restored and validated; migration VM deallocated |
 | AZ-05C3 | East US PostgreSQL replica deferred because of Azure regional provisioning restriction |
 | AZ-06A/B | Internal West US 3 Container Apps environment created and validated |
+| AZ-06C | Generated private DNS zone, regional VNet links, and wildcard A record created and validated |
 
 ## Known execution notes
 
@@ -257,4 +264,4 @@ The first AZ-06B validation displayed `LOCATION_MATCH=no` because Azure returned
 
 ## Next action
 
-Configure private DNS for the internal West Container Apps environment. After DNS validation, complete the source-code checkpoint before building and publishing the application images.
+Run the read-only source-code checkpoint on the Oracle Linux source host. Do not build or publish Azure application images until the current uncommitted source changes are reviewed, sanitized, committed, and pushed.
