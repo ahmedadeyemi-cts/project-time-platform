@@ -2,29 +2,32 @@
 
 Date: 2026-07-12
 
-## Purpose
+## Result
 
-Prepare the private DNS configuration for the internal West US 3 Azure Container Apps environment.
+The private DNS configuration for the internal West US 3 Azure Container Apps environment completed successfully.
 
-## Planned configuration
+## Validated configuration
 
 - Container Apps environment: `cae-phd-test-westus3`
-- Generated default domain: read live from Azure
-- Internal static IP: read live from Azure
-- Private DNS zone: exact generated default domain
-- Wildcard A record: `*` pointing to the environment internal static IP
-- West VNet link: `vnet-phd-test-westus3`
-- East VNet link: `vnet-phd-test-eastus`
+- Environment provisioning state: `Succeeded`
+- Environment mode: internal
+- Generated default domain: `jollywave-6212cd8b.westus3.azurecontainerapps.io`
+- Internal static IP: `10.30.0.167`
+- Private DNS zone: `jollywave-6212cd8b.westus3.azurecontainerapps.io`
+- Wildcard A record: `*.jollywave-6212cd8b.westus3.azurecontainerapps.io`
+- Wildcard target: `10.30.0.167`
+- West VNet link state: `Completed`
+- East VNet link state: `Completed`
 - VNet registration: disabled
 
-## Safety
+## Safety outcome
 
-- Guard variable required: `PHD_CREATE_BILLABLE_WEST_ACA_DNS=YES`
-- The script validates that the environment is internal and in `Succeeded` state.
-- The script does not deploy container images or container apps.
-- The script does not retry the East PostgreSQL replica.
-- The script does not create public or Cloudflare DNS records.
+- No application image was built.
+- No Container App was deployed.
+- No public or Cloudflare DNS record was created.
+- The East US PostgreSQL replica was not retried.
+- No secret value was committed.
 
 ## Next action
 
-Run `deployment/azure/scripts/az06c-configure-west-container-apps-private-dns.sh` from Azure Cloud Shell.
+Run `deployment/azure/scripts/az07a-source-code-checkpoint-readonly.sh` on the Oracle Linux source host. Do not build an Azure application image until the source worktree is reviewed, sanitized, committed, and pushed.
