@@ -32,7 +32,7 @@ section() {
     ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
     if [ -z "$ROOT" ]; then
         echo "ERROR: Current directory is not inside a Git repository."
-        return 1
+        exit 1
     fi
 
     cd "$ROOT"
@@ -121,6 +121,7 @@ proxy = root / "deployment/rocky-linux/serve-frontend-local.py"
 def read(path):
     return path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
 
+
 program_text = read(program)
 project_text = read(project)
 vite_text = read(vite)
@@ -133,11 +134,11 @@ for value in frameworks:
 
 routes = re.findall(r'app\.Map(?:Get|Post|Put|Patch|Delete)\s*\(\s*"([^"]+)"', program_text)
 print(f"BACKEND_ROUTE_COUNT={len(routes)}")
-print(f"BACKEND_HEALTH_ROUTE_PRESENT={'yes' if '/health' in routes else 'no'}")
-print(f"BACKEND_ROOT_ROUTE_PRESENT={'yes' if '/' in routes else 'no'}")
-print(f"BACKEND_APP_RUN_PRESENT={'yes' if re.search(r'\bapp\.Run\s*\(', program_text) else 'no'}")
-print(f"BACKEND_FORWARDED_HEADERS_PRESENT={'yes' if 'UseForwardedHeaders' in program_text else 'no'}")
-print(f"BACKEND_HTTPS_REDIRECTION_PRESENT={'yes' if 'UseHttpsRedirection' in program_text else 'no'}")
+print("BACKEND_HEALTH_ROUTE_PRESENT=" + ("yes" if "/health" in routes else "no"))
+print("BACKEND_ROOT_ROUTE_PRESENT=" + ("yes" if "/" in routes else "no"))
+print("BACKEND_APP_RUN_PRESENT=" + ("yes" if re.search(r"\bapp\.Run\s*\(", program_text) else "no"))
+print("BACKEND_FORWARDED_HEADERS_PRESENT=" + ("yes" if "UseForwardedHeaders" in program_text else "no"))
+print("BACKEND_HTTPS_REDIRECTION_PRESENT=" + ("yes" if "UseHttpsRedirection" in program_text else "no"))
 
 patterns = [
     r'Environment\.GetEnvironmentVariable\s*\(\s*"([A-Za-z0-9_:\-.]+)"',
@@ -152,9 +153,9 @@ print(f"BACKEND_CONFIGURATION_KEY_COUNT={len(keys)}")
 for key in sorted(keys):
     print(f"BACKEND_CONFIGURATION_KEY={key}")
 
-print(f"DATABASE_CONFIG_TYPE_PRESENT={'yes' if 'DatabaseConfig' in program_text else 'no'}")
-print(f"DATABASE_CONFIG_FROM_ENVIRONMENT_PRESENT={'yes' if 'DatabaseConfig.FromEnvironment' in program_text else 'no'}")
-print(f"NPGSQL_CONNECTION_PRESENT={'yes' if 'NpgsqlConnection' in program_text else 'no'}")
+print("DATABASE_CONFIG_TYPE_PRESENT=" + ("yes" if "DatabaseConfig" in program_text else "no"))
+print("DATABASE_CONFIG_FROM_ENVIRONMENT_PRESENT=" + ("yes" if "DatabaseConfig.FromEnvironment" in program_text else "no"))
+print("NPGSQL_CONNECTION_PRESENT=" + ("yes" if "NpgsqlConnection" in program_text else "no"))
 
 if package.is_file():
     data = json.loads(package.read_text(encoding="utf-8"))
@@ -173,11 +174,13 @@ for target in vite_targets:
 backend_host = re.search(r'^BACKEND_HOST\s*=\s*["\']([^"\']+)', proxy_text, re.MULTILINE)
 backend_port = re.search(r'^BACKEND_PORT\s*=\s*([0-9]+)', proxy_text, re.MULTILINE)
 listen_port = re.search(r'add_argument\("--port"[^\n]*default=([0-9]+)', proxy_text)
+api_support = 'startswith("/api/")' in proxy_text
+health_support = 'parsed.path == "/health"' in proxy_text
 print(f"LOCAL_PROXY_BACKEND_HOST={backend_host.group(1) if backend_host else 'not-detected'}")
 print(f"LOCAL_PROXY_BACKEND_PORT={backend_port.group(1) if backend_port else 'not-detected'}")
 print(f"LOCAL_FRONTEND_LISTEN_PORT={listen_port.group(1) if listen_port else 'not-detected'}")
-print(f"LOCAL_PROXY_API_SUPPORT={'yes' if 'startswith(\"/api/\")' in proxy_text else 'no'}")
-print(f"LOCAL_PROXY_HEALTH_SUPPORT={'yes' if 'parsed.path == \"/health\"' in proxy_text else 'no'}")
+print("LOCAL_PROXY_API_SUPPORT=" + ("yes" if api_support else "no"))
+print("LOCAL_PROXY_HEALTH_SUPPORT=" + ("yes" if health_support else "no"))
 PY
 
     section "Containerization decision"
