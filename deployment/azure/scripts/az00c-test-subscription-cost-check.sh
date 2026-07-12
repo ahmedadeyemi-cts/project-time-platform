@@ -35,6 +35,11 @@ FORECAST_URI="https://management.azure.com${SCOPE}/providers/Microsoft.CostManag
 MONTH_START="$(date -u +%Y-%m-01T00:00:00Z)"
 NEXT_MONTH_START="$(date -u -d "$(date -u +%Y-%m-01) +1 month" +%Y-%m-%dT00:00:00Z)"
 
+ACTUAL_STATUS_FILE="$WORK_DIR/actual-status.txt"
+FORECAST_STATUS_FILE="$WORK_DIR/forecast-status.txt"
+printf '%s\n' unavailable > "$ACTUAL_STATUS_FILE"
+printf '%s\n' unavailable > "$FORECAST_STATUS_FILE"
+
 cat > "$WORK_DIR/actual-request.json" <<'JSON'
 {
   "type": "ActualCost",
@@ -100,12 +105,13 @@ PY
         --output json > "$WORK_DIR/actual-response.json"; then
 
         python3 - "$WORK_DIR/actual-response.json" \
-            "$WARNING_USD" "$CRITICAL_USD" "$EMERGENCY_USD" "$BUDGET_USD" <<'PY'
+            "$WARNING_USD" "$CRITICAL_USD" "$EMERGENCY_USD" "$BUDGET_USD" \
+            "$ACTUAL_STATUS_FILE" <<'PY'
 import json
 import sys
 from pathlib import Path
 
-path, warning, critical, emergency, budget = sys.argv[1:]
+path, warning, critical, emergency, budget, status_path = sys.argv[1:]
 warning, critical, emergency, budget = map(float, (warning, critical, emergency, budget))
 data = json.loads(Path(path).read_text())
 props = data.get("properties") or {}
@@ -113,7 +119,8 @@ columns = [column.get("name") for column in props.get("columns") or []]
 rows = props.get("rows") or []
 
 if not rows:
-    print("No cost rows were returned. Cost data may not have posted yet.")
+    print("No cost rows were returned. Cost data has not posted yet.")
+    Path(status_path).write_text("unavailable\n")
     raise SystemExit(0)
 
 cost_index = columns.index("PreTaxCost") if "PreTaxCost" in columns else 0
@@ -148,6 +155,7 @@ else:
 
 print(f"BUDGET_STATUS={status}")
 print(f"REMAINING_TO_200={max(budget-total, 0):.2f}")
+Path(status_path).write_text("available\n")
 PY
     else
         echo "WARNING: Azure Cost Management actual-cost query failed."
@@ -161,20 +169,23 @@ PY
         --uri "$FORECAST_URI" \
         --headers Content-Type=application/json \
         --body @"$WORK_DIR/forecast-request.json" \
-        --output json > "$WORK_DIR/forecast-response.json" 2> "$WORK_DIR/forecast-error.txt"; then
+        --output json > "$WORK_DIR/forecast-response.json" \
+        2> "$WORK_DIR/forecast-error.txt"; then
 
-        python3 - "$WORK_DIR/forecast-response.json" <<'PY'
+        python3 - "$WORK_DIR/forecast-response.json" "$FORECAST_STATUS_FILE" <<'PY'
 import json
 import sys
 from pathlib import Path
 
 data = json.loads(Path(sys.argv[1]).read_text())
+status_path = Path(sys.argv[2])
 props = data.get("properties") or {}
 columns = [column.get("name") for column in props.get("columns") or []]
 rows = props.get("rows") or []
 
 if not rows:
     print("No forecast rows were returned.")
+    status_path.write_text("unavailable\n")
     raise SystemExit(0)
 
 cost_index = columns.index("PreTaxCost") if "PreTaxCost" in columns else 0
@@ -198,6 +209,7 @@ print(f"FORECAST_INCLUDED_ACTUAL={actual:.2f}")
 print(f"FORECAST_REMAINING={forecast:.2f}")
 print(f"FORECAST_MONTH_TOTAL={actual + forecast:.2f}")
 print(f"FORECAST_CURRENCY={currency}")
+status_path.write_text("available\n")
 PY
     else
         echo "Forecast is unavailable for this offer or billing scope."
@@ -220,8 +232,20 @@ PY
     echo
     echo "Container Registries:"
     az acr list \
-        --query "[].{Name:name,Location:location,SKU:sku.name,ZoneRedundant:zoneRedundancy,GeoReplications:length(replications)}" \
+        --query "[].{Name:name,Location:location,SKU:sku.name,ZoneRedundant:zoneRedundancy}" \
         --output table
+
+    mapfile -t ACR_NAMES < <(az acr list --query '[].name' --output tsv)
+    for registry in "${ACR_NAMES[@]}"; do
+        [ -n "$registry" ] || continue
+        replication_count="$(
+            az acr replication list \
+                --registry "$registry" \
+                --query 'length(@)' \
+                --output tsv 2>/dev/null || echo unknown
+        )"
+        echo "ACR_REPLICATION_COUNT[$registry]=$replication_count"
+    done
 
     echo
     echo "NAT Gateways:"
@@ -230,16 +254,47 @@ PY
         --output table
 
     echo
+    echo "Public IP addresses:"
+    az network public-ip list \
+        --query "[?starts_with(resourceGroup, 'rg-project-health-dashboard')].{Name:name,ResourceGroup:resourceGroup,Location:location,SKU:sku.name,Allocation:publicIPAllocationMethod,IPAddress:ipAddress}" \
+        --output table
+
+    echo
+    echo "Private endpoints:"
+    az network private-endpoint list \
+        --query "[?starts_with(resourceGroup, 'rg-project-health-dashboard')].{Name:name,ResourceGroup:resourceGroup,Location:location,State:provisioningState}" \
+        --output table
+
+    echo
     echo "Virtual Machines:"
     az vm list -d \
         --query "[].{Name:name,ResourceGroup:resourceGroup,Location:location,Size:hardwareProfile.vmSize,PowerState:powerState,PublicIP:publicIps}" \
         --output table
 
-    section "Cost-check interpretation"
+    section "Cost-check decision"
 
-    echo "Cost Management data can lag behind newly created resources."
-    echo "A low month-to-date total does not prove the monthly run rate is low."
-    echo "Do not create the Rocky restore runner until this output is reviewed."
+    ACTUAL_STATUS="$(cat "$ACTUAL_STATUS_FILE")"
+    FORECAST_STATUS="$(cat "$FORECAST_STATUS_FILE")"
+
+    echo "ACTUAL_COST_DATA=$ACTUAL_STATUS"
+    echo "FORECAST_COST_DATA=$FORECAST_STATUS"
+
+    if [ "$ACTUAL_STATUS" != "available" ] || \
+       [ "$FORECAST_STATUS" != "available" ]; then
+        echo "COST_DECISION=HOLD_NO_COST_DATA"
+        echo "ROCKY_RESTORE_VM_APPROVAL=HOLD"
+        echo
+        echo "Cost Management has not yet reported enough data to validate"
+        echo "the USD 200 monthly ceiling. Missing data is not zero cost."
+    else
+        echo "COST_DECISION=REVIEW_REPORTED_TOTALS"
+        echo "ROCKY_RESTORE_VM_APPROVAL=REQUIRES_REVIEW"
+    fi
+
+    echo
+    echo "The temporary Rocky VM has not been created."
+    echo "The East US PostgreSQL replica, Application Gateways, and"
+    echo "Azure Front Door remain blocked in this test subscription."
     echo
     echo "************************************************************"
     echo "TEST SUBSCRIPTION COST CHECK COMPLETE"
