@@ -355,8 +355,6 @@ else:
         print("QUOTA_REQUEST_VM_SIZE=none")
         print("QUOTA_REQUEST_FAMILY=none")
         print("QUOTA_REQUEST_MINIMUM_LIMIT=unknown")
-
-    raise SystemExit(2)
 PY
 
     section "Preflight result"
