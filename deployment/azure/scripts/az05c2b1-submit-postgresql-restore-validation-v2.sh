@@ -163,7 +163,10 @@ PY
 
     section "Submitting asynchronous restore managed Run Command"
 
-    SCRIPT_CONTENT="$(cat "$GUEST_SCRIPT_PATH")"
+    SCRIPT_CONTENT="$(
+        printf 'export PHD_RESULT_PREFIX=%q\n' "$RESULT_PREFIX"
+        cat "$GUEST_SCRIPT_PATH"
+    )"
 
     if az vm run-command show \
         -g "$RG_MIGRATION" \
@@ -179,7 +182,6 @@ PY
             --location "$LOCATION" \
             --async-execution true \
             --script "$SCRIPT_CONTENT" \
-            --parameters "PHD_RESULT_PREFIX=$RESULT_PREFIX" \
             --timeout-in-seconds 7200 \
             --no-wait \
             --only-show-errors \
@@ -194,7 +196,6 @@ PY
             --location "$LOCATION" \
             --async-execution true \
             --script "$SCRIPT_CONTENT" \
-            --parameters "PHD_RESULT_PREFIX=$RESULT_PREFIX" \
             --timeout-in-seconds 7200 \
             --no-wait \
             --only-show-errors \
