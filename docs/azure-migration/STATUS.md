@@ -1,6 +1,6 @@
 # Azure Migration Status
 
-Last updated: 2026-07-11
+Last updated: 2026-07-12
 
 ## Source environment
 
@@ -198,6 +198,38 @@ The following private DNS zones are created and linked to both VNets:
 - `privatelink.westus3.azurecontainerapps.io`
 - `privatelink.eastus.azurecontainerapps.io`
 
+## PostgreSQL primary
+
+- Server: `pg-phd-test-w3-7825cc`
+- Region: West US 3
+- PostgreSQL version: 16
+- SKU: `Standard_D2ds_v4`
+- Tier: General Purpose
+- Storage: 128 GiB Premium LRS with autogrow
+- Backup retention: 35 days with geo-redundant backup
+- Database: `project_health_dashboard`
+- Public network access: disabled
+- Private delegated subnet: `vnet-phd-test-westus3/snet-postgresql`
+- High availability: SameZone, healthy, with both instances in zone 1 due regional capacity
+- Initial source export restore and validation: passed
+
+The East US PostgreSQL read replica is deferred because Azure reports a subscription-level regional provisioning restriction. No replica resource exists and no replica billing has started.
+
+## Container Apps
+
+### West US 3
+
+- Managed environment: `cae-phd-test-westus3`
+- Provisioning state: `Succeeded`
+- Internal environment: `true`
+- Infrastructure subnet: `vnet-phd-test-westus3/snet-aca-infrastructure`
+- Default domain: `jollywave-6212cd8b.westus3.azurecontainerapps.io`
+- Static internal IP: `10.30.0.167`
+- Application images deployed: no
+- Container apps deployed: no
+
+The first AZ-06B validation displayed `LOCATION_MATCH=no` because Azure returned `West US 3` while the script expected `westus3`. The status script now normalizes Azure location names before comparison. The environment itself required no repair.
+
 ## Completed phase results
 
 | Phase | Result |
@@ -209,6 +241,10 @@ The following private DNS zones are created and linked to both VNets:
 | AZ-04 | Regional monitoring and managed identities created |
 | AZ-04B | Premium geo-replicated ACR, regional Key Vaults, RBAC, and private endpoints created |
 | AZ-05A | RA-GZRS storage, protection controls, containers, lifecycle policy, RBAC, and private endpoints created |
+| AZ-05B | West US 3 PostgreSQL primary created and validated |
+| AZ-05C2 | Initial PostgreSQL source export restored and validated; migration VM deallocated |
+| AZ-05C3 | East US PostgreSQL replica deferred because of Azure regional provisioning restriction |
+| AZ-06A/B | Internal West US 3 Container Apps environment created and validated |
 
 ## Known execution notes
 
@@ -216,20 +252,9 @@ The following private DNS zones are created and linked to both VNets:
 2. The first AZ-04 attempt stopped at ACR creation because the installed CLI did not accept `--data-endpoint-enabled true` during `az acr create`.
 3. AZ-04B continued safely, created the ACR and the remaining shared services, and completed successfully.
 4. AZ-05A completed without corrective action. The change-feed retention argument produced a preview warning only.
-5. Do not rerun completed scripts unless the script is explicitly idempotent and the reason for rerunning is documented.
+5. AZ-06B initially treated the display location `West US 3` as different from canonical location `westus3`; normalization was added and no resource repair was required.
+6. Do not rerun completed creation scripts unless the script is explicitly idempotent and the reason for rerunning is documented.
 
 ## Next action
 
-Proceed to AZ-05B for Azure Database for PostgreSQL Flexible Server:
-
-- PostgreSQL 16 primary in West US 3
-- General Purpose compute
-- 32 GiB initial storage
-- Storage autogrow enabled
-- 35-day backup retention
-- Zone-redundant high availability where subscription and regional capacity permit
-- Private delegated subnet and private DNS
-- East US asynchronous cross-region replica
-- Virtual read/write endpoint or documented controlled connection-target failover
-
-Do not create Container Apps or Cloudflare records until the database foundation is healthy and the source-code checkpoint is complete.
+Configure private DNS for the internal West Container Apps environment. After DNS validation, complete the source-code checkpoint before building and publishing the application images.
