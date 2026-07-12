@@ -23,15 +23,15 @@ echo "SOURCE_FILES_MODIFIED=false"
 echo "AZURE_RESOURCES_CREATED_BY_FIX_WRAPPER=false"
 echo "ORIGINAL_FAILURE_STAGE=BEFORE_ACR_BUILD_SUBMISSION"
 
-command -v gh >/dev/null 2>&1 || {
+if ! command -v gh >/dev/null 2>&1; then
     echo "ERROR: GitHub CLI is required."
-    return 1 2>/dev/null || true
-}
+    exit 1
+fi
 
-gh auth status >/dev/null 2>&1 || {
+if ! gh auth status >/dev/null 2>&1; then
     echo "ERROR: GitHub CLI is not authenticated."
-    return 1 2>/dev/null || true
-}
+    exit 1
+fi
 
 gh api \
     -H "Accept: application/vnd.github.raw+json" \
