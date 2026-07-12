@@ -43,6 +43,7 @@ error = str(view.get("error") or "")
 
 success_marker = "POSTGRESQL INITIAL SEED RESTORE RETRY VALIDATION PASSED"
 failure_marker = "POSTGRESQL INITIAL SEED RESTORE RETRY VALIDATION FAILED"
+normalized = execution.lower()
 
 print(f"RUN_COMMAND_NAME={run_command}")
 print(f"RESULT_PREFIX={result_prefix}")
@@ -57,12 +58,16 @@ for line in output.splitlines()[-80:]:
     print(line)
 print("-" * 72)
 
-if success_marker in output and execution.lower() == "succeeded" and exit_code == 0:
+if success_marker in output and normalized == "succeeded" and exit_code == 0:
     print("RESTORE_RETRY_RESULT=PASSED")
-elif failure_marker in output or execution.lower() in {"failed", "canceled", "timedout"}:
+elif failure_marker in output or normalized in {"failed", "canceled", "timedout"}:
     print("RESTORE_RETRY_RESULT=FAILED")
-elif execution.lower() == "running":
+elif normalized == "pending":
+    print("RESTORE_RETRY_RESULT=WAITING_TO_START")
+elif normalized == "running":
     print("RESTORE_RETRY_RESULT=STILL_RUNNING")
+elif normalized == "succeeded":
+    print("RESTORE_RETRY_RESULT=SUCCEEDED_WITHOUT_EXPECTED_MARKER")
 else:
-    print("RESTORE_RETRY_RESULT=TERMINAL_OR_UNKNOWN")
+    print("RESTORE_RETRY_RESULT=UNKNOWN_STATE")
 PY
