@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-APP="${APP:-/opt/project-time-platform/app/project-time-platform-022}"
+REQUESTED_APP="${APP:-/opt/project-time-platform/app/project-time-platform-022}"
 EXPECTED_BASE_HEAD="5a221da29cdfc1134e5d603175b311ff97658b67"
 BASE_DIR="$HOME/project-health-dashboard-source-checkpoint"
 LOG_DIR="$BASE_DIR/logs"
@@ -26,10 +26,21 @@ fail() {
     return 1
 }
 
+resolve_repository_root() {
+    local candidate="$1"
+
+    [ -n "$candidate" ] || return 1
+    [ -e "$candidate" ] || return 1
+
+    git -C "$candidate" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 1
+    git -C "$candidate" rev-parse --show-toplevel
+}
+
 {
     section "AZ-07A - Read-Only Source Code Checkpoint"
     echo "TIME=$(date -u -Is)"
-    echo "APPLICATION_PATH=$APP"
+    echo "REQUESTED_APPLICATION_PATH=$REQUESTED_APP"
+    echo "CURRENT_DIRECTORY=$(pwd -P)"
     echo "READ_ONLY_SOURCE_INSPECTION=true"
     echo "PATCH_CONTENT_COLLECTED=false"
     echo "SOURCE_FILES_MODIFIED=false"
@@ -37,15 +48,30 @@ fail() {
     echo "APPLICATION_BUILD_STARTED=false"
     echo "AZURE_IMAGE_BUILD_STARTED=false"
 
-    [ -d "$APP/.git" ] || fail "Git repository not found at $APP"
+    APP=""
+    REPOSITORY_DETECTION_SOURCE=""
+
+    if APP="$(resolve_repository_root "$REQUESTED_APP" 2>/dev/null)"; then
+        REPOSITORY_DETECTION_SOURCE="requested-path"
+    elif APP="$(resolve_repository_root "$(pwd -P)" 2>/dev/null)"; then
+        REPOSITORY_DETECTION_SOURCE="current-directory"
+    else
+        fail "No Git worktree was found at the requested path or current directory."
+    fi
+
+    echo "APPLICATION_PATH=$APP"
+    echo "REPOSITORY_DETECTION_SOURCE=$REPOSITORY_DETECTION_SOURCE"
+
     cd "$APP"
 
     ROOT="$(git rev-parse --show-toplevel)"
+    GIT_DIR="$(git rev-parse --git-dir)"
     HEAD_SHA="$(git rev-parse HEAD)"
     BRANCH_NAME="$(git branch --show-current)"
     UPSTREAM="$(git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null || true)"
 
     echo "SOURCE_REPOSITORY_ROOT=$ROOT"
+    echo "SOURCE_GIT_DIR=$GIT_DIR"
     echo "SOURCE_BRANCH=${BRANCH_NAME:-detached}"
     echo "SOURCE_HEAD=$HEAD_SHA"
     echo "EXPECTED_BASE_HEAD=$EXPECTED_BASE_HEAD"
@@ -126,6 +152,7 @@ fail() {
 
     cat > "$STATE_FILE" <<EOF
 SOURCE_REPOSITORY_ROOT=$ROOT
+SOURCE_GIT_DIR=$GIT_DIR
 SOURCE_BRANCH=${BRANCH_NAME:-detached}
 SOURCE_HEAD=$HEAD_SHA
 SOURCE_UPSTREAM=${UPSTREAM:-not-configured}
