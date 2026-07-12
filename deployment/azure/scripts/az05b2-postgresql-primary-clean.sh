@@ -31,7 +31,7 @@ CONFIG_FILE="$CONFIG_DIR/postgresql-primary.env"
 SKU_DIAGNOSTIC="$LOG_DIR/az05b2-common-skus-$STAMP.txt"
 mkdir -p "$CONFIG_DIR" "$LOG_DIR"
 
-SUBSCRIPTION_ID="$(az account show --query id -o tsv)"
+SUBSCRIPTION_ID="$(az account show --query id --output tsv)"
 UNIQUE_SUFFIX="$(printf '%s' "$SUBSCRIPTION_ID" | sha256sum | cut -c1-6)"
 PRIMARY_SERVER="pg-phd-test-w3-${UNIQUE_SUFFIX}"
 PLANNED_REPLICA="pg-phd-test-eus-${UNIQUE_SUFFIX}"
@@ -55,9 +55,8 @@ section() {
 set_secret_both_regions() {
     local name="$1"
     local value="$2"
-
-    az keyvault secret set --vault-name "$WEST_KEYVAULT" --name "$name" --value "$value" --only-show-errors -o none
-    az keyvault secret set --vault-name "$EAST_KEYVAULT" --name "$name" --value "$value" --only-show-errors -o none
+    az keyvault secret set --vault-name "$WEST_KEYVAULT" --name "$name" --value "$value" --only-show-errors --output none
+    az keyvault secret set --vault-name "$EAST_KEYVAULT" --name "$name" --value "$value" --only-show-errors --output none
 }
 
 select_common_sku() {
@@ -66,8 +65,8 @@ select_common_sku() {
     east_json="$(mktemp)"
     rc=0
 
-    az postgres flexible-server list-skus --location "$PRIMARY_LOCATION" -o json > "$west_json"
-    az postgres flexible-server list-skus --location "$SECONDARY_LOCATION" -o json > "$east_json"
+    az postgres flexible-server list-skus --location "$PRIMARY_LOCATION" --output json > "$west_json"
+    az postgres flexible-server list-skus --location "$SECONDARY_LOCATION" --output json > "$east_json"
 
     python3 - "$west_json" "$east_json" "$SKU_DIAGNOSTIC" <<'PY' || rc=$?
 import json
@@ -158,16 +157,16 @@ require_ci() {
 
     section "Validating prerequisites"
 
-    PRIMARY_SUBNET_ID="$(az network vnet subnet show -g "$RG_PRIMARY_NETWORK" --vnet-name "$PRIMARY_VNET" -n "$POSTGRES_SUBNET" --query id -o tsv)"
-    SECONDARY_SUBNET_ID="$(az network vnet subnet show -g "$RG_SECONDARY_NETWORK" --vnet-name "$SECONDARY_VNET" -n "$POSTGRES_SUBNET" --query id -o tsv)"
-    PRIVATE_DNS_ZONE_ID="$(az network private-dns zone show -g "$RG_SHARED" -n "$POSTGRES_PRIVATE_DNS_ZONE" --query id -o tsv)"
+    PRIMARY_SUBNET_ID="$(az network vnet subnet show --resource-group "$RG_PRIMARY_NETWORK" --vnet-name "$PRIMARY_VNET" --name "$POSTGRES_SUBNET" --query id --output tsv)"
+    SECONDARY_SUBNET_ID="$(az network vnet subnet show --resource-group "$RG_SECONDARY_NETWORK" --vnet-name "$SECONDARY_VNET" --name "$POSTGRES_SUBNET" --query id --output tsv)"
+    PRIVATE_DNS_ZONE_ID="$(az network private-dns zone show --resource-group "$RG_SHARED" --name "$POSTGRES_PRIVATE_DNS_ZONE" --query id --output tsv)"
 
-    az keyvault show -n "$WEST_KEYVAULT" --query '{name:name,location:location,state:properties.provisioningState}' -o table
-    az keyvault show -n "$EAST_KEYVAULT" --query '{name:name,location:location,state:properties.provisioningState}' -o table
+    az keyvault show --name "$WEST_KEYVAULT" --query '{name:name,location:location,state:properties.provisioningState}' --output table
+    az keyvault show --name "$EAST_KEYVAULT" --query '{name:name,location:location,state:properties.provisioningState}' --output table
 
-    if az postgres flexible-server show -g "$RG_PRIMARY_DATA" -n "$PRIMARY_SERVER" -o none >/dev/null 2>&1; then
+    if az postgres flexible-server show --resource-group "$RG_PRIMARY_DATA" --name "$PRIMARY_SERVER" --output none >/dev/null 2>&1; then
         echo "Existing PostgreSQL server found; creation will be skipped."
-        SKU_NAME="$(az postgres flexible-server show -g "$RG_PRIMARY_DATA" -n "$PRIMARY_SERVER" --query sku.name -o tsv)"
+        SKU_NAME="$(az postgres flexible-server show --resource-group "$RG_PRIMARY_DATA" --name "$PRIMARY_SERVER" --query sku.name --output tsv)"
     else
         section "Selecting a common regional two-vCore SKU"
         if ! SKU_NAME="$(select_common_sku)"; then
@@ -184,7 +183,7 @@ require_ci() {
 
     section "Loading PostgreSQL administrator secret"
 
-    ADMIN_PASSWORD="$(az keyvault secret show --vault-name "$WEST_KEYVAULT" --name "$SECRET_ADMIN_PASSWORD" --query value -o tsv)"
+    ADMIN_PASSWORD="$(az keyvault secret show --vault-name "$WEST_KEYVAULT" --name "$SECRET_ADMIN_PASSWORD" --query value --output tsv)"
     if [ -z "$ADMIN_PASSWORD" ]; then
         echo "ERROR: PostgreSQL administrator password secret is empty or missing."
         exit 1
@@ -197,7 +196,7 @@ require_ci() {
 
     section "Creating PostgreSQL 16 primary"
 
-    if az postgres flexible-server show -g "$RG_PRIMARY_DATA" -n "$PRIMARY_SERVER" -o none >/dev/null 2>&1; then
+    if az postgres flexible-server show --resource-group "$RG_PRIMARY_DATA" --name "$PRIMARY_SERVER" --output none >/dev/null 2>&1; then
         echo "Existing primary confirmed: $PRIMARY_SERVER"
     else
         az postgres flexible-server create \
@@ -227,40 +226,62 @@ require_ci() {
                 "planned-replica=$PLANNED_REPLICA" \
             --yes \
             --only-show-errors \
-            -o none
+            --output none
         echo "Created PostgreSQL primary: $PRIMARY_SERVER"
     fi
 
     unset ADMIN_PASSWORD
 
     section "Waiting for primary readiness"
-    az postgres flexible-server wait -g "$RG_PRIMARY_DATA" -n "$PRIMARY_SERVER" --custom "state=='Ready'" --interval 30 --timeout 3600
+    az postgres flexible-server wait --resource-group "$RG_PRIMARY_DATA" --name "$PRIMARY_SERVER" --custom "state=='Ready'" --interval 30 --timeout 3600
 
     section "Creating application database"
-    if az postgres flexible-server db show -g "$RG_PRIMARY_DATA" -s "$PRIMARY_SERVER" -d "$DATABASE_NAME" -o none >/dev/null 2>&1; then
+    if az postgres flexible-server db show \
+        --resource-group "$RG_PRIMARY_DATA" \
+        --server-name "$PRIMARY_SERVER" \
+        --name "$DATABASE_NAME" \
+        --output none >/dev/null 2>&1; then
         echo "Existing application database confirmed: $DATABASE_NAME"
     else
-        az postgres flexible-server db create -g "$RG_PRIMARY_DATA" -s "$PRIMARY_SERVER" -d "$DATABASE_NAME" --charset UTF8 --only-show-errors -o none
+        az postgres flexible-server db create \
+            --resource-group "$RG_PRIMARY_DATA" \
+            --server-name "$PRIMARY_SERVER" \
+            --name "$DATABASE_NAME" \
+            --charset UTF8 \
+            --only-show-errors \
+            --output none
         echo "Created application database: $DATABASE_NAME"
     fi
 
-    PRIMARY_FQDN="$(az postgres flexible-server show -g "$RG_PRIMARY_DATA" -n "$PRIMARY_SERVER" --query fullyQualifiedDomainName -o tsv)"
+    PRIMARY_FQDN="$(az postgres flexible-server show --resource-group "$RG_PRIMARY_DATA" --name "$PRIMARY_SERVER" --query fullyQualifiedDomainName --output tsv)"
     set_secret_both_regions "$SECRET_PRIMARY_HOST" "$PRIMARY_FQDN"
 
     section "Configuring required PostgreSQL extension allow-list"
-    az postgres flexible-server parameter set -g "$RG_PRIMARY_DATA" --server-name "$PRIMARY_SERVER" -n azure.extensions --value PGCRYPTO --only-show-errors -o none
+    az postgres flexible-server parameter set \
+        --resource-group "$RG_PRIMARY_DATA" \
+        --server-name "$PRIMARY_SERVER" \
+        --name azure.extensions \
+        --value PGCRYPTO \
+        --only-show-errors \
+        --output none
 
-    az postgres flexible-server parameter set -g "$RG_PRIMARY_DATA" --server-name "$PRIMARY_SERVER" -n metrics.collector_database_activity --value ON --only-show-errors -o none || echo "WARNING: Enhanced activity metrics were unavailable."
+    az postgres flexible-server parameter set \
+        --resource-group "$RG_PRIMARY_DATA" \
+        --server-name "$PRIMARY_SERVER" \
+        --name metrics.collector_database_activity \
+        --value ON \
+        --only-show-errors \
+        --output none || echo "WARNING: Enhanced activity metrics were unavailable."
 
     section "Validating PostgreSQL primary"
 
-    STATE="$(az postgres flexible-server show -g "$RG_PRIMARY_DATA" -n "$PRIMARY_SERVER" --query state -o tsv)"
-    VERSION="$(az postgres flexible-server show -g "$RG_PRIMARY_DATA" -n "$PRIMARY_SERVER" --query version -o tsv)"
-    AUTO_GROW="$(az postgres flexible-server show -g "$RG_PRIMARY_DATA" -n "$PRIMARY_SERVER" --query storage.autoGrow -o tsv)"
-    STORAGE_SIZE="$(az postgres flexible-server show -g "$RG_PRIMARY_DATA" -n "$PRIMARY_SERVER" --query storage.storageSizeGb -o tsv)"
-    BACKUP_RETENTION="$(az postgres flexible-server show -g "$RG_PRIMARY_DATA" -n "$PRIMARY_SERVER" --query backup.backupRetentionDays -o tsv)"
-    GEO_BACKUP="$(az postgres flexible-server show -g "$RG_PRIMARY_DATA" -n "$PRIMARY_SERVER" --query backup.geoRedundantBackup -o tsv)"
-    HA_MODE="$(az postgres flexible-server show -g "$RG_PRIMARY_DATA" -n "$PRIMARY_SERVER" --query highAvailability.mode -o tsv)"
+    STATE="$(az postgres flexible-server show --resource-group "$RG_PRIMARY_DATA" --name "$PRIMARY_SERVER" --query state --output tsv)"
+    VERSION="$(az postgres flexible-server show --resource-group "$RG_PRIMARY_DATA" --name "$PRIMARY_SERVER" --query version --output tsv)"
+    AUTO_GROW="$(az postgres flexible-server show --resource-group "$RG_PRIMARY_DATA" --name "$PRIMARY_SERVER" --query storage.autoGrow --output tsv)"
+    STORAGE_SIZE="$(az postgres flexible-server show --resource-group "$RG_PRIMARY_DATA" --name "$PRIMARY_SERVER" --query storage.storageSizeGb --output tsv)"
+    BACKUP_RETENTION="$(az postgres flexible-server show --resource-group "$RG_PRIMARY_DATA" --name "$PRIMARY_SERVER" --query backup.backupRetentionDays --output tsv)"
+    GEO_BACKUP="$(az postgres flexible-server show --resource-group "$RG_PRIMARY_DATA" --name "$PRIMARY_SERVER" --query backup.geoRedundantBackup --output tsv)"
+    HA_MODE="$(az postgres flexible-server show --resource-group "$RG_PRIMARY_DATA" --name "$PRIMARY_SERVER" --query highAvailability.mode --output tsv)"
 
     require_ci "$STATE" "Ready" "server state"
     require_ci "$AUTO_GROW" "Enabled" "storage autogrow"
@@ -280,11 +301,20 @@ require_ci() {
         exit 1
     fi
 
-    az postgres flexible-server db show -g "$RG_PRIMARY_DATA" -s "$PRIMARY_SERVER" -d "$DATABASE_NAME" --query '{name:name,charset:charset,collation:collation}' -o table
+    az postgres flexible-server db show \
+        --resource-group "$RG_PRIMARY_DATA" \
+        --server-name "$PRIMARY_SERVER" \
+        --name "$DATABASE_NAME" \
+        --query '{name:name,charset:charset,collation:collation}' \
+        --output table
 
-    az postgres flexible-server show -g "$RG_PRIMARY_DATA" -n "$PRIMARY_SERVER" --query '{name:name,fqdn:fullyQualifiedDomainName,location:location,state:state,version:version,tier:sku.tier,sku:sku.name,storageGiB:storage.storageSizeGb,autogrow:storage.autoGrow,backupRetention:backup.backupRetentionDays,geoBackup:backup.geoRedundantBackup,haMode:highAvailability.mode,haState:highAvailability.state,primaryZone:availabilityZone,standbyZone:highAvailability.standbyAvailabilityZone,delegatedSubnet:network.delegatedSubnetResourceId,privateDnsZone:network.privateDnsZoneArmResourceId,publicAccess:network.publicNetworkAccess}' -o table
+    az postgres flexible-server show \
+        --resource-group "$RG_PRIMARY_DATA" \
+        --name "$PRIMARY_SERVER" \
+        --query '{name:name,fqdn:fullyQualifiedDomainName,location:location,state:state,version:version,tier:sku.tier,sku:sku.name,storageGiB:storage.storageSizeGb,autogrow:storage.autoGrow,backupRetention:backup.backupRetentionDays,geoBackup:backup.geoRedundantBackup,haMode:highAvailability.mode,haState:highAvailability.state,primaryZone:availabilityZone,standbyZone:highAvailability.standbyAvailabilityZone,delegatedSubnet:network.delegatedSubnetResourceId,privateDnsZone:network.privateDnsZoneArmResourceId,publicAccess:network.publicNetworkAccess}' \
+        --output table
 
-    PRIMARY_SERVER_ID="$(az postgres flexible-server show -g "$RG_PRIMARY_DATA" -n "$PRIMARY_SERVER" --query id -o tsv)"
+    PRIMARY_SERVER_ID="$(az postgres flexible-server show --resource-group "$RG_PRIMARY_DATA" --name "$PRIMARY_SERVER" --query id --output tsv)"
 
     cat > "$CONFIG_FILE" <<EOF
 PROJECT_NAME=$PRODUCT_NAME
