@@ -120,6 +120,32 @@ Private containers:
 
 The storage public network endpoint remains temporarily enabled for migration administration. No database, Container Apps environment, Application Gateway, or Cloudflare DNS record was created.
 
+## 2026-07-12 — AZ-05B PostgreSQL first attempt
+
+The first PostgreSQL primary script stopped before creating a server.
+
+Two Azure CLI compatibility issues were identified:
+
+1. The installed CLI uses `--database-name` on `az postgres flexible-server create` only for elastic clusters when `--node-count` is present. A regular Flexible Server database must be created separately with `az postgres flexible-server db create`.
+2. The original SKU parser examined only selected JSON keys and did not discover the current SKU strings returned by `list-skus`. It therefore returned an empty SKU instead of terminating safely.
+
+Actions completed before the stop:
+
+- Existing regional networks, PostgreSQL delegated subnets, private DNS, and Key Vaults were validated.
+- A strong PostgreSQL administrator password was generated and stored in both regional Key Vaults.
+
+No PostgreSQL server or application database was created.
+
+Corrective script:
+
+- `deployment/azure/scripts/az05b1-postgresql-primary-repair.sh`
+- Collects SKU-looking strings recursively from both regions.
+- Selects a common `Standard_D2*` SKU and hard-fails if no common two-vCore SKU is found.
+- Reuses the existing Key Vault administrator secret.
+- Creates the Flexible Server without `--database-name`.
+- Creates `project_health_dashboard` separately after the server reaches `Ready`.
+- Continues autogrow, HA, backup, private networking, extension allow-list, configuration, and validation steps.
+
 ## Current checkpoint
 
-Infrastructure completed through AZ-05A. The next infrastructure phase is AZ-05B PostgreSQL Flexible Server. Before building an application image, the source server's uncommitted application changes must be committed and pushed through a separate source checkpoint.
+Infrastructure completed through AZ-05A. AZ-05B has not created a PostgreSQL server yet. Run AZ-05B.1 to continue the PostgreSQL primary deployment. Before building an application image, the source server's uncommitted application changes must be committed and pushed through a separate source checkpoint.
