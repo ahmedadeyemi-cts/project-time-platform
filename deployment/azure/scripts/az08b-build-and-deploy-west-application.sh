@@ -4,7 +4,7 @@ set -Eeuo pipefail
 SUBSCRIPTION_ID="cd32baeb-7b71-4bc0-8ea3-9f23a50903fe"
 SOURCE_REPOSITORY="ahmedadeyemi-cts/project-time-platform"
 SOURCE_BRANCH="source/work-register-billing-lifecycle-20260712"
-EXPECTED_SOURCE_COMMIT="baddc5551fb5b045961015054403f2677c83e5eb"
+EXPECTED_SOURCE_COMMIT="abf45bf824747767282f68fa5bd50909f9751eb0"
 IMAGE_TAG="${EXPECTED_SOURCE_COMMIT:0:12}"
 
 RG_SHARED="rg-project-health-dashboard-shared-global"
@@ -55,15 +55,12 @@ ensure_role() {
     local scope="$3"
     local count
 
-    count="$(
-        az role assignment list \
-            --assignee "$principal_id" \
-            --scope "$scope" \
-            --role "$role_name" \
-            --query 'length(@)' \
-            --output tsv \
-            2>/dev/null || echo 0
-    )"
+    count="$(az role assignment list \
+        --assignee "$principal_id" \
+        --scope "$scope" \
+        --role "$role_name" \
+        --query 'length(@)' \
+        --output tsv 2>/dev/null || echo 0)"
 
     if [ "$count" != "0" ]; then
         echo "ROLE[$role_name]=existing"
@@ -84,7 +81,6 @@ ensure_role() {
 {
     section "AZ-08B - Build and Deploy West Application"
     echo "TIME=$(date -u -Is)"
-    echo "SUBSCRIPTION_ID=$SUBSCRIPTION_ID"
     echo "SOURCE_BRANCH=$SOURCE_BRANCH"
     echo "EXPECTED_SOURCE_COMMIT=$EXPECTED_SOURCE_COMMIT"
     echo "IMAGE_TAG=$IMAGE_TAG"
@@ -108,16 +104,14 @@ ensure_role() {
     az extension add --name containerapp --upgrade --only-show-errors --output none
     echo "CONTAINERAPP_EXTENSION_VERSION=$(az extension show --name containerapp --query version --output tsv)"
 
-    section "Validating deployed West foundation"
+    section "Validating West foundation"
 
     ENV_STATE="$(az containerapp env show -g "$RG_APP" -n "$CONTAINERAPPS_ENVIRONMENT" --query properties.provisioningState -o tsv)"
     ACR_STATE="$(az acr show -g "$RG_SHARED" -n "$ACR_NAME" --query provisioningState -o tsv)"
-    KV_STATE="$(az keyvault show -g "$RG_DATA" -n "$KEY_VAULT_NAME" --query properties.provisioningState -o tsv)"
     PG_STATE="$(az postgres flexible-server show -g "$RG_DATA" -n "$POSTGRES_SERVER" --query state -o tsv)"
 
     echo "CONTAINERAPPS_ENVIRONMENT_STATE=$ENV_STATE"
     echo "ACR_STATE=$ACR_STATE"
-    echo "KEY_VAULT_STATE=$KV_STATE"
     echo "POSTGRES_STATE=$PG_STATE"
 
     [ "$ENV_STATE" = "Succeeded" ] || fail "West Container Apps environment is not ready."
@@ -125,11 +119,11 @@ ensure_role() {
     [ "$PG_STATE" = "Ready" ] || fail "West PostgreSQL primary is not ready."
 
     if az containerapp show -g "$RG_APP" -n "$API_APP" --output none >/dev/null 2>&1; then
-        fail "Container app already exists: $API_APP. This one-time deployment script will not overwrite it."
+        fail "Container app already exists: $API_APP. This one-time script will not overwrite it."
     fi
 
     if az containerapp show -g "$RG_APP" -n "$WEB_APP" --output none >/dev/null 2>&1; then
-        fail "Container app already exists: $WEB_APP. This one-time deployment script will not overwrite it."
+        fail "Container app already exists: $WEB_APP. This one-time script will not overwrite it."
     fi
 
     section "Retrieving exact versioned source"
@@ -153,7 +147,7 @@ ensure_role() {
     [ -f "$SOURCE_DIR/deployment/containers/web/Dockerfile" ] || fail "Web Dockerfile is missing."
     [ -f "$SOURCE_DIR/deployment/containers/web/default.conf.template" ] || fail "Web proxy template is missing."
 
-    section "Building API image in Azure Container Registry"
+    section "Building API image in ACR"
 
     az acr build \
         --registry "$ACR_NAME" \
@@ -165,7 +159,7 @@ ensure_role() {
 
     echo "API_ACR_BUILD=passed"
 
-    section "Building web image in Azure Container Registry"
+    section "Building web image in ACR"
 
     az acr build \
         --registry "$ACR_NAME" \
@@ -191,7 +185,7 @@ ensure_role() {
     echo "API_IMAGE_DIGEST=$API_DIGEST"
     echo "WEB_IMAGE_DIGEST=$WEB_DIGEST"
 
-    section "Preparing managed identity and Key Vault references"
+    section "Preparing identity and database secrets"
 
     IDENTITY_ID="$(az identity show -g "$RG_APP" -n "$WEST_IDENTITY" --query id -o tsv)"
     IDENTITY_PRINCIPAL_ID="$(az identity show -g "$RG_APP" -n "$WEST_IDENTITY" --query principalId -o tsv)"
@@ -222,7 +216,6 @@ ensure_role() {
     CONNECTION_SECRET_URI="https://${KEY_VAULT_NAME}.vault.azure.net/secrets/postgres-connection-string"
     APP_INSIGHTS_CONNECTION="$(az monitor app-insights component show -g "$RG_APP" -a "$APP_INSIGHTS" --query connectionString -o tsv 2>/dev/null || true)"
 
-    echo "WEST_IDENTITY_ID=$IDENTITY_ID"
     echo "POSTGRES_FQDN=$POSTGRES_FQDN"
     echo "POSTGRES_CONNECTION_SECRET_READY=yes"
     echo "APP_INSIGHTS_CONNECTION_AVAILABLE=$([ -n "$APP_INSIGHTS_CONNECTION" ] && echo yes || echo no)"
