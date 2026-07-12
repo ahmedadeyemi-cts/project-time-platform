@@ -73,11 +73,12 @@ section() {
 
     python3 - "$JSON_FILE" "$EXPECTED_LOCATION" "$EXPECTED_SUBNET_ID" <<'PY'
 import json
+import re
 import sys
 from pathlib import Path
 
 obj = json.loads(Path(sys.argv[1]).read_text())
-expected_location = sys.argv[2].lower()
+expected_location = sys.argv[2]
 expected_subnet = sys.argv[3].lower()
 props = obj.get("properties") or obj
 vnet = props.get("vnetConfiguration") or {}
@@ -89,6 +90,12 @@ default_domain = str(props.get("defaultDomain") or obj.get("defaultDomain") or "
 static_ip = str(props.get("staticIp") or obj.get("staticIp") or "")
 environment_id = str(obj.get("id") or "")
 
+def normalize_location(value: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", value.lower())
+
+location_match = normalize_location(location) == normalize_location(expected_location)
+subnet_match = subnet.lower() == expected_subnet
+
 print(f"WEST_CONTAINER_APPS_ENVIRONMENT_ID={environment_id}")
 print(f"WEST_CONTAINER_APPS_PROVISIONING_STATE={state}")
 print(f"WEST_CONTAINER_APPS_LOCATION={location}")
@@ -96,13 +103,13 @@ print(f"WEST_CONTAINER_APPS_INTERNAL={str(internal).lower() if internal is not N
 print(f"WEST_CONTAINER_APPS_SUBNET_ID={subnet}")
 print(f"WEST_CONTAINER_APPS_DEFAULT_DOMAIN={default_domain or 'not-yet-reported'}")
 print(f"WEST_CONTAINER_APPS_STATIC_IP={static_ip or 'not-yet-reported'}")
-print(f"LOCATION_MATCH={'yes' if location.lower() == expected_location else 'no'}")
-print(f"SUBNET_MATCH={'yes' if subnet.lower() == expected_subnet else 'no'}")
+print(f"LOCATION_MATCH={'yes' if location_match else 'no'}")
+print(f"SUBNET_MATCH={'yes' if subnet_match else 'no'}")
 
 ready = (
     state.lower() == "succeeded"
-    and location.lower() == expected_location
-    and subnet.lower() == expected_subnet
+    and location_match
+    and subnet_match
     and internal is True
     and bool(default_domain)
     and bool(static_ip)
