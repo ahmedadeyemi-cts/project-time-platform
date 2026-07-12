@@ -20,21 +20,21 @@ section() {
     echo "============================================================"
 }
 
-quota_limit_from_json() {
-    python3 - <<'PY'
-import json
-import sys
+read_current_limit() {
+    az quota show \
+        --resource-name "$RESOURCE_NAME" \
+        --scope "$SCOPE" \
+        --query 'properties.limit.value' \
+        --output tsv \
+        2>/dev/null || true
+}
 
-data = json.load(sys.stdin)
-props = data.get("properties") or {}
-limit = props.get("limit") or {}
-value = limit.get("value")
-print("" if value is None else value)
-PY
+is_integer() {
+    [[ "${1:-}" =~ ^[0-9]+$ ]]
 }
 
 {
-    section "AZ-05C2A5 - Request East US Daldsv7 VM-Family Quota"
+    section "AZ-05C2A5 - Submit East US Daldsv7 VM-Family Quota Request"
 
     SUBSCRIPTION_ID="$(az account show --query id --output tsv)"
     SUBSCRIPTION_NAME="$(az account show --query name --output tsv)"
@@ -48,7 +48,7 @@ PY
     echo "VM family: $RESOURCE_NAME"
     echo "Requested limit: $REQUESTED_LIMIT vCPUs"
     echo
-    echo "This submits an Azure quota request."
+    echo "This submits the quota request and exits immediately."
     echo "It does not create a VM or another billable Azure resource."
 
     section "Validating Microsoft.Quota registration"
@@ -63,43 +63,30 @@ PY
 
     section "Ensuring Azure CLI quota extension"
 
-    az extension add \
-        --name quota \
-        --upgrade \
-        --yes \
-        --only-show-errors \
-        --output none
+    if az extension show --name quota --output none >/dev/null 2>&1; then
+        echo "Azure CLI quota extension already installed."
+    else
+        az extension add \
+            --name quota \
+            --yes \
+            --only-show-errors \
+            --output none
+        echo "Azure CLI quota extension installed."
+    fi
 
     QUOTA_EXTENSION_VERSION="$(az extension show --name quota --query version --output tsv)"
     echo "AZURE_CLI_QUOTA_EXTENSION_VERSION=$QUOTA_EXTENSION_VERSION"
 
     section "Checking current family quota"
 
-    CURRENT_JSON="$(mktemp)"
-    CURRENT_ERROR="$(mktemp)"
+    CURRENT_LIMIT="$(read_current_limit)"
+    echo "CURRENT_QUOTA_LIMIT=${CURRENT_LIMIT:-not-returned}"
 
-    if az quota show \
-        --resource-name "$RESOURCE_NAME" \
-        --scope "$SCOPE" \
-        --output json > "$CURRENT_JSON" 2> "$CURRENT_ERROR"; then
-
-        CURRENT_LIMIT="$(quota_limit_from_json < "$CURRENT_JSON")"
-        echo "CURRENT_QUOTA_LIMIT=${CURRENT_LIMIT:-unknown}"
-    else
-        CURRENT_LIMIT=""
-        echo "CURRENT_QUOTA_LIMIT=not-returned"
-        if [ -s "$CURRENT_ERROR" ]; then
-            echo "Initial quota lookup message:"
-            sed -n '1,12p' "$CURRENT_ERROR"
-        fi
-    fi
-
-    rm -f "$CURRENT_JSON" "$CURRENT_ERROR"
-
-    if [ -n "$CURRENT_LIMIT" ] && [ "$CURRENT_LIMIT" -ge "$REQUESTED_LIMIT" ]; then
+    if is_integer "$CURRENT_LIMIT" && [ "$CURRENT_LIMIT" -ge "$REQUESTED_LIMIT" ]; then
         echo "QUOTA_REQUEST_ACTION=not-required"
         echo "QUOTA_DECISION=DEPLOYMENT_ALLOWED"
         echo "APPROVED_QUOTA_LIMIT=$CURRENT_LIMIT"
+        echo "RECOMMENDED_VM_SIZE=Standard_D2alds_v7"
         echo
         echo "************************************************************"
         echo "EASTUS DALDSV7 COMPUTE QUOTA READY"
@@ -107,10 +94,10 @@ PY
         exit 0
     fi
 
-    section "Submitting quota request"
+    section "Submitting nonblocking quota request"
 
-    REQUEST_OUTPUT="$(mktemp)"
     REQUEST_ERROR="$(mktemp)"
+    trap 'rm -f "$REQUEST_ERROR"' EXIT
 
     if az quota create \
         --resource-name "$RESOURCE_NAME" \
@@ -119,74 +106,35 @@ PY
         --resource-type "$RESOURCE_TYPE" \
         --no-wait true \
         --only-show-errors \
-        --output json > "$REQUEST_OUTPUT" 2> "$REQUEST_ERROR"; then
+        --output none \
+        2>"$REQUEST_ERROR"; then
 
         echo "QUOTA_REQUEST_ACTION=submitted"
-        if [ -s "$REQUEST_OUTPUT" ]; then
-            python3 - "$REQUEST_OUTPUT" <<'PY'
-import json
-import sys
-from pathlib import Path
+    elif grep -Eiq \
+        'already|existing|in.progress|pending|conflict|request.*active' \
+        "$REQUEST_ERROR"; then
 
-path = Path(sys.argv[1])
-try:
-    data = json.loads(path.read_text())
-except Exception:
-    print("QUOTA_REQUEST_RESPONSE=accepted")
-    raise SystemExit(0)
-
-print(f"QUOTA_REQUEST_RESOURCE_NAME={data.get('name') or ''}")
-props = data.get("properties") or {}
-limit = props.get("limit") or {}
-if limit.get("value") is not None:
-    print(f"QUOTA_REQUESTED_LIMIT={limit.get('value')}")
-PY
-        fi
+        echo "QUOTA_REQUEST_ACTION=already-pending"
+        echo "Azure reports an existing or pending quota request."
+        sed -n '1,12p' "$REQUEST_ERROR"
     else
         echo "ERROR: Azure rejected the quota request submission."
-        if [ -s "$REQUEST_ERROR" ]; then
-            cat "$REQUEST_ERROR"
-        fi
-        rm -f "$REQUEST_OUTPUT" "$REQUEST_ERROR"
+        cat "$REQUEST_ERROR"
         exit 1
     fi
 
-    rm -f "$REQUEST_OUTPUT" "$REQUEST_ERROR"
+    rm -f "$REQUEST_ERROR"
+    trap - EXIT
 
-    section "Waiting for quota approval"
+    section "Immediate post-submission check"
 
-    APPROVED_LIMIT=""
+    sleep 5
+    AFTER_LIMIT="$(read_current_limit)"
+    echo "POST_SUBMISSION_QUOTA_LIMIT=${AFTER_LIMIT:-not-returned}"
 
-    for attempt in $(seq 1 40); do
-        SHOW_JSON="$(mktemp)"
-        SHOW_ERROR="$(mktemp)"
-
-        if az quota show \
-            --resource-name "$RESOURCE_NAME" \
-            --scope "$SCOPE" \
-            --output json > "$SHOW_JSON" 2> "$SHOW_ERROR"; then
-
-            APPROVED_LIMIT="$(quota_limit_from_json < "$SHOW_JSON")"
-            echo "ATTEMPT=$attempt QUOTA_LIMIT=${APPROVED_LIMIT:-unknown}"
-
-            rm -f "$SHOW_JSON" "$SHOW_ERROR"
-
-            if [ -n "$APPROVED_LIMIT" ] && [ "$APPROVED_LIMIT" -ge "$REQUESTED_LIMIT" ]; then
-                break
-            fi
-        else
-            echo "ATTEMPT=$attempt QUOTA_LIMIT=pending"
-            rm -f "$SHOW_JSON" "$SHOW_ERROR"
-        fi
-
-        sleep 30
-    done
-
-    section "Quota request result"
-
-    if [ -n "$APPROVED_LIMIT" ] && [ "$APPROVED_LIMIT" -ge "$REQUESTED_LIMIT" ]; then
+    if is_integer "$AFTER_LIMIT" && [ "$AFTER_LIMIT" -ge "$REQUESTED_LIMIT" ]; then
         echo "QUOTA_DECISION=DEPLOYMENT_ALLOWED"
-        echo "APPROVED_QUOTA_LIMIT=$APPROVED_LIMIT"
+        echo "APPROVED_QUOTA_LIMIT=$AFTER_LIMIT"
         echo "RECOMMENDED_VM_SIZE=Standard_D2alds_v7"
         echo
         echo "************************************************************"
@@ -196,6 +144,7 @@ PY
         echo "QUOTA_DECISION=REQUEST_PENDING_OR_MANUAL_REVIEW"
         echo "REQUESTED_QUOTA_LIMIT=$REQUESTED_LIMIT"
         echo "No VM was created."
+        echo "Run az05c2a5c-check-eastus-daldsv7-quota.sh in a new Cloud Shell session."
         echo
         echo "************************************************************"
         echo "EASTUS DALDSV7 QUOTA REQUEST SUBMITTED"
