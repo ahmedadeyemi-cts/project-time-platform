@@ -118,34 +118,75 @@ Private containers:
 - `database-exports`
 - `application-backups`
 
-The storage public network endpoint remains temporarily enabled for migration administration. No database, Container Apps environment, Application Gateway, or Cloudflare DNS record was created.
+The storage public network endpoint remains temporarily enabled for migration administration.
 
-## 2026-07-12 — AZ-05B PostgreSQL first attempt
+## 2026-07-12 — AZ-05B PostgreSQL primary
 
-The first PostgreSQL primary script stopped before creating a server.
+After correcting Azure CLI and SKU-discovery differences, the West US 3 PostgreSQL Flexible Server primary was created and validated:
 
-Two Azure CLI compatibility issues were identified:
+- Server `pg-phd-test-w3-7825cc`
+- PostgreSQL 16
+- General Purpose `Standard_D2ds_v4`
+- 128 GiB Premium LRS with autogrow
+- 35-day backup retention and geo-redundant backup
+- Private delegated subnet and private DNS
+- Same-zone high availability because West US 3 could not place the standby in a separate zone
+- Database `project_health_dashboard`
+- Public network access disabled
 
-1. The installed CLI uses `--database-name` on `az postgres flexible-server create` only for elastic clusters when `--node-count` is present. A regular Flexible Server database must be created separately with `az postgres flexible-server db create`.
-2. The original SKU parser examined only selected JSON keys and did not discover the current SKU strings returned by `list-skus`. It therefore returned an empty SKU instead of terminating safely.
+The administrator secret remains in the regional Key Vaults and was not committed.
 
-Actions completed before the stop:
+## 2026-07-12 — AZ-05C1 source database export
 
-- Existing regional networks, PostgreSQL delegated subnets, private DNS, and Key Vaults were validated.
-- A strong PostgreSQL administrator password was generated and stored in both regional Key Vaults.
+A PostgreSQL 13 custom-format export of `ProjectPulse` was generated on the Oracle Linux source host and uploaded to the private `database-exports` container using a short-lived user-delegation SAS. Fifteen export artifacts were verified. The source system remained active, so this is an initial seed export rather than the final write-freeze export.
 
-No PostgreSQL server or application database was created.
+## 2026-07-12 — AZ-05C2 restore and validation
 
-Corrective script:
+A temporary private Rocky Linux 10.2 migration VM was created in East US. The first restore attempt stopped before contacting PostgreSQL because of private DNS defects for Blob Storage and Key Vault. The evidence was preserved, and the DNS zone groups and VNet links were repaired.
 
-- `deployment/azure/scripts/az05b1-postgresql-primary-repair.sh`
-- Collects SKU-looking strings recursively from both regions.
-- Selects a common `Standard_D2*` SKU and hard-fails if no common two-vCore SKU is found.
-- Reuses the existing Key Vault administrator secret.
-- Creates the Flexible Server without `--database-name`.
-- Creates `project_health_dashboard` separately after the server reaches `Ready`.
-- Continues autogrow, HA, backup, private networking, extension allow-list, configuration, and validation steps.
+The clean retry completed successfully:
+
+- Restore command exit code: 0
+- Schemas: 1
+- Tables: 170
+- Extensions: 2
+- Errors: 0
+- Warnings: 0
+- Required evidence files: 12 of 12
+- Validation comparison: passed
+
+Temporary upload permissions were removed, and the migration VM was deallocated.
+
+## 2026-07-12 — AZ-05C3 East US PostgreSQL replica
+
+The corrected preflight confirmed that East US advertises the planned PostgreSQL 16 `Standard_D2ds_v4` configuration. The actual replica create request was rejected with `The location is restricted from performing this operation.`
+
+Diagnostics confirmed a subscription-level regional provisioning restriction. The subscription was upgraded from Free Trial to Pay-As-You-Go, but portal and CLI support-ticket attempts did not produce a ticket. The East US replica was therefore deferred. No replica resource exists and no replica billing started.
+
+## 2026-07-12 — AZ-06A/B West Container Apps environment
+
+Created and validated the internal West US 3 Container Apps managed environment:
+
+- Environment `cae-phd-test-westus3`
+- Provisioning state `Succeeded`
+- Internal mode enabled
+- Infrastructure subnet `vnet-phd-test-westus3/snet-aca-infrastructure`
+- Generated domain `jollywave-6212cd8b.westus3.azurecontainerapps.io`
+- Static internal IP `10.30.0.167`
+
+The first status check compared `West US 3` to `westus3` literally and reported a false pending result. The validation script was corrected to normalize Azure location names. No environment repair was required.
+
+## 2026-07-12 — AZ-06C West Container Apps private DNS
+
+Created and validated:
+
+- Private DNS zone `jollywave-6212cd8b.westus3.azurecontainerapps.io`
+- West VNet link state `Completed`
+- East VNet link state `Completed`
+- Wildcard A record `*` pointing to `10.30.0.167`
+
+No application container, public DNS record, Cloudflare record, or East PostgreSQL replica was created.
 
 ## Current checkpoint
 
-Infrastructure completed through AZ-05A. AZ-05B has not created a PostgreSQL server yet. Run AZ-05B.1 to continue the PostgreSQL primary deployment. Before building an application image, the source server's uncommitted application changes must be committed and pushed through a separate source checkpoint.
+Infrastructure is complete through AZ-06C for the West internal application platform. The next action is the read-only AZ-07A source-code checkpoint on the Oracle Linux source host. Application images must not be built until the existing uncommitted source changes are reviewed, sanitized, committed, and pushed.
