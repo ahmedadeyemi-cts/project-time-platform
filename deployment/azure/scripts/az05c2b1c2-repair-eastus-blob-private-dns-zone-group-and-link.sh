@@ -40,12 +40,12 @@ fail() {
     echo "East VNet: $VNET_NAME"
     echo "East Blob private endpoint: $PRIVATE_ENDPOINT"
 
-    ZONE_ID="$(az network private-dns zone show -g "$RG_SHARED" -n "$BLOB_ZONE" --query id -o tsv)"
-    VNET_ID="$(az network vnet show -g "$RG_EAST_NETWORK" -n "$VNET_NAME" --query id -o tsv)"
-    PE_NIC_ID="$(az network private-endpoint show -g "$RG_EAST_NETWORK" -n "$PRIVATE_ENDPOINT" --query 'networkInterfaces[0].id' -o tsv)"
-    PE_IP="$(az network nic show --ids "$PE_NIC_ID" --query 'ipConfigurations[0].privateIPAddress' -o tsv)"
-    PE_STATE="$(az network private-endpoint show -g "$RG_EAST_NETWORK" -n "$PRIVATE_ENDPOINT" --query provisioningState -o tsv)"
-    PE_CONNECTION="$(az network private-endpoint show -g "$RG_EAST_NETWORK" -n "$PRIVATE_ENDPOINT" --query 'privateLinkServiceConnections[0].privateLinkServiceConnectionState.status' -o tsv)"
+    ZONE_ID="$(az network private-dns zone show --resource-group "$RG_SHARED" --name "$BLOB_ZONE" --query id --output tsv)"
+    VNET_ID="$(az network vnet show --resource-group "$RG_EAST_NETWORK" --name "$VNET_NAME" --query id --output tsv)"
+    PE_NIC_ID="$(az network private-endpoint show --resource-group "$RG_EAST_NETWORK" --name "$PRIVATE_ENDPOINT" --query 'networkInterfaces[0].id' --output tsv)"
+    PE_IP="$(az network nic show --ids "$PE_NIC_ID" --query 'ipConfigurations[0].privateIPAddress' --output tsv)"
+    PE_STATE="$(az network private-endpoint show --resource-group "$RG_EAST_NETWORK" --name "$PRIVATE_ENDPOINT" --query provisioningState --output tsv)"
+    PE_CONNECTION="$(az network private-endpoint show --resource-group "$RG_EAST_NETWORK" --name "$PRIVATE_ENDPOINT" --query 'privateLinkServiceConnections[0].privateLinkServiceConnectionState.status' --output tsv)"
 
     [ -n "$ZONE_ID" ] || fail "Blob private DNS zone ID is empty."
     [ -n "$VNET_ID" ] || fail "East VNet ID is empty."
@@ -62,28 +62,28 @@ fail() {
     ZONE_GROUP_JSON="$WORK_DIR/zone-group.json"
 
     if az network private-endpoint dns-zone-group show \
-        -g "$RG_EAST_NETWORK" \
+        --resource-group "$RG_EAST_NETWORK" \
         --endpoint-name "$PRIVATE_ENDPOINT" \
-        -n "$ZONE_GROUP_NAME" \
-        -o json > "$ZONE_GROUP_JSON" 2>/dev/null; then
+        --name "$ZONE_GROUP_NAME" \
+        --output json > "$ZONE_GROUP_JSON" 2>/dev/null; then
         ZONE_GROUP_ACTION="existing"
     else
         az network private-endpoint dns-zone-group create \
-            -g "$RG_EAST_NETWORK" \
+            --resource-group "$RG_EAST_NETWORK" \
             --endpoint-name "$PRIVATE_ENDPOINT" \
-            -n "$ZONE_GROUP_NAME" \
+            --name "$ZONE_GROUP_NAME" \
             --zone-name "$ZONE_CONFIG_NAME" \
             --private-dns-zone "$ZONE_ID" \
             --only-show-errors \
-            -o none
+            --output none
         ZONE_GROUP_ACTION="created-with-zone"
     fi
 
     az network private-endpoint dns-zone-group show \
-        -g "$RG_EAST_NETWORK" \
+        --resource-group "$RG_EAST_NETWORK" \
         --endpoint-name "$PRIVATE_ENDPOINT" \
-        -n "$ZONE_GROUP_NAME" \
-        -o json > "$ZONE_GROUP_JSON"
+        --name "$ZONE_GROUP_NAME" \
+        --output json > "$ZONE_GROUP_JSON"
 
     CORRECT_COUNT="$(python3 - "$ZONE_GROUP_JSON" "$ZONE_ID" <<'PY'
 import json
@@ -114,39 +114,39 @@ PY
 
         if [ -n "$BLOB_CONFIG_ID" ]; then
             az network private-endpoint dns-zone-group remove \
-                -g "$RG_EAST_NETWORK" \
+                --resource-group "$RG_EAST_NETWORK" \
                 --endpoint-name "$PRIVATE_ENDPOINT" \
-                -n "$ZONE_GROUP_NAME" \
+                --name "$ZONE_GROUP_NAME" \
                 --zone-name "$ZONE_CONFIG_NAME" \
                 --only-show-errors \
-                -o none
+                --output none
         fi
 
         az network private-endpoint dns-zone-group add \
-            -g "$RG_EAST_NETWORK" \
+            --resource-group "$RG_EAST_NETWORK" \
             --endpoint-name "$PRIVATE_ENDPOINT" \
-            -n "$ZONE_GROUP_NAME" \
+            --name "$ZONE_GROUP_NAME" \
             --zone-name "$ZONE_CONFIG_NAME" \
             --private-dns-zone "$ZONE_ID" \
             --only-show-errors \
-            -o none
+            --output none
 
         ZONE_GROUP_ACTION="repaired-zone-association"
     fi
 
     CORRECT_COUNT="$(az network private-endpoint dns-zone-group show \
-        -g "$RG_EAST_NETWORK" \
+        --resource-group "$RG_EAST_NETWORK" \
         --endpoint-name "$PRIVATE_ENDPOINT" \
-        -n "$ZONE_GROUP_NAME" \
+        --name "$ZONE_GROUP_NAME" \
         --query "length(privateDnsZoneConfigs[?privateDnsZoneId=='$ZONE_ID'])" \
-        -o tsv)"
+        --output tsv)"
 
     ZONE_GROUP_STATE="$(az network private-endpoint dns-zone-group show \
-        -g "$RG_EAST_NETWORK" \
+        --resource-group "$RG_EAST_NETWORK" \
         --endpoint-name "$PRIVATE_ENDPOINT" \
-        -n "$ZONE_GROUP_NAME" \
+        --name "$ZONE_GROUP_NAME" \
         --query provisioningState \
-        -o tsv)"
+        --output tsv)"
 
     [ "$CORRECT_COUNT" = "1" ] || fail "Correct Blob zone-group association count is $CORRECT_COUNT."
     [ "$ZONE_GROUP_STATE" = "Succeeded" ] || fail "Blob DNS zone-group state is $ZONE_GROUP_STATE."
@@ -158,40 +158,40 @@ PY
     section "Ensuring East VNet link to Blob private DNS zone"
 
     MATCHING_LINK="$(az network private-dns link vnet list \
-        -g "$RG_SHARED" \
-        -z "$BLOB_ZONE" \
+        --resource-group "$RG_SHARED" \
+        --zone-name "$BLOB_ZONE" \
         --query "[?virtualNetwork.id=='$VNET_ID'].name | [0]" \
-        -o tsv)"
+        --output tsv)"
 
     if [ -n "$MATCHING_LINK" ]; then
         EFFECTIVE_LINK="$MATCHING_LINK"
         LINK_ACTION="existing"
     else
         az network private-dns link vnet create \
-            -g "$RG_SHARED" \
-            -z "$BLOB_ZONE" \
-            -n "$LINK_NAME" \
-            -v "$VNET_ID" \
-            -e false \
+            --resource-group "$RG_SHARED" \
+            --zone-name "$BLOB_ZONE" \
+            --name "$LINK_NAME" \
+            --virtual-network "$VNET_ID" \
+            --registration-enabled false \
             --only-show-errors \
-            -o none
+            --output none
         EFFECTIVE_LINK="$LINK_NAME"
         LINK_ACTION="created"
     fi
 
     LINK_STATE="$(az network private-dns link vnet show \
-        -g "$RG_SHARED" \
-        -z "$BLOB_ZONE" \
-        -n "$EFFECTIVE_LINK" \
+        --resource-group "$RG_SHARED" \
+        --zone-name "$BLOB_ZONE" \
+        --name "$EFFECTIVE_LINK" \
         --query virtualNetworkLinkState \
-        -o tsv)"
+        --output tsv)"
 
     LINK_PROVISIONING="$(az network private-dns link vnet show \
-        -g "$RG_SHARED" \
-        -z "$BLOB_ZONE" \
-        -n "$EFFECTIVE_LINK" \
+        --resource-group "$RG_SHARED" \
+        --zone-name "$BLOB_ZONE" \
+        --name "$EFFECTIVE_LINK" \
         --query provisioningState \
-        -o tsv)"
+        --output tsv)"
 
     [ "$LINK_STATE" = "Completed" ] || fail "Blob DNS VNet link state is $LINK_STATE."
     [ "$LINK_PROVISIONING" = "Succeeded" ] || fail "Blob DNS VNet link provisioning is $LINK_PROVISIONING."
@@ -205,11 +205,11 @@ PY
     RECORD_IPS=""
     for attempt in 1 2 3 4 5 6; do
         RECORD_IPS="$(az network private-dns record-set a show \
-            -g "$RG_SHARED" \
-            -z "$BLOB_ZONE" \
-            -n "$STORAGE_ACCOUNT" \
+            --resource-group "$RG_SHARED" \
+            --zone-name "$BLOB_ZONE" \
+            --name "$STORAGE_ACCOUNT" \
             --query 'aRecords[].ipv4Address' \
-            -o tsv 2>/dev/null || true)"
+            --output tsv 2>/dev/null || true)"
 
         if grep -Fxq "$PE_IP" <<< "$RECORD_IPS"; then
             break
