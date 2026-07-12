@@ -102,34 +102,56 @@ section() {
 
     section "Validating completed attachment"
 
-    SUBNET_JSON="$(
+    SUBNET_ID="$(
         az network vnet subnet show \
             --resource-group "$RG_NETWORK" \
             --vnet-name "$VNET_NAME" \
             --name "$MANAGEMENT_SUBNET" \
-            --output json
+            --query id \
+            --output tsv
     )"
 
-    python3 - "$NAT_GATEWAY_ID" <<'PY' <<< "$SUBNET_JSON"
-import json
-import sys
+    SUBNET_PREFIX="$(
+        az network vnet subnet show \
+            --resource-group "$RG_NETWORK" \
+            --vnet-name "$VNET_NAME" \
+            --name "$MANAGEMENT_SUBNET" \
+            --query 'addressPrefix || join(`,`, addressPrefixes)' \
+            --output tsv
+    )"
 
-expected_nat = sys.argv[1]
-data = json.load(sys.stdin)
-actual_nat = ((data.get("natGateway") or {}).get("id") or "")
-state = str(data.get("provisioningState") or "")
+    SUBNET_STATE="$(
+        az network vnet subnet show \
+            --resource-group "$RG_NETWORK" \
+            --vnet-name "$VNET_NAME" \
+            --name "$MANAGEMENT_SUBNET" \
+            --query provisioningState \
+            --output tsv
+    )"
 
-print(f"SUBNET_ID={data.get('id','')}")
-print(f"SUBNET_PREFIX={data.get('addressPrefix') or data.get('addressPrefixes')}")
-print(f"SUBNET_PROVISIONING_STATE={state}")
-print(f"SUBNET_NAT_GATEWAY_ID={actual_nat}")
+    ATTACHED_NAT_ID="$(
+        az network vnet subnet show \
+            --resource-group "$RG_NETWORK" \
+            --vnet-name "$VNET_NAME" \
+            --name "$MANAGEMENT_SUBNET" \
+            --query 'natGateway.id' \
+            --output tsv
+    )"
 
-if state != "Succeeded":
-    raise SystemExit(f"ERROR: Subnet provisioning state is {state!r}, not 'Succeeded'.")
+    echo "SUBNET_ID=$SUBNET_ID"
+    echo "SUBNET_PREFIX=$SUBNET_PREFIX"
+    echo "SUBNET_PROVISIONING_STATE=$SUBNET_STATE"
+    echo "SUBNET_NAT_GATEWAY_ID=$ATTACHED_NAT_ID"
 
-if actual_nat.lower() != expected_nat.lower():
-    raise SystemExit("ERROR: East US NAT Gateway attachment did not validate.")
-PY
+    [ "$SUBNET_STATE" = "Succeeded" ] || {
+        echo "ERROR: Subnet provisioning state is not Succeeded: $SUBNET_STATE"
+        exit 1
+    }
+
+    [ "${ATTACHED_NAT_ID,,}" = "${NAT_GATEWAY_ID,,}" ] || {
+        echo "ERROR: East US NAT Gateway attachment did not validate."
+        exit 1
+    }
 
     section "AZ-05C2A3B completed successfully"
 
