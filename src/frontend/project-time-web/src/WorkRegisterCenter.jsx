@@ -231,6 +231,7 @@ function projectPulseCreateWorkSnapshotRead() {
 
 function projectPulseCreateWorkSnapshotWrite(field, value) {
   const tracked = new Set([
+    'requestedWorkType',
     'contractType',
     'sellQuoteNumber',
     'salesforceIdNumber',
@@ -251,10 +252,27 @@ function projectPulseCreateWorkSnapshotWrite(field, value) {
   sessionStorage.setItem('projectPulseCreateWorkFinalFields', JSON.stringify(current));
 }
 
+function projectPulseCanonicalWorkType(value) {
+  const normalized = String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
+
+  if (normalized === 'project') return 'Project';
+  if (normalized === 'iqs') return 'IQS';
+  if (normalized === 'servicerequest' || normalized === 'sr') return 'Service Request';
+  if (normalized === 'presales' || normalized === 'presale') return 'Pre-sales';
+  if (normalized === 'internalproject' || normalized === 'internal') return 'Internal Project';
+  return 'Other';
+}
+
 function projectPulseCreateWorkFinalFieldSnapshot() {
   const stored = projectPulseCreateWorkSnapshotRead();
 
   return {
+    requestedWorkType: projectPulseCanonicalWorkType(
+      intakeReviewForm?.requestedWorkType
+      || intakeForm.requestedWorkType
+      || stored.requestedWorkType
+      || 'Project'
+    ),
     contractType: intakeReviewForm?.contractType || intakeForm.contractType || stored.contractType || '',
     sellQuoteNumber: intakeReviewForm?.sellQuoteNumber || intakeForm.sellQuoteNumber || stored.sellQuoteNumber || '',
     salesforceIdNumber: intakeReviewForm?.salesforceIdNumber || intakeForm.salesforceIdNumber || stored.salesforceIdNumber || '',
@@ -1157,9 +1175,9 @@ function updateTaskAssignmentForm(task, field, value) {
   }
 function updateRosterEngineer(task, index, field, value) {
     const key = taskAssignmentKey(task);
-    setTaskAssignmentForms((current) => {
+    setTaskRosterForms((current) => {
       const form = current[key] || {};
-      const currentRows = Array.isArray(form.rosterRows) ? form.rosterRows : projectPulseInitialRosterRows(task);
+      const currentRows = Array.isArray(form.rows) ? form.rows : initialRosterRows(task);
       const rows = currentRows.map((row) => ({ ...row }));
 
       while (rows.length <= index) {
@@ -1192,7 +1210,7 @@ function updateRosterEngineer(task, index, field, value) {
         ...current,
         [key]: {
           ...form,
-          rosterRows: normalizedRows
+          rows: normalizedRows
         }
       };
     });
@@ -1731,7 +1749,7 @@ function updateRosterEngineer(task, index, field, value) {
       sellQuoteNumber: data.sellQuoteNumber || data.sell_quote_number || '',
       salesforceIdNumber: data.salesforceIdNumber || data.salesforce_id_number || '',
       certiniaIdNumber: data.certiniaIdNumber || data.certinia_id_number || '',
-      requestedWorkType: data.requestedWorkType || packageData?.package?.requestedWorkType || 'Project',
+      requestedWorkType: projectPulseCanonicalWorkType(data.requestedWorkType || packageData?.package?.requestedWorkType || 'Project'),
       contractType: data.contractType || packageData?.package?.contractType || 'Fixed Price',
       pmHours: data.pmHours || '',
       engineeringHours: data.engineeringHours || '',
@@ -2474,10 +2492,13 @@ function removeTaskAssignmentRow(taskIndex, assignmentIndex) {
     }));
   }
 
-  async function saveIntakeReviewMapping() {
+  async function saveIntakeReviewMapping(options = {}) {
+    const throwOnError = options?.throwOnError === true;
     if (!selectedIntakeReview || !intakeReviewForm) {
-      setIntakeReviewStatus('Load or extract an intake package before saving the reviewed mapping.');
-      return;
+      const message = 'Load or extract an intake package before saving the reviewed mapping.';
+      setIntakeReviewStatus(message);
+      if (throwOnError) throw new Error(message);
+      return null;
     }
 
     const intakePackageId =
@@ -2486,8 +2507,10 @@ function removeTaskAssignmentRow(taskIndex, assignmentIndex) {
       || intakePackageResult?.intakePackageId;
 
     if (!intakePackageId) {
-      setIntakeReviewStatus('Unable to determine intake package ID for review save.');
-      return;
+      const message = 'Unable to determine intake package ID for review save.';
+      setIntakeReviewStatus(message);
+      if (throwOnError) throw new Error(message);
+      return null;
     }
 
     let rates = [];
@@ -2501,8 +2524,10 @@ function removeTaskAssignmentRow(taskIndex, assignmentIndex) {
       parserNotes = JSON.parse(intakeReviewForm.parserNotesText || '[]');
       phaseTotals = JSON.parse(intakeReviewForm.phaseTotalsText || '[]');
     } catch (error) {
-      setIntakeReviewStatus('Rates, tasks, phase totals, and parser notes must contain valid JSON before saving.');
-      return;
+      const message = 'Rates, tasks, phase totals, and parser notes must contain valid JSON before saving.';
+      setIntakeReviewStatus(message);
+      if (throwOnError) throw new Error(message);
+      return null;
     }
 
     const pmUser = intakeAssignableUsers('pm').find((user) => String(intakeUserOptionId(user)) === String(intakeReviewForm.projectManagerUserId));
@@ -2547,7 +2572,7 @@ function removeTaskAssignmentRow(taskIndex, assignmentIndex) {
       sowSignedDate: intakeReviewForm.sowSignedDate || intakeForm.sowSignedDate || '',
       intakeReason: intakeReviewForm.intakeReason || intakeForm.intakeReason || projectPulseCreateWorkReason(),
 
-      requestedWorkType: intakeReviewForm.requestedWorkType,
+      requestedWorkType: projectPulseCanonicalWorkType(intakeReviewForm.requestedWorkType),
       contractType: intakeReviewForm.contractType,
       // 055D_5K_REVIEW_SAVE_SOW_SIGNED_DATE
       pmHours: intakeReviewForm.pmHours,
@@ -2593,8 +2618,12 @@ function removeTaskAssignmentRow(taskIndex, assignmentIndex) {
       // 055D_5C_ASSIGNMENT_SAVE_BANNER_SUCCESS
       setIntakeSaveBanner('Assignment configuration saved successfully.');
       await loadIntakePackages();
+      return result;
     } catch (error) {
-      setIntakeReviewStatus(error instanceof Error ? error.message : 'Unable to save reviewed mapping and assignment plan.');
+      const message = error instanceof Error ? error.message : 'Unable to save reviewed mapping and assignment plan.';
+      setIntakeReviewStatus(message);
+      if (throwOnError) throw (error instanceof Error ? error : new Error(message));
+      return null;
     }
   }
 
@@ -2631,10 +2660,11 @@ async function createWorkRegisterFromReviewedIntake() {
     setIntakeSaveBanner('');
     setIntakeReviewStatus('Saving reviewed intake package into Work Register...');
 
-    await saveIntakeReviewMapping();
+    await saveIntakeReviewMapping({ throwOnError: true });
 
     const result = await postJson(`/api/work-register/intake/packages/${intakePackageId}/commit`, {
       intakeReason: intakeReviewForm.intakeReason || intakeForm.intakeReason || projectPulseCreateWorkReason(),
+      requestedWorkType: finalFields.requestedWorkType,
       contractType: finalFields.contractType,
       sellQuoteNumber: finalFields.sellQuoteNumber,
       salesforceIdNumber: finalFields.salesforceIdNumber,
@@ -2657,28 +2687,13 @@ async function createWorkRegisterFromReviewedIntake() {
       || result.data?.project_id
       || '';
 
-    const applyResult = await postJson(`/api/work-register/intake/packages/${intakePackageId}/billing-identifiers/apply-v3`, {
-      projectId: createdProjectId || '',
-      projectName: finalFields.projectName,
-      customerId: finalFields.customerId,
-      customerName: finalFields.customerName,
-      contractType: finalFields.contractType,
-      sellQuoteNumber: finalFields.sellQuoteNumber,
-      salesforceIdNumber: finalFields.salesforceIdNumber,
-      certiniaIdNumber: finalFields.certiniaIdNumber,
-      sowSignedDate: finalFields.sowSignedDate
-    });
-
-    if (applyResult?.status && applyResult.status !== 'ok' && applyResult.status !== 'skipped') {
-      throw new Error(applyResult.message || 'Project was created, but final field persistence did not complete.');
-    }
 
     const successMessage = result.message || 'Work Register record created successfully.';
     setIntakeSaveBanner(successMessage);
     setIntakeReviewStatus(successMessage);
 
-    if (createdProjectId || applyResult?.projectId) {
-      sessionStorage.setItem('projectPulseLastCreatedWorkId', createdProjectId || applyResult.projectId);
+    if (createdProjectId) {
+      sessionStorage.setItem('projectPulseLastCreatedWorkId', createdProjectId);
     }
 
     if (typeof loadOverview === 'function') {
@@ -3470,7 +3485,7 @@ async function createWorkRegisterFromReviewedIntake() {
                       onChange={(event) => updateIntakeField('requestedWorkType', event.target.value)}
                       name="requestedWorkType"
                     >
-                      {['Project', 'Service Request', 'Internal Project', 'IQS', 'Pre-Sales', 'Other'].map((type) => (
+                      {['Project', 'IQS', 'Service Request', 'Pre-sales', 'Internal Project', 'Other'].map((type) => (
                         <option value={type} key={type}>{type}</option>
                       ))}
                     </select>
@@ -3856,7 +3871,7 @@ async function createWorkRegisterFromReviewedIntake() {
                           value={intakeReviewForm.requestedWorkType}
                           onChange={(event) => updateIntakeReviewForm('requestedWorkType', event.target.value)}
                         >
-                          {['Project', 'Service Request', 'Internal Project', 'IQS', 'Pre-Sales', 'Other'].map((type) => (
+                          {['Project', 'IQS', 'Service Request', 'Pre-sales', 'Internal Project', 'Other'].map((type) => (
                             <option value={type} key={type}>{type}</option>
                           ))}
                         </select>
@@ -5259,7 +5274,7 @@ async function createWorkRegisterFromReviewedIntake() {
                   {(projectDetails.data?.documents ?? []).map((document) => (
                     <article className={`work-register-document-card ${String(document.status || '').toLowerCase() === 'archived' ? 'archived' : ''}`} key={`${document.sourceTable}-${document.documentId || document.fileName}`}>
                       <div>
-                        <strong>{document.fileName || 'Untitled document'}</strong>
+                        <strong>{document.fileName || ((['GSD', 'SOW'].includes(String(document.documentType || '').toUpperCase()) && selectedWorkItem?.workName) ? `${String(document.documentType).toUpperCase()}_${selectedWorkItem.workName}` : (document.originalFileName || 'Untitled document'))}</strong>
                         <small>Type: {labelize(document.documentType || 'not set')}</small>
                         <small>Status: {labelize(document.status || 'active')}</small>
                         <small>Visibility: {labelize(document.visibility || 'not set')}</small>

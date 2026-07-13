@@ -1303,15 +1303,28 @@ const activitySourceOptions = [
     key: 'openTasks',
     label: 'Regular tasks',
     emptyTitle: 'No regular tasks assigned.',
-    emptyDescription: 'Assigned project tasks will appear here after a PM assigns work to the engineer.'
+    emptyDescription: 'Assigned Project and IQS tasks appear here.'
   },
   {
     key: 'requests',
     label: 'Requests / Service Requests',
     emptyTitle: 'No requests available.',
-    emptyDescription: 'Service request activities will appear here after the request workflow is connected.'
+    emptyDescription: 'Assigned Service Request, Pre-sales, Internal Project, and Other tasks appear here.'
   }
 ];
+
+function projectPulseTaskTimeEntrySection(task = {}) {
+  const explicitSection = String(task.timeEntrySection || task.time_entry_section || '').trim().toLowerCase();
+  if (explicitSection === 'requests') return 'requests';
+  if (explicitSection === 'regular') return 'regular';
+
+  const workType = String(task.workType || task.work_type || 'Project')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
+
+  return workType === 'project' || workType === 'iqs' ? 'regular' : 'requests';
+}
 
 
 async function readApiErrorMessage(response, path) {
@@ -4290,6 +4303,8 @@ export default function App() {
   const days = timesheet.data?.days ?? [];
   const categories = timesheet.data?.nonProjectCategories ?? [];
   const assignedOpenTasks = openTasks.data?.tasks ?? [];
+  const regularAssignedTasks = assignedOpenTasks.filter((task) => projectPulseTaskTimeEntrySection(task) === 'regular');
+  const requestAssignedTasks = assignedOpenTasks.filter((task) => projectPulseTaskTimeEntrySection(task) === 'requests');
   const activePolicy = utilizationPolicies.data?.policies?.[0];
   const selectedActivitySource = activitySourceOptions.find((option) => option.key === activitySource) ?? activitySourceOptions[0];
   const currentTimesheetStatus = timesheet.data?.status ?? 'draft';
@@ -7013,7 +7028,7 @@ Analytics - Variphy / Infortel`}
             <aside className="activities-panel" aria-label="Activities">
               <div className="panel-title-row">
                 <h3>Activities</h3>
-                <span>{activitySource === 'nonProject' ? categories.length : activitySource === 'openTasks' ? assignedOpenTasks.length : 0}</span>
+                <span>{activitySource === 'nonProject' ? categories.length : activitySource === 'openTasks' ? regularAssignedTasks.length : requestAssignedTasks.length}</span>
               </div>
 
               <div className="activity-selector-row">
@@ -7054,16 +7069,16 @@ Analytics - Variphy / Infortel`}
                 </div>
               ) : activitySource === 'openTasks' ? (
                 <div className="activity-group activity-results">
-                  <h4>Open tasks</h4>
+                  <h4>Regular tasks</h4>
                   {openTasks.loading ? <span className="muted">Loading assigned tasks...</span> : null}
                   {openTasks.error ? <span className="error-text">{openTasks.error}</span> : null}
-                  {!openTasks.loading && !openTasks.error && assignedOpenTasks.length === 0 ? (
+                  {!openTasks.loading && !openTasks.error && regularAssignedTasks.length === 0 ? (
                     <div className="empty-activity-state">
                       <strong>{selectedActivitySource.emptyTitle}</strong>
                       <span>{selectedActivitySource.emptyDescription}</span>
                     </div>
                   ) : null}
-                  {assignedOpenTasks.map((task) => {
+                  {regularAssignedTasks.map((task) => {
                     const alreadyAdded = activeRows.some((row) => row.projectId === task.projectId && row.taskId === task.taskId);
                     return (
                       <button
@@ -7087,9 +7102,38 @@ Analytics - Variphy / Infortel`}
                   })}
                 </div>
               ) : (
-                <div className="empty-activity-state">
-                  <strong>{selectedActivitySource.emptyTitle}</strong>
-                  <span>{selectedActivitySource.emptyDescription}</span>
+                <div className="activity-group activity-results">
+                  <h4>Requests / Service Requests</h4>
+                  {openTasks.loading ? <span className="muted">Loading assigned requests...</span> : null}
+                  {openTasks.error ? <span className="error-text">{openTasks.error}</span> : null}
+                  {!openTasks.loading && !openTasks.error && requestAssignedTasks.length === 0 ? (
+                    <div className="empty-activity-state">
+                      <strong>{selectedActivitySource.emptyTitle}</strong>
+                      <span>{selectedActivitySource.emptyDescription}</span>
+                    </div>
+                  ) : null}
+                  {requestAssignedTasks.map((task) => {
+                    const alreadyAdded = activeRows.some((row) => row.projectId === task.projectId && row.taskId === task.taskId);
+                    return (
+                      <button
+                        className="activity-card"
+                        type="button"
+                        key={`${task.projectId}-${task.taskId}`}
+                        disabled={alreadyAdded || !isAnyDayEditable}
+                        onClick={() => addTask(task)}
+                      >
+                        <strong>{task.taskName}</strong>
+                        <span>{task.projectCode} • {task.projectName}</span>
+                        <small>{task.workType || 'Request'}{task.projectManagerName ? ` • PM: ${task.projectManagerName}` : ''}</small>
+                        <small className="timesheet-task-detail-line">
+                          {task.clientName ? <strong>Customer: {task.clientName}</strong> : null}
+                          {task.assignedHours !== undefined ? <span>Assigned: {Number(task.assignedHours || 0).toFixed(2)} hrs</span> : null}
+                          {task.usedHours !== undefined ? <span>Used: {Number(task.usedHours || 0).toFixed(2)} hrs</span> : null}
+                          {task.remainingHours !== undefined ? <span>Left: {Number(task.remainingHours || 0).toFixed(2)} hrs</span> : null}
+                        </small>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </aside>

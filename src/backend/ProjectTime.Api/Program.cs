@@ -2095,6 +2095,12 @@ app.MapGet("/api/assignments/available-tasks", async (DateOnly? weekStart, HttpC
             pt.billable AS billable,
             COALESCE(pt.utilization_bucket, CASE WHEN pt.billable THEN 'billable' ELSE 'non_billable' END) AS utilization_bucket,
             COALESCE(pm.display_name, 'No PM assigned') AS project_manager_name,
+            COALESCE(NULLIF(p.work_type, ''), 'Project') AS work_type,
+            CASE
+                WHEN lower(COALESCE(NULLIF(p.work_type, ''), 'Project')) IN ('project', 'iqs')
+                    THEN 'regular'
+                ELSE 'requests'
+            END AS time_entry_section,
             COALESCE(NULLIF(pa.assigned_hours, 0), resource_alloc.allocated_hours_per_task, 0)::numeric AS assigned_hours,
             COALESCE(used_time.used_hours, 0)::numeric AS used_hours,
             GREATEST(
@@ -2120,6 +2126,8 @@ app.MapGet("/api/assignments/available-tasks", async (DateOnly? weekStart, HttpC
             ON resource_alloc.project_id = pa.project_id
            AND resource_alloc.user_id = pa.user_id
         WHERE pa.user_id = @user_id
+          AND pa.effective_start_date <= @week_end
+          AND (pa.effective_end_date IS NULL OR pa.effective_end_date >= @week_start)
           AND pt.is_active = TRUE
           /* 053G_HIDE_CLOSED_PROJECTS_FROM_AVAILABLE_TASKS */
           AND lower(COALESCE(p.status, 'active')) NOT IN ('closed', 'complete', 'completed', 'done', 'cancelled', 'canceled', 'archived')
@@ -2150,6 +2158,8 @@ app.MapGet("/api/assignments/available-tasks", async (DateOnly? weekStart, HttpC
             billable = reader.GetBoolean(O("billable")),
             utilizationBucket = reader.GetString(O("utilization_bucket")),
             projectManagerName = reader.GetString(O("project_manager_name")),
+            workType = reader.GetString(O("work_type")),
+            timeEntrySection = reader.GetString(O("time_entry_section")),
             assignedHours = reader.GetDecimal(O("assigned_hours")),
             usedHours = reader.GetDecimal(O("used_hours")),
             remainingHours = reader.GetDecimal(O("remaining_hours")),
@@ -7971,6 +7981,21 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/billing-i
         await using var connection = new NpgsqlConnection(config.ConnectionString);
         await connection.OpenAsync();
 
+        await using (var accessCommand = new NpgsqlCommand("SELECT projectpulse055d7_can_complete_intake(@user_id);", connection))
+        {
+            accessCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+            var canApply = await accessCommand.ExecuteScalarAsync();
+
+            if (canApply is not bool allowed || !allowed)
+            {
+                return Results.Json(new
+                {
+                    status = "access_denied",
+                    message = "Final Work Register fields can only be changed by PTC, Project Management, PMO, Project Manager, Administrator, or Super Administrator users."
+                }, statusCode: StatusCodes.Status403Forbidden);
+            }
+        }
+
         Guid projectId;
 
         if (!Guid.TryParse(projectIdText, out projectId))
@@ -8113,6 +8138,21 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/billing-i
     {
         await using var connection = new NpgsqlConnection(config.ConnectionString);
         await connection.OpenAsync();
+
+        await using (var accessCommand = new NpgsqlCommand("SELECT projectpulse055d7_can_complete_intake(@user_id);", connection))
+        {
+            accessCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+            var canApply = await accessCommand.ExecuteScalarAsync();
+
+            if (canApply is not bool allowed || !allowed)
+            {
+                return Results.Json(new
+                {
+                    status = "access_denied",
+                    message = "Final Work Register fields can only be changed by PTC, Project Management, PMO, Project Manager, Administrator, or Super Administrator users."
+                }, statusCode: StatusCodes.Status403Forbidden);
+            }
+        }
 
         Guid projectId;
 
