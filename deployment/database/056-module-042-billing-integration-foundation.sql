@@ -12,9 +12,19 @@ BEGIN;
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
+CREATE SEQUENCE IF NOT EXISTS billing_invoice_series_seq
+    AS BIGINT
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
 CREATE TABLE IF NOT EXISTS project_billing_profiles (
     project_id UUID PRIMARY KEY
         REFERENCES projects(project_id) ON DELETE CASCADE,
+
+    invoice_series_number BIGINT NULL,
 
     purchase_order_required BOOLEAN NOT NULL DEFAULT FALSE,
     billing_contact_name TEXT NOT NULL DEFAULT '',
@@ -34,6 +44,12 @@ CREATE TABLE IF NOT EXISTS project_billing_profiles (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
+    CONSTRAINT ck_project_billing_profiles_invoice_series
+        CHECK (
+            invoice_series_number IS NULL
+            OR invoice_series_number > 0
+        ),
+
     CONSTRAINT ck_project_billing_profiles_delivery
         CHECK (
             invoice_delivery_method IN (
@@ -46,6 +62,11 @@ CREATE TABLE IF NOT EXISTS project_billing_profiles (
             )
         )
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS
+    uq_project_billing_profiles_invoice_series
+    ON project_billing_profiles(invoice_series_number)
+    WHERE invoice_series_number IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS project_purchase_orders (
     project_purchase_order_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -120,7 +141,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_project_purchase_orders_primary
 CREATE TABLE IF NOT EXISTS billing_invoices (
     billing_invoice_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-    invoice_number TEXT NULL,
+    invoice_series_number BIGINT NOT NULL,
+    invoice_installment_number INTEGER NOT NULL,
+    invoice_number TEXT NOT NULL,
+
     project_id UUID NOT NULL
         REFERENCES projects(project_id),
 
@@ -173,6 +197,24 @@ CREATE TABLE IF NOT EXISTS billing_invoices (
 
     immutable_snapshot_json JSONB NOT NULL DEFAULT '{}'::jsonb,
 
+    CONSTRAINT uq_billing_invoices_series_installment
+        UNIQUE (
+            invoice_series_number,
+            invoice_installment_number
+        ),
+
+    CONSTRAINT ck_billing_invoices_series
+        CHECK (invoice_series_number > 0),
+
+    CONSTRAINT ck_billing_invoices_installment
+        CHECK (invoice_installment_number > 0),
+
+    CONSTRAINT ck_billing_invoices_number_format
+        CHECK (
+            invoice_number
+            ~ '^PHD-[0-9]{6,}-[1-9][0-9]*$'
+        ),
+
     CONSTRAINT ck_billing_invoices_type
         CHECK (invoice_type IN ('partial', 'final', 'credit', 'adjustment')),
 
@@ -201,9 +243,7 @@ CREATE TABLE IF NOT EXISTS billing_invoices (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_billing_invoices_number
-    ON billing_invoices(invoice_number)
-    WHERE invoice_number IS NOT NULL
-      AND BTRIM(invoice_number) <> '';
+    ON billing_invoices(invoice_number);
 
 CREATE INDEX IF NOT EXISTS idx_billing_invoices_project_status
     ON billing_invoices(project_id, invoice_status);
@@ -213,6 +253,97 @@ CREATE INDEX IF NOT EXISTS idx_billing_invoices_client
 
 CREATE INDEX IF NOT EXISTS idx_billing_invoices_period
     ON billing_invoices(billing_period_start, billing_period_end);
+
+-- Reserve the next immutable invoice identity for a project.
+--
+-- The caller must invoke this function and insert the invoice header
+-- within the same database transaction. Locking the project's billing
+-- profile serializes concurrent invoice creation for that project.
+CREATE OR REPLACE FUNCTION reserve_project_invoice_number(
+    p_project_id UUID
+)
+RETURNS TABLE (
+    reserved_series_number BIGINT,
+    reserved_installment_number INTEGER,
+    reserved_invoice_number TEXT
+)
+LANGUAGE plpgsql
+VOLATILE
+SET search_path = public
+AS $$
+DECLARE
+    v_series_number BIGINT;
+    v_installment_number INTEGER;
+BEGIN
+    IF p_project_id IS NULL THEN
+        RAISE EXCEPTION 'Project ID is required.';
+    END IF;
+
+    INSERT INTO project_billing_profiles (
+        project_id,
+        invoice_series_number
+    )
+    VALUES (
+        p_project_id,
+        nextval('billing_invoice_series_seq')
+    )
+    ON CONFLICT (project_id) DO NOTHING;
+
+    SELECT
+        profile.invoice_series_number
+    INTO
+        v_series_number
+    FROM project_billing_profiles AS profile
+    WHERE profile.project_id = p_project_id
+    FOR UPDATE;
+
+    IF v_series_number IS NULL THEN
+        UPDATE project_billing_profiles
+        SET
+            invoice_series_number =
+                nextval('billing_invoice_series_seq'),
+            updated_at = NOW()
+        WHERE project_id = p_project_id
+          AND invoice_series_number IS NULL
+        RETURNING invoice_series_number
+        INTO v_series_number;
+    END IF;
+
+    IF v_series_number IS NULL THEN
+        SELECT
+            profile.invoice_series_number
+        INTO
+            v_series_number
+        FROM project_billing_profiles AS profile
+        WHERE profile.project_id = p_project_id;
+    END IF;
+
+    IF v_series_number IS NULL THEN
+        RAISE EXCEPTION
+            'Unable to allocate an invoice series for project %.',
+            p_project_id;
+    END IF;
+
+    SELECT
+        COALESCE(
+            MAX(invoice.invoice_installment_number),
+            0
+        ) + 1
+    INTO
+        v_installment_number
+    FROM billing_invoices AS invoice
+    WHERE invoice.project_id = p_project_id;
+
+    RETURN QUERY
+    SELECT
+        v_series_number,
+        v_installment_number,
+        'PHD-'
+        || LPAD(v_series_number::TEXT, 6, '0')
+        || '-'
+        || v_installment_number::TEXT;
+END;
+$$;
 
 CREATE TABLE IF NOT EXISTS billing_invoice_lines (
     billing_invoice_line_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -227,8 +358,8 @@ CREATE TABLE IF NOT EXISTS billing_invoice_lines (
     time_entry_id UUID NULL
         REFERENCES time_entries(time_entry_id),
 
-    project_task_id UUID NULL
-        REFERENCES project_tasks(project_task_id),
+    task_id UUID NULL
+        REFERENCES project_tasks(task_id),
 
     resource_user_id UUID NULL
         REFERENCES app_users(user_id),
@@ -292,11 +423,13 @@ CREATE TABLE IF NOT EXISTS billing_invoice_lines (
 CREATE INDEX IF NOT EXISTS idx_billing_invoice_lines_invoice
     ON billing_invoice_lines(billing_invoice_id);
 
-CREATE INDEX IF NOT EXISTS idx_billing_invoice_lines_time_entry
-    ON billing_invoice_lines(time_entry_id);
+CREATE UNIQUE INDEX IF NOT EXISTS
+    uq_billing_invoice_lines_time_entry
+    ON billing_invoice_lines(time_entry_id)
+    WHERE time_entry_id IS NOT NULL;
 
-CREATE INDEX IF NOT EXISTS idx_billing_invoice_lines_project_task
-    ON billing_invoice_lines(project_task_id);
+CREATE INDEX IF NOT EXISTS idx_billing_invoice_lines_task
+    ON billing_invoice_lines(task_id);
 
 CREATE TABLE IF NOT EXISTS billing_invoice_events (
     billing_invoice_event_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
