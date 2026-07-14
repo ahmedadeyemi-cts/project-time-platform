@@ -1227,6 +1227,7 @@ import CertifyIntegrationCenter from './CertifyIntegrationCenter.jsx';
 import BillingReadinessCenter from './BillingReadinessCenter.jsx';
 import ProjectCloseoutCenter from './ProjectCloseoutCenter.jsx';
 import CloseoutEmailAutomationCenter from './CloseoutEmailAutomationCenter.jsx';
+import InvoiceBillingCenter from './InvoiceBillingCenter.jsx';
 import CustomerDirectoryCenter from './CustomerDirectoryCenter.jsx';
 import RateCardAdministrationCenter from './RateCardAdministrationCenter.jsx';
 import WorkRegisterCenter from './WorkRegisterCenter.jsx';
@@ -2548,6 +2549,16 @@ const roleWorkspaceModules = [
     permissions: ['VIEW_PROJECT_WORKSPACE', 'VIEW_PROJECT_INTAKE', 'VIEW_APPROVAL_WORKFLOW', 'PROJECT_TIME_APPROVAL', 'VIEW_ACCOUNT_RECONCILIATION', 'VIEW_EXPENSES', 'EXPORT_TIME_EXCEL', 'DOWNLOAD_TIME_EXPORT_PACKAGE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   },
   /* 041_CLOSEOUT_EMAIL_AUTOMATION_END */
+  /* 042_INVOICE_BILLING_CENTER_START */
+  {
+    route: 'invoice-billing-center',
+    href: '#invoice-billing-center',
+    title: 'Invoice & Billing Center',
+    navLabel: 'MODULE 042',
+    description: 'Prepare partial and final invoices, review recently closed projects, preserve detailed customer-facing time and rate evidence, customize invoice headers, and preview Over / Under and T&M balance reporting.',
+    permissions: ['VIEW_ACCOUNT_RECONCILIATION', 'VIEW_APPROVAL_WORKFLOW', 'PROJECT_TIME_APPROVAL', 'VIEW_PROJECT_WORKSPACE', 'VIEW_PROJECT_INTAKE', 'EXPORT_TIME_EXCEL', 'EXPORT_TIME_PDF', 'DOWNLOAD_TIME_EXPORT_PACKAGE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
+  },
+  /* 042_INVOICE_BILLING_CENTER_END */
   {
     route: 'service-control',
     href: '#service-control',
@@ -2765,6 +2776,7 @@ function getNavigationGroup(item) {
     case 'billing-readiness':
     case 'project-closeout':
     case 'closeout-email':
+    case 'invoice-billing-center':
       return 'Reports & Workflow';
 
     default:
@@ -3338,6 +3350,10 @@ function buildRoleNavigationModel(user, navigationItems) {
     'time-compliance',
     'psa-modules',
     'work-task-builder',
+    'billing-readiness',
+    'project-closeout',
+    'closeout-email',
+    'invoice-billing-center',
     'workflow',
     'audit-history',
     'user-admin',
@@ -3740,6 +3756,15 @@ function getInstalledProjectPulseModuleRegistry() {
     permissions: ['VIEW_ENGINEER_NEGATIVE_ACCESS_SMOKE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
     description: 'Confirms engineer-only users remain denied from restricted workflow, export, accounting, and role matrix controls.'
   }
+,
+  {
+    route: 'invoice-billing-center',
+    title: 'Invoice & Billing Center',
+    navLabel: 'MODULE 042',
+    group: 'Reports & Workflow',
+    permissions: ['VIEW_ACCOUNT_RECONCILIATION', 'VIEW_APPROVAL_WORKFLOW', 'PROJECT_TIME_APPROVAL', 'VIEW_PROJECT_WORKSPACE', 'VIEW_PROJECT_INTAKE', 'EXPORT_TIME_EXCEL', 'EXPORT_TIME_PDF', 'DOWNLOAD_TIME_EXPORT_PACKAGE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    description: 'Prepares detailed partial and final invoice packages with customer identifiers, time-entry evidence, rates, hours, amounts, flexible headers, recently closed work, and billing reports.'
+  },
   ];
 }
 
@@ -3773,6 +3798,7 @@ function getInstalledModuleDescription(module) {
     'backup-retention': 'Manages backup retention policy, cleanup readiness, and retention compliance visibility.',
     'restore-validation': 'Validates restore points, restore readiness, and restore test evidence before relying on backups.',
     'replication-sync': 'Shows replication and synchronization status across backup, database, and operational readiness workflows.',
+    'invoice-billing-center': 'Prepares partial and final invoice packages, preserves detailed time and rate evidence, and supports billing and Over / Under reporting.',
     'psa-modules': 'Displays PSA workflow modules such as expense, invoice, project, and billing readiness areas as they are connected.'
   };
 
@@ -6896,6 +6922,15 @@ Analytics - Variphy / Infortel`}
       {(activeRoute === 'closeout-email' && canSeeAny(['VIEW_PROJECT_WORKSPACE', 'VIEW_PROJECT_INTAKE', 'VIEW_APPROVAL_WORKFLOW', 'PROJECT_TIME_APPROVAL', 'VIEW_ACCOUNT_RECONCILIATION', 'VIEW_EXPENSES', 'EXPORT_TIME_EXCEL', 'DOWNLOAD_TIME_EXPORT_PACKAGE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
         <section id="closeout-email" className="panel closeout-email-route-panel">
           <CloseoutEmailAutomationCenter />
+        </section>
+      ) : null}
+
+      {(activeRoute === 'invoice-billing-center' && canSeeAny(['VIEW_ACCOUNT_RECONCILIATION', 'VIEW_APPROVAL_WORKFLOW', 'PROJECT_TIME_APPROVAL', 'VIEW_PROJECT_WORKSPACE', 'VIEW_PROJECT_INTAKE', 'EXPORT_TIME_EXCEL', 'EXPORT_TIME_PDF', 'DOWNLOAD_TIME_EXPORT_PACKAGE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
+        <section id="invoice-billing-center" className="panel invoice-billing-center-route-panel">
+          <InvoiceBillingCenter
+            usSignalLogoUrl={usSignalLogoUrl}
+            userKey={authSession?.username ?? currentUser.data?.email ?? 'current-user'}
+          />
         </section>
       ) : null}
 
