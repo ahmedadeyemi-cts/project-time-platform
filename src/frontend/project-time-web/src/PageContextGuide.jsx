@@ -17,9 +17,9 @@ const routeContext = {
   },
   'invoice-billing-center': {
     page: 'Invoice & Billing Center — Module 042',
-    purpose: 'Invoice workspace. It prepares partial and final invoices, preserves customer-facing time detail and rates, reviews recently closed work, and supports invoice exports and reporting.',
-    backend: 'Current release uses preview invoice records; live invoice-ledger and accounting write APIs are not connected yet',
-    check: 'Review the invoice queue, select an invoice, inspect detailed hours and rates, test column customization, and review the PDF/Excel preview actions.'
+    purpose: 'Live Work Register billing-candidate view. It shows only system-owned customer, project, people, contract, status, and external-identifier data. Approved time, effective rates, purchase orders, invoice numbers, amounts, and exports remain blocked until their permanent APIs and ledgers are installed.',
+    backend: '/api/work-register/overview for live project data; shared billing-candidate and immutable invoice-ledger APIs pending',
+    check: 'Confirm that every visible customer, project, PM, PTC, engineer, contract type, and external ID exists in the Work Register. Missing values must remain visibly unconfigured and must never be replaced with sample data.'
   },
   /* 039_042_BILLING_CONTEXT_GUIDE_END */
 
