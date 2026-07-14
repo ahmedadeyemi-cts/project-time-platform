@@ -24,13 +24,13 @@ COPY --from=build /src/dist/ /usr/share/nginx/html/
 COPY deployment/containers/web/default.conf.template \
      /etc/nginx/templates/default.conf.template
 
-COPY --chmod=0755 \
-     deployment/containers/web/projecttime-web-entrypoint.sh \
+COPY deployment/containers/web/projecttime-web-entrypoint.sh \
      /usr/local/bin/projecttime-web-entrypoint.sh
 
-RUN API_UPSTREAM=http://127.0.0.1:18080 \
-    NGINX_RESOLVER=127.0.0.1 \
-    /usr/local/bin/projecttime-web-entrypoint.sh nginx -t \
+RUN test -x /usr/local/bin/projecttime-web-entrypoint.sh \
+    && API_UPSTREAM=http://127.0.0.1:18080 \
+       NGINX_RESOLVER=127.0.0.1 \
+       /usr/local/bin/projecttime-web-entrypoint.sh nginx -t \
     && rm -f /etc/nginx/conf.d/default.conf
 
 EXPOSE 8080
