@@ -1203,7 +1203,7 @@ installProjectPulseEffectiveSessionVisibilityPanel();
 
 
 
-import { useEffect, useMemo, useState, useRef } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useState, useRef } from 'react';
 import usSignalLogoUrl from '../brand/ussignal.png';
 import './timesheet.css';
 import './mobile-readiness.css';
@@ -3837,18 +3837,43 @@ export default function App() {
   const [sessionWarning, setSessionWarning] = useState({ visible: false, remainingMs: 0 });
   const [activeRoute, setActiveRoute] = useState(() => normalizeRoute(window.location.hash));
 
-  /* 055B_1_ACTIVE_ROUTE_BODY_DATASET_START */
-  useEffect(() => {
-    const routeKey = activeRoute || 'dashboard';
+  /* 056A_SHARED_ROUTE_DATASET_START */
+  useLayoutEffect(() => {
+    const routeKey = normalizeRoute(activeRoute);
+
+    /*
+     * Maintain all historical attribute spellings while older page-specific
+     * styles are migrated. Updating them in a layout effect prevents one route
+     * from painting with another route's visibility rules.
+     */
+    document.documentElement.dataset.projectPulseActiveRoute = routeKey;
+    document.body.dataset.projectPulseActiveRoute = routeKey;
     document.body.dataset.projectpulseActiveRoute = routeKey;
+    document.body.dataset.projectPulseRoute = routeKey;
+
+    window.dispatchEvent(new CustomEvent('projectpulse:route-state-ready', {
+      detail: { route: routeKey }
+    }));
 
     return () => {
+      if (document.documentElement.dataset.projectPulseActiveRoute === routeKey) {
+        delete document.documentElement.dataset.projectPulseActiveRoute;
+      }
+
+      if (document.body.dataset.projectPulseActiveRoute === routeKey) {
+        delete document.body.dataset.projectPulseActiveRoute;
+      }
+
       if (document.body.dataset.projectpulseActiveRoute === routeKey) {
         delete document.body.dataset.projectpulseActiveRoute;
       }
+
+      if (document.body.dataset.projectPulseRoute === routeKey) {
+        delete document.body.dataset.projectPulseRoute;
+      }
     };
   }, [activeRoute]);
-  /* 055B_1_ACTIVE_ROUTE_BODY_DATASET_END */
+  /* 056A_SHARED_ROUTE_DATASET_END */
   /* 039A_ROUTE_REFRESH_RESTORE_EFFECT_START */
   useEffect(() => {
     installProjectPulseManualScrollRestoration();
@@ -3870,25 +3895,6 @@ export default function App() {
   }, [activeRoute]);
   /* 039A_ROUTE_REFRESH_RESTORE_EFFECT_END */
 
-  /* 040B_ACTIVE_ROUTE_DATASET_START */
-  useEffect(() => {
-    const normalizedRoute = String(activeRoute || 'dashboard').replace('#', '') || 'dashboard';
-
-    document.documentElement.dataset.projectPulseActiveRoute = normalizedRoute;
-    document.body.dataset.projectPulseActiveRoute = normalizedRoute;
-
-    return () => {
-      if (document.documentElement.dataset.projectPulseActiveRoute === normalizedRoute) {
-        delete document.documentElement.dataset.projectPulseActiveRoute;
-      }
-
-      if (document.body.dataset.projectPulseActiveRoute === normalizedRoute) {
-        delete document.body.dataset.projectPulseActiveRoute;
-      }
-    };
-  }, [activeRoute]);
-  /* 040B_ACTIVE_ROUTE_DATASET_END */
-
   /* 039D_APPROVAL_INIT_CRASH_FIX */
   /* 039C_APPROVAL_INDICATOR_EFFECT_START */
   useEffect(() => {
@@ -3905,35 +3911,6 @@ export default function App() {
 
 
 
-
-  useEffect(() => {
-    window.requestAnimationFrame(() => {
-      window.scrollTo({ top: 0, behavior: 'auto' });
-    });
-  },
-
-  {
-    route: 'restore-validation',
-    href: '#restore-validation',
-    title: 'Restore Validation',
-    navLabel: 'MODULE 015',
-    description: 'Validate backup integrity, database dump readability, configuration archives, application snapshots, and DR runbook readiness.',
-    status: 'Operational',
-    group: 'System Operations',
-    permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
-  },
-
-
-  {
-    route: 'backup-retention',
-    href: '#backup-retention',
-    title: 'Backup Retention',
-    navLabel: 'MODULE 016',
-    description: 'Review backup points and safely remove older backups with restore-point protection.',
-    status: 'Operational',
-    group: 'System Operations',
-    permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
-  } [activeRoute]); // project-pulse-route-scroll-reset
   const [selectedWeekStart, setSelectedWeekStart] = useState(getSundayIso);
   const [apiHealth, setApiHealth] = useState({ loading: true, data: null, error: null });
   const [roleAdminUsers, setRoleAdminUsers] = useState({ loading: true, data: null, error: null });
@@ -4035,14 +4012,6 @@ export default function App() {
     window.localStorage.setItem('ptp-theme', theme);
   }, [theme]);
 
-
-  useEffect(() => {
-    document.body.dataset.projectPulseRoute = activeRoute || 'dashboard';
-
-    return () => {
-      delete document.body.dataset.projectPulseRoute;
-    };
-  }, [activeRoute]);
 
 
 
@@ -5252,17 +5221,6 @@ export default function App() {
   /* 039E_ACTIONABLE_APPROVAL_COUNT_EFFECT_END */
 
 
-
-  useEffect(() => {
-    const syncRouteFromHash = () => {
-      setActiveRoute(getRouteFromHash());
-    };
-
-    window.addEventListener('hashchange', syncRouteFromHash);
-    syncRouteFromHash();
-
-    return () => window.removeEventListener('hashchange', syncRouteFromHash);
-  }, []);
 
 
   const visibleRoleModules = useMemo(() => getVisibleRoleModules(currentUser.data), [currentUser.data]);
