@@ -8,6 +8,21 @@ const routeContext = {
     check: 'Refresh data readiness, review each table count/status, then open the linked pages to validate data visibility.'
   },
 
+  /* 039_042_BILLING_CONTEXT_GUIDE_START */
+  'billing-readiness': {
+    page: 'Billing Readiness Center — Module 039',
+    purpose: 'Pre-invoice quality gate. It checks whether approved labor, expenses, customer/project mapping, notes, evidence, and exceptions are ready to become a billing package. It does not create or send the customer invoice.',
+    backend: '/api/project-intake/overview and billing-readiness data sources',
+    check: 'Resolve every blocking item, confirm the billing package is eligible, and then move the package to Module 042 for invoice preparation.'
+  },
+  'invoice-billing-center': {
+    page: 'Invoice & Billing Center — Module 042',
+    purpose: 'Invoice workspace. It prepares partial and final invoices, preserves customer-facing time detail and rates, reviews recently closed work, and supports invoice exports and reporting.',
+    backend: 'Current release uses preview invoice records; live invoice-ledger and accounting write APIs are not connected yet',
+    check: 'Review the invoice queue, select an invoice, inspect detailed hours and rates, test column customization, and review the PDF/Excel preview actions.'
+  },
+  /* 039_042_BILLING_CONTEXT_GUIDE_END */
+
   dashboard: {
     page: 'Dashboard',
     purpose: 'Role-based landing page showing the modules, alerts, and work areas available to the signed-in user.',

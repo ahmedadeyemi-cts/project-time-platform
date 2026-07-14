@@ -162,6 +162,41 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
 
       {notice ? <div className="m042-notice" role="status">{notice}</div> : null}
 
+      <section className="m042-preview-mode" aria-label="Module 042 preview status">
+        <strong>Preview mode</strong>
+        <span>
+          Sample invoice records are displayed for workflow and layout review.
+          This page does not create a customer invoice or write to Certinia,
+          SELL, Salesforce, or the accounting ledger yet.
+        </span>
+      </section>
+
+      <section className="m042-workflow-explainer" aria-label="Billing workflow">
+        <article>
+          <span>1</span>
+          <div>
+            <strong>Module 039</strong>
+            <small>Check billing readiness and resolve blockers.</small>
+          </div>
+        </article>
+        <b aria-hidden="true">→</b>
+        <article>
+          <span>2</span>
+          <div>
+            <strong>Module 042</strong>
+            <small>Prepare and review the actual invoice.</small>
+          </div>
+        </article>
+        <b aria-hidden="true">→</b>
+        <article>
+          <span>3</span>
+          <div>
+            <strong>Export / Accounting</strong>
+            <small>Deliver the PDF or Excel package and record the invoice.</small>
+          </div>
+        </article>
+      </section>
+
       <section className="m042-metrics" aria-label="Billing summary">
         <article><span>Ready to invoice</span><strong>{money(invoices.reduce((sum, invoice) => sum + invoice.currentAmount, 0))}</strong><small>Four invoice packages</small></article>
         <article><span>Approved unbilled</span><strong>{money(invoices.reduce((sum, invoice) => sum + invoice.remainingBalance, 0))}</strong><small>Remaining customer value</small></article>

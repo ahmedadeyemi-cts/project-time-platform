@@ -3755,8 +3755,7 @@ function getInstalledProjectPulseModuleRegistry() {
     group: 'Security',
     permissions: ['VIEW_ENGINEER_NEGATIVE_ACCESS_SMOKE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
     description: 'Confirms engineer-only users remain denied from restricted workflow, export, accounting, and role matrix controls.'
-  }
-,
+  },
   {
     route: 'invoice-billing-center',
     title: 'Invoice & Billing Center',
@@ -5282,7 +5281,11 @@ export default function App() {
   }, [activeRoute]);
 
   const activeNavigationItem = useMemo(
-    () => roleNavigation.find((item) => item.route === activeRoute) ?? { label: 'Dashboard', title: 'Dashboard', route: 'dashboard', href: '#dashboard' },
+    () => (
+      roleNavigation.find((item) => item.route === activeRoute) ??
+      roleWorkspaceModules.find((item) => item.route === activeRoute) ??
+      { label: 'Dashboard', title: 'Dashboard', route: 'dashboard', href: '#dashboard' }
+    ),
     [roleNavigation, activeRoute]
   );
 
