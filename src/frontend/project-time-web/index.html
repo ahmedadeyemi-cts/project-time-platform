@@ -3843,131 +3843,7 @@
 
     return '<html><head><meta charset="utf-8"><title>' + escapeHtml(title) + '</title>' +
       '<style>body{font-family:Calibri,Arial,sans-serif;font-size:11pt;color:#111827;}h1{font-size:20pt;}h2{font-size:14pt;color:#0f2a55;border-bottom:1px solid #cbd5e1;padding-bottom:4px;}table{border-collapse:collapse;width:100%;margin-bottom:18px;}td{border:1px solid #cbd5e1;padding:6px;vertical-align:top}.label{background:#f1f5f9;font-weight:bold;width:30%}.notice{background:#fef3c7;border:1px solid #f59e0b;padding:10px;margin-bottom:18px}</style>' +
-      '<!-- 056F_EXACT_LEGACY_CARD_SUPPRESSION_START -->
-<style id="projectpulse-056f-exact-legacy-card-suppression">
-  /*
-   * These IDs belong only to the legacy injected dashboard summary cards.
-   * The actual React route workspaces use different page/shell IDs.
-   */
-  #projectpulse-022e-dashboard-notification-card,
-  #projectpulse-production-notification-dashboard-shortcut,
-  #projectpulse-production-readiness-dashboard-shortcut,
-  #projectpulse-024-intake-card,
-  #projectpulse-025-sow-card,
-  #projectpulse-026-crm-card,
-  #projectpulse-027-handoff-card,
-  #projectpulse-028-ai-time-card,
-  #projectpulse-029-uat-card,
-  #projectpulse-030-reporting-card {
-    display: none !important;
-    visibility: hidden !important;
-    height: 0 !important;
-    min-height: 0 !important;
-    max-height: 0 !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    border: 0 !important;
-    overflow: hidden !important;
-    pointer-events: none !important;
-  }
-</style>
-
-<script id="projectpulse-056f-exact-legacy-card-runtime">
-(function () {
-  const selectors = [
-    '#projectpulse-022e-dashboard-notification-card',
-    '#projectpulse-production-notification-dashboard-shortcut',
-    '#projectpulse-production-readiness-dashboard-shortcut',
-    '#projectpulse-024-intake-card',
-    '#projectpulse-025-sow-card',
-    '#projectpulse-026-crm-card',
-    '#projectpulse-027-handoff-card',
-    '#projectpulse-028-ai-time-card',
-    '#projectpulse-029-uat-card',
-    '#projectpulse-030-reporting-card'
-  ];
-
-  function suppressExactLegacyCards() {
-    const matched = [];
-
-    selectors.forEach(function (selector) {
-      document.querySelectorAll(selector).forEach(function (element) {
-        element.hidden = true;
-        element.setAttribute('aria-hidden', 'true');
-        element.setAttribute(
-          'data-projectpulse-legacy-dashboard-summary-card',
-          'true'
-        );
-        element.setAttribute(
-          'data-projectpulse-dashboard-card-guard-version',
-          '056F'
-        );
-        element.style.setProperty('display', 'none', 'important');
-        element.style.setProperty('visibility', 'hidden', 'important');
-        element.style.setProperty('height', '0', 'important');
-        element.style.setProperty('margin', '0', 'important');
-        element.style.setProperty('padding', '0', 'important');
-        element.style.setProperty('border', '0', 'important');
-        element.style.setProperty('overflow', 'hidden', 'important');
-        matched.push(selector);
-      });
-    });
-
-    document.documentElement.setAttribute(
-      'data-projectpulse-056f-matched-count',
-      String(matched.length)
-    );
-
-    return {
-      guardVersion: '056F',
-      route: location.hash,
-      matchedCount: matched.length,
-      visibleOffenderCount: selectors
-        .flatMap(selector => [...document.querySelectorAll(selector)])
-        .filter(element => {
-          const style = getComputedStyle(element);
-          return !element.hidden &&
-            style.display !== 'none' &&
-            style.visibility !== 'hidden';
-        }).length
-    };
-  }
-
-  window.__projectPulse056FExactLegacyCardDiagnostics =
-    suppressExactLegacyCards;
-
-  const observer = new MutationObserver(function () {
-    suppressExactLegacyCards();
-  });
-
-  observer.observe(document.documentElement, {
-    childList: true,
-    subtree: true
-  });
-
-  window.addEventListener(
-    'hashchange',
-    suppressExactLegacyCards,
-    true
-  );
-
-  if (document.readyState === 'loading') {
-    document.addEventListener(
-      'DOMContentLoaded',
-      suppressExactLegacyCards,
-      { once: true }
-    );
-  } else {
-    suppressExactLegacyCards();
-  }
-
-  [50, 250, 750, 1500, 3000, 6000].forEach(function (delay) {
-    window.setTimeout(suppressExactLegacyCards, delay);
-  });
-})();
-</script>
-<!-- 056F_EXACT_LEGACY_CARD_SUPPRESSION_END -->
-</head><body><h1>' + escapeHtml(title) + '</h1>' +
+      '</head><body><h1>' + escapeHtml(title) + '</h1>' +
       '<div class="notice">This Word-compatible SOW draft was generated from ProjectPulse MODULE 025. Claude-assisted research and draft content are draft-only and require Solution Architect review.</div>' +
       '<table>' +
       '<tr><td class="label">Customer</td><td>' + escapeHtml(state.customerName) + '</td></tr>' +
@@ -12341,6 +12217,172 @@
 })();
 </script>
 <!-- 056B_DASHBOARD_CARD_ROUTE_GUARD_END -->
+<!-- 056G_EXACT_LEGACY_CARD_SUPPRESSION_START -->
+<style id="projectpulse-056g-exact-legacy-card-suppression">
+  #projectpulse-022e-dashboard-notification-card,
+  #projectpulse-production-notification-dashboard-shortcut,
+  #projectpulse-production-readiness-dashboard-shortcut,
+  #projectpulse-024-intake-card,
+  #projectpulse-025-sow-card,
+  #projectpulse-026-crm-card,
+  #projectpulse-027-handoff-card,
+  #projectpulse-028-ai-time-card,
+  #projectpulse-029-uat-card,
+  #projectpulse-030-reporting-card {
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    max-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    overflow: hidden !important;
+    pointer-events: none !important;
+  }
+</style>
+
+<script id="projectpulse-056g-exact-legacy-card-runtime">
+(function () {
+  const selectors = [
+    '#projectpulse-022e-dashboard-notification-card',
+    '#projectpulse-production-notification-dashboard-shortcut',
+    '#projectpulse-production-readiness-dashboard-shortcut',
+    '#projectpulse-024-intake-card',
+    '#projectpulse-025-sow-card',
+    '#projectpulse-026-crm-card',
+    '#projectpulse-027-handoff-card',
+    '#projectpulse-028-ai-time-card',
+    '#projectpulse-029-uat-card',
+    '#projectpulse-030-reporting-card'
+  ];
+
+  function suppressExactLegacyCards() {
+    const matched = [];
+
+    selectors.forEach(function (selector) {
+      document.querySelectorAll(selector).forEach(function (element) {
+        element.hidden = true;
+        element.setAttribute('aria-hidden', 'true');
+        element.setAttribute(
+          'data-projectpulse-legacy-dashboard-summary-card',
+          'true'
+        );
+        element.setAttribute(
+          'data-projectpulse-dashboard-card-guard-version',
+          '056G'
+        );
+
+        element.style.setProperty(
+          'display',
+          'none',
+          'important'
+        );
+        element.style.setProperty(
+          'visibility',
+          'hidden',
+          'important'
+        );
+        element.style.setProperty(
+          'height',
+          '0',
+          'important'
+        );
+        element.style.setProperty(
+          'margin',
+          '0',
+          'important'
+        );
+        element.style.setProperty(
+          'padding',
+          '0',
+          'important'
+        );
+        element.style.setProperty(
+          'border',
+          '0',
+          'important'
+        );
+        element.style.setProperty(
+          'overflow',
+          'hidden',
+          'important'
+        );
+
+        matched.push(selector);
+      });
+    });
+
+    const visibleOffenders = selectors
+      .flatMap(function (selector) {
+        return Array.from(document.querySelectorAll(selector));
+      })
+      .filter(function (element) {
+        const style = window.getComputedStyle(element);
+
+        return !element.hidden
+          && style.display !== 'none'
+          && style.visibility !== 'hidden';
+      });
+
+    document.documentElement.setAttribute(
+      'data-projectpulse-056g-matched-count',
+      String(matched.length)
+    );
+
+    document.documentElement.setAttribute(
+      'data-projectpulse-056g-visible-offender-count',
+      String(visibleOffenders.length)
+    );
+
+    return {
+      guardVersion: '056G',
+      route: location.hash,
+      matchedCount: matched.length,
+      visibleOffenderCount: visibleOffenders.length
+    };
+  }
+
+  window.__projectPulse056GExactLegacyCardDiagnostics =
+    suppressExactLegacyCards;
+
+  const observer = new MutationObserver(function () {
+    suppressExactLegacyCards();
+  });
+
+  observer.observe(document.documentElement, {
+    childList: true,
+    subtree: true
+  });
+
+  window.addEventListener(
+    'hashchange',
+    suppressExactLegacyCards,
+    true
+  );
+
+  if (document.readyState === 'loading') {
+    document.addEventListener(
+      'DOMContentLoaded',
+      suppressExactLegacyCards,
+      { once: true }
+    );
+  } else {
+    suppressExactLegacyCards();
+  }
+
+  [50, 250, 750, 1500, 3000, 6000].forEach(
+    function (delay) {
+      window.setTimeout(
+        suppressExactLegacyCards,
+        delay
+      );
+    }
+  );
+})();
+</script>
+<!-- 056G_EXACT_LEGACY_CARD_SUPPRESSION_END -->
+
 
 </body>
 </html>
