@@ -16678,6 +16678,84 @@ async Task<bool> SessionUserIsAdministratorAsync(NpgsqlConnection connection, Gu
 }
 
 
+
+string[] ProjectPulseReadCsvEnv(string name, params string[] fallbackValues)
+{
+    var raw = Environment.GetEnvironmentVariable(name);
+
+    if (string.IsNullOrWhiteSpace(raw))
+    {
+        return fallbackValues;
+    }
+
+    return raw
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Where(value => !string.IsNullOrWhiteSpace(value))
+        .ToArray();
+}
+
+bool ProjectPulseDomainMatches(string email, string domain)
+{
+    if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(domain))
+    {
+        return false;
+    }
+
+    var normalizedEmail = email.Trim().ToLowerInvariant();
+    var normalizedDomain = domain.Trim().TrimStart('@').ToLowerInvariant();
+
+    if (normalizedDomain.StartsWith(".", StringComparison.Ordinal))
+    {
+        return normalizedEmail.EndsWith(normalizedDomain, StringComparison.OrdinalIgnoreCase);
+    }
+
+    return normalizedEmail.EndsWith("@" + normalizedDomain, StringComparison.OrdinalIgnoreCase);
+}
+
+bool ProjectPulseIsAllowedSsoEmail(string email)
+{
+    var allowedDomains = ProjectPulseReadCsvEnv(
+        "PROJECTPULSE_SSO_ALLOWED_DOMAINS",
+        "ussignal.com",
+        "onenecklab.com"
+    );
+
+    return allowedDomains.Any(domain => ProjectPulseDomainMatches(email, domain));
+}
+
+bool ProjectPulseIsAllowedLocalAdminEmail(string email)
+{
+    var allowedDomains = ProjectPulseReadCsvEnv(
+        "PROJECTPULSE_LOCAL_ADMIN_ALLOWED_DOMAINS",
+        "ussignal.local",
+        ".local"
+    );
+
+    return allowedDomains.Any(domain => ProjectPulseDomainMatches(email, domain));
+}
+
+string ProjectPulseSsoDomainMessage()
+{
+    var allowedSsoDomains = ProjectPulseReadCsvEnv(
+        "PROJECTPULSE_SSO_ALLOWED_DOMAINS",
+        "ussignal.com",
+        "onenecklab.com"
+    );
+
+    var allowedLocalDomains = ProjectPulseReadCsvEnv(
+        "PROJECTPULSE_LOCAL_ADMIN_ALLOWED_DOMAINS",
+        "ussignal.local",
+        ".local"
+    );
+
+    return "Use one of these SSO domains: "
+        + string.Join(", ", allowedSsoDomains.Select(domain => "@" + domain.Trim().TrimStart('@')))
+        + ". Use one of these local administrator domains only for break-glass access: "
+        + string.Join(", ", allowedLocalDomains)
+        + ".";
+}
+
+
 app.MapGet("/api/auth/login/route", async (string? username) =>
 {
     var cleanedUsername = (username ?? string.Empty).Trim().ToLowerInvariant();
@@ -16691,7 +16769,7 @@ app.MapGet("/api/auth/login/route", async (string? username) =>
         });
     }
 
-    if (cleanedUsername.EndsWith("@ussignal.com"))
+    if (ProjectPulseIsAllowedSsoEmail(cleanedUsername))
     {
         return Results.Ok(new
         {
@@ -16745,7 +16823,7 @@ app.MapGet("/api/auth/login/route", async (string? username) =>
     {
         status = "unsupported_login_domain",
         username = cleanedUsername,
-        message = "Use your US Signal email address for SSO or a Project Pulse .local administrator account."
+        message = ProjectPulseSsoDomainMessage()
     });
 });
 
@@ -17270,12 +17348,12 @@ app.MapPost("/api/auth/sso/dev-login", async (SsoDevelopmentLoginRequest request
 {
     var email = request.Email.Trim().ToLowerInvariant();
 
-    if (!email.EndsWith("@ussignal.com", StringComparison.OrdinalIgnoreCase))
+    if (!ProjectPulseIsAllowedSsoEmail(email))
     {
         return Results.BadRequest(new
         {
             status = "invalid_sso_domain",
-            message = "US Signal SSO is only available for @ussignal.com accounts."
+            message = ProjectPulseSsoDomainMessage()
         });
     }
 

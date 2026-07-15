@@ -5894,7 +5894,7 @@ export default function App() {
             <p className="eyebrow">PHD Access</p>
             <h1>Sign in to your role-based workspace</h1>
             <p>
-              Use your US Signal email for SSO. Use the local administrator account only for break-glass access when SSO is unavailable.
+              Use your US Signal or OneNeck Lab email for SSO. Use the local administrator account only for break-glass access when SSO is unavailable.
             </p>
           </div>
 
@@ -5905,7 +5905,7 @@ export default function App() {
                 id="login-username"
                 type="text"
                 value={loginUsername}
-                placeholder="name@ussignal.com or admin@ussignal.local"
+                placeholder="name@ussignal.com, name@onenecklab.com, or admin@ussignal.local"
                 onChange={(event) => {
                   setLoginUsername(event.target.value);
                   setLoginRoute(null);
