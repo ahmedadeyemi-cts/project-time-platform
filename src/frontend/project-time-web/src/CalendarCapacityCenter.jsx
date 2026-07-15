@@ -32,6 +32,84 @@ function monthCells(anchor) {
 }
 
 export default function CalendarCapacityCenter() {
+  useEffect(() => {
+    const hiddenElements = new Map();
+
+    const hideConflictingRouteContent = () => {
+      const headings = Array.from(
+        document.querySelectorAll('h1, h2, h3, [role="heading"]')
+      );
+
+      headings.forEach((heading) => {
+        const label = String(heading.textContent || '')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .toLowerCase();
+
+        const isUserAdministration =
+          label.includes('users, roles, teams, and departments') ||
+          label.includes('create local phd user');
+
+        if (!isUserAdministration) return;
+
+        const container =
+          heading.closest('[data-projectpulse-route-page]') ||
+          heading.closest('section.panel') ||
+          heading.closest('section') ||
+          heading.closest('.panel') ||
+          heading.closest('main > div');
+
+        if (!container || container.id === 'calendar-capacity') return;
+
+        if (!hiddenElements.has(container)) {
+          hiddenElements.set(container, container.style.display);
+        }
+
+        container.style.display = 'none';
+        container.setAttribute(
+          'data-module-057-suppressed-conflicting-route',
+          'true'
+        );
+      });
+
+      const calendarSection = document.getElementById('calendar-capacity');
+      if (calendarSection) {
+        calendarSection.style.display = '';
+        calendarSection.setAttribute(
+          'data-module-057-route-visible',
+          'true'
+        );
+      }
+    };
+
+    hideConflictingRouteContent();
+
+    const frame = window.requestAnimationFrame(hideConflictingRouteContent);
+    const timer = window.setTimeout(hideConflictingRouteContent, 250);
+
+    const observer = new MutationObserver(hideConflictingRouteContent);
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+      observer.disconnect();
+
+      hiddenElements.forEach((previousDisplay, element) => {
+        element.style.display = previousDisplay;
+        element.removeAttribute(
+          'data-module-057-suppressed-conflicting-route'
+        );
+      });
+
+      document
+        .getElementById('calendar-capacity')
+        ?.removeAttribute('data-module-057-route-visible');
+    };
+  }, []);
   const [config, setConfig] = useState(null);
   const [resources, setResources] = useState([]);
   const [teams, setTeams] = useState([]);
