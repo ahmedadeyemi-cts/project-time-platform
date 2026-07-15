@@ -8,6 +8,21 @@ const routeContext = {
     check: 'Refresh data readiness, review each table count/status, then open the linked pages to validate data visibility.'
   },
 
+  /* 039_042_BILLING_CONTEXT_GUIDE_START */
+  'billing-readiness': {
+    page: 'Billing Readiness Center — Module 039',
+    purpose: 'Pre-invoice quality gate. It checks whether approved labor, expenses, customer/project mapping, notes, evidence, and exceptions are ready to become a billing package. It does not create or send the customer invoice.',
+    backend: '/api/project-intake/overview and billing-readiness data sources',
+    check: 'Resolve every blocking item, confirm the billing package is eligible, and then move the package to Module 042 for invoice preparation.'
+  },
+  'invoice-billing-center': {
+    page: 'Invoice & Billing Center — Module 042',
+    purpose: 'Live invoice operations using approved uninvoiced time, explicit effective stored-rate selection, purchase-order readiness, and immutable partial or final invoice snapshots. Fixed Price dollars remain blocked until stored milestone billing is implemented.',
+    backend: '/api/billing/candidates, /api/billing/projects/{projectId}/invoices, and /api/billing/invoices/{invoiceId}',
+    check: 'Confirm approved source lines, select only effective stored rates, resolve required purchase orders, create a partial or final invoice, and verify its PHD-XXXXXX-N number and immutable history. Missing values remain visibly unconfigured.'
+  },
+  /* 039_042_BILLING_CONTEXT_GUIDE_END */
+
   dashboard: {
     page: 'Dashboard',
     purpose: 'Role-based landing page showing the modules, alerts, and work areas available to the signed-in user.',

@@ -1203,7 +1203,7 @@ installProjectPulseEffectiveSessionVisibilityPanel();
 
 
 
-import { useEffect, useMemo, useState, useRef } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useState, useRef } from 'react';
 import usSignalLogoUrl from '../brand/ussignal.png';
 import './timesheet.css';
 import './mobile-readiness.css';
@@ -1227,6 +1227,7 @@ import CertifyIntegrationCenter from './CertifyIntegrationCenter.jsx';
 import BillingReadinessCenter from './BillingReadinessCenter.jsx';
 import ProjectCloseoutCenter from './ProjectCloseoutCenter.jsx';
 import CloseoutEmailAutomationCenter from './CloseoutEmailAutomationCenter.jsx';
+import InvoiceBillingCenter from './InvoiceBillingCenter.jsx';
 import CustomerDirectoryCenter from './CustomerDirectoryCenter.jsx';
 import RateCardAdministrationCenter from './RateCardAdministrationCenter.jsx';
 import WorkRegisterCenter from './WorkRegisterCenter.jsx';
@@ -2548,6 +2549,16 @@ const roleWorkspaceModules = [
     permissions: ['VIEW_PROJECT_WORKSPACE', 'VIEW_PROJECT_INTAKE', 'VIEW_APPROVAL_WORKFLOW', 'PROJECT_TIME_APPROVAL', 'VIEW_ACCOUNT_RECONCILIATION', 'VIEW_EXPENSES', 'EXPORT_TIME_EXCEL', 'DOWNLOAD_TIME_EXPORT_PACKAGE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   },
   /* 041_CLOSEOUT_EMAIL_AUTOMATION_END */
+  /* 042_INVOICE_BILLING_CENTER_START */
+  {
+    route: 'invoice-billing-center',
+    href: '#invoice-billing-center',
+    title: 'Invoice & Billing Center',
+    navLabel: 'MODULE 042',
+    description: 'Prepare partial and final invoices, review recently closed projects, preserve detailed customer-facing time and rate evidence, customize invoice headers, and preview Over / Under and T&M balance reporting.',
+    permissions: ['VIEW_ACCOUNT_RECONCILIATION', 'VIEW_APPROVAL_WORKFLOW', 'PROJECT_TIME_APPROVAL', 'VIEW_PROJECT_WORKSPACE', 'VIEW_PROJECT_INTAKE', 'EXPORT_TIME_EXCEL', 'EXPORT_TIME_PDF', 'DOWNLOAD_TIME_EXPORT_PACKAGE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
+  },
+  /* 042_INVOICE_BILLING_CENTER_END */
   {
     route: 'service-control',
     href: '#service-control',
@@ -2765,6 +2776,7 @@ function getNavigationGroup(item) {
     case 'billing-readiness':
     case 'project-closeout':
     case 'closeout-email':
+    case 'invoice-billing-center':
       return 'Reports & Workflow';
 
     default:
@@ -3338,6 +3350,10 @@ function buildRoleNavigationModel(user, navigationItems) {
     'time-compliance',
     'psa-modules',
     'work-task-builder',
+    'billing-readiness',
+    'project-closeout',
+    'closeout-email',
+    'invoice-billing-center',
     'workflow',
     'audit-history',
     'user-admin',
@@ -3739,7 +3755,15 @@ function getInstalledProjectPulseModuleRegistry() {
     group: 'Security',
     permissions: ['VIEW_ENGINEER_NEGATIVE_ACCESS_SMOKE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
     description: 'Confirms engineer-only users remain denied from restricted workflow, export, accounting, and role matrix controls.'
-  }
+  },
+  {
+    route: 'invoice-billing-center',
+    title: 'Invoice & Billing Center',
+    navLabel: 'MODULE 042',
+    group: 'Reports & Workflow',
+    permissions: ['VIEW_ACCOUNT_RECONCILIATION', 'VIEW_APPROVAL_WORKFLOW', 'PROJECT_TIME_APPROVAL', 'VIEW_PROJECT_WORKSPACE', 'VIEW_PROJECT_INTAKE', 'EXPORT_TIME_EXCEL', 'EXPORT_TIME_PDF', 'DOWNLOAD_TIME_EXPORT_PACKAGE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    description: 'Prepares detailed partial and final invoice packages with customer identifiers, time-entry evidence, rates, hours, amounts, flexible headers, recently closed work, and billing reports.'
+  },
   ];
 }
 
@@ -3773,6 +3797,7 @@ function getInstalledModuleDescription(module) {
     'backup-retention': 'Manages backup retention policy, cleanup readiness, and retention compliance visibility.',
     'restore-validation': 'Validates restore points, restore readiness, and restore test evidence before relying on backups.',
     'replication-sync': 'Shows replication and synchronization status across backup, database, and operational readiness workflows.',
+    'invoice-billing-center': 'Prepares partial and final invoice packages, preserves detailed time and rate evidence, and supports billing and Over / Under reporting.',
     'psa-modules': 'Displays PSA workflow modules such as expense, invoice, project, and billing readiness areas as they are connected.'
   };
 
@@ -3812,18 +3837,43 @@ export default function App() {
   const [sessionWarning, setSessionWarning] = useState({ visible: false, remainingMs: 0 });
   const [activeRoute, setActiveRoute] = useState(() => normalizeRoute(window.location.hash));
 
-  /* 055B_1_ACTIVE_ROUTE_BODY_DATASET_START */
-  useEffect(() => {
-    const routeKey = activeRoute || 'dashboard';
+  /* 056A_SHARED_ROUTE_DATASET_START */
+  useLayoutEffect(() => {
+    const routeKey = normalizeRoute(activeRoute);
+
+    /*
+     * Maintain all historical attribute spellings while older page-specific
+     * styles are migrated. Updating them in a layout effect prevents one route
+     * from painting with another route's visibility rules.
+     */
+    document.documentElement.dataset.projectPulseActiveRoute = routeKey;
+    document.body.dataset.projectPulseActiveRoute = routeKey;
     document.body.dataset.projectpulseActiveRoute = routeKey;
+    document.body.dataset.projectPulseRoute = routeKey;
+
+    window.dispatchEvent(new CustomEvent('projectpulse:route-state-ready', {
+      detail: { route: routeKey }
+    }));
 
     return () => {
+      if (document.documentElement.dataset.projectPulseActiveRoute === routeKey) {
+        delete document.documentElement.dataset.projectPulseActiveRoute;
+      }
+
+      if (document.body.dataset.projectPulseActiveRoute === routeKey) {
+        delete document.body.dataset.projectPulseActiveRoute;
+      }
+
       if (document.body.dataset.projectpulseActiveRoute === routeKey) {
         delete document.body.dataset.projectpulseActiveRoute;
       }
+
+      if (document.body.dataset.projectPulseRoute === routeKey) {
+        delete document.body.dataset.projectPulseRoute;
+      }
     };
   }, [activeRoute]);
-  /* 055B_1_ACTIVE_ROUTE_BODY_DATASET_END */
+  /* 056A_SHARED_ROUTE_DATASET_END */
   /* 039A_ROUTE_REFRESH_RESTORE_EFFECT_START */
   useEffect(() => {
     installProjectPulseManualScrollRestoration();
@@ -3845,25 +3895,6 @@ export default function App() {
   }, [activeRoute]);
   /* 039A_ROUTE_REFRESH_RESTORE_EFFECT_END */
 
-  /* 040B_ACTIVE_ROUTE_DATASET_START */
-  useEffect(() => {
-    const normalizedRoute = String(activeRoute || 'dashboard').replace('#', '') || 'dashboard';
-
-    document.documentElement.dataset.projectPulseActiveRoute = normalizedRoute;
-    document.body.dataset.projectPulseActiveRoute = normalizedRoute;
-
-    return () => {
-      if (document.documentElement.dataset.projectPulseActiveRoute === normalizedRoute) {
-        delete document.documentElement.dataset.projectPulseActiveRoute;
-      }
-
-      if (document.body.dataset.projectPulseActiveRoute === normalizedRoute) {
-        delete document.body.dataset.projectPulseActiveRoute;
-      }
-    };
-  }, [activeRoute]);
-  /* 040B_ACTIVE_ROUTE_DATASET_END */
-
   /* 039D_APPROVAL_INIT_CRASH_FIX */
   /* 039C_APPROVAL_INDICATOR_EFFECT_START */
   useEffect(() => {
@@ -3880,35 +3911,6 @@ export default function App() {
 
 
 
-
-  useEffect(() => {
-    window.requestAnimationFrame(() => {
-      window.scrollTo({ top: 0, behavior: 'auto' });
-    });
-  },
-
-  {
-    route: 'restore-validation',
-    href: '#restore-validation',
-    title: 'Restore Validation',
-    navLabel: 'MODULE 015',
-    description: 'Validate backup integrity, database dump readability, configuration archives, application snapshots, and DR runbook readiness.',
-    status: 'Operational',
-    group: 'System Operations',
-    permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
-  },
-
-
-  {
-    route: 'backup-retention',
-    href: '#backup-retention',
-    title: 'Backup Retention',
-    navLabel: 'MODULE 016',
-    description: 'Review backup points and safely remove older backups with restore-point protection.',
-    status: 'Operational',
-    group: 'System Operations',
-    permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
-  } [activeRoute]); // project-pulse-route-scroll-reset
   const [selectedWeekStart, setSelectedWeekStart] = useState(getSundayIso);
   const [apiHealth, setApiHealth] = useState({ loading: true, data: null, error: null });
   const [roleAdminUsers, setRoleAdminUsers] = useState({ loading: true, data: null, error: null });
@@ -4010,14 +4012,6 @@ export default function App() {
     window.localStorage.setItem('ptp-theme', theme);
   }, [theme]);
 
-
-  useEffect(() => {
-    document.body.dataset.projectPulseRoute = activeRoute || 'dashboard';
-
-    return () => {
-      delete document.body.dataset.projectPulseRoute;
-    };
-  }, [activeRoute]);
 
 
 
@@ -5228,17 +5222,6 @@ export default function App() {
 
 
 
-  useEffect(() => {
-    const syncRouteFromHash = () => {
-      setActiveRoute(getRouteFromHash());
-    };
-
-    window.addEventListener('hashchange', syncRouteFromHash);
-    syncRouteFromHash();
-
-    return () => window.removeEventListener('hashchange', syncRouteFromHash);
-  }, []);
-
 
   const visibleRoleModules = useMemo(() => getVisibleRoleModules(currentUser.data), [currentUser.data]);
 
@@ -5256,7 +5239,11 @@ export default function App() {
   }, [activeRoute]);
 
   const activeNavigationItem = useMemo(
-    () => roleNavigation.find((item) => item.route === activeRoute) ?? { label: 'Dashboard', title: 'Dashboard', route: 'dashboard', href: '#dashboard' },
+    () => (
+      roleNavigation.find((item) => item.route === activeRoute) ??
+      roleWorkspaceModules.find((item) => item.route === activeRoute) ??
+      { label: 'Dashboard', title: 'Dashboard', route: 'dashboard', href: '#dashboard' }
+    ),
     [roleNavigation, activeRoute]
   );
 
@@ -6896,6 +6883,15 @@ Analytics - Variphy / Infortel`}
       {(activeRoute === 'closeout-email' && canSeeAny(['VIEW_PROJECT_WORKSPACE', 'VIEW_PROJECT_INTAKE', 'VIEW_APPROVAL_WORKFLOW', 'PROJECT_TIME_APPROVAL', 'VIEW_ACCOUNT_RECONCILIATION', 'VIEW_EXPENSES', 'EXPORT_TIME_EXCEL', 'DOWNLOAD_TIME_EXPORT_PACKAGE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
         <section id="closeout-email" className="panel closeout-email-route-panel">
           <CloseoutEmailAutomationCenter />
+        </section>
+      ) : null}
+
+      {(activeRoute === 'invoice-billing-center' && canSeeAny(['VIEW_ACCOUNT_RECONCILIATION', 'VIEW_APPROVAL_WORKFLOW', 'PROJECT_TIME_APPROVAL', 'VIEW_PROJECT_WORKSPACE', 'VIEW_PROJECT_INTAKE', 'EXPORT_TIME_EXCEL', 'EXPORT_TIME_PDF', 'DOWNLOAD_TIME_EXPORT_PACKAGE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
+        <section id="invoice-billing-center" className="panel invoice-billing-center-route-panel">
+          <InvoiceBillingCenter
+            usSignalLogoUrl={usSignalLogoUrl}
+            userKey={authSession?.username ?? currentUser.data?.email ?? 'current-user'}
+          />
         </section>
       ) : null}
 

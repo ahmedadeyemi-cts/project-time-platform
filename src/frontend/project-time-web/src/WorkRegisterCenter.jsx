@@ -75,6 +75,27 @@ async function postJson(url, payload) {
   return response.json();
 }
 
+async function putJson(url, payload) {
+  const response = await fetch(url, {
+    method: 'PUT',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    let message = `HTTP ${response.status}`;
+    try {
+      const error = await response.json();
+      message = error.message || error.status || message;
+    } catch {
+      // Ignore non-JSON responses.
+    }
+    throw new Error(message);
+  }
+
+  return response.json();
+}
+
 
 function workRegisterBillingIdentifierValue(item = {}, camelName, snakeName) {
   return item?.[camelName] || item?.[snakeName] || '';
@@ -141,6 +162,8 @@ export default function WorkRegisterCenter() {
   const [selectedWorkItem, setSelectedWorkItem] = useState(null);
   const [editForm, setEditForm] = useState({});
   const [editStatus, setEditStatus] = useState('');
+  const [purchaseOrders, setPurchaseOrders] = useState({ loading: true, projects: [], error: null });
+  const [purchaseOrderStatus, setPurchaseOrderStatus] = useState('');
 
   const [activeDrawerTab, setActiveDrawerTab] = useState('setup');
   const [projectDetails, setProjectDetails] = useState({ loading: false, data: null, error: null });
@@ -178,7 +201,13 @@ export default function WorkRegisterCenter() {
     visibility: 'project_team',
     effectiveDate: new Date().toISOString().slice(0, 10),
     notes: '',
-    reason: ''
+    reason: '',
+    purchaseOrderRequired: false,
+    poNumber: '',
+    authorizedAmount: '',
+    poEffectiveStartDate: '',
+    poEffectiveEndDate: '',
+    poCustomerReference: ''
   });
   const [documentStatus, setDocumentStatus] = useState('');
 
@@ -215,7 +244,13 @@ export default function WorkRegisterCenter() {
     skipGsd: false,
     skipSow: false,
     notes: '',
-    reason: ''
+    reason: '',
+    purchaseOrderRequired: false,
+    poNumber: '',
+    authorizedAmount: '',
+    poEffectiveStartDate: '',
+    poEffectiveEndDate: '',
+    poCustomerReference: ''
   });
 
   // 055D_5B_CREATE_WORK_SAFE_INTAKE_FORM_UPDATE
@@ -236,6 +271,12 @@ function projectPulseCreateWorkSnapshotWrite(field, value) {
     'sellQuoteNumber',
     'salesforceIdNumber',
     'certiniaIdNumber',
+    'purchaseOrderRequired',
+    'poNumber',
+    'authorizedAmount',
+    'poEffectiveStartDate',
+    'poEffectiveEndDate',
+    'poCustomerReference',
     'sowSignedDate',
     'customerId',
     'customerName',
@@ -277,6 +318,12 @@ function projectPulseCreateWorkFinalFieldSnapshot() {
     sellQuoteNumber: intakeReviewForm?.sellQuoteNumber || intakeForm.sellQuoteNumber || stored.sellQuoteNumber || '',
     salesforceIdNumber: intakeReviewForm?.salesforceIdNumber || intakeForm.salesforceIdNumber || stored.salesforceIdNumber || '',
     certiniaIdNumber: intakeReviewForm?.certiniaIdNumber || intakeForm.certiniaIdNumber || stored.certiniaIdNumber || '',
+    purchaseOrderRequired: intakeForm.purchaseOrderRequired === true || stored.purchaseOrderRequired === true,
+    poNumber: intakeForm.poNumber || stored.poNumber || '',
+    authorizedAmount: intakeForm.authorizedAmount || stored.authorizedAmount || '',
+    poEffectiveStartDate: intakeForm.poEffectiveStartDate || stored.poEffectiveStartDate || '',
+    poEffectiveEndDate: intakeForm.poEffectiveEndDate || stored.poEffectiveEndDate || '',
+    poCustomerReference: intakeForm.poCustomerReference || stored.poCustomerReference || '',
     sowSignedDate: intakeReviewForm?.sowSignedDate || intakeForm.sowSignedDate || stored.sowSignedDate || '',
     projectName: intakeReviewForm?.projectName || intakeForm.projectName || intakeForm.workName || stored.projectName || stored.workName || '',
     customerId: intakeReviewForm?.customerId || intakeForm.customerId || stored.customerId || '',
@@ -441,6 +488,51 @@ const updateIntakeForm = (field, value) => {
       });
     }
   }
+  async function loadPurchaseOrders() {
+    setPurchaseOrders((current) => ({ ...current, loading: true, error: null }));
+
+    try {
+      const data = await fetchJson('/api/work-register/projects/purchase-orders');
+      setPurchaseOrders({
+        loading: false,
+        projects: Array.isArray(data?.projects) ? data.projects : [],
+        error: null
+      });
+      return data;
+    } catch (error) {
+      setPurchaseOrders({
+        loading: false,
+        projects: [],
+        error: error instanceof Error ? error.message : 'Unable to load purchase orders.'
+      });
+      return null;
+    }
+  }
+
+  function purchaseOrderForProject(projectId) {
+    return (purchaseOrders.projects || []).find(
+      (project) => String(project.projectId) === String(projectId)
+    ) || null;
+  }
+
+  async function savePurchaseOrder(projectId, values) {
+    if (!projectId) return null;
+
+    return putJson(`/api/work-register/projects/${projectId}/purchase-order`, {
+      purchaseOrderRequired: values.purchaseOrderRequired === true,
+      poNumber: String(values.poNumber || '').trim(),
+      authorizedAmount:
+        values.authorizedAmount === ''
+        || values.authorizedAmount === null
+        || values.authorizedAmount === undefined
+          ? null
+          : Number(values.authorizedAmount),
+      effectiveStartDate: values.poEffectiveStartDate || null,
+      effectiveEndDate: values.poEffectiveEndDate || null,
+      customerReference: String(values.poCustomerReference || '').trim()
+    });
+  }
+
 
   async function load() {
     setPayload((current) => ({ ...current, loading: true, error: null }));
@@ -460,6 +552,7 @@ const updateIntakeForm = (field, value) => {
   useEffect(() => {
     load();
     loadEditFoundation();
+    loadPurchaseOrders();
   }, []);
 
   const workItems = payload.data?.workItems ?? [];
@@ -601,6 +694,8 @@ const updateIntakeForm = (field, value) => {
   }
 
   function openEditDrawer(item) {
+    const poProject = purchaseOrderForProject(item?.workId);
+    const po = poProject?.purchaseOrder || null;
     setSelectedWorkItem(item);
     setEditStatus('');
     setActiveDrawerTab('setup');
@@ -629,8 +724,15 @@ const updateIntakeForm = (field, value) => {
       projectStartDate: dateOnly(item.startDate),
       estimatedEndDate: dateOnly(item.estimatedEndDate),
       status: item.status || '',
+      purchaseOrderRequired: poProject?.purchaseOrderRequired === true,
+      poNumber: po?.poNumber || '',
+      authorizedAmount: po?.authorizedAmount ?? '',
+      poEffectiveStartDate: dateOnly(po?.effectiveStartDate),
+      poEffectiveEndDate: dateOnly(po?.effectiveEndDate),
+      poCustomerReference: po?.customerReference || '',
       editReason: ''
     });
+    setPurchaseOrderStatus('');
   }
 
   function closeEditDrawer() {
@@ -2694,6 +2796,19 @@ async function createWorkRegisterFromReviewedIntake() {
 
     if (createdProjectId) {
       sessionStorage.setItem('projectPulseLastCreatedWorkId', createdProjectId);
+
+      if (
+        finalFields.purchaseOrderRequired
+        || finalFields.poNumber
+        || finalFields.authorizedAmount
+        || finalFields.poEffectiveStartDate
+        || finalFields.poEffectiveEndDate
+        || finalFields.poCustomerReference
+      ) {
+        await savePurchaseOrder(createdProjectId, finalFields);
+      }
+
+      await loadPurchaseOrders();
     }
 
     if (typeof loadOverview === 'function') {
@@ -3180,23 +3295,45 @@ async function createWorkRegisterFromReviewedIntake() {
     addIfSelected('salesforceIdNumber');
     addIfSelected('certiniaIdNumber');
 
-    if (Object.keys(payload).length <= 3) {
-      setEditStatus('No setup changes were selected. Choose at least one field to update.');
+    const originalPoProject = purchaseOrderForProject(selectedWorkItem.workId);
+    const originalPo = originalPoProject?.purchaseOrder || null;
+    const poChanged =
+      Boolean(editForm.purchaseOrderRequired) !== Boolean(originalPoProject?.purchaseOrderRequired)
+      || String(editForm.poNumber || '').trim() !== String(originalPo?.poNumber || '').trim()
+      || String(editForm.authorizedAmount ?? '') !== String(originalPo?.authorizedAmount ?? '')
+      || dateOnly(editForm.poEffectiveStartDate) !== dateOnly(originalPo?.effectiveStartDate)
+      || dateOnly(editForm.poEffectiveEndDate) !== dateOnly(originalPo?.effectiveEndDate)
+      || String(editForm.poCustomerReference || '').trim() !== String(originalPo?.customerReference || '').trim();
+
+    if (Object.keys(payload).length <= 3 && !poChanged) {
+      setEditStatus('No setup or purchase-order changes were selected.');
       return;
     }
     // 055C_3_WORK_REGISTER_CHANGED_FIELD_PAYLOAD_END
 
-    setEditStatus('Saving project setup...');
+    setEditStatus('Saving project setup and purchase order...');
+    setPurchaseOrderStatus('');
 
     try {
-      const result = await postJson('/api/work-register/projects/update', projectPulseAttachEditSaveIdentity(payload));
-      setEditStatus(result.message || 'Project setup saved.');
-      await load();
+      let result = null;
+
+      if (Object.keys(payload).length > 3) {
+        result = await postJson('/api/work-register/projects/update', projectPulseAttachEditSaveIdentity(payload));
+      }
+
+      if (poChanged) {
+        const poResult = await savePurchaseOrder(selectedWorkItem.workId, editForm);
+        setPurchaseOrderStatus(poResult?.message || 'Purchase order saved.');
+      }
+
+      setEditStatus(result?.message || 'Project setup and purchase order saved.');
+      await Promise.all([load(), loadPurchaseOrders()]);
+
       window.setTimeout(() => {
         closeEditDrawer();
       }, 800);
     } catch (error) {
-      setEditStatus(error instanceof Error ? error.message : 'Unable to save project setup.');
+      setEditStatus(error instanceof Error ? error.message : 'Unable to save project setup or purchase order.');
     }
   }
 
@@ -3367,6 +3504,13 @@ async function createWorkRegisterFromReviewedIntake() {
                   {workRegisterBillingIdentifierValue(item, 'sellQuoteNumber', 'sell_quote_number') ? <small>SELL Quote: {workRegisterBillingIdentifierValue(item, 'sellQuoteNumber', 'sell_quote_number')}</small> : null}
                   {workRegisterBillingIdentifierValue(item, 'salesforceIdNumber', 'salesforce_id_number') ? <small>Salesforce ID: {workRegisterBillingIdentifierValue(item, 'salesforceIdNumber', 'salesforce_id_number')}</small> : null}
                   {workRegisterBillingIdentifierValue(item, 'certiniaIdNumber', 'certinia_id_number') ? <small>Certinia ID: {workRegisterBillingIdentifierValue(item, 'certiniaIdNumber', 'certinia_id_number')}</small> : null}
+                  {purchaseOrderForProject(item.workId)?.purchaseOrder?.poNumber ? (
+                    <small className="work-register-po-value">
+                      PO: {purchaseOrderForProject(item.workId).purchaseOrder.poNumber}
+                    </small>
+                  ) : (
+                    <small>PO: Not configured</small>
+                  )}
                 </td>
                 <td>
                   <small>Total tasks: {item.taskCount ?? 0}</small>
@@ -3632,7 +3776,70 @@ async function createWorkRegisterFromReviewedIntake() {
                     <section>
 
 
-                      <h4>2. Intake notes and audit reason</h4>
+                      <h4>2. Purchase Order / Billing</h4>
+                      <p className="muted">Optional during intake. The PO is saved immediately after the Work Register project is created.</p>
+
+                      <label className="checkbox-line" data-projectpulse-create-work-po-editor="true">
+                        <input
+                          type="checkbox"
+                          checked={intakeForm.purchaseOrderRequired === true}
+                          onChange={(event) => updateIntakeField('purchaseOrderRequired', event.target.checked)}
+                        />
+                        PO required for billing
+                      </label>
+
+                      <div className="work-register-edit-grid">
+                        <label>
+                          PO Number
+                          <input
+                            type="text"
+                            value={intakeForm.poNumber || ''}
+                            onChange={(event) => updateIntakeField('poNumber', event.target.value)}
+                            placeholder="Customer purchase-order number"
+                          />
+                        </label>
+
+                        <label>
+                          Authorized PO amount
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={intakeForm.authorizedAmount ?? ''}
+                            onChange={(event) => updateIntakeField('authorizedAmount', event.target.value)}
+                          />
+                        </label>
+
+                        <label>
+                          Effective start date
+                          <input
+                            type="date"
+                            value={intakeForm.poEffectiveStartDate || ''}
+                            onChange={(event) => updateIntakeField('poEffectiveStartDate', event.target.value)}
+                          />
+                        </label>
+
+                        <label>
+                          Effective end date
+                          <input
+                            type="date"
+                            value={intakeForm.poEffectiveEndDate || ''}
+                            onChange={(event) => updateIntakeField('poEffectiveEndDate', event.target.value)}
+                          />
+                        </label>
+
+                        <label className="full-width">
+                          Customer reference
+                          <input
+                            type="text"
+                            value={intakeForm.poCustomerReference || ''}
+                            onChange={(event) => updateIntakeField('poCustomerReference', event.target.value)}
+                            placeholder="Customer PO description or reference"
+                          />
+                        </label>
+                      </div>
+
+                      <h4>3. Intake notes and audit reason</h4>
 
 
                       <label>
@@ -4548,6 +4755,83 @@ async function createWorkRegisterFromReviewedIntake() {
                     placeholder={selectedWorkItem.certiniaIdNumber || selectedWorkItem.certinia_id_number || 'Optional Certinia ID'}
                   />
                 </label>
+
+              <div className="work-register-po-section full-width" data-projectpulse-work-register-po-editor="true">
+                <div className="work-register-po-heading">
+                  <div>
+                    <strong>Purchase Order / Billing</strong>
+                    <small>Uses the same PO record shown in Invoice & Billing.</small>
+                  </div>
+                  {purchaseOrderStatus ? <span>{purchaseOrderStatus}</span> : null}
+                </div>
+
+                <label className="checkbox-line">
+                  <input
+                    type="checkbox"
+                    checked={editForm.purchaseOrderRequired === true}
+                    onChange={(event) => updateEditField('purchaseOrderRequired', event.target.checked)}
+                    disabled={!canModifySelectedProject}
+                  />
+                  PO required for billing
+                </label>
+
+                <div className="work-register-edit-grid">
+                  <label>
+                    PO Number
+                    <input
+                      type="text"
+                      value={editForm.poNumber || ''}
+                      onChange={(event) => updateEditField('poNumber', event.target.value)}
+                      placeholder="Customer purchase-order number"
+                      disabled={!canModifySelectedProject}
+                    />
+                  </label>
+
+                  <label>
+                    Authorized PO amount
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={editForm.authorizedAmount ?? ''}
+                      onChange={(event) => updateEditField('authorizedAmount', event.target.value)}
+                      placeholder="0.00"
+                      disabled={!canModifySelectedProject}
+                    />
+                  </label>
+
+                  <label>
+                    Effective start date
+                    <input
+                      type="date"
+                      value={editForm.poEffectiveStartDate || ''}
+                      onChange={(event) => updateEditField('poEffectiveStartDate', event.target.value)}
+                      disabled={!canModifySelectedProject}
+                    />
+                  </label>
+
+                  <label>
+                    Effective end date
+                    <input
+                      type="date"
+                      value={editForm.poEffectiveEndDate || ''}
+                      onChange={(event) => updateEditField('poEffectiveEndDate', event.target.value)}
+                      disabled={!canModifySelectedProject}
+                    />
+                  </label>
+
+                  <label className="full-width">
+                    Customer reference
+                    <input
+                      type="text"
+                      value={editForm.poCustomerReference || ''}
+                      onChange={(event) => updateEditField('poCustomerReference', event.target.value)}
+                      placeholder="Customer PO description or reference"
+                      disabled={!canModifySelectedProject}
+                    />
+                  </label>
+                </div>
+              </div>
 
               <label className="full-width">
                 Edit reason
