@@ -81,8 +81,41 @@ BEGIN
   END LOOP;
 
   FOR week_start IN
-    SELECT DISTINCT (d::date-(extract(isodow from d)::int-1))::date FROM (SELECT d FROM generate_series('2026-04-01'::date,'2026-06-30'::date,'1 day') d WHERE extract(isodow from d) between 1 and 5 ORDER BY d LIMIT 52) x
-    UNION SELECT DISTINCT (d::date-(extract(isodow from d)::int-1))::date FROM (SELECT d FROM generate_series('2026-07-01'::date,'2026-07-31'::date,'1 day') d WHERE extract(isodow from d)<>7 ORDER BY d LIMIT 25) y
+    SELECT DISTINCT
+      (
+        q2_days.work_day
+        - (extract(isodow from q2_days.work_day)::int - 1)
+      )::date
+    FROM (
+      SELECT gs.work_day::date AS work_day
+      FROM generate_series(
+        '2026-04-01'::date,
+        '2026-06-30'::date,
+        '1 day'
+      ) AS gs(work_day)
+      WHERE extract(isodow from gs.work_day) BETWEEN 1 AND 5
+      ORDER BY gs.work_day
+      LIMIT 52
+    ) AS q2_days
+
+    UNION
+
+    SELECT DISTINCT
+      (
+        july_days.work_day
+        - (extract(isodow from july_days.work_day)::int - 1)
+      )::date
+    FROM (
+      SELECT gs.work_day::date AS work_day
+      FROM generate_series(
+        '2026-07-01'::date,
+        '2026-07-31'::date,
+        '1 day'
+      ) AS gs(work_day)
+      WHERE extract(isodow from gs.work_day) <> 7
+      ORDER BY gs.work_day
+      LIMIT 25
+    ) AS july_days
   LOOP
     SELECT timesheet_id INTO sheet FROM timesheets WHERE user_id=kevin AND week_start_date=week_start LIMIT 1;
     IF sheet IS NULL THEN
