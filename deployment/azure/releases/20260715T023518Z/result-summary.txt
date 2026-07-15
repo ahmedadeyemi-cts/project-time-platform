@@ -1,0 +1,8 @@
+recordedAtUtc=20260715T023518Z
+sourceBranch=source/invoice-billing-center-preview-20260714
+sourceCommit=e4973fdf64a509b691568cb88dee871844943653
+operationsBranch=ops/azure-web-route-056b-20260715
+workflowCommit=b4e497c8bd4820a596938b29f9914d7ac6c93a14
+deploymentExitCode=0
+deploymentOutput=deployment/azure/releases/20260715T023518Z/deployment-output.txt
+deploymentStateRecorded=yes

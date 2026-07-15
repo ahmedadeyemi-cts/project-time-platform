@@ -1,0 +1,320 @@
+============================================================
+PROJECTPULSE WEB 056B CONTAINER APP DEPLOYMENT
+============================================================
+TIME=20260715T023336Z
+EXPECTED_HEAD=e4973fdf64a509b691568cb88dee871844943653
+TARGET_WEB_APP=ca-phd-test-web-westus3
+TARGET_URL=https://phd-west-test.onenecklab.com
+
+============================================================
+CLONE CANONICAL SOURCE
+============================================================
+Cloning into '/home/ahmed/project-time-platform-module-042'...
+ACTUAL_BRANCH=source/invoice-billing-center-preview-20260714
+ACTUAL_HEAD=e4973fdf64a509b691568cb88dee871844943653
+
+e4973fd (HEAD -> source/invoice-billing-center-preview-20260714, origin/source/invoice-billing-center-preview-20260714) Hide injected dashboard cards outside dashboard route
+d3c46a4 Fix shared hash-route rendering lifecycle
+3647dfa MODULE 042: align billing migration and invoice numbering
+
+============================================================
+CAPTURE CURRENT DEPLOYMENT FOR ROLLBACK
+============================================================
+OLD_IMAGE=acrphdtest7825cc.azurecr.io/project-health-dashboard-web@sha256:86290813e964e7ee0e2710f898238ba574c716ab023f0a4cd90751d540e5e520
+OLD_REVISION=ca-phd-test-web-westus3--m042live-0714194827
+ROLLBACK_STATE_FILE=/home/ahmed/projectpulse-deployment-state/web-056b-20260715T023336Z.txt
+
+============================================================
+BUILD WEB IMAGE IN ACR
+============================================================
+WARNING: Packing source code into tar to upload...
+WARNING: Excluding '.gitignore' based on default ignore rules
+WARNING: Excluding '.git' based on default ignore rules
+WARNING: Excluding 'src/frontend/project-time-web/.gitignore' based on default ignore rules
+WARNING: Uploading archived source code from '/tmp/build_archive_56c44e9b72ce4602a633753b49456058.tar.gz'...
+WARNING: Sending context (1.182 MiB) to registry: acrphdtest7825cc...
+WARNING: Queued a build with ID: dsf
+WARNING: Waiting for an agent...
+2026/07/15 02:33:51 Downloading source code...
+2026/07/15 02:33:52 Finished downloading source code
+2026/07/15 02:33:52 Using acb_vol_55f7b9a7-f697-4988-a317-947cece9b5b0 as the home volume
+2026/07/15 02:33:52 Setting up Docker configuration...
+2026/07/15 02:33:53 Successfully set up Docker configuration
+2026/07/15 02:33:53 Logging in to registry: acrphdtest7825cc.azurecr.io
+2026/07/15 02:33:54 Successfully logged into acrphdtest7825cc.azurecr.io
+2026/07/15 02:33:54 Executing step ID: build. Timeout(sec): 28800, Working directory: '', Network: ''
+2026/07/15 02:33:54 Scanning for dependencies...
+2026/07/15 02:33:54 Successfully scanned dependencies
+2026/07/15 02:33:54 Launching container with name: build
+Sending build context to Docker daemon  6.517MB
+Step 1/18 : FROM node:20-alpine AS build
+20-alpine: Pulling from library/node
+6a0ac1617861: Pulling fs layer
+4feea04c1543: Pulling fs layer
+b2cbbfe903b0: Pulling fs layer
+fff4e2c1b189: Pulling fs layer
+fff4e2c1b189: Waiting
+b2cbbfe903b0: Verifying Checksum
+b2cbbfe903b0: Download complete
+6a0ac1617861: Verifying Checksum
+6a0ac1617861: Download complete
+fff4e2c1b189: Verifying Checksum
+fff4e2c1b189: Download complete
+4feea04c1543: Verifying Checksum
+4feea04c1543: Download complete
+6a0ac1617861: Pull complete
+4feea04c1543: Pull complete
+b2cbbfe903b0: Pull complete
+fff4e2c1b189: Pull complete
+Digest: sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293
+Status: Downloaded newer image for node:20-alpine
+ ---> 11cedc39e663
+Step 2/18 : WORKDIR /src
+ ---> Running in afb56dda6e1b
+Removing intermediate container afb56dda6e1b
+ ---> 59bf8008bec2
+Step 3/18 : COPY src/frontend/project-time-web/package.json      src/frontend/project-time-web/package-lock.json ./
+ ---> 09e320ea5c13
+Step 4/18 : RUN npm ci --no-audit --no-fund
+ ---> Running in 4ef34ba7723f
+
+added 63 packages in 2s
+npm notice
+npm notice New major version of npm available! 10.8.2 -> 12.0.1
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.0.1
+npm notice To update run: npm install -g npm@12.0.1
+npm notice
+Removing intermediate container 4ef34ba7723f
+ ---> 417dd96c436b
+Step 5/18 : COPY src/frontend/project-time-web/ ./
+ ---> 7f9013160adc
+Step 6/18 : RUN npm run build
+ ---> Running in 8ec63d4dec80
+
+> project-pulse-web@0.1.0 build
+> vite build
+
+vite v5.4.21 building for production...
+transforming...
+✓ 131 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/assets/ussignal-DG0RpleO.png     58.80 kB
+dist/index.html                      461.78 kB │ gzip:  90.40 kB
+dist/assets/index-eA6Oif9d.css       351.61 kB │ gzip:  50.99 kB
+dist/assets/index-BkRKSctL.js      1,007.86 kB │ gzip: 237.49 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 3.34s
+Removing intermediate container 8ec63d4dec80
+ ---> b8fc76971cd3
+Step 7/18 : FROM nginxinc/nginx-unprivileged:1.27-alpine AS runtime
+1.27-alpine: Pulling from nginxinc/nginx-unprivileged
+f18232174bc9: Pulling fs layer
+576fe098e846: Pulling fs layer
+945f5aaec3d7: Pulling fs layer
+513bae533eb2: Pulling fs layer
+048c29a61317: Pulling fs layer
+8f7ead5f2dc0: Pulling fs layer
+b16687ec2b7b: Pulling fs layer
+f79056b7935e: Pulling fs layer
+400c1de759f4: Pulling fs layer
+513bae533eb2: Waiting
+048c29a61317: Waiting
+8f7ead5f2dc0: Waiting
+b16687ec2b7b: Waiting
+f79056b7935e: Waiting
+400c1de759f4: Waiting
+576fe098e846: Download complete
+945f5aaec3d7: Download complete
+f18232174bc9: Verifying Checksum
+f18232174bc9: Download complete
+513bae533eb2: Verifying Checksum
+513bae533eb2: Download complete
+f18232174bc9: Pull complete
+048c29a61317: Verifying Checksum
+048c29a61317: Download complete
+576fe098e846: Pull complete
+945f5aaec3d7: Pull complete
+513bae533eb2: Pull complete
+048c29a61317: Pull complete
+b16687ec2b7b: Verifying Checksum
+b16687ec2b7b: Download complete
+f79056b7935e: Verifying Checksum
+f79056b7935e: Download complete
+8f7ead5f2dc0: Verifying Checksum
+8f7ead5f2dc0: Download complete
+8f7ead5f2dc0: Pull complete
+b16687ec2b7b: Pull complete
+f79056b7935e: Pull complete
+400c1de759f4: Download complete
+400c1de759f4: Pull complete
+Digest: sha256:65e3e85dbaed8ba248841d9d58a899b6197106c23cb0ff1a132b7bfe0547e4c0
+Status: Downloaded newer image for nginxinc/nginx-unprivileged:1.27-alpine
+ ---> 47ce8258a10e
+Step 8/18 : ENV API_UPSTREAM=http://127.0.0.1:5080     NGINX_ENVSUBST_FILTER="^(API_UPSTREAM|NGINX_RESOLVER)$"
+ ---> Running in eee038df245c
+Removing intermediate container eee038df245c
+ ---> 027d96591d88
+Step 9/18 : USER root
+ ---> Running in 6504c1822c80
+Removing intermediate container 6504c1822c80
+ ---> 4a09842b80eb
+Step 10/18 : COPY --from=build /src/dist/ /usr/share/nginx/html/
+ ---> 007b5d0a1016
+Step 11/18 : COPY deployment/containers/web/default.conf.template      /etc/nginx/templates/default.conf.template
+ ---> d8100b4821a6
+Step 12/18 : COPY deployment/containers/web/projecttime-web-entrypoint.sh      /usr/local/bin/projecttime-web-entrypoint.sh
+ ---> abd1277cf087
+Step 13/18 : RUN chmod 0644 /etc/nginx/templates/default.conf.template     && chmod 0755 /usr/local/bin/projecttime-web-entrypoint.sh
+ ---> Running in 75f144204a93
+Removing intermediate container 75f144204a93
+ ---> 7c418cb678dc
+Step 14/18 : USER 101
+ ---> Running in d89b6e782766
+Removing intermediate container d89b6e782766
+ ---> 4b7f53bcf65a
+Step 15/18 : RUN test -r /etc/nginx/templates/default.conf.template     && test -x /usr/local/bin/projecttime-web-entrypoint.sh     && API_UPSTREAM=http://127.0.0.1:18080        NGINX_RESOLVER=127.0.0.1        /usr/local/bin/projecttime-web-entrypoint.sh nginx -t     && rm -f /etc/nginx/conf.d/default.conf
+ ---> Running in 2ce7d10d9be3
+WEB_RUNTIME_DNS_RESOLVER_CONFIGURED=YES
+/docker-entrypoint.sh: /docker-entrypoint.d/ is not empty, will attempt to perform configuration
+/docker-entrypoint.sh: Looking for shell scripts in /docker-entrypoint.d/
+/docker-entrypoint.sh: Launching /docker-entrypoint.d/10-listen-on-ipv6-by-default.sh
+10-listen-on-ipv6-by-default.sh: info: Getting the checksum of /etc/nginx/conf.d/default.conf
+10-listen-on-ipv6-by-default.sh: info: /etc/nginx/conf.d/default.conf differs from the packaged version
+/docker-entrypoint.sh: Sourcing /docker-entrypoint.d/15-local-resolvers.envsh
+/docker-entrypoint.sh: Launching /docker-entrypoint.d/20-envsubst-on-templates.sh
+20-envsubst-on-templates.sh: Running envsubst on /etc/nginx/templates/default.conf.template to /etc/nginx/conf.d/default.conf
+/docker-entrypoint.sh: Launching /docker-entrypoint.d/30-tune-worker-processes.sh
+/docker-entrypoint.sh: Configuration complete; ready for start up
+nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+nginx: configuration file /etc/nginx/nginx.conf test is successful
+Removing intermediate container 2ce7d10d9be3
+ ---> 3e6ef16813fb
+Step 16/18 : EXPOSE 8080
+ ---> Running in b5721600d330
+Removing intermediate container b5721600d330
+ ---> 913daf8db9f9
+Step 17/18 : ENTRYPOINT ["/usr/local/bin/projecttime-web-entrypoint.sh"]
+ ---> Running in 20f1b612dd26
+Removing intermediate container 20f1b612dd26
+ ---> e639a4f6d4f6
+Step 18/18 : CMD ["nginx", "-g", "daemon off;"]
+ ---> Running in 5bc3838109fd
+Removing intermediate container 5bc3838109fd
+ ---> a6fefc88beea
+Successfully built a6fefc88beea
+Successfully tagged acrphdtest7825cc.azurecr.io/project-health-dashboard-web:route-056b-e4973fd-20260715t023336z
+2026/07/15 02:34:28 Successfully executed container: build
+2026/07/15 02:34:28 Executing step ID: push. Timeout(sec): 3600, Working directory: '', Network: ''
+2026/07/15 02:34:28 Pushing image: acrphdtest7825cc.azurecr.io/project-health-dashboard-web:route-056b-e4973fd-20260715t023336z, attempt 1
+The push refers to repository [acrphdtest7825cc.azurecr.io/project-health-dashboard-web]
+1fda5c695f0e: Preparing
+b18b3f0d92f8: Preparing
+48bb8e93f3a9: Preparing
+ad77177e2469: Preparing
+6f904f999b75: Preparing
+c5b2dfcc7ced: Preparing
+da73c9adc029: Preparing
+2a34f0eb0786: Preparing
+a58f96716bca: Preparing
+df8de83f869f: Preparing
+6d6c487831a4: Preparing
+1dc2eb4d4442: Preparing
+d250ba61f88e: Preparing
+08000c18d16d: Preparing
+c5b2dfcc7ced: Waiting
+da73c9adc029: Waiting
+2a34f0eb0786: Waiting
+a58f96716bca: Waiting
+df8de83f869f: Waiting
+6d6c487831a4: Waiting
+1dc2eb4d4442: Waiting
+d250ba61f88e: Waiting
+08000c18d16d: Waiting
+48bb8e93f3a9: Pushed
+b18b3f0d92f8: Pushed
+ad77177e2469: Pushed
+1fda5c695f0e: Pushed
+6f904f999b75: Pushed
+da73c9adc029: Layer already exists
+2a34f0eb0786: Layer already exists
+c5b2dfcc7ced: Layer already exists
+a58f96716bca: Layer already exists
+df8de83f869f: Layer already exists
+1dc2eb4d4442: Layer already exists
+d250ba61f88e: Layer already exists
+6d6c487831a4: Layer already exists
+08000c18d16d: Layer already exists
+route-056b-e4973fd-20260715t023336z: digest: sha256:5e01e13ee3ebe2f911e62b8ae99316b89235a13fba8e2ca918cc8f5493ecf4b2 size: 3235
+2026/07/15 02:34:30 Successfully pushed image: acrphdtest7825cc.azurecr.io/project-health-dashboard-web:route-056b-e4973fd-20260715t023336z
+2026/07/15 02:34:30 Step ID: build marked as successful (elapsed time in seconds: 34.084195)
+2026/07/15 02:34:30 Populating digests for step ID: build...
+2026/07/15 02:34:31 Successfully populated digests for step ID: build
+2026/07/15 02:34:31 Step ID: push marked as successful (elapsed time in seconds: 1.842880)
+2026/07/15 02:34:31 The following dependencies were found:
+2026/07/15 02:34:31 
+- image:
+    registry: acrphdtest7825cc.azurecr.io
+    repository: project-health-dashboard-web
+    tag: route-056b-e4973fd-20260715t023336z
+    digest: sha256:5e01e13ee3ebe2f911e62b8ae99316b89235a13fba8e2ca918cc8f5493ecf4b2
+  runtime-dependency:
+    registry: registry.hub.docker.com
+    repository: nginxinc/nginx-unprivileged
+    tag: 1.27-alpine
+    digest: sha256:65e3e85dbaed8ba248841d9d58a899b6197106c23cb0ff1a132b7bfe0547e4c0
+  buildtime-dependency:
+  - registry: registry.hub.docker.com
+    repository: library/node
+    tag: 20-alpine
+    digest: sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293
+  git: {}
+
+Run ID: dsf was successful after 40s
+NEW_TAG=acrphdtest7825cc.azurecr.io/project-health-dashboard-web:route-056b-e4973fd-20260715t023336z
+NEW_DIGEST=sha256:5e01e13ee3ebe2f911e62b8ae99316b89235a13fba8e2ca918cc8f5493ecf4b2
+NEW_IMAGE=acrphdtest7825cc.azurecr.io/project-health-dashboard-web@sha256:5e01e13ee3ebe2f911e62b8ae99316b89235a13fba8e2ca918cc8f5493ecf4b2
+
+============================================================
+DEPLOY IMMUTABLE IMAGE DIGEST
+============================================================
+/ Running ..| Running ..\ Running ..- Running ../ Running ..| Running ..[KWAIT_ATTEMPT=1
+CURRENT_IMAGE=acrphdtest7825cc.azurecr.io/project-health-dashboard-web@sha256:5e01e13ee3ebe2f911e62b8ae99316b89235a13fba8e2ca918cc8f5493ecf4b2
+LATEST_READY_REVISION=ca-phd-test-web-westus3--m042live-0714194827
+RUNNING_STATUS=Running
+WAIT_ATTEMPT=2
+CURRENT_IMAGE=acrphdtest7825cc.azurecr.io/project-health-dashboard-web@sha256:5e01e13ee3ebe2f911e62b8ae99316b89235a13fba8e2ca918cc8f5493ecf4b2
+LATEST_READY_REVISION=ca-phd-test-web-westus3--r056b-e4973fd-0715023336
+RUNNING_STATUS=Running
+
+NEW_REVISION=ca-phd-test-web-westus3--r056b-e4973fd-0715023336
+
+============================================================
+LIVE APPLICATION VALIDATION
+============================================================
+LIVE_ATTEMPT=1
+LIVE_HTTP_CODE=200
+LIVE_HTML_BYTES=461843
+LIVE_ASSET=/assets/index-BkRKSctL.js
+LIVE_056B_GUARD=YES
+
+============================================================
+WEB_056B_DEPLOYMENT=COMPLETE
+============================================================
+SOURCE_BRANCH=source/invoice-billing-center-preview-20260714
+SOURCE_COMMIT=e4973fdf64a509b691568cb88dee871844943653
+OLD_IMAGE=acrphdtest7825cc.azurecr.io/project-health-dashboard-web@sha256:86290813e964e7ee0e2710f898238ba574c716ab023f0a4cd90751d540e5e520
+OLD_REVISION=ca-phd-test-web-westus3--m042live-0714194827
+NEW_IMAGE=acrphdtest7825cc.azurecr.io/project-health-dashboard-web@sha256:5e01e13ee3ebe2f911e62b8ae99316b89235a13fba8e2ca918cc8f5493ecf4b2
+NEW_REVISION=ca-phd-test-web-westus3--r056b-e4973fd-0715023336
+LIVE_ASSET=/assets/index-BkRKSctL.js
+LIVE_HTML_BYTES=461843
+LIVE_056B_GUARD=YES
+ROLLBACK_STATE_FILE=/home/ahmed/projectpulse-deployment-state/web-056b-20260715T023336Z.txt
+API_CHANGED=NO
+DATABASE_CHANGED=NO
+============================================================

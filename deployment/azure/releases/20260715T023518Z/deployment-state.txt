@@ -1,0 +1,16 @@
+deploymentTimeUtc=20260715T023336Z
+sourceBranch=source/invoice-billing-center-preview-20260714
+sourceCommit=e4973fdf64a509b691568cb88dee871844943653
+webApp=ca-phd-test-web-westus3
+oldImage=acrphdtest7825cc.azurecr.io/project-health-dashboard-web@sha256:86290813e964e7ee0e2710f898238ba574c716ab023f0a4cd90751d540e5e520
+oldRevision=ca-phd-test-web-westus3--m042live-0714194827
+newTag=route-056b-e4973fd-20260715t023336z
+newDigest=sha256:5e01e13ee3ebe2f911e62b8ae99316b89235a13fba8e2ca918cc8f5493ecf4b2
+newImage=acrphdtest7825cc.azurecr.io/project-health-dashboard-web@sha256:5e01e13ee3ebe2f911e62b8ae99316b89235a13fba8e2ca918cc8f5493ecf4b2
+revisionSuffix=r056b-e4973fd-0715023336
+newRevision=ca-phd-test-web-westus3--r056b-e4973fd-0715023336
+liveAsset=/assets/index-BkRKSctL.js
+liveHtmlBytes=461843
+liveHtmlSha256=393dd2702882f6b66a4aa1636ec99b0b3ccf3d3e5b74bb19e0528d604d261a69
+liveGuardPresent=YES
+deploymentStatus=complete
