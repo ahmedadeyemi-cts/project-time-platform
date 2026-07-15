@@ -17893,6 +17893,25 @@ async Task<bool> SessionUserIsAdministratorAsync(NpgsqlConnection connection, Gu
 }
 
 
+string[] ProjectPulseConfiguredSsoDomains()
+{
+    var configured = Environment.GetEnvironmentVariable("PROJECTPULSE_SSO_ALLOWED_DOMAINS") ?? "";
+    var domains = configured.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Select(domain => domain.Trim().TrimStart('@').ToLowerInvariant())
+        .Where(domain => !string.IsNullOrWhiteSpace(domain))
+        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    domains.Add((Environment.GetEnvironmentVariable("PROJECTPULSE_ENTRA_TEST_DOMAIN") ?? "onenecklab.com").TrimStart('@').ToLowerInvariant());
+    domains.Add((Environment.GetEnvironmentVariable("PROJECTPULSE_ENTRA_PRODUCTION_DOMAIN") ?? "ussignal.com").TrimStart('@').ToLowerInvariant());
+    return domains.OrderBy(domain => domain).ToArray();
+}
+
+bool ProjectPulseUsesConfiguredSsoDomain(string? email)
+{
+    if (string.IsNullOrWhiteSpace(email)) return false;
+    var normalized = email.Trim().ToLowerInvariant();
+    return ProjectPulseConfiguredSsoDomains().Any(domain => normalized.EndsWith("@" + domain, StringComparison.OrdinalIgnoreCase));
+}
+
 app.MapGet("/api/auth/login/route", async (string? username) =>
 {
     var cleanedUsername = (username ?? string.Empty).Trim().ToLowerInvariant();
@@ -17906,16 +17925,18 @@ app.MapGet("/api/auth/login/route", async (string? username) =>
         });
     }
 
-    if (cleanedUsername.EndsWith("@ussignal.com"))
+    if (ProjectPulseUsesConfiguredSsoDomain(cleanedUsername))
     {
+        var domain = cleanedUsername.Split('@').LastOrDefault() ?? "";
         return Results.Ok(new
         {
             status = "route_resolved",
             username = cleanedUsername,
             loginMethod = "sso",
             provider = "ENTRA_ID",
-            displayName = "Continue with US Signal SSO",
-            message = "US Signal users authenticate through Microsoft Entra ID."
+            displayName = "Continue with Microsoft Entra SSO",
+            message = $"{domain} users authenticate through Microsoft Entra ID.",
+            allowedDomains = ProjectPulseConfiguredSsoDomains()
         });
     }
 
@@ -17960,7 +17981,7 @@ app.MapGet("/api/auth/login/route", async (string? username) =>
     {
         status = "unsupported_login_domain",
         username = cleanedUsername,
-        message = "Use your US Signal email address for SSO or a Project Pulse .local administrator account."
+        message = $"Use an approved Microsoft Entra domain ({string.Join(", ", ProjectPulseConfiguredSsoDomains())}) or a Project Pulse .local administrator account."
     });
 });
 
@@ -18485,12 +18506,12 @@ app.MapPost("/api/auth/sso/dev-login", async (SsoDevelopmentLoginRequest request
 {
     var email = request.Email.Trim().ToLowerInvariant();
 
-    if (!email.EndsWith("@ussignal.com", StringComparison.OrdinalIgnoreCase))
+    if (!ProjectPulseUsesConfiguredSsoDomain(email))
     {
         return Results.BadRequest(new
         {
             status = "invalid_sso_domain",
-            message = "US Signal SSO is only available for @ussignal.com accounts."
+            message = $"SSO is available only for configured Entra domains: {string.Join(", ", ProjectPulseConfiguredSsoDomains())}."
         });
     }
 
@@ -26174,7 +26195,7 @@ app.MapGet("/api/auth/sso/start", async (HttpContext httpContext, string? loginH
         ["response_type"] = "code",
         ["redirect_uri"] = redirectUri,
         ["response_mode"] = "query",
-        ["scope"] = "openid profile email User.Read",
+        ["scope"] = "openid profile email offline_access User.Read Calendars.Read",
         ["state"] = state,
         ["nonce"] = nonce
     };
@@ -26263,7 +26284,7 @@ app.MapGet("/api/auth/sso/callback", async (HttpContext httpContext, string? cod
     var tokenRequest = new FormUrlEncodedContent(new Dictionary<string, string>
     {
         ["client_id"] = clientId,
-        ["scope"] = "openid profile email User.Read",
+        ["scope"] = "openid profile email offline_access User.Read Calendars.Read",
         ["code"] = code,
         ["redirect_uri"] = redirectUri,
         ["grant_type"] = "authorization_code",
@@ -36100,6 +36121,8 @@ ProjectTime.Api.Modules.InvoiceBillingModule.MapInvoiceBillingEndpoints(app);
 /* WORK_REGISTER_PO_ENDPOINT_MAP_START */
 ProjectTime.Api.Modules.WorkRegisterPurchaseOrderModule.MapWorkRegisterPurchaseOrderEndpoints(app);
 /* WORK_REGISTER_PO_ENDPOINT_MAP_END */
+
+ProjectTime.Api.Modules.CalendarCapacityModule.MapCalendarCapacityEndpoints(app);
 
 app.Run();
 

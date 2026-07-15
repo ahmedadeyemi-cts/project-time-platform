@@ -1228,6 +1228,7 @@ import BillingReadinessCenter from './BillingReadinessCenter.jsx';
 import ProjectCloseoutCenter from './ProjectCloseoutCenter.jsx';
 import CloseoutEmailAutomationCenter from './CloseoutEmailAutomationCenter.jsx';
 import InvoiceBillingCenter from './InvoiceBillingCenter.jsx';
+import CalendarCapacityCenter from './CalendarCapacityCenter.jsx';
 import CustomerDirectoryCenter from './CustomerDirectoryCenter.jsx';
 import RateCardAdministrationCenter from './RateCardAdministrationCenter.jsx';
 import WorkRegisterCenter from './WorkRegisterCenter.jsx';
@@ -2559,6 +2560,17 @@ const roleWorkspaceModules = [
     permissions: ['VIEW_ACCOUNT_RECONCILIATION', 'VIEW_APPROVAL_WORKFLOW', 'PROJECT_TIME_APPROVAL', 'VIEW_PROJECT_WORKSPACE', 'VIEW_PROJECT_INTAKE', 'EXPORT_TIME_EXCEL', 'EXPORT_TIME_PDF', 'DOWNLOAD_TIME_EXPORT_PACKAGE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   },
   /* 042_INVOICE_BILLING_CENTER_END */
+  /* 057_CALENDAR_CAPACITY_START */
+  {
+    route: 'calendar-capacity',
+    href: '#calendar-capacity',
+    title: 'Resource & Team Calendar Capacity',
+    navLabel: 'MODULE 057',
+    description: 'View individual, team, and department calendars with day, workweek, week, month, agenda, timeline, and future month navigation.',
+    permissions: ['VIEW_RESOURCE_SCHEDULING', 'MANAGE_RESOURCE_SCHEDULING', 'VIEW_TEAM_UTILIZATION', 'VIEW_INDIVIDUAL_UTILIZATION', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    roleCodes: ['ENGINEER', 'ENGINEERING', 'ENGINEERING_MANAGER', 'ENGINEERING_TEAM_LEAD', 'PROJECT_TEAM_COORDINATOR', 'PROJECT_MANAGER', 'PROJECT_MANAGEMENT']
+  },
+  /* 057_CALENDAR_CAPACITY_END */
   {
     route: 'service-control',
     href: '#service-control',
@@ -2730,6 +2742,7 @@ function getNavigationGroup(item) {
     case 'manager-approval':
     case 'utilization':
     case 'holiday-admin':
+    case 'calendar-capacity':
       return 'Work Management';
 
     case 'project-workload':
@@ -6892,6 +6905,12 @@ Analytics - Variphy / Infortel`}
             usSignalLogoUrl={usSignalLogoUrl}
             userKey={authSession?.username ?? currentUser.data?.email ?? 'current-user'}
           />
+        </section>
+      ) : null}
+
+      {(activeRoute === 'calendar-capacity' && canSeeAny(['VIEW_RESOURCE_SCHEDULING', 'MANAGE_RESOURCE_SCHEDULING', 'VIEW_TEAM_UTILIZATION', 'VIEW_INDIVIDUAL_UTILIZATION', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
+        <section id="calendar-capacity" className="panel calendar-capacity-route-panel">
+          <CalendarCapacityCenter />
         </section>
       ) : null}
 
