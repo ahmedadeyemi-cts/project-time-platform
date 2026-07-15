@@ -36093,6 +36093,10 @@ static async System.Threading.Tasks.Task<string> ProjectPulse041AWriteOutboxEmai
     return outboxPath;
 }
 
+/* 042_LIVE_BILLING_API_MAP_START */
+ProjectTime.Api.Modules.InvoiceBillingModule.MapInvoiceBillingEndpoints(app);
+/* 042_LIVE_BILLING_API_MAP_END */
+
 app.Run();
 
 
