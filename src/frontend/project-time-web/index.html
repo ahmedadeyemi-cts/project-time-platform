@@ -11793,10 +11793,10 @@
 
 <script
   id="projectpulse-056b-dashboard-card-route-guard"
-  data-projectpulse-guard-version="056C"
+  data-projectpulse-guard-version="056D"
 >
 (function () {
-  const GUARD_VERSION = '056C';
+  const GUARD_VERSION = '056D';
 
   if (window.__projectPulse056BDashboardCardRouteGuardInstalled) {
     if (
@@ -11811,12 +11811,19 @@
 
   window.__projectPulse056BDashboardCardRouteGuardInstalled = true;
 
+  const dashboardModulePattern =
+    /\bmodule\s+0?(?:22|23|24|25|26|27|28|29|30)\b/i;
+
   const knownDashboardTitles = [
     'Production Notification Center',
-    'SOW Generator + Claude Research Review',
+    'Production Readiness Center',
     'Sales-to-Delivery Intake Foundation',
+    'SOW Generator + Claude Research Review',
     'CRM Integration Framework',
-    'Signed SOW Handoff + Assignment Trigger'
+    'Signed SOW Handoff + Assignment Trigger',
+    'SOW-Aware AI Time Entry Generator',
+    'User Acceptance / Role + Workflow Validation Center',
+    'Reporting / Accounting / Invoicing / Analytics Command Center'
   ];
 
   function currentRoute() {
@@ -11847,19 +11854,6 @@
       && style.opacity !== '0';
   }
 
-  function isExplicitDashboardId(id) {
-    return id.includes('dashboard-shortcut')
-      || id.includes('dashboard-notification-card')
-      || id.includes('-dashboard-card');
-  }
-
-  function hasDashboardModuleSignature(element) {
-    const text = normalizedText(element);
-
-    return /(?:production\s+)?module\s+0?(?:2[3-9]|30)\b/i
-      .test(text);
-  }
-
   function hasKnownDashboardTitle(element) {
     const text = normalizedText(element);
 
@@ -11868,15 +11862,35 @@
     });
   }
 
-  function isProtectedRouteContent(element) {
+  function hasDashboardModuleLabel(element) {
+    return dashboardModulePattern.test(normalizedText(element));
+  }
+
+  function hasOpenAction(element) {
+    const text = normalizedText(element);
+
+    if (/\bOpen\b/i.test(text)) {
+      return true;
+    }
+
+    return Boolean(
+      element.querySelector?.(
+        'a[href], button, [role="button"]'
+      )
+    );
+  }
+
+  function isExplicitDashboardId(id) {
+    return id.includes('dashboard-shortcut')
+      || id.includes('dashboard-notification-card')
+      || id.includes('-dashboard-card');
+  }
+
+  function isRoutePageProtected(element) {
     if (!(element instanceof HTMLElement)) {
       return false;
     }
 
-    /*
-     * Start at the parent so an explicit dashboard card is not rejected
-     * merely because its own ID contains a card-related suffix.
-     */
     const parent = element.parentElement;
 
     if (!parent) {
@@ -11885,11 +11899,48 @@
 
     return Boolean(parent.closest(
       '[id$="-shell"], ' +
+      '[id$="-page"], ' +
       '[id*="-modal"], ' +
       '[id*="-drawer"], ' +
       '[id*="-panel-root"], ' +
-      '[id$="-page"]'
+      '[data-projectpulse-route-page="true"]'
     ));
+  }
+
+  function isLikelyDashboardSummary(element) {
+    if (!(element instanceof HTMLElement)) {
+      return false;
+    }
+
+    const text = normalizedText(element);
+
+    if (!text) {
+      return false;
+    }
+
+    const id = String(element.id || '').toLowerCase();
+
+    if (id.startsWith('projectpulse-') && isExplicitDashboardId(id)) {
+      return true;
+    }
+
+    if (hasKnownDashboardTitle(element)) {
+      return true;
+    }
+
+    if (hasDashboardModuleLabel(element) && hasOpenAction(element)) {
+      return true;
+    }
+
+    if (
+      id.startsWith('projectpulse-')
+      && id.endsWith('-card')
+      && hasDashboardModuleLabel(element)
+    ) {
+      return true;
+    }
+
+    return false;
   }
 
   function isDashboardOnlyCard(element) {
@@ -11897,48 +11948,18 @@
       return false;
     }
 
-    const id = String(element.id || '').toLowerCase();
-
-    if (!id.startsWith('projectpulse-')) {
+    if (!isLikelyDashboardSummary(element)) {
       return false;
     }
 
-    /*
-     * Strong dashboard identifiers are authoritative. They must be checked
-     * before route-shell exclusions because legacy dashboard cards are
-     * injected outside the React .app-shell.
-     */
-    if (isExplicitDashboardId(id)) {
-      return true;
-    }
-
-    const looksLikeCard =
-      id.endsWith('-card')
-      || id.includes('-dashboard-card');
-
-    if (!looksLikeCard) {
-      return false;
-    }
-
-    if (
-      !hasDashboardModuleSignature(element)
-      && !hasKnownDashboardTitle(element)
-    ) {
-      return false;
-    }
-
-    /*
-     * Preserve actual standalone module pages, drawers, modals, and panels.
-     * Only the injected summary card is dashboard-only.
-     */
-    if (isProtectedRouteContent(element)) {
+    if (isRoutePageProtected(element)) {
       return false;
     }
 
     return true;
   }
 
-  function nearestDashboardCard(element) {
+  function findDashboardCardContainer(element) {
     let current = element;
 
     while (
@@ -11950,6 +11971,18 @@
         return current;
       }
 
+      const id = String(current.id || '').toLowerCase();
+
+      if (
+        id.endsWith('-shell')
+        || id.endsWith('-page')
+        || id.includes('-modal')
+        || id.includes('-drawer')
+        || id.includes('-panel-root')
+      ) {
+        break;
+      }
+
       current = current.parentElement;
     }
 
@@ -11959,32 +11992,29 @@
   function discoverDashboardCards() {
     const cards = new Set();
 
-    /*
-     * Search the entire document. Legacy modules may inject summary cards
-     * before, after, or outside the React root and .app-shell.
-     */
     document
-      .querySelectorAll('[id^="projectpulse-"]')
+      .querySelectorAll(
+        '[id^="projectpulse-"], section, article'
+      )
       .forEach(function (element) {
         if (isDashboardOnlyCard(element)) {
           cards.add(element);
         }
       });
 
-    /*
-     * Heading fallback protects against a legacy module changing its card ID
-     * while retaining the known dashboard title.
-     */
     document
       .querySelectorAll(
         'h1, h2, h3, h4, h5, h6, [role="heading"]'
       )
       .forEach(function (heading) {
-        if (!hasKnownDashboardTitle(heading)) {
+        if (
+          !hasKnownDashboardTitle(heading)
+          && !hasDashboardModuleLabel(heading)
+        ) {
           return;
         }
 
-        const card = nearestDashboardCard(heading);
+        const card = findDashboardCardContainer(heading);
 
         if (card) {
           cards.add(card);
@@ -12042,25 +12072,33 @@
       'true'
     );
 
-    if (!element.hidden) {
-      element.hidden = true;
+    element.hidden = true;
+    element.setAttribute('aria-hidden', 'true');
+    element.style.setProperty('display', 'none', 'important');
+  }
+
+  function visibleDashboardHeadingOffenders(route) {
+    if (route === 'dashboard') {
+      return [];
     }
 
-    if (element.getAttribute('aria-hidden') !== 'true') {
-      element.setAttribute('aria-hidden', 'true');
-    }
+    return Array.from(document.querySelectorAll(
+      'h1, h2, h3, h4, h5, h6, [role="heading"]'
+    ))
+      .filter(function (heading) {
+        return hasKnownDashboardTitle(heading)
+          || hasDashboardModuleLabel(heading);
+      })
+      .filter(function (heading) {
+        const card = heading.closest(
+          '[data-projectpulse-dashboard-only-card="true"]'
+        ) || heading;
 
-    if (
-      element.style.getPropertyValue('display') !== 'none'
-      || element.style.getPropertyPriority('display')
-        !== 'important'
-    ) {
-      element.style.setProperty(
-        'display',
-        'none',
-        'important'
-      );
-    }
+        return isVisible(card);
+      })
+      .map(function (heading) {
+        return normalizedText(heading).slice(0, 180);
+      });
   }
 
   function synchronizeDashboardCards() {
@@ -12087,9 +12125,11 @@
       applyVisibility(element, route);
     });
 
-    const visibleOffenders = route === 'dashboard'
+    const visibleCards = route === 'dashboard'
       ? []
       : Array.from(cards).filter(isVisible);
+
+    const visibleHeadings = visibleDashboardHeadingOffenders(route);
 
     document.documentElement.setAttribute(
       'data-projectpulse-056b-marked-count',
@@ -12098,28 +12138,31 @@
 
     document.documentElement.setAttribute(
       'data-projectpulse-056b-visible-offender-count',
-      String(visibleOffenders.length)
+      String(visibleCards.length + visibleHeadings.length)
     );
 
     return {
       route,
       guardVersion: GUARD_VERSION,
       markedCount: cards.size,
-      visibleOffenderCount: visibleOffenders.length,
-      visibleOffenders: visibleOffenders.map(function (element) {
-        return {
-          id: element.id || '',
-          text: normalizedText(element).slice(0, 160),
-          display: window.getComputedStyle(element).display,
-          hidden: element.hidden
-        };
-      }),
+      visibleOffenderCount: visibleCards.length + visibleHeadings.length,
+      visibleKnownDashboardHeadings: visibleHeadings,
       markedCards: Array.from(cards).map(function (element) {
         return {
           id: element.id || '',
-          text: normalizedText(element).slice(0, 160),
-          display: window.getComputedStyle(element).display,
-          hidden: element.hidden
+          tag: element.tagName,
+          text: normalizedText(element).slice(0, 180),
+          hidden: element.hidden,
+          display: window.getComputedStyle(element).display
+        };
+      }),
+      visibleOffenders: visibleCards.map(function (element) {
+        return {
+          id: element.id || '',
+          tag: element.tagName,
+          text: normalizedText(element).slice(0, 180),
+          hidden: element.hidden,
+          display: window.getComputedStyle(element).display
         };
       })
     };
