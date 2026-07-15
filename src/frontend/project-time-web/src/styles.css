@@ -710,3 +710,54 @@ body[data-project-pulse-route="invoice-billing-center"]
   color: var(--muted, #64748b);
 }
 /* 042C_LIVE_WORK_REGISTER_DATA_INTEGRITY_END */
+
+/* 057B_MODULE_042_DEMO_INVOICE_DETAIL_TOOLS */
+.m042-history-row { cursor: pointer; }
+.m042-history-row:hover { background: rgba(0, 103, 168, 0.07); }
+.m042-link-button {
+  border: 0;
+  background: transparent;
+  color: #005b99;
+  font: inherit;
+  font-weight: 800;
+  padding: 0;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.m042-invoice-detail-panel { margin-top: 18px; }
+.m042-detail-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.m042-detail-heading h3,
+.m042-detail-heading p { margin-top: 0; }
+.m042-privacy-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 800;
+  margin: 14px 0 4px;
+}
+.m042-muted { color: #5e7190; margin-top: 0; }
+.m042-detail-actions { flex-wrap: wrap; margin: 14px 0; }
+.m042-certinia-status {
+  border: 1px solid rgba(177, 113, 0, 0.28);
+  background: rgba(255, 245, 210, 0.72);
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 14px;
+}
+.m042-certinia-preview { margin-top: 16px; }
+.m042-certinia-preview pre {
+  max-height: 28rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border-radius: 12px;
+  background: #101927;
+  color: #eef6ff;
+  padding: 14px;
+  font-size: 12px;
+}

@@ -206,6 +206,11 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
     scope: ''
   });
   const [action, setAction] = useState({ running: false, error: '', success: '' });
+  const [invoiceDetail, setInvoiceDetail] = useState(null);
+  const [invoiceDetailLoading, setInvoiceDetailLoading] = useState(false);
+  const [invoiceDetailError, setInvoiceDetailError] = useState('');
+  const [showCustomerResourceNames, setShowCustomerResourceNames] = useState(false);
+  const [certiniaPreview, setCertiniaPreview] = useState('');
 
   async function loadLiveData(preferredProjectId = '') {
     setPayload((current) => ({ ...current, loading: true, error: '' }));
@@ -361,6 +366,190 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
       });
     }
   }
+
+  async function loadInvoiceDetail(invoice) {
+    if (!invoice?.billingInvoiceId) return;
+
+    setInvoiceDetailLoading(true);
+    setInvoiceDetailError('');
+    setCertiniaPreview('');
+
+    try {
+      const result = await fetchJson(`/api/billing/invoices/${invoice.billingInvoiceId}`);
+      setInvoiceDetail(result?.invoice || null);
+    } catch (error) {
+      setInvoiceDetail(null);
+      setInvoiceDetailError(error instanceof Error ? error.message : 'Unable to load invoice details.');
+    } finally {
+      setInvoiceDetailLoading(false);
+    }
+  }
+
+  function customerResourceLabel(line) {
+    if (showCustomerResourceNames) return text(line?.resourceName, 'Professional Services Engineer');
+
+    const labor = text(line?.laborCategory).toLowerCase();
+    const task = `${text(line?.taskCode)} ${text(line?.taskName)}`.toLowerCase();
+
+    if (labor.includes('project') || task.includes('project management') || task.includes('coordination')) {
+      return 'Project Management';
+    }
+
+    return 'Professional Services Engineer';
+  }
+
+  function csvEscape(value) {
+    const normalized = String(value ?? '');
+    return `"${normalized.replaceAll('"', '""')}"`;
+  }
+
+  function downloadInvoiceCsv() {
+    if (!invoiceDetail?.header || !invoiceDetail?.lines?.length) return;
+
+    const header = invoiceDetail.header;
+    const rows = [
+      ['Invoice Number','Customer','Project Code','Project','PO Number','Work Date','Resource','Task Code','Task','Time Entry Description','Hours','Rate','Amount'],
+      ...invoiceDetail.lines.map((line) => [
+        header.invoiceNumber,
+        header.customerName,
+        header.projectCode,
+        header.projectName,
+        header.purchaseOrderNumber,
+        line.workDate,
+        customerResourceLabel(line),
+        line.taskCode,
+        line.taskName,
+        line.description,
+        line.approvedHours,
+        line.unitRate,
+        line.lineAmount
+      ])
+    ];
+
+    const csv = rows.map((row) => row.map(csvEscape).join(',')).join('\r\n');
+    const blob = new Blob([`\ufeff${csv}`], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `${header.invoiceNumber || 'invoice'}-detail.csv`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function printInvoicePdf() {
+    if (!invoiceDetail?.header) return;
+
+    const header = invoiceDetail.header;
+    const rows = (invoiceDetail.lines || []).map((line) => `
+      <tr>
+        <td>${formatDate(line.workDate)}</td>
+        <td>${customerResourceLabel(line)}</td>
+        <td><strong>${text(line.taskCode)}</strong> ${text(line.taskName)}<br><small>${text(line.description, 'No submitted description')}</small></td>
+        <td class="number">${formatHours(line.approvedHours)}</td>
+        <td class="number">${formatMoney(line.unitRate)}</td>
+        <td class="number">${formatMoney(line.lineAmount)}</td>
+      </tr>
+    `).join('');
+
+    const popup = window.open('', '_blank', 'noopener,noreferrer,width=1200,height=900');
+    if (!popup) {
+      setInvoiceDetailError('The browser blocked the print window. Allow pop-ups and try again.');
+      return;
+    }
+
+    popup.document.write(`<!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <title>${header.invoiceNumber}</title>
+          <style>
+            body { font-family: Arial, sans-serif; color: #142033; margin: 32px; }
+            header { display:flex; justify-content:space-between; gap:24px; border-bottom:3px solid #0067a8; padding-bottom:18px; }
+            h1 { margin:0; font-size:28px; }
+            .meta { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 28px; margin:24px 0; }
+            .meta div { border-bottom:1px solid #d7deea; padding-bottom:8px; }
+            .meta span { display:block; color:#5e7190; font-size:11px; text-transform:uppercase; font-weight:700; }
+            table { width:100%; border-collapse:collapse; font-size:12px; }
+            th { background:#eef6fb; text-align:left; padding:9px; border:1px solid #d7deea; }
+            td { vertical-align:top; padding:9px; border:1px solid #d7deea; }
+            td.number { text-align:right; white-space:nowrap; }
+            small { color:#536b8f; line-height:1.4; }
+            .total { margin-top:18px; text-align:right; font-size:18px; font-weight:700; }
+            .notice { margin-top:18px; color:#536b8f; font-size:11px; }
+            @page { size: landscape; margin: 0.45in; }
+          </style>
+        </head>
+        <body>
+          <header>
+            <div><h1>Invoice ${header.invoiceNumber}</h1><p>${text(header.customerName)}</p></div>
+            <div><strong>${text(header.invoiceType).toUpperCase()} INVOICE</strong><br>${formatDate(header.invoiceDate)}</div>
+          </header>
+          <section class="meta">
+            <div><span>Project</span><strong>${text(header.projectCode)} — ${text(header.projectName)}</strong></div>
+            <div><span>Purchase Order</span><strong>${text(header.purchaseOrderNumber, 'Not configured')}</strong></div>
+            <div><span>Billing Period</span><strong>${formatDate(header.billingPeriodStart)} – ${formatDate(header.billingPeriodEnd)}</strong></div>
+            <div><span>Certinia ID</span><strong>${text(header.certiniaId, 'Not configured')}</strong></div>
+            <div><span>SELL Quote</span><strong>${text(header.sellQuote, 'Not configured')}</strong></div>
+            <div><span>Salesforce ID</span><strong>${text(header.salesforceId, 'Not configured')}</strong></div>
+          </section>
+          <table>
+            <thead><tr><th>Date</th><th>Resource</th><th>Task and time-entry detail</th><th>Hours</th><th>Rate</th><th>Amount</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+          <div class="total">Invoice total: ${formatMoney(header.totalAmount)}</div>
+          <div class="notice">Generated from the immutable ProjectPulse invoice snapshot. Use the browser Print dialog and choose Save as PDF.</div>
+          <script>window.addEventListener('load', () => window.print());<\/script>
+        </body>
+      </html>`);
+    popup.document.close();
+  }
+
+  function previewCertiniaPayload() {
+    if (!invoiceDetail?.header) return;
+
+    const header = invoiceDetail.header;
+    const preview = {
+      transmissionMode: 'preview_only',
+      connectorStatus: 'not_configured',
+      invoice: {
+        invoiceNumber: header.invoiceNumber,
+        invoiceType: header.invoiceType,
+        invoiceDate: header.invoiceDate,
+        customerName: header.customerName,
+        projectCode: header.projectCode,
+        projectName: header.projectName,
+        purchaseOrderNumber: header.purchaseOrderNumber,
+        certiniaId: header.certiniaId,
+        salesforceId: header.salesforceId,
+        sellQuote: header.sellQuote,
+        subtotalAmount: header.subtotalAmount,
+        totalAmount: header.totalAmount,
+        lines: (invoiceDetail.lines || []).map((line) => ({
+          lineNumber: line.lineNumber,
+          workDate: line.workDate,
+          resource: customerResourceLabel(line),
+          taskCode: line.taskCode,
+          taskName: line.taskName,
+          description: line.description,
+          hours: line.approvedHours,
+          rateCode: line.rateCode,
+          unitRate: line.unitRate,
+          amount: line.lineAmount
+        }))
+      }
+    };
+
+    setCertiniaPreview(JSON.stringify(preview, null, 2));
+  }
+
+  const certiniaConnector = payload.connectorStatuses.find((connector) =>
+    text(connector.systemCode).toLowerCase().includes('certinia')
+    || text(connector.displayName).toLowerCase().includes('certinia'));
+
+  const certiniaConnected = certiniaConnector?.connectionStatus === 'connected'
+    && certiniaConnector?.outboundEnabled === true;
 
   const toggleColumn = (key) => setVisibleColumns((current) => {
     if (current.includes(key)) return current.length === 1 ? current : current.filter((item) => item !== key);
@@ -704,8 +893,13 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
                           <thead><tr><th>Invoice</th><th>Type</th><th>Lines</th><th>Total</th><th>Finalized</th></tr></thead>
                           <tbody>
                             {selected.invoiceHistory.map((invoice) => (
-                              <tr key={invoice.billingInvoiceId}>
-                                <td><strong>{invoice.invoiceNumber}</strong></td>
+                              <tr
+                                key={invoice.billingInvoiceId}
+                                className="m042-history-row"
+                                onClick={() => void loadInvoiceDetail(invoice)}
+                                title="Open immutable invoice details"
+                              >
+                                <td><button type="button" className="m042-link-button">{invoice.invoiceNumber}</button></td>
                                 <td>{invoice.invoiceType}</td>
                                 <td>{invoice.lineCount}</td>
                                 <td>{formatMoney(invoice.totalAmount)}</td>
@@ -716,6 +910,92 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
                         </table>
                       </div>
                     ) : <p>No invoice has been created for this project.</p>}
+                  </section>
+
+                  <section className="m042-data-quality m042-invoice-detail-panel" data-projectpulse-invoice-detail-tools="true">
+                    <div className="m042-detail-heading">
+                      <div>
+                        <h3>Invoice detail, PDF, Excel, and Certinia preview</h3>
+                        <p>Click an invoice number above to load its immutable billed lines.</p>
+                      </div>
+                      {invoiceDetail ? <strong>{invoiceDetail.header?.invoiceNumber}</strong> : null}
+                    </div>
+
+                    {invoiceDetailLoading ? <p>Loading immutable invoice details…</p> : null}
+                    {invoiceDetailError ? <div className="m042-notice m042-error">{invoiceDetailError}</div> : null}
+
+                    {invoiceDetail ? (
+                      <>
+                        <label className="m042-privacy-toggle">
+                          <input
+                            type="checkbox"
+                            checked={showCustomerResourceNames}
+                            onChange={(event) => setShowCustomerResourceNames(event.target.checked)}
+                          />
+                          Show engineer and PM/PC names on customer output
+                        </label>
+                        <p className="m042-muted">
+                          Default is hidden. Internal audit records retain the original resource identity.
+                        </p>
+
+                        <div className="m042-actions m042-detail-actions">
+                          <button type="button" className="primary-action" onClick={printInvoicePdf}>Print / Save PDF</button>
+                          <button type="button" className="secondary-action" onClick={downloadInvoiceCsv}>Download Excel-compatible CSV</button>
+                          <button type="button" className="secondary-action" onClick={previewCertiniaPayload}>Preview Certinia payload</button>
+                          <button
+                            type="button"
+                            className="secondary-action"
+                            disabled={!certiniaConnected}
+                            title={certiniaConnected ? 'Certinia send requires the production transmission endpoint.' : 'Certinia connector is not configured for outbound transmission.'}
+                          >
+                            Send to Certinia
+                          </button>
+                        </div>
+
+                        <div className="m042-certinia-status">
+                          <strong>Certinia:</strong>{' '}
+                          {certiniaConnected
+                            ? 'Connector is marked connected. Production transmission remains disabled in this demo-safe web slice.'
+                            : 'Connector not configured — transmission not performed.'}
+                        </div>
+
+                        <div className="m042-table-wrap">
+                          <table>
+                            <thead>
+                              <tr><th>Date</th><th>Customer resource</th><th>Task and submitted time detail</th><th>Hours</th><th>Rate</th><th>Amount</th></tr>
+                            </thead>
+                            <tbody>
+                              {(invoiceDetail.lines || []).map((line) => (
+                                <tr key={line.billingInvoiceLineId}>
+                                  <td>{formatDate(line.workDate)}</td>
+                                  <td>{customerResourceLabel(line)}</td>
+                                  <td>
+                                    <span className="m042-stack">
+                                      <strong>{text(line.taskCode)} {text(line.taskName)}</strong>
+                                      <small>{text(line.description, 'No submitted description')}</small>
+                                      <small>{text(line.timeType)} · {text(line.managerApprovalSnapshot)}</small>
+                                    </span>
+                                  </td>
+                                  <td>{formatHours(line.approvedHours)}</td>
+                                  <td>{formatMoney(line.unitRate)}</td>
+                                  <td>{formatMoney(line.lineAmount)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {certiniaPreview ? (
+                          <div className="m042-certinia-preview">
+                            <div className="m042-detail-heading">
+                              <h3>Certinia payload preview</h3>
+                              <button type="button" className="secondary-action" onClick={() => navigator.clipboard?.writeText(certiniaPreview)}>Copy JSON</button>
+                            </div>
+                            <pre>{certiniaPreview}</pre>
+                          </div>
+                        ) : null}
+                      </>
+                    ) : null}
                   </section>
                 </div>
               ) : (
