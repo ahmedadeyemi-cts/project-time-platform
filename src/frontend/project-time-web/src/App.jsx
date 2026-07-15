@@ -4556,7 +4556,7 @@ export default function App() {
       setLoginRoute(result);
 
       if (result.loginMethod === 'sso') {
-        setLoginStatus('US Signal SSO route selected.');
+        setLoginStatus('Microsoft Entra SSO route selected.');
       } else if (result.loginMethod === 'local') {
         setLoginStatus(result.status === 'route_resolved'
           ? 'Local administrator account found. Enter the local password.'
@@ -4572,31 +4572,22 @@ export default function App() {
     }
   }
 
-  async function continueWithSsoPlaceholder() {
+  function continueWithSsoPlaceholder() {
     const username = loginUsername.trim().toLowerCase();
 
-    setLoginStatus('Creating US Signal SSO session...');
-
-    try {
-      const result = await postJson('/api/auth/sso/dev-login', { email: username });
-      const session = {
-        username: result.username,
-        displayName: result.displayName,
-        loginMethod: 'sso',
-        provider: result.provider,
-        sessionToken: result.sessionToken,
-        expiresAt: result.expiresAt,
-        signedInAt: new Date().toISOString()
-      };
-
-      saveAuthSession(session);
-      setAuthSession(session);
-      setSessionWarning({ visible: false, remainingMs: 0 });
-      setLoginStatus('');
-      window.location.hash = '#dashboard';
-    } catch (error) {
-      setLoginStatus(error instanceof Error ? error.message : 'Unable to create SSO session.');
+    if (!username) {
+      setLoginStatus('Enter your Microsoft Entra email address.');
+      return;
     }
+
+    setLoginStatus('Redirecting to Microsoft Entra ID...');
+
+    const parameters = new URLSearchParams({
+      loginHint: username,
+      prompt: 'select_account'
+    });
+
+    window.location.assign(`/api/auth/sso/start?${parameters.toString()}`);
   }
 
   async function continueWithLocalShell(event) {
@@ -5909,7 +5900,7 @@ export default function App() {
             <p className="eyebrow">PHD Access</p>
             <h1>Sign in to your role-based workspace</h1>
             <p>
-              Use your US Signal email for SSO. Use the local administrator account only for break-glass access when SSO is unavailable.
+              Use your approved Microsoft Entra email for SSO. Use the local administrator account only for break-glass access when SSO is unavailable.
             </p>
           </div>
 
@@ -5942,7 +5933,7 @@ export default function App() {
                 <h2>Continue with Microsoft Entra ID</h2>
                 <p>Production SSO will redirect to Microsoft Entra ID. This development shell records the selected SSO route.</p>
                 <button className="primary-action" type="button" onClick={continueWithSsoPlaceholder}>
-                  Continue with US Signal SSO
+                  Continue with Microsoft Entra SSO
                 </button>
               </div>
             )}
