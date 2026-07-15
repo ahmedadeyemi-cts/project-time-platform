@@ -17,9 +17,9 @@ const routeContext = {
   },
   'invoice-billing-center': {
     page: 'Invoice & Billing Center — Module 042',
-    purpose: 'Live Work Register billing-candidate view. It shows only system-owned customer, project, people, contract, status, and external-identifier data. Approved time, effective rates, purchase orders, invoice numbers, amounts, and exports remain blocked until their permanent APIs and ledgers are installed.',
-    backend: '/api/work-register/overview for live project data; shared billing-candidate and immutable invoice-ledger APIs pending',
-    check: 'Confirm that every visible customer, project, PM, PTC, engineer, contract type, and external ID exists in the Work Register. Missing values must remain visibly unconfigured and must never be replaced with sample data.'
+    purpose: 'Live invoice operations using approved uninvoiced time, explicit effective stored-rate selection, purchase-order readiness, and immutable partial or final invoice snapshots. Fixed Price dollars remain blocked until stored milestone billing is implemented.',
+    backend: '/api/billing/candidates, /api/billing/projects/{projectId}/invoices, and /api/billing/invoices/{invoiceId}',
+    check: 'Confirm approved source lines, select only effective stored rates, resolve required purchase orders, create a partial or final invoice, and verify its PHD-XXXXXX-N number and immutable history. Missing values remain visibly unconfigured.'
   },
   /* 039_042_BILLING_CONTEXT_GUIDE_END */
 
