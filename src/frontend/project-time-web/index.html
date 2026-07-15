@@ -11782,5 +11782,181 @@
 
 
 
+
+<!-- 056B_DASHBOARD_CARD_ROUTE_GUARD_START -->
+<style id="projectpulse-056b-dashboard-card-route-style">
+  html:not([data-projectpulse-056b-route="dashboard"])
+    [data-projectpulse-dashboard-only-card="true"] {
+    display: none !important;
+  }
+</style>
+
+<script id="projectpulse-056b-dashboard-card-route-guard">
+(function () {
+  if (window.__projectPulse056BDashboardCardRouteGuardInstalled) {
+    return;
+  }
+
+  window.__projectPulse056BDashboardCardRouteGuardInstalled = true;
+
+  function currentRoute() {
+    return String(window.location.hash || '#dashboard')
+      .replace(/^#/, '')
+      .split('?')[0]
+      .replace(/\/+$/, '')
+      .trim()
+      .toLowerCase() || 'dashboard';
+  }
+
+  function normalizedText(element) {
+    return String(element?.textContent || '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function isDashboardOnlyCard(element) {
+    if (!(element instanceof HTMLElement)) {
+      return false;
+    }
+
+    const id = String(element.id || '').toLowerCase();
+
+    if (!id.startsWith('projectpulse-')) {
+      return false;
+    }
+
+    /*
+     * Restrict this guard to cards injected into the React application shell.
+     * Standalone route shells and modal/page content are intentionally excluded.
+     */
+    if (!element.closest('.app-shell')) {
+      return false;
+    }
+
+    if (element.closest(
+      '[id*="-shell"], ' +
+      '[id*="-modal"], ' +
+      '[id*="-drawer"], ' +
+      '[id*="-panel-root"]'
+    )) {
+      return false;
+    }
+
+    const looksLikeCard =
+      id.includes('dashboard-shortcut') ||
+      id.includes('dashboard-notification-card') ||
+      id.endsWith('-card') ||
+      id.includes('-dashboard-card');
+
+    if (!looksLikeCard) {
+      return false;
+    }
+
+    const text = normalizedText(element);
+
+    const hasDashboardModuleLabel =
+      /(?:production\s+)?module\s+0?(?:2[3-9]|30)\b/i.test(text);
+
+    return hasDashboardModuleLabel ||
+      id.includes('dashboard-shortcut') ||
+      id.includes('dashboard-notification-card');
+  }
+
+  function applyVisibility(element, route) {
+    const shouldShow = route === 'dashboard';
+
+    if (element.getAttribute('data-projectpulse-dashboard-only-card') !== 'true') {
+      element.setAttribute('data-projectpulse-dashboard-only-card', 'true');
+    }
+
+    if (shouldShow) {
+      if (element.hidden) {
+        element.hidden = false;
+      }
+
+      if (element.getAttribute('aria-hidden') === 'true') {
+        element.removeAttribute('aria-hidden');
+      }
+
+      if (element.style.getPropertyValue('display') === 'none') {
+        element.style.removeProperty('display');
+      }
+
+      return;
+    }
+
+    if (!element.hidden) {
+      element.hidden = true;
+    }
+
+    if (element.getAttribute('aria-hidden') !== 'true') {
+      element.setAttribute('aria-hidden', 'true');
+    }
+
+    if (element.style.getPropertyValue('display') !== 'none') {
+      element.style.setProperty('display', 'none', 'important');
+    }
+  }
+
+  function synchronizeDashboardCards() {
+    const route = currentRoute();
+
+    document.documentElement.setAttribute(
+      'data-projectpulse-056b-route',
+      route
+    );
+
+    document
+      .querySelectorAll('[id^="projectpulse-"]')
+      .forEach(function (element) {
+        if (isDashboardOnlyCard(element)) {
+          applyVisibility(element, route);
+        }
+      });
+  }
+
+  function scheduleSynchronization() {
+    window.clearTimeout(
+      window.__projectPulse056BDashboardCardRouteGuardTimer
+    );
+
+    window.__projectPulse056BDashboardCardRouteGuardTimer =
+      window.setTimeout(function () {
+        window.requestAnimationFrame(synchronizeDashboardCards);
+      }, 20);
+  }
+
+  window.addEventListener('hashchange', scheduleSynchronization, true);
+  window.addEventListener('popstate', scheduleSynchronization, true);
+  window.addEventListener(
+    'projectpulse:route-state-ready',
+    scheduleSynchronization
+  );
+
+  if (document.readyState === 'loading') {
+    document.addEventListener(
+      'DOMContentLoaded',
+      scheduleSynchronization,
+      { once: true }
+    );
+  } else {
+    scheduleSynchronization();
+  }
+
+  const observer = new MutationObserver(scheduleSynchronization);
+
+  observer.observe(document.documentElement, {
+    childList: true,
+    subtree: true
+  });
+
+  scheduleSynchronization();
+  window.setTimeout(synchronizeDashboardCards, 100);
+  window.setTimeout(synchronizeDashboardCards, 500);
+  window.setTimeout(synchronizeDashboardCards, 1500);
+})();
+</script>
+<!-- 056B_DASHBOARD_CARD_ROUTE_GUARD_END -->
+
 </body>
 </html>
