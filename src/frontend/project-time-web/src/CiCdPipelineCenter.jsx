@@ -28,12 +28,39 @@ export default function CiCdPipelineCenter() {
     setLoading(true);
     setError('');
     try {
-      const [configurationBody, statusBody] = await Promise.all([
+      const results = await Promise.allSettled([
         readJson('/api/cicd/configuration'),
         readJson('/api/cicd/status')
       ]);
-      setConfiguration(configurationBody);
-      setStatus(statusBody);
+
+      const configurationResult = results[0];
+      const statusResult = results[1];
+
+      if (configurationResult.status === 'fulfilled') {
+        setConfiguration(configurationResult.value);
+      }
+
+      if (statusResult.status === 'fulfilled') {
+        setStatus(statusResult.value);
+        if (statusResult.value?.configuration) {
+          setConfiguration((current) =>
+            current || statusResult.value.configuration
+          );
+        }
+      }
+
+      const errors = results
+        .filter((result) => result.status === 'rejected')
+        .map((result) => result.reason?.message)
+        .filter(Boolean);
+
+      if (errors.length === results.length) {
+        throw new Error(errors.join(' | '));
+      }
+
+      if (errors.length) {
+        setError(errors.join(' | '));
+      }
     } catch (requestError) {
       setError(requestError.message);
     } finally {
@@ -95,12 +122,12 @@ export default function CiCdPipelineCenter() {
       <section className="cicd-summary-grid">
         <article>
           <span>Source control</span>
-          <strong>{configuration?.sourceControl?.provider || 'Loading'}</strong>
-          <small>{configuration?.sourceControl?.repository || 'Not configured'}</small>
+          <strong>{configuration?.sourceControl?.provider || status?.repository?.provider || 'GitHub'}</strong>
+          <small>{configuration?.sourceControl?.repository || status?.repository?.name || 'ahmedadeyemi-cts/project-time-platform'}</small>
         </article>
         <article>
           <span>Deployment provider</span>
-          <strong>{configuration?.deployment?.provider || 'Loading'}</strong>
+          <strong>{configuration?.deployment?.provider || 'azure-container-apps'}</strong>
           <small>Future provider: {configuration?.deployment?.futureProvider || 'OpenCloud'}</small>
         </article>
         <article>
@@ -127,6 +154,10 @@ export default function CiCdPipelineCenter() {
         </div>
 
         <dl className="cicd-details">
+          <div><dt>Repository</dt><dd>{status?.repository?.name || configuration?.sourceControl?.repository || 'ahmedadeyemi-cts/project-time-platform'}</dd></div>
+          <div><dt>Branch</dt><dd>{status?.repository?.branch || configuration?.sourceControl?.defaultBranch || 'source/module-058-cicd-pipeline-20260716'}</dd></div>
+          <div><dt>Source commit</dt><dd>{status?.repository?.sourceCommit || 'Not configured'}</dd></div>
+          <div><dt>SCM runtime</dt><dd>{status?.repository?.runtimeConnection || 'runtime_token_not_configured'}</dd></div>
           <div><dt>API application</dt><dd>{status?.runtime?.apiApplication || 'Not configured'}</dd></div>
           <div><dt>API revision</dt><dd>{status?.runtime?.apiRevision || 'Not configured'}</dd></div>
           <div><dt>Web application</dt><dd>{status?.runtime?.webApplication || 'Not configured'}</dd></div>

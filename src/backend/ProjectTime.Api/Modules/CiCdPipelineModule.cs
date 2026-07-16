@@ -22,19 +22,70 @@ public static class CiCdPipelineModule
             var access = await RequireAdminAsync(context);
             if (access is not null) return access;
 
-            var runs = await ReadRecentRunsAsync();
+            object[] runs = Array.Empty<object>();
+            string integrationStatus = ScmTokenConfigured()
+                ? "configured"
+                : "runtime_token_not_configured";
+            string? integrationWarning = null;
+
+            if (ScmTokenConfigured())
+            {
+                try
+                {
+                    runs = await ReadRecentRunsAsync();
+                }
+                catch (Exception ex)
+                {
+                    integrationStatus = "degraded";
+                    integrationWarning = ex.Message;
+                }
+            }
+
             return Results.Ok(new
             {
                 module = "058",
                 status = "cicd_status_loaded",
+                configured = true,
+                degraded = integrationStatus != "configured",
                 configuration = Configuration(),
+                repository = new
+                {
+                    provider = Env("PROJECTPULSE_CICD_SCM_PROVIDER", "github"),
+                    name = Repository(),
+                    branch = DefaultBranch(),
+                    sourceCommit = Env(
+                        "PROJECTPULSE_CICD_SOURCE_COMMIT",
+                        "Not configured"),
+                    repositoryUrl = $"https://github.com/{Repository()}",
+                    runtimeConnection = integrationStatus,
+                    warning = integrationWarning
+                },
                 runtime = new
                 {
-                    apiRevision = Env("CONTAINER_APP_REVISION", "Not configured"),
-                    apiReplica = Env("CONTAINER_APP_REPLICA_NAME", "Not configured"),
-                    apiApplication = Env("CONTAINER_APP_NAME", "ca-phd-test-api-westus3"),
-                    webApplication = Env("PROJECTPULSE_CICD_WEB_APP", "ca-phd-test-web-westus3"),
-                    deploymentEnvironment = Env("PROJECTPULSE_CICD_ENVIRONMENT", "test")
+                    apiRevision = Env(
+                        "CONTAINER_APP_REVISION",
+                        "Not configured"),
+                    apiReplica = Env(
+                        "CONTAINER_APP_REPLICA_NAME",
+                        "Not configured"),
+                    apiApplication = Env(
+                        "PROJECTPULSE_CICD_API_APP",
+                        Env("CONTAINER_APP_NAME", "ca-phd-test-api-westus3")),
+                    webApplication = Env(
+                        "PROJECTPULSE_CICD_WEB_APP",
+                        "ca-phd-test-web-westus3"),
+                    deploymentEnvironment = Env(
+                        "PROJECTPULSE_CICD_ENVIRONMENT",
+                        "test"),
+                    registry = Env(
+                        "PROJECTPULSE_CICD_REGISTRY",
+                        "acrphdtest7825cc.azurecr.io")
+                },
+                integration = new
+                {
+                    scm = integrationStatus,
+                    workflowDispatchEnabled = ScmTokenConfigured(),
+                    oidcConfigured = false
                 },
                 recentRuns = runs
             });
