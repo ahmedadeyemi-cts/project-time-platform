@@ -575,10 +575,6 @@ export default function CalendarCapacityCenter() {
           </p>
         </div>
 
-        <div>
-          <strong>{config?.environmentMode || 'test'}</strong>
-          <span>{config?.testDomain || 'onenecklab.com'}</span>
-        </div>
       </header>
 
       <section className="calendar-capacity-controls">

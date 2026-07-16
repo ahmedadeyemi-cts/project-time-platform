@@ -31,12 +31,6 @@
   margin: 0;
 }
 
-.calendar-capacity-hero > div:last-child {
-  display: grid;
-  align-content: center;
-  text-align: right;
-}
-
 .calendar-capacity-controls {
   display: grid;
   gap: 18px;
