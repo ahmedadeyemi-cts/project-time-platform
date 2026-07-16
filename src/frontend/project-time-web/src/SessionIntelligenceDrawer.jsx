@@ -1,161 +1,302 @@
 import { useEffect, useMemo, useState } from 'react';
 import './session-intelligence-drawer.css';
 
-const safe = (v, f = 'Not available') =>
-  v === undefined || v === null || v === '' ? f : String(v);
+const safe = (value, fallback = 'Not available') =>
+  value === undefined || value === null || value === '' ? fallback : String(value);
 
-function getDevice() {
+function readDevice() {
   const ua = navigator.userAgent || '';
+
   return {
     browser: ua.includes('Edg/') ? 'Microsoft Edge'
       : ua.includes('Firefox/') ? 'Mozilla Firefox'
       : ua.includes('Chrome/') ? 'Google Chrome'
-      : ua.includes('Safari/') ? 'Apple Safari' : 'Unknown browser',
+      : ua.includes('Safari/') ? 'Apple Safari'
+      : 'Unknown browser',
     os: /Windows/i.test(ua) ? 'Windows'
       : /Mac OS X/i.test(ua) ? 'macOS'
       : /Android/i.test(ua) ? 'Android'
       : /iPhone|iPad/i.test(ua) ? 'iOS'
-      : /Linux/i.test(ua) ? 'Linux' : 'Unknown OS',
+      : /Linux/i.test(ua) ? 'Linux'
+      : 'Unknown OS',
     type: /Mobi|Android|iPhone/i.test(ua) ? 'Mobile'
-      : /iPad|Tablet/i.test(ua) ? 'Tablet' : 'Desktop / laptop'
+      : /iPad|Tablet/i.test(ua) ? 'Tablet'
+      : 'Desktop / laptop'
   };
 }
+
+const SectionIcon = ({ name }) => {
+  const icons = {
+    Identity: '◯',
+    Authorization: '◇',
+    Session: '◷',
+    Device: '▱',
+    Network: '⌁',
+    'Client Environment': '⊕',
+    Deployment: '‹/›',
+    'Privacy & Security': '▣',
+    Diagnostics: '⌕'
+  };
+
+  return <span className="uss-si-section-icon">{icons[name] || '•'}</span>;
+};
 
 export default function SessionIntelligenceDrawer({ authSession }) {
   const [open, setOpen] = useState(false);
   const [server, setServer] = useState(null);
   const [error, setError] = useState('');
-  const device = useMemo(getDevice, []);
+  const device = useMemo(readDevice, []);
 
   useEffect(() => {
+    let active = true;
+
     fetch('/api/security/session-intelligence')
-      .then(async r => {
-        const body = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        setServer(body);
+      .then(async (response) => {
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        if (active) setServer(body);
       })
-      .catch(e => setError(e.message));
-  }, []);
-
-  useEffect(() => {
-    const hideLegacy = () => {
-      document.querySelectorAll('body *').forEach(el => {
-        if (!(el instanceof HTMLElement)) return;
-        const t = el.textContent?.trim();
-        if (!['Effective session', 'Security Session', 'CI/CD Pipeline'].includes(t)) return;
-        let node = el;
-        while (node && node !== document.body) {
-          if (getComputedStyle(node).position === 'fixed') {
-            node.style.setProperty('display', 'none', 'important');
-            break;
-          }
-          node = node.parentElement;
-        }
+      .catch((requestError) => {
+        if (active) setError(requestError.message);
       });
+
+    return () => {
+      active = false;
     };
-    hideLegacy();
-    const observer = new MutationObserver(hideLegacy);
-    observer.observe(document.body, { childList: true, subtree: true });
-    return () => observer.disconnect();
   }, []);
 
   const signedInUser =
-    authSession?.username || authSession?.email || 'Authenticated user';
+    authSession?.username ||
+    authSession?.email ||
+    'Authenticated user';
+
+  const displayName =
+    authSession?.displayName ||
+    authSession?.name ||
+    signedInUser.split('@')[0]
+      .split(/[._-]/)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
+
   const role =
-    authSession?.role || authSession?.roleName || 'Backend resolved';
+    authSession?.role ||
+    authSession?.roleName ||
+    'Backend resolved';
+
   const permissionCount =
-    authSession?.permissions?.length ?? authSession?.permissionCount ?? 'Backend resolved';
+    authSession?.permissions?.length ??
+    authSession?.permissionCount ??
+    'Backend resolved';
+
+  const sections = [
+    {
+      title: 'Identity',
+      rows: [
+        ['Display name', displayName],
+        ['Signed-in user', signedInUser],
+        ['Identity provider', 'Microsoft Entra ID'],
+        ['Tenant', 'OneNeck / US Signal test tenant']
+      ]
+    },
+    {
+      title: 'Authorization',
+      rows: [
+        ['Role', role],
+        ['Permissions', permissionCount],
+        ['View-As guard', authSession?.isViewAs ? 'Active' : 'Inactive'],
+        ['Administrative context', role]
+      ]
+    },
+    {
+      title: 'Session',
+      rows: [
+        ['Session token', 'Present — value hidden'],
+        ['Backend validation', error ? 'Unavailable' : 'Confirmed'],
+        ['Trace identifier', server?.request?.traceIdentifier],
+        ['Write operations', 'None']
+      ]
+    },
+    {
+      title: 'Device',
+      rows: [
+        ['Device type', device.type],
+        ['Operating system', device.os],
+        ['Browser', device.browser],
+        ['Touch support', navigator.maxTouchPoints > 0 ? 'Yes' : 'No'],
+        ['CPU cores', navigator.hardwareConcurrency],
+        ['Device memory', navigator.deviceMemory ? `${navigator.deviceMemory} GB` : 'Not exposed']
+      ]
+    },
+    {
+      title: 'Network',
+      rows: [
+        ['Client IP', server?.network?.publicIp || 'Loading'],
+        ['Forwarded address', server?.network?.forwardedForPresent ? 'Present' : 'Not present'],
+        ['Protocol', server?.network?.protocol],
+        ['Host', server?.network?.host],
+        ['VPN / proxy', 'Not asserted without trusted detection']
+      ]
+    },
+    {
+      title: 'Client Environment',
+      rows: [
+        ['Time zone', Intl.DateTimeFormat().resolvedOptions().timeZone],
+        ['Language', navigator.language],
+        ['Screen', `${window.screen.width} × ${window.screen.height}`],
+        ['Viewport', `${window.innerWidth} × ${window.innerHeight}`],
+        ['Theme', matchMedia('(prefers-color-scheme: dark)').matches ? 'Dark' : 'Light'],
+        ['Online state', navigator.onLine ? 'Online' : 'Offline']
+      ]
+    },
+    {
+      title: 'Deployment',
+      rows: [
+        ['Environment', server?.runtime?.environment],
+        ['API revision', server?.runtime?.apiRevision],
+        ['API replica', server?.runtime?.apiReplica],
+        ['Source commit', server?.runtime?.sourceCommit],
+        ['SCM', 'GitHub'],
+        ['Future runtime', 'OpenCloud-ready OCI model']
+      ]
+    },
+    {
+      title: 'Privacy & Security',
+      rows: [
+        ['Browser fingerprinting', 'No'],
+        ['Token values returned', 'No'],
+        ['Secrets returned', 'No'],
+        ['Precise location', 'Not collected'],
+        ['Diagnostics', 'Sanitized only']
+      ]
+    },
+    {
+      title: 'Diagnostics',
+      rows: [
+        ['Server context', error ? `Unavailable: ${error}` : 'Available'],
+        ['Session intelligence API', error ? 'Warning' : 'Healthy'],
+        ['Clipboard export', 'Sanitized JSON'],
+        ['Support package', 'Ready']
+      ]
+    }
+  ];
 
   const diagnostics = {
-    signedInUser, role, permissionCount,
+    displayName,
+    signedInUser,
+    role,
+    permissionCount,
     clientIp: server?.network?.publicIp,
     deviceType: device.type,
     operatingSystem: device.os,
     browser: device.browser,
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     language: navigator.language,
-    screen: `${screen.width} × ${screen.height}`,
-    viewport: `${innerWidth} × ${innerHeight}`,
+    screen: `${window.screen.width} × ${window.screen.height}`,
+    viewport: `${window.innerWidth} × ${window.innerHeight}`,
     apiRevision: server?.runtime?.apiRevision,
     sourceCommit: server?.runtime?.sourceCommit
   };
 
-  const sections = [
-    ['Effective session', [
-      ['Signed-in user', signedInUser],
-      ['Role', role],
-      ['Permissions', permissionCount],
-      ['View-As guard', authSession?.isViewAs ? 'Active' : 'Inactive'],
-      ['Session token', 'Present — value hidden']]],
-    ['Network', [
-      ['Client IP', server?.network?.publicIp || 'Loading'],
-      ['Forwarded address', server?.network?.forwardedForPresent ? 'Present' : 'Not present'],
-      ['Protocol', server?.network?.protocol],
-      ['Host', server?.network?.host]]],
-    ['Device', [
-      ['Device type', device.type],
-      ['Operating system', device.os],
-      ['Browser', device.browser],
-      ['Touch support', navigator.maxTouchPoints > 0 ? 'Yes' : 'No'],
-      ['CPU cores', navigator.hardwareConcurrency],
-      ['Device memory', navigator.deviceMemory ? `${navigator.deviceMemory} GB` : 'Not exposed']]],
-    ['Client environment', [
-      ['Time zone', Intl.DateTimeFormat().resolvedOptions().timeZone],
-      ['Language', navigator.language],
-      ['Screen', `${screen.width} × ${screen.height}`],
-      ['Viewport', `${innerWidth} × ${innerHeight}`],
-      ['Theme', matchMedia('(prefers-color-scheme: dark)').matches ? 'Dark' : 'Light']]],
-    ['Deployment traceability', [
-      ['Environment', server?.runtime?.environment],
-      ['API revision', server?.runtime?.apiRevision],
-      ['API replica', server?.runtime?.apiReplica],
-      ['Source commit', server?.runtime?.sourceCommit],
-      ['SCM', 'GitHub'],
-      ['Future runtime', 'OpenCloud-ready OCI model']]],
-    ['Privacy boundaries', [
-      ['Browser fingerprinting', 'No'],
-      ['Token values returned', 'No'],
-      ['Secrets returned', 'No'],
-      ['Precise location', 'Not collected'],
-      ['Write operations', 'None']]]
-  ];
+  return (
+    <>
+      <button
+        type="button"
+        className="uss-session-intelligence-handle"
+        onClick={() => setOpen((current) => !current)}
+        aria-expanded={open}
+      >
+        {open ? 'Close' : 'US Signal Session Intelligence'}
+      </button>
 
-  return <>
-    <button className="uss-session-drawer-handle" onClick={() => setOpen(v => !v)}>
-      {open ? 'Close' : 'US Signal Session Intelligence'}
-    </button>
+      <aside className={`uss-session-intelligence-panel ${open ? 'is-open' : ''}`}>
+        <header className="uss-si-header">
+          <div>
+            <p><span>◉</span> US Signal</p>
+            <h2>Session Intelligence</h2>
+            <small>Real-time session context</small>
+          </div>
+          <button type="button" onClick={() => setOpen(false)} aria-label="Close">×</button>
+        </header>
 
-    <aside className={`uss-session-drawer-shell ${open ? 'is-open' : ''}`}>
-      <header>
-        <div><small>US SIGNAL SECURITY SESSION</small><h2>US Signal Session Intelligence</h2></div>
-        <button onClick={() => setOpen(false)}>Close</button>
-      </header>
+        <section className="uss-si-user">
+          <div className="uss-si-avatar">
+            {displayName.split(' ').slice(0, 2).map((part) => part[0]).join('')}
+          </div>
+          <div>
+            <strong>{displayName}</strong>
+            <span>{signedInUser}</span>
+            <em>{safe(role)}</em>
+          </div>
+        </section>
 
-      {error ? <div className="uss-session-drawer-warning">Server context: {error}</div> : null}
+        <div className="uss-si-content">
+          {sections.map((section) => (
+            <details key={section.title}>
+              <summary>
+                <span className="uss-si-summary-label">
+                  <SectionIcon name={section.title} />
+                  {section.title}
+                </span>
+                <span className="uss-si-chevron">⌄</span>
+              </summary>
 
-      <div className="uss-session-drawer-body">
-        {sections.map(([title, rows]) => (
-          <details key={title} open={title === 'Effective session'}>
-            <summary>{title}</summary>
-            <dl>
-              {rows.map(([label, entry]) => (
-                <div key={label}><dt>{label}</dt><dd>{safe(entry)}</dd></div>
-              ))}
-            </dl>
-          </details>
-        ))}
-      </div>
+              <dl>
+                {section.rows.map(([label, entry]) => (
+                  <div key={label}>
+                    <dt>{label}</dt>
+                    <dd>{safe(entry)}</dd>
+                  </div>
+                ))}
+              </dl>
+            </details>
+          ))}
+        </div>
 
-      <footer>
-        <button onClick={() =>
-          navigator.clipboard.writeText(JSON.stringify(diagnostics, null, 2))
-        }>
-          Copy safe diagnostics
-        </button>
-        <small>No secrets or token values are copied.</small>
-      </footer>
-    </aside>
+        <div className="uss-si-actions">
+          <button
+            type="button"
+            onClick={() =>
+              navigator.clipboard.writeText(JSON.stringify(diagnostics, null, 2))
+            }
+          >
+            Copy Safe Diagnostics
+          </button>
 
-    {open ? <button className="uss-session-drawer-backdrop" onClick={() => setOpen(false)} /> : null}
-  </>;
+          <button
+            type="button"
+            onClick={() => {
+              const blob = new Blob(
+                [JSON.stringify(diagnostics, null, 2)],
+                { type: 'application/json' }
+              );
+              const url = URL.createObjectURL(blob);
+              const anchor = document.createElement('a');
+              anchor.href = url;
+              anchor.download = 'ussignal-session-diagnostics.json';
+              anchor.click();
+              URL.revokeObjectURL(url);
+            }}
+          >
+            Export Support Package
+          </button>
+
+          <small>No secrets returned • No tokens • No write operations performed</small>
+        </div>
+
+        <footer className="uss-si-footer">
+          <span>US Signal • ProjectPulse</span>
+          <span>Module 059</span>
+        </footer>
+      </aside>
+
+      {open ? (
+        <button
+          type="button"
+          className="uss-session-intelligence-backdrop"
+          onClick={() => setOpen(false)}
+          aria-label="Close session intelligence"
+        />
+      ) : null}
+    </>
+  );
 }
