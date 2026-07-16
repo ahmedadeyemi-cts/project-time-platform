@@ -22,13 +22,26 @@ public static class CalendarCapacityModule
             workingDays = new[] { "Monday", "Tuesday", "Wednesday", "Thursday", "Friday" },
             dailyWorkingHours = 8,
             weeklyWorkingHours = 40,
-            supportedViews = new[] { "day", "workweek", "month", "agenda", "timeline", "custom" },
-            futureMonthNavigation = true
+            supportedViews = new[]
+            {
+                "day",
+                "workweek",
+                "thisweek",
+                "month",
+                "thismonth",
+                "nextmonth",
+                "thisquarter",
+                "nextquarter",
+                "agenda"
+            },
+            futureMonthNavigation = true,
+            microsoftProfilePhotos = "graph_cached"
         }));
 
         app.MapGet("/api/calendar/resources", async (HttpContext context) =>
         {
-            if (SessionUserId(context) is null)
+            var actor = SessionUserId(context);
+            if (actor is null)
                 return Results.Json(new { status = "session_required", message = "A ProjectPulse session is required." }, statusCode: 401);
 
             await using var connection = new NpgsqlConnection(ConnectionString());
@@ -44,7 +57,8 @@ public static class CalendarCapacityModule
                     COALESCE(NULLIF(to_jsonb(u)->>'team_name', ''), NULLIF(to_jsonb(u)->>'department_name', ''), NULLIF(to_jsonb(u)->>'department', ''), 'Unassigned'),
                     COALESCE(NULLIF(to_jsonb(u)->>'department_name', ''), NULLIF(to_jsonb(u)->>'department', ''), NULLIF(to_jsonb(u)->>'team_name', ''), 'Unassigned'),
                     COALESCE(NULLIF(to_jsonb(u)->>'job_title', ''), 'Engineer'),
-                    COALESCE(NULLIF(to_jsonb(u)->>'profile_photo_data_url', ''), '')
+                    COALESCE(NULLIF(to_jsonb(u)->>'profile_photo_data_url', ''), ''),
+                    u.profile_photo_updated_at
                 FROM app_users u
                 WHERE u.is_active = TRUE
                   AND COALESCE(u.login_enabled, TRUE) = TRUE
@@ -55,23 +69,46 @@ public static class CalendarCapacityModule
                 ORDER BY COALESCE(u.display_name, u.email);
                 """, connection);
 
-            await using var reader = await command.ExecuteReaderAsync();
-            while (await reader.ReadAsync())
+            await using (var reader = await command.ExecuteReaderAsync())
             {
-                resources.Add(new ResourceRow(
-                    reader.GetGuid(0),
-                    reader.GetString(1),
-                    reader.GetString(2),
-                    reader.IsDBNull(3) ? null : reader.GetString(3),
-                    reader.GetString(4),
-                    reader.GetString(5),
-                    reader.GetString(6),
-                    reader.GetString(7)));
+                while (await reader.ReadAsync())
+                {
+                    resources.Add(new ResourceRow(
+                        reader.GetGuid(0),
+                        reader.GetString(1),
+                        reader.GetString(2),
+                        reader.IsDBNull(3) ? null : reader.GetString(3),
+                        reader.GetString(4),
+                        reader.GetString(5),
+                        reader.GetString(6),
+                        reader.GetString(7),
+                        reader.IsDBNull(8)
+                            ? null
+                            : new DateTimeOffset(reader.GetDateTime(8))));
+                }
+            }
+
+            if (resources.Any(NeedsProfilePhotoRefresh))
+            {
+                try
+                {
+                    var token = await GraphToken();
+                    resources = await HydrateResourcePhotos(
+                        connection,
+                        resources,
+                        token);
+                }
+                catch
+                {
+                    // Calendar resources remain usable with initials when
+                    // Microsoft Graph photos cannot be refreshed.
+                }
             }
 
             return Results.Ok(new
             {
                 status = "calendar_resources_loaded",
+                currentUserId = actor.Value,
                 count = resources.Count,
                 resources,
                 teams = resources.GroupBy(r => r.TeamName, StringComparer.OrdinalIgnoreCase)
@@ -101,6 +138,15 @@ public static class CalendarCapacityModule
             try
             {
                 var token = await GraphToken();
+
+                if (resources.Any(NeedsProfilePhotoRefresh))
+                {
+                    resources = await HydrateResourcePhotos(
+                        connection,
+                        resources,
+                        token);
+                }
+
                 var target = resources[0].Email;
                 var endpoint = $"https://graph.microsoft.com/v1.0/users/{Uri.EscapeDataString(target)}/calendar/getSchedule";
                 var body = new
@@ -257,7 +303,8 @@ public static class CalendarCapacityModule
                    COALESCE(NULLIF(to_jsonb(u)->>'team_name',''),NULLIF(to_jsonb(u)->>'department_name',''),NULLIF(to_jsonb(u)->>'department',''),'Unassigned'),
                    COALESCE(NULLIF(to_jsonb(u)->>'department_name',''),NULLIF(to_jsonb(u)->>'department',''),NULLIF(to_jsonb(u)->>'team_name',''),'Unassigned'),
                    COALESCE(NULLIF(to_jsonb(u)->>'job_title',''),'Engineer'),
-                   COALESCE(NULLIF(to_jsonb(u)->>'profile_photo_data_url',''),'')
+                   COALESCE(NULLIF(to_jsonb(u)->>'profile_photo_data_url',''),''),
+                   u.profile_photo_updated_at
             FROM app_users u
             WHERE u.is_active=TRUE AND COALESCE(u.login_enabled,TRUE)=TRUE
               AND u.email IS NOT NULL AND u.email<>'' AND lower(u.email) NOT LIKE '%.local'
@@ -285,7 +332,10 @@ public static class CalendarCapacityModule
                 reader.GetString(4),
                 reader.GetString(5),
                 reader.GetString(6),
-                reader.GetString(7)));
+                reader.GetString(7),
+                reader.IsDBNull(8)
+                    ? null
+                    : new DateTimeOffset(reader.GetDateTime(8))));
         }
 
         return rows;
@@ -328,6 +378,141 @@ public static class CalendarCapacityModule
         if (!response.IsSuccessStatusCode) throw new InvalidOperationException($"Graph token request failed with HTTP {(int)response.StatusCode}.");
         using var document = JsonDocument.Parse(raw);
         return document.RootElement.GetProperty("access_token").GetString() ?? throw new InvalidOperationException("Graph token missing.");
+    }
+
+    private static bool NeedsProfilePhotoRefresh(
+        ResourceRow resource)
+    {
+        var staleBefore = DateTimeOffset.UtcNow.AddDays(-7);
+
+        return resource.ProfilePhotoUpdatedAt is null
+            || resource.ProfilePhotoUpdatedAt < staleBefore
+            || string.IsNullOrWhiteSpace(
+                resource.ProfilePhotoDataUrl);
+    }
+
+    private static async Task<List<ResourceRow>>
+        HydrateResourcePhotos(
+            NpgsqlConnection connection,
+            List<ResourceRow> resources,
+            string token)
+    {
+        using var client = new HttpClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", token);
+
+        var hydrated = new List<ResourceRow>(
+            resources.Count);
+
+        foreach (var resource in resources)
+        {
+            if (!NeedsProfilePhotoRefresh(resource))
+            {
+                hydrated.Add(resource);
+                continue;
+            }
+
+            var target = string.IsNullOrWhiteSpace(
+                resource.EntraObjectId)
+                ? resource.Email
+                : resource.EntraObjectId;
+
+            var checkedAt = DateTimeOffset.UtcNow;
+
+            try
+            {
+                var endpoint =
+                    "https://graph.microsoft.com/v1.0/users/"
+                    + Uri.EscapeDataString(target)
+                    + "/photos/96x96/$value";
+
+                using var response =
+                    await client.GetAsync(endpoint);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var bytes =
+                        await response.Content.ReadAsByteArrayAsync();
+
+                    if (bytes.Length > 0
+                        && bytes.Length <= 1_500_000)
+                    {
+                        var mediaType =
+                            response.Content.Headers.ContentType
+                                ?.MediaType;
+
+                        if (string.IsNullOrWhiteSpace(mediaType)
+                            || !mediaType.StartsWith(
+                                "image/",
+                                StringComparison.OrdinalIgnoreCase))
+                        {
+                            mediaType = "image/jpeg";
+                        }
+
+                        var dataUrl =
+                            $"data:{mediaType};base64,"
+                            + Convert.ToBase64String(bytes);
+
+                        await using var update =
+                            new NpgsqlCommand("""
+                                UPDATE app_users
+                                SET profile_photo_data_url = @photo,
+                                    profile_photo_updated_at = NOW()
+                                WHERE user_id = @user_id;
+                                """, connection);
+
+                        update.Parameters.AddWithValue(
+                            "photo",
+                            dataUrl);
+                        update.Parameters.AddWithValue(
+                            "user_id",
+                            resource.UserId);
+
+                        await update.ExecuteNonQueryAsync();
+
+                        hydrated.Add(resource with
+                        {
+                            ProfilePhotoDataUrl = dataUrl,
+                            ProfilePhotoUpdatedAt = checkedAt
+                        });
+
+                        continue;
+                    }
+                }
+
+                if (response.StatusCode
+                    == System.Net.HttpStatusCode.NotFound)
+                {
+                    await using var markChecked =
+                        new NpgsqlCommand("""
+                            UPDATE app_users
+                            SET profile_photo_updated_at = NOW()
+                            WHERE user_id = @user_id;
+                            """, connection);
+
+                    markChecked.Parameters.AddWithValue(
+                        "user_id",
+                        resource.UserId);
+
+                    await markChecked.ExecuteNonQueryAsync();
+
+                    hydrated.Add(resource with
+                    {
+                        ProfilePhotoUpdatedAt = checkedAt
+                    });
+
+                    continue;
+                }
+            }
+            catch
+            {
+                // Preserve the current cached image or initials.
+            }
+
+            hydrated.Add(resource);
+        }
+
+        return hydrated;
     }
 
     private static int WorkingDayCount(
@@ -455,7 +640,7 @@ public static class CalendarCapacityModule
             "tentative" => "Tentative appointment",
             "workingelsewhere" => "Working elsewhere",
             "free" => "Available",
-            _ => "Busy"
+            _ => "Calendar event"
         };
 
     private static string SafeGraphError(string raw)
@@ -511,6 +696,7 @@ public static class CalendarCapacityModule
         string TeamName,
         string DepartmentName,
         string JobTitle,
-        string ProfilePhotoDataUrl);
+        string ProfilePhotoDataUrl,
+        DateTimeOffset? ProfilePhotoUpdatedAt);
     private sealed record ScheduleRequest(DateTimeOffset Start, DateTimeOffset End, string? TimeZone, string? View, int? IntervalMinutes, Guid[]? ResourceIds, string? TeamName, string? DepartmentName);
 }

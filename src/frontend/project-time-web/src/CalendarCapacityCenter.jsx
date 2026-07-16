@@ -55,6 +55,9 @@ const monthStart = (date) =>
 const monthEnd = (date) =>
   new Date(date.getFullYear(), date.getMonth() + 1, 1);
 
+const addMonths = (date, count) =>
+  new Date(date.getFullYear(), date.getMonth() + count, 1);
+
 const dateKey = (date) =>
   [
     date.getFullYear(),
@@ -70,6 +73,11 @@ function startOfWorkWeek(date) {
   return result;
 }
 
+function startOfQuarter(date) {
+  const month = Math.floor(date.getMonth() / 3) * 3;
+  return new Date(date.getFullYear(), month, 1);
+}
+
 function getRange(anchor, view) {
   if (view === 'day') {
     const start = new Date(anchor);
@@ -79,10 +87,16 @@ function getRange(anchor, view) {
     return { start, end };
   }
 
-  if (view === 'workweek') {
+  if (view === 'workweek' || view === 'thisweek') {
     const start = startOfWorkWeek(anchor);
     const end = new Date(start);
     end.setDate(end.getDate() + 5);
+    return { start, end };
+  }
+
+  if (view === 'thisquarter' || view === 'nextquarter') {
+    const start = startOfQuarter(anchor);
+    const end = addMonths(start, 3);
     return { start, end };
   }
 
@@ -98,10 +112,7 @@ function getWorkingDays(start, end) {
   cursor.setHours(0, 0, 0, 0);
 
   while (cursor < end) {
-    if (
-      cursor.getDay() !== 0
-      && cursor.getDay() !== 6
-    ) {
+    if (cursor.getDay() !== 0 && cursor.getDay() !== 6) {
       days.push(new Date(cursor));
     }
 
@@ -109,6 +120,14 @@ function getWorkingDays(start, end) {
   }
 
   return days;
+}
+
+function getVisibleDays(range, view) {
+  if (view === 'day') {
+    return [new Date(range.start)];
+  }
+
+  return getWorkingDays(range.start, range.end);
 }
 
 function getInitials(value) {
@@ -137,6 +156,20 @@ function parseDate(value) {
   return Number.isNaN(result.getTime()) ? null : result;
 }
 
+function subjectOf(item) {
+  const subject = String(item?.subject || '').trim();
+
+  if (subject) {
+    return subject;
+  }
+
+  if (item?.isPrivate) {
+    return 'Private appointment';
+  }
+
+  return 'Calendar event';
+}
+
 function eventOverlapsDay(item, day) {
   const start = parseDate(item.start);
   const end = parseDate(item.end);
@@ -153,21 +186,30 @@ function eventOverlapsDay(item, day) {
   return start < dayEnd && end > dayStart;
 }
 
-function durationLabel(item) {
-  const supplied = Number(item.durationHours);
+function durationHours(item) {
+  const supplied = Number(item?.durationHours);
 
   if (Number.isFinite(supplied) && supplied > 0) {
-    return `${Number.isInteger(supplied) ? supplied : supplied.toFixed(1)}h`;
+    return supplied;
   }
 
-  const start = parseDate(item.start);
-  const end = parseDate(item.end);
+  const start = parseDate(item?.start);
+  const end = parseDate(item?.end);
 
   if (!start || !end || end <= start) {
+    return 0;
+  }
+
+  return (end - start) / 3600000;
+}
+
+function durationLabel(item) {
+  const hours = durationHours(item);
+
+  if (!hours) {
     return '';
   }
 
-  const hours = (end - start) / 3600000;
   return `${Number.isInteger(hours) ? hours : hours.toFixed(1)}h`;
 }
 
@@ -190,7 +232,7 @@ function eventTone(item) {
     return 'working-elsewhere';
   }
 
-  const subject = String(item.subject || '');
+  const subject = subjectOf(item);
   let hash = 0;
 
   for (let index = 0; index < subject.length; index += 1) {
@@ -211,6 +253,15 @@ function formatRange(days, anchor) {
   const first = days[0];
   const last = days.at(-1);
 
+  if (days.length === 1) {
+    return first.toLocaleDateString(undefined, {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric'
+    });
+  }
+
   if (
     first.getMonth() === last.getMonth()
     && first.getFullYear() === last.getFullYear()
@@ -221,6 +272,89 @@ function formatRange(days, anchor) {
   }
 
   return `${first.toLocaleDateString()} – ${last.toLocaleDateString()}`;
+}
+
+function formatTime(value) {
+  const date = parseDate(value);
+
+  if (!date) {
+    return '';
+  }
+
+  return date.toLocaleTimeString(undefined, {
+    hour: 'numeric',
+    minute: '2-digit'
+  });
+}
+
+function formatLongDate(value) {
+  const date = value instanceof Date ? value : parseDate(value);
+
+  if (!date) {
+    return '';
+  }
+
+  return date.toLocaleDateString(undefined, {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric'
+  });
+}
+
+function getMonthSegments(start, end) {
+  const segments = [];
+  let cursor = monthStart(start);
+
+  while (cursor < end) {
+    const segmentStart = cursor < start ? new Date(start) : new Date(cursor);
+    const naturalEnd = monthEnd(cursor);
+    const segmentEnd = naturalEnd > end ? new Date(end) : naturalEnd;
+
+    segments.push({
+      key: `${cursor.getFullYear()}-${cursor.getMonth()}`,
+      label: cursor.toLocaleDateString(undefined, {
+        month: 'long',
+        year: 'numeric'
+      }),
+      start: segmentStart,
+      end: segmentEnd
+    });
+
+    cursor = naturalEnd;
+  }
+
+  return segments;
+}
+
+function getMonthWeeks(start, end) {
+  const weeks = [];
+  let cursor = startOfWorkWeek(start);
+
+  while (cursor < end) {
+    const weekStart = new Date(cursor);
+    const days = [];
+
+    for (let offset = 0; offset < 5; offset += 1) {
+      const day = new Date(weekStart);
+      day.setDate(day.getDate() + offset);
+
+      days.push(day >= start && day < end ? day : null);
+    }
+
+    weeks.push({
+      key: dateKey(weekStart),
+      label: `Week of ${weekStart.toLocaleDateString(undefined, {
+        month: 'short',
+        day: 'numeric'
+      })}`,
+      days
+    });
+
+    cursor.setDate(cursor.getDate() + 7);
+  }
+
+  return weeks;
 }
 
 function ResourceAvatar({ resource }) {
@@ -238,7 +372,7 @@ function ResourceAvatar({ resource }) {
   );
 }
 
-function ResourceProfile({ resource }) {
+function ResourceProfile({ resource, compact = false }) {
   const utilization =
     resource.utilizationPercent
     ?? resource.capacityPercent
@@ -258,7 +392,12 @@ function ResourceProfile({ resource }) {
     );
 
   return (
-    <article className="calendar-resource-profile">
+    <article
+      className={[
+        'calendar-resource-profile',
+        compact ? 'calendar-resource-profile-compact' : ''
+      ].filter(Boolean).join(' ')}
+    >
       <div className="calendar-resource-identity">
         <ResourceAvatar resource={resource} />
 
@@ -278,7 +417,7 @@ function ResourceProfile({ resource }) {
         <progress
           max="100"
           value={Math.min(100, Number(utilization) || 0)}
-          aria-label={`${resource.displayName} monthly utilization`}
+          aria-label={`${resource.displayName} utilization`}
         />
 
         <small>
@@ -293,14 +432,278 @@ function ResourceProfile({ resource }) {
 }
 
 function CalendarEvent({ item }) {
+  const timeRange = [
+    formatTime(item.start),
+    formatTime(item.end)
+  ].filter(Boolean).join('–');
+
   return (
     <div
       className={`calendar-event-card ${eventTone(item)}`}
-      title={`${item.subject || 'Busy'} · ${item.start} – ${item.end}`}
+      title={`${subjectOf(item)}${timeRange ? ` · ${timeRange}` : ''}`}
     >
-      <strong>{item.subject || 'Busy'}</strong>
-      <span>{durationLabel(item) || item.status}</span>
+      <strong>{subjectOf(item)}</strong>
+      <span>
+        {[timeRange, durationLabel(item)]
+          .filter(Boolean)
+          .join(' · ')}
+      </span>
       {item.location ? <small>{item.location}</small> : null}
+    </div>
+  );
+}
+
+function DayCell({ resource, day, period = false }) {
+  if (!day) {
+    return <div className="calendar-period-day-cell calendar-period-day-empty" />;
+  }
+
+  const items = (resource.scheduleItems || [])
+    .filter((item) => eventOverlapsDay(item, day))
+    .sort((left, right) =>
+      String(left.start).localeCompare(String(right.start))
+    );
+
+  return (
+    <div
+      className={
+        period
+          ? 'calendar-period-day-cell'
+          : 'calendar-resource-day-cell'
+      }
+    >
+      <div className="calendar-day-cell-heading">
+        <strong>
+          {day.toLocaleDateString(undefined, {
+            weekday: 'short'
+          })}
+        </strong>
+        <span>
+          {day.toLocaleDateString(undefined, {
+            month: 'short',
+            day: 'numeric'
+          })}
+        </span>
+      </div>
+
+      {items.length ? (
+        items.map((item, index) => (
+          <CalendarEvent
+            item={item}
+            key={`${item.start}-${item.end}-${index}`}
+          />
+        ))
+      ) : (
+        <span className="calendar-resource-available">
+          Available
+        </span>
+      )}
+    </div>
+  );
+}
+
+function PeriodCapacityBoard({ scheduleRows, range }) {
+  const monthSegments = getMonthSegments(range.start, range.end);
+
+  return (
+    <div className="calendar-period-board">
+      {monthSegments.map((month) => {
+        const weeks = getMonthWeeks(month.start, month.end);
+
+        return (
+          <section className="calendar-period-month" key={month.key}>
+            <header className="calendar-period-month-heading">
+              <h3>{month.label}</h3>
+              <span>
+                {getWorkingDays(month.start, month.end).length} workdays
+              </span>
+            </header>
+
+            {scheduleRows.map((resource) => (
+              <article
+                className="calendar-period-resource"
+                key={`${month.key}-${resource.email}`}
+              >
+                <ResourceProfile resource={resource} compact />
+
+                <div className="calendar-period-weeks">
+                  {weeks.map((week) => (
+                    <section
+                      className="calendar-period-week"
+                      key={`${resource.email}-${month.key}-${week.key}`}
+                    >
+                      <div className="calendar-period-week-label">
+                        {week.label}
+                      </div>
+
+                      <div className="calendar-period-week-grid">
+                        {week.days.map((day, index) => (
+                          <DayCell
+                            resource={resource}
+                            day={day}
+                            period
+                            key={
+                              day
+                                ? `${resource.email}-${dateKey(day)}`
+                                : `${resource.email}-${week.key}-blank-${index}`
+                            }
+                          />
+                        ))}
+                      </div>
+                    </section>
+                  ))}
+                </div>
+              </article>
+            ))}
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+function buildAgendaGroups(scheduleRows) {
+  const byDate = new Map();
+
+  scheduleRows.forEach((resource) => {
+    (resource.scheduleItems || []).forEach((item) => {
+      const start = parseDate(item.start);
+
+      if (!start) {
+        return;
+      }
+
+      const dayKey = dateKey(start);
+
+      if (!byDate.has(dayKey)) {
+        byDate.set(dayKey, {
+          date: start,
+          resources: new Map()
+        });
+      }
+
+      const day = byDate.get(dayKey);
+      const resourceKey = resource.email || resource.userId;
+
+      if (!day.resources.has(resourceKey)) {
+        day.resources.set(resourceKey, {
+          resource,
+          items: []
+        });
+      }
+
+      day.resources.get(resourceKey).items.push(item);
+    });
+  });
+
+  return Array.from(byDate.values())
+    .sort((left, right) => left.date - right.date)
+    .map((day) => {
+      const resources = Array.from(day.resources.values())
+        .map((entry) => ({
+          ...entry,
+          items: entry.items.sort((left, right) =>
+            String(left.start).localeCompare(String(right.start))
+          ),
+          hours: entry.items.reduce(
+            (total, item) => total + durationHours(item),
+            0
+          )
+        }))
+        .sort((left, right) =>
+          String(left.resource.displayName)
+            .localeCompare(String(right.resource.displayName))
+        );
+
+      return {
+        ...day,
+        resources,
+        hours: resources.reduce(
+          (total, resource) => total + resource.hours,
+          0
+        )
+      };
+    });
+}
+
+function AgendaBoard({ scheduleRows }) {
+  const days = buildAgendaGroups(scheduleRows);
+
+  if (!days.length) {
+    return (
+      <p className="calendar-empty-state">
+        No calendar events were returned for this range.
+      </p>
+    );
+  }
+
+  return (
+    <div className="calendar-agenda-days">
+      {days.map((day) => (
+        <section className="calendar-agenda-day" key={dateKey(day.date)}>
+          <header className="calendar-agenda-day-heading">
+            <div>
+              <h3>{formatLongDate(day.date)}</h3>
+              <span>
+                {day.resources.length} engineer
+                {day.resources.length === 1 ? '' : 's'}
+              </span>
+            </div>
+
+            <strong>
+              {day.hours.toFixed(1).replace('.0', '')}h scheduled
+            </strong>
+          </header>
+
+          <div className="calendar-agenda-engineers">
+            {day.resources.map((entry) => (
+              <article
+                className="calendar-agenda-engineer"
+                key={`${dateKey(day.date)}-${entry.resource.email}`}
+              >
+                <header>
+                  <ResourceAvatar resource={entry.resource} />
+
+                  <div>
+                    <strong>{entry.resource.displayName}</strong>
+                    <span>
+                      {entry.resource.jobTitle || 'Engineer'}
+                      {' · '}
+                      {entry.resource.teamName}
+                    </span>
+                  </div>
+
+                  <small>
+                    {entry.hours.toFixed(1).replace('.0', '')}h
+                  </small>
+                </header>
+
+                <div className="calendar-agenda-events">
+                  {entry.items.map((item, index) => (
+                    <div
+                      className={`calendar-agenda-event ${eventTone(item)}`}
+                      key={`${item.start}-${item.end}-${index}`}
+                    >
+                      <time>
+                        {formatTime(item.start)}–{formatTime(item.end)}
+                      </time>
+
+                      <div>
+                        <strong>{subjectOf(item)}</strong>
+                        <small>
+                          {[durationLabel(item), item.location]
+                            .filter(Boolean)
+                            .join(' · ')}
+                        </small>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      ))}
     </div>
   );
 }
@@ -369,7 +772,6 @@ export default function CalendarCapacityCenter() {
     };
   }, []);
 
-  const [config, setConfig] = useState(null);
   const [resources, setResources] = useState([]);
   const [teams, setTeams] = useState([]);
   const [departments, setDepartments] = useState([]);
@@ -378,8 +780,8 @@ export default function CalendarCapacityCenter() {
   const [userSearch, setUserSearch] = useState('');
   const [team, setTeam] = useState('');
   const [department, setDepartment] = useState('');
-  const [view, setView] = useState('timeline');
-  const [anchor, setAnchor] = useState(monthStart(new Date()));
+  const [view, setView] = useState('day');
+  const [anchor, setAnchor] = useState(() => new Date());
   const [schedule, setSchedule] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
@@ -387,16 +789,22 @@ export default function CalendarCapacityCenter() {
   const requestSequence = useRef(0);
 
   useEffect(() => {
-    Promise.all([
-      api('/api/calendar/configuration'),
-      api('/api/calendar/resources')
-    ])
-      .then(([configuration, resourcePayload]) => {
-        setConfig(configuration);
-        setResources(resourcePayload.resources || []);
+    api('/api/calendar/resources')
+      .then((resourcePayload) => {
+        const loadedResources = resourcePayload.resources || [];
+        const currentUserId = String(resourcePayload.currentUserId || '');
+        const currentUser = loadedResources.find(
+          (resource) => String(resource.userId) === currentUserId
+        );
+
+        setResources(loadedResources);
         setTeams(resourcePayload.teams || []);
         setDepartments(resourcePayload.departments || []);
-        setUserId(resourcePayload.resources?.[0]?.userId || '');
+        setUserId(
+          currentUser?.userId
+          || loadedResources[0]?.userId
+          || ''
+        );
       })
       .catch((loadError) => setError(loadError.message))
       .finally(() => {
@@ -432,10 +840,18 @@ export default function CalendarCapacityCenter() {
     [anchor, view]
   );
 
-  const workingDays = useMemo(
-    () => getWorkingDays(range.start, range.end),
-    [range]
+  const visibleDays = useMemo(
+    () => getVisibleDays(range, view),
+    [range, view]
   );
+
+  const periodView = [
+    'month',
+    'thismonth',
+    'nextmonth',
+    'thisquarter',
+    'nextquarter'
+  ].includes(view);
 
   const hasSelection = useMemo(() => {
     if (scope === 'individual') {
@@ -472,7 +888,9 @@ export default function CalendarCapacityCenter() {
             || 'UTC',
           view,
           intervalMinutes:
-            view === 'day' || view === 'workweek'
+            view === 'day'
+            || view === 'workweek'
+            || view === 'thisweek'
               ? 15
               : 30,
           resourceIds:
@@ -533,13 +951,33 @@ export default function CalendarCapacityCenter() {
     };
   }, [calendarReady, hasSelection, load]);
 
+  function selectView(nextView) {
+    const today = new Date();
+
+    setView(nextView);
+
+    if (nextView === 'day' || nextView === 'thisweek') {
+      setAnchor(today);
+    } else if (nextView === 'thismonth') {
+      setAnchor(monthStart(today));
+    } else if (nextView === 'nextmonth') {
+      setAnchor(addMonths(today, 1));
+    } else if (nextView === 'thisquarter') {
+      setAnchor(startOfQuarter(today));
+    } else if (nextView === 'nextquarter') {
+      setAnchor(addMonths(startOfQuarter(today), 3));
+    }
+  }
+
   function move(direction) {
     const next = new Date(anchor);
 
     if (view === 'day') {
       next.setDate(next.getDate() + direction);
-    } else if (view === 'workweek') {
+    } else if (view === 'workweek' || view === 'thisweek') {
       next.setDate(next.getDate() + (7 * direction));
+    } else if (view === 'thisquarter' || view === 'nextquarter') {
+      next.setMonth(next.getMonth() + (3 * direction));
     } else {
       next.setMonth(next.getMonth() + direction);
     }
@@ -547,17 +985,12 @@ export default function CalendarCapacityCenter() {
     setAnchor(next);
   }
 
+  function goToday() {
+    setView('day');
+    setAnchor(new Date());
+  }
+
   const scheduleRows = schedule?.schedules || [];
-  const agendaItems = scheduleRows
-    .flatMap((resource) =>
-      (resource.scheduleItems || []).map((item) => ({
-        ...item,
-        resource
-      }))
-    )
-    .sort((left, right) =>
-      String(left.start).localeCompare(String(right.start))
-    );
 
   return (
     <div
@@ -569,12 +1002,10 @@ export default function CalendarCapacityCenter() {
           <p className="eyebrow">MODULE 057</p>
           <h1>Resource & Team Calendar Capacity</h1>
           <p>
-            Review real Outlook work, engineer utilization, and
-            remaining capacity across a Monday–Friday resource
-            planning timeline.
+            Review real Outlook work, Microsoft profile photos,
+            engineer utilization, and remaining capacity.
           </p>
         </div>
-
       </header>
 
       <section className="calendar-capacity-controls">
@@ -610,24 +1041,17 @@ export default function CalendarCapacityCenter() {
                 <input
                   type="search"
                   value={userSearch}
-                  onChange={(event) =>
-                    setUserSearch(event.target.value)
-                  }
+                  onChange={(event) => setUserSearch(event.target.value)}
                   placeholder="Search users"
-                  aria-label="Search users by name, title, email, team, or department"
+                  aria-label="Search users"
                 />
 
                 <select
                   value={userId}
-                  onChange={(event) =>
-                    setUserId(event.target.value)
-                  }
+                  onChange={(event) => setUserId(event.target.value)}
                 >
                   {filteredResources.map((resource) => (
-                    <option
-                      key={resource.userId}
-                      value={resource.userId}
-                    >
+                    <option key={resource.userId} value={resource.userId}>
                       {resource.displayName}
                       {' — '}
                       {resource.jobTitle || 'Engineer'}
@@ -651,10 +1075,7 @@ export default function CalendarCapacityCenter() {
               >
                 <option value="">Select a team</option>
                 {teams.map((item) => (
-                  <option
-                    key={item.teamName}
-                    value={item.teamName}
-                  >
+                  <option key={item.teamName} value={item.teamName}>
                     {item.teamName} ({item.resourceCount})
                   </option>
                 ))}
@@ -667,9 +1088,7 @@ export default function CalendarCapacityCenter() {
               <span>Department</span>
               <select
                 value={department}
-                onChange={(event) =>
-                  setDepartment(event.target.value)
-                }
+                onChange={(event) => setDepartment(event.target.value)}
               >
                 <option value="">Select a department</option>
                 {departments.map((item) => (
@@ -688,12 +1107,16 @@ export default function CalendarCapacityCenter() {
             <span>View</span>
             <select
               value={view}
-              onChange={(event) => setView(event.target.value)}
+              onChange={(event) => selectView(event.target.value)}
             >
               <option value="day">Day</option>
               <option value="workweek">Work week</option>
+              <option value="thisweek">This week</option>
               <option value="month">Month capacity</option>
-              <option value="timeline">Resource timeline</option>
+              <option value="thismonth">This month</option>
+              <option value="nextmonth">Next month</option>
+              <option value="thisquarter">This quarter</option>
+              <option value="nextquarter">Next quarter</option>
               <option value="agenda">Agenda</option>
             </select>
           </label>
@@ -721,10 +1144,7 @@ export default function CalendarCapacityCenter() {
             <button type="button" onClick={() => move(-1)}>
               Previous
             </button>
-            <button
-              type="button"
-              onClick={() => setAnchor(new Date())}
-            >
+            <button type="button" onClick={goToday}>
               Today
             </button>
             <button type="button" onClick={() => move(1)}>
@@ -733,7 +1153,7 @@ export default function CalendarCapacityCenter() {
           </div>
 
           <div className="calendar-range-summary">
-            <strong>{formatRange(workingDays, anchor)}</strong>
+            <strong>{formatRange(visibleDays, anchor)}</strong>
             <span>
               Monday–Friday · 8 hours/day · 40 hours/week
             </span>
@@ -759,135 +1179,90 @@ export default function CalendarCapacityCenter() {
           <div className="calendar-board-heading">
             <div>
               <p className="eyebrow">Calendar agenda</p>
-              <h2>{formatRange(workingDays, anchor)}</h2>
+              <h2>{formatRange(visibleDays, anchor)}</h2>
             </div>
+
             <span>
               {scheduleRows.length} engineer
               {scheduleRows.length === 1 ? '' : 's'}
             </span>
           </div>
 
-          {agendaItems.length ? (
-            agendaItems.map((item, index) => (
-              <article
-                key={`${item.resource.email}-${item.start}-${index}`}
-                className={`calendar-agenda-item ${eventTone(item)}`}
-              >
-                <span>{item.status}</span>
-                <div>
-                  <strong>{item.subject || 'Busy'}</strong>
-                  <small>
-                    {item.resource.displayName}
-                    {' · '}
-                    {item.start} – {item.end}
-                    {durationLabel(item)
-                      ? ` · ${durationLabel(item)}`
-                      : ''}
-                  </small>
-                </div>
-              </article>
-            ))
-          ) : (
-            <p className="calendar-empty-state">
-              No calendar events were returned for this range.
-            </p>
-          )}
+          <AgendaBoard scheduleRows={scheduleRows} />
         </section>
       ) : (
         <section className="calendar-resource-board">
           <div className="calendar-board-heading">
             <div>
               <p className="eyebrow">
-                {view === 'timeline'
-                  ? 'Resource timeline'
-                  : 'Calendar capacity'}
+                {periodView ? 'Period capacity' : 'Calendar capacity'}
               </p>
-              <h2>{formatRange(workingDays, anchor)}</h2>
+              <h2>{formatRange(visibleDays, anchor)}</h2>
             </div>
 
             <span>
               {scheduleRows.length} engineer
               {scheduleRows.length === 1 ? '' : 's'}
               {' · '}
-              {workingDays.length} workday
-              {workingDays.length === 1 ? '' : 's'}
+              {visibleDays.length} day
+              {visibleDays.length === 1 ? '' : 's'}
             </span>
           </div>
 
-          <div className="calendar-resource-board-scroll">
-            <div
-              className="calendar-resource-board-grid"
-              style={{
-                '--calendar-workday-count':
-                  Math.max(workingDays.length, 1)
-              }}
-            >
-              <div className="calendar-resource-corner">
-                <strong>Engineer</strong>
-                <span>Monthly utilization and capacity</span>
-              </div>
-
-              {workingDays.map((day) => (
-                <div
-                  className="calendar-resource-date-header"
-                  key={`header-${dateKey(day)}`}
-                >
-                  <strong>
-                    {day.toLocaleString(undefined, {
-                      weekday: 'short'
-                    })}
-                  </strong>
-                  <span>
-                    {day.toLocaleString(undefined, {
-                      month: 'short',
-                      day: 'numeric'
-                    })}
-                  </span>
+          {periodView ? (
+            <PeriodCapacityBoard
+              scheduleRows={scheduleRows}
+              range={range}
+            />
+          ) : (
+            <div className="calendar-resource-board-scroll">
+              <div
+                className="calendar-resource-board-grid"
+                style={{
+                  '--calendar-day-count': Math.max(visibleDays.length, 1)
+                }}
+              >
+                <div className="calendar-resource-corner">
+                  <strong>Engineer</strong>
+                  <span>Utilization and capacity</span>
                 </div>
-              ))}
 
-              {scheduleRows.map((resource) => (
-                <div
-                  className="calendar-resource-row"
-                  key={resource.email}
-                >
-                  <ResourceProfile resource={resource} />
+                {visibleDays.map((day) => (
+                  <div
+                    className="calendar-resource-date-header"
+                    key={`header-${dateKey(day)}`}
+                  >
+                    <strong>
+                      {day.toLocaleString(undefined, { weekday: 'short' })}
+                    </strong>
+                    <span>
+                      {day.toLocaleString(undefined, {
+                        month: 'short',
+                        day: 'numeric'
+                      })}
+                    </span>
+                  </div>
+                ))}
 
-                  {workingDays.map((day) => {
-                    const dayItems = (
-                      resource.scheduleItems || []
-                    ).filter((item) =>
-                      eventOverlapsDay(item, day)
-                    );
+                {scheduleRows.map((resource) => (
+                  <div
+                    className="calendar-resource-row"
+                    key={resource.email}
+                  >
+                    <ResourceProfile resource={resource} />
 
-                    return (
-                      <div
-                        className="calendar-resource-day-cell"
+                    {visibleDays.map((day) => (
+                      <DayCell
+                        resource={resource}
+                        day={day}
                         key={`${resource.email}-${dateKey(day)}`}
-                      >
-                        <span className="calendar-resource-day-number">
-                          {day.getDate()}
-                        </span>
-
-                        {dayItems.length ? (
-                          dayItems.map((item, index) => (
-                            <CalendarEvent
-                              item={item}
-                              key={`${item.start}-${item.end}-${index}`}
-                            />
-                          ))
-                        ) : (
-                          <span className="calendar-resource-available">
-                            Available
-                          </span>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
+                      />
+                    ))}
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {!loading && scheduleRows.length === 0 ? (
             <p className="calendar-empty-state">
@@ -901,8 +1276,8 @@ export default function CalendarCapacityCenter() {
         <strong>Calendar privacy:</strong>
         {' '}
         Outlook titles appear when Microsoft Graph supplies them.
-        Private events display as “Private appointment,” and events
-        without shared details display as “Busy.”
+        Private events display as “Private appointment.” Events whose
+        details are not shared display as “Calendar event.”
       </footer>
     </div>
   );
