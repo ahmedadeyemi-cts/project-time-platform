@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.IO.Compression;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
@@ -15,6 +16,27 @@ public static class CertiniaBillingModule
         ["externalId", "id", "invoiceId", "recordId", "certiniaInvoiceId"];
     private static readonly string[] StatusFields =
         ["status", "invoiceStatus", "state"];
+    private static readonly string[] BroadInvoiceAccessRoleCodes =
+    [
+        "super_administrator",
+        "super_admin",
+        "administrator",
+        "admin",
+        "project_team_coordinator",
+        "accounting",
+        "accounting_billing",
+        "billing",
+        "finance",
+        "executive",
+        "pmo"
+    ];
+    private static readonly string[] CertiniaOperatorRoleCodes =
+    [
+        .. BroadInvoiceAccessRoleCodes,
+        "project_management_manager",
+        "project_management_lead",
+        "project_management_team_lead"
+    ];
 
     public static WebApplication MapCertiniaBillingEndpoints(this WebApplication app)
     {
@@ -633,24 +655,23 @@ public static class CertiniaBillingModule
         await using var command = new NpgsqlCommand("""
             SELECT EXISTS (
                 SELECT 1
-                FROM app_user_role_assignments assignment
+                FROM app_users user_row
+                JOIN app_user_role_assignments assignment
+                  ON assignment.user_id = user_row.user_id
                 JOIN app_roles role
                   ON role.app_role_id = assignment.app_role_id
-                WHERE assignment.user_id = @user_id
+                WHERE user_row.user_id = @user_id
+                  AND user_row.is_active = TRUE
                   AND assignment.is_active = TRUE
                   AND role.is_active = TRUE
-                  AND lower(role.role_code) IN (
-                      'admin',
-                      'administrator',
-                      'super_admin',
-                      'accounting',
-                      'finance',
-                      'pmo',
-                      'project_management_manager'
-                  )
+                  AND lower(role.role_code) = ANY(@role_codes)
             );
             """, connection);
         command.Parameters.AddWithValue("user_id", userId);
+        command.Parameters.Add(
+            "role_codes",
+            NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Text).Value =
+                CertiniaOperatorRoleCodes;
         var result = await command.ExecuteScalarAsync();
         return result is bool allowed && allowed;
     }
@@ -666,33 +687,28 @@ public static class CertiniaBillingModule
                 FROM billing_invoices invoice
                 JOIN projects project
                   ON project.project_id = invoice.project_id
+                JOIN app_users user_row
+                  ON user_row.user_id = @user_id
+                 AND user_row.is_active = TRUE
                 WHERE invoice.billing_invoice_id = @invoice_id
                   AND (
                       project.project_manager_user_id = @user_id
                       OR project.project_coordinator_user_id = @user_id
                       OR EXISTS (
                           SELECT 1
-                          FROM project_assignments assignment
-                          WHERE assignment.project_id = project.project_id
-                            AND assignment.user_id = @user_id
+                          FROM project_assignments project_assignment
+                          WHERE project_assignment.project_id = project.project_id
+                            AND project_assignment.user_id = @user_id
                       )
                       OR EXISTS (
                           SELECT 1
-                          FROM app_user_role_assignments assignment
+                          FROM app_user_role_assignments role_assignment
                           JOIN app_roles role
-                            ON role.app_role_id = assignment.app_role_id
-                          WHERE assignment.user_id = @user_id
-                            AND assignment.is_active = TRUE
+                            ON role.app_role_id = role_assignment.app_role_id
+                          WHERE role_assignment.user_id = @user_id
+                            AND role_assignment.is_active = TRUE
                             AND role.is_active = TRUE
-                            AND lower(role.role_code) IN (
-                                'admin',
-                                'administrator',
-                                'super_admin',
-                                'accounting',
-                                'finance',
-                                'pmo',
-                                'project_management_manager'
-                            )
+                            AND lower(role.role_code) = ANY(@broad_role_codes)
                       )
                   )
             );
@@ -700,6 +716,10 @@ public static class CertiniaBillingModule
 
         command.Parameters.AddWithValue("invoice_id", invoiceId);
         command.Parameters.AddWithValue("user_id", userId);
+        command.Parameters.Add(
+            "broad_role_codes",
+            NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Text).Value =
+                BroadInvoiceAccessRoleCodes;
         var result = await command.ExecuteScalarAsync();
         return result is bool allowed && allowed;
     }
@@ -916,73 +936,501 @@ public static class CertiniaBillingModule
         CertiniaInvoiceSnapshot invoice,
         InvoiceOutputOptions outputOptions)
     {
-        var header = invoice.Header;
-        var html = new StringBuilder();
-        html.Append("<!DOCTYPE html><html><head><meta charset=\"utf-8\">");
-        html.Append("<style>table{border-collapse:collapse;font-family:Arial;font-size:11pt}th,td{border:1px solid #888;padding:5px;vertical-align:top}th{background:#e9f2f8}.n{text-align:right;white-space:nowrap}.work{min-width:360px;white-space:normal}</style>");
-        html.Append("</head><body>");
-        html.Append($"<h1>Invoice {Html(header.InvoiceNumber)}</h1>");
-        html.Append("<table>");
-        AddExcelRow(html, "Customer", header.CustomerName);
-        AddExcelRow(html, "Project", $"{header.ProjectCode} - {header.ProjectName}");
-        AddExcelRow(html, "Project manager", outputOptions.IncludeProjectManagerName
-            ? Fallback(header.ProjectManagerName, "Not assigned")
-            : "Project Management");
-        AddExcelRow(html, "Project coordinator", outputOptions.IncludeProjectCoordinatorName
-            ? Fallback(header.ProjectCoordinatorName, "Not assigned")
-            : "Project Management");
-        AddExcelRow(html, "Purchase order", header.PurchaseOrderNumber);
-        AddExcelRow(html, "Invoice date", FormatDate(header.InvoiceDate));
-        AddExcelRow(html, "Billing period", $"{FormatDate(header.BillingPeriodStart)} through {FormatDate(header.BillingPeriodEnd)}");
-        AddExcelRow(html, "Certinia ID", header.CertiniaId);
-        AddExcelRow(html, "Salesforce ID", header.SalesforceId);
-        AddExcelRow(html, "SELL Quote", header.SellQuote);
-        html.Append("</table><br><table><thead><tr>");
-
-        foreach (var heading in new[]
-        {
-            "Line", "Work Date", "Resource", "Task Code", "Task",
-            "Work Performed", "Hours", "Rate Code", "Rate Description", "Unit Rate", "Amount"
-        })
-        {
-            html.Append($"<th>{Html(heading)}</th>");
-        }
-
-        html.Append("</tr></thead><tbody>");
-        foreach (var line in invoice.Lines)
-        {
-            html.Append("<tr>");
-            AddCell(html, line.LineNumber.ToString(CultureInfo.InvariantCulture));
-            AddCell(html, FormatDate(line.WorkDate));
-            AddCell(html, CustomerResource(line, outputOptions.IncludeEngineerNames));
-            AddCell(html, line.TaskCode);
-            AddCell(html, line.TaskName);
-            AddCell(html, line.Description);
-            AddCell(html, line.ApprovedHours.ToString("0.00", CultureInfo.InvariantCulture), true);
-            AddCell(html, line.RateCode);
-            AddCell(html, line.RateDescription);
-            AddCell(html, $"${line.UnitRate:0.00}/hr", true);
-            AddCell(html, $"${line.LineAmount:0.00}", true);
-            html.Append("</tr>");
-        }
-
-        html.Append("</tbody><tfoot>");
-        html.Append($"<tr><th colspan=\"10\">Invoice total</th><th class=\"n\">${header.TotalAmount:0.00}</th></tr>");
-        html.Append("</tfoot></table>");
-        html.Append("<p>Generated from the immutable ProjectPulse invoice snapshot.</p>");
-        html.Append($"<p>Personal names: engineers {(outputOptions.IncludeEngineerNames ? "included" : "hidden")}; project manager {(outputOptions.IncludeProjectManagerName ? "included" : "hidden")}; project coordinator {(outputOptions.IncludeProjectCoordinatorName ? "included" : "hidden")}.</p>");
-        html.Append("</body></html>");
-
-        var bytes = Encoding.UTF8.GetBytes(html.ToString());
-        var fileName = SafeFileName(header.InvoiceNumber) +
-            (outputOptions.IncludeAnyNames ? "-with-selected-names.xls" : ".xls");
+        var bytes = BuildNativeExcelWorkbook(invoice, outputOptions);
+        var suffix = outputOptions.IncludeAnyNames
+            ? "-with-selected-names"
+            : string.Empty;
+        var fileName = $"{SafeFileName(invoice.Header.InvoiceNumber)}{suffix}.xlsx";
 
         return new CertiniaArtifact(
             "excel",
-            "application/vnd.ms-excel",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             fileName,
             bytes,
             Sha256Hex(bytes));
+    }
+
+    private static byte[] BuildNativeExcelWorkbook(
+        CertiniaInvoiceSnapshot invoice,
+        InvoiceOutputOptions outputOptions)
+    {
+        using var output = new MemoryStream();
+
+        using (var archive = new ZipArchive(
+            output,
+            ZipArchiveMode.Create,
+            leaveOpen: true))
+        {
+            AddXlsxEntry(archive, "[Content_Types].xml", BuildXlsxContentTypes());
+            AddXlsxEntry(archive, "_rels/.rels", BuildXlsxRootRelationships());
+            AddXlsxEntry(archive, "docProps/core.xml", BuildXlsxCoreProperties(invoice));
+            AddXlsxEntry(archive, "docProps/app.xml", BuildXlsxAppProperties());
+            AddXlsxEntry(archive, "xl/workbook.xml", BuildXlsxWorkbook(invoice));
+            AddXlsxEntry(archive, "xl/_rels/workbook.xml.rels", BuildXlsxWorkbookRelationships());
+            AddXlsxEntry(archive, "xl/styles.xml", BuildXlsxStyles());
+            AddXlsxEntry(
+                archive,
+                "xl/worksheets/sheet1.xml",
+                BuildXlsxSummaryWorksheet(invoice, outputOptions));
+            AddXlsxEntry(
+                archive,
+                "xl/worksheets/sheet2.xml",
+                BuildXlsxDetailWorksheet(invoice, outputOptions));
+            AddXlsxEntry(
+                archive,
+                "xl/worksheets/_rels/sheet2.xml.rels",
+                BuildXlsxDetailRelationships());
+            AddXlsxEntry(
+                archive,
+                "xl/tables/table1.xml",
+                BuildXlsxDetailTable(invoice));
+        }
+
+        return output.ToArray();
+    }
+
+    private static string BuildXlsxContentTypes() => """
+        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+          <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+          <Default Extension="xml" ContentType="application/xml"/>
+          <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
+          <Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
+          <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+          <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+          <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+          <Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+          <Override PartName="/xl/tables/table1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.table+xml"/>
+        </Types>
+        """;
+
+    private static string BuildXlsxRootRelationships() => """
+        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+          <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+          <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
+          <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>
+        </Relationships>
+        """;
+
+    private static string BuildXlsxCoreProperties(CertiniaInvoiceSnapshot invoice)
+    {
+        var created = DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture);
+        return $"""
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+              <dc:title>Invoice {XlsxXml(invoice.Header.InvoiceNumber)}</dc:title>
+              <dc:subject>ProjectPulse immutable invoice workbook</dc:subject>
+              <dc:creator>ProjectPulse</dc:creator>
+              <cp:lastModifiedBy>ProjectPulse</cp:lastModifiedBy>
+              <dcterms:created xsi:type="dcterms:W3CDTF">{created}</dcterms:created>
+              <dcterms:modified xsi:type="dcterms:W3CDTF">{created}</dcterms:modified>
+            </cp:coreProperties>
+            """;
+    }
+
+    private static string BuildXlsxAppProperties() => """
+        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">
+          <Application>ProjectPulse</Application>
+          <DocSecurity>0</DocSecurity>
+          <ScaleCrop>false</ScaleCrop>
+          <HeadingPairs>
+            <vt:vector size="2" baseType="variant">
+              <vt:variant><vt:lpstr>Worksheets</vt:lpstr></vt:variant>
+              <vt:variant><vt:i4>2</vt:i4></vt:variant>
+            </vt:vector>
+          </HeadingPairs>
+          <TitlesOfParts>
+            <vt:vector size="2" baseType="lpstr">
+              <vt:lpstr>Invoice Summary</vt:lpstr>
+              <vt:lpstr>Invoice Detail</vt:lpstr>
+            </vt:vector>
+          </TitlesOfParts>
+          <Company>ProjectPulse</Company>
+          <AppVersion>1.0</AppVersion>
+        </Properties>
+        """;
+
+    private static string BuildXlsxWorkbook(CertiniaInvoiceSnapshot invoice)
+    {
+        var detailEnd = Math.Max(1, invoice.Lines.Count + 1);
+        var detailPrintEnd = detailEnd + 5;
+        return $"""
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+              <bookViews><workbookView activeTab="0"/></bookViews>
+              <sheets>
+                <sheet name="Invoice Summary" sheetId="1" r:id="rId1"/>
+                <sheet name="Invoice Detail" sheetId="2" r:id="rId2"/>
+              </sheets>
+              <definedNames>
+                <definedName name="_xlnm.Print_Area" localSheetId="0">'Invoice Summary'!$A$1:$K$22</definedName>
+                <definedName name="_xlnm.Print_Area" localSheetId="1">'Invoice Detail'!$A$1:$K${detailPrintEnd}</definedName>
+              </definedNames>
+              <calcPr calcId="191029"/>
+            </workbook>
+            """;
+    }
+
+    private static string BuildXlsxWorkbookRelationships() => """
+        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+          <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+          <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/>
+          <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+        </Relationships>
+        """;
+
+    private static string BuildXlsxStyles() => """
+        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+          <numFmts count="3">
+            <numFmt numFmtId="164" formatCode="mm/dd/yyyy"/>
+            <numFmt numFmtId="165" formatCode="$#,##0.00"/>
+            <numFmt numFmtId="166" formatCode="0.00"/>
+          </numFmts>
+          <fonts count="4">
+            <font><sz val="11"/><name val="Aptos"/><family val="2"/></font>
+            <font><b/><color rgb="FFFFFFFF"/><sz val="20"/><name val="Aptos Display"/><family val="2"/></font>
+            <font><b/><color rgb="FFFFFFFF"/><sz val="11"/><name val="Aptos"/><family val="2"/></font>
+            <font><b/><color rgb="FF17324D"/><sz val="11"/><name val="Aptos"/><family val="2"/></font>
+          </fonts>
+          <fills count="4">
+            <fill><patternFill patternType="none"/></fill>
+            <fill><patternFill patternType="gray125"/></fill>
+            <fill><patternFill patternType="solid"><fgColor rgb="FF0B5A7A"/><bgColor indexed="64"/></patternFill></fill>
+            <fill><patternFill patternType="solid"><fgColor rgb="FFEAF3F8"/><bgColor indexed="64"/></patternFill></fill>
+          </fills>
+          <borders count="2">
+            <border><left/><right/><top/><bottom/><diagonal/></border>
+            <border>
+              <left style="thin"><color rgb="FFC7D6E0"/></left>
+              <right style="thin"><color rgb="FFC7D6E0"/></right>
+              <top style="thin"><color rgb="FFC7D6E0"/></top>
+              <bottom style="thin"><color rgb="FFC7D6E0"/></bottom>
+              <diagonal/>
+            </border>
+          </borders>
+          <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+          <cellXfs count="14">
+            <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+            <xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>
+            <xf numFmtId="0" fontId="2" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
+            <xf numFmtId="0" fontId="3" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf>
+            <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>
+            <xf numFmtId="164" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+            <xf numFmtId="166" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+            <xf numFmtId="165" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+            <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment vertical="top"/></xf>
+            <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf>
+            <xf numFmtId="0" fontId="3" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+            <xf numFmtId="165" fontId="3" fillId="3" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+            <xf numFmtId="166" fontId="3" fillId="3" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+            <xf numFmtId="0" fontId="3" fillId="3" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>
+          </cellXfs>
+          <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
+          <tableStyles count="1" defaultTableStyle="TableStyleMedium2" defaultPivotStyle="PivotStyleLight16"/>
+        </styleSheet>
+        """;
+
+    private static string BuildXlsxSummaryWorksheet(
+        CertiniaInvoiceSnapshot invoice,
+        InvoiceOutputOptions outputOptions)
+    {
+        var header = invoice.Header;
+        var projectManager = outputOptions.IncludeProjectManagerName
+            ? Fallback(header.ProjectManagerName, "Not assigned")
+            : "Project Management";
+        var projectCoordinator = outputOptions.IncludeProjectCoordinatorName
+            ? Fallback(header.ProjectCoordinatorName, "Not assigned")
+            : "Project Management";
+        var personalNames = string.Join(
+            "; ",
+            $"engineers {(outputOptions.IncludeEngineerNames ? "included" : "hidden")}",
+            $"Project Manager {(outputOptions.IncludeProjectManagerName ? "included" : "hidden")}",
+            $"Project Coordinator {(outputOptions.IncludeProjectCoordinatorName ? "included" : "hidden")}");
+        var totalHours = invoice.Lines.Sum(line => line.ApprovedHours);
+        var xml = new StringBuilder();
+
+        xml.Append("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>");
+        xml.Append("<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">");
+        xml.Append("<sheetPr><pageSetUpPr fitToPage=\"1\"/></sheetPr>");
+        xml.Append("<dimension ref=\"A1:K22\"/>");
+        xml.Append("<sheetViews><sheetView workbookViewId=\"0\"><pane ySplit=\"3\" topLeftCell=\"A4\" activePane=\"bottomLeft\" state=\"frozen\"/></sheetView></sheetViews>");
+        xml.Append("<sheetFormatPr defaultRowHeight=\"18\"/>");
+        xml.Append("<cols><col min=\"1\" max=\"1\" width=\"21\" customWidth=\"1\"/><col min=\"2\" max=\"6\" width=\"17\" customWidth=\"1\"/><col min=\"7\" max=\"7\" width=\"22\" customWidth=\"1\"/><col min=\"8\" max=\"11\" width=\"17\" customWidth=\"1\"/></cols>");
+        xml.Append("<sheetData>");
+
+        xml.Append("<row r=\"1\" ht=\"30\" customHeight=\"1\">");
+        AppendXlsxInlineCell(xml, "A1", $"Invoice {header.InvoiceNumber}", 1);
+        xml.Append("</row>");
+        xml.Append("<row r=\"3\" ht=\"22\" customHeight=\"1\">");
+        AppendXlsxInlineCell(xml, "A3", "Professional Services Invoice", 13);
+        xml.Append("</row>");
+
+        AppendXlsxSummaryPair(xml, 5, "A", "Customer", "B", header.CustomerName, "G", "Invoice number", "H", header.InvoiceNumber);
+        AppendXlsxSummaryPair(xml, 6, "A", "Project", "B", $"{header.ProjectCode} — {header.ProjectName}", "G", "Invoice type", "H", header.InvoiceType);
+        AppendXlsxSummaryPair(xml, 7, "A", "Project Manager", "B", projectManager, "G", "Project Coordinator", "H", projectCoordinator);
+        AppendXlsxSummaryPair(xml, 8, "A", "Billing period", "B", $"{FormatDate(header.BillingPeriodStart)} through {FormatDate(header.BillingPeriodEnd)}", "G", "Invoice date", "H", FormatDate(header.InvoiceDate));
+        AppendXlsxSummaryPair(xml, 9, "A", "Purchase order", "B", Fallback(header.PurchaseOrderNumber, "Not configured"), "G", "SELL Quote", "H", Fallback(header.SellQuote, "Not configured"));
+        AppendXlsxSummaryPair(xml, 10, "A", "Certinia ID", "B", Fallback(header.CertiniaId, "Not configured"), "G", "Salesforce ID", "H", Fallback(header.SalesforceId, "Not configured"));
+        AppendXlsxSummaryPair(xml, 11, "A", "Contract type", "B", Fallback(header.ContractType, "Not configured"), "G", "Personal names", "H", personalNames);
+        AppendXlsxSummaryPair(xml, 12, "A", "PO authorized amount", "B", header.PurchaseOrderAmount is decimal poAmount ? $"${poAmount:0.00}" : "Not configured", "G", "Snapshot SHA256", "H", invoice.ImmutableSnapshotSha256);
+
+        xml.Append("<row r=\"13\">");
+        AppendXlsxInlineCell(xml, "A13", "Total hours", 3);
+        AppendXlsxNumberCell(xml, "B13", totalHours, 12);
+        AppendXlsxInlineCell(xml, "D13", "Subtotal", 3);
+        AppendXlsxNumberCell(xml, "E13", header.SubtotalAmount, 11);
+        AppendXlsxInlineCell(xml, "G13", "Adjustments", 3);
+        AppendXlsxNumberCell(xml, "H13", header.AdjustmentAmount, 11);
+        AppendXlsxInlineCell(xml, "J13", "Tax", 3);
+        AppendXlsxNumberCell(xml, "K13", header.TaxAmount, 11);
+        xml.Append("</row>");
+
+        xml.Append("<row r=\"15\" ht=\"24\" customHeight=\"1\">");
+        AppendXlsxInlineCell(xml, "D15", "Invoice total", 10);
+        AppendXlsxNumberCell(xml, "K15", header.TotalAmount, 11);
+        xml.Append("</row>");
+
+        xml.Append("<row r=\"17\">");
+        AppendXlsxInlineCell(xml, "A17", "Invoice notes", 3);
+        xml.Append("</row>");
+        xml.Append("<row r=\"18\" ht=\"54\" customHeight=\"1\">");
+        AppendXlsxInlineCell(xml, "A18", Fallback(header.Notes, "No invoice notes."), 4);
+        xml.Append("</row>");
+        xml.Append("<row r=\"22\" ht=\"28\" customHeight=\"1\">");
+        AppendXlsxInlineCell(xml, "A22", "Generated from the immutable ProjectPulse invoice snapshot. Dates, hours, rates, and amounts are native Excel values.", 4);
+        xml.Append("</row>");
+
+        xml.Append("</sheetData>");
+        xml.Append("<mergeCells count=\"17\">");
+        foreach (var range in new[]
+        {
+            "A1:K2", "A3:K3",
+            "B5:F5", "H5:K5", "B6:F6", "H6:K6", "B7:F7", "H7:K7",
+            "B8:F8", "H8:K8", "B9:F9", "H9:K9", "B10:F10", "H10:K10",
+            "D15:J15", "A18:K20", "A22:K22"
+        })
+        {
+            xml.Append("<mergeCell ref=\"").Append(range).Append("\"/>");
+        }
+        xml.Append("</mergeCells>");
+        xml.Append("<pageMargins left=\"0.35\" right=\"0.35\" top=\"0.5\" bottom=\"0.5\" header=\"0.2\" footer=\"0.2\"/>");
+        xml.Append("<pageSetup paperSize=\"9\" orientation=\"landscape\" fitToWidth=\"1\" fitToHeight=\"1\"/>");
+        xml.Append("</worksheet>");
+        return xml.ToString();
+    }
+
+    private static void AppendXlsxSummaryPair(
+        StringBuilder xml,
+        int row,
+        string leftLabelColumn,
+        string leftLabel,
+        string leftValueColumn,
+        string leftValue,
+        string rightLabelColumn,
+        string rightLabel,
+        string rightValueColumn,
+        string rightValue)
+    {
+        xml.Append("<row r=\"").Append(row).Append("\">");
+        AppendXlsxInlineCell(xml, $"{leftLabelColumn}{row}", leftLabel, 3);
+        AppendXlsxInlineCell(xml, $"{leftValueColumn}{row}", leftValue, 4);
+        AppendXlsxInlineCell(xml, $"{rightLabelColumn}{row}", rightLabel, 3);
+        AppendXlsxInlineCell(xml, $"{rightValueColumn}{row}", rightValue, 4);
+        xml.Append("</row>");
+    }
+
+    private static string BuildXlsxDetailWorksheet(
+        CertiniaInvoiceSnapshot invoice,
+        InvoiceOutputOptions outputOptions)
+    {
+        var dataEnd = Math.Max(1, invoice.Lines.Count + 1);
+        var subtotalRow = dataEnd + 2;
+        var totalRow = subtotalRow + 3;
+        var xml = new StringBuilder();
+
+        xml.Append("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>");
+        xml.Append("<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">");
+        xml.Append("<sheetPr><pageSetUpPr fitToPage=\"1\"/></sheetPr>");
+        xml.Append("<dimension ref=\"A1:K").Append(totalRow).Append("\"/>");
+        xml.Append("<sheetViews><sheetView workbookViewId=\"0\"><pane ySplit=\"1\" topLeftCell=\"A2\" activePane=\"bottomLeft\" state=\"frozen\"/></sheetView></sheetViews>");
+        xml.Append("<sheetFormatPr defaultRowHeight=\"18\"/>");
+        xml.Append("<cols>");
+        foreach (var column in new[]
+        {
+            (1, 1, 8d), (2, 2, 14d), (3, 3, 28d), (4, 4, 16d),
+            (5, 5, 32d), (6, 6, 55d), (7, 7, 10d), (8, 8, 18d),
+            (9, 9, 32d), (10, 10, 14d), (11, 11, 15d)
+        })
+        {
+            xml.Append("<col min=\"").Append(column.Item1)
+                .Append("\" max=\"").Append(column.Item2)
+                .Append("\" width=\"").Append(column.Item3.ToString("0.##", CultureInfo.InvariantCulture))
+                .Append("\" customWidth=\"1\"/>");
+        }
+        xml.Append("</cols><sheetData>");
+
+        xml.Append("<row r=\"1\" ht=\"32\" customHeight=\"1\">");
+        var headings = new[]
+        {
+            "Line", "Work Date", "Resource", "Task Code", "Task",
+            "Work Description", "Hours", "Rate Code", "Rate Description",
+            "Unit Rate", "Amount"
+        };
+        var columns = new[] { "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K" };
+        for (var index = 0; index < headings.Length; index++)
+        {
+            AppendXlsxInlineCell(xml, $"{columns[index]}1", headings[index], 2);
+        }
+        xml.Append("</row>");
+
+        var rowNumber = 2;
+        foreach (var line in invoice.Lines)
+        {
+            xml.Append("<row r=\"").Append(rowNumber).Append("\" ht=\"45\" customHeight=\"1\">");
+            AppendXlsxNumberCell(xml, $"A{rowNumber}", line.LineNumber, 8);
+            AppendXlsxDateCell(xml, $"B{rowNumber}", line.WorkDate, 5);
+            AppendXlsxInlineCell(xml, $"C{rowNumber}", CustomerResource(line, outputOptions.IncludeEngineerNames), 8);
+            AppendXlsxInlineCell(xml, $"D{rowNumber}", line.TaskCode, 8);
+            AppendXlsxInlineCell(xml, $"E{rowNumber}", line.TaskName, 9);
+            AppendXlsxInlineCell(xml, $"F{rowNumber}", line.Description, 9);
+            AppendXlsxNumberCell(xml, $"G{rowNumber}", line.ApprovedHours, 6);
+            AppendXlsxInlineCell(xml, $"H{rowNumber}", line.RateCode, 8);
+            AppendXlsxInlineCell(xml, $"I{rowNumber}", line.RateDescription, 9);
+            AppendXlsxNumberCell(xml, $"J{rowNumber}", line.UnitRate, 7);
+            AppendXlsxNumberCell(xml, $"K{rowNumber}", line.LineAmount, 7);
+            xml.Append("</row>");
+            rowNumber++;
+        }
+
+        AppendXlsxTotalRow(xml, subtotalRow, "Subtotal", invoice.Header.SubtotalAmount);
+        AppendXlsxTotalRow(xml, subtotalRow + 1, "Adjustments", invoice.Header.AdjustmentAmount);
+        AppendXlsxTotalRow(xml, subtotalRow + 2, "Tax", invoice.Header.TaxAmount);
+        AppendXlsxTotalRow(xml, totalRow, "Invoice total", invoice.Header.TotalAmount);
+
+        xml.Append("</sheetData>");
+        xml.Append("<pageMargins left=\"0.25\" right=\"0.25\" top=\"0.45\" bottom=\"0.45\" header=\"0.2\" footer=\"0.2\"/>");
+        xml.Append("<pageSetup paperSize=\"9\" orientation=\"landscape\" fitToWidth=\"1\" fitToHeight=\"0\"/>");
+        xml.Append("<tableParts count=\"1\"><tablePart r:id=\"rId1\"/></tableParts>");
+        xml.Append("</worksheet>");
+        return xml.ToString();
+    }
+
+    private static void AppendXlsxTotalRow(
+        StringBuilder xml,
+        int row,
+        string label,
+        decimal value)
+    {
+        xml.Append("<row r=\"").Append(row).Append("\">");
+        AppendXlsxInlineCell(xml, $"J{row}", label, 10);
+        AppendXlsxNumberCell(xml, $"K{row}", value, 11);
+        xml.Append("</row>");
+    }
+
+    private static string BuildXlsxDetailRelationships() => """
+        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+          <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/table" Target="../tables/table1.xml"/>
+        </Relationships>
+        """;
+
+    private static string BuildXlsxDetailTable(CertiniaInvoiceSnapshot invoice)
+    {
+        var dataEnd = Math.Max(1, invoice.Lines.Count + 1);
+        var columns = new[]
+        {
+            "Line", "Work Date", "Resource", "Task Code", "Task",
+            "Work Description", "Hours", "Rate Code", "Rate Description",
+            "Unit Rate", "Amount"
+        };
+        var xml = new StringBuilder();
+        xml.Append("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>");
+        xml.Append("<table xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" id=\"1\" name=\"InvoiceDetailTable\" displayName=\"InvoiceDetailTable\" ref=\"A1:K")
+            .Append(dataEnd)
+            .Append("\" totalsRowShown=\"0\">");
+        xml.Append("<autoFilter ref=\"A1:K").Append(dataEnd).Append("\"/>");
+        xml.Append("<tableColumns count=\"11\">");
+        for (var index = 0; index < columns.Length; index++)
+        {
+            xml.Append("<tableColumn id=\"").Append(index + 1)
+                .Append("\" name=\"").Append(XlsxXml(columns[index])).Append("\"/>");
+        }
+        xml.Append("</tableColumns>");
+        xml.Append("<tableStyleInfo name=\"TableStyleMedium2\" showFirstColumn=\"0\" showLastColumn=\"0\" showRowStripes=\"1\" showColumnStripes=\"0\"/>");
+        xml.Append("</table>");
+        return xml.ToString();
+    }
+
+    private static void AddXlsxEntry(
+        ZipArchive archive,
+        string path,
+        string content)
+    {
+        var entry = archive.CreateEntry(path, CompressionLevel.Optimal);
+        using var writer = new StreamWriter(
+            entry.Open(),
+            new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        writer.Write(content);
+    }
+
+    private static void AppendXlsxInlineCell(
+        StringBuilder xml,
+        string reference,
+        string? value,
+        int style)
+    {
+        xml.Append("<c r=\"").Append(reference)
+            .Append("\" s=\"").Append(style)
+            .Append("\" t=\"inlineStr\"><is><t xml:space=\"preserve\">")
+            .Append(XlsxXml(value))
+            .Append("</t></is></c>");
+    }
+
+    private static void AppendXlsxNumberCell(
+        StringBuilder xml,
+        string reference,
+        decimal value,
+        int style)
+    {
+        xml.Append("<c r=\"").Append(reference)
+            .Append("\" s=\"").Append(style)
+            .Append("\"><v>")
+            .Append(value.ToString(CultureInfo.InvariantCulture))
+            .Append("</v></c>");
+    }
+
+    private static void AppendXlsxDateCell(
+        StringBuilder xml,
+        string reference,
+        DateOnly? value,
+        int style)
+    {
+        if (value is null)
+        {
+            AppendXlsxInlineCell(xml, reference, "Not configured", 8);
+            return;
+        }
+
+        var serial = value.Value
+            .ToDateTime(TimeOnly.MinValue)
+            .ToOADate()
+            .ToString(CultureInfo.InvariantCulture);
+        xml.Append("<c r=\"").Append(reference)
+            .Append("\" s=\"").Append(style)
+            .Append("\"><v>").Append(serial).Append("</v></c>");
+    }
+
+    private static string XlsxXml(string? value)
+    {
+        var normalized = new string((value ?? string.Empty)
+            .Where(character => character is '\t' or '\n' or '\r' || character >= ' ')
+            .ToArray());
+        return System.Security.SecurityElement.Escape(Limit(normalized, 32767))
+            ?? string.Empty;
     }
 
     private static byte[] BuildSimplePdf(IReadOnlyList<string> sourceLines)
@@ -2211,7 +2659,7 @@ public static class CertiniaBillingModule
     private static string NormalizeDocumentFormat(string? value)
     {
         var normalized = Clean(value).ToLowerInvariant();
-        return normalized is "excel" or "xls" ? "excel" : "pdf";
+        return normalized is "excel" or "xls" or "xlsx" ? "excel" : "pdf";
     }
 
     private static bool ReadBoolean(string? value)
@@ -2302,33 +2750,6 @@ public static class CertiniaBillingModule
             .Select(character => invalid.Contains(character) ? '-' : character)
             .ToArray());
         return string.IsNullOrWhiteSpace(cleaned) ? "invoice" : cleaned;
-    }
-
-    private static string Html(string? value)
-    {
-        return System.Net.WebUtility.HtmlEncode(value ?? string.Empty);
-    }
-
-    private static void AddExcelRow(
-        StringBuilder builder,
-        string label,
-        string? value)
-    {
-        builder.Append("<tr><th>")
-            .Append(Html(label))
-            .Append("</th><td>")
-            .Append(Html(value))
-            .Append("</td></tr>");
-    }
-
-    private static void AddCell(
-        StringBuilder builder,
-        string? value,
-        bool numeric = false)
-    {
-        builder.Append(numeric ? "<td class=\"n\">" : "<td>")
-            .Append(Html(value))
-            .Append("</td>");
     }
 
     private static string PdfAscii(string? value)

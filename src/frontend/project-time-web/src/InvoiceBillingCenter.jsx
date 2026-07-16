@@ -443,14 +443,18 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
       const response = await fetch(`/api/billing/invoices/${invoiceId}/document?${query.toString()}`, { credentials: 'include' });
       if (!response.ok) throw new Error(`Invoice output returned HTTP ${response.status}: ${await response.text()}`);
       const contentType = response.headers.get('content-type') || '';
-      if (!contentType.toLowerCase().includes(format === 'excel' ? 'excel' : 'pdf')) {
+      const normalizedContentType = contentType.toLowerCase();
+      const expectedContentType = format === 'excel'
+        ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        : 'application/pdf';
+      if (!normalizedContentType.includes(expectedContentType)) {
         throw new Error(`Invoice output returned an unexpected content type: ${contentType || 'not provided'}.`);
       }
       const blob = await response.blob();
       if (!blob.size) throw new Error('Invoice output was empty.');
       const disposition = response.headers.get('content-disposition') || '';
       const match = disposition.match(/filename\*?=(?:UTF-8''|\")?([^";]+)/i);
-      const extension = format === 'excel' ? 'xls' : 'pdf';
+      const extension = format === 'excel' ? 'xlsx' : 'pdf';
       const fileName = match
         ? decodeURIComponent(match[1].replaceAll('"', '').trim())
         : `${invoiceDetail.header.invoiceNumber || 'invoice'}.${extension}`;
@@ -479,46 +483,6 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
     }
 
     return 'Professional Services Engineer';
-  }
-
-  function csvEscape(value) {
-    const normalized = String(value ?? '');
-    return `"${normalized.replaceAll('"', '""')}"`;
-  }
-
-  function downloadInvoiceCsv() {
-    if (!invoiceDetail?.header || !invoiceDetail?.lines?.length) return;
-
-    const header = invoiceDetail.header;
-    const rows = [
-      ['Invoice Number','Customer','Project Code','Project','PO Number','Work Date','Resource','Task Code','Task','Time Entry Description','Hours','Rate','Amount'],
-      ...invoiceDetail.lines.map((line) => [
-        header.invoiceNumber,
-        header.customerName,
-        header.projectCode,
-        header.projectName,
-        header.purchaseOrderNumber,
-        line.workDate,
-        customerResourceLabel(line),
-        line.taskCode,
-        line.taskName,
-        line.description,
-        line.approvedHours,
-        line.unitRate,
-        line.lineAmount
-      ])
-    ];
-
-    const csv = rows.map((row) => row.map(csvEscape).join(',')).join('\r\n');
-    const blob = new Blob([`\ufeff${csv}`], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = `${header.invoiceNumber || 'invoice'}-detail.csv`;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    URL.revokeObjectURL(url);
   }
 
   function previewCertiniaPayload() {
@@ -587,7 +551,7 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
         <div className="m042-actions">
           <button type="button" className="secondary-action" onClick={() => setDrawerOpen(true)}>Customize columns</button>
           <button type="button" className="secondary-action" onClick={() => void loadLiveData(selected?.projectId)}>Reload billing data</button>
-          <button type="button" className="secondary-action" disabled={!invoiceDetail || invoiceDetailLoading} title={invoiceDetail ? 'Download the selected immutable invoice as Excel.' : 'Select or create an invoice first.'} onClick={() => void downloadServerInvoiceArtifact('excel')}>Download Excel</button>
+          <button type="button" className="secondary-action" disabled={!invoiceDetail || invoiceDetailLoading} title={invoiceDetail ? 'Download the selected immutable invoice as a formatted native Excel workbook (.xlsx).' : 'Select or create an invoice first.'} onClick={() => void downloadServerInvoiceArtifact('excel')}>Download Excel (.xlsx)</button>
           <button type="button" className="primary-action" disabled={!invoiceDetail || invoiceDetailLoading} title={invoiceDetail ? 'Download the selected immutable invoice as PDF without opening a pop-up window.' : 'Select or create an invoice first.'} onClick={() => void downloadServerInvoiceArtifact('pdf')}>Download PDF</button>
         </div>
       </header>
@@ -1000,7 +964,7 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
 
                         <div className="m042-actions m042-detail-actions">
                           <button type="button" className="primary-action" onClick={() => void downloadServerInvoiceArtifact('pdf')}>Download PDF</button>
-                          <button type="button" className="secondary-action" onClick={() => void downloadServerInvoiceArtifact('excel')}>Download Excel</button>
+                          <button type="button" className="secondary-action" onClick={() => void downloadServerInvoiceArtifact('excel')}>Download Excel (.xlsx)</button>
                           <span className="m042-popup-free-note" role="note">PDF downloads directly. Open the downloaded PDF to print.</span>
                           <button type="button" className="secondary-action" onClick={previewCertiniaPayload}>Preview Certinia payload</button>
                           <button
