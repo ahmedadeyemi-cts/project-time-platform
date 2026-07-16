@@ -92,6 +92,9 @@ public static class InvoiceBillingModule
             var assignedEngineers = await LoadAssignedEngineersAsync(connection, project.ProjectId);
             var lines = await LoadCandidateLinesAsync(connection, project.ProjectId);
             var invoiceHistory = await LoadInvoiceHistoryAsync(connection, project.ProjectId);
+            var commercial = await SellCommercialReadModelModule.LoadProjectCommercialSummaryAsync(
+                connection,
+                project.ProjectId);
 
             var projectBlockers = BuildProjectBlockers(project, lines);
             var approvedHours = lines.Sum(line => line.ApprovedHours);
@@ -138,7 +141,8 @@ public static class InvoiceBillingModule
                 projectBlockers,
                 projectBlockers.Count == 0 && lines.Any(line => line.RateOptions.Count > 0),
                 access.CanCreateInvoices,
-                invoiceHistory));
+                invoiceHistory,
+                commercial));
         }
 
         if (projectId is not null && candidates.Count == 0)
@@ -2036,7 +2040,8 @@ internal sealed record InvoiceBillingCandidate(
     IReadOnlyList<string> Blockers,
     bool CanCreateInvoice,
     bool CurrentUserCanCreateInvoices,
-    IReadOnlyList<InvoiceBillingInvoiceSummary> InvoiceHistory);
+    IReadOnlyList<InvoiceBillingInvoiceSummary> InvoiceHistory,
+    SellCommercialProjectSummary Commercial);
 
 internal sealed record InvoiceBillingCandidateLineSource(
     Guid TimeEntryId,

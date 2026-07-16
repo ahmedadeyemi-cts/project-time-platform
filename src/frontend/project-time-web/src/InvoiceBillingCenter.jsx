@@ -13,6 +13,7 @@ const columns = [
   ['assignedEngineers', 'Assigned engineers', 'Ownership', false],
   ['certiniaId', 'Certinia ID', 'External IDs', true],
   ['sellQuoteId', 'SELL Quote', 'External IDs', false],
+  ['commercialSource', 'Commercial source', 'Billing data', true],
   ['salesforceId', 'Salesforce ID', 'External IDs', false],
   ['purchaseOrder', 'Purchase order', 'External IDs', false],
   ['approvedLines', 'Approved billing lines', 'Billing data', true],
@@ -161,6 +162,16 @@ function candidateCellValue(candidate, columnKey, selections) {
   if (columnKey === 'assignedEngineers') return candidate.assignedEngineers?.length ? candidate.assignedEngineers.join(', ') : 'Not assigned';
   if (columnKey === 'certiniaId') return text(candidate.certiniaId, missingValue);
   if (columnKey === 'sellQuoteId') return text(candidate.sellQuoteNumber, missingValue);
+  if (columnKey === 'commercialSource') {
+    const commercial = candidate.commercial || {};
+    const source = commercial.commercialSource === 'SELL' ? 'SELL' : 'Current stored rates';
+    return (
+      <span className="m042-stack">
+        <strong>{source}</strong>
+        <small>{text(commercial.readinessStatus, 'Commercial source not evaluated').replaceAll('_', ' ')}</small>
+      </span>
+    );
+  }
   if (columnKey === 'salesforceId') return text(candidate.salesforceId, missingValue);
 
   if (columnKey === 'purchaseOrder') {
@@ -647,10 +658,9 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
       </header>
 
       <section className="m042-preview-mode m042-live-mode" aria-label="Module 042 live data status">
-        <strong>Live billing contract</strong>
+        <strong>Commercial source guard</strong>
         <span>
-          Approved time comes from the time-entry workflow, rates come from active effective rate cards, purchase orders come from the billing ledger,
-          and invoice numbers are allocated by PostgreSQL. Current scope: {payload.scope || 'Loading'}.
+          SELL quote and rate readiness are now evaluated from the canonical project and rate-card read model. Invoice calculations remain on current stored rates until SELL synchronization and guarded cutover are explicitly enabled. Current scope: {payload.scope || 'Loading'}.
         </span>
       </section>
 
@@ -839,6 +849,37 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
                     </div>
                   </section>
 
+                  <section className="m0423-commercial" aria-label="SELL commercial source">
+                    <header>
+                      <div>
+                        <span>Commercial source</span>
+                        <strong>{selected.commercial?.commercialSource === 'SELL' ? 'SELL' : 'Current stored rates'}</strong>
+                      </div>
+                      <b className={selected.commercial?.cutoverReady ? 'ready' : 'pending'}>
+                        {text(selected.commercial?.readinessStatus, 'Not evaluated').replaceAll('_', ' ')}
+                      </b>
+                    </header>
+                    <dl>
+                      <div><dt>SELL quote</dt><dd>{text(selected.commercial?.sellQuoteNumber, 'Not configured')}</dd></div>
+                      <div><dt>Customer-facing project</dt><dd>{text(selected.commercial?.customerFacingProjectName, text(selected.projectName, 'Unnamed project'))}</dd></div>
+                      <div><dt>Billing method</dt><dd>{text(selected.commercial?.billingMethod, 'Unknown').replaceAll('_', ' ')}</dd></div>
+                      <div><dt>Rate card</dt><dd>{text(selected.commercial?.rateCard?.rateCardName, 'No active commercial rate card')}</dd></div>
+                      <div><dt>Last SELL sync</dt><dd>{selected.commercial?.lastSuccessfulSyncAt ? formatDateTime(selected.commercial.lastSuccessfulSyncAt) : 'No successful SELL sync recorded'}</dd></div>
+                      <div><dt>Milestone readiness</dt><dd>{text(selected.commercial?.milestoneReadiness, 'Not evaluated').replaceAll('_', ' ')}</dd></div>
+                    </dl>
+                    {selected.commercial?.rates?.length ? (
+                      <div className="m0423-rate-list">
+                        {selected.commercial.rates.slice(0, 8).map((rate) => (
+                          <article key={rate.rateLineId}>
+                            <strong>{formatMoney(rate.unitRate)}/{text(rate.unitType, 'hour')}</strong>
+                            <span>{text(rate.displayName, rate.skuCode)}</span>
+                            <small>{text(rate.description, rate.laborCategory)}</small>
+                          </article>
+                        ))}
+                      </div>
+                    ) : <p>No active commercial rate lines are available for this project.</p>}
+                  </section>
+
                   <section className="m042-resource-list">
                     <span>Assigned engineers</span>
                     <div>
@@ -899,7 +940,7 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
                                 <option value="">Select stored rate</option>
                                 {(item.line.rateOptions || []).map((rate) => (
                                   <option value={rate.rateLineId} key={rate.rateLineId}>
-                                    {formatMoney(rate.unitRate)}/hr — {rate.displayName}
+                                    {formatMoney(rate.unitRate)}/hr — {rate.displayName} — {selected.commercial?.commercialSource === 'SELL' ? 'SELL' : 'stored rate'}
                                   </option>
                                 ))}
                               </select>

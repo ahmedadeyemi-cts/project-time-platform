@@ -829,3 +829,33 @@ body[data-project-pulse-route="invoice-billing-center"] .app-shell {
   .m042-output-commandbar { grid-template-columns: 1fr; }
 }
 /* 042_2_INVOICE_OUTPUT_UX_END */
+
+
+/* 042_3_SELL_COMMERCIAL_READ_MODEL_START */
+.m0423-commercial {
+  display: grid;
+  gap: .8rem;
+  margin: .85rem 0;
+  padding: .9rem;
+  border: 1px solid rgba(14, 165, 233, .28);
+  border-radius: .85rem;
+  background: linear-gradient(135deg, rgba(14, 165, 233, .07), rgba(255,255,255,.94));
+}
+.m0423-commercial header { display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; }
+.m0423-commercial header div { display:grid; gap:.18rem; }
+.m0423-commercial header span { color:#64748b; font-size:.66rem; font-weight:850; letter-spacing:.05em; text-transform:uppercase; }
+.m0423-commercial header strong { font-size:1rem; }
+.m0423-commercial header b { max-width:15rem; padding:.3rem .55rem; border-radius:999px; font-size:.68rem; text-transform:capitalize; }
+.m0423-commercial header b.ready { background:rgba(16,185,129,.14); color:#047857; }
+.m0423-commercial header b.pending { background:rgba(245,158,11,.16); color:#92400e; }
+.m0423-commercial dl { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.55rem; margin:0; }
+.m0423-commercial dl div { display:grid; gap:.15rem; padding:.55rem; border:1px solid rgba(148,163,184,.2); border-radius:.6rem; background:rgba(255,255,255,.72); }
+.m0423-commercial dt { color:#64748b; font-size:.62rem; font-weight:800; text-transform:uppercase; }
+.m0423-commercial dd { margin:0; font-size:.76rem; font-weight:750; overflow-wrap:anywhere; text-transform:capitalize; }
+.m0423-rate-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.5rem; }
+.m0423-rate-list article { display:grid; gap:.12rem; min-width:0; padding:.55rem; border:1px solid rgba(14,165,233,.18); border-radius:.6rem; background:#fff; }
+.m0423-rate-list article strong { color:#075fc8; font-size:.82rem; white-space:nowrap; }
+.m0423-rate-list article span { font-size:.72rem; font-weight:800; overflow-wrap:anywhere; }
+.m0423-rate-list article small { color:#64748b; font-size:.66rem; line-height:1.35; overflow-wrap:anywhere; }
+@media(max-width:680px){.m0423-commercial dl,.m0423-rate-list{grid-template-columns:1fr}}
+/* 042_3_SELL_COMMERCIAL_READ_MODEL_END */
