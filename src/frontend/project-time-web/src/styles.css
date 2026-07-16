@@ -761,3 +761,420 @@ body[data-project-pulse-route="invoice-billing-center"]
   padding: 14px;
   font-size: 12px;
 }
+
+/* MODULE_001_TIMESHEET_MULTIVIEW_STYLES_START */
+.timesheet-view-switcher {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+.timesheet-view-button {
+  display: grid;
+  gap: 0.25rem;
+  min-height: 4.25rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 0.9rem;
+  background: var(--surface-strong);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.timesheet-view-button small {
+  color: var(--muted);
+  line-height: 1.25;
+}
+
+.timesheet-view-button.active {
+  border-color: var(--brand-blue);
+  background: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand-blue) 16%, transparent);
+}
+
+.activity-search-field {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: var(--surface);
+  padding: 0.25rem 0.35rem 0.25rem 0.7rem;
+}
+
+.activity-search-field input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  padding: 0.55rem 0;
+}
+
+.activity-search-field button {
+  border: 0;
+  border-radius: 0.55rem;
+  background: var(--surface-strong);
+  color: var(--brand-blue-strong);
+  padding: 0.45rem 0.6rem;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.timesheet-view-panel {
+  min-width: 0;
+  width: 100%;
+}
+
+.timesheet-day-picker {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.55rem;
+  margin-bottom: 1rem;
+}
+
+.timesheet-day-picker button {
+  display: grid;
+  gap: 0.2rem;
+  justify-items: center;
+  border: 1px solid var(--border);
+  border-radius: 0.8rem;
+  background: var(--surface-strong);
+  color: var(--text);
+  padding: 0.65rem 0.35rem;
+  cursor: pointer;
+}
+
+.timesheet-day-picker button.active {
+  border-color: var(--brand-blue);
+  background: var(--accent);
+}
+
+.timesheet-day-picker small {
+  color: var(--muted);
+}
+
+.daily-focus-summary,
+.timesheet-view-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.daily-focus-summary h3,
+.timesheet-view-heading h3 {
+  margin-bottom: 0;
+}
+
+.daily-entry-list,
+.work-queue-list,
+.quick-entry-list {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.daily-entry-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: var(--surface);
+  padding: 0.9rem;
+}
+
+.daily-entry-card-copy {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+.daily-entry-card-copy div {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.daily-entry-card-copy small {
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.daily-entry-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(5.75rem, 1fr));
+  gap: 0.55rem;
+}
+
+.daily-entry-actions button,
+.quick-entry-day button {
+  display: grid;
+  gap: 0.15rem;
+  border: 1px solid var(--border);
+  border-radius: 0.7rem;
+  background: var(--surface-strong);
+  color: var(--text);
+  padding: 0.55rem 0.65rem;
+  cursor: pointer;
+}
+
+.daily-entry-actions span,
+.quick-entry-day small {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.work-queue-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.work-queue-card {
+  display: grid;
+  gap: 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: var(--surface);
+  padding: 1rem;
+}
+
+.work-queue-card h4 {
+  margin: 0.35rem 0;
+}
+
+.work-queue-card p {
+  margin-bottom: 0.35rem;
+  color: var(--text);
+}
+
+.work-queue-card small,
+.queue-type {
+  color: var(--muted);
+}
+
+.queue-type {
+  display: inline-flex;
+  font-size: 0.7rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.queue-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.queue-metrics span {
+  display: grid;
+  gap: 0.15rem;
+  border-radius: 0.7rem;
+  background: var(--surface-strong);
+  padding: 0.55rem;
+}
+
+.quick-entry-card {
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.quick-entry-card > header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem 1rem;
+  background: var(--surface-strong);
+}
+
+.quick-entry-card > header div {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.quick-entry-card > header small {
+  color: var(--muted);
+}
+
+.quick-entry-days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.quick-entry-day {
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.65rem;
+  border-right: 1px solid var(--border);
+}
+
+.quick-entry-day:last-child {
+  border-right: 0;
+}
+
+.quick-entry-day > span {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.quick-entry-day > div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.35rem;
+}
+
+.calendar-week-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(12rem, 1fr));
+  gap: 0.65rem;
+  overflow-x: auto;
+  padding-bottom: 0.35rem;
+}
+
+.calendar-day-card {
+  display: grid;
+  align-content: start;
+  gap: 0.75rem;
+  min-height: 15rem;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: var(--surface);
+  padding: 0.8rem;
+}
+
+.calendar-day-card > header {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.65rem;
+  padding-bottom: 0.65rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.calendar-day-card > header div {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.calendar-day-card > header span {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.calendar-day-total {
+  color: var(--brand-blue-strong) !important;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.calendar-day-items {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.calendar-day-items button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.15rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 0.7rem;
+  background: var(--surface-strong);
+  color: var(--text);
+  padding: 0.55rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.calendar-day-items button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.calendar-day-items button small {
+  grid-column: 1;
+  color: var(--muted);
+}
+
+.calendar-day-items button strong {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+}
+
+@media (max-width: 1050px) {
+  .timesheet-view-switcher {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .work-queue-list {
+    grid-template-columns: 1fr;
+  }
+
+  .quick-entry-days {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .quick-entry-day {
+    border-bottom: 1px solid var(--border);
+  }
+}
+
+@media (max-width: 760px) {
+  .timesheet-view-switcher {
+    display: flex;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    padding-bottom: 0.35rem;
+  }
+
+  .timesheet-view-button {
+    min-width: 10.5rem;
+    scroll-snap-align: start;
+  }
+
+  .timesheet-day-picker {
+    display: flex;
+    overflow-x: auto;
+  }
+
+  .timesheet-day-picker button {
+    min-width: 4.8rem;
+  }
+
+  .daily-entry-card {
+    grid-template-columns: 1fr;
+  }
+
+  .daily-entry-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .quick-entry-days {
+    grid-template-columns: 1fr;
+  }
+
+  .quick-entry-day {
+    grid-template-columns: minmax(5.5rem, auto) 1fr;
+    align-items: center;
+    border-right: 0;
+  }
+
+  .daily-focus-summary,
+  .timesheet-view-heading {
+    align-items: flex-start;
+  }
+}
+/* MODULE_001_TIMESHEET_MULTIVIEW_STYLES_END */
