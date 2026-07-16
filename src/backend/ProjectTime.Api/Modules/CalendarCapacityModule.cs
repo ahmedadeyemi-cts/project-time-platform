@@ -47,6 +47,29 @@ public static class CalendarCapacityModule
                   AND u.email <> ''
                   AND lower(u.email) NOT LIKE '%.local'
                   AND lower(u.email) NOT LIKE '%.cloud'
+                  AND EXISTS (
+                      SELECT 1
+                      FROM app_user_role_assignments ura
+                      JOIN app_roles r
+                        ON r.role_id = ura.role_id
+                      WHERE ura.user_id = u.user_id
+                        AND COALESCE(
+                              NULLIF(to_jsonb(ura)->>'is_active', '')::boolean,
+                              TRUE
+                            ) = TRUE
+                        AND lower(
+                              COALESCE(
+                                NULLIF(to_jsonb(r)->>'name', ''),
+                                NULLIF(to_jsonb(r)->>'role_name', ''),
+                                NULLIF(to_jsonb(r)->>'code', ''),
+                                ''
+                              )
+                            ) IN (
+                              'engineer',
+                              'engineering',
+                              'engineering team lead'
+                            )
+                  )
                 ORDER BY COALESCE(u.display_name, u.email);
                 """, connection);
 
@@ -187,6 +210,29 @@ public static class CalendarCapacityModule
             WHERE u.is_active=TRUE AND COALESCE(u.login_enabled,TRUE)=TRUE
               AND u.email IS NOT NULL AND u.email<>'' AND lower(u.email) NOT LIKE '%.local'
                   AND lower(u.email) NOT LIKE '%.cloud'
+              AND EXISTS (
+                  SELECT 1
+                  FROM app_user_role_assignments ura
+                  JOIN app_roles r
+                    ON r.role_id = ura.role_id
+                  WHERE ura.user_id = u.user_id
+                    AND COALESCE(
+                          NULLIF(to_jsonb(ura)->>'is_active', '')::boolean,
+                          TRUE
+                        ) = TRUE
+                    AND lower(
+                          COALESCE(
+                            NULLIF(to_jsonb(r)->>'name', ''),
+                            NULLIF(to_jsonb(r)->>'role_name', ''),
+                            NULLIF(to_jsonb(r)->>'code', ''),
+                            ''
+                          )
+                        ) IN (
+                          'engineer',
+                          'engineering',
+                          'engineering team lead'
+                        )
+              )
               AND (
                     (cardinality(@ids)>0 AND u.user_id=ANY(@ids))
                  OR (cardinality(@ids)=0 AND NULLIF(@team,'') IS NOT NULL AND lower(COALESCE(NULLIF(to_jsonb(u)->>'team_name',''),NULLIF(to_jsonb(u)->>'department_name',''),NULLIF(to_jsonb(u)->>'department',''),'Unassigned'))=lower(@team))

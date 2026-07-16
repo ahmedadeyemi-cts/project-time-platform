@@ -102,25 +102,81 @@ export default function CalendarCapacityCenter() {
     <header className="calendar-capacity-hero"><div><p className="eyebrow">MODULE 057</p><h1>Resource & Team Calendar Capacity</h1><p>Review individual, team, and department availability across day, week, month, agenda, timeline, and future months.</p></div><div><strong>{config?.environmentMode || 'test'}</strong><span>{config?.testDomain || 'onenecklab.com'}</span></div></header>
 
     <section className="calendar-capacity-controls">
-      <label>Scope<select value={scope} onChange={e=>setScope(e.target.value)}><option value="individual">Individual engineer</option><option value="team">Team</option><option value="department">Department</option></select></label>
-      {scope==='individual' ? <label>Engineer
-        <input
-          type="search"
-          value={userSearch}
-          onChange={e=>setUserSearch(e.target.value)}
-          placeholder="Search name, email, team, or department"
-          aria-label="Search engineers"
-        />
-        <select value={userId} onChange={e=>setUserId(e.target.value)}>
-          {filteredResources.map(r=><option key={r.userId} value={r.userId}>{r.displayName} — {r.teamName} — {r.departmentName}</option>)}
-        </select>
-        <small>{filteredResources.length} eligible engineers</small>
-      </label> : null}
-      {scope==='team' ? <label>Team<select value={team} onChange={e=>setTeam(e.target.value)}><option value="">Select a team</option>{teams.map(t=><option key={t.teamName} value={t.teamName}>{t.teamName} ({t.resourceCount})</option>)}</select></label> : null}
-      {scope==='department' ? <label>Department<select value={department} onChange={e=>setDepartment(e.target.value)}><option value="">Select a department</option>{departments.map(d=><option key={d.departmentName} value={d.departmentName}>{d.departmentName} ({d.resourceCount})</option>)}</select></label> : null}
-      <label>View<select value={view} onChange={e=>setView(e.target.value)}><option value="day">Day</option><option value="workweek">Work week</option><option value="week">Week</option><option value="month">Month</option><option value="agenda">Agenda</option><option value="timeline">Timeline</option></select></label>
-      <label>Month / year<input type="month" value={`${anchor.getFullYear()}-${String(anchor.getMonth()+1).padStart(2,'0')}`} onChange={e=>{const [y,m]=e.target.value.split('-').map(Number); setAnchor(new Date(y,m-1,1));}} /></label>
-      <div className="calendar-capacity-buttons"><button onClick={()=>move(-1)}>Previous</button><button onClick={()=>setAnchor(new Date())}>Today</button><button onClick={()=>move(1)}>Next</button><button className="primary-action" onClick={load} disabled={loading}>{loading?'Loading…':'Load calendar'}</button></div>
+      <div className="calendar-control-grid">
+        <label className="calendar-control-field">
+          <span>Scope</span>
+          <select value={scope} onChange={e=>setScope(e.target.value)}>
+            <option value="individual">Individual engineer</option>
+            <option value="team">Team</option>
+            <option value="department">Department</option>
+          </select>
+        </label>
+
+        {scope==='individual' ? <div className="calendar-control-field calendar-engineer-field">
+          <span>Engineer</span>
+          <div className="calendar-engineer-picker">
+            <input
+              type="search"
+              value={userSearch}
+              onChange={e=>setUserSearch(e.target.value)}
+              placeholder="Search engineers"
+              aria-label="Search engineers by name, email, team, or department"
+            />
+            <select value={userId} onChange={e=>setUserId(e.target.value)}>
+              {filteredResources.map(r=><option key={r.userId} value={r.userId}>{r.displayName} — {r.teamName} — {r.departmentName}</option>)}
+            </select>
+          </div>
+          <small>{filteredResources.length} eligible engineers</small>
+        </div> : null}
+
+        {scope==='team' ? <label className="calendar-control-field calendar-resource-field">
+          <span>Team</span>
+          <select value={team} onChange={e=>setTeam(e.target.value)}>
+            <option value="">Select a team</option>
+            {teams.map(t=><option key={t.teamName} value={t.teamName}>{t.teamName} ({t.resourceCount})</option>)}
+          </select>
+        </label> : null}
+
+        {scope==='department' ? <label className="calendar-control-field calendar-resource-field">
+          <span>Department</span>
+          <select value={department} onChange={e=>setDepartment(e.target.value)}>
+            <option value="">Select a department</option>
+            {departments.map(d=><option key={d.departmentName} value={d.departmentName}>{d.departmentName} ({d.resourceCount})</option>)}
+          </select>
+        </label> : null}
+
+        <label className="calendar-control-field">
+          <span>View</span>
+          <select value={view} onChange={e=>setView(e.target.value)}>
+            <option value="day">Day</option>
+            <option value="workweek">Work week</option>
+            <option value="week">Week</option>
+            <option value="month">Month</option>
+            <option value="agenda">Agenda</option>
+            <option value="timeline">Timeline</option>
+          </select>
+        </label>
+
+        <label className="calendar-control-field">
+          <span>Month / year</span>
+          <input
+            type="month"
+            value={`${anchor.getFullYear()}-${String(anchor.getMonth()+1).padStart(2,'0')}`}
+            onChange={e=>{const [y,m]=e.target.value.split('-').map(Number); setAnchor(new Date(y,m-1,1));}}
+          />
+        </label>
+      </div>
+
+      <div className="calendar-capacity-buttons">
+        <div className="calendar-navigation-buttons">
+          <button onClick={()=>move(-1)}>Previous</button>
+          <button onClick={()=>setAnchor(new Date())}>Today</button>
+          <button onClick={()=>move(1)}>Next</button>
+        </div>
+        <button className="primary-action calendar-load-button" onClick={load} disabled={loading}>
+          {loading?'Loading…':'Load calendar'}
+        </button>
+      </div>
     </section>
 
     {error ? <div className="calendar-capacity-error">{error}</div> : null}
