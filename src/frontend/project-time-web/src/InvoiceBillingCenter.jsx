@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import CertiniaInvoiceDeliveryPanel from './CertiniaInvoiceDeliveryPanel';
 
 const columns = [
   ['projectCode', 'Project code', 'Essential', true],
@@ -915,7 +916,7 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
                   <section className="m042-data-quality m042-invoice-detail-panel" data-projectpulse-invoice-detail-tools="true">
                     <div className="m042-detail-heading">
                       <div>
-                        <h3>Invoice detail, PDF, Excel, and Certinia preview</h3>
+                        <h3>Invoice detail, PDF, Excel, and Certinia delivery</h3>
                         <p>Click an invoice number above to load its immutable billed lines.</p>
                       </div>
                       {invoiceDetail ? <strong>{invoiceDetail.header?.invoiceNumber}</strong> : null}
@@ -955,9 +956,15 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
                         <div className="m042-certinia-status">
                           <strong>Certinia:</strong>{' '}
                           {certiniaConnected
-                            ? 'Connector is marked connected. Production transmission remains disabled in this demo-safe web slice.'
-                            : 'Connector not configured — transmission not performed.'}
+                            ? 'Connector registration is connected. Use the guarded delivery panel below to queue or send an immutable artifact.'
+                            : 'Connector not configured — artifacts can be queued, but transmission is not performed.'}
                         </div>
+
+                        <CertiniaInvoiceDeliveryPanel
+                          invoice={invoiceDetail}
+                          includeResourceNames={showCustomerResourceNames}
+                          onIncludeResourceNamesChange={setShowCustomerResourceNames}
+                        />
 
                         <div className="m042-table-wrap">
                           <table>

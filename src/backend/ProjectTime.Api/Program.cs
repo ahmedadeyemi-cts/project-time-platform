@@ -135,7 +135,8 @@ app.Use(async (httpContext, next) =>
 app.Use(async (context, next) =>
 {
     if (context.Request.Method.Equals("OPTIONS", StringComparison.OrdinalIgnoreCase) ||
-        IsProjectPulsePublicApiPath(context))
+        IsProjectPulsePublicApiPath(context) ||
+        CertiniaBillingModule.IsValidIntegrationRequest(context))
     {
         await next();
         return;
@@ -36125,6 +36126,8 @@ ProjectTime.Api.Modules.WorkRegisterPurchaseOrderModule.MapWorkRegisterPurchaseO
 ProjectTime.Api.Modules.CalendarCapacityModule.MapCalendarCapacityEndpoints(app);
 
 ProjectTime.Api.Modules.CiCdPipelineModule.MapCiCdPipelineEndpoints(app);
+
+app.MapCertiniaBillingEndpoints();
 
 app.Run();
 
