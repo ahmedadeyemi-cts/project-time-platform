@@ -3357,6 +3357,16 @@ export default function App() {
   const [saveStatus, setSaveStatus] = useState('Not saved yet');
   const [isSaving, setIsSaving] = useState(false);
   const [activitySource, setActivitySource] = useState('nonProject');
+  /* MODULE_001_TIMESHEET_MULTIVIEW_START */
+  const [timesheetView, setTimesheetView] = useState(() => {
+    const allowedViews = ['weekly', 'daily', 'queue', 'quick', 'calendar'];
+    const savedView = window.localStorage.getItem('projectPulseTimesheetView');
+    if (allowedViews.includes(savedView)) return savedView;
+    return window.matchMedia('(max-width: 760px)').matches ? 'daily' : 'weekly';
+  });
+  const [activitySearch, setActivitySearch] = useState('');
+  const [focusedDayDate, setFocusedDayDate] = useState('');
+  /* MODULE_001_TIMESHEET_MULTIVIEW_STATE_END */
   const holidayYearOptions = useMemo(() => {
     const currentYear = new Date().getFullYear();
     return Array.from({ length: 11 }, (_, index) => String(currentYear + index));
@@ -3686,6 +3696,52 @@ export default function App() {
   const selectedActivitySource = activitySourceOptions.find((option) => option.key === activitySource) ?? activitySourceOptions[0];
   const currentTimesheetStatus = timesheet.data?.status ?? 'draft';
   const isAnyDayEditable = days.length === 0 || days.some((day) => isDayEditable(day.date));
+
+  /* MODULE_001_TIMESHEET_MULTIVIEW_DERIVED_START */
+  const normalizedActivitySearch = activitySearch.trim().toLowerCase();
+  const activityMatchesSearch = (...values) =>
+    !normalizedActivitySearch ||
+    values.some((value) => String(value ?? '').toLowerCase().includes(normalizedActivitySearch));
+
+  const filteredCategories = categories.filter((category) =>
+    activityMatchesSearch(
+      category.name,
+      category.code,
+      category.description,
+      category.utilizationBucket
+    )
+  );
+
+  const filteredRegularAssignedTasks = regularAssignedTasks.filter((task) =>
+    activityMatchesSearch(
+      task.taskName,
+      task.taskCode,
+      task.projectName,
+      task.projectCode,
+      task.clientName,
+      task.projectManagerName
+    )
+  );
+
+  const filteredRequestAssignedTasks = requestAssignedTasks.filter((task) =>
+    activityMatchesSearch(
+      task.taskName,
+      task.taskCode,
+      task.projectName,
+      task.projectCode,
+      task.clientName,
+      task.projectManagerName,
+      task.workType
+    )
+  );
+
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const focusedDay =
+    days.find((day) => day.date === focusedDayDate) ??
+    days.find((day) => day.date === todayIso) ??
+    days[0] ??
+    null;
+  /* MODULE_001_TIMESHEET_MULTIVIEW_DERIVED_END */
 
   const databaseSummary = useMemo(() => {
     if (dbHealth.loading) return 'Checking database connection...';
@@ -6421,8 +6477,8 @@ Analytics - Variphy / Infortel`}
       <section id="timesheet" className="panel timesheet-page">
         <div className="timesheet-toolbar">
           <div>
-            <p className="eyebrow">Timesheet</p>
-            <h2>Weekly time entry</h2>
+            <p className="eyebrow">MODULE 001</p>
+            <h2>Timesheet</h2>
             <DataState loading={timesheet.loading} error={timesheet.error}>
               <p className="muted week-range">Week starts: {timesheet.data?.weekStart} • Week ends: {timesheet.data?.weekEnd}</p>
             </DataState>
@@ -6436,6 +6492,31 @@ Analytics - Variphy / Infortel`}
             <button type="button" onClick={saveDraft} disabled={!isAnyDayEditable || isSaving}>Save draft</button>
             <button type="button" className="primary-action" onClick={handleSubmit} disabled={!isAnyDayEditable || isSaving}>Save week</button>
           </div>
+        </div>
+
+        <div className="timesheet-view-switcher" role="tablist" aria-label="Timesheet views">
+          {[
+            { key: 'weekly', label: 'Weekly Grid', description: 'Full seven-day grid' },
+            { key: 'daily', label: 'Daily Focus', description: 'Mobile-friendly day entry' },
+            { key: 'queue', label: 'My Work Queue', description: 'Assigned tasks and requests' },
+            { key: 'quick', label: 'Quick Entry List', description: 'Compact activity entry' },
+            { key: 'calendar', label: 'Calendar / Timeline', description: 'Week-at-a-glance totals' }
+          ].map((view) => (
+            <button
+              type="button"
+              role="tab"
+              aria-selected={timesheetView === view.key}
+              className={timesheetView === view.key ? 'timesheet-view-button active' : 'timesheet-view-button'}
+              key={view.key}
+              onClick={() => {
+                setTimesheetView(view.key);
+                window.localStorage.setItem('projectPulseTimesheetView', view.key);
+              }}
+            >
+              <strong>{view.label}</strong>
+              <small>{view.description}</small>
+            </button>
+          ))}
         </div>
 
         <div className="timesheet-status-bar">
@@ -6454,7 +6535,7 @@ Analytics - Variphy / Infortel`}
             <aside className="activities-panel" aria-label="Activities">
               <div className="panel-title-row">
                 <h3>Activities</h3>
-                <span>{activitySource === 'nonProject' ? categories.length : activitySource === 'openTasks' ? regularAssignedTasks.length : requestAssignedTasks.length}</span>
+                <span>{activitySource === 'nonProject' ? filteredCategories.length : activitySource === 'openTasks' ? filteredRegularAssignedTasks.length : filteredRequestAssignedTasks.length}</span>
               </div>
 
               <div className="activity-selector-row">
@@ -6464,18 +6545,44 @@ Analytics - Variphy / Infortel`}
                 <select
                   id="activity-source"
                   value={activitySource}
-                  onChange={(event) => setActivitySource(event.target.value)}
+                  onChange={(event) => {
+                    setActivitySource(event.target.value);
+                    setActivitySearch('');
+                  }}
                 >
                   {activitySourceOptions.map((option) => (
                     <option value={option.key} key={option.key}>{option.label}</option>
                   ))}
                 </select>
+
+                <label htmlFor="activity-search">Search this activity type</label>
+                <div className="activity-search-field">
+                  <span aria-hidden="true">⌕</span>
+                  <input
+                    id="activity-search"
+                    type="search"
+                    value={activitySearch}
+                    placeholder={
+                      activitySource === 'nonProject'
+                        ? 'Search non-project categories'
+                        : activitySource === 'openTasks'
+                          ? 'Search task, project, customer, or PM'
+                          : 'Search request, project, customer, or PM'
+                    }
+                    onChange={(event) => setActivitySearch(event.target.value)}
+                  />
+                  {activitySearch ? (
+                    <button type="button" onClick={() => setActivitySearch('')} aria-label="Clear activity search">
+                      Clear
+                    </button>
+                  ) : null}
+                </div>
               </div>
 
               {activitySource === 'nonProject' ? (
                 <div className="activity-group activity-results">
                   <h4>Non-project time</h4>
-                  {categories.map((category) => {
+                  {filteredCategories.map((category) => {
                     const alreadyAdded = activeRows.some((row) => row.categoryCode === category.code);
                     return (
                       <button
@@ -6498,13 +6605,13 @@ Analytics - Variphy / Infortel`}
                   <h4>Regular tasks</h4>
                   {openTasks.loading ? <span className="muted">Loading assigned tasks...</span> : null}
                   {openTasks.error ? <span className="error-text">{openTasks.error}</span> : null}
-                  {!openTasks.loading && !openTasks.error && regularAssignedTasks.length === 0 ? (
+                  {!openTasks.loading && !openTasks.error && filteredRegularAssignedTasks.length === 0 ? (
                     <div className="empty-activity-state">
                       <strong>{selectedActivitySource.emptyTitle}</strong>
                       <span>{selectedActivitySource.emptyDescription}</span>
                     </div>
                   ) : null}
-                  {regularAssignedTasks.map((task) => {
+                  {filteredRegularAssignedTasks.map((task) => {
                     const alreadyAdded = activeRows.some((row) => row.projectId === task.projectId && row.taskId === task.taskId);
                     return (
                       <button
@@ -6532,13 +6639,13 @@ Analytics - Variphy / Infortel`}
                   <h4>Requests / Service Requests</h4>
                   {openTasks.loading ? <span className="muted">Loading assigned requests...</span> : null}
                   {openTasks.error ? <span className="error-text">{openTasks.error}</span> : null}
-                  {!openTasks.loading && !openTasks.error && requestAssignedTasks.length === 0 ? (
+                  {!openTasks.loading && !openTasks.error && filteredRequestAssignedTasks.length === 0 ? (
                     <div className="empty-activity-state">
                       <strong>{selectedActivitySource.emptyTitle}</strong>
                       <span>{selectedActivitySource.emptyDescription}</span>
                     </div>
                   ) : null}
-                  {requestAssignedTasks.map((task) => {
+                  {filteredRequestAssignedTasks.map((task) => {
                     const alreadyAdded = activeRows.some((row) => row.projectId === task.projectId && row.taskId === task.taskId);
                     return (
                       <button
@@ -6564,75 +6671,279 @@ Analytics - Variphy / Infortel`}
               )}
             </aside>
 
-            <p className="timesheet-mobile-hint">Tip: on smaller screens, swipe horizontally to view all days and actions.</p>
-            <div className="entry-grid-wrap">
-              <div className="entry-grid" role="table" aria-label="Weekly time entry grid">
-                <div className="entry-grid-row entry-grid-header" role="row">
-                  <div role="columnheader">State</div>
-                  <div role="columnheader">Activity</div>
-                  <div role="columnheader">Project / Description</div>
-                  {days.map((day) => (
-                    <div className="day-header" role="columnheader" key={day.date}>
-                      <strong>{day.dayName.slice(0, 3)}</strong>
-                      <span>{day.date.slice(5)}</span>
-                      <em>N / AH</em>
+            {timesheetView === 'weekly' ? (
+              <div className="timesheet-view-panel weekly-grid-view" role="tabpanel" aria-label="Weekly Grid">
+                <p className="timesheet-mobile-hint">The complete seven-day grid is preserved. On smaller screens, swipe horizontally or switch to Daily Focus.</p>
+                <div className="entry-grid-wrap">
+                  <div className="entry-grid" role="table" aria-label="Weekly time entry grid">
+                    <div className="entry-grid-row entry-grid-header" role="row">
+                      <div role="columnheader">State</div>
+                      <div role="columnheader">Activity</div>
+                      <div role="columnheader">Project / Description</div>
+                      {days.map((day) => (
+                        <div className="day-header" role="columnheader" key={day.date}>
+                          <strong>{day.dayName.slice(0, 3)}</strong>
+                          <span>{day.date.slice(5)}</span>
+                          <em>N / AH</em>
+                        </div>
+                      ))}
+                      <div role="columnheader">Total</div>
+                      <div role="columnheader">Action</div>
                     </div>
-                  ))}
-                  <div role="columnheader">Total</div>
-                  <div role="columnheader">Action</div>
-                </div>
 
-                {activeRows.map((row) => (
-                  <div className="entry-grid-row" role="row" key={row.id}>
-                    <div role="cell"><span className="state-dot">•</span> {getRowWorkflowState(row.id)}</div>
-                    <div role="cell" className="activity-name">{row.activity}</div>
-                    <div role="cell">{row.projectDescription}</div>
-                    {days.map((day) => (
-                      <div className="time-cell-pair" role="cell" key={`${row.id}-${day.date}`}>
-                        {timeTypes.map((type) => {
-                          const entry = getEntry(row.id, day.date, type.key);
-                          const isSelected = selectedCell?.rowId === row.id && selectedCell?.date === day.date && selectedCell?.type === type.key;
-                          const dayIsEditable = isDayEditable(day.date);
-                          return (
-                            <button
-                              aria-label={`${row.activity} ${day.date} ${type.label}`}
-                              className={isSelected ? 'time-entry-button selected-time-input' : 'time-entry-button'}
-                              key={type.key}
-                              type="button"
-                              title={`${type.label}: ${formatHoursValue(entry.hours)} hours`}
-                              onClick={() => openEntryDetails(row.id, day.date, type.key)}
-                              disabled={false}
-                            >
-                              {formatHoursValue(entry.hours)}
+                    {activeRows.map((row) => (
+                      <div className="entry-grid-row" role="row" key={row.id}>
+                        <div role="cell"><span className="state-dot">•</span> {getRowWorkflowState(row.id)}</div>
+                        <div role="cell" className="activity-name">{row.activity}</div>
+                        <div role="cell">{row.projectDescription}</div>
+                        {days.map((day) => (
+                          <div className="time-cell-pair" role="cell" key={`${row.id}-${day.date}`}>
+                            {timeTypes.map((type) => {
+                              const entry = getEntry(row.id, day.date, type.key);
+                              const isSelected = selectedCell?.rowId === row.id && selectedCell?.date === day.date && selectedCell?.type === type.key;
+                              return (
+                                <button
+                                  aria-label={`${row.activity} ${day.date} ${type.label}`}
+                                  className={isSelected ? 'time-entry-button selected-time-input' : 'time-entry-button'}
+                                  key={type.key}
+                                  type="button"
+                                  title={`${type.label}: ${formatHoursValue(entry.hours)} hours`}
+                                  onClick={() => openEntryDetails(row.id, day.date, type.key)}
+                                  disabled={false}
+                                >
+                                  {formatHoursValue(entry.hours)}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        ))}
+                        <div role="cell" className="row-total">{formatNumber(getRowTotal(row.id))}</div>
+                        <div role="cell">
+                          <div className="row-action-stack">
+                            <button className="link-button" type="button" onClick={() => isRowPersonalDefault(row) ? void removeRowAsPersonalDefault(row) : void setRowAsPersonalDefault(row)}>
+                              {isRowPersonalDefault(row) ? 'Remove default' : 'Set default'}
                             </button>
-                          );
-                        })}
+                            <button className="link-button" type="button" onClick={() => removeRow(row.id)} disabled={!isAnyDayEditable}>Remove</button>
+                          </div>
+                        </div>
                       </div>
                     ))}
-                    <div role="cell" className="row-total">{formatNumber(getRowTotal(row.id))}</div>
-                    <div role="cell">
-                      <div className="row-action-stack">
-                        <button className="link-button" type="button" onClick={() => isRowPersonalDefault(row) ? void removeRowAsPersonalDefault(row) : void setRowAsPersonalDefault(row)}>
-                          {isRowPersonalDefault(row) ? 'Remove default' : 'Set default'}
-                        </button>
-                        <button className="link-button" type="button" onClick={() => removeRow(row.id)} disabled={!isAnyDayEditable}>Remove</button>
-                      </div>
+
+                    <div className="entry-grid-row total-row" role="row">
+                      <div role="cell">Total</div>
+                      <div role="cell"></div>
+                      <div role="cell"></div>
+                      {days.map((day) => (
+                        <div role="cell" key={`total-${day.date}`}>{formatNumber(getDayTotal(day.date))}</div>
+                      ))}
+                      <div role="cell">{formatNumber(grandTotal)}</div>
+                      <div role="cell"></div>
                     </div>
                   </div>
-                ))}
-
-                <div className="entry-grid-row total-row" role="row">
-                  <div role="cell">Total</div>
-                  <div role="cell"></div>
-                  <div role="cell"></div>
-                  {days.map((day) => (
-                    <div role="cell" key={`total-${day.date}`}>{formatNumber(getDayTotal(day.date))}</div>
-                  ))}
-                  <div role="cell">{formatNumber(grandTotal)}</div>
-                  <div role="cell"></div>
                 </div>
               </div>
-            </div>
+            ) : null}
+
+            {timesheetView === 'daily' ? (
+              <div className="timesheet-view-panel daily-focus-view" role="tabpanel" aria-label="Daily Focus">
+                <div className="timesheet-day-picker" aria-label="Choose a day">
+                  {days.map((day) => (
+                    <button
+                      type="button"
+                      className={day.date === focusedDay?.date ? 'active' : ''}
+                      key={day.date}
+                      onClick={() => setFocusedDayDate(day.date)}
+                    >
+                      <span>{day.dayName.slice(0, 3)}</span>
+                      <strong>{day.date.slice(5)}</strong>
+                      <small>{formatNumber(getDayTotal(day.date))} hrs</small>
+                    </button>
+                  ))}
+                </div>
+
+                {focusedDay ? (
+                  <>
+                    <div className="daily-focus-summary">
+                      <div>
+                        <p className="eyebrow">Daily Focus</p>
+                        <h3>{focusedDay.dayName} • {focusedDay.date}</h3>
+                      </div>
+                      <span className="pill">{formatNumber(getDayTotal(focusedDay.date))} hours</span>
+                    </div>
+
+                    <div className="daily-entry-list">
+                      {activeRows.map((row) => {
+                        const normalEntry = getEntry(row.id, focusedDay.date, 'normal');
+                        const afterhoursEntry = getEntry(row.id, focusedDay.date, 'afterhours');
+                        return (
+                          <article className="daily-entry-card" key={`${row.id}-${focusedDay.date}`}>
+                            <div className="daily-entry-card-copy">
+                              <span className="state-dot">•</span>
+                              <div>
+                                <strong>{row.activity}</strong>
+                                <small>{row.projectDescription}</small>
+                              </div>
+                            </div>
+                            <div className="daily-entry-actions">
+                              <button type="button" onClick={() => openEntryDetails(row.id, focusedDay.date, 'normal')}>
+                                <span>Normal</span>
+                                <strong>{formatHoursValue(normalEntry.hours)}</strong>
+                              </button>
+                              <button type="button" onClick={() => openEntryDetails(row.id, focusedDay.date, 'afterhours')}>
+                                <span>Afterhours</span>
+                                <strong>{formatHoursValue(afterhoursEntry.hours)}</strong>
+                              </button>
+                            </div>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  </>
+                ) : (
+                  <div className="empty-activity-state">
+                    <strong>No day is available</strong>
+                    <span>Select another week to enter time.</span>
+                  </div>
+                )}
+              </div>
+            ) : null}
+
+            {timesheetView === 'queue' ? (
+              <div className="timesheet-view-panel work-queue-view" role="tabpanel" aria-label="My Work Queue">
+                <div className="timesheet-view-heading">
+                  <div>
+                    <p className="eyebrow">Assigned work</p>
+                    <h3>My Work Queue</h3>
+                  </div>
+                  <span className="pill">{filteredRegularAssignedTasks.length + filteredRequestAssignedTasks.length} items</span>
+                </div>
+
+                <div className="work-queue-list">
+                  {[...filteredRegularAssignedTasks, ...filteredRequestAssignedTasks].map((task) => {
+                    const alreadyAdded = activeRows.some((row) => row.projectId === task.projectId && row.taskId === task.taskId);
+                    return (
+                      <article className="work-queue-card" key={`${task.projectId}-${task.taskId}`}>
+                        <div>
+                          <span className="queue-type">{projectPulseTaskTimeEntrySection(task) === 'requests' ? 'Request / Service Request' : 'Regular Task'}</span>
+                          <h4>{task.taskName}</h4>
+                          <p>{task.projectCode} • {task.projectName}</p>
+                          <small>{task.clientName ? `Customer: ${task.clientName}` : 'Assigned work'}{task.projectManagerName ? ` • PM: ${task.projectManagerName}` : ''}</small>
+                        </div>
+                        <div className="queue-metrics">
+                          <span><small>Assigned</small><strong>{Number(task.assignedHours || 0).toFixed(2)}</strong></span>
+                          <span><small>Used</small><strong>{Number(task.usedHours || 0).toFixed(2)}</strong></span>
+                          <span><small>Remaining</small><strong>{Number(task.remainingHours || 0).toFixed(2)}</strong></span>
+                        </div>
+                        <button type="button" className="primary-action" disabled={alreadyAdded || !isAnyDayEditable} onClick={() => addTask(task)}>
+                          {alreadyAdded ? 'Added to Timesheet' : 'Add to Timesheet'}
+                        </button>
+                      </article>
+                    );
+                  })}
+
+                  {!openTasks.loading && !openTasks.error && filteredRegularAssignedTasks.length + filteredRequestAssignedTasks.length === 0 ? (
+                    <div className="empty-activity-state">
+                      <strong>No assigned work matches the search</strong>
+                      <span>Clear the activity search or select another week.</span>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+
+            {timesheetView === 'quick' ? (
+              <div className="timesheet-view-panel quick-entry-view" role="tabpanel" aria-label="Quick Entry List">
+                <div className="timesheet-view-heading">
+                  <div>
+                    <p className="eyebrow">Compact entry</p>
+                    <h3>Quick Entry List</h3>
+                  </div>
+                  <span className="pill">{activeRows.length} activities</span>
+                </div>
+
+                <div className="quick-entry-list">
+                  {activeRows.map((row) => (
+                    <article className="quick-entry-card" key={row.id}>
+                      <header>
+                        <div>
+                          <strong>{row.activity}</strong>
+                          <small>{row.projectDescription}</small>
+                        </div>
+                        <span>{formatNumber(getRowTotal(row.id))} hrs</span>
+                      </header>
+                      <div className="quick-entry-days">
+                        {days.map((day) => (
+                          <div className="quick-entry-day" key={`${row.id}-${day.date}`}>
+                            <span>{day.dayName.slice(0, 3)} {day.date.slice(5)}</span>
+                            <div>
+                              {timeTypes.map((type) => {
+                                const entry = getEntry(row.id, day.date, type.key);
+                                return (
+                                  <button type="button" key={type.key} onClick={() => openEntryDetails(row.id, day.date, type.key)}>
+                                    <small>{type.key === 'afterhours' ? 'AH' : 'N'}</small>
+                                    <strong>{formatHoursValue(entry.hours)}</strong>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {timesheetView === 'calendar' ? (
+              <div className="timesheet-view-panel calendar-timeline-view" role="tabpanel" aria-label="Calendar and Timeline">
+                <div className="timesheet-view-heading">
+                  <div>
+                    <p className="eyebrow">Week at a glance</p>
+                    <h3>Calendar / Timeline</h3>
+                  </div>
+                  <span className="pill">{formatNumber(grandTotal)} total hours</span>
+                </div>
+
+                <div className="calendar-week-grid">
+                  {days.map((day) => {
+                    const dayItems = activeRows
+                      .flatMap((row) => timeTypes.map((type) => ({
+                        row,
+                        type,
+                        entry: getEntry(row.id, day.date, type.key)
+                      })))
+                      .filter((item) => Number.parseFloat(item.entry.hours || '0') > 0);
+
+                    return (
+                      <article className="calendar-day-card" key={day.date}>
+                        <header>
+                          <div>
+                            <strong>{day.dayName}</strong>
+                            <span>{day.date}</span>
+                          </div>
+                          <span className="calendar-day-total">{formatNumber(getDayTotal(day.date))} hrs</span>
+                        </header>
+                        <div className="calendar-day-items">
+                          {dayItems.map((item) => (
+                            <button
+                              type="button"
+                              key={`${item.row.id}-${day.date}-${item.type.key}`}
+                              onClick={() => openEntryDetails(item.row.id, day.date, item.type.key)}
+                            >
+                              <span>{item.row.activity}</span>
+                              <small>{item.type.key === 'afterhours' ? 'Afterhours' : 'Normal'}</small>
+                              <strong>{formatHoursValue(item.entry.hours)}</strong>
+                            </button>
+                          ))}
+                          {dayItems.length === 0 ? <span className="muted">No time entered</span> : null}
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
           </div>
         </DataState>
       </section>
