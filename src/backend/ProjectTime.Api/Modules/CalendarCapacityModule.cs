@@ -47,12 +47,6 @@ public static class CalendarCapacityModule
                   AND u.email <> ''
                   AND lower(u.email) NOT LIKE '%.local'
                   AND lower(u.email) NOT LIKE '%.cloud'
-                            ) IN (
-                              'engineer',
-                              'engineering',
-                              'engineering team lead'
-                            )
-                  )
                 ORDER BY COALESCE(u.display_name, u.email);
                 """, connection);
 
@@ -193,12 +187,6 @@ public static class CalendarCapacityModule
             WHERE u.is_active=TRUE AND COALESCE(u.login_enabled,TRUE)=TRUE
               AND u.email IS NOT NULL AND u.email<>'' AND lower(u.email) NOT LIKE '%.local'
                   AND lower(u.email) NOT LIKE '%.cloud'
-                        ) IN (
-                          'engineer',
-                          'engineering',
-                          'engineering team lead'
-                        )
-              )
               AND (
                     (cardinality(@ids)>0 AND u.user_id=ANY(@ids))
                  OR (cardinality(@ids)=0 AND NULLIF(@team,'') IS NOT NULL AND lower(COALESCE(NULLIF(to_jsonb(u)->>'team_name',''),NULLIF(to_jsonb(u)->>'department_name',''),NULLIF(to_jsonb(u)->>'department',''),'Unassigned'))=lower(@team))

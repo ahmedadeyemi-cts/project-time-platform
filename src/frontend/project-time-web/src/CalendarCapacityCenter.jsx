@@ -32,6 +32,66 @@ function monthCells(anchor) {
 }
 
 export default function CalendarCapacityCenter() {
+  useEffect(() => {
+    const hidden = new Map();
+
+    const suppressUnrelatedDashboardContent = () => {
+      const headings = Array.from(
+        document.querySelectorAll('h1, h2, h3, [role="heading"]')
+      );
+
+      headings.forEach((heading) => {
+        const label = String(heading.textContent || '')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .toLowerCase();
+
+        if (!label.includes('operational command center for time')) {
+          return;
+        }
+
+        const container =
+          heading.closest('section') ||
+          heading.closest('article') ||
+          heading.closest('main > div') ||
+          heading.parentElement;
+
+        if (!container) return;
+
+        if (!hidden.has(container)) {
+          hidden.set(container, container.style.display);
+        }
+
+        container.style.display = 'none';
+        container.setAttribute(
+          'data-module-057-hidden-dashboard-content',
+          'true'
+        );
+      });
+    };
+
+    suppressUnrelatedDashboardContent();
+
+    const frame = window.requestAnimationFrame(
+      suppressUnrelatedDashboardContent
+    );
+    const timer = window.setTimeout(
+      suppressUnrelatedDashboardContent,
+      250
+    );
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+
+      hidden.forEach((previousDisplay, element) => {
+        element.style.display = previousDisplay;
+        element.removeAttribute(
+          'data-module-057-hidden-dashboard-content'
+        );
+      });
+    };
+  }, []);
   const [config, setConfig] = useState(null);
   const [resources, setResources] = useState([]);
   const [teams, setTeams] = useState([]);
