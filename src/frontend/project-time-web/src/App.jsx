@@ -6909,6 +6909,10 @@ Analytics - Variphy / Infortel`}
         </section>
       ) : null}
 
+      {/* MODULE_057_STRUCTURAL_ROUTE_BOUNDARY_V6 */}
+      {activeRoute !== 'calendar-capacity' ? (
+        <>
+
       {(activeRoute === 'dashboard') ? (
 <section id="role-dashboard" className="panel role-dashboard-panel">
         <div className="section-heading">
@@ -7780,6 +7784,10 @@ Analytics - Variphy / Infortel`}
       <ProductionOperationsPanel />
       <ProductionOperationsAcknowledgmentsPanel />
       <TimeComplianceEmailNotificationsPanel />
+
+        </>
+      ) : null}
+
       <HelpAssistant />
 </main>
   );
