@@ -3992,13 +3992,24 @@ export default function App() {
   const [activitySource, setActivitySource] = useState('nonProject');
   /* MODULE_001_TIMESHEET_MULTIVIEW_START */
   const [timesheetView, setTimesheetView] = useState(() => {
-    const allowedViews = ['weekly', 'daily', 'queue', 'quick', 'calendar'];
+    const allowedViews = ['weekly', 'daily', 'guided', 'quick', 'copy'];
     const savedView = window.localStorage.getItem('projectPulseTimesheetView');
-    if (allowedViews.includes(savedView)) return savedView;
+    const migrated = savedView === 'queue' ? 'guided' : savedView === 'calendar' ? 'copy' : savedView;
+    if (allowedViews.includes(migrated)) return migrated;
     return window.matchMedia('(max-width: 760px)').matches ? 'daily' : 'weekly';
   });
   const [activitySearch, setActivitySearch] = useState('');
   const [focusedDayDate, setFocusedDayDate] = useState('');
+  const [guidedRowId, setGuidedRowId] = useState('');
+  const [guidedDates, setGuidedDates] = useState([]);
+  const [guidedType, setGuidedType] = useState('normal');
+  const [guidedHours, setGuidedHours] = useState('');
+  const [guidedComment, setGuidedComment] = useState('');
+  const [guidedMessage, setGuidedMessage] = useState('');
+  const [copySourceDate, setCopySourceDate] = useState('');
+  const [copyTargetDates, setCopyTargetDates] = useState([]);
+  const [copyMode, setCopyMode] = useState('skip');
+  const [copyMessage, setCopyMessage] = useState('');
   /* MODULE_001_TIMESHEET_MULTIVIEW_STATE_END */
   const holidayYearOptions = useMemo(() => {
     const currentYear = new Date().getFullYear();
@@ -4374,6 +4385,28 @@ export default function App() {
     days.find((day) => day.date === todayIso) ??
     days[0] ??
     null;
+
+  /* MODULE_001_GUIDED_COPY_START */
+  const guidedOptions = [
+    ...categories.map((category) => ({ row: categoryToRow(category), source: 'nonProject', kind: 'Non-Project Time', category, task: null, detail: category.description ?? category.code })),
+    ...regularAssignedTasks.map((task) => ({ row: taskToRow(task), source: 'openTasks', kind: 'Regular Task', category: null, task, detail: [task.clientName, task.projectCode, task.projectName].filter(Boolean).join(' • ') })),
+    ...requestAssignedTasks.map((task) => ({ row: taskToRow(task), source: 'requests', kind: 'Request / Service Request', category: null, task, detail: [task.clientName, task.projectCode, task.projectName].filter(Boolean).join(' • ') }))
+  ];
+  const visibleGuidedOptions = guidedOptions.filter((option) =>
+    option.source === activitySource &&
+    activityMatchesSearch(option.row.activity, option.row.projectDescription, option.detail, option.task?.taskCode, option.task?.projectManagerName, option.category?.code)
+  );
+  const guidedSelected = guidedOptions.find((option) => option.row.id === guidedRowId) ?? null;
+  const resolvedCopySourceDate =
+    copySourceDate ||
+    days.find((day) => getDayTotal(day.date) > 0)?.date ||
+    focusedDay?.date ||
+    days[0]?.date ||
+    '';
+  const copySourceItems = activeRows
+    .flatMap((row) => timeTypes.map((type) => ({ row, type, entry: getEntry(row.id, resolvedCopySourceDate, type.key) })))
+    .filter((item) => Number.parseFloat(item.entry.hours || '0') > 0);
+  /* MODULE_001_GUIDED_COPY_DERIVED_END */
   /* MODULE_001_TIMESHEET_MULTIVIEW_DERIVED_END */
 
   const databaseSummary = useMemo(() => {
@@ -5497,6 +5530,68 @@ export default function App() {
     if (typeof unhideRowForCurrentWeek === 'function') unhideRowForCurrentWeek(row.id);
     setActiveRows((current) => (current.some((item) => item.id === row.id) ? current : [...current, row]));
     setSaveStatus('Unsaved changes');
+  }
+
+  function selectGuidedOption(option) {
+    if (option.category) addCategory(option.category);
+    if (option.task) addTask(option.task);
+    setGuidedRowId(option.row.id);
+    setGuidedMessage('');
+  }
+
+  function toggleGuidedDate(date) {
+    if (!isDayEditable(date)) return;
+    setGuidedDates((current) => current.includes(date) ? current.filter((item) => item !== date) : [...current, date]);
+    setGuidedMessage('');
+  }
+
+  function addGuidedTime() {
+    const hours = Number.parseFloat(guidedHours);
+    const dates = guidedDates.filter((date) => isDayEditable(date));
+    if (!guidedSelected) return setGuidedMessage('Choose an activity.');
+    if (!dates.length) return setGuidedMessage('Choose at least one open day.');
+    if (!Number.isFinite(hours) || hours <= 0 || hours > 24) return setGuidedMessage('Enter valid hours between 0 and 24.');
+    if (!guidedComment.trim()) return setGuidedMessage('Enter a description before adding time.');
+    if (guidedSelected.category) addCategory(guidedSelected.category);
+    if (guidedSelected.task) addTask(guidedSelected.task);
+    dates.forEach((date) => updateEntry(guidedSelected.row.id, date, guidedType, {
+      hours: guidedHours,
+      comment: guidedComment.trim(),
+      savedStatus: 'draft'
+    }));
+    setGuidedMessage(`Added ${guidedHours} hour(s) to ${dates.length} day${dates.length === 1 ? '' : 's'}.`);
+    setGuidedHours('');
+    setGuidedComment('');
+  }
+
+  function toggleCopyTarget(date) {
+    if (date === resolvedCopySourceDate || !isDayEditable(date)) return;
+    setCopyTargetDates((current) => current.includes(date) ? current.filter((item) => item !== date) : [...current, date]);
+    setCopyMessage('');
+  }
+
+  function copyTimeToSelectedDays() {
+    const targets = copyTargetDates.filter((date) => date !== resolvedCopySourceDate && isDayEditable(date));
+    if (!copySourceItems.length) return setCopyMessage('Choose a source day that contains time.');
+    if (!targets.length) return setCopyMessage('Choose at least one open destination day.');
+    let copied = 0;
+    let skipped = 0;
+    targets.forEach((date) => copySourceItems.forEach((item) => {
+      const target = getEntry(item.row.id, date, item.type.key);
+      if (Number.parseFloat(target.hours || '0') > 0 && copyMode === 'skip') {
+        skipped += 1;
+        return;
+      }
+      updateEntry(item.row.id, date, item.type.key, {
+        hours: item.entry.hours,
+        comment: item.entry.comment,
+        workLocationGroupId: item.entry.workLocationGroupId,
+        workLocationId: item.entry.workLocationId,
+        savedStatus: 'draft'
+      });
+      copied += 1;
+    }));
+    setCopyMessage(`Copied ${copied} entr${copied === 1 ? 'y' : 'ies'}${skipped ? `; skipped ${skipped} existing` : ''}.`);
   }
 
   function removeRow(rowId) {
@@ -7117,9 +7212,9 @@ Analytics - Variphy / Infortel`}
           {[
             { key: 'weekly', label: 'Weekly Grid', description: 'Full seven-day grid' },
             { key: 'daily', label: 'Daily Focus', description: 'Mobile-friendly day entry' },
-            { key: 'queue', label: 'My Work Queue', description: 'Assigned tasks and requests' },
+            { key: 'guided', label: 'Guided Add', description: 'Choose work, days, and hours' },
             { key: 'quick', label: 'Quick Entry List', description: 'Compact activity entry' },
-            { key: 'calendar', label: 'Calendar / Timeline', description: 'Week-at-a-glance totals' }
+            { key: 'copy', label: 'Copy Time', description: 'Reuse an existing day' }
           ].map((view) => (
             <button
               type="button"
@@ -7150,7 +7245,8 @@ Analytics - Variphy / Infortel`}
         </div>
 
         <DataState loading={timesheet.loading} error={timesheet.error}>
-          <div className="timesheet-workspace">
+          <div className={['guided', 'copy'].includes(timesheetView) ? 'timesheet-workspace full-width-entry' : 'timesheet-workspace'}>
+            {!['guided', 'copy'].includes(timesheetView) ? (
             <aside className="activities-panel" aria-label="Activities">
               <div className="panel-title-row">
                 <h3>Activities</h3>
@@ -7289,6 +7385,7 @@ Analytics - Variphy / Infortel`}
                 </div>
               )}
             </aside>
+            ) : null}
 
             {timesheetView === 'weekly' ? (
               <div className="timesheet-view-panel weekly-grid-view" role="tabpanel" aria-label="Weekly Grid">
@@ -7427,45 +7524,54 @@ Analytics - Variphy / Infortel`}
               </div>
             ) : null}
 
-            {timesheetView === 'queue' ? (
-              <div className="timesheet-view-panel work-queue-view" role="tabpanel" aria-label="My Work Queue">
+            {timesheetView === 'guided' ? (
+              <div className="timesheet-view-panel guided-add-view" role="tabpanel" aria-label="Guided Add">
                 <div className="timesheet-view-heading">
-                  <div>
-                    <p className="eyebrow">Assigned work</p>
-                    <h3>My Work Queue</h3>
-                  </div>
-                  <span className="pill">{filteredRegularAssignedTasks.length + filteredRequestAssignedTasks.length} items</span>
+                  <div><p className="eyebrow">Simple time entry</p><h3>Guided Add</h3><p className="muted">Choose work, select day(s), enter hours and a description, then add time.</p></div>
+                  <span className="pill">3 steps</span>
                 </div>
-
-                <div className="work-queue-list">
-                  {[...filteredRegularAssignedTasks, ...filteredRequestAssignedTasks].map((task) => {
-                    const alreadyAdded = activeRows.some((row) => row.projectId === task.projectId && row.taskId === task.taskId);
-                    return (
-                      <article className="work-queue-card" key={`${task.projectId}-${task.taskId}`}>
-                        <div>
-                          <span className="queue-type">{projectPulseTaskTimeEntrySection(task) === 'requests' ? 'Request / Service Request' : 'Regular Task'}</span>
-                          <h4>{task.taskName}</h4>
-                          <p>{task.projectCode} • {task.projectName}</p>
-                          <small>{task.clientName ? `Customer: ${task.clientName}` : 'Assigned work'}{task.projectManagerName ? ` • PM: ${task.projectManagerName}` : ''}</small>
-                        </div>
-                        <div className="queue-metrics">
-                          <span><small>Assigned</small><strong>{Number(task.assignedHours || 0).toFixed(2)}</strong></span>
-                          <span><small>Used</small><strong>{Number(task.usedHours || 0).toFixed(2)}</strong></span>
-                          <span><small>Remaining</small><strong>{Number(task.remainingHours || 0).toFixed(2)}</strong></span>
-                        </div>
-                        <button type="button" className="primary-action" disabled={alreadyAdded || !isAnyDayEditable} onClick={() => addTask(task)}>
-                          {alreadyAdded ? 'Added to Timesheet' : 'Add to Timesheet'}
-                        </button>
-                      </article>
-                    );
-                  })}
-
-                  {!openTasks.loading && !openTasks.error && filteredRegularAssignedTasks.length + filteredRequestAssignedTasks.length === 0 ? (
-                    <div className="empty-activity-state">
-                      <strong>No assigned work matches the search</strong>
-                      <span>Clear the activity search or select another week.</span>
+                <div className="guided-layout">
+                  <section className="guided-card">
+                    <header><b>1</b><div><strong>Choose the activity</strong><small>Search non-project time, tasks, or requests.</small></div></header>
+                    <div className="guided-tabs">
+                      {activitySourceOptions.map((option) => (
+                        <button type="button" className={activitySource === option.key ? 'selected' : ''} key={option.key} onClick={() => { setActivitySource(option.key); setActivitySearch(''); setGuidedMessage(''); }}>{option.label}</button>
+                      ))}
                     </div>
-                  ) : null}
+                    <div className="activity-search-field">
+                      <span aria-hidden="true">⌕</span>
+                      <input type="search" value={activitySearch} placeholder="Search category, customer, project, task, or request" onChange={(event) => setActivitySearch(event.target.value)} />
+                      {activitySearch ? <button type="button" onClick={() => setActivitySearch('')}>Clear</button> : null}
+                    </div>
+                    <div className="guided-results">
+                      {visibleGuidedOptions.map((option) => (
+                        <button type="button" className={guidedRowId === option.row.id ? 'guided-option selected' : 'guided-option'} key={option.row.id} onClick={() => selectGuidedOption(option)}>
+                          <span>{option.kind}</span><strong>{option.row.activity}</strong><small>{option.detail || option.row.projectDescription}</small>
+                        </button>
+                      ))}
+                      {!openTasks.loading && visibleGuidedOptions.length === 0 ? <div className="guided-empty"><strong>No matching activities</strong><span>Clear the search or choose another activity type.</span></div> : null}
+                    </div>
+                  </section>
+                  <section className="guided-card">
+                    <header><b>2</b><div><strong>Select day(s) and enter time</strong><small>The same entry can be added to multiple open days.</small></div></header>
+                    <div className="guided-selected">
+                      {guidedSelected ? <><span>{guidedSelected.kind}</span><strong>{guidedSelected.row.activity}</strong><small>{guidedSelected.detail || guidedSelected.row.projectDescription}</small></> : <><strong>No activity selected</strong><small>Choose an activity in Step 1.</small></>}
+                    </div>
+                    <div className="guided-days">
+                      {days.map((day) => (
+                        <button type="button" className={guidedDates.includes(day.date) ? 'selected' : ''} disabled={!isDayEditable(day.date)} key={day.date} onClick={() => toggleGuidedDate(day.date)}>
+                          <span>{day.dayName.slice(0,3)}</span><strong>{day.date.slice(5)}</strong><small>{isDayEditable(day.date) ? `${formatNumber(getDayTotal(day.date))} hrs` : 'Locked'}</small>
+                        </button>
+                      ))}
+                    </div>
+                    <div className="guided-fields">
+                      <div className="guided-types">{timeTypes.map((type) => <button type="button" className={guidedType === type.key ? 'selected' : ''} key={type.key} onClick={() => setGuidedType(type.key)}>{type.label}</button>)}</div>
+                      <label>Hours per day<input type="number" min="0.25" max="24" step="0.25" value={guidedHours} placeholder="0.00" onChange={(event) => { setGuidedHours(event.target.value); setGuidedMessage(''); }} /></label>
+                    </div>
+                    <label className="guided-comment">Description / comment<textarea value={guidedComment} placeholder="Describe the work completed." onChange={(event) => { setGuidedComment(event.target.value); setGuidedMessage(''); }} /></label>
+                    <div className="guided-action"><span>{guidedDates.length} day{guidedDates.length === 1 ? '' : 's'} selected</span><button type="button" className="primary-action" onClick={addGuidedTime}>Add Time</button></div>
+                    {guidedMessage ? <div className="guided-message" role="status">{guidedMessage}</div> : null}
+                  </section>
                 </div>
               </div>
             ) : null}
@@ -7514,55 +7620,43 @@ Analytics - Variphy / Infortel`}
               </div>
             ) : null}
 
-            {timesheetView === 'calendar' ? (
-              <div className="timesheet-view-panel calendar-timeline-view" role="tabpanel" aria-label="Calendar and Timeline">
+            {timesheetView === 'copy' ? (
+              <div className="timesheet-view-panel copy-time-view" role="tabpanel" aria-label="Copy Time">
                 <div className="timesheet-view-heading">
-                  <div>
-                    <p className="eyebrow">Week at a glance</p>
-                    <h3>Calendar / Timeline</h3>
-                  </div>
-                  <span className="pill">{formatNumber(grandTotal)} total hours</span>
+                  <div><p className="eyebrow">Reuse existing time</p><h3>Copy Time</h3><p className="muted">Choose a source day and copy all of its time to one or more open days.</p></div>
+                  <span className="pill">{copySourceItems.length} entries</span>
                 </div>
-
-                <div className="calendar-week-grid">
-                  {days.map((day) => {
-                    const dayItems = activeRows
-                      .flatMap((row) => timeTypes.map((type) => ({
-                        row,
-                        type,
-                        entry: getEntry(row.id, day.date, type.key)
-                      })))
-                      .filter((item) => Number.parseFloat(item.entry.hours || '0') > 0);
-
-                    return (
-                      <article className="calendar-day-card" key={day.date}>
-                        <header>
-                          <div>
-                            <strong>{day.dayName}</strong>
-                            <span>{day.date}</span>
-                          </div>
-                          <span className="calendar-day-total">{formatNumber(getDayTotal(day.date))} hrs</span>
-                        </header>
-                        <div className="calendar-day-items">
-                          {dayItems.map((item) => (
-                            <button
-                              type="button"
-                              key={`${item.row.id}-${day.date}-${item.type.key}`}
-                              onClick={() => openEntryDetails(item.row.id, day.date, item.type.key)}
-                            >
-                              <span>{item.row.activity}</span>
-                              <small>{item.type.key === 'afterhours' ? 'Afterhours' : 'Normal'}</small>
-                              <strong>{formatHoursValue(item.entry.hours)}</strong>
-                            </button>
-                          ))}
-                          {dayItems.length === 0 ? <span className="muted">No time entered</span> : null}
-                        </div>
-                      </article>
-                    );
-                  })}
+                <div className="copy-layout">
+                  <section className="guided-card">
+                    <header><b>1</b><div><strong>Choose the source day</strong><small>Select a day that already contains time.</small></div></header>
+                    <div className="copy-source-days">
+                      {days.map((day) => <button type="button" className={resolvedCopySourceDate === day.date ? 'selected' : ''} key={day.date} onClick={() => { setCopySourceDate(day.date); setCopyTargetDates((current) => current.filter((date) => date !== day.date)); setCopyMessage(''); }}><span>{day.dayName}</span><strong>{formatNumber(getDayTotal(day.date))} hrs</strong><small>{day.date}</small></button>)}
+                    </div>
+                    <div className="copy-preview">
+                      {copySourceItems.map((item) => <div key={`${item.row.id}-${item.type.key}`}><span><strong>{item.row.activity}</strong><small>{item.type.key === 'afterhours' ? 'Afterhours' : 'Normal'}</small></span><b>{formatHoursValue(item.entry.hours)} hrs</b></div>)}
+                      {!copySourceItems.length ? <div className="guided-empty"><strong>No time to copy</strong><span>Choose a source day with time entries.</span></div> : null}
+                    </div>
+                  </section>
+                  <section className="guided-card">
+                    <header><b>2</b><div><strong>Choose destination day(s)</strong><small>Locked and submitted days cannot be changed.</small></div></header>
+                    <div className="guided-days">
+                      {days.map((day) => {
+                        const source = day.date === resolvedCopySourceDate;
+                        const editable = isDayEditable(day.date);
+                        return <button type="button" className={copyTargetDates.includes(day.date) ? 'selected' : ''} disabled={source || !editable} key={day.date} onClick={() => toggleCopyTarget(day.date)}><span>{day.dayName.slice(0,3)}</span><strong>{day.date.slice(5)}</strong><small>{source ? 'Source' : editable ? `${formatNumber(getDayTotal(day.date))} hrs` : 'Locked'}</small></button>;
+                      })}
+                    </div>
+                    <div className="copy-modes">
+                      <label><input type="radio" checked={copyMode === 'skip'} onChange={() => setCopyMode('skip')} /> Skip existing entries</label>
+                      <label><input type="radio" checked={copyMode === 'replace'} onChange={() => setCopyMode('replace')} /> Replace existing entries</label>
+                    </div>
+                    <div className="guided-action"><span>{copyTargetDates.length} destination day{copyTargetDates.length === 1 ? '' : 's'}</span><button type="button" className="primary-action" onClick={copyTimeToSelectedDays}>Copy Time</button></div>
+                    {copyMessage ? <div className="guided-message" role="status">{copyMessage}</div> : null}
+                  </section>
                 </div>
               </div>
             ) : null}
+
           </div>
         </DataState>
       </section>
