@@ -36128,6 +36128,8 @@ ProjectTime.Api.Modules.CalendarCapacityModule.MapCalendarCapacityEndpoints(app)
 ProjectTime.Api.Modules.CiCdPipelineModule.MapCiCdPipelineEndpoints(app);
 
 app.MapCertiniaBillingEndpoints();
+app.MapSessionIntelligenceEndpoints();
+app.MapSellInboundSnapshotEndpoints();
 app.MapSellCommercialReadModelEndpoints();
 
 app.Run();
