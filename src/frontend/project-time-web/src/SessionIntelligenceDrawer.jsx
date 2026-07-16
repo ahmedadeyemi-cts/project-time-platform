@@ -121,19 +121,19 @@ export default function SessionIntelligenceDrawer({ authSession }) {
   ];
 
   return <>
-    <button className="session-drawer-handle" onClick={() => setOpen(v => !v)}>
-      {open ? 'Close session' : 'Session intelligence'}
+    <button className="uss-session-drawer-handle" onClick={() => setOpen(v => !v)}>
+      {open ? 'Close' : 'US Signal Session Intelligence'}
     </button>
 
-    <aside className={`session-drawer ${open ? 'open' : ''}`}>
+    <aside className={`uss-session-drawer-shell ${open ? 'is-open' : ''}`}>
       <header>
-        <div><small>SECURITY SESSION</small><h2>Session Intelligence</h2></div>
+        <div><small>US SIGNAL SECURITY SESSION</small><h2>US Signal Session Intelligence</h2></div>
         <button onClick={() => setOpen(false)}>Close</button>
       </header>
 
-      {error ? <div className="session-drawer-warning">Server context: {error}</div> : null}
+      {error ? <div className="uss-session-drawer-warning">Server context: {error}</div> : null}
 
-      <div className="session-drawer-body">
+      <div className="uss-session-drawer-body">
         {sections.map(([title, rows]) => (
           <details key={title} open={title === 'Effective session'}>
             <summary>{title}</summary>
@@ -156,6 +156,6 @@ export default function SessionIntelligenceDrawer({ authSession }) {
       </footer>
     </aside>
 
-    {open ? <button className="session-drawer-backdrop" onClick={() => setOpen(false)} /> : null}
+    {open ? <button className="uss-session-drawer-backdrop" onClick={() => setOpen(false)} /> : null}
   </>;
 }
