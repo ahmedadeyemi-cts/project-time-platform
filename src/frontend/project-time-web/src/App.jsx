@@ -1230,6 +1230,7 @@ import CloseoutEmailAutomationCenter from './CloseoutEmailAutomationCenter.jsx';
 import InvoiceBillingCenter from './InvoiceBillingCenter.jsx';
 import CalendarCapacityCenter from './CalendarCapacityCenter.jsx';
 import CiCdPipelineCenter from './CiCdPipelineCenter.jsx';
+import SessionIntelligenceCenter from './SessionIntelligenceCenter.jsx';
 import CustomerDirectoryCenter from './CustomerDirectoryCenter.jsx';
 import RateCardAdministrationCenter from './RateCardAdministrationCenter.jsx';
 import WorkRegisterCenter from './WorkRegisterCenter.jsx';
@@ -6917,14 +6918,25 @@ Analytics - Variphy / Infortel`}
         </section>
       ) : null}
 
+
+      {canSeeAny(['SYSTEM_ADMINISTRATION', 'MANAGE_ALL']) ? (
+        <a className="module059-admin-shortcut" href="#security-session-intelligence">Security Session</a>
+      ) : null}
+
       {(activeRoute === 'cicd-pipeline' && canSeeAny(['SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
         <section id="cicd-pipeline" className="panel cicd-pipeline-route-panel">
           <CiCdPipelineCenter />
         </section>
       ) : null}
 
+      {(activeRoute === 'security-session-intelligence' && canSeeAny(['SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
+        <section id="security-session-intelligence" className="panel security-session-intelligence-route-panel">
+          <SessionIntelligenceCenter authSession={authSession} />
+        </section>
+      ) : null}
+
       {/* MODULE_057_STRUCTURAL_ROUTE_BOUNDARY_V6 */}
-      {!['calendar-capacity', 'cicd-pipeline'].includes(activeRoute) ? (
+      {!['calendar-capacity', 'cicd-pipeline', 'security-session-intelligence'].includes(activeRoute) ? (
         <>
 
       {(activeRoute === 'dashboard') ? (
