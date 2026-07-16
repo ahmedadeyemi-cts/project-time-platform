@@ -36124,6 +36124,8 @@ ProjectTime.Api.Modules.WorkRegisterPurchaseOrderModule.MapWorkRegisterPurchaseO
 
 ProjectTime.Api.Modules.CalendarCapacityModule.MapCalendarCapacityEndpoints(app);
 
+ProjectTime.Api.Modules.CiCdPipelineModule.MapCiCdPipelineEndpoints(app);
+
 app.Run();
 
 

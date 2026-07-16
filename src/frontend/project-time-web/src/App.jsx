@@ -1229,6 +1229,7 @@ import ProjectCloseoutCenter from './ProjectCloseoutCenter.jsx';
 import CloseoutEmailAutomationCenter from './CloseoutEmailAutomationCenter.jsx';
 import InvoiceBillingCenter from './InvoiceBillingCenter.jsx';
 import CalendarCapacityCenter from './CalendarCapacityCenter.jsx';
+import CiCdPipelineCenter from './CiCdPipelineCenter.jsx';
 import CustomerDirectoryCenter from './CustomerDirectoryCenter.jsx';
 import RateCardAdministrationCenter from './RateCardAdministrationCenter.jsx';
 import WorkRegisterCenter from './WorkRegisterCenter.jsx';
@@ -6903,14 +6904,27 @@ Analytics - Variphy / Infortel`}
         </section>
       ) : null}
 
+
+      {canSeeAny(['SYSTEM_ADMINISTRATION', 'MANAGE_ALL']) ? (
+        <a className="module058-admin-shortcut" href="#cicd-pipeline">
+          CI/CD Pipeline
+        </a>
+      ) : null}
+
       {(activeRoute === 'calendar-capacity' && canSeeAny(['VIEW_RESOURCE_SCHEDULING', 'MANAGE_RESOURCE_SCHEDULING', 'VIEW_TEAM_UTILIZATION', 'VIEW_INDIVIDUAL_UTILIZATION', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
         <section id="calendar-capacity" className="panel calendar-capacity-route-panel">
           <CalendarCapacityCenter />
         </section>
       ) : null}
 
+      {(activeRoute === 'cicd-pipeline' && canSeeAny(['SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
+        <section id="cicd-pipeline" className="panel cicd-pipeline-route-panel">
+          <CiCdPipelineCenter />
+        </section>
+      ) : null}
+
       {/* MODULE_057_STRUCTURAL_ROUTE_BOUNDARY_V6 */}
-      {activeRoute !== 'calendar-capacity' ? (
+      {!['calendar-capacity', 'cicd-pipeline'].includes(activeRoute) ? (
         <>
 
       {(activeRoute === 'dashboard') ? (
