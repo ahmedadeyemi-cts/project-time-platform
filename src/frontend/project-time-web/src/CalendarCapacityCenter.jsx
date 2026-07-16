@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import './calendar-capacity-center.css';
 
 function headers() {
@@ -106,11 +106,23 @@ export default function CalendarCapacityCenter() {
   const [schedule, setSchedule] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [calendarReady, setCalendarReady] = useState(false);
+  const scheduleRequestId = useRef(0);
 
   useEffect(() => {
     Promise.all([api('/api/calendar/configuration'), api('/api/calendar/resources')])
-      .then(([c, r]) => { setConfig(c); setResources(r.resources || []); setTeams(r.teams || []); setDepartments(r.departments || []); setUserId(r.resources?.[0]?.userId || ''); })
-      .catch((e) => setError(e.message)).finally(() => setLoading(false));
+      .then(([c, r]) => {
+        setConfig(c);
+        setResources(r.resources || []);
+        setTeams(r.teams || []);
+        setDepartments(r.departments || []);
+        setUserId(r.resources?.[0]?.userId || '');
+      })
+      .catch((e) => setError(e.message))
+      .finally(() => {
+        setCalendarReady(true);
+        setLoading(false);
+      });
   }, []);
 
   const filteredResources = useMemo(() => {
@@ -135,20 +147,79 @@ export default function CalendarCapacityCenter() {
     return { s: monthStart(anchor), e: monthEnd(anchor) };
   }, [anchor, view]);
 
-  async function load() {
-    setLoading(true); setError('');
+  const hasSelection = useMemo(() => {
+    if (scope === 'individual') return Boolean(userId);
+    if (scope === 'team') return Boolean(team);
+    if (scope === 'department') return Boolean(department);
+    return false;
+  }, [scope, userId, team, department]);
+
+  const load = useCallback(async () => {
+    if (!calendarReady || !hasSelection) return;
+
+    const requestId = ++scheduleRequestId.current;
+
+    setLoading(true);
+    setError('');
+
     try {
-      setSchedule(await api('/api/calendar/schedule', { method: 'POST', body: JSON.stringify({
-        start: range.s.toISOString(), end: range.e.toISOString(),
-        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
-        view, intervalMinutes: view === 'month' ? 60 : 30,
-        resourceIds: scope === 'individual' && userId ? [userId] : [],
-        teamName: scope === 'team' ? team : '',
-        departmentName: scope === 'department' ? department : ''
-      }) }));
-    } catch (e) { setSchedule(null); setError(e.message); }
-    finally { setLoading(false); }
-  }
+      const nextSchedule = await api('/api/calendar/schedule', {
+        method: 'POST',
+        body: JSON.stringify({
+          start: range.s.toISOString(),
+          end: range.e.toISOString(),
+          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+          view,
+          intervalMinutes: view === 'month' ? 60 : 30,
+          resourceIds: scope === 'individual' && userId ? [userId] : [],
+          teamName: scope === 'team' ? team : '',
+          departmentName: scope === 'department' ? department : ''
+        })
+      });
+
+      if (requestId === scheduleRequestId.current) {
+        setSchedule(nextSchedule);
+      }
+    } catch (e) {
+      if (requestId === scheduleRequestId.current) {
+        setSchedule(null);
+        setError(
+          e instanceof Error ? e.message : 'Unable to load the calendar.'
+        );
+      }
+    } finally {
+      if (requestId === scheduleRequestId.current) {
+        setLoading(false);
+      }
+    }
+  }, [
+    calendarReady,
+    department,
+    hasSelection,
+    range,
+    scope,
+    team,
+    userId,
+    view
+  ]);
+
+  useEffect(() => {
+    if (!calendarReady || !hasSelection) {
+      scheduleRequestId.current += 1;
+      setSchedule(null);
+      setError('');
+      return undefined;
+    }
+
+    const timer = window.setTimeout(() => {
+      void load();
+    }, 150);
+
+    return () => {
+      window.clearTimeout(timer);
+      scheduleRequestId.current += 1;
+    };
+  }, [calendarReady, hasSelection, load]);
 
   function move(n) { const d = new Date(anchor); if (view==='day') d.setDate(d.getDate()+n); else if (['week','workweek','timeline'].includes(view)) d.setDate(d.getDate()+7*n); else d.setMonth(d.getMonth()+n); setAnchor(d); }
 
@@ -233,8 +304,12 @@ export default function CalendarCapacityCenter() {
           <button onClick={()=>setAnchor(new Date())}>Today</button>
           <button onClick={()=>move(1)}>Next</button>
         </div>
-        <button className="primary-action calendar-load-button" onClick={load} disabled={loading}>
-          {loading?'Loading…':'Load calendar'}
+        <button
+          className="primary-action calendar-load-button"
+          onClick={() => void load()}
+          disabled={loading || !calendarReady || !hasSelection}
+        >
+          {loading ? 'Loading…' : 'Refresh calendar'}
         </button>
       </div>
     </section>
