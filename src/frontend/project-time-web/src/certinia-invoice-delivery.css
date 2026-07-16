@@ -243,3 +243,23 @@
     flex-direction: column;
   }
 }
+
+
+/* 042_2_GRANULAR_PERSONAL_NAME_CONTROLS_START */
+.certinia-delivery__privacy-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .55rem;
+  margin: 0;
+  padding: .7rem;
+  border: 1px solid #d8e3ed;
+  border-radius: 8px;
+  background: #fff;
+}
+.certinia-delivery__privacy-grid legend { padding: 0 .3rem; color: #42596d; font-size: .78rem; font-weight: 750; }
+.certinia-delivery__privacy-grid label { display: flex; align-items: center; gap: .4rem; min-width: 0; color: #24394c; font-weight: 650; }
+.certinia-delivery__privacy-grid button,
+.certinia-delivery__privacy-grid small { grid-column: 1 / -1; }
+.certinia-delivery__privacy-grid small { color: #61778b; line-height: 1.4; }
+@media (max-width: 850px) { .certinia-delivery__privacy-grid { grid-template-columns: 1fr; } }
+/* 042_2_GRANULAR_PERSONAL_NAME_CONTROLS_END */

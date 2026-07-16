@@ -203,12 +203,16 @@ public static class CertiniaBillingModule
 
         var format = NormalizeDocumentFormat(
             context.Request.Query["format"].ToString());
-        var includeResourceNames = ReadBoolean(
+        var legacyIncludeResourceNames = ReadBoolean(
             context.Request.Query["includeResourceNames"].ToString());
+        var outputOptions = new InvoiceOutputOptions(
+            ReadQueryBoolean(context, "includeEngineerNames", legacyIncludeResourceNames),
+            ReadQueryBoolean(context, "includeProjectManagerName", legacyIncludeResourceNames),
+            ReadQueryBoolean(context, "includeProjectCoordinatorName", legacyIncludeResourceNames));
         var artifact = BuildArtifact(
             invoice,
             format,
-            includeResourceNames);
+            outputOptions);
 
         return Results.File(
             artifact.Bytes,
@@ -249,12 +253,16 @@ public static class CertiniaBillingModule
         }
 
         var format = NormalizeDocumentFormat(request.DocumentFormat);
+        var outputOptions = new InvoiceOutputOptions(
+            request.IncludeEngineerNames ?? request.IncludeResourceNames,
+            request.IncludeProjectManagerName ?? request.IncludeResourceNames,
+            request.IncludeProjectCoordinatorName ?? request.IncludeResourceNames);
         var configuration = await LoadConfigurationAsync(connection);
         var queued = await QueueInvoiceAsync(
             connection,
             invoice,
             format,
-            request.IncludeResourceNames,
+            outputOptions,
             userId.Value);
 
         CertiniaProcessSummary? processing = null;
@@ -839,16 +847,16 @@ public static class CertiniaBillingModule
     private static CertiniaArtifact BuildArtifact(
         CertiniaInvoiceSnapshot invoice,
         string format,
-        bool includeResourceNames)
+        InvoiceOutputOptions outputOptions)
     {
         return format == "excel"
-            ? BuildExcelArtifact(invoice, includeResourceNames)
-            : BuildPdfArtifact(invoice, includeResourceNames);
+            ? BuildExcelArtifact(invoice, outputOptions)
+            : BuildPdfArtifact(invoice, outputOptions);
     }
 
     private static CertiniaArtifact BuildPdfArtifact(
         CertiniaInvoiceSnapshot invoice,
-        bool includeResourceNames)
+        InvoiceOutputOptions outputOptions)
     {
         var header = invoice.Header;
         var textLines = new List<string>
@@ -856,8 +864,8 @@ public static class CertiniaBillingModule
             $"Invoice {header.InvoiceNumber}",
             $"Customer: {header.CustomerName}",
             $"Project: {header.ProjectCode} - {header.ProjectName}",
-            $"Project manager: {(includeResourceNames ? Fallback(header.ProjectManagerName, "Not assigned") : "Project Management")}",
-            $"Project coordinator: {(includeResourceNames ? Fallback(header.ProjectCoordinatorName, "Not assigned") : "Project Management")}",
+            $"Project manager: {(outputOptions.IncludeProjectManagerName ? Fallback(header.ProjectManagerName, "Not assigned") : "Project Management")}",
+            $"Project coordinator: {(outputOptions.IncludeProjectCoordinatorName ? Fallback(header.ProjectCoordinatorName, "Not assigned") : "Project Management")}",
             $"Invoice date: {FormatDate(header.InvoiceDate)}",
             $"Billing period: {FormatDate(header.BillingPeriodStart)} through {FormatDate(header.BillingPeriodEnd)}",
             $"Purchase order: {Fallback(header.PurchaseOrderNumber, "Not configured")}",
@@ -865,19 +873,18 @@ public static class CertiniaBillingModule
             $"Salesforce ID: {Fallback(header.SalesforceId, "Not configured")}",
             $"SELL Quote: {Fallback(header.SellQuote, "Not configured")}",
             string.Empty,
-            "Date | Resource | Task | Hours | Rate | Amount"
+            "Date | Resource | Work performed | Hours | Rate | Amount"
         };
 
         foreach (var line in invoice.Lines)
         {
             textLines.Add(string.Join(" | ",
                 FormatDate(line.WorkDate),
-                CustomerResource(line, includeResourceNames),
+                CustomerResource(line, outputOptions.IncludeEngineerNames),
                 $"{line.TaskCode} {line.TaskName}",
                 line.ApprovedHours.ToString("0.00", CultureInfo.InvariantCulture),
-                line.UnitRate.ToString("0.00", CultureInfo.InvariantCulture),
-                line.LineAmount.ToString("0.00", CultureInfo.InvariantCulture)));
-
+                $"${line.UnitRate:0.00}/hr",
+                $"${line.LineAmount:0.00}"));
             if (!string.IsNullOrWhiteSpace(line.Description))
             {
                 textLines.Add($"    {line.Description}");
@@ -885,19 +892,17 @@ public static class CertiniaBillingModule
         }
 
         textLines.Add(string.Empty);
-        textLines.Add($"Subtotal: {header.SubtotalAmount:0.00}");
-        textLines.Add($"Adjustments: {header.AdjustmentAmount:0.00}");
-        textLines.Add($"Tax: {header.TaxAmount:0.00}");
-        textLines.Add($"Invoice total: {header.TotalAmount:0.00}");
+        textLines.Add($"Subtotal: ${header.SubtotalAmount:0.00}");
+        textLines.Add($"Adjustments: ${header.AdjustmentAmount:0.00}");
+        textLines.Add($"Tax: ${header.TaxAmount:0.00}");
+        textLines.Add($"Invoice total: ${header.TotalAmount:0.00}");
         textLines.Add(string.Empty);
         textLines.Add("Generated from the immutable ProjectPulse invoice snapshot.");
-        textLines.Add(includeResourceNames
-            ? "Engineer and PM/PC names were explicitly included."
-            : "Engineer and PM/PC names are hidden by default.");
+        textLines.Add($"Personal names: engineers {(outputOptions.IncludeEngineerNames ? "included" : "hidden")}; project manager {(outputOptions.IncludeProjectManagerName ? "included" : "hidden")}; project coordinator {(outputOptions.IncludeProjectCoordinatorName ? "included" : "hidden")}.");
 
         var bytes = BuildSimplePdf(textLines);
         var fileName = SafeFileName(header.InvoiceNumber) +
-            (includeResourceNames ? "-with-resource-names.pdf" : ".pdf");
+            (outputOptions.IncludeAnyNames ? "-with-selected-names.pdf" : ".pdf");
 
         return new CertiniaArtifact(
             "pdf",
@@ -909,21 +914,21 @@ public static class CertiniaBillingModule
 
     private static CertiniaArtifact BuildExcelArtifact(
         CertiniaInvoiceSnapshot invoice,
-        bool includeResourceNames)
+        InvoiceOutputOptions outputOptions)
     {
         var header = invoice.Header;
         var html = new StringBuilder();
         html.Append("<!DOCTYPE html><html><head><meta charset=\"utf-8\">");
-        html.Append("<style>table{border-collapse:collapse;font-family:Arial;font-size:11pt}th,td{border:1px solid #888;padding:5px}th{background:#e9f2f8}.n{text-align:right}</style>");
+        html.Append("<style>table{border-collapse:collapse;font-family:Arial;font-size:11pt}th,td{border:1px solid #888;padding:5px;vertical-align:top}th{background:#e9f2f8}.n{text-align:right;white-space:nowrap}.work{min-width:360px;white-space:normal}</style>");
         html.Append("</head><body>");
         html.Append($"<h1>Invoice {Html(header.InvoiceNumber)}</h1>");
         html.Append("<table>");
         AddExcelRow(html, "Customer", header.CustomerName);
         AddExcelRow(html, "Project", $"{header.ProjectCode} - {header.ProjectName}");
-        AddExcelRow(html, "Project manager", includeResourceNames
+        AddExcelRow(html, "Project manager", outputOptions.IncludeProjectManagerName
             ? Fallback(header.ProjectManagerName, "Not assigned")
             : "Project Management");
-        AddExcelRow(html, "Project coordinator", includeResourceNames
+        AddExcelRow(html, "Project coordinator", outputOptions.IncludeProjectCoordinatorName
             ? Fallback(header.ProjectCoordinatorName, "Not assigned")
             : "Project Management");
         AddExcelRow(html, "Purchase order", header.PurchaseOrderNumber);
@@ -937,42 +942,40 @@ public static class CertiniaBillingModule
         foreach (var heading in new[]
         {
             "Line", "Work Date", "Resource", "Task Code", "Task",
-            "Description", "Hours", "Rate Code", "Unit Rate", "Amount"
+            "Work Performed", "Hours", "Rate Code", "Rate Description", "Unit Rate", "Amount"
         })
         {
             html.Append($"<th>{Html(heading)}</th>");
         }
 
         html.Append("</tr></thead><tbody>");
-
         foreach (var line in invoice.Lines)
         {
             html.Append("<tr>");
             AddCell(html, line.LineNumber.ToString(CultureInfo.InvariantCulture));
             AddCell(html, FormatDate(line.WorkDate));
-            AddCell(html, CustomerResource(line, includeResourceNames));
+            AddCell(html, CustomerResource(line, outputOptions.IncludeEngineerNames));
             AddCell(html, line.TaskCode);
             AddCell(html, line.TaskName);
             AddCell(html, line.Description);
             AddCell(html, line.ApprovedHours.ToString("0.00", CultureInfo.InvariantCulture), true);
             AddCell(html, line.RateCode);
-            AddCell(html, line.UnitRate.ToString("0.00", CultureInfo.InvariantCulture), true);
-            AddCell(html, line.LineAmount.ToString("0.00", CultureInfo.InvariantCulture), true);
+            AddCell(html, line.RateDescription);
+            AddCell(html, $"${line.UnitRate:0.00}/hr", true);
+            AddCell(html, $"${line.LineAmount:0.00}", true);
             html.Append("</tr>");
         }
 
         html.Append("</tbody><tfoot>");
-        html.Append($"<tr><th colspan=\"9\">Invoice total</th><th class=\"n\">{header.TotalAmount:0.00}</th></tr>");
+        html.Append($"<tr><th colspan=\"10\">Invoice total</th><th class=\"n\">${header.TotalAmount:0.00}</th></tr>");
         html.Append("</tfoot></table>");
         html.Append("<p>Generated from the immutable ProjectPulse invoice snapshot.</p>");
-        html.Append(includeResourceNames
-            ? "<p>Engineer and PM/PC names were explicitly included.</p>"
-            : "<p>Engineer and PM/PC names are hidden by default.</p>");
+        html.Append($"<p>Personal names: engineers {(outputOptions.IncludeEngineerNames ? "included" : "hidden")}; project manager {(outputOptions.IncludeProjectManagerName ? "included" : "hidden")}; project coordinator {(outputOptions.IncludeProjectCoordinatorName ? "included" : "hidden")}.</p>");
         html.Append("</body></html>");
 
         var bytes = Encoding.UTF8.GetBytes(html.ToString());
         var fileName = SafeFileName(header.InvoiceNumber) +
-            (includeResourceNames ? "-with-resource-names.xls" : ".xls");
+            (outputOptions.IncludeAnyNames ? "-with-selected-names.xls" : ".xls");
 
         return new CertiniaArtifact(
             "excel",
@@ -1051,23 +1054,31 @@ public static class CertiniaBillingModule
         NpgsqlConnection connection,
         CertiniaInvoiceSnapshot invoice,
         string format,
-        bool includeResourceNames,
+        InvoiceOutputOptions outputOptions,
         Guid actorUserId)
     {
-        var artifact = BuildArtifact(invoice, format, includeResourceNames);
+        var artifact = BuildArtifact(invoice, format, outputOptions);
         var idempotencyMaterial = string.Join('|',
             invoice.Header.BillingInvoiceId,
             invoice.ImmutableSnapshotSha256,
             artifact.Format,
-            includeResourceNames ? "resource-names-included" : "resource-names-hidden");
+            outputOptions.IncludeEngineerNames ? "engineer-names-included" : "engineer-names-hidden",
+            outputOptions.IncludeProjectManagerName ? "project-manager-name-included" : "project-manager-name-hidden",
+            outputOptions.IncludeProjectCoordinatorName ? "project-coordinator-name-included" : "project-coordinator-name-hidden");
         var idempotencyKey = $"certinia-invoice-{Sha256Hex(Encoding.UTF8.GetBytes(idempotencyMaterial))}";
         var payload = JsonSerializer.Serialize(new
         {
-            schemaVersion = "projectpulse-certinia-invoice-v1",
+            schemaVersion = "projectpulse-certinia-invoice-v2",
             idempotencyKey,
             queuedAt = DateTimeOffset.UtcNow,
             immutableSnapshotSha256 = invoice.ImmutableSnapshotSha256,
-            resourceNamesIncluded = includeResourceNames,
+            resourceNamesIncluded = outputOptions.IncludeAnyNames,
+            outputPrivacy = new
+            {
+                engineerNamesIncluded = outputOptions.IncludeEngineerNames,
+                projectManagerNameIncluded = outputOptions.IncludeProjectManagerName,
+                projectCoordinatorNameIncluded = outputOptions.IncludeProjectCoordinatorName
+            },
             invoice = new
             {
                 billingInvoiceId = invoice.Header.BillingInvoiceId,
@@ -1082,10 +1093,10 @@ public static class CertiniaBillingModule
                 projectCode = invoice.Header.ProjectCode,
                 projectName = invoice.Header.ProjectName,
                 contractType = invoice.Header.ContractType,
-                projectManager = includeResourceNames
+                projectManager = outputOptions.IncludeProjectManagerName
                     ? invoice.Header.ProjectManagerName
                     : "Project Management",
-                projectCoordinator = includeResourceNames
+                projectCoordinator = outputOptions.IncludeProjectCoordinatorName
                     ? invoice.Header.ProjectCoordinatorName
                     : "Project Management",
                 purchaseOrderNumber = invoice.Header.PurchaseOrderNumber,
@@ -1102,7 +1113,7 @@ public static class CertiniaBillingModule
                 {
                     lineNumber = line.LineNumber,
                     workDate = line.WorkDate,
-                    resource = CustomerResource(line, includeResourceNames),
+                    resource = CustomerResource(line, outputOptions.IncludeEngineerNames),
                     taskCode = line.TaskCode,
                     taskName = line.TaskName,
                     description = line.Description,
@@ -1124,6 +1135,7 @@ public static class CertiniaBillingModule
                 contentBase64 = Convert.ToBase64String(artifact.Bytes)
             }
         });
+        var includeResourceNames = outputOptions.IncludeAnyNames;
 
         await using var transaction = await connection.BeginTransactionAsync();
         Guid outboxId;
@@ -2207,6 +2219,16 @@ public static class CertiniaBillingModule
         return Clean(value).ToLowerInvariant() is "true" or "1" or "yes" or "y" or "on";
     }
 
+    private static bool ReadQueryBoolean(
+        HttpContext context,
+        string name,
+        bool fallback)
+    {
+        return context.Request.Query.ContainsKey(name)
+            ? ReadBoolean(context.Request.Query[name].ToString())
+            : fallback;
+    }
+
     private static string Clean(string? value) => value?.Trim() ?? string.Empty;
 
     private static string FirstNonEmpty(params string?[] values)
@@ -2335,7 +2357,20 @@ public static class CertiniaBillingModule
     public sealed record CertiniaInvoiceSendRequest(
         string? DocumentFormat,
         bool IncludeResourceNames,
-        bool TransmitNow);
+        bool TransmitNow,
+        bool? IncludeEngineerNames,
+        bool? IncludeProjectManagerName,
+        bool? IncludeProjectCoordinatorName);
+
+    private sealed record InvoiceOutputOptions(
+        bool IncludeEngineerNames,
+        bool IncludeProjectManagerName,
+        bool IncludeProjectCoordinatorName)
+    {
+        public bool IncludeAnyNames => IncludeEngineerNames
+            || IncludeProjectManagerName
+            || IncludeProjectCoordinatorName;
+    }
 
     private sealed record CertiniaInvoiceHeader(
         Guid BillingInvoiceId,
@@ -2478,6 +2513,12 @@ public static class CertiniaBillingModule
             defaultDocumentFormat = DefaultDocumentFormat,
             timeoutSeconds = TimeoutSeconds,
             resourceNamesDefault = "hidden",
+            personalNameControls = new[]
+            {
+                "engineer",
+                "projectManager",
+                "projectCoordinator"
+            },
             supportedDocumentFormats = new[] { "pdf", "excel" },
             missingConfiguration = Missing
         };

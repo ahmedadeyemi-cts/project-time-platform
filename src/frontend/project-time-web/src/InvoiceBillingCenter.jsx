@@ -23,6 +23,7 @@ const columns = [
 
 const defaultColumns = columns.filter((column) => column.defaultVisible).map((column) => column.key);
 const missingValue = 'Not configured';
+const hiddenOutputPrivacy = Object.freeze({ engineerNames: false, projectManagerName: false, projectCoordinatorName: false });
 
 function text(value, fallback = '') {
   const result = String(value ?? '').trim();
@@ -167,23 +168,36 @@ function candidateCellValue(candidate, columnKey, selections) {
     return candidate.purchaseOrderRequired ? 'Missing required PO' : 'Not required';
   }
 
-  if (columnKey === 'approvedLines') return String(candidate.approvedLineCount ?? 0);
-  if (columnKey === 'approvedHours') return formatHours(candidate.approvedHours);
+  if (columnKey === 'approvedLines') {
+    const count = Number(candidate.approvedLineCount || 0);
+    return count ? String(count) : candidate.invoiceHistory?.length ? '0 — fully invoiced' : '0 — none approved';
+  }
+  if (columnKey === 'approvedHours') {
+    const hours = Number(candidate.approvedHours || 0);
+    return hours ? formatHours(hours) : candidate.invoiceHistory?.length ? '0.00 — fully invoiced' : '0.00 — none approved';
+  }
 
   if (columnKey === 'effectiveRate') {
+    const selectedRates = selectedLineDetails(candidate, selections)
+      .filter((item) => item.selected && item.rate)
+      .map((item) => Number(item.rate.unitRate))
+      .filter(Number.isFinite);
+    const uniqueRates = [...new Set(selectedRates)].sort((left, right) => left - right);
+    if (uniqueRates.length === 1) return `${formatMoney(uniqueRates[0])}/hr`;
+    if (uniqueRates.length > 1) return `${formatMoney(uniqueRates[0])}–${formatMoney(uniqueRates.at(-1))}/hr`;
     const status = candidate.rateResolutionStatus;
-    if (status === 'resolved') return 'Stored rate resolved';
-    if (status === 'selection_required') return 'Selection required';
-    if (status === 'missing_rate') return 'Missing stored rate';
-    return 'No eligible time';
+    if (status === 'selection_required') return 'Select a commercial rate';
+    if (status === 'missing_rate') return 'Missing commercial rate';
+    return candidate.invoiceHistory?.length ? 'Fully invoiced' : 'No eligible time';
   }
 
   if (columnKey === 'candidateAmount') {
     const selectedAmount = candidateSelectedAmount(candidate, selections);
     if (selectedAmount !== null) return formatMoney(selectedAmount);
-    return candidate.autoCalculatedAmount === null || candidate.autoCalculatedAmount === undefined
-      ? 'Select invoice lines'
-      : formatMoney(candidate.autoCalculatedAmount);
+    if (candidate.autoCalculatedAmount !== null && candidate.autoCalculatedAmount !== undefined) {
+      return formatMoney(candidate.autoCalculatedAmount);
+    }
+    return candidate.invoiceHistory?.length ? 'No current uninvoiced amount' : 'Select invoice lines';
   }
 
   return missingValue;
@@ -210,7 +224,7 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
   const [invoiceDetail, setInvoiceDetail] = useState(null);
   const [invoiceDetailLoading, setInvoiceDetailLoading] = useState(false);
   const [invoiceDetailError, setInvoiceDetailError] = useState('');
-  const [showCustomerResourceNames, setShowCustomerResourceNames] = useState(false);
+  const [outputPrivacy, setOutputPrivacy] = useState(() => ({ ...hiddenOutputPrivacy }));
   const [certiniaPreview, setCertiniaPreview] = useState('');
 
   async function loadLiveData(preferredProjectId = '') {
@@ -261,6 +275,18 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
 
   const candidates = payload.candidates;
   const selected = candidates.find((candidate) => candidate.projectId === selectedId) || candidates[0] || null;
+
+  useEffect(() => {
+    const latestInvoice = selected?.invoiceHistory?.[0] || null;
+    const loadedInvoiceId = invoiceDetail?.header?.billingInvoiceId || '';
+    if (!latestInvoice?.billingInvoiceId) {
+      if (invoiceDetail) setInvoiceDetail(null);
+      return;
+    }
+    if (loadedInvoiceId !== latestInvoice.billingInvoiceId) {
+      void loadInvoiceDetail(latestInvoice);
+    }
+  }, [selected?.projectId, selected?.invoiceHistory?.[0]?.billingInvoiceId]);
   const visibleDefinitions = columns.filter((column) => visibleColumns.includes(column.key));
   const groups = [...new Set(columns.map((column) => column.group))];
   const statusOptions = [...new Set(candidates.map((candidate) => candidate.status).filter(Boolean))].sort();
@@ -386,8 +412,48 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
     }
   }
 
+  async function downloadServerInvoiceArtifact(format) {
+    const invoiceId = text(invoiceDetail?.header?.billingInvoiceId);
+    if (!invoiceId) {
+      setInvoiceDetailError('Select or create an immutable invoice before downloading output.');
+      return;
+    }
+
+    const query = new URLSearchParams({
+      format,
+      includeResourceNames: Object.values(outputPrivacy).some(Boolean) ? 'true' : 'false',
+      includeEngineerNames: outputPrivacy.engineerNames ? 'true' : 'false',
+      includeProjectManagerName: outputPrivacy.projectManagerName ? 'true' : 'false',
+      includeProjectCoordinatorName: outputPrivacy.projectCoordinatorName ? 'true' : 'false'
+    });
+
+    setInvoiceDetailError('');
+    try {
+      const response = await fetch(`/api/billing/invoices/${invoiceId}/document?${query.toString()}`, { credentials: 'include' });
+      if (!response.ok) throw new Error(`Invoice output returned HTTP ${response.status}: ${await response.text()}`);
+      const blob = await response.blob();
+      const disposition = response.headers.get('content-disposition') || '';
+      const match = disposition.match(/filename\*?=(?:UTF-8''|\")?([^";]+)/i);
+      const extension = format === 'excel' ? 'xls' : 'pdf';
+      const fileName = match
+        ? decodeURIComponent(match[1].replaceAll('"', '').trim())
+        : `${invoiceDetail.header.invoiceNumber || 'invoice'}.${extension}`;
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = fileName;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+      setAction({ running: false, error: '', success: `${fileName} was generated from the immutable invoice snapshot.` });
+    } catch (error) {
+      setInvoiceDetailError(error instanceof Error ? error.message : 'Unable to download invoice output.');
+    }
+  }
+
   function customerResourceLabel(line) {
-    if (showCustomerResourceNames) return text(line?.resourceName, 'Professional Services Engineer');
+    if (outputPrivacy.engineerNames) return text(line?.resourceName, 'Professional Services Engineer');
 
     const labor = text(line?.laborCategory).toLowerCase();
     const task = `${text(line?.taskCode)} ${text(line?.taskName)}`.toLowerCase();
@@ -489,6 +555,8 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
           </header>
           <section class="meta">
             <div><span>Project</span><strong>${text(header.projectCode)} — ${text(header.projectName)}</strong></div>
+            <div><span>Project Manager</span><strong>${outputPrivacy.projectManagerName ? text(header.projectManagerName, 'Not assigned') : 'Project Management'}</strong></div>
+            <div><span>Project Coordinator</span><strong>${outputPrivacy.projectCoordinatorName ? text(header.projectCoordinatorName, 'Not assigned') : 'Project Management'}</strong></div>
             <div><span>Purchase Order</span><strong>${text(header.purchaseOrderNumber, 'Not configured')}</strong></div>
             <div><span>Billing Period</span><strong>${formatDate(header.billingPeriodStart)} – ${formatDate(header.billingPeriodEnd)}</strong></div>
             <div><span>Certinia ID</span><strong>${text(header.certiniaId, 'Not configured')}</strong></div>
@@ -521,6 +589,8 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
         customerName: header.customerName,
         projectCode: header.projectCode,
         projectName: header.projectName,
+        projectManager: outputPrivacy.projectManagerName ? header.projectManagerName : 'Project Management',
+        projectCoordinator: outputPrivacy.projectCoordinatorName ? header.projectCoordinatorName : 'Project Management',
         purchaseOrderNumber: header.purchaseOrderNumber,
         certiniaId: header.certiniaId,
         salesforceId: header.salesforceId,
@@ -571,8 +641,8 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
         <div className="m042-actions">
           <button type="button" className="secondary-action" onClick={() => setDrawerOpen(true)}>Customize columns</button>
           <button type="button" className="secondary-action" onClick={() => void loadLiveData(selected?.projectId)}>Reload billing data</button>
-          <button type="button" className="secondary-action" disabled title="Excel export remains outside the demo slice.">Export Excel</button>
-          <button type="button" className="primary-action" disabled title="PDF export remains outside the demo slice.">Export PDF</button>
+          <button type="button" className="secondary-action" disabled={!invoiceDetail || invoiceDetailLoading} title={invoiceDetail ? 'Download the selected immutable invoice as Excel.' : 'Select or create an invoice first.'} onClick={() => void downloadServerInvoiceArtifact('excel')}>Download Excel</button>
+          <button type="button" className="primary-action" disabled={!invoiceDetail || invoiceDetailLoading} title={invoiceDetail ? 'Download the selected immutable invoice as PDF.' : 'Select or create an invoice first.'} onClick={() => void downloadServerInvoiceArtifact('pdf')}>Download PDF</button>
         </div>
       </header>
 
@@ -587,6 +657,20 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
       {payload.error ? <div className="m042-notice m042-error" role="alert">{payload.error}</div> : null}
       {action.error ? <div className="m042-notice m042-error" role="alert">{action.error}</div> : null}
       {action.success ? <div className="m042-notice" role="status">{action.success}</div> : null}
+
+      <section className="m042-output-commandbar" aria-label="Invoice customer-output controls">
+        <div>
+          <strong>{invoiceDetail?.header?.invoiceNumber || 'No immutable invoice selected'}</strong>
+          <span>{invoiceDetail ? 'PDF, Excel, screen preview, and Certinia use these privacy choices.' : 'Select a project with invoice history or create an invoice to enable downloads.'}</span>
+        </div>
+        <fieldset className="m042-output-privacy">
+          <legend>Personal names</legend>
+          <label><input type="checkbox" checked={outputPrivacy.engineerNames} onChange={(event) => setOutputPrivacy((current) => ({ ...current, engineerNames: event.target.checked }))} />Engineer</label>
+          <label><input type="checkbox" checked={outputPrivacy.projectManagerName} onChange={(event) => setOutputPrivacy((current) => ({ ...current, projectManagerName: event.target.checked }))} />Project Manager</label>
+          <label><input type="checkbox" checked={outputPrivacy.projectCoordinatorName} onChange={(event) => setOutputPrivacy((current) => ({ ...current, projectCoordinatorName: event.target.checked }))} />Project Coordinator</label>
+          <button type="button" className="secondary-action" disabled={!Object.values(outputPrivacy).some(Boolean)} onClick={() => setOutputPrivacy({ ...hiddenOutputPrivacy })}>Hide all names</button>
+        </fieldset>
+      </section>
 
       <section className="m042-workflow-explainer" aria-label="Billing workflow">
         <article><span>1</span><div><strong>Approved system time</strong><small>Only invoice-eligible, uninvoiced entries are shown.</small></div></article>
@@ -741,7 +825,7 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
                   <section className="m042-identities">
                     <div><span>Customer</span><strong>{text(selected.customerName, missingValue)}</strong><small>Work Register</small></div>
                     <div><span>Project</span><strong>{text(selected.projectName, 'Unnamed project')}</strong><small>{text(selected.workType, missingValue)} · {text(selected.contractType, missingValue)}</small></div>
-                    <div><span>Ownership</span><strong>{text(selected.projectManagerName, 'Not assigned')}</strong><small>PTC: {text(selected.projectCoordinatorName, 'Not assigned')}</small></div>
+                    <div><span>Ownership</span><strong>{outputPrivacy.projectManagerName ? text(selected.projectManagerName, 'Not assigned') : 'Project Management'}</strong><small>PTC: {outputPrivacy.projectCoordinatorName ? text(selected.projectCoordinatorName, 'Not assigned') : 'Project Management'}</small></div>
                   </section>
 
                   <section className="m042-refs">
@@ -758,21 +842,23 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
                   <section className="m042-resource-list">
                     <span>Assigned engineers</span>
                     <div>
-                      {selected.assignedEngineers?.length
-                        ? selected.assignedEngineers.map((engineer) => <strong key={engineer}>{engineer}</strong>)
-                        : <em>Not assigned</em>}
+                      {outputPrivacy.engineerNames
+                        ? (selected.assignedEngineers?.length
+                          ? selected.assignedEngineers.map((engineer) => <strong key={engineer}>{engineer}</strong>)
+                          : <em>Not assigned</em>)
+                        : <em>Engineer names hidden on customer output</em>}
                     </div>
                   </section>
 
                   <div className="m042-lines">
-                    <table>
+                    <table className="m042-candidate-lines">
                       <thead>
                         <tr>
                           <th aria-label="Select line">Use</th>
                           <th>Date</th>
-                          <th>Engineer / PM and work detail</th>
+                          <th>Resource and work performed</th>
                           <th>Hours</th>
-                          <th>Stored rate</th>
+                          <th>Rate</th>
                           <th>Amount</th>
                         </tr>
                       </thead>
@@ -813,7 +899,7 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
                                 <option value="">Select stored rate</option>
                                 {(item.line.rateOptions || []).map((rate) => (
                                   <option value={rate.rateLineId} key={rate.rateLineId}>
-                                    {rate.rateCardName} · {rate.displayName} · {formatMoney(rate.unitRate)}
+                                    {formatMoney(rate.unitRate)}/hr — {rate.displayName}
                                   </option>
                                 ))}
                               </select>
@@ -927,21 +1013,19 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
 
                     {invoiceDetail ? (
                       <>
-                        <label className="m042-privacy-toggle">
-                          <input
-                            type="checkbox"
-                            checked={showCustomerResourceNames}
-                            onChange={(event) => setShowCustomerResourceNames(event.target.checked)}
-                          />
-                          Show engineer and PM/PC names on customer output
-                        </label>
-                        <p className="m042-muted">
-                          Default is hidden. Internal audit records retain the original resource identity.
-                        </p>
+                        <fieldset className="m042-detail-privacy">
+                          <legend>Customer-output personal names</legend>
+                          <label><input type="checkbox" checked={outputPrivacy.engineerNames} onChange={(event) => setOutputPrivacy((current) => ({ ...current, engineerNames: event.target.checked }))} />Include engineer names</label>
+                          <label><input type="checkbox" checked={outputPrivacy.projectManagerName} onChange={(event) => setOutputPrivacy((current) => ({ ...current, projectManagerName: event.target.checked }))} />Include Project Manager name</label>
+                          <label><input type="checkbox" checked={outputPrivacy.projectCoordinatorName} onChange={(event) => setOutputPrivacy((current) => ({ ...current, projectCoordinatorName: event.target.checked }))} />Include Project Coordinator name</label>
+                          <button type="button" className="secondary-action" disabled={!Object.values(outputPrivacy).some(Boolean)} onClick={() => setOutputPrivacy({ ...hiddenOutputPrivacy })}>Hide all personal names</button>
+                          <small>All names are hidden by default. Internal audit records retain original identities.</small>
+                        </fieldset>
 
                         <div className="m042-actions m042-detail-actions">
-                          <button type="button" className="primary-action" onClick={printInvoicePdf}>Print / Save PDF</button>
-                          <button type="button" className="secondary-action" onClick={downloadInvoiceCsv}>Download Excel-compatible CSV</button>
+                          <button type="button" className="primary-action" onClick={() => void downloadServerInvoiceArtifact('pdf')}>Download PDF</button>
+                          <button type="button" className="secondary-action" onClick={() => void downloadServerInvoiceArtifact('excel')}>Download Excel</button>
+                          <button type="button" className="secondary-action" onClick={printInvoicePdf}>Print browser copy</button>
                           <button type="button" className="secondary-action" onClick={previewCertiniaPayload}>Preview Certinia payload</button>
                           <button
                             type="button"
@@ -962,14 +1046,14 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
 
                         <CertiniaInvoiceDeliveryPanel
                           invoice={invoiceDetail}
-                          includeResourceNames={showCustomerResourceNames}
-                          onIncludeResourceNamesChange={setShowCustomerResourceNames}
+                          outputPrivacy={outputPrivacy}
+                          onOutputPrivacyChange={setOutputPrivacy}
                         />
 
                         <div className="m042-table-wrap">
-                          <table>
+                          <table className="m042-detail-lines">
                             <thead>
-                              <tr><th>Date</th><th>Customer resource</th><th>Task and submitted time detail</th><th>Hours</th><th>Rate</th><th>Amount</th></tr>
+                              <tr><th>Date</th><th>Customer resource</th><th>Task and work performed</th><th>Hours</th><th>Rate</th><th>Amount</th></tr>
                             </thead>
                             <tbody>
                               {(invoiceDetail.lines || []).map((line) => (
