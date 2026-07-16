@@ -874,55 +874,72 @@ public static class CertiniaBillingModule
             : BuildPdfArtifact(invoice, outputOptions);
     }
 
-    private static CertiniaArtifact BuildPdfArtifact(
+    private static BrandedInvoiceDocument ToBrandedInvoiceDocument(
         CertiniaInvoiceSnapshot invoice,
         InvoiceOutputOptions outputOptions)
     {
         var header = invoice.Header;
-        var textLines = new List<string>
-        {
-            $"Invoice {header.InvoiceNumber}",
-            $"Customer: {header.CustomerName}",
-            $"Project: {header.ProjectCode} - {header.ProjectName}",
-            $"Project manager: {(outputOptions.IncludeProjectManagerName ? Fallback(header.ProjectManagerName, "Not assigned") : "Project Management")}",
-            $"Project coordinator: {(outputOptions.IncludeProjectCoordinatorName ? Fallback(header.ProjectCoordinatorName, "Not assigned") : "Project Management")}",
-            $"Invoice date: {FormatDate(header.InvoiceDate)}",
-            $"Billing period: {FormatDate(header.BillingPeriodStart)} through {FormatDate(header.BillingPeriodEnd)}",
-            $"Purchase order: {Fallback(header.PurchaseOrderNumber, "Not configured")}",
-            $"Certinia ID: {Fallback(header.CertiniaId, "Not configured")}",
-            $"Salesforce ID: {Fallback(header.SalesforceId, "Not configured")}",
-            $"SELL Quote: {Fallback(header.SellQuote, "Not configured")}",
-            string.Empty,
-            "Date | Resource | Work performed | Hours | Rate | Amount"
-        };
+        var projectManager = outputOptions.IncludeProjectManagerName
+            ? Fallback(header.ProjectManagerName, "Not assigned")
+            : "Project Management";
+        var projectCoordinator = outputOptions.IncludeProjectCoordinatorName
+            ? Fallback(header.ProjectCoordinatorName, "Not assigned")
+            : "Project Management";
+        var personalNames = $"Personal names: engineers {(outputOptions.IncludeEngineerNames ? "included" : "hidden")}; "
+            + $"project manager {(outputOptions.IncludeProjectManagerName ? "included" : "hidden")}; "
+            + $"project coordinator {(outputOptions.IncludeProjectCoordinatorName ? "included" : "hidden")}.";
 
-        foreach (var line in invoice.Lines)
-        {
-            textLines.Add(string.Join(" | ",
-                FormatDate(line.WorkDate),
+        return new BrandedInvoiceDocument(
+            header.InvoiceNumber,
+            header.InvoiceType,
+            header.InvoiceStatus,
+            header.InvoiceDate,
+            header.BillingPeriodStart,
+            header.BillingPeriodEnd,
+            header.CustomerName,
+            header.ProjectCode,
+            header.ProjectName,
+            header.ContractType,
+            projectManager,
+            projectCoordinator,
+            header.PurchaseOrderNumber,
+            header.PurchaseOrderAmount,
+            header.CertiniaId,
+            header.SalesforceId,
+            header.SellQuote,
+            header.SubtotalAmount,
+            header.AdjustmentAmount,
+            header.TaxAmount,
+            header.TotalAmount,
+            header.Notes,
+            invoice.ImmutableSnapshotSha256,
+            personalNames,
+            invoice.Lines.Select(line => new BrandedInvoiceLine(
+                line.LineNumber,
+                line.WorkDate,
                 CustomerResource(line, outputOptions.IncludeEngineerNames),
-                $"{line.TaskCode} {line.TaskName}",
-                line.ApprovedHours.ToString("0.00", CultureInfo.InvariantCulture),
-                $"${line.UnitRate:0.00}/hr",
-                $"${line.LineAmount:0.00}"));
-            if (!string.IsNullOrWhiteSpace(line.Description))
-            {
-                textLines.Add($"    {line.Description}");
-            }
-        }
+                line.TaskCode,
+                line.TaskName,
+                line.Description,
+                line.TimeType,
+                line.LaborCategory,
+                line.ApprovedHours,
+                line.RateCode,
+                line.RateDescription,
+                line.UnitRate,
+                line.LineAmount)).ToArray());
+    }
 
-        textLines.Add(string.Empty);
-        textLines.Add($"Subtotal: ${header.SubtotalAmount:0.00}");
-        textLines.Add($"Adjustments: ${header.AdjustmentAmount:0.00}");
-        textLines.Add($"Tax: ${header.TaxAmount:0.00}");
-        textLines.Add($"Invoice total: ${header.TotalAmount:0.00}");
-        textLines.Add(string.Empty);
-        textLines.Add("Generated from the immutable ProjectPulse invoice snapshot.");
-        textLines.Add($"Personal names: engineers {(outputOptions.IncludeEngineerNames ? "included" : "hidden")}; project manager {(outputOptions.IncludeProjectManagerName ? "included" : "hidden")}; project coordinator {(outputOptions.IncludeProjectCoordinatorName ? "included" : "hidden")}.");
-
-        var bytes = BuildSimplePdf(textLines);
-        var fileName = SafeFileName(header.InvoiceNumber) +
-            (outputOptions.IncludeAnyNames ? "-with-selected-names.pdf" : ".pdf");
+    private static CertiniaArtifact BuildPdfArtifact(
+        CertiniaInvoiceSnapshot invoice,
+        InvoiceOutputOptions outputOptions)
+    {
+        var brandedInvoice = ToBrandedInvoiceDocument(invoice, outputOptions);
+        var bytes = BrandedInvoiceArtifactRenderer.BuildPdf(brandedInvoice);
+        var suffix = outputOptions.IncludeAnyNames
+            ? "-with-selected-names"
+            : string.Empty;
+        var fileName = $"US-Signal-SP-Invoice-{SafeFileName(invoice.Header.InvoiceNumber)}{suffix}.pdf";
 
         return new CertiniaArtifact(
             "pdf",
@@ -936,11 +953,12 @@ public static class CertiniaBillingModule
         CertiniaInvoiceSnapshot invoice,
         InvoiceOutputOptions outputOptions)
     {
-        var bytes = BuildNativeExcelWorkbook(invoice, outputOptions);
+        var brandedInvoice = ToBrandedInvoiceDocument(invoice, outputOptions);
+        var bytes = BrandedInvoiceArtifactRenderer.BuildExcel(brandedInvoice);
         var suffix = outputOptions.IncludeAnyNames
             ? "-with-selected-names"
             : string.Empty;
-        var fileName = $"{SafeFileName(invoice.Header.InvoiceNumber)}{suffix}.xlsx";
+        var fileName = $"US-Signal-SP-Invoice-{SafeFileName(invoice.Header.InvoiceNumber)}{suffix}.xlsx";
 
         return new CertiniaArtifact(
             "excel",
