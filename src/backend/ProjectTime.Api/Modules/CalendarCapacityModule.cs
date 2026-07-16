@@ -18,8 +18,11 @@ public static class CalendarCapacityModule
             productionDomain = Env("PROJECTPULSE_ENTRA_PRODUCTION_DOMAIN", "ussignal.com"),
             allowedDomains = AllowedDomains(),
             graphConfigured = Has("PROJECTPULSE_ENTRA_TENANT_ID") && Has("PROJECTPULSE_ENTRA_CLIENT_ID") && Has("PROJECTPULSE_ENTRA_CLIENT_SECRET"),
-            privacyDefault = "availability_only",
-            supportedViews = new[] { "day", "workweek", "week", "month", "agenda", "timeline", "custom" },
+            privacyDefault = "subject_when_available",
+            workingDays = new[] { "Monday", "Tuesday", "Wednesday", "Thursday", "Friday" },
+            dailyWorkingHours = 8,
+            weeklyWorkingHours = 40,
+            supportedViews = new[] { "day", "workweek", "month", "agenda", "timeline", "custom" },
             futureMonthNavigation = true
         }));
 
@@ -39,7 +42,9 @@ public static class CalendarCapacityModule
                     u.email,
                     NULLIF(to_jsonb(u)->>'entra_object_id', ''),
                     COALESCE(NULLIF(to_jsonb(u)->>'team_name', ''), NULLIF(to_jsonb(u)->>'department_name', ''), NULLIF(to_jsonb(u)->>'department', ''), 'Unassigned'),
-                    COALESCE(NULLIF(to_jsonb(u)->>'department_name', ''), NULLIF(to_jsonb(u)->>'department', ''), NULLIF(to_jsonb(u)->>'team_name', ''), 'Unassigned')
+                    COALESCE(NULLIF(to_jsonb(u)->>'department_name', ''), NULLIF(to_jsonb(u)->>'department', ''), NULLIF(to_jsonb(u)->>'team_name', ''), 'Unassigned'),
+                    COALESCE(NULLIF(to_jsonb(u)->>'job_title', ''), 'Engineer'),
+                    COALESCE(NULLIF(to_jsonb(u)->>'profile_photo_data_url', ''), '')
                 FROM app_users u
                 WHERE u.is_active = TRUE
                   AND COALESCE(u.login_enabled, TRUE) = TRUE
@@ -54,9 +59,14 @@ public static class CalendarCapacityModule
             while (await reader.ReadAsync())
             {
                 resources.Add(new ResourceRow(
-                    reader.GetGuid(0), reader.GetString(1), reader.GetString(2),
+                    reader.GetGuid(0),
+                    reader.GetString(1),
+                    reader.GetString(2),
                     reader.IsDBNull(3) ? null : reader.GetString(3),
-                    reader.GetString(4), reader.GetString(5)));
+                    reader.GetString(4),
+                    reader.GetString(5),
+                    reader.GetString(6),
+                    reader.GetString(7)));
             }
 
             return Results.Ok(new
@@ -119,21 +129,55 @@ public static class CalendarCapacityModule
                         var scheduleId = Str(value, "scheduleId") ?? "";
                         var resource = resources.FirstOrDefault(r => r.Email.Equals(scheduleId, StringComparison.OrdinalIgnoreCase));
                         var availability = Str(value, "availabilityView") ?? "";
-                        var occupied = availability.Count(c => c != '0');
-                        var scheduledHours = Math.Round(occupied * interval / 60m, 2);
-                        var workingHours = WorkingHours(request.Start, request.End);
+                        var scheduledHours = WorkingScheduledHours(
+                            availability,
+                            interval,
+                            request.Start,
+                            request.End);
+                        var workingHours = WorkingHours(
+                            request.Start,
+                            request.End);
                         var items = new List<object>();
                         if (value.TryGetProperty("scheduleItems", out var scheduleItems))
                         {
                             foreach (var item in scheduleItems.EnumerateArray())
                             {
+                                var status =
+                                    Str(item, "status") ?? "busy";
+                                var isPrivate =
+                                    Bool(item, "isPrivate");
+                                var graphSubject =
+                                    Str(item, "subject")?.Trim();
+
+                                var displaySubject = isPrivate
+                                    ? "Private appointment"
+                                    : string.IsNullOrWhiteSpace(graphSubject)
+                                        ? CalendarFallbackSubject(status)
+                                        : graphSubject;
+
+                                var start =
+                                    Nested(item, "start", "dateTime") ?? "";
+                                var end =
+                                    Nested(item, "end", "dateTime") ?? "";
+
                                 items.Add(new
                                 {
-                                    status = Str(item, "status") ?? "busy",
-                                    start = Nested(item, "start", "dateTime") ?? "",
-                                    end = Nested(item, "end", "dateTime") ?? "",
-                                    subject = "Busy",
-                                    isPrivate = true
+                                    status,
+                                    start,
+                                    end,
+                                    startTimeZone =
+                                        Nested(item, "start", "timeZone") ?? "",
+                                    endTimeZone =
+                                        Nested(item, "end", "timeZone") ?? "",
+                                    subject = displaySubject,
+                                    subjectAvailable =
+                                        !string.IsNullOrWhiteSpace(graphSubject),
+                                    isPrivate,
+                                    location = isPrivate
+                                        ? ""
+                                        : Str(item, "location") ?? "",
+                                    durationHours =
+                                        CalendarDurationHours(start, end)
                                 });
                             }
                         }
@@ -143,11 +187,40 @@ public static class CalendarCapacityModule
                             displayName = resource?.DisplayName ?? scheduleId,
                             email = scheduleId,
                             teamName = resource?.TeamName ?? "Unassigned",
-                            departmentName = resource?.DepartmentName ?? "Unassigned",
+                            departmentName =
+                                resource?.DepartmentName ?? "Unassigned",
+                            jobTitle =
+                                resource?.JobTitle ?? "Engineer",
+                            profilePhotoDataUrl =
+                                resource?.ProfilePhotoDataUrl ?? "",
+                            workingDays =
+                                WorkingDayCount(request.Start, request.End),
+                            dailyWorkingHours = 8m,
+                            weeklyWorkingHours = 40m,
                             workingHours,
                             scheduledHours,
-                            availableHours = Math.Max(0m, workingHours - scheduledHours),
-                            capacityPercent = workingHours <= 0 ? 0 : Math.Round(Math.Min(200m, scheduledHours / workingHours * 100m), 1),
+                            remainingHours =
+                                Math.Max(0m, workingHours - scheduledHours),
+                            availableHours =
+                                Math.Max(0m, workingHours - scheduledHours),
+                            utilizationPercent = workingHours <= 0
+                                ? 0
+                                : Math.Round(
+                                    Math.Min(
+                                        200m,
+                                        scheduledHours
+                                        / workingHours
+                                        * 100m),
+                                    1),
+                            capacityPercent = workingHours <= 0
+                                ? 0
+                                : Math.Round(
+                                    Math.Min(
+                                        200m,
+                                        scheduledHours
+                                        / workingHours
+                                        * 100m),
+                                    1),
                             availabilityView = availability,
                             scheduleItems = items
                         });
@@ -157,7 +230,7 @@ public static class CalendarCapacityModule
                 return Results.Ok(new
                 {
                     status = "calendar_schedule_loaded",
-                    privacyMode = "availability_only",
+                    privacyMode = "subject_when_available",
                     request.Start,
                     request.End,
                     timeZone = TimeZone(request.TimeZone),
@@ -182,7 +255,9 @@ public static class CalendarCapacityModule
             SELECT u.user_id, COALESCE(u.display_name,u.email), u.email,
                    NULLIF(to_jsonb(u)->>'entra_object_id',''),
                    COALESCE(NULLIF(to_jsonb(u)->>'team_name',''),NULLIF(to_jsonb(u)->>'department_name',''),NULLIF(to_jsonb(u)->>'department',''),'Unassigned'),
-                   COALESCE(NULLIF(to_jsonb(u)->>'department_name',''),NULLIF(to_jsonb(u)->>'department',''),NULLIF(to_jsonb(u)->>'team_name',''),'Unassigned')
+                   COALESCE(NULLIF(to_jsonb(u)->>'department_name',''),NULLIF(to_jsonb(u)->>'department',''),NULLIF(to_jsonb(u)->>'team_name',''),'Unassigned'),
+                   COALESCE(NULLIF(to_jsonb(u)->>'job_title',''),'Engineer'),
+                   COALESCE(NULLIF(to_jsonb(u)->>'profile_photo_data_url',''),'')
             FROM app_users u
             WHERE u.is_active=TRUE AND COALESCE(u.login_enabled,TRUE)=TRUE
               AND u.email IS NOT NULL AND u.email<>'' AND lower(u.email) NOT LIKE '%.local'
@@ -201,7 +276,18 @@ public static class CalendarCapacityModule
         command.Parameters.AddWithValue("actor", actor);
         await using var reader = await command.ExecuteReaderAsync();
         while (await reader.ReadAsync())
-            rows.Add(new ResourceRow(reader.GetGuid(0), reader.GetString(1), reader.GetString(2), reader.IsDBNull(3) ? null : reader.GetString(3), reader.GetString(4), reader.GetString(5)));
+        {
+            rows.Add(new ResourceRow(
+                reader.GetGuid(0),
+                reader.GetString(1),
+                reader.GetString(2),
+                reader.IsDBNull(3) ? null : reader.GetString(3),
+                reader.GetString(4),
+                reader.GetString(5),
+                reader.GetString(6),
+                reader.GetString(7)));
+        }
+
         return rows;
     }
 
@@ -244,14 +330,133 @@ public static class CalendarCapacityModule
         return document.RootElement.GetProperty("access_token").GetString() ?? throw new InvalidOperationException("Graph token missing.");
     }
 
-    private static decimal WorkingHours(DateTimeOffset start, DateTimeOffset end)
+    private static int WorkingDayCount(
+        DateTimeOffset start,
+        DateTimeOffset end)
     {
         var date = DateOnly.FromDateTime(start.Date);
         var last = DateOnly.FromDateTime(end.Date);
         var days = 0;
-        while (date < last) { if (date.DayOfWeek is not DayOfWeek.Saturday and not DayOfWeek.Sunday) days++; date = date.AddDays(1); }
-        return days * 8m;
+
+        while (date < last)
+        {
+            if (date.DayOfWeek
+                is not DayOfWeek.Saturday
+                and not DayOfWeek.Sunday)
+            {
+                days++;
+            }
+
+            date = date.AddDays(1);
+        }
+
+        return days;
     }
+
+    private static decimal WorkingHours(
+        DateTimeOffset start,
+        DateTimeOffset end) =>
+        WorkingDayCount(start, end) * 8m;
+
+    private static decimal WorkingScheduledHours(
+        string availability,
+        int intervalMinutes,
+        DateTimeOffset start,
+        DateTimeOffset end)
+    {
+        var hoursByDate =
+            new Dictionary<DateOnly, decimal>();
+
+        for (var index = 0;
+             index < availability.Length;
+             index++)
+        {
+            if (availability[index] == '0')
+            {
+                continue;
+            }
+
+            var slotStart =
+                start.AddMinutes(index * intervalMinutes);
+
+            if (slotStart >= end)
+            {
+                break;
+            }
+
+            var day =
+                DateOnly.FromDateTime(slotStart.Date);
+
+            if (day.DayOfWeek
+                is DayOfWeek.Saturday
+                or DayOfWeek.Sunday)
+            {
+                continue;
+            }
+
+            var slotEnd =
+                slotStart.AddMinutes(intervalMinutes);
+
+            if (slotEnd > end)
+            {
+                slotEnd = end;
+            }
+
+            var slotHours =
+                Math.Max(
+                    0m,
+                    (decimal)(slotEnd - slotStart).TotalHours);
+
+            var currentHours =
+                hoursByDate.TryGetValue(
+                    day,
+                    out var existing)
+                    ? existing
+                    : 0m;
+
+            hoursByDate[day] =
+                Math.Min(
+                    8m,
+                    currentHours + slotHours);
+        }
+
+        return Math.Round(
+            hoursByDate.Values.Sum(),
+            2);
+    }
+
+    private static decimal CalendarDurationHours(
+        string start,
+        string end)
+    {
+        if (!DateTimeOffset.TryParse(
+                start,
+                out var parsedStart)
+            || !DateTimeOffset.TryParse(
+                end,
+                out var parsedEnd)
+            || parsedEnd <= parsedStart)
+        {
+            return 0m;
+        }
+
+        return Math.Round(
+            (decimal)(
+                parsedEnd - parsedStart
+            ).TotalHours,
+            2);
+    }
+
+    private static string CalendarFallbackSubject(
+        string status) =>
+        status.ToLowerInvariant() switch
+        {
+            "oof" => "Out of office",
+            "tentative" => "Tentative appointment",
+            "workingelsewhere" => "Working elsewhere",
+            "free" => "Available",
+            _ => "Busy"
+        };
 
     private static string SafeGraphError(string raw)
     {
@@ -259,8 +464,31 @@ public static class CalendarCapacityModule
         catch { return "Microsoft Graph rejected the request."; }
     }
 
-    private static string? Str(JsonElement item, string property) => item.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
-    private static string? Nested(JsonElement item, string property, string child) => item.TryGetProperty(property, out var nested) ? Str(nested, child) : null;
+    private static string? Str(
+        JsonElement item,
+        string property) =>
+        item.TryGetProperty(property, out var value)
+        && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
+
+    private static bool Bool(
+        JsonElement item,
+        string property) =>
+        item.TryGetProperty(property, out var value)
+        && (
+            value.ValueKind == JsonValueKind.True
+            || value.ValueKind == JsonValueKind.False
+        )
+        && value.GetBoolean();
+
+    private static string? Nested(
+        JsonElement item,
+        string property,
+        string child) =>
+        item.TryGetProperty(property, out var nested)
+            ? Str(nested, child)
+            : null;
     private static string TimeZone(string? value) => string.IsNullOrWhiteSpace(value) ? "UTC" : value.Trim();
     private static string Required(string name) => Environment.GetEnvironmentVariable(name) ?? throw new InvalidOperationException($"{name} is not configured.");
     private static string Env(string name, string fallback) => Environment.GetEnvironmentVariable(name) is { Length: > 0 } v ? v : fallback;
@@ -275,6 +503,14 @@ public static class CalendarCapacityModule
         return set.OrderBy(x => x).ToArray();
     }
 
-    private sealed record ResourceRow(Guid UserId, string DisplayName, string Email, string? EntraObjectId, string TeamName, string DepartmentName);
+    private sealed record ResourceRow(
+        Guid UserId,
+        string DisplayName,
+        string Email,
+        string? EntraObjectId,
+        string TeamName,
+        string DepartmentName,
+        string JobTitle,
+        string ProfilePhotoDataUrl);
     private sealed record ScheduleRequest(DateTimeOffset Start, DateTimeOffset End, string? TimeZone, string? View, int? IntervalMinutes, Guid[]? ResourceIds, string? TeamName, string? DepartmentName);
 }
