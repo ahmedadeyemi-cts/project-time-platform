@@ -7528,7 +7528,7 @@ Analytics - Variphy / Infortel`}
               <div className="timesheet-view-panel guided-add-view" role="tabpanel" aria-label="Guided Add">
                 <div className="timesheet-view-heading">
                   <div><p className="eyebrow">Simple time entry</p><h3>Guided Add</h3><p className="muted">Choose work, select day(s), enter hours and a description, then add time.</p></div>
-                  <span className="pill">3 steps</span>
+                  <span className="pill guided-view-badge">Fast entry</span>
                 </div>
                 <div className="guided-layout">
                   <section className="guided-card">
@@ -7624,7 +7624,7 @@ Analytics - Variphy / Infortel`}
               <div className="timesheet-view-panel copy-time-view" role="tabpanel" aria-label="Copy Time">
                 <div className="timesheet-view-heading">
                   <div><p className="eyebrow">Reuse existing time</p><h3>Copy Time</h3><p className="muted">Choose a source day and copy all of its time to one or more open days.</p></div>
-                  <span className="pill">{copySourceItems.length} entries</span>
+                  <span className="pill guided-view-badge">{copySourceItems.length} {copySourceItems.length === 1 ? 'entry' : 'entries'}</span>
                 </div>
                 <div className="copy-layout">
                   <section className="guided-card">

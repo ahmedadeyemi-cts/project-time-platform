@@ -1309,3 +1309,257 @@ body[data-project-pulse-route="invoice-billing-center"] .app-shell {
 @media(max-width:1050px){.guided-layout,.copy-layout{grid-template-columns:1fr}.guided-days,.copy-source-days{grid-template-columns:repeat(4,minmax(0,1fr))}}
 @media(max-width:760px){.guided-days,.copy-source-days{grid-template-columns:repeat(2,minmax(0,1fr))}.guided-fields{grid-template-columns:1fr}.guided-action{align-items:stretch;flex-direction:column}.guided-action button{width:100%}}
 /* MODULE_001_GUIDED_COPY_STYLES_END */
+
+/* MODULE_001_GUIDED_COPY_LAYOUT_FIX_START */
+#timesheet .timesheet-workspace.full-width-entry {
+  display: block !important;
+  width: 100% !important;
+  max-width: none !important;
+  min-width: 0 !important;
+  grid-template-columns: none !important;
+}
+
+#timesheet .timesheet-workspace.full-width-entry > .timesheet-view-panel,
+#timesheet .guided-add-view,
+#timesheet .copy-time-view {
+  display: block !important;
+  grid-column: 1 / -1 !important;
+  width: 100% !important;
+  max-width: none !important;
+  min-width: 0 !important;
+  justify-self: stretch !important;
+}
+
+#timesheet .guided-add-view .timesheet-view-heading,
+#timesheet .copy-time-view .timesheet-view-heading {
+  width: 100%;
+  min-width: 0;
+  align-items: flex-start;
+}
+
+#timesheet .guided-add-view .timesheet-view-heading > div,
+#timesheet .copy-time-view .timesheet-view-heading > div {
+  min-width: 0;
+  max-width: 58rem;
+}
+
+#timesheet .guided-view-badge {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  word-break: normal;
+  overflow-wrap: normal;
+}
+
+#timesheet .guided-layout {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: minmax(20rem, 0.82fr) minmax(34rem, 1.18fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+#timesheet .copy-layout {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+#timesheet .guided-card {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  overflow: hidden;
+  padding: 1.15rem;
+}
+
+#timesheet .guided-card > header {
+  width: 100%;
+  min-width: 0;
+}
+
+#timesheet .guided-card > header > div {
+  min-width: 0;
+}
+
+#timesheet .guided-card strong,
+#timesheet .guided-card small,
+#timesheet .guided-card span,
+#timesheet .guided-card label,
+#timesheet .guided-card button {
+  word-break: normal;
+  overflow-wrap: normal;
+  hyphens: none;
+}
+
+#timesheet .guided-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: 100%;
+}
+
+#timesheet .guided-tabs button {
+  min-width: 0;
+  border-radius: 0.75rem;
+  line-height: 1.25;
+  white-space: normal;
+}
+
+#timesheet .guided-results {
+  width: 100%;
+  min-width: 0;
+  max-height: 31rem;
+}
+
+#timesheet .guided-option {
+  min-width: 0;
+}
+
+#timesheet .guided-option strong,
+#timesheet .guided-option small {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+#timesheet .guided-selected {
+  width: 100%;
+  min-width: 0;
+}
+
+#timesheet .guided-days,
+#timesheet .copy-source-days {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: repeat(7, minmax(6.25rem, 1fr));
+  gap: 0.55rem;
+  overflow-x: auto;
+  padding: 0.1rem 0 0.35rem;
+}
+
+#timesheet .guided-days button,
+#timesheet .copy-source-days button {
+  min-width: 6.25rem;
+  min-height: 5rem;
+  padding: 0.7rem 0.5rem;
+}
+
+#timesheet .guided-days button span,
+#timesheet .guided-days button strong,
+#timesheet .guided-days button small,
+#timesheet .copy-source-days button span,
+#timesheet .copy-source-days button strong,
+#timesheet .copy-source-days button small {
+  white-space: nowrap;
+  word-break: normal;
+  overflow-wrap: normal;
+}
+
+#timesheet .guided-fields {
+  width: 100%;
+  grid-template-columns: minmax(16rem, 1fr) minmax(11rem, 0.42fr);
+}
+
+#timesheet .guided-types {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+#timesheet .guided-types button {
+  min-height: 2.75rem;
+  border-radius: 0.75rem;
+}
+
+#timesheet .guided-comment {
+  width: 100%;
+}
+
+#timesheet .guided-comment textarea {
+  min-height: 8.5rem;
+}
+
+#timesheet .copy-preview {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  max-height: 28rem;
+}
+
+#timesheet .copy-preview > div {
+  min-width: 0;
+}
+
+#timesheet .copy-preview > div > span {
+  min-width: 0;
+}
+
+#timesheet .copy-preview small {
+  white-space: normal;
+}
+
+#timesheet .copy-modes {
+  padding: 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 0.8rem;
+  background: var(--surface-strong);
+}
+
+#timesheet .guided-action {
+  width: 100%;
+}
+
+@media (max-width: 1220px) {
+  #timesheet .guided-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  #timesheet .guided-results {
+    max-height: 24rem;
+  }
+}
+
+@media (max-width: 820px) {
+  #timesheet .guided-tabs {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  #timesheet .guided-days,
+  #timesheet .copy-source-days {
+    grid-template-columns: repeat(7, minmax(5.75rem, 1fr));
+  }
+
+  #timesheet .guided-days button,
+  #timesheet .copy-source-days button {
+    min-width: 5.75rem;
+  }
+
+  #timesheet .guided-fields,
+  #timesheet .copy-preview {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 560px) {
+  #timesheet .guided-card {
+    padding: 0.85rem;
+  }
+
+  #timesheet .guided-add-view .timesheet-view-heading,
+  #timesheet .copy-time-view .timesheet-view-heading {
+    flex-direction: column;
+  }
+
+  #timesheet .guided-action {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  #timesheet .guided-action .primary-action {
+    width: 100%;
+  }
+}
+/* MODULE_001_GUIDED_COPY_LAYOUT_FIX_END */
