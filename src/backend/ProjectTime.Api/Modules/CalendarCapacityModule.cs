@@ -47,23 +47,6 @@ public static class CalendarCapacityModule
                   AND u.email <> ''
                   AND lower(u.email) NOT LIKE '%.local'
                   AND lower(u.email) NOT LIKE '%.cloud'
-                  AND EXISTS (
-                      SELECT 1
-                      FROM app_user_role_assignments ura
-                      JOIN app_roles r
-                        ON r.role_id = ura.role_id
-                      WHERE ura.user_id = u.user_id
-                        AND COALESCE(
-                              NULLIF(to_jsonb(ura)->>'is_active', '')::boolean,
-                              TRUE
-                            ) = TRUE
-                        AND lower(
-                              COALESCE(
-                                NULLIF(to_jsonb(r)->>'name', ''),
-                                NULLIF(to_jsonb(r)->>'role_name', ''),
-                                NULLIF(to_jsonb(r)->>'code', ''),
-                                ''
-                              )
                             ) IN (
                               'engineer',
                               'engineering',
@@ -109,7 +92,7 @@ public static class CalendarCapacityModule
             await connection.OpenAsync();
             var resources = await ResolveResources(connection, request, actor.Value);
             if (resources.Count == 0)
-                return Results.BadRequest(new { status = "no_resources", message = "Select an engineer, team, or department." });
+                return Results.BadRequest(new { status = "no_resources", message = "Select a user, team, or department." });
 
             try
             {
@@ -210,23 +193,6 @@ public static class CalendarCapacityModule
             WHERE u.is_active=TRUE AND COALESCE(u.login_enabled,TRUE)=TRUE
               AND u.email IS NOT NULL AND u.email<>'' AND lower(u.email) NOT LIKE '%.local'
                   AND lower(u.email) NOT LIKE '%.cloud'
-              AND EXISTS (
-                  SELECT 1
-                  FROM app_user_role_assignments ura
-                  JOIN app_roles r
-                    ON r.role_id = ura.role_id
-                  WHERE ura.user_id = u.user_id
-                    AND COALESCE(
-                          NULLIF(to_jsonb(ura)->>'is_active', '')::boolean,
-                          TRUE
-                        ) = TRUE
-                    AND lower(
-                          COALESCE(
-                            NULLIF(to_jsonb(r)->>'name', ''),
-                            NULLIF(to_jsonb(r)->>'role_name', ''),
-                            NULLIF(to_jsonb(r)->>'code', ''),
-                            ''
-                          )
                         ) IN (
                           'engineer',
                           'engineering',

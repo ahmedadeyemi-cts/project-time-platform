@@ -251,3 +251,27 @@
     min-width: 760px;
   }
 }
+
+.calendar-month {
+  max-height: min(760px, calc(100vh - 190px));
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.calendar-grid article {
+  min-height: 92px;
+}
+
+.calendar-capacity-center {
+  align-content: start;
+}
+
+@media (max-height: 760px) and (min-width: 761px) {
+  .calendar-month {
+    max-height: 520px;
+  }
+
+  .calendar-grid article {
+    min-height: 78px;
+  }
+}

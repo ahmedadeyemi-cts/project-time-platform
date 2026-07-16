@@ -106,27 +106,27 @@ export default function CalendarCapacityCenter() {
         <label className="calendar-control-field">
           <span>Scope</span>
           <select value={scope} onChange={e=>setScope(e.target.value)}>
-            <option value="individual">Individual engineer</option>
+            <option value="individual">Individual user</option>
             <option value="team">Team</option>
             <option value="department">Department</option>
           </select>
         </label>
 
         {scope==='individual' ? <div className="calendar-control-field calendar-engineer-field">
-          <span>Engineer</span>
+          <span>User</span>
           <div className="calendar-engineer-picker">
             <input
               type="search"
               value={userSearch}
               onChange={e=>setUserSearch(e.target.value)}
-              placeholder="Search engineers"
-              aria-label="Search engineers by name, email, team, or department"
+              placeholder="Search users"
+              aria-label="Search users by name, email, team, or department"
             />
             <select value={userId} onChange={e=>setUserId(e.target.value)}>
               {filteredResources.map(r=><option key={r.userId} value={r.userId}>{r.displayName} — {r.teamName} — {r.departmentName}</option>)}
             </select>
           </div>
-          <small>{filteredResources.length} eligible engineers</small>
+          <small>{filteredResources.length} eligible users</small>
         </div> : null}
 
         {scope==='team' ? <label className="calendar-control-field calendar-resource-field">
