@@ -859,3 +859,20 @@ body[data-project-pulse-route="invoice-billing-center"] .app-shell {
 .m0423-rate-list article small { color:#64748b; font-size:.66rem; line-height:1.35; overflow-wrap:anywhere; }
 @media(max-width:680px){.m0423-commercial dl,.m0423-rate-list{grid-template-columns:1fr}}
 /* 042_3_SELL_COMMERCIAL_READ_MODEL_END */
+
+
+/* 042_3A_POPUP_FREE_PDF_START */
+.m042-popup-free-note {
+  display: inline-flex;
+  align-items: center;
+  max-width: 21rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid rgba(14, 165, 233, 0.26);
+  border-radius: 0.65rem;
+  background: rgba(14, 165, 233, 0.07);
+  color: var(--muted, #64748b);
+  font-size: 0.76rem;
+  font-weight: 750;
+  line-height: 1.35;
+}
+/* 042_3A_POPUP_FREE_PDF_END */

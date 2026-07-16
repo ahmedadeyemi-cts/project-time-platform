@@ -442,7 +442,12 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
     try {
       const response = await fetch(`/api/billing/invoices/${invoiceId}/document?${query.toString()}`, { credentials: 'include' });
       if (!response.ok) throw new Error(`Invoice output returned HTTP ${response.status}: ${await response.text()}`);
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.toLowerCase().includes(format === 'excel' ? 'excel' : 'pdf')) {
+        throw new Error(`Invoice output returned an unexpected content type: ${contentType || 'not provided'}.`);
+      }
       const blob = await response.blob();
+      if (!blob.size) throw new Error('Invoice output was empty.');
       const disposition = response.headers.get('content-disposition') || '';
       const match = disposition.match(/filename\*?=(?:UTF-8''|\")?([^";]+)/i);
       const extension = format === 'excel' ? 'xls' : 'pdf';
@@ -456,8 +461,8 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
-      URL.revokeObjectURL(url);
-      setAction({ running: false, error: '', success: `${fileName} was generated from the immutable invoice snapshot.` });
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setAction({ running: false, error: '', success: `${fileName} downloaded without opening a pop-up window.` });
     } catch (error) {
       setInvoiceDetailError(error instanceof Error ? error.message : 'Unable to download invoice output.');
     }
@@ -514,76 +519,6 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
     anchor.click();
     anchor.remove();
     URL.revokeObjectURL(url);
-  }
-
-  function printInvoicePdf() {
-    if (!invoiceDetail?.header) return;
-
-    const header = invoiceDetail.header;
-    const rows = (invoiceDetail.lines || []).map((line) => `
-      <tr>
-        <td>${formatDate(line.workDate)}</td>
-        <td>${customerResourceLabel(line)}</td>
-        <td><strong>${text(line.taskCode)}</strong> ${text(line.taskName)}<br><small>${text(line.description, 'No submitted description')}</small></td>
-        <td class="number">${formatHours(line.approvedHours)}</td>
-        <td class="number">${formatMoney(line.unitRate)}</td>
-        <td class="number">${formatMoney(line.lineAmount)}</td>
-      </tr>
-    `).join('');
-
-    const popup = window.open('', '_blank', 'noopener,noreferrer,width=1200,height=900');
-    if (!popup) {
-      setInvoiceDetailError('The browser blocked the print window. Allow pop-ups and try again.');
-      return;
-    }
-
-    popup.document.write(`<!doctype html>
-      <html>
-        <head>
-          <meta charset="utf-8">
-          <title>${header.invoiceNumber}</title>
-          <style>
-            body { font-family: Arial, sans-serif; color: #142033; margin: 32px; }
-            header { display:flex; justify-content:space-between; gap:24px; border-bottom:3px solid #0067a8; padding-bottom:18px; }
-            h1 { margin:0; font-size:28px; }
-            .meta { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 28px; margin:24px 0; }
-            .meta div { border-bottom:1px solid #d7deea; padding-bottom:8px; }
-            .meta span { display:block; color:#5e7190; font-size:11px; text-transform:uppercase; font-weight:700; }
-            table { width:100%; border-collapse:collapse; font-size:12px; }
-            th { background:#eef6fb; text-align:left; padding:9px; border:1px solid #d7deea; }
-            td { vertical-align:top; padding:9px; border:1px solid #d7deea; }
-            td.number { text-align:right; white-space:nowrap; }
-            small { color:#536b8f; line-height:1.4; }
-            .total { margin-top:18px; text-align:right; font-size:18px; font-weight:700; }
-            .notice { margin-top:18px; color:#536b8f; font-size:11px; }
-            @page { size: landscape; margin: 0.45in; }
-          </style>
-        </head>
-        <body>
-          <header>
-            <div><h1>Invoice ${header.invoiceNumber}</h1><p>${text(header.customerName)}</p></div>
-            <div><strong>${text(header.invoiceType).toUpperCase()} INVOICE</strong><br>${formatDate(header.invoiceDate)}</div>
-          </header>
-          <section class="meta">
-            <div><span>Project</span><strong>${text(header.projectCode)} — ${text(header.projectName)}</strong></div>
-            <div><span>Project Manager</span><strong>${outputPrivacy.projectManagerName ? text(header.projectManagerName, 'Not assigned') : 'Project Management'}</strong></div>
-            <div><span>Project Coordinator</span><strong>${outputPrivacy.projectCoordinatorName ? text(header.projectCoordinatorName, 'Not assigned') : 'Project Management'}</strong></div>
-            <div><span>Purchase Order</span><strong>${text(header.purchaseOrderNumber, 'Not configured')}</strong></div>
-            <div><span>Billing Period</span><strong>${formatDate(header.billingPeriodStart)} – ${formatDate(header.billingPeriodEnd)}</strong></div>
-            <div><span>Certinia ID</span><strong>${text(header.certiniaId, 'Not configured')}</strong></div>
-            <div><span>SELL Quote</span><strong>${text(header.sellQuote, 'Not configured')}</strong></div>
-            <div><span>Salesforce ID</span><strong>${text(header.salesforceId, 'Not configured')}</strong></div>
-          </section>
-          <table>
-            <thead><tr><th>Date</th><th>Resource</th><th>Task and time-entry detail</th><th>Hours</th><th>Rate</th><th>Amount</th></tr></thead>
-            <tbody>${rows}</tbody>
-          </table>
-          <div class="total">Invoice total: ${formatMoney(header.totalAmount)}</div>
-          <div class="notice">Generated from the immutable ProjectPulse invoice snapshot. Use the browser Print dialog and choose Save as PDF.</div>
-          <script>window.addEventListener('load', () => window.print());<\/script>
-        </body>
-      </html>`);
-    popup.document.close();
   }
 
   function previewCertiniaPayload() {
@@ -653,7 +588,7 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
           <button type="button" className="secondary-action" onClick={() => setDrawerOpen(true)}>Customize columns</button>
           <button type="button" className="secondary-action" onClick={() => void loadLiveData(selected?.projectId)}>Reload billing data</button>
           <button type="button" className="secondary-action" disabled={!invoiceDetail || invoiceDetailLoading} title={invoiceDetail ? 'Download the selected immutable invoice as Excel.' : 'Select or create an invoice first.'} onClick={() => void downloadServerInvoiceArtifact('excel')}>Download Excel</button>
-          <button type="button" className="primary-action" disabled={!invoiceDetail || invoiceDetailLoading} title={invoiceDetail ? 'Download the selected immutable invoice as PDF.' : 'Select or create an invoice first.'} onClick={() => void downloadServerInvoiceArtifact('pdf')}>Download PDF</button>
+          <button type="button" className="primary-action" disabled={!invoiceDetail || invoiceDetailLoading} title={invoiceDetail ? 'Download the selected immutable invoice as PDF without opening a pop-up window.' : 'Select or create an invoice first.'} onClick={() => void downloadServerInvoiceArtifact('pdf')}>Download PDF</button>
         </div>
       </header>
 
@@ -1066,7 +1001,7 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
                         <div className="m042-actions m042-detail-actions">
                           <button type="button" className="primary-action" onClick={() => void downloadServerInvoiceArtifact('pdf')}>Download PDF</button>
                           <button type="button" className="secondary-action" onClick={() => void downloadServerInvoiceArtifact('excel')}>Download Excel</button>
-                          <button type="button" className="secondary-action" onClick={printInvoicePdf}>Print browser copy</button>
+                          <span className="m042-popup-free-note" role="note">PDF downloads directly. Open the downloaded PDF to print.</span>
                           <button type="button" className="secondary-action" onClick={previewCertiniaPayload}>Preview Certinia payload</button>
                           <button
                             type="button"
