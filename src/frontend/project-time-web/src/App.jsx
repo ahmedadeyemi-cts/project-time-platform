@@ -6410,11 +6410,14 @@ Analytics - Variphy / Infortel`}
         </section>
       ) : null}
 
+{(activeRoute === 'user-admin') ? (
 <section id="user-admin" className="panel user-admin-panel">
         <UserAdministrationPanel />
       </section>
+) : null}
 
-      <section id="azure-admin" className="panel azure-admin-panel">
+      {(activeRoute === 'azure-admin') ? (
+<section id="azure-admin" className="panel azure-admin-panel">
         <div className="section-heading">
           <div>
             <p className="eyebrow">Azure Admin</p>
@@ -6854,6 +6857,7 @@ Analytics - Variphy / Infortel`}
           </div>
         </div>
       </section>
+      ) : null}
                           {(activeRoute === 'backup-dr' && (hasPermission('SYSTEM_ADMINISTRATION') || hasPermission('MANAGE_ALL'))) ? (
         <BackupDrCenter authSession={authSession} />
       ) : null}
@@ -6905,7 +6909,8 @@ Analytics - Variphy / Infortel`}
         </section>
       ) : null}
 
-      <section id="role-dashboard" className="panel role-dashboard-panel">
+      {(activeRoute === 'dashboard') ? (
+<section id="role-dashboard" className="panel role-dashboard-panel">
         <div className="section-heading">
           <div>
             <p className="eyebrow">Role-based workspace</p>
@@ -6937,6 +6942,7 @@ Analytics - Variphy / Infortel`}
         </div>
 
       </section>
+      ) : null}
 
       <section id="dashboard" className="hero hero-polished">
         <div className="hero-content-block">
@@ -7377,7 +7383,8 @@ Analytics - Variphy / Infortel`}
 
 
 
-      <section id="holiday-admin" className={`panel holiday-admin-panel ${canViewHolidayCalendar ? '' : 'access-hidden'}`}>
+      {(activeRoute === 'holiday-admin') ? (
+<section id="holiday-admin" className={`panel holiday-admin-panel ${canViewHolidayCalendar ? '' : 'access-hidden'}`}>
         <div className="section-header compact">
           <div>
             <p className="eyebrow">Holiday administration</p>
@@ -7453,6 +7460,7 @@ Analytics - Variphy / Infortel`}
           </div>
         </div>
       </section>
+      ) : null}
 <section id="project-allocation-info" className="panel project-allocation-info-panel">
         <ProjectAllocationInfoPanel />
       </section>
@@ -7593,7 +7601,8 @@ Analytics - Variphy / Infortel`}
         </section>
       ) : null}
 
-      <section id="psa-modules" className={`panel module-foundation-panel ${canViewPsaModules ? '' : 'access-hidden'}`}>
+      {(activeRoute === 'dashboard') ? (
+<section id="psa-modules" className={`panel module-foundation-panel ${canViewPsaModules ? '' : 'access-hidden'}`}>
         <div className="section-header compact">
           <div>
             <p className="eyebrow">PSA platform modules</p>
@@ -7659,6 +7668,7 @@ Analytics - Variphy / Infortel`}
           </article>
         </div>
       </section>
+      ) : null}
 
 
       <section id="current-quarter-utilization" className="panel current-quarter-utilization-panel">

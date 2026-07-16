@@ -32,168 +32,13 @@ function monthCells(anchor) {
 }
 
 export default function CalendarCapacityCenter() {
-  useEffect(() => {
-    const hiddenElements = new Map();
-
-    const hideConflictingRouteContent = () => {
-      const headings = Array.from(
-        document.querySelectorAll('h1, h2, h3, [role="heading"]')
-      );
-
-      headings.forEach((heading) => {
-        const label = String(heading.textContent || '')
-          .replace(/\s+/g, ' ')
-          .trim()
-          .toLowerCase();
-
-        const isUserAdministration =
-          label.includes('users, roles, teams, and departments') ||
-          label.includes('create local phd user');
-
-        if (!isUserAdministration) return;
-
-        const container =
-          heading.closest('[data-projectpulse-route-page]') ||
-          heading.closest('section.panel') ||
-          heading.closest('section') ||
-          heading.closest('.panel') ||
-          heading.closest('main > div');
-
-        if (!container || container.id === 'calendar-capacity') return;
-
-        if (!hiddenElements.has(container)) {
-          hiddenElements.set(container, container.style.display);
-        }
-
-        container.style.display = 'none';
-        container.setAttribute(
-          'data-module-057-suppressed-conflicting-route',
-          'true'
-        );
-      });
-
-      const calendarSection = document.getElementById('calendar-capacity');
-      if (calendarSection) {
-        calendarSection.style.display = '';
-        calendarSection.setAttribute(
-          'data-module-057-route-visible',
-          'true'
-        );
-      }
-    };
-
-    hideConflictingRouteContent();
-
-    const frame = window.requestAnimationFrame(hideConflictingRouteContent);
-    const timer = window.setTimeout(hideConflictingRouteContent, 250);
-
-    const observer = new MutationObserver(hideConflictingRouteContent);
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frame);
-      window.clearTimeout(timer);
-      observer.disconnect();
-
-      hiddenElements.forEach((previousDisplay, element) => {
-        element.style.display = previousDisplay;
-        element.removeAttribute(
-          'data-module-057-suppressed-conflicting-route'
-        );
-      });
-
-      document
-        .getElementById('calendar-capacity')
-        ?.removeAttribute('data-module-057-route-visible');
-    };
-  }, []);
-  useEffect(() => {
-    const hiddenElements = new Map();
-
-    const hideConflictingRouteContent = () => {
-      const headings = Array.from(
-        document.querySelectorAll('h1, h2, h3, [role="heading"]')
-      );
-
-      headings.forEach((heading) => {
-        const label = String(heading.textContent || '')
-          .replace(/\s+/g, ' ')
-          .trim()
-          .toLowerCase();
-
-        const isUserAdministration =
-          label.includes('users, roles, teams, and departments') ||
-          label.includes('create local phd user');
-
-        if (!isUserAdministration) return;
-
-        const container =
-          heading.closest('[data-projectpulse-route-page]') ||
-          heading.closest('section.panel') ||
-          heading.closest('section') ||
-          heading.closest('.panel') ||
-          heading.closest('main > div');
-
-        if (!container || container.id === 'calendar-capacity') return;
-
-        if (!hiddenElements.has(container)) {
-          hiddenElements.set(container, container.style.display);
-        }
-
-        container.style.display = 'none';
-        container.setAttribute(
-          'data-module-057-suppressed-conflicting-route',
-          'true'
-        );
-      });
-
-      const calendarSection = document.getElementById('calendar-capacity');
-      if (calendarSection) {
-        calendarSection.style.display = '';
-        calendarSection.setAttribute(
-          'data-module-057-route-visible',
-          'true'
-        );
-      }
-    };
-
-    hideConflictingRouteContent();
-
-    const frame = window.requestAnimationFrame(hideConflictingRouteContent);
-    const timer = window.setTimeout(hideConflictingRouteContent, 250);
-
-    const observer = new MutationObserver(hideConflictingRouteContent);
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frame);
-      window.clearTimeout(timer);
-      observer.disconnect();
-
-      hiddenElements.forEach((previousDisplay, element) => {
-        element.style.display = previousDisplay;
-        element.removeAttribute(
-          'data-module-057-suppressed-conflicting-route'
-        );
-      });
-
-      document
-        .getElementById('calendar-capacity')
-        ?.removeAttribute('data-module-057-route-visible');
-    };
-  }, []);
   const [config, setConfig] = useState(null);
   const [resources, setResources] = useState([]);
   const [teams, setTeams] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [scope, setScope] = useState('individual');
   const [userId, setUserId] = useState('');
+  const [userSearch, setUserSearch] = useState('');
   const [team, setTeam] = useState('');
   const [department, setDepartment] = useState('');
   const [view, setView] = useState('month');
@@ -207,6 +52,22 @@ export default function CalendarCapacityCenter() {
       .then(([c, r]) => { setConfig(c); setResources(r.resources || []); setTeams(r.teams || []); setDepartments(r.departments || []); setUserId(r.resources?.[0]?.userId || ''); })
       .catch((e) => setError(e.message)).finally(() => setLoading(false));
   }, []);
+
+  const filteredResources = useMemo(() => {
+    const query = userSearch.trim().toLowerCase();
+    if (!query) return resources;
+
+    return resources.filter((resource) =>
+      [
+        resource.displayName,
+        resource.email,
+        resource.teamName,
+        resource.departmentName
+      ]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(query))
+    );
+  }, [resources, userSearch]);
 
   const range = useMemo(() => {
     if (view === 'day') { const s = new Date(anchor); s.setHours(0,0,0,0); const e = new Date(s); e.setDate(e.getDate()+1); return { s, e }; }
@@ -242,7 +103,19 @@ export default function CalendarCapacityCenter() {
 
     <section className="calendar-capacity-controls">
       <label>Scope<select value={scope} onChange={e=>setScope(e.target.value)}><option value="individual">Individual engineer</option><option value="team">Team</option><option value="department">Department</option></select></label>
-      {scope==='individual' ? <label>Engineer<select value={userId} onChange={e=>setUserId(e.target.value)}>{resources.map(r=><option key={r.userId} value={r.userId}>{r.displayName} — {r.teamName}</option>)}</select></label> : null}
+      {scope==='individual' ? <label>Engineer
+        <input
+          type="search"
+          value={userSearch}
+          onChange={e=>setUserSearch(e.target.value)}
+          placeholder="Search name, email, team, or department"
+          aria-label="Search engineers"
+        />
+        <select value={userId} onChange={e=>setUserId(e.target.value)}>
+          {filteredResources.map(r=><option key={r.userId} value={r.userId}>{r.displayName} — {r.teamName} — {r.departmentName}</option>)}
+        </select>
+        <small>{filteredResources.length} eligible engineers</small>
+      </label> : null}
       {scope==='team' ? <label>Team<select value={team} onChange={e=>setTeam(e.target.value)}><option value="">Select a team</option>{teams.map(t=><option key={t.teamName} value={t.teamName}>{t.teamName} ({t.resourceCount})</option>)}</select></label> : null}
       {scope==='department' ? <label>Department<select value={department} onChange={e=>setDepartment(e.target.value)}><option value="">Select a department</option>{departments.map(d=><option key={d.departmentName} value={d.departmentName}>{d.departmentName} ({d.resourceCount})</option>)}</select></label> : null}
       <label>View<select value={view} onChange={e=>setView(e.target.value)}><option value="day">Day</option><option value="workweek">Work week</option><option value="week">Week</option><option value="month">Month</option><option value="agenda">Agenda</option><option value="timeline">Timeline</option></select></label>

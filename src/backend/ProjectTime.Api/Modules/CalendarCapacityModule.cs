@@ -46,6 +46,7 @@ public static class CalendarCapacityModule
                   AND u.email IS NOT NULL
                   AND u.email <> ''
                   AND lower(u.email) NOT LIKE '%.local'
+                  AND lower(u.email) NOT LIKE '%.cloud'
                 ORDER BY COALESCE(u.display_name, u.email);
                 """, connection);
 
@@ -65,10 +66,10 @@ public static class CalendarCapacityModule
                 resources,
                 teams = resources.GroupBy(r => r.TeamName, StringComparer.OrdinalIgnoreCase)
                     .Select(g => new { teamName = g.Key, resourceCount = g.Count(), resourceIds = g.Select(x => x.UserId).ToArray() })
-                    .OrderBy(x => x.teamName),
+                    .OrderBy(x => x.teamName, StringComparer.OrdinalIgnoreCase),
                 departments = resources.GroupBy(r => r.DepartmentName, StringComparer.OrdinalIgnoreCase)
                     .Select(g => new { departmentName = g.Key, resourceCount = g.Count(), resourceIds = g.Select(x => x.UserId).ToArray() })
-                    .OrderBy(x => x.departmentName)
+                    .OrderBy(x => x.departmentName, StringComparer.OrdinalIgnoreCase)
             });
         });
 
@@ -185,6 +186,7 @@ public static class CalendarCapacityModule
             FROM app_users u
             WHERE u.is_active=TRUE AND COALESCE(u.login_enabled,TRUE)=TRUE
               AND u.email IS NOT NULL AND u.email<>'' AND lower(u.email) NOT LIKE '%.local'
+                  AND lower(u.email) NOT LIKE '%.cloud'
               AND (
                     (cardinality(@ids)>0 AND u.user_id=ANY(@ids))
                  OR (cardinality(@ids)=0 AND NULLIF(@team,'') IS NOT NULL AND lower(COALESCE(NULLIF(to_jsonb(u)->>'team_name',''),NULLIF(to_jsonb(u)->>'department_name',''),NULLIF(to_jsonb(u)->>'department',''),'Unassigned'))=lower(@team))
