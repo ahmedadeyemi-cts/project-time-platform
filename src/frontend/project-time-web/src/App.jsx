@@ -1231,6 +1231,7 @@ import InvoiceBillingCenter from './InvoiceBillingCenter.jsx';
 import CalendarCapacityCenter from './CalendarCapacityCenter.jsx';
 import CiCdPipelineCenter from './CiCdPipelineCenter.jsx';
 import SessionIntelligenceCenter from './SessionIntelligenceCenter.jsx';
+import SessionIntelligenceDrawer from './SessionIntelligenceDrawer.jsx';
 import CustomerDirectoryCenter from './CustomerDirectoryCenter.jsx';
 import RateCardAdministrationCenter from './RateCardAdministrationCenter.jsx';
 import WorkRegisterCenter from './WorkRegisterCenter.jsx';
@@ -6928,6 +6929,8 @@ Analytics - Variphy / Infortel`}
           <CiCdPipelineCenter />
         </section>
       ) : null}
+
+      <SessionIntelligenceDrawer authSession={authSession} />
 
       {(activeRoute === 'security-session-intelligence' && canSeeAny(['SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
         <section id="security-session-intelligence" className="panel security-session-intelligence-route-panel">
