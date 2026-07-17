@@ -15,9 +15,23 @@ public static class ContractsModule
         "ADMINISTRATOR"
     };
 
-    private static readonly string[] ManageRoleCodes =
+    private static readonly string[] ManageContractRoleCodes =
     {
         "PROJECT_TEAM_COORDINATOR"
+    };
+
+    private static readonly string[] CreateContractRoleCodes =
+    {
+        "PROJECT_TEAM_COORDINATOR",
+        "SYSTEM_ADMINISTRATOR",
+        "ADMINISTRATOR"
+    };
+
+    private static readonly string[] ScheduleRoleCodes =
+    {
+        "PROJECT_TEAM_COORDINATOR",
+        "SYSTEM_ADMINISTRATOR",
+        "ADMINISTRATOR"
     };
 
     public static WebApplication MapContractsEndpoints(
@@ -101,13 +115,18 @@ public static class ContractsModule
         var accountExecutives = await LoadAccountExecutivesAsync(
             connection);
         var coordinators = await LoadCoordinatorsAsync(connection);
-        var schedule = await LoadScheduleAsync(connection);
+        var schedule = access.CanViewSchedule
+            ? await LoadScheduleAsync(connection)
+            : null;
 
         return Results.Ok(new
         {
             status = "contracts_loaded",
             module = "060 Contracts / Block of Hours",
-            canManage = access.CanManage,
+            canManage = access.CanManageContracts,
+            canCreateContract = access.CanCreateContract,
+            canViewSchedule = access.CanViewSchedule,
+            canManageSchedule = access.CanManageSchedule,
             summary = new
             {
                 activeContracts = contracts.Count(item =>
@@ -230,9 +249,11 @@ public static class ContractsModule
                 {
                     title = "Permissions",
                     content =
-                        "Sales and Executive users are read-only. Only "
-                        + "Project Team Coordinator users may edit contract "
-                        + "records or the weekly schedule."
+                        "Sales and Executive users are read-only. Project "
+                        + "Team Coordinators may manage contract records. "
+                        + "Administrators, System Administrators, and Project "
+                        + "Team Coordinators may create contracts and view or "
+                        + "edit the weekly email schedule."
                 }
             },
             formulas = FormulaDefinitions()
@@ -257,13 +278,14 @@ public static class ContractsModule
 
         var access = await LoadAccessAsync(connection, actor.Value);
 
-        if (!access.CanManage)
+        if (!access.CanCreateContract)
         {
-            return ForbiddenManage();
+            return ForbiddenCreateContract();
         }
 
         if (request.ClientId == Guid.Empty
             || request.PrimaryAccountExecutiveUserId == Guid.Empty
+            || request.ProjectTeamCoordinatorUserId == Guid.Empty
             || string.IsNullOrWhiteSpace(request.ContractName)
             || request.PurchasedHours < 0
             || request.StartDate == default)
@@ -272,9 +294,24 @@ public static class ContractsModule
             {
                 status = "validation_failed",
                 message =
-                    "Customer, Account Executive, contract name, "
-                    + "start date, and non-negative purchased hours "
-                    + "are required."
+                    "Customer, Account Executive, Project Team "
+                    + "Coordinator, contract name, start date, and "
+                    + "non-negative purchased hours are required."
+            });
+        }
+
+        var coordinators =
+            await LoadCoordinatorsAsync(connection);
+
+        if (!coordinators.Any(item =>
+            item.UserId == request.ProjectTeamCoordinatorUserId))
+        {
+            return Results.BadRequest(new
+            {
+                status = "validation_failed",
+                message =
+                    "The selected Project Team Coordinator is not an "
+                    + "active coordinator."
             });
         }
 
@@ -345,7 +382,7 @@ public static class ContractsModule
 
         command.Parameters.AddWithValue(
             "coordinator_user_id",
-            actor.Value);
+            request.ProjectTeamCoordinatorUserId);
 
         command.Parameters.AddWithValue(
             "purchased_hours",
@@ -451,9 +488,9 @@ public static class ContractsModule
 
         if (!(await LoadAccessAsync(
                 connection,
-                actor.Value)).CanManage)
+                actor.Value)).CanManageContracts)
         {
-            return ForbiddenManage();
+            return ForbiddenManageContracts();
         }
 
         const string sql = """
@@ -542,9 +579,9 @@ public static class ContractsModule
 
         if (!(await LoadAccessAsync(
                 connection,
-                actor.Value)).CanManage)
+                actor.Value)).CanManageContracts)
         {
-            return ForbiddenManage();
+            return ForbiddenManageContracts();
         }
 
         await using var transaction =
@@ -707,9 +744,9 @@ public static class ContractsModule
 
         if (!(await LoadAccessAsync(
                 connection,
-                actor.Value)).CanManage)
+                actor.Value)).CanManageContracts)
         {
-            return ForbiddenManage();
+            return ForbiddenManageContracts();
         }
 
         await using var command =
@@ -765,9 +802,9 @@ public static class ContractsModule
 
         if (!(await LoadAccessAsync(
                 connection,
-                actor.Value)).CanManage)
+                actor.Value)).CanManageSchedule)
         {
-            return ForbiddenManage();
+            return ForbiddenManageSchedule();
         }
 
         await using var command =
@@ -1317,9 +1354,19 @@ public static class ContractsModule
             roles.Add(reader.GetString(0));
         }
 
+        var canManageContracts =
+            roles.Overlaps(ManageContractRoleCodes);
+        var canCreateContract =
+            roles.Overlaps(CreateContractRoleCodes);
+        var canUseSchedule =
+            roles.Overlaps(ScheduleRoleCodes);
+
         return new AccessResult(
             roles.Overlaps(ViewRoleCodes),
-            roles.Overlaps(ManageRoleCodes));
+            canManageContracts,
+            canCreateContract,
+            canUseSchedule,
+            canUseSchedule);
     }
 
     private static async Task InsertAuditAsync(
@@ -1466,15 +1513,42 @@ public static class ContractsModule
             statusCode: 401);
     }
 
-    private static IResult ForbiddenManage()
+    private static IResult ForbiddenManageContracts()
     {
         return Results.Json(
             new
             {
                 status = "forbidden",
                 message =
-                    "Only the Project Team Coordinator "
-                    + "may edit Block of Hours contracts."
+                    "Only the Project Team Coordinator may award credits, "
+                    + "extend contracts, or add administrative notes."
+            },
+            statusCode: 403);
+    }
+
+    private static IResult ForbiddenCreateContract()
+    {
+        return Results.Json(
+            new
+            {
+                status = "forbidden",
+                message =
+                    "Only an Administrator, System Administrator, or "
+                    + "Project Team Coordinator may create a contract."
+            },
+            statusCode: 403);
+    }
+
+    private static IResult ForbiddenManageSchedule()
+    {
+        return Results.Json(
+            new
+            {
+                status = "forbidden",
+                message =
+                    "Only an Administrator, System Administrator, or "
+                    + "Project Team Coordinator may manage the weekly "
+                    + "email schedule."
             },
             statusCode: 403);
     }
@@ -1555,12 +1629,16 @@ public static class ContractsModule
 
     private sealed record AccessResult(
         bool CanView,
-        bool CanManage);
+        bool CanManageContracts,
+        bool CanCreateContract,
+        bool CanViewSchedule,
+        bool CanManageSchedule);
 
     private sealed record ContractCreateRequest(
         Guid ClientId,
         string ContractName,
         Guid PrimaryAccountExecutiveUserId,
+        Guid ProjectTeamCoordinatorUserId,
         decimal PurchasedHours,
         DateOnly StartDate,
         DateOnly? OriginalExpirationDate,

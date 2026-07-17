@@ -76,6 +76,7 @@ const emptyForm = {
   clientId: '',
   contractName: '',
   primaryAccountExecutiveUserId: '',
+  projectTeamCoordinatorUserId: '',
   purchasedHours: '',
   startDate: '',
   originalExpirationDate: '',
@@ -225,7 +226,9 @@ export default function ContractsCenter() {
   }, [data, query, aeFilter, statusFilter]);
 
   const summary = data?.summary || {};
-  const canManage = Boolean(data?.canManage);
+  const canCreateContract = Boolean(data?.canCreateContract);
+  const canViewSchedule = Boolean(data?.canViewSchedule);
+  const canManageSchedule = Boolean(data?.canManageSchedule);
 
   return (
     <section className="contracts-center">
@@ -244,26 +247,28 @@ export default function ContractsCenter() {
             ? Help
           </button>
 
-          {canManage ? (
-            <>
-              <button
-                type="button"
-                onClick={() => setScheduleOpen(true)}
-              >
-                Weekly email schedule
-              </button>
+          {canManageSchedule ? (
+            <button
+              type="button"
+              onClick={() => setScheduleOpen(true)}
+            >
+              Weekly email schedule
+            </button>
+          ) : null}
 
-              <button
-                type="button"
-                className="primary-action"
-                onClick={() => setCreateOpen(true)}
-              >
-                New contract
-              </button>
-            </>
-          ) : (
+          {canCreateContract ? (
+            <button
+              type="button"
+              className="primary-action"
+              onClick={() => setCreateOpen(true)}
+            >
+              New contract
+            </button>
+          ) : null}
+
+          {!canCreateContract && !canManageSchedule ? (
             <span className="contracts-readonly">Read only</span>
-          )}
+          ) : null}
         </div>
       </header>
 
@@ -310,28 +315,30 @@ export default function ContractsCenter() {
         </article>
       </div>
 
-      <section className="contracts-report-card">
-        <div>
-          <h2>Weekly AE workbook</h2>
-          <p>
-            Global SMTP · XLSX · grouped by Account Executive ·
-            filters and frozen panes enabled
-          </p>
-        </div>
+      {canViewSchedule ? (
+        <section className="contracts-report-card">
+          <div>
+            <h2>Weekly AE workbook</h2>
+            <p>
+              Global SMTP · XLSX · grouped by Account Executive ·
+              filters and frozen panes enabled
+            </p>
+          </div>
 
-        <div>
-          <strong>
-            {schedule?.isEnabled ? 'Enabled' : 'Disabled'}
-          </strong>
-          <span>
-            Weekday {schedule?.weekdayIso || 1}
-            {' · '}
-            {schedule?.sendTime || '08:00'}
-            {' · '}
-            {schedule?.timeZone || 'America/Chicago'}
-          </span>
-        </div>
-      </section>
+          <div>
+            <strong>
+              {schedule?.isEnabled ? 'Enabled' : 'Disabled'}
+            </strong>
+            <span>
+              Weekday {schedule?.weekdayIso || 1}
+              {' · '}
+              {schedule?.sendTime || '08:00'}
+              {' · '}
+              {schedule?.timeZone || 'America/Chicago'}
+            </span>
+          </div>
+        </section>
+      ) : null}
 
       <section className="contracts-filters">
         <input
@@ -529,12 +536,12 @@ export default function ContractsCenter() {
         </div>
       ) : null}
 
-      {createOpen && canManage ? (
+      {createOpen && canCreateContract ? (
         <div className="contracts-drawer-backdrop">
           <aside className="contracts-drawer wide">
             <header>
               <div>
-                <p className="eyebrow">PROJECT TEAM COORDINATOR</p>
+                <p className="eyebrow">AUTHORIZED CONTRACT CREATION</p>
                 <h2>Create Block of Hours contract</h2>
               </div>
               <button type="button" onClick={() => setCreateOpen(false)}>
@@ -575,6 +582,27 @@ export default function ContractsCenter() {
                 >
                   <option value="">Select Account Executive</option>
                   {(data?.accountExecutives || []).map((user) => (
+                    <option key={user.userId} value={user.userId}>
+                      {user.displayName} — {user.email}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                Project Team Coordinator
+                <select
+                  required
+                  value={form.projectTeamCoordinatorUserId}
+                  onChange={(event) =>
+                    setForm({
+                      ...form,
+                      projectTeamCoordinatorUserId: event.target.value
+                    })
+                  }
+                >
+                  <option value="">Select Project Team Coordinator</option>
+                  {(data?.coordinators || []).map((user) => (
                     <option key={user.userId} value={user.userId}>
                       {user.displayName} — {user.email}
                     </option>
@@ -722,7 +750,7 @@ export default function ContractsCenter() {
         </div>
       ) : null}
 
-      {scheduleOpen && canManage && schedule ? (
+      {scheduleOpen && canManageSchedule && schedule ? (
         <div className="contracts-drawer-backdrop">
           <aside className="contracts-drawer wide">
             <header>
