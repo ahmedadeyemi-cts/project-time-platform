@@ -275,7 +275,7 @@
   object-fit: cover;
 }
 
-.calendar-resource-avatar span {
+.calendar-resource-avatar > span:not(.calendar-presence-dot) {
   display: grid;
   place-items: center;
   width: 100%;
@@ -287,12 +287,14 @@
 
 .calendar-presence-dot {
   position: absolute;
-  right: -2px;
-  bottom: -2px;
-  width: 14px;
-  height: 14px;
+  right: -1px;
+  bottom: -1px;
+  z-index: 2;
+  display: block;
+  width: 12px;
+  height: 12px;
   box-sizing: border-box;
-  border: 3px solid #fff;
+  border: 2px solid #fff;
   border-radius: 50%;
   background: #8995a7;
 }
