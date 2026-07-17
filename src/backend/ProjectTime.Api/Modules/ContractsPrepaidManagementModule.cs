@@ -844,6 +844,8 @@ public static class ContractsPrepaidManagementModule
             CoordinatorRoles,
             new[] { "project team coordinator", "project coordinator" });
         var users = await AllUsersAsync(connection);
+        var existingSourceKeys =
+            await ExistingSourceKeysAsync(connection);
 
         var rows = ParseRows(
             worksheet,
@@ -851,7 +853,8 @@ public static class ContractsPrepaidManagementModule
             customers,
             accountExecutives,
             coordinators,
-            users);
+            users,
+            existingSourceKeys);
 
         var batchId = Guid.NewGuid();
         var sha256 = Convert.ToHexString(
@@ -1076,16 +1079,13 @@ public static class ContractsPrepaidManagementModule
                     actor.Value,
                     row);
 
-            if (row.CreditAwarded > 0)
-            {
-                await UpsertCreditAsync(
-                    connection,
-                    transaction,
-                    batchId,
-                    contractId,
-                    actor.Value,
-                    row);
-            }
+            await ReconcileImportedCreditAsync(
+                connection,
+                transaction,
+                batchId,
+                contractId,
+                actor.Value,
+                row);
 
             if (!string.IsNullOrWhiteSpace(row.Notes))
             {
@@ -1097,6 +1097,36 @@ public static class ContractsPrepaidManagementModule
                     actor.Value,
                     row);
             }
+        }
+
+        await using (var closeMissingContracts =
+            new NpgsqlCommand("""
+                UPDATE boh_contracts c
+                SET contract_status = 'closed',
+                    updated_by_user_id = @actor_id,
+                    updated_at = NOW()
+                WHERE c.import_batch_id IS NOT NULL
+                  AND c.import_source_key <> ''
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM boh_balance_import_rows r
+                      WHERE r.boh_balance_import_batch_id = @batch_id
+                        AND r.row_status = 'valid'
+                        AND r.change_type <> 'duplicate'
+                        AND r.source_key = c.import_source_key
+                  );
+                """,
+                connection,
+                transaction))
+        {
+            closeMissingContracts.Parameters.AddWithValue(
+                "batch_id",
+                batchId);
+            closeMissingContracts.Parameters.AddWithValue(
+                "actor_id",
+                actor.Value);
+
+            await closeMissingContracts.ExecuteNonQueryAsync();
         }
 
         await using (var command =
@@ -1565,7 +1595,8 @@ public static class ContractsPrepaidManagementModule
         IReadOnlyCollection<CustomerOption> customers,
         IReadOnlyCollection<UserOption> accountExecutives,
         IReadOnlyCollection<UserOption> coordinators,
-        IReadOnlyCollection<UserOption> users)
+        IReadOnlyCollection<UserOption> users,
+        IReadOnlySet<string> existingSourceKeys)
     {
         var rows = new List<ImportRow>();
         var seen = new HashSet<string>(
@@ -1737,6 +1768,10 @@ public static class ContractsPrepaidManagementModule
             {
                 changeType = "duplicate";
                 messages.Add("This row duplicates another workbook row.");
+            }
+            else if (existingSourceKeys.Contains(sourceKey))
+            {
+                changeType = "changed";
             }
 
             var pending = Number("Pending Hours");
@@ -2303,7 +2338,7 @@ public static class ContractsPrepaidManagementModule
                 "Unable to import the contract row."));
     }
 
-    private static async Task UpsertCreditAsync(
+    private static async Task ReconcileImportedCreditAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         Guid batchId,
@@ -2311,8 +2346,57 @@ public static class ContractsPrepaidManagementModule
         Guid actorId,
         ImportRow row)
     {
+        decimal currentNetCredit;
+
+        await using (var current =
+            new NpgsqlCommand("""
+                SELECT COALESCE(
+                    SUM(
+                        CASE
+                            WHEN adjustment_type = 'credit_awarded'
+                                THEN COALESCE(amount, hours)
+                            WHEN adjustment_type = 'credit_reversal'
+                                THEN -COALESCE(amount, hours)
+                            ELSE 0
+                        END
+                    ),
+                    0
+                )
+                FROM boh_contract_adjustments
+                WHERE boh_contract_id = @contract_id;
+                """,
+                connection,
+                transaction))
+        {
+            current.Parameters.AddWithValue(
+                "contract_id",
+                contractId);
+
+            currentNetCredit = Convert.ToDecimal(
+                await current.ExecuteScalarAsync() ?? 0,
+                CultureInfo.InvariantCulture);
+        }
+
+        var difference =
+            Math.Round(
+                row.CreditAwarded - currentNetCredit,
+                2,
+                MidpointRounding.AwayFromZero);
+
+        if (difference == 0)
+        {
+            return;
+        }
+
+        var adjustmentType =
+            difference > 0
+                ? "credit_awarded"
+                : "credit_reversal";
+
+        var amount = Math.Abs(difference);
+
         var source =
-            $"import:{batchId}:{row.SourceRowNumber}:credit";
+            $"import:{batchId}:{row.SourceRowNumber}:credit-reconciliation";
 
         await using var command =
             new NpgsqlCommand("""
@@ -2328,11 +2412,11 @@ public static class ContractsPrepaidManagementModule
                 )
                 SELECT
                     @contract_id,
-                    'credit_awarded',
+                    @adjustment_type,
                     @amount,
                     @amount,
                     @awarded_on,
-                    'Imported credit award',
+                    @reason,
                     @source,
                     @awarded_by
                 WHERE NOT EXISTS (
@@ -2347,11 +2431,21 @@ public static class ContractsPrepaidManagementModule
         command.Parameters.AddWithValue(
             "contract_id",
             contractId);
-        command.Parameters.AddWithValue("amount", row.CreditAwarded);
+        command.Parameters.AddWithValue(
+            "adjustment_type",
+            adjustmentType);
+        command.Parameters.AddWithValue(
+            "amount",
+            amount);
         command.Parameters.AddWithValue(
             "awarded_on",
             row.CreditAwardedOn
                 ?? DateOnly.FromDateTime(DateTime.UtcNow));
+        command.Parameters.AddWithValue(
+            "reason",
+            adjustmentType == "credit_awarded"
+                ? "Imported credit reconciliation increase"
+                : "Imported credit reconciliation reversal");
         command.Parameters.AddWithValue("source", source);
         command.Parameters.AddWithValue(
             "awarded_by",
@@ -2403,6 +2497,33 @@ public static class ContractsPrepaidManagementModule
         command.Parameters.AddWithValue("actor_id", actorId);
 
         await command.ExecuteNonQueryAsync();
+    }
+
+    private static async Task<HashSet<string>>
+        ExistingSourceKeysAsync(
+            NpgsqlConnection connection)
+    {
+        var keys =
+            new HashSet<string>(
+                StringComparer.OrdinalIgnoreCase);
+
+        await using var command =
+            new NpgsqlCommand("""
+                SELECT import_source_key
+                FROM boh_contracts
+                WHERE import_source_key <> '';
+                """,
+                connection);
+
+        await using var reader =
+            await command.ExecuteReaderAsync();
+
+        while (await reader.ReadAsync())
+        {
+            keys.Add(reader.GetString(0));
+        }
+
+        return keys;
     }
 
     private static async Task<List<CustomerOption>>
