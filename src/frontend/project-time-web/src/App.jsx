@@ -6934,8 +6934,16 @@ Analytics - Variphy / Infortel`}
         </section>
       ) : null}
 
+      {/* MODULE_060_CONTRACTS_ISOLATED_ROUTE_START */}
+      {(activeRoute === 'contracts' && canSeeAny(['VIEW_CUSTOMERS', 'VIEW_REPORTS', 'MANAGE_REPORTS', 'MANAGE_PROJECT_INTAKE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
+        <section id="contracts" className="panel contracts-route-panel">
+          <ContractsCenter />
+        </section>
+      ) : null}
+      {/* MODULE_060_CONTRACTS_ISOLATED_ROUTE_END */}
+
       {/* MODULE_057_STRUCTURAL_ROUTE_BOUNDARY_V6 */}
-      {!['calendar-capacity', 'cicd-pipeline'].includes(activeRoute) ? (
+      {!['calendar-capacity', 'cicd-pipeline', 'contracts'].includes(activeRoute) ? (
         <>
 
       {(activeRoute === 'dashboard') ? (
@@ -7551,12 +7559,6 @@ Analytics - Variphy / Infortel`}
         )
       ) : null}
       {/* 055B_RATE_CARD_ADMIN_ROUTE_END */}
-
-{(activeRoute === 'contracts' && canSeeAny(['VIEW_CUSTOMERS', 'VIEW_REPORTS', 'MANAGE_REPORTS', 'MANAGE_PROJECT_INTAKE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
-        <section id="contracts" className="panel contracts-route-panel">
-          <ContractsCenter />
-        </section>
-      ) : null}
 
       {(activeRoute === 'customer-directory' && canSeeAny(['VIEW_CUSTOMERS', 'MANAGE_CUSTOMERS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
         <section id="customer-directory" className="panel customer-directory-route-panel">
