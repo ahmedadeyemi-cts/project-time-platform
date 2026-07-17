@@ -36132,6 +36132,8 @@ app.MapSessionIntelligenceEndpoints();
 app.MapSellInboundSnapshotEndpoints();
 app.MapSellCommercialReadModelEndpoints();
 
+app.MapContractsEndpoints();
+
 app.Run();
 
 

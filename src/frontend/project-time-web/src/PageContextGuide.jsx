@@ -77,6 +77,12 @@ const routeContext = {
     backend: '/api/customers/*',
     check: 'Confirm customer records, contacts, and empty states load clearly.'
   },
+  'contracts': {
+    page: 'Contracts & Block of Hours — Module 060',
+    purpose: 'Manages prepaid customer hours, credits, expiration, work consumption, and weekly Account Executive XLSX reporting.',
+    backend: '/api/contracts/*',
+    check: 'Confirm role-based access, empty state, header explanations, embedded help, contract creation controls, and weekly schedule controls.'
+  },
   'user-admin': {
     page: 'User Administration',
     purpose: 'Manages users, local account status, active status, and role assignment readiness.',

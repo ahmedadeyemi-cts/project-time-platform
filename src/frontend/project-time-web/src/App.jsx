@@ -1231,6 +1231,7 @@ import InvoiceBillingCenter from './InvoiceBillingCenter.jsx';
 import CalendarCapacityCenter from './CalendarCapacityCenter.jsx';
 import CiCdPipelineCenter from './CiCdPipelineCenter.jsx';
 import CustomerDirectoryCenter from './CustomerDirectoryCenter.jsx';
+import ContractsCenter from './ContractsCenter.jsx';
 import RateCardAdministrationCenter from './RateCardAdministrationCenter.jsx';
 import WorkRegisterCenter from './WorkRegisterCenter.jsx';
 import CostOverrunAlertCenter from './CostOverrunAlertCenter.jsx';
@@ -2390,6 +2391,15 @@ const roleWorkspaceModules = [
     permissions: ['VIEW_CUSTOMERS', 'MANAGE_CUSTOMERS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   },
   {
+    route: 'contracts',
+    href: '#contracts',
+    title: 'Contracts & Block of Hours',
+    navLabel: 'MODULE 060',
+    description: 'Manage prepaid customer hours, credits, expiration, work consumption, and weekly AE balance reporting.',
+    permissions: ['VIEW_CUSTOMERS', 'VIEW_REPORTS', 'MANAGE_REPORTS', 'MANAGE_PROJECT_INTAKE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    roleCodes: ['PROJECT_TEAM_COORDINATOR', 'SALES', 'ACCOUNT_EXECUTIVE', 'EXECUTIVE', 'EXECUTIVE_LEADERSHIP']
+  },
+  {
     route: 'cost-alerts',
     href: '#cost-alerts',
     title: 'Cost Overrun Alerts',
@@ -2752,6 +2762,7 @@ function getNavigationGroup(item) {
       return 'Project Workspace';
     case 'cost-alerts':
     case 'customer-directory':
+    case 'contracts':
     case 'work-register':
       return 'Work Register';
     case 'rate-card-administration':
@@ -7541,7 +7552,13 @@ Analytics - Variphy / Infortel`}
       ) : null}
       {/* 055B_RATE_CARD_ADMIN_ROUTE_END */}
 
-{(activeRoute === 'customer-directory' && canSeeAny(['VIEW_CUSTOMERS', 'MANAGE_CUSTOMERS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
+{(activeRoute === 'contracts' && canSeeAny(['VIEW_CUSTOMERS', 'VIEW_REPORTS', 'MANAGE_REPORTS', 'MANAGE_PROJECT_INTAKE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
+        <section id="contracts" className="panel contracts-route-panel">
+          <ContractsCenter />
+        </section>
+      ) : null}
+
+      {(activeRoute === 'customer-directory' && canSeeAny(['VIEW_CUSTOMERS', 'MANAGE_CUSTOMERS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
         <section id="customer-directory" className="panel customer-directory-route-panel">
           <CustomerDirectoryCenter canManageCustomers={canSeeAny(['MANAGE_CUSTOMERS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])} />
         </section>

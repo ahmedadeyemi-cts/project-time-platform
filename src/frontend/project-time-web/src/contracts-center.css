@@ -1,0 +1,368 @@
+.contracts-center {
+  display: grid;
+  gap: 18px;
+  width: 100%;
+  min-width: 0;
+  color: #17233a;
+}
+
+.contracts-hero,
+.contracts-report-card,
+.contracts-filters,
+.contracts-summary-grid article {
+  border: 1px solid rgba(71, 96, 132, 0.2);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.contracts-hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  align-items: center;
+  padding: 22px;
+  background: linear-gradient(135deg, #eef8ff, #fff);
+}
+
+.contracts-hero h1,
+.contracts-hero p {
+  margin-top: 0;
+}
+
+.contracts-hero-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.contracts-readonly {
+  border-radius: 999px;
+  background: #eef2f7;
+  padding: 8px 12px;
+  color: #5d6e87;
+  font-weight: 700;
+}
+
+.contracts-alert {
+  border: 1px solid #87b8d5;
+  border-radius: 12px;
+  background: #eef8ff;
+  padding: 12px;
+}
+
+.contracts-alert.error {
+  border-color: #d76767;
+  background: #fff1f1;
+}
+
+.contracts-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.contracts-summary-grid article {
+  display: grid;
+  gap: 6px;
+  padding: 16px;
+}
+
+.contracts-summary-grid span {
+  color: #5f718a;
+}
+
+.contracts-summary-grid strong {
+  font-size: 1.55rem;
+}
+
+.contracts-summary-grid .warning {
+  border-color: #dec471;
+  background: #fffbec;
+}
+
+.contracts-summary-grid .danger {
+  border-color: #df9d9d;
+  background: #fff3f3;
+}
+
+.contracts-report-card {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  align-items: center;
+  padding: 18px;
+}
+
+.contracts-report-card h2,
+.contracts-report-card p {
+  margin: 0;
+}
+
+.contracts-report-card > div:last-child {
+  display: grid;
+  gap: 4px;
+  text-align: right;
+}
+
+.contracts-report-card span {
+  color: #60718a;
+}
+
+.contracts-filters {
+  display: grid;
+  grid-template-columns: minmax(260px, 1.6fr) 1fr 1fr auto;
+  gap: 10px;
+  padding: 14px;
+}
+
+.contracts-filters input,
+.contracts-filters select,
+.contracts-form input,
+.contracts-form select,
+.contracts-form textarea {
+  min-height: 42px;
+  box-sizing: border-box;
+  border: 1px solid #b9c7d8;
+  border-radius: 9px;
+  background: #fff;
+  padding: 9px 11px;
+  font: inherit;
+  color: inherit;
+}
+
+.contracts-table-scroll {
+  overflow: auto;
+  max-height: min(760px, calc(100vh - 190px));
+  border: 1px solid #d5dfeb;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.contracts-table {
+  width: 100%;
+  min-width: 1900px;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.contracts-table th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: #f3f6fa;
+  border-bottom: 1px solid #cdd8e5;
+  padding: 11px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.contracts-table td {
+  border-bottom: 1px solid #e1e7ef;
+  padding: 11px;
+  vertical-align: top;
+}
+
+.contracts-table td strong,
+.contracts-table td small {
+  display: block;
+}
+
+.contracts-table td small {
+  margin-top: 3px;
+  color: #677991;
+}
+
+.contracts-header-label {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.contracts-header-help {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  min-height: 20px;
+  border: 1px solid #7c91ab;
+  border-radius: 50%;
+  padding: 0;
+  background: #fff;
+  color: #345473;
+  font-size: 0.72rem;
+  font-weight: 800;
+  cursor: help;
+}
+
+.contracts-status {
+  display: inline-block;
+  border-radius: 999px;
+  background: #e8eef5;
+  padding: 5px 9px;
+  text-transform: capitalize;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.contracts-status.active {
+  background: #ddf3e6;
+  color: #1f6c40;
+}
+
+.contracts-status.low_balance,
+.contracts-status.expiring {
+  background: #fff0bd;
+  color: #795300;
+}
+
+.contracts-status.expired,
+.contracts-status.exhausted {
+  background: #f8dada;
+  color: #852e2e;
+}
+
+.contracts-empty {
+  padding: 30px !important;
+  text-align: center;
+  color: #697b93;
+}
+
+.contracts-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  justify-content: flex-end;
+  background: rgba(14, 26, 43, 0.46);
+}
+
+.contracts-drawer {
+  width: min(560px, 94vw);
+  height: 100%;
+  overflow: auto;
+  box-sizing: border-box;
+  background: #fff;
+  padding: 20px;
+  box-shadow: -12px 0 30px rgba(10, 24, 44, 0.2);
+}
+
+.contracts-drawer.wide {
+  width: min(820px, 96vw);
+}
+
+.contracts-drawer > header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: start;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #dde5ee;
+}
+
+.contracts-drawer article {
+  border-bottom: 1px solid #e0e7ef;
+  padding: 14px 0;
+}
+
+.contracts-drawer article h3,
+.contracts-drawer article p {
+  margin-top: 0;
+}
+
+.contracts-drawer article small {
+  color: #667890;
+}
+
+.contracts-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.contracts-form label {
+  display: grid;
+  gap: 7px;
+  font-weight: 700;
+}
+
+.contracts-form label small {
+  color: #6a7b91;
+  font-weight: 500;
+}
+
+.contracts-form fieldset {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  border: 1px solid #ccd8e5;
+  border-radius: 10px;
+}
+
+.contracts-checkbox {
+  display: flex !important;
+  align-items: center;
+  gap: 8px !important;
+}
+
+.contracts-checkbox input {
+  min-height: 0;
+}
+
+.contracts-form-wide,
+.contracts-form-actions,
+.contracts-recipient-note {
+  grid-column: 1 / -1;
+}
+
+.contracts-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 12px;
+}
+
+.contracts-recipient-note {
+  border: 1px solid #bdd0e0;
+  border-radius: 10px;
+  background: #f3f8fc;
+  padding: 12px;
+  color: #4d627c;
+}
+
+.app-shell.route-contracts > section:not(#contracts) {
+  display: none;
+}
+
+@media (max-width: 1000px) {
+  .contracts-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .contracts-filters,
+  .contracts-form {
+    grid-template-columns: 1fr;
+  }
+
+  .contracts-form-wide,
+  .contracts-form-actions,
+  .contracts-recipient-note {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 700px) {
+  .contracts-hero,
+  .contracts-report-card {
+    display: grid;
+  }
+
+  .contracts-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .contracts-report-card > div:last-child {
+    text-align: left;
+  }
+}
