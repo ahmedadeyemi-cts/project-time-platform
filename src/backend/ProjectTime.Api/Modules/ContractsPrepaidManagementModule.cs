@@ -2564,8 +2564,8 @@ public static class ContractsPrepaidManagementModule
             new NpgsqlCommand("""
                 SELECT DISTINCT
                     u.user_id,
-                    COALESCE(NULLIF(u.display_name, ''), u.email),
-                    u.email
+                    COALESCE(u.display_name, ''),
+                    COALESCE(u.email, '')
                 FROM app_users u
                 LEFT JOIN app_user_role_assignments ura
                     ON ura.user_id = u.user_id
@@ -2601,10 +2601,7 @@ public static class ContractsPrepaidManagementModule
 
         while (await reader.ReadAsync())
         {
-            rows.Add(new UserOption(
-                reader.GetGuid(0),
-                reader.GetString(1),
-                reader.GetString(2)));
+            rows.Add(ReadUserOption(reader));
         }
 
         return rows;
@@ -2619,8 +2616,8 @@ public static class ContractsPrepaidManagementModule
             new NpgsqlCommand("""
                 SELECT
                     user_id,
-                    COALESCE(NULLIF(display_name, ''), email),
-                    email
+                    COALESCE(display_name, ''),
+                    COALESCE(email, '')
                 FROM app_users
                 WHERE is_active = TRUE
                   AND COALESCE(login_enabled, TRUE) = TRUE
@@ -2633,10 +2630,7 @@ public static class ContractsPrepaidManagementModule
 
         while (await reader.ReadAsync())
         {
-            rows.Add(new UserOption(
-                reader.GetGuid(0),
-                reader.GetString(1),
-                reader.GetString(2)));
+            rows.Add(ReadUserOption(reader));
         }
 
         return rows;
@@ -2790,6 +2784,54 @@ public static class ContractsPrepaidManagementModule
             || profile.Contains("executive");
 
         return new AccessResult(canView, canManage);
+    }
+
+    private static UserOption ReadUserOption(
+        NpgsqlDataReader reader)
+    {
+        var email = reader.GetString(2).Trim();
+        var displayName = ResolveDisplayName(
+            reader.GetString(1),
+            email);
+
+        return new UserOption(
+            reader.GetGuid(0),
+            displayName,
+            email);
+    }
+
+    private static string ResolveDisplayName(
+        string? displayName,
+        string email)
+    {
+        var trimmedDisplayName = displayName?.Trim() ?? "";
+
+        if (!string.IsNullOrWhiteSpace(trimmedDisplayName)
+            && !string.Equals(
+                trimmedDisplayName,
+                email,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return trimmedDisplayName;
+        }
+
+        var localPart = email.Split('@', 2)[0];
+
+        var words = localPart
+            .Split(
+                new[] { '.', '_', '-', ' ' },
+                StringSplitOptions.RemoveEmptyEntries
+                | StringSplitOptions.TrimEntries)
+            .Select(word =>
+                CultureInfo.InvariantCulture.TextInfo.ToTitleCase(
+                    word.ToLowerInvariant()))
+            .ToArray();
+
+        var friendlyName = string.Join(" ", words).Trim();
+
+        return string.IsNullOrWhiteSpace(friendlyName)
+            ? email
+            : friendlyName;
     }
 
     private static UserOption? MatchUser(
