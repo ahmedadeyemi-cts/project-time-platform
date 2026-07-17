@@ -2574,9 +2574,8 @@ public static class ContractsPrepaidManagementModule
                     ON r.app_role_id = ura.app_role_id
                    AND r.is_active = TRUE
                 WHERE u.is_active = TRUE
-                  AND COALESCE(u.login_enabled, TRUE) = TRUE
                   AND (
-                        r.role_code = ANY(@roles)
+                        UPPER(COALESCE(r.role_code, '')) = ANY(@roles)
                      OR EXISTS (
                             SELECT 1
                             FROM UNNEST(@terms) AS t(term)
