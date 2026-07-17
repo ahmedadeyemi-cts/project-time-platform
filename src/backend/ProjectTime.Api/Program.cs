@@ -36136,6 +36136,8 @@ app.MapContractsEndpoints();
 app.MapContractsPrepaidModule();
 app.MapContractsPrepaidManagementModule();
 
+ProjectTime.Api.Modules.OpportunitiesModule.MapOpportunityEndpoints(app);
+
 app.Run();
 
 

@@ -1,5 +1,6 @@
 import HelpAssistant from './HelpAssistant.jsx';
 import SessionIntelligenceDrawer from './SessionIntelligenceDrawer.jsx';
+import OpportunitiesCenter from './OpportunitiesCenter.jsx';
 import PostIntakeAgingPanel from './PostIntakeAgingPanel.jsx';
 
 
@@ -2683,6 +2684,7 @@ function buildRoleNavigationModel(user, navigationItems) {
 
   const groupOrder = [
     'Work Management',
+    'Sales & Opportunities',
     'Project Workspace',
     'Project Intake',
     'Time Compliance',
@@ -2706,6 +2708,7 @@ function buildRoleNavigationModel(user, navigationItems) {
     'project-allocation-info',
     'project-intake',
     'customer-directory',
+    'opportunities',
     'cost-alerts',
     'time-compliance',
     'psa-modules',
@@ -2851,6 +2854,16 @@ function getInstalledProjectPulseModuleRegistry() {
       group: 'Customers',
       permissions: ['VIEW_CUSTOMERS', 'MANAGE_CUSTOMERS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
       description: 'Maintains customer records, contacts, and customer data used by project, billing, cost, and reconciliation workflows.'
+    },
+    {
+      route: 'opportunities',
+      href: '#opportunities',
+      title: 'Opportunities & Action Tracker',
+      navLabel: 'MODULE 063',
+      status: 'Active',
+      group: 'Sales & Opportunities',
+      permissions: ['VIEW_CUSTOMERS', 'VIEW_PROJECT_INTAKE', 'VIEW_PROJECT_WORKSPACE', 'VIEW_WORK_TASK_BUILDER', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+      description: 'Lets Sales, Presales, and Engineering create opportunities, add collaborative tasks, complete actions, and track active, closed, creator, and last-updated history.'
     },
     {
       route: 'cost-alerts',
@@ -3144,6 +3157,7 @@ function getInstalledModuleDescription(module) {
     'work-register': 'Searches active, closed, archived, and historical work across customers, stakeholders, tasks, documents, hours, and costs.',
     'rate-card-administration': 'Manages standard, customer-specific, Toyota, Hyundai, service request, emergency, and travel rate cards.',
     'customer-directory': 'Maintains customer/account records, customer contacts, and customer data used by intake, project, cost, billing, and reconciliation workflows.',
+    opportunities: 'Tracks active and closed sales opportunities, collaborative Sales, Presales, and Engineering actions, ownership, completion, dates, and accountable history.',
     'cost-alerts': 'Monitors project planned cost, assigned hours, used hours, over-assignment risk, and notification routing for cost overrun alerts.',
     workflow: 'Coordinates PM validation, accounting readiness, reconciliation, locking, export preparation, and audit visibility after manager approval.',
     'audit-history': 'Shows login, admin, notification, approval, export, and system audit events for accountability and troubleshooting.',
@@ -8229,6 +8243,12 @@ Analytics - Variphy / Infortel`}
         <section id="manager-approval" className="approvals-workspace-panel">
           {canViewManagerApprovalPanel ? <ManagerApprovalPanel /> : null}
           {canViewLocalAdminPasswordResetApprovals ? <LocalAdminPasswordResetApprovalsPanel /> : null}
+        </section>
+      ) : null}
+
+      {(activeRoute === 'opportunities') ? (
+        <section id="opportunities" className="panel opportunities-route-panel">
+          <OpportunitiesCenter />
         </section>
       ) : null}
 
