@@ -5745,6 +5745,18 @@ Analytics - Variphy / Infortel`}
 
       <PageContextGuide activeRoute={activeRoute} />
 
+      {/* MODULE_060_CONTRACTS_ROOT_ROUTE_START */}
+      {(activeRoute === 'contracts' && canSeeAny(['VIEW_CUSTOMERS', 'VIEW_REPORTS', 'MANAGE_REPORTS', 'MANAGE_PROJECT_INTAKE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
+        <section id="contracts" className="panel contracts-route-panel">
+          <ContractsCenter />
+        </section>
+      ) : null}
+      {/* MODULE_060_CONTRACTS_ROOT_ROUTE_END */}
+
+      {/* MODULE_060_NON_CONTRACT_ROUTE_CONTENT_START */}
+      {activeRoute !== 'contracts' ? (
+        <>
+
       {(activeRoute === 'production-data-readiness' && canViewAdminProductionReadiness) ? (
         <section id="production-data-readiness" className="panel production-data-readiness-route-panel">
           <ProductionDataReadinessCenter />
@@ -6268,14 +6280,6 @@ Analytics - Variphy / Infortel`}
           <CiCdPipelineCenter />
         </section>
       ) : null}
-
-      {/* MODULE_060_CONTRACTS_ISOLATED_ROUTE_START */}
-      {(activeRoute === 'contracts' && canSeeAny(['VIEW_CUSTOMERS', 'VIEW_REPORTS', 'MANAGE_REPORTS', 'MANAGE_PROJECT_INTAKE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
-        <section id="contracts" className="panel contracts-route-panel">
-          <ContractsCenter />
-        </section>
-      ) : null}
-      {/* MODULE_060_CONTRACTS_ISOLATED_ROUTE_END */}
 
       {/* MODULE_057_STRUCTURAL_ROUTE_BOUNDARY_V6 */}
       {!['calendar-capacity', 'cicd-pipeline', 'contracts'].includes(activeRoute) ? (
@@ -7156,6 +7160,10 @@ Analytics - Variphy / Infortel`}
           <SessionIntelligenceDrawer authSession={authSession} />
 </>
       ) : null}
+
+        </>
+      ) : null}
+      {/* MODULE_060_NON_CONTRACT_ROUTE_CONTENT_END */}
 
       <HelpAssistant />
 </main>
