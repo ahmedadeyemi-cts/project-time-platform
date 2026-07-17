@@ -947,7 +947,6 @@ public static class ContractsModule
                             NULLIF(cc.address_line1, ''),
                             NULLIF(cc.address_line2, ''),
                             NULLIF(cc.city, ''),
-                            NULLIF(cc.state_province, ''),
                             NULLIF(cc.postal_code, '')
                         ),
                         ''
@@ -992,7 +991,6 @@ public static class ContractsModule
                     address_line1,
                     address_line2,
                     city,
-                    state_province,
                     postal_code
                 FROM client_contacts
                 WHERE client_id = c.client_id
@@ -1085,8 +1083,7 @@ public static class ContractsModule
                                 NULLIF(cc.address_line1, ''),
                                 NULLIF(cc.address_line2, ''),
                                 NULLIF(cc.city, ''),
-                                NULLIF(cc.state_province, ''),
-                                NULLIF(cc.postal_code, '')
+                                    NULLIF(cc.postal_code, '')
                             ),
                             ''
                         ),
@@ -1098,8 +1095,7 @@ public static class ContractsModule
                         address_line1,
                         address_line2,
                         city,
-                        state_province,
-                        postal_code
+                            postal_code
                     FROM client_contacts
                     WHERE client_id = c.client_id
                     ORDER BY
@@ -1179,7 +1175,6 @@ public static class ContractsModule
                     u.email,
                     COALESCE(
                         NULLIF(u.job_title, ''),
-                        NULLIF(u.role_name, ''),
                         NULLIF(u.department_name, ''),
                         NULLIF(u.department, ''),
                         ''
@@ -1201,7 +1196,6 @@ public static class ContractsModule
                                 AS profile_term(term)
                             WHERE LOWER(
                                 COALESCE(u.job_title, '') || ' '
-                                || COALESCE(u.role_name, '') || ' '
                                 || COALESCE(u.department_name, '') || ' '
                                 || COALESCE(u.department, '') || ' '
                                 || COALESCE(u.team_name, '')
