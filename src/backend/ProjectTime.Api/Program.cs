@@ -36133,6 +36133,7 @@ app.MapSellInboundSnapshotEndpoints();
 app.MapSellCommercialReadModelEndpoints();
 
 app.MapContractsEndpoints();
+app.MapContractsPrepaidModule();
 
 app.Run();
 
