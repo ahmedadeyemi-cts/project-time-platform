@@ -106,11 +106,12 @@ internal static class BrandedInvoiceArtifactRenderer
             DrawPdfFooter(pages[index], invoice, index + 1, pages.Count);
         }
 
-        return BuildPdfDocument(pages);
+        return BuildPdfDocument(pages, InvoiceBrandingAssets.LoadJpeg());
     }
 
     public static byte[] BuildExcel(BrandedInvoiceDocument invoice)
     {
+        var logoPng = InvoiceBrandingAssets.LoadPng();
         using var output = new MemoryStream();
         using (var archive = new ZipArchive(output, ZipArchiveMode.Create, leaveOpen: true))
         {
@@ -124,6 +125,10 @@ internal static class BrandedInvoiceArtifactRenderer
             AddXlsxEntry(archive, "xl/worksheets/sheet1.xml", XlsxInvoiceWorksheet(invoice));
             AddXlsxEntry(archive, "xl/worksheets/sheet2.xml", XlsxDetailWorksheet(invoice));
             AddXlsxEntry(archive, "xl/worksheets/sheet3.xml", XlsxAuditWorksheet(invoice));
+            AddXlsxEntry(archive, "xl/worksheets/_rels/sheet1.xml.rels", XlsxInvoiceWorksheetRelationships());
+            AddXlsxEntry(archive, "xl/drawings/drawing1.xml", XlsxInvoiceDrawing());
+            AddXlsxEntry(archive, "xl/drawings/_rels/drawing1.xml.rels", XlsxInvoiceDrawingRelationships());
+            AddXlsxBinaryEntry(archive, "xl/media/image1.png", logoPng);
         }
         return output.ToArray();
     }
@@ -137,9 +142,7 @@ internal static class BrandedInvoiceArtifactRenderer
 
     private static void DrawFirstPageHeader(StringBuilder page, BrandedInvoiceDocument invoice)
     {
-        DrawBrandMark(page, 43d, 42d);
-        PdfText(page, 64d, 27d, 15d, "US SIGNAL", bold: true, color: "0.05 0.17 0.31");
-        PdfText(page, 64d, 46d, 8.5d, "Professional Services", color: "0.38 0.47 0.58");
+        PdfImage(page, 30d, 5d, 82d, 72.3d);
         PdfTextRight(page, PdfRight, 26d, 16d, "US Signal SP Invoice", bold: true, color: "0.05 0.11 0.20");
         PdfTextRight(page, PdfRight, 49d, 9.5d, invoice.InvoiceNumber, color: "0.35 0.44 0.56");
         PdfLine(page, PdfLeft, 84d, PdfRight, 84d, "0.00 0.48 0.73", 2d);
@@ -169,9 +172,8 @@ internal static class BrandedInvoiceArtifactRenderer
 
     private static void DrawContinuationHeader(StringBuilder page, BrandedInvoiceDocument invoice)
     {
-        DrawBrandMark(page, 42d, 35d);
-        PdfText(page, 62d, 22d, 12d, "US SIGNAL", bold: true, color: "0.05 0.17 0.31");
-        PdfText(page, 62d, 39d, 8d, "US Signal SP Invoice", color: "0.38 0.47 0.58");
+        PdfImage(page, 30d, 9d, 50d, 44.1d);
+        PdfText(page, 89d, 24d, 9d, "US Signal SP Invoice", color: "0.38 0.47 0.58");
         PdfTextRight(page, PdfRight, 23d, 11d, invoice.InvoiceNumber, bold: true, color: "0.05 0.11 0.20");
         PdfTextRight(page, PdfRight, 41d, 8d, $"{invoice.CustomerName} - {invoice.ProjectCode}", color: "0.38 0.47 0.58");
         PdfLine(page, PdfLeft, 66d, PdfRight, 66d, "0.00 0.48 0.73", 1.5d);
@@ -232,9 +234,8 @@ internal static class BrandedInvoiceArtifactRenderer
 
         PdfText(page, 30d, top + 7d, 8d, "INVOICE NOTES", bold: true, color: "0.38 0.47 0.58");
         PdfMultiline(page, 30d, top + 23d, 8d, WrapText(Fallback(invoice.Notes, "No invoice notes."), 58), 10d, false, "0.14 0.20 0.29");
-        PdfText(page, 30d, top + 82d, 7.2d,
-            "Generated from the immutable ProjectPulse invoice snapshot.", color: "0.42 0.49 0.58");
-        PdfText(page, 30d, top + 94d, 7.2d, invoice.PersonalNamesSummary, color: "0.42 0.49 0.58");
+        PdfText(page, 30d, top + 88d, 7.2d,
+            "Generated from the immutable Pulse invoice record.", color: "0.42 0.49 0.58");
     }
 
     private static void DrawPdfFooter(StringBuilder page, BrandedInvoiceDocument invoice, int pageNumber, int pageCount)
@@ -269,37 +270,19 @@ internal static class BrandedInvoiceArtifactRenderer
         PdfTextRight(page, 570d, top, 8.5d, Money(value), bold, "0.08 0.15 0.25");
     }
 
-    private static void DrawBrandMark(StringBuilder page, double centerX, double centerTop)
+    private static void PdfImage(
+        StringBuilder page,
+        double x,
+        double top,
+        double width,
+        double height)
     {
-        var color = "0.05 0.17 0.31";
-        foreach (var angle in new[] { 0d, 45d, 90d, 135d })
-        {
-            var radians = angle * Math.PI / 180d;
-            var dx = Math.Cos(radians) * 10d;
-            var dy = Math.Sin(radians) * 10d;
-            PdfLine(page, centerX - dx, centerTop - dy, centerX + dx, centerTop + dy, color, 2.4d);
-        }
-        PdfFillCircle(page, centerX, centerTop, 2.7d, color);
-    }
-
-    private static void PdfFillCircle(StringBuilder page, double centerX, double centerTop, double radius, string color)
-    {
-        var y = PdfPageHeight - centerTop;
-        var k = 0.5522847498d * radius;
-        page.Append(color).Append(" rg\n")
-            .Append(PdfNumber(centerX + radius)).Append(' ').Append(PdfNumber(y)).Append(" m\n")
-            .Append(PdfNumber(centerX + radius)).Append(' ').Append(PdfNumber(y + k)).Append(' ')
-            .Append(PdfNumber(centerX + k)).Append(' ').Append(PdfNumber(y + radius)).Append(' ')
-            .Append(PdfNumber(centerX)).Append(' ').Append(PdfNumber(y + radius)).Append(" c\n")
-            .Append(PdfNumber(centerX - k)).Append(' ').Append(PdfNumber(y + radius)).Append(' ')
-            .Append(PdfNumber(centerX - radius)).Append(' ').Append(PdfNumber(y + k)).Append(' ')
-            .Append(PdfNumber(centerX - radius)).Append(' ').Append(PdfNumber(y)).Append(" c\n")
-            .Append(PdfNumber(centerX - radius)).Append(' ').Append(PdfNumber(y - k)).Append(' ')
-            .Append(PdfNumber(centerX - k)).Append(' ').Append(PdfNumber(y - radius)).Append(' ')
-            .Append(PdfNumber(centerX)).Append(' ').Append(PdfNumber(y - radius)).Append(" c\n")
-            .Append(PdfNumber(centerX + k)).Append(' ').Append(PdfNumber(y - radius)).Append(' ')
-            .Append(PdfNumber(centerX + radius)).Append(' ').Append(PdfNumber(y - k)).Append(' ')
-            .Append(PdfNumber(centerX + radius)).Append(' ').Append(PdfNumber(y)).Append(" c f\n");
+        page.Append("q\n")
+            .Append(PdfNumber(width)).Append(" 0 0 ")
+            .Append(PdfNumber(height)).Append(' ')
+            .Append(PdfNumber(x)).Append(' ')
+            .Append(PdfNumber(PdfPageHeight - top - height))
+            .Append(" cm\n/Logo Do\nQ\n");
     }
 
     private static void PdfFillRect(StringBuilder page, double x, double top, double width, double height, string color)
@@ -350,10 +333,13 @@ internal static class BrandedInvoiceArtifactRenderer
         }
     }
 
-    private static byte[] BuildPdfDocument(IReadOnlyList<StringBuilder> pages)
+    private static byte[] BuildPdfDocument(
+        IReadOnlyList<StringBuilder> pages,
+        byte[] logoJpeg)
     {
         var regularFontObject = 3 + pages.Count * 2;
         var boldFontObject = regularFontObject + 1;
+        var logoObject = boldFontObject + 1;
         var objects = new List<string> { string.Empty, string.Empty };
         var kids = new List<string>();
 
@@ -363,8 +349,12 @@ internal static class BrandedInvoiceArtifactRenderer
             var contentObject = pageObject + 1;
             kids.Add($"{pageObject} 0 R");
             var stream = pages[index].ToString();
-            objects.Add($"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 {regularFontObject} 0 R /F2 {boldFontObject} 0 R >> >> /Contents {contentObject} 0 R >>");
-            objects.Add($"<< /Length {Encoding.ASCII.GetByteCount(stream)} >>\nstream\n{stream}endstream");
+            objects.Add(
+                $"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] " +
+                $"/Resources << /Font << /F1 {regularFontObject} 0 R /F2 {boldFontObject} 0 R >> " +
+                $"/XObject << /Logo {logoObject} 0 R >> >> /Contents {contentObject} 0 R >>");
+            objects.Add(
+                $"<< /Length {Encoding.ASCII.GetByteCount(stream)} >>\nstream\n{stream}endstream");
         }
 
         objects[0] = "<< /Type /Catalog /Pages 2 0 R >>";
@@ -372,8 +362,17 @@ internal static class BrandedInvoiceArtifactRenderer
         objects.Add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
         objects.Add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>");
 
+        var logoStream = Convert.ToHexString(logoJpeg) + ">\n";
+        objects.Add(
+            $"<< /Type /XObject /Subtype /Image " +
+            $"/Width {InvoiceBrandingAssets.LogoPixelWidth} " +
+            $"/Height {InvoiceBrandingAssets.LogoPixelHeight} " +
+            "/ColorSpace /DeviceRGB /BitsPerComponent 8 " +
+            $"/Filter [/ASCIIHexDecode /DCTDecode] /Length {Encoding.ASCII.GetByteCount(logoStream)} >>\n" +
+            $"stream\n{logoStream}endstream");
+
         using var output = new MemoryStream();
-        WriteAscii(output, "%PDF-1.4\n%USSignalProjectPulse\n");
+        WriteAscii(output, "%PDF-1.4\n%USSignalPulse\n");
         var offsets = new List<long> { 0 };
         for (var index = 0; index < objects.Count; index++)
         {
@@ -387,7 +386,8 @@ internal static class BrandedInvoiceArtifactRenderer
         {
             WriteAscii(output, $"{offset:0000000000} 00000 n \n");
         }
-        WriteAscii(output, $"trailer\n<< /Size {objects.Count + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n");
+        WriteAscii(output,
+            $"trailer\n<< /Size {objects.Count + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n");
         return output.ToArray();
     }
 
@@ -396,6 +396,7 @@ internal static class BrandedInvoiceArtifactRenderer
         <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
           <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
           <Default Extension="xml" ContentType="application/xml"/>
+          <Default Extension="png" ContentType="image/png"/>
           <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
           <Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
           <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
@@ -403,6 +404,7 @@ internal static class BrandedInvoiceArtifactRenderer
           <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
           <Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
           <Override PartName="/xl/worksheets/sheet3.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+          <Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>
         </Types>
         """;
 
@@ -423,8 +425,8 @@ internal static class BrandedInvoiceArtifactRenderer
             <cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
               <dc:title>US Signal SP Invoice {XlsxXml(invoice.InvoiceNumber)}</dc:title>
               <dc:subject>Immutable professional-services invoice</dc:subject>
-              <dc:creator>US Signal ProjectPulse</dc:creator>
-              <cp:lastModifiedBy>US Signal ProjectPulse</cp:lastModifiedBy>
+              <dc:creator>US Signal Pulse</dc:creator>
+              <cp:lastModifiedBy>US Signal Pulse</cp:lastModifiedBy>
               <dcterms:created xsi:type="dcterms:W3CDTF">{now}</dcterms:created>
               <dcterms:modified xsi:type="dcterms:W3CDTF">{now}</dcterms:modified>
             </cp:coreProperties>
@@ -434,7 +436,7 @@ internal static class BrandedInvoiceArtifactRenderer
     private static string XlsxAppProperties() => """
         <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
         <Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">
-          <Application>US Signal ProjectPulse</Application>
+          <Application>Pulse</Application>
           <DocSecurity>0</DocSecurity>
           <ScaleCrop>false</ScaleCrop>
           <HeadingPairs><vt:vector size="2" baseType="variant"><vt:variant><vt:lpstr>Worksheets</vt:lpstr></vt:variant><vt:variant><vt:i4>3</vt:i4></vt:variant></vt:vector></HeadingPairs>
@@ -502,7 +504,7 @@ internal static class BrandedInvoiceArtifactRenderer
             <border><left style="thin"><color rgb="FFC9D7E2"/></left><right style="thin"><color rgb="FFC9D7E2"/></right><top style="thin"><color rgb="FFC9D7E2"/></top><bottom style="thin"><color rgb="FFC9D7E2"/></bottom><diagonal/></border>
           </borders>
           <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
-          <cellXfs count="19">
+          <cellXfs count="20">
             <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
             <xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment vertical="center"/></xf>
             <xf numFmtId="0" fontId="2" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
@@ -522,6 +524,7 @@ internal static class BrandedInvoiceArtifactRenderer
             <xf numFmtId="0" fontId="4" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf>
             <xf numFmtId="0" fontId="3" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf>
             <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf>
+            <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment vertical="center"/></xf>
           </cellXfs>
           <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
         </styleSheet>
@@ -533,7 +536,7 @@ internal static class BrandedInvoiceArtifactRenderer
         var merges = new List<string>();
         var row = 1;
         xml.Append("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>");
-        xml.Append("<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">");
+        xml.Append("<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">");
         xml.Append("<sheetPr><pageSetUpPr fitToPage=\"1\"/></sheetPr><sheetViews><sheetView workbookViewId=\"0\"><pane ySplit=\"16\" topLeftCell=\"A17\" activePane=\"bottomLeft\" state=\"frozen\"/></sheetView></sheetViews>");
         xml.Append("<sheetFormatPr defaultRowHeight=\"18\"/><cols>");
         foreach (var item in new[] { (1, 1, 12d), (2, 3, 14d), (4, 7, 18d), (8, 8, 10d), (9, 9, 12d), (10, 11, 13d) })
@@ -542,7 +545,7 @@ internal static class BrandedInvoiceArtifactRenderer
         }
         xml.Append("</cols><sheetData>");
 
-        XlsxRowStart(xml, row, 32); XlsxInline(xml, "A1", "US SIGNAL", 1); XlsxInline(xml, "D1", "US Signal SP Invoice", 1); XlsxInline(xml, "I1", invoice.InvoiceNumber, 1); XlsxRowEnd(xml);
+        XlsxRowStart(xml, row, 32); XlsxInline(xml, "A1", string.Empty, 19); XlsxInline(xml, "D1", "US Signal SP Invoice", 1); XlsxInline(xml, "I1", invoice.InvoiceNumber, 1); XlsxRowEnd(xml);
         merges.AddRange(new[] { "A1:C2", "D1:H2", "I1:K2" });
         row = 3; XlsxRowStart(xml, row, 20); XlsxInline(xml, "A3", "Professional Services", 16); XlsxInline(xml, "I3", NormalizeTitle(invoice.InvoiceType), 16); XlsxRowEnd(xml); merges.AddRange(new[] { "A3:H3", "I3:K3" });
 
@@ -587,13 +590,56 @@ internal static class BrandedInvoiceArtifactRenderer
         var notesRow = subtotalRow + 6;
         XlsxRowStart(xml, notesRow, 20); XlsxInline(xml, $"A{notesRow}", "Invoice notes", 3); XlsxRowEnd(xml); merges.Add($"A{notesRow}:C{notesRow}");
         XlsxRowStart(xml, notesRow + 1, 48); XlsxInline(xml, $"A{notesRow + 1}", Fallback(invoice.Notes, "No invoice notes."), 4); XlsxRowEnd(xml); merges.Add($"A{notesRow + 1}:K{notesRow + 2}");
-        XlsxRowStart(xml, notesRow + 4, 30); XlsxInline(xml, $"A{notesRow + 4}", $"Generated from the immutable ProjectPulse invoice snapshot. {invoice.PersonalNamesSummary}", 16); XlsxRowEnd(xml); merges.Add($"A{notesRow + 4}:K{notesRow + 4}");
+        XlsxRowStart(xml, notesRow + 4, 30); XlsxInline(xml, $"A{notesRow + 4}", "Generated from the immutable Pulse invoice record.", 16); XlsxRowEnd(xml); merges.Add($"A{notesRow + 4}:K{notesRow + 4}");
 
         xml.Append("</sheetData><mergeCells count=\"").Append(merges.Count).Append("\">");
         foreach (var merge in merges) xml.Append("<mergeCell ref=\"").Append(merge).Append("\"/>");
-        xml.Append("</mergeCells><pageMargins left=\"0.25\" right=\"0.25\" top=\"0.4\" bottom=\"0.4\" header=\"0.2\" footer=\"0.2\"/><pageSetup paperSize=\"9\" orientation=\"landscape\" fitToWidth=\"1\" fitToHeight=\"0\"/></worksheet>");
+        xml.Append("</mergeCells><pageMargins left=\"0.25\" right=\"0.25\" top=\"0.4\" bottom=\"0.4\" header=\"0.2\" footer=\"0.2\"/><pageSetup paperSize=\"9\" orientation=\"landscape\" fitToWidth=\"1\" fitToHeight=\"0\"/><drawing r:id=\"rId1\"/></worksheet>");
         return xml.ToString();
     }
+
+    private static string XlsxInvoiceWorksheetRelationships() => """
+        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+          <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing1.xml"/>
+        </Relationships>
+        """;
+
+    private static string XlsxInvoiceDrawing() => """
+        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+          <xdr:oneCellAnchor>
+            <xdr:from>
+              <xdr:col>0</xdr:col><xdr:colOff>76200</xdr:colOff>
+              <xdr:row>0</xdr:row><xdr:rowOff>38100</xdr:rowOff>
+            </xdr:from>
+            <xdr:ext cx="914400" cy="806735"/>
+            <xdr:pic>
+              <xdr:nvPicPr>
+                <xdr:cNvPr id="2" name="US Signal stacked logo" descr="US Signal stacked navy logo"/>
+                <xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr>
+              </xdr:nvPicPr>
+              <xdr:blipFill>
+                <a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="rId1"/>
+                <a:stretch><a:fillRect/></a:stretch>
+              </xdr:blipFill>
+              <xdr:spPr>
+                <a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="806735"/></a:xfrm>
+                <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+                <a:noFill/><a:ln><a:noFill/></a:ln>
+              </xdr:spPr>
+            </xdr:pic>
+            <xdr:clientData/>
+          </xdr:oneCellAnchor>
+        </xdr:wsDr>
+        """;
+
+    private static string XlsxInvoiceDrawingRelationships() => """
+        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+          <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image1.png"/>
+        </Relationships>
+        """;
 
     private static string XlsxDetailWorksheet(BrandedInvoiceDocument invoice)
     {
@@ -653,7 +699,6 @@ internal static class BrandedInvoiceArtifactRenderer
             ("Customer", invoice.CustomerName),
             ("Project", $"{invoice.ProjectCode} - {invoice.ProjectName}"),
             ("Immutable snapshot SHA256", invoice.ImmutableSnapshotSha256),
-            ("Personal-name controls", invoice.PersonalNamesSummary),
             ("Generated at UTC", DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture)),
             ("Artifact purpose", "Internal audit metadata; not customer-facing")
         };
@@ -698,6 +743,16 @@ internal static class BrandedInvoiceArtifactRenderer
         if (value is null) { XlsxInline(xml, reference, "", style); return; }
         var serial = value.Value.ToDateTime(TimeOnly.MinValue).ToOADate();
         xml.Append("<c r=\"").Append(reference).Append("\" s=\"").Append(style).Append("\"><v>").Append(serial.ToString("0.########", CultureInfo.InvariantCulture)).Append("</v></c>");
+    }
+
+    private static void AddXlsxBinaryEntry(
+        ZipArchive archive,
+        string path,
+        byte[] content)
+    {
+        var entry = archive.CreateEntry(path, CompressionLevel.Optimal);
+        using var stream = entry.Open();
+        stream.Write(content, 0, content.Length);
     }
 
     private static void AddXlsxEntry(ZipArchive archive, string path, string content)
