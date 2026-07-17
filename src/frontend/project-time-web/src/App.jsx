@@ -3336,13 +3336,34 @@ export default function App() {
   const [activitySource, setActivitySource] = useState('nonProject');
   /* MODULE_001_TIMESHEET_MULTIVIEW_START */
   const [timesheetView, setTimesheetView] = useState(() => {
-    const allowedViews = ['weekly', 'daily', 'queue', 'quick', 'calendar'];
+    const allowedViews = ['weekly', 'daily', 'guided', 'quick', 'smart'];
     const savedView = window.localStorage.getItem('projectPulseTimesheetView');
-    if (allowedViews.includes(savedView)) return savedView;
+    const migrated =
+      savedView === 'queue' ? 'guided' :
+      ['calendar', 'copy'].includes(savedView) ? 'smart' :
+      savedView;
+    if (allowedViews.includes(migrated)) return migrated;
     return window.matchMedia('(max-width: 760px)').matches ? 'daily' : 'weekly';
   });
   const [activitySearch, setActivitySearch] = useState('');
   const [focusedDayDate, setFocusedDayDate] = useState('');
+  const [guidedRowId, setGuidedRowId] = useState('');
+  const [guidedDates, setGuidedDates] = useState([]);
+  const [guidedType, setGuidedType] = useState('normal');
+  const [guidedHours, setGuidedHours] = useState('');
+  const [guidedComment, setGuidedComment] = useState('');
+  const [guidedMessage, setGuidedMessage] = useState('');
+  const [guidedAiState, setGuidedAiState] = useState({
+    loading: false,
+    suggestion: '',
+    provider: '',
+    warning: '',
+    error: ''
+  });
+  const [smartLogDate, setSmartLogDate] = useState('');
+  const [smartLogText, setSmartLogText] = useState('');
+  const [smartLogEntries, setSmartLogEntries] = useState([]);
+  const [smartLogMessage, setSmartLogMessage] = useState('');
   /* MODULE_001_TIMESHEET_MULTIVIEW_STATE_END */
   const holidayYearOptions = useMemo(() => {
     const currentYear = new Date().getFullYear();
@@ -3718,6 +3739,63 @@ export default function App() {
     days.find((day) => day.date === todayIso) ??
     days[0] ??
     null;
+
+  /* MODULE_001_SMART_WORK_LOG_START */
+  const guidedOptions = [
+    ...categories.map((category) => ({
+      row: categoryToRow(category),
+      source: 'nonProject',
+      kind: 'Non-Project Time',
+      category,
+      task: null,
+      detail: category.description ?? category.code
+    })),
+    ...regularAssignedTasks.map((task) => ({
+      row: taskToRow(task),
+      source: 'openTasks',
+      kind: 'Regular Task',
+      category: null,
+      task,
+      detail: [task.clientName, task.projectCode, task.projectName].filter(Boolean).join(' • ')
+    })),
+    ...requestAssignedTasks.map((task) => ({
+      row: taskToRow(task),
+      source: 'requests',
+      kind: 'Request / Service Request',
+      category: null,
+      task,
+      detail: [task.clientName, task.projectCode, task.projectName].filter(Boolean).join(' • ')
+    }))
+  ];
+
+  const visibleGuidedOptions = guidedOptions.filter((option) =>
+    option.source === activitySource &&
+    activityMatchesSearch(
+      option.row.activity,
+      option.row.projectDescription,
+      option.detail,
+      option.task?.taskCode,
+      option.task?.projectManagerName,
+      option.category?.code
+    )
+  );
+
+  const guidedSelected =
+    guidedOptions.find((option) => option.row.id === guidedRowId) ??
+    null;
+
+  const resolvedSmartLogDate =
+    smartLogDate ||
+    focusedDay?.date ||
+    days.find((day) => isDayEditable(day.date))?.date ||
+    days[0]?.date ||
+    '';
+
+  const smartLogTotal = smartLogEntries.reduce(
+    (total, item) => total + (Number.parseFloat(item.hours) || 0),
+    0
+  );
+  /* MODULE_001_SMART_WORK_LOG_DERIVED_END */
   /* MODULE_001_TIMESHEET_MULTIVIEW_DERIVED_END */
 
   const databaseSummary = useMemo(() => {
@@ -4841,6 +4919,483 @@ export default function App() {
     if (typeof unhideRowForCurrentWeek === 'function') unhideRowForCurrentWeek(row.id);
     setActiveRows((current) => (current.some((item) => item.id === row.id) ? current : [...current, row]));
     setSaveStatus('Unsaved changes');
+  }
+
+  function selectGuidedOption(option) {
+    if (option.category) addCategory(option.category);
+    if (option.task) addTask(option.task);
+    setGuidedRowId(option.row.id);
+    setGuidedMessage('');
+    setGuidedAiState({ loading: false, suggestion: '', provider: '', warning: '', error: '' });
+  }
+
+  function toggleGuidedDate(date) {
+    if (!isDayEditable(date)) return;
+    setGuidedDates((current) =>
+      current.includes(date)
+        ? current.filter((item) => item !== date)
+        : [...current, date]
+    );
+    setGuidedMessage('');
+  }
+
+  async function requestTimesheetAiDescription({
+    row,
+    workDate,
+    timeType,
+    hours,
+    currentDescription
+  }) {
+    return postProjectPulse051DTimeEntryJson('/api/timesheets/ai-description-suggestions', {
+      workDate,
+      timeType,
+      rowType: row.type,
+      rowLabel: row.activity ?? row.label ?? row.projectDescription ?? '',
+      projectName: row.projectName ?? row.projectDescription ?? '',
+      projectCode: row.projectCode ?? '',
+      taskName: row.taskName ?? row.activity ?? '',
+      taskCode: row.taskCode ?? '',
+      categoryCode: row.categoryCode ?? '',
+      hours: Number.isFinite(Number.parseFloat(hours)) ? Number.parseFloat(hours) : null,
+      currentDescription: currentDescription ?? ''
+    });
+  }
+
+  async function generateGuidedAiDescription() {
+    const workDate = guidedDates[0] ?? resolvedSmartLogDate;
+
+    if (!guidedSelected) {
+      setGuidedAiState({
+        loading: false,
+        suggestion: '',
+        provider: '',
+        warning: '',
+        error: 'Choose an activity before generating a description.'
+      });
+      return;
+    }
+
+    if (!guidedComment.trim()) {
+      setGuidedAiState({
+        loading: false,
+        suggestion: '',
+        provider: '',
+        warning: '',
+        error: 'Type a rough work note before generating a description.'
+      });
+      return;
+    }
+
+    setGuidedAiState({
+      loading: true,
+      suggestion: '',
+      provider: '',
+      warning: '',
+      error: ''
+    });
+
+    try {
+      const result = await requestTimesheetAiDescription({
+        row: guidedSelected.row,
+        workDate,
+        timeType: guidedType,
+        hours: guidedHours,
+        currentDescription: guidedComment
+      });
+
+      setGuidedAiState({
+        loading: false,
+        suggestion: result.suggestion ?? '',
+        provider: result.provider ?? '',
+        warning: result.warning ?? '',
+        error: ''
+      });
+    } catch (error) {
+      setGuidedAiState({
+        loading: false,
+        suggestion: '',
+        provider: '',
+        warning: '',
+        error: error instanceof Error ? error.message : 'Unable to generate an AI description.'
+      });
+    }
+  }
+
+  function useGuidedAiDescription() {
+    if (!guidedAiState.suggestion) return;
+    setGuidedComment(guidedAiState.suggestion);
+    setGuidedMessage('AI description applied. Review the entry before adding time.');
+  }
+
+  function clearGuidedAiDescription() {
+    setGuidedAiState({
+      loading: false,
+      suggestion: '',
+      provider: '',
+      warning: '',
+      error: ''
+    });
+  }
+
+  function addGuidedTime() {
+    const hours = Number.parseFloat(guidedHours);
+    const dates = guidedDates.filter((date) => isDayEditable(date));
+
+    if (!guidedSelected) return setGuidedMessage('Choose an activity.');
+    if (!dates.length) return setGuidedMessage('Choose at least one open day.');
+    if (!Number.isFinite(hours) || hours <= 0 || hours > 24) {
+      return setGuidedMessage('Enter valid hours between 0 and 24.');
+    }
+    if (!guidedComment.trim()) {
+      return setGuidedMessage('Enter a description before adding time.');
+    }
+
+    if (guidedSelected.category) addCategory(guidedSelected.category);
+    if (guidedSelected.task) addTask(guidedSelected.task);
+
+    dates.forEach((date) =>
+      updateEntry(guidedSelected.row.id, date, guidedType, {
+        hours: guidedHours,
+        comment: guidedComment.trim(),
+        savedStatus: 'draft'
+      })
+    );
+
+    setGuidedMessage(
+      `Added ${guidedHours} hour(s) to ${dates.length} day${dates.length === 1 ? '' : 's'}.`
+    );
+    setGuidedHours('');
+    setGuidedComment('');
+    clearGuidedAiDescription();
+  }
+
+  function getSmartLogMatches(searchText) {
+    const normalized = String(searchText ?? '').trim().toLowerCase();
+
+    if (!normalized) {
+      return guidedOptions.slice(0, 8);
+    }
+
+    return guidedOptions
+      .filter((option) =>
+        [
+          option.row.activity,
+          option.row.projectDescription,
+          option.detail,
+          option.task?.taskCode,
+          option.task?.projectCode,
+          option.task?.projectManagerName,
+          option.task?.clientName,
+          option.category?.code
+        ]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(normalized))
+      )
+      .slice(0, 8);
+  }
+
+  function inferSmartLogOption(note) {
+    const stopWords = new Set([
+      'about', 'after', 'also', 'and', 'completed', 'for', 'from', 'hours',
+      'into', 'meeting', 'normal', 'spent', 'that', 'the', 'then', 'this',
+      'time', 'today', 'worked', 'working', 'with'
+    ]);
+
+    const tokens = String(note ?? '')
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, ' ')
+      .split(/\s+/)
+      .filter((token) => token.length >= 3 && !stopWords.has(token));
+
+    const scored = guidedOptions
+      .map((option) => {
+        const haystack = [
+          option.row.activity,
+          option.row.projectDescription,
+          option.detail,
+          option.task?.taskCode,
+          option.task?.projectCode,
+          option.task?.clientName,
+          option.category?.code
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+
+        const score = tokens.reduce(
+          (total, token) => total + (haystack.includes(token) ? 1 : 0),
+          0
+        );
+
+        return { option, score };
+      })
+      .sort((left, right) => right.score - left.score);
+
+    const best = scored[0];
+    const second = scored[1];
+
+    if (!best || best.score < 2) return null;
+    if (second && second.score === best.score) return null;
+
+    return best.option;
+  }
+
+  function buildSmartLogReviewCards() {
+    const lines = smartLogText
+      .split(/
++/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    if (!lines.length) {
+      setSmartLogMessage('Enter at least one work item. Use one line per activity.');
+      return;
+    }
+
+    const now = Date.now();
+
+    const reviewCards = lines.map((line, index) => {
+      const hoursMatch = line.match(/(\d+(?:\.\d+)?)\s*(?:hours?|hrs?|h)/i);
+      const hours = hoursMatch?.[1] ?? '';
+      const afterhours = /(after\s*hours?|afterhours|on[-\s]?call)/i.test(line);
+      const cleanedNote = line
+        .replace(/(\d+(?:\.\d+)?)\s*(?:hours?|hrs?|h)/gi, '')
+        .replace(/(after\s*hours?|afterhours|on[-\s]?call)/gi, '')
+        .replace(/^[\s:,-]+|[\s:,-]+$/g, '')
+        .trim();
+      const inferred = inferSmartLogOption(cleanedNote);
+
+      return {
+        id: `smart-log-${now}-${index}`,
+        rowId: inferred?.row.id ?? '',
+        activitySearch: inferred?.row.activity ?? cleanedNote,
+        hours,
+        timeType: afterhours ? 'afterhours' : 'normal',
+        description: cleanedNote,
+        ai: {
+          loading: false,
+          suggestion: '',
+          provider: '',
+          warning: '',
+          error: ''
+        }
+      };
+    });
+
+    setSmartLogEntries(reviewCards);
+    setSmartLogMessage(
+      `Created ${reviewCards.length} review card${reviewCards.length === 1 ? '' : 's'}. Confirm every activity and hour before adding time.`
+    );
+  }
+
+  function updateSmartLogEntry(entryId, patch) {
+    setSmartLogEntries((current) =>
+      current.map((entry) =>
+        entry.id === entryId
+          ? { ...entry, ...patch }
+          : entry
+      )
+    );
+    setSmartLogMessage('');
+  }
+
+  function selectSmartLogOption(entryId, option) {
+    updateSmartLogEntry(entryId, {
+      rowId: option.row.id,
+      activitySearch: option.row.activity,
+      ai: {
+        loading: false,
+        suggestion: '',
+        provider: '',
+        warning: '',
+        error: ''
+      }
+    });
+  }
+
+  function removeSmartLogEntry(entryId) {
+    setSmartLogEntries((current) =>
+      current.filter((entry) => entry.id !== entryId)
+    );
+    setSmartLogMessage('');
+  }
+
+  async function generateSmartLogAiDescription(entryId) {
+    const entry = smartLogEntries.find((item) => item.id === entryId);
+    const option = guidedOptions.find((item) => item.row.id === entry?.rowId);
+
+    if (!entry || !option) {
+      updateSmartLogEntry(entryId, {
+        ai: {
+          loading: false,
+          suggestion: '',
+          provider: '',
+          warning: '',
+          error: 'Select the activity before generating a description.'
+        }
+      });
+      return;
+    }
+
+    if (!entry.description.trim()) {
+      updateSmartLogEntry(entryId, {
+        ai: {
+          loading: false,
+          suggestion: '',
+          provider: '',
+          warning: '',
+          error: 'Enter a rough work note before generating a description.'
+        }
+      });
+      return;
+    }
+
+    updateSmartLogEntry(entryId, {
+      ai: {
+        loading: true,
+        suggestion: '',
+        provider: '',
+        warning: '',
+        error: ''
+      }
+    });
+
+    try {
+      const result = await requestTimesheetAiDescription({
+        row: option.row,
+        workDate: resolvedSmartLogDate,
+        timeType: entry.timeType,
+        hours: entry.hours,
+        currentDescription: entry.description
+      });
+
+      updateSmartLogEntry(entryId, {
+        ai: {
+          loading: false,
+          suggestion: result.suggestion ?? '',
+          provider: result.provider ?? '',
+          warning: result.warning ?? '',
+          error: ''
+        }
+      });
+    } catch (error) {
+      updateSmartLogEntry(entryId, {
+        ai: {
+          loading: false,
+          suggestion: '',
+          provider: '',
+          warning: '',
+          error: error instanceof Error ? error.message : 'Unable to generate an AI description.'
+        }
+      });
+    }
+  }
+
+  function useSmartLogAiDescription(entryId) {
+    const entry = smartLogEntries.find((item) => item.id === entryId);
+    if (!entry?.ai?.suggestion) return;
+
+    updateSmartLogEntry(entryId, {
+      description: entry.ai.suggestion
+    });
+  }
+
+  function addSmartLogEntries() {
+    if (!resolvedSmartLogDate || !isDayEditable(resolvedSmartLogDate)) {
+      setSmartLogMessage('Choose an open work date.');
+      return;
+    }
+
+    if (!smartLogEntries.length) {
+      setSmartLogMessage('Build review cards before adding time.');
+      return;
+    }
+
+    const reviewed = smartLogEntries.map((entry) => ({
+      entry,
+      option: guidedOptions.find((option) => option.row.id === entry.rowId),
+      hours: Number.parseFloat(entry.hours)
+    }));
+
+    const invalidActivity = reviewed.find((item) => !item.option);
+    if (invalidActivity) {
+      setSmartLogMessage('Confirm the activity on every review card.');
+      return;
+    }
+
+    const invalidHours = reviewed.find(
+      (item) => !Number.isFinite(item.hours) || item.hours <= 0 || item.hours > 24
+    );
+    if (invalidHours) {
+      setSmartLogMessage('Enter valid hours between 0 and 24 on every review card.');
+      return;
+    }
+
+    const missingDescription = reviewed.find(
+      (item) => !item.entry.description.trim()
+    );
+    if (missingDescription) {
+      setSmartLogMessage('Enter or generate a description on every review card.');
+      return;
+    }
+
+    const selectedRows = reviewed.map((item) => item.option.row);
+    selectedRows.forEach((row) => {
+      if (typeof unhideRowForCurrentWeek === 'function') {
+        unhideRowForCurrentWeek(row.id);
+      }
+    });
+
+    setActiveRows((current) => {
+      const next = [...current];
+
+      selectedRows.forEach((row) => {
+        if (!next.some((existing) => existing.id === row.id)) {
+          next.push(row);
+        }
+      });
+
+      return next;
+    });
+
+    setEntries((current) => {
+      const next = { ...current };
+
+      reviewed.forEach(({ entry, option, hours }) => {
+        const key = getEntryKey(
+          option.row.id,
+          resolvedSmartLogDate,
+          entry.timeType
+        );
+        const existing = next[key] ?? getEntry(
+          option.row.id,
+          resolvedSmartLogDate,
+          entry.timeType
+        );
+        const existingHours = Number.parseFloat(existing.hours) || 0;
+        const existingComment = String(existing.comment ?? '').trim();
+        const newComment = entry.description.trim();
+
+        next[key] = {
+          ...existing,
+          hours: String(existingHours + hours),
+          comment: existingComment
+            ? `${existingComment}
+${newComment}`
+            : newComment,
+          savedStatus: 'draft'
+        };
+      });
+
+      return next;
+    });
+
+    setSaveStatus('Unsaved changes');
+    setSmartLogMessage(
+      `Added ${reviewed.length} reviewed entr${reviewed.length === 1 ? 'y' : 'ies'} for ${resolvedSmartLogDate}.`
+    );
+    setSmartLogEntries([]);
+    setSmartLogText('');
   }
 
   function removeRow(rowId) {
@@ -6460,9 +7015,9 @@ Analytics - Variphy / Infortel`}
           {[
             { key: 'weekly', label: 'Weekly Grid', description: 'Full seven-day grid' },
             { key: 'daily', label: 'Daily Focus', description: 'Mobile-friendly day entry' },
-            { key: 'queue', label: 'My Work Queue', description: 'Assigned tasks and requests' },
+            { key: 'guided', label: 'Guided Add', description: 'Choose work, days, and hours' },
             { key: 'quick', label: 'Quick Entry List', description: 'Compact activity entry' },
-            { key: 'calendar', label: 'Calendar / Timeline', description: 'Week-at-a-glance totals' }
+            { key: 'smart', label: 'Smart Work Log', description: 'Turn rough notes into reviewed entries' }
           ].map((view) => (
             <button
               type="button"
@@ -6493,7 +7048,8 @@ Analytics - Variphy / Infortel`}
         </div>
 
         <DataState loading={timesheet.loading} error={timesheet.error}>
-          <div className="timesheet-workspace">
+          <div className={['guided', 'smart'].includes(timesheetView) ? 'timesheet-workspace full-width-entry' : 'timesheet-workspace'}>
+            {!['guided', 'smart'].includes(timesheetView) ? (
             <aside className="activities-panel" aria-label="Activities">
               <div className="panel-title-row">
                 <h3>Activities</h3>
@@ -6632,6 +7188,7 @@ Analytics - Variphy / Infortel`}
                 </div>
               )}
             </aside>
+            ) : null}
 
             {timesheetView === 'weekly' ? (
               <div className="timesheet-view-panel weekly-grid-view" role="tabpanel" aria-label="Weekly Grid">
@@ -6770,45 +7327,99 @@ Analytics - Variphy / Infortel`}
               </div>
             ) : null}
 
-            {timesheetView === 'queue' ? (
-              <div className="timesheet-view-panel work-queue-view" role="tabpanel" aria-label="My Work Queue">
+            {timesheetView === 'guided' ? (
+              <div className="timesheet-view-panel guided-add-view" role="tabpanel" aria-label="Guided Add">
                 <div className="timesheet-view-heading">
-                  <div>
-                    <p className="eyebrow">Assigned work</p>
-                    <h3>My Work Queue</h3>
-                  </div>
-                  <span className="pill">{filteredRegularAssignedTasks.length + filteredRequestAssignedTasks.length} items</span>
+                  <div><p className="eyebrow">Simple time entry</p><h3>Guided Add</h3><p className="muted">Choose work, select day(s), enter hours and a description, then add time.</p></div>
+                  <span className="pill guided-view-badge">Fast entry</span>
                 </div>
-
-                <div className="work-queue-list">
-                  {[...filteredRegularAssignedTasks, ...filteredRequestAssignedTasks].map((task) => {
-                    const alreadyAdded = activeRows.some((row) => row.projectId === task.projectId && row.taskId === task.taskId);
-                    return (
-                      <article className="work-queue-card" key={`${task.projectId}-${task.taskId}`}>
-                        <div>
-                          <span className="queue-type">{projectPulseTaskTimeEntrySection(task) === 'requests' ? 'Request / Service Request' : 'Regular Task'}</span>
-                          <h4>{task.taskName}</h4>
-                          <p>{task.projectCode} • {task.projectName}</p>
-                          <small>{task.clientName ? `Customer: ${task.clientName}` : 'Assigned work'}{task.projectManagerName ? ` • PM: ${task.projectManagerName}` : ''}</small>
-                        </div>
-                        <div className="queue-metrics">
-                          <span><small>Assigned</small><strong>{Number(task.assignedHours || 0).toFixed(2)}</strong></span>
-                          <span><small>Used</small><strong>{Number(task.usedHours || 0).toFixed(2)}</strong></span>
-                          <span><small>Remaining</small><strong>{Number(task.remainingHours || 0).toFixed(2)}</strong></span>
-                        </div>
-                        <button type="button" className="primary-action" disabled={alreadyAdded || !isAnyDayEditable} onClick={() => addTask(task)}>
-                          {alreadyAdded ? 'Added to Timesheet' : 'Add to Timesheet'}
-                        </button>
-                      </article>
-                    );
-                  })}
-
-                  {!openTasks.loading && !openTasks.error && filteredRegularAssignedTasks.length + filteredRequestAssignedTasks.length === 0 ? (
-                    <div className="empty-activity-state">
-                      <strong>No assigned work matches the search</strong>
-                      <span>Clear the activity search or select another week.</span>
+                <div className="guided-layout">
+                  <section className="guided-card">
+                    <header><b>1</b><div><strong>Choose the activity</strong><small>Search non-project time, tasks, or requests.</small></div></header>
+                    <div className="guided-tabs">
+                      {activitySourceOptions.map((option) => (
+                        <button type="button" className={activitySource === option.key ? 'selected' : ''} key={option.key} onClick={() => { setActivitySource(option.key); setActivitySearch(''); setGuidedMessage(''); }}>{option.label}</button>
+                      ))}
                     </div>
-                  ) : null}
+                    <div className="activity-search-field">
+                      <span aria-hidden="true">⌕</span>
+                      <input type="search" value={activitySearch} placeholder="Search category, customer, project, task, or request" onChange={(event) => setActivitySearch(event.target.value)} />
+                      {activitySearch ? <button type="button" onClick={() => setActivitySearch('')}>Clear</button> : null}
+                    </div>
+                    <div className="guided-results">
+                      {visibleGuidedOptions.map((option) => (
+                        <button type="button" className={guidedRowId === option.row.id ? 'guided-option selected' : 'guided-option'} key={option.row.id} onClick={() => selectGuidedOption(option)}>
+                          <span>{option.kind}</span><strong>{option.row.activity}</strong><small>{option.detail || option.row.projectDescription}</small>
+                        </button>
+                      ))}
+                      {!openTasks.loading && visibleGuidedOptions.length === 0 ? <div className="guided-empty"><strong>No matching activities</strong><span>Clear the search or choose another activity type.</span></div> : null}
+                    </div>
+                  </section>
+                  <section className="guided-card">
+                    <header><b>2</b><div><strong>Select day(s) and enter time</strong><small>The same entry can be added to multiple open days.</small></div></header>
+                    <div className="guided-selected">
+                      {guidedSelected ? <><span>{guidedSelected.kind}</span><strong>{guidedSelected.row.activity}</strong><small>{guidedSelected.detail || guidedSelected.row.projectDescription}</small></> : <><strong>No activity selected</strong><small>Choose an activity in Step 1.</small></>}
+                    </div>
+                    <div className="guided-days">
+                      {days.map((day) => (
+                        <button type="button" className={guidedDates.includes(day.date) ? 'selected' : ''} disabled={!isDayEditable(day.date)} key={day.date} onClick={() => toggleGuidedDate(day.date)}>
+                          <span>{day.dayName.slice(0,3)}</span><strong>{day.date.slice(5)}</strong><small>{isDayEditable(day.date) ? `${formatNumber(getDayTotal(day.date))} hrs` : 'Locked'}</small>
+                        </button>
+                      ))}
+                    </div>
+                    <div className="guided-fields">
+                      <div className="guided-types">{timeTypes.map((type) => <button type="button" className={guidedType === type.key ? 'selected' : ''} key={type.key} onClick={() => setGuidedType(type.key)}>{type.label}</button>)}</div>
+                      <label>Hours per day<input type="number" min="0.25" max="24" step="0.25" value={guidedHours} placeholder="0.00" onChange={(event) => { setGuidedHours(event.target.value); setGuidedMessage(''); }} /></label>
+                    </div>
+                    <label className="guided-comment">
+                      Rough work note / description
+                      <textarea
+                        value={guidedComment}
+                        placeholder="Type a rough note describing what you completed."
+                        onChange={(event) => {
+                          setGuidedComment(event.target.value);
+                          setGuidedMessage('');
+                          clearGuidedAiDescription();
+                        }}
+                      />
+                    </label>
+
+                    <div className="guided-ai-assistant">
+                      <div className="guided-ai-heading">
+                        <div>
+                          <span>AI description assistant</span>
+                          <strong>Generate a customer-facing description</strong>
+                          <small>AI changes only the description. You remain in control of the activity, dates, hours, and time type.</small>
+                        </div>
+                        <button
+                          type="button"
+                          className="secondary-action"
+                          disabled={guidedAiState.loading}
+                          onClick={generateGuidedAiDescription}
+                        >
+                          {guidedAiState.loading ? 'Generating...' : 'Generate AI Description'}
+                        </button>
+                      </div>
+
+                      {guidedAiState.error ? <div className="guided-ai-error">{guidedAiState.error}</div> : null}
+                      {guidedAiState.warning ? <div className="guided-ai-warning">{guidedAiState.warning}</div> : null}
+
+                      {guidedAiState.suggestion ? (
+                        <div className="guided-ai-preview">
+                          <strong>Suggested description</strong>
+                          <p>{guidedAiState.suggestion}</p>
+                          <small>Provider: {guidedAiState.provider === 'claude' ? 'Claude' : 'Local template fallback'}</small>
+                          <div>
+                            <button type="button" className="primary-action" onClick={useGuidedAiDescription}>Use Suggestion</button>
+                            <button type="button" onClick={clearGuidedAiDescription}>Clear</button>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="guided-action"><span>{guidedDates.length} day{guidedDates.length === 1 ? '' : 's'} selected</span><button type="button" className="primary-action" onClick={addGuidedTime}>Add Time</button></div>
+                    {guidedMessage ? <div className="guided-message" role="status">{guidedMessage}</div> : null}
+                  </section>
                 </div>
               </div>
             ) : null}
@@ -6857,55 +7468,232 @@ Analytics - Variphy / Infortel`}
               </div>
             ) : null}
 
-            {timesheetView === 'calendar' ? (
-              <div className="timesheet-view-panel calendar-timeline-view" role="tabpanel" aria-label="Calendar and Timeline">
+            {timesheetView === 'smart' ? (
+              <div className="timesheet-view-panel smart-work-log-view" role="tabpanel" aria-label="Smart Work Log">
                 <div className="timesheet-view-heading">
                   <div>
-                    <p className="eyebrow">Week at a glance</p>
-                    <h3>Calendar / Timeline</h3>
+                    <p className="eyebrow">AI-assisted review</p>
+                    <h3>Smart Work Log</h3>
+                    <p className="muted">Enter one work activity per line. Smart Work Log extracts hours, suggests eligible activities, and creates review cards before anything is added.</p>
                   </div>
-                  <span className="pill">{formatNumber(grandTotal)} total hours</span>
+                  <span className="pill guided-view-badge">Engineer controlled</span>
                 </div>
 
-                <div className="calendar-week-grid">
-                  {days.map((day) => {
-                    const dayItems = activeRows
-                      .flatMap((row) => timeTypes.map((type) => ({
-                        row,
-                        type,
-                        entry: getEntry(row.id, day.date, type.key)
-                      })))
-                      .filter((item) => Number.parseFloat(item.entry.hours || '0') > 0);
+                <div className="smart-work-log-layout">
+                  <section className="smart-log-composer">
+                    <div className="smart-log-section-heading">
+                      <span>1</span>
+                      <div>
+                        <strong>Describe the work day</strong>
+                        <small>Use one line per activity. Include hours when known.</small>
+                      </div>
+                    </div>
 
-                    return (
-                      <article className="calendar-day-card" key={day.date}>
-                        <header>
-                          <div>
-                            <strong>{day.dayName}</strong>
-                            <span>{day.date}</span>
-                          </div>
-                          <span className="calendar-day-total">{formatNumber(getDayTotal(day.date))} hrs</span>
-                        </header>
-                        <div className="calendar-day-items">
-                          {dayItems.map((item) => (
-                            <button
-                              type="button"
-                              key={`${item.row.id}-${day.date}-${item.type.key}`}
-                              onClick={() => openEntryDetails(item.row.id, day.date, item.type.key)}
-                            >
-                              <span>{item.row.activity}</span>
-                              <small>{item.type.key === 'afterhours' ? 'Afterhours' : 'Normal'}</small>
-                              <strong>{formatHoursValue(item.entry.hours)}</strong>
-                            </button>
-                          ))}
-                          {dayItems.length === 0 ? <span className="muted">No time entered</span> : null}
+                    <div className="smart-log-day-picker">
+                      {days.map((day) => (
+                        <button
+                          type="button"
+                          className={resolvedSmartLogDate === day.date ? 'selected' : ''}
+                          disabled={!isDayEditable(day.date)}
+                          key={day.date}
+                          onClick={() => {
+                            setSmartLogDate(day.date);
+                            setSmartLogMessage('');
+                          }}
+                        >
+                          <span>{day.dayName.slice(0, 3)}</span>
+                          <strong>{day.date.slice(5)}</strong>
+                          <small>{isDayEditable(day.date) ? `${formatNumber(getDayTotal(day.date))} hrs` : 'Locked'}</small>
+                        </button>
+                      ))}
+                    </div>
+
+                    <label className="smart-log-input">
+                      Rough work log
+                      <textarea
+                        value={smartLogText}
+                        placeholder={'3 hours Acme firewall upgrade and validation\n1 hour internal project planning meeting\n2 hours VisionBank call-routing troubleshooting'}
+                        onChange={(event) => {
+                          setSmartLogText(event.target.value);
+                          setSmartLogMessage('');
+                        }}
+                      />
+                    </label>
+
+                    <div className="smart-log-guidance">
+                      <strong>How it works</strong>
+                      <span>Hours are extracted when present. Activity suggestions are based only on work currently available to you. Every proposed entry must be reviewed and confirmed.</span>
+                    </div>
+
+                    <button type="button" className="primary-action smart-log-build-button" onClick={buildSmartLogReviewCards}>
+                      Build Review Cards
+                    </button>
+                  </section>
+
+                  <section className="smart-log-review">
+                    <div className="smart-log-review-header">
+                      <div>
+                        <span>2</span>
+                        <div>
+                          <strong>Review proposed entries</strong>
+                          <small>Confirm the activity, time type, hours, and description.</small>
                         </div>
-                      </article>
-                    );
-                  })}
+                      </div>
+                      <b>{smartLogEntries.length} card{smartLogEntries.length === 1 ? '' : 's'} • {formatNumber(smartLogTotal)} hrs</b>
+                    </div>
+
+                    {smartLogEntries.length === 0 ? (
+                      <div className="smart-log-empty">
+                        <strong>No review cards yet</strong>
+                        <span>Enter your work log and select Build Review Cards.</span>
+                      </div>
+                    ) : (
+                      <div className="smart-log-card-list">
+                        {smartLogEntries.map((entry, index) => {
+                          const selectedOption = guidedOptions.find((option) => option.row.id === entry.rowId) ?? null;
+                          const matches = getSmartLogMatches(entry.activitySearch);
+
+                          return (
+                            <article className="smart-log-card" key={entry.id}>
+                              <header>
+                                <div>
+                                  <span>Entry {index + 1}</span>
+                                  <strong>{selectedOption?.row.activity ?? 'Activity confirmation required'}</strong>
+                                  <small>{selectedOption?.detail ?? 'Search and select the correct activity.'}</small>
+                                </div>
+                                <button type="button" onClick={() => removeSmartLogEntry(entry.id)}>Remove</button>
+                              </header>
+
+                              <label className="smart-log-activity-search">
+                                Find eligible activity
+                                <input
+                                  type="search"
+                                  value={entry.activitySearch}
+                                  placeholder="Search customer, project, task, request, or category"
+                                  onChange={(event) => updateSmartLogEntry(entry.id, {
+                                    activitySearch: event.target.value,
+                                    rowId: ''
+                                  })}
+                                />
+                              </label>
+
+                              <div className="smart-log-match-list">
+                                {matches.map((option) => (
+                                  <button
+                                    type="button"
+                                    className={entry.rowId === option.row.id ? 'selected' : ''}
+                                    key={`${entry.id}-${option.row.id}`}
+                                    onClick={() => selectSmartLogOption(entry.id, option)}
+                                  >
+                                    <span>{option.kind}</span>
+                                    <strong>{option.row.activity}</strong>
+                                    <small>{option.detail || option.row.projectDescription}</small>
+                                  </button>
+                                ))}
+                                {matches.length === 0 ? <span className="muted">No eligible activities match this search.</span> : null}
+                              </div>
+
+                              <div className="smart-log-fields">
+                                <div className="guided-types">
+                                  {timeTypes.map((type) => (
+                                    <button
+                                      type="button"
+                                      className={entry.timeType === type.key ? 'selected' : ''}
+                                      key={`${entry.id}-${type.key}`}
+                                      onClick={() => updateSmartLogEntry(entry.id, { timeType: type.key })}
+                                    >
+                                      {type.label}
+                                    </button>
+                                  ))}
+                                </div>
+
+                                <label>
+                                  Hours
+                                  <input
+                                    type="number"
+                                    min="0.25"
+                                    max="24"
+                                    step="0.25"
+                                    value={entry.hours}
+                                    placeholder="0.00"
+                                    onChange={(event) => updateSmartLogEntry(entry.id, { hours: event.target.value })}
+                                  />
+                                </label>
+                              </div>
+
+                              <label className="smart-log-description">
+                                Description
+                                <textarea
+                                  value={entry.description}
+                                  placeholder="Enter a rough note or generate an AI description."
+                                  onChange={(event) => updateSmartLogEntry(entry.id, {
+                                    description: event.target.value,
+                                    ai: {
+                                      loading: false,
+                                      suggestion: '',
+                                      provider: '',
+                                      warning: '',
+                                      error: ''
+                                    }
+                                  })}
+                                />
+                              </label>
+
+                              <div className="smart-log-ai">
+                                <div>
+                                  <strong>AI description assistant</strong>
+                                  <small>Uses the confirmed activity and your rough note.</small>
+                                </div>
+                                <button
+                                  type="button"
+                                  className="secondary-action"
+                                  disabled={entry.ai.loading}
+                                  onClick={() => generateSmartLogAiDescription(entry.id)}
+                                >
+                                  {entry.ai.loading ? 'Generating...' : 'Generate AI Description'}
+                                </button>
+                              </div>
+
+                              {entry.ai.error ? <div className="guided-ai-error">{entry.ai.error}</div> : null}
+                              {entry.ai.warning ? <div className="guided-ai-warning">{entry.ai.warning}</div> : null}
+
+                              {entry.ai.suggestion ? (
+                                <div className="guided-ai-preview">
+                                  <strong>Suggested description</strong>
+                                  <p>{entry.ai.suggestion}</p>
+                                  <small>Provider: {entry.ai.provider === 'claude' ? 'Claude' : 'Local template fallback'}</small>
+                                  <div>
+                                    <button type="button" className="primary-action" onClick={() => useSmartLogAiDescription(entry.id)}>Use Suggestion</button>
+                                  </div>
+                                </div>
+                              ) : null}
+                            </article>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    <div className="smart-log-review-action">
+                      <div>
+                        <strong>Reviewed total</strong>
+                        <span>{formatNumber(smartLogTotal)} hours for {resolvedSmartLogDate || 'the selected day'}</span>
+                      </div>
+                      <button
+                        type="button"
+                        className="primary-action"
+                        disabled={smartLogEntries.length === 0}
+                        onClick={addSmartLogEntries}
+                      >
+                        Add Reviewed Entries
+                      </button>
+                    </div>
+
+                    {smartLogMessage ? <div className="guided-message" role="status">{smartLogMessage}</div> : null}
+                  </section>
                 </div>
               </div>
             ) : null}
+
           </div>
         </DataState>
       </section>
