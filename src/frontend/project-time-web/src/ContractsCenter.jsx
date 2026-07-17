@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import './contracts-center.css';
 
-function headers() {
+function sessionHeaders() {
   try {
     const session = JSON.parse(
       localStorage.getItem('projectPulseAuthSession') || 'null'
@@ -15,14 +15,26 @@ function headers() {
   }
 }
 
-async function fetchJson(path, options = {}) {
+async function request(path, options = {}) {
+  const isForm = options.body instanceof FormData;
   const response = await fetch(path, {
     ...options,
     headers: {
-      ...headers(),
-      ...(options.body ? { 'Content-Type': 'application/json' } : {})
+      ...sessionHeaders(),
+      ...(!isForm && options.body
+        ? { 'Content-Type': 'application/json' }
+        : {}),
+      ...(options.headers || {})
     }
   });
+
+  if (options.download) {
+    if (!response.ok) {
+      throw new Error(`Download returned HTTP ${response.status}`);
+    }
+
+    return response;
+  }
 
   const raw = await response.text();
   let payload = {};
@@ -42,78 +54,125 @@ async function fetchJson(path, options = {}) {
   return payload;
 }
 
-function number(value) {
+function money(value) {
   return Number(value || 0).toLocaleString(undefined, {
+    style: 'currency',
+    currency: 'USD',
     maximumFractionDigits: 2
   });
 }
 
+function percent(value) {
+  return value === null || value === undefined
+    ? '—'
+    : Number(value).toLocaleString(undefined, {
+        style: 'percent',
+        maximumFractionDigits: 2
+      });
+}
+
 function date(value) {
-  if (!value) {
-    return '—';
-  }
-
-  return new Date(`${value}T00:00:00`).toLocaleDateString();
+  return value
+    ? new Date(`${value}T00:00:00`).toLocaleDateString()
+    : '—';
 }
 
-function HeaderHelp({ label, explanation }) {
-  return (
-    <span className="contracts-header-label">
-      {label}
-      <button
-        type="button"
-        className="contracts-header-help"
-        title={explanation}
-        aria-label={`${label}: ${explanation}`}
-      >
-        ?
-      </button>
-    </span>
-  );
-}
-
-const emptyForm = {
+const emptyContract = {
   clientId: '',
-  contractName: '',
-  primaryAccountExecutiveUserId: '',
+  accountExecutiveUserId: '',
   projectTeamCoordinatorUserId: '',
-  purchasedHours: '',
-  startDate: '',
-  originalExpirationDate: '',
-  eligibleTm: true,
-  eligibleServiceRequest: true,
-  eligibleFixedPrice: true,
-  eligibleIqs: true,
+  engagementName: '',
+  poQuote: '',
+  contractStartDate: '',
+  contractEndDate: '',
+  fixedFeeItem: '',
+  latestTimeText: '',
+  billingDate: '',
+  fixedFeeAmount: '',
+  pendingAmount: '',
+  approvedAmount: '',
+  totalExpenses: '',
+  adjustments: '',
   certiniaId: '',
   sellQuote: '',
   salesforceId: '',
-  purchaseOrderReference: '',
-  internalSummary: ''
+  notes: ''
 };
 
+const emptyCredit = {
+  amount: '',
+  awardedOn: new Date().toISOString().slice(0, 10),
+  reason: '',
+  reference: ''
+};
+
+const emptyNote = {
+  category: 'general',
+  noteText: ''
+};
+
+function Drawer({ title, subtitle, onClose, children, wide = false }) {
+  return (
+    <div className="prepaid-drawer-backdrop">
+      <aside className={`prepaid-drawer ${wide ? 'wide' : ''}`}>
+        <header>
+          <div>
+            <p>{subtitle}</p>
+            <h2>{title}</h2>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close">
+            ×
+          </button>
+        </header>
+        <div className="prepaid-drawer-body">{children}</div>
+      </aside>
+    </div>
+  );
+}
+
 export default function ContractsCenter() {
-  const [data, setData] = useState(null);
-  const [help, setHelp] = useState(null);
-  const [helpOpen, setHelpOpen] = useState(false);
-  const [createOpen, setCreateOpen] = useState(false);
-  const [scheduleOpen, setScheduleOpen] = useState(false);
-  const [form, setForm] = useState(emptyForm);
-  const [schedule, setSchedule] = useState(null);
+  const [overview, setOverview] = useState(null);
+  const [options, setOptions] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
-  const [aeFilter, setAeFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [expanded, setExpanded] = useState({});
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createForm, setCreateForm] = useState(emptyContract);
+  const [details, setDetails] = useState(null);
+  const [creditForm, setCreditForm] = useState(emptyCredit);
+  const [noteForm, setNoteForm] = useState(emptyNote);
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploadPreview, setUploadPreview] = useState(null);
+  const [uploadBusy, setUploadBusy] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [schedule, setSchedule] = useState(null);
+  const fileRef = useRef(null);
 
   async function load() {
     setLoading(true);
     setError('');
 
     try {
-      const payload = await fetchJson('/api/contracts/overview');
-      setData(payload);
-      setSchedule(payload.schedule || null);
+      const payload = await request('/api/contracts/prepaid/overview');
+      setOverview(payload);
+
+      const nextExpanded = {};
+      (payload.groups || []).forEach((group) => {
+        nextExpanded[group.accountExecutiveUserId] = true;
+      });
+      setExpanded(nextExpanded);
+
+      if (payload?.permissions?.canManage) {
+        const management = await request('/api/contracts/prepaid/options');
+        setOptions(management);
+        setSchedule(management.schedule || null);
+      } else {
+        setOptions(null);
+        setSchedule(null);
+      }
     } catch (loadError) {
       setError(loadError.message);
     } finally {
@@ -125,241 +184,349 @@ export default function ContractsCenter() {
     void load();
   }, []);
 
-  async function openHelp() {
-    setHelpOpen(true);
+  const permissions = overview?.permissions || {};
+  const summary = overview?.summary || {};
 
-    if (help) {
-      return;
-    }
+  const groups = useMemo(() => {
+    const search = query.trim().toLowerCase();
+
+    return (overview?.groups || [])
+      .map((group) => ({
+        ...group,
+        contracts: (group.contracts || []).filter((row) => {
+          const matchesSearch =
+            !search
+            || [
+              row.accountExecutiveName,
+              row.customerName,
+              row.engagementName,
+              row.contractManagerName,
+              row.poQuote,
+              row.certiniaId,
+              row.sellQuote,
+              row.salesforceId,
+              row.latestNote
+            ]
+              .filter(Boolean)
+              .some((value) =>
+                String(value).toLowerCase().includes(search)
+              );
+
+          return (
+            matchesSearch
+            && (!statusFilter || row.contractStatus === statusFilter)
+          );
+        })
+      }))
+      .filter((group) => group.contracts.length > 0);
+  }, [overview, query, statusFilter]);
+
+  async function download(path, fallbackName) {
+    setError('');
 
     try {
-      setHelp(await fetchJson('/api/contracts/help'));
-    } catch (helpError) {
-      setError(helpError.message);
+      const response = await request(path, { download: true });
+      const blob = await response.blob();
+      const disposition = response.headers.get('content-disposition') || '';
+      const match = disposition.match(/filename="?([^"]+)"?/i);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = match?.[1] || fallbackName;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (downloadError) {
+      setError(downloadError.message);
     }
   }
 
   async function createContract(event) {
     event.preventDefault();
-    setMessage('');
     setError('');
 
     try {
-      await fetchJson('/api/contracts', {
+      await request('/api/contracts/prepaid/contracts', {
         method: 'POST',
         body: JSON.stringify({
-          ...form,
-          purchasedHours: Number(form.purchasedHours || 0),
-          originalExpirationDate:
-            form.originalExpirationDate || null
+          ...createForm,
+          billingDate: createForm.billingDate || null,
+          fixedFeeAmount: Number(createForm.fixedFeeAmount || 0),
+          pendingAmount: Number(createForm.pendingAmount || 0),
+          approvedAmount: Number(createForm.approvedAmount || 0),
+          totalExpenses: Number(createForm.totalExpenses || 0),
+          adjustments: Number(createForm.adjustments || 0)
         })
       });
 
-      setMessage('Block of Hours contract created.');
-      setForm(emptyForm);
       setCreateOpen(false);
+      setCreateForm(emptyContract);
+      setMessage('Prepaid contract created.');
       await load();
     } catch (saveError) {
       setError(saveError.message);
+    }
+  }
+
+  async function openDetails(contractId) {
+    setError('');
+
+    try {
+      setDetails(
+        await request(`/api/contracts/prepaid/contracts/${contractId}`)
+      );
+    } catch (detailsError) {
+      setError(detailsError.message);
+    }
+  }
+
+  async function awardCredit(event) {
+    event.preventDefault();
+
+    try {
+      await request(
+        `/api/contracts/prepaid/${details.contract.bohContractId}/credits`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            ...creditForm,
+            amount: Number(creditForm.amount || 0)
+          })
+        }
+      );
+
+      setCreditForm(emptyCredit);
+      await openDetails(details.contract.bohContractId);
+      await load();
+      setMessage('Credit awarded and added to total available.');
+    } catch (creditError) {
+      setError(creditError.message);
+    }
+  }
+
+  async function reverseCredit(adjustmentId) {
+    const reason = window.prompt('Reason for reversing this credit:');
+
+    if (!reason) {
+      return;
+    }
+
+    try {
+      await request(
+        `/api/contracts/prepaid/credits/${adjustmentId}/reverse`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            reversedOn: new Date().toISOString().slice(0, 10),
+            reason
+          })
+        }
+      );
+
+      await openDetails(details.contract.bohContractId);
+      await load();
+      setMessage('Credit reversal recorded. History was retained.');
+    } catch (reverseError) {
+      setError(reverseError.message);
+    }
+  }
+
+  async function addNote(event) {
+    event.preventDefault();
+
+    try {
+      await request(
+        `/api/contracts/prepaid/${details.contract.bohContractId}/notes`,
+        {
+          method: 'POST',
+          body: JSON.stringify(noteForm)
+        }
+      );
+
+      setNoteForm(emptyNote);
+      await openDetails(details.contract.bohContractId);
+      await load();
+      setMessage('Note added.');
+    } catch (noteError) {
+      setError(noteError.message);
+    }
+  }
+
+  async function previewUpload(event) {
+    event.preventDefault();
+    const file = fileRef.current?.files?.[0];
+
+    if (!file) {
+      setError('Select an XLSX workbook.');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+    setUploadBusy(true);
+    setError('');
+
+    try {
+      setUploadPreview(
+        await request('/api/contracts/prepaid/import-preview', {
+          method: 'POST',
+          body: formData
+        })
+      );
+    } catch (uploadError) {
+      setError(uploadError.message);
+    } finally {
+      setUploadBusy(false);
+    }
+  }
+
+  async function confirmUpload() {
+    if (!uploadPreview?.batchId) {
+      return;
+    }
+
+    setUploadBusy(true);
+    setError('');
+
+    try {
+      await request(
+        `/api/contracts/prepaid/imports/${uploadPreview.batchId}/confirm`,
+        { method: 'POST' }
+      );
+
+      setUploadOpen(false);
+      setUploadPreview(null);
+      setMessage('XLSX import confirmed.');
+      await load();
+    } catch (confirmError) {
+      setError(confirmError.message);
+    } finally {
+      setUploadBusy(false);
     }
   }
 
   async function saveSchedule(event) {
     event.preventDefault();
-    setMessage('');
-    setError('');
 
     try {
-      await fetchJson('/api/contracts/email-schedule', {
+      await request('/api/contracts/prepaid/email-schedule', {
         method: 'PUT',
-        body: JSON.stringify(schedule)
+        body: JSON.stringify({
+          ...schedule,
+          weekdayIso: Number(schedule.weekdayIso || 1),
+          lowBalanceThresholdPercent: Number(
+            schedule.lowBalanceThresholdPercent || 25
+          ),
+          expirationWarningDays: Number(
+            schedule.expirationWarningDays || 90
+          ),
+          retentionMonths: Number(schedule.retentionMonths || 24)
+        })
       });
 
-      setMessage('Weekly report schedule saved.');
       setScheduleOpen(false);
+      setMessage('Weekly email schedule saved.');
       await load();
-    } catch (saveError) {
-      setError(saveError.message);
+    } catch (scheduleError) {
+      setError(scheduleError.message);
     }
   }
 
-  const formulas = useMemo(() => {
-    const result = {};
-
-    (data?.formulas || []).forEach((item) => {
-      result[item.key] = [
-        item.formula,
-        `Source: ${item.source}.`,
-        `Balance impact: ${item.balanceImpact}.`
-      ].join(' ');
-    });
-
-    return result;
-  }, [data]);
-
-  const contracts = useMemo(() => {
-    const search = query.trim().toLowerCase();
-
-    return (data?.contracts || []).filter((contract) => {
-      const matchesSearch =
-        !search
-        || [
-          contract.customerName,
-          contract.contractName,
-          contract.accountExecutiveName,
-          contract.certiniaId,
-          contract.sellQuote,
-          contract.salesforceId
-        ]
-          .filter(Boolean)
-          .some((value) =>
-            String(value).toLowerCase().includes(search)
-          );
-
-      return (
-        matchesSearch
-        && (!aeFilter
-          || String(contract.accountExecutiveUserId) === aeFilter)
-        && (!statusFilter || contract.status === statusFilter)
-      );
-    });
-  }, [data, query, aeFilter, statusFilter]);
-
-  const summary = data?.summary || {};
-  const canCreateContract = Boolean(data?.canCreateContract);
-  const canViewSchedule = Boolean(data?.canViewSchedule);
-  const canManageSchedule = Boolean(data?.canManageSchedule);
-
   return (
-    <section className="contracts-center">
-      <header className="contracts-hero">
+    <section className="prepaid-center">
+      <header className="prepaid-hero">
         <div>
-          <p className="eyebrow">MODULE 060</p>
-          <h1>Contracts & Block of Hours</h1>
-          <p>
-            Manage prepaid customer hours, credits, expiration,
-            work consumption, and weekly Sales reporting.
-          </p>
+          <p>MODULE 060</p>
+          <h1>Contracts & Prepaid Balance</h1>
+          <span>
+            Financial balances, credits, notes, XLSX exchange, and
+            contract-funded Work Register usage.
+          </span>
         </div>
 
-        <div className="contracts-hero-actions">
-          <button type="button" onClick={openHelp}>
-            ? Help
-          </button>
+        <div className="prepaid-actions">
+          {permissions.canDownload ? (
+            <>
+              <button
+                type="button"
+                onClick={() =>
+                  void download(
+                    '/api/contracts/prepaid/template',
+                    'Module-060-Prepaid-Balance-Import-Template.xlsx'
+                  )
+                }
+              >
+                Import template
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  void download(
+                    '/api/contracts/prepaid/export',
+                    'OneNeck-Prepaid-Balance-Summary.xlsx'
+                  )
+                }
+              >
+                Download XLSX
+              </button>
+            </>
+          ) : null}
 
-          {canManageSchedule ? (
-            <button
-              type="button"
-              onClick={() => setScheduleOpen(true)}
-            >
-              Weekly email schedule
+          {permissions.canUpload ? (
+            <button type="button" onClick={() => setUploadOpen(true)}>
+              Upload XLSX
             </button>
           ) : null}
 
-          {canCreateContract ? (
+          {permissions.canManageSchedule ? (
+            <button type="button" onClick={() => setScheduleOpen(true)}>
+              Email schedule
+            </button>
+          ) : null}
+
+          {permissions.canManage ? (
             <button
               type="button"
-              className="primary-action"
+              className="primary"
               onClick={() => setCreateOpen(true)}
             >
               New contract
             </button>
-          ) : null}
-
-          {!canCreateContract && !canManageSchedule ? (
-            <span className="contracts-readonly">Read only</span>
-          ) : null}
+          ) : (
+            <span className="prepaid-readonly">Read only</span>
+          )}
         </div>
       </header>
 
-      {error ? (
-        <div className="contracts-alert error">{error}</div>
-      ) : null}
+      {error ? <div className="prepaid-alert error">{error}</div> : null}
+      {message ? <div className="prepaid-alert">{message}</div> : null}
 
-      {message ? (
-        <div className="contracts-alert">{message}</div>
-      ) : null}
-
-      <div className="contracts-summary-grid">
-        <article>
-          <span>Active contracts</span>
-          <strong>{summary.activeContracts || 0}</strong>
-        </article>
-        <article>
-          <span>Purchased hours</span>
-          <strong>{number(summary.purchasedHours)}</strong>
-        </article>
-        <article>
-          <span>Credits awarded</span>
-          <strong>{number(summary.creditAwarded)}</strong>
-        </article>
-        <article>
-          <span>Remaining balance</span>
-          <strong>{number(summary.remainingBalance)}</strong>
-        </article>
-        <article className="warning">
-          <span>Low balance</span>
-          <strong>{summary.lowBalanceContracts || 0}</strong>
-        </article>
-        <article className="warning">
-          <span>Expiring</span>
-          <strong>{summary.expiringContracts || 0}</strong>
-        </article>
-        <article className="danger">
-          <span>Expired</span>
-          <strong>{summary.expiredContracts || 0}</strong>
-        </article>
-        <article className="danger">
-          <span>Exhausted</span>
-          <strong>{summary.exhaustedContracts || 0}</strong>
-        </article>
+      <div className="prepaid-summary-grid">
+        {[
+          ['Contracts', summary.contractCount || 0],
+          ['FF Amount', money(summary.fixedFeeAmount)],
+          ['Credit Awarded', money(summary.creditAwarded)],
+          ['Total Available', money(summary.totalAvailable)],
+          ['Pending', money(summary.pendingAmount)],
+          ['Approved', money(summary.approvedAmount)],
+          ['Total Used', money(summary.totalUsed)],
+          ['Remaining Balance', money(summary.remainingBalance)]
+        ].map(([label, value]) => (
+          <article key={label}>
+            <span>{label}</span>
+            <strong>{value}</strong>
+          </article>
+        ))}
       </div>
 
-      {canViewSchedule ? (
-        <section className="contracts-report-card">
-          <div>
-            <h2>Weekly AE workbook</h2>
-            <p>
-              Global SMTP · XLSX · grouped by Account Executive ·
-              filters and frozen panes enabled
-            </p>
-          </div>
-
-          <div>
-            <strong>
-              {schedule?.isEnabled ? 'Enabled' : 'Disabled'}
-            </strong>
-            <span>
-              Weekday {schedule?.weekdayIso || 1}
-              {' · '}
-              {schedule?.sendTime || '08:00'}
-              {' · '}
-              {schedule?.timeZone || 'America/Chicago'}
-            </span>
-          </div>
-        </section>
-      ) : null}
-
-      <section className="contracts-filters">
+      <section className="prepaid-toolbar">
         <input
           type="search"
-          placeholder="Search customer, contract, AE, or external ID"
           value={query}
+          placeholder="Search AE, customer, engagement, manager, quote, ID, or note"
           onChange={(event) => setQuery(event.target.value)}
         />
-
-        <select
-          value={aeFilter}
-          onChange={(event) => setAeFilter(event.target.value)}
-        >
-          <option value="">All Account Executives</option>
-          {(data?.accountExecutives || []).map((user) => (
-            <option key={user.userId} value={user.userId}>
-              {user.displayName}
-            </option>
-          ))}
-        </select>
-
         <select
           value={statusFilter}
           onChange={(event) => setStatusFilter(event.target.value)}
@@ -372,566 +539,592 @@ export default function ContractsCenter() {
           <option value="exhausted">Exhausted</option>
           <option value="closed">Closed</option>
         </select>
-
         <button type="button" onClick={() => void load()}>
           {loading ? 'Loading…' : 'Refresh'}
         </button>
       </section>
 
-      <div className="contracts-table-scroll">
-        <table className="contracts-table">
-          <thead>
-            <tr>
-              <th>
-                <HeaderHelp
-                  label="Account Executive"
-                  explanation="Primary active AE assigned from system users. Weekly workbooks are grouped by this user."
-                />
-              </th>
-              <th>
-                <HeaderHelp
-                  label="Customer"
-                  explanation="Customer and address are sourced from Customer Directory."
-                />
-              </th>
-              <th>Contract</th>
-              <th>
-                <HeaderHelp
-                  label="Purchased"
-                  explanation={formulas.purchasedHours || ''}
-                />
-              </th>
-              <th>
-                <HeaderHelp
-                  label="Credit awarded"
-                  explanation={formulas.creditAwarded || ''}
-                />
-              </th>
-              <th>
-                <HeaderHelp
-                  label="Total available"
-                  explanation={formulas.totalAvailableHours || ''}
-                />
-              </th>
-              <th>
-                <HeaderHelp
-                  label="Entered"
-                  explanation={formulas.enteredHours || ''}
-                />
-              </th>
-              <th>
-                <HeaderHelp
-                  label="Submitted"
-                  explanation={formulas.submittedHours || ''}
-                />
-              </th>
-              <th>
-                <HeaderHelp
-                  label="Consumed"
-                  explanation={formulas.consumedHours || ''}
-                />
-              </th>
-              <th>
-                <HeaderHelp
-                  label="Remaining"
-                  explanation={formulas.remainingBalance || ''}
-                />
-              </th>
-              <th>
-                <HeaderHelp
-                  label="Projected"
-                  explanation={formulas.projectedRemaining || ''}
-                />
-              </th>
-              <th>
-                <HeaderHelp
-                  label="Effective expiration"
-                  explanation={formulas.effectiveExpiration || ''}
-                />
-              </th>
-              <th>Certinia ID</th>
-              <th>SELL Quote</th>
-              <th>Salesforce ID</th>
-              <th>Status</th>
-            </tr>
-          </thead>
+      <div className="prepaid-groups">
+        {groups.map((group) => (
+          <section
+            className="prepaid-ae-group"
+            key={group.accountExecutiveUserId}
+          >
+            <button
+              type="button"
+              className="prepaid-ae-header"
+              onClick={() =>
+                setExpanded((current) => ({
+                  ...current,
+                  [group.accountExecutiveUserId]:
+                    !current[group.accountExecutiveUserId]
+                }))
+              }
+            >
+              <span>
+                <strong>{group.accountExecutiveName}</strong>
+                <small>{group.contracts.length} visible contracts</small>
+              </span>
+              <span>
+                Available {money(group.fixedFeeAmount + group.creditAwarded)}
+                {' · '}
+                Used {money(group.totalUsed)}
+                {' · '}
+                Remaining {money(group.remainingBalance)}
+              </span>
+              <b>
+                {expanded[group.accountExecutiveUserId] ? '−' : '+'}
+              </b>
+            </button>
 
-          <tbody>
-            {contracts.map((contract) => (
-              <tr key={contract.bohContractId}>
-                <td>
-                  <strong>{contract.accountExecutiveName}</strong>
-                  <small>{contract.accountExecutiveEmail}</small>
-                </td>
-                <td>
-                  <strong>{contract.customerName}</strong>
-                  <small>{contract.customerAddress || 'No address recorded'}</small>
-                </td>
-                <td>{contract.contractName}</td>
-                <td>{number(contract.purchasedHours)}</td>
-                <td>{number(contract.creditAwarded)}</td>
-                <td>{number(contract.totalAvailableHours)}</td>
-                <td>{number(contract.enteredHours)}</td>
-                <td>{number(contract.submittedHours)}</td>
-                <td>{number(contract.consumedHours)}</td>
-                <td>{number(contract.remainingBalance)}</td>
-                <td>{number(contract.projectedRemaining)}</td>
-                <td>{date(contract.effectiveExpirationDate)}</td>
-                <td>{contract.certiniaId || '—'}</td>
-                <td>{contract.sellQuote || '—'}</td>
-                <td>{contract.salesforceId || '—'}</td>
-                <td>
-                  <span className={`contracts-status ${contract.status}`}>
-                    {contract.status.replaceAll('_', ' ')}
-                  </span>
-                </td>
-              </tr>
-            ))}
-
-            {!loading && contracts.length === 0 ? (
-              <tr>
-                <td colSpan="16" className="contracts-empty">
-                  No Block of Hours contracts match this selection.
-                  No sample records are created automatically.
-                </td>
-              </tr>
+            {expanded[group.accountExecutiveUserId] ? (
+              <div className="prepaid-table-scroll">
+                <table className="prepaid-table">
+                  <thead>
+                    <tr>
+                      <th>Customer</th>
+                      <th>Engagement Name</th>
+                      <th>Contract Manager</th>
+                      <th>PO/Quote</th>
+                      <th>Start</th>
+                      <th>End</th>
+                      <th>Fixed Fee Item</th>
+                      <th>Billing Date</th>
+                      <th>FF Amount</th>
+                      <th>Credit Awarded</th>
+                      <th>Credit Date</th>
+                      <th>Credit Awarded By</th>
+                      <th>Pending</th>
+                      <th>Approved</th>
+                      <th>Total Hours</th>
+                      <th>Total Expenses</th>
+                      <th>Adjustments</th>
+                      <th>Total Used</th>
+                      <th>Total Available</th>
+                      <th>Remaining</th>
+                      <th>Balance %</th>
+                      <th>Certinia ID</th>
+                      <th>SELL Quote</th>
+                      <th>Salesforce ID</th>
+                      <th>Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {group.contracts.map((row) => (
+                      <tr
+                        key={row.bohContractId}
+                        onClick={() => void openDetails(row.bohContractId)}
+                      >
+                        <td>{row.customerName}</td>
+                        <td>
+                          <strong>{row.engagementName}</strong>
+                          <small>{row.contractStatus}</small>
+                        </td>
+                        <td>{row.contractManagerName}</td>
+                        <td>{row.poQuote || '—'}</td>
+                        <td>{date(row.contractStartDate)}</td>
+                        <td>{date(row.contractEndDate)}</td>
+                        <td>{row.fixedFeeItem || '—'}</td>
+                        <td>{date(row.billingDate)}</td>
+                        <td>{money(row.fixedFeeAmount)}</td>
+                        <td>{money(row.creditAwarded)}</td>
+                        <td>{date(row.latestCreditAwardedOn)}</td>
+                        <td>{row.latestCreditAwardedBy || '—'}</td>
+                        <td>{money(row.pendingAmount)}</td>
+                        <td>{money(row.approvedAmount)}</td>
+                        <td>{money(row.totalHoursAmount)}</td>
+                        <td>{money(row.totalExpenses)}</td>
+                        <td>{money(row.adjustments)}</td>
+                        <td>{money(row.totalUsed)}</td>
+                        <td>{money(row.totalAvailable)}</td>
+                        <td className={Number(row.remainingBalance) < 0 ? 'negative' : ''}>
+                          {money(row.remainingBalance)}
+                        </td>
+                        <td>{percent(row.balancePercent)}</td>
+                        <td>{row.certiniaId || '—'}</td>
+                        <td>{row.sellQuote || '—'}</td>
+                        <td>{row.salesforceId || '—'}</td>
+                        <td>{row.noteCount || 0}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             ) : null}
-          </tbody>
-        </table>
+          </section>
+        ))}
+
+        {!loading && groups.length === 0 ? (
+          <div className="prepaid-empty">
+            No prepaid contracts match this selection.
+          </div>
+        ) : null}
       </div>
 
-      {helpOpen ? (
-        <div className="contracts-drawer-backdrop">
-          <aside className="contracts-drawer" aria-label="Contracts help">
-            <header>
-              <div>
-                <p className="eyebrow">EMBEDDED HELP</p>
-                <h2>{help?.title || 'Contracts Help'}</h2>
-              </div>
-              <button type="button" onClick={() => setHelpOpen(false)}>
-                Close
-              </button>
-            </header>
-
-            {(help?.sections || []).map((section) => (
-              <article key={section.title}>
-                <h3>{section.title}</h3>
-                <p>{section.content}</p>
-              </article>
-            ))}
-
-            <h3>Column formulas</h3>
-            {(help?.formulas || data?.formulas || []).map((item) => (
-              <article key={item.key}>
-                <strong>{item.label}</strong>
-                <p>{item.formula}</p>
-                <small>
-                  Source: {item.source}
-                  {' · '}
-                  {item.balanceImpact}
-                </small>
-              </article>
-            ))}
-          </aside>
-        </div>
-      ) : null}
-
-      {createOpen && canCreateContract ? (
-        <div className="contracts-drawer-backdrop">
-          <aside className="contracts-drawer wide">
-            <header>
-              <div>
-                <p className="eyebrow">AUTHORIZED CONTRACT CREATION</p>
-                <h2>Create Block of Hours contract</h2>
-              </div>
-              <button type="button" onClick={() => setCreateOpen(false)}>
-                Close
-              </button>
-            </header>
-
-            <form className="contracts-form" onSubmit={createContract}>
-              <label>
-                Customer
-                <select
-                  required
-                  value={form.clientId}
-                  onChange={(event) =>
-                    setForm({ ...form, clientId: event.target.value })
-                  }
-                >
-                  <option value="">Select customer</option>
-                  {(data?.customers || []).map((customer) => (
-                    <option key={customer.clientId} value={customer.clientId}>
-                      {customer.customerName}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label>
-                Account Executive
-                <select
-                  required
-                  value={form.primaryAccountExecutiveUserId}
-                  onChange={(event) =>
-                    setForm({
-                      ...form,
-                      primaryAccountExecutiveUserId: event.target.value
-                    })
-                  }
-                >
-                  <option value="">Select Account Executive</option>
-                  {(data?.accountExecutives || []).map((user) => (
-                    <option key={user.userId} value={user.userId}>
-                      {user.displayName} — {user.email}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label>
-                Project Team Coordinator
-                <select
-                  required
-                  value={form.projectTeamCoordinatorUserId}
-                  onChange={(event) =>
-                    setForm({
-                      ...form,
-                      projectTeamCoordinatorUserId: event.target.value
-                    })
-                  }
-                >
-                  <option value="">Select Project Team Coordinator</option>
-                  {(data?.coordinators || []).map((user) => (
-                    <option key={user.userId} value={user.userId}>
-                      {user.displayName} — {user.email}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label>
-                Contract / engagement name
-                <input
-                  required
-                  value={form.contractName}
-                  onChange={(event) =>
-                    setForm({ ...form, contractName: event.target.value })
-                  }
-                />
-              </label>
-
-              <label>
-                Purchased hours
-                <input
-                  required
-                  type="number"
-                  min="0"
-                  step="0.25"
-                  value={form.purchasedHours}
-                  onChange={(event) =>
-                    setForm({ ...form, purchasedHours: event.target.value })
-                  }
-                />
-              </label>
-
-              <label>
-                Start date
-                <input
-                  required
-                  type="date"
-                  value={form.startDate}
-                  onChange={(event) =>
-                    setForm({ ...form, startDate: event.target.value })
-                  }
-                />
-              </label>
-
-              <label>
-                Original expiration
-                <input
-                  type="date"
-                  value={form.originalExpirationDate}
-                  onChange={(event) =>
-                    setForm({
-                      ...form,
-                      originalExpirationDate: event.target.value
-                    })
-                  }
-                />
-                <small>Blank defaults to one year after start.</small>
-              </label>
-
-              <label>
-                Certinia ID
-                <input
-                  value={form.certiniaId}
-                  onChange={(event) =>
-                    setForm({ ...form, certiniaId: event.target.value })
-                  }
-                />
-              </label>
-
-              <label>
-                SELL Quote
-                <input
-                  value={form.sellQuote}
-                  onChange={(event) =>
-                    setForm({ ...form, sellQuote: event.target.value })
-                  }
-                />
-              </label>
-
-              <label>
-                Salesforce ID
-                <input
-                  value={form.salesforceId}
-                  onChange={(event) =>
-                    setForm({ ...form, salesforceId: event.target.value })
-                  }
-                />
-              </label>
-
-              <label>
-                PO / Quote reference
-                <input
-                  value={form.purchaseOrderReference}
-                  onChange={(event) =>
-                    setForm({
-                      ...form,
-                      purchaseOrderReference: event.target.value
-                    })
-                  }
-                />
-              </label>
-
-              <fieldset>
-                <legend>Eligible work types</legend>
-                {[
-                  ['eligibleTm', 'T&M'],
-                  ['eligibleServiceRequest', 'Service Request'],
-                  ['eligibleFixedPrice', 'Fixed Price'],
-                  ['eligibleIqs', 'IQS']
-                ].map(([key, label]) => (
-                  <label key={key} className="contracts-checkbox">
-                    <input
-                      type="checkbox"
-                      checked={form[key]}
-                      onChange={(event) =>
-                        setForm({ ...form, [key]: event.target.checked })
-                      }
-                    />
-                    {label}
-                  </label>
+      {createOpen ? (
+        <Drawer
+          title="Create prepaid contract"
+          subtitle="SYSTEM-SOURCED CUSTOMER, AE, AND CONTRACT MANAGER"
+          onClose={() => setCreateOpen(false)}
+          wide
+        >
+          <form className="prepaid-form-grid" onSubmit={createContract}>
+            <label>
+              Customer
+              <select
+                required
+                value={createForm.clientId}
+                onChange={(event) =>
+                  setCreateForm({
+                    ...createForm,
+                    clientId: event.target.value
+                  })
+                }
+              >
+                <option value="">Select Customer Directory record</option>
+                {(options?.customers || []).map((item) => (
+                  <option key={item.clientId} value={item.clientId}>
+                    {item.customerName}
+                  </option>
                 ))}
-              </fieldset>
+              </select>
+            </label>
 
-              <label className="contracts-form-wide">
-                Notes / summary
-                <textarea
-                  rows="4"
-                  value={form.internalSummary}
-                  onChange={(event) =>
-                    setForm({ ...form, internalSummary: event.target.value })
-                  }
-                />
-              </label>
+            <label>
+              Account Executive
+              <select
+                required
+                value={createForm.accountExecutiveUserId}
+                onChange={(event) =>
+                  setCreateForm({
+                    ...createForm,
+                    accountExecutiveUserId: event.target.value
+                  })
+                }
+              >
+                <option value="">Select AE / Sales Team member</option>
+                {(options?.accountExecutives || []).map((item) => (
+                  <option key={item.userId} value={item.userId}>
+                    {item.displayName} — {item.email}
+                  </option>
+                ))}
+              </select>
+            </label>
 
-              <div className="contracts-form-actions">
-                <button type="button" onClick={() => setCreateOpen(false)}>
-                  Cancel
-                </button>
-                <button type="submit" className="primary-action">
-                  Create contract
-                </button>
-              </div>
-            </form>
-          </aside>
-        </div>
-      ) : null}
+            <label>
+              Contract Manager
+              <select
+                required
+                value={createForm.projectTeamCoordinatorUserId}
+                onChange={(event) =>
+                  setCreateForm({
+                    ...createForm,
+                    projectTeamCoordinatorUserId: event.target.value
+                  })
+                }
+              >
+                <option value="">Select Project Team Coordinator</option>
+                {(options?.coordinators || []).map((item) => (
+                  <option key={item.userId} value={item.userId}>
+                    {item.displayName} — {item.email}
+                  </option>
+                ))}
+              </select>
+            </label>
 
-      {scheduleOpen && canManageSchedule && schedule ? (
-        <div className="contracts-drawer-backdrop">
-          <aside className="contracts-drawer wide">
-            <header>
-              <div>
-                <p className="eyebrow">GLOBAL SMTP</p>
-                <h2>Weekly AE balance email</h2>
-              </div>
-              <button type="button" onClick={() => setScheduleOpen(false)}>
-                Close
-              </button>
-            </header>
-
-            <form className="contracts-form" onSubmit={saveSchedule}>
-              <label className="contracts-checkbox">
+            {[
+              ['engagementName', 'Engagement Name', 'text', true],
+              ['poQuote', 'PO/Quote', 'text', false],
+              ['contractStartDate', 'Contract Start Date', 'date', true],
+              ['contractEndDate', 'Contract End Date', 'date', true],
+              ['fixedFeeItem', 'Fixed Fee Item', 'text', false],
+              ['latestTimeText', 'Latest Time Text', 'text', false],
+              ['billingDate', 'Billing Date', 'date', false],
+              ['fixedFeeAmount', 'FF Amount', 'number', true],
+              ['pendingAmount', 'Pending Hours', 'number', false],
+              ['approvedAmount', 'Approved Hours', 'number', false],
+              ['totalExpenses', 'Total Expenses', 'number', false],
+              ['adjustments', 'Adjustments', 'number', false],
+              ['certiniaId', 'Certinia ID', 'text', false],
+              ['sellQuote', 'SELL Quote', 'text', false],
+              ['salesforceId', 'Salesforce ID', 'text', false]
+            ].map(([name, label, type, required]) => (
+              <label key={name}>
+                {label}
                 <input
-                  type="checkbox"
-                  checked={schedule.isEnabled}
+                  required={required}
+                  type={type}
+                  step={type === 'number' ? '0.01' : undefined}
+                  value={createForm[name]}
                   onChange={(event) =>
-                    setSchedule({
-                      ...schedule,
-                      isEnabled: event.target.checked
+                    setCreateForm({
+                      ...createForm,
+                      [name]: event.target.value
                     })
                   }
                 />
-                Enable weekly email
               </label>
+            ))}
 
-              <label>
-                Weekday
-                <select
-                  value={schedule.weekdayIso}
+            <label className="full">
+              Notes
+              <textarea
+                rows="4"
+                value={createForm.notes}
+                onChange={(event) =>
+                  setCreateForm({
+                    ...createForm,
+                    notes: event.target.value
+                  })
+                }
+              />
+            </label>
+
+            <div className="prepaid-form-actions full">
+              <button type="button" onClick={() => setCreateOpen(false)}>
+                Cancel
+              </button>
+              <button type="submit" className="primary">
+                Create contract
+              </button>
+            </div>
+          </form>
+        </Drawer>
+      ) : null}
+
+      {details ? (
+        <Drawer
+          title={details.contract.engagementName}
+          subtitle={`${details.contract.customerName} · ${details.contract.accountExecutiveName}`}
+          onClose={() => setDetails(null)}
+          wide
+        >
+          <div className="prepaid-detail-grid">
+            <article>
+              <span>Total Available</span>
+              <strong>{money(details.contract.totalAvailable)}</strong>
+            </article>
+            <article>
+              <span>Total Used</span>
+              <strong>{money(details.contract.totalUsed)}</strong>
+            </article>
+            <article>
+              <span>Remaining</span>
+              <strong>{money(details.contract.remainingBalance)}</strong>
+            </article>
+            <article>
+              <span>Balance %</span>
+              <strong>{percent(details.contract.balancePercent)}</strong>
+            </article>
+          </div>
+
+          <section className="prepaid-detail-section">
+            <h3>Credit history</h3>
+            {(details.credits || []).map((credit) => (
+              <article className="prepaid-history-item" key={credit.adjustmentId}>
+                <div>
+                  <strong>
+                    {credit.adjustmentType === 'credit_reversal'
+                      ? 'Reversal'
+                      : 'Credit'}
+                    {' · '}
+                    {money(credit.amount)}
+                  </strong>
+                  <span>
+                    {date(credit.awardedOn)} · {credit.awardedBy}
+                  </span>
+                  <p>{credit.reason}</p>
+                </div>
+                {permissions.canManage
+                  && credit.adjustmentType === 'credit_awarded'
+                  && !credit.reversesAdjustmentId ? (
+                    <button
+                      type="button"
+                      onClick={() => void reverseCredit(credit.adjustmentId)}
+                    >
+                      Reverse
+                    </button>
+                  ) : null}
+              </article>
+            ))}
+
+            {permissions.canManage ? (
+              <form className="prepaid-inline-form" onSubmit={awardCredit}>
+                <input
+                  required
+                  type="number"
+                  step="0.01"
+                  placeholder="Credit amount"
+                  value={creditForm.amount}
                   onChange={(event) =>
-                    setSchedule({
-                      ...schedule,
-                      weekdayIso: Number(event.target.value)
+                    setCreditForm({
+                      ...creditForm,
+                      amount: event.target.value
+                    })
+                  }
+                />
+                <input
+                  required
+                  type="date"
+                  value={creditForm.awardedOn}
+                  onChange={(event) =>
+                    setCreditForm({
+                      ...creditForm,
+                      awardedOn: event.target.value
+                    })
+                  }
+                />
+                <input
+                  required
+                  placeholder="Reason"
+                  value={creditForm.reason}
+                  onChange={(event) =>
+                    setCreditForm({
+                      ...creditForm,
+                      reason: event.target.value
+                    })
+                  }
+                />
+                <input
+                  placeholder="Reference"
+                  value={creditForm.reference}
+                  onChange={(event) =>
+                    setCreditForm({
+                      ...creditForm,
+                      reference: event.target.value
+                    })
+                  }
+                />
+                <button type="submit" className="primary">
+                  Award credit
+                </button>
+              </form>
+            ) : null}
+          </section>
+
+          <section className="prepaid-detail-section">
+            <h3>Notes</h3>
+            {(details.notes || []).map((note) => (
+              <article className="prepaid-history-item" key={note.noteId}>
+                <div>
+                  <strong>{note.category}</strong>
+                  <span>
+                    {new Date(note.createdAt).toLocaleString()} · {note.author}
+                  </span>
+                  <p>{note.noteText}</p>
+                </div>
+              </article>
+            ))}
+
+            {permissions.canManage ? (
+              <form className="prepaid-inline-form" onSubmit={addNote}>
+                <select
+                  value={noteForm.category}
+                  onChange={(event) =>
+                    setNoteForm({
+                      ...noteForm,
+                      category: event.target.value
                     })
                   }
                 >
-                  <option value="1">Monday</option>
-                  <option value="2">Tuesday</option>
-                  <option value="3">Wednesday</option>
-                  <option value="4">Thursday</option>
-                  <option value="5">Friday</option>
+                  <option value="general">General</option>
+                  <option value="credit">Credit</option>
+                  <option value="billing">Billing</option>
+                  <option value="contract">Contract</option>
+                  <option value="work-register">Work Register</option>
                 </select>
-              </label>
-
-              <label>
-                Send time
                 <input
-                  type="time"
-                  value={String(schedule.sendTime || '08:00').slice(0, 5)}
+                  required
+                  placeholder="Add an auditable note"
+                  value={noteForm.noteText}
                   onChange={(event) =>
-                    setSchedule({
-                      ...schedule,
-                      sendTime: event.target.value
+                    setNoteForm({
+                      ...noteForm,
+                      noteText: event.target.value
                     })
                   }
                 />
-              </label>
+                <button type="submit" className="primary">
+                  Add note
+                </button>
+              </form>
+            ) : null}
+          </section>
+        </Drawer>
+      ) : null}
 
-              <label>
-                Time zone
-                <input
-                  value={schedule.timeZone}
-                  onChange={(event) =>
-                    setSchedule({
-                      ...schedule,
-                      timeZone: event.target.value
-                    })
-                  }
-                />
-              </label>
+      {uploadOpen ? (
+        <Drawer
+          title="Upload prepaid balance workbook"
+          subtitle="VALIDATE BEFORE IMPORT"
+          onClose={() => {
+            setUploadOpen(false);
+            setUploadPreview(null);
+          }}
+          wide
+        >
+          <form className="prepaid-upload-form" onSubmit={previewUpload}>
+            <input ref={fileRef} type="file" accept=".xlsx" required />
+            <button type="submit" className="primary" disabled={uploadBusy}>
+              {uploadBusy ? 'Validating…' : 'Validate workbook'}
+            </button>
+          </form>
 
-              <label className="contracts-form-wide">
-                Subject
-                <input
-                  value={schedule.subjectTemplate}
-                  onChange={(event) =>
-                    setSchedule({
-                      ...schedule,
-                      subjectTemplate: event.target.value
-                    })
-                  }
-                />
-              </label>
-
-              <label className="contracts-form-wide">
-                Email introduction
-                <textarea
-                  rows="4"
-                  value={schedule.bodyIntroduction}
-                  onChange={(event) =>
-                    setSchedule({
-                      ...schedule,
-                      bodyIntroduction: event.target.value
-                    })
-                  }
-                />
-              </label>
-
-              <label>
-                Low-balance threshold %
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="1"
-                  value={schedule.lowBalanceThresholdPercent}
-                  onChange={(event) =>
-                    setSchedule({
-                      ...schedule,
-                      lowBalanceThresholdPercent:
-                        Number(event.target.value)
-                    })
-                  }
-                />
-              </label>
-
-              <label>
-                Expiration warning days
-                <input
-                  type="number"
-                  min="0"
-                  value={schedule.expirationWarningDays}
-                  onChange={(event) =>
-                    setSchedule({
-                      ...schedule,
-                      expirationWarningDays:
-                        Number(event.target.value)
-                    })
-                  }
-                />
-              </label>
-
-              <label>
-                Retention months
-                <input
-                  type="number"
-                  min="1"
-                  max="120"
-                  value={schedule.retentionMonths}
-                  onChange={(event) =>
-                    setSchedule({
-                      ...schedule,
-                      retentionMonths: Number(event.target.value)
-                    })
-                  }
-                />
-              </label>
-
-              <label className="contracts-checkbox">
-                <input
-                  type="checkbox"
-                  checked={schedule.includeExpired}
-                  onChange={(event) =>
-                    setSchedule({
-                      ...schedule,
-                      includeExpired: event.target.checked
-                    })
-                  }
-                />
-                Include expired contracts
-              </label>
-
-              <div className="contracts-recipient-note contracts-form-wide">
-                To: active Account Executive / Sales users from the system.
-                Cc: active Project Team Coordinator and Executive users.
-                Invalid or inactive addresses are excluded and audited.
+          {uploadPreview ? (
+            <>
+              <div className="prepaid-detail-grid">
+                <article>
+                  <span>Total rows</span>
+                  <strong>{uploadPreview.summary.totalRows}</strong>
+                </article>
+                <article>
+                  <span>Valid</span>
+                  <strong>{uploadPreview.summary.validRows}</strong>
+                </article>
+                <article>
+                  <span>Invalid</span>
+                  <strong>{uploadPreview.summary.invalidRows}</strong>
+                </article>
+                <article>
+                  <span>Duplicates</span>
+                  <strong>{uploadPreview.summary.duplicateRows}</strong>
+                </article>
               </div>
 
-              <div className="contracts-form-actions">
-                <button type="button" onClick={() => setScheduleOpen(false)}>
-                  Cancel
-                </button>
-                <button type="submit" className="primary-action">
-                  Save schedule
+              <div className="prepaid-table-scroll">
+                <table className="prepaid-table compact">
+                  <thead>
+                    <tr>
+                      <th>Row</th>
+                      <th>Status</th>
+                      <th>Change</th>
+                      <th>AE</th>
+                      <th>Customer</th>
+                      <th>Engagement</th>
+                      <th>Contract Manager</th>
+                      <th>Validation</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(uploadPreview.rows || []).map((row) => (
+                      <tr key={row.sourceRowNumber}>
+                        <td>{row.sourceRowNumber}</td>
+                        <td>{row.rowStatus}</td>
+                        <td>{row.changeType}</td>
+                        <td>{row.accountExecutiveText}</td>
+                        <td>{row.customerText}</td>
+                        <td>{row.engagementName}</td>
+                        <td>{row.contractManagerText}</td>
+                        <td>
+                          {(row.validationMessages || []).join(' · ') || 'Ready'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="prepaid-form-actions">
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={
+                    uploadBusy
+                    || Number(uploadPreview.summary.invalidRows) > 0
+                  }
+                  onClick={() => void confirmUpload()}
+                >
+                  Confirm import
                 </button>
               </div>
-            </form>
-          </aside>
-        </div>
+            </>
+          ) : null}
+        </Drawer>
+      ) : null}
+
+      {scheduleOpen && schedule ? (
+        <Drawer
+          title="Weekly email automation"
+          subtitle="ADMIN · SUPERADMIN · PROJECT TEAM COORDINATOR"
+          onClose={() => setScheduleOpen(false)}
+        >
+          <form className="prepaid-form-grid" onSubmit={saveSchedule}>
+            <label className="checkbox full">
+              <input
+                type="checkbox"
+                checked={Boolean(schedule.isEnabled)}
+                onChange={(event) =>
+                  setSchedule({
+                    ...schedule,
+                    isEnabled: event.target.checked
+                  })
+                }
+              />
+              Enable weekly workbook email
+            </label>
+
+            {[
+              ['weekdayIso', 'Weekday (1–7)', 'number'],
+              ['sendTime', 'Send time', 'time'],
+              ['timeZone', 'Time zone', 'text'],
+              ['subjectTemplate', 'Subject', 'text'],
+              ['lowBalanceThresholdPercent', 'Low-balance threshold %', 'number'],
+              ['expirationWarningDays', 'Expiration warning days', 'number'],
+              ['retentionMonths', 'Retention months', 'number']
+            ].map(([name, label, type]) => (
+              <label key={name}>
+                {label}
+                <input
+                  type={type}
+                  value={schedule[name] ?? ''}
+                  onChange={(event) =>
+                    setSchedule({
+                      ...schedule,
+                      [name]: event.target.value
+                    })
+                  }
+                />
+              </label>
+            ))}
+
+            <label className="full">
+              Email introduction
+              <textarea
+                rows="5"
+                value={schedule.bodyIntroduction || ''}
+                onChange={(event) =>
+                  setSchedule({
+                    ...schedule,
+                    bodyIntroduction: event.target.value
+                  })
+                }
+              />
+            </label>
+
+            <label className="checkbox full">
+              <input
+                type="checkbox"
+                checked={Boolean(schedule.includeExpired)}
+                onChange={(event) =>
+                  setSchedule({
+                    ...schedule,
+                    includeExpired: event.target.checked
+                  })
+                }
+              />
+              Include expired contracts
+            </label>
+
+            <div className="prepaid-form-actions full">
+              <button type="button" onClick={() => setScheduleOpen(false)}>
+                Cancel
+              </button>
+              <button type="submit" className="primary">
+                Save schedule
+              </button>
+            </div>
+          </form>
+        </Drawer>
       ) : null}
     </section>
   );

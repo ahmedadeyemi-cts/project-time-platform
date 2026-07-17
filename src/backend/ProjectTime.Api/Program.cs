@@ -36134,6 +36134,7 @@ app.MapSellCommercialReadModelEndpoints();
 
 app.MapContractsEndpoints();
 app.MapContractsPrepaidModule();
+app.MapContractsPrepaidManagementModule();
 
 app.Run();
 
