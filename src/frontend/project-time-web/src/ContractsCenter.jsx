@@ -77,6 +77,58 @@ function date(value) {
     : '—';
 }
 
+function friendlyNameFromEmail(email) {
+  const localPart = String(email || '').split('@')[0];
+
+  return localPart
+    .split(/[._\-\s]+/)
+    .filter(Boolean)
+    .map((word) =>
+      word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+    )
+    .join(' ');
+}
+
+function userOptionId(item) {
+  return item?.userId || item?.UserId || '';
+}
+
+function userOptionEmail(item) {
+  return String(item?.email || item?.Email || '').trim();
+}
+
+function userOptionName(item) {
+  const email = userOptionEmail(item);
+  const rawName = String(
+    item?.displayName || item?.DisplayName || ''
+  ).trim();
+
+  if (rawName && rawName.toLowerCase() !== email.toLowerCase()) {
+    return rawName;
+  }
+
+  return friendlyNameFromEmail(email) || email || 'Unnamed user';
+}
+
+function userOptionLabel(item) {
+  const name = userOptionName(item);
+  const email = userOptionEmail(item);
+
+  return email && name.toLowerCase() !== email.toLowerCase()
+    ? `${name} — ${email}`
+    : name;
+}
+
+function customerOptionId(item) {
+  return item?.clientId || item?.ClientId || '';
+}
+
+function customerOptionName(item) {
+  return String(
+    item?.customerName || item?.CustomerName || 'Unnamed customer'
+  ).trim();
+}
+
 const emptyContract = {
   clientId: '',
   accountExecutiveUserId: '',
@@ -682,11 +734,15 @@ export default function ContractsCenter() {
                 }
               >
                 <option value="">Select Customer Directory record</option>
-                {(options?.customers || []).map((item) => (
-                  <option key={item.clientId} value={item.clientId}>
-                    {item.customerName}
-                  </option>
-                ))}
+                {(options?.customers || []).map((item) => {
+                  const clientId = customerOptionId(item);
+
+                  return (
+                    <option key={clientId} value={clientId}>
+                      {customerOptionName(item)}
+                    </option>
+                  );
+                })}
               </select>
             </label>
 
@@ -703,11 +759,18 @@ export default function ContractsCenter() {
                 }
               >
                 <option value="">Select AE / Sales Team member</option>
-                {(options?.accountExecutives || []).map((item) => (
-                  <option key={item.userId} value={item.userId}>
-                    {item.displayName} — {item.email}
-                  </option>
-                ))}
+                {(options?.accountExecutives || []).map((item) => {
+                  const userId = userOptionId(item);
+
+                  return (
+                    <option
+                      key={userId || userOptionEmail(item)}
+                      value={userId}
+                    >
+                      {userOptionLabel(item)}
+                    </option>
+                  );
+                })}
               </select>
             </label>
 
@@ -724,17 +787,50 @@ export default function ContractsCenter() {
                 }
               >
                 <option value="">Select Project Team Coordinator</option>
-                {(options?.coordinators || []).map((item) => (
-                  <option key={item.userId} value={item.userId}>
-                    {item.displayName} — {item.email}
-                  </option>
-                ))}
+                {(options?.coordinators || []).map((item) => {
+                  const userId = userOptionId(item);
+
+                  return (
+                    <option
+                      key={userId || userOptionEmail(item)}
+                      value={userId}
+                    >
+                      {userOptionLabel(item)}
+                    </option>
+                  );
+                })}
               </select>
             </label>
 
+            <fieldset className="prepaid-commercial-fields full">
+              <legend>Commercial identifiers</legend>
+              <div className="prepaid-commercial-grid">
+                {[
+                  ['poQuote', 'PO/Quote', 'Customer PO or quote reference'],
+                  ['sellQuote', 'SELL Quote', 'SELL quote number'],
+                  ['salesforceId', 'Salesforce ID', 'Salesforce opportunity or record ID'],
+                  ['certiniaId', 'Certinia ID', 'Certinia contract or engagement ID']
+                ].map(([name, label, placeholder]) => (
+                  <label key={name}>
+                    {label}
+                    <input
+                      type="text"
+                      value={createForm[name]}
+                      placeholder={placeholder}
+                      onChange={(event) =>
+                        setCreateForm({
+                          ...createForm,
+                          [name]: event.target.value
+                        })
+                      }
+                    />
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+
             {[
               ['engagementName', 'Engagement Name', 'text', true],
-              ['poQuote', 'PO/Quote', 'text', false],
               ['contractStartDate', 'Contract Start Date', 'date', true],
               ['contractEndDate', 'Contract End Date', 'date', true],
               ['fixedFeeItem', 'Fixed Fee Item', 'text', false],
@@ -744,10 +840,7 @@ export default function ContractsCenter() {
               ['pendingAmount', 'Pending Hours', 'number', false],
               ['approvedAmount', 'Approved Hours', 'number', false],
               ['totalExpenses', 'Total Expenses', 'number', false],
-              ['adjustments', 'Adjustments', 'number', false],
-              ['certiniaId', 'Certinia ID', 'text', false],
-              ['sellQuote', 'SELL Quote', 'text', false],
-              ['salesforceId', 'Salesforce ID', 'text', false]
+              ['adjustments', 'Adjustments', 'number', false]
             ].map(([name, label, type, required]) => (
               <label key={name}>
                 {label}
