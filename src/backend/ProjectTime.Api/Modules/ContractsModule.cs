@@ -1501,19 +1501,62 @@ public static class ContractsModule
 
     private static string ConnectionString()
     {
-        var value =
-            Environment.GetEnvironmentVariable(
-                "PROJECTPULSE_DB_CONNECTION")
-            ?? Environment.GetEnvironmentVariable(
-                "PROJECTTIME_DB_CONNECTION");
-
-        if (string.IsNullOrWhiteSpace(value))
+        var connectionVariableNames = new[]
         {
-            throw new InvalidOperationException(
-                "Missing database connection configuration.");
+            "PROJECTPULSE_CONNECTION_STRING",
+            "PROJECTTIME_DATABASE_CONNECTION",
+            "ConnectionStrings__ProjectPulse",
+            "ConnectionStrings__ProjectTime",
+            "ConnectionStrings__DefaultConnection",
+            "PROJECTPULSE_DB_CONNECTION",
+            "PROJECTTIME_DB_CONNECTION"
+        };
+
+        foreach (var variableName in connectionVariableNames)
+        {
+            var configured =
+                Environment.GetEnvironmentVariable(variableName);
+
+            if (!string.IsNullOrWhiteSpace(configured))
+            {
+                return configured;
+            }
         }
 
-        return value;
+        var host =
+            Environment.GetEnvironmentVariable("PTP_DB_HOST");
+        var port =
+            Environment.GetEnvironmentVariable("PTP_DB_PORT")
+            ?? "5432";
+        var database =
+            Environment.GetEnvironmentVariable("PTP_DB_NAME");
+        var username =
+            Environment.GetEnvironmentVariable("PTP_DB_USER");
+        var password =
+            Environment.GetEnvironmentVariable("PTP_DB_PASSWORD");
+
+        if (!string.IsNullOrWhiteSpace(host)
+            && !string.IsNullOrWhiteSpace(database)
+            && !string.IsNullOrWhiteSpace(username)
+            && !string.IsNullOrWhiteSpace(password))
+        {
+            var builder = new NpgsqlConnectionStringBuilder
+            {
+                Host = host,
+                Port = int.TryParse(port, out var parsedPort)
+                    ? parsedPort
+                    : 5432,
+                Database = database,
+                Username = username,
+                Password = password,
+                SslMode = SslMode.Require
+            };
+
+            return builder.ConnectionString;
+        }
+
+        throw new InvalidOperationException(
+            "Missing database connection configuration.");
     }
 
     private sealed record AccessResult(
