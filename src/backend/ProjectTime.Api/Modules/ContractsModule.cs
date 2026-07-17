@@ -25,7 +25,7 @@ public static class ContractsModule
     {
         app.MapGet(
             "/api/contracts/overview",
-            GetOverviewAsync);
+            (Func<HttpContext, Task<IResult>>)GetOverviewAsync);
 
         app.MapGet(
             "/api/contracts/help",
@@ -53,7 +53,7 @@ public static class ContractsModule
 
         app.MapGet(
             "/api/contracts/report-preview",
-            GetReportPreviewAsync);
+            (Func<HttpContext, Task<IResult>>)GetReportPreviewAsync);
 
         return app;
     }
