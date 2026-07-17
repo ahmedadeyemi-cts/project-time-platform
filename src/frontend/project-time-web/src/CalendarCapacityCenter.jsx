@@ -147,6 +147,72 @@ function getInitials(value) {
   return `${words[0][0] || ''}${words.at(-1)?.[0] || ''}`.toUpperCase();
 }
 
+const PRESENCE_LABELS = {
+  available: 'Available',
+  away: 'Away',
+  beRightBack: 'Be right back',
+  busy: 'Busy',
+  doNotDisturb: 'Do not disturb',
+  focusing: 'Focusing',
+  inACall: 'In a call',
+  inAMeeting: 'In a meeting',
+  offline: 'Offline',
+  outOfOffice: 'Out of office',
+  presenting: 'Presenting',
+  presenceUnknown: 'Status unavailable'
+};
+
+const DETAILED_PRESENCE_STATES = new Set([
+  'beRightBack',
+  'focusing',
+  'inACall',
+  'inAMeeting',
+  'outOfOffice',
+  'presenting'
+]);
+
+function presenceState(presence) {
+  const activity = String(
+    presence?.activity || ''
+  ).trim();
+  const availability = String(
+    presence?.availability || ''
+  ).trim();
+
+  if (DETAILED_PRESENCE_STATES.has(activity)) {
+    return activity;
+  }
+
+  return availability
+    || activity
+    || 'presenceUnknown';
+}
+
+function presenceCssState(presence) {
+  return presenceState(presence)
+    .replace(/([a-z])([A-Z])/g, '$1-$2')
+    .toLowerCase();
+}
+
+function presenceLabel(presence) {
+  const state = presenceState(presence);
+  return PRESENCE_LABELS[state] || 'Status unavailable';
+}
+
+function PresenceBadge({ presence }) {
+  return (
+    <span
+      className={[
+        'calendar-resource-presence',
+        `presence-${presenceCssState(presence)}`
+      ].join(' ')}
+    >
+      <span aria-hidden="true" />
+      {presenceLabel(presence)}
+    </span>
+  );
+}
+
 function parseDate(value) {
   if (!value) {
     return null;
@@ -357,7 +423,7 @@ function getMonthWeeks(start, end) {
   return weeks;
 }
 
-function ResourceAvatar({ resource }) {
+function ResourceAvatar({ resource, presence }) {
   return (
     <div className="calendar-resource-avatar">
       {resource.profilePhotoDataUrl ? (
@@ -368,11 +434,24 @@ function ResourceAvatar({ resource }) {
       ) : (
         <span>{getInitials(resource.displayName)}</span>
       )}
+
+      <span
+        className={[
+          'calendar-presence-dot',
+          `presence-${presenceCssState(presence)}`
+        ].join(' ')}
+        title={presenceLabel(presence)}
+        aria-label={presenceLabel(presence)}
+      />
     </div>
   );
 }
 
-function ResourceProfile({ resource, compact = false }) {
+function ResourceProfile({
+  resource,
+  presence,
+  compact = false
+}) {
   const utilization =
     resource.utilizationPercent
     ?? resource.capacityPercent
@@ -399,12 +478,16 @@ function ResourceProfile({ resource, compact = false }) {
       ].filter(Boolean).join(' ')}
     >
       <div className="calendar-resource-identity">
-        <ResourceAvatar resource={resource} />
+        <ResourceAvatar
+          resource={resource}
+          presence={presence}
+        />
 
         <div>
           <strong>{resource.displayName}</strong>
           <span>{resource.jobTitle || 'Engineer'}</span>
           <small>{resource.teamName}</small>
+          <PresenceBadge presence={presence} />
         </div>
       </div>
 
@@ -502,7 +585,11 @@ function DayCell({ resource, day, period = false }) {
   );
 }
 
-function PeriodCapacityBoard({ scheduleRows, range }) {
+function PeriodCapacityBoard({
+  scheduleRows,
+  range,
+  presenceByUserId
+}) {
   const monthSegments = getMonthSegments(range.start, range.end);
 
   return (
@@ -524,7 +611,15 @@ function PeriodCapacityBoard({ scheduleRows, range }) {
                 className="calendar-period-resource"
                 key={`${month.key}-${resource.email}`}
               >
-                <ResourceProfile resource={resource} compact />
+                <ResourceProfile
+                  resource={resource}
+                  presence={
+                    presenceByUserId[
+                      String(resource.userId)
+                    ]
+                  }
+                  compact
+                />
 
                 <div className="calendar-period-weeks">
                   {weeks.map((week) => (
@@ -626,7 +721,10 @@ function buildAgendaGroups(scheduleRows) {
     });
 }
 
-function AgendaBoard({ scheduleRows }) {
+function AgendaBoard({
+  scheduleRows,
+  presenceByUserId
+}) {
   const days = buildAgendaGroups(scheduleRows);
 
   if (!days.length) {
@@ -662,7 +760,14 @@ function AgendaBoard({ scheduleRows }) {
                 key={`${dateKey(day.date)}-${entry.resource.email}`}
               >
                 <header>
-                  <ResourceAvatar resource={entry.resource} />
+                  <ResourceAvatar
+                    resource={entry.resource}
+                    presence={
+                      presenceByUserId[
+                        String(entry.resource.userId)
+                      ]
+                    }
+                  />
 
                   <div>
                     <strong>{entry.resource.displayName}</strong>
@@ -671,6 +776,13 @@ function AgendaBoard({ scheduleRows }) {
                       {' · '}
                       {entry.resource.teamName}
                     </span>
+                    <PresenceBadge
+                      presence={
+                        presenceByUserId[
+                          String(entry.resource.userId)
+                        ]
+                      }
+                    />
                   </div>
 
                   <small>
@@ -783,10 +895,13 @@ export default function CalendarCapacityCenter() {
   const [view, setView] = useState('day');
   const [anchor, setAnchor] = useState(() => new Date());
   const [schedule, setSchedule] = useState(null);
+  const [presenceByUserId, setPresenceByUserId] = useState({});
+  const [presenceUpdatedAt, setPresenceUpdatedAt] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [calendarReady, setCalendarReady] = useState(false);
   const requestSequence = useRef(0);
+  const presenceRequestSequence = useRef(0);
 
   useEffect(() => {
     api('/api/calendar/resources')
@@ -853,6 +968,46 @@ export default function CalendarCapacityCenter() {
     'nextquarter'
   ].includes(view);
 
+  const selectedPresenceResourceIds = useMemo(() => {
+    if (scope === 'individual') {
+      return userId ? [String(userId)] : [];
+    }
+
+    if (scope === 'team') {
+      return resources
+        .filter((resource) =>
+          String(resource.teamName || '')
+            .localeCompare(
+              String(team || ''),
+              undefined,
+              { sensitivity: 'accent' }
+            ) === 0
+        )
+        .map((resource) => String(resource.userId));
+    }
+
+    if (scope === 'department') {
+      return resources
+        .filter((resource) =>
+          String(resource.departmentName || '')
+            .localeCompare(
+              String(department || ''),
+              undefined,
+              { sensitivity: 'accent' }
+            ) === 0
+        )
+        .map((resource) => String(resource.userId));
+    }
+
+    return [];
+  }, [
+    department,
+    resources,
+    scope,
+    team,
+    userId
+  ]);
+
   const hasSelection = useMemo(() => {
     if (scope === 'individual') {
       return Boolean(userId);
@@ -866,6 +1021,66 @@ export default function CalendarCapacityCenter() {
       ? Boolean(department)
       : false;
   }, [scope, userId, team, department]);
+
+  const loadPresence = useCallback(async () => {
+    if (
+      !calendarReady
+      || selectedPresenceResourceIds.length === 0
+      || document.visibilityState === 'hidden'
+    ) {
+      return;
+    }
+
+    const requestId = ++presenceRequestSequence.current;
+
+    try {
+      const payload = await api('/api/calendar/presence', {
+        method: 'POST',
+        body: JSON.stringify({
+          resourceIds: selectedPresenceResourceIds
+        })
+      });
+
+      if (requestId !== presenceRequestSequence.current) {
+        return;
+      }
+
+      const nextPresence = {};
+
+      (payload.resources || []).forEach((presence) => {
+        nextPresence[String(presence.userId)] = {
+          availability:
+            presence.availability || 'presenceUnknown',
+          activity:
+            presence.activity || 'presenceUnknown'
+        };
+      });
+
+      setPresenceByUserId(nextPresence);
+      setPresenceUpdatedAt(
+        payload.retrievedAt || new Date().toISOString()
+      );
+    } catch {
+      if (requestId !== presenceRequestSequence.current) {
+        return;
+      }
+
+      const unavailable = {};
+
+      selectedPresenceResourceIds.forEach((resourceId) => {
+        unavailable[String(resourceId)] = {
+          availability: 'presenceUnknown',
+          activity: 'presenceUnknown'
+        };
+      });
+
+      setPresenceByUserId(unavailable);
+      setPresenceUpdatedAt(new Date().toISOString());
+    }
+  }, [
+    calendarReady,
+    selectedPresenceResourceIds
+  ]);
 
   const load = useCallback(async () => {
     if (!calendarReady || !hasSelection) {
@@ -951,6 +1166,49 @@ export default function CalendarCapacityCenter() {
     };
   }, [calendarReady, hasSelection, load]);
 
+  useEffect(() => {
+    if (
+      !calendarReady
+      || selectedPresenceResourceIds.length === 0
+    ) {
+      presenceRequestSequence.current += 1;
+      setPresenceByUserId({});
+      setPresenceUpdatedAt('');
+      return undefined;
+    }
+
+    const refreshPresence = () => {
+      if (document.visibilityState === 'visible') {
+        void loadPresence();
+      }
+    };
+
+    refreshPresence();
+
+    const interval = window.setInterval(
+      refreshPresence,
+      60000
+    );
+
+    document.addEventListener(
+      'visibilitychange',
+      refreshPresence
+    );
+
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener(
+        'visibilitychange',
+        refreshPresence
+      );
+      presenceRequestSequence.current += 1;
+    };
+  }, [
+    calendarReady,
+    loadPresence,
+    selectedPresenceResourceIds.length
+  ]);
+
   function selectView(nextView) {
     const today = new Date();
 
@@ -1003,7 +1261,8 @@ export default function CalendarCapacityCenter() {
           <h1>Resource & Team Calendar Capacity</h1>
           <p>
             Review real Outlook work, Microsoft profile photos,
-            engineer utilization, and remaining capacity.
+            live Teams presence, engineer utilization, and
+            remaining capacity.
           </p>
         </div>
       </header>
@@ -1162,7 +1421,10 @@ export default function CalendarCapacityCenter() {
           <button
             type="button"
             className="primary-action calendar-load-button"
-            onClick={() => void load()}
+            onClick={() => {
+              void load();
+              void loadPresence();
+            }}
             disabled={loading || !calendarReady || !hasSelection}
           >
             {loading ? 'Loading…' : 'Refresh calendar'}
@@ -1188,7 +1450,10 @@ export default function CalendarCapacityCenter() {
             </span>
           </div>
 
-          <AgendaBoard scheduleRows={scheduleRows} />
+          <AgendaBoard
+            scheduleRows={scheduleRows}
+            presenceByUserId={presenceByUserId}
+          />
         </section>
       ) : (
         <section className="calendar-resource-board">
@@ -1213,6 +1478,7 @@ export default function CalendarCapacityCenter() {
             <PeriodCapacityBoard
               scheduleRows={scheduleRows}
               range={range}
+              presenceByUserId={presenceByUserId}
             />
           ) : (
             <div className="calendar-resource-board-scroll">
@@ -1249,7 +1515,14 @@ export default function CalendarCapacityCenter() {
                     className="calendar-resource-row"
                     key={resource.email}
                   >
-                    <ResourceProfile resource={resource} />
+                    <ResourceProfile
+                      resource={resource}
+                      presence={
+                        presenceByUserId[
+                          String(resource.userId)
+                        ]
+                      }
+                    />
 
                     {visibleDays.map((day) => (
                       <DayCell
@@ -1277,7 +1550,19 @@ export default function CalendarCapacityCenter() {
         {' '}
         Outlook titles appear when Microsoft Graph supplies them.
         Private events display as “Private appointment.” Events whose
-        details are not shared display as “Calendar event.”
+        details are not shared display as “Calendar event.” Live Teams
+        presence refreshes every 60 seconds while this page is visible.
+        {presenceUpdatedAt ? (
+          <>
+            {' '}
+            Last presence update:
+            {' '}
+            {new Date(presenceUpdatedAt).toLocaleTimeString(undefined, {
+              hour: 'numeric',
+              minute: '2-digit'
+            })}.
+          </>
+        ) : null}
       </footer>
     </div>
   );

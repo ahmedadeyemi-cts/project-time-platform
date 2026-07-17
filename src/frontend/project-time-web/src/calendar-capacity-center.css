@@ -260,7 +260,8 @@
 .calendar-resource-avatar {
   width: 52px;
   height: 52px;
-  overflow: hidden;
+  position: relative;
+  overflow: visible;
   border: 2px solid #d8e2ee;
   border-radius: 50%;
   background: #eaf1f9;
@@ -270,6 +271,7 @@
 .calendar-resource-avatar img {
   width: 100%;
   height: 100%;
+  border-radius: 50%;
   object-fit: cover;
 }
 
@@ -279,7 +281,110 @@
   width: 100%;
   height: 100%;
   color: #174c79;
+  border-radius: 50%;
   font-weight: 800;
+}
+
+.calendar-presence-dot {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 14px;
+  height: 14px;
+  box-sizing: border-box;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  background: #8995a7;
+}
+
+.calendar-resource-presence {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  margin-top: 3px;
+  color: #5e708a;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.calendar-resource-presence > span {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  border-radius: 50%;
+  background: #8995a7;
+}
+
+.presence-available,
+.presence-available > span {
+  background: #2e9c5b;
+}
+
+.calendar-resource-presence.presence-available {
+  color: #237747;
+  background: transparent;
+}
+
+.presence-busy,
+.presence-in-a-call,
+.presence-in-a-meeting,
+.presence-presenting,
+.presence-focusing,
+.presence-busy > span,
+.presence-in-a-call > span,
+.presence-in-a-meeting > span,
+.presence-presenting > span,
+.presence-focusing > span {
+  background: #cc3f46;
+}
+
+.calendar-resource-presence.presence-busy,
+.calendar-resource-presence.presence-in-a-call,
+.calendar-resource-presence.presence-in-a-meeting,
+.calendar-resource-presence.presence-presenting,
+.calendar-resource-presence.presence-focusing {
+  color: #9c2d33;
+  background: transparent;
+}
+
+.presence-do-not-disturb,
+.presence-do-not-disturb > span {
+  background: #a92d7a;
+}
+
+.calendar-resource-presence.presence-do-not-disturb {
+  color: #7d205a;
+  background: transparent;
+}
+
+.presence-away,
+.presence-be-right-back,
+.presence-out-of-office,
+.presence-away > span,
+.presence-be-right-back > span,
+.presence-out-of-office > span {
+  background: #d59324;
+}
+
+.calendar-resource-presence.presence-away,
+.calendar-resource-presence.presence-be-right-back,
+.calendar-resource-presence.presence-out-of-office {
+  color: #8a5c10;
+  background: transparent;
+}
+
+.presence-offline,
+.presence-presence-unknown,
+.presence-offline > span,
+.presence-presence-unknown > span {
+  background: #8995a7;
+}
+
+.calendar-resource-presence.presence-offline,
+.calendar-resource-presence.presence-presence-unknown {
+  color: #68768a;
+  background: transparent;
 }
 
 .calendar-resource-utilization {

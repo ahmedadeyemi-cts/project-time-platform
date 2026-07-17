@@ -35,7 +35,9 @@ public static class CalendarCapacityModule
                 "agenda"
             },
             futureMonthNavigation = true,
-            microsoftProfilePhotos = "graph_cached"
+            microsoftProfilePhotos = "graph_cached",
+            microsoftPresence = "graph_realtime",
+            presenceRefreshSeconds = 60
         }));
 
         app.MapGet("/api/calendar/resources", async (HttpContext context) =>
@@ -118,6 +120,244 @@ public static class CalendarCapacityModule
                     .Select(g => new { departmentName = g.Key, resourceCount = g.Count(), resourceIds = g.Select(x => x.UserId).ToArray() })
                     .OrderBy(x => x.departmentName, StringComparer.OrdinalIgnoreCase)
             });
+        });
+
+        app.MapPost("/api/calendar/presence", async (
+            PresenceRequest request,
+            HttpContext context) =>
+        {
+            var actor = SessionUserId(context);
+
+            if (actor is null)
+            {
+                return Results.Json(
+                    new
+                    {
+                        status = "session_required",
+                        message = "A ProjectPulse session is required."
+                    },
+                    statusCode: 401);
+            }
+
+            var requestedIds = request.ResourceIds
+                ?.Distinct()
+                .Take(650)
+                .ToArray()
+                ?? Array.Empty<Guid>();
+
+            if (requestedIds.Length == 0)
+            {
+                return Results.BadRequest(new
+                {
+                    status = "no_resources",
+                    message = "Select at least one calendar resource."
+                });
+            }
+
+            await using var connection =
+                new NpgsqlConnection(ConnectionString());
+
+            await connection.OpenAsync();
+
+            var presenceResources =
+                new List<PresenceResourceRow>();
+
+            await using (var command = new NpgsqlCommand(
+                "SELECT u.user_id, "
+                + "NULLIF(to_jsonb(u)->>'entra_object_id', ''), "
+                + "u.email "
+                + "FROM app_users u "
+                + "WHERE u.is_active = TRUE "
+                + "AND COALESCE(u.login_enabled, TRUE) = TRUE "
+                + "AND u.user_id = ANY(@ids);",
+                connection))
+            {
+                command.Parameters.AddWithValue(
+                    "ids",
+                    requestedIds);
+
+                await using var reader =
+                    await command.ExecuteReaderAsync();
+
+                while (await reader.ReadAsync())
+                {
+                    presenceResources.Add(
+                        new PresenceResourceRow(
+                            reader.GetGuid(0),
+                            reader.IsDBNull(1)
+                                ? null
+                                : reader.GetString(1),
+                            reader.GetString(2)));
+                }
+            }
+
+            if (presenceResources.Count == 0)
+            {
+                return Results.BadRequest(new
+                {
+                    status = "no_resources",
+                    message = "No active resources were found."
+                });
+            }
+
+            var graphResources = presenceResources
+                .Where(resource =>
+                    !string.IsNullOrWhiteSpace(
+                        resource.EntraObjectId))
+                .GroupBy(
+                    resource => resource.EntraObjectId!,
+                    StringComparer.OrdinalIgnoreCase)
+                .Select(group => group.First())
+                .Take(650)
+                .ToArray();
+
+            if (graphResources.Length == 0)
+            {
+                return Results.Ok(new
+                {
+                    status = "presence_unavailable",
+                    retrievedAt = DateTimeOffset.UtcNow,
+                    resources = presenceResources.Select(resource =>
+                        new
+                        {
+                            userId = resource.UserId,
+                            availability = "presenceUnknown",
+                            activity = "presenceUnknown"
+                        })
+                });
+            }
+
+            try
+            {
+                var token = await GraphToken();
+
+                using var client = new HttpClient();
+                client.DefaultRequestHeaders.Authorization =
+                    new AuthenticationHeaderValue(
+                        "Bearer",
+                        token);
+
+                var graphBody = new
+                {
+                    ids = graphResources
+                        .Select(resource =>
+                            resource.EntraObjectId!)
+                        .ToArray()
+                };
+
+                using var content = new StringContent(
+                    JsonSerializer.Serialize(graphBody),
+                    Encoding.UTF8,
+                    "application/json");
+
+                var response = await client.PostAsync(
+                    "https://graph.microsoft.com/v1.0/"
+                    + "communications/getPresencesByUserId",
+                    content);
+
+                var raw =
+                    await response.Content.ReadAsStringAsync();
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    return Results.Ok(new
+                    {
+                        status = "presence_unavailable",
+                        graphHttpStatus =
+                            (int)response.StatusCode,
+                        retrievedAt = DateTimeOffset.UtcNow,
+                        resources = presenceResources.Select(
+                            resource => new
+                            {
+                                userId = resource.UserId,
+                                availability =
+                                    "presenceUnknown",
+                                activity =
+                                    "presenceUnknown"
+                            })
+                    });
+                }
+
+                using var document =
+                    JsonDocument.Parse(raw);
+
+                var presenceByGraphId =
+                    new Dictionary<
+                        string,
+                        (string Availability, string Activity)>(
+                            StringComparer.OrdinalIgnoreCase);
+
+                if (document.RootElement.TryGetProperty(
+                    "value",
+                    out var values))
+                {
+                    foreach (var value in values.EnumerateArray())
+                    {
+                        var graphId =
+                            Str(value, "id");
+
+                        if (string.IsNullOrWhiteSpace(graphId))
+                        {
+                            continue;
+                        }
+
+                        presenceByGraphId[graphId] = (
+                            Str(value, "availability")
+                                ?? "presenceUnknown",
+                            Str(value, "activity")
+                                ?? "presenceUnknown");
+                    }
+                }
+
+                return Results.Ok(new
+                {
+                    status = "presence_loaded",
+                    retrievedAt = DateTimeOffset.UtcNow,
+                    resources = presenceResources.Select(
+                        resource =>
+                        {
+                            if (!string.IsNullOrWhiteSpace(
+                                    resource.EntraObjectId)
+                                && presenceByGraphId.TryGetValue(
+                                    resource.EntraObjectId,
+                                    out var presence))
+                            {
+                                return new
+                                {
+                                    userId = resource.UserId,
+                                    availability =
+                                        presence.Availability,
+                                    activity =
+                                        presence.Activity
+                                };
+                            }
+
+                            return new
+                            {
+                                userId = resource.UserId,
+                                availability =
+                                    "presenceUnknown",
+                                activity =
+                                    "presenceUnknown"
+                            };
+                        })
+                });
+            }
+            catch
+            {
+                return Results.Ok(new
+                {
+                    status = "presence_unavailable",
+                    retrievedAt = DateTimeOffset.UtcNow,
+                    resources = presenceResources.Select(resource =>
+                        new
+                        {
+                            userId = resource.UserId,
+                            availability = "presenceUnknown",
+                            activity = "presenceUnknown"
+                        })
+                });
+            }
         });
 
         app.MapPost("/api/calendar/schedule", async (ScheduleRequest request, HttpContext context) =>
@@ -698,5 +938,13 @@ public static class CalendarCapacityModule
         string JobTitle,
         string ProfilePhotoDataUrl,
         DateTimeOffset? ProfilePhotoUpdatedAt);
+    private sealed record PresenceResourceRow(
+        Guid UserId,
+        string? EntraObjectId,
+        string Email);
+
+    private sealed record PresenceRequest(
+        Guid[]? ResourceIds);
+
     private sealed record ScheduleRequest(DateTimeOffset Start, DateTimeOffset End, string? TimeZone, string? View, int? IntervalMinutes, Guid[]? ResourceIds, string? TeamName, string? DepartmentName);
 }
