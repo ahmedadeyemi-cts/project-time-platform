@@ -5142,8 +5142,7 @@ export default function App() {
 
   function buildSmartLogReviewCards() {
     const lines = smartLogText
-      .split(/
-+/)
+      .split(/\n+/)
       .map((line) => line.trim())
       .filter(Boolean);
 
