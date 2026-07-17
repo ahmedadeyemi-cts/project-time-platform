@@ -2589,7 +2589,7 @@ public static class ContractsPrepaidManagementModule
                             LIKE '%' || LOWER(t.term) || '%'
                         )
                   )
-                ORDER BY 2, u.email;
+                ORDER BY 2, 3;
                 """,
                 connection);
 
