@@ -1,0 +1,27 @@
+name: ProjectPulse Deploy Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_commit:
+        description: Verified commit SHA to deploy
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: projectpulse-deploy-production
+  cancel-in-progress: false
+
+jobs:
+  approval-gate:
+    environment: production
+    runs-on: ubuntu-latest
+    steps:
+      - name: Production provider gate
+        run: |
+          echo "Production remains approval-gated."
+          echo "Configure production Azure or OpenCloud variables before enabling deployment."

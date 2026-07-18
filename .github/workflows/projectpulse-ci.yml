@@ -1,0 +1,62 @@
+name: ProjectPulse CI
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: projectpulse-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Restore and build API
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Build frontend
+        working-directory: src/frontend/project-time-web
+        run: npm run build
+
+      - name: Validate container definitions
+        run: |
+          test -f deployment/containers/api/Dockerfile
+          test -f deployment/containers/web/Dockerfile
+
+      - name: Generate release manifest
+        run: |
+          mkdir -p artifacts
+          cat > artifacts/release-manifest.json <<JSON
+          {
+            "commit": "${GITHUB_SHA}",
+            "repository": "${GITHUB_REPOSITORY}",
+            "workflow": "${GITHUB_WORKFLOW}",
+            "runId": "${GITHUB_RUN_ID}",
+            "artifactFormat": "oci"
+          }
+          JSON
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: projectpulse-release-manifest
+          path: artifacts/release-manifest.json

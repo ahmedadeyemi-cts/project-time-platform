@@ -1,4 +1,5 @@
 import HelpAssistant from './HelpAssistant.jsx';
+import SessionIntelligenceDrawer from './SessionIntelligenceDrawer.jsx';
 import PostIntakeAgingPanel from './PostIntakeAgingPanel.jsx';
 
 
@@ -527,675 +528,9 @@ function installProjectPulseGlobalViewAsTopbarMount() {
 
 installProjectPulseGlobalViewAsTopbarMount();
 
-
-/* 042A_EFFECTIVE_SESSION_VISIBILITY_START */
-/* 042C_EFFECTIVE_SESSION_SECURITY_TELEMETRY_START */
-function installProjectPulseEffectiveSessionVisibilityPanel() {
-  if (typeof window === 'undefined' || typeof document === 'undefined') return;
-  if (window.__projectPulseEffectiveSessionVisibilityInstalled) return;
-
-  window.__projectPulseEffectiveSessionVisibilityInstalled = true;
-
-  const AUTH_STORAGE_KEY = 'projectPulseAuthSession';
-  const VIEW_AS_STORAGE_KEY = 'projectPulseViewAsUser';
-  const COLLAPSED_STORAGE_KEY = 'projectPulseEffectiveSessionPanelCollapsed';
-  const OBSERVED_SESSION_STORAGE_KEY = 'projectPulseEffectiveSessionObservedStart';
-  const PANEL_ID = 'projectpulse-effective-session-panel';
-  const STYLE_ID = 'projectpulse-effective-session-panel-style';
-
-  const escapeHtml = (value) => String(value ?? '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#039;');
-
-  const readJsonStorage = (key) => {
-    try {
-      const raw = window.localStorage.getItem(key);
-      return raw ? JSON.parse(raw) : null;
-    } catch {
-      return null;
-    }
-  };
-
-  const writeJsonStorage = (key, value) => {
-    try {
-      window.localStorage.setItem(key, JSON.stringify(value));
-    } catch {
-      // Ignore localStorage persistence issues.
-    }
-  };
-
-  const readCollapsed = () => {
-    try {
-      const raw = window.localStorage.getItem(COLLAPSED_STORAGE_KEY);
-      return raw === null ? true : raw === 'true';
-    } catch {
-      return true;
-    }
-  };
-
-  const writeCollapsed = (collapsed) => {
-    try {
-      window.localStorage.setItem(COLLAPSED_STORAGE_KEY, collapsed ? 'true' : 'false');
-    } catch {
-      // Ignore localStorage persistence issues.
-    }
-  };
-
-  const readSession = () => {
-    const session = readJsonStorage(AUTH_STORAGE_KEY);
-    if (!session?.sessionToken) return null;
-    if (session?.expiresAt && Date.now() >= Date.parse(session.expiresAt)) return null;
-    return session;
-  };
-
-  const readViewAs = () => {
-    const viewAs = readJsonStorage(VIEW_AS_STORAGE_KEY);
-    return viewAs?.userId ? viewAs : null;
-  };
-
-  const hashToken = (token = '') => {
-    const value = String(token || '');
-    let hash = 0;
-
-    for (let index = 0; index < value.length; index += 1) {
-      hash = ((hash << 5) - hash) + value.charCodeAt(index);
-      hash |= 0;
-    }
-
-    return Math.abs(hash).toString(16);
-  };
-
-  const getObservedSessionStart = (session) => {
-    if (!session?.sessionToken) return null;
-
-    const fingerprint = hashToken(session.sessionToken);
-    const stored = readJsonStorage(OBSERVED_SESSION_STORAGE_KEY);
-    const storedDate = stored?.startedAt ? Date.parse(stored.startedAt) : NaN;
-
-    if (stored?.fingerprint === fingerprint && Number.isFinite(storedDate)) {
-      return new Date(stored.startedAt);
-    }
-
-    const explicitStart = session.createdAt || session.issuedAt || session.signedInAt || session.loginAt || session.authenticatedAt;
-    const explicitDate = explicitStart ? Date.parse(explicitStart) : NaN;
-    const startedAt = Number.isFinite(explicitDate) ? new Date(explicitDate) : new Date();
-
-    writeJsonStorage(OBSERVED_SESSION_STORAGE_KEY, {
-      fingerprint,
-      startedAt: startedAt.toISOString()
-    });
-
-    return startedAt;
-  };
-
-  const formatDuration = (milliseconds) => {
-    if (!Number.isFinite(milliseconds) || milliseconds < 0) return 'Unknown';
-
-    const totalSeconds = Math.floor(milliseconds / 1000);
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
-
-    if (hours > 0) return `${hours}h ${minutes}m`;
-    if (minutes > 0) return `${minutes}m ${seconds}s`;
-    return `${seconds}s`;
-  };
-
-  const getSessionAge = (session) => {
-    const startedAt = getObservedSessionStart(session);
-    if (!startedAt) return 'Unknown';
-    return formatDuration(Date.now() - startedAt.getTime());
-  };
-
-  const getSessionExpiry = (session) => {
-    if (!session?.expiresAt) return 'Not provided';
-
-    const expiryMs = Date.parse(session.expiresAt);
-    if (!Number.isFinite(expiryMs)) return 'Invalid expiry';
-    if (Date.now() >= expiryMs) return 'Expired';
-
-    return formatDuration(expiryMs - Date.now());
-  };
-
-  const getExpiryClass = (session) => {
-    if (!session?.expiresAt) return 'neutral';
-
-    const expiryMs = Date.parse(session.expiresAt);
-    if (!Number.isFinite(expiryMs)) return 'warning';
-
-    const remaining = expiryMs - Date.now();
-    if (remaining <= 0) return 'danger';
-    if (remaining <= 10 * 60 * 1000) return 'warning';
-    return 'ok';
-  };
-
-  const getRoute = () => String(window.location.hash || '#dashboard').replace(/^#/, '') || 'dashboard';
-
-  const shouldShowPanel = () => {
-    const route = getRoute();
-    const viewAs = readViewAs();
-
-    return Boolean(
-      readSession()
-      && (
-        viewAs
-        || route === 'dashboard'
-        || route === 'role-admin'
-        || route === 'roles-permissions-matrix'
-      )
-    );
-  };
-
-  const buildHeaders = () => {
-    const session = readSession();
-    const viewAs = readViewAs();
-    const headers = {};
-
-    if (session?.sessionToken) {
-      headers['X-ProjectPulse-Session'] = session.sessionToken;
-    }
-
-    if (viewAs?.userId) {
-      headers['X-ProjectPulse-View-As-User'] = viewAs.userId;
-    }
-
-    return headers;
-  };
-
-  const getFetch = () => window.__projectPulseOriginalFetch || window.fetch.bind(window);
-
-  const injectStyles = () => {
-    if (document.getElementById(STYLE_ID)) return;
-
-    const style = document.createElement('style');
-    style.id = STYLE_ID;
-    style.textContent = `
-      #projectpulse-effective-session-panel {
-        position: fixed;
-        left: 1.15rem;
-        bottom: 1.15rem;
-        z-index: 9998;
-        width: min(460px, calc(100vw - 2rem));
-        border: 1px solid rgba(59, 130, 246, 0.32);
-        border-radius: 18px;
-        background: rgba(15, 23, 42, 0.94);
-        color: #f8fafc;
-        box-shadow: 0 22px 50px rgba(15, 23, 42, 0.34);
-        backdrop-filter: blur(16px);
-        padding: 0.85rem;
-        font-size: 0.78rem;
-      }
-
-      #projectpulse-effective-session-panel.hidden {
-        display: none;
-      }
-
-      #projectpulse-effective-session-panel.view-as-active {
-        border-color: rgba(245, 158, 11, 0.78);
-        background: rgba(120, 53, 15, 0.96);
-      }
-
-      #projectpulse-effective-session-panel.expiry-warning {
-        border-color: rgba(245, 158, 11, 0.9);
-      }
-
-      #projectpulse-effective-session-panel.expiry-danger {
-        border-color: rgba(248, 113, 113, 0.95);
-      }
-
-      #projectpulse-effective-session-panel.collapsed {
-        width: auto;
-        max-width: min(390px, calc(100vw - 2rem));
-        padding: 0.55rem 0.65rem;
-        border-radius: 999px;
-      }
-
-      #projectpulse-effective-session-panel .effective-session-header {
-        display: flex;
-        align-items: flex-start;
-        justify-content: space-between;
-        gap: 0.75rem;
-        margin-bottom: 0.55rem;
-      }
-
-      #projectpulse-effective-session-panel.collapsed .effective-session-header {
-        margin-bottom: 0;
-        align-items: center;
-      }
-
-      #projectpulse-effective-session-panel h3 {
-        margin: 0;
-        color: #fff;
-        font-size: 0.92rem;
-        line-height: 1.2;
-      }
-
-      #projectpulse-effective-session-panel.collapsed h3 {
-        max-width: 220px;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        font-size: 0.78rem;
-      }
-
-      #projectpulse-effective-session-panel p {
-        margin: 0.22rem 0 0;
-        color: rgba(248, 250, 252, 0.78);
-        line-height: 1.35;
-      }
-
-      #projectpulse-effective-session-panel.collapsed p,
-      #projectpulse-effective-session-panel.collapsed .effective-session-grid,
-      #projectpulse-effective-session-panel.collapsed .effective-session-actions,
-      #projectpulse-effective-session-panel.collapsed .effective-session-status {
-        display: none;
-      }
-
-      #projectpulse-effective-session-panel .effective-session-header-actions {
-        display: flex;
-        align-items: center;
-        gap: 0.35rem;
-      }
-
-      #projectpulse-effective-session-panel.collapsed #projectpulse-effective-session-refresh {
-        display: none;
-      }
-
-      #projectpulse-effective-session-panel .effective-session-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 0.48rem;
-        margin-top: 0.65rem;
-      }
-
-      #projectpulse-effective-session-panel .effective-session-grid div {
-        border: 1px solid rgba(255, 255, 255, 0.14);
-        border-radius: 12px;
-        padding: 0.48rem;
-        background: rgba(255, 255, 255, 0.07);
-        min-width: 0;
-      }
-
-      #projectpulse-effective-session-panel .effective-session-grid div.security-ok {
-        border-color: rgba(34, 197, 94, 0.34);
-      }
-
-      #projectpulse-effective-session-panel .effective-session-grid div.security-warning {
-        border-color: rgba(245, 158, 11, 0.56);
-      }
-
-      #projectpulse-effective-session-panel .effective-session-grid div.security-danger {
-        border-color: rgba(248, 113, 113, 0.72);
-      }
-
-      #projectpulse-effective-session-panel span {
-        display: block;
-        color: rgba(248, 250, 252, 0.68);
-        font-size: 0.68rem;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        font-weight: 800;
-      }
-
-      #projectpulse-effective-session-panel strong {
-        display: block;
-        margin-top: 0.14rem;
-        color: #fff;
-        line-height: 1.3;
-        overflow-wrap: anywhere;
-      }
-
-      #projectpulse-effective-session-panel .effective-session-actions {
-        display: flex;
-        align-items: center;
-        justify-content: flex-end;
-        flex-wrap: wrap;
-        gap: 0.45rem;
-        margin-top: 0.7rem;
-      }
-
-      #projectpulse-effective-session-panel button {
-        border: 1px solid rgba(255, 255, 255, 0.2);
-        border-radius: 999px;
-        background: rgba(255, 255, 255, 0.12);
-        color: #fff;
-        font-weight: 900;
-        font-size: 0.72rem;
-        padding: 0.35rem 0.56rem;
-        cursor: pointer;
-      }
-
-      #projectpulse-effective-session-panel button:hover {
-        background: rgba(255, 255, 255, 0.2);
-      }
-
-      #projectpulse-effective-session-panel .effective-session-status {
-        margin-top: 0.5rem;
-        color: rgba(248, 250, 252, 0.78);
-        line-height: 1.35;
-        overflow-wrap: anywhere;
-      }
-
-      @media (max-width: 780px) {
-        #projectpulse-effective-session-panel {
-          left: 0.75rem;
-          right: 0.75rem;
-          bottom: 0.75rem;
-          width: auto;
-        }
-
-        #projectpulse-effective-session-panel .effective-session-grid {
-          grid-template-columns: 1fr;
-        }
-      }
-    `;
-
-    document.head.appendChild(style);
-  };
-
-  const ensurePanel = () => {
-    injectStyles();
-
-    let panel = document.getElementById(PANEL_ID);
-
-    if (!panel) {
-      panel = document.createElement('section');
-      panel.id = PANEL_ID;
-      panel.setAttribute('aria-live', 'polite');
-      document.body.appendChild(panel);
-    }
-
-    return panel;
-  };
-
-  const summarizeRoles = (roles = []) => {
-    if (!Array.isArray(roles) || roles.length === 0) return 'No active role';
-    return roles
-      .map((role) => role.roleName || role.roleCode)
-      .filter(Boolean)
-      .slice(0, 4)
-      .join(', ');
-  };
-
-  const getActualUserName = (session, data = {}) => (
-    data.actualUsername
-    || data.actualDisplayName
-    || data.actualEmail
-    || data.sessionUsername
-    || data.sessionDisplayName
-    || data.sessionEmail
-    || session?.username
-    || session?.displayName
-    || session?.email
-    || 'Signed-in user'
-  );
-
-  const getEffectiveUserName = (data = {}) => (
-    data.effectiveUsername
-    || data.effectiveDisplayName
-    || data.effectiveEmail
-    || data.displayName
-    || data.email
-    || 'Loading effective user'
-  );
-
-  const renderPanel = (state = {}) => {
-    const panel = ensurePanel();
-
-    if (!shouldShowPanel()) {
-      panel.className = 'hidden';
-      panel.innerHTML = '';
-      return;
-    }
-
-    const session = readSession();
-    const viewAs = readViewAs();
-    const data = state?.data ?? window.__projectPulseEffectiveSessionLastData ?? {};
-    const roles = Array.isArray(data.roles) ? data.roles : [];
-    const permissions = Array.isArray(data.permissions) ? data.permissions : [];
-    const effectiveName = getEffectiveUserName(data);
-    const actualName = getActualUserName(session, data);
-    const collapsed = readCollapsed();
-    const expiryClass = getExpiryClass(session);
-    const sessionAge = getSessionAge(session);
-    const expiryText = getSessionExpiry(session);
-    const viewAsGuard = viewAs ? 'Active - write actions blocked' : 'Inactive';
-    const sessionHeaderStatus = session?.sessionToken ? 'Present - token hidden' : 'Missing';
-    const mode = viewAs ? 'View-As read-only' : 'Actual session';
-    const modeDetail = viewAs
-      ? `Previewing ${viewAs.displayName || viewAs.email || viewAs.userId}`
-      : 'No View-As override active';
-
-    window.__projectPulseEffectiveSessionLastState = state;
-    window.__projectPulseEffectiveSessionLastData = data;
-
-    panel.className = [
-      viewAs ? 'view-as-active' : '',
-      collapsed ? 'collapsed' : '',
-      expiryClass === 'warning' ? 'expiry-warning' : '',
-      expiryClass === 'danger' ? 'expiry-danger' : ''
-    ].filter(Boolean).join(' ');
-
-    panel.innerHTML = `
-      <div class="effective-session-header">
-        <div>
-          <h3>${escapeHtml(collapsed ? `Session: ${actualName}` : 'Effective session')}</h3>
-          <p>${escapeHtml(mode)} · ${escapeHtml(modeDetail)}</p>
-        </div>
-        <div class="effective-session-header-actions">
-          <button type="button" id="projectpulse-effective-session-refresh">Refresh</button>
-          <button type="button" id="projectpulse-effective-session-toggle">${collapsed ? 'Expand' : 'Minimize'}</button>
-        </div>
-      </div>
-
-      <div class="effective-session-grid">
-        <div>
-          <span>Effective user</span>
-          <strong>${escapeHtml(effectiveName)}</strong>
-        </div>
-        <div>
-          <span>Signed-in username</span>
-          <strong>${escapeHtml(actualName)}</strong>
-        </div>
-        <div>
-          <span>Session age</span>
-          <strong>${escapeHtml(sessionAge)}</strong>
-        </div>
-        <div class="${expiryClass === 'danger' ? 'security-danger' : expiryClass === 'warning' ? 'security-warning' : 'security-ok'}">
-          <span>Session expires in</span>
-          <strong>${escapeHtml(expiryText)}</strong>
-        </div>
-        <div>
-          <span>Roles</span>
-          <strong>${escapeHtml(summarizeRoles(roles))}</strong>
-        </div>
-        <div>
-          <span>Permissions</span>
-          <strong>${permissions.length}</strong>
-        </div>
-        <div class="${viewAs ? 'security-warning' : 'security-ok'}">
-          <span>View-As guard</span>
-          <strong>${escapeHtml(viewAsGuard)}</strong>
-        </div>
-        <div class="${session?.sessionToken ? 'security-ok' : 'security-danger'}">
-          <span>Session token</span>
-          <strong>${escapeHtml(sessionHeaderStatus)}</strong>
-        </div>
-      </div>
-
-      <div class="effective-session-actions">
-        <button type="button" id="projectpulse-effective-session-write-test">Test write lock</button>
-        <button type="button" id="projectpulse-effective-session-copy">Copy safe diagnostics</button>
-        ${viewAs ? '<button type="button" id="projectpulse-effective-session-clear-view-as">Clear View-As</button>' : ''}
-      </div>
-
-      <div class="effective-session-status">${escapeHtml(state?.message || 'Effective session loaded. Tokens are never displayed in this panel.')}</div>
-    `;
-
-    panel.querySelector('#projectpulse-effective-session-refresh')?.addEventListener('click', loadEffectiveSession);
-
-    panel.querySelector('#projectpulse-effective-session-toggle')?.addEventListener('click', () => {
-      writeCollapsed(!readCollapsed());
-      renderPanel(window.__projectPulseEffectiveSessionLastState || state);
-    });
-
-    panel.querySelector('#projectpulse-effective-session-write-test')?.addEventListener('click', testWriteLock);
-    panel.querySelector('#projectpulse-effective-session-copy')?.addEventListener('click', copySafeDiagnostics);
-
-    panel.querySelector('#projectpulse-effective-session-clear-view-as')?.addEventListener('click', () => {
-      window.localStorage.removeItem(VIEW_AS_STORAGE_KEY);
-      window.dispatchEvent(new CustomEvent('projectpulse:view-as-changed'));
-      window.location.reload();
-    });
-  };
-
-  async function loadEffectiveSession() {
-    if (!shouldShowPanel()) {
-      renderPanel({ message: '' });
-      return;
-    }
-
-    renderPanel({ message: 'Loading effective session...' });
-
-    try {
-      const response = await getFetch()('/api/security/effective-session', {
-        headers: buildHeaders()
-      });
-
-      const raw = await response.text();
-      let data = {};
-
-      try {
-        data = raw ? JSON.parse(raw) : {};
-      } catch {
-        data = { message: raw };
-      }
-
-      if (!response.ok) {
-        renderPanel({
-          data,
-          message: data.message || data.status || `/api/security/effective-session returned HTTP ${response.status}`
-        });
-        return;
-      }
-
-      renderPanel({
-        data,
-        message: readViewAs()
-          ? 'Backend effective-session confirms View-As role context. Write actions remain blocked while previewing.'
-          : 'Backend effective-session confirms the signed-in role context.'
-      });
-    } catch (error) {
-      renderPanel({
-        message: error instanceof Error ? error.message : 'Unable to load effective session.'
-      });
-    }
-  }
-
-  async function testWriteLock() {
-    renderPanel({
-      data: window.__projectPulseEffectiveSessionLastData,
-      message: 'Testing write lock...'
-    });
-
-    try {
-      const response = await window.fetch('/api/security/role-enforcement-smoke/write-attempt', {
-        method: 'POST',
-        headers: {
-      ...getProjectPulse051CActiveSessionHeaders(typeof authSession !== 'undefined' ? authSession : null),
-      'Content-Type': 'application/json',
-          ...buildHeaders()
-        },
-        body: JSON.stringify({ source: '042_EFFECTIVE_SESSION_SECURITY_PANEL' })
-      });
-
-      const raw = await response.text();
-      let data = {};
-
-      try {
-        data = raw ? JSON.parse(raw) : {};
-      } catch {
-        data = { message: raw };
-      }
-
-      const expectedViewAsBlock = readViewAs() && response.status === 403;
-
-      renderPanel({
-        data: window.__projectPulseEffectiveSessionLastData,
-        message: expectedViewAsBlock
-          ? `Write lock confirmed: HTTP ${response.status} ${data.status || data.message || ''}`
-          : `Write test returned HTTP ${response.status}: ${data.status || data.message || 'No message'}`
-      });
-    } catch (error) {
-      renderPanel({
-        data: window.__projectPulseEffectiveSessionLastData,
-        message: error instanceof Error ? error.message : 'Unable to test write lock.'
-      });
-    }
-  }
-
-  async function copySafeDiagnostics() {
-    const session = readSession();
-    const viewAs = readViewAs();
-    const data = window.__projectPulseEffectiveSessionLastData ?? {};
-    const roles = Array.isArray(data.roles) ? data.roles : [];
-    const permissions = Array.isArray(data.permissions) ? data.permissions : [];
-
-    const diagnostics = {
-      route: getRoute(),
-      mode: viewAs ? 'view_as_read_only' : 'actual_session',
-      signedInUsername: getActualUserName(session, data),
-      effectiveUser: getEffectiveUserName(data),
-      roles: roles.map((role) => role.roleCode || role.roleName).filter(Boolean),
-      permissionCount: permissions.length,
-      sessionAge: getSessionAge(session),
-      sessionExpiresIn: getSessionExpiry(session),
-      viewAsActive: Boolean(viewAs),
-      sessionTokenDisplayed: false,
-      generatedAt: new Date().toISOString()
-    };
-
-    try {
-      await navigator.clipboard.writeText(JSON.stringify(diagnostics, null, 2));
-      renderPanel({
-        data,
-        message: 'Safe diagnostics copied. Session token was not included.'
-      });
-    } catch {
-      renderPanel({
-        data,
-        message: 'Unable to copy diagnostics automatically. Browser clipboard permission may be blocked.'
-      });
-    }
-  }
-
-  const scheduleLoad = () => {
-    window.clearTimeout(window.__projectPulseEffectiveSessionVisibilityTimer);
-    window.__projectPulseEffectiveSessionVisibilityTimer = window.setTimeout(loadEffectiveSession, 150);
-  };
-
-  window.addEventListener('hashchange', scheduleLoad);
-  window.addEventListener('storage', scheduleLoad);
-  window.addEventListener('projectpulse:auth-session-ready', scheduleLoad);
-  window.addEventListener('projectpulse:view-as-changed', scheduleLoad);
-
-  window.clearInterval(window.__projectPulseEffectiveSessionTicker);
-  window.__projectPulseEffectiveSessionTicker = window.setInterval(() => {
-    if (shouldShowPanel() && window.__projectPulseEffectiveSessionLastState) {
-      renderPanel(window.__projectPulseEffectiveSessionLastState);
-    }
-  }, 30000);
-
-  scheduleLoad();
-}
-
-installProjectPulseEffectiveSessionVisibilityPanel();
-/* 042C_EFFECTIVE_SESSION_SECURITY_TELEMETRY_END */
-/* 042A_EFFECTIVE_SESSION_VISIBILITY_END */
-
+/* MODULE_059_LEGACY_EFFECTIVE_SESSION_WIDGET_REMOVED_START */
+/* Backend /api/security/effective-session remains available to Module 059. */
+/* MODULE_059_LEGACY_EFFECTIVE_SESSION_WIDGET_REMOVED_END */
 
 // 022F_TOPBAR_VIEWAS_MOUNT_END
 
@@ -1203,7 +538,7 @@ installProjectPulseEffectiveSessionVisibilityPanel();
 
 
 
-import { useEffect, useMemo, useState, useRef } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useState, useRef } from 'react';
 import usSignalLogoUrl from '../brand/ussignal.png';
 import './timesheet.css';
 import './mobile-readiness.css';
@@ -1211,8 +546,7 @@ import UserAdministrationPanel from './UserAdministrationPanel.jsx';
 import YearlyUtilizationPanel from './YearlyUtilizationPanel.jsx';
 import ProjectAllocationInfoPanel from './ProjectAllocationInfoPanel.jsx';
 import ManagerTeamUtilizationPanel from './ManagerTeamUtilizationPanel.jsx';
-import ManagerApprovalPanel from './ManagerApprovalPanel.jsx';
-import LocalAdminPasswordResetApprovalsPanel from './LocalAdminPasswordResetApprovalsPanel.jsx';
+import ApprovalCenter from './ApprovalCenter.jsx';
 import AuditHistoryPanel from './AuditHistoryPanel.jsx';
 import ApprovalExportAuditWorkflowCenter from './ApprovalExportAuditWorkflowCenter.jsx';
 import ServiceControlCenter from './ServiceControlCenter.jsx';
@@ -1227,7 +561,11 @@ import CertifyIntegrationCenter from './CertifyIntegrationCenter.jsx';
 import BillingReadinessCenter from './BillingReadinessCenter.jsx';
 import ProjectCloseoutCenter from './ProjectCloseoutCenter.jsx';
 import CloseoutEmailAutomationCenter from './CloseoutEmailAutomationCenter.jsx';
+import InvoiceBillingCenter from './InvoiceBillingCenter.jsx';
+import CalendarCapacityCenter from './CalendarCapacityCenter.jsx';
+import CiCdPipelineCenter from './CiCdPipelineCenter.jsx';
 import CustomerDirectoryCenter from './CustomerDirectoryCenter.jsx';
+import ContractsCenter from './ContractsCenter.jsx';
 import RateCardAdministrationCenter from './RateCardAdministrationCenter.jsx';
 import WorkRegisterCenter from './WorkRegisterCenter.jsx';
 import CostOverrunAlertCenter from './CostOverrunAlertCenter.jsx';
@@ -1303,15 +641,28 @@ const activitySourceOptions = [
     key: 'openTasks',
     label: 'Regular tasks',
     emptyTitle: 'No regular tasks assigned.',
-    emptyDescription: 'Assigned project tasks will appear here after a PM assigns work to the engineer.'
+    emptyDescription: 'Assigned Project and IQS tasks appear here.'
   },
   {
     key: 'requests',
     label: 'Requests / Service Requests',
     emptyTitle: 'No requests available.',
-    emptyDescription: 'Service request activities will appear here after the request workflow is connected.'
+    emptyDescription: 'Assigned Service Request, Pre-sales, Internal Project, and Other tasks appear here.'
   }
 ];
+
+function projectPulseTaskTimeEntrySection(task = {}) {
+  const explicitSection = String(task.timeEntrySection || task.time_entry_section || '').trim().toLowerCase();
+  if (explicitSection === 'requests') return 'requests';
+  if (explicitSection === 'regular') return 'regular';
+
+  const workType = String(task.workType || task.work_type || 'Project')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
+
+  return workType === 'project' || workType === 'iqs' ? 'regular' : 'requests';
+}
 
 
 async function readApiErrorMessage(response, path) {
@@ -2069,6 +1420,19 @@ function getProjectPulse051DTimeEntryPostHeaders() {
 }
 
 async function postProjectPulse051DTimeEntryJson(path, payload) {
+  try {
+    const rawViewAs = window.localStorage.getItem('projectPulseViewAsUser');
+    const activeViewAs = rawViewAs ? JSON.parse(rawViewAs) : null;
+
+    if (activeViewAs?.userId) {
+      throw new Error('Exit Administrator View-As before saving or submitting time. View-As is read-only.');
+    }
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('Exit Administrator View-As')) {
+      throw error;
+    }
+  }
+
   const response = await fetch(path, {
     method: 'POST',
     headers: getProjectPulse051DTimeEntryPostHeaders(),
@@ -2084,7 +1448,18 @@ async function postProjectPulse051DTimeEntryJson(path, payload) {
       if (text) {
         try {
           const parsed = JSON.parse(text);
-          detail = parsed?.message || parsed?.status || text;
+          const validationErrors = Array.isArray(parsed?.errors)
+            ? parsed.errors
+                .map((item) => typeof item === 'string' ? item : item?.message || String(item ?? ''))
+                .filter(Boolean)
+                .join(' ')
+            : '';
+
+          detail = parsed?.message
+            || parsed?.detail
+            || validationErrors
+            || parsed?.status
+            || text;
         } catch {
           detail = text;
         }
@@ -2374,6 +1749,15 @@ const roleWorkspaceModules = [
     permissions: ['VIEW_CUSTOMERS', 'MANAGE_CUSTOMERS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   },
   {
+    route: 'contracts',
+    href: '#contracts',
+    title: 'Contracts & Block of Hours',
+    navLabel: 'MODULE 060',
+    description: 'Manage prepaid customer hours, credits, expiration, work consumption, and weekly AE balance reporting.',
+    permissions: ['VIEW_CUSTOMERS', 'VIEW_REPORTS', 'MANAGE_REPORTS', 'MANAGE_PROJECT_INTAKE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    roleCodes: ['PROJECT_TEAM_COORDINATOR', 'SALES', 'ACCOUNT_EXECUTIVE', 'EXECUTIVE', 'EXECUTIVE_LEADERSHIP']
+  },
+  {
     route: 'cost-alerts',
     href: '#cost-alerts',
     title: 'Cost Overrun Alerts',
@@ -2535,6 +1919,27 @@ const roleWorkspaceModules = [
     permissions: ['VIEW_PROJECT_WORKSPACE', 'VIEW_PROJECT_INTAKE', 'VIEW_APPROVAL_WORKFLOW', 'PROJECT_TIME_APPROVAL', 'VIEW_ACCOUNT_RECONCILIATION', 'VIEW_EXPENSES', 'EXPORT_TIME_EXCEL', 'DOWNLOAD_TIME_EXPORT_PACKAGE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   },
   /* 041_CLOSEOUT_EMAIL_AUTOMATION_END */
+  /* 042_INVOICE_BILLING_CENTER_START */
+  {
+    route: 'invoice-billing-center',
+    href: '#invoice-billing-center',
+    title: 'Invoice & Billing Center',
+    navLabel: 'MODULE 042',
+    description: 'Prepare partial and final invoices, review recently closed projects, preserve detailed customer-facing time and rate evidence, customize invoice headers, and preview Over / Under and T&M balance reporting.',
+    permissions: ['VIEW_ACCOUNT_RECONCILIATION', 'VIEW_APPROVAL_WORKFLOW', 'PROJECT_TIME_APPROVAL', 'VIEW_PROJECT_WORKSPACE', 'VIEW_PROJECT_INTAKE', 'EXPORT_TIME_EXCEL', 'EXPORT_TIME_PDF', 'DOWNLOAD_TIME_EXPORT_PACKAGE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
+  },
+  /* 042_INVOICE_BILLING_CENTER_END */
+  /* 057_CALENDAR_CAPACITY_START */
+  {
+    route: 'calendar-capacity',
+    href: '#calendar-capacity',
+    title: 'Resource & Team Calendar Capacity',
+    navLabel: 'MODULE 057',
+    description: 'View individual, team, and department calendars with day, workweek, week, month, agenda, timeline, and future month navigation.',
+    permissions: ['VIEW_RESOURCE_SCHEDULING', 'MANAGE_RESOURCE_SCHEDULING', 'VIEW_TEAM_UTILIZATION', 'VIEW_INDIVIDUAL_UTILIZATION', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    roleCodes: ['ENGINEER', 'ENGINEERING', 'ENGINEERING_MANAGER', 'ENGINEERING_TEAM_LEAD', 'PROJECT_TEAM_COORDINATOR', 'PROJECT_MANAGER', 'PROJECT_MANAGEMENT']
+  },
+  /* 057_CALENDAR_CAPACITY_END */
   {
     route: 'service-control',
     href: '#service-control',
@@ -2706,6 +2111,7 @@ function getNavigationGroup(item) {
     case 'manager-approval':
     case 'utilization':
     case 'holiday-admin':
+    case 'calendar-capacity':
       return 'Work Management';
 
     case 'project-workload':
@@ -2714,6 +2120,7 @@ function getNavigationGroup(item) {
       return 'Project Workspace';
     case 'cost-alerts':
     case 'customer-directory':
+    case 'contracts':
     case 'work-register':
       return 'Work Register';
     case 'rate-card-administration':
@@ -2752,6 +2159,7 @@ function getNavigationGroup(item) {
     case 'billing-readiness':
     case 'project-closeout':
     case 'closeout-email':
+    case 'invoice-billing-center':
       return 'Reports & Workflow';
 
     default:
@@ -3325,6 +2733,10 @@ function buildRoleNavigationModel(user, navigationItems) {
     'time-compliance',
     'psa-modules',
     'work-task-builder',
+    'billing-readiness',
+    'project-closeout',
+    'closeout-email',
+    'invoice-billing-center',
     'workflow',
     'audit-history',
     'user-admin',
@@ -3726,7 +3138,15 @@ function getInstalledProjectPulseModuleRegistry() {
     group: 'Security',
     permissions: ['VIEW_ENGINEER_NEGATIVE_ACCESS_SMOKE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
     description: 'Confirms engineer-only users remain denied from restricted workflow, export, accounting, and role matrix controls.'
-  }
+  },
+  {
+    route: 'invoice-billing-center',
+    title: 'Invoice & Billing Center',
+    navLabel: 'MODULE 042',
+    group: 'Reports & Workflow',
+    permissions: ['VIEW_ACCOUNT_RECONCILIATION', 'VIEW_APPROVAL_WORKFLOW', 'PROJECT_TIME_APPROVAL', 'VIEW_PROJECT_WORKSPACE', 'VIEW_PROJECT_INTAKE', 'EXPORT_TIME_EXCEL', 'EXPORT_TIME_PDF', 'DOWNLOAD_TIME_EXPORT_PACKAGE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    description: 'Prepares detailed partial and final invoice packages with customer identifiers, time-entry evidence, rates, hours, amounts, flexible headers, recently closed work, and billing reports.'
+  },
   ];
 }
 
@@ -3760,6 +3180,7 @@ function getInstalledModuleDescription(module) {
     'backup-retention': 'Manages backup retention policy, cleanup readiness, and retention compliance visibility.',
     'restore-validation': 'Validates restore points, restore readiness, and restore test evidence before relying on backups.',
     'replication-sync': 'Shows replication and synchronization status across backup, database, and operational readiness workflows.',
+    'invoice-billing-center': 'Prepares partial and final invoice packages, preserves detailed time and rate evidence, and supports billing and Over / Under reporting.',
     'psa-modules': 'Displays PSA workflow modules such as expense, invoice, project, and billing readiness areas as they are connected.'
   };
 
@@ -3799,18 +3220,43 @@ export default function App() {
   const [sessionWarning, setSessionWarning] = useState({ visible: false, remainingMs: 0 });
   const [activeRoute, setActiveRoute] = useState(() => normalizeRoute(window.location.hash));
 
-  /* 055B_1_ACTIVE_ROUTE_BODY_DATASET_START */
-  useEffect(() => {
-    const routeKey = activeRoute || 'dashboard';
+  /* 056A_SHARED_ROUTE_DATASET_START */
+  useLayoutEffect(() => {
+    const routeKey = normalizeRoute(activeRoute);
+
+    /*
+     * Maintain all historical attribute spellings while older page-specific
+     * styles are migrated. Updating them in a layout effect prevents one route
+     * from painting with another route's visibility rules.
+     */
+    document.documentElement.dataset.projectPulseActiveRoute = routeKey;
+    document.body.dataset.projectPulseActiveRoute = routeKey;
     document.body.dataset.projectpulseActiveRoute = routeKey;
+    document.body.dataset.projectPulseRoute = routeKey;
+
+    window.dispatchEvent(new CustomEvent('projectpulse:route-state-ready', {
+      detail: { route: routeKey }
+    }));
 
     return () => {
+      if (document.documentElement.dataset.projectPulseActiveRoute === routeKey) {
+        delete document.documentElement.dataset.projectPulseActiveRoute;
+      }
+
+      if (document.body.dataset.projectPulseActiveRoute === routeKey) {
+        delete document.body.dataset.projectPulseActiveRoute;
+      }
+
       if (document.body.dataset.projectpulseActiveRoute === routeKey) {
         delete document.body.dataset.projectpulseActiveRoute;
       }
+
+      if (document.body.dataset.projectPulseRoute === routeKey) {
+        delete document.body.dataset.projectPulseRoute;
+      }
     };
   }, [activeRoute]);
-  /* 055B_1_ACTIVE_ROUTE_BODY_DATASET_END */
+  /* 056A_SHARED_ROUTE_DATASET_END */
   /* 039A_ROUTE_REFRESH_RESTORE_EFFECT_START */
   useEffect(() => {
     installProjectPulseManualScrollRestoration();
@@ -3832,25 +3278,6 @@ export default function App() {
   }, [activeRoute]);
   /* 039A_ROUTE_REFRESH_RESTORE_EFFECT_END */
 
-  /* 040B_ACTIVE_ROUTE_DATASET_START */
-  useEffect(() => {
-    const normalizedRoute = String(activeRoute || 'dashboard').replace('#', '') || 'dashboard';
-
-    document.documentElement.dataset.projectPulseActiveRoute = normalizedRoute;
-    document.body.dataset.projectPulseActiveRoute = normalizedRoute;
-
-    return () => {
-      if (document.documentElement.dataset.projectPulseActiveRoute === normalizedRoute) {
-        delete document.documentElement.dataset.projectPulseActiveRoute;
-      }
-
-      if (document.body.dataset.projectPulseActiveRoute === normalizedRoute) {
-        delete document.body.dataset.projectPulseActiveRoute;
-      }
-    };
-  }, [activeRoute]);
-  /* 040B_ACTIVE_ROUTE_DATASET_END */
-
   /* 039D_APPROVAL_INIT_CRASH_FIX */
   /* 039C_APPROVAL_INDICATOR_EFFECT_START */
   useEffect(() => {
@@ -3867,35 +3294,6 @@ export default function App() {
 
 
 
-
-  useEffect(() => {
-    window.requestAnimationFrame(() => {
-      window.scrollTo({ top: 0, behavior: 'auto' });
-    });
-  },
-
-  {
-    route: 'restore-validation',
-    href: '#restore-validation',
-    title: 'Restore Validation',
-    navLabel: 'MODULE 015',
-    description: 'Validate backup integrity, database dump readability, configuration archives, application snapshots, and DR runbook readiness.',
-    status: 'Operational',
-    group: 'System Operations',
-    permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
-  },
-
-
-  {
-    route: 'backup-retention',
-    href: '#backup-retention',
-    title: 'Backup Retention',
-    navLabel: 'MODULE 016',
-    description: 'Review backup points and safely remove older backups with restore-point protection.',
-    status: 'Operational',
-    group: 'System Operations',
-    permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
-  } [activeRoute]); // project-pulse-route-scroll-reset
   const [selectedWeekStart, setSelectedWeekStart] = useState(getSundayIso);
   const [apiHealth, setApiHealth] = useState({ loading: true, data: null, error: null });
   const [roleAdminUsers, setRoleAdminUsers] = useState({ loading: true, data: null, error: null });
@@ -3997,14 +3395,6 @@ export default function App() {
     window.localStorage.setItem('ptp-theme', theme);
   }, [theme]);
 
-
-  useEffect(() => {
-    document.body.dataset.projectPulseRoute = activeRoute || 'dashboard';
-
-    return () => {
-      delete document.body.dataset.projectPulseRoute;
-    };
-  }, [activeRoute]);
 
 
 
@@ -4290,6 +3680,8 @@ export default function App() {
   const days = timesheet.data?.days ?? [];
   const categories = timesheet.data?.nonProjectCategories ?? [];
   const assignedOpenTasks = openTasks.data?.tasks ?? [];
+  const regularAssignedTasks = assignedOpenTasks.filter((task) => projectPulseTaskTimeEntrySection(task) === 'regular');
+  const requestAssignedTasks = assignedOpenTasks.filter((task) => projectPulseTaskTimeEntrySection(task) === 'requests');
   const activePolicy = utilizationPolicies.data?.policies?.[0];
   const selectedActivitySource = activitySourceOptions.find((option) => option.key === activitySource) ?? activitySourceOptions[0];
   const currentTimesheetStatus = timesheet.data?.status ?? 'draft';
@@ -4534,7 +3926,7 @@ export default function App() {
       setLoginRoute(result);
 
       if (result.loginMethod === 'sso') {
-        setLoginStatus('US Signal SSO route selected.');
+        setLoginStatus('Microsoft Entra SSO route selected.');
       } else if (result.loginMethod === 'local') {
         setLoginStatus(result.status === 'route_resolved'
           ? 'Local administrator account found. Enter the local password.'
@@ -4550,31 +3942,22 @@ export default function App() {
     }
   }
 
-  async function continueWithSsoPlaceholder() {
+  function continueWithSsoPlaceholder() {
     const username = loginUsername.trim().toLowerCase();
 
-    setLoginStatus('Creating US Signal SSO session...');
-
-    try {
-      const result = await postJson('/api/auth/sso/dev-login', { email: username });
-      const session = {
-        username: result.username,
-        displayName: result.displayName,
-        loginMethod: 'sso',
-        provider: result.provider,
-        sessionToken: result.sessionToken,
-        expiresAt: result.expiresAt,
-        signedInAt: new Date().toISOString()
-      };
-
-      saveAuthSession(session);
-      setAuthSession(session);
-      setSessionWarning({ visible: false, remainingMs: 0 });
-      setLoginStatus('');
-      window.location.hash = '#dashboard';
-    } catch (error) {
-      setLoginStatus(error instanceof Error ? error.message : 'Unable to create SSO session.');
+    if (!username) {
+      setLoginStatus('Enter your Microsoft Entra email address.');
+      return;
     }
+
+    setLoginStatus('Redirecting to Microsoft Entra ID...');
+
+    const parameters = new URLSearchParams({
+      loginHint: username,
+      prompt: 'select_account'
+    });
+
+    window.location.assign(`/api/auth/sso/start?${parameters.toString()}`);
   }
 
   async function continueWithLocalShell(event) {
@@ -5213,17 +4596,6 @@ export default function App() {
 
 
 
-  useEffect(() => {
-    const syncRouteFromHash = () => {
-      setActiveRoute(getRouteFromHash());
-    };
-
-    window.addEventListener('hashchange', syncRouteFromHash);
-    syncRouteFromHash();
-
-    return () => window.removeEventListener('hashchange', syncRouteFromHash);
-  }, []);
-
 
   const visibleRoleModules = useMemo(() => getVisibleRoleModules(currentUser.data), [currentUser.data]);
 
@@ -5241,7 +4613,11 @@ export default function App() {
   }, [activeRoute]);
 
   const activeNavigationItem = useMemo(
-    () => roleNavigation.find((item) => item.route === activeRoute) ?? { label: 'Dashboard', title: 'Dashboard', route: 'dashboard', href: '#dashboard' },
+    () => (
+      roleNavigation.find((item) => item.route === activeRoute) ??
+      roleWorkspaceModules.find((item) => item.route === activeRoute) ??
+      { label: 'Dashboard', title: 'Dashboard', route: 'dashboard', href: '#dashboard' }
+    ),
     [roleNavigation, activeRoute]
   );
 
@@ -5874,6 +5250,21 @@ export default function App() {
     ].includes(roleCode));
   /* 055C_1_WORK_REGISTER_ACCESS_SCOPE_END */
   const canViewManagerApprovalPanel = hasPermission('APPROVE_TIME') || hasPermission('REJECT_TIME') || hasPermission('MANAGE_ALL') || hasPermission('SYSTEM_ADMINISTRATION');
+  const canViewPmApprovalPanel =
+    hasPermission('PROJECT_TIME_APPROVAL') ||
+    hasPermission('MANAGE_ALL') ||
+    hasPermission('SYSTEM_ADMINISTRATION') ||
+    currentRoleCodes.includes('PROJECT_MANAGEMENT') ||
+    currentRoleCodes.includes('PROJECT_MANAGER') ||
+    currentRoleCodes.includes('PROJECT_TEAM_COORDINATOR') ||
+    currentRoleCodes.includes('SUPER_ADMINISTRATOR') ||
+    currentRoleCodes.includes('ADMINISTRATOR');
+  const canViewPtcTimeEntryCorrections =
+    hasPermission('MANAGE_ALL') ||
+    hasPermission('SYSTEM_ADMINISTRATION') ||
+    currentRoleCodes.includes('PROJECT_TEAM_COORDINATOR') ||
+    currentRoleCodes.includes('SUPER_ADMINISTRATOR') ||
+    currentRoleCodes.includes('ADMINISTRATOR');
   const canViewLocalAdminPasswordResetApprovals =
     hasPermission('MANAGE_ALL') ||
     hasPermission('SYSTEM_ADMINISTRATION') ||
@@ -5894,7 +5285,7 @@ export default function App() {
             <p className="eyebrow">PHD Access</p>
             <h1>Sign in to your role-based workspace</h1>
             <p>
-              Use your US Signal email for SSO. Use the local administrator account only for break-glass access when SSO is unavailable.
+              Use your approved Microsoft Entra email for SSO. Use the local administrator account only for break-glass access when SSO is unavailable.
             </p>
           </div>
 
@@ -5927,7 +5318,7 @@ export default function App() {
                 <h2>Continue with Microsoft Entra ID</h2>
                 <p>Production SSO will redirect to Microsoft Entra ID. This development shell records the selected SSO route.</p>
                 <button className="primary-action" type="button" onClick={continueWithSsoPlaceholder}>
-                  Continue with US Signal SSO
+                  Continue with Microsoft Entra SSO
                 </button>
               </div>
             )}
@@ -6392,6 +5783,18 @@ Analytics - Variphy / Infortel`}
 
       <PageContextGuide activeRoute={activeRoute} />
 
+      {/* MODULE_060_CONTRACTS_ROOT_ROUTE_START */}
+      {(activeRoute === 'contracts' && canSeeAny(['VIEW_CUSTOMERS', 'VIEW_REPORTS', 'MANAGE_REPORTS', 'MANAGE_PROJECT_INTAKE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
+        <section id="contracts" className="panel contracts-route-panel">
+          <ContractsCenter />
+        </section>
+      ) : null}
+      {/* MODULE_060_CONTRACTS_ROOT_ROUTE_END */}
+
+      {/* MODULE_060_NON_CONTRACT_ROUTE_CONTENT_START */}
+      {activeRoute !== 'contracts' ? (
+        <>
+
       {(activeRoute === 'production-data-readiness' && canViewAdminProductionReadiness) ? (
         <section id="production-data-readiness" className="panel production-data-readiness-route-panel">
           <ProductionDataReadinessCenter />
@@ -6404,11 +5807,14 @@ Analytics - Variphy / Infortel`}
         </section>
       ) : null}
 
+{(activeRoute === 'user-admin') ? (
 <section id="user-admin" className="panel user-admin-panel">
         <UserAdministrationPanel />
       </section>
+) : null}
 
-      <section id="azure-admin" className="panel azure-admin-panel">
+      {(activeRoute === 'azure-admin') ? (
+<section id="azure-admin" className="panel azure-admin-panel">
         <div className="section-heading">
           <div>
             <p className="eyebrow">Azure Admin</p>
@@ -6848,6 +6254,7 @@ Analytics - Variphy / Infortel`}
           </div>
         </div>
       </section>
+      ) : null}
                           {(activeRoute === 'backup-dr' && (hasPermission('SYSTEM_ADMINISTRATION') || hasPermission('MANAGE_ALL'))) ? (
         <BackupDrCenter authSession={authSession} />
       ) : null}
@@ -6884,7 +6291,40 @@ Analytics - Variphy / Infortel`}
         </section>
       ) : null}
 
-      <section id="role-dashboard" className="panel role-dashboard-panel">
+      {(activeRoute === 'invoice-billing-center' && canSeeAny(['VIEW_ACCOUNT_RECONCILIATION', 'VIEW_APPROVAL_WORKFLOW', 'PROJECT_TIME_APPROVAL', 'VIEW_PROJECT_WORKSPACE', 'VIEW_PROJECT_INTAKE', 'EXPORT_TIME_EXCEL', 'EXPORT_TIME_PDF', 'DOWNLOAD_TIME_EXPORT_PACKAGE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
+        <section id="invoice-billing-center" className="panel invoice-billing-center-route-panel">
+          <InvoiceBillingCenter
+            usSignalLogoUrl={usSignalLogoUrl}
+            userKey={authSession?.username ?? currentUser.data?.email ?? 'current-user'}
+          />
+        </section>
+      ) : null}
+
+
+      {canSeeAny(['SYSTEM_ADMINISTRATION', 'MANAGE_ALL']) ? (
+        <a className="module058-admin-shortcut" href="#cicd-pipeline">
+          CI/CD Pipeline
+        </a>
+      ) : null}
+
+      {(activeRoute === 'calendar-capacity' && canSeeAny(['VIEW_RESOURCE_SCHEDULING', 'MANAGE_RESOURCE_SCHEDULING', 'VIEW_TEAM_UTILIZATION', 'VIEW_INDIVIDUAL_UTILIZATION', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
+        <section id="calendar-capacity" className="panel calendar-capacity-route-panel">
+          <CalendarCapacityCenter />
+        </section>
+      ) : null}
+
+      {(activeRoute === 'cicd-pipeline' && canSeeAny(['SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
+        <section id="cicd-pipeline" className="panel cicd-pipeline-route-panel">
+          <CiCdPipelineCenter />
+        </section>
+      ) : null}
+
+      {/* MODULE_057_STRUCTURAL_ROUTE_BOUNDARY_V6 */}
+      {!['calendar-capacity', 'cicd-pipeline', 'contracts'].includes(activeRoute) ? (
+        <>
+
+      {(activeRoute === 'dashboard') ? (
+<section id="role-dashboard" className="panel role-dashboard-panel">
         <div className="section-heading">
           <div>
             <p className="eyebrow">Role-based workspace</p>
@@ -6916,6 +6356,7 @@ Analytics - Variphy / Infortel`}
         </div>
 
       </section>
+      ) : null}
 
       <section id="dashboard" className="hero hero-polished">
         <div className="hero-content-block">
@@ -7013,7 +6454,7 @@ Analytics - Variphy / Infortel`}
             <aside className="activities-panel" aria-label="Activities">
               <div className="panel-title-row">
                 <h3>Activities</h3>
-                <span>{activitySource === 'nonProject' ? categories.length : activitySource === 'openTasks' ? assignedOpenTasks.length : 0}</span>
+                <span>{activitySource === 'nonProject' ? categories.length : activitySource === 'openTasks' ? regularAssignedTasks.length : requestAssignedTasks.length}</span>
               </div>
 
               <div className="activity-selector-row">
@@ -7054,16 +6495,16 @@ Analytics - Variphy / Infortel`}
                 </div>
               ) : activitySource === 'openTasks' ? (
                 <div className="activity-group activity-results">
-                  <h4>Open tasks</h4>
+                  <h4>Regular tasks</h4>
                   {openTasks.loading ? <span className="muted">Loading assigned tasks...</span> : null}
                   {openTasks.error ? <span className="error-text">{openTasks.error}</span> : null}
-                  {!openTasks.loading && !openTasks.error && assignedOpenTasks.length === 0 ? (
+                  {!openTasks.loading && !openTasks.error && regularAssignedTasks.length === 0 ? (
                     <div className="empty-activity-state">
                       <strong>{selectedActivitySource.emptyTitle}</strong>
                       <span>{selectedActivitySource.emptyDescription}</span>
                     </div>
                   ) : null}
-                  {assignedOpenTasks.map((task) => {
+                  {regularAssignedTasks.map((task) => {
                     const alreadyAdded = activeRows.some((row) => row.projectId === task.projectId && row.taskId === task.taskId);
                     return (
                       <button
@@ -7087,9 +6528,38 @@ Analytics - Variphy / Infortel`}
                   })}
                 </div>
               ) : (
-                <div className="empty-activity-state">
-                  <strong>{selectedActivitySource.emptyTitle}</strong>
-                  <span>{selectedActivitySource.emptyDescription}</span>
+                <div className="activity-group activity-results">
+                  <h4>Requests / Service Requests</h4>
+                  {openTasks.loading ? <span className="muted">Loading assigned requests...</span> : null}
+                  {openTasks.error ? <span className="error-text">{openTasks.error}</span> : null}
+                  {!openTasks.loading && !openTasks.error && requestAssignedTasks.length === 0 ? (
+                    <div className="empty-activity-state">
+                      <strong>{selectedActivitySource.emptyTitle}</strong>
+                      <span>{selectedActivitySource.emptyDescription}</span>
+                    </div>
+                  ) : null}
+                  {requestAssignedTasks.map((task) => {
+                    const alreadyAdded = activeRows.some((row) => row.projectId === task.projectId && row.taskId === task.taskId);
+                    return (
+                      <button
+                        className="activity-card"
+                        type="button"
+                        key={`${task.projectId}-${task.taskId}`}
+                        disabled={alreadyAdded || !isAnyDayEditable}
+                        onClick={() => addTask(task)}
+                      >
+                        <strong>{task.taskName}</strong>
+                        <span>{task.projectCode} • {task.projectName}</span>
+                        <small>{task.workType || 'Request'}{task.projectManagerName ? ` • PM: ${task.projectManagerName}` : ''}</small>
+                        <small className="timesheet-task-detail-line">
+                          {task.clientName ? <strong>Customer: {task.clientName}</strong> : null}
+                          {task.assignedHours !== undefined ? <span>Assigned: {Number(task.assignedHours || 0).toFixed(2)} hrs</span> : null}
+                          {task.usedHours !== undefined ? <span>Used: {Number(task.usedHours || 0).toFixed(2)} hrs</span> : null}
+                          {task.remainingHours !== undefined ? <span>Left: {Number(task.remainingHours || 0).toFixed(2)} hrs</span> : null}
+                        </small>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </aside>
@@ -7327,7 +6797,8 @@ Analytics - Variphy / Infortel`}
 
 
 
-      <section id="holiday-admin" className={`panel holiday-admin-panel ${canViewHolidayCalendar ? '' : 'access-hidden'}`}>
+      {(activeRoute === 'holiday-admin') ? (
+<section id="holiday-admin" className={`panel holiday-admin-panel ${canViewHolidayCalendar ? '' : 'access-hidden'}`}>
         <div className="section-header compact">
           <div>
             <p className="eyebrow">Holiday administration</p>
@@ -7403,6 +6874,7 @@ Analytics - Variphy / Infortel`}
           </div>
         </div>
       </section>
+      ) : null}
 <section id="project-allocation-info" className="panel project-allocation-info-panel">
         <ProjectAllocationInfoPanel />
       </section>
@@ -7465,7 +6937,7 @@ Analytics - Variphy / Infortel`}
       ) : null}
       {/* 055B_RATE_CARD_ADMIN_ROUTE_END */}
 
-{(activeRoute === 'customer-directory' && canSeeAny(['VIEW_CUSTOMERS', 'MANAGE_CUSTOMERS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
+      {(activeRoute === 'customer-directory' && canSeeAny(['VIEW_CUSTOMERS', 'MANAGE_CUSTOMERS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
         <section id="customer-directory" className="panel customer-directory-route-panel">
           <CustomerDirectoryCenter canManageCustomers={canSeeAny(['MANAGE_CUSTOMERS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])} />
         </section>
@@ -7543,7 +7015,8 @@ Analytics - Variphy / Infortel`}
         </section>
       ) : null}
 
-      <section id="psa-modules" className={`panel module-foundation-panel ${canViewPsaModules ? '' : 'access-hidden'}`}>
+      {(activeRoute === 'dashboard') ? (
+<section id="psa-modules" className={`panel module-foundation-panel ${canViewPsaModules ? '' : 'access-hidden'}`}>
         <div className="section-header compact">
           <div>
             <p className="eyebrow">PSA platform modules</p>
@@ -7609,6 +7082,7 @@ Analytics - Variphy / Infortel`}
           </article>
         </div>
       </section>
+      ) : null}
 
 
       <section id="current-quarter-utilization" className="panel current-quarter-utilization-panel">
@@ -7691,11 +7165,13 @@ Analytics - Variphy / Infortel`}
         </section>
       ) : null}
 
-      {(canViewManagerApprovalPanel || canViewLocalAdminPasswordResetApprovals) ? (
-        <section id="manager-approval" className="approvals-workspace-panel">
-          {canViewManagerApprovalPanel ? <ManagerApprovalPanel /> : null}
-          {canViewLocalAdminPasswordResetApprovals ? <LocalAdminPasswordResetApprovalsPanel /> : null}
-        </section>
+      {(canViewManagerApprovalPanel || canViewPmApprovalPanel || canViewPtcTimeEntryCorrections || canViewLocalAdminPasswordResetApprovals) ? (
+        <ApprovalCenter
+          canViewManagerApprovalPanel={canViewManagerApprovalPanel}
+          canViewPmApprovalPanel={canViewPmApprovalPanel}
+          canViewPtcTimeEntryCorrections={canViewPtcTimeEntryCorrections}
+          canViewLocalAdminPasswordResetApprovals={canViewLocalAdminPasswordResetApprovals}
+        />
       ) : null}
 
       {(activeRoute === 'workflow' && canSeeAny(['VIEW_APPROVAL_WORKFLOW', 'PROJECT_TIME_APPROVAL', 'VIEW_ACCOUNT_RECONCILIATION', 'MANAGE_ACCOUNT_RECONCILIATION', 'EXPORT_TIME_EXCEL', 'EXPORT_TIME_PDF', 'VIEW_AUDIT_TRAIL', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
@@ -7720,6 +7196,15 @@ Analytics - Variphy / Infortel`}
       <ProductionOperationsPanel />
       <ProductionOperationsAcknowledgmentsPanel />
       <TimeComplianceEmailNotificationsPanel />
+
+          <SessionIntelligenceDrawer authSession={authSession} />
+</>
+      ) : null}
+
+        </>
+      ) : null}
+      {/* MODULE_060_NON_CONTRACT_ROUTE_CONTENT_END */}
+
       <HelpAssistant />
 </main>
   );

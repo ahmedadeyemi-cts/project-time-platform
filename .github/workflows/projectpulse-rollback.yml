@@ -1,0 +1,65 @@
+name: ProjectPulse Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        required: true
+        default: test
+        type: choice
+        options: [test, production]
+      api_image:
+        required: true
+        type: string
+      web_image:
+        required: true
+        type: string
+      reason:
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: projectpulse-rollback-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  rollback:
+    environment: ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Roll back API
+        run: |
+          az containerapp update \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' \
+            --image '${{ inputs.api_image }}' \
+            --revision-suffix "manual-rb-api-${GITHUB_RUN_ID}" \
+            --output none
+
+      - name: Validate API
+        run: |
+          for attempt in $(seq 1 30); do
+            STATUS="$(curl -sS -o /dev/null -w '%{http_code}' '${{ vars.PUBLIC_URL }}/api/health' || true)"
+            case "$STATUS" in 200|401) exit 0 ;; esac
+            sleep 10
+          done
+          exit 1
+
+      - name: Roll back web
+        run: |
+          az containerapp update \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_WEB_APP }}' \
+            --image '${{ inputs.web_image }}' \
+            --revision-suffix "manual-rb-web-${GITHUB_RUN_ID}" \
+            --output none

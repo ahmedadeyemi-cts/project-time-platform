@@ -1,0 +1,265 @@
+.certinia-delivery {
+  margin-top: 1.1rem;
+  border: 1px solid #c8d8e7;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #f8fbfe 0%, #ffffff 100%);
+  padding: 1rem;
+  box-shadow: 0 10px 28px rgba(25, 63, 95, 0.08);
+}
+
+.certinia-delivery__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-bottom: 0.9rem;
+  border-bottom: 1px solid #dce7f0;
+}
+
+.certinia-delivery__header p {
+  margin: 0 0 0.25rem;
+  color: #0067a8;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.certinia-delivery__header h3 {
+  margin: 0;
+  color: #142033;
+  font-size: 1.2rem;
+}
+
+.certinia-delivery__header span {
+  display: block;
+  max-width: 62rem;
+  margin-top: 0.35rem;
+  color: #536b80;
+  line-height: 1.45;
+}
+
+.certinia-delivery__notice {
+  margin-top: 0.8rem;
+  border: 1px solid #9fc9b6;
+  border-radius: 10px;
+  background: #eef9f3;
+  color: #174c35;
+  padding: 0.7rem 0.8rem;
+}
+
+.certinia-delivery__notice.error {
+  border-color: #e6b8b8;
+  background: #fff1f1;
+  color: #8d2020;
+}
+
+.certinia-delivery__configuration {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.7rem;
+  margin-top: 0.9rem;
+}
+
+.certinia-delivery__configuration article {
+  min-width: 0;
+  border: 1px solid #d8e3ed;
+  border-radius: 10px;
+  background: #fff;
+  padding: 0.75rem;
+}
+
+.certinia-delivery__configuration article > span,
+.certinia-delivery__configuration article > small {
+  display: block;
+  color: #61778b;
+}
+
+.certinia-delivery__configuration article > span {
+  font-size: 0.72rem;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.certinia-delivery__configuration article > strong {
+  display: block;
+  margin: 0.25rem 0;
+  overflow-wrap: anywhere;
+  color: #142033;
+}
+
+.certinia-delivery__status.success { color: #16734b; }
+.certinia-delivery__status.pending { color: #9b6200; }
+.certinia-delivery__status.error { color: #a02a2a; }
+.certinia-delivery__status.neutral { color: #455b70; }
+
+.certinia-delivery__controls {
+  display: grid;
+  grid-template-columns: minmax(14rem, 0.75fr) minmax(18rem, 1.25fr);
+  gap: 0.9rem;
+  align-items: end;
+  margin-top: 0.9rem;
+}
+
+.certinia-delivery__controls label > span:first-child {
+  display: block;
+  margin-bottom: 0.3rem;
+  color: #42596d;
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
+.certinia-delivery__controls select {
+  width: 100%;
+  min-height: 2.45rem;
+  border: 1px solid #aebfce;
+  border-radius: 8px;
+  background: #fff;
+  color: #142033;
+  padding: 0.5rem 0.65rem;
+}
+
+.certinia-delivery__privacy {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  min-height: 2.45rem;
+  border: 1px solid #d8e3ed;
+  border-radius: 8px;
+  background: #fff;
+  padding: 0.55rem 0.7rem;
+}
+
+.certinia-delivery__privacy input {
+  margin-top: 0.17rem;
+}
+
+.certinia-delivery__privacy span,
+.certinia-delivery__privacy small {
+  display: block;
+}
+
+.certinia-delivery__privacy span {
+  color: #24394c;
+  font-weight: 650;
+}
+
+.certinia-delivery__privacy small {
+  margin-top: 0.12rem;
+  color: #61778b;
+  font-weight: 400;
+}
+
+.certinia-delivery__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin-top: 0.9rem;
+}
+
+.certinia-delivery__safety {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  margin-top: 0.9rem;
+  border-left: 4px solid #e4a72b;
+  border-radius: 6px;
+  background: #fff8e8;
+  color: #5b4518;
+  padding: 0.7rem 0.8rem;
+}
+
+.certinia-delivery__safety span {
+  line-height: 1.4;
+}
+
+.certinia-delivery__history {
+  margin-top: 0.9rem;
+  border-top: 1px solid #dce7f0;
+  padding-top: 0.75rem;
+}
+
+.certinia-delivery__history summary {
+  cursor: pointer;
+  color: #1f4d70;
+  font-weight: 750;
+}
+
+.certinia-delivery__table-wrap {
+  max-width: 100%;
+  margin-top: 0.65rem;
+  overflow-x: auto;
+}
+
+.certinia-delivery__table-wrap table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.certinia-delivery__table-wrap th,
+.certinia-delivery__table-wrap td {
+  border: 1px solid #d8e3ed;
+  padding: 0.45rem 0.55rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.certinia-delivery__table-wrap th {
+  background: #edf5fa;
+  color: #29485f;
+}
+
+.certinia-delivery__history ol {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0.7rem 0 0;
+  padding-left: 1.35rem;
+}
+
+.certinia-delivery__history li strong,
+.certinia-delivery__history li span,
+.certinia-delivery__history li small {
+  display: block;
+}
+
+.certinia-delivery__history li strong {
+  color: #20384a;
+  text-transform: capitalize;
+}
+
+.certinia-delivery__history li span,
+.certinia-delivery__history li small {
+  color: #60768a;
+}
+
+@media (max-width: 850px) {
+  .certinia-delivery__configuration,
+  .certinia-delivery__controls {
+    grid-template-columns: 1fr;
+  }
+
+  .certinia-delivery__header {
+    flex-direction: column;
+  }
+}
+
+
+/* 042_2_GRANULAR_PERSONAL_NAME_CONTROLS_START */
+.certinia-delivery__privacy-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .55rem;
+  margin: 0;
+  padding: .7rem;
+  border: 1px solid #d8e3ed;
+  border-radius: 8px;
+  background: #fff;
+}
+.certinia-delivery__privacy-grid legend { padding: 0 .3rem; color: #42596d; font-size: .78rem; font-weight: 750; }
+.certinia-delivery__privacy-grid label { display: flex; align-items: center; gap: .4rem; min-width: 0; color: #24394c; font-weight: 650; }
+.certinia-delivery__privacy-grid button,
+.certinia-delivery__privacy-grid small { grid-column: 1 / -1; }
+.certinia-delivery__privacy-grid small { color: #61778b; line-height: 1.4; }
+@media (max-width: 850px) { .certinia-delivery__privacy-grid { grid-template-columns: 1fr; } }
+/* 042_2_GRANULAR_PERSONAL_NAME_CONTROLS_END */

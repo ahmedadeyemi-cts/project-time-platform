@@ -1,0 +1,300 @@
+# 056D Dashboard Route Isolation Audit
+
+Generated: 2026-07-15T03:25:37.379413+00:00
+
+## Files read in full
+
+| File | Lines | Bytes | SHA-256 |
+|---|---:|---:|---|
+| `src/frontend/project-time-web/index.html` | 12212 | 466981 | `e39485a4f3c25cb707c53992baf1acbf5e37f57ff80da5f819cfa09df4f74987` |
+| `src/frontend/project-time-web/src/App.jsx` | 7912 | 307617 | `eeaf278455e7f2ef3e90ed8cf22fe6178769a48ca5c28966d387a106c6bff723` |
+| `src/frontend/project-time-web/src/main.jsx` | 14 | 418 | `c4f1f1ce3f63ccb7c6250453a101fc3b0b1fc27ea864d7b35237e1799cc8bd85` |
+| `src/frontend/project-time-web/src/InvoiceBillingCenter.jsx` | 774 | 36594 | `9a56eaf929f9c2380e23b49f976acd3612a38408428650fb28c7cf8fcc81af14` |
+| `deployment/containers/web/Dockerfile` | 48 | 1264 | `ffbcd54d5d7ceefc47a278f44761284890087ec802fdd1a478bcf1333703f74f` |
+| `deployment/containers/web/default.conf.template` | 50 | 1464 | `9bb6f7858c585460dcd5c40e81c6afa0b03314f669bcee0992609c27e61e7242` |
+| `deployment/containers/web/projecttime-web-entrypoint.sh` | 32 | 556 | `b5490024dfe93a172b0926248298429a6a447f60c823b92f40a5dfa997744482` |
+
+## Correction
+
+056D expands the route guard from a partial known-title check to a full
+dashboard summary-card isolation rule for Modules 022 through 030.
+
+It hides summary cards outside `#dashboard` when they match any of:
+
+- known dashboard titles
+- `MODULE 022` through `MODULE 030` visible labels plus an Open action
+- explicit dashboard card IDs
+
+The acceptance condition is that no Module 022-030 dashboard heading
+remains visible on `#invoice-billing-center`.
+
+## ProjectPulse IDs observed
+
+- `projectpulse-022b-production-readiness-extra`
+- `projectpulse-022b-production-readiness-route-isolation`
+- `projectpulse-022b-production-readiness-style`
+- `projectpulse-022b-shortcut-action`
+- `projectpulse-022b-shortcut-body`
+- `projectpulse-022b-shortcut-eyebrow`
+- `projectpulse-022b-shortcut-title`
+- `projectpulse-022d-backdrop`
+- `projectpulse-022d-badge`
+- `projectpulse-022d-body`
+- `projectpulse-022d-button`
+- `projectpulse-022d-card`
+- `projectpulse-022d-close`
+- `projectpulse-022d-error`
+- `projectpulse-022d-form-row`
+- `projectpulse-022d-grid`
+- `projectpulse-022d-header`
+- `projectpulse-022d-header-row`
+- `projectpulse-022d-launcher`
+- `projectpulse-022d-loading`
+- `projectpulse-022d-metric`
+- `projectpulse-022d-metric-label`
+- `projectpulse-022d-metric-value`
+- `projectpulse-022d-muted`
+- `projectpulse-022d-notification-root`
+- `projectpulse-022d-notification-style`
+- `projectpulse-022d-notification-title`
+- `projectpulse-022d-open`
+- `projectpulse-022d-panel`
+- `projectpulse-022d-pill`
+- `projectpulse-022d-primary`
+- `projectpulse-022d-production-notification-center-ui`
+- `projectpulse-022d-rule-row`
+- `projectpulse-022d-section-title`
+- `projectpulse-022d-severity-critical`
+- `projectpulse-022d-severity-info`
+- `projectpulse-022d-severity-success`
+- `projectpulse-022d-severity-warning`
+- `projectpulse-022d-shortcut-action`
+- `projectpulse-022d-shortcut-body`
+- `projectpulse-022d-shortcut-eyebrow`
+- `projectpulse-022d-shortcut-title`
+- `projectpulse-022d-status`
+- `projectpulse-022d-subtitle`
+- `projectpulse-022d-title`
+- `projectpulse-022d-toolbar`
+- `projectpulse-022d-topbar-action`
+- `projectpulse-022d-topbar-badge`
+- `projectpulse-022d-topbar-body`
+- `projectpulse-022d-topbar-button`
+- `projectpulse-022d-topbar-card`
+- `projectpulse-022d-topbar-close`
+- `projectpulse-022d-topbar-critical`
+- `projectpulse-022d-topbar-error`
+- `projectpulse-022d-topbar-form-row`
+- `projectpulse-022d-topbar-grid`
+- `projectpulse-022d-topbar-host`
+- `projectpulse-022d-topbar-info`
+- `projectpulse-022d-topbar-loading`
+- `projectpulse-022d-topbar-metric`
+- `projectpulse-022d-topbar-metric-label`
+- `projectpulse-022d-topbar-metric-value`
+- `projectpulse-022d-topbar-muted`
+- `projectpulse-022d-topbar-notification-dropdown`
+- `projectpulse-022d-topbar-notification-host`
+- `projectpulse-022d-topbar-panel`
+- `projectpulse-022d-topbar-panel-header`
+- `projectpulse-022d-topbar-pill`
+- `projectpulse-022d-topbar-primary`
+- `projectpulse-022d-topbar-row`
+- `projectpulse-022d-topbar-section-title`
+- `projectpulse-022d-topbar-status`
+- `projectpulse-022d-topbar-style`
+- `projectpulse-022d-topbar-subtitle`
+- `projectpulse-022d-topbar-success`
+- `projectpulse-022d-topbar-title`
+- `projectpulse-022d-topbar-title-row`
+- `projectpulse-022d-topbar-toolbar`
+- `projectpulse-022d-topbar-warning`
+- `projectpulse-022e-badge`
+- `projectpulse-022e-button`
+- `projectpulse-022e-card-actions`
+- `projectpulse-022e-dashboard-notification-card`
+- `projectpulse-022e-dashboard-notification-card-script`
+- `projectpulse-022e-dashboard-notification-card-style`
+- `projectpulse-022e-dashboard-notification-panel`
+- `projectpulse-022e-eyebrow`
+- `projectpulse-022e-form-row`
+- `projectpulse-022e-grid`
+- `projectpulse-022e-inline-status`
+- `projectpulse-022e-metric`
+- `projectpulse-022e-metric-label`
+- `projectpulse-022e-metric-value`
+- `projectpulse-022e-muted`
+- `projectpulse-022e-notification-row`
+- `projectpulse-022e-panel-header`
+- `projectpulse-022e-panel-title`
+- `projectpulse-022e-pill`
+- `projectpulse-022e-row-head`
+- `projectpulse-022e-section`
+- `projectpulse-022e-section-title`
+- `projectpulse-022f-production-readiness-route-guard`
+- `projectpulse-022f-production-readiness-route-guard-style`
+- `projectpulse-022f-readiness-route-message`
+- `projectpulse-024-actions`
+- `projectpulse-024-button`
+- `projectpulse-024-cardlet`
+- `projectpulse-024-checklist`
+- `projectpulse-024-eyebrow`
+- `projectpulse-024-field`
+- `projectpulse-024-intake-card`
+- `projectpulse-024-layout`
+- `projectpulse-024-page`
+- `projectpulse-024-page-header`
+- `projectpulse-024-pill`
+- `projectpulse-024-preview`
+- `projectpulse-024-script`
+- `projectpulse-024-section`
+- `projectpulse-024-shell`
+- `projectpulse-024-status`
+- `projectpulse-024-style`
+- `projectpulse-024-table`
+- `projectpulse-024-three-grid`
+- `projectpulse-024-two-grid`
+- `projectpulse-025-actions`
+- `projectpulse-025-button`
+- `projectpulse-025-checklist`
+- `projectpulse-025-draft-header`
+- `projectpulse-025-draft-section`
+- `projectpulse-025-email-preview`
+- `projectpulse-025-eyebrow`
+- `projectpulse-025-field`
+- `projectpulse-025-layout`
+- `projectpulse-025-metric`
+- `projectpulse-025-mini-grid`
+- `projectpulse-025-page-header`
+- `projectpulse-025-pill`
+- `projectpulse-025-prompt-preview`
+- `projectpulse-025-research-preview`
+- `projectpulse-025-section`
+- `projectpulse-025-sow-card`
+- `projectpulse-025-status`
+- `projectpulse-025-two-grid`
+- `projectpulse-025m-page`
+- `projectpulse-025m-script`
+- `projectpulse-025m-shell`
+- `projectpulse-025m-style`
+- `projectpulse-026-actions`
+- `projectpulse-026-button`
+- `projectpulse-026-cardlet`
+- `projectpulse-026-checklist`
+- `projectpulse-026-crm-card`
+- `projectpulse-026-eyebrow`
+- `projectpulse-026-field`
+- `projectpulse-026-full-script`
+- `projectpulse-026-full-style`
+- `projectpulse-026-layout`
+- `projectpulse-026-page`
+- `projectpulse-026-page-header`
+- `projectpulse-026-pill`
+- `projectpulse-026-preview`
+- `projectpulse-026-section`
+- `projectpulse-026-shell`
+- `projectpulse-026-status`
+- `projectpulse-026-table`
+- `projectpulse-026-three-grid`
+- `projectpulse-026-two-grid`
+- `projectpulse-027-actions`
+- `projectpulse-027-button`
+- `projectpulse-027-cardlet`
+- `projectpulse-027-checklist`
+- `projectpulse-027-eyebrow`
+- `projectpulse-027-field`
+- `projectpulse-027-handoff-card`
+- `projectpulse-027-layout`
+- `projectpulse-027-page`
+- `projectpulse-027-page-header`
+- `projectpulse-027-pill`
+- `projectpulse-027-preview`
+- `projectpulse-027-script`
+- `projectpulse-027-section`
+- `projectpulse-027-shell`
+- `projectpulse-027-status`
+- `projectpulse-027-style`
+- `projectpulse-027-table`
+- `projectpulse-027-three-grid`
+- `projectpulse-027-two-grid`
+- `projectpulse-028-actions`
+- `projectpulse-028-ai-time-card`
+- `projectpulse-028-button`
+- `projectpulse-028-cardlet`
+- `projectpulse-028-checklist`
+- `projectpulse-028-eyebrow`
+- `projectpulse-028-field`
+- `projectpulse-028-layout`
+- `projectpulse-028-page`
+- `projectpulse-028-page-header`
+- `projectpulse-028-pill`
+- `projectpulse-028-preview`
+- `projectpulse-028-script`
+- `projectpulse-028-section`
+- `projectpulse-028-shell`
+- `projectpulse-028-status`
+- `projectpulse-028-style`
+- `projectpulse-028-table`
+- `projectpulse-028-three-grid`
+- `projectpulse-028-two-grid`
+- `projectpulse-029-actions`
+- `projectpulse-029-button`
+- `projectpulse-029-cardlet`
+- `projectpulse-029-checklist`
+- `projectpulse-029-eyebrow`
+- `projectpulse-029-field`
+- `projectpulse-029-layout`
+- `projectpulse-029-page`
+- `projectpulse-029-page-header`
+- `projectpulse-029-pill`
+- `projectpulse-029-preview`
+- `projectpulse-029-script`
+- `projectpulse-029-section`
+- `projectpulse-029-shell`
+- `projectpulse-029-status`
+- `projectpulse-029-style`
+- `projectpulse-029-table`
+- `projectpulse-029-three-grid`
+- `projectpulse-029-two-grid`
+- `projectpulse-029-uat-card`
+- `projectpulse-030-actions`
+- `projectpulse-030-button`
+- `projectpulse-030-cardlet`
+- `projectpulse-030-checkbox-panel`
+- `projectpulse-030-checklist`
+- `projectpulse-030-eyebrow`
+- `projectpulse-030-field`
+- `projectpulse-030-filter-status`
+- `projectpulse-030-four-grid`
+- `projectpulse-030-kpi`
+- `projectpulse-030-layout`
+- `projectpulse-030-multiselect`
+- `projectpulse-030-page`
+- `projectpulse-030-page-header`
+- `projectpulse-030-pill`
+- `projectpulse-030-preview`
+- `projectpulse-030-reporting-card`
+- `projectpulse-030-script`
+- `projectpulse-030-section`
+- `projectpulse-030-shell`
+- `projectpulse-030-status`
+- `projectpulse-030-style`
+- `projectpulse-030-table`
+- `projectpulse-030-table-wrap`
+- `projectpulse-030-three-grid`
+- `projectpulse-030-two-grid`
+- `projectpulse-030-usable-layout-refresh`
+- `projectpulse-056b-dashboard-card-route-guard`
+- `projectpulse-056b-dashboard-card-route-style`
+- `projectpulse-056b-forced-hidden`
+- `projectpulse-056b-guard-version`
+- `projectpulse-056b-marked-count`
+- `projectpulse-056b-route`
+- `projectpulse-056b-visible-offender-count`
+- `projectpulse-dashboard-card-guard-version`
+- `projectpulse-dashboard-only-card`
+- `projectpulse-floating-theme-toggle`
+- `projectpulse-guard-version`
+- `projectpulse-production-notification-dashboard-shortcut`
+- `projectpulse-production-readiness-dashboard-shortcut`
+- `projectpulse-route`

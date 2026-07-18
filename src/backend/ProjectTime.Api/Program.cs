@@ -135,7 +135,8 @@ app.Use(async (httpContext, next) =>
 app.Use(async (context, next) =>
 {
     if (context.Request.Method.Equals("OPTIONS", StringComparison.OrdinalIgnoreCase) ||
-        IsProjectPulsePublicApiPath(context))
+        IsProjectPulsePublicApiPath(context) ||
+        CertiniaBillingModule.IsValidIntegrationRequest(context))
     {
         await next();
         return;
@@ -174,6 +175,85 @@ app.Use(async (context, next) =>
 });
 
 
+
+
+static string ProjectPulseFormValue(IFormCollection form, params string[] keys)
+{
+    foreach (var key in keys)
+    {
+        if (form.TryGetValue(key, out var value))
+        {
+            var textValue = value.ToString();
+            if (!string.IsNullOrWhiteSpace(textValue))
+            {
+                return textValue.Trim();
+            }
+        }
+    }
+
+    return string.Empty;
+}
+
+
+// 055D_5K1_SAFE_IDENTIFIER_APPLY_HELPER
+static string ProjectPulse055D5K1JsonString(System.Text.Json.JsonElement source, params string[] keys)
+{
+    if (source.ValueKind != System.Text.Json.JsonValueKind.Object)
+    {
+        return "";
+    }
+
+    foreach (var key in keys)
+    {
+        if (source.TryGetProperty(key, out var value))
+        {
+            if (value.ValueKind == System.Text.Json.JsonValueKind.String)
+            {
+                return value.GetString()?.Trim() ?? "";
+            }
+
+            if (value.ValueKind == System.Text.Json.JsonValueKind.Number ||
+                value.ValueKind == System.Text.Json.JsonValueKind.True ||
+                value.ValueKind == System.Text.Json.JsonValueKind.False)
+            {
+                return value.ToString().Trim();
+            }
+        }
+    }
+
+    return "";
+}
+
+
+
+// 055D_5L2_APPLY_V3_JSON_HELPER
+static string ProjectPulse055D5L2JsonString(System.Text.Json.JsonElement source, params string[] keys)
+{
+    if (source.ValueKind != System.Text.Json.JsonValueKind.Object)
+    {
+        return "";
+    }
+
+    foreach (var key in keys)
+    {
+        if (source.TryGetProperty(key, out var value))
+        {
+            if (value.ValueKind == System.Text.Json.JsonValueKind.String)
+            {
+                return value.GetString()?.Trim() ?? "";
+            }
+
+            if (value.ValueKind == System.Text.Json.JsonValueKind.Number ||
+                value.ValueKind == System.Text.Json.JsonValueKind.True ||
+                value.ValueKind == System.Text.Json.JsonValueKind.False)
+            {
+                return value.ToString().Trim();
+            }
+        }
+    }
+
+    return "";
+}
 
 app.MapGet("/", () => Results.Redirect("/health"));
 
@@ -2016,6 +2096,12 @@ app.MapGet("/api/assignments/available-tasks", async (DateOnly? weekStart, HttpC
             pt.billable AS billable,
             COALESCE(pt.utilization_bucket, CASE WHEN pt.billable THEN 'billable' ELSE 'non_billable' END) AS utilization_bucket,
             COALESCE(pm.display_name, 'No PM assigned') AS project_manager_name,
+            COALESCE(NULLIF(p.work_type, ''), 'Project') AS work_type,
+            CASE
+                WHEN lower(COALESCE(NULLIF(p.work_type, ''), 'Project')) IN ('project', 'iqs')
+                    THEN 'regular'
+                ELSE 'requests'
+            END AS time_entry_section,
             COALESCE(NULLIF(pa.assigned_hours, 0), resource_alloc.allocated_hours_per_task, 0)::numeric AS assigned_hours,
             COALESCE(used_time.used_hours, 0)::numeric AS used_hours,
             GREATEST(
@@ -2041,6 +2127,8 @@ app.MapGet("/api/assignments/available-tasks", async (DateOnly? weekStart, HttpC
             ON resource_alloc.project_id = pa.project_id
            AND resource_alloc.user_id = pa.user_id
         WHERE pa.user_id = @user_id
+          AND pa.effective_start_date <= @week_end
+          AND (pa.effective_end_date IS NULL OR pa.effective_end_date >= @week_start)
           AND pt.is_active = TRUE
           /* 053G_HIDE_CLOSED_PROJECTS_FROM_AVAILABLE_TASKS */
           AND lower(COALESCE(p.status, 'active')) NOT IN ('closed', 'complete', 'completed', 'done', 'cancelled', 'canceled', 'archived')
@@ -2071,6 +2159,8 @@ app.MapGet("/api/assignments/available-tasks", async (DateOnly? weekStart, HttpC
             billable = reader.GetBoolean(O("billable")),
             utilizationBucket = reader.GetString(O("utilization_bucket")),
             projectManagerName = reader.GetString(O("project_manager_name")),
+            workType = reader.GetString(O("work_type")),
+            timeEntrySection = reader.GetString(O("time_entry_section")),
             assignedHours = reader.GetDecimal(O("assigned_hours")),
             usedHours = reader.GetDecimal(O("used_hours")),
             remainingHours = reader.GetDecimal(O("remaining_hours")),
@@ -2343,10 +2433,9 @@ app.MapPost("/api/timesheets/week/draft", async (TimesheetSaveRequest request, H
     await using var connection = new NpgsqlConnection(config.ConnectionString);
     await connection.OpenAsync();
 
-    if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
-    {
-        return Results.Json(new { status = "access_denied", message = "Password reset approvals are restricted to administrators and project/team coordinators." }, statusCode: StatusCodes.Status403Forbidden);
-    }
+    /* FIX-20260717-001_TIMESHEET_SAVE_AUTHORIZATION
+       Draft saves are authorized by the authenticated user's own session and immutable-status checks.
+       User-administration permission is unrelated to entering or saving personal time. */
 
     await using var transaction = await connection.BeginTransactionAsync();
 
@@ -7836,6 +7925,335 @@ static async Task ProjectPulse055D4CCopyIntakeDocumentsToCustomerFolderAsync(Npg
     }
 }
 
+
+// 055D_5K1_SAFE_POST_COMMIT_IDENTIFIER_APPLY_ENDPOINT
+app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/billing-identifiers/apply", async (Guid intakePackageId, HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+
+    if (sessionUserId is null)
+    {
+        return Results.Json(new
+        {
+            status = "session_required",
+            message = "Missing ProjectPulse session token."
+        }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    System.Text.Json.JsonElement payload = default;
+
+    try
+    {
+        payload = await System.Text.Json.JsonSerializer.DeserializeAsync<System.Text.Json.JsonElement>(httpContext.Request.Body);
+    }
+    catch
+    {
+        payload = default;
+    }
+
+    var projectIdText = ProjectPulse055D5K1JsonString(payload, "projectId", "project_id", "workId", "work_id", "workRegisterId", "work_register_id");
+    var projectName = ProjectPulse055D5K1JsonString(payload, "projectName", "project_name", "workName", "work_name");
+    var customerIdText = ProjectPulse055D5K1JsonString(payload, "customerId", "customer_id", "clientId", "client_id");
+
+    var sellQuoteNumber = ProjectPulse055D5K1JsonString(payload, "sellQuoteNumber", "sell_quote_number", "sellQuote", "sell_quote");
+    var salesforceIdNumber = ProjectPulse055D5K1JsonString(payload, "salesforceIdNumber", "salesforce_id_number", "salesforceId", "salesforce_id");
+    var certiniaIdNumber = ProjectPulse055D5K1JsonString(payload, "certiniaIdNumber", "certinia_id_number", "certiniaId", "certinia_id");
+    var sowSignedDate = ProjectPulse055D5K1JsonString(payload, "sowSignedDate", "sow_signed_date", "signedDate", "signed_date");
+
+    if (string.IsNullOrWhiteSpace(sellQuoteNumber)
+        && string.IsNullOrWhiteSpace(salesforceIdNumber)
+        && string.IsNullOrWhiteSpace(certiniaIdNumber)
+        && string.IsNullOrWhiteSpace(sowSignedDate))
+    {
+        return Results.Json(new
+        {
+            status = "skipped",
+            message = "No identifiers or SOW signed date were supplied."
+        });
+    }
+
+    var config = DatabaseConfig.FromEnvironment();
+    var validation = ValidateConfig(config);
+    if (validation is not null) return validation;
+
+    try
+    {
+        await using var connection = new NpgsqlConnection(config.ConnectionString);
+        await connection.OpenAsync();
+
+        await using (var accessCommand = new NpgsqlCommand("SELECT projectpulse055d7_can_complete_intake(@user_id);", connection))
+        {
+            accessCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+            var canApply = await accessCommand.ExecuteScalarAsync();
+
+            if (canApply is not bool allowed || !allowed)
+            {
+                return Results.Json(new
+                {
+                    status = "access_denied",
+                    message = "Final Work Register fields can only be changed by PTC, Project Management, PMO, Project Manager, Administrator, or Super Administrator users."
+                }, statusCode: StatusCodes.Status403Forbidden);
+            }
+        }
+
+        Guid projectId;
+
+        if (!Guid.TryParse(projectIdText, out projectId))
+        {
+            var normalizedCustomerId = Guid.TryParse(customerIdText, out var parsedCustomerId)
+                ? parsedCustomerId.ToString()
+                : "";
+
+            await using var findCommand = new NpgsqlCommand(@"
+                select p.project_id
+                  from projects p
+                 where (@project_name = '' or lower(trim(p.project_name)) = lower(trim(@project_name)))
+                   and (@customer_id = '' or p.client_id = @customer_id::uuid)
+                 order by p.created_at desc nulls last, p.updated_at desc nulls last
+                 limit 1;", connection);
+
+            findCommand.Parameters.AddWithValue("project_name", projectName ?? "");
+            findCommand.Parameters.AddWithValue("customer_id", normalizedCustomerId);
+
+            var found = await findCommand.ExecuteScalarAsync();
+
+            if (found is Guid foundGuid)
+            {
+                projectId = foundGuid;
+            }
+            else if (!Guid.TryParse(Convert.ToString(found), out projectId))
+            {
+                return Results.Json(new
+                {
+                    status = "not_found",
+                    message = "The Work Register project was created, but the apply endpoint could not find it to save identifiers.",
+                    projectName,
+                    customerId = normalizedCustomerId
+                }, statusCode: StatusCodes.Status404NotFound);
+            }
+        }
+
+        await using (var updateProjectCommand = new NpgsqlCommand(@"
+            update projects
+               set sell_quote_number = coalesce(nullif(@sell_quote_number, ''), sell_quote_number),
+                   salesforce_id_number = coalesce(nullif(@salesforce_id_number, ''), salesforce_id_number),
+                   certinia_id_number = coalesce(nullif(@certinia_id_number, ''), certinia_id_number),
+                   sow_signed_date = coalesce(nullif(@sow_signed_date, '')::date, sow_signed_date),
+                   updated_at = now()
+             where project_id = @project_id;", connection))
+        {
+            updateProjectCommand.Parameters.AddWithValue("project_id", projectId);
+            updateProjectCommand.Parameters.AddWithValue("sell_quote_number", sellQuoteNumber ?? "");
+            updateProjectCommand.Parameters.AddWithValue("salesforce_id_number", salesforceIdNumber ?? "");
+            updateProjectCommand.Parameters.AddWithValue("certinia_id_number", certiniaIdNumber ?? "");
+            updateProjectCommand.Parameters.AddWithValue("sow_signed_date", sowSignedDate ?? "");
+            await updateProjectCommand.ExecuteNonQueryAsync();
+        }
+
+        try
+        {
+            await using var updateMetadataCommand = new NpgsqlCommand(@"
+                update work_register_project_metadata
+                   set sell_quote_number = coalesce(nullif(@sell_quote_number, ''), sell_quote_number),
+                       salesforce_id_number = coalesce(nullif(@salesforce_id_number, ''), salesforce_id_number),
+                       certinia_id_number = coalesce(nullif(@certinia_id_number, ''), certinia_id_number),
+                       updated_at = now()
+                 where project_id = @project_id;", connection);
+
+            updateMetadataCommand.Parameters.AddWithValue("project_id", projectId);
+            updateMetadataCommand.Parameters.AddWithValue("sell_quote_number", sellQuoteNumber ?? "");
+            updateMetadataCommand.Parameters.AddWithValue("salesforce_id_number", salesforceIdNumber ?? "");
+            updateMetadataCommand.Parameters.AddWithValue("certinia_id_number", certiniaIdNumber ?? "");
+            await updateMetadataCommand.ExecuteNonQueryAsync();
+        }
+        catch
+        {
+            // Metadata table update is best-effort. The projects table is the source of truth.
+        }
+
+        return Results.Json(new
+        {
+            status = "ok",
+            message = "Billing identifiers applied to Work Register project.",
+            projectId,
+            sellQuoteNumber,
+            salesforceIdNumber,
+            certiniaIdNumber,
+            sowSignedDate
+        });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new
+        {
+            status = "error",
+            message = "Unable to apply billing identifiers to the created Work Register project.",
+            detail = ex.Message
+        }, statusCode: StatusCodes.Status500InternalServerError);
+    }
+});
+
+
+
+// 055D_5L2_APPLY_V3_ENDPOINT
+app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/billing-identifiers/apply-v3", async (Guid intakePackageId, HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+
+    if (sessionUserId is null)
+    {
+        return Results.Json(new
+        {
+            status = "session_required",
+            message = "Missing ProjectPulse session token."
+        }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    System.Text.Json.JsonElement payload = default;
+
+    try
+    {
+        payload = await System.Text.Json.JsonSerializer.DeserializeAsync<System.Text.Json.JsonElement>(httpContext.Request.Body);
+    }
+    catch
+    {
+        payload = default;
+    }
+
+    var projectIdText = ProjectPulse055D5L2JsonString(payload, "projectId", "project_id", "workId", "work_id", "workRegisterId", "work_register_id");
+    var projectName = ProjectPulse055D5L2JsonString(payload, "projectName", "project_name", "workName", "work_name");
+    var customerIdText = ProjectPulse055D5L2JsonString(payload, "customerId", "customer_id", "clientId", "client_id");
+
+    var contractType = ProjectPulse055D5L2JsonString(payload, "contractType", "contract_type");
+    var sellQuoteNumber = ProjectPulse055D5L2JsonString(payload, "sellQuoteNumber", "sell_quote_number", "sellQuote", "sell_quote");
+    var salesforceIdNumber = ProjectPulse055D5L2JsonString(payload, "salesforceIdNumber", "salesforce_id_number", "salesforceId", "salesforce_id");
+    var certiniaIdNumber = ProjectPulse055D5L2JsonString(payload, "certiniaIdNumber", "certinia_id_number", "certiniaId", "certinia_id");
+    var sowSignedDate = ProjectPulse055D5L2JsonString(payload, "sowSignedDate", "sow_signed_date", "signedDate", "signed_date");
+
+    var config = DatabaseConfig.FromEnvironment();
+    var validation = ValidateConfig(config);
+    if (validation is not null) return validation;
+
+    try
+    {
+        await using var connection = new NpgsqlConnection(config.ConnectionString);
+        await connection.OpenAsync();
+
+        await using (var accessCommand = new NpgsqlCommand("SELECT projectpulse055d7_can_complete_intake(@user_id);", connection))
+        {
+            accessCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+            var canApply = await accessCommand.ExecuteScalarAsync();
+
+            if (canApply is not bool allowed || !allowed)
+            {
+                return Results.Json(new
+                {
+                    status = "access_denied",
+                    message = "Final Work Register fields can only be changed by PTC, Project Management, PMO, Project Manager, Administrator, or Super Administrator users."
+                }, statusCode: StatusCodes.Status403Forbidden);
+            }
+        }
+
+        Guid projectId;
+
+        if (!Guid.TryParse(projectIdText, out projectId))
+        {
+            var normalizedCustomerId = Guid.TryParse(customerIdText, out var parsedCustomerId)
+                ? parsedCustomerId.ToString()
+                : "";
+
+            await using var findCommand = new NpgsqlCommand(@"
+                select p.project_id
+                  from projects p
+                 where (@project_name = '' or lower(trim(p.project_name)) = lower(trim(@project_name)))
+                   and (@customer_id = '' or p.client_id = @customer_id::uuid)
+                 order by p.created_at desc nulls last, p.updated_at desc nulls last
+                 limit 1;", connection);
+
+            findCommand.Parameters.AddWithValue("project_name", projectName ?? "");
+            findCommand.Parameters.AddWithValue("customer_id", normalizedCustomerId);
+
+            var found = await findCommand.ExecuteScalarAsync();
+
+            if (found is Guid foundGuid)
+            {
+                projectId = foundGuid;
+            }
+            else if (!Guid.TryParse(Convert.ToString(found), out projectId))
+            {
+                return Results.Json(new
+                {
+                    status = "not_found",
+                    message = "Project was created, but apply-v3 could not find it.",
+                    projectName,
+                    customerId = normalizedCustomerId
+                }, statusCode: StatusCodes.Status404NotFound);
+            }
+        }
+
+        await using (var updateProjectCommand = new NpgsqlCommand(@"
+            update projects
+               set contract_type = coalesce(nullif(@contract_type, ''), contract_type),
+                   sell_quote_number = coalesce(nullif(@sell_quote_number, ''), sell_quote_number),
+                   salesforce_id_number = coalesce(nullif(@salesforce_id_number, ''), salesforce_id_number),
+                   certinia_id_number = coalesce(nullif(@certinia_id_number, ''), certinia_id_number),
+                   sow_signed_date = coalesce(nullif(@sow_signed_date, '')::date, sow_signed_date),
+                   updated_at = now()
+             where project_id = @project_id;", connection))
+        {
+            updateProjectCommand.Parameters.AddWithValue("project_id", projectId);
+            updateProjectCommand.Parameters.AddWithValue("contract_type", contractType ?? "");
+            updateProjectCommand.Parameters.AddWithValue("sell_quote_number", sellQuoteNumber ?? "");
+            updateProjectCommand.Parameters.AddWithValue("salesforce_id_number", salesforceIdNumber ?? "");
+            updateProjectCommand.Parameters.AddWithValue("certinia_id_number", certiniaIdNumber ?? "");
+            updateProjectCommand.Parameters.AddWithValue("sow_signed_date", sowSignedDate ?? "");
+            await updateProjectCommand.ExecuteNonQueryAsync();
+        }
+
+        try
+        {
+            await using var updateMetadataCommand = new NpgsqlCommand(@"
+                update work_register_project_metadata
+                   set sell_quote_number = coalesce(nullif(@sell_quote_number, ''), sell_quote_number),
+                       salesforce_id_number = coalesce(nullif(@salesforce_id_number, ''), salesforce_id_number),
+                       certinia_id_number = coalesce(nullif(@certinia_id_number, ''), certinia_id_number),
+                       updated_at = now()
+                 where project_id = @project_id;", connection);
+
+            updateMetadataCommand.Parameters.AddWithValue("project_id", projectId);
+            updateMetadataCommand.Parameters.AddWithValue("sell_quote_number", sellQuoteNumber ?? "");
+            updateMetadataCommand.Parameters.AddWithValue("salesforce_id_number", salesforceIdNumber ?? "");
+            updateMetadataCommand.Parameters.AddWithValue("certinia_id_number", certiniaIdNumber ?? "");
+            await updateMetadataCommand.ExecuteNonQueryAsync();
+        }
+        catch
+        {
+            // Metadata table update is best-effort.
+        }
+
+        return Results.Json(new
+        {
+            status = "ok",
+            message = "Final Create Work fields applied.",
+            projectId,
+            contractType,
+            sellQuoteNumber,
+            salesforceIdNumber,
+            certiniaIdNumber,
+            sowSignedDate
+        });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new
+        {
+            status = "error",
+            message = "Unable to apply final Create Work fields.",
+            detail = ex.Message
+        }, statusCode: StatusCodes.Status500InternalServerError);
+    }
+});
+
 app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/commit", async (Guid intakePackageId, HttpContext httpContext) =>
 {
     var sessionUserId = GetProjectPulseSessionUserId(httpContext);
@@ -8058,6 +8476,11 @@ app.MapPost("/api/work-register/intake/packages/upload", async (HttpContext http
 
     var requestedWorkType = ReadFormString("requestedWorkType", "Project");
     var contractType = ReadFormString("contractType", "Fixed Price");
+
+    // 055D_5A_BILLING_IDENTIFIER_UPLOAD_FIELDS
+    var sellQuoteNumber = ProjectPulseFormValue(form, "sellQuoteNumber", "sell_quote_number", "quoteNumber", "quote_number");
+    var salesforceIdNumber = ProjectPulseFormValue(form, "salesforceIdNumber", "salesforce_id_number", "salesforceId", "salesforce_id", "opportunityId", "opportunity_id");
+    var certiniaIdNumber = ProjectPulseFormValue(form, "certiniaIdNumber", "certinia_id_number", "certiniaId", "certinia_id", "certiniaProjectId", "certinia_project_id");
     var customerId = ReadFormGuid("customerId");
     var customerHint = ReadFormString("customerName", ReadFormString("customerHint"));
     var projectNameHint = ReadFormString("projectNameHint");
@@ -8219,6 +8642,9 @@ app.MapPost("/api/work-register/intake/packages/upload", async (HttpContext http
             intake_status,
             requested_work_type,
             contract_type,
+            sell_quote_number,
+            salesforce_id_number,
+            certinia_id_number,
             customer_id,
             source_mode,
             customer_hint,
@@ -8234,6 +8660,9 @@ app.MapPost("/api/work-register/intake/packages/upload", async (HttpContext http
             'uploaded',
             @requested_work_type,
             @contract_type,
+            @sell_quote_number,
+            @salesforce_id_number,
+            @certinia_id_number,
             @customer_id,
             'gsd_sow_upload',
             @customer_hint,
@@ -8250,6 +8679,9 @@ app.MapPost("/api/work-register/intake/packages/upload", async (HttpContext http
         packageCommand.Parameters.AddWithValue("intake_package_id", intakePackageId);
         packageCommand.Parameters.AddWithValue("requested_work_type", requestedWorkType);
         packageCommand.Parameters.AddWithValue("contract_type", string.IsNullOrWhiteSpace(contractType) ? "Fixed Price" : contractType);
+        packageCommand.Parameters.AddWithValue("sell_quote_number", sellQuoteNumber ?? string.Empty);
+        packageCommand.Parameters.AddWithValue("salesforce_id_number", salesforceIdNumber ?? string.Empty);
+        packageCommand.Parameters.AddWithValue("certinia_id_number", certiniaIdNumber ?? string.Empty);
         packageCommand.Parameters.Add("customer_id", NpgsqlTypes.NpgsqlDbType.Uuid).Value = customerId is null ? DBNull.Value : customerId.Value;
         packageCommand.Parameters.AddWithValue("customer_hint", customerHint);
         packageCommand.Parameters.AddWithValue("project_name_hint", projectNameHint);
@@ -10615,8 +11047,9 @@ app.MapGet("/api/work-register/projects/{projectId:guid}/details", async (Guid p
 
     var taskRows = await LoadRowsByProjectAsync("project_tasks", 1000, "project_id", "work_item_id", "parent_project_id");
     var documentRows = await LoadRowsByProjectAsync("project_documents", 1000, "project_id", "work_item_id", "parent_project_id");
-    var workRegisterDocumentRows = await LoadRowsByProjectAsync("work_register_documents", 1000, "project_id");
+    var workRegisterDocumentRows = await LoadRowsByProjectAsync("work_register_project_documents", 1000, "project_id");
     /* 055C_9_DETAILS_DOCUMENT_MANAGEMENT_LOAD */
+    /* 055D_6A6_WORK_REGISTER_ROLLUP_FIX_DETAILS_DOCUMENT_SOURCE */
     var timeRows = await LoadRowsByProjectAsync("time_entries", 100000, "project_id", "work_item_id", "parent_project_id");
     var changeRows = await LoadRowsByProjectAsync("work_register_change_history", 500, "work_id");
     var taskAssignmentRows = await LoadRowsByProjectAsync("work_register_task_assignment_history", 5000, "project_id");
@@ -10947,6 +11380,35 @@ app.MapGet("/api/work-register/edit-foundation", async (HttpContext httpContext)
         canEditWorkRegister = Convert.ToBoolean(await accessCommand.ExecuteScalarAsync() ?? false);
     }
 
+    /* 055D_6B2_PROJECT_LIFECYCLE_RESTORE_PERMISSION_START */
+    var canRestoreWorkRegister = false;
+
+    await using (var restoreAccessCommand = new NpgsqlCommand("""
+        SELECT EXISTS (
+            SELECT 1
+            FROM app_user_role_assignments ura
+            JOIN app_roles r
+              ON r.app_role_id = ura.app_role_id
+            WHERE ura.user_id = @user_id
+              AND ura.is_active = TRUE
+              AND r.is_active = TRUE
+              AND r.role_code IN (
+                  'SUPER_ADMINISTRATOR',
+                  'ADMINISTRATOR'
+              )
+        );
+        """, connection))
+    {
+        restoreAccessCommand.Parameters.AddWithValue(
+            "user_id",
+            sessionUserId.Value);
+
+        canRestoreWorkRegister =
+            Convert.ToBoolean(
+                await restoreAccessCommand.ExecuteScalarAsync() ?? false);
+    }
+    /* 055D_6B2_PROJECT_LIFECYCLE_RESTORE_PERMISSION_END */
+
     var customers = new List<object>();
     await using (var customerCommand = new NpgsqlCommand("""
         SELECT
@@ -11042,6 +11504,8 @@ app.MapGet("/api/work-register/edit-foundation", async (HttpContext httpContext)
     {
         status = "work_register_edit_foundation_loaded",
         canEditWorkRegister,
+        canArchiveWorkRegister = canEditWorkRegister,
+        canRestoreWorkRegister,
         editAllowedRoles = new[] { "SUPER_ADMINISTRATOR", "ADMINISTRATOR", "PROJECT_TEAM_COORDINATOR" },
         viewOnlyRoles = new[] { "SOLUTION_ARCHITECT", "PROJECT_MANAGER", "ENGINEER", "ACCOUNT_EXECUTIVE", "SAA" },
         customers,
@@ -11115,6 +11579,94 @@ app.MapPost("/api/work-register/projects/update", async (HttpContext httpContext
         await using var connection = new NpgsqlConnection(config.ConnectionString);
         await connection.OpenAsync();
 
+        /* 055D_6B5B_SIDECAR_PROJECT_LIFECYCLE_GUARD_START */
+        using (var lifecycleGuardDocument =
+            System.Text.Json.JsonDocument.Parse(payloadText))
+        {
+            var lifecycleRoot = lifecycleGuardDocument.RootElement;
+
+            string LifecycleString(params string[] names)
+            {
+                foreach (var name in names)
+                {
+                    if (!lifecycleRoot.TryGetProperty(name, out var value)
+                        || value.ValueKind == JsonValueKind.Null
+                        || value.ValueKind == JsonValueKind.Undefined)
+                    {
+                        continue;
+                    }
+
+                    var text = value.ToString().Trim();
+
+                    if (!string.IsNullOrWhiteSpace(text))
+                    {
+                        return text;
+                    }
+                }
+
+                return "";
+            }
+
+            var guardedProjectIdText = LifecycleString(
+                "projectId",
+                "project_id",
+                "workId",
+                "work_id");
+
+            var requestedProjectStatus = LifecycleString(
+                "status",
+                "projectStatus",
+                "project_status");
+
+            if (string.Equals(
+                    requestedProjectStatus,
+                    "archived",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return Results.Json(new
+                {
+                    status = "lifecycle_action_required",
+                    message = "Archive is maintained separately from project status. Use Archive Project so permissions, reason, and audit history are recorded."
+                }, statusCode: StatusCodes.Status400BadRequest);
+            }
+
+            if (Guid.TryParse(
+                    guardedProjectIdText,
+                    out var guardedProjectId))
+            {
+                await using var lifecycleStatusCommand =
+                    new NpgsqlCommand("""
+                        SELECT COALESCE(
+                            (
+                                SELECT lifecycle.is_archived
+                                FROM work_register_project_lifecycle lifecycle
+                                WHERE lifecycle.project_id = @project_id
+                            ),
+                            FALSE
+                        );
+                        """, connection);
+
+                lifecycleStatusCommand.Parameters.AddWithValue(
+                    "project_id",
+                    guardedProjectId);
+
+                var projectIsArchived =
+                    Convert.ToBoolean(
+                        await lifecycleStatusCommand.ExecuteScalarAsync()
+                        ?? false);
+
+                if (projectIsArchived)
+                {
+                    return Results.Json(new
+                    {
+                        status = "project_archived_read_only",
+                        message = "Archived projects are read-only. An Administrator or Super Administrator must restore the project before it can be edited."
+                    }, statusCode: StatusCodes.Status409Conflict);
+                }
+            }
+        }
+        /* 055D_6B5B_SIDECAR_PROJECT_LIFECYCLE_GUARD_END */
+
         /* 055D_4M_PROJECT_UPDATE_SCHEMA_AWARE_ROUTE_START */
         await using var command = new NpgsqlCommand("""
             SELECT projectpulse055d4m_update_project(@actor_user_id, CAST(@payload AS jsonb))::text;
@@ -11151,6 +11703,491 @@ app.MapPost("/api/work-register/projects/update", async (HttpContext httpContext
 
 /* 055C_3_WORK_REGISTER_UPDATE_500_REPAIR_END */
 /* 055C_2_WORK_REGISTER_EDIT_API_END */
+
+
+
+/* 055D_6B5B_SIDECAR_PROJECT_LIFECYCLE_API_START */
+app.MapPost("/api/work-register/projects/lifecycle", async (HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+
+    if (sessionUserId is null)
+    {
+        return Results.Json(new
+        {
+            status = "session_required",
+            message = "Missing ProjectPulse session token."
+        }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    JsonDocument requestDocument;
+
+    try
+    {
+        requestDocument =
+            await JsonDocument.ParseAsync(httpContext.Request.Body);
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new
+        {
+            status = "validation_error",
+            message = "Project lifecycle payload must be valid JSON.",
+            detail = ex.Message
+        }, statusCode: StatusCodes.Status400BadRequest);
+    }
+
+    using (requestDocument)
+    {
+        var root = requestDocument.RootElement;
+
+        string ReadString(params string[] names)
+        {
+            foreach (var name in names)
+            {
+                if (!root.TryGetProperty(name, out var value)
+                    || value.ValueKind == JsonValueKind.Null
+                    || value.ValueKind == JsonValueKind.Undefined)
+                {
+                    continue;
+                }
+
+                var text = value.ToString().Trim();
+
+                if (!string.IsNullOrWhiteSpace(text))
+                {
+                    return text;
+                }
+            }
+
+            return "";
+        }
+
+        var projectIdText = ReadString(
+            "projectId",
+            "project_id",
+            "workId",
+            "work_id");
+
+        var action = ReadString(
+                "action",
+                "lifecycleAction",
+                "lifecycle_action")
+            .ToLowerInvariant();
+
+        var reason = ReadString(
+            "reason",
+            "lifecycleReason",
+            "lifecycle_reason");
+
+        if (!Guid.TryParse(projectIdText, out var projectId))
+        {
+            return Results.Json(new
+            {
+                status = "validation_error",
+                message = "A valid Project ID is required."
+            }, statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        if (action is not "archive" and not "restore")
+        {
+            return Results.Json(new
+            {
+                status = "validation_error",
+                message = "Lifecycle action must be archive or restore."
+            }, statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        if (string.IsNullOrWhiteSpace(reason))
+        {
+            return Results.Json(new
+            {
+                status = "validation_error",
+                message = action == "archive"
+                    ? "Archive reason is required."
+                    : "Restore reason is required."
+            }, statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        var config = DatabaseConfig.FromEnvironment();
+        var validation = ValidateConfig(config);
+
+        if (validation is not null)
+        {
+            return validation;
+        }
+
+        try
+        {
+            await using var connection =
+                new NpgsqlConnection(config.ConnectionString);
+
+            await connection.OpenAsync();
+
+            var hasPermission = false;
+
+            await using (var accessCommand = new NpgsqlCommand("""
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM app_user_role_assignments ura
+                    JOIN app_roles r
+                      ON r.app_role_id = ura.app_role_id
+                    WHERE ura.user_id = @user_id
+                      AND ura.is_active = TRUE
+                      AND r.is_active = TRUE
+                      AND (
+                            (
+                                @action = 'archive'
+                                AND r.role_code IN (
+                                    'SUPER_ADMINISTRATOR',
+                                    'ADMINISTRATOR',
+                                    'PROJECT_TEAM_COORDINATOR'
+                                )
+                            )
+                            OR
+                            (
+                                @action = 'restore'
+                                AND r.role_code IN (
+                                    'SUPER_ADMINISTRATOR',
+                                    'ADMINISTRATOR'
+                                )
+                            )
+                      )
+                );
+                """, connection))
+            {
+                accessCommand.Parameters.AddWithValue(
+                    "user_id",
+                    sessionUserId.Value);
+
+                accessCommand.Parameters.AddWithValue(
+                    "action",
+                    action);
+
+                hasPermission =
+                    Convert.ToBoolean(
+                        await accessCommand.ExecuteScalarAsync()
+                        ?? false);
+            }
+
+            if (!hasPermission)
+            {
+                return Results.Json(new
+                {
+                    status = "access_denied",
+                    message = action == "archive"
+                        ? "Only Project Team Coordinators, Administrators, and Super Administrators can archive projects."
+                        : "Only Administrators and Super Administrators can restore archived projects."
+                }, statusCode: StatusCodes.Status403Forbidden);
+            }
+
+            await using var transaction =
+                await connection.BeginTransactionAsync();
+
+            var oldSnapshot = "{}";
+            var currentStatus = "";
+            var projectName = "";
+            var projectCode = "";
+            var currentlyArchived = false;
+
+            await using (var projectCommand = new NpgsqlCommand("""
+                SELECT
+                    jsonb_build_object(
+                        'project',
+                        to_jsonb(p),
+                        'workRegisterLifecycle',
+                        COALESCE(to_jsonb(lifecycle), '{}'::jsonb)
+                    )::text,
+                    COALESCE(p.status, ''),
+                    COALESCE(p.project_name, ''),
+                    COALESCE(p.project_code, ''),
+                    COALESCE(lifecycle.is_archived, FALSE)
+                FROM projects p
+                LEFT JOIN work_register_project_lifecycle lifecycle
+                  ON lifecycle.project_id = p.project_id
+                WHERE p.project_id = @project_id
+                LIMIT 1;
+                """, connection, transaction))
+            {
+                projectCommand.Parameters.AddWithValue(
+                    "project_id",
+                    projectId);
+
+                await using var projectReader =
+                    await projectCommand.ExecuteReaderAsync();
+
+                if (!await projectReader.ReadAsync())
+                {
+                    await transaction.RollbackAsync();
+
+                    return Results.Json(new
+                    {
+                        status = "project_not_found",
+                        message = "Project was not found."
+                    }, statusCode: StatusCodes.Status404NotFound);
+                }
+
+                oldSnapshot = projectReader.GetString(0);
+                currentStatus = projectReader.GetString(1);
+                projectName = projectReader.GetString(2);
+                projectCode = projectReader.GetString(3);
+                currentlyArchived = projectReader.GetBoolean(4);
+            }
+
+            if (action == "archive" && currentlyArchived)
+            {
+                await transaction.RollbackAsync();
+
+                return Results.Json(new
+                {
+                    status = "project_already_archived",
+                    message = "This project is already archived.",
+                    projectId
+                }, statusCode: StatusCodes.Status409Conflict);
+            }
+
+            if (action == "restore" && !currentlyArchived)
+            {
+                await transaction.RollbackAsync();
+
+                return Results.Json(new
+                {
+                    status = "project_not_archived",
+                    message = "Only archived projects can be restored.",
+                    projectId
+                }, statusCode: StatusCodes.Status409Conflict);
+            }
+
+            var changedAtUtc = DateTimeOffset.UtcNow;
+
+            if (action == "archive")
+            {
+                await using var archiveCommand =
+                    new NpgsqlCommand("""
+                        INSERT INTO work_register_project_lifecycle (
+                            project_id,
+                            is_archived,
+                            archived_at,
+                            archived_by_user_id,
+                            archive_reason,
+                            restored_at,
+                            restored_by_user_id,
+                            restore_reason,
+                            created_at,
+                            updated_at
+                        )
+                        VALUES (
+                            @project_id,
+                            TRUE,
+                            @changed_at,
+                            @actor_user_id,
+                            @reason,
+                            NULL,
+                            NULL,
+                            NULL,
+                            NOW(),
+                            NOW()
+                        )
+                        ON CONFLICT (project_id)
+                        DO UPDATE SET
+                            is_archived = TRUE,
+                            archived_at = EXCLUDED.archived_at,
+                            archived_by_user_id = EXCLUDED.archived_by_user_id,
+                            archive_reason = EXCLUDED.archive_reason,
+                            restored_at = NULL,
+                            restored_by_user_id = NULL,
+                            restore_reason = NULL,
+                            updated_at = NOW();
+                        """, connection, transaction);
+
+                archiveCommand.Parameters.AddWithValue(
+                    "project_id",
+                    projectId);
+
+                archiveCommand.Parameters.AddWithValue(
+                    "changed_at",
+                    changedAtUtc);
+
+                archiveCommand.Parameters.AddWithValue(
+                    "actor_user_id",
+                    sessionUserId.Value);
+
+                archiveCommand.Parameters.AddWithValue(
+                    "reason",
+                    reason);
+
+                await archiveCommand.ExecuteNonQueryAsync();
+            }
+            else
+            {
+                await using var restoreCommand =
+                    new NpgsqlCommand("""
+                        UPDATE work_register_project_lifecycle
+                        SET is_archived = FALSE,
+                            restored_at = @changed_at,
+                            restored_by_user_id = @actor_user_id,
+                            restore_reason = @reason,
+                            updated_at = NOW()
+                        WHERE project_id = @project_id
+                          AND is_archived = TRUE;
+                        """, connection, transaction);
+
+                restoreCommand.Parameters.AddWithValue(
+                    "project_id",
+                    projectId);
+
+                restoreCommand.Parameters.AddWithValue(
+                    "changed_at",
+                    changedAtUtc);
+
+                restoreCommand.Parameters.AddWithValue(
+                    "actor_user_id",
+                    sessionUserId.Value);
+
+                restoreCommand.Parameters.AddWithValue(
+                    "reason",
+                    reason);
+
+                var affected =
+                    await restoreCommand.ExecuteNonQueryAsync();
+
+                if (affected != 1)
+                {
+                    await transaction.RollbackAsync();
+
+                    return Results.Json(new
+                    {
+                        status = "project_restore_conflict",
+                        message = "The project was no longer archived when the restore was applied."
+                    }, statusCode: StatusCodes.Status409Conflict);
+                }
+            }
+
+            var newSnapshot = JsonSerializer.Serialize(new
+            {
+                projectId,
+                projectCode,
+                projectName,
+                projectStatus = currentStatus,
+                isArchived = action == "archive",
+                lifecycleAction = action,
+                lifecycleReason = reason,
+                changedByUserId = sessionUserId.Value,
+                changedAtUtc
+            });
+
+            var auditAction =
+                action == "archive"
+                    ? "project_archived"
+                    : "project_restored";
+
+            var actionLabel =
+                action == "archive"
+                    ? "Archived"
+                    : "Restored";
+
+            await using (var auditCommand = new NpgsqlCommand("""
+                INSERT INTO work_register_change_history (
+                    work_register_change_history_id,
+                    source_table,
+                    work_id,
+                    action,
+                    change_summary,
+                    changed_fields_csv,
+                    changed_by_user_id,
+                    old_value_json,
+                    new_value_json
+                )
+                VALUES (
+                    @history_id,
+                    'work_register_project_lifecycle',
+                    @work_id,
+                    @action,
+                    @change_summary,
+                    @changed_fields_csv,
+                    @changed_by_user_id,
+                    CAST(@old_value_json AS jsonb),
+                    CAST(@new_value_json AS jsonb)
+                );
+                """, connection, transaction))
+            {
+                auditCommand.Parameters.AddWithValue(
+                    "history_id",
+                    Guid.NewGuid());
+
+                auditCommand.Parameters.AddWithValue(
+                    "work_id",
+                    projectId);
+
+                auditCommand.Parameters.AddWithValue(
+                    "action",
+                    auditAction);
+
+                auditCommand.Parameters.AddWithValue(
+                    "change_summary",
+                    $"{actionLabel} project '{projectName}'. Reason: {reason}");
+
+                auditCommand.Parameters.AddWithValue(
+                    "changed_fields_csv",
+                    action == "archive"
+                        ? "Archive State, Archive Reason"
+                        : "Archive State, Restore Reason");
+
+                auditCommand.Parameters.AddWithValue(
+                    "changed_by_user_id",
+                    sessionUserId.Value);
+
+                auditCommand.Parameters.AddWithValue(
+                    "old_value_json",
+                    oldSnapshot);
+
+                auditCommand.Parameters.AddWithValue(
+                    "new_value_json",
+                    newSnapshot);
+
+                await auditCommand.ExecuteNonQueryAsync();
+            }
+
+            await transaction.CommitAsync();
+
+            return Results.Ok(new
+            {
+                status = auditAction,
+                projectId,
+                projectCode,
+                projectName,
+                projectStatus = currentStatus,
+                isArchived = action == "archive",
+                lifecycle = action == "archive"
+                    ? "closed"
+                    : "active",
+                message = action == "archive"
+                    ? "Project archived. Its project status was preserved and it remains available under Closed / Historical."
+                    : "Project restored to the Active Work Register."
+            });
+        }
+        catch (PostgresException ex)
+        {
+            return Results.Json(new
+            {
+                status = "database_error",
+                message = "The project lifecycle action could not be completed.",
+                sqlState = ex.SqlState,
+                constraint = ex.ConstraintName
+            }, statusCode: StatusCodes.Status500InternalServerError);
+        }
+        catch (Exception ex)
+        {
+            return Results.Json(new
+            {
+                status = "server_exception",
+                message = "The project lifecycle action could not be completed.",
+                exceptionType = ex.GetType().Name
+            }, statusCode: StatusCodes.Status500InternalServerError);
+        }
+    }
+});
+/* 055D_6B5B_SIDECAR_PROJECT_LIFECYCLE_API_END */
 
 
 /* 055C_WORK_REGISTER_API_START */
@@ -11270,11 +12307,19 @@ app.MapGet("/api/work-register/overview", async (HttpContext httpContext) =>
     var clientRows = await LoadRowsAsync("clients", 10000);
     var userRows = await LoadRowsAsync("app_users", 10000);
     var projectRows = await LoadRowsAsync("projects", 5000);
+
+    /* 055D_6B5B_SIDECAR_PROJECT_LIFECYCLE_OVERVIEW_LOAD */
+    var projectLifecycleRows =
+        await LoadRowsAsync(
+            "work_register_project_lifecycle",
+            5000);
     var intakeRows = await LoadRowsAsync("project_intakes", 5000);
     var taskRows = await LoadRowsAsync("project_tasks", 50000);
     var documentRows = await LoadRowsAsync("project_documents", 50000);
+    var workRegisterProjectDocumentRows = await LoadRowsAsync("work_register_project_documents", 50000);
     var timeRows = await LoadRowsAsync("time_entries", 100000);
     var taskAssignmentRows = await LoadRowsAsync("work_register_task_assignment_history", 100000);
+    /* 055D_6A6_WORK_REGISTER_ROLLUP_FIX_LOAD_SOURCES */
 
     var clientsById = new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
     foreach (var row in clientRows)
@@ -11317,21 +12362,80 @@ app.MapGet("/api/work-register/overview", async (HttpContext httpContext) =>
     }
 
     /* 055C_6_WORK_REGISTER_OVERVIEW_ASSIGNMENT_OVERLAY_START */
+    /* 055D_6A6_WORK_REGISTER_ROLLUP_FIX_ASSIGNMENT_OVERLAY_START */
     var sidecarEngineersByProject = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+    var sidecarAllocatedHoursByProject = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+    var sidecarEngineeringHoursByProject = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+    var sidecarPmHoursByProject = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+
     foreach (var assignment in taskAssignmentRows)
     {
         var statusValue = Pick(assignment, "assignment_status");
         var effectiveEndDate = Pick(assignment, "effective_end_date");
 
-        if (!string.Equals(statusValue, "active", StringComparison.OrdinalIgnoreCase) || !string.IsNullOrWhiteSpace(effectiveEndDate))
+        if (!string.Equals(statusValue, "active", StringComparison.OrdinalIgnoreCase)
+            || !string.IsNullOrWhiteSpace(effectiveEndDate))
         {
             continue;
         }
 
         var projectIdText = Pick(assignment, "project_id");
-        var assignedUserId = Pick(assignment, "assigned_user_id");
+        if (string.IsNullOrWhiteSpace(projectIdText))
+        {
+            continue;
+        }
 
-        if (string.IsNullOrWhiteSpace(projectIdText) || string.IsNullOrWhiteSpace(assignedUserId))
+        var allocatedHoursValue = PickDecimal(
+            assignment,
+            "allocated_hours",
+            "assigned_hours",
+            "planned_hours",
+            "estimated_hours",
+            "hours");
+
+        sidecarAllocatedHoursByProject[projectIdText] =
+            sidecarAllocatedHoursByProject.TryGetValue(projectIdText, out var currentAllocatedHours)
+                ? currentAllocatedHours + allocatedHoursValue
+                : allocatedHoursValue;
+
+        var assignmentRole = Pick(
+            assignment,
+            "assignment_role",
+            "resource_role",
+            "role",
+            "role_code").Trim().ToLowerInvariant();
+
+        var isProjectManagementAssignment =
+            assignmentRole.Contains("project_management", StringComparison.Ordinal)
+            || assignmentRole.Contains("project management", StringComparison.Ordinal)
+            || assignmentRole.Contains("project_manager", StringComparison.Ordinal)
+            || assignmentRole.Contains("project manager", StringComparison.Ordinal)
+            || assignmentRole == "pm";
+
+        if (isProjectManagementAssignment)
+        {
+            sidecarPmHoursByProject[projectIdText] =
+                sidecarPmHoursByProject.TryGetValue(projectIdText, out var currentPmHours)
+                    ? currentPmHours + allocatedHoursValue
+                    : allocatedHoursValue;
+        }
+        else
+        {
+            sidecarEngineeringHoursByProject[projectIdText] =
+                sidecarEngineeringHoursByProject.TryGetValue(projectIdText, out var currentEngineeringHours)
+                    ? currentEngineeringHours + allocatedHoursValue
+                    : allocatedHoursValue;
+        }
+
+        // Project-management assignments contribute to PM hours but
+        // should not be displayed as assigned engineers.
+        if (isProjectManagementAssignment)
+        {
+            continue;
+        }
+
+        var assignedUserId = Pick(assignment, "assigned_user_id");
+        if (string.IsNullOrWhiteSpace(assignedUserId))
         {
             continue;
         }
@@ -11349,6 +12453,7 @@ app.MapGet("/api/work-register/overview", async (HttpContext httpContext) =>
 
         sidecarEngineersByProject[projectIdText].Add(engineerName);
     }
+    /* 055D_6A6_WORK_REGISTER_ROLLUP_FIX_ASSIGNMENT_OVERLAY_END */
     /* 055C_6_WORK_REGISTER_OVERVIEW_ASSIGNMENT_OVERLAY_END */
 
     var tasksByProject = new Dictionary<string, List<Dictionary<string, string>>>(StringComparer.OrdinalIgnoreCase);
@@ -11365,14 +12470,31 @@ app.MapGet("/api/work-register/overview", async (HttpContext httpContext) =>
         tasksByProject[projectId].Add(row);
     }
 
+    /* 055D_6A6_WORK_REGISTER_ROLLUP_FIX_DOCUMENT_COUNTS_START */
     var documentsByProject = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
     foreach (var row in documentRows)
     {
         var projectId = Pick(row, "project_id", "work_item_id", "parent_project_id");
         if (string.IsNullOrWhiteSpace(projectId)) continue;
 
-        documentsByProject[projectId] = documentsByProject.TryGetValue(projectId, out var current) ? current + 1 : 1;
+        documentsByProject[projectId] =
+            documentsByProject.TryGetValue(projectId, out var current)
+                ? current + 1
+                : 1;
     }
+
+    var workRegisterDocumentsByProject = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+    foreach (var row in workRegisterProjectDocumentRows)
+    {
+        var projectId = Pick(row, "project_id", "work_item_id", "parent_project_id");
+        if (string.IsNullOrWhiteSpace(projectId)) continue;
+
+        workRegisterDocumentsByProject[projectId] =
+            workRegisterDocumentsByProject.TryGetValue(projectId, out var current)
+                ? current + 1
+                : 1;
+    }
+    /* 055D_6A6_WORK_REGISTER_ROLLUP_FIX_DOCUMENT_COUNTS_END */
 
     var hoursByProject = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
     foreach (var row in timeRows)
@@ -11382,6 +12504,23 @@ app.MapGet("/api/work-register/overview", async (HttpContext httpContext) =>
 
         var hours = PickDecimal(row, "hours", "duration_hours", "time_hours", "actual_hours", "entered_hours");
         hoursByProject[projectId] = hoursByProject.TryGetValue(projectId, out var current) ? current + hours : hours;
+    }
+
+    /* 055D_6B5B_SIDECAR_PROJECT_LIFECYCLE_OVERVIEW_INDEX */
+    var projectLifecycleByProject =
+        new Dictionary<string, Dictionary<string, string>>(
+            StringComparer.OrdinalIgnoreCase);
+
+    foreach (var lifecycleRow in projectLifecycleRows)
+    {
+        var lifecycleProjectId =
+            Pick(lifecycleRow, "project_id");
+
+        if (!string.IsNullOrWhiteSpace(lifecycleProjectId))
+        {
+            projectLifecycleByProject[lifecycleProjectId] =
+                lifecycleRow;
+        }
     }
 
     var workItems = new List<object>();
@@ -11394,6 +12533,27 @@ app.MapGet("/api/work-register/overview", async (HttpContext httpContext) =>
         var clientId = Pick(project, "client_id", "customer_id");
         var status = Pick(project, "status", "project_status", "state");
         var workName = Pick(project, "project_name", "name", "title", "work_name", "request_name");
+
+        projectLifecycleByProject.TryGetValue(
+            projectId,
+            out var projectLifecycleRow);
+
+        var isArchived =
+            projectLifecycleRow is not null
+            && bool.TryParse(
+                Pick(projectLifecycleRow, "is_archived"),
+                out var archivedFlag)
+            && archivedFlag;
+
+        var archiveReason =
+            isArchived && projectLifecycleRow is not null
+                ? Pick(projectLifecycleRow, "archive_reason")
+                : "";
+
+        var archivedAt =
+            isArchived && projectLifecycleRow is not null
+                ? Pick(projectLifecycleRow, "archived_at")
+                : "";
 
         tasksByProject.TryGetValue(projectId, out var projectTasks);
         projectTasks ??= new List<Dictionary<string, string>>();
@@ -11418,7 +12578,14 @@ app.MapGet("/api/work-register/overview", async (HttpContext httpContext) =>
             .ToList();
 
         var totalCost =
-            PickDecimal(project, "total_project_cost", "project_total_cost", "budget_amount", "total_cost", "project_list_price");
+            PickDecimal(
+                project,
+                "planned_total_project_cost",
+                "total_project_cost",
+                "project_total_cost",
+                "budget_amount",
+                "total_cost",
+                "project_list_price");
 
         var costUsed =
             PickDecimal(project, "cost_used", "actual_cost", "consumed_cost", "used_cost");
@@ -11426,10 +12593,41 @@ app.MapGet("/api/work-register/overview", async (HttpContext httpContext) =>
         var remainingCost =
             PickDecimal(project, "remaining_cost", "cost_remaining", "budget_remaining");
 
+        if (remainingCost == 0m && totalCost > 0m && costUsed != totalCost)
+        {
+            remainingCost = totalCost - costUsed;
+        }
+
         var usedHours = hoursByProject.TryGetValue(projectId, out var projectHours) ? projectHours : 0m;
 
-        var allocatedHours =
+        var projectAllocatedHours =
             PickDecimal(project, "total_project_hours", "allocated_hours", "project_hours", "hours_associated", "total_hours");
+
+        var allocatedHours =
+            sidecarAllocatedHoursByProject.TryGetValue(projectId, out var sidecarAllocatedHours)
+            && sidecarAllocatedHours > 0m
+                ? sidecarAllocatedHours
+                : projectAllocatedHours;
+
+        var projectEngineeringHours =
+            PickDecimal(project, "engineering_hours", "total_engineering_hours", "engineering_allocated_hours");
+
+        var engineeringHoursAllocated =
+            sidecarEngineeringHoursByProject.TryGetValue(projectId, out var sidecarEngineeringHours)
+            && sidecarEngineeringHours > 0m
+                ? sidecarEngineeringHours
+                : projectEngineeringHours;
+
+        var projectPmHours =
+            PickDecimal(project, "project_management_hours", "pm_hours", "total_project_oversight_hours");
+
+        var pmHoursAllocated =
+            sidecarPmHoursByProject.TryGetValue(projectId, out var sidecarPmHours)
+            && sidecarPmHours > 0m
+                ? sidecarPmHours
+                : projectPmHours;
+
+        /* 055D_6A6_WORK_REGISTER_ROLLUP_FIX_PROJECT_TOTALS */
 
         var burnPercent = totalCost > 0 && costUsed > 0
             ? Math.Round((costUsed / totalCost) * 100m, 1)
@@ -11449,7 +12647,11 @@ app.MapGet("/api/work-register/overview", async (HttpContext httpContext) =>
             customerName = ClientName(clientId, Pick(project, "customer_name", "client_name")),
             customerId = clientId,
             status = string.IsNullOrWhiteSpace(status) ? "unknown" : status,
-            lifecycle = IsClosedStatus(status) ? "closed" : "active",
+            lifecycle = isArchived || IsClosedStatus(status)
+                ? "closed"
+                : "active",
+            isArchived,
+            archiveReason,
             contractType = Pick(project, "contract_type", "billing_type", "pricing_model"),
             projectManager = UserName(Pick(project, "project_manager_user_id", "pm_user_id", "assigned_pm_user_id"), Pick(project, "project_manager_name", "pm_name")),
             projectCoordinator = UserName(Pick(project, "project_coordinator_user_id", "ptc_user_id", "coordinator_user_id"), Pick(project, "project_coordinator_name", "coordinator_name")),
@@ -11459,16 +12661,26 @@ app.MapGet("/api/work-register/overview", async (HttpContext httpContext) =>
             assignedEngineers,
             startDate = Pick(project, "project_start_date", "start_date", "planned_start_date"),
             estimatedEndDate = Pick(project, "estimated_end_date", "project_end_date", "planned_end_date", "end_date"),
-            closedDate = Pick(project, "closed_at", "closed_date", "completed_at", "archived_at"),
+            closedDate = !string.IsNullOrWhiteSpace(archivedAt)
+                ? archivedAt
+                : Pick(project, "closed_at", "closed_date", "completed_at", "archived_at"),
             sowSignedDate = Pick(project, "sow_signed_date", "signed_date"),
+            sellQuoteNumber = Pick(project, "sell_quote_number", "sellQuoteNumber", "quote_number"),
+            salesforceIdNumber = Pick(project, "salesforce_id_number", "salesforceIdNumber", "salesforce_id", "opportunity_id"),
+            certiniaIdNumber = Pick(project, "certinia_id_number", "certiniaIdNumber", "certinia_project_id"),
             taskCount,
             openTaskCount,
             closedTaskCount,
-            documentCount = documentsByProject.TryGetValue(projectId, out var docCount) ? docCount : 0,
+            documentCount =
+                workRegisterDocumentsByProject.TryGetValue(projectId, out var workRegisterDocumentCount)
+                    ? workRegisterDocumentCount
+                    : (documentsByProject.TryGetValue(projectId, out var legacyDocumentCount)
+                        ? legacyDocumentCount
+                        : 0),
             allocatedHours,
             usedHours,
-            engineeringHoursAllocated = PickDecimal(project, "engineering_hours", "total_engineering_hours", "engineering_allocated_hours"),
-            pmHoursAllocated = PickDecimal(project, "project_management_hours", "pm_hours", "total_project_oversight_hours"),
+            engineeringHoursAllocated,
+            pmHoursAllocated,
             totalCost,
             costUsed,
             remainingCost,
@@ -11509,6 +12721,9 @@ app.MapGet("/api/work-register/overview", async (HttpContext httpContext) =>
             estimatedEndDate = Pick(intake, "estimated_end_date", "project_end_date", "planned_end_date", "end_date"),
             closedDate = Pick(intake, "closed_at", "closed_date", "completed_at", "archived_at"),
             sowSignedDate = Pick(intake, "sow_signed_date", "signed_date"),
+            sellQuoteNumber = Pick(intake, "sell_quote_number", "sellQuoteNumber", "quote_number"),
+            salesforceIdNumber = Pick(intake, "salesforce_id_number", "salesforceIdNumber", "salesforce_id", "opportunity_id"),
+            certiniaIdNumber = Pick(intake, "certinia_id_number", "certiniaIdNumber", "certinia_project_id"),
             taskCount = 0,
             openTaskCount = 0,
             closedTaskCount = 0,
@@ -16678,6 +17893,25 @@ async Task<bool> SessionUserIsAdministratorAsync(NpgsqlConnection connection, Gu
 }
 
 
+string[] ProjectPulseConfiguredSsoDomains()
+{
+    var configured = Environment.GetEnvironmentVariable("PROJECTPULSE_SSO_ALLOWED_DOMAINS") ?? "";
+    var domains = configured.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Select(domain => domain.Trim().TrimStart('@').ToLowerInvariant())
+        .Where(domain => !string.IsNullOrWhiteSpace(domain))
+        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    domains.Add((Environment.GetEnvironmentVariable("PROJECTPULSE_ENTRA_TEST_DOMAIN") ?? "onenecklab.com").TrimStart('@').ToLowerInvariant());
+    domains.Add((Environment.GetEnvironmentVariable("PROJECTPULSE_ENTRA_PRODUCTION_DOMAIN") ?? "ussignal.com").TrimStart('@').ToLowerInvariant());
+    return domains.OrderBy(domain => domain).ToArray();
+}
+
+bool ProjectPulseUsesConfiguredSsoDomain(string? email)
+{
+    if (string.IsNullOrWhiteSpace(email)) return false;
+    var normalized = email.Trim().ToLowerInvariant();
+    return ProjectPulseConfiguredSsoDomains().Any(domain => normalized.EndsWith("@" + domain, StringComparison.OrdinalIgnoreCase));
+}
+
 app.MapGet("/api/auth/login/route", async (string? username) =>
 {
     var cleanedUsername = (username ?? string.Empty).Trim().ToLowerInvariant();
@@ -16691,16 +17925,18 @@ app.MapGet("/api/auth/login/route", async (string? username) =>
         });
     }
 
-    if (cleanedUsername.EndsWith("@ussignal.com"))
+    if (ProjectPulseUsesConfiguredSsoDomain(cleanedUsername))
     {
+        var domain = cleanedUsername.Split('@').LastOrDefault() ?? "";
         return Results.Ok(new
         {
             status = "route_resolved",
             username = cleanedUsername,
             loginMethod = "sso",
             provider = "ENTRA_ID",
-            displayName = "Continue with US Signal SSO",
-            message = "US Signal users authenticate through Microsoft Entra ID."
+            displayName = "Continue with Microsoft Entra SSO",
+            message = $"{domain} users authenticate through Microsoft Entra ID.",
+            allowedDomains = ProjectPulseConfiguredSsoDomains()
         });
     }
 
@@ -16745,7 +17981,7 @@ app.MapGet("/api/auth/login/route", async (string? username) =>
     {
         status = "unsupported_login_domain",
         username = cleanedUsername,
-        message = "Use your US Signal email address for SSO or a Project Pulse .local administrator account."
+        message = $"Use an approved Microsoft Entra domain ({string.Join(", ", ProjectPulseConfiguredSsoDomains())}) or a Project Pulse .local administrator account."
     });
 });
 
@@ -17270,12 +18506,12 @@ app.MapPost("/api/auth/sso/dev-login", async (SsoDevelopmentLoginRequest request
 {
     var email = request.Email.Trim().ToLowerInvariant();
 
-    if (!email.EndsWith("@ussignal.com", StringComparison.OrdinalIgnoreCase))
+    if (!ProjectPulseUsesConfiguredSsoDomain(email))
     {
         return Results.BadRequest(new
         {
             status = "invalid_sso_domain",
-            message = "US Signal SSO is only available for @ussignal.com accounts."
+            message = $"SSO is available only for configured Entra domains: {string.Join(", ", ProjectPulseConfiguredSsoDomains())}."
         });
     }
 
@@ -24959,7 +26195,7 @@ app.MapGet("/api/auth/sso/start", async (HttpContext httpContext, string? loginH
         ["response_type"] = "code",
         ["redirect_uri"] = redirectUri,
         ["response_mode"] = "query",
-        ["scope"] = "openid profile email User.Read",
+        ["scope"] = "openid profile email offline_access User.Read Calendars.Read",
         ["state"] = state,
         ["nonce"] = nonce
     };
@@ -25048,7 +26284,7 @@ app.MapGet("/api/auth/sso/callback", async (HttpContext httpContext, string? cod
     var tokenRequest = new FormUrlEncodedContent(new Dictionary<string, string>
     {
         ["client_id"] = clientId,
-        ["scope"] = "openid profile email User.Read",
+        ["scope"] = "openid profile email offline_access User.Read Calendars.Read",
         ["code"] = code,
         ["redirect_uri"] = redirectUri,
         ["grant_type"] = "authorization_code",
@@ -26152,6 +27388,824 @@ app.MapGet("/api/workflow/approval-export-summary", async (HttpContext httpConte
 });
 
 
+
+/* FIX_20260717_001_PTC_TIME_ENTRY_CORRECTIONS_START */
+app.MapGet("/api/workflow/ptc-time-entry-corrections", async (
+    DateOnly? weekStart,
+    DateOnly? weekEnd,
+    HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+
+    if (sessionUserId is null)
+    {
+        return Results.Json(new
+        {
+            status = "session_required",
+            message = "A valid ProjectPulse session is required."
+        }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    var today = DateOnly.FromDateTime(DateTime.UtcNow.Date);
+    var start = weekStart ?? today.AddDays(-(int)today.DayOfWeek);
+    var end = weekEnd ?? start.AddDays(6);
+
+    if (end < start || end.DayNumber - start.DayNumber > 62)
+    {
+        return Results.BadRequest(new
+        {
+            status = "validation_failed",
+            message = "The correction date range must be valid and no longer than 63 days."
+        });
+    }
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var canCorrect = false;
+
+    await using (var accessCommand = new NpgsqlCommand("""
+        SELECT COALESCE(BOOL_OR(
+            r.role_code IN (
+                'SUPER_ADMINISTRATOR',
+                'ADMINISTRATOR',
+                'PROJECT_TEAM_COORDINATOR'
+            )
+            OR p.permission_code IN (
+                'SYSTEM_ADMINISTRATION',
+                'MANAGE_ALL'
+            )
+        ), FALSE)
+        FROM app_user_role_assignments ura
+        JOIN app_roles r
+          ON r.app_role_id = ura.app_role_id
+         AND r.is_active = TRUE
+        LEFT JOIN app_role_permissions rp
+          ON rp.app_role_id = r.app_role_id
+        LEFT JOIN app_permissions p
+          ON p.app_permission_id = rp.app_permission_id
+        WHERE ura.user_id = @user_id
+          AND ura.is_active = TRUE;
+        """, connection))
+    {
+        accessCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+        canCorrect = Convert.ToBoolean(await accessCommand.ExecuteScalarAsync() ?? false);
+    }
+
+    if (!canCorrect)
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Time-entry coding corrections are restricted to Project Team Coordinators and administrators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var entries = new List<object>();
+
+    await using (var entryCommand = new NpgsqlCommand("""
+        SELECT
+            te.time_entry_id,
+            te.timesheet_id,
+            te.user_id,
+            COALESCE(employee.display_name, employee.email, '') AS employee_name,
+            COALESCE(employee.email, '') AS employee_email,
+            te.work_date,
+            COALESCE(tds.status, te.status, 'draft') AS workflow_status,
+            te.hours,
+            COALESCE(te.time_type, 'normal') AS time_type,
+            COALESCE(te.description, '') AS description,
+            te.project_id,
+            COALESCE(source_project.project_code, '') AS project_code,
+            COALESCE(source_project.project_name, '') AS project_name,
+            te.task_id,
+            COALESCE(source_task.task_code, '') AS task_code,
+            COALESCE(source_task.task_name, '') AS task_name,
+            COALESCE(te.billable, FALSE) AS billable,
+            EXISTS (
+                SELECT 1
+                FROM billing_invoice_lines invoice_line
+                WHERE invoice_line.time_entry_id = te.time_entry_id
+            ) AS invoiced
+        FROM time_entries te
+        JOIN app_users employee
+          ON employee.user_id = te.user_id
+        LEFT JOIN timesheet_day_statuses tds
+          ON tds.timesheet_id = te.timesheet_id
+         AND tds.work_date = te.work_date
+        LEFT JOIN projects source_project
+          ON source_project.project_id = te.project_id
+        LEFT JOIN project_tasks source_task
+          ON source_task.task_id = te.task_id
+        WHERE te.work_date BETWEEN @week_start AND @week_end
+          AND te.project_id IS NOT NULL
+          AND te.task_id IS NOT NULL
+        ORDER BY te.work_date DESC, employee_name, project_code, task_code;
+        """, connection))
+    {
+        entryCommand.Parameters.AddWithValue("week_start", start);
+        entryCommand.Parameters.AddWithValue("week_end", end);
+
+        await using var reader = await entryCommand.ExecuteReaderAsync();
+
+        while (await reader.ReadAsync())
+        {
+            var workflowStatus = reader.GetString(6).Trim().ToLowerInvariant();
+            var invoiced = reader.GetBoolean(17);
+            var correctableStatus = workflowStatus is
+                "draft" or
+                "submitted" or
+                "manager_approved" or
+                "pm_approved" or
+                "manager_declined";
+
+            var blockedReason = invoiced
+                ? "This time entry is already linked to an invoice."
+                : correctableStatus
+                    ? null
+                    : $"Workflow status '{workflowStatus}' is protected from coding corrections.";
+
+            entries.Add(new
+            {
+                timeEntryId = reader.GetGuid(0),
+                timesheetId = reader.GetGuid(1),
+                userId = reader.GetGuid(2),
+                employeeName = reader.GetString(3),
+                employeeEmail = reader.GetString(4),
+                workDate = reader.GetFieldValue<DateOnly>(5),
+                workflowStatus,
+                hours = reader.GetDecimal(7),
+                timeType = reader.GetString(8),
+                description = reader.GetString(9),
+                projectId = reader.GetGuid(10),
+                projectCode = reader.GetString(11),
+                projectName = reader.GetString(12),
+                taskId = reader.GetGuid(13),
+                taskCode = reader.GetString(14),
+                taskName = reader.GetString(15),
+                billable = reader.GetBoolean(16),
+                invoiced,
+                canCorrect = correctableStatus && !invoiced,
+                blockedReason
+            });
+        }
+    }
+
+    var tasks = new List<object>();
+
+    await using (var taskCommand = new NpgsqlCommand("""
+        SELECT
+            p.project_id,
+            COALESCE(p.project_code, '') AS project_code,
+            COALESCE(p.project_name, '') AS project_name,
+            pt.task_id,
+            COALESCE(pt.task_code, '') AS task_code,
+            COALESCE(pt.task_name, '') AS task_name,
+            COALESCE(pt.billable, FALSE) AS billable
+        FROM projects p
+        JOIN project_tasks pt
+          ON pt.project_id = p.project_id
+        WHERE LOWER(COALESCE(p.status, 'active')) = 'active'
+          AND pt.is_active = TRUE
+        ORDER BY project_code, task_code, task_name;
+        """, connection))
+    {
+        await using var reader = await taskCommand.ExecuteReaderAsync();
+
+        while (await reader.ReadAsync())
+        {
+            tasks.Add(new
+            {
+                projectId = reader.GetGuid(0),
+                projectCode = reader.GetString(1),
+                projectName = reader.GetString(2),
+                taskId = reader.GetGuid(3),
+                taskCode = reader.GetString(4),
+                taskName = reader.GetString(5),
+                billable = reader.GetBoolean(6)
+            });
+        }
+    }
+
+    return Results.Ok(new
+    {
+        status = "ptc_time_entry_corrections_loaded",
+        access = new
+        {
+            canCorrect = true,
+            allowedRoles = new[]
+            {
+                "SUPER_ADMINISTRATOR",
+                "ADMINISTRATOR",
+                "PROJECT_TEAM_COORDINATOR"
+            }
+        },
+        weekStart = start,
+        weekEnd = end,
+        entries,
+        tasks,
+        safeguards = new
+        {
+            totalHoursCanIncrease = false,
+            movePreservesTotalHours = true,
+            splitCopyReducesSourceHours = true,
+            approvedCorrectionsRequireReapproval = true,
+            invoicedEntriesBlocked = true,
+            protectedStatuses = new[]
+            {
+                "accounting_ready",
+                "reconciled",
+                "locked",
+                "exported"
+            }
+        }
+    });
+});
+
+app.MapPost("/api/workflow/ptc-time-entry-corrections/action", async (
+    PtcTimeEntryCorrectionRequest request,
+    HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+
+    if (sessionUserId is null)
+    {
+        return Results.Json(new
+        {
+            status = "session_required",
+            message = "A valid ProjectPulse session is required."
+        }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var normalizedOperation = (request.Operation ?? string.Empty).Trim().ToLowerInvariant();
+    var reason = (request.Reason ?? string.Empty).Trim();
+
+    if (normalizedOperation is not "move" and not "split")
+    {
+        return Results.BadRequest(new
+        {
+            status = "validation_failed",
+            message = "Operation must be either 'move' or 'split'."
+        });
+    }
+
+    if (string.IsNullOrWhiteSpace(reason))
+    {
+        return Results.BadRequest(new
+        {
+            status = "validation_failed",
+            message = "A correction reason is required."
+        });
+    }
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+    await using var transaction = await connection.BeginTransactionAsync();
+
+    try
+    {
+        var canCorrect = false;
+
+        await using (var accessCommand = new NpgsqlCommand("""
+            SELECT COALESCE(BOOL_OR(
+                r.role_code IN (
+                    'SUPER_ADMINISTRATOR',
+                    'ADMINISTRATOR',
+                    'PROJECT_TEAM_COORDINATOR'
+                )
+                OR p.permission_code IN (
+                    'SYSTEM_ADMINISTRATION',
+                    'MANAGE_ALL'
+                )
+            ), FALSE)
+            FROM app_user_role_assignments ura
+            JOIN app_roles r
+              ON r.app_role_id = ura.app_role_id
+             AND r.is_active = TRUE
+            LEFT JOIN app_role_permissions rp
+              ON rp.app_role_id = r.app_role_id
+            LEFT JOIN app_permissions p
+              ON p.app_permission_id = rp.app_permission_id
+            WHERE ura.user_id = @user_id
+              AND ura.is_active = TRUE;
+            """, connection, transaction))
+        {
+            accessCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+            canCorrect = Convert.ToBoolean(await accessCommand.ExecuteScalarAsync() ?? false);
+        }
+
+        if (!canCorrect)
+        {
+            await transaction.RollbackAsync();
+
+            return Results.Json(new
+            {
+                status = "access_denied",
+                message = "Time-entry coding corrections are restricted to Project Team Coordinators and administrators."
+            }, statusCode: StatusCodes.Status403Forbidden);
+        }
+
+        Guid sourceTimesheetId;
+        Guid sourceUserId;
+        DateOnly sourceWorkDate;
+        Guid sourceProjectId;
+        Guid sourceTaskId;
+        decimal sourceHours;
+        string sourceTimeType;
+        string sourceDescription;
+        Guid? sourceWorkLocationGroupId;
+        Guid? sourceWorkLocationId;
+        bool sourceBillable;
+        string sourceWorkflowStatus;
+        bool sourceInvoiced;
+        string sourceProjectCode;
+        string sourceProjectName;
+        string sourceTaskCode;
+        string sourceTaskName;
+
+        await using (var sourceCommand = new NpgsqlCommand("""
+            SELECT
+                te.timesheet_id,
+                te.user_id,
+                te.work_date,
+                te.project_id,
+                te.task_id,
+                te.hours,
+                COALESCE(te.time_type, 'normal') AS time_type,
+                COALESCE(te.description, '') AS description,
+                te.work_location_group_id,
+                te.work_location_id,
+                COALESCE(te.billable, FALSE) AS billable,
+                COALESCE(tds.status, te.status, 'draft') AS workflow_status,
+                EXISTS (
+                    SELECT 1
+                    FROM billing_invoice_lines invoice_line
+                    WHERE invoice_line.time_entry_id = te.time_entry_id
+                ) AS invoiced,
+                COALESCE(source_project.project_code, '') AS project_code,
+                COALESCE(source_project.project_name, '') AS project_name,
+                COALESCE(source_task.task_code, '') AS task_code,
+                COALESCE(source_task.task_name, '') AS task_name
+            FROM time_entries te
+            LEFT JOIN timesheet_day_statuses tds
+              ON tds.timesheet_id = te.timesheet_id
+             AND tds.work_date = te.work_date
+            LEFT JOIN projects source_project
+              ON source_project.project_id = te.project_id
+            LEFT JOIN project_tasks source_task
+              ON source_task.task_id = te.task_id
+            WHERE te.time_entry_id = @time_entry_id
+              AND te.project_id IS NOT NULL
+              AND te.task_id IS NOT NULL
+            FOR UPDATE OF te;
+            """, connection, transaction))
+        {
+            sourceCommand.Parameters.AddWithValue("time_entry_id", request.TimeEntryId);
+
+            await using var reader = await sourceCommand.ExecuteReaderAsync();
+
+            if (!await reader.ReadAsync())
+            {
+                return Results.NotFound(new
+                {
+                    status = "time_entry_not_found",
+                    message = "The selected project time entry could not be found."
+                });
+            }
+
+            sourceTimesheetId = reader.GetGuid(0);
+            sourceUserId = reader.GetGuid(1);
+            sourceWorkDate = reader.GetFieldValue<DateOnly>(2);
+            sourceProjectId = reader.GetGuid(3);
+            sourceTaskId = reader.GetGuid(4);
+            sourceHours = reader.GetDecimal(5);
+            sourceTimeType = reader.GetString(6);
+            sourceDescription = reader.GetString(7);
+            sourceWorkLocationGroupId = reader.IsDBNull(8) ? null : reader.GetGuid(8);
+            sourceWorkLocationId = reader.IsDBNull(9) ? null : reader.GetGuid(9);
+            sourceBillable = reader.GetBoolean(10);
+            sourceWorkflowStatus = reader.GetString(11).Trim().ToLowerInvariant();
+            sourceInvoiced = reader.GetBoolean(12);
+            sourceProjectCode = reader.GetString(13);
+            sourceProjectName = reader.GetString(14);
+            sourceTaskCode = reader.GetString(15);
+            sourceTaskName = reader.GetString(16);
+        }
+
+        if (sourceInvoiced)
+        {
+            await transaction.RollbackAsync();
+
+            return Results.Conflict(new
+            {
+                status = "invoiced_time_entry_protected",
+                message = "Invoiced time entries cannot be moved or split."
+            });
+        }
+
+        var allowedSourceStatuses = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "draft",
+            "submitted",
+            "manager_approved",
+            "pm_approved",
+            "manager_declined"
+        };
+
+        if (!allowedSourceStatuses.Contains(sourceWorkflowStatus))
+        {
+            await transaction.RollbackAsync();
+
+            return Results.Conflict(new
+            {
+                status = "workflow_status_protected",
+                currentStatus = sourceWorkflowStatus,
+                message = "Accounting-ready, reconciled, locked, exported, and other protected workflow states cannot be corrected."
+            });
+        }
+
+        if (sourceHours <= 0m)
+        {
+            await transaction.RollbackAsync();
+
+            return Results.Conflict(new
+            {
+                status = "invalid_source_hours",
+                message = "The selected time entry does not contain positive hours."
+            });
+        }
+
+        string targetProjectCode;
+        string targetProjectName;
+        string targetTaskCode;
+        string targetTaskName;
+        bool targetBillable;
+
+        await using (var targetCommand = new NpgsqlCommand("""
+            SELECT
+                COALESCE(p.project_code, '') AS project_code,
+                COALESCE(p.project_name, '') AS project_name,
+                COALESCE(pt.task_code, '') AS task_code,
+                COALESCE(pt.task_name, '') AS task_name,
+                COALESCE(pt.billable, FALSE) AS billable
+            FROM projects p
+            JOIN project_tasks pt
+              ON pt.project_id = p.project_id
+            WHERE p.project_id = @project_id
+              AND pt.task_id = @task_id
+              AND LOWER(COALESCE(p.status, 'active')) = 'active'
+              AND pt.is_active = TRUE;
+            """, connection, transaction))
+        {
+            targetCommand.Parameters.AddWithValue("project_id", request.TargetProjectId);
+            targetCommand.Parameters.AddWithValue("task_id", request.TargetTaskId);
+
+            await using var reader = await targetCommand.ExecuteReaderAsync();
+
+            if (!await reader.ReadAsync())
+            {
+                return Results.BadRequest(new
+                {
+                    status = "target_task_invalid",
+                    message = "The selected destination project and task must match and both must be active."
+                });
+            }
+
+            targetProjectCode = reader.GetString(0);
+            targetProjectName = reader.GetString(1);
+            targetTaskCode = reader.GetString(2);
+            targetTaskName = reader.GetString(3);
+            targetBillable = reader.GetBoolean(4);
+        }
+
+        if (sourceProjectId == request.TargetProjectId && sourceTaskId == request.TargetTaskId)
+        {
+            await transaction.RollbackAsync();
+
+            return Results.BadRequest(new
+            {
+                status = "target_matches_source",
+                message = "Choose a destination task that differs from the source task."
+            });
+        }
+
+        var requestedSplitHours = request.SplitHours ?? sourceHours;
+
+        if (normalizedOperation == "split" && requestedSplitHours <= 0m)
+        {
+            await transaction.RollbackAsync();
+
+            return Results.BadRequest(new
+            {
+                status = "invalid_split_hours",
+                message = "Split-copy hours must be greater than zero."
+            });
+        }
+
+        if (requestedSplitHours > sourceHours)
+        {
+            await transaction.RollbackAsync();
+
+            return Results.BadRequest(new
+            {
+                status = "split_hours_exceed_source",
+                sourceHours,
+                requestedSplitHours,
+                message = "Split-copy hours cannot exceed the source entry hours."
+            });
+        }
+
+        var effectiveOperation =
+            normalizedOperation == "move" || requestedSplitHours == sourceHours
+                ? "move"
+                : "split";
+
+        var transferredHours =
+            effectiveOperation == "move"
+                ? sourceHours
+                : requestedSplitHours;
+
+        var remainingSourceHours =
+            effectiveOperation == "move"
+                ? 0m
+                : sourceHours - transferredHours;
+
+        var approvalsReset =
+            sourceWorkflowStatus is "manager_approved" or "pm_approved";
+
+        var targetWorkflowStatus =
+            approvalsReset
+                ? "submitted"
+                : sourceWorkflowStatus;
+
+        Guid destinationTimeEntryId = request.TimeEntryId;
+
+        if (effectiveOperation == "move")
+        {
+            await using var moveCommand = new NpgsqlCommand("""
+                UPDATE time_entries
+                SET project_id = @target_project_id,
+                    task_id = @target_task_id,
+                    billable = @target_billable,
+                    status = @target_status,
+                    updated_at = NOW()
+                WHERE time_entry_id = @time_entry_id;
+                """, connection, transaction);
+
+            moveCommand.Parameters.AddWithValue("target_project_id", request.TargetProjectId);
+            moveCommand.Parameters.AddWithValue("target_task_id", request.TargetTaskId);
+            moveCommand.Parameters.AddWithValue("target_billable", targetBillable);
+            moveCommand.Parameters.AddWithValue("target_status", targetWorkflowStatus);
+            moveCommand.Parameters.AddWithValue("time_entry_id", request.TimeEntryId);
+            await moveCommand.ExecuteNonQueryAsync();
+        }
+        else
+        {
+            await using (var reduceCommand = new NpgsqlCommand("""
+                UPDATE time_entries
+                SET hours = @remaining_hours,
+                    status = @target_status,
+                    updated_at = NOW()
+                WHERE time_entry_id = @time_entry_id;
+                """, connection, transaction))
+            {
+                reduceCommand.Parameters.AddWithValue("remaining_hours", remainingSourceHours);
+                reduceCommand.Parameters.AddWithValue("target_status", targetWorkflowStatus);
+                reduceCommand.Parameters.AddWithValue("time_entry_id", request.TimeEntryId);
+                await reduceCommand.ExecuteNonQueryAsync();
+            }
+
+            await using (var insertCommand = new NpgsqlCommand("""
+                INSERT INTO time_entries (
+                    timesheet_id,
+                    user_id,
+                    project_id,
+                    task_id,
+                    non_project_time_category_id,
+                    time_type,
+                    work_date,
+                    hours,
+                    description,
+                    billable,
+                    status,
+                    work_location_group_id,
+                    work_location_id
+                )
+                VALUES (
+                    @timesheet_id,
+                    @user_id,
+                    @project_id,
+                    @task_id,
+                    NULL,
+                    @time_type,
+                    @work_date,
+                    @hours,
+                    @description,
+                    @billable,
+                    @status,
+                    @work_location_group_id,
+                    @work_location_id
+                )
+                RETURNING time_entry_id;
+                """, connection, transaction))
+            {
+                insertCommand.Parameters.AddWithValue("timesheet_id", sourceTimesheetId);
+                insertCommand.Parameters.AddWithValue("user_id", sourceUserId);
+                insertCommand.Parameters.AddWithValue("project_id", request.TargetProjectId);
+                insertCommand.Parameters.AddWithValue("task_id", request.TargetTaskId);
+                insertCommand.Parameters.AddWithValue("time_type", sourceTimeType);
+                insertCommand.Parameters.AddWithValue("work_date", sourceWorkDate);
+                insertCommand.Parameters.AddWithValue("hours", transferredHours);
+                insertCommand.Parameters.AddWithValue(
+                    "description",
+                    string.IsNullOrWhiteSpace(sourceDescription)
+                        ? DBNull.Value
+                        : sourceDescription);
+                insertCommand.Parameters.AddWithValue("billable", targetBillable);
+                insertCommand.Parameters.AddWithValue("status", targetWorkflowStatus);
+                insertCommand.Parameters.AddWithValue(
+                    "work_location_group_id",
+                    sourceWorkLocationGroupId is null
+                        ? DBNull.Value
+                        : sourceWorkLocationGroupId.Value);
+                insertCommand.Parameters.AddWithValue(
+                    "work_location_id",
+                    sourceWorkLocationId is null
+                        ? DBNull.Value
+                        : sourceWorkLocationId.Value);
+
+                destinationTimeEntryId =
+                    (Guid)(await insertCommand.ExecuteScalarAsync()
+                    ?? throw new InvalidOperationException("Unable to create the split destination entry."));
+            }
+        }
+
+        if (approvalsReset)
+        {
+            await using (var dayStatusCommand = new NpgsqlCommand("""
+                UPDATE timesheet_day_statuses
+                SET status = 'submitted',
+                    submitted_at = COALESCE(submitted_at, NOW()),
+                    manager_user_id = NULL,
+                    manager_decision_comment = NULL,
+                    manager_approved_at = NULL,
+                    manager_declined_at = NULL,
+                    pm_approved_at = NULL,
+                    pm_approved_by_user_id = NULL,
+                    pm_decision_comment = NULL,
+                    updated_at = NOW()
+                WHERE timesheet_id = @timesheet_id
+                  AND work_date = @work_date
+                  AND status IN ('manager_approved', 'pm_approved');
+                """, connection, transaction))
+            {
+                dayStatusCommand.Parameters.AddWithValue("timesheet_id", sourceTimesheetId);
+                dayStatusCommand.Parameters.AddWithValue("work_date", sourceWorkDate);
+                await dayStatusCommand.ExecuteNonQueryAsync();
+            }
+
+            await using (var dayEntriesCommand = new NpgsqlCommand("""
+                UPDATE time_entries
+                SET status = 'submitted',
+                    updated_at = NOW()
+                WHERE timesheet_id = @timesheet_id
+                  AND work_date = @work_date;
+                """, connection, transaction))
+            {
+                dayEntriesCommand.Parameters.AddWithValue("timesheet_id", sourceTimesheetId);
+                dayEntriesCommand.Parameters.AddWithValue("work_date", sourceWorkDate);
+                await dayEntriesCommand.ExecuteNonQueryAsync();
+            }
+        }
+
+        var auditAction =
+            effectiveOperation == "move"
+                ? "timesheet_time_entry_moved_by_ptc"
+                : "timesheet_time_entry_split_by_ptc";
+
+        var auditPayload = JsonSerializer.Serialize(new
+        {
+            operation = effectiveOperation,
+            reason,
+            source = new
+            {
+                timeEntryId = request.TimeEntryId,
+                timesheetId = sourceTimesheetId,
+                userId = sourceUserId,
+                workDate = sourceWorkDate,
+                workflowStatus = sourceWorkflowStatus,
+                projectId = sourceProjectId,
+                projectCode = sourceProjectCode,
+                projectName = sourceProjectName,
+                taskId = sourceTaskId,
+                taskCode = sourceTaskCode,
+                taskName = sourceTaskName,
+                hoursBefore = sourceHours,
+                hoursAfter = remainingSourceHours,
+                billable = sourceBillable
+            },
+            destination = new
+            {
+                timeEntryId = destinationTimeEntryId,
+                projectId = request.TargetProjectId,
+                projectCode = targetProjectCode,
+                projectName = targetProjectName,
+                taskId = request.TargetTaskId,
+                taskCode = targetTaskCode,
+                taskName = targetTaskName,
+                transferredHours,
+                billable = targetBillable
+            },
+            workflow = new
+            {
+                approvalsReset,
+                resultingStatus = targetWorkflowStatus
+            },
+            conservation = new
+            {
+                totalHoursBefore = sourceHours,
+                totalHoursAfter = remainingSourceHours + transferredHours,
+                totalHoursIncreased = false
+            }
+        });
+
+        await using (var auditCommand = new NpgsqlCommand("""
+            INSERT INTO audit_logs (
+                actor_user_id,
+                action,
+                entity_type,
+                entity_id,
+                new_value,
+                ip_address,
+                user_agent
+            )
+            VALUES (
+                @actor_user_id,
+                @action,
+                'time_entry',
+                @entity_id,
+                CAST(@new_value AS jsonb),
+                NULLIF(@ip_address, '')::inet,
+                @user_agent
+            );
+            """, connection, transaction))
+        {
+            auditCommand.Parameters.AddWithValue("actor_user_id", sessionUserId.Value);
+            auditCommand.Parameters.AddWithValue("action", auditAction);
+            auditCommand.Parameters.AddWithValue("entity_id", request.TimeEntryId);
+            auditCommand.Parameters.AddWithValue("new_value", auditPayload);
+            auditCommand.Parameters.AddWithValue(
+                "ip_address",
+                httpContext.Connection.RemoteIpAddress?.ToString() ?? string.Empty);
+            auditCommand.Parameters.AddWithValue(
+                "user_agent",
+                httpContext.Request.Headers.UserAgent.ToString());
+            await auditCommand.ExecuteNonQueryAsync();
+        }
+
+        await transaction.CommitAsync();
+
+        return Results.Ok(new
+        {
+            status = effectiveOperation == "move"
+                ? "time_entry_moved"
+                : "time_entry_split",
+            operation = effectiveOperation,
+            sourceTimeEntryId = request.TimeEntryId,
+            destinationTimeEntryId,
+            sourceHoursBefore = sourceHours,
+            sourceHoursAfter = remainingSourceHours,
+            transferredHours,
+            totalHoursBefore = sourceHours,
+            totalHoursAfter = remainingSourceHours + transferredHours,
+            approvalsReset,
+            resultingStatus = targetWorkflowStatus,
+            auditAction,
+            message = approvalsReset
+                ? "Coding was corrected without increasing total hours. Existing approvals were cleared and the day was returned to manager review."
+                : "Coding was corrected without increasing total hours."
+        });
+    }
+    catch (Exception ex)
+    {
+        await transaction.RollbackAsync();
+
+        return Results.Problem(
+            title: "Failed to apply PTC time-entry correction",
+            detail: ex.Message,
+            statusCode: StatusCodes.Status500InternalServerError);
+    }
+});
+/* FIX_20260717_001_PTC_TIME_ENTRY_CORRECTIONS_END */
+
 app.MapGet("/api/workflow/approval-items", async (HttpContext httpContext, DateOnly? weekStart, DateOnly? weekEnd) =>
 {
     var sessionUserId = GetProjectPulseSessionUserId(httpContext);
@@ -26313,6 +28367,15 @@ app.MapPost("/api/workflow/approval-items/action", async (ApprovalExportWorkflow
     }
 
     var normalizedAction = (request.Action ?? string.Empty).Trim().ToLowerInvariant();
+    if (normalizedAction == "pm_reject" && string.IsNullOrWhiteSpace(request.Comment))
+    {
+        return Results.BadRequest(new
+        {
+            status = "validation_failed",
+            message = "A PM return reason is required."
+        });
+    }
+
     var comment = string.IsNullOrWhiteSpace(request.Comment) ? normalizedAction : request.Comment.Trim();
 
     string targetStatus;
@@ -26324,6 +28387,11 @@ app.MapPost("/api/workflow/approval-items/action", async (ApprovalExportWorkflow
         case "pm_approve":
             targetStatus = "pm_approved";
             auditAction = "timesheet_day_project_manager_approved";
+            allowedStatuses = new[] { "manager_approved" };
+            break;
+        case "pm_reject":
+            targetStatus = "manager_declined";
+            auditAction = "timesheet_day_project_manager_declined";
             allowedStatuses = new[] { "manager_approved" };
             break;
         case "accounting_ready":
@@ -26358,7 +28426,7 @@ app.MapPost("/api/workflow/approval-items/action", async (ApprovalExportWorkflow
 
     var access = await LoadApprovalExportWorkflowAccessAsync(connection, sessionUserId.Value);
 
-    if (normalizedAction == "pm_approve" && !access.CanProjectApprove)
+    if ((normalizedAction is "pm_approve" or "pm_reject") && !access.CanProjectApprove)
     {
         return Results.Json(new { status = "access_denied", message = "Project time approval is restricted to project managers, project/team coordinators, and administrators." }, statusCode: StatusCodes.Status403Forbidden);
     }
@@ -26388,7 +28456,7 @@ app.MapPost("/api/workflow/approval-items/action", async (ApprovalExportWorkflow
         }, statusCode: StatusCodes.Status403Forbidden);
     }
 
-    if (normalizedAction == "pm_approve" && !access.CanViewAll)
+    if (normalizedAction is "pm_approve" or "pm_reject" && !access.CanViewAll)
     {
         var isProjectManagerScope = await ProjectPulse054BWorkflowDayHasProjectManagerScopeAsync(connection, sessionUserId.Value, request.TimesheetId, request.WorkDate);
         if (!isProjectManagerScope)
@@ -26432,9 +28500,20 @@ app.MapPost("/api/workflow/approval-items/action", async (ApprovalExportWorkflow
         await using var command = new NpgsqlCommand("""
             UPDATE timesheet_day_statuses tds
             SET status = @target_status,
-                pm_approved_at = CASE WHEN @target_status = 'pm_approved' THEN NOW() ELSE pm_approved_at END,
-                pm_approved_by_user_id = CASE WHEN @target_status = 'pm_approved' THEN @actor_user_id ELSE pm_approved_by_user_id END,
-                pm_decision_comment = CASE WHEN @target_status = 'pm_approved' THEN @comment ELSE pm_decision_comment END,
+                pm_approved_at = CASE
+                    WHEN @workflow_action = 'pm_approve' THEN NOW()
+                    WHEN @workflow_action = 'pm_reject' THEN NULL
+                    ELSE pm_approved_at
+                END,
+                pm_approved_by_user_id = CASE
+                    WHEN @workflow_action = 'pm_approve' THEN @actor_user_id
+                    WHEN @workflow_action = 'pm_reject' THEN NULL
+                    ELSE pm_approved_by_user_id
+                END,
+                pm_decision_comment = CASE
+                    WHEN @workflow_action IN ('pm_approve', 'pm_reject') THEN @comment
+                    ELSE pm_decision_comment
+                END,
                 accounting_ready_at = CASE WHEN @target_status = 'accounting_ready' THEN NOW() ELSE accounting_ready_at END,
                 accounting_ready_by_user_id = CASE WHEN @target_status = 'accounting_ready' THEN @actor_user_id ELSE accounting_ready_by_user_id END,
                 accounting_comment = CASE WHEN @target_status = 'accounting_ready' THEN @comment ELSE accounting_comment END,
@@ -26464,6 +28543,7 @@ app.MapPost("/api/workflow/approval-items/action", async (ApprovalExportWorkflow
             """, connection, transaction);
 
         command.Parameters.AddWithValue("target_status", targetStatus);
+        command.Parameters.AddWithValue("workflow_action", normalizedAction);
         command.Parameters.AddWithValue("actor_user_id", sessionUserId.Value);
         command.Parameters.AddWithValue("comment", comment);
         command.Parameters.AddWithValue("timesheet_id", request.TimesheetId);
@@ -26500,6 +28580,93 @@ app.MapPost("/api/workflow/approval-items/action", async (ApprovalExportWorkflow
             entryCommand.Parameters.AddWithValue("current_status", workflowCurrentStatus);
             await entryCommand.ExecuteNonQueryAsync();
         }
+
+        if (normalizedAction is "pm_approve" or "pm_reject")
+
+
+        {
+
+
+            var approvalStatus = normalizedAction == "pm_approve" ? "approved" : "declined";
+
+
+
+            await using var approvalCommand = new NpgsqlCommand("""
+
+
+                INSERT INTO approval_records (
+
+
+                    time_entry_id,
+
+
+                    approval_stage,
+
+
+                    approval_status,
+
+
+                    approver_user_id,
+
+
+                    decision_comment
+
+
+                )
+
+
+                SELECT
+
+
+                    time_entry_id,
+
+
+                    'project_manager',
+
+
+                    @approval_status,
+
+
+                    @actor_user_id,
+
+
+                    @comment
+
+
+                FROM time_entries
+
+
+                WHERE timesheet_id = @timesheet_id
+
+
+                  AND work_date = @work_date;
+
+
+                """, connection, transaction);
+
+
+
+            approvalCommand.Parameters.AddWithValue("approval_status", approvalStatus);
+
+
+            approvalCommand.Parameters.AddWithValue("actor_user_id", sessionUserId.Value);
+
+
+            approvalCommand.Parameters.AddWithValue("comment", comment);
+
+
+            approvalCommand.Parameters.AddWithValue("timesheet_id", request.TimesheetId);
+
+
+            approvalCommand.Parameters.AddWithValue("work_date", request.WorkDate);
+
+
+            await approvalCommand.ExecuteNonQueryAsync();
+
+
+        }
+
+
 
         await InsertAuditLogAsync(connection, transaction, sessionUserId.Value, auditAction, "timesheet", request.TimesheetId);
 
@@ -34878,6 +37045,27 @@ static async System.Threading.Tasks.Task<string> ProjectPulse041AWriteOutboxEmai
     return outboxPath;
 }
 
+/* 042_LIVE_BILLING_API_MAP_START */
+ProjectTime.Api.Modules.InvoiceBillingModule.MapInvoiceBillingEndpoints(app);
+/* 042_LIVE_BILLING_API_MAP_END */
+
+/* WORK_REGISTER_PO_ENDPOINT_MAP_START */
+ProjectTime.Api.Modules.WorkRegisterPurchaseOrderModule.MapWorkRegisterPurchaseOrderEndpoints(app);
+/* WORK_REGISTER_PO_ENDPOINT_MAP_END */
+
+ProjectTime.Api.Modules.CalendarCapacityModule.MapCalendarCapacityEndpoints(app);
+
+ProjectTime.Api.Modules.CiCdPipelineModule.MapCiCdPipelineEndpoints(app);
+
+app.MapCertiniaBillingEndpoints();
+app.MapSessionIntelligenceEndpoints();
+app.MapSellInboundSnapshotEndpoints();
+app.MapSellCommercialReadModelEndpoints();
+
+app.MapContractsEndpoints();
+app.MapContractsPrepaidModule();
+app.MapContractsPrepaidManagementModule();
+
 app.Run();
 
 
@@ -34887,7 +37075,7 @@ static bool CanEngineerUnlockDay(string? status, DateTimeOffset? submittedAt)
 {
     return status == "submitted"
         && submittedAt is not null
-        && DateTimeOffset.UtcNow - submittedAt.Value <= TimeSpan.FromHours(2);
+        && DateTimeOffset.UtcNow - submittedAt.Value <= TimeSpan.FromHours(1);
 }
 
 static string GetDayUnlockMessage(string? status, DateTimeOffset? submittedAt)
@@ -34897,9 +37085,9 @@ static string GetDayUnlockMessage(string? status, DateTimeOffset? submittedAt)
     if (status == "submitted")
     {
         if (submittedAt is null) return "This submitted day is missing a submission timestamp. Please contact your manager to unlock it.";
-        return DateTimeOffset.UtcNow - submittedAt.Value <= TimeSpan.FromHours(2)
+        return DateTimeOffset.UtcNow - submittedAt.Value <= TimeSpan.FromHours(1)
             ? "This submitted day can be unlocked."
-            : "This day was submitted more than two hours ago. Please contact your manager to unlock it.";
+            : "This day was submitted more than one hour ago. Please contact your manager to unlock it.";
     }
     if (status == "manager_approved") return "This day has been manager-approved and is read-only for the engineer.";
     if (status == "pm_approved") return "This day has been PM-approved and is read-only for the engineer.";
@@ -35705,6 +37893,7 @@ static bool ProjectPulse054CWorkflowTransitionAllowed(string normalizedAction, s
     return normalizedAction switch
     {
         "pm_approve" => status == "manager_approved",
+        "pm_reject" => status == "manager_approved",
         "accounting_ready" => status is "manager_approved" or "pm_approved",
         "reconcile" => status is "accounting_ready" or "pm_approved",
         "lock" => status is "accounting_ready" or "reconciled",
@@ -38098,6 +40287,14 @@ internal sealed record PasswordResetCompletionRequest(Guid ResetRequestId, strin
 internal sealed record PasswordResetApprovalAction(Guid ResetRequestId, string? ActionByEmail, string? Notes);
 
 internal sealed record PasswordResetRequest(string Username, string? Notes);
+
+internal sealed record PtcTimeEntryCorrectionRequest(
+    Guid TimeEntryId,
+    Guid TargetProjectId,
+    Guid TargetTaskId,
+    string? Operation,
+    decimal? SplitHours,
+    string? Reason);
 
 internal sealed record TimesheetSaveRequest(DateOnly WeekStart, List<TimesheetEntryRequest> Entries);
 

@@ -11782,5 +11782,610 @@
 
 
 
+
+<!-- 056B_DASHBOARD_CARD_ROUTE_GUARD_START -->
+<style id="projectpulse-056b-dashboard-card-route-style">
+  [data-projectpulse-dashboard-only-card="true"],
+  [data-projectpulse-legacy-dashboard-summary-card="true"] {
+    display: none !important;
+  }
+</style>
+
+<script
+  id="projectpulse-056b-dashboard-card-route-guard"
+  data-projectpulse-guard-version="056E"
+>
+(function () {
+  const GUARD_VERSION = '056E';
+
+  if (window.__projectPulse056BDashboardCardRouteGuardInstalled) {
+    if (
+      typeof window.__projectPulse056BSynchronizeDashboardCards
+      === 'function'
+    ) {
+      window.__projectPulse056BSynchronizeDashboardCards();
+    }
+
+    return;
+  }
+
+  window.__projectPulse056BDashboardCardRouteGuardInstalled = true;
+
+  const dashboardModulePattern =
+    /\bmodule\s+0?(?:22|23|24|25|26|27|28|29|30)\b/i;
+
+  const knownDashboardTitles = [
+    'Production Notification Center',
+    'Production Readiness Center',
+    'Sales-to-Delivery Intake Foundation',
+    'SOW Generator + Claude Research Review',
+    'CRM Integration Framework',
+    'Signed SOW Handoff + Assignment Trigger',
+    'SOW-Aware AI Time Entry Generator',
+    'User Acceptance / Role + Workflow Validation Center',
+    'Reporting / Accounting / Invoicing / Analytics Command Center'
+  ];
+
+  function currentRoute() {
+    return String(window.location.hash || '#dashboard')
+      .replace(/^#/, '')
+      .split('?')[0]
+      .replace(/\/+$/, '')
+      .trim()
+      .toLowerCase() || 'dashboard';
+  }
+
+  function normalizedText(element) {
+    return String(element?.textContent || '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function isVisible(element) {
+    if (!(element instanceof HTMLElement)) {
+      return false;
+    }
+
+    const style = window.getComputedStyle(element);
+
+    return !element.hidden
+      && style.display !== 'none'
+      && style.visibility !== 'hidden'
+      && style.opacity !== '0';
+  }
+
+  function hasKnownDashboardTitle(element) {
+    const text = normalizedText(element);
+
+    return knownDashboardTitles.some(function (title) {
+      return text.includes(title);
+    });
+  }
+
+  function hasDashboardModuleLabel(element) {
+    return dashboardModulePattern.test(normalizedText(element));
+  }
+
+  function hasOpenAction(element) {
+    const text = normalizedText(element);
+
+    if (/\bOpen\b/i.test(text)) {
+      return true;
+    }
+
+    return Boolean(
+      element.querySelector?.(
+        'a[href], button, [role="button"]'
+      )
+    );
+  }
+
+  function isExplicitLegacyDashboardId(id) {
+    return id.includes('dashboard-shortcut')
+      || id.includes('dashboard-notification-card')
+      || id.includes('-dashboard-card')
+      || id.endsWith('-card');
+  }
+
+  function isProtectedRouteWorkspace(element) {
+    if (!(element instanceof HTMLElement)) {
+      return false;
+    }
+
+    /*
+     * The legacy summary cards are injected before/outside the route
+     * workspace. Preserve actual route pages, shells, panels, drawers,
+     * and modal content.
+     */
+    const protectedAncestor = element.closest(
+      '#root, ' +
+      '.app-shell, ' +
+      '[id$="-shell"], ' +
+      '[id$="-page"], ' +
+      '[id*="-modal"], ' +
+      '[id*="-drawer"], ' +
+      '[id*="-panel-root"], ' +
+      '[data-projectpulse-route-page="true"]'
+    );
+
+    return Boolean(protectedAncestor);
+  }
+
+  function isLegacyDashboardSummary(element) {
+    if (!(element instanceof HTMLElement)) {
+      return false;
+    }
+
+    if (isProtectedRouteWorkspace(element)) {
+      return false;
+    }
+
+    const text = normalizedText(element);
+
+    if (!text) {
+      return false;
+    }
+
+    const id = String(element.id || '').toLowerCase();
+
+    if (
+      id.startsWith('projectpulse-')
+      && isExplicitLegacyDashboardId(id)
+      && (
+        hasDashboardModuleLabel(element)
+        || hasKnownDashboardTitle(element)
+        || id.includes('dashboard-notification-card')
+        || id.includes('dashboard-shortcut')
+      )
+    ) {
+      return true;
+    }
+
+    if (
+      (element.matches('section, article') || id.startsWith('projectpulse-'))
+      && hasKnownDashboardTitle(element)
+      && hasOpenAction(element)
+    ) {
+      return true;
+    }
+
+    if (
+      (element.matches('section, article') || id.startsWith('projectpulse-'))
+      && hasDashboardModuleLabel(element)
+      && hasOpenAction(element)
+    ) {
+      return true;
+    }
+
+    return false;
+  }
+
+  function findLegacyDashboardContainer(element) {
+    let current = element;
+
+    while (
+      current
+      && current !== document.body
+      && current !== document.documentElement
+    ) {
+      if (isLegacyDashboardSummary(current)) {
+        return current;
+      }
+
+      if (isProtectedRouteWorkspace(current)) {
+        break;
+      }
+
+      current = current.parentElement;
+    }
+
+    return null;
+  }
+
+  function discoverLegacyDashboardSummaries() {
+    const cards = new Set();
+
+    document
+      .querySelectorAll(
+        '[id^="projectpulse-"], section, article'
+      )
+      .forEach(function (element) {
+        if (isLegacyDashboardSummary(element)) {
+          cards.add(element);
+        }
+      });
+
+    document
+      .querySelectorAll(
+        'h1, h2, h3, h4, h5, h6, [role="heading"]'
+      )
+      .forEach(function (heading) {
+        if (
+          !hasKnownDashboardTitle(heading)
+          && !hasDashboardModuleLabel(heading)
+        ) {
+          return;
+        }
+
+        const card = findLegacyDashboardContainer(heading);
+
+        if (card) {
+          cards.add(card);
+        }
+      });
+
+    return Array.from(cards);
+  }
+
+  function suppressLegacyDashboardSummary(element) {
+    element.setAttribute(
+      'data-projectpulse-dashboard-only-card',
+      'true'
+    );
+
+    element.setAttribute(
+      'data-projectpulse-legacy-dashboard-summary-card',
+      'true'
+    );
+
+    element.setAttribute(
+      'data-projectpulse-dashboard-card-guard-version',
+      GUARD_VERSION
+    );
+
+    element.setAttribute(
+      'data-projectpulse-056b-forced-hidden',
+      'true'
+    );
+
+    element.hidden = true;
+    element.setAttribute('aria-hidden', 'true');
+    element.style.setProperty('display', 'none', 'important');
+  }
+
+  function visibleLegacyHeadingOffenders() {
+    return Array.from(document.querySelectorAll(
+      'h1, h2, h3, h4, h5, h6, [role="heading"]'
+    ))
+      .filter(function (heading) {
+        return hasKnownDashboardTitle(heading)
+          || hasDashboardModuleLabel(heading);
+      })
+      .filter(function (heading) {
+        if (isProtectedRouteWorkspace(heading)) {
+          return false;
+        }
+
+        const card = heading.closest(
+          '[data-projectpulse-legacy-dashboard-summary-card="true"], ' +
+          '[data-projectpulse-dashboard-only-card="true"]'
+        ) || heading;
+
+        return isVisible(card);
+      })
+      .map(function (heading) {
+        return normalizedText(heading).slice(0, 180);
+      });
+  }
+
+  function synchronizeDashboardCards() {
+    const route = currentRoute();
+
+    document.documentElement.setAttribute(
+      'data-projectpulse-056b-route',
+      route
+    );
+
+    document.documentElement.setAttribute(
+      'data-projectpulse-056b-guard-version',
+      GUARD_VERSION
+    );
+
+    const cards = new Set([
+      ...document.querySelectorAll(
+        '[data-projectpulse-legacy-dashboard-summary-card="true"]'
+      ),
+      ...document.querySelectorAll(
+        '[data-projectpulse-dashboard-only-card="true"]'
+      ),
+      ...discoverLegacyDashboardSummaries()
+    ]);
+
+    cards.forEach(function (element) {
+      suppressLegacyDashboardSummary(element);
+    });
+
+    const visibleCards = Array.from(cards).filter(isVisible);
+    const visibleHeadings = visibleLegacyHeadingOffenders();
+
+    document.documentElement.setAttribute(
+      'data-projectpulse-056b-marked-count',
+      String(cards.size)
+    );
+
+    document.documentElement.setAttribute(
+      'data-projectpulse-056b-visible-offender-count',
+      String(visibleCards.length + visibleHeadings.length)
+    );
+
+    return {
+      route,
+      guardVersion: GUARD_VERSION,
+      markedCount: cards.size,
+      visibleOffenderCount: visibleCards.length + visibleHeadings.length,
+      visibleKnownDashboardHeadings: visibleHeadings,
+      markedCards: Array.from(cards).map(function (element) {
+        return {
+          id: element.id || '',
+          tag: element.tagName,
+          text: normalizedText(element).slice(0, 180),
+          hidden: element.hidden,
+          display: window.getComputedStyle(element).display
+        };
+      }),
+      visibleOffenders: visibleCards.map(function (element) {
+        return {
+          id: element.id || '',
+          tag: element.tagName,
+          text: normalizedText(element).slice(0, 180),
+          hidden: element.hidden,
+          display: window.getComputedStyle(element).display
+        };
+      })
+    };
+  }
+
+  window.__projectPulse056BSynchronizeDashboardCards =
+    synchronizeDashboardCards;
+
+  window.__projectPulse056BDashboardCardRouteGuardDiagnostics =
+    function () {
+      return synchronizeDashboardCards();
+    };
+
+  function scheduleSynchronization() {
+    window.clearTimeout(
+      window.__projectPulse056BDashboardCardRouteGuardTimer
+    );
+
+    window.__projectPulse056BDashboardCardRouteGuardTimer =
+      window.setTimeout(function () {
+        window.requestAnimationFrame(
+          synchronizeDashboardCards
+        );
+      }, 20);
+  }
+
+  window.addEventListener(
+    'hashchange',
+    scheduleSynchronization,
+    true
+  );
+
+  window.addEventListener(
+    'popstate',
+    scheduleSynchronization,
+    true
+  );
+
+  window.addEventListener(
+    'projectpulse:route-state-ready',
+    scheduleSynchronization
+  );
+
+  if (document.readyState === 'loading') {
+    document.addEventListener(
+      'DOMContentLoaded',
+      scheduleSynchronization,
+      { once: true }
+    );
+  } else {
+    scheduleSynchronization();
+  }
+
+  const observer = new MutationObserver(
+    scheduleSynchronization
+  );
+
+  observer.observe(document.documentElement, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: [
+      'id',
+      'class',
+      'style',
+      'hidden',
+      'aria-hidden'
+    ]
+  });
+
+  scheduleSynchronization();
+
+  [
+    100,
+    500,
+    1500,
+    3000,
+    6000
+  ].forEach(function (delay) {
+    window.setTimeout(
+      synchronizeDashboardCards,
+      delay
+    );
+  });
+})();
+</script>
+<!-- 056B_DASHBOARD_CARD_ROUTE_GUARD_END -->
+<!-- 056G_EXACT_LEGACY_CARD_SUPPRESSION_START -->
+<style id="projectpulse-056g-exact-legacy-card-suppression">
+  #projectpulse-022e-dashboard-notification-card,
+  #projectpulse-production-notification-dashboard-shortcut,
+  #projectpulse-production-readiness-dashboard-shortcut,
+  #projectpulse-024-intake-card,
+  #projectpulse-025-sow-card,
+  #projectpulse-026-crm-card,
+  #projectpulse-027-handoff-card,
+  #projectpulse-028-ai-time-card,
+  #projectpulse-029-uat-card,
+  #projectpulse-030-reporting-card {
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    max-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    overflow: hidden !important;
+    pointer-events: none !important;
+  }
+</style>
+
+<script id="projectpulse-056g-exact-legacy-card-runtime">
+(function () {
+  const selectors = [
+    '#projectpulse-022e-dashboard-notification-card',
+    '#projectpulse-production-notification-dashboard-shortcut',
+    '#projectpulse-production-readiness-dashboard-shortcut',
+    '#projectpulse-024-intake-card',
+    '#projectpulse-025-sow-card',
+    '#projectpulse-026-crm-card',
+    '#projectpulse-027-handoff-card',
+    '#projectpulse-028-ai-time-card',
+    '#projectpulse-029-uat-card',
+    '#projectpulse-030-reporting-card'
+  ];
+
+  function suppressExactLegacyCards() {
+    const matched = [];
+
+    selectors.forEach(function (selector) {
+      document.querySelectorAll(selector).forEach(function (element) {
+        element.hidden = true;
+        element.setAttribute('aria-hidden', 'true');
+        element.setAttribute(
+          'data-projectpulse-legacy-dashboard-summary-card',
+          'true'
+        );
+        element.setAttribute(
+          'data-projectpulse-dashboard-card-guard-version',
+          '056G'
+        );
+
+        element.style.setProperty(
+          'display',
+          'none',
+          'important'
+        );
+        element.style.setProperty(
+          'visibility',
+          'hidden',
+          'important'
+        );
+        element.style.setProperty(
+          'height',
+          '0',
+          'important'
+        );
+        element.style.setProperty(
+          'margin',
+          '0',
+          'important'
+        );
+        element.style.setProperty(
+          'padding',
+          '0',
+          'important'
+        );
+        element.style.setProperty(
+          'border',
+          '0',
+          'important'
+        );
+        element.style.setProperty(
+          'overflow',
+          'hidden',
+          'important'
+        );
+
+        matched.push(selector);
+      });
+    });
+
+    const visibleOffenders = selectors
+      .flatMap(function (selector) {
+        return Array.from(document.querySelectorAll(selector));
+      })
+      .filter(function (element) {
+        const style = window.getComputedStyle(element);
+
+        return !element.hidden
+          && style.display !== 'none'
+          && style.visibility !== 'hidden';
+      });
+
+    document.documentElement.setAttribute(
+      'data-projectpulse-056g-matched-count',
+      String(matched.length)
+    );
+
+    document.documentElement.setAttribute(
+      'data-projectpulse-056g-visible-offender-count',
+      String(visibleOffenders.length)
+    );
+
+    return {
+      guardVersion: '056G',
+      route: location.hash,
+      matchedCount: matched.length,
+      visibleOffenderCount: visibleOffenders.length
+    };
+  }
+
+  window.__projectPulse056GExactLegacyCardDiagnostics =
+    suppressExactLegacyCards;
+
+  const observer = new MutationObserver(function () {
+    suppressExactLegacyCards();
+  });
+
+  observer.observe(document.documentElement, {
+    childList: true,
+    subtree: true
+  });
+
+  window.addEventListener(
+    'hashchange',
+    suppressExactLegacyCards,
+    true
+  );
+
+  if (document.readyState === 'loading') {
+    document.addEventListener(
+      'DOMContentLoaded',
+      suppressExactLegacyCards,
+      { once: true }
+    );
+  } else {
+    suppressExactLegacyCards();
+  }
+
+  [50, 250, 750, 1500, 3000, 6000].forEach(
+    function (delay) {
+      window.setTimeout(
+        suppressExactLegacyCards,
+        delay
+      );
+    }
+  );
+})();
+</script>
+<!-- 056G_EXACT_LEGACY_CARD_SUPPRESSION_END -->\n<!-- WORK_REGISTER_PO_PANEL_START -->
+<style>#work-register-po-panel{display:none;margin:0 0 1rem;padding:1rem;border:1px solid #bae6fd;border-radius:1rem;background:#fff;color:#172033;box-shadow:0 12px 30px rgba(15,23,42,.08)}html[data-projectpulse-056b-route="work-register"] #work-register-po-panel{display:block}#work-register-po-panel .grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.7rem}#work-register-po-panel label{display:grid;gap:.3rem;font-size:.78rem;font-weight:750}#work-register-po-panel input,#work-register-po-panel select{min-height:40px;padding:.55rem;border:1px solid #cbd5e1;border-radius:.55rem;background:#fff;color:#172033}#work-register-po-panel button{min-height:40px;padding:.55rem .85rem;border:0;border-radius:.6rem;background:#075fc8;color:#fff;font-weight:850}@media(max-width:900px){#work-register-po-panel .grid{grid-template-columns:1fr}}</style>
+<script>(function(){const id='work-register-po-panel';const route=()=>String(location.hash||'#dashboard').replace(/^#/,'').split('?')[0].toLowerCase();async function api(path,options={}){const r=await fetch(path,{...options,headers:{Accept:'application/json',...(options.body?{'Content-Type':'application/json'}:{})}});const raw=await r.text();let data=null;try{data=raw?JSON.parse(raw):null}catch{}if(!r.ok)throw new Error(data?.message||data?.status||raw||`HTTP ${r.status}`);return data}function mount(){if(route()!=='work-register'||document.getElementById(id))return;const p=document.createElement('section');p.id=id;p.innerHTML=`<p style="margin:0;color:#0369a1;font-weight:900;font-size:.72rem;text-transform:uppercase">Work Register billing details</p><h2 style="margin:.2rem 0">Purchase Order</h2><p style="margin:.2rem 0 .8rem;color:#64748b">Add or modify the primary PO. Invoice & Billing reads this same stored record.</p><div class="grid"><label>Project<select data-project><option>Loading…</option></select></label><label>PO Number<input data-number></label><label>Authorized amount<input data-amount type="number" min="0" step="0.01"></label><label>Effective start<input data-start type="date"></label><label>Effective end<input data-end type="date"></label><label>Customer reference<input data-reference></label></div><div style="display:flex;gap:.8rem;align-items:center;margin-top:.8rem"><label style="display:flex;gap:.4rem;align-items:center"><input data-required type="checkbox"> PO required for billing</label><button data-save type="button">Save Work Register PO</button></div><div data-status style="margin-top:.6rem;color:#475569"></div>`;(document.querySelector('#work-register')||document.querySelector('.app-shell')||document.body).insertAdjacentElement('afterbegin',p);wire(p)}async function wire(p){const project=p.querySelector('[data-project]'),number=p.querySelector('[data-number]'),amount=p.querySelector('[data-amount]'),start=p.querySelector('[data-start]'),end=p.querySelector('[data-end]'),reference=p.querySelector('[data-reference]'),required=p.querySelector('[data-required]'),save=p.querySelector('[data-save]'),status=p.querySelector('[data-status]');let rows=[];function show(){const x=rows.find(v=>v.projectId===project.value);if(!x)return;required.checked=x.purchaseOrderRequired===true;number.value=x.purchaseOrder?.poNumber||'';amount.value=x.purchaseOrder?.authorizedAmount??'';start.value=x.purchaseOrder?.effectiveStartDate||'';end.value=x.purchaseOrder?.effectiveEndDate||'';reference.value=x.purchaseOrder?.customerReference||'';status.textContent=x.purchaseOrder?.poNumber?`Current PO: ${x.purchaseOrder.poNumber}`:'No primary PO stored.'}try{const d=await api('/api/work-register/projects/purchase-orders');rows=Array.isArray(d?.projects)?d.projects:[];project.innerHTML=rows.map(x=>`<option value="${x.projectId}">${x.projectCode||'No code'} — ${x.projectName||'Unnamed project'}</option>`).join('');if(!rows.length)project.innerHTML='<option value="">No accessible projects</option>';show()}catch(e){status.textContent=e.message}project.addEventListener('change',show);save.addEventListener('click',async()=>{if(!project.value)return;save.disabled=true;status.textContent='Saving…';try{await api(`/api/work-register/projects/${project.value}/purchase-order`,{method:'PUT',body:JSON.stringify({purchaseOrderRequired:required.checked,poNumber:number.value.trim(),authorizedAmount:amount.value===''?null:Number(amount.value),effectiveStartDate:start.value||null,effectiveEndDate:end.value||null,customerReference:reference.value.trim()})});status.textContent=number.value.trim()?`PO ${number.value.trim()} saved.`:'PO requirement saved.';const d=await api('/api/work-register/projects/purchase-orders');rows=Array.isArray(d?.projects)?d.projects:rows;show()}catch(e){status.textContent=e.message}finally{save.disabled=false}})}window.addEventListener('hashchange',mount,true);window.addEventListener('projectpulse:route-state-ready',mount);if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount,{once:true});else mount();new MutationObserver(mount).observe(document.documentElement,{childList:true,subtree:true})})();</script>
+<!-- WORK_REGISTER_PO_PANEL_END -->
+
+
 </body>
 </html>

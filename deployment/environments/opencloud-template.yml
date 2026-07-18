@@ -1,0 +1,12 @@
+environment: production
+sourceControl:
+  provider: future-git-provider
+  repository: not-configured
+deployment:
+  provider: opencloud
+  runtime: not-configured
+registry:
+  provider: opencloud-registry
+  name: not-configured
+artifact:
+  format: oci

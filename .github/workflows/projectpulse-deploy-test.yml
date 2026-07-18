@@ -1,0 +1,95 @@
+name: ProjectPulse Deploy Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Deployment environment
+        required: true
+        default: test
+        type: choice
+        options: [test]
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: projectpulse-deploy-test
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Capture current release
+        id: before
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          OLD_API_IMAGE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
+          OLD_WEB_IMAGE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
+          echo "old_api_image=$OLD_API_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "old_web_image=$OLD_WEB_IMAGE" >> "$GITHUB_OUTPUT"
+
+      - name: Build API and web images
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          API_TAG="ci-${GITHUB_SHA}"
+          WEB_TAG="ci-${GITHUB_SHA}"
+          az acr build --registry '${{ vars.AZURE_ACR_NAME }}' --image "project-health-dashboard-api:$API_TAG" --file deployment/containers/api/Dockerfile .
+          az acr build --registry '${{ vars.AZURE_ACR_NAME }}' --image "project-health-dashboard-web:$WEB_TAG" --file deployment/containers/web/Dockerfile .
+
+      - name: Deploy API
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          API_IMAGE='${{ vars.AZURE_ACR_NAME }}.azurecr.io/project-health-dashboard-api:ci-${{ github.sha }}'
+          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --image "$API_IMAGE" --revision-suffix "ciapi-${GITHUB_RUN_ID}" --output none
+
+      - name: Validate API
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          for attempt in $(seq 1 30); do
+            STATUS="$(curl -sS -o /dev/null -w '%{http_code}' '${{ vars.PUBLIC_URL }}/api/health' || true)"
+            case "$STATUS" in 200|401) exit 0 ;; esac
+            sleep 10
+          done
+          exit 1
+
+      - name: Deploy web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          WEB_IMAGE='${{ vars.AZURE_ACR_NAME }}.azurecr.io/project-health-dashboard-web:ci-${{ github.sha }}'
+          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --image "$WEB_IMAGE" --revision-suffix "ciweb-${GITHUB_RUN_ID}" --output none
+
+      - name: Validate web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          for attempt in $(seq 1 30); do
+            STATUS="$(curl -sS -o /dev/null -w '%{http_code}' '${{ vars.PUBLIC_URL }}/' || true)"
+            [[ "$STATUS" == "200" ]] && exit 0
+            sleep 10
+          done
+          exit 1
+
+      - name: Roll back on failure
+        if: failure()
+        shell: bash
+        run: |
+          set +e
+          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --image '${{ steps.before.outputs.old_api_image }}' --revision-suffix "rbapi-${GITHUB_RUN_ID}" --output none
+          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --image '${{ steps.before.outputs.old_web_image }}' --revision-suffix "rbweb-${GITHUB_RUN_ID}" --output none

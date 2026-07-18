@@ -1,0 +1,20 @@
+environment: test
+sourceControl:
+  provider: github
+  repository: ahmedadeyemi-cts/project-time-platform
+deployment:
+  provider: azure-container-apps
+  futureProvider: opencloud
+registry:
+  provider: azure-container-registry
+  name: acrphdtest7825cc
+application:
+  apiService: ca-phd-test-api-westus3
+  webService: ca-phd-test-web-westus3
+artifact:
+  format: oci
+  include:
+    - api-image
+    - web-image
+    - release-manifest
+    - sbom

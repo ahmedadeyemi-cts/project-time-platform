@@ -1,0 +1,58 @@
+name: ProjectPulse Certinia Nightly
+
+on:
+  schedule:
+    - cron: '25 07 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: projectpulse-certinia-nightly
+  cancel-in-progress: false
+
+jobs:
+  certinia-nightly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PROJECTPULSE_API_BASE_URL: ${{ vars.PROJECTPULSE_API_BASE_URL }}
+      PROJECTPULSE_CERTINIA_SYNC_TOKEN: ${{ secrets.PROJECTPULSE_CERTINIA_SYNC_TOKEN }}
+    steps:
+      - name: Validate nightly configuration
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ -n "${PROJECTPULSE_CERTINIA_SYNC_TOKEN:-}" ]] || {
+            echo "PROJECTPULSE_CERTINIA_SYNC_TOKEN is not configured." >&2
+            exit 1
+          }
+
+      - name: Process Certinia outbox and synchronize status
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          base_url="${PROJECTPULSE_API_BASE_URL:-https://phd-west-test.onenecklab.com}"
+          response_file="$(mktemp)"
+          http_code="$(curl \
+            --silent \
+            --show-error \
+            --output "$response_file" \
+            --write-out '%{http_code}' \
+            --request POST \
+            --header 'Accept: application/json' \
+            --header "X-ProjectPulse-Integration-Token: ${PROJECTPULSE_CERTINIA_SYNC_TOKEN}" \
+            --max-time 600 \
+            "${base_url%/}/api/billing/certinia/nightly")"
+
+          cat "$response_file"
+          echo
+
+          case "$http_code" in
+            200|202) ;;
+            *)
+              echo "Certinia nightly endpoint returned HTTP ${http_code}." >&2
+              exit 1
+              ;;
+          esac

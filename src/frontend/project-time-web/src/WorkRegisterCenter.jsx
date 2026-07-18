@@ -75,6 +75,32 @@ async function postJson(url, payload) {
   return response.json();
 }
 
+async function putJson(url, payload) {
+  const response = await fetch(url, {
+    method: 'PUT',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    let message = `HTTP ${response.status}`;
+    try {
+      const error = await response.json();
+      message = error.message || error.status || message;
+    } catch {
+      // Ignore non-JSON responses.
+    }
+    throw new Error(message);
+  }
+
+  return response.json();
+}
+
+
+function workRegisterBillingIdentifierValue(item = {}, camelName, snakeName) {
+  return item?.[camelName] || item?.[snakeName] || '';
+}
+
 function money(value) {
   const numberValue = Number(value ?? 0);
   return numberValue.toLocaleString(undefined, {
@@ -136,12 +162,15 @@ export default function WorkRegisterCenter() {
   const [selectedWorkItem, setSelectedWorkItem] = useState(null);
   const [editForm, setEditForm] = useState({});
   const [editStatus, setEditStatus] = useState('');
+  const [purchaseOrders, setPurchaseOrders] = useState({ loading: true, projects: [], error: null });
+  const [purchaseOrderStatus, setPurchaseOrderStatus] = useState('');
 
   const [activeDrawerTab, setActiveDrawerTab] = useState('setup');
   const [projectDetails, setProjectDetails] = useState({ loading: false, data: null, error: null });
 
   const [taskAssignmentForms, setTaskAssignmentForms] = useState({});
   const [taskAssignmentStatus, setTaskAssignmentStatus] = useState('');
+  const [intakeSaveBanner, setIntakeSaveBanner] = useState('');
 
   const [multiEngineerTasks, setMultiEngineerTasks] = useState({});
   const [taskRosterForms, setTaskRosterForms] = useState({});
@@ -172,7 +201,13 @@ export default function WorkRegisterCenter() {
     visibility: 'project_team',
     effectiveDate: new Date().toISOString().slice(0, 10),
     notes: '',
-    reason: ''
+    reason: '',
+    purchaseOrderRequired: false,
+    poNumber: '',
+    authorizedAmount: '',
+    poEffectiveStartDate: '',
+    poEffectiveEndDate: '',
+    poCustomerReference: ''
   });
   const [documentStatus, setDocumentStatus] = useState('');
 
@@ -183,6 +218,7 @@ export default function WorkRegisterCenter() {
   const [intakePackageResult, setIntakePackageResult] = useState(null);
 
   const [intakePackages, setIntakePackages] = useState([]);
+  const [currentIntakePackageId, setCurrentIntakePackageId] = useState(() => sessionStorage.getItem('projectPulseCurrentIntakePackageId') || '');
   const [intakeReviewStatus, setIntakeReviewStatus] = useState('');
   const [selectedIntakeReview, setSelectedIntakeReview] = useState(null);
   const [intakeReviewForm, setIntakeReviewForm] = useState(null);
@@ -208,8 +244,102 @@ export default function WorkRegisterCenter() {
     skipGsd: false,
     skipSow: false,
     notes: '',
-    reason: ''
+    reason: '',
+    purchaseOrderRequired: false,
+    poNumber: '',
+    authorizedAmount: '',
+    poEffectiveStartDate: '',
+    poEffectiveEndDate: '',
+    poCustomerReference: ''
   });
+
+  // 055D_5B_CREATE_WORK_SAFE_INTAKE_FORM_UPDATE
+
+// 055D_5L_CREATE_WORK_FIELD_SNAPSHOT
+function projectPulseCreateWorkSnapshotRead() {
+  try {
+    return JSON.parse(sessionStorage.getItem('projectPulseCreateWorkFinalFields') || '{}') || {};
+  } catch {
+    return {};
+  }
+}
+
+function projectPulseCreateWorkSnapshotWrite(field, value) {
+  const tracked = new Set([
+    'requestedWorkType',
+    'contractType',
+    'sellQuoteNumber',
+    'salesforceIdNumber',
+    'certiniaIdNumber',
+    'purchaseOrderRequired',
+    'poNumber',
+    'authorizedAmount',
+    'poEffectiveStartDate',
+    'poEffectiveEndDate',
+    'poCustomerReference',
+    'sowSignedDate',
+    'customerId',
+    'customerName',
+    'projectName',
+    'workName'
+  ]);
+
+  if (!tracked.has(field)) {
+    return;
+  }
+
+  const current = projectPulseCreateWorkSnapshotRead();
+  current[field] = value ?? '';
+  sessionStorage.setItem('projectPulseCreateWorkFinalFields', JSON.stringify(current));
+}
+
+function projectPulseCanonicalWorkType(value) {
+  const normalized = String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
+
+  if (normalized === 'project') return 'Project';
+  if (normalized === 'iqs') return 'IQS';
+  if (normalized === 'servicerequest' || normalized === 'sr') return 'Service Request';
+  if (normalized === 'presales' || normalized === 'presale') return 'Pre-sales';
+  if (normalized === 'internalproject' || normalized === 'internal') return 'Internal Project';
+  return 'Other';
+}
+
+function projectPulseCreateWorkFinalFieldSnapshot() {
+  const stored = projectPulseCreateWorkSnapshotRead();
+
+  return {
+    requestedWorkType: projectPulseCanonicalWorkType(
+      intakeReviewForm?.requestedWorkType
+      || intakeForm.requestedWorkType
+      || stored.requestedWorkType
+      || 'Project'
+    ),
+    contractType: intakeReviewForm?.contractType || intakeForm.contractType || stored.contractType || '',
+    sellQuoteNumber: intakeReviewForm?.sellQuoteNumber || intakeForm.sellQuoteNumber || stored.sellQuoteNumber || '',
+    salesforceIdNumber: intakeReviewForm?.salesforceIdNumber || intakeForm.salesforceIdNumber || stored.salesforceIdNumber || '',
+    certiniaIdNumber: intakeReviewForm?.certiniaIdNumber || intakeForm.certiniaIdNumber || stored.certiniaIdNumber || '',
+    purchaseOrderRequired: intakeForm.purchaseOrderRequired === true || stored.purchaseOrderRequired === true,
+    poNumber: intakeForm.poNumber || stored.poNumber || '',
+    authorizedAmount: intakeForm.authorizedAmount || stored.authorizedAmount || '',
+    poEffectiveStartDate: intakeForm.poEffectiveStartDate || stored.poEffectiveStartDate || '',
+    poEffectiveEndDate: intakeForm.poEffectiveEndDate || stored.poEffectiveEndDate || '',
+    poCustomerReference: intakeForm.poCustomerReference || stored.poCustomerReference || '',
+    sowSignedDate: intakeReviewForm?.sowSignedDate || intakeForm.sowSignedDate || stored.sowSignedDate || '',
+    projectName: intakeReviewForm?.projectName || intakeForm.projectName || intakeForm.workName || stored.projectName || stored.workName || '',
+    customerId: intakeReviewForm?.customerId || intakeForm.customerId || stored.customerId || '',
+    customerName: intakeReviewForm?.customerName || intakeForm.customerName || stored.customerName || ''
+  };
+}
+const updateIntakeForm = (field, value) => {
+  projectPulseCreateWorkSnapshotWrite(field, value);
+
+  setIntakeForm((current) => ({
+    ...current,
+    [field]: value
+  }));
+};
+
+
   // 055D_1_INTAKE_WIZARD_GSD_SOW
 
   // 055C_10_LOCAL_DOCUMENT_UPLOAD
@@ -358,6 +488,51 @@ export default function WorkRegisterCenter() {
       });
     }
   }
+  async function loadPurchaseOrders() {
+    setPurchaseOrders((current) => ({ ...current, loading: true, error: null }));
+
+    try {
+      const data = await fetchJson('/api/work-register/projects/purchase-orders');
+      setPurchaseOrders({
+        loading: false,
+        projects: Array.isArray(data?.projects) ? data.projects : [],
+        error: null
+      });
+      return data;
+    } catch (error) {
+      setPurchaseOrders({
+        loading: false,
+        projects: [],
+        error: error instanceof Error ? error.message : 'Unable to load purchase orders.'
+      });
+      return null;
+    }
+  }
+
+  function purchaseOrderForProject(projectId) {
+    return (purchaseOrders.projects || []).find(
+      (project) => String(project.projectId) === String(projectId)
+    ) || null;
+  }
+
+  async function savePurchaseOrder(projectId, values) {
+    if (!projectId) return null;
+
+    return putJson(`/api/work-register/projects/${projectId}/purchase-order`, {
+      purchaseOrderRequired: values.purchaseOrderRequired === true,
+      poNumber: String(values.poNumber || '').trim(),
+      authorizedAmount:
+        values.authorizedAmount === ''
+        || values.authorizedAmount === null
+        || values.authorizedAmount === undefined
+          ? null
+          : Number(values.authorizedAmount),
+      effectiveStartDate: values.poEffectiveStartDate || null,
+      effectiveEndDate: values.poEffectiveEndDate || null,
+      customerReference: String(values.poCustomerReference || '').trim()
+    });
+  }
+
 
   async function load() {
     setPayload((current) => ({ ...current, loading: true, error: null }));
@@ -377,6 +552,7 @@ export default function WorkRegisterCenter() {
   useEffect(() => {
     load();
     loadEditFoundation();
+    loadPurchaseOrders();
   }, []);
 
   const workItems = payload.data?.workItems ?? [];
@@ -463,6 +639,26 @@ export default function WorkRegisterCenter() {
 
 
   const canEditWorkRegister = editFoundation.data?.canEditWorkRegister === true;
+
+  const canArchiveWorkRegister =
+    editFoundation.data?.canArchiveWorkRegister === true
+    || canEditWorkRegister;
+
+  const canRestoreWorkRegister =
+    editFoundation.data?.canRestoreWorkRegister === true;
+
+  const selectedWorkItemIsArchived =
+    selectedWorkItem?.isArchived === true
+    || normalize(selectedWorkItem?.isArchived) === 'true'
+    || String(selectedWorkItem?.status || '')
+      .trim()
+      .toLowerCase() === 'archived';
+
+  const canModifySelectedProject =
+    canEditWorkRegister && !selectedWorkItemIsArchived;
+
+  // 055D_6B2_PROJECT_LIFECYCLE_UI_PERMISSION
+  // 055D_6B5B_SIDECAR_PROJECT_LIFECYCLE_UI
   const editCustomerOptions = editFoundation.data?.customers ?? [];
   const userOptions = editFoundation.data?.users ?? [];
   const contractOptions = editFoundation.data?.contractTypes ?? [];
@@ -498,6 +694,8 @@ export default function WorkRegisterCenter() {
   }
 
   function openEditDrawer(item) {
+    const poProject = purchaseOrderForProject(item?.workId);
+    const po = poProject?.purchaseOrder || null;
     setSelectedWorkItem(item);
     setEditStatus('');
     setActiveDrawerTab('setup');
@@ -519,12 +717,22 @@ export default function WorkRegisterCenter() {
       accountExecutiveUserId: '',
       solutionArchitectUserId: '',
       insideSalesUserId: '',
+      sellQuoteNumber: '',
+      salesforceIdNumber: '',
+      certiniaIdNumber: '',
+      sowSignedDate: '',
       projectStartDate: dateOnly(item.startDate),
       estimatedEndDate: dateOnly(item.estimatedEndDate),
-      sowSignedDate: dateOnly(item.sowSignedDate),
       status: item.status || '',
+      purchaseOrderRequired: poProject?.purchaseOrderRequired === true,
+      poNumber: po?.poNumber || '',
+      authorizedAmount: po?.authorizedAmount ?? '',
+      poEffectiveStartDate: dateOnly(po?.effectiveStartDate),
+      poEffectiveEndDate: dateOnly(po?.effectiveEndDate),
+      poCustomerReference: po?.customerReference || '',
       editReason: ''
     });
+    setPurchaseOrderStatus('');
   }
 
   function closeEditDrawer() {
@@ -564,7 +772,160 @@ export default function WorkRegisterCenter() {
       taskAssignmentForms[key]?.showClassification === true;
   }
 
-  function projectTaskDefaultBillable() {
+
+  // 055D_5C_CREATE_WORK_ALLOCATION_HELPERS
+  function projectPulseNumberForAllocation(value, fallback = 0) {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : fallback;
+  }
+
+  function projectPulseTaskTotalHours(task = {}) {
+    return projectPulseNumberForAllocation(
+      task.hours
+        ?? task.totalHours
+        ?? task.allocatedHours
+        ?? task.quantity
+        ?? task.estimatedHours
+        ?? task.plannedHours
+        ?? task.engineeringHours
+        ?? task.pmHours
+        ?? 0,
+      0
+    );
+  }
+
+  function projectPulseRoundHours(value) {
+    const numeric = projectPulseNumberForAllocation(value, 0);
+    return Math.round(numeric * 100) / 100;
+  }
+
+
+  // 055D_5D_TASK_ASSIGNMENT_HELPER_REPAIR
+  function projectPulseTaskAssignments(task = {}) {
+    const candidateSets = [
+      task.assignments,
+      task.engineers,
+      task.assignedEngineers,
+      task.assignmentRows,
+      task.rosterRows
+    ];
+
+    const existingRows = candidateSets.find((rows) => Array.isArray(rows) && rows.length);
+
+    if (existingRows) {
+      return existingRows.map((assignment, index) => ({
+        assignedUserId: assignment.assignedUserId || assignment.engineerUserId || assignment.userId || assignment.user_id || '',
+        engineerUserId: assignment.engineerUserId || assignment.assignedUserId || assignment.userId || assignment.user_id || '',
+        engineerName: assignment.engineerName || assignment.assignedUserName || assignment.displayName || assignment.display_name || '',
+        allocatedHours: assignment.allocatedHours ?? assignment.hours ?? 0,
+        allocationPercent: assignment.allocationPercent ?? assignment.percent ?? (existingRows.length === 1 ? 100 : 0),
+        billable: assignment.billable ?? task.billable ?? projectTaskDefaultBillable(),
+        utilizationEligible: assignment.utilizationEligible ?? task.utilizationEligible ?? projectTaskDefaultUtilizationEligible(),
+        effectiveStartDate: assignment.effectiveStartDate || new Date().toISOString().slice(0, 10),
+        isPrimary: assignment.isPrimary === true || index === 0
+      }));
+    }
+
+    const assignedUserId = task.assignedUserId || task.engineerUserId || task.primaryEngineerUserId || '';
+    const engineerName = task.assignedUserName || task.engineerName || task.primaryEngineerName || '';
+
+    return [{
+      assignedUserId,
+      engineerUserId: assignedUserId,
+      engineerName,
+      allocatedHours: task.allocatedHours ?? task.hours ?? task.totalHours ?? task.engineeringHours ?? 0,
+      allocationPercent: 100,
+      billable: task.billable ?? projectTaskDefaultBillable(),
+      utilizationEligible: task.utilizationEligible ?? projectTaskDefaultUtilizationEligible(),
+      effectiveStartDate: new Date().toISOString().slice(0, 10),
+      isPrimary: true
+    }];
+  }
+
+function projectPulseNormalizeTaskAssignments(task = {}, assignments = [], changedIndex = 0, changedPercent = null) {
+    const rows = Array.isArray(assignments) ? assignments.map((row, index) => ({
+      ...row,
+      allocationPercent: projectPulseNumberForAllocation(row?.allocationPercent, index === 0 ? 100 : 0)
+    })) : [];
+
+    if (!rows.length) return rows;
+
+    const boundedIndex = Math.max(0, Math.min(Number(changedIndex || 0), rows.length - 1));
+    const previousPercent = projectPulseNumberForAllocation(rows[boundedIndex].allocationPercent, boundedIndex === 0 ? 100 : 0);
+
+    if (changedPercent !== null && changedPercent !== undefined) {
+      const nextPercent = Math.max(0, Math.min(100, projectPulseNumberForAllocation(changedPercent, previousPercent)));
+      const delta = nextPercent - previousPercent;
+      rows[boundedIndex].allocationPercent = nextPercent;
+
+      if (rows.length > 1 && delta !== 0) {
+        const preferredTarget = boundedIndex > 0 ? boundedIndex - 1 : 1;
+        let remainingDelta = delta;
+
+        if (remainingDelta > 0) {
+          for (const targetIndex of [preferredTarget, ...rows.map((_, idx) => idx).filter((idx) => idx !== boundedIndex && idx !== preferredTarget)]) {
+            if (remainingDelta <= 0) break;
+            const available = projectPulseNumberForAllocation(rows[targetIndex].allocationPercent, 0);
+            const reduction = Math.min(available, remainingDelta);
+            rows[targetIndex].allocationPercent = projectPulseRoundHours(available - reduction);
+            remainingDelta -= reduction;
+          }
+        } else {
+          const addBack = Math.abs(remainingDelta);
+          rows[preferredTarget].allocationPercent = projectPulseRoundHours(projectPulseNumberForAllocation(rows[preferredTarget].allocationPercent, 0) + addBack);
+        }
+      }
+    }
+
+    let totalPercent = rows.reduce((sum, row) => sum + projectPulseNumberForAllocation(row.allocationPercent, 0), 0);
+
+    if (rows.length === 1) {
+      rows[0].allocationPercent = 100;
+      totalPercent = 100;
+    } else if (Math.round(totalPercent * 100) / 100 !== 100) {
+      const adjustmentIndex = rows.findIndex((_, idx) => idx !== boundedIndex);
+      const targetIndex = adjustmentIndex >= 0 ? adjustmentIndex : 0;
+      rows[targetIndex].allocationPercent = Math.max(0, projectPulseRoundHours(projectPulseNumberForAllocation(rows[targetIndex].allocationPercent, 0) + (100 - totalPercent)));
+    }
+
+    const taskHours = projectPulseTaskTotalHours(task);
+    rows.forEach((row, index) => {
+      row.allocationPercent = Math.max(0, Math.min(100, projectPulseRoundHours(row.allocationPercent)));
+      row.allocatedHours = projectPulseRoundHours((taskHours * row.allocationPercent) / 100);
+      row.isPrimary = row.isPrimary === true || index === 0;
+    });
+
+    return rows;
+  }
+
+
+  // 055D_5C_CURRENT_INTAKE_PACKAGE_FOCUS
+  function projectPulseFocusIntakePackage(packageId) {
+    const normalizedPackageId = String(packageId || '').trim();
+    if (!normalizedPackageId) return;
+    sessionStorage.setItem('projectPulseCurrentIntakePackageId', normalizedPackageId);
+    setCurrentIntakePackageId(normalizedPackageId);
+  }
+
+  function projectPulseVisibleIntakePackages(packages = []) {
+    const rows = Array.isArray(packages) ? packages : [];
+    if (!currentIntakePackageId) return rows;
+    const currentRows = rows.filter((item) => String(item.intakePackageId || item.intake_package_id || item.packageId || item.id || '') === String(currentIntakePackageId));
+    return currentRows.length ? currentRows : rows.slice(0, 1);
+  }
+
+function projectPulseCreateWorkReason() {
+    const workTypeLabel = intakeForm.workType || intakeForm.workItemType || intakeForm.type || 'Project';
+    const customerLabel = intakeForm.customerName || intakeForm.clientName || intakeForm.customer || '';
+    const projectLabel = intakeForm.projectName || intakeForm.workName || intakeForm.name || '';
+    const pieces = ['Creating New Project'];
+    if (workTypeLabel) pieces.push(`Work Type: ${workTypeLabel}`);
+    if (customerLabel) pieces.push(`Customer: ${customerLabel}`);
+    if (projectLabel) pieces.push(`Work: ${projectLabel}`);
+    return pieces.join(' | ');
+  }
+
+function projectTaskDefaultBillable() {
     return !isFlexibleTaskClassificationWorkType(selectedWorkItem?.workType);
   }
 
@@ -582,7 +943,178 @@ export default function WorkRegisterCenter() {
     return taskAssignmentForms[key]?.[field] ?? fallback;
   }
 
-  function updateTaskAssignmentForm(task, field, value) {
+
+  // 055D_5D_CREATE_TASK_ASSIGNMENT_FALLBACK
+  function createTaskAssignment(task = {}, primary = false) {
+    return {
+      assignedUserId: '',
+      engineerUserId: '',
+      engineerName: '',
+      allocatedHours: primary ? projectPulseTaskTotalHours(task) : 0,
+      allocationPercent: primary ? 100 : 0,
+      billable: task.billable ?? projectTaskDefaultBillable(),
+      utilizationEligible: task.utilizationEligible ?? projectTaskDefaultUtilizationEligible(),
+      effectiveStartDate: new Date().toISOString().slice(0, 10),
+      isPrimary: primary
+    };
+  }
+
+
+// 055D_5F1_SAFE_TASK_ARRAY_AND_ALLOCATION_HELPERS
+function projectPulseReviewTaskArraySource(form = {}) {
+  const candidates = ['tasksText', 'tasks', 'taskRows', 'reviewTasks', 'assignmentTasks'];
+
+  for (const key of candidates) {
+    if (Array.isArray(form[key]) && form[key].length > 0) {
+      return key;
+    }
+  }
+
+  for (const key of candidates) {
+    if (Array.isArray(form[key])) {
+      return key;
+    }
+  }
+
+  return '';
+}
+
+function projectPulseSafeNumber(value, fallback = 0) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function projectPulseAssignmentTaskHours(task = {}) {
+  return projectPulseSafeNumber(
+    task.hours
+      ?? task.totalHours
+      ?? task.allocatedHours
+      ?? task.quantity
+      ?? task.estimatedHours
+      ?? task.plannedHours
+      ?? task.engineeringHours
+      ?? task.pmHours
+      ?? 0,
+    0
+  );
+}
+
+function projectPulseExistingAssignmentRows(task = {}) {
+  const candidateSets = [
+    task.assignments,
+    task.assignmentRows,
+    task.engineers,
+    task.assignedEngineers,
+    task.rosterRows
+  ];
+
+  const existing = candidateSets.find((rows) => Array.isArray(rows) && rows.length > 0);
+
+  if (existing) {
+    return existing.map((row, index) => ({
+      ...row,
+      assignedUserId: row.assignedUserId || row.engineerUserId || row.userId || row.user_id || '',
+      engineerUserId: row.engineerUserId || row.assignedUserId || row.userId || row.user_id || '',
+      engineerName: row.engineerName || row.assignedUserName || row.displayName || row.display_name || '',
+      allocationPercent: projectPulseSafeNumber(row.allocationPercent ?? row.percent, existing.length === 1 ? 100 : 0),
+      allocatedHours: projectPulseSafeNumber(row.allocatedHours ?? row.hours, 0),
+      billable: row.billable ?? task.billable ?? true,
+      utilizationEligible: row.utilizationEligible ?? task.utilizationEligible ?? true,
+      effectiveStartDate: row.effectiveStartDate || new Date().toISOString().slice(0, 10),
+      isPrimary: row.isPrimary === true || index === 0
+    }));
+  }
+
+  const taskHours = projectPulseAssignmentTaskHours(task);
+  const assignedUserId = task.assignedUserId || task.engineerUserId || task.primaryEngineerUserId || '';
+
+  return [{
+    assignedUserId,
+    engineerUserId: assignedUserId,
+    engineerName: task.assignedUserName || task.engineerName || task.primaryEngineerName || '',
+    allocationPercent: 100,
+    allocatedHours: taskHours,
+    billable: task.billable ?? true,
+    utilizationEligible: task.utilizationEligible ?? true,
+    effectiveStartDate: new Date().toISOString().slice(0, 10),
+    isPrimary: true
+  }];
+}
+
+function projectPulseNormalizeAssignmentRows(task = {}, rows = [], changedIndex = 0, changedPercent = null) {
+  const taskHours = projectPulseAssignmentTaskHours(task);
+  const normalized = rows.map((row, index) => ({
+    ...row,
+    allocationPercent: projectPulseSafeNumber(row.allocationPercent, rows.length === 1 ? 100 : 0),
+    allocatedHours: projectPulseSafeNumber(row.allocatedHours, 0),
+    isPrimary: row.isPrimary === true || index === 0
+  }));
+
+  if (!normalized.length) {
+    return normalized;
+  }
+
+  const boundedIndex = Math.max(0, Math.min(projectPulseSafeNumber(changedIndex, 0), normalized.length - 1));
+
+  if (changedPercent !== null && changedPercent !== undefined) {
+    const previous = projectPulseSafeNumber(normalized[boundedIndex].allocationPercent, 0);
+    const requested = Math.max(0, Math.min(100, projectPulseSafeNumber(changedPercent, previous)));
+    const delta = requested - previous;
+
+    normalized[boundedIndex].allocationPercent = requested;
+
+    if (normalized.length > 1 && delta !== 0) {
+      const preferredTarget = boundedIndex > 0 ? boundedIndex - 1 : 1;
+
+      if (delta > 0) {
+        let remaining = delta;
+        const targetOrder = [
+          preferredTarget,
+          ...normalized.map((_, index) => index).filter((index) => index !== boundedIndex && index !== preferredTarget)
+        ];
+
+        for (const targetIndex of targetOrder) {
+          if (remaining <= 0) break;
+          const current = projectPulseSafeNumber(normalized[targetIndex].allocationPercent, 0);
+          const reduction = Math.min(current, remaining);
+          normalized[targetIndex].allocationPercent = Math.round((current - reduction) * 100) / 100;
+          remaining -= reduction;
+        }
+      } else {
+        const addBack = Math.abs(delta);
+        normalized[preferredTarget].allocationPercent = Math.round((projectPulseSafeNumber(normalized[preferredTarget].allocationPercent, 0) + addBack) * 100) / 100;
+      }
+    }
+  }
+
+  if (normalized.length === 1) {
+    normalized[0].allocationPercent = 100;
+  } else {
+    const total = normalized.reduce((sum, row) => sum + projectPulseSafeNumber(row.allocationPercent, 0), 0);
+    const roundedTotal = Math.round(total * 100) / 100;
+
+    if (roundedTotal !== 100) {
+      const targetIndex = normalized.findIndex((_, index) => index !== boundedIndex);
+      const adjustmentIndex = targetIndex >= 0 ? targetIndex : 0;
+      normalized[adjustmentIndex].allocationPercent = Math.max(
+        0,
+        Math.round((projectPulseSafeNumber(normalized[adjustmentIndex].allocationPercent, 0) + (100 - roundedTotal)) * 100) / 100
+      );
+    }
+  }
+
+  normalized.forEach((row, index) => {
+    row.allocationPercent = Math.max(0, Math.min(100, Math.round(projectPulseSafeNumber(row.allocationPercent, 0) * 100) / 100));
+    row.allocatedHours = Math.round(((taskHours * row.allocationPercent) / 100) * 100) / 100;
+    row.assignedUserId = row.assignedUserId || row.engineerUserId || '';
+    row.engineerUserId = row.engineerUserId || row.assignedUserId || '';
+    row.isPrimary = row.isPrimary === true || index === 0;
+  });
+
+  return normalized;
+}
+
+function updateTaskAssignmentForm(task, field, value) {
     const key = taskAssignmentKey(task);
     setTaskAssignmentForms((current) => ({
       ...current,
@@ -743,32 +1275,49 @@ export default function WorkRegisterCenter() {
       }
     }));
   }
-
-  function updateRosterEngineer(task, index, field, value) {
+function updateRosterEngineer(task, index, field, value) {
     const key = taskAssignmentKey(task);
-    const rows = [...rosterRowsForTask(task)];
+    setTaskRosterForms((current) => {
+      const form = current[key] || {};
+      const currentRows = Array.isArray(form.rows) ? form.rows : initialRosterRows(task);
+      const rows = currentRows.map((row) => ({ ...row }));
 
-    rows[index] = {
-      ...rows[index],
-      [field]: value
-    };
-
-    if (field === 'isPrimary' && value === true) {
-      rows.forEach((row, rowIndex) => {
-        row.isPrimary = rowIndex === index;
-      });
-    }
-
-    setTaskRosterForms((current) => ({
-      ...current,
-      [key]: {
-        ...(current[key] ?? {}),
-        rows,
-        changeReason: current[key]?.changeReason ?? '',
-        showClassification: current[key]?.showClassification ?? false
+      while (rows.length <= index) {
+        rows.push({
+          assignedUserId: '',
+          allocatedHours: 0,
+          allocationPercent: 0,
+          billable: projectTaskDefaultBillable(),
+          utilizationEligible: projectTaskDefaultUtilizationEligible(),
+          effectiveStartDate: new Date().toISOString().slice(0, 10),
+          isPrimary: rows.length === 0
+        });
       }
-    }));
+
+      rows[index] = {
+        ...rows[index],
+        [field]: value
+      };
+
+      if (field === 'assignedUserId') {
+        const user = engineerOptions.find((option) => String(option.userId || option.user_id || option.id) === String(value));
+        rows[index].assignedUserName = user ? (user.displayName || user.display_name || user.name || user.email || '') : '';
+      }
+
+      const normalizedRows = field === 'allocationPercent'
+        ? projectPulseNormalizeTaskAssignments(task, rows, index, value)
+        : projectPulseNormalizeTaskAssignments(task, rows, index, null);
+
+      return {
+        ...current,
+        [key]: {
+          ...form,
+          rows: normalizedRows
+        }
+      };
+    });
   }
+
 
   function removeRosterEngineer(task, index) {
     const key = taskAssignmentKey(task);
@@ -1299,7 +1848,10 @@ export default function WorkRegisterCenter() {
       accountExecutiveName: data.accountExecutiveName || '',
       solutionArchitectName: data.solutionArchitectName || '',
       insideSalesName: data.insideSalesName || '',
-      requestedWorkType: data.requestedWorkType || packageData?.package?.requestedWorkType || 'Project',
+      sellQuoteNumber: data.sellQuoteNumber || data.sell_quote_number || '',
+      salesforceIdNumber: data.salesforceIdNumber || data.salesforce_id_number || '',
+      certiniaIdNumber: data.certiniaIdNumber || data.certinia_id_number || '',
+      requestedWorkType: projectPulseCanonicalWorkType(data.requestedWorkType || packageData?.package?.requestedWorkType || 'Project'),
       contractType: data.contractType || packageData?.package?.contractType || 'Fixed Price',
       pmHours: data.pmHours || '',
       engineeringHours: data.engineeringHours || '',
@@ -1717,7 +2269,152 @@ export default function WorkRegisterCenter() {
     return filtered;
   }
 
-  function blankTaskAssignment(task = {}, primary = false) {
+
+// 055D_5G1_CREATE_WORK_ASSIGNMENT_HELPERS
+function projectPulseAssignmentPercentNumber(value, fallback = 0) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function projectPulseAssignmentTaskTotal(task = {}) {
+  return projectPulseAssignmentPercentNumber(
+    task.totalHours
+      ?? task.hours
+      ?? task.regularHours
+      ?? task.allocatedHours
+      ?? task.quantity
+      ?? task.estimatedHours
+      ?? task.plannedHours
+      ?? 0,
+    0
+  );
+}
+
+function projectPulseRoundAssignmentNumber(value) {
+  return Math.round(projectPulseAssignmentPercentNumber(value, 0) * 100) / 100;
+}
+
+function projectPulseNormalizeCreateWorkAssignments(task = {}, assignments = [], changedIndex = 0, changedPercent = null) {
+  const rows = Array.isArray(assignments) ? assignments.map((row, index) => ({
+    ...row,
+    engineerUserId: row.engineerUserId || row.assignedUserId || row.userId || row.user_id || '',
+    engineerName: row.engineerName || row.assignedUserName || row.displayName || row.display_name || '',
+    hours: projectPulseAssignmentPercentNumber(row.hours ?? row.allocatedHours, 0),
+    allocationPercent: projectPulseAssignmentPercentNumber(row.allocationPercent, assignments.length === 1 ? 100 : 0),
+    isPrimary: row.isPrimary === true || index === 0,
+    notes: row.notes || ''
+  })) : [];
+
+  if (!rows.length) {
+    return rows;
+  }
+
+  const boundedIndex = Math.max(0, Math.min(projectPulseAssignmentPercentNumber(changedIndex, 0), rows.length - 1));
+
+  if (changedPercent !== null && changedPercent !== undefined) {
+    const previous = projectPulseAssignmentPercentNumber(rows[boundedIndex].allocationPercent, 0);
+    const requested = Math.max(0, Math.min(100, projectPulseAssignmentPercentNumber(changedPercent, previous)));
+    const delta = requested - previous;
+
+    rows[boundedIndex].allocationPercent = requested;
+
+    if (rows.length > 1 && delta !== 0) {
+      const preferredTarget = boundedIndex > 0 ? boundedIndex - 1 : 1;
+
+      if (delta > 0) {
+        let remaining = delta;
+        const targetOrder = [
+          preferredTarget,
+          ...rows.map((_, index) => index).filter((index) => index !== boundedIndex && index !== preferredTarget)
+        ];
+
+        for (const targetIndex of targetOrder) {
+          if (remaining <= 0) break;
+          const currentPercent = projectPulseAssignmentPercentNumber(rows[targetIndex].allocationPercent, 0);
+          const reduction = Math.min(currentPercent, remaining);
+          rows[targetIndex].allocationPercent = projectPulseRoundAssignmentNumber(currentPercent - reduction);
+          remaining -= reduction;
+        }
+      } else {
+        const addBack = Math.abs(delta);
+        rows[preferredTarget].allocationPercent = projectPulseRoundAssignmentNumber(
+          projectPulseAssignmentPercentNumber(rows[preferredTarget].allocationPercent, 0) + addBack
+        );
+      }
+    }
+  }
+
+  if (rows.length === 1) {
+    rows[0].allocationPercent = 100;
+    rows[0].isPrimary = true;
+  } else {
+    const total = rows.reduce((sum, row) => sum + projectPulseAssignmentPercentNumber(row.allocationPercent, 0), 0);
+    const roundedTotal = projectPulseRoundAssignmentNumber(total);
+
+    if (roundedTotal !== 100) {
+      const targetIndex = rows.findIndex((_, index) => index !== boundedIndex);
+      const adjustmentIndex = targetIndex >= 0 ? targetIndex : 0;
+      rows[adjustmentIndex].allocationPercent = Math.max(
+        0,
+        projectPulseRoundAssignmentNumber(projectPulseAssignmentPercentNumber(rows[adjustmentIndex].allocationPercent, 0) + (100 - roundedTotal))
+      );
+    }
+  }
+
+  const taskTotal = projectPulseAssignmentTaskTotal(task);
+
+  rows.forEach((row, index) => {
+    row.allocationPercent = Math.max(0, Math.min(100, projectPulseRoundAssignmentNumber(row.allocationPercent)));
+    row.hours = projectPulseRoundAssignmentNumber((taskTotal * row.allocationPercent) / 100);
+    row.allocatedHours = row.hours;
+    row.assignedUserId = row.engineerUserId || row.assignedUserId || '';
+    row.isPrimary = row.isPrimary === true || index === 0;
+  });
+
+  return rows;
+}
+
+
+  // 055D_5K_TASK_ASSIGNMENT_POOL_ROUTING
+  function projectPulseTaskAssignmentPoolKind(task = {}) {
+    const text = [
+      task.phase,
+      task.taskName,
+      task.name,
+      task.description,
+      task.engineeringRole,
+      task.role,
+      task.sku,
+      task.lineType
+    ].filter(Boolean).join(' ').toLowerCase();
+
+    const projectManagementTerms = [
+      'project oversight',
+      'project management',
+      'project manager',
+      'project coordinator',
+      'project team coordinator',
+      'pmo',
+      'pm ',
+      ' pm',
+      'pc ',
+      ' pc'
+    ];
+
+    if (projectManagementTerms.some((term) => text.includes(term.trim()))) {
+      return 'pm';
+    }
+
+    return 'engineer';
+  }
+
+  function projectPulseTaskAssignmentPoolPlaceholder(task = {}) {
+    return projectPulseTaskAssignmentPoolKind(task) === 'pm'
+      ? 'Select PM / PC / Project Team Coordinator resource'
+      : 'Select Engineering / Engineering Team Lead resource';
+  }
+
+function blankTaskAssignment(task = {}, primary = false) {
     return {
       engineerUserId: '',
       engineerName: '',
@@ -1760,82 +2457,130 @@ export default function WorkRegisterCenter() {
 
     setIntakeReviewArrayField('tasksText', tasks);
   }
+function updateTaskAssignment(taskIndex, assignmentIndex, key, value) {
+  setIntakeSaveBanner('');
 
-  function updateTaskAssignment(taskIndex, assignmentIndex, key, value) {
-    const tasks = gsdTaskRows();
-    const task = tasks[taskIndex] || {};
-    const assignments = taskAssignmentRows(task);
+  const tasks = gsdTaskRows();
 
-    assignments[assignmentIndex] = {
-      ...(assignments[assignmentIndex] || blankTaskAssignment(task, assignmentIndex === 0)),
-      [key]: value
-    };
-
-    if (key === 'engineerUserId') {
-      const user = intakeAssignableUsers('engineer').find((option) => String(intakeUserOptionId(option)) === String(value));
-      assignments[assignmentIndex].engineerName = user ? intakeUserOptionName(user) : '';
-    }
-
-    if (key === 'isPrimary' && value === true) {
-      assignments.forEach((assignment, index) => {
-        assignment.isPrimary = index === assignmentIndex;
-      });
-    }
-
-    if (!assignments.some((assignment) => assignment.isPrimary) && assignments.length > 0) {
-      assignments[0].isPrimary = true;
-    }
-
-    tasks[taskIndex] = {
-      ...task,
-      assignmentMode: assignments.length > 1 ? 'multiple' : (task.assignmentMode || 'single'),
-      assignments
-    };
-
-    setIntakeReviewArrayField('tasksText', tasks);
+  if (!Array.isArray(tasks) || !tasks.length || !tasks[taskIndex]) {
+    console.warn('055D.5G.1: Task index not found in gsdTaskRows; assignment update ignored.', { taskIndex, assignmentIndex, key });
+    return;
   }
 
-  function addTaskAssignmentRow(taskIndex) {
-    const tasks = gsdTaskRows();
-    const task = tasks[taskIndex] || {};
-    const assignments = taskAssignmentRows(task);
+  const task = { ...(tasks[taskIndex] || {}) };
+  const assignments = taskAssignmentRows(task).map((assignment, index) => ({
+    ...blankTaskAssignment(task, index === 0),
+    ...assignment,
+    engineerUserId: assignment.engineerUserId || assignment.assignedUserId || '',
+    engineerName: assignment.engineerName || assignment.assignedUserName || '',
+    hours: numberFromReviewValue(assignment.hours ?? assignment.allocatedHours ?? 0),
+    allocationPercent: numberFromReviewValue(assignment.allocationPercent ?? (index === 0 ? 100 : 0)),
+    isPrimary: assignment.isPrimary === true || index === 0
+  }));
 
-    assignments.push({
-      ...blankTaskAssignment(task, false),
-      hours: 0,
-      allocationPercent: 0
+  while (assignments.length <= assignmentIndex) {
+    assignments.push(blankTaskAssignment(task, assignments.length === 0));
+  }
+
+  assignments[assignmentIndex] = {
+    ...assignments[assignmentIndex],
+    [key]: value
+  };
+
+  if (key === 'engineerUserId') {
+    const user = intakeAssignableUsers(projectPulseTaskAssignmentPoolKind(task)).find((option) => String(intakeUserOptionId(option)) === String(value));
+    assignments[assignmentIndex].engineerUserId = value;
+    assignments[assignmentIndex].assignedUserId = value;
+    assignments[assignmentIndex].engineerName = user ? intakeUserOptionName(user) : '';
+    assignments[assignmentIndex].assignedUserName = user ? intakeUserOptionName(user) : '';
+  }
+
+  if (key === 'isPrimary') {
+    assignments.forEach((assignment, index) => {
+      assignment.isPrimary = index === assignmentIndex;
     });
-
-    tasks[taskIndex] = {
-      ...task,
-      assignmentMode: 'multiple',
-      assignments
-    };
-
-    setIntakeReviewArrayField('tasksText', tasks);
   }
 
-  function removeTaskAssignmentRow(taskIndex, assignmentIndex) {
-    const tasks = gsdTaskRows();
-    const task = tasks[taskIndex] || {};
-    const assignments = taskAssignmentRows(task).filter((_, index) => index !== assignmentIndex);
+  const normalizedAssignments = projectPulseNormalizeCreateWorkAssignments(
+    task,
+    assignments,
+    assignmentIndex,
+    key === 'allocationPercent' ? value : null
+  );
 
-    if (assignments.length === 0) {
-      assignments.push(blankTaskAssignment(task, true));
-    }
+  tasks[taskIndex] = {
+    ...task,
+    assignmentMode: normalizedAssignments.length > 1 ? 'multiple' : (task.assignmentMode || 'single'),
+    assignments: normalizedAssignments,
+    engineers: normalizedAssignments,
+    assignedEngineers: normalizedAssignments
+  };
 
-    if (!assignments.some((assignment) => assignment.isPrimary)) {
-      assignments[0].isPrimary = true;
-    }
+  setIntakeReviewArrayField('tasksText', tasks);
+}
+function addTaskAssignmentRow(taskIndex) {
+  setIntakeSaveBanner('');
 
-    tasks[taskIndex] = {
-      ...task,
-      assignmentMode: assignments.length > 1 ? 'multiple' : 'single',
-      assignments
-    };
+  const tasks = gsdTaskRows();
+  const task = tasks[taskIndex] || {};
+  const assignments = taskAssignmentRows(task).map((assignment, index) => ({
+    ...blankTaskAssignment(task, index === 0),
+    ...assignment,
+    engineerUserId: assignment.engineerUserId || assignment.assignedUserId || '',
+    engineerName: assignment.engineerName || assignment.assignedUserName || '',
+    hours: numberFromReviewValue(assignment.hours ?? assignment.allocatedHours ?? 0),
+    allocationPercent: numberFromReviewValue(assignment.allocationPercent ?? (index === 0 ? 100 : 0)),
+    isPrimary: assignment.isPrimary === true || index === 0
+  }));
 
-    setIntakeReviewArrayField('tasksText', tasks);
+  assignments.push({
+    ...blankTaskAssignment(task, false),
+    hours: 0,
+    allocatedHours: 0,
+    allocationPercent: 0,
+    isPrimary: false
+  });
+
+  const normalizedAssignments = projectPulseNormalizeCreateWorkAssignments(task, assignments, assignments.length - 1, 0);
+
+  tasks[taskIndex] = {
+    ...task,
+    assignmentMode: 'multiple',
+    assignments: normalizedAssignments,
+    engineers: normalizedAssignments,
+    assignedEngineers: normalizedAssignments
+  };
+
+  setIntakeReviewArrayField('tasksText', tasks);
+}
+function removeTaskAssignmentRow(taskIndex, assignmentIndex) {
+  setIntakeSaveBanner('');
+
+  const tasks = gsdTaskRows();
+  const task = tasks[taskIndex] || {};
+  let assignments = taskAssignmentRows(task).filter((_, index) => index !== assignmentIndex);
+
+  if (assignments.length === 0) {
+    assignments = [blankTaskAssignment(task, true)];
   }
+
+  if (!assignments.some((assignment) => assignment.isPrimary)) {
+    assignments[0].isPrimary = true;
+  }
+
+  const normalizedAssignments = projectPulseNormalizeCreateWorkAssignments(task, assignments, 0, null);
+
+  tasks[taskIndex] = {
+    ...task,
+    assignmentMode: normalizedAssignments.length > 1 ? 'multiple' : 'single',
+    assignments: normalizedAssignments,
+    engineers: normalizedAssignments,
+    assignedEngineers: normalizedAssignments
+  };
+
+  setIntakeReviewArrayField('tasksText', tasks);
+}
+
 
   function taskAssignmentHoursTotal(task) {
     return taskAssignmentRows(task).reduce((sum, assignment) => sum + numberFromReviewValue(assignment.hours), 0);
@@ -1849,10 +2594,13 @@ export default function WorkRegisterCenter() {
     }));
   }
 
-  async function saveIntakeReviewMapping() {
+  async function saveIntakeReviewMapping(options = {}) {
+    const throwOnError = options?.throwOnError === true;
     if (!selectedIntakeReview || !intakeReviewForm) {
-      setIntakeReviewStatus('Load or extract an intake package before saving the reviewed mapping.');
-      return;
+      const message = 'Load or extract an intake package before saving the reviewed mapping.';
+      setIntakeReviewStatus(message);
+      if (throwOnError) throw new Error(message);
+      return null;
     }
 
     const intakePackageId =
@@ -1861,8 +2609,10 @@ export default function WorkRegisterCenter() {
       || intakePackageResult?.intakePackageId;
 
     if (!intakePackageId) {
-      setIntakeReviewStatus('Unable to determine intake package ID for review save.');
-      return;
+      const message = 'Unable to determine intake package ID for review save.';
+      setIntakeReviewStatus(message);
+      if (throwOnError) throw new Error(message);
+      return null;
     }
 
     let rates = [];
@@ -1876,8 +2626,10 @@ export default function WorkRegisterCenter() {
       parserNotes = JSON.parse(intakeReviewForm.parserNotesText || '[]');
       phaseTotals = JSON.parse(intakeReviewForm.phaseTotalsText || '[]');
     } catch (error) {
-      setIntakeReviewStatus('Rates, tasks, phase totals, and parser notes must contain valid JSON before saving.');
-      return;
+      const message = 'Rates, tasks, phase totals, and parser notes must contain valid JSON before saving.';
+      setIntakeReviewStatus(message);
+      if (throwOnError) throw new Error(message);
+      return null;
     }
 
     const pmUser = intakeAssignableUsers('pm').find((user) => String(intakeUserOptionId(user)) === String(intakeReviewForm.projectManagerUserId));
@@ -1914,8 +2666,17 @@ export default function WorkRegisterCenter() {
       accountExecutiveName: intakeReviewForm.accountExecutiveName,
       solutionArchitectName: intakeReviewForm.solutionArchitectName,
       insideSalesName: intakeReviewForm.insideSalesName,
-      requestedWorkType: intakeReviewForm.requestedWorkType,
+      // 055D_5B_CREATE_WORK_IDENTIFIER_PAYLOAD
+      sellQuoteNumber: intakeReviewForm.sellQuoteNumber || intakeForm.sellQuoteNumber || '',
+      salesforceIdNumber: intakeReviewForm.salesforceIdNumber || intakeForm.salesforceIdNumber || '',
+      certiniaIdNumber: intakeReviewForm.certiniaIdNumber || intakeForm.certiniaIdNumber || '',
+      // 055D_5K_FINAL_SOW_SIGNED_DATE_VALUE
+      sowSignedDate: intakeReviewForm.sowSignedDate || intakeForm.sowSignedDate || '',
+      intakeReason: intakeReviewForm.intakeReason || intakeForm.intakeReason || projectPulseCreateWorkReason(),
+
+      requestedWorkType: projectPulseCanonicalWorkType(intakeReviewForm.requestedWorkType),
       contractType: intakeReviewForm.contractType,
+      // 055D_5K_REVIEW_SAVE_SOW_SIGNED_DATE
       pmHours: intakeReviewForm.pmHours,
       engineeringHours: intakeReviewForm.engineeringHours,
       totalProjectHours: intakeReviewForm.totalProjectHours,
@@ -1956,11 +2717,125 @@ export default function WorkRegisterCenter() {
       }));
 
       setIntakeReviewStatus(result.message || 'Reviewed mapping and assignment plan saved.');
+      // 055D_5C_ASSIGNMENT_SAVE_BANNER_SUCCESS
+      setIntakeSaveBanner('Assignment configuration saved successfully.');
       await loadIntakePackages();
+      return result;
     } catch (error) {
-      setIntakeReviewStatus(error instanceof Error ? error.message : 'Unable to save reviewed mapping and assignment plan.');
+      const message = error instanceof Error ? error.message : 'Unable to save reviewed mapping and assignment plan.';
+      setIntakeReviewStatus(message);
+      if (throwOnError) throw (error instanceof Error ? error : new Error(message));
+      return null;
     }
   }
+
+
+// 055D_5H_CREATE_WORK_REGISTER_FINAL_SAVE
+// 055D_5I2_FINAL_SAVE_IDENTIFIERS_AND_CLOSE
+// 055D_5L_FINAL_SAVE_USES_STABLE_SNAPSHOT
+async function createWorkRegisterFromReviewedIntake() {
+  if (!selectedIntakeReview || !intakeReviewForm) {
+    setIntakeReviewStatus('Load or extract an intake package before creating the Work Register record.');
+    return;
+  }
+
+  const intakePackageId =
+    selectedIntakeReview?.package?.intakePackageId
+    || selectedIntakeReview?.package?.intake_package_id
+    || selectedIntakeReview?.intakePackageId
+    || selectedIntakeReview?.intake_package_id
+    || selectedIntakeReview?.packageId
+    || selectedIntakeReview?.id
+    || intakePackageResult?.intakePackageId
+    || intakePackageResult?.intake_package_id
+    || currentIntakePackageId
+    || '';
+
+  if (!intakePackageId) {
+    setIntakeReviewStatus('Unable to determine intake package ID for final Work Register save.');
+    return;
+  }
+
+  const finalFields = projectPulseCreateWorkFinalFieldSnapshot();
+
+  try {
+    setIntakeSaveBanner('');
+    setIntakeReviewStatus('Saving reviewed intake package into Work Register...');
+
+    await saveIntakeReviewMapping({ throwOnError: true });
+
+    const result = await postJson(`/api/work-register/intake/packages/${intakePackageId}/commit`, {
+      intakeReason: intakeReviewForm.intakeReason || intakeForm.intakeReason || projectPulseCreateWorkReason(),
+      requestedWorkType: finalFields.requestedWorkType,
+      contractType: finalFields.contractType,
+      sellQuoteNumber: finalFields.sellQuoteNumber,
+      salesforceIdNumber: finalFields.salesforceIdNumber,
+      certiniaIdNumber: finalFields.certiniaIdNumber,
+      sowSignedDate: finalFields.sowSignedDate
+    });
+
+    const createdProjectId =
+      result.projectId
+      || result.project_id
+      || result.workId
+      || result.work_id
+      || result.workRegisterId
+      || result.work_register_id
+      || result.createdProjectId
+      || result.created_project_id
+      || result.project?.projectId
+      || result.project?.project_id
+      || result.data?.projectId
+      || result.data?.project_id
+      || '';
+
+
+    const successMessage = result.message || 'Work Register record created successfully.';
+    setIntakeSaveBanner(successMessage);
+    setIntakeReviewStatus(successMessage);
+
+    if (createdProjectId) {
+      sessionStorage.setItem('projectPulseLastCreatedWorkId', createdProjectId);
+
+      if (
+        finalFields.purchaseOrderRequired
+        || finalFields.poNumber
+        || finalFields.authorizedAmount
+        || finalFields.poEffectiveStartDate
+        || finalFields.poEffectiveEndDate
+        || finalFields.poCustomerReference
+      ) {
+        await savePurchaseOrder(createdProjectId, finalFields);
+      }
+
+      await loadPurchaseOrders();
+    }
+
+    if (typeof loadOverview === 'function') {
+      await loadOverview();
+    } else if (typeof loadWorkRegisterOverview === 'function') {
+      await loadWorkRegisterOverview();
+    } else if (typeof refreshWorkRegister === 'function') {
+      await refreshWorkRegister();
+    }
+
+    setIntakeWizardOpen(false);
+    setSelectedIntakeReview(null);
+    setIntakeReviewForm(null);
+    setIntakePackageResult(null);
+    setCurrentIntakePackageId('');
+    sessionStorage.removeItem('projectPulseCurrentIntakePackageId');
+    sessionStorage.removeItem('projectPulseCreateWorkFinalFields');
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unable to create Work Register record.';
+    setIntakeReviewStatus(message);
+    setIntakeSaveBanner('');
+  }
+}
+
+
+
+
 
 
 
@@ -2230,6 +3105,137 @@ export default function WorkRegisterCenter() {
   }
 
 
+
+  async function changeWorkRegisterProjectLifecycle(action) {
+    const normalizedAction =
+      String(action || '').trim().toLowerCase();
+
+    const projectId = selectedWorkItem?.workId;
+    const projectName =
+      selectedWorkItem?.workName || 'this project';
+
+    if (
+      !projectId
+      || selectedWorkItem?.sourceTable !== 'projects'
+    ) {
+      setEditStatus(
+        'A saved Work Register project is required for this lifecycle action.'
+      );
+      return;
+    }
+
+    if (
+      normalizedAction !== 'archive'
+      && normalizedAction !== 'restore'
+    ) {
+      setEditStatus('Unsupported project lifecycle action.');
+      return;
+    }
+
+    if (
+      normalizedAction === 'archive'
+      && !canArchiveWorkRegister
+    ) {
+      setEditStatus(
+        'Only Project Team Coordinators, Administrators, and Super Administrators can archive projects.'
+      );
+      return;
+    }
+
+    if (
+      normalizedAction === 'restore'
+      && !canRestoreWorkRegister
+    ) {
+      setEditStatus(
+        'Only Administrators and Super Administrators can restore archived projects.'
+      );
+      return;
+    }
+
+    if (
+      normalizedAction === 'archive'
+      && selectedWorkItemIsArchived
+    ) {
+      setEditStatus('This project is already archived.');
+      return;
+    }
+
+    if (
+      normalizedAction === 'restore'
+      && !selectedWorkItemIsArchived
+    ) {
+      setEditStatus('Only archived projects can be restored.');
+      return;
+    }
+
+    const actionLabel =
+      normalizedAction === 'archive'
+        ? 'Archive'
+        : 'Restore';
+
+    const reason = window.prompt(
+      `${actionLabel} ${projectName}? Enter the ${normalizedAction} reason:`
+    );
+
+    if (!reason || !reason.trim()) {
+      setEditStatus(
+        `${actionLabel} cancelled. A reason is required.`
+      );
+      return;
+    }
+
+    const confirmationMessage =
+      normalizedAction === 'archive'
+        ? 'Archive this project? It will leave the Active view but remain under Closed / Historical and in reporting.'
+        : 'Restore this project to the Active Work Register?';
+
+    if (!window.confirm(confirmationMessage)) {
+      setEditStatus(`${actionLabel} cancelled.`);
+      return;
+    }
+
+    setEditStatus(
+      normalizedAction === 'archive'
+        ? 'Archiving project...'
+        : 'Restoring project...'
+    );
+
+    try {
+      const result = await postJson(
+        '/api/work-register/projects/lifecycle',
+        {
+          projectId,
+          action: normalizedAction,
+          reason: reason.trim()
+        }
+      );
+
+      setEditStatus(
+        result.message
+        || (
+          normalizedAction === 'archive'
+            ? 'Project archived.'
+            : 'Project restored.'
+        )
+      );
+
+      closeEditDrawer();
+
+      window.setTimeout(() => {
+        window.location.reload();
+      }, 300);
+    } catch (error) {
+      setEditStatus(
+        error instanceof Error
+          ? error.message
+          : `Unable to ${normalizedAction} project.`
+      );
+    }
+  }
+
+
+  // 055D_6B2_PROJECT_LIFECYCLE_UI_ACTIONS
+
   async function saveProjectSetup(event) {
     event.preventDefault();
 
@@ -2285,24 +3291,49 @@ export default function WorkRegisterCenter() {
     addIfSelected('accountExecutiveUserId');
     addIfSelected('solutionArchitectUserId');
     addIfSelected('insideSalesUserId');
+    addIfSelected('sellQuoteNumber');
+    addIfSelected('salesforceIdNumber');
+    addIfSelected('certiniaIdNumber');
 
-    if (Object.keys(payload).length <= 3) {
-      setEditStatus('No setup changes were selected. Choose at least one field to update.');
+    const originalPoProject = purchaseOrderForProject(selectedWorkItem.workId);
+    const originalPo = originalPoProject?.purchaseOrder || null;
+    const poChanged =
+      Boolean(editForm.purchaseOrderRequired) !== Boolean(originalPoProject?.purchaseOrderRequired)
+      || String(editForm.poNumber || '').trim() !== String(originalPo?.poNumber || '').trim()
+      || String(editForm.authorizedAmount ?? '') !== String(originalPo?.authorizedAmount ?? '')
+      || dateOnly(editForm.poEffectiveStartDate) !== dateOnly(originalPo?.effectiveStartDate)
+      || dateOnly(editForm.poEffectiveEndDate) !== dateOnly(originalPo?.effectiveEndDate)
+      || String(editForm.poCustomerReference || '').trim() !== String(originalPo?.customerReference || '').trim();
+
+    if (Object.keys(payload).length <= 3 && !poChanged) {
+      setEditStatus('No setup or purchase-order changes were selected.');
       return;
     }
     // 055C_3_WORK_REGISTER_CHANGED_FIELD_PAYLOAD_END
 
-    setEditStatus('Saving project setup...');
+    setEditStatus('Saving project setup and purchase order...');
+    setPurchaseOrderStatus('');
 
     try {
-      const result = await postJson('/api/work-register/projects/update', projectPulseAttachEditSaveIdentity(payload));
-      setEditStatus(result.message || 'Project setup saved.');
-      await load();
+      let result = null;
+
+      if (Object.keys(payload).length > 3) {
+        result = await postJson('/api/work-register/projects/update', projectPulseAttachEditSaveIdentity(payload));
+      }
+
+      if (poChanged) {
+        const poResult = await savePurchaseOrder(selectedWorkItem.workId, editForm);
+        setPurchaseOrderStatus(poResult?.message || 'Purchase order saved.');
+      }
+
+      setEditStatus(result?.message || 'Project setup and purchase order saved.');
+      await Promise.all([load(), loadPurchaseOrders()]);
+
       window.setTimeout(() => {
         closeEditDrawer();
       }, 800);
     } catch (error) {
-      setEditStatus(error instanceof Error ? error.message : 'Unable to save project setup.');
+      setEditStatus(error instanceof Error ? error.message : 'Unable to save project setup or purchase order.');
     }
   }
 
@@ -2317,7 +3348,12 @@ export default function WorkRegisterCenter() {
             Search and filter projects, intakes, tasks, customers, stakeholders, documents, hours, and cost indicators without removing any existing modules.
           </p>
         </div>
-        <button type="button" className="secondary-action" onClick={load}>
+
+                          {/* 055D_5C_ASSIGNMENT_SAVE_BANNER_RENDER */}
+                          {intakeSaveBanner ? (
+                            <div className="work-register-save-banner success">{intakeSaveBanner}</div>
+                          ) : null}
+        <button data-pp-marker="055D_5C_SAVE_ASSIGNMENT_BUTTON" type="button" className="secondary-action" onClick={load}>
           Refresh
         </button>
       </div>
@@ -2465,6 +3501,16 @@ export default function WorkRegisterCenter() {
                   <small>End: {item.estimatedEndDate || 'Not set'}</small>
                   <small>Closed: {item.closedDate || 'Not closed'}</small>
                   <small>SOW signed: {item.sowSignedDate || 'Not set'}</small>
+                  {workRegisterBillingIdentifierValue(item, 'sellQuoteNumber', 'sell_quote_number') ? <small>SELL Quote: {workRegisterBillingIdentifierValue(item, 'sellQuoteNumber', 'sell_quote_number')}</small> : null}
+                  {workRegisterBillingIdentifierValue(item, 'salesforceIdNumber', 'salesforce_id_number') ? <small>Salesforce ID: {workRegisterBillingIdentifierValue(item, 'salesforceIdNumber', 'salesforce_id_number')}</small> : null}
+                  {workRegisterBillingIdentifierValue(item, 'certiniaIdNumber', 'certinia_id_number') ? <small>Certinia ID: {workRegisterBillingIdentifierValue(item, 'certiniaIdNumber', 'certinia_id_number')}</small> : null}
+                  {purchaseOrderForProject(item.workId)?.purchaseOrder?.poNumber ? (
+                    <small className="work-register-po-value">
+                      PO: {purchaseOrderForProject(item.workId).purchaseOrder.poNumber}
+                    </small>
+                  ) : (
+                    <small>PO: Not configured</small>
+                  )}
                 </td>
                 <td>
                   <small>Total tasks: {item.taskCount ?? 0}</small>
@@ -2519,7 +3565,7 @@ export default function WorkRegisterCenter() {
             ) : null}
 
 
-      
+
 
 
             {intakeWizardOpen ? (
@@ -2555,7 +3601,7 @@ export default function WorkRegisterCenter() {
                   </header>
 
 
-      
+
 
 
                   {intakeWizardStatus ? (
@@ -2567,7 +3613,7 @@ export default function WorkRegisterCenter() {
                   ) : null}
 
 
-      
+
 
 
                   <form className="work-register-intake-form" onSubmit={uploadInitialIntakePackage}>
@@ -2583,7 +3629,7 @@ export default function WorkRegisterCenter() {
                       onChange={(event) => updateIntakeField('requestedWorkType', event.target.value)}
                       name="requestedWorkType"
                     >
-                      {['Project', 'Service Request', 'Internal Project', 'IQS', 'Pre-Sales', 'Other'].map((type) => (
+                      {['Project', 'IQS', 'Service Request', 'Pre-sales', 'Internal Project', 'Other'].map((type) => (
                         <option value={type} key={type}>{type}</option>
                       ))}
                     </select>
@@ -2631,6 +3677,44 @@ export default function WorkRegisterCenter() {
                       placeholder="Optional; GSD extraction should populate this"
                     />
                   </label>
+                  {/* 055D_5A_CREATE_BILLING_IDENTIFIERS */}
+                  <label>
+                    SELL Quote <span className="optional-pill">Optional</span>
+                    <input
+                      type="text"
+                      value={intakeForm.sellQuoteNumber || ''}
+                      onChange={(event) => updateIntakeForm('sellQuoteNumber', event.target.value)}
+                      placeholder="Optional SELL quote number"
+                    />
+                  </label>
+                  <label>
+                    Salesforce ID <span className="optional-pill">Optional</span>
+                    <input
+                      type="text"
+                      value={intakeForm.salesforceIdNumber || ''}
+                      onChange={(event) => updateIntakeForm('salesforceIdNumber', event.target.value)}
+                      placeholder="Optional Salesforce opportunity/account ID"
+                    />
+                  </label>
+                  <label>
+                    Certinia ID <span className="optional-pill">Optional</span>
+                    <input
+                      type="text"
+                      value={intakeForm.certiniaIdNumber || ''}
+                      onChange={(event) => updateIntakeForm('certiniaIdNumber', event.target.value)}
+                      placeholder="Optional Certinia project ID"
+                    />
+                  </label>
+
+                    {/* 055D_5K_CREATE_SOW_SIGNED_DATE */}
+                    <label>
+                      SOW Signed Date
+                      <input
+                        type="date"
+                        value={intakeForm.sowSignedDate || ''}
+                        onChange={(event) => updateIntakeForm('sowSignedDate', event.target.value)}
+                      />
+                    </label>
                 </div>
 
                 <div className="work-register-intake-upload-grid">
@@ -2686,13 +3770,76 @@ export default function WorkRegisterCenter() {
               </section>
 
 
-      
+
 
 
                     <section>
 
 
-                      <h4>2. Intake notes and audit reason</h4>
+                      <h4>2. Purchase Order / Billing</h4>
+                      <p className="muted">Optional during intake. The PO is saved immediately after the Work Register project is created.</p>
+
+                      <label className="checkbox-line" data-projectpulse-create-work-po-editor="true">
+                        <input
+                          type="checkbox"
+                          checked={intakeForm.purchaseOrderRequired === true}
+                          onChange={(event) => updateIntakeField('purchaseOrderRequired', event.target.checked)}
+                        />
+                        PO required for billing
+                      </label>
+
+                      <div className="work-register-edit-grid">
+                        <label>
+                          PO Number
+                          <input
+                            type="text"
+                            value={intakeForm.poNumber || ''}
+                            onChange={(event) => updateIntakeField('poNumber', event.target.value)}
+                            placeholder="Customer purchase-order number"
+                          />
+                        </label>
+
+                        <label>
+                          Authorized PO amount
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={intakeForm.authorizedAmount ?? ''}
+                            onChange={(event) => updateIntakeField('authorizedAmount', event.target.value)}
+                          />
+                        </label>
+
+                        <label>
+                          Effective start date
+                          <input
+                            type="date"
+                            value={intakeForm.poEffectiveStartDate || ''}
+                            onChange={(event) => updateIntakeField('poEffectiveStartDate', event.target.value)}
+                          />
+                        </label>
+
+                        <label>
+                          Effective end date
+                          <input
+                            type="date"
+                            value={intakeForm.poEffectiveEndDate || ''}
+                            onChange={(event) => updateIntakeField('poEffectiveEndDate', event.target.value)}
+                          />
+                        </label>
+
+                        <label className="full-width">
+                          Customer reference
+                          <input
+                            type="text"
+                            value={intakeForm.poCustomerReference || ''}
+                            onChange={(event) => updateIntakeField('poCustomerReference', event.target.value)}
+                            placeholder="Customer PO description or reference"
+                          />
+                        </label>
+                      </div>
+
+                      <h4>3. Intake notes and audit reason</h4>
 
 
                       <label>
@@ -2725,7 +3872,7 @@ export default function WorkRegisterCenter() {
                       </label>
 
 
-      
+
 
 
                       <label>
@@ -2764,7 +3911,7 @@ export default function WorkRegisterCenter() {
                     </section>
 
 
-      
+
 
 
                     <section>
@@ -2818,10 +3965,10 @@ export default function WorkRegisterCenter() {
                     </section>
 
 
-      
 
 
-      
+
+
               <section>
                 <h4>4. GSD extraction and review mapping</h4>
                 <p className="muted">
@@ -2845,7 +3992,7 @@ export default function WorkRegisterCenter() {
                 </div>
 
                 <div className="work-register-intake-package-list">
-                  {intakePackages.map((pkg) => (
+                  {projectPulseVisibleIntakePackages(intakePackages).map((pkg) => (
                     <article key={pkg.intakePackageId}>
                       <div>
                         <strong>{pkg.projectNameHint || 'Pending project name'}</strong>
@@ -2931,7 +4078,7 @@ export default function WorkRegisterCenter() {
                           value={intakeReviewForm.requestedWorkType}
                           onChange={(event) => updateIntakeReviewForm('requestedWorkType', event.target.value)}
                         >
-                          {['Project', 'Service Request', 'Internal Project', 'IQS', 'Pre-Sales', 'Other'].map((type) => (
+                          {['Project', 'IQS', 'Service Request', 'Pre-sales', 'Internal Project', 'Other'].map((type) => (
                             <option value={type} key={type}>{type}</option>
                           ))}
                         </select>
@@ -3198,6 +4345,16 @@ export default function WorkRegisterCenter() {
                       </div>
 
                       <div className="work-register-assignment-save-bar" data-marker="055D_3B_ASSIGNMENT_SAVE_BUTTON">
+                        {/* 055D_5H_ASSIGNMENT_SAVE_BANNER */}
+                        {intakeSaveBanner ? (
+                          <div className="work-register-save-banner success">{intakeSaveBanner}</div>
+                        ) : null}
+
+                        {/* 055D_5G1_ASSIGNMENT_SAVE_BANNER_TOP */}
+                        {intakeSaveBanner ? (
+                          <div className="work-register-save-banner success">{intakeSaveBanner}</div>
+                        ) : null}
+
                         <button type="button" className="primary-action" onClick={saveIntakeReviewMapping}>
                           Save Assignment Configuration
                         </button>
@@ -3245,8 +4402,8 @@ export default function WorkRegisterCenter() {
                                     value={assignment.engineerUserId || ''}
                                     onChange={(event) => updateTaskAssignment(taskIndex, assignmentIndex, 'engineerUserId', event.target.value)}
                                   >
-                                    <option value="">Select Engineering / Engineering Team Lead resource</option>
-                                    {intakeAssignableUsers('engineer').map((user) => (
+                                    <option value="">{projectPulseTaskAssignmentPoolPlaceholder(task)}</option>
+                                    {intakeAssignableUsers(projectPulseTaskAssignmentPoolKind(task)).map((user) => (
                                       <option value={intakeUserOptionId(user)} key={intakeUserOptionId(user)}>
                                         {intakeUserOptionName(user)}
                                       </option>
@@ -3256,7 +4413,7 @@ export default function WorkRegisterCenter() {
                                   <input
                                     type="number"
                                     step="0.25"
-                                    value={assignment.hours ?? 0}
+                                    value={assignment.hours ?? assignment.allocatedHours ?? 0}
                                     onChange={(event) => updateTaskAssignment(taskIndex, assignmentIndex, 'hours', Number(event.target.value || 0))}
                                   />
 
@@ -3294,6 +4451,22 @@ export default function WorkRegisterCenter() {
                       </div>
                     </div>
 
+                    {/* 055D_5H_FINAL_CREATE_WORK_REGISTER_ACTION */}
+                    <div className="work-register-final-save-panel">
+                      <div>
+                        <h5>Final Save</h5>
+                        <p className="muted">
+                          Creates the Work Register record from this reviewed intake package. Use Save Assignment Configuration first when you want to save changes without creating the record yet.
+                        </p>
+                      </div>
+                      {intakeSaveBanner ? (
+                        <div className="work-register-save-banner success">{intakeSaveBanner}</div>
+                      ) : null}
+                      <button type="button" className="primary-action" onClick={createWorkRegisterFromReviewedIntake}>
+                        Save Project / Create Work Register
+                      </button>
+                    </div>
+
 
                     <details className="work-register-gsd-json-details">
                       <summary>Advanced: raw extracted JSON</summary>
@@ -3327,8 +4500,8 @@ export default function WorkRegisterCenter() {
                     </details>
 
                     <div className="work-register-create-actions">
-                      <button type="button" className="primary-action" onClick={saveIntakeReviewMapping}>
-                        Save reviewed mapping and assignments
+                      <button type="button" className="secondary-action" onClick={saveIntakeReviewMapping}>
+                        Save reviewed mapping only
                       </button>
                     </div>
                   </div>
@@ -3359,10 +4532,10 @@ export default function WorkRegisterCenter() {
             ) : null}
 
 
-      
 
 
-      
+
+
 
 
       {selectedWorkItem ? (
@@ -3370,7 +4543,7 @@ export default function WorkRegisterCenter() {
           <aside className="work-register-drawer" aria-label="Work Register project setup editor">
             <div className="work-register-drawer-header">
               <div>
-                <p className="eyebrow">{canEditWorkRegister ? 'Edit Project Setup' : 'View Project Setup'}</p>
+                <p className="eyebrow">{canModifySelectedProject ? 'Edit Project Setup' : 'View Project Setup'}</p>
                 <h3>{selectedWorkItem.workName}</h3>
                 <p className="muted">
                   {selectedWorkItem.customerName || 'No customer linked'} · {labelize(selectedWorkItem.sourceTable)}
@@ -3379,8 +4552,8 @@ export default function WorkRegisterCenter() {
               <button type="button" className="secondary-action" onClick={closeEditDrawer}>Close</button>
             </div>
 
-            <div className={canEditWorkRegister ? 'work-register-edit-notice allowed' : 'work-register-edit-notice'}>
-              {canEditWorkRegister
+            <div className={canModifySelectedProject ? 'work-register-edit-notice allowed' : 'work-register-edit-notice'}>
+              {canModifySelectedProject
                 ? 'Project Team Coordinator/Admin edit mode. All saves require a reason and are audited.'
                 : 'View-only mode. Solution Architects, PMs, Engineers, Sales, and SAA cannot edit Work Register setup fields.'}
             </div>
@@ -3412,13 +4585,15 @@ export default function WorkRegisterCenter() {
             ) : null}
 
             {activeDrawerTab === 'setup' ? (
-            <form className="work-register-edit-form" onSubmit={saveProjectSetup}>
+            <>
+              {/* 055D_6B2_PROJECT_LIFECYCLE_UI_FRAGMENT_START */}
+              <form className="work-register-edit-form" onSubmit={saveProjectSetup}>
               <label>
                 Customer
                 <select
                   value={editForm.clientId || ''}
                   onChange={(event) => updateEditField('clientId', event.target.value)}
-                  disabled={!canEditWorkRegister}
+                  disabled={!canModifySelectedProject}
                 >
                   <option value="">Keep current / not linked</option>
                   {editCustomerOptions.map((customer) => (
@@ -3434,7 +4609,7 @@ export default function WorkRegisterCenter() {
                 <select
                   value={editForm.contractType || ''}
                   onChange={(event) => updateEditField('contractType', event.target.value)}
-                  disabled={!canEditWorkRegister}
+                  disabled={!canModifySelectedProject}
                 >
                   <option value="">Keep current / not set</option>
                   {contractOptions.map((value) => <option value={value} key={value}>{value}</option>)}
@@ -3446,7 +4621,7 @@ export default function WorkRegisterCenter() {
                 <select
                   value={editForm.projectManagerUserId || ''}
                   onChange={(event) => updateEditField('projectManagerUserId', event.target.value)}
-                  disabled={!canEditWorkRegister}
+                  disabled={!canModifySelectedProject}
                 >
                   <option value="">Keep current: {selectedWorkItem.projectManager || 'Not assigned'}</option>
                   {pmOptions.map((user) => (
@@ -3460,7 +4635,7 @@ export default function WorkRegisterCenter() {
                 <select
                   value={editForm.projectCoordinatorUserId || ''}
                   onChange={(event) => updateEditField('projectCoordinatorUserId', event.target.value)}
-                  disabled={!canEditWorkRegister}
+                  disabled={!canModifySelectedProject}
                 >
                   <option value="">Keep current: {selectedWorkItem.projectCoordinator || 'Not assigned'}</option>
                   {pcOptions.map((user) => (
@@ -3474,7 +4649,7 @@ export default function WorkRegisterCenter() {
                 <select
                   value={editForm.accountExecutiveUserId || ''}
                   onChange={(event) => updateEditField('accountExecutiveUserId', event.target.value)}
-                  disabled={!canEditWorkRegister}
+                  disabled={!canModifySelectedProject}
                 >
                   <option value="">Keep current: {selectedWorkItem.accountExecutive || 'Not assigned'}</option>
                   {aeOptions.map((user) => (
@@ -3488,7 +4663,7 @@ export default function WorkRegisterCenter() {
                 <select
                   value={editForm.solutionArchitectUserId || ''}
                   onChange={(event) => updateEditField('solutionArchitectUserId', event.target.value)}
-                  disabled={!canEditWorkRegister}
+                  disabled={!canModifySelectedProject}
                 >
                   <option value="">Keep current: {selectedWorkItem.solutionArchitect || 'Not assigned'}</option>
                   {saOptions.map((user) => (
@@ -3502,7 +4677,7 @@ export default function WorkRegisterCenter() {
                 <select
                   value={editForm.insideSalesUserId || ''}
                   onChange={(event) => updateEditField('insideSalesUserId', event.target.value)}
-                  disabled={!canEditWorkRegister}
+                  disabled={!canModifySelectedProject}
                 >
                   <option value="">Keep current: {selectedWorkItem.insideSales || 'Not assigned'}</option>
                   {saaOptions.map((user) => (
@@ -3516,7 +4691,7 @@ export default function WorkRegisterCenter() {
                 <select
                   value={editForm.status || ''}
                   onChange={(event) => updateEditField('status', event.target.value)}
-                  disabled={!canEditWorkRegister}
+                  disabled={!canModifySelectedProject}
                 >
                   <option value="">Keep current / not set</option>
                   {statusEditOptions.map((value) => <option value={value} key={value}>{labelize(value)}</option>)}
@@ -3529,7 +4704,7 @@ export default function WorkRegisterCenter() {
                   type="date"
                   value={editForm.projectStartDate || ''}
                   onChange={(event) => updateEditField('projectStartDate', event.target.value)}
-                  disabled={!canEditWorkRegister}
+                  disabled={!canModifySelectedProject}
                 />
               </label>
 
@@ -3539,7 +4714,7 @@ export default function WorkRegisterCenter() {
                   type="date"
                   value={editForm.estimatedEndDate || ''}
                   onChange={(event) => updateEditField('estimatedEndDate', event.target.value)}
-                  disabled={!canEditWorkRegister}
+                  disabled={!canModifySelectedProject}
                 />
               </label>
 
@@ -3549,9 +4724,114 @@ export default function WorkRegisterCenter() {
                   type="date"
                   value={editForm.sowSignedDate || ''}
                   onChange={(event) => updateEditField('sowSignedDate', event.target.value)}
-                  disabled={!canEditWorkRegister}
+                  disabled={!canModifySelectedProject}
                 />
               </label>
+                {/* 055D_5A_EDIT_BILLING_IDENTIFIERS */}
+                <label>
+                  SELL Quote <span className="optional-pill">Optional</span>
+                  <input
+                    type="text"
+                    value={editForm.sellQuoteNumber || ''}
+                    onChange={(event) => updateEditField('sellQuoteNumber', event.target.value)}
+                    placeholder={selectedWorkItem.sellQuoteNumber || selectedWorkItem.sell_quote_number || 'Optional SELL quote number'}
+                  />
+                </label>
+                <label>
+                  Salesforce ID <span className="optional-pill">Optional</span>
+                  <input
+                    type="text"
+                    value={editForm.salesforceIdNumber || ''}
+                    onChange={(event) => updateEditField('salesforceIdNumber', event.target.value)}
+                    placeholder={selectedWorkItem.salesforceIdNumber || selectedWorkItem.salesforce_id_number || 'Optional Salesforce ID'}
+                  />
+                </label>
+                <label>
+                  Certinia ID <span className="optional-pill">Optional</span>
+                  <input
+                    type="text"
+                    value={editForm.certiniaIdNumber || ''}
+                    onChange={(event) => updateEditField('certiniaIdNumber', event.target.value)}
+                    placeholder={selectedWorkItem.certiniaIdNumber || selectedWorkItem.certinia_id_number || 'Optional Certinia ID'}
+                  />
+                </label>
+
+              <div className="work-register-po-section full-width" data-projectpulse-work-register-po-editor="true">
+                <div className="work-register-po-heading">
+                  <div>
+                    <strong>Purchase Order / Billing</strong>
+                    <small>Uses the same PO record shown in Invoice & Billing.</small>
+                  </div>
+                  {purchaseOrderStatus ? <span>{purchaseOrderStatus}</span> : null}
+                </div>
+
+                <label className="checkbox-line">
+                  <input
+                    type="checkbox"
+                    checked={editForm.purchaseOrderRequired === true}
+                    onChange={(event) => updateEditField('purchaseOrderRequired', event.target.checked)}
+                    disabled={!canModifySelectedProject}
+                  />
+                  PO required for billing
+                </label>
+
+                <div className="work-register-edit-grid">
+                  <label>
+                    PO Number
+                    <input
+                      type="text"
+                      value={editForm.poNumber || ''}
+                      onChange={(event) => updateEditField('poNumber', event.target.value)}
+                      placeholder="Customer purchase-order number"
+                      disabled={!canModifySelectedProject}
+                    />
+                  </label>
+
+                  <label>
+                    Authorized PO amount
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={editForm.authorizedAmount ?? ''}
+                      onChange={(event) => updateEditField('authorizedAmount', event.target.value)}
+                      placeholder="0.00"
+                      disabled={!canModifySelectedProject}
+                    />
+                  </label>
+
+                  <label>
+                    Effective start date
+                    <input
+                      type="date"
+                      value={editForm.poEffectiveStartDate || ''}
+                      onChange={(event) => updateEditField('poEffectiveStartDate', event.target.value)}
+                      disabled={!canModifySelectedProject}
+                    />
+                  </label>
+
+                  <label>
+                    Effective end date
+                    <input
+                      type="date"
+                      value={editForm.poEffectiveEndDate || ''}
+                      onChange={(event) => updateEditField('poEffectiveEndDate', event.target.value)}
+                      disabled={!canModifySelectedProject}
+                    />
+                  </label>
+
+                  <label className="full-width">
+                    Customer reference
+                    <input
+                      type="text"
+                      value={editForm.poCustomerReference || ''}
+                      onChange={(event) => updateEditField('poCustomerReference', event.target.value)}
+                      placeholder="Customer PO description or reference"
+                      disabled={!canModifySelectedProject}
+                    />
+                  </label>
+                </div>
+              </div>
 
               <label className="full-width">
                 Edit reason
@@ -3560,18 +4840,71 @@ export default function WorkRegisterCenter() {
                   value={editForm.editReason || ''}
                   onChange={(event) => updateEditField('editReason', event.target.value)}
                   placeholder="Required. Example: Reassigned PM because prior PM left organization."
-                  disabled={!canEditWorkRegister}
+                  disabled={!canModifySelectedProject}
                 />
               </label>
 
               <div className="work-register-drawer-actions">
-                {canEditWorkRegister ? (
+                {canModifySelectedProject ? (
                   <button type="submit" className="primary-action">Save changes</button>
                 ) : null}
                 <button type="button" className="secondary-action" onClick={closeEditDrawer}>Cancel</button>
               </div>
 
             </form>
+
+            {/* 055D_6B2_PROJECT_LIFECYCLE_UI_START */}
+            {selectedWorkItem?.sourceTable === 'projects'
+              && (canArchiveWorkRegister || canRestoreWorkRegister) ? (
+              <div className="work-register-detail-panel">
+                <h4>Project lifecycle</h4>
+
+                {selectedWorkItemIsArchived ? (
+                  <>
+                    <div className="work-register-banner">
+                      This project is archived and read-only. Its tasks, documents, assignments, costs, time, and audit history remain available for historical reporting.
+                    </div>
+
+                    {canRestoreWorkRegister ? (
+                      <div className="work-register-task-assignment-actions">
+                        <button
+                          type="button"
+                          className="secondary-action"
+                          onClick={() => changeWorkRegisterProjectLifecycle('restore')}
+                        >
+                          Restore Project
+                        </button>
+                      </div>
+                    ) : (
+                      <p className="muted">
+                        Only an Administrator or Super Administrator can restore this project.
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <p className="muted">
+                      Archiving removes this project from the Active view without deleting its tasks, documents, assignments, costs, time, or audit history.
+                    </p>
+
+                    {canArchiveWorkRegister ? (
+                      <div className="work-register-task-assignment-actions">
+                        <button
+                          type="button"
+                          className="secondary-action danger"
+                          onClick={() => changeWorkRegisterProjectLifecycle('archive')}
+                        >
+                          Archive Project
+                        </button>
+                      </div>
+                    ) : null}
+                  </>
+                )}
+              </div>
+            ) : null}
+            {/* 055D_6B2_PROJECT_LIFECYCLE_UI_END */}
+              {/* 055D_6B2_PROJECT_LIFECYCLE_UI_FRAGMENT_END */}
+            </>
             ) : null}
 
             {activeDrawerTab === 'tasks' ? (
@@ -3614,7 +4947,7 @@ export default function WorkRegisterCenter() {
                             type="checkbox"
                             checked={isMultiEngineer}
                             onChange={(event) => toggleMultiEngineerTask(task, event.target.checked)}
-                            disabled={!canEditWorkRegister || !task.taskId}
+                            disabled={!canModifySelectedProject || !task.taskId}
                           />
                           Multiple engineers on this task
                         </label>
@@ -3626,7 +4959,7 @@ export default function WorkRegisterCenter() {
                               <select
                                 value={selectedEngineerId}
                                 onChange={(event) => updateTaskAssignmentForm(task, 'assignedUserId', event.target.value)}
-                                disabled={!canEditWorkRegister || !task.taskId}
+                                disabled={!canModifySelectedProject || !task.taskId}
                               >
                                 <option value="">Unassigned / remove future assignment</option>
                                 {engineerOptions.map((user) => (
@@ -3645,7 +4978,7 @@ export default function WorkRegisterCenter() {
                                 step="0.25"
                                 value={selectedAllocatedHours}
                                 onChange={(event) => updateTaskAssignmentForm(task, 'allocatedHours', event.target.value)}
-                                disabled={!canEditWorkRegister || !task.taskId}
+                                disabled={!canModifySelectedProject || !task.taskId}
                               />
                             </label>
 
@@ -3655,7 +4988,7 @@ export default function WorkRegisterCenter() {
                                 type="date"
                                 value={selectedEffectiveDate}
                                 onChange={(event) => updateTaskAssignmentForm(task, 'effectiveStartDate', event.target.value)}
-                                disabled={!canEditWorkRegister || !task.taskId}
+                                disabled={!canModifySelectedProject || !task.taskId}
                               />
                             </label>
 
@@ -3666,7 +4999,7 @@ export default function WorkRegisterCenter() {
                                     type="checkbox"
                                     checked={selectedBillable}
                                     onChange={(event) => updateTaskAssignmentForm(task, 'billable', event.target.checked)}
-                                    disabled={!canEditWorkRegister || !task.taskId}
+                                    disabled={!canModifySelectedProject || !task.taskId}
                                   />
                                   Billable
                                 </label>
@@ -3676,7 +5009,7 @@ export default function WorkRegisterCenter() {
                                     type="checkbox"
                                     checked={selectedUtilization}
                                     onChange={(event) => updateTaskAssignmentForm(task, 'utilizationEligible', event.target.checked)}
-                                    disabled={!canEditWorkRegister || !task.taskId}
+                                    disabled={!canModifySelectedProject || !task.taskId}
                                   />
                                   Utilization eligible
                                 </label>
@@ -3684,7 +5017,7 @@ export default function WorkRegisterCenter() {
                             ) : (
                               <div className="work-register-default-classification">
                                 Default: Billable + Utilization eligible
-                                <button type="button" onClick={() => updateTaskAssignmentForm(task, 'showClassification', true)} disabled={!canEditWorkRegister}>
+                                <button type="button" onClick={() => updateTaskAssignmentForm(task, 'showClassification', true)} disabled={!canModifySelectedProject}>
                                   Override classification
                                 </button>
                               </div>
@@ -3697,12 +5030,12 @@ export default function WorkRegisterCenter() {
                                 value={selectedReason}
                                 onChange={(event) => updateTaskAssignmentForm(task, 'changeReason', event.target.value)}
                                 placeholder="Required. Example: Reassigned future task work because previous engineer left the organization."
-                                disabled={!canEditWorkRegister || !task.taskId}
+                                disabled={!canModifySelectedProject || !task.taskId}
                               />
                             </label>
 
                             <div className="work-register-task-assignment-actions">
-                              {canEditWorkRegister ? (
+                              {canModifySelectedProject ? (
                                 <button type="button" className="primary-action" onClick={() => saveTaskAssignment(task)} disabled={!task.taskId}>
                                   Save task assignment
                                 </button>
@@ -3714,7 +5047,7 @@ export default function WorkRegisterCenter() {
                             <div className="work-register-roster-toolbar">
                               <strong>Multi-engineer roster</strong>
                               <span>{rosterRows.filter((row) => row.assignedUserId).length} / 20 active engineers</span>
-                              {canEditWorkRegister ? (
+                              {canModifySelectedProject ? (
                                 <button type="button" className="secondary-action" onClick={() => addRosterEngineer(task)}>
                                   Add engineer
                                 </button>
@@ -3724,7 +5057,7 @@ export default function WorkRegisterCenter() {
                             {!isFlexibleTaskClassificationWorkType(selectedWorkItem?.workType) ? (
                               <div className="work-register-default-classification">
                                 Project task default: Billable + Utilization eligible.
-                                <button type="button" onClick={() => toggleRosterClassification(task, true)} disabled={!canEditWorkRegister}>
+                                <button type="button" onClick={() => toggleRosterClassification(task, true)} disabled={!canModifySelectedProject}>
                                   Override classification
                                 </button>
                               </div>
@@ -3737,7 +5070,7 @@ export default function WorkRegisterCenter() {
                                   <select
                                     value={row.assignedUserId || ''}
                                     onChange={(event) => updateRosterEngineer(task, index, 'assignedUserId', event.target.value)}
-                                    disabled={!canEditWorkRegister || !task.taskId}
+                                    disabled={!canModifySelectedProject || !task.taskId}
                                   >
                                     <option value="">Select Engineering / Engineering Team Lead resource</option>
                                     {engineerOptions.map((user) => (
@@ -3756,7 +5089,7 @@ export default function WorkRegisterCenter() {
                                     step="0.25"
                                     value={row.allocatedHours ?? 0}
                                     onChange={(event) => updateRosterEngineer(task, index, 'allocatedHours', event.target.value)}
-                                    disabled={!canEditWorkRegister || !task.taskId}
+                                    disabled={!canModifySelectedProject || !task.taskId}
                                   />
                                 </label>
 
@@ -3769,7 +5102,7 @@ export default function WorkRegisterCenter() {
                                     step="0.01"
                                     value={row.allocationPercent ?? ''}
                                     onChange={(event) => updateRosterEngineer(task, index, 'allocationPercent', event.target.value)}
-                                    disabled={!canEditWorkRegister || !task.taskId}
+                                    disabled={!canModifySelectedProject || !task.taskId}
                                   />
                                 </label>
 
@@ -3779,7 +5112,7 @@ export default function WorkRegisterCenter() {
                                     type="date"
                                     value={row.effectiveStartDate || new Date().toISOString().slice(0, 10)}
                                     onChange={(event) => updateRosterEngineer(task, index, 'effectiveStartDate', event.target.value)}
-                                    disabled={!canEditWorkRegister || !task.taskId}
+                                    disabled={!canModifySelectedProject || !task.taskId}
                                   />
                                 </label>
 
@@ -3788,7 +5121,7 @@ export default function WorkRegisterCenter() {
                                     type="checkbox"
                                     checked={row.isPrimary === true}
                                     onChange={(event) => updateRosterEngineer(task, index, 'isPrimary', event.target.checked)}
-                                    disabled={!canEditWorkRegister || !task.taskId}
+                                    disabled={!canModifySelectedProject || !task.taskId}
                                   />
                                   Primary
                                 </label>
@@ -3800,7 +5133,7 @@ export default function WorkRegisterCenter() {
                                         type="checkbox"
                                         checked={row.billable !== false}
                                         onChange={(event) => updateRosterEngineer(task, index, 'billable', event.target.checked)}
-                                        disabled={!canEditWorkRegister || !task.taskId}
+                                        disabled={!canModifySelectedProject || !task.taskId}
                                       />
                                       Billable
                                     </label>
@@ -3810,7 +5143,7 @@ export default function WorkRegisterCenter() {
                                         type="checkbox"
                                         checked={row.utilizationEligible !== false}
                                         onChange={(event) => updateRosterEngineer(task, index, 'utilizationEligible', event.target.checked)}
-                                        disabled={!canEditWorkRegister || !task.taskId}
+                                        disabled={!canModifySelectedProject || !task.taskId}
                                       />
                                       Utilization
                                     </label>
@@ -3821,7 +5154,7 @@ export default function WorkRegisterCenter() {
                                   type="button"
                                   className="secondary-action danger"
                                   onClick={() => removeRosterEngineer(task, index)}
-                                  disabled={!canEditWorkRegister || rosterRows.length <= 1}
+                                  disabled={!canModifySelectedProject || rosterRows.length <= 1}
                                 >
                                   Remove row
                                 </button>
@@ -3835,12 +5168,12 @@ export default function WorkRegisterCenter() {
                                 value={rosterReasonForTask(task)}
                                 onChange={(event) => updateRosterReason(task, event.target.value)}
                                 placeholder="Required. Example: Added engineers for migration weekend coverage."
-                                disabled={!canEditWorkRegister || !task.taskId}
+                                disabled={!canModifySelectedProject || !task.taskId}
                               />
                             </label>
 
                             <div className="work-register-task-assignment-actions">
-                              {canEditWorkRegister ? (
+                              {canModifySelectedProject ? (
                                 <button type="button" className="primary-action" onClick={() => saveTaskRoster(task)} disabled={!task.taskId}>
                                   Save multi-engineer roster
                                 </button>
@@ -3873,6 +5206,9 @@ export default function WorkRegisterCenter() {
                 <div className="work-register-detail-summary">
                   <span>Total hours used: <strong>{hours(projectDetails.data?.summary?.totalHours ?? selectedWorkItem.usedHours)}</strong></span>
                   <span>Current total cost: <strong>{money(selectedWorkItem.totalCost)}</strong></span>
+                  {workRegisterBillingIdentifierValue(selectedWorkItem, 'sellQuoteNumber', 'sell_quote_number') ? <span>SELL Quote: <strong>{workRegisterBillingIdentifierValue(selectedWorkItem, 'sellQuoteNumber', 'sell_quote_number')}</strong></span> : null}
+                  {workRegisterBillingIdentifierValue(selectedWorkItem, 'salesforceIdNumber', 'salesforce_id_number') ? <span>Salesforce ID: <strong>{workRegisterBillingIdentifierValue(selectedWorkItem, 'salesforceIdNumber', 'salesforce_id_number')}</strong></span> : null}
+                  {workRegisterBillingIdentifierValue(selectedWorkItem, 'certiniaIdNumber', 'certinia_id_number') ? <span>Certinia ID: <strong>{workRegisterBillingIdentifierValue(selectedWorkItem, 'certiniaIdNumber', 'certinia_id_number')}</strong></span> : null}
                   <span>Approved change orders: <strong>{money(projectDetails.data?.costingSummary?.changeOrderTotal ?? 0)}</strong></span>
                   <span>Known total with change orders: <strong>{money((Number(selectedWorkItem.totalCost || 0)) + Number(projectDetails.data?.costingSummary?.changeOrderTotal ?? 0))}</strong></span>
                 </div>
@@ -3882,7 +5218,7 @@ export default function WorkRegisterCenter() {
                     type="checkbox"
                     checked={changeOrderForm.enabled}
                     onChange={(event) => updateChangeOrderField('enabled', event.target.checked)}
-                    disabled={!canEditWorkRegister}
+                    disabled={!canModifySelectedProject}
                   />
                   This project has a change order
                 </label>
@@ -3990,7 +5326,7 @@ export default function WorkRegisterCenter() {
                     </label>
 
                     <div className="work-register-task-assignment-actions">
-                      <button type="button" className="primary-action" onClick={saveChangeOrder} disabled={!canEditWorkRegister}>
+                      <button type="button" className="primary-action" onClick={saveChangeOrder} disabled={!canModifySelectedProject}>
                         Save change order
                       </button>
                     </div>
@@ -4039,7 +5375,7 @@ export default function WorkRegisterCenter() {
                   <div className="work-register-banner">{documentStatus}</div>
                 ) : null}
 
-                {canEditWorkRegister ? (
+                {canModifySelectedProject ? (
                   <div className="work-register-document-form">
                     <h5>Add / link document</h5>
 
@@ -4140,7 +5476,7 @@ export default function WorkRegisterCenter() {
                 )}
 
 
-                {canEditWorkRegister ? (
+                {canModifySelectedProject ? (
                   <form className="work-register-document-upload-form" onSubmit={uploadLocalDocument}>
                     <h5>Browse and upload local file</h5>
                     <p className="muted">Use this when the document is on your computer. Use the link/reference section above when the document already lives in SharePoint, Drive, a ticket, or another system.</p>
@@ -4222,7 +5558,7 @@ export default function WorkRegisterCenter() {
                   {(projectDetails.data?.documents ?? []).map((document) => (
                     <article className={`work-register-document-card ${String(document.status || '').toLowerCase() === 'archived' ? 'archived' : ''}`} key={`${document.sourceTable}-${document.documentId || document.fileName}`}>
                       <div>
-                        <strong>{document.fileName || 'Untitled document'}</strong>
+                        <strong>{document.fileName || ((['GSD', 'SOW'].includes(String(document.documentType || '').toUpperCase()) && selectedWorkItem?.workName) ? `${String(document.documentType).toUpperCase()}_${selectedWorkItem.workName}` : (document.originalFileName || 'Untitled document'))}</strong>
                         <small>Type: {labelize(document.documentType || 'not set')}</small>
                         <small>Status: {labelize(document.status || 'active')}</small>
                         <small>Visibility: {labelize(document.visibility || 'not set')}</small>
@@ -4243,7 +5579,7 @@ export default function WorkRegisterCenter() {
                           </button>
                         ) : null}
 
-                        {canEditWorkRegister && document.canArchive ? (
+                        {canModifySelectedProject && document.canArchive ? (
                           <button type="button" className="secondary-action danger" onClick={() => archiveWorkRegisterDocument(document)}>
                             Archive
                           </button>

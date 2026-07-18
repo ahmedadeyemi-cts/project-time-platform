@@ -290,3 +290,125 @@
 .password-reset-completion-box small {
   color: var(--pulse-muted);
 }
+
+/* FIX-20260717-001_APPROVAL_CENTER_FRONTEND_START */
+.manager-filter-row {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(180px, 0.35fr);
+  gap: 12px;
+}
+
+.manager-filter-row label,
+.approval-inline-decision label {
+  display: grid;
+  gap: 6px;
+  color: var(--pulse-muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.manager-filter-row input,
+.manager-filter-row select,
+.approval-inline-decision textarea {
+  width: 100%;
+  border: 1px solid var(--pulse-card-border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: var(--pulse-input-bg, #fff);
+  color: var(--pulse-text);
+  font: inherit;
+}
+
+.approval-inline-decision {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid rgba(239, 68, 68, 0.22);
+  border-radius: 16px;
+  background: rgba(254, 242, 242, 0.78);
+}
+
+.approval-inline-decision textarea {
+  min-height: 96px;
+  resize: vertical;
+}
+
+.admin-reset-list {
+  display: grid;
+  gap: 14px;
+}
+
+.admin-reset-card {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid var(--pulse-card-border);
+  border-radius: 18px;
+  background: var(--pulse-card-bg);
+  box-shadow: var(--pulse-card-shadow);
+}
+
+.admin-reset-card-header {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(280px, 1fr);
+  gap: 18px;
+}
+
+.admin-reset-card h3 {
+  margin: 10px 0 2px;
+}
+
+.admin-reset-card p {
+  margin: 4px 0;
+  color: var(--pulse-muted);
+}
+
+.admin-reset-request-meta {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.admin-reset-request-meta span {
+  padding: 9px 11px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.04);
+  color: var(--pulse-muted);
+}
+
+.admin-reset-notes {
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.035);
+}
+
+.admin-reset-notes p {
+  margin-bottom: 0;
+}
+
+.password-reset-completion-box .approve {
+  border: 1px solid rgba(34, 197, 94, 0.28);
+  border-radius: 999px;
+  padding: 9px 13px;
+  background: rgba(220, 252, 231, 0.9);
+  color: #166534;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+[data-theme="dark"] .approval-inline-decision {
+  background: rgba(127, 29, 29, 0.18);
+}
+
+[data-theme="dark"] .admin-reset-request-meta span,
+[data-theme="dark"] .admin-reset-notes {
+  background: rgba(148, 163, 184, 0.08);
+}
+
+@media (max-width: 900px) {
+  .manager-filter-row,
+  .admin-reset-card-header {
+    grid-template-columns: 1fr;
+  }
+}
+/* FIX-20260717-001_APPROVAL_CENTER_FRONTEND_END */

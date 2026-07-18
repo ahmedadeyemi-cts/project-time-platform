@@ -1633,3 +1633,48 @@ button[data-marker="055D_4E_TEST_FINAL_SAVE_BUTTON"] {
   font-weight: 800;
 }
 /* 055D_4K_FINANCIAL_VISIBILITY_END */
+
+/* 055D_5A_BILLING_IDENTIFIER_FIELDS_START */
+.optional-pill {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.35rem;
+  padding: 0.08rem 0.4rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  font-size: 0.72rem;
+  font-weight: 600;
+  opacity: 0.8;
+}
+/* 055D_5A_BILLING_IDENTIFIER_FIELDS_END */
+
+/* 057A_WORK_REGISTER_PURCHASE_ORDER_UI */
+.work-register-po-section {
+  border: 1px solid rgba(0, 91, 153, 0.24);
+  border-radius: 16px;
+  padding: 16px;
+  background: rgba(233, 247, 255, 0.62);
+}
+
+.work-register-po-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.work-register-po-heading > div {
+  display: grid;
+  gap: 4px;
+}
+
+.work-register-po-heading small,
+.work-register-po-heading span {
+  color: #536b8f;
+}
+
+.work-register-po-value {
+  font-weight: 700;
+  color: #005b99;
+}
