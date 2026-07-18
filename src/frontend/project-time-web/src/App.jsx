@@ -8324,13 +8324,21 @@ Analytics - Variphy / Infortel`}
       <ProductionOperationsAcknowledgmentsPanel />
       <TimeComplianceEmailNotificationsPanel />
 
-          <SessionIntelligenceDrawer authSession={authSession} />
 </>
       ) : null}
 
         </>
       ) : null}
       {/* MODULE_060_NON_CONTRACT_ROUTE_CONTENT_END */}
+
+      {/* MODULE_059_GLOBAL_ROUTE_HOST */}
+      <div
+        className="module059-global-route-host"
+        data-module="059"
+        data-route-scope="all-authenticated-pages"
+      >
+        <SessionIntelligenceDrawer authSession={authSession} />
+      </div>
 
       <HelpAssistant />
 </main>
