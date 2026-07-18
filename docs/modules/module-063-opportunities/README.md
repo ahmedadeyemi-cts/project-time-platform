@@ -68,3 +68,12 @@ a later validated XLSX/CRM import without replacing manually maintained records.
 
 This source phase creates and validates the migration and application source only.
 It does not apply the database migration and does not deploy Azure runtime images.
+
+## Frontend route integration correction
+
+Module 063 is registered in the role workspace module list for dashboard-card
+and navigation discovery. `getNavigationGroup` places the route under
+**Sales & Opportunities**. The `#opportunities` component mount is outside the
+legacy dashboard/timesheet structural route boundary, and that legacy content
+is excluded while Module 063 is active. Backend Module 063 endpoints remain the
+authority for view and write access.
