@@ -26,9 +26,9 @@
 | Approval Center foundation | Complete — source/build verified | Foundation commit `b3d1cf11cc06d4a744605e7b611d73a8a029f2c7` | Runtime role-by-role test |
 | PM approval inbox | Complete — committed and pushed | Commit `b7d173f3e138a86790d35609b4529cd981ffa22b` | Runtime PM/PTC authorization tests |
 | PM rejection/return | Complete — committed and pushed | Commit `0cd4e0d64724db4ec6c2c11226f413dc53945fce` | Runtime state-transition and audit tests |
-| PTC move correction | Verified locally — deep review passed | Authorization, invoice, status, conservation, audit safeguards and both builds verified | Commit, push, then runtime data-conservation tests |
-| PTC split-copy correction | Verified locally — deep review passed | Total-hours conservation, source reduction, approval reset, audit safeguards, and both builds verified | Commit, push, then runtime conservation/approval-reset tests |
-| PRD repository copy and traceability | Verified locally — coverage review passed | Sections 1–12, 67 requirements, 10 metrics, and 9 decisions verified | Commit and push |
+| PTC move correction | Complete — pushed; runtime pending | `1b981fb57cd05ba77b732490b90d7203ffd6b0f0`; authorization, invoice, status, conservation, audit safeguards and builds verified | Runtime data-conservation and role tests |
+| PTC split-copy correction | Complete — pushed; runtime pending | `1b981fb57cd05ba77b732490b90d7203ffd6b0f0`; conservation, source reduction, approval reset, audit safeguards and builds verified | Runtime split-boundary and approval-reset tests |
+| PRD repository copy and traceability | Complete — pushed and active | `1b981fb57cd05ba77b732490b90d7203ffd6b0f0`; sections 1–12, 67 requirements, 10 metrics, and 9 decisions verified | Continue requirement-level repository and runtime evidence updates |
 
 ## Functional and Cross-Cutting Requirements
 
