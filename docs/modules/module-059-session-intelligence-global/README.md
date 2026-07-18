@@ -48,7 +48,7 @@ The host also contains:
 
 - Branch: `fix/module-059-global-visibility-20260718`
 - Global-visibility implementation commit: `ff9c6d285407aa5db8c14f00a17508982183c185`
-- Deployment-status documentation commit: `1603120d0182ae243304b963b41d8445bff6453f`
+- Deployment documentation checkpoints: `1603120d0182ae243304b963b41d8445bff6453f`, `ac59c412c50b8a7291abaa3cda2c1fa9d6a3caef`
 
 ### Azure runtime
 
