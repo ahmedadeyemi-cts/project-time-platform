@@ -126,7 +126,7 @@ assertInvariant(
   'handle must not be hidden by its base rule'
 );
 
-const routeMatches = [...app.matchAll(/\broute\s*:\s*'([^']+)'/g)];
+const routeMatches = [...app.matchAll(/\broute\s*:\s*['"]([^'"]+)['"]/g)];
 const routes = [...new Set(routeMatches.map((match) => match[1]))].sort();
 
 assertInvariant(

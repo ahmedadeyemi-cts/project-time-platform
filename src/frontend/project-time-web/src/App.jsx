@@ -1,6 +1,7 @@
 import HelpAssistant from './HelpAssistant.jsx';
 import SessionIntelligenceDrawer from './SessionIntelligenceDrawer.jsx';
 import OpportunitiesCenter from './OpportunitiesCenter.jsx';
+import SystemUserGuide from './SystemUserGuide.jsx';
 import PostIntakeAgingPanel from './PostIntakeAgingPanel.jsx';
 
 
@@ -1749,6 +1750,16 @@ const roleWorkspaceModules = [
     description: 'Manage customer records, contacts, and customer intake/project cost readiness.',
     permissions: ['VIEW_CUSTOMERS', 'MANAGE_CUSTOMERS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   },
+  /* MODULE_999_COMPLETE_USER_GUIDE_NAV_START */
+  {
+    route: 'user-guide',
+    href: '#user-guide',
+    title: 'ProjectPulse Complete User Guide',
+    navLabel: 'MODULE 999',
+    description: 'Searchable documentation for every global platform function and every installed ProjectPulse module.',
+    permissions: []
+  },
+  /* MODULE_999_COMPLETE_USER_GUIDE_NAV_END */
   /* MODULE_063_ROLE_WORKSPACE_NAV_START */
   {
     route: 'opportunities',
@@ -2205,6 +2216,8 @@ function getNavigationGroup(item) {
     case 'project-allocation-info':
     case 'project-workspace':
       return 'Project Workspace';
+    case 'user-guide':
+      return 'Help & Documentation';
     case 'opportunities':
     case 'sales-intake':
     case 'sow-generator':
@@ -2803,6 +2816,7 @@ function buildRoleNavigationModel(user, navigationItems) {
 
   const groupOrder = [
     'Work Management',
+    'Help & Documentation',
     'Sales & Opportunities',
     'Project Workspace',
     'Project Intake',
@@ -2819,6 +2833,7 @@ function buildRoleNavigationModel(user, navigationItems) {
 
   const routeOrder = [
       "timesheet",
+      "user-guide",
       "ai-time-entry",
       "manager-approval",
       "utilization",
@@ -2981,6 +2996,16 @@ function getInstalledProjectPulseModuleRegistry() {
       group: 'Customers',
       permissions: ['VIEW_CUSTOMERS', 'MANAGE_CUSTOMERS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
       description: 'Maintains customer records, contacts, and customer data used by project, billing, cost, and reconciliation workflows.'
+    },
+    {
+      route: 'user-guide',
+      href: '#user-guide',
+      title: 'ProjectPulse Complete User Guide',
+      navLabel: 'MODULE 999',
+      status: 'Active',
+      group: 'Help & Documentation',
+      permissions: [],
+      description: 'Searchable documentation for every global platform function and every installed ProjectPulse module.'
     },
     {
       route: 'opportunities',
@@ -3359,6 +3384,7 @@ function getInstalledModuleDescription(module) {
     'work-register': 'Searches active, closed, archived, and historical work across customers, stakeholders, tasks, documents, hours, and costs.',
     'rate-card-administration': 'Manages standard, customer-specific, Toyota, Hyundai, service request, emergency, and travel rate cards.',
     'customer-directory': 'Maintains customer/account records, customer contacts, and customer data used by intake, project, cost, billing, and reconciliation workflows.',
+    'user-guide': 'Explains every global ProjectPulse function and every installed module with searchable procedures, roles, statuses, and troubleshooting.',
     opportunities: 'Tracks active and closed sales opportunities, collaborative Sales, Presales, and Engineering actions, ownership, completion, dates, and accountable history.',
     'cost-alerts': 'Monitors project planned cost, assigned hours, used hours, over-assignment risk, and notification routing for cost overrun alerts.',
     workflow: 'Coordinates PM validation, accounting readiness, reconciliation, locking, export preparation, and audit visibility after manager approval.',
@@ -6562,6 +6588,13 @@ Analytics - Variphy / Infortel`}
         </section>
       ) : null}
 
+      {/* MODULE_999_STRUCTURAL_ROUTE_BOUNDARY */}
+      {(activeRoute === 'user-guide') ? (
+        <section id="user-guide" className="panel system-user-guide-route-panel">
+          <SystemUserGuide modules={getInstalledProjectPulseModuleRegistry()} />
+        </section>
+      ) : null}
+
       {/* MODULE_063_STRUCTURAL_ROUTE_BOUNDARY_V2 */}
       {(activeRoute === 'opportunities') ? (
         <section id="opportunities" className="panel opportunities-route-panel">
@@ -6581,7 +6614,8 @@ Analytics - Variphy / Infortel`}
         'signed-handoff',
         'ai-time-entry',
         'uat-validation',
-        'reporting'
+        'reporting',
+        'user-guide',
       ].includes(activeRoute) ? (
         <>
 
