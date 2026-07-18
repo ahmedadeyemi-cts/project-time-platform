@@ -1,0 +1,125 @@
+.approval-center-shell {
+  display: grid;
+  gap: 18px;
+}
+
+.approval-center-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  align-items: flex-start;
+}
+
+.approval-center-header h2,
+.approval-center-readiness h3 {
+  margin: 4px 0 8px;
+}
+
+.approval-center-header p,
+.approval-center-readiness p {
+  margin: 0;
+  color: var(--pulse-muted);
+  max-width: 760px;
+  line-height: 1.55;
+}
+
+.approval-center-flow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.approval-center-flow span {
+  padding: 8px 11px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.05);
+  color: var(--pulse-muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.approval-center-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px;
+  border: 1px solid var(--pulse-card-border);
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.035);
+}
+
+.approval-center-tabs button {
+  border: 0;
+  border-radius: 12px;
+  padding: 10px 14px;
+  background: transparent;
+  color: var(--pulse-muted);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.approval-center-tabs button.active {
+  background: var(--pulse-card-bg);
+  color: var(--pulse-text);
+  box-shadow: var(--pulse-card-shadow);
+}
+
+.approval-center-content {
+  min-width: 0;
+}
+
+.approval-center-readiness {
+  display: grid;
+  gap: 18px;
+  padding: 20px;
+  border: 1px dashed var(--pulse-card-border);
+  border-radius: 18px;
+  background: rgba(15, 23, 42, 0.025);
+}
+
+.approval-center-readiness-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.approval-center-readiness-grid article {
+  padding: 16px;
+  border: 1px solid var(--pulse-card-border);
+  border-radius: 16px;
+  background: var(--pulse-card-bg);
+}
+
+.approval-center-readiness-grid span,
+.approval-center-readiness-grid strong {
+  display: block;
+}
+
+.approval-center-readiness-grid span {
+  margin-bottom: 6px;
+  color: var(--pulse-muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+[data-theme="dark"] .approval-center-flow span,
+[data-theme="dark"] .approval-center-tabs,
+[data-theme="dark"] .approval-center-readiness {
+  background: rgba(148, 163, 184, 0.07);
+}
+
+@media (max-width: 900px) {
+  .approval-center-header {
+    display: grid;
+  }
+
+  .approval-center-flow {
+    justify-content: flex-start;
+  }
+
+  .approval-center-readiness-grid {
+    grid-template-columns: 1fr;
+  }
+}

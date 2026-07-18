@@ -546,8 +546,7 @@ import UserAdministrationPanel from './UserAdministrationPanel.jsx';
 import YearlyUtilizationPanel from './YearlyUtilizationPanel.jsx';
 import ProjectAllocationInfoPanel from './ProjectAllocationInfoPanel.jsx';
 import ManagerTeamUtilizationPanel from './ManagerTeamUtilizationPanel.jsx';
-import ManagerApprovalPanel from './ManagerApprovalPanel.jsx';
-import LocalAdminPasswordResetApprovalsPanel from './LocalAdminPasswordResetApprovalsPanel.jsx';
+import ApprovalCenter from './ApprovalCenter.jsx';
 import AuditHistoryPanel from './AuditHistoryPanel.jsx';
 import ApprovalExportAuditWorkflowCenter from './ApprovalExportAuditWorkflowCenter.jsx';
 import ServiceControlCenter from './ServiceControlCenter.jsx';
@@ -1421,6 +1420,19 @@ function getProjectPulse051DTimeEntryPostHeaders() {
 }
 
 async function postProjectPulse051DTimeEntryJson(path, payload) {
+  try {
+    const rawViewAs = window.localStorage.getItem('projectPulseViewAsUser');
+    const activeViewAs = rawViewAs ? JSON.parse(rawViewAs) : null;
+
+    if (activeViewAs?.userId) {
+      throw new Error('Exit Administrator View-As before saving or submitting time. View-As is read-only.');
+    }
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('Exit Administrator View-As')) {
+      throw error;
+    }
+  }
+
   const response = await fetch(path, {
     method: 'POST',
     headers: getProjectPulse051DTimeEntryPostHeaders(),
@@ -1436,7 +1448,18 @@ async function postProjectPulse051DTimeEntryJson(path, payload) {
       if (text) {
         try {
           const parsed = JSON.parse(text);
-          detail = parsed?.message || parsed?.status || text;
+          const validationErrors = Array.isArray(parsed?.errors)
+            ? parsed.errors
+                .map((item) => typeof item === 'string' ? item : item?.message || String(item ?? ''))
+                .filter(Boolean)
+                .join(' ')
+            : '';
+
+          detail = parsed?.message
+            || parsed?.detail
+            || validationErrors
+            || parsed?.status
+            || text;
         } catch {
           detail = text;
         }
@@ -5745,6 +5768,18 @@ Analytics - Variphy / Infortel`}
 
       <PageContextGuide activeRoute={activeRoute} />
 
+      {/* MODULE_060_CONTRACTS_ROOT_ROUTE_START */}
+      {(activeRoute === 'contracts' && canSeeAny(['VIEW_CUSTOMERS', 'VIEW_REPORTS', 'MANAGE_REPORTS', 'MANAGE_PROJECT_INTAKE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
+        <section id="contracts" className="panel contracts-route-panel">
+          <ContractsCenter />
+        </section>
+      ) : null}
+      {/* MODULE_060_CONTRACTS_ROOT_ROUTE_END */}
+
+      {/* MODULE_060_NON_CONTRACT_ROUTE_CONTENT_START */}
+      {activeRoute !== 'contracts' ? (
+        <>
+
       {(activeRoute === 'production-data-readiness' && canViewAdminProductionReadiness) ? (
         <section id="production-data-readiness" className="panel production-data-readiness-route-panel">
           <ProductionDataReadinessCenter />
@@ -6270,7 +6305,7 @@ Analytics - Variphy / Infortel`}
       ) : null}
 
       {/* MODULE_057_STRUCTURAL_ROUTE_BOUNDARY_V6 */}
-      {!['calendar-capacity', 'cicd-pipeline'].includes(activeRoute) ? (
+      {!['calendar-capacity', 'cicd-pipeline', 'contracts'].includes(activeRoute) ? (
         <>
 
       {(activeRoute === 'dashboard') ? (
@@ -6887,12 +6922,6 @@ Analytics - Variphy / Infortel`}
       ) : null}
       {/* 055B_RATE_CARD_ADMIN_ROUTE_END */}
 
-{(activeRoute === 'contracts' && canSeeAny(['VIEW_CUSTOMERS', 'VIEW_REPORTS', 'MANAGE_REPORTS', 'MANAGE_PROJECT_INTAKE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
-        <section id="contracts" className="panel contracts-route-panel">
-          <ContractsCenter />
-        </section>
-      ) : null}
-
       {(activeRoute === 'customer-directory' && canSeeAny(['VIEW_CUSTOMERS', 'MANAGE_CUSTOMERS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
         <section id="customer-directory" className="panel customer-directory-route-panel">
           <CustomerDirectoryCenter canManageCustomers={canSeeAny(['MANAGE_CUSTOMERS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])} />
@@ -7122,10 +7151,10 @@ Analytics - Variphy / Infortel`}
       ) : null}
 
       {(canViewManagerApprovalPanel || canViewLocalAdminPasswordResetApprovals) ? (
-        <section id="manager-approval" className="approvals-workspace-panel">
-          {canViewManagerApprovalPanel ? <ManagerApprovalPanel /> : null}
-          {canViewLocalAdminPasswordResetApprovals ? <LocalAdminPasswordResetApprovalsPanel /> : null}
-        </section>
+        <ApprovalCenter
+          canViewManagerApprovalPanel={canViewManagerApprovalPanel}
+          canViewLocalAdminPasswordResetApprovals={canViewLocalAdminPasswordResetApprovals}
+        />
       ) : null}
 
       {(activeRoute === 'workflow' && canSeeAny(['VIEW_APPROVAL_WORKFLOW', 'PROJECT_TIME_APPROVAL', 'VIEW_ACCOUNT_RECONCILIATION', 'MANAGE_ACCOUNT_RECONCILIATION', 'EXPORT_TIME_EXCEL', 'EXPORT_TIME_PDF', 'VIEW_AUDIT_TRAIL', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
@@ -7154,6 +7183,10 @@ Analytics - Variphy / Infortel`}
           <SessionIntelligenceDrawer authSession={authSession} />
 </>
       ) : null}
+
+        </>
+      ) : null}
+      {/* MODULE_060_NON_CONTRACT_ROUTE_CONTENT_END */}
 
       <HelpAssistant />
 </main>

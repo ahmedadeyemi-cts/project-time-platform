@@ -2433,10 +2433,9 @@ app.MapPost("/api/timesheets/week/draft", async (TimesheetSaveRequest request, H
     await using var connection = new NpgsqlConnection(config.ConnectionString);
     await connection.OpenAsync();
 
-    if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
-    {
-        return Results.Json(new { status = "access_denied", message = "Password reset approvals are restricted to administrators and project/team coordinators." }, statusCode: StatusCodes.Status403Forbidden);
-    }
+    /* FIX-20260717-001_TIMESHEET_SAVE_AUTHORIZATION
+       Draft saves are authorized by the authenticated user's own session and immutable-status checks.
+       User-administration permission is unrelated to entering or saving personal time. */
 
     await using var transaction = await connection.BeginTransactionAsync();
 
@@ -36133,6 +36132,8 @@ app.MapSellInboundSnapshotEndpoints();
 app.MapSellCommercialReadModelEndpoints();
 
 app.MapContractsEndpoints();
+app.MapContractsPrepaidModule();
+app.MapContractsPrepaidManagementModule();
 
 app.Run();
 
@@ -36143,7 +36144,7 @@ static bool CanEngineerUnlockDay(string? status, DateTimeOffset? submittedAt)
 {
     return status == "submitted"
         && submittedAt is not null
-        && DateTimeOffset.UtcNow - submittedAt.Value <= TimeSpan.FromHours(2);
+        && DateTimeOffset.UtcNow - submittedAt.Value <= TimeSpan.FromHours(1);
 }
 
 static string GetDayUnlockMessage(string? status, DateTimeOffset? submittedAt)
@@ -36153,9 +36154,9 @@ static string GetDayUnlockMessage(string? status, DateTimeOffset? submittedAt)
     if (status == "submitted")
     {
         if (submittedAt is null) return "This submitted day is missing a submission timestamp. Please contact your manager to unlock it.";
-        return DateTimeOffset.UtcNow - submittedAt.Value <= TimeSpan.FromHours(2)
+        return DateTimeOffset.UtcNow - submittedAt.Value <= TimeSpan.FromHours(1)
             ? "This submitted day can be unlocked."
-            : "This day was submitted more than two hours ago. Please contact your manager to unlock it.";
+            : "This day was submitted more than one hour ago. Please contact your manager to unlock it.";
     }
     if (status == "manager_approved") return "This day has been manager-approved and is read-only for the engineer.";
     if (status == "pm_approved") return "This day has been PM-approved and is read-only for the engineer.";
