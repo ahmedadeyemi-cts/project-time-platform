@@ -1,383 +1,279 @@
 import { useEffect, useMemo, useState } from 'react';
 import './manager-approval.css';
 
-function getProjectPulseAuthHeaders() {
+function authHeaders() {
   try {
-    const raw = window.localStorage.getItem('projectPulseAuthSession');
-    if (!raw) return {};
-
-    const session = JSON.parse(raw);
-    if (!session?.sessionToken) return {};
-
-    return {
-      'X-ProjectPulse-Session': session.sessionToken
-    };
+    const session = JSON.parse(window.localStorage.getItem('projectPulseAuthSession') || 'null');
+    return session?.sessionToken ? { 'X-ProjectPulse-Session': session.sessionToken } : {};
   } catch {
     return {};
   }
 }
 
-async function readApiErrorMessage(response, path) {
-  const raw = await response.text();
-
-  if (!raw) {
-    return `${path} returned HTTP ${response.status}`;
-  }
-
-  try {
-    const parsed = JSON.parse(raw);
-    return `${path} returned HTTP ${response.status}: ${parsed.message || parsed.detail || parsed.status || raw}`;
-  } catch {
-    return `${path} returned HTTP ${response.status}: ${raw}`;
-  }
-}
-
-async function fetchJson(path) {
+async function requestJson(path, options = {}) {
   const response = await fetch(path, {
-    headers: getProjectPulseAuthHeaders()
-  });
-
-  if (!response.ok) {
-    throw new Error(await readApiErrorMessage(response, path));
-  }
-
-  return response.json();
-}
-
-async function postJson(path, payload) {
-  const response = await fetch(path, {
-    method: 'POST',
+    ...options,
     headers: {
-      'Content-Type': 'application/json',
-      ...getProjectPulseAuthHeaders()
-    },
-    body: JSON.stringify(payload)
+      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+      ...authHeaders(),
+      ...(options.headers ?? {})
+    }
   });
-
-  if (!response.ok) {
-    throw new Error(await readApiErrorMessage(response, path));
-  }
-
-  return response.json();
+  const raw = await response.text();
+  let payload = {};
+  try { payload = raw ? JSON.parse(raw) : {}; } catch { payload = { message: raw }; }
+  if (!response.ok) throw new Error(payload.message || `${path} returned HTTP ${response.status}`);
+  return payload;
 }
 
-function toIsoDate(date) {
-  return date.toISOString().slice(0, 10);
+function iso(date) { return date.toISOString().slice(0, 10); }
+function sunday(date = new Date()) {
+  const value = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  value.setUTCDate(value.getUTCDate() - value.getUTCDay());
+  return iso(value);
 }
-
-function getSundayForDate(date = new Date()) {
-  const current = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-  current.setUTCDate(current.getUTCDate() - current.getUTCDay());
-  return toIsoDate(current);
+function shift(dateValue, days) {
+  const value = new Date(`${dateValue}T00:00:00Z`);
+  value.setUTCDate(value.getUTCDate() + days);
+  return iso(value);
 }
-
-function shiftWeek(weekStart, days) {
-  const date = new Date(`${weekStart}T00:00:00Z`);
-  date.setUTCDate(date.getUTCDate() + days);
-  return toIsoDate(date);
+function number(value) { return Number(value ?? 0).toFixed(2); }
+function dateTime(value) { return value ? new Date(value).toLocaleString() : 'Not available'; }
+function key(item) { return `${item.timesheetId}|${item.workDate}`; }
+function statusLabel(status) {
+  if (status === 'submitted') return 'Action required';
+  if (status === 'manager_approved') return 'Approved';
+  if (status === 'manager_declined') return 'Returned';
+  return status || 'Unknown';
 }
-
-function formatNumber(value) {
-  const number = Number(value ?? 0);
-  return Number.isFinite(number) ? number.toFixed(2) : '0.00';
-}
-
-function formatDateTime(value) {
-  if (!value) return 'Not available';
-
-  try {
-    return new Date(value).toLocaleString();
-  } catch {
-    return String(value);
-  }
-}
-
-function getApprovalKey(item) {
-  return `${item.timesheetId}|${item.workDate}`;
-}
-
-function getEntryLabel(entry) {
-  const projectBits = [entry.projectCode, entry.projectName].filter(Boolean).join(' - ');
-  const taskBits = [entry.taskCode, entry.taskName].filter(Boolean).join(' - ');
-  const categoryBits = [entry.categoryCode, entry.categoryName].filter(Boolean).join(' - ');
-
-  if (projectBits && taskBits) return `${projectBits} / ${taskBits}`;
-  if (taskBits) return taskBits;
-  if (projectBits) return projectBits;
-  if (categoryBits) return categoryBits;
-
-  return 'Time entry';
+function entryLabel(entry) {
+  const project = [entry.projectCode, entry.projectName].filter(Boolean).join(' — ');
+  const category = [entry.categoryCode, entry.categoryName].filter(Boolean).join(' — ');
+  return project || category || 'Time entry';
 }
 
 export default function ManagerApprovalPanel() {
-  const [weekStart, setWeekStart] = useState(getSundayForDate());
-  const [includeAll, setIncludeAll] = useState(false);
-  const [approvalData, setApprovalData] = useState({ loading: true, data: null, error: null });
-  const [selectedKeys, setSelectedKeys] = useState(new Set());
-  const [expandedKeys, setExpandedKeys] = useState(new Set());
-  const [statusMessage, setStatusMessage] = useState('Ready.');
+  const [weekStart, setWeekStart] = useState(sunday());
+  const [includeHistory, setIncludeHistory] = useState(false);
+  const [allDates, setAllDates] = useState(false);
+  const [search, setSearch] = useState('');
+  const [data, setData] = useState({ loading: true, payload: null, error: null });
+  const [expanded, setExpanded] = useState(new Set());
+  const [decision, setDecision] = useState(null);
+  const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('Ready.');
 
-  async function loadApprovals() {
-    setApprovalData((current) => ({ ...current, loading: true, error: null }));
-
+  async function load() {
+    setData((current) => ({ ...current, loading: true, error: null }));
     try {
-      const result = await fetchJson(`/api/manager/approvals?weekStart=${weekStart}&includeAll=${includeAll}`);
-      setApprovalData({ loading: false, data: result, error: null });
-    } catch (error) {
-      setApprovalData({
-        loading: false,
-        data: null,
-        error: error instanceof Error ? error.message : 'Unable to load manager approvals.'
+      const params = new URLSearchParams({
+        weekStart,
+        includeAll: String(includeHistory),
+        allDates: String(allDates),
+        search
       });
+      const payload = await requestJson(`/api/manager/approvals?${params}`);
+      setData({ loading: false, payload, error: null });
+    } catch (error) {
+      setData({ loading: false, payload: null, error: error instanceof Error ? error.message : 'Unable to load time approvals.' });
     }
   }
 
-  useEffect(() => {
-    void loadApprovals();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [weekStart, includeAll]);
+  useEffect(() => { load(); }, [weekStart, includeHistory, allDates]);
 
-  const items = approvalData.data?.items ?? [];
-  const pendingItems = useMemo(() => items.filter((item) => item.status === 'submitted'), [items]);
-  const selectedPendingItems = useMemo(
-    () => pendingItems.filter((item) => selectedKeys.has(getApprovalKey(item))),
-    [pendingItems, selectedKeys]
-  );
+  const items = data.payload?.items ?? [];
+  const pending = useMemo(() => items.filter((item) => item.status === 'submitted'), [items]);
+  const access = data.payload?.access ?? {};
 
-  function toggleSelected(item) {
-    if (item.status !== 'submitted') return;
-
-    const key = getApprovalKey(item);
-    setSelectedKeys((current) => {
+  function toggle(item) {
+    const itemKey = key(item);
+    setExpanded((current) => {
       const next = new Set(current);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
+      if (next.has(itemKey)) next.delete(itemKey); else next.add(itemKey);
       return next;
     });
   }
 
-  function toggleAllPending() {
-    const pendingKeys = pendingItems.map(getApprovalKey);
-    const allSelected = pendingKeys.length > 0 && pendingKeys.every((key) => selectedKeys.has(key));
-
-    setSelectedKeys(allSelected ? new Set() : new Set(pendingKeys));
-  }
-
-  function toggleExpanded(item) {
-    const key = getApprovalKey(item);
-    setExpandedKeys((current) => {
-      const next = new Set(current);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  }
-
-  async function runApprovalAction(path, item, payload = {}) {
+  async function approve(item) {
     setBusy(true);
-    setStatusMessage('Processing manager action...');
-
+    setMessage('Approving submitted time…');
     try {
-      const result = await postJson(path, {
-        timesheetId: item.timesheetId,
-        workDate: item.workDate,
-        ...payload
+      const result = await requestJson('/api/manager/approvals/approve', {
+        method: 'POST',
+        body: JSON.stringify({ timesheetId: item.timesheetId, workDate: item.workDate, comment: 'Approved from Module 002 Approval Center.' })
       });
-
-      setStatusMessage(result.message ?? 'Manager action completed.');
-      setSelectedKeys(new Set());
-      await loadApprovals();
+      setMessage(result.message || 'Time approved.');
+      window.dispatchEvent(new CustomEvent('projectpulse:approval-queue-changed'));
+      await load();
     } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : 'Manager action failed.');
+      setMessage(error instanceof Error ? error.message : 'Approval failed.');
     } finally {
       setBusy(false);
     }
   }
 
-  async function approveItem(item) {
-    await runApprovalAction('/api/manager/approvals/approve', item, {
-      comment: 'Approved by manager.'
-    });
+  function openDecision(item, mode) {
+    setDecision({ item, mode });
+    setReason('');
   }
 
-  async function declineItem(item) {
-    const reason = window.prompt('Enter the reason this day is being returned to the engineer:');
-    if (reason === null) return;
-
-    const trimmedReason = reason.trim();
-    if (!trimmedReason) {
-      setStatusMessage('A decline reason is required before returning time to the engineer.');
-      return;
-    }
-
-    await runApprovalAction('/api/manager/approvals/decline', item, {
-      comment: trimmedReason
-    });
-  }
-
-  async function bulkApproveSelected() {
-    if (selectedPendingItems.length === 0 || busy) return;
-
+  async function submitDecision(event) {
+    event.preventDefault();
+    if (!decision || !reason.trim()) return;
     setBusy(true);
-    setStatusMessage(`Approving ${selectedPendingItems.length} selected submitted day(s)...`);
+    setMessage(decision.mode === 'stale' ? 'Resolving stale approval…' : 'Returning time to the engineer…');
+    const path = decision.mode === 'stale'
+      ? '/api/manager/approvals/resolve-stale'
+      : '/api/manager/approvals/decline';
 
     try {
-      const result = await postJson('/api/manager/approvals/bulk-approve', {
-        items: selectedPendingItems.map((item) => ({
-          timesheetId: item.timesheetId,
-          workDate: item.workDate
-        })),
-        comment: 'Bulk approved by manager.'
+      const result = await requestJson(path, {
+        method: 'POST',
+        body: JSON.stringify({
+          timesheetId: decision.item.timesheetId,
+          workDate: decision.item.workDate,
+          comment: reason.trim()
+        })
       });
-
-      setStatusMessage(result.message ?? `Approved ${selectedPendingItems.length} selected day(s).`);
-      setSelectedKeys(new Set());
-      await loadApprovals();
+      setMessage(`${result.message || 'Approval item updated.'} Engineer email: ${result.emailNotificationStatus || 'queued_global_smtp'}.`);
+      setDecision(null);
+      setReason('');
+      window.dispatchEvent(new CustomEvent('projectpulse:approval-queue-changed'));
+      await load();
     } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : 'Bulk approval failed.');
+      setMessage(error instanceof Error ? error.message : 'Unable to update the approval.');
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <section id="manager-approval" className="panel manager-approval-shell">
+    <section className="panel manager-approval-shell">
       <div className="manager-approval-header">
         <div>
-          <p className="eyebrow">Approval Inbox</p>
-          <h2>Submitted time awaiting review</h2>
-          <p>
-            Review submitted day-level time, approve it for the next workflow stage, or return the day to the engineer with a required reason.
-          </p>
+          <p className="eyebrow">Time approvals</p>
+          <h2>Submitted time awaiting your review</h2>
+          <p>Approve valid submissions or return specific time to the engineer with a required explanation. Returned-time emails are queued through Global SMTP.</p>
         </div>
+        <div className="manager-scope-chip">
+          <span>Scope</span>
+          <strong>{access.scopeLabel || 'Assigned approvals'}</strong>
+        </div>
+      </div>
 
-        <div className="manager-toolbar">
-          <button type="button" onClick={() => setWeekStart(shiftWeek(weekStart, -7))}>← Previous</button>
-          <button type="button" onClick={() => setWeekStart(getSundayForDate())}>Current week</button>
-          <button type="button" onClick={() => setWeekStart(shiftWeek(weekStart, 7))}>Next →</button>
-          <button type="button" onClick={() => setIncludeAll((current) => !current)}>
-            {includeAll ? 'Pending only' : 'Show all'}
+      <div className="manager-filter-bar">
+        {!allDates ? (
+          <div className="manager-week-controls">
+            <button type="button" onClick={() => setWeekStart(shift(weekStart, -7))}>← Previous</button>
+            <button type="button" onClick={() => setWeekStart(sunday())}>Current week</button>
+            <button type="button" onClick={() => setWeekStart(shift(weekStart, 7))}>Next →</button>
+          </div>
+        ) : null}
+        <label>
+          <span>Search</span>
+          <input value={search} placeholder="Engineer, project, or activity" onChange={(event) => setSearch(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && load()} />
+        </label>
+        <button type="button" onClick={load}>Apply</button>
+        <button type="button" className={includeHistory ? 'active' : ''} onClick={() => setIncludeHistory((value) => !value)}>
+          {includeHistory ? 'Action required only' : 'Include decision history'}
+        </button>
+        {access.canViewAllTimeApprovals ? (
+          <button type="button" className={allDates ? 'active' : ''} onClick={() => setAllDates((value) => !value)}>
+            {allDates ? 'Selected week' : 'All dates'}
           </button>
-          <button type="button" onClick={loadApprovals} disabled={approvalData.loading}>Refresh</button>
-        </div>
+        ) : null}
+        <button type="button" onClick={load} disabled={data.loading}>Refresh</button>
       </div>
 
       <div className="manager-status-row">
-        <span>Week starts: <strong>{approvalData.data?.weekStart ?? weekStart}</strong></span>
-        <span>Week ends: <strong>{approvalData.data?.weekEnd ?? shiftWeek(weekStart, 6)}</strong></span>
-        <span>Pending: <strong>{pendingItems.length}</strong></span>
-        <span>Status: <strong>{statusMessage}</strong></span>
+        <span>Action required <strong>{pending.length}</strong></span>
+        <span>Displayed <strong>{items.length}</strong></span>
+        {!allDates ? <span>Week <strong>{data.payload?.weekStart ?? weekStart} – {data.payload?.weekEnd ?? shift(weekStart, 6)}</strong></span> : <span>Date range <strong>All available dates</strong></span>}
+        <span className="manager-status-message">{message}</span>
       </div>
 
-      <div className="manager-bulk-actions">
-        <button type="button" className="secondary-action" onClick={toggleAllPending} disabled={pendingItems.length === 0 || busy}>
-          Select all pending
-        </button>
-        <button type="button" className="primary-action" onClick={bulkApproveSelected} disabled={selectedPendingItems.length === 0 || busy}>
-          Approve selected day(s)
-        </button>
-        <span>{selectedPendingItems.length} selected</span>
-      </div>
-
-      {approvalData.error ? (
-        <div className="manager-empty-state error">{approvalData.error}</div>
-      ) : null}
-
-      {approvalData.loading ? (
-        <div className="manager-empty-state">Loading submitted time...</div>
-      ) : null}
-
-      {!approvalData.loading && !approvalData.error && items.length === 0 ? (
-        <div className="manager-empty-state">No submitted time is waiting for manager review for this week.</div>
-      ) : null}
+      {data.error ? <div className="manager-empty-state error">{data.error}</div> : null}
+      {data.loading ? <div className="manager-empty-state">Loading approval items…</div> : null}
+      {!data.loading && !data.error && items.length === 0 ? <div className="manager-empty-state">No approval items match this scope and filter.</div> : null}
 
       <div className="manager-approval-list">
         {items.map((item) => {
-          const key = getApprovalKey(item);
+          const itemKey = key(item);
           const isPending = item.status === 'submitted';
-          const isExpanded = expandedKeys.has(key);
-          const entries = item.entries ?? [];
-          const hasMissingComments = Number(item.commentCount ?? 0) < Number(item.entryCount ?? 0);
+          const entries = Array.isArray(item.entries) ? item.entries : [];
+          const isExpanded = expanded.has(itemKey);
+          const stale = isPending && Number(item.ageDays ?? 0) >= 7;
 
           return (
-            <article className="manager-approval-card" key={key}>
+            <article className={isPending ? 'manager-approval-card pending' : 'manager-approval-card'} key={itemKey}>
               <div className="manager-approval-card-main">
-                <label className="manager-select-row">
-                  <input
-                    type="checkbox"
-                    checked={selectedKeys.has(key)}
-                    onChange={() => toggleSelected(item)}
-                    disabled={!isPending || busy}
-                  />
-                  <span>Select</span>
-                </label>
-
-                <div>
+                <div className="manager-resource-block">
+                  <span className={`manager-status-badge ${item.status}`}>{statusLabel(item.status)}</span>
                   <h3>{item.resourceName}</h3>
                   <p>{item.resourceEmail}</p>
-                  <small>{item.workDate} • Submitted {formatDateTime(item.submittedAt)}</small>
+                  <small>{item.workDate} • Submitted {dateTime(item.submittedAt)} • {item.ageDays ?? 0} day(s) old</small>
                 </div>
 
                 <div className="manager-approval-metrics">
-                  <span><strong>{formatNumber(item.totalHours)}</strong> total</span>
-                  <span><strong>{formatNumber(item.normalHours)}</strong> normal</span>
-                  <span><strong>{formatNumber(item.afterhours)}</strong> afterhours</span>
+                  <span><strong>{number(item.totalHours)}</strong> total</span>
+                  <span><strong>{number(item.normalHours)}</strong> normal</span>
+                  <span><strong>{number(item.afterhours)}</strong> afterhours</span>
                   <span><strong>{item.entryCount}</strong> entries</span>
                 </div>
 
                 <div className="manager-approval-actions">
-                  <span className={`badge ${isPending ? 'active' : ''}`}>{item.status}</span>
-                  <button type="button" className="secondary-action" onClick={() => toggleExpanded(item)}>
-                    {isExpanded ? 'Hide details' : 'Review details'}
-                  </button>
-                  <button type="button" className="primary-action" onClick={() => approveItem(item)} disabled={!isPending || busy}>
-                    Approve day
-                  </button>
-                  <button type="button" className="danger-action" onClick={() => declineItem(item)} disabled={!isPending || busy}>
-                    Return day
-                  </button>
+                  <button type="button" onClick={() => toggle(item)}>{isExpanded ? 'Hide details' : 'Review details'}</button>
+                  {isPending ? <button type="button" className="approve" onClick={() => approve(item)} disabled={busy}>Approve</button> : null}
+                  {isPending ? <button type="button" className="decline" onClick={() => openDecision(item, 'reject')} disabled={busy}>Reject / return</button> : null}
+                  {stale && access.canResolveStaleApprovals ? <button type="button" className="stale" onClick={() => openDecision(item, 'stale')} disabled={busy}>Resolve stale</button> : null}
                 </div>
               </div>
 
               <div className="manager-approval-summary">
-                <strong>Activity summary:</strong> {item.activitySummary || 'No summary available'}
-                {hasMissingComments ? (
-                  <span className="manager-warning">Some entries are missing descriptions.</span>
-                ) : (
-                  <span className="manager-ok">Descriptions present for submitted entries.</span>
-                )}
+                <span><strong>Activity:</strong> {item.activitySummary || 'No activity summary'}</span>
+                {Number(item.commentCount ?? 0) < Number(item.entryCount ?? 0)
+                  ? <span className="manager-warning">Some entries are missing descriptions.</span>
+                  : <span className="manager-ok">Descriptions are present.</span>}
               </div>
 
               {isExpanded ? (
                 <div className="manager-entry-review">
-                  {entries.length === 0 ? (
-                    <div className="manager-empty-state compact">
-                      Detailed entry rows are not available yet. The API summary is still available above.
-                    </div>
-                  ) : (
-                    entries.map((entry) => (
-                      <div className="manager-entry-row" key={entry.timeEntryId ?? `${key}-${entry.timeType}-${entry.hours}-${getEntryLabel(entry)}`}>
-                        <div>
-                          <strong>{getEntryLabel(entry)}</strong>
-                          <span>{entry.timeType === 'afterhours' ? 'Afterhours' : 'Normal time'} • {formatNumber(entry.hours)} hours</span>
-                        </div>
-                        <p>{entry.description || 'No description provided.'}</p>
+                  {entries.length === 0 ? <div className="manager-empty-state compact">No detailed entry rows were returned.</div> : entries.map((entry) => (
+                    <div className="manager-entry-row" key={entry.timeEntryId}>
+                      <div>
+                        <strong>{entryLabel(entry)}</strong>
+                        <span>{entry.timeType === 'afterhours' ? 'Afterhours' : 'Normal'} • {number(entry.hours)} hours</span>
+                        {entry.taskId ? <small>Task ID: {entry.taskId}</small> : null}
                       </div>
-                    ))
-                  )}
-
-                  {item.managerDecisionComment ? (
-                    <p className="manager-decision-comment">
-                      <strong>Manager decision comment:</strong> {item.managerDecisionComment}
-                    </p>
-                  ) : null}
+                      <p>{entry.description || 'No description provided.'}</p>
+                    </div>
+                  ))}
+                  {item.managerDecisionComment ? <p className="manager-decision-comment"><strong>Decision comment:</strong> {item.managerDecisionComment}</p> : null}
                 </div>
               ) : null}
             </article>
           );
         })}
       </div>
+
+      {decision ? (
+        <div className="approval-modal-backdrop" role="presentation" onMouseDown={() => !busy && setDecision(null)}>
+          <form className="approval-decision-modal" onSubmit={submitDecision} onMouseDown={(event) => event.stopPropagation()}>
+            <p className="eyebrow">{decision.mode === 'stale' ? 'Administrative stale-item resolution' : 'Reject submitted time'}</p>
+            <h3>{decision.item.resourceName} — {decision.item.workDate}</h3>
+            <p>{decision.mode === 'stale' ? 'This action preserves the audit history and returns the stale submission to the engineer.' : 'The engineer will receive a Global SMTP email listing every returned entry and this reason.'}</p>
+            <label>
+              <span>Specific reason</span>
+              <textarea autoFocus required rows="6" value={reason} onChange={(event) => setReason(event.target.value)} placeholder="State exactly what must be corrected, including the affected project, task, hours, or description." />
+            </label>
+            <div className="approval-modal-actions">
+              <button type="button" onClick={() => setDecision(null)} disabled={busy}>Cancel</button>
+              <button type="submit" className="decline" disabled={busy || !reason.trim()}>{busy ? 'Processing…' : decision.mode === 'stale' ? 'Resolve and notify' : 'Return and notify engineer'}</button>
+            </div>
+          </form>
+        </div>
+      ) : null}
     </section>
   );
 }

@@ -1,0 +1,82 @@
+.approval-mailbox-shell { position: relative; }
+.approval-mailbox-button {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--pulse-card-border);
+  border-radius: 12px;
+  padding: 8px 11px;
+  background: var(--pulse-card-bg);
+  color: var(--pulse-text);
+  cursor: pointer;
+  font-weight: 750;
+}
+.approval-mailbox-button:hover,
+.approval-mailbox-button.active { border-color: #3155a5; box-shadow: 0 5px 18px rgba(30, 64, 175, 0.13); }
+.approval-mailbox-icon { font-size: 19px; line-height: 1; }
+.approval-mailbox-label { font-size: 13px; }
+.approval-mailbox-badge {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #c91f37;
+  color: white;
+  font-size: 11px;
+  font-weight: 850;
+  box-shadow: 0 0 0 2px var(--pulse-card-bg);
+}
+.approval-mailbox-popover {
+  position: absolute;
+  z-index: 1200;
+  top: calc(100% + 10px);
+  right: 0;
+  width: min(360px, calc(100vw - 28px));
+  border: 1px solid var(--pulse-card-border);
+  border-radius: 16px;
+  padding: 16px;
+  background: var(--pulse-card-bg);
+  color: var(--pulse-text);
+  box-shadow: 0 22px 55px rgba(15, 23, 42, 0.24);
+}
+.approval-mailbox-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.approval-mailbox-heading div { display: grid; gap: 3px; }
+.approval-mailbox-heading small { color: var(--pulse-muted); }
+.approval-mailbox-total {
+  min-width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(100, 116, 139, 0.14);
+  font-weight: 850;
+}
+.approval-mailbox-total.pending { background: #c91f37; color: white; }
+.approval-mailbox-breakdown { display: grid; gap: 8px; margin: 15px 0; }
+.approval-mailbox-breakdown div {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 9px 10px;
+  border-radius: 10px;
+  background: rgba(100, 116, 139, 0.08);
+}
+.approval-mailbox-popover a {
+  display: flex;
+  justify-content: center;
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #173b75;
+  color: white;
+  text-decoration: none;
+  font-weight: 750;
+}
+@media (max-width: 900px) {
+  .approval-mailbox-label { display: none; }
+  .approval-mailbox-button { padding: 8px; }
+}

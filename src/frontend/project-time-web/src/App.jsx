@@ -548,8 +548,8 @@ import UserAdministrationPanel from './UserAdministrationPanel.jsx';
 import YearlyUtilizationPanel from './YearlyUtilizationPanel.jsx';
 import ProjectAllocationInfoPanel from './ProjectAllocationInfoPanel.jsx';
 import ManagerTeamUtilizationPanel from './ManagerTeamUtilizationPanel.jsx';
-import ManagerApprovalPanel from './ManagerApprovalPanel.jsx';
-import LocalAdminPasswordResetApprovalsPanel from './LocalAdminPasswordResetApprovalsPanel.jsx';
+import ApprovalCenter from './ApprovalCenter.jsx';
+import ApprovalMailbox from './ApprovalMailbox.jsx';
 import AuditHistoryPanel from './AuditHistoryPanel.jsx';
 import ApprovalExportAuditWorkflowCenter from './ApprovalExportAuditWorkflowCenter.jsx';
 import ServiceControlCenter from './ServiceControlCenter.jsx';
@@ -1064,208 +1064,7 @@ function installProjectPulseApprovalUiNormalizer() {
 }
 /* 039C_APPROVAL_INDICATOR_FIX_END */
 
-/* 039E_ACTIONABLE_APPROVAL_COUNT_START */
-function normalizeProjectPulseApprovalStatus(value) {
-  return String(value ?? '')
-    .trim()
-    .toLowerCase()
-    .replaceAll('-', '_')
-    .replaceAll(' ', '_');
-}
-
-function isProjectPulseClosedApprovalStatus(status) {
-  const normalized = normalizeProjectPulseApprovalStatus(status);
-  return [
-    'approved',
-    'declined',
-    'rejected',
-    'completed',
-    'complete',
-    'closed',
-    'resolved',
-    'cancelled',
-    'canceled',
-    'expired',
-    'ready',
-    'draft'
-  ].includes(normalized);
-}
-
-function objectLooksLikeProjectPulseTimeApproval(item) {
-  const haystack = Object.keys(item || {}).join(' ').toLowerCase();
-  return (
-    haystack.includes('workdate') ||
-    haystack.includes('work_date') ||
-    haystack.includes('timesheet') ||
-    haystack.includes('timeentry') ||
-    haystack.includes('time_entry') ||
-    haystack.includes('submitted')
-  );
-}
-
-function objectLooksLikeProjectPulseLocalReset(item) {
-  const haystack = [
-    ...Object.keys(item || {}),
-    item?.requestType,
-    item?.type,
-    item?.category,
-    item?.queueName,
-    item?.approvalType,
-    item?.username,
-    item?.userName,
-    item?.localUsername,
-    item?.message,
-    item?.notes
-  ].join(' ').toLowerCase();
-
-  return (
-    haystack.includes('password') ||
-    haystack.includes('reset') ||
-    haystack.includes('temp') ||
-    haystack.includes('local')
-  );
-}
-
-function collectProjectPulseObjects(payload, collector = []) {
-  if (!payload || typeof payload !== 'object') return collector;
-
-  if (Array.isArray(payload)) {
-    payload.forEach((item) => collectProjectPulseObjects(item, collector));
-    return collector;
-  }
-
-  collector.push(payload);
-
-  Object.values(payload).forEach((value) => {
-    if (value && typeof value === 'object') {
-      collectProjectPulseObjects(value, collector);
-    }
-  });
-
-  return collector;
-}
-
-function readProjectPulseNumericFields(payload, patterns, exclusions = []) {
-  let total = 0;
-
-  function visit(value, path = '') {
-    if (!value || typeof value !== 'object') return;
-
-    if (Array.isArray(value)) {
-      value.forEach((item, index) => visit(item, `${path}.${index}`));
-      return;
-    }
-
-    Object.entries(value).forEach(([key, entryValue]) => {
-      const normalizedKey = String(key || '').toLowerCase();
-      const fullPath = `${path}.${normalizedKey}`;
-      const excluded = exclusions.some((pattern) => pattern.test(fullPath));
-
-      if (!excluded && typeof entryValue === 'number' && patterns.some((pattern) => pattern.test(fullPath))) {
-        total += Number(entryValue || 0);
-      }
-
-      if (entryValue && typeof entryValue === 'object') {
-        visit(entryValue, fullPath);
-      }
-    });
-  }
-
-  visit(payload);
-  return total;
-}
-
-function deriveProjectPulseActionableApprovalCounts(primaryPayload, secondaryPayload = null) {
-  const payloads = [primaryPayload, secondaryPayload].filter(Boolean);
-  const objects = payloads.flatMap((payload) => collectProjectPulseObjects(payload));
-
-  const submittedTimeObjects = objects.filter((item) => {
-    const status = normalizeProjectPulseApprovalStatus(item.status ?? item.approvalStatus ?? item.dayStatus ?? item.workflowStatus);
-    if (!status || isProjectPulseClosedApprovalStatus(status)) return false;
-
-    return objectLooksLikeProjectPulseTimeApproval(item) && [
-      'submitted',
-      'pending',
-      'pending_approval',
-      'manager_pending',
-      'awaiting_review',
-      'awaiting_manager_review'
-    ].includes(status);
-  });
-
-  const localResetPendingObjects = objects.filter((item) => {
-    const status = normalizeProjectPulseApprovalStatus(item.status ?? item.approvalStatus ?? item.workflowStatus);
-    if (!status || isProjectPulseClosedApprovalStatus(status)) return false;
-
-    return objectLooksLikeProjectPulseLocalReset(item) && [
-      'pending',
-      'pending_approval',
-      'requested',
-      'awaiting_approval'
-    ].includes(status);
-  });
-
-  const localResetReadyObjects = objects.filter((item) => {
-    const status = normalizeProjectPulseApprovalStatus(item.status ?? item.approvalStatus ?? item.workflowStatus);
-    if (!status || isProjectPulseClosedApprovalStatus(status)) return false;
-
-    return objectLooksLikeProjectPulseLocalReset(item) && [
-      'ready_for_temp_password',
-      'ready_for_temporary_password',
-      'temp_password_ready',
-      'temporary_password_ready'
-    ].includes(status);
-  });
-
-  const submittedTimeNumeric = payloads.reduce((total, payload) => total + readProjectPulseNumericFields(payload, [
-    /submitted.*time.*pending/,
-    /manager.*approval.*pending/,
-    /submitted.*pending/,
-    /pending.*submitted/,
-    /pendingcount$/
-  ], [
-    /total/,
-    /local/,
-    /reset/,
-    /password/,
-    /ready/
-  ]), 0);
-
-  const localResetPendingNumeric = payloads.reduce((total, payload) => total + readProjectPulseNumericFields(payload, [
-    /local.*reset.*pending.*approval/,
-    /reset.*pending.*approval/,
-    /pending.*approval/
-  ], [
-    /total/,
-    /time/,
-    /submitted/,
-    /ready/
-  ]), 0);
-
-  const localResetReadyNumeric = payloads.reduce((total, payload) => total + readProjectPulseNumericFields(payload, [
-    /ready.*temp/,
-    /ready.*temporary/,
-    /temp.*ready/,
-    /temporary.*ready/
-  ], [
-    /total/
-  ]), 0);
-
-  const submittedTimePending = Math.max(submittedTimeObjects.length, submittedTimeNumeric);
-  const localResetPendingApproval = Math.max(localResetPendingObjects.length, localResetPendingNumeric);
-  const localResetReadyForTempPassword = Math.max(localResetReadyObjects.length, localResetReadyNumeric);
-
-  const counts = {
-    submittedTimePending,
-    localResetPendingApproval,
-    localResetReadyForTempPassword,
-    actionableTotal: submittedTimePending + localResetPendingApproval + localResetReadyForTempPassword,
-    updatedAt: Date.now()
-  };
-
-  return counts;
-}
-
+/* MODULE_002_ACTIONABLE_APPROVAL_COUNT_CACHE_START */
 function setProjectPulseApprovalActionableCounts(counts) {
   try {
     window.__projectPulseApprovalActionableCounts = {
@@ -1275,12 +1074,11 @@ function setProjectPulseApprovalActionableCounts(counts) {
       actionableTotal: Number(counts?.actionableTotal ?? 0),
       updatedAt: Date.now()
     };
-
     window.dispatchEvent(new CustomEvent('projectpulse:approval-actionable-counts-updated', {
       detail: window.__projectPulseApprovalActionableCounts
     }));
   } catch {
-    // Ignore event/cache restrictions.
+    // Browser cache/event restrictions are non-fatal.
   }
 }
 
@@ -1294,7 +1092,7 @@ function getProjectPulseCachedApprovalActionableCounts() {
     return null;
   }
 }
-/* 039E_ACTIONABLE_APPROVAL_COUNT_END */
+/* MODULE_002_ACTIONABLE_APPROVAL_COUNT_CACHE_END */
 
 
 function getStoredAuthSession() {
@@ -1784,10 +1582,11 @@ const roleWorkspaceModules = [
   {
     route: 'manager-approval',
     href: '#manager-approval',
-    title: 'Approval Inbox',
+    title: 'Approval Center',
     navLabel: 'MODULE 002',
-    description: 'Approve, reject, and review submitted time.',
-    permissions: ['VIEW_APPROVAL_INBOX', 'APPROVE_TIME']
+    description: 'Review role-scoped submitted time and authorized local administrator password-reset approvals.',
+    permissions: ['MODULE_002_ROLE_GATE'],
+    roleCodes: ['SUPER_ADMINISTRATOR', 'ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR', 'MANAGER', 'PROJECT_MANAGER', 'PROJECT_MANAGEMENT']
   },
   {
     route: 'utilization',
@@ -4703,62 +4502,43 @@ export default function App() {
       setAzureAdminStatus(error instanceof Error ? error.message : 'Unable to reconcile Entra users.');
     }
   }
-  /* 039E_ACTIONABLE_APPROVAL_COUNT_EFFECT_START */
+  /* MODULE_002_ROLE_AWARE_APPROVAL_COUNT_EFFECT_START */
   useEffect(() => {
     let cancelled = false;
 
     async function loadApprovalPendingCount() {
       if (!authSession?.sessionToken) {
-        setProjectPulseApprovalActionableCounts({
-          submittedTimePending: 0,
-          localResetPendingApproval: 0,
-          localResetReadyForTempPassword: 0,
-          actionableTotal: 0
-        });
+        setProjectPulseApprovalActionableCounts({ submittedTimePending: 0, localResetPendingApproval: 0, localResetReadyForTempPassword: 0, actionableTotal: 0 });
         setApprovalPendingCount(0);
         return;
       }
 
       try {
-        const [detailResult, summaryResult] = await Promise.allSettled([
-          fetchJson('/api/manager/approvals'),
-          fetchJson('/api/manager/approval-count')
-        ]);
-
-        const detailPayload = detailResult.status === 'fulfilled' ? detailResult.value : null;
-        const summaryPayload = summaryResult.status === 'fulfilled' ? summaryResult.value : null;
-        const counts = deriveProjectPulseActionableApprovalCounts(detailPayload, summaryPayload);
-
+        const counts = await fetchJson('/api/manager/approval-count');
         if (!cancelled) {
           setProjectPulseApprovalActionableCounts(counts);
           setApprovalPendingCount(Number(counts.actionableTotal ?? 0));
           window.setTimeout(normalizeProjectPulseApprovalUi, 100);
-          window.setTimeout(normalizeProjectPulseApprovalUi, 600);
         }
       } catch {
         if (!cancelled) {
-          setProjectPulseApprovalActionableCounts({
-            submittedTimePending: 0,
-            localResetPendingApproval: 0,
-            localResetReadyForTempPassword: 0,
-            actionableTotal: 0
-          });
+          setProjectPulseApprovalActionableCounts({ submittedTimePending: 0, localResetPendingApproval: 0, localResetReadyForTempPassword: 0, actionableTotal: 0 });
           setApprovalPendingCount(0);
-          window.setTimeout(normalizeProjectPulseApprovalUi, 100);
         }
       }
     }
 
     loadApprovalPendingCount();
-
     const intervalId = window.setInterval(loadApprovalPendingCount, 30000);
+    window.addEventListener('projectpulse:approval-queue-changed', loadApprovalPendingCount);
 
     return () => {
       cancelled = true;
       window.clearInterval(intervalId);
+      window.removeEventListener('projectpulse:approval-queue-changed', loadApprovalPendingCount);
     };
   }, [authSession?.sessionToken, activeRoute]);
-  /* 039E_ACTIONABLE_APPROVAL_COUNT_EFFECT_END */
+  /* MODULE_002_ROLE_AWARE_APPROVAL_COUNT_EFFECT_END */
 
 
 
@@ -5891,16 +5671,14 @@ ${newComment}`
       'INSIDE_SALES'
     ].includes(roleCode));
   /* 055C_1_WORK_REGISTER_ACCESS_SCOPE_END */
-  const canViewManagerApprovalPanel = hasPermission('APPROVE_TIME') || hasPermission('REJECT_TIME') || hasPermission('MANAGE_ALL') || hasPermission('SYSTEM_ADMINISTRATION');
-  const canViewLocalAdminPasswordResetApprovals =
-    hasPermission('MANAGE_ALL') ||
-    hasPermission('SYSTEM_ADMINISTRATION') ||
-    (currentRoleCodes.includes('SUPER_ADMINISTRATOR') || currentRoleCodes.includes('ADMINISTRATOR')) ||
-    currentRoleCodes.includes('PROJECT_TEAM_COORDINATOR') ||
-    currentRoleCodes.includes('PROJECT_COORDINATOR') ||
-    currentRoleCodes.includes('TEAM_COORDINATOR') ||
-    currentRoleNames.some((roleName) => roleName.includes('project/team coordinator') || roleName.includes('project team coordinator') || roleName.includes('team coordinator'));
-
+  const module002TimeApprovalRoleCodes = new Set([
+    'SUPER_ADMINISTRATOR', 'ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR', 'MANAGER', 'PROJECT_MANAGER', 'PROJECT_MANAGEMENT'
+  ]);
+  const module002PasswordResetRoleCodes = new Set([
+    'SUPER_ADMINISTRATOR', 'ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR', 'MANAGER'
+  ]);
+  const canViewManagerApprovalPanel = currentRoleCodes.some((roleCode) => module002TimeApprovalRoleCodes.has(roleCode));
+  const canViewLocalAdminPasswordResetApprovals = currentRoleCodes.some((roleCode) => module002PasswordResetRoleCodes.has(roleCode));
 
 
   if (!authSession) {
@@ -6302,6 +6080,7 @@ Analytics - Variphy / Infortel`}
         </nav>
 
         <div className="enterprise-header-utilities">
+          {(canViewManagerApprovalPanel || canViewLocalAdminPasswordResetApprovals) ? <ApprovalMailbox /> : null}
           <ProjectPulseGlobalSearch />
         <div className="profile-menu-shell" ref={profileMenuRef}>
           <button
@@ -8293,11 +8072,9 @@ Analytics - Variphy / Infortel`}
           <RoleAdminDirectoryPanel />
         </section>
       ) : null}
-
-      {(canViewManagerApprovalPanel || canViewLocalAdminPasswordResetApprovals) ? (
+      {(activeRoute === 'manager-approval' && (canViewManagerApprovalPanel || canViewLocalAdminPasswordResetApprovals)) ? (
         <section id="manager-approval" className="approvals-workspace-panel">
-          {canViewManagerApprovalPanel ? <ManagerApprovalPanel /> : null}
-          {canViewLocalAdminPasswordResetApprovals ? <LocalAdminPasswordResetApprovalsPanel /> : null}
+          <ApprovalCenter />
         </section>
       ) : null}
 

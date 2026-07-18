@@ -1,308 +1,171 @@
 import { useEffect, useMemo, useState } from 'react';
 import './manager-approval.css';
 
-function getAuthSession() {
-  try {
-    const raw = window.localStorage.getItem('projectPulseAuthSession');
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
+function session() {
+  try { return JSON.parse(window.localStorage.getItem('projectPulseAuthSession') || 'null'); }
+  catch { return null; }
 }
-
-function getProjectPulseAuthHeaders() {
-  const session = getAuthSession();
-  return session?.sessionToken ? { 'X-ProjectPulse-Session': session.sessionToken } : {};
+function headers(hasBody = false) {
+  const token = session()?.sessionToken;
+  return { ...(hasBody ? { 'Content-Type': 'application/json' } : {}), ...(token ? { 'X-ProjectPulse-Session': token } : {}) };
 }
-
-async function readApiErrorMessage(response, path) {
+async function requestJson(path, options = {}) {
+  const response = await fetch(path, { ...options, headers: { ...headers(Boolean(options.body)), ...(options.headers ?? {}) } });
   const raw = await response.text();
-
-  if (!raw) return `${path} returned HTTP ${response.status}`;
-
-  try {
-    const parsed = JSON.parse(raw);
-    return `${path} returned HTTP ${response.status}: ${parsed.message || parsed.detail || parsed.status || raw}`;
-  } catch {
-    return `${path} returned HTTP ${response.status}: ${raw}`;
-  }
+  let payload = {};
+  try { payload = raw ? JSON.parse(raw) : {}; } catch { payload = { message: raw }; }
+  if (!response.ok) throw new Error(payload.message || `${path} returned HTTP ${response.status}`);
+  return payload;
 }
-
-async function fetchJson(path) {
-  const response = await fetch(path, {
-    headers: getProjectPulseAuthHeaders()
-  });
-
-  if (!response.ok) {
-    throw new Error(await readApiErrorMessage(response, path));
-  }
-
-  return response.json();
-}
-
-async function postJson(path, payload) {
-  const response = await fetch(path, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...getProjectPulseAuthHeaders()
-    },
-    body: JSON.stringify(payload)
-  });
-
-  if (!response.ok) {
-    throw new Error(await readApiErrorMessage(response, path));
-  }
-
-  return response.json();
-}
-
-function formatDateTime(value) {
-  if (!value) return 'Not available';
-
-  try {
-    return new Date(value).toLocaleString();
-  } catch {
-    return String(value);
-  }
-}
-
-function getStatusLabel(status) {
-  if (status === 'pending_approval') return 'Pending approval';
-  if (status === 'approved') return 'Approved - set temporary password';
-  return status || 'Unknown';
-}
+function dateTime(value) { return value ? new Date(value).toLocaleString() : 'Not available'; }
+function label(status) { return status === 'pending_approval' ? 'Pending approval' : status === 'approved' ? 'Ready for temporary password' : status; }
 
 export default function LocalAdminPasswordResetApprovalsPanel() {
   const [data, setData] = useState({ loading: true, approvals: [], error: null });
-  const [status, setStatus] = useState('Ready.');
+  const [message, setMessage] = useState('Ready.');
   const [busy, setBusy] = useState(false);
-  const [temporaryPasswords, setTemporaryPasswords] = useState({});
+  const [decision, setDecision] = useState(null);
+  const [notes, setNotes] = useState('');
+  const [passwords, setPasswords] = useState({});
 
-  const pendingApprovalCount = useMemo(
-    () => data.approvals.filter((request) => request.status === 'pending_approval').length,
-    [data.approvals]
-  );
+  const pending = useMemo(() => data.approvals.filter((item) => item.status === 'pending_approval').length, [data.approvals]);
+  const ready = useMemo(() => data.approvals.filter((item) => item.status === 'approved').length, [data.approvals]);
 
-  const readyForPasswordCount = useMemo(
-    () => data.approvals.filter((request) => request.status === 'approved').length,
-    [data.approvals]
-  );
-
-  async function loadApprovals() {
+  async function load() {
     setData((current) => ({ ...current, loading: true, error: null }));
-
     try {
-      const result = await fetchJson('/api/auth/password-reset/approvals');
-      setData({
-        loading: false,
-        approvals: result.approvals ?? [],
-        error: null
-      });
+      const result = await requestJson('/api/auth/password-reset/approvals');
+      setData({ loading: false, approvals: result.approvals ?? [], error: null });
     } catch (error) {
-      setData({
-        loading: false,
-        approvals: [],
-        error: error instanceof Error ? error.message : 'Unable to load local admin password reset approvals.'
-      });
+      setData({ loading: false, approvals: [], error: error instanceof Error ? error.message : 'Unable to load password-reset approvals.' });
     }
   }
 
-  useEffect(() => {
-    void loadApprovals();
-  }, []);
+  useEffect(() => { load(); }, []);
 
-  async function approveReset(request) {
-    const note = window.prompt('Approval note for this local admin password reset:', 'Approved from administrator approval queue.');
-    if (note === null) return;
+  function openDecision(request, action) {
+    setDecision({ request, action });
+    setNotes(action === 'approve' ? 'Approved from Module 002 Approval Center.' : '');
+  }
 
-    const session = getAuthSession();
+  async function submitDecision(event) {
+    event.preventDefault();
+    if (!decision) return;
+    if (decision.action === 'decline' && !notes.trim()) return;
     setBusy(true);
-    setStatus('Approving password reset request...');
-
+    setMessage(`${decision.action === 'approve' ? 'Approving' : 'Declining'} password-reset request…`);
     try {
-      const result = await postJson('/api/auth/password-reset/approve', {
-        resetRequestId: request.resetRequestId,
-        actionByEmail: session?.username ?? '',
-        notes: note.trim()
+      const result = await requestJson(`/api/auth/password-reset/${decision.action}`, {
+        method: 'POST',
+        body: JSON.stringify({ resetRequestId: decision.request.resetRequestId, actionByEmail: session()?.username ?? '', notes: notes.trim() })
       });
-
-      setStatus(result.message ?? 'Password reset request approved. Set a temporary password to complete the reset.');
-      await loadApprovals();
+      setMessage(result.message || 'Password-reset decision completed.');
+      setDecision(null);
+      setNotes('');
+      window.dispatchEvent(new CustomEvent('projectpulse:approval-queue-changed'));
+      await load();
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'Unable to approve password reset request.');
+      setMessage(error instanceof Error ? error.message : 'Password-reset decision failed.');
     } finally {
       setBusy(false);
     }
   }
 
-  async function declineReset(request) {
-    const reason = window.prompt('Reason for declining this local admin password reset request:');
-    if (reason === null) return;
-
-    const trimmedReason = reason.trim();
-    if (!trimmedReason) {
-      setStatus('A decline reason is required before declining a password reset request.');
-      return;
-    }
-
-    const session = getAuthSession();
-    setBusy(true);
-    setStatus('Declining password reset request...');
-
-    try {
-      const result = await postJson('/api/auth/password-reset/decline', {
-        resetRequestId: request.resetRequestId,
-        actionByEmail: session?.username ?? '',
-        notes: trimmedReason
-      });
-
-      setStatus(result.message ?? 'Password reset request declined.');
-      await loadApprovals();
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'Unable to decline password reset request.');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function completeReset(request) {
-    const temporaryPassword = temporaryPasswords[request.resetRequestId] ?? '';
-
+  async function complete(request) {
+    const temporaryPassword = passwords[request.resetRequestId] ?? '';
     if (!temporaryPassword.trim()) {
-      setStatus('Enter a temporary password before completing the reset.');
+      setMessage('Enter a temporary password before completing the reset.');
       return;
     }
-
-    const session = getAuthSession();
     setBusy(true);
-    setStatus('Completing password reset and setting temporary password...');
-
+    setMessage('Setting temporary password…');
     try {
-      const result = await postJson('/api/auth/password-reset/complete', {
-        resetRequestId: request.resetRequestId,
-        temporaryPassword,
-        actionByEmail: session?.username ?? '',
-        notes: 'Temporary password set from local admin password reset approval queue.'
+      const result = await requestJson('/api/auth/password-reset/complete', {
+        method: 'POST',
+        body: JSON.stringify({ resetRequestId: request.resetRequestId, temporaryPassword, actionByEmail: session()?.username ?? '', notes: 'Completed from Module 002 Approval Center.' })
       });
-
-      setTemporaryPasswords((current) => {
-        const next = { ...current };
-        delete next[request.resetRequestId];
-        return next;
-      });
-
-      setStatus(result.message ?? 'Temporary password was set. The user must change it at next login.');
-      await loadApprovals();
+      setPasswords((current) => { const next = { ...current }; delete next[request.resetRequestId]; return next; });
+      setMessage(result.message || 'Temporary password set.');
+      window.dispatchEvent(new CustomEvent('projectpulse:approval-queue-changed'));
+      await load();
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'Unable to complete password reset.');
+      setMessage(error instanceof Error ? error.message : 'Unable to complete the reset.');
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <div className="panel administrative-approval-panel">
+    <section className="panel password-reset-approval-shell">
       <div className="manager-approval-header compact">
         <div>
-          <p className="eyebrow">Administrative Approval Requests</p>
-          <h2>Local admin password reset approvals</h2>
-          <p>
-            Review local administrator password reset requests, approve or decline the request, then set a temporary password after approval.
-          </p>
+          <p className="eyebrow">Password-reset approvals</p>
+          <h2>Local administrator reset queue</h2>
+          <p>Approve or decline local administrator reset requests, then set the required temporary password after approval.</p>
         </div>
-
-        <div className="manager-toolbar">
-          <button type="button" onClick={loadApprovals} disabled={busy || data.loading}>
-            Refresh
-          </button>
-        </div>
+        <button type="button" onClick={load} disabled={busy || data.loading}>Refresh</button>
       </div>
 
       <div className="manager-status-row">
-        <span>Pending approval: <strong>{data.loading ? 'Loading...' : pendingApprovalCount}</strong></span>
-        <span>Ready for temp password: <strong>{data.loading ? 'Loading...' : readyForPasswordCount}</strong></span>
-        <span>Status: <strong>{status}</strong></span>
+        <span>Pending decision <strong>{pending}</strong></span>
+        <span>Ready for password <strong>{ready}</strong></span>
+        <span className="manager-status-message">{message}</span>
       </div>
 
-      {data.error ? (
-        <div className="manager-empty-state error">{data.error}</div>
-      ) : null}
+      {data.error ? <div className="manager-empty-state error">{data.error}</div> : null}
+      {data.loading ? <div className="manager-empty-state">Loading password-reset requests…</div> : null}
+      {!data.loading && !data.error && data.approvals.length === 0 ? <div className="manager-empty-state">No password-reset approvals require action.</div> : null}
 
-      {!data.loading && !data.error && data.approvals.length === 0 ? (
-        <div className="manager-empty-state">No local admin password reset approvals are pending.</div>
-      ) : null}
+      <div className="password-reset-card-grid">
+        {data.approvals.map((request) => (
+          <article className="password-reset-card" key={request.resetRequestId}>
+            <div className="password-reset-card-heading">
+              <span className={`manager-status-badge ${request.status}`}>{label(request.status)}</span>
+              <small>Requested {dateTime(request.requestedAt)}</small>
+            </div>
+            <h3>{request.accountDisplayName}</h3>
+            <p>{request.accountEmail}</p>
+            <dl>
+              <div><dt>Requested by</dt><dd>{request.requestedByEmail}</dd></div>
+              <div><dt>Expires</dt><dd>{dateTime(request.expiresAt)}</dd></div>
+              <div><dt>Notes</dt><dd>{request.notes || 'No notes provided'}</dd></div>
+            </dl>
 
-      {data.approvals.length > 0 ? (
-        <div className="manager-table-wrap">
-          <table className="manager-table administrative-approval-table">
-            <thead>
-              <tr>
-                <th>Status</th>
-                <th>Local account</th>
-                <th>Requested by</th>
-                <th>Requested</th>
-                <th>Approved</th>
-                <th>Notes</th>
-                <th>Decision / Completion</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.approvals.map((request) => (
-                <tr key={request.resetRequestId}>
-                  <td>
-                    <strong>{getStatusLabel(request.status)}</strong>
-                    <span>{request.approvalDescription}</span>
-                  </td>
-                  <td>
-                    <strong>{request.accountDisplayName}</strong>
-                    <span>{request.accountEmail}</span>
-                  </td>
-                  <td>{request.requestedByEmail}</td>
-                  <td>{formatDateTime(request.requestedAt)}</td>
-                  <td>
-                    {request.approvedAt ? formatDateTime(request.approvedAt) : 'Not approved yet'}
-                    {request.approvedByEmail ? <span>{request.approvedByEmail}</span> : null}
-                  </td>
-                  <td>{request.notes || 'No notes provided'}</td>
-                  <td>
-                    {request.status === 'pending_approval' ? (
-                      <div className="manager-row-actions">
-                        <button type="button" className="approve" onClick={() => approveReset(request)} disabled={busy}>
-                          Approve request
-                        </button>
-                        <button type="button" className="decline" onClick={() => declineReset(request)} disabled={busy}>
-                          Decline
-                        </button>
-                      </div>
-                    ) : null}
+            {request.status === 'pending_approval' ? (
+              <div className="manager-row-actions">
+                <button type="button" className="approve" onClick={() => openDecision(request, 'approve')} disabled={busy}>Approve</button>
+                <button type="button" className="decline" onClick={() => openDecision(request, 'decline')} disabled={busy}>Decline</button>
+              </div>
+            ) : null}
 
-                    {request.status === 'approved' ? (
-                      <div className="password-reset-completion-box">
-                        <label htmlFor={`temporary-password-${request.resetRequestId}`}>Temporary password</label>
-                        <input
-                          id={`temporary-password-${request.resetRequestId}`}
-                          type="password"
-                          value={temporaryPasswords[request.resetRequestId] ?? ''}
-                          placeholder="Set temporary password"
-                          onChange={(event) => setTemporaryPasswords((current) => ({
-                            ...current,
-                            [request.resetRequestId]: event.target.value
-                          }))}
-                        />
-                        <button type="button" className="approve" onClick={() => completeReset(request)} disabled={busy}>
-                          Set temporary password
-                        </button>
-                        <small>The local admin will be required to change this password at next login.</small>
-                      </div>
-                    ) : null}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+            {request.status === 'approved' ? (
+              <div className="password-reset-completion-box">
+                <label htmlFor={`temporary-password-${request.resetRequestId}`}>Temporary password</label>
+                <input id={`temporary-password-${request.resetRequestId}`} type="password" autoComplete="new-password" value={passwords[request.resetRequestId] ?? ''} placeholder="Enter temporary password" onChange={(event) => setPasswords((current) => ({ ...current, [request.resetRequestId]: event.target.value }))} />
+                <button type="button" className="approve" onClick={() => complete(request)} disabled={busy}>Set temporary password</button>
+                <small>The local administrator must change this password at next login.</small>
+              </div>
+            ) : null}
+          </article>
+        ))}
+      </div>
+
+      {decision ? (
+        <div className="approval-modal-backdrop" role="presentation" onMouseDown={() => !busy && setDecision(null)}>
+          <form className="approval-decision-modal" onSubmit={submitDecision} onMouseDown={(event) => event.stopPropagation()}>
+            <p className="eyebrow">Password-reset decision</p>
+            <h3>{decision.action === 'approve' ? 'Approve' : 'Decline'} {decision.request.accountEmail}</h3>
+            <label>
+              <span>{decision.action === 'decline' ? 'Required reason' : 'Approval note'}</span>
+              <textarea autoFocus required={decision.action === 'decline'} rows="5" value={notes} onChange={(event) => setNotes(event.target.value)} placeholder={decision.action === 'decline' ? 'Explain why this request is being declined.' : 'Optional approval context.'} />
+            </label>
+            <div className="approval-modal-actions">
+              <button type="button" onClick={() => setDecision(null)} disabled={busy}>Cancel</button>
+              <button type="submit" className={decision.action === 'approve' ? 'approve' : 'decline'} disabled={busy || (decision.action === 'decline' && !notes.trim())}>{busy ? 'Processing…' : `${decision.action === 'approve' ? 'Approve' : 'Decline'} request`}</button>
+            </div>
+          </form>
         </div>
       ) : null}
-    </div>
+    </section>
   );
 }
