@@ -48,12 +48,6 @@ Module 999 while detailed documentation is being completed.
 - `src/frontend/project-time-web/src/help-assistant.css`
 - `src/frontend/project-time-web/src/App.jsx`
 
-## Source state
-
-This source phase builds and validates Module 999, commits it, and pushes it to its
-dedicated feature branch. It does not deploy Azure or change the API, database, or
-Entra configuration.
-
 ## Validation-marker correction
 
 The first guarded web deployment successfully built, started, and exposed every
@@ -64,3 +58,48 @@ correctly rolled back.
 
 The guide now describes the current direct-entry and personal-default behavior
 without embedding the retired UI label, keeping bundle validation unambiguous.
+
+## Deployment status
+
+**Status:** Complete — source committed, web deployed, technical validation passed.
+
+**Confirmed:** 2026-07-18 UTC
+
+### GitHub checkpoints
+
+- Branch: `feature/module-999-complete-user-guide-20260718`
+- Initial implementation commit: `31ef900f3c6e283240d333c55ea5dd54774c88d1`
+- Validation-marker repair commit: `2cb4f1eb129f4b48d272a8a872b2b9f20c0e0547`
+
+### Azure runtime
+
+- API image: `acrphdtest7825cc.azurecr.io/project-health-dashboard-api@sha256:10185bc58252c768577a343b734a80221ed5949d1b7ad141643bc90556dc43f4`
+- API revision: `ca-phd-test-api-westus3--m063api4-0717232631`
+- Web image: `acrphdtest7825cc.azurecr.io/project-health-dashboard-web@sha256:8d58e465e3229b63979500cd95ffccbb44a2ef09a1397b86cd5ef0552c24fcbb`
+- Web revision: `ca-phd-test-web-westus3--m999f1-0718012956`
+
+### Validation evidence
+
+- Public root: HTTP `200`.
+- Public health: HTTP `200`.
+- Unauthenticated Module 063 access endpoint: HTTP `401`.
+- Module 999 bundle markers: passed.
+- Preserved-module markers: passed.
+- Retired UI label in deployed bundle: absent.
+- Dashboard card: `MODULE 999`.
+- Navigation group: **Help & Documentation**.
+- Route: `#user-guide`.
+- Access model: all authenticated ProjectPulse users.
+- Rollback attempted on final deployment: `No`.
+- Rollback result: `not-required`.
+
+### Change boundaries
+
+- API changed: `No`.
+- Database changed: `No`.
+- Entra changed: `No`.
+- Source changed during final deployment: `No`.
+
+### Deployment evidence directory
+
+`/home/ahmed/az12d4/module-999-final-deploy-20260718T012956Z`
