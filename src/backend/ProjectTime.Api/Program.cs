@@ -27388,6 +27388,824 @@ app.MapGet("/api/workflow/approval-export-summary", async (HttpContext httpConte
 });
 
 
+
+/* FIX_20260717_001_PTC_TIME_ENTRY_CORRECTIONS_START */
+app.MapGet("/api/workflow/ptc-time-entry-corrections", async (
+    DateOnly? weekStart,
+    DateOnly? weekEnd,
+    HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+
+    if (sessionUserId is null)
+    {
+        return Results.Json(new
+        {
+            status = "session_required",
+            message = "A valid ProjectPulse session is required."
+        }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    var today = DateOnly.FromDateTime(DateTime.UtcNow.Date);
+    var start = weekStart ?? today.AddDays(-(int)today.DayOfWeek);
+    var end = weekEnd ?? start.AddDays(6);
+
+    if (end < start || end.DayNumber - start.DayNumber > 62)
+    {
+        return Results.BadRequest(new
+        {
+            status = "validation_failed",
+            message = "The correction date range must be valid and no longer than 63 days."
+        });
+    }
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    var canCorrect = false;
+
+    await using (var accessCommand = new NpgsqlCommand("""
+        SELECT COALESCE(BOOL_OR(
+            r.role_code IN (
+                'SUPER_ADMINISTRATOR',
+                'ADMINISTRATOR',
+                'PROJECT_TEAM_COORDINATOR'
+            )
+            OR p.permission_code IN (
+                'SYSTEM_ADMINISTRATION',
+                'MANAGE_ALL'
+            )
+        ), FALSE)
+        FROM app_user_role_assignments ura
+        JOIN app_roles r
+          ON r.app_role_id = ura.app_role_id
+         AND r.is_active = TRUE
+        LEFT JOIN app_role_permissions rp
+          ON rp.app_role_id = r.app_role_id
+        LEFT JOIN app_permissions p
+          ON p.app_permission_id = rp.app_permission_id
+        WHERE ura.user_id = @user_id
+          AND ura.is_active = TRUE;
+        """, connection))
+    {
+        accessCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+        canCorrect = Convert.ToBoolean(await accessCommand.ExecuteScalarAsync() ?? false);
+    }
+
+    if (!canCorrect)
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Time-entry coding corrections are restricted to Project Team Coordinators and administrators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var entries = new List<object>();
+
+    await using (var entryCommand = new NpgsqlCommand("""
+        SELECT
+            te.time_entry_id,
+            te.timesheet_id,
+            te.user_id,
+            COALESCE(employee.display_name, employee.email, '') AS employee_name,
+            COALESCE(employee.email, '') AS employee_email,
+            te.work_date,
+            COALESCE(tds.status, te.status, 'draft') AS workflow_status,
+            te.hours,
+            COALESCE(te.time_type, 'normal') AS time_type,
+            COALESCE(te.description, '') AS description,
+            te.project_id,
+            COALESCE(source_project.project_code, '') AS project_code,
+            COALESCE(source_project.project_name, '') AS project_name,
+            te.task_id,
+            COALESCE(source_task.task_code, '') AS task_code,
+            COALESCE(source_task.task_name, '') AS task_name,
+            COALESCE(te.billable, FALSE) AS billable,
+            EXISTS (
+                SELECT 1
+                FROM billing_invoice_lines invoice_line
+                WHERE invoice_line.time_entry_id = te.time_entry_id
+            ) AS invoiced
+        FROM time_entries te
+        JOIN app_users employee
+          ON employee.user_id = te.user_id
+        LEFT JOIN timesheet_day_statuses tds
+          ON tds.timesheet_id = te.timesheet_id
+         AND tds.work_date = te.work_date
+        LEFT JOIN projects source_project
+          ON source_project.project_id = te.project_id
+        LEFT JOIN project_tasks source_task
+          ON source_task.task_id = te.task_id
+        WHERE te.work_date BETWEEN @week_start AND @week_end
+          AND te.project_id IS NOT NULL
+          AND te.task_id IS NOT NULL
+        ORDER BY te.work_date DESC, employee_name, project_code, task_code;
+        """, connection))
+    {
+        entryCommand.Parameters.AddWithValue("week_start", start);
+        entryCommand.Parameters.AddWithValue("week_end", end);
+
+        await using var reader = await entryCommand.ExecuteReaderAsync();
+
+        while (await reader.ReadAsync())
+        {
+            var workflowStatus = reader.GetString(6).Trim().ToLowerInvariant();
+            var invoiced = reader.GetBoolean(17);
+            var correctableStatus = workflowStatus is
+                "draft" or
+                "submitted" or
+                "manager_approved" or
+                "pm_approved" or
+                "manager_declined";
+
+            var blockedReason = invoiced
+                ? "This time entry is already linked to an invoice."
+                : correctableStatus
+                    ? null
+                    : $"Workflow status '{workflowStatus}' is protected from coding corrections.";
+
+            entries.Add(new
+            {
+                timeEntryId = reader.GetGuid(0),
+                timesheetId = reader.GetGuid(1),
+                userId = reader.GetGuid(2),
+                employeeName = reader.GetString(3),
+                employeeEmail = reader.GetString(4),
+                workDate = reader.GetFieldValue<DateOnly>(5),
+                workflowStatus,
+                hours = reader.GetDecimal(7),
+                timeType = reader.GetString(8),
+                description = reader.GetString(9),
+                projectId = reader.GetGuid(10),
+                projectCode = reader.GetString(11),
+                projectName = reader.GetString(12),
+                taskId = reader.GetGuid(13),
+                taskCode = reader.GetString(14),
+                taskName = reader.GetString(15),
+                billable = reader.GetBoolean(16),
+                invoiced,
+                canCorrect = correctableStatus && !invoiced,
+                blockedReason
+            });
+        }
+    }
+
+    var tasks = new List<object>();
+
+    await using (var taskCommand = new NpgsqlCommand("""
+        SELECT
+            p.project_id,
+            COALESCE(p.project_code, '') AS project_code,
+            COALESCE(p.project_name, '') AS project_name,
+            pt.task_id,
+            COALESCE(pt.task_code, '') AS task_code,
+            COALESCE(pt.task_name, '') AS task_name,
+            COALESCE(pt.billable, FALSE) AS billable
+        FROM projects p
+        JOIN project_tasks pt
+          ON pt.project_id = p.project_id
+        WHERE LOWER(COALESCE(p.status, 'active')) = 'active'
+          AND pt.is_active = TRUE
+        ORDER BY project_code, task_code, task_name;
+        """, connection))
+    {
+        await using var reader = await taskCommand.ExecuteReaderAsync();
+
+        while (await reader.ReadAsync())
+        {
+            tasks.Add(new
+            {
+                projectId = reader.GetGuid(0),
+                projectCode = reader.GetString(1),
+                projectName = reader.GetString(2),
+                taskId = reader.GetGuid(3),
+                taskCode = reader.GetString(4),
+                taskName = reader.GetString(5),
+                billable = reader.GetBoolean(6)
+            });
+        }
+    }
+
+    return Results.Ok(new
+    {
+        status = "ptc_time_entry_corrections_loaded",
+        access = new
+        {
+            canCorrect = true,
+            allowedRoles = new[]
+            {
+                "SUPER_ADMINISTRATOR",
+                "ADMINISTRATOR",
+                "PROJECT_TEAM_COORDINATOR"
+            }
+        },
+        weekStart = start,
+        weekEnd = end,
+        entries,
+        tasks,
+        safeguards = new
+        {
+            totalHoursCanIncrease = false,
+            movePreservesTotalHours = true,
+            splitCopyReducesSourceHours = true,
+            approvedCorrectionsRequireReapproval = true,
+            invoicedEntriesBlocked = true,
+            protectedStatuses = new[]
+            {
+                "accounting_ready",
+                "reconciled",
+                "locked",
+                "exported"
+            }
+        }
+    });
+});
+
+app.MapPost("/api/workflow/ptc-time-entry-corrections/action", async (
+    PtcTimeEntryCorrectionRequest request,
+    HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+
+    if (sessionUserId is null)
+    {
+        return Results.Json(new
+        {
+            status = "session_required",
+            message = "A valid ProjectPulse session is required."
+        }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var normalizedOperation = (request.Operation ?? string.Empty).Trim().ToLowerInvariant();
+    var reason = (request.Reason ?? string.Empty).Trim();
+
+    if (normalizedOperation is not "move" and not "split")
+    {
+        return Results.BadRequest(new
+        {
+            status = "validation_failed",
+            message = "Operation must be either 'move' or 'split'."
+        });
+    }
+
+    if (string.IsNullOrWhiteSpace(reason))
+    {
+        return Results.BadRequest(new
+        {
+            status = "validation_failed",
+            message = "A correction reason is required."
+        });
+    }
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+    await using var transaction = await connection.BeginTransactionAsync();
+
+    try
+    {
+        var canCorrect = false;
+
+        await using (var accessCommand = new NpgsqlCommand("""
+            SELECT COALESCE(BOOL_OR(
+                r.role_code IN (
+                    'SUPER_ADMINISTRATOR',
+                    'ADMINISTRATOR',
+                    'PROJECT_TEAM_COORDINATOR'
+                )
+                OR p.permission_code IN (
+                    'SYSTEM_ADMINISTRATION',
+                    'MANAGE_ALL'
+                )
+            ), FALSE)
+            FROM app_user_role_assignments ura
+            JOIN app_roles r
+              ON r.app_role_id = ura.app_role_id
+             AND r.is_active = TRUE
+            LEFT JOIN app_role_permissions rp
+              ON rp.app_role_id = r.app_role_id
+            LEFT JOIN app_permissions p
+              ON p.app_permission_id = rp.app_permission_id
+            WHERE ura.user_id = @user_id
+              AND ura.is_active = TRUE;
+            """, connection, transaction))
+        {
+            accessCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+            canCorrect = Convert.ToBoolean(await accessCommand.ExecuteScalarAsync() ?? false);
+        }
+
+        if (!canCorrect)
+        {
+            await transaction.RollbackAsync();
+
+            return Results.Json(new
+            {
+                status = "access_denied",
+                message = "Time-entry coding corrections are restricted to Project Team Coordinators and administrators."
+            }, statusCode: StatusCodes.Status403Forbidden);
+        }
+
+        Guid sourceTimesheetId;
+        Guid sourceUserId;
+        DateOnly sourceWorkDate;
+        Guid sourceProjectId;
+        Guid sourceTaskId;
+        decimal sourceHours;
+        string sourceTimeType;
+        string sourceDescription;
+        Guid? sourceWorkLocationGroupId;
+        Guid? sourceWorkLocationId;
+        bool sourceBillable;
+        string sourceWorkflowStatus;
+        bool sourceInvoiced;
+        string sourceProjectCode;
+        string sourceProjectName;
+        string sourceTaskCode;
+        string sourceTaskName;
+
+        await using (var sourceCommand = new NpgsqlCommand("""
+            SELECT
+                te.timesheet_id,
+                te.user_id,
+                te.work_date,
+                te.project_id,
+                te.task_id,
+                te.hours,
+                COALESCE(te.time_type, 'normal') AS time_type,
+                COALESCE(te.description, '') AS description,
+                te.work_location_group_id,
+                te.work_location_id,
+                COALESCE(te.billable, FALSE) AS billable,
+                COALESCE(tds.status, te.status, 'draft') AS workflow_status,
+                EXISTS (
+                    SELECT 1
+                    FROM billing_invoice_lines invoice_line
+                    WHERE invoice_line.time_entry_id = te.time_entry_id
+                ) AS invoiced,
+                COALESCE(source_project.project_code, '') AS project_code,
+                COALESCE(source_project.project_name, '') AS project_name,
+                COALESCE(source_task.task_code, '') AS task_code,
+                COALESCE(source_task.task_name, '') AS task_name
+            FROM time_entries te
+            LEFT JOIN timesheet_day_statuses tds
+              ON tds.timesheet_id = te.timesheet_id
+             AND tds.work_date = te.work_date
+            LEFT JOIN projects source_project
+              ON source_project.project_id = te.project_id
+            LEFT JOIN project_tasks source_task
+              ON source_task.task_id = te.task_id
+            WHERE te.time_entry_id = @time_entry_id
+              AND te.project_id IS NOT NULL
+              AND te.task_id IS NOT NULL
+            FOR UPDATE OF te;
+            """, connection, transaction))
+        {
+            sourceCommand.Parameters.AddWithValue("time_entry_id", request.TimeEntryId);
+
+            await using var reader = await sourceCommand.ExecuteReaderAsync();
+
+            if (!await reader.ReadAsync())
+            {
+                return Results.NotFound(new
+                {
+                    status = "time_entry_not_found",
+                    message = "The selected project time entry could not be found."
+                });
+            }
+
+            sourceTimesheetId = reader.GetGuid(0);
+            sourceUserId = reader.GetGuid(1);
+            sourceWorkDate = reader.GetFieldValue<DateOnly>(2);
+            sourceProjectId = reader.GetGuid(3);
+            sourceTaskId = reader.GetGuid(4);
+            sourceHours = reader.GetDecimal(5);
+            sourceTimeType = reader.GetString(6);
+            sourceDescription = reader.GetString(7);
+            sourceWorkLocationGroupId = reader.IsDBNull(8) ? null : reader.GetGuid(8);
+            sourceWorkLocationId = reader.IsDBNull(9) ? null : reader.GetGuid(9);
+            sourceBillable = reader.GetBoolean(10);
+            sourceWorkflowStatus = reader.GetString(11).Trim().ToLowerInvariant();
+            sourceInvoiced = reader.GetBoolean(12);
+            sourceProjectCode = reader.GetString(13);
+            sourceProjectName = reader.GetString(14);
+            sourceTaskCode = reader.GetString(15);
+            sourceTaskName = reader.GetString(16);
+        }
+
+        if (sourceInvoiced)
+        {
+            await transaction.RollbackAsync();
+
+            return Results.Conflict(new
+            {
+                status = "invoiced_time_entry_protected",
+                message = "Invoiced time entries cannot be moved or split."
+            });
+        }
+
+        var allowedSourceStatuses = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "draft",
+            "submitted",
+            "manager_approved",
+            "pm_approved",
+            "manager_declined"
+        };
+
+        if (!allowedSourceStatuses.Contains(sourceWorkflowStatus))
+        {
+            await transaction.RollbackAsync();
+
+            return Results.Conflict(new
+            {
+                status = "workflow_status_protected",
+                currentStatus = sourceWorkflowStatus,
+                message = "Accounting-ready, reconciled, locked, exported, and other protected workflow states cannot be corrected."
+            });
+        }
+
+        if (sourceHours <= 0m)
+        {
+            await transaction.RollbackAsync();
+
+            return Results.Conflict(new
+            {
+                status = "invalid_source_hours",
+                message = "The selected time entry does not contain positive hours."
+            });
+        }
+
+        string targetProjectCode;
+        string targetProjectName;
+        string targetTaskCode;
+        string targetTaskName;
+        bool targetBillable;
+
+        await using (var targetCommand = new NpgsqlCommand("""
+            SELECT
+                COALESCE(p.project_code, '') AS project_code,
+                COALESCE(p.project_name, '') AS project_name,
+                COALESCE(pt.task_code, '') AS task_code,
+                COALESCE(pt.task_name, '') AS task_name,
+                COALESCE(pt.billable, FALSE) AS billable
+            FROM projects p
+            JOIN project_tasks pt
+              ON pt.project_id = p.project_id
+            WHERE p.project_id = @project_id
+              AND pt.task_id = @task_id
+              AND LOWER(COALESCE(p.status, 'active')) = 'active'
+              AND pt.is_active = TRUE;
+            """, connection, transaction))
+        {
+            targetCommand.Parameters.AddWithValue("project_id", request.TargetProjectId);
+            targetCommand.Parameters.AddWithValue("task_id", request.TargetTaskId);
+
+            await using var reader = await targetCommand.ExecuteReaderAsync();
+
+            if (!await reader.ReadAsync())
+            {
+                return Results.BadRequest(new
+                {
+                    status = "target_task_invalid",
+                    message = "The selected destination project and task must match and both must be active."
+                });
+            }
+
+            targetProjectCode = reader.GetString(0);
+            targetProjectName = reader.GetString(1);
+            targetTaskCode = reader.GetString(2);
+            targetTaskName = reader.GetString(3);
+            targetBillable = reader.GetBoolean(4);
+        }
+
+        if (sourceProjectId == request.TargetProjectId && sourceTaskId == request.TargetTaskId)
+        {
+            await transaction.RollbackAsync();
+
+            return Results.BadRequest(new
+            {
+                status = "target_matches_source",
+                message = "Choose a destination task that differs from the source task."
+            });
+        }
+
+        var requestedSplitHours = request.SplitHours ?? sourceHours;
+
+        if (normalizedOperation == "split" && requestedSplitHours <= 0m)
+        {
+            await transaction.RollbackAsync();
+
+            return Results.BadRequest(new
+            {
+                status = "invalid_split_hours",
+                message = "Split-copy hours must be greater than zero."
+            });
+        }
+
+        if (requestedSplitHours > sourceHours)
+        {
+            await transaction.RollbackAsync();
+
+            return Results.BadRequest(new
+            {
+                status = "split_hours_exceed_source",
+                sourceHours,
+                requestedSplitHours,
+                message = "Split-copy hours cannot exceed the source entry hours."
+            });
+        }
+
+        var effectiveOperation =
+            normalizedOperation == "move" || requestedSplitHours == sourceHours
+                ? "move"
+                : "split";
+
+        var transferredHours =
+            effectiveOperation == "move"
+                ? sourceHours
+                : requestedSplitHours;
+
+        var remainingSourceHours =
+            effectiveOperation == "move"
+                ? 0m
+                : sourceHours - transferredHours;
+
+        var approvalsReset =
+            sourceWorkflowStatus is "manager_approved" or "pm_approved";
+
+        var targetWorkflowStatus =
+            approvalsReset
+                ? "submitted"
+                : sourceWorkflowStatus;
+
+        Guid destinationTimeEntryId = request.TimeEntryId;
+
+        if (effectiveOperation == "move")
+        {
+            await using var moveCommand = new NpgsqlCommand("""
+                UPDATE time_entries
+                SET project_id = @target_project_id,
+                    task_id = @target_task_id,
+                    billable = @target_billable,
+                    status = @target_status,
+                    updated_at = NOW()
+                WHERE time_entry_id = @time_entry_id;
+                """, connection, transaction);
+
+            moveCommand.Parameters.AddWithValue("target_project_id", request.TargetProjectId);
+            moveCommand.Parameters.AddWithValue("target_task_id", request.TargetTaskId);
+            moveCommand.Parameters.AddWithValue("target_billable", targetBillable);
+            moveCommand.Parameters.AddWithValue("target_status", targetWorkflowStatus);
+            moveCommand.Parameters.AddWithValue("time_entry_id", request.TimeEntryId);
+            await moveCommand.ExecuteNonQueryAsync();
+        }
+        else
+        {
+            await using (var reduceCommand = new NpgsqlCommand("""
+                UPDATE time_entries
+                SET hours = @remaining_hours,
+                    status = @target_status,
+                    updated_at = NOW()
+                WHERE time_entry_id = @time_entry_id;
+                """, connection, transaction))
+            {
+                reduceCommand.Parameters.AddWithValue("remaining_hours", remainingSourceHours);
+                reduceCommand.Parameters.AddWithValue("target_status", targetWorkflowStatus);
+                reduceCommand.Parameters.AddWithValue("time_entry_id", request.TimeEntryId);
+                await reduceCommand.ExecuteNonQueryAsync();
+            }
+
+            await using (var insertCommand = new NpgsqlCommand("""
+                INSERT INTO time_entries (
+                    timesheet_id,
+                    user_id,
+                    project_id,
+                    task_id,
+                    non_project_time_category_id,
+                    time_type,
+                    work_date,
+                    hours,
+                    description,
+                    billable,
+                    status,
+                    work_location_group_id,
+                    work_location_id
+                )
+                VALUES (
+                    @timesheet_id,
+                    @user_id,
+                    @project_id,
+                    @task_id,
+                    NULL,
+                    @time_type,
+                    @work_date,
+                    @hours,
+                    @description,
+                    @billable,
+                    @status,
+                    @work_location_group_id,
+                    @work_location_id
+                )
+                RETURNING time_entry_id;
+                """, connection, transaction))
+            {
+                insertCommand.Parameters.AddWithValue("timesheet_id", sourceTimesheetId);
+                insertCommand.Parameters.AddWithValue("user_id", sourceUserId);
+                insertCommand.Parameters.AddWithValue("project_id", request.TargetProjectId);
+                insertCommand.Parameters.AddWithValue("task_id", request.TargetTaskId);
+                insertCommand.Parameters.AddWithValue("time_type", sourceTimeType);
+                insertCommand.Parameters.AddWithValue("work_date", sourceWorkDate);
+                insertCommand.Parameters.AddWithValue("hours", transferredHours);
+                insertCommand.Parameters.AddWithValue(
+                    "description",
+                    string.IsNullOrWhiteSpace(sourceDescription)
+                        ? DBNull.Value
+                        : sourceDescription);
+                insertCommand.Parameters.AddWithValue("billable", targetBillable);
+                insertCommand.Parameters.AddWithValue("status", targetWorkflowStatus);
+                insertCommand.Parameters.AddWithValue(
+                    "work_location_group_id",
+                    sourceWorkLocationGroupId is null
+                        ? DBNull.Value
+                        : sourceWorkLocationGroupId.Value);
+                insertCommand.Parameters.AddWithValue(
+                    "work_location_id",
+                    sourceWorkLocationId is null
+                        ? DBNull.Value
+                        : sourceWorkLocationId.Value);
+
+                destinationTimeEntryId =
+                    (Guid)(await insertCommand.ExecuteScalarAsync()
+                    ?? throw new InvalidOperationException("Unable to create the split destination entry."));
+            }
+        }
+
+        if (approvalsReset)
+        {
+            await using (var dayStatusCommand = new NpgsqlCommand("""
+                UPDATE timesheet_day_statuses
+                SET status = 'submitted',
+                    submitted_at = COALESCE(submitted_at, NOW()),
+                    manager_user_id = NULL,
+                    manager_decision_comment = NULL,
+                    manager_approved_at = NULL,
+                    manager_declined_at = NULL,
+                    pm_approved_at = NULL,
+                    pm_approved_by_user_id = NULL,
+                    pm_decision_comment = NULL,
+                    updated_at = NOW()
+                WHERE timesheet_id = @timesheet_id
+                  AND work_date = @work_date
+                  AND status IN ('manager_approved', 'pm_approved');
+                """, connection, transaction))
+            {
+                dayStatusCommand.Parameters.AddWithValue("timesheet_id", sourceTimesheetId);
+                dayStatusCommand.Parameters.AddWithValue("work_date", sourceWorkDate);
+                await dayStatusCommand.ExecuteNonQueryAsync();
+            }
+
+            await using (var dayEntriesCommand = new NpgsqlCommand("""
+                UPDATE time_entries
+                SET status = 'submitted',
+                    updated_at = NOW()
+                WHERE timesheet_id = @timesheet_id
+                  AND work_date = @work_date;
+                """, connection, transaction))
+            {
+                dayEntriesCommand.Parameters.AddWithValue("timesheet_id", sourceTimesheetId);
+                dayEntriesCommand.Parameters.AddWithValue("work_date", sourceWorkDate);
+                await dayEntriesCommand.ExecuteNonQueryAsync();
+            }
+        }
+
+        var auditAction =
+            effectiveOperation == "move"
+                ? "timesheet_time_entry_moved_by_ptc"
+                : "timesheet_time_entry_split_by_ptc";
+
+        var auditPayload = JsonSerializer.Serialize(new
+        {
+            operation = effectiveOperation,
+            reason,
+            source = new
+            {
+                timeEntryId = request.TimeEntryId,
+                timesheetId = sourceTimesheetId,
+                userId = sourceUserId,
+                workDate = sourceWorkDate,
+                workflowStatus = sourceWorkflowStatus,
+                projectId = sourceProjectId,
+                projectCode = sourceProjectCode,
+                projectName = sourceProjectName,
+                taskId = sourceTaskId,
+                taskCode = sourceTaskCode,
+                taskName = sourceTaskName,
+                hoursBefore = sourceHours,
+                hoursAfter = remainingSourceHours,
+                billable = sourceBillable
+            },
+            destination = new
+            {
+                timeEntryId = destinationTimeEntryId,
+                projectId = request.TargetProjectId,
+                projectCode = targetProjectCode,
+                projectName = targetProjectName,
+                taskId = request.TargetTaskId,
+                taskCode = targetTaskCode,
+                taskName = targetTaskName,
+                transferredHours,
+                billable = targetBillable
+            },
+            workflow = new
+            {
+                approvalsReset,
+                resultingStatus = targetWorkflowStatus
+            },
+            conservation = new
+            {
+                totalHoursBefore = sourceHours,
+                totalHoursAfter = remainingSourceHours + transferredHours,
+                totalHoursIncreased = false
+            }
+        });
+
+        await using (var auditCommand = new NpgsqlCommand("""
+            INSERT INTO audit_logs (
+                actor_user_id,
+                action,
+                entity_type,
+                entity_id,
+                new_value,
+                ip_address,
+                user_agent
+            )
+            VALUES (
+                @actor_user_id,
+                @action,
+                'time_entry',
+                @entity_id,
+                CAST(@new_value AS jsonb),
+                NULLIF(@ip_address, '')::inet,
+                @user_agent
+            );
+            """, connection, transaction))
+        {
+            auditCommand.Parameters.AddWithValue("actor_user_id", sessionUserId.Value);
+            auditCommand.Parameters.AddWithValue("action", auditAction);
+            auditCommand.Parameters.AddWithValue("entity_id", request.TimeEntryId);
+            auditCommand.Parameters.AddWithValue("new_value", auditPayload);
+            auditCommand.Parameters.AddWithValue(
+                "ip_address",
+                httpContext.Connection.RemoteIpAddress?.ToString() ?? string.Empty);
+            auditCommand.Parameters.AddWithValue(
+                "user_agent",
+                httpContext.Request.Headers.UserAgent.ToString());
+            await auditCommand.ExecuteNonQueryAsync();
+        }
+
+        await transaction.CommitAsync();
+
+        return Results.Ok(new
+        {
+            status = effectiveOperation == "move"
+                ? "time_entry_moved"
+                : "time_entry_split",
+            operation = effectiveOperation,
+            sourceTimeEntryId = request.TimeEntryId,
+            destinationTimeEntryId,
+            sourceHoursBefore = sourceHours,
+            sourceHoursAfter = remainingSourceHours,
+            transferredHours,
+            totalHoursBefore = sourceHours,
+            totalHoursAfter = remainingSourceHours + transferredHours,
+            approvalsReset,
+            resultingStatus = targetWorkflowStatus,
+            auditAction,
+            message = approvalsReset
+                ? "Coding was corrected without increasing total hours. Existing approvals were cleared and the day was returned to manager review."
+                : "Coding was corrected without increasing total hours."
+        });
+    }
+    catch (Exception ex)
+    {
+        await transaction.RollbackAsync();
+
+        return Results.Problem(
+            title: "Failed to apply PTC time-entry correction",
+            detail: ex.Message,
+            statusCode: StatusCodes.Status500InternalServerError);
+    }
+});
+/* FIX_20260717_001_PTC_TIME_ENTRY_CORRECTIONS_END */
+
 app.MapGet("/api/workflow/approval-items", async (HttpContext httpContext, DateOnly? weekStart, DateOnly? weekEnd) =>
 {
     var sessionUserId = GetProjectPulseSessionUserId(httpContext);
@@ -39469,6 +40287,14 @@ internal sealed record PasswordResetCompletionRequest(Guid ResetRequestId, strin
 internal sealed record PasswordResetApprovalAction(Guid ResetRequestId, string? ActionByEmail, string? Notes);
 
 internal sealed record PasswordResetRequest(string Username, string? Notes);
+
+internal sealed record PtcTimeEntryCorrectionRequest(
+    Guid TimeEntryId,
+    Guid TargetProjectId,
+    Guid TargetTaskId,
+    string? Operation,
+    decimal? SplitHours,
+    string? Reason);
 
 internal sealed record TimesheetSaveRequest(DateOnly WeekStart, List<TimesheetEntryRequest> Entries);
 

@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import ManagerApprovalPanel from './ManagerApprovalPanel.jsx';
 import ProjectManagerApprovalPanel from './ProjectManagerApprovalPanel.jsx';
+import PtcTimeEntryCorrectionPanel from './PtcTimeEntryCorrectionPanel.jsx';
 import LocalAdminPasswordResetApprovalsPanel from './LocalAdminPasswordResetApprovalsPanel.jsx';
 import './approval-center.css';
 
 const TAB_LABELS = {
   manager: 'Manager Review',
   pm: 'PM Review',
+  corrections: 'PTC Corrections',
   password: 'Password Resets',
   history: 'History'
 };
@@ -14,16 +16,18 @@ const TAB_LABELS = {
 export default function ApprovalCenter({
   canViewManagerApprovalPanel = false,
   canViewPmApprovalPanel = false,
+  canViewPtcTimeEntryCorrections = false,
   canViewLocalAdminPasswordResetApprovals = false
 }) {
   const availableTabs = useMemo(() => {
     const tabs = [];
     if (canViewManagerApprovalPanel) tabs.push('manager');
     if (canViewPmApprovalPanel) tabs.push('pm');
+    if (canViewPtcTimeEntryCorrections) tabs.push('corrections');
     if (canViewLocalAdminPasswordResetApprovals) tabs.push('password');
     if (canViewManagerApprovalPanel) tabs.push('history');
     return tabs;
-  }, [canViewManagerApprovalPanel, canViewPmApprovalPanel, canViewLocalAdminPasswordResetApprovals]);
+  }, [canViewManagerApprovalPanel, canViewPmApprovalPanel, canViewPtcTimeEntryCorrections, canViewLocalAdminPasswordResetApprovals]);
 
   const [activeTab, setActiveTab] = useState(availableTabs[0] ?? 'manager');
 
@@ -76,6 +80,10 @@ export default function ApprovalCenter({
 
         {activeTab === 'pm' && canViewPmApprovalPanel ? (
           <ProjectManagerApprovalPanel />
+        ) : null}
+
+        {activeTab === 'corrections' && canViewPtcTimeEntryCorrections ? (
+          <PtcTimeEntryCorrectionPanel />
         ) : null}
 
         {activeTab === 'password' && canViewLocalAdminPasswordResetApprovals ? (

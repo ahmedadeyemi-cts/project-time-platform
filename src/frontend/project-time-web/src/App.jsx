@@ -5259,6 +5259,12 @@ export default function App() {
     currentRoleCodes.includes('PROJECT_TEAM_COORDINATOR') ||
     currentRoleCodes.includes('SUPER_ADMINISTRATOR') ||
     currentRoleCodes.includes('ADMINISTRATOR');
+  const canViewPtcTimeEntryCorrections =
+    hasPermission('MANAGE_ALL') ||
+    hasPermission('SYSTEM_ADMINISTRATION') ||
+    currentRoleCodes.includes('PROJECT_TEAM_COORDINATOR') ||
+    currentRoleCodes.includes('SUPER_ADMINISTRATOR') ||
+    currentRoleCodes.includes('ADMINISTRATOR');
   const canViewLocalAdminPasswordResetApprovals =
     hasPermission('MANAGE_ALL') ||
     hasPermission('SYSTEM_ADMINISTRATION') ||
@@ -7159,10 +7165,11 @@ Analytics - Variphy / Infortel`}
         </section>
       ) : null}
 
-      {(canViewManagerApprovalPanel || canViewPmApprovalPanel || canViewLocalAdminPasswordResetApprovals) ? (
+      {(canViewManagerApprovalPanel || canViewPmApprovalPanel || canViewPtcTimeEntryCorrections || canViewLocalAdminPasswordResetApprovals) ? (
         <ApprovalCenter
           canViewManagerApprovalPanel={canViewManagerApprovalPanel}
           canViewPmApprovalPanel={canViewPmApprovalPanel}
+          canViewPtcTimeEntryCorrections={canViewPtcTimeEntryCorrections}
           canViewLocalAdminPasswordResetApprovals={canViewLocalAdminPasswordResetApprovals}
         />
       ) : null}
