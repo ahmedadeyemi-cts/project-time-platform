@@ -287,7 +287,7 @@ const detailedModuleGuides = {
     notes: [
       'Vacation is used for PTO; Holiday is reserved for company-paid holidays and the floating holiday.',
       'All required descriptions must be present before saving or submitting time.',
-      'Copy Time is not part of the current multiview design.'
+      'The current multiview design uses direct entry, guided entry, and personal defaults rather than a legacy duplication shortcut.'
     ]
   },
   'manager-approval': {

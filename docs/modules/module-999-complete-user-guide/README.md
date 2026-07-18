@@ -53,3 +53,14 @@ Module 999 while detailed documentation is being completed.
 This source phase builds and validates Module 999, commits it, and pushes it to its
 dedicated feature branch. It does not deploy Azure or change the API, database, or
 Entra configuration.
+
+## Validation-marker correction
+
+The first guarded web deployment successfully built, started, and exposed every
+Module 999 and preserved-module marker. Post-deployment validation then detected
+a retired user-interface label because that literal phrase appeared only in a
+user-guide note explaining that the old control was unavailable. The deployment
+correctly rolled back.
+
+The guide now describes the current direct-entry and personal-default behavior
+without embedding the retired UI label, keeping bundle validation unambiguous.
