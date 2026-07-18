@@ -1749,6 +1749,17 @@ const roleWorkspaceModules = [
     description: 'Manage customer records, contacts, and customer intake/project cost readiness.',
     permissions: ['VIEW_CUSTOMERS', 'MANAGE_CUSTOMERS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   },
+  /* MODULE_063_ROLE_WORKSPACE_NAV_START */
+  {
+    route: 'opportunities',
+    href: '#opportunities',
+    title: 'Opportunities & Action Tracker',
+    navLabel: 'MODULE 063',
+    description: 'Create and track active and closed opportunities, shared Sales, Presales, and Engineering actions, owners, dates, revenue, and accountable history.',
+    permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    roleCodes: ['SALES', 'ACCOUNT_EXECUTIVE', 'ACCOUNT_EXECUTIVES', 'PRESALES', 'PRE_SALES', 'ENGINEER', 'ENGINEERING']
+  },
+  /* MODULE_063_ROLE_WORKSPACE_NAV_END */
   {
     route: 'contracts',
     href: '#contracts',
@@ -2119,6 +2130,9 @@ function getNavigationGroup(item) {
     case 'project-allocation-info':
     case 'project-workspace':
       return 'Project Workspace';
+    case 'opportunities':
+      return 'Sales & Opportunities';
+
     case 'cost-alerts':
     case 'customer-directory':
     case 'contracts':
@@ -6389,8 +6403,15 @@ Analytics - Variphy / Infortel`}
         </section>
       ) : null}
 
+      {/* MODULE_063_STRUCTURAL_ROUTE_BOUNDARY_V2 */}
+      {(activeRoute === 'opportunities') ? (
+        <section id="opportunities" className="panel opportunities-route-panel">
+          <OpportunitiesCenter />
+        </section>
+      ) : null}
+
       {/* MODULE_057_STRUCTURAL_ROUTE_BOUNDARY_V6 */}
-      {!['calendar-capacity', 'cicd-pipeline', 'contracts'].includes(activeRoute) ? (
+      {!['calendar-capacity', 'cicd-pipeline', 'contracts', 'opportunities'].includes(activeRoute) ? (
         <>
 
       {(activeRoute === 'dashboard') ? (
@@ -7497,12 +7518,6 @@ Analytics - Variphy / Infortel`}
           canViewPtcTimeEntryCorrections={canViewPtcTimeEntryCorrections}
           canViewLocalAdminPasswordResetApprovals={canViewLocalAdminPasswordResetApprovals}
         />
-      ) : null}
-
-      {(activeRoute === 'opportunities') ? (
-        <section id="opportunities" className="panel opportunities-route-panel">
-          <OpportunitiesCenter />
-        </section>
       ) : null}
 
       {(activeRoute === 'workflow' && canSeeAny(['VIEW_APPROVAL_WORKFLOW', 'PROJECT_TIME_APPROVAL', 'VIEW_ACCOUNT_RECONCILIATION', 'MANAGE_ACCOUNT_RECONCILIATION', 'EXPORT_TIME_EXCEL', 'EXPORT_TIME_PDF', 'VIEW_AUDIT_TRAIL', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
