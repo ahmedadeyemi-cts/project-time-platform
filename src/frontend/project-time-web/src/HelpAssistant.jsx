@@ -4,59 +4,76 @@ import './help-assistant.css';
 
 const helpTopics = [
   {
+    keywords: ['guide', 'help', 'manual', 'documentation', 'module 999', '999'],
+    answer:
+      'Open Module 999 for the complete ProjectPulse user guide. It documents global functions, every installed module route, role expectations, step-by-step procedures, statuses, and troubleshooting.'
+  },
+  {
     keywords: ['timesheet', 'time', 'hours', 'normal', 'afterhours', 'ot', 'overtime'],
     answer:
-      'On the Timesheet page, select a 0.00 cell for the activity and day you want to update. A time-entry window opens where you can enter hours, add a reportable comment, and choose work location details. Normal time and afterhours are tracked separately.'
+      'Module 001 supports Weekly Grid, Daily Focus, Guided Add, Quick Entry List, and Smart Work Log. Enter hours against the correct project task, request, or non-project category, include the required description, save the draft, and submit eligible time when complete.'
   },
   {
     keywords: ['save', 'draft', 'refresh', 'lost', 'missing', 'not showing'],
     answer:
-      'Use Save draft before leaving the page. A saved draft should reload after refresh. If submitted time does not reload, the API or database persistence needs to be checked with the timesheet validation commands.'
+      'Wait for the save to complete before refreshing or leaving the page. A successful save persists data through the API. Refreshing should reload persisted records, but unsaved browser changes may be lost.'
   },
   {
     keywords: ['submit', 'approval', 'manager', 'approve', 'reject', 'decline'],
     answer:
-      'Submit sends the weekly timesheet for manager approval. After submission, the timesheet follows the edit-window policy and then moves into manager review. The manager approval screen is planned as the next workflow phase.'
+      'Submitted time moves to Approval Inbox. Managers review the detail and approve accurate time or decline it for correction. Later workflow states can include PM approval, accounting readiness, reconciliation, and locking.'
   },
   {
-    keywords: ['non-project', 'administrative', 'vacation', 'holiday', 'training', 'sick', 'peer support', 'fmla'],
+    keywords: ['opportunity', 'sales', 'presales', 'pipeline', 'won', 'lost'],
     answer:
-      'Non-project time includes categories such as Administrative, Peer Support, Vacation, Holiday, Sick Leave, Training, Bereavement, Jury Duty, FMLA, and disability-related categories. These categories support utilization and approval rules.'
+      'Module 063 tracks active and closed opportunities, owners, estimated and actual revenue, shared Sales/Presales/Engineering tasks, completion accountability, and activity history.'
   },
   {
-    keywords: ['project', 'task', 'assignment', 'customer', 'contract'],
+    keywords: ['contract', 'prepaid', 'block of hours', 'balance', 'expiration'],
     answer:
-      'Project time will be entered against assigned project tasks, not just the project itself. The project-task assignment workflow is planned after persistence and approval foundations are validated.'
+      'Module 060 manages prepaid and block-of-hours records, credits, consumption, remaining balance, expiration, and weekly Account Executive balance reporting.'
   },
   {
-    keywords: ['location', 'work location', 'timezone', 'engineer', 'resource profile'],
+    keywords: ['project', 'task', 'assignment', 'customer', 'intake'],
     answer:
-      'Work location should eventually default from each engineer\'s resource profile. During onboarding, each engineer will need a work location group, work location, time zone, team/workgroup, manager, role, and project-task assignments.'
+      'Project Intake begins the delivery workflow. Project Workspace contains project context, documents, assignments, resource requests, and execution information. Work Task Builder creates eligible project tasks for assignment and time entry.'
   },
   {
-    keywords: ['utilization', 'target', '70', 'billable', 'pto', 'vacation'],
+    keywords: ['location', 'work location', 'timezone', 'resource profile'],
     answer:
-      'Utilization will compare eligible billable and approved time against target thresholds. The platform currently has utilization policy data loaded, and the detailed calculation rules will be connected after time entry and approvals are persistent.'
+      'Work-location information supports time-entry and resource context. Select the correct work-location values in entry details when required; administrators maintain user and directory information through authorized administration workflows.'
+  },
+  {
+    keywords: ['utilization', 'target', 'billable', 'pto', 'vacation'],
+    answer:
+      'Utilization compares eligible billable time with configured targets. Review target hours, current eligible billable hours, utilization percentage, and hours remaining in Module 003.'
+  },
+  {
+    keywords: ['access', 'permission', 'role', '403', 'denied'],
+    answer:
+      'ProjectPulse uses roles and permission codes. Module 999 is visible to everyone, but other modules and actions remain protected. HTTP 403 means the effective user is not authorized for that action.'
   },
   {
     keywords: ['dark', 'light', 'theme', 'mode'],
-    answer: 'Use the Dark mode or Light mode button in the top navigation to switch the display theme.'
-  },
-  {
-    keywords: ['project pulse', 'pulse', 'name', 'system name'],
-    answer: 'Project Health Dashboard is the branded name for this time, approval, utilization, and accounting workflow system.'
+    answer:
+      'Use the appearance control in the top navigation or profile settings to switch between light and dark mode.'
   }
 ];
 
 function findAnswer(question) {
   const normalized = question.trim().toLowerCase();
-  if (!normalized) return 'Ask a question about the current page, timesheets, approvals, utilization, project tasks, or work locations.';
 
-  const matchedTopic = helpTopics.find((topic) => topic.keywords.some((keyword) => normalized.includes(keyword)));
+  if (!normalized) {
+    return 'Ask a question or open Module 999 for the complete ProjectPulse user guide.';
+  }
+
+  const matchedTopic = helpTopics.find((topic) =>
+    topic.keywords.some((keyword) => normalized.includes(keyword))
+  );
 
   if (matchedTopic) return matchedTopic.answer;
 
-  return 'I can help with timesheets, saving drafts, submitting for approval, non-project time, project-task assignments, work locations, utilization, and light/dark mode. Try asking something like: How do I save my timesheet?';
+  return 'The complete answer may be in Module 999. Search the guide by module number, page, button, status, role, or business term.';
 }
 
 export default function HelpAssistant() {
@@ -65,16 +82,16 @@ export default function HelpAssistant() {
   const [messages, setMessages] = useState([
     {
       role: 'assistant',
-      text: 'Hi, I can help with Project Health Dashboard. Ask about time entry, saving drafts, submitting, work locations, utilization, or approvals.'
+      text: 'Hi. Ask a quick ProjectPulse question, or open Module 999 for the complete user guide.'
     }
   ]);
 
   const suggestions = useMemo(
     () => [
+      'How do I use Module 999?',
       'How do I save my timesheet?',
-      'What is afterhours time?',
-      'How does work location work?',
-      'What happens after I submit?'
+      'How do approvals work?',
+      'How do opportunities work?'
     ],
     []
   );
@@ -91,6 +108,11 @@ export default function HelpAssistant() {
     setQuestion('');
   }
 
+  function openCompleteGuide() {
+    setIsOpen(false);
+    window.location.hash = 'user-guide';
+  }
+
   return (
     <>
       <button className="help-launcher" type="button" onClick={() => setIsOpen(true)}>
@@ -98,16 +120,20 @@ export default function HelpAssistant() {
       </button>
 
       {isOpen ? (
-        <aside className="help-panel" aria-label="Project Health Dashboard help assistant">
+        <aside className="help-panel" aria-label="ProjectPulse help assistant">
           <div className="help-header">
             <div>
-              <strong>PHD Help</strong>
-              <span>Ask about the current workflow</span>
+              <strong>ProjectPulse Help</strong>
+              <span>Quick answers and complete documentation</span>
             </div>
             <button type="button" onClick={() => setIsOpen(false)} aria-label="Close help assistant">
               ×
             </button>
           </div>
+
+          <button className="help-full-guide-button" type="button" onClick={openCompleteGuide}>
+            Open Module 999 — Complete User Guide
+          </button>
 
           <div className="help-messages">
             {messages.map((message, index) => (
@@ -134,7 +160,7 @@ export default function HelpAssistant() {
           >
             <input
               value={question}
-              placeholder="Ask PHD for help..."
+              placeholder="Ask ProjectPulse for help..."
               onChange={(event) => setQuestion(event.target.value)}
             />
             <button type="submit">Send</button>

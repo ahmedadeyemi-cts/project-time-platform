@@ -27,3 +27,15 @@
   min-width: 44px;
   min-height: 44px;
 }
+
+.help-full-guide-button {
+  width: calc(100% - 24px);
+  margin: 12px;
+  border: 1px solid color-mix(in srgb, var(--brand-blue) 45%, var(--border));
+  border-radius: 12px;
+  padding: 11px 12px;
+  background: var(--brand-blue);
+  color: #fff;
+  cursor: pointer;
+  font-weight: 900;
+}
