@@ -443,7 +443,7 @@ public static class CiCdPipelineModule
 
     private static string DefaultBranch() =>
         Env("PROJECTPULSE_CICD_SCM_DEFAULT_BRANCH",
-            "source/module-058-cicd-pipeline-20260716");
+            "main");
 
     private static string ScmApiBase() =>
         Env("PROJECTPULSE_CICD_SCM_API_BASE_URL",

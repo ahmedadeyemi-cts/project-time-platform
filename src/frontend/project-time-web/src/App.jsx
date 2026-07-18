@@ -1785,6 +1785,80 @@ const roleWorkspaceModules = [
     description: 'Production-safe preview for missing weekly time, manager and Project Team Coordinator copy visibility, month-end rules, holiday reminders, and notification history.',
     permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL', 'VIEW_TIME_COMPLIANCE', 'VIEW_AUDIT_HISTORY']
   },
+  /* MODULE_REGISTRY_RECOVERY_024_030_058_START */
+  {
+    route: "sales-intake",
+    href: "#sales-intake",
+    title: "Sales-to-Delivery Intake Foundation",
+    navLabel: "MODULE 024",
+    description: "Validate intake, signed SOW and GSD artifacts, handoff readiness, and assignment preparation.",
+    permissions: ["VIEW_PROJECT_INTAKE", "MANAGE_PROJECT_INTAKE", "VIEW_CUSTOMERS", "SYSTEM_ADMINISTRATION", "MANAGE_ALL"],
+    roleCodes: ["SALES", "ACCOUNT_EXECUTIVE", "INSIDE_SALES", "SOLUTION_ARCHITECT", "SA", "SAA", "PROJECT_TEAM_COORDINATOR", "PROJECT_COORDINATOR"],
+  },
+  {
+    route: "sow-generator",
+    href: "#sow-generator",
+    title: "SOW Generator + Claude Review Workflow",
+    navLabel: "MODULE 025",
+    description: "Prepare SOW drafts, technical reviews, signed-document readiness, and controlled delivery handoff.",
+    permissions: ["VIEW_PROJECT_INTAKE", "VIEW_PROJECT_WORKSPACE", "VIEW_CUSTOMERS", "SYSTEM_ADMINISTRATION", "MANAGE_ALL"],
+    roleCodes: ["SALES", "ACCOUNT_EXECUTIVE", "INSIDE_SALES", "SOLUTION_ARCHITECT", "SA", "SAA", "PROJECT_TEAM_COORDINATOR", "PROJECT_MANAGER", "PROJECT_MANAGEMENT"],
+  },
+  {
+    route: "crm-integration",
+    href: "#crm-integration",
+    title: "CRM Integration Framework",
+    navLabel: "MODULE 026",
+    description: "Review CRM mappings, synchronization previews, and controlled promotion into intake workflows.",
+    permissions: ["VIEW_CUSTOMERS", "VIEW_PROJECT_INTAKE", "MANAGE_PROJECT_INTAKE", "SYSTEM_ADMINISTRATION", "MANAGE_ALL"],
+    roleCodes: ["SALES", "ACCOUNT_EXECUTIVE", "INSIDE_SALES", "SOLUTION_ARCHITECT", "SA", "SAA", "PROJECT_TEAM_COORDINATOR"],
+  },
+  {
+    route: "signed-handoff",
+    href: "#signed-handoff",
+    title: "Signed SOW Handoff + Assignment Trigger",
+    navLabel: "MODULE 027",
+    description: "Prepare signed handoff, stakeholder notification, and PM and engineering assignment workflows.",
+    permissions: ["VIEW_PROJECT_INTAKE", "VIEW_PROJECT_WORKSPACE", "VIEW_RESOURCE_SCHEDULING", "MANAGE_RESOURCE_SCHEDULING", "SYSTEM_ADMINISTRATION", "MANAGE_ALL"],
+    roleCodes: ["SALES", "ACCOUNT_EXECUTIVE", "SOLUTION_ARCHITECT", "SA", "SAA", "PROJECT_TEAM_COORDINATOR", "PROJECT_COORDINATOR", "PROJECT_MANAGER", "PROJECT_MANAGEMENT", "ENGINEER", "ENGINEERING"],
+  },
+  {
+    route: "ai-time-entry",
+    href: "#ai-time-entry",
+    title: "SOW-Aware AI Time Entry Generator",
+    navLabel: "MODULE 028",
+    description: "Create engineer-reviewed AI time-entry drafts using assigned work and signed scope context.",
+    permissions: ["VIEW_TIME_ENTRY", "VIEW_PROJECT_WORKSPACE", "VIEW_ENGINEERING_PROJECT_DOCUMENTS", "SYSTEM_ADMINISTRATION", "MANAGE_ALL"],
+    roleCodes: ["ENGINEER", "ENGINEERING", "ENGINEERING_MANAGER", "ENGINEERING_TEAM_LEAD", "PROJECT_MANAGER", "PROJECT_MANAGEMENT", "PROJECT_TEAM_COORDINATOR"],
+  },
+  {
+    route: "uat-validation",
+    href: "#uat-validation",
+    title: "User Acceptance / Role + Workflow Validation Center",
+    navLabel: "MODULE 029",
+    description: "Validate role access, workflows, View-As protection, module routes, and readiness evidence.",
+    permissions: ["VIEW_AUDIT_TRAIL", "VIEW_REPORTS", "SYSTEM_ADMINISTRATION", "MANAGE_ALL"],
+    roleCodes: ["PROJECT_TEAM_COORDINATOR", "EXECUTIVE", "EXECUTIVE_LEADERSHIP"],
+  },
+  {
+    route: "reporting",
+    href: "#reporting",
+    title: "Reporting / Accounting / Invoicing / Analytics",
+    navLabel: "MODULE 030",
+    description: "Provide operational, accounting, invoicing, workflow, system, and executive reporting.",
+    permissions: ["VIEW_REPORTS", "MANAGE_REPORTS", "VIEW_EXECUTIVE_REPORTING", "VIEW_ACCOUNT_RECONCILIATION", "EXPORT_TIME_EXCEL", "EXPORT_TIME_PDF", "SYSTEM_ADMINISTRATION", "MANAGE_ALL"],
+    roleCodes: ["ACCOUNTING", "PROJECT_TEAM_COORDINATOR", "EXECUTIVE", "EXECUTIVE_LEADERSHIP", "PROJECT_MANAGER", "PROJECT_MANAGEMENT", "ENGINEER", "ENGINEERING", "MANAGER", "SALES", "ACCOUNT_EXECUTIVE"],
+  },
+  {
+    route: "cicd-pipeline",
+    href: "#cicd-pipeline",
+    title: "Autonomous CI/CD Foundation",
+    navLabel: "MODULE 058",
+    description: "Audit and operate CI/CD workflows, deployment validation, smoke testing, summaries, and rollback controls.",
+    permissions: ["SYSTEM_ADMINISTRATION", "MANAGE_ALL"],
+  },
+  /* MODULE_REGISTRY_RECOVERY_024_030_058_END */
+
   {
     route: 'timesheet',
     href: '#timesheet',
@@ -2124,6 +2198,7 @@ function getNavigationGroup(item) {
     case 'utilization':
     case 'holiday-admin':
     case 'calendar-capacity':
+    case 'ai-time-entry':
       return 'Work Management';
 
     case 'project-workload':
@@ -2131,6 +2206,10 @@ function getNavigationGroup(item) {
     case 'project-workspace':
       return 'Project Workspace';
     case 'opportunities':
+    case 'sales-intake':
+    case 'sow-generator':
+    case 'crm-integration':
+    case 'signed-handoff':
       return 'Sales & Opportunities';
 
     case 'cost-alerts':
@@ -2162,6 +2241,8 @@ function getNavigationGroup(item) {
       return 'Admin & Identity';
 
     case 'service-control':
+    case 'uat-validation':
+    case 'cicd-pipeline':
       return 'Platform Operations';
 
     case 'backup-dr':
@@ -2175,6 +2256,7 @@ function getNavigationGroup(item) {
     case 'project-closeout':
     case 'closeout-email':
     case 'invoice-billing-center':
+    case 'reporting':
       return 'Reports & Workflow';
 
     default:
@@ -2736,34 +2818,42 @@ function buildRoleNavigationModel(user, navigationItems) {
   ];
 
   const routeOrder = [
-    'timesheet',
-    'manager-approval',
-    'utilization',
-    'holiday-admin',
-    'project-workload',
-    'project-workspace',
-    'project-allocation-info',
-    'project-intake',
-    'customer-directory',
-    'opportunities',
-    'cost-alerts',
-    'time-compliance',
-    'psa-modules',
-    'work-task-builder',
-    'billing-readiness',
-    'project-closeout',
-    'closeout-email',
-    'invoice-billing-center',
-    'workflow',
-    'audit-history',
-    'user-admin',
-    'azure-admin',
-    'role-admin',
-    'service-control',
-    'backup-dr',
-    'restore-validation',
-    'backup-retention',
-    'replication-sync'
+      "timesheet",
+      "ai-time-entry",
+      "manager-approval",
+      "utilization",
+      "holiday-admin",
+      "project-workload",
+      "project-workspace",
+      "project-allocation-info",
+      "project-intake",
+      "customer-directory",
+      "opportunities",
+      "sales-intake",
+      "sow-generator",
+      "crm-integration",
+      "signed-handoff",
+      "cost-alerts",
+      "time-compliance",
+      "psa-modules",
+      "work-task-builder",
+      "billing-readiness",
+      "project-closeout",
+      "closeout-email",
+      "invoice-billing-center",
+      "reporting",
+      "workflow",
+      "audit-history",
+      "user-admin",
+      "azure-admin",
+      "role-admin",
+      "service-control",
+      "uat-validation",
+      "cicd-pipeline",
+      "backup-dr",
+      "restore-validation",
+      "backup-retention",
+      "replication-sync",
   ];
 
   const routeRank = new Map(routeOrder.map((route, index) => [route, index]));
@@ -2918,6 +3008,81 @@ function getInstalledProjectPulseModuleRegistry() {
       permissions: ['VIEW_TIME_COMPLIANCE', 'MANAGE_TIME_COMPLIANCE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
       description: 'Previews missing time, reminder readiness, manager/PTC visibility, compliance notifications, and month-end time controls.'
     },
+    /* MODULE_REGISTRY_RECOVERY_INSTALLED_024_030_058_START */
+    {
+      route: "sales-intake",
+      href: "#sales-intake",
+      title: "Sales-to-Delivery Intake Foundation",
+      navLabel: "MODULE 024",
+      group: "Sales & Opportunities",
+      description: "Validate intake, signed SOW and GSD artifacts, handoff readiness, and assignment preparation.",
+      permissions: ["VIEW_PROJECT_INTAKE", "MANAGE_PROJECT_INTAKE", "VIEW_CUSTOMERS", "SYSTEM_ADMINISTRATION", "MANAGE_ALL"],
+    },
+    {
+      route: "sow-generator",
+      href: "#sow-generator",
+      title: "SOW Generator + Claude Review Workflow",
+      navLabel: "MODULE 025",
+      group: "Sales & Opportunities",
+      description: "Prepare SOW drafts, technical reviews, signed-document readiness, and controlled delivery handoff.",
+      permissions: ["VIEW_PROJECT_INTAKE", "VIEW_PROJECT_WORKSPACE", "VIEW_CUSTOMERS", "SYSTEM_ADMINISTRATION", "MANAGE_ALL"],
+    },
+    {
+      route: "crm-integration",
+      href: "#crm-integration",
+      title: "CRM Integration Framework",
+      navLabel: "MODULE 026",
+      group: "Sales & Opportunities",
+      description: "Review CRM mappings, synchronization previews, and controlled promotion into intake workflows.",
+      permissions: ["VIEW_CUSTOMERS", "VIEW_PROJECT_INTAKE", "MANAGE_PROJECT_INTAKE", "SYSTEM_ADMINISTRATION", "MANAGE_ALL"],
+    },
+    {
+      route: "signed-handoff",
+      href: "#signed-handoff",
+      title: "Signed SOW Handoff + Assignment Trigger",
+      navLabel: "MODULE 027",
+      group: "Sales & Opportunities",
+      description: "Prepare signed handoff, stakeholder notification, and PM and engineering assignment workflows.",
+      permissions: ["VIEW_PROJECT_INTAKE", "VIEW_PROJECT_WORKSPACE", "VIEW_RESOURCE_SCHEDULING", "MANAGE_RESOURCE_SCHEDULING", "SYSTEM_ADMINISTRATION", "MANAGE_ALL"],
+    },
+    {
+      route: "ai-time-entry",
+      href: "#ai-time-entry",
+      title: "SOW-Aware AI Time Entry Generator",
+      navLabel: "MODULE 028",
+      group: "Work Management",
+      description: "Create engineer-reviewed AI time-entry drafts using assigned work and signed scope context.",
+      permissions: ["VIEW_TIME_ENTRY", "VIEW_PROJECT_WORKSPACE", "VIEW_ENGINEERING_PROJECT_DOCUMENTS", "SYSTEM_ADMINISTRATION", "MANAGE_ALL"],
+    },
+    {
+      route: "uat-validation",
+      href: "#uat-validation",
+      title: "User Acceptance / Role + Workflow Validation Center",
+      navLabel: "MODULE 029",
+      group: "Platform Operations",
+      description: "Validate role access, workflows, View-As protection, module routes, and readiness evidence.",
+      permissions: ["VIEW_AUDIT_TRAIL", "VIEW_REPORTS", "SYSTEM_ADMINISTRATION", "MANAGE_ALL"],
+    },
+    {
+      route: "reporting",
+      href: "#reporting",
+      title: "Reporting / Accounting / Invoicing / Analytics",
+      navLabel: "MODULE 030",
+      group: "Reports & Workflow",
+      description: "Provide operational, accounting, invoicing, workflow, system, and executive reporting.",
+      permissions: ["VIEW_REPORTS", "MANAGE_REPORTS", "VIEW_EXECUTIVE_REPORTING", "VIEW_ACCOUNT_RECONCILIATION", "EXPORT_TIME_EXCEL", "EXPORT_TIME_PDF", "SYSTEM_ADMINISTRATION", "MANAGE_ALL"],
+    },
+    {
+      route: "cicd-pipeline",
+      href: "#cicd-pipeline",
+      title: "Autonomous CI/CD Foundation",
+      navLabel: "MODULE 058",
+      group: "Platform Operations",
+      description: "Audit and operate CI/CD workflows, deployment validation, smoke testing, summaries, and rollback controls.",
+      permissions: ["SYSTEM_ADMINISTRATION", "MANAGE_ALL"],
+    },
+    /* MODULE_REGISTRY_RECOVERY_INSTALLED_024_030_058_END */
+
     {
       route: 'holiday-admin',
       title: 'Holiday Management',
@@ -6385,12 +6550,6 @@ Analytics - Variphy / Infortel`}
       ) : null}
 
 
-      {canSeeAny(['SYSTEM_ADMINISTRATION', 'MANAGE_ALL']) ? (
-        <a className="module058-admin-shortcut" href="#cicd-pipeline">
-          CI/CD Pipeline
-        </a>
-      ) : null}
-
       {(activeRoute === 'calendar-capacity' && canSeeAny(['VIEW_RESOURCE_SCHEDULING', 'MANAGE_RESOURCE_SCHEDULING', 'VIEW_TEAM_UTILIZATION', 'VIEW_INDIVIDUAL_UTILIZATION', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
         <section id="calendar-capacity" className="panel calendar-capacity-route-panel">
           <CalendarCapacityCenter />
@@ -6411,7 +6570,19 @@ Analytics - Variphy / Infortel`}
       ) : null}
 
       {/* MODULE_057_STRUCTURAL_ROUTE_BOUNDARY_V6 */}
-      {!['calendar-capacity', 'cicd-pipeline', 'contracts', 'opportunities'].includes(activeRoute) ? (
+      {![
+        'calendar-capacity',
+        'cicd-pipeline',
+        'contracts',
+        'opportunities',
+        'sales-intake',
+        'sow-generator',
+        'crm-integration',
+        'signed-handoff',
+        'ai-time-entry',
+        'uat-validation',
+        'reporting'
+      ].includes(activeRoute) ? (
         <>
 
       {(activeRoute === 'dashboard') ? (
