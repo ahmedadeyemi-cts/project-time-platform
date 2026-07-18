@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import ManagerApprovalPanel from './ManagerApprovalPanel.jsx';
+import ProjectManagerApprovalPanel from './ProjectManagerApprovalPanel.jsx';
 import LocalAdminPasswordResetApprovalsPanel from './LocalAdminPasswordResetApprovalsPanel.jsx';
 import './approval-center.css';
 
@@ -12,15 +13,17 @@ const TAB_LABELS = {
 
 export default function ApprovalCenter({
   canViewManagerApprovalPanel = false,
+  canViewPmApprovalPanel = false,
   canViewLocalAdminPasswordResetApprovals = false
 }) {
   const availableTabs = useMemo(() => {
     const tabs = [];
-    if (canViewManagerApprovalPanel) tabs.push('manager', 'pm');
+    if (canViewManagerApprovalPanel) tabs.push('manager');
+    if (canViewPmApprovalPanel) tabs.push('pm');
     if (canViewLocalAdminPasswordResetApprovals) tabs.push('password');
     if (canViewManagerApprovalPanel) tabs.push('history');
     return tabs;
-  }, [canViewManagerApprovalPanel, canViewLocalAdminPasswordResetApprovals]);
+  }, [canViewManagerApprovalPanel, canViewPmApprovalPanel, canViewLocalAdminPasswordResetApprovals]);
 
   const [activeTab, setActiveTab] = useState(availableTabs[0] ?? 'manager');
 
@@ -71,30 +74,8 @@ export default function ApprovalCenter({
           <ManagerApprovalPanel mode="review" />
         ) : null}
 
-        {activeTab === 'pm' && canViewManagerApprovalPanel ? (
-          <section className="approval-center-readiness" aria-label="PM review readiness">
-            <div>
-              <p className="eyebrow">PM Review</p>
-              <h3>Sequential project approval is not active yet</h3>
-              <p>
-                This inbox is reserved for manager-approved project time. PM approve and reject actions remain unavailable until dedicated backend authorization and audited state-transition routes are implemented.
-              </p>
-            </div>
-            <div className="approval-center-readiness-grid">
-              <article>
-                <span>Expected input</span>
-                <strong>Manager-approved project time</strong>
-              </article>
-              <article>
-                <span>Expected decisions</span>
-                <strong>Approve or return with reason</strong>
-              </article>
-              <article>
-                <span>Current safety state</span>
-                <strong>No speculative write actions</strong>
-              </article>
-            </div>
-          </section>
+        {activeTab === 'pm' && canViewPmApprovalPanel ? (
+          <ProjectManagerApprovalPanel />
         ) : null}
 
         {activeTab === 'password' && canViewLocalAdminPasswordResetApprovals ? (

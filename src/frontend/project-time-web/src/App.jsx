@@ -5250,6 +5250,15 @@ export default function App() {
     ].includes(roleCode));
   /* 055C_1_WORK_REGISTER_ACCESS_SCOPE_END */
   const canViewManagerApprovalPanel = hasPermission('APPROVE_TIME') || hasPermission('REJECT_TIME') || hasPermission('MANAGE_ALL') || hasPermission('SYSTEM_ADMINISTRATION');
+  const canViewPmApprovalPanel =
+    hasPermission('PROJECT_TIME_APPROVAL') ||
+    hasPermission('MANAGE_ALL') ||
+    hasPermission('SYSTEM_ADMINISTRATION') ||
+    currentRoleCodes.includes('PROJECT_MANAGEMENT') ||
+    currentRoleCodes.includes('PROJECT_MANAGER') ||
+    currentRoleCodes.includes('PROJECT_TEAM_COORDINATOR') ||
+    currentRoleCodes.includes('SUPER_ADMINISTRATOR') ||
+    currentRoleCodes.includes('ADMINISTRATOR');
   const canViewLocalAdminPasswordResetApprovals =
     hasPermission('MANAGE_ALL') ||
     hasPermission('SYSTEM_ADMINISTRATION') ||
@@ -7150,9 +7159,10 @@ Analytics - Variphy / Infortel`}
         </section>
       ) : null}
 
-      {(canViewManagerApprovalPanel || canViewLocalAdminPasswordResetApprovals) ? (
+      {(canViewManagerApprovalPanel || canViewPmApprovalPanel || canViewLocalAdminPasswordResetApprovals) ? (
         <ApprovalCenter
           canViewManagerApprovalPanel={canViewManagerApprovalPanel}
+          canViewPmApprovalPanel={canViewPmApprovalPanel}
           canViewLocalAdminPasswordResetApprovals={canViewLocalAdminPasswordResetApprovals}
         />
       ) : null}
