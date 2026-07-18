@@ -260,3 +260,14 @@
   }
 }
 /* FIX-20260717-001_PM_APPROVAL_FRONTEND_END */
+
+/* FIX-20260717-001_PM_REJECTION_FRONTEND_START */
+.pm-approval-decision.rejecting {
+  border-color: rgba(239, 68, 68, 0.28);
+  background: rgba(254, 242, 242, 0.82);
+}
+
+[data-theme="dark"] .pm-approval-decision.rejecting {
+  background: rgba(127, 29, 29, 0.2);
+}
+/* FIX-20260717-001_PM_REJECTION_FRONTEND_END */

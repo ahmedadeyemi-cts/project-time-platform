@@ -101,12 +101,16 @@ export default function ProjectManagerApprovalPanel() {
     error: null
   });
   const [searchText, setSearchText] = useState('');
+  const [decisionByKey, setDecisionByKey] = useState({});
   const [commentByKey, setCommentByKey] = useState({});
-  const [expandedKey, setExpandedKey] = useState('');
   const [busyKey, setBusyKey] = useState('');
   const [statusMessage, setStatusMessage] = useState('Ready.');
 
   const weekEnd = shiftDate(weekStart, 6);
+  const canProjectApprove = Boolean(
+    data.access?.canProjectApprove
+    ?? data.access?.CanProjectApprove
+  );
 
   async function loadItems() {
     setData((current) => ({ ...current, loading: true, error: null }));
@@ -127,7 +131,9 @@ export default function ProjectManagerApprovalPanel() {
         loading: false,
         items: [],
         access: null,
-        error: error instanceof Error ? error.message : 'Unable to load PM approvals.'
+        error: error instanceof Error
+          ? error.message
+          : 'Unable to load PM approvals.'
       });
     }
   }
@@ -160,33 +166,78 @@ export default function ProjectManagerApprovalPanel() {
     ));
   }, [pendingItems, searchText]);
 
-  async function approveItem(item) {
+  function openDecision(item, decision) {
     const key = getItemKey(item);
-    const comment = (commentByKey[key] ?? '').trim()
-      || 'Approved by project manager from the Approval Center.';
+
+    setDecisionByKey((current) => ({
+      ...current,
+      [key]: current[key] === decision ? '' : decision
+    }));
+
+    setCommentByKey((current) => ({
+      ...current,
+      [key]: current[key]
+        ?? (decision === 'approve'
+          ? 'Approved by project manager from the Approval Center.'
+          : '')
+    }));
+  }
+
+  async function submitDecision(item) {
+    const key = getItemKey(item);
+    const decision = decisionByKey[key];
+    const enteredComment = (commentByKey[key] ?? '').trim();
+
+    if (!['approve', 'reject'].includes(decision)) return;
+
+    if (decision === 'reject' && !enteredComment) {
+      setStatusMessage('A return reason is required before sending project time back to the engineer.');
+      return;
+    }
+
+    const action = decision === 'approve' ? 'pm_approve' : 'pm_reject';
+    const comment = enteredComment || 'Approved by project manager from the Approval Center.';
 
     setBusyKey(key);
-    setStatusMessage(`Approving ${item.employeeName || item.employeeEmail} for ${item.workDate}...`);
+    setStatusMessage(
+      decision === 'approve'
+        ? `Approving ${item.employeeName || item.employeeEmail} for ${item.workDate}...`
+        : `Returning ${item.employeeName || item.employeeEmail} for ${item.workDate}...`
+    );
 
     try {
       const result = await postJson('/api/workflow/approval-items/action', {
         timesheetId: item.timesheetId,
         workDate: item.workDate,
-        action: 'pm_approve',
+        action,
         comment
       });
 
-      setStatusMessage(result.message ?? 'Project time approved.');
+      setStatusMessage(
+        result.message
+        ?? (decision === 'approve'
+          ? 'Project time approved.'
+          : 'Project time returned to the engineer for correction.')
+      );
+
       setCommentByKey((current) => {
         const next = { ...current };
         delete next[key];
         return next;
       });
-      setExpandedKey('');
+
+      setDecisionByKey((current) => {
+        const next = { ...current };
+        delete next[key];
+        return next;
+      });
+
       await loadItems();
     } catch (error) {
       setStatusMessage(
-        error instanceof Error ? error.message : 'Unable to approve project time.'
+        error instanceof Error
+          ? error.message
+          : 'Unable to complete the PM decision.'
       );
     } finally {
       setBusyKey('');
@@ -216,14 +267,14 @@ export default function ProjectManagerApprovalPanel() {
         <span>Week starts: <strong>{weekStart}</strong></span>
         <span>Week ends: <strong>{weekEnd}</strong></span>
         <span>Pending PM review: <strong>{pendingItems.length}</strong></span>
-        <span>Can approve: <strong>{data.access?.CanProjectApprove ? 'Yes' : 'No'}</strong></span>
+        <span>Can decide: <strong>{canProjectApprove ? 'Yes' : 'No'}</strong></span>
         <span>Status: <strong>{statusMessage}</strong></span>
       </div>
 
       <div className="pm-approval-notice">
-        <strong>Current backend capability:</strong>
+        <strong>Sequential approval is active:</strong>
         <span>
-          PM approval is active and audited. PM return/rejection remains unavailable until the matching backend transition is implemented.
+          PM approval advances the day to PM-approved. PM return sends the day back to the engineer as editable manager-declined time while preserving the PM reason in the audit record.
         </span>
       </div>
 
@@ -249,8 +300,9 @@ export default function ProjectManagerApprovalPanel() {
       <div className="pm-approval-list">
         {visibleItems.map((item) => {
           const key = getItemKey(item);
-          const isExpanded = expandedKey === key;
+          const activeDecision = decisionByKey[key] ?? '';
           const isBusy = busyKey === key;
+          const isRejecting = activeDecision === 'reject';
 
           return (
             <article className="pm-approval-card" key={key}>
@@ -288,21 +340,34 @@ export default function ProjectManagerApprovalPanel() {
               <div className="manager-row-actions">
                 <button
                   type="button"
-                  onClick={() => setExpandedKey(isExpanded ? '' : key)}
-                  disabled={Boolean(busyKey)}
+                  className="approve"
+                  onClick={() => openDecision(item, 'approve')}
+                  disabled={Boolean(busyKey) || !canProjectApprove}
                 >
-                  {isExpanded ? 'Close decision' : 'Review and approve'}
+                  Approve project time
+                </button>
+                <button
+                  type="button"
+                  className="decline"
+                  onClick={() => openDecision(item, 'reject')}
+                  disabled={Boolean(busyKey) || !canProjectApprove}
+                >
+                  Return to engineer
                 </button>
               </div>
 
-              {isExpanded ? (
-                <div className="pm-approval-decision">
+              {activeDecision ? (
+                <div className={`pm-approval-decision ${isRejecting ? 'rejecting' : ''}`}>
                   <label htmlFor={`pm-comment-${key}`}>
-                    PM approval comment
+                    {isRejecting ? 'Required return reason' : 'PM approval comment'}
                     <textarea
                       id={`pm-comment-${key}`}
                       value={commentByKey[key] ?? ''}
-                      placeholder="Add a project approval comment for the audit record."
+                      placeholder={
+                        isRejecting
+                          ? 'Explain what the engineer must correct before resubmitting.'
+                          : 'Add a project approval comment for the audit record.'
+                      }
                       onChange={(event) => setCommentByKey((current) => ({
                         ...current,
                         [key]: event.target.value
@@ -313,15 +378,22 @@ export default function ProjectManagerApprovalPanel() {
                   <div className="manager-row-actions">
                     <button
                       type="button"
-                      className="approve"
-                      onClick={() => approveItem(item)}
-                      disabled={isBusy || !data.access?.CanProjectApprove}
+                      className={isRejecting ? 'decline' : 'approve'}
+                      onClick={() => submitDecision(item)}
+                      disabled={isBusy || !canProjectApprove}
                     >
-                      {isBusy ? 'Approving...' : 'Approve project time'}
+                      {isBusy
+                        ? 'Processing...'
+                        : isRejecting
+                          ? 'Confirm return'
+                          : 'Confirm approval'}
                     </button>
                     <button
                       type="button"
-                      onClick={() => setExpandedKey('')}
+                      onClick={() => setDecisionByKey((current) => ({
+                        ...current,
+                        [key]: ''
+                      }))}
                       disabled={isBusy}
                     >
                       Cancel

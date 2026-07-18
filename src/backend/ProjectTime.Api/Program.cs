@@ -27549,6 +27549,15 @@ app.MapPost("/api/workflow/approval-items/action", async (ApprovalExportWorkflow
     }
 
     var normalizedAction = (request.Action ?? string.Empty).Trim().ToLowerInvariant();
+    if (normalizedAction == "pm_reject" && string.IsNullOrWhiteSpace(request.Comment))
+    {
+        return Results.BadRequest(new
+        {
+            status = "validation_failed",
+            message = "A PM return reason is required."
+        });
+    }
+
     var comment = string.IsNullOrWhiteSpace(request.Comment) ? normalizedAction : request.Comment.Trim();
 
     string targetStatus;
@@ -27560,6 +27569,11 @@ app.MapPost("/api/workflow/approval-items/action", async (ApprovalExportWorkflow
         case "pm_approve":
             targetStatus = "pm_approved";
             auditAction = "timesheet_day_project_manager_approved";
+            allowedStatuses = new[] { "manager_approved" };
+            break;
+        case "pm_reject":
+            targetStatus = "manager_declined";
+            auditAction = "timesheet_day_project_manager_declined";
             allowedStatuses = new[] { "manager_approved" };
             break;
         case "accounting_ready":
@@ -27594,7 +27608,7 @@ app.MapPost("/api/workflow/approval-items/action", async (ApprovalExportWorkflow
 
     var access = await LoadApprovalExportWorkflowAccessAsync(connection, sessionUserId.Value);
 
-    if (normalizedAction == "pm_approve" && !access.CanProjectApprove)
+    if ((normalizedAction is "pm_approve" or "pm_reject") && !access.CanProjectApprove)
     {
         return Results.Json(new { status = "access_denied", message = "Project time approval is restricted to project managers, project/team coordinators, and administrators." }, statusCode: StatusCodes.Status403Forbidden);
     }
@@ -27624,7 +27638,7 @@ app.MapPost("/api/workflow/approval-items/action", async (ApprovalExportWorkflow
         }, statusCode: StatusCodes.Status403Forbidden);
     }
 
-    if (normalizedAction == "pm_approve" && !access.CanViewAll)
+    if (normalizedAction is "pm_approve" or "pm_reject" && !access.CanViewAll)
     {
         var isProjectManagerScope = await ProjectPulse054BWorkflowDayHasProjectManagerScopeAsync(connection, sessionUserId.Value, request.TimesheetId, request.WorkDate);
         if (!isProjectManagerScope)
@@ -27668,9 +27682,20 @@ app.MapPost("/api/workflow/approval-items/action", async (ApprovalExportWorkflow
         await using var command = new NpgsqlCommand("""
             UPDATE timesheet_day_statuses tds
             SET status = @target_status,
-                pm_approved_at = CASE WHEN @target_status = 'pm_approved' THEN NOW() ELSE pm_approved_at END,
-                pm_approved_by_user_id = CASE WHEN @target_status = 'pm_approved' THEN @actor_user_id ELSE pm_approved_by_user_id END,
-                pm_decision_comment = CASE WHEN @target_status = 'pm_approved' THEN @comment ELSE pm_decision_comment END,
+                pm_approved_at = CASE
+                    WHEN @workflow_action = 'pm_approve' THEN NOW()
+                    WHEN @workflow_action = 'pm_reject' THEN NULL
+                    ELSE pm_approved_at
+                END,
+                pm_approved_by_user_id = CASE
+                    WHEN @workflow_action = 'pm_approve' THEN @actor_user_id
+                    WHEN @workflow_action = 'pm_reject' THEN NULL
+                    ELSE pm_approved_by_user_id
+                END,
+                pm_decision_comment = CASE
+                    WHEN @workflow_action IN ('pm_approve', 'pm_reject') THEN @comment
+                    ELSE pm_decision_comment
+                END,
                 accounting_ready_at = CASE WHEN @target_status = 'accounting_ready' THEN NOW() ELSE accounting_ready_at END,
                 accounting_ready_by_user_id = CASE WHEN @target_status = 'accounting_ready' THEN @actor_user_id ELSE accounting_ready_by_user_id END,
                 accounting_comment = CASE WHEN @target_status = 'accounting_ready' THEN @comment ELSE accounting_comment END,
@@ -27700,6 +27725,7 @@ app.MapPost("/api/workflow/approval-items/action", async (ApprovalExportWorkflow
             """, connection, transaction);
 
         command.Parameters.AddWithValue("target_status", targetStatus);
+        command.Parameters.AddWithValue("workflow_action", normalizedAction);
         command.Parameters.AddWithValue("actor_user_id", sessionUserId.Value);
         command.Parameters.AddWithValue("comment", comment);
         command.Parameters.AddWithValue("timesheet_id", request.TimesheetId);
@@ -27736,6 +27762,93 @@ app.MapPost("/api/workflow/approval-items/action", async (ApprovalExportWorkflow
             entryCommand.Parameters.AddWithValue("current_status", workflowCurrentStatus);
             await entryCommand.ExecuteNonQueryAsync();
         }
+
+        if (normalizedAction is "pm_approve" or "pm_reject")
+
+
+        {
+
+
+            var approvalStatus = normalizedAction == "pm_approve" ? "approved" : "declined";
+
+
+
+            await using var approvalCommand = new NpgsqlCommand("""
+
+
+                INSERT INTO approval_records (
+
+
+                    time_entry_id,
+
+
+                    approval_stage,
+
+
+                    approval_status,
+
+
+                    approver_user_id,
+
+
+                    decision_comment
+
+
+                )
+
+
+                SELECT
+
+
+                    time_entry_id,
+
+
+                    'project_manager',
+
+
+                    @approval_status,
+
+
+                    @actor_user_id,
+
+
+                    @comment
+
+
+                FROM time_entries
+
+
+                WHERE timesheet_id = @timesheet_id
+
+
+                  AND work_date = @work_date;
+
+
+                """, connection, transaction);
+
+
+
+            approvalCommand.Parameters.AddWithValue("approval_status", approvalStatus);
+
+
+            approvalCommand.Parameters.AddWithValue("actor_user_id", sessionUserId.Value);
+
+
+            approvalCommand.Parameters.AddWithValue("comment", comment);
+
+
+            approvalCommand.Parameters.AddWithValue("timesheet_id", request.TimesheetId);
+
+
+            approvalCommand.Parameters.AddWithValue("work_date", request.WorkDate);
+
+
+            await approvalCommand.ExecuteNonQueryAsync();
+
+
+        }
+
+
 
         await InsertAuditLogAsync(connection, transaction, sessionUserId.Value, auditAction, "timesheet", request.TimesheetId);
 
@@ -36962,6 +37075,7 @@ static bool ProjectPulse054CWorkflowTransitionAllowed(string normalizedAction, s
     return normalizedAction switch
     {
         "pm_approve" => status == "manager_approved",
+        "pm_reject" => status == "manager_approved",
         "accounting_ready" => status is "manager_approved" or "pm_approved",
         "reconcile" => status is "accounting_ready" or "pm_approved",
         "lock" => status is "accounting_ready" or "reconciled",
