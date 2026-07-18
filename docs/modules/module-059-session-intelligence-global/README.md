@@ -44,10 +44,11 @@ The host also contains:
 
 **Confirmed:** 2026-07-18 UTC
 
-### GitHub checkpoint
+### GitHub checkpoints
 
 - Branch: `fix/module-059-global-visibility-20260718`
 - Global-visibility implementation commit: `ff9c6d285407aa5db8c14f00a17508982183c185`
+- Deployment-status documentation commit: `1603120d0182ae243304b963b41d8445bff6453f`
 
 ### Azure runtime
 
