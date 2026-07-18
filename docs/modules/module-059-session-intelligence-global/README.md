@@ -87,3 +87,27 @@ This correction is frontend-only.
 ## Deployment evidence directory
 
 `/home/ahmed/az12d4/module-059-global-20260718T015727Z`
+
+## Permanent global-module contract
+
+Module 059 is global authenticated application chrome, not a page owned by any
+individual module. It must appear consistently on every current and future
+ProjectPulse module numbered from Module 001 through Module 999.
+
+The frontend build now runs:
+
+`npm run validate:module059`
+
+The validation fails the build when any of these invariants are broken:
+
+- Module 059 is imported or mounted more than once.
+- The global host marker, class, or all-authenticated-pages scope is removed.
+- The drawer is moved back inside a route, role, or permission condition.
+- The drawer is no longer after route-specific content and before global Help.
+- The Session Intelligence handle is removed, hidden, or changed from fixed
+  global positioning.
+- The installed route registry cannot be enumerated.
+
+New module routes automatically inherit Module 059 by remaining inside the
+authenticated App shell. A future module must not create a separate application
+shell that bypasses the global host.
