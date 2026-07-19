@@ -1,5 +1,6 @@
 import HelpAssistant from './HelpAssistant.jsx';
 import SessionIntelligenceDrawer from './SessionIntelligenceDrawer.jsx';
+import ProfileIdentitySurface from './identity/ProfileIdentitySurface.jsx';
 import OpportunitiesCenter from './OpportunitiesCenter.jsx';
 import SystemUserGuide from './SystemUserGuide.jsx';
 import PostIntakeAgingPanel from './PostIntakeAgingPanel.jsx';
@@ -5774,6 +5775,13 @@ export default function App() {
             <form className="profile-settings-form" onSubmit={saveProfileSettings}>
               {profileSettingsPanel === 'profile' ? (
                 <>
+                  <ProfileIdentitySurface
+                    mode="settings"
+                    authSession={authSession}
+                    currentUser={currentUser}
+                    userPreferences={userPreferences}
+                  />
+
                   <div className="profile-picture-editor">
                     <div className="profile-picture-preview">
                       {profileDraft.profilePhotoDataUrl ? (
@@ -5958,28 +5966,23 @@ Analytics - Variphy / Infortel`}
             onClick={() => setIsProfileMenuOpen((value) => !value)}
             aria-label="Open profile menu"
           >
-            {userPreferences.profilePhotoDataUrl ? (
-              <img src={userPreferences.profilePhotoDataUrl} alt="Profile" />
-            ) : (
-              <span>{getInitials(authSession?.username ?? currentUser.data?.displayName ?? currentUser.data?.email)}</span>
-            )}
+            <ProfileIdentitySurface
+              mode="avatar"
+              authSession={authSession}
+              currentUser={currentUser}
+              userPreferences={userPreferences}
+            />
           </button>
 
           {isProfileMenuOpen && (
             <div className="profile-dropdown-menu">
               <div className="profile-dropdown-header">
-                <div className="profile-dropdown-avatar">
-                  {userPreferences.profilePhotoDataUrl ? (
-                    <img src={userPreferences.profilePhotoDataUrl} alt="Profile" />
-                  ) : (
-                    <span>{getInitials(authSession?.username ?? currentUser.data?.displayName ?? currentUser.data?.email)}</span>
-                  )}
-                </div>
-                <div>
-                  <strong>{userPreferences.displayNameOverride || currentUser.data?.displayName || authSession?.username || 'PHD User'}</strong>
-                  <small>{authSession?.username ?? currentUser.data?.email ?? 'Current user'}</small>
-                  <small>{workspaceRoleName}</small>
-                </div>
+                <ProfileIdentitySurface
+                  mode="menu"
+                  authSession={authSession}
+                  currentUser={currentUser}
+                  userPreferences={userPreferences}
+                />
               </div>
 
               <button type="button" onClick={() => openProfileSettings('profile')}>

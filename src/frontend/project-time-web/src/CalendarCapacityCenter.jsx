@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import './calendar-capacity-center.css';
+import {
+  presenceCssState,
+  presenceLabel
+} from './identity/presence.js';
 
 function getHeaders() {
   try {
@@ -145,58 +149,6 @@ function getInitials(value) {
   }
 
   return `${words[0][0] || ''}${words.at(-1)?.[0] || ''}`.toUpperCase();
-}
-
-const PRESENCE_LABELS = {
-  available: 'Available',
-  away: 'Away',
-  beRightBack: 'Be right back',
-  busy: 'Busy',
-  doNotDisturb: 'Do not disturb',
-  focusing: 'Focusing',
-  inACall: 'In a call',
-  inAMeeting: 'In a meeting',
-  offline: 'Offline',
-  outOfOffice: 'Out of office',
-  presenting: 'Presenting',
-  presenceUnknown: 'Status unavailable'
-};
-
-const DETAILED_PRESENCE_STATES = new Set([
-  'beRightBack',
-  'focusing',
-  'inACall',
-  'inAMeeting',
-  'outOfOffice',
-  'presenting'
-]);
-
-function presenceState(presence) {
-  const activity = String(
-    presence?.activity || ''
-  ).trim();
-  const availability = String(
-    presence?.availability || ''
-  ).trim();
-
-  if (DETAILED_PRESENCE_STATES.has(activity)) {
-    return activity;
-  }
-
-  return availability
-    || activity
-    || 'presenceUnknown';
-}
-
-function presenceCssState(presence) {
-  return presenceState(presence)
-    .replace(/([a-z])([A-Z])/g, '$1-$2')
-    .toLowerCase();
-}
-
-function presenceLabel(presence) {
-  const state = presenceState(presence);
-  return PRESENCE_LABELS[state] || 'Status unavailable';
 }
 
 function PresenceBadge({ presence }) {
