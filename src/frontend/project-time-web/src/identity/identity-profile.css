@@ -323,7 +323,6 @@
 .identity-avatar {
   position: relative;
   overflow: visible !important;
-  background: transparent !important;
 }
 
 .enterprise-header-utilities
@@ -337,6 +336,31 @@
   height: 100% !important;
   object-fit: cover !important;
 }
+
+/* MODULE_062_FALLBACK_AVATAR_FILL_START */
+
+/*
+ * Preserve a filled and readable avatar when Microsoft Graph, local profile
+ * preferences, or another identity source does not provide a photograph.
+ */
+.enterprise-header-utilities
+.profile-avatar-button
+.module062-profile-avatar-surface
+.identity-avatar-initials {
+  position: relative;
+  z-index: 1;
+  display: grid !important;
+  width: 100% !important;
+  height: 100% !important;
+  place-items: center;
+  border-radius: inherit;
+  background: rgba(100, 116, 139, 0.18) !important;
+  color: var(--pulse-text, #0f172a) !important;
+  box-shadow:
+    inset 0 0 0 2px rgba(100, 116, 139, 0.18);
+}
+
+/* MODULE_062_FALLBACK_AVATAR_FILL_END */
 
 .enterprise-header-utilities
 .profile-avatar-button

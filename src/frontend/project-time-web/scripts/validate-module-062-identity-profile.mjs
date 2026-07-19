@@ -428,6 +428,27 @@ assert(
   )
 );
 
+
+assert(
+  'MODULE_062_FALLBACK_AVATAR_FILL_PRESERVED',
+  identityProfileCss.includes(
+    'MODULE_062_FALLBACK_AVATAR_FILL_START'
+  )
+  && identityProfileCss.includes(
+    'background: rgba(100, 116, 139, 0.18) !important;'
+  )
+  && identityProfileCss.includes(
+    'color: var(--pulse-text, #0f172a) !important;'
+  )
+  && !identityProfileCss.includes(
+    '.identity-avatar {\n'
+    + '  position: relative;\n'
+    + '  overflow: visible !important;\n'
+    + '  background: transparent !important;\n'
+    + '}'
+  )
+);
+
 assert(
   'MODULE_062_PROFILE_MENU_COPY_EXPANDS',
   identityProfileCss.includes(
