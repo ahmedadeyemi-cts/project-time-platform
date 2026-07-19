@@ -2,14 +2,33 @@
 
 FROM node:20-alpine AS build
 
-WORKDIR /src
+# Preserve the repository-relative path used by the frontend validation
+# scripts while copying only the repository files they inspect.
+WORKDIR /workspace
 
 COPY src/frontend/project-time-web/package.json \
-     src/frontend/project-time-web/package-lock.json ./
+     src/frontend/project-time-web/package-lock.json \
+     src/frontend/project-time-web/
+
+WORKDIR /workspace/src/frontend/project-time-web
 
 RUN npm ci --no-audit --no-fund
 
-COPY src/frontend/project-time-web/ ./
+WORKDIR /workspace
+
+COPY src/frontend/project-time-web/ \
+     src/frontend/project-time-web/
+
+COPY src/backend/ProjectTime.Api/Program.cs \
+     src/backend/ProjectTime.Api/Program.cs
+
+COPY src/backend/ProjectTime.Api/Modules/IdentityProfileModule.cs \
+     src/backend/ProjectTime.Api/Modules/IdentityProfileModule.cs
+
+COPY docs/modules/module-062-unified-identity-profile/README.md \
+     docs/modules/module-062-unified-identity-profile/README.md
+
+WORKDIR /workspace/src/frontend/project-time-web
 
 RUN npm run build
 
@@ -21,7 +40,9 @@ ENV API_UPSTREAM=http://127.0.0.1:5080 \
 
 USER root
 
-COPY --from=build /src/dist/ /usr/share/nginx/html/
+COPY --from=build \
+     /workspace/src/frontend/project-time-web/dist/ \
+     /usr/share/nginx/html/
 
 COPY deployment/containers/web/default.conf.template \
      /etc/nginx/templates/default.conf.template
