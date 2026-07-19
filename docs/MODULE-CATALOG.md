@@ -5,6 +5,10 @@
 - The catalog records what current source contains and what work is approved.
 - `Installed` means the route or global behavior exists on current `main`; it does
   not independently assert deployment or business acceptance.
+- `Source candidate` means committed, pushed, and reviewed through an open PR; it
+  does not mean merged, registered, deployed, or runtime-active.
+- `Runtime-active` requires shared registration, merge, deployment, and successful
+  portal verification.
 - Proposed retirement or reuse never authorizes removal of current behavior.
 - A module number cannot be reassigned until route, API, database, audit, history,
   documentation, and dependency impacts are explicitly approved.
@@ -58,7 +62,7 @@
 | 058 | Autonomous CI/CD Foundation | `cicd-pipeline` | Installed | Restored registry/navigation on current main |
 | 059 | Global Session Intelligence | All authenticated routes | Installed global behavior | Must remain mounted once on every existing and future module route |
 | 060 | Contracts & Block of Hours | `contracts` | Installed | Includes contracts/prepaid management foundations |
-| 062 | Unified Identity Profile and Presence | `/api/identity/profile`; Profile, Module 057, and Module 059 consumers | Installed through merged PR 19 | Final head `3852a21e1098de9ad907e3da91e0646d99adcb7c`; merge commit `04fcafd4f49840428645e537db7de436e34b1c88` |
+| 062 | Unified Identity Profile and Presence | `/api/identity/profile`; Profile, Module 057, and Module 059 consumers | Installed through merged PR 19 | Final head `3852a21e1098de9ad907e3da91e0646d99adcb7c`; merge commit `04fcafd4f49840428645e537db7de436e34b1c88`; post-merge test deployment and portal verification remain pending |
 | 063 | Opportunities & Action Tracker | `opportunities` | Installed | Current installed identity owns 063; planned SMTP work must receive another number |
 | 999 | ProjectPulse Complete User Guide | `user-guide` | Installed | Global documentation route restored on current main |
 
@@ -69,7 +73,7 @@
 | 061 | Undefined | Scope required | No verified implementation checkpoint | None confirmed | Reserved until explicit scope approval |
 | 064 | AI Provider Configuration Center | Planned | Unassigned | Provider governance, secrets, audit | Number available and tracker-assigned |
 | 065 | Entra Secret Administration | Planned | Unassigned | Module 010, secure secret controls | Number available and tracker-assigned |
-| 066 | Project FlowHive | Active — 066A foundation | `/workspace/project-time-platform-module-066-project-flowhive` | 018, 019, 024–030, 055C, 057, 062, 064 | Number approved and confirmed free before implementation |
+| 066 | Project FlowHive | 066A source candidate — locally validated, committed, pushed, PR 20 open and CI passed; runtime inactive | `/home/ahmed/project-time-platform-module-066-project-flowhive` | 018, 019, 024–030, 055C, 057, 062, 064 | Number approved and confirmed free before implementation |
 
 ## Unresolved numbering and reuse decisions
 
@@ -85,11 +89,18 @@
 
 | Phase | Outcome | Current state |
 |---|---|---|
-| 066A | Read-only portfolio, task grid, assignment scope, capability/API contract | Active source foundation; shared registration deferred |
-| 066B | Versioned WBS, dependencies, baselines, execution, collaboration, audit | Planned; database source and application require explicit authorization |
+| 066A | Read-only portfolio, task grid, assignment scope, capability/API contract | Commit `ed5ee90e806b9a205225ec4941e558acf6bfb605`; PR 20 open and CI passed; compatible with `main@04fcafd4f49840428645e537db7de436e34b1c88`; shared registration and runtime activation deferred |
+| 066B | Versioned WBS, dependencies, baselines, execution, collaboration, audit | Planned; shared `Program.cs`/`App.jsx` registration, database source, and application require explicit authorization |
 | 066C | Schedule engine, Gantt/timeline/calendar/card views, workload and portfolio risk | Planned |
 | 066D | Templates, automations, alerts, API/webhooks, GSD/SOW AI plan generation | Planned; depends on Module 064 |
 | 066E | Branded PDF/Excel, customer links, external comment/approval | Blocked until verified US Signal logo and external-sharing controls are approved |
+
+## Current deployment interpretation
+
+| Module | Source status | Runtime-active in portal | Required next step |
+|---|---|---|---|
+| 062 | Merged to `main` | No verified post-merge deployment | Controlled test deployment and profile/presence portal smoke test |
+| 066A | PR 20 source candidate | No; shared registration intentionally absent | Review/merge source-only foundation; implement 066B registration separately after shared-file conflicts are resolved |
 
 ## Protected global invariants
 
