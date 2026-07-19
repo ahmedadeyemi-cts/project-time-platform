@@ -73,7 +73,7 @@
 | 061 | Undefined | Scope required | No verified implementation checkpoint | None confirmed | Reserved until explicit scope approval |
 | 064 | AI Provider Configuration Center | Planned | Unassigned | Provider governance, secrets, audit | Number available and tracker-assigned |
 | 065 | Entra Secret Administration | Planned | Unassigned | Module 010, secure secret controls | Number available and tracker-assigned |
-| 066 | Project FlowHive | 066A source candidate — locally validated, committed, pushed, PR 20 open and CI passed; runtime inactive | `/home/ahmed/project-time-platform-module-066-project-flowhive` | 018, 019, 024–030, 055C, 057, 062, 064 | Number approved and confirmed free before implementation |
+| 066 | Project FlowHive | 066A source candidate — locally validated, committed, pushed, and under PR 20; runtime inactive | `/home/ahmed/project-time-platform-module-066-project-flowhive` | 018, 019, 024–030, 055C, 057, 062, 064 | Number approved and confirmed free before implementation |
 
 ## Unresolved numbering and reuse decisions
 
@@ -89,8 +89,9 @@
 
 | Phase | Outcome | Current state |
 |---|---|---|
-| 066A | Read-only portfolio, task grid, assignment scope, capability/API contract | Commit `ed5ee90e806b9a205225ec4941e558acf6bfb605`; PR 20 open and CI passed; compatible with `main@04fcafd4f49840428645e537db7de436e34b1c88`; shared registration and runtime activation deferred |
-| 066B | Versioned WBS, dependencies, baselines, execution, collaboration, audit | Planned; shared `Program.cs`/`App.jsx` registration, database source, and application require explicit authorization |
+| 066A | Read-only portfolio, task grid, assignment scope, capability/API contract | Foundation commit `ed5ee90e806b9a205225ec4941e558acf6bfb605`; PR 20 open and mergeable; compatible with `main@04fcafd4f49840428645e537db7de436e34b1c88`; shared registration and runtime activation deferred |
+| 066A.1 | Shared Registration and Activation | Planning and overlap discovery permitted; implementation must wait for PR 20 and Module 002 to merge; limited to endpoint registration, route/navigation activation, validator/build wiring, and governance updates; no database changes |
+| 066B | Database-backed planning persistence: versioned WBS, dependencies, baselines, execution, collaboration, and audit | Separate future phase; explicit database design and database-change authorization required before implementation |
 | 066C | Schedule engine, Gantt/timeline/calendar/card views, workload and portfolio risk | Planned |
 | 066D | Templates, automations, alerts, API/webhooks, GSD/SOW AI plan generation | Planned; depends on Module 064 |
 | 066E | Branded PDF/Excel, customer links, external comment/approval | Blocked until verified US Signal logo and external-sharing controls are approved |
@@ -100,7 +101,9 @@
 | Module | Source status | Runtime-active in portal | Required next step |
 |---|---|---|---|
 | 062 | Merged to `main` | No verified post-merge deployment | Controlled test deployment and profile/presence portal smoke test |
-| 066A | PR 20 source candidate | No; shared registration intentionally absent | Review/merge source-only foundation; implement 066B registration separately after shared-file conflicts are resolved |
+| 066A | PR 20 source candidate | No; shared registration intentionally absent | Complete review and merge of the source-only foundation |
+| 066A.1 | Planning only | No | After PR 20 and Module 002 merge, create a new isolated branch from then-current `main` for registration-only activation |
+| 066B | Not authorized | No | Obtain explicit database design and database-change authorization before implementation |
 
 ## Protected global invariants
 
