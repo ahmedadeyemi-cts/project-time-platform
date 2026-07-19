@@ -101,6 +101,7 @@ export default function ManagerApprovalPanel({ mode = 'review' }) {
   const historyMode = mode === 'history';
   const [weekStart, setWeekStart] = useState(getSundayForDate());
   const [includeAll, setIncludeAll] = useState(historyMode);
+  const [allDates, setAllDates] = useState(false);
   const [statusFilter, setStatusFilter] = useState(historyMode ? 'all' : 'submitted');
   const [searchText, setSearchText] = useState('');
   const [approvalData, setApprovalData] = useState({ loading: true, data: null, error: null });
@@ -121,7 +122,13 @@ export default function ManagerApprovalPanel({ mode = 'review' }) {
   async function loadApprovals() {
     setApprovalData((current) => ({ ...current, loading: true, error: null }));
     try {
-      const result = await fetchJson(`/api/manager/approvals?weekStart=${weekStart}&includeAll=${includeAll || historyMode}`);
+      const params = new URLSearchParams({
+        weekStart,
+        includeAll: String(includeAll || historyMode),
+        allDates: String(allDates && !historyMode),
+        search: searchText.trim()
+      });
+      const result = await fetchJson(`/api/manager/approvals?${params.toString()}`);
       setApprovalData({ loading: false, data: result, error: null });
     } catch (error) {
       setApprovalData({
@@ -135,9 +142,10 @@ export default function ManagerApprovalPanel({ mode = 'review' }) {
   useEffect(() => {
     void loadApprovals();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [weekStart, includeAll, historyMode]);
+  }, [weekStart, includeAll, historyMode, allDates]);
 
   const items = approvalData.data?.items ?? [];
+  const access = approvalData.data?.access ?? {};
   const pendingItems = useMemo(() => items.filter((item) => item.status === 'submitted'), [items]);
   const visibleItems = useMemo(() => {
     const normalizedSearch = searchText.trim().toLowerCase();
@@ -191,9 +199,17 @@ export default function ManagerApprovalPanel({ mode = 'review' }) {
         workDate: item.workDate,
         ...payload
       });
-      setStatusMessage(result.message ?? 'Approval action completed.');
+      const emailStatus = result.emailNotificationStatus
+        ? ` Engineer email: ${result.emailNotificationStatus}.`
+        : '';
+      setStatusMessage(`${result.message ?? 'Approval action completed.'}${emailStatus}`);
       setSelectedKeys(new Set());
       setDeclineKey('');
+      window.dispatchEvent(
+        new CustomEvent(
+          'projectpulse:approval-queue-changed'
+        )
+      );
       await loadApprovals();
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : 'Approval action failed.');
@@ -216,6 +232,24 @@ export default function ManagerApprovalPanel({ mode = 'review' }) {
     await runApprovalAction('/api/manager/approvals/decline', item, { comment: reason });
   }
 
+  async function confirmStaleResolution(item) {
+    const key = getApprovalKey(item);
+    const reason = (declineReasons[key] ?? '').trim();
+
+    if (!reason) {
+      setStatusMessage(
+        'A specific stale-item resolution reason is required.'
+      );
+      return;
+    }
+
+    await runApprovalAction(
+      '/api/manager/approvals/resolve-stale',
+      item,
+      { comment: reason }
+    );
+  }
+
   async function unlockItem(item) {
     await runApprovalAction('/api/manager/approvals/unlock', item, {
       comment: 'Manager unlocked time for correction.'
@@ -236,6 +270,11 @@ export default function ManagerApprovalPanel({ mode = 'review' }) {
       });
       setStatusMessage(result.message ?? `Approved ${selectedPendingItems.length} selected day(s).`);
       setSelectedKeys(new Set());
+      window.dispatchEvent(
+        new CustomEvent(
+          'projectpulse:approval-queue-changed'
+        )
+      );
       await loadApprovals();
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : 'Bulk approval failed.');
@@ -256,22 +295,47 @@ export default function ManagerApprovalPanel({ mode = 'review' }) {
               : 'Review submitted time, approve it for the next workflow stage, or return it with a clear reason.'}
           </p>
         </div>
+
+        <div className="manager-scope-chip">
+          <span>Scope</span>
+          <strong>
+            {access.scopeLabel || 'Assigned approvals'}
+          </strong>
+        </div>
+
         <div className="manager-toolbar">
-          <button type="button" onClick={() => setWeekStart(shiftWeek(weekStart, -7))}>← Previous</button>
-          <button type="button" onClick={() => setWeekStart(getSundayForDate())}>Current week</button>
-          <button type="button" onClick={() => setWeekStart(shiftWeek(weekStart, 7))}>Next →</button>
+          {!allDates ? (
+            <>
+              <button type="button" onClick={() => setWeekStart(shiftWeek(weekStart, -7))}>← Previous</button>
+              <button type="button" onClick={() => setWeekStart(getSundayForDate())}>Current week</button>
+              <button type="button" onClick={() => setWeekStart(shiftWeek(weekStart, 7))}>Next →</button>
+            </>
+          ) : null}
           {!historyMode ? (
             <button type="button" onClick={() => setIncludeAll((current) => !current)}>
               {includeAll ? 'Pending only' : 'Show all'}
             </button>
           ) : null}
+
+          {!historyMode && access.canViewAllTimeApprovals ? (
+            <button type="button" onClick={() => setAllDates((current) => !current)}>
+              {allDates ? 'Selected week' : 'All dates'}
+            </button>
+          ) : null}
+
           <button type="button" onClick={loadApprovals} disabled={approvalData.loading || busy}>Refresh</button>
         </div>
       </div>
 
       <div className="manager-status-row">
-        <span>Week starts: <strong>{approvalData.data?.weekStart ?? weekStart}</strong></span>
-        <span>Week ends: <strong>{approvalData.data?.weekEnd ?? shiftWeek(weekStart, 6)}</strong></span>
+        {allDates ? (
+          <span>Date range: <strong>All available dates</strong></span>
+        ) : (
+          <>
+            <span>Week starts: <strong>{approvalData.data?.weekStart ?? weekStart}</strong></span>
+            <span>Week ends: <strong>{approvalData.data?.weekEnd ?? shiftWeek(weekStart, 6)}</strong></span>
+          </>
+        )}
         <span>Pending: <strong>{pendingItems.length}</strong></span>
         <span>Visible: <strong>{visibleItems.length}</strong></span>
         <span>Status: <strong>{statusMessage}</strong></span>
@@ -325,13 +389,15 @@ export default function ManagerApprovalPanel({ mode = 'review' }) {
           const key = getApprovalKey(item);
           const isPending = item.status === 'submitted';
           const canManagerUnlock = ['submitted', 'manager_approved', 'manager_declined'].includes(item.status);
+          const isStale = isPending && Number(item.ageDays ?? 0) >= 7;
+          const canResolveStale = isStale && Boolean(access.canResolveStaleApprovals);
           const isExpanded = expandedKeys.has(key);
           const entries = item.entries ?? [];
           const hasMissingComments = Number(item.commentCount ?? 0) < Number(item.entryCount ?? 0);
           const isDeclining = declineKey === key;
 
           return (
-            <article className="manager-approval-card" key={key}>
+            <article className={isPending ? 'manager-approval-card pending' : 'manager-approval-card'} key={key}>
               <div className="manager-approval-card-main">
                 {!historyMode ? (
                   <label className="manager-select-row">
@@ -348,7 +414,7 @@ export default function ManagerApprovalPanel({ mode = 'review' }) {
                 <div>
                   <h3>{item.resourceName}</h3>
                   <p>{item.resourceEmail}</p>
-                  <small>{item.workDate} • Submitted {formatDateTime(item.submittedAt)}</small>
+                  <small>{item.workDate} • Submitted {formatDateTime(item.submittedAt)} • {item.ageDays ?? 0} day(s) old</small>
                 </div>
 
                 <div className="manager-approval-metrics">
@@ -376,6 +442,17 @@ export default function ManagerApprovalPanel({ mode = 'review' }) {
                       >
                         Return day
                       </button>
+
+                      {canResolveStale ? (
+                        <button
+                          type="button"
+                          className="stale"
+                          onClick={() => setDeclineKey(key)}
+                          disabled={busy}
+                        >
+                          Resolve stale
+                        </button>
+                      ) : null}
                     </>
                   ) : null}
                   {!historyMode && !isPending && canManagerUnlock ? (
@@ -396,8 +473,12 @@ export default function ManagerApprovalPanel({ mode = 'review' }) {
               </div>
 
               {isDeclining ? (
-                <div className="approval-inline-decision">
-                  <label htmlFor={`return-reason-${key}`}>Reason for returning this day</label>
+                <div
+                  className="approval-inline-decision approval-decision-modal"
+                  role="dialog"
+                  aria-label="Approval decision"
+                >
+                  <label htmlFor={`return-reason-${key}`}>Specific reason</label>
                   <textarea
                     id={`return-reason-${key}`}
                     value={declineReasons[key] ?? ''}
@@ -411,6 +492,18 @@ export default function ManagerApprovalPanel({ mode = 'review' }) {
                     <button type="button" className="decline" onClick={() => confirmDecline(item)} disabled={busy}>
                       Confirm return
                     </button>
+
+                    {canResolveStale ? (
+                      <button
+                        type="button"
+                        className="stale"
+                        onClick={() => confirmStaleResolution(item)}
+                        disabled={busy}
+                      >
+                        Resolve stale and notify
+                      </button>
+                    ) : null}
+
                     <button type="button" onClick={() => setDeclineKey('')} disabled={busy}>Cancel</button>
                   </div>
                 </div>

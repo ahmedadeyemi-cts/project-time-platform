@@ -2715,209 +2715,9 @@ app.MapPost("/api/timesheets/day/unlock", async (TimesheetDayUnlockRequest reque
 });
 
 
-app.MapGet("/api/manager/approvals", async (DateOnly? weekStart, bool? includeAll, HttpContext httpContext) =>
-{
-    var config = DatabaseConfig.FromEnvironment();
-    var missingResult = ValidateConfig(config);
-    if (missingResult is not null) return missingResult;
-
-    var start = weekStart ?? GetSundayForDate(DateOnly.FromDateTime(DateTime.UtcNow));
-    var end = start.AddDays(6);
-
-    await using var connection = new NpgsqlConnection(config.ConnectionString);
-    await connection.OpenAsync();
-
-    /* 054B_MANAGER_APPROVAL_READ_AUTHORITY_START */
-    var managerReadUserId = GetProjectPulseSessionUserId(httpContext);
-    if (managerReadUserId is null)
-    {
-        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
-    }
-
-    if (!await ProjectPulse054BUserCanManageManagerApprovalsAsync(connection, null, managerReadUserId.Value))
-    {
-        return Results.Json(new { status = "access_denied", message = "Manager approval inbox is restricted to managers, project/team coordinators, and administrators." }, statusCode: StatusCodes.Status403Forbidden);
-    }
-    /* 054B_MANAGER_APPROVAL_READ_AUTHORITY_END */
-
-    var items = await LoadManagerApprovalItemsAsync(connection, start, end, includeAll ?? false);
-
-    return Results.Ok(new
-    {
-        weekStart = start,
-        weekEnd = end,
-        includeAll = includeAll ?? false,
-        count = items.Count,
-        items
-    });
-});
-
-app.MapPost("/api/manager/approvals/approve", async (ManagerApprovalActionRequest request, HttpContext httpContext) =>
-{
-    /* 054B_ROUTE_SESSION_MANAGER_APPROVE_START */
-    var managerUserId = GetProjectPulseSessionUserId(httpContext);
-    if (managerUserId is null)
-    {
-        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
-    }
-    /* 054B_ROUTE_SESSION_MANAGER_APPROVE_END */
-
-    return await ProcessManagerApprovalActionAsync(request, managerUserId.Value, "manager_approved", "approved", "timesheet_day_manager_approved", "Approved by manager.");
-});
-
-app.MapPost("/api/manager/approvals/decline", async (ManagerApprovalActionRequest request, HttpContext httpContext) =>
-{
-    if (string.IsNullOrWhiteSpace(request.Comment))
-    {
-        return Results.BadRequest(new
-        {
-            status = "validation_failed",
-            message = "A decline reason is required before returning time to the engineer."
-        });
-    }
-
-    /* 054B_ROUTE_SESSION_MANAGER_DECLINE_START */
-    var managerUserId = GetProjectPulseSessionUserId(httpContext);
-    if (managerUserId is null)
-    {
-        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
-    }
-    /* 054B_ROUTE_SESSION_MANAGER_DECLINE_END */
-
-    return await ProcessManagerApprovalActionAsync(request, managerUserId.Value, "manager_declined", "declined", "timesheet_day_manager_declined", "Returned to engineer for correction.");
-});
-
-app.MapPost("/api/manager/approvals/unlock", async (ManagerApprovalActionRequest request, HttpContext httpContext) =>
-{
-    var config = DatabaseConfig.FromEnvironment();
-    var missingResult = ValidateConfig(config);
-    if (missingResult is not null) return missingResult;
-
-    await using var connection = new NpgsqlConnection(config.ConnectionString);
-    await connection.OpenAsync();
-    await using var transaction = await connection.BeginTransactionAsync();
-
-    try
-    {
-        /* 054B_MANAGER_UNLOCK_AUTHORITY_START */
-        var managerUserId = GetProjectPulseSessionUserId(httpContext);
-        if (managerUserId is null)
-        {
-            await transaction.RollbackAsync();
-            return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
-        }
-
-        var managerUnlockValidation = await ProjectPulse054BValidateManagerApprovalActorAsync(connection, transaction, managerUserId.Value, request.TimesheetId);
-        if (managerUnlockValidation is not null)
-        {
-            await transaction.RollbackAsync();
-            return managerUnlockValidation;
-        }
-        /* 054B_MANAGER_UNLOCK_AUTHORITY_END */
-
-        const string statusSql = """
-            UPDATE timesheet_day_statuses
-            SET status = 'draft',
-                manager_user_id = @manager_user_id,
-                manager_decision_comment = @comment,
-                manager_unlocked_at = NOW(),
-                updated_at = NOW()
-            WHERE timesheet_id = @timesheet_id
-              AND work_date = @work_date
-              /* 054C_MANAGER_UNLOCK_STATUS_IMMUTABILITY_GUARD */
-              AND status IN ('submitted', 'manager_approved', 'manager_declined')
-              AND status NOT IN ('accounting_ready', 'reconciled', 'locked', 'exported')
-            RETURNING timesheet_day_status_id;
-            """;
-
-        await using var statusCommand = new NpgsqlCommand(statusSql, connection, transaction);
-        statusCommand.Parameters.AddWithValue("timesheet_id", request.TimesheetId);
-        statusCommand.Parameters.AddWithValue("work_date", request.WorkDate);
-        statusCommand.Parameters.AddWithValue("manager_user_id", managerUserId);
-        statusCommand.Parameters.AddWithValue("comment", string.IsNullOrWhiteSpace(request.Comment) ? "Manager unlocked time for correction." : request.Comment.Trim());
-
-        var statusId = (Guid?)(await statusCommand.ExecuteScalarAsync());
-        if (statusId is null)
-        {
-            return Results.NotFound(new
-            {
-                status = "manager_unlock_not_allowed",
-                message = "Only submitted, manager-approved, or manager-declined days can be manager-unlocked. Accounting-ready, reconciled, locked, or exported days cannot be reverted."
-            });
-        }
-
-        await using var entryCommand = new NpgsqlCommand(
-            "UPDATE time_entries SET status = 'draft', updated_at = NOW() WHERE timesheet_id = @timesheet_id AND work_date = @work_date AND status IN ('submitted', 'manager_approved', 'manager_declined');",
-            connection,
-            transaction);
-        entryCommand.Parameters.AddWithValue("timesheet_id", request.TimesheetId);
-        entryCommand.Parameters.AddWithValue("work_date", request.WorkDate);
-        await entryCommand.ExecuteNonQueryAsync();
-
-        await InsertAuditLogAsync(connection, transaction, managerUserId.Value, "timesheet_day_manager_unlocked", "timesheet", request.TimesheetId);
-
-        await transaction.CommitAsync();
-
-        return Results.Ok(new
-        {
-            status = "manager_unlocked",
-            timesheetId = request.TimesheetId,
-            workDate = request.WorkDate,
-            message = "Manager unlocked the selected day so the engineer can correct and resubmit it."
-        });
-    }
-    catch (Exception ex)
-    {
-        await transaction.RollbackAsync();
-        return Results.Problem(
-            title: "Failed to manager-unlock timesheet day",
-            detail: ex.Message,
-            statusCode: StatusCodes.Status500InternalServerError);
-    }
-});
-
-
-app.MapGet("/api/manager/approval-summary", async (HttpContext httpContext) =>
-{
-    var config = DatabaseConfig.FromEnvironment();
-    var missingResult = ValidateConfig(config);
-    if (missingResult is not null) return missingResult;
-
-    await using var connection = new NpgsqlConnection(config.ConnectionString);
-    await connection.OpenAsync();
-
-    /* 054B_MANAGER_APPROVAL_SUMMARY_AUTHORITY_START */
-    var managerSummaryUserId = GetProjectPulseSessionUserId(httpContext);
-    if (managerSummaryUserId is null)
-    {
-        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
-    }
-
-    if (!await ProjectPulse054BUserCanManageManagerApprovalsAsync(connection, null, managerSummaryUserId.Value))
-    {
-        return Results.Json(new { status = "access_denied", message = "Manager approval summary is restricted to managers, project/team coordinators, and administrators." }, statusCode: StatusCodes.Status403Forbidden);
-    }
-    /* 054B_MANAGER_APPROVAL_SUMMARY_AUTHORITY_END */
-
-    var summary = await LoadManagerApprovalSummaryAsync(connection);
-    return Results.Ok(summary);
-});
-
-
-app.MapPost("/api/manager/approvals/bulk-approve", async (ManagerBulkApprovalRequest request, HttpContext httpContext) =>
-{
-    /* 054B_ROUTE_SESSION_BULK_APPROVE_START */
-    var managerUserId = GetProjectPulseSessionUserId(httpContext);
-    if (managerUserId is null)
-    {
-        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
-    }
-    /* 054B_ROUTE_SESSION_BULK_APPROVE_END */
-
-    return await ProcessManagerBulkApprovalAsync(request, managerUserId.Value);
-});
-
-
+/* MODULE_002_APPROVAL_CENTER_ENDPOINTS_START */
+app.MapApprovalCenterEndpoints();
+/* MODULE_002_APPROVAL_CENTER_ENDPOINTS_END */
 
 app.MapPost("/api/timesheets/ai-description-suggestions", async (ProjectPulseAiTimeEntrySuggestionRequest request, HttpContext httpContext) =>
 {
@@ -17859,6 +17659,53 @@ async Task<bool> RequestUserCanAccessUserAdministrationAsync(HttpContext context
 }
 
 
+/* MODULE_002_PASSWORD_RESET_APPROVAL_AUTHORITY_START */
+async Task<bool> RequestUserCanAccessPasswordResetApprovalsAsync(HttpContext context, NpgsqlConnection connection)
+{
+    var userId = GetProjectPulseSessionUserId(context);
+    if (userId is null) return false;
+
+    await using var command = new NpgsqlCommand("""
+        SELECT EXISTS (
+            SELECT 1
+            FROM app_user_role_assignments ura
+            JOIN app_roles r ON r.app_role_id = ura.app_role_id
+            WHERE ura.user_id = @user_id
+              AND ura.is_active = TRUE
+              AND r.is_active = TRUE
+              AND r.role_code IN (
+                    'SUPER_ADMINISTRATOR',
+                    'ADMINISTRATOR',
+                    'PROJECT_TEAM_COORDINATOR',
+                    'MANAGER'
+              )
+        );
+        """, connection);
+
+    command.Parameters.AddWithValue("user_id", userId.Value);
+    return Convert.ToBoolean(await command.ExecuteScalarAsync() ?? false);
+}
+
+string ProjectPulse002ResolveActorEmail(HttpContext context)
+{
+    if (context.Items.TryGetValue("ProjectPulseSessionEmail", out var sessionEmail)
+        && !string.IsNullOrWhiteSpace(sessionEmail?.ToString()))
+    {
+        return sessionEmail!.ToString()!.Trim().ToLowerInvariant();
+    }
+
+    if (context.Items.TryGetValue("ProjectPulseEffectiveEmail", out var effectiveEmail)
+        && !string.IsNullOrWhiteSpace(effectiveEmail?.ToString()))
+    {
+        return effectiveEmail!.ToString()!.Trim().ToLowerInvariant();
+    }
+
+    return "unknown";
+}
+/* MODULE_002_PASSWORD_RESET_APPROVAL_AUTHORITY_END */
+
+
+
 async Task<bool> RequestUserIsAdministratorAsync(HttpContext context, NpgsqlConnection connection)
 {
     var userId = GetProjectPulseSessionUserId(context);
@@ -18274,9 +18121,9 @@ app.MapGet("/api/auth/password-reset/approvals", async (HttpContext httpContext)
     await using var connection = new NpgsqlConnection(config.ConnectionString);
     await connection.OpenAsync();
 
-    if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
+    if (!await RequestUserCanAccessPasswordResetApprovalsAsync(httpContext, connection))
     {
-        return Results.Json(new { status = "access_denied", message = "Password reset approvals are restricted to administrators and project/team coordinators." }, statusCode: StatusCodes.Status403Forbidden);
+        return Results.Json(new { status = "access_denied", message = "Password reset approvals are restricted to Managers, Project Team Coordinators, Administrators, and Super Administrators." }, statusCode: StatusCodes.Status403Forbidden);
     }
 
     var approvals = new List<object>();
@@ -18349,14 +18196,22 @@ app.MapPost("/api/auth/password-reset/approve", async (PasswordResetApprovalActi
 
     await using var connection = new NpgsqlConnection(config.ConnectionString);
     await connection.OpenAsync();
+
+    if (!await RequestUserCanAccessPasswordResetApprovalsAsync(httpContext, connection))
+    {
+        return Results.Json(new
+        {
+            status = "access_denied",
+            message = "Password reset approval is restricted to Managers, Project Team Coordinators, Administrators, and Super Administrators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
     await using var transaction = await connection.BeginTransactionAsync();
 
     try
     {
         Guid resetRequestId = request.ResetRequestId;
-        string approvedByEmail = string.IsNullOrWhiteSpace(request.ActionByEmail)
-            ? "ahmed.adeyemi@ussignal.com"
-            : request.ActionByEmail.Trim().ToLowerInvariant();
+        string approvedByEmail = ProjectPulse002ResolveActorEmail(httpContext);
 
         string? accountEmail = null;
 
@@ -18456,14 +18311,12 @@ app.MapPost("/api/auth/password-reset/decline", async (PasswordResetApprovalActi
     await using var connection = new NpgsqlConnection(config.ConnectionString);
     await connection.OpenAsync();
 
-    if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
+    if (!await RequestUserCanAccessPasswordResetApprovalsAsync(httpContext, connection))
     {
-        return Results.Json(new { status = "access_denied", message = "Password reset approvals are restricted to administrators and project/team coordinators." }, statusCode: StatusCodes.Status403Forbidden);
+        return Results.Json(new { status = "access_denied", message = "Password reset approvals are restricted to Managers, Project Team Coordinators, Administrators, and Super Administrators." }, statusCode: StatusCodes.Status403Forbidden);
     }
 
-    string declinedByEmail = string.IsNullOrWhiteSpace(request.ActionByEmail)
-        ? "ahmed.adeyemi@ussignal.com"
-        : request.ActionByEmail.Trim().ToLowerInvariant();
+    string declinedByEmail = ProjectPulse002ResolveActorEmail(httpContext);
 
     await using var command = new NpgsqlCommand("""
         UPDATE auth_password_reset_requests pr
@@ -18595,18 +18448,16 @@ app.MapPost("/api/auth/password-reset/complete", async (PasswordResetCompletionR
     await using var connection = new NpgsqlConnection(config.ConnectionString);
     await connection.OpenAsync();
 
-    if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
+    if (!await RequestUserCanAccessPasswordResetApprovalsAsync(httpContext, connection))
     {
-        return Results.Json(new { status = "access_denied", message = "Password reset completion is restricted to administrators and project/team coordinators." }, statusCode: StatusCodes.Status403Forbidden);
+        return Results.Json(new { status = "access_denied", message = "Password reset completion is restricted to Managers, Project Team Coordinators, Administrators, and Super Administrators." }, statusCode: StatusCodes.Status403Forbidden);
     }
 
     await using var transaction = await connection.BeginTransactionAsync();
 
     try
     {
-        var completedByEmail = string.IsNullOrWhiteSpace(request.ActionByEmail)
-            ? "unknown"
-            : request.ActionByEmail.Trim().ToLowerInvariant();
+        var completedByEmail = ProjectPulse002ResolveActorEmail(httpContext);
 
         Guid userId;
         string accountEmail;
@@ -23893,49 +23744,6 @@ app.MapGet("/api/audit/history", async (HttpContext httpContext, int? days, stri
 
 
 
-app.MapGet("/api/manager/approval-count", async (HttpContext httpContext) =>
-{
-    var config = DatabaseConfig.FromEnvironment();
-    var missingResult = ValidateConfig(config);
-    if (missingResult is not null) return missingResult;
-
-    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
-    if (sessionUserId is null)
-    {
-        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
-    }
-
-    await using var connection = new NpgsqlConnection(config.ConnectionString);
-    await connection.OpenAsync();
-
-    var submittedTimeCount = 0;
-    var passwordResetCount = 0;
-
-    await using (var timeCommand = new NpgsqlCommand("""
-        SELECT COUNT(*)
-        FROM timesheets
-        WHERE status IN ('submitted', 'submitted_for_manager_approval', 'pending_manager_approval');
-        """, connection))
-    {
-        submittedTimeCount = Convert.ToInt32(await timeCommand.ExecuteScalarAsync() ?? 0);
-    }
-
-    await using (var resetCommand = new NpgsqlCommand("""
-        SELECT COUNT(*)
-        FROM auth_password_reset_requests
-        WHERE status IN ('pending_approval', 'requested', 'pending');
-        """, connection))
-    {
-        passwordResetCount = Convert.ToInt32(await resetCommand.ExecuteScalarAsync() ?? 0);
-    }
-
-    return Results.Ok(new
-    {
-        submittedTimeCount,
-        passwordResetCount,
-        totalPendingCount = submittedTimeCount + passwordResetCount
-    });
-});
 
 
 
@@ -37907,53 +37715,6 @@ static bool ProjectPulse054CWorkflowTransitionAllowed(string normalizedAction, s
 /* 054C_WORKFLOW_IMMUTABILITY_HELPERS_END */
 
 /* 054B_APPROVAL_AUTHORITY_HELPERS_START */
-static async Task<bool> ProjectPulse054BUserCanManageManagerApprovalsAsync(NpgsqlConnection connection, NpgsqlTransaction? transaction, Guid userId)
-{
-    var roles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-    var permissions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-    await using var command = new NpgsqlCommand("""
-        SELECT
-            r.role_code,
-            COALESCE(p.permission_code, '') AS permission_code
-        FROM app_user_role_assignments ura
-        JOIN app_roles r
-            ON r.app_role_id = ura.app_role_id
-           AND r.is_active = TRUE
-        LEFT JOIN app_role_permissions rp
-            ON rp.app_role_id = r.app_role_id
-        LEFT JOIN app_permissions p
-            ON p.app_permission_id = rp.app_permission_id
-        WHERE ura.user_id = @user_id
-          AND ura.is_active = TRUE;
-        """, connection);
-
-    if (transaction is not null)
-    {
-        command.Transaction = transaction;
-    }
-
-    command.Parameters.AddWithValue("user_id", userId);
-
-    await using var reader = await command.ExecuteReaderAsync();
-    while (await reader.ReadAsync())
-    {
-        roles.Add(reader.GetString(0));
-
-        if (!reader.IsDBNull(1) && !string.IsNullOrWhiteSpace(reader.GetString(1)))
-        {
-            permissions.Add(reader.GetString(1));
-        }
-    }
-
-    return roles.Contains("SUPER_ADMINISTRATOR")
-        || roles.Contains("ADMINISTRATOR")
-        || roles.Contains("PROJECT_TEAM_COORDINATOR")
-        || roles.Contains("MANAGER")
-        || permissions.Contains("SYSTEM_ADMINISTRATION")
-        || permissions.Contains("MANAGE_ALL")
-        || permissions.Contains("APPROVE_TIME");
-}
 
 static async Task<Guid?> ProjectPulse054BGetTimesheetOwnerUserIdAsync(NpgsqlConnection connection, NpgsqlTransaction? transaction, Guid timesheetId)
 {
@@ -37972,40 +37733,6 @@ static async Task<Guid?> ProjectPulse054BGetTimesheetOwnerUserIdAsync(NpgsqlConn
 
     var value = await command.ExecuteScalarAsync();
     return value is Guid userId ? userId : null;
-}
-
-static async Task<IResult?> ProjectPulse054BValidateManagerApprovalActorAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid actorUserId, Guid timesheetId)
-{
-    if (!await ProjectPulse054BUserCanManageManagerApprovalsAsync(connection, transaction, actorUserId))
-    {
-        return Results.Json(new
-        {
-            status = "access_denied",
-            message = "Manager approval actions are restricted to managers, project/team coordinators, and administrators."
-        }, statusCode: StatusCodes.Status403Forbidden);
-    }
-
-    var ownerUserId = await ProjectPulse054BGetTimesheetOwnerUserIdAsync(connection, transaction, timesheetId);
-
-    if (ownerUserId is null)
-    {
-        return Results.Json(new
-        {
-            status = "timesheet_not_found",
-            message = "The selected timesheet could not be resolved for approval authority validation."
-        }, statusCode: StatusCodes.Status404NotFound);
-    }
-
-    if (ownerUserId.Value == actorUserId)
-    {
-        return Results.Json(new
-        {
-            status = "self_approval_blocked",
-            message = "Managers cannot approve, decline, unlock, or bulk-approve their own submitted time."
-        }, statusCode: StatusCodes.Status403Forbidden);
-    }
-
-    return null;
 }
 
 static async Task<bool> ProjectPulse054BWorkflowDayHasProjectManagerScopeAsync(NpgsqlConnection connection, Guid actorUserId, Guid timesheetId, DateOnly workDate)
@@ -38030,157 +37757,6 @@ static async Task<bool> ProjectPulse054BWorkflowDayHasProjectManagerScopeAsync(N
 }
 /* 054B_APPROVAL_AUTHORITY_HELPERS_END */
 
-static async Task<object> LoadManagerApprovalSummaryAsync(NpgsqlConnection connection)
-{
-    const string sql = """
-        SELECT COUNT(*)
-        FROM timesheet_day_statuses
-        WHERE status = 'submitted';
-        """;
-
-    await using var command = new NpgsqlCommand(sql, connection);
-    var pendingManagerApprovals = Convert.ToInt64(await command.ExecuteScalarAsync() ?? 0);
-    const long pendingProjectApprovals = 0;
-
-    return new
-    {
-        pendingManagerApprovals,
-        pendingProjectApprovals,
-        totalPending = pendingManagerApprovals + pendingProjectApprovals,
-        refreshedAtUtc = DateTimeOffset.UtcNow
-    };
-}
-
-static async Task<IResult> ProcessManagerBulkApprovalAsync(ManagerBulkApprovalRequest request, Guid managerUserId)
-{
-    if (request.Items is null || request.Items.Count == 0)
-    {
-        return Results.BadRequest(new
-        {
-            status = "validation_failed",
-            message = "Select at least one submitted day before using bulk approval."
-        });
-    }
-
-    var config = DatabaseConfig.FromEnvironment();
-    var missingResult = ValidateConfig(config);
-    if (missingResult is not null) return missingResult;
-
-    await using var connection = new NpgsqlConnection(config.ConnectionString);
-    await connection.OpenAsync();
-    await using var transaction = await connection.BeginTransactionAsync();
-
-    try
-    {
-        /* 054B_BULK_MANAGER_APPROVAL_AUTHORITY_START */
-        if (!await ProjectPulse054BUserCanManageManagerApprovalsAsync(connection, transaction, managerUserId))
-        {
-            await transaction.RollbackAsync();
-            return Results.Json(new
-            {
-                status = "access_denied",
-                message = "Bulk manager approval is restricted to managers, project/team coordinators, and administrators."
-            }, statusCode: StatusCodes.Status403Forbidden);
-        }
-        /* 054B_BULK_MANAGER_APPROVAL_AUTHORITY_END */
-
-        object comment = string.IsNullOrWhiteSpace(request.Comment) ? "Bulk approved by manager." : request.Comment.Trim();
-        var approvedCount = 0;
-
-        foreach (var item in request.Items.DistinctBy(item => new { item.TimesheetId, item.WorkDate }))
-        {
-            /* 054B_BULK_SELF_APPROVAL_BLOCK_START */
-            var targetOwnerUserId = await ProjectPulse054BGetTimesheetOwnerUserIdAsync(connection, transaction, item.TimesheetId);
-            if (targetOwnerUserId is null)
-            {
-                await transaction.RollbackAsync();
-                return Results.Json(new
-                {
-                    status = "timesheet_not_found",
-                    message = "A selected timesheet could not be resolved for approval authority validation.",
-                    timesheetId = item.TimesheetId
-                }, statusCode: StatusCodes.Status404NotFound);
-            }
-
-            if (targetOwnerUserId.Value == managerUserId)
-            {
-                await transaction.RollbackAsync();
-                return Results.Json(new
-                {
-                    status = "self_approval_blocked",
-                    message = "Managers cannot approve, decline, unlock, or bulk-approve their own submitted time.",
-                    timesheetId = item.TimesheetId,
-                    workDate = item.WorkDate
-                }, statusCode: StatusCodes.Status403Forbidden);
-            }
-            /* 054B_BULK_SELF_APPROVAL_BLOCK_END */
-
-            await using var statusCommand = new NpgsqlCommand("""
-                UPDATE timesheet_day_statuses
-                SET status = 'manager_approved',
-                    manager_user_id = @manager_user_id,
-                    manager_decision_comment = @comment,
-                    manager_approved_at = NOW(),
-                    manager_declined_at = NULL,
-                    updated_at = NOW()
-                WHERE timesheet_id = @timesheet_id
-                  AND work_date = @work_date
-                  AND status = 'submitted'
-                RETURNING timesheet_day_status_id;
-                """, connection, transaction);
-            statusCommand.Parameters.AddWithValue("timesheet_id", item.TimesheetId);
-            statusCommand.Parameters.AddWithValue("work_date", item.WorkDate);
-            statusCommand.Parameters.AddWithValue("manager_user_id", managerUserId);
-            statusCommand.Parameters.AddWithValue("comment", comment);
-
-            var statusId = (Guid?)(await statusCommand.ExecuteScalarAsync());
-            if (statusId is null) continue;
-
-            await using var entryUpdateCommand = new NpgsqlCommand(
-                "UPDATE time_entries SET status = 'manager_approved', updated_at = NOW() WHERE timesheet_id = @timesheet_id AND work_date = @work_date AND status = 'submitted';",
-                connection,
-                transaction);
-            entryUpdateCommand.Parameters.AddWithValue("timesheet_id", item.TimesheetId);
-            entryUpdateCommand.Parameters.AddWithValue("work_date", item.WorkDate);
-            await entryUpdateCommand.ExecuteNonQueryAsync();
-
-            await using var approvalCommand = new NpgsqlCommand("""
-                INSERT INTO approval_records (time_entry_id, approval_stage, approval_status, approver_user_id, decision_comment)
-                SELECT time_entry_id, 'manager', 'approved', @manager_user_id, @comment
-                FROM time_entries
-                WHERE timesheet_id = @timesheet_id
-                  AND work_date = @work_date;
-                """, connection, transaction);
-            approvalCommand.Parameters.AddWithValue("manager_user_id", managerUserId);
-            approvalCommand.Parameters.AddWithValue("comment", comment);
-            approvalCommand.Parameters.AddWithValue("timesheet_id", item.TimesheetId);
-            approvalCommand.Parameters.AddWithValue("work_date", item.WorkDate);
-            await approvalCommand.ExecuteNonQueryAsync();
-
-            await InsertAuditLogAsync(connection, transaction, managerUserId, "timesheet_day_manager_bulk_approved", "timesheet", item.TimesheetId);
-            approvedCount++;
-        }
-
-        await transaction.CommitAsync();
-
-        return Results.Ok(new
-        {
-            status = "bulk_manager_approved",
-            approvedCount,
-            requestedCount = request.Items.Count,
-            message = $"Bulk approved {approvedCount} submitted day(s)."
-        });
-    }
-    catch (Exception ex)
-    {
-        await transaction.RollbackAsync();
-        return Results.Problem(
-            title: "Failed to bulk approve manager approval items",
-            detail: ex.Message,
-            statusCode: StatusCodes.Status500InternalServerError);
-    }
-}
-
 static async Task<Guid> GetOrCreateDevelopmentManagerUserIdAsync(NpgsqlConnection connection, NpgsqlTransaction? transaction = null)
 {
     const string sql = """
@@ -38195,184 +37771,6 @@ static async Task<Guid> GetOrCreateDevelopmentManagerUserIdAsync(NpgsqlConnectio
     await using var command = new NpgsqlCommand(sql, connection, transaction);
     return (Guid)(await command.ExecuteScalarAsync() ?? throw new InvalidOperationException("Unable to create development manager user."));
 }
-
-static async Task<List<object>> LoadManagerApprovalItemsAsync(NpgsqlConnection connection, DateOnly weekStart, DateOnly weekEnd, bool includeAll)
-{
-    var items = new List<object>();
-
-    const string sql = """
-        SELECT
-            tds.timesheet_id,
-            tds.user_id,
-            u.display_name,
-            u.email,
-            tds.work_date,
-            tds.status,
-            tds.submitted_at,
-            COALESCE(SUM(CASE WHEN te.time_type = 'normal' THEN te.hours ELSE 0 END), 0) AS normal_hours,
-            COALESCE(SUM(CASE WHEN te.time_type = 'afterhours' THEN te.hours ELSE 0 END), 0) AS afterhours_hours,
-            COALESCE(SUM(te.hours), 0) AS total_hours,
-            COUNT(te.time_entry_id) AS entry_count,
-            COALESCE(COUNT(te.time_entry_id) FILTER (WHERE te.description IS NOT NULL AND BTRIM(te.description) <> ''), 0) AS comment_count,
-            COALESCE(STRING_AGG(DISTINCT COALESCE(npt.category_name, 'Project task'), ', '), 'No entries') AS activity_summary,
-            tds.manager_decision_comment
-        FROM timesheet_day_statuses tds
-        INNER JOIN app_users u ON u.user_id = tds.user_id
-        LEFT JOIN time_entries te
-            ON te.timesheet_id = tds.timesheet_id
-           AND te.work_date = tds.work_date
-        LEFT JOIN non_project_time_categories npt
-            ON npt.non_project_time_category_id = te.non_project_time_category_id
-        WHERE tds.work_date BETWEEN @week_start AND @week_end
-          AND (@include_all = TRUE OR tds.status = 'submitted')
-        GROUP BY
-            tds.timesheet_id,
-            tds.user_id,
-            u.display_name,
-            u.email,
-            tds.work_date,
-            tds.status,
-            tds.submitted_at,
-            tds.manager_decision_comment
-        ORDER BY tds.work_date, u.display_name;
-        """;
-
-    await using var command = new NpgsqlCommand(sql, connection);
-    command.Parameters.AddWithValue("week_start", weekStart);
-    command.Parameters.AddWithValue("week_end", weekEnd);
-    command.Parameters.AddWithValue("include_all", includeAll);
-
-    await using var reader = await command.ExecuteReaderAsync();
-    while (await reader.ReadAsync())
-    {
-        items.Add(new
-        {
-            timesheetId = reader.GetGuid(0),
-            userId = reader.GetGuid(1),
-            resourceName = reader.GetString(2),
-            resourceEmail = reader.GetString(3),
-            workDate = reader.GetFieldValue<DateOnly>(4),
-            status = reader.GetString(5),
-            submittedAt = reader.IsDBNull(6) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(6),
-            normalHours = reader.GetDecimal(7),
-            afterhours = reader.GetDecimal(8),
-            totalHours = reader.GetDecimal(9),
-            entryCount = reader.GetInt64(10),
-            commentCount = reader.GetInt64(11),
-            activitySummary = reader.GetString(12),
-            managerDecisionComment = reader.IsDBNull(13) ? null : reader.GetString(13)
-        });
-    }
-
-    return items;
-}
-
-static async Task<IResult> ProcessManagerApprovalActionAsync(
-    ManagerApprovalActionRequest request,
-    Guid managerUserId,
-    string targetStatus,
-    string approvalStatus,
-    string auditAction,
-    string successMessage)
-{
-    var config = DatabaseConfig.FromEnvironment();
-    var missingResult = ValidateConfig(config);
-    if (missingResult is not null) return missingResult;
-
-    await using var connection = new NpgsqlConnection(config.ConnectionString);
-    await connection.OpenAsync();
-    await using var transaction = await connection.BeginTransactionAsync();
-
-    try
-    {
-        /* 054B_MANAGER_APPROVAL_AUTHORITY_START */
-        var managerApprovalValidation = await ProjectPulse054BValidateManagerApprovalActorAsync(connection, transaction, managerUserId, request.TimesheetId);
-        if (managerApprovalValidation is not null)
-        {
-            await transaction.RollbackAsync();
-            return managerApprovalValidation;
-        }
-        /* 054B_MANAGER_APPROVAL_AUTHORITY_END */
-
-        object comment = string.IsNullOrWhiteSpace(request.Comment) ? DBNull.Value : request.Comment.Trim();
-
-        var approvedAtSql = targetStatus == "manager_approved" ? "manager_approved_at = NOW(), manager_declined_at = NULL," : "manager_declined_at = NOW(), manager_approved_at = NULL,";
-
-        var statusSql = $"""
-            UPDATE timesheet_day_statuses
-            SET status = @target_status,
-                manager_user_id = @manager_user_id,
-                manager_decision_comment = @comment,
-                {approvedAtSql}
-                updated_at = NOW()
-            WHERE timesheet_id = @timesheet_id
-              AND work_date = @work_date
-              AND status = 'submitted'
-            RETURNING timesheet_day_status_id;
-            """;
-
-        await using var statusCommand = new NpgsqlCommand(statusSql, connection, transaction);
-        statusCommand.Parameters.AddWithValue("timesheet_id", request.TimesheetId);
-        statusCommand.Parameters.AddWithValue("work_date", request.WorkDate);
-        statusCommand.Parameters.AddWithValue("target_status", targetStatus);
-        statusCommand.Parameters.AddWithValue("manager_user_id", managerUserId);
-        statusCommand.Parameters.AddWithValue("comment", comment);
-
-        var statusId = (Guid?)(await statusCommand.ExecuteScalarAsync());
-        if (statusId is null)
-        {
-            return Results.Conflict(new
-            {
-                status = "not_pending_manager_approval",
-                message = "Only submitted days that are pending manager approval can be approved or declined."
-            });
-        }
-
-        await using var entryUpdateCommand = new NpgsqlCommand(
-            "UPDATE time_entries SET status = @target_status, updated_at = NOW() WHERE timesheet_id = @timesheet_id AND work_date = @work_date AND status = 'submitted';",
-            connection,
-            transaction);
-        entryUpdateCommand.Parameters.AddWithValue("target_status", targetStatus);
-        entryUpdateCommand.Parameters.AddWithValue("timesheet_id", request.TimesheetId);
-        entryUpdateCommand.Parameters.AddWithValue("work_date", request.WorkDate);
-        await entryUpdateCommand.ExecuteNonQueryAsync();
-
-        await using var approvalCommand = new NpgsqlCommand("""
-            INSERT INTO approval_records (time_entry_id, approval_stage, approval_status, approver_user_id, decision_comment)
-            SELECT time_entry_id, 'manager', @approval_status, @manager_user_id, @comment
-            FROM time_entries
-            WHERE timesheet_id = @timesheet_id
-              AND work_date = @work_date;
-            """, connection, transaction);
-        approvalCommand.Parameters.AddWithValue("approval_status", approvalStatus);
-        approvalCommand.Parameters.AddWithValue("manager_user_id", managerUserId);
-        approvalCommand.Parameters.AddWithValue("comment", comment);
-        approvalCommand.Parameters.AddWithValue("timesheet_id", request.TimesheetId);
-        approvalCommand.Parameters.AddWithValue("work_date", request.WorkDate);
-        await approvalCommand.ExecuteNonQueryAsync();
-
-        await InsertAuditLogAsync(connection, transaction, managerUserId, auditAction, "timesheet", request.TimesheetId);
-
-        await transaction.CommitAsync();
-
-        return Results.Ok(new
-        {
-            status = targetStatus,
-            timesheetId = request.TimesheetId,
-            workDate = request.WorkDate,
-            message = successMessage
-        });
-    }
-    catch (Exception ex)
-    {
-        await transaction.RollbackAsync();
-        return Results.Problem(
-            title: "Failed to process manager approval action",
-            detail: ex.Message,
-            statusCode: StatusCodes.Status500InternalServerError);
-    }
-}
-
 
 /* 053H_ASSIGNMENT_COST_GUARDRAIL_HELPER_START */
 static decimal ProjectPulse053HGetDefaultEngineeringHourlyCost()

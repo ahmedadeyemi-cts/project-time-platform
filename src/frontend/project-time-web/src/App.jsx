@@ -1,6 +1,17 @@
 import HelpAssistant from './HelpAssistant.jsx';
 import SessionIntelligenceDrawer from './SessionIntelligenceDrawer.jsx';
 import ProfileIdentitySurface from './identity/ProfileIdentitySurface.jsx';
+import ApprovalMailbox from './ApprovalMailbox.jsx';
+
+const MODULE_002_APPROVAL_ROLE_CODES = Object.freeze([
+  'SUPER_ADMINISTRATOR',
+  'ADMINISTRATOR',
+  'PROJECT_TEAM_COORDINATOR',
+  'MANAGER',
+  'PROJECT_MANAGER',
+  'PROJECT_MANAGEMENT'
+]);
+
 import OpportunitiesCenter from './OpportunitiesCenter.jsx';
 import SystemUserGuide from './SystemUserGuide.jsx';
 import PostIntakeAgingPanel from './PostIntakeAgingPanel.jsx';
@@ -1222,7 +1233,6 @@ function deriveProjectPulseActionableApprovalCounts(primaryPayload, secondaryPay
     /manager.*approval.*pending/,
     /submitted.*pending/,
     /pending.*submitted/,
-    /pendingcount$/
   ], [
     /total/,
     /local/,
@@ -4813,62 +4823,83 @@ export default function App() {
       setAzureAdminStatus(error instanceof Error ? error.message : 'Unable to reconcile Entra users.');
     }
   }
-  /* 039E_ACTIONABLE_APPROVAL_COUNT_EFFECT_START */
+  /* MODULE_002_ROLE_AWARE_APPROVAL_COUNT_EFFECT_START */
   useEffect(() => {
     let cancelled = false;
 
     async function loadApprovalPendingCount() {
       if (!authSession?.sessionToken) {
-        setProjectPulseApprovalActionableCounts({
+        const emptyCounts = {
           submittedTimePending: 0,
           localResetPendingApproval: 0,
           localResetReadyForTempPassword: 0,
           actionableTotal: 0
-        });
+        };
+
+        setProjectPulseApprovalActionableCounts(emptyCounts);
         setApprovalPendingCount(0);
         return;
       }
 
       try {
-        const [detailResult, summaryResult] = await Promise.allSettled([
-          fetchJson('/api/manager/approvals'),
-          fetchJson('/api/manager/approval-count')
-        ]);
-
-        const detailPayload = detailResult.status === 'fulfilled' ? detailResult.value : null;
-        const summaryPayload = summaryResult.status === 'fulfilled' ? summaryResult.value : null;
-        const counts = deriveProjectPulseActionableApprovalCounts(detailPayload, summaryPayload);
+        const counts = await fetchJson('/api/manager/approval-count');
 
         if (!cancelled) {
           setProjectPulseApprovalActionableCounts(counts);
-          setApprovalPendingCount(Number(counts.actionableTotal ?? 0));
-          window.setTimeout(normalizeProjectPulseApprovalUi, 100);
-          window.setTimeout(normalizeProjectPulseApprovalUi, 600);
+          setApprovalPendingCount(
+            Number(counts.actionableTotal ?? 0)
+          );
+          window.setTimeout(
+            normalizeProjectPulseApprovalUi,
+            100
+          );
+          window.setTimeout(
+            normalizeProjectPulseApprovalUi,
+            600
+          );
         }
       } catch {
         if (!cancelled) {
-          setProjectPulseApprovalActionableCounts({
+          const emptyCounts = {
             submittedTimePending: 0,
             localResetPendingApproval: 0,
             localResetReadyForTempPassword: 0,
             actionableTotal: 0
-          });
+          };
+
+          setProjectPulseApprovalActionableCounts(emptyCounts);
           setApprovalPendingCount(0);
-          window.setTimeout(normalizeProjectPulseApprovalUi, 100);
+          window.setTimeout(
+            normalizeProjectPulseApprovalUi,
+            100
+          );
         }
       }
     }
 
-    loadApprovalPendingCount();
+    void loadApprovalPendingCount();
 
-    const intervalId = window.setInterval(loadApprovalPendingCount, 30000);
+    const intervalId = window.setInterval(
+      loadApprovalPendingCount,
+      30000
+    );
+
+    window.addEventListener(
+      'projectpulse:approval-queue-changed',
+      loadApprovalPendingCount
+    );
 
     return () => {
       cancelled = true;
       window.clearInterval(intervalId);
+      window.removeEventListener(
+        'projectpulse:approval-queue-changed',
+        loadApprovalPendingCount
+      );
     };
   }, [authSession?.sessionToken, activeRoute]);
-  /* 039E_ACTIONABLE_APPROVAL_COUNT_EFFECT_END */
+  /* MODULE_002_ROLE_AWARE_APPROVAL_COUNT_EFFECT_END */
+
 
 
 
@@ -5958,6 +5989,7 @@ Analytics - Variphy / Infortel`}
         </nav>
 
         <div className="enterprise-header-utilities">
+          <ApprovalMailbox />
           <ProjectPulseGlobalSearch />
         <div className="profile-menu-shell" ref={profileMenuRef}>
           <button
@@ -7719,13 +7751,8 @@ Analytics - Variphy / Infortel`}
         </section>
       ) : null}
 
-      {(canViewManagerApprovalPanel || canViewPmApprovalPanel || canViewPtcTimeEntryCorrections || canViewLocalAdminPasswordResetApprovals) ? (
-        <ApprovalCenter
-          canViewManagerApprovalPanel={canViewManagerApprovalPanel}
-          canViewPmApprovalPanel={canViewPmApprovalPanel}
-          canViewPtcTimeEntryCorrections={canViewPtcTimeEntryCorrections}
-          canViewLocalAdminPasswordResetApprovals={canViewLocalAdminPasswordResetApprovals}
-        />
+      {(activeRoute === 'manager-approval') ? (
+        <ApprovalCenter />
       ) : null}
 
       {(activeRoute === 'workflow' && canSeeAny(['VIEW_APPROVAL_WORKFLOW', 'PROJECT_TIME_APPROVAL', 'VIEW_ACCOUNT_RECONCILIATION', 'MANAGE_ACCOUNT_RECONCILIATION', 'EXPORT_TIME_EXCEL', 'EXPORT_TIME_PDF', 'VIEW_AUDIT_TRAIL', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
