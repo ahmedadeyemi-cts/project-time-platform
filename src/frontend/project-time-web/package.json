@@ -5,11 +5,22 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 5173",
-    "build": "npm run validate:module059 && npm run validate:module062 && npm run validate:module002 && vite build",
+    "build": "npm run validate:module059 && npm run validate:module062 && npm run validate:module002 && npm run validate:module064 && npm run validate:module065 && npm run validate:module066 && npm run validate:module067 && npm run validate:module068 && npm run validate:module069 && npm run validate:module070 && npm run validate:module071 && npm run validate:module072 && npm run validate:module073 && npm run validate:module074 && vite build",
     "preview": "vite preview --host 127.0.0.1 --port 4173",
     "validate:module059": "node ./scripts/validate-module-059-global.mjs",
     "validate:module062": "node ./scripts/validate-module-062-identity-profile.mjs",
-    "validate:module002": "node ./scripts/validate-module-002-approval-center.mjs"
+    "validate:module002": "node ./scripts/validate-module-002-approval-center.mjs",
+    "validate:module064": "node ./scripts/validate-module-064-shared-ai.mjs",
+    "validate:module065": "node ./scripts/validate-module-065-entra-secret-administration.mjs",
+    "validate:module066": "node ./scripts/validate-module-066-project-flowhive.mjs",
+    "validate:module067": "node ./scripts/validate-module-067-global-mail.mjs",
+    "validate:module068": "node ./scripts/validate-module-068-system-architecture.mjs",
+    "validate:module069": "node ./scripts/validate-module-069-qualifications.mjs",
+    "validate:module070": "node ./scripts/validate-module-070-capacity-pipeline-forecasting.mjs",
+    "validate:module071": "node ./scripts/validate-module-071-oncall-scheduling.mjs",
+    "validate:module072": "node ./scripts/validate-module-072-oneassist-routing-directory.mjs",
+    "validate:module073": "node ./scripts/validate-module-073-sales-coverage-alignment.mjs",
+    "validate:module074": "node ./scripts/validate-module-074-oem-vendor-directory.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.3.1",

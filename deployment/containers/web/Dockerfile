@@ -25,8 +25,113 @@ COPY src/backend/ProjectTime.Api/Program.cs \
 COPY src/backend/ProjectTime.Api/Modules/IdentityProfileModule.cs \
      src/backend/ProjectTime.Api/Modules/IdentityProfileModule.cs
 
+COPY src/backend/ProjectTime.Api/Ai/ \
+     src/backend/ProjectTime.Api/Ai/
+
+COPY src/backend/ProjectTime.Api/ProjectPulseAiTimeEntrySuggestionService.cs \
+     src/backend/ProjectTime.Api/ProjectPulseAiTimeEntrySuggestionService.cs
+
+COPY src/backend/ProjectTime.Api/Modules/AiProviderConfigurationModule.cs \
+     src/backend/ProjectTime.Api/Modules/AiProviderConfigurationModule.cs
+
+COPY src/backend/ProjectTime.Api/Modules/EntraSecretAdministrationModule.cs \
+     src/backend/ProjectTime.Api/Modules/EntraSecretAdministrationModule.cs
+
+COPY src/backend/ProjectTime.Api/Modules/EntraSecretRotationContracts.cs \
+     src/backend/ProjectTime.Api/Modules/EntraSecretRotationContracts.cs
+
+COPY src/backend/ProjectTime.Api/Modules/ProjectFlowHiveModule.cs \
+     src/backend/ProjectTime.Api/Modules/ProjectFlowHiveModule.cs
+
+COPY src/backend/ProjectTime.Api/Modules/ProjectFlowHivePlanningContracts.cs \
+     src/backend/ProjectTime.Api/Modules/ProjectFlowHivePlanningContracts.cs
+
+COPY src/backend/ProjectTime.Api/Modules/ProjectFlowHiveScheduleEngine.cs \
+     src/backend/ProjectTime.Api/Modules/ProjectFlowHiveScheduleEngine.cs
+
+COPY src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiRequestFactory.cs \
+     src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiRequestFactory.cs
+
+COPY src/backend/ProjectTime.Api/Modules/ProjectFlowHiveBrandAssets.cs \
+     src/backend/ProjectTime.Api/Modules/ProjectFlowHiveBrandAssets.cs
+
+COPY src/backend/ProjectTime.Api/Modules/ProjectFlowHiveArtifactRenderer.cs \
+     src/backend/ProjectTime.Api/Modules/ProjectFlowHiveArtifactRenderer.cs
+
+COPY src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs \
+     src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs
+
+COPY src/backend/ProjectTime.Api/Modules/SystemArchitectureModule.cs \
+     src/backend/ProjectTime.Api/Modules/SystemArchitectureModule.cs
+
+COPY src/backend/ProjectTime.Api/Modules/QualificationsCertificationModule.cs \
+     src/backend/ProjectTime.Api/Modules/QualificationsCertificationModule.cs
+
+COPY src/backend/ProjectTime.Api/Modules/CapacityPipelineForecastModule.cs \
+     src/backend/ProjectTime.Api/Modules/CapacityPipelineForecastModule.cs
+
+COPY src/backend/ProjectTime.Api/Modules/OnCallSchedulingModule.cs \
+     src/backend/ProjectTime.Api/Modules/OnCallSchedulingModule.cs
+
+COPY src/backend/ProjectTime.Api/Modules/OneAssistRoutingDirectoryModule.cs \
+     src/backend/ProjectTime.Api/Modules/OneAssistRoutingDirectoryModule.cs
+
+COPY src/backend/ProjectTime.Api/Modules/SalesCoverageAlignmentModule.cs \
+     src/backend/ProjectTime.Api/Modules/SalesCoverageAlignmentModule.cs
+
+COPY src/backend/ProjectTime.Api/Modules/OemVendorDirectoryModule.cs \
+     src/backend/ProjectTime.Api/Modules/OemVendorDirectoryModule.cs
+
 COPY docs/modules/module-062-unified-identity-profile/README.md \
      docs/modules/module-062-unified-identity-profile/README.md
+
+COPY docs/modules/module-064-ai-provider-configuration/ \
+     docs/modules/module-064-ai-provider-configuration/
+
+COPY docs/modules/module-065-entra-secret-administration/ \
+     docs/modules/module-065-entra-secret-administration/
+
+COPY docs/modules/module-066-project-flowhive/ \
+     docs/modules/module-066-project-flowhive/
+
+COPY docs/modules/module-067-global-mail/ \
+     docs/modules/module-067-global-mail/
+
+COPY docs/modules/module-068-system-architecture/ \
+     docs/modules/module-068-system-architecture/
+
+COPY docs/modules/module-069-qualifications-certifications/ \
+     docs/modules/module-069-qualifications-certifications/
+
+COPY docs/modules/module-070-capacity-pipeline-forecasting/ \
+     docs/modules/module-070-capacity-pipeline-forecasting/
+
+COPY docs/modules/module-071-oncall-scheduling/ \
+     docs/modules/module-071-oncall-scheduling/
+
+COPY docs/modules/module-072-oneassist-routing-directory/ \
+     docs/modules/module-072-oneassist-routing-directory/
+
+COPY docs/modules/module-073-sales-coverage-alignment/ \
+     docs/modules/module-073-sales-coverage-alignment/
+
+COPY docs/modules/module-074-oem-vendor-directory/ \
+     docs/modules/module-074-oem-vendor-directory/
+
+COPY docs/MODULE-CATALOG.md \
+     docs/MODULE-CATALOG.md
+
+COPY docs/MODULE-WORK-REGISTER.md \
+     docs/MODULE-WORK-REGISTER.md
+
+COPY docs/production-readiness/AUGUST_PRODUCTION_READINESS_TRACKER.md \
+     docs/production-readiness/AUGUST_PRODUCTION_READINESS_TRACKER.md
+
+COPY scripts/module-066-validation/ \
+     scripts/module-066-validation/
+
+COPY deployment/containers/web/Dockerfile \
+     deployment/containers/web/Dockerfile
 
 WORKDIR /workspace/src/frontend/project-time-web
 

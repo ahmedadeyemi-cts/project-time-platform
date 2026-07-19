@@ -3,9 +3,11 @@ using Npgsql;
 namespace ProjectTime.Api.Modules;
 
 /// <summary>
-/// Module 066A establishes the read-only Project FlowHive contract on top of
-/// canonical ProjectPulse projects, tasks, and assignments. Planning mutations
-/// remain disabled until the versioned planning schema is explicitly approved.
+/// Module 066 exposes the module-owned Project FlowHive source contract on top
+/// of canonical ProjectPulse projects, tasks, and assignments. Deterministic
+/// planning previews are enabled; persistence, provider calls, customer links,
+/// and external delivery remain locked until their governed integrations are
+/// separately authorized and registered.
 /// </summary>
 public static class ProjectFlowHiveModule
 {
@@ -17,6 +19,33 @@ public static class ProjectFlowHiveModule
         app.MapGet(
             "/api/project-flowhive/portfolio",
             (Func<HttpContext, Task<IResult>>)GetPortfolioAsync);
+        app.MapGet(
+            "/api/project-flowhive/readiness",
+            (Func<HttpContext, IResult>)GetReadiness);
+        app.MapPost(
+            "/api/project-flowhive/planning/validate",
+            (Func<ProjectFlowHivePlanRequest, HttpContext, IResult>)ValidatePlan);
+        app.MapPost(
+            "/api/project-flowhive/schedule/calculate",
+            (Func<ProjectFlowHivePlanRequest, HttpContext, IResult>)CalculateSchedule);
+        app.MapPost(
+            "/api/project-flowhive/plans/drafts",
+            (Func<ProjectFlowHivePlanRequest, HttpContext, IResult>)PersistenceLocked);
+        app.MapPost(
+            "/api/project-flowhive/plans/{planId:guid}/baseline",
+            (Func<Guid, HttpContext, IResult>)BaselineLocked);
+        app.MapPost(
+            "/api/project-flowhive/ai/request-preview",
+            (Func<ProjectFlowHiveAiDraftPreviewRequest, HttpContext, IResult>)PreviewAiRequest);
+        app.MapGet(
+            "/api/project-flowhive/artifacts/readiness",
+            (Func<HttpContext, IResult>)GetArtifactReadiness);
+        app.MapPost(
+            "/api/project-flowhive/artifacts/pdf-preview",
+            (Func<ProjectFlowHiveArtifactRequest, HttpContext, IResult>)BuildPdfPreview);
+        app.MapPost(
+            "/api/project-flowhive/artifacts/excel-preview",
+            (Func<ProjectFlowHiveArtifactRequest, HttpContext, IResult>)BuildExcelPreview);
 
         return app;
     }
@@ -34,12 +63,15 @@ public static class ProjectFlowHiveModule
         {
             module = "066",
             moduleName = "Project FlowHive",
-            phase = "066A",
-            status = "foundation_read_only",
+            phase = "066A.1-066E",
+            status = "release_train_source_registered_external_locks_preserved",
             route = "project-flowhive",
             databaseMutationEnabled = false,
-            aiGenerationEnabled = false,
+            aiExecutionEnabled = false,
+            deterministicPlanningPreviewEnabled = true,
+            internalDraftArtifactEnabled = true,
             customerExportEnabled = false,
+            customerSharingEnabled = false,
             capabilities = CapabilityRows(),
             integration = new
             {
@@ -48,12 +80,196 @@ public static class ProjectFlowHiveModule
                 canonicalAssignments = "available_read_only",
                 workRegister = "dependency_identified",
                 timesheet = "dependency_identified",
-                calendarCapacity = "dependency_identified",
-                aiProvider = "deferred_to_module_064",
-                identityProfile = "deferred_until_module_062_checkpoint",
-                brandedPdfAndExcel = "deferred_until_approved_logo_assets_are_on_current_main"
+                calendarCapacity = "weekday_preview_only_module_057_authority_required",
+                aiProvider = "module_064_shared_router_registered_flowhive_execution_locked",
+                aiProviderOrder = new[] { "claude", "openai", "local_template" },
+                identityProfile = "module_062_available",
+                approvalCenter = "module_002_preserved_on_current_main",
+                brandedPdfAndExcel = "internal_draft_preview_source_ready",
+                logoSha256 = ProjectFlowHiveBrandAssets.LogoSha256,
+                sharedRegistration = "integrated_uncommitted_source"
             }
         });
+    }
+
+    private static IResult GetReadiness(HttpContext httpContext)
+    {
+        if (EffectiveSessionUserId(httpContext) is null) return SessionRequired();
+
+        return Results.Ok(new
+        {
+            module = "066",
+            sourceBaseline = "main@2b4a6d1a1242a25b52110a2a209ff8ddda0b8ca4",
+            module002 = new
+            {
+                sourceCommit = "f5ede8f6717b01c8f4bf7905b433fead38210007",
+                mergeCommit = "2b4a6d1a1242a25b52110a2a209ff8ddda0b8ca4",
+                preserved = true
+            },
+            phases = new object[]
+            {
+                new { phase = "066A.1", capability = "shared registration", status = "source_integrated_uncommitted" },
+                new { phase = "066B", capability = "governed planning contracts", status = "source_ready_persistence_locked" },
+                new { phase = "066C", capability = "schedule and portfolio experience", status = "deterministic_preview_source_ready" },
+                new { phase = "066D", capability = "automation and AI", status = "module_064_request_ready_execution_locked" },
+                new { phase = "066E", capability = "customer artifacts and sharing", status = "internal_branded_preview_ready_external_sharing_locked" }
+            },
+            sharedFilesChanged = true,
+            databaseApplied = false,
+            azureChanged = false,
+            entraChanged = false,
+            deploymentPerformed = false,
+            blockers = new[]
+            {
+                "Complete release-train validation and obtain publication authority before commit or deployment.",
+                "Keep FlowHive provider execution locked until its reviewed adapter calls the registered Module 064 router.",
+                "Authorize and review a persistence schema before registering a write repository.",
+                "Authorize external customer sharing before creating any customer link."
+            }
+        });
+    }
+
+    private static IResult ValidatePlan(
+        ProjectFlowHivePlanRequest request,
+        HttpContext httpContext)
+    {
+        if (EffectiveSessionUserId(httpContext) is null) return SessionRequired();
+        return Results.Ok(ProjectFlowHiveScheduleEngine.Validate(request));
+    }
+
+    private static IResult CalculateSchedule(
+        ProjectFlowHivePlanRequest request,
+        HttpContext httpContext)
+    {
+        if (EffectiveSessionUserId(httpContext) is null) return SessionRequired();
+        var result = ProjectFlowHiveScheduleEngine.Calculate(request);
+        return result.Valid ? Results.Ok(result) : Results.BadRequest(result);
+    }
+
+    private static IResult PersistenceLocked(
+        ProjectFlowHivePlanRequest request,
+        HttpContext httpContext)
+    {
+        if (ActualSessionUserId(httpContext) is null) return SessionRequired();
+        return LockedPhase(
+            "066B",
+            "persistence_locked",
+            "Plan drafts cannot be stored until a separately approved persistence adapter is registered.");
+    }
+
+    private static IResult BaselineLocked(Guid planId, HttpContext httpContext)
+    {
+        if (ActualSessionUserId(httpContext) is null) return SessionRequired();
+        return LockedPhase(
+            "066B",
+            "baseline_locked",
+            "A Project FlowHive baseline cannot be established without approved persistence, authorization, and Module 002 approval integration.");
+    }
+
+    private static IResult PreviewAiRequest(
+        ProjectFlowHiveAiDraftPreviewRequest request,
+        HttpContext httpContext)
+    {
+        if (EffectiveSessionUserId(httpContext) is null) return SessionRequired();
+        return Results.Ok(ProjectFlowHiveAiRequestFactory.Preview(request));
+    }
+
+    private static IResult GetArtifactReadiness(HttpContext httpContext)
+    {
+        if (EffectiveSessionUserId(httpContext) is null) return SessionRequired();
+        return Results.Ok(new
+        {
+            module = "066",
+            phase = "066E",
+            status = "internal_preview_ready_customer_sharing_locked",
+            formats = new[] { "pdf", "xlsx" },
+            branding = new
+            {
+                asset = "repository_owned_us_signal_logo",
+                sha256 = ProjectFlowHiveBrandAssets.LogoSha256,
+                embeddedInPdf = true,
+                embeddedInExcel = true
+            },
+            restrictions = new[]
+            {
+                "Artifacts are marked as internal drafts.",
+                "No external link is created.",
+                "Customer baseline export remains locked.",
+                "Delivery and customer access require separate authorization."
+            }
+        });
+    }
+
+    private static IResult BuildPdfPreview(
+        ProjectFlowHiveArtifactRequest request,
+        HttpContext httpContext)
+    {
+        if (EffectiveSessionUserId(httpContext) is null) return SessionRequired();
+        var prepared = PrepareArtifact(request);
+        if (prepared.Error is not null) return prepared.Error;
+        var bytes = ProjectFlowHiveArtifactRenderer.BuildPdf(request, prepared.Schedule!);
+        return Results.File(bytes, "application/pdf", $"{SafeFileName(request.Plan?.PlanName)}-internal-draft.pdf");
+    }
+
+    private static IResult BuildExcelPreview(
+        ProjectFlowHiveArtifactRequest request,
+        HttpContext httpContext)
+    {
+        if (EffectiveSessionUserId(httpContext) is null) return SessionRequired();
+        var prepared = PrepareArtifact(request);
+        if (prepared.Error is not null) return prepared.Error;
+        var bytes = ProjectFlowHiveArtifactRenderer.BuildExcel(request, prepared.Schedule!);
+        return Results.File(
+            bytes,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            $"{SafeFileName(request.Plan?.PlanName)}-internal-draft.xlsx");
+    }
+
+    private static (ProjectFlowHiveScheduleResult? Schedule, IResult? Error) PrepareArtifact(
+        ProjectFlowHiveArtifactRequest request)
+    {
+        if (!request.AcknowledgeInternalDraft)
+        {
+            return (null, Results.BadRequest(new
+            {
+                status = "internal_draft_acknowledgement_required",
+                message = "Acknowledge that this artifact is an internal draft and not an approved customer baseline."
+            }));
+        }
+        if (!string.Equals(request.Audience?.Trim(), "internal", StringComparison.OrdinalIgnoreCase))
+        {
+            return (null, LockedPhase(
+                "066E",
+                "customer_export_locked",
+                "Only internal draft previews are available. Customer exports and sharing links are not authorized."));
+        }
+
+        var schedule = ProjectFlowHiveScheduleEngine.Calculate(request.Plan);
+        return schedule.Valid
+            ? (schedule, null)
+            : (null, Results.BadRequest(schedule));
+    }
+
+    private static IResult LockedPhase(string phase, string status, string message)
+    {
+        return Results.Json(new
+        {
+            module = "066",
+            phase,
+            status,
+            message,
+            stateChanged = false
+        }, statusCode: StatusCodes.Status423Locked);
+    }
+
+    private static string SafeFileName(string? value)
+    {
+        var source = string.IsNullOrWhiteSpace(value) ? "project-flowhive-plan" : value.Trim();
+        var safe = new string(source.Select(character =>
+            char.IsLetterOrDigit(character) || character is '-' or '_' ? character : '-').ToArray());
+        return safe.Trim('-').ToLowerInvariant() is { Length: > 0 } result
+            ? result[..Math.Min(result.Length, 80)]
+            : "project-flowhive-plan";
     }
 
     private static async Task<IResult> GetPortfolioAsync(HttpContext httpContext)
@@ -106,9 +322,9 @@ public static class ProjectFlowHiveModule
             {
                 module = "066",
                 moduleName = "Project FlowHive",
-                phase = "066A",
+                phase = "066A.1-066E",
                 status = "portfolio_loaded",
-                mode = "read_only_foundation",
+                mode = "read_only_canonical_source",
                 access = new
                 {
                     actualUserId,
@@ -129,7 +345,9 @@ public static class ProjectFlowHiveModule
                     usedHours = tasks.Sum(row => row.UsedHours),
                     remainingHours = tasks.Sum(row => row.RemainingHours),
                     controlledBaselineCount = 0,
-                    dependencyCount = 0
+                    dependencyCount = 0,
+                    planningPreviewAvailable = true,
+                    persistenceAvailable = false
                 },
                 projects,
                 tasks,
@@ -137,21 +355,26 @@ public static class ProjectFlowHiveModule
                 planningState = new
                 {
                     canonicalTaskCodeAvailable = true,
-                    controlledWbsAvailable = false,
-                    dependencyNetworkAvailable = false,
-                    scheduleEngineAvailable = false,
+                    controlledWbsPreviewAvailable = true,
+                    dependencyNetworkPreviewAvailable = true,
+                    scheduleEnginePreviewAvailable = true,
                     baselineVersioningAvailable = false,
                     collaborationHistoryAvailable = false,
-                    explanation = "066A reads existing records only. Controlled planning structures require a separately authorized database phase."
+                    aiExecutionAvailable = false,
+                    internalBrandedArtifactsAvailable = true,
+                    customerSharingAvailable = false,
+                    explanation = "Canonical records remain read only. Deterministic plan and artifact previews do not persist or share data."
                 },
                 guardrails = new[]
                 {
                     "All portfolio rows are filtered by backend assignment and role scope.",
                     "Project Managers see managed projects; engineers see assigned projects and tasks.",
                     "Project Team Coordinators and authorized leadership retain their broader business scope.",
-                    "No Project FlowHive endpoint creates, updates, deletes, approves, or baselines data in Phase 066A.",
-                    "Task codes are displayed as canonical references and are not represented as approved WBS numbers.",
-                    "PDF, Excel, AI generation, Outlook scheduling, and customer sharing remain disabled."
+                    "No Project FlowHive endpoint creates, updates, deletes, approves, or baselines database data.",
+                    "Task codes remain canonical references until a validated local planning preview assigns controlled draft WBS values.",
+                    "Schedule calculations are weekday-only previews until Module 057 calendar authority is integrated.",
+                    "AI execution is locked to Module 064; direct provider clients are prohibited.",
+                    "PDF and Excel previews are US Signal branded internal drafts; customer sharing remains disabled."
                 }
             });
         }
@@ -174,16 +397,17 @@ public static class ProjectFlowHiveModule
     {
         return
         [
-            new { code = "portfolio", priority = "P0", status = "foundation", evidence = "Role-scoped canonical project summary" },
-            new { code = "task_grid", priority = "P0", status = "foundation", evidence = "Read-only canonical task grid" },
-            new { code = "resource_assignments", priority = "P0", status = "foundation", evidence = "Read-only assignment and hour summary" },
-            new { code = "controlled_wbs", priority = "P0", status = "planned", evidence = "Requires versioned planning persistence" },
-            new { code = "dependencies", priority = "P0", status = "planned", evidence = "Requires FS/SS/FF/SF dependency persistence" },
-            new { code = "gantt_timeline", priority = "P0", status = "planned", evidence = "Requires schedule engine and working calendars" },
-            new { code = "baselines", priority = "P0", status = "planned", evidence = "Requires immutable plan versions" },
-            new { code = "collaboration", priority = "P0", status = "planned", evidence = "Requires comments, mentions, attachments, and update history" },
-            new { code = "ai_plan_generation", priority = "P1", status = "planned", evidence = "Depends on Module 064 and approved GSD/SOW sources" },
-            new { code = "customer_exports", priority = "P1", status = "planned", evidence = "Depends on approved US Signal logo assets and export audit" }
+            new { code = "portfolio", priority = "P0", status = "source_ready", evidence = "Role-scoped canonical project summary" },
+            new { code = "task_grid", priority = "P0", status = "source_ready", evidence = "Read-only canonical task grid plus local controlled-draft editor" },
+            new { code = "resource_assignments", priority = "P0", status = "source_ready", evidence = "Module 062 identity-backed assignment references" },
+            new { code = "controlled_wbs", priority = "P0", status = "preview_ready", evidence = "Numeric hierarchy validation; persistence locked" },
+            new { code = "dependencies", priority = "P0", status = "preview_ready", evidence = "FS/SS/FF/SF, lead/lag, duplicate, and cycle validation" },
+            new { code = "gantt_timeline", priority = "P0", status = "preview_ready", evidence = "Deterministic weekday schedule, float, and critical path preview" },
+            new { code = "baselines", priority = "P0", status = "locked", evidence = "Contract present; persistence and approval integration not authorized" },
+            new { code = "collaboration", priority = "P0", status = "locked", evidence = "History design present; persistence not authorized" },
+            new { code = "ai_plan_generation", priority = "P1", status = "request_ready", evidence = "Module 064 request preview with Claude, OpenAI, local routing contract; execution locked" },
+            new { code = "internal_exports", priority = "P1", status = "preview_ready", evidence = "US Signal logo embedded in internal draft PDF and Excel source" },
+            new { code = "customer_sharing", priority = "P1", status = "locked", evidence = "No customer link, token, delivery, or external state change" }
         ];
     }
 
@@ -547,7 +771,9 @@ public static class ProjectFlowHiveModule
                 project.project_name,
                 COALESCE(task.task_code, 'PROJECT') AS task_code,
                 COALESCE(task.task_name, 'Project-level assignment') AS task_name,
+                resource.user_id AS resource_user_id,
                 COALESCE(NULLIF(resource.display_name, ''), resource.email) AS resource_name,
+                resource.email AS resource_email,
                 assignment.effective_start_date,
                 assignment.effective_end_date,
                 assignment.allocation_percent,
@@ -588,7 +814,9 @@ public static class ProjectFlowHiveModule
                 reader.GetString(O("project_name")),
                 reader.GetString(O("task_code")),
                 reader.GetString(O("task_name")),
+                reader.GetGuid(O("resource_user_id")),
                 reader.GetString(O("resource_name")),
+                reader.GetString(O("resource_email")),
                 ReadDateOnly(reader, O("effective_start_date")),
                 ReadDateOnlyOrNull(reader, O("effective_end_date")),
                 reader.IsDBNull(O("allocation_percent")) ? null : reader.GetDecimal(O("allocation_percent")),
@@ -807,7 +1035,9 @@ internal sealed record ProjectFlowHiveAssignment(
     string ProjectName,
     string TaskCode,
     string TaskName,
+    Guid ResourceUserId,
     string ResourceName,
+    string ResourceEmail,
     DateOnly EffectiveStartDate,
     DateOnly? EffectiveEndDate,
     decimal? AllocationPercent,

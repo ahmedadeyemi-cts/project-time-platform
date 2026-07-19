@@ -1,123 +1,90 @@
 # Module 066 — Project FlowHive
 
-## Current phase
+## Governed status
 
-- **Phase:** 066A — Read-only foundation
-- **Status:** Active, uncommitted, not pushed, not deployed
-- **Base:** `main@92c0964afdc26dede72e09bf2c8d7c0629126bc0`
-- **Branch:** `feature/module-066-project-flowhive-foundation-20260719`
+- **Source package:** 066A.1 through 066E module-owned source
+- **Runtime status:** source-integrated; not merged, deployed, or runtime-verified
+- **Persistence status:** locked; no schema or database change was applied
+- **AI status:** Module 064 request contract ready; no provider execution
+- **Customer-sharing status:** locked; no external link or delivery
+- **Baseline:** `main@2b4a6d1a1242a25b52110a2a209ff8ddda0b8ca4`
+- **Module 002 source:** `f5ede8f6717b01c8f4bf7905b433fead38210007`
+- **Branch:** `feature/module-066-complete-integrated-on-main-20260719`
 
-## Purpose
+Project FlowHive is ProjectPulse's governed, multi-customer project-planning
+workspace. This package combines the validated 066A.1 shared registration with
+the fullest safe 066B–066E source. Database persistence, AI-provider execution,
+and external customer delivery remain behind explicit authorization gates.
 
-Project FlowHive is the governed, multi-customer project-planning workspace for
-ProjectPulse. Its approved product direction includes WBS planning, dependencies,
-schedule views, controlled baselines, assignments, collaboration, execution
-updates, portfolio reporting, customer-safe sharing, and historical plan control.
+## Delivered source by phase
 
-The product goal is a cohesive Smartsheet-class planning experience integrated
-with ProjectPulse. It is not a claim of literal parity with every unrelated
-Smartsheet product.
+| Phase | Source delivered | Still gated |
+|---|---|---|
+| 066A.1 | Endpoint mapping, role-aware route/navigation, installed-module registry, validator/build/container wiring | Commit, review, merge, deployment, and portal verification |
+| 066B | WBS, hierarchy, assignments, FS/SS/FF/SF dependencies, lead/lag, validation, locked repository contract, baseline API contract | Database schema approval, repository adapter, authorization and audit persistence |
+| 066C | Deterministic weekday schedule, cycle detection, earliest/latest dates, critical path, total/free float, timeline and risk UI | Module 057 holiday/resource calendars and persisted execution updates |
+| 066D | Sanitized GSD/SOW request preview and governed local fallback contract | Merged and registered Module 064 `ProjectPulseAiRouter` |
+| 066E | Internal draft PDF/XLSX source with the exact repository US Signal logo | Approved baseline authority, customer isolation, expiring links, delivery and access audit |
 
-## Phase 066A outcome
-
-Phase 066A creates a safe foundation without changing the database or activating
-planning mutations. It provides:
-
-No database migration is introduced or applied by this phase.
-
-- an authenticated capability endpoint;
-- an authenticated, server-scoped portfolio endpoint;
-- read-only canonical project, task, assignment, and hour summaries;
-- PM managed-project scope;
-- engineer assigned-project and assigned-task scope;
-- Project Team Coordinator and authorized leadership business scope;
-- View-As-aware effective-user resolution;
-- a read-only React portfolio, task grid, and capability-plan component;
-- explicit labels for functionality that is still planned;
-- a permanent capability matrix and API contract;
-- a validator that protects the 066A read-only boundary.
-
-Task codes are displayed as canonical task references. Phase 066A does not
-represent those codes as approved WBS numbers.
-
-## Module-owned implementation
+## Module-owned files
 
 - `src/backend/ProjectTime.Api/Modules/ProjectFlowHiveModule.cs`
+- `src/backend/ProjectTime.Api/Modules/ProjectFlowHivePlanningContracts.cs`
+- `src/backend/ProjectTime.Api/Modules/ProjectFlowHiveScheduleEngine.cs`
+- `src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiRequestFactory.cs`
+- `src/backend/ProjectTime.Api/Modules/ProjectFlowHiveBrandAssets.cs`
+- `src/backend/ProjectTime.Api/Modules/ProjectFlowHiveArtifactRenderer.cs`
 - `src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx`
 - `src/frontend/project-time-web/src/project-flowhive-center.css`
 - `src/frontend/project-time-web/scripts/validate-module-066-project-flowhive.mjs`
-- `docs/modules/module-066-project-flowhive/README.md`
-- `docs/modules/module-066-project-flowhive/CAPABILITY-MATRIX.md`
-- `docs/modules/module-066-project-flowhive/API-CONTRACT.md`
+- `scripts/module-066-validation/*`
+- `docs/modules/module-066-project-flowhive/*`
 
-## API foundation
+## Safety boundary
 
-- `GET /api/project-flowhive/capabilities`
-- `GET /api/project-flowhive/portfolio`
+The current package intentionally modifies the reviewed shared integration
+surfaces required by 066A.1: `Program.cs`, `App.jsx`, the frontend package build
+chain, web-container validator context, the central catalog/work register, and
+the production-readiness tracker. It does **not** create a database migration,
+deployment definition, Azure or Entra change, provider secret, external-sharing
+token, notification, or customer delivery.
 
-Both endpoints require an authenticated ProjectPulse session. The portfolio
-endpoint filters records on the server; frontend filtering is not an access
-control boundary.
+The planner can edit a draft in browser memory, validate it on the server,
+calculate a deterministic schedule, prepare a Module 064 request, and generate
+an internally marked artifact. None of those actions stores a plan, establishes
+a baseline, calls an AI provider, creates a customer link, sends a message, or
+changes external state.
 
-## Existing ProjectPulse foundations reused
+## Reused ProjectPulse authority
 
-- `clients`
-- `projects`
-- `project_tasks`
-- `project_assignments`
-- `time_entries`
-- `app_users`
-- `app_user_role_assignments`
-- `app_roles`
-- `reporting_relationships`
-- Project Workspace role-scope patterns
-- Work Register intake, documents, assignments, changes, and closure foundations
-- Calendar Capacity resource context
-- Timesheet project/task eligibility and actual-hour records
+- Module 002 Approval Center remains the future plan-baseline approval authority.
+- Module 057 remains the future holiday and resource-calendar authority.
+- Module 062 provides the effective identity and assignment ID contract.
+- Module 064 is the only permitted AI provider router and owns
+  Claude → OpenAI → governed local fallback selection.
+- Canonical project, task, assignment, and actual-hour data remains read-only.
 
-## Explicitly unavailable in 066A
+## US Signal artifact branding
 
-- planning record creation or editing;
-- controlled WBS hierarchy;
-- dependency creation or scheduling calculations;
-- Gantt, critical path, float, or schedule constraints;
-- baseline approval, revision, supersession, or archive persistence;
-- comments, mentions, update requests, or plan attachments;
-- GSD/SOW AI plan generation;
-- Outlook scheduling;
-- customer links or external approval;
-- PDF or Excel export;
-- new database objects;
-- Azure, database, Entra, or deployment operations.
+The backend embeds the exact bytes from
+`src/frontend/project-time-web/brand/ussignal.jpg` and validates checksum
+`c4fc4b33f744d065deeec531f393aa39996273e51eb946a452b1319e6e529183`
+before PDF or Excel generation. The frontend uses the existing
+`brand/ussignal.png` asset. Generated source artifacts are explicitly marked
+`INTERNAL DRAFT — NOT A CUSTOMER BASELINE`.
 
-## Deferred shared integration
+## Release gates
 
-The module files intentionally remain unregistered while Modules 001, 002, and
-062 are active in separate workspaces. A later guarded integration will review:
+1. Recheck the source package against then-current `main` before publication.
+2. Compare shared surfaces with Modules 002, 062, 064, and all active modules.
+3. Route any future FlowHive AI execution only through the registered Module 064
+   service and validate the reviewed adapter before enabling provider calls.
+4. Obtain database authorization before creating or applying a persistence schema.
+5. Add server-side plan/project mutation authorization and immutable audit tests.
+6. Complete .NET 10, schedule, artifact, frontend, and warning-delta validation.
+7. Complete PDF/XLSX visual QA using US Signal branding.
+8. Obtain explicit external-sharing authorization before customer links or delivery.
+9. Commit, push, PR, merge, and deploy only under separate explicit authorization.
 
-- `src/backend/ProjectTime.Api/Program.cs`;
-- `src/frontend/project-time-web/src/App.jsx`;
-- `src/frontend/project-time-web/package.json`;
-- `src/frontend/project-time-web/src/SystemUserGuide.jsx`;
-- the current production-readiness tracker.
-
-No shared integration file is modified in Phase 066A foundation staging.
-
-## Export branding requirement
-
-Any future Project FlowHive PDF or Excel artifact must use the approved US Signal
-logo supplied for ProjectPulse. Text-only approximations or unapproved substitute
-marks are not acceptable. Export work remains blocked until the verified logo
-asset is available on the current forward-moving source baseline.
-
-## Tracker requirements represented
-
-- GOV-015
-- RBAC-019
-- WRK-011
-- AI-008
-- AI-019
-- RPT-013
-
-See [CAPABILITY-MATRIX.md](./CAPABILITY-MATRIX.md) for phasing and acceptance
-evidence and [API-CONTRACT.md](./API-CONTRACT.md) for the 066A response contract.
+See the API contract, capability matrix, and security/design documents in this
+directory for the complete source boundary.

@@ -584,6 +584,17 @@ import RateCardAdministrationCenter from './RateCardAdministrationCenter.jsx';
 import WorkRegisterCenter from './WorkRegisterCenter.jsx';
 import CostOverrunAlertCenter from './CostOverrunAlertCenter.jsx';
 import ProjectWorkspaceCenter from './ProjectWorkspaceCenter.jsx';
+import ProjectFlowHiveCenter from './ProjectFlowHiveCenter.jsx';
+import AiProviderConfigurationCenter from './AiProviderConfigurationCenter.jsx';
+import EntraSecretAdministrationCenter from './EntraSecretAdministrationCenter.jsx';
+import GlobalMailConfigurationCenter from './GlobalMailConfigurationCenter.jsx';
+import SystemArchitectureCenter from './SystemArchitectureCenter.jsx';
+import QualificationsCertificationCenter from './QualificationsCertificationCenter.jsx';
+import CapacityPipelineForecastCenter from './CapacityPipelineForecastCenter.jsx';
+import OnCallSchedulingCenter from './OnCallSchedulingCenter.jsx';
+import OneAssistRoutingDirectoryCenter from './OneAssistRoutingDirectoryCenter.jsx';
+import SalesCoverageAlignmentCenter from './SalesCoverageAlignmentCenter.jsx';
+import OemVendorDirectoryCenter from './OemVendorDirectoryCenter.jsx';
 import ProjectManagerWorkloadCenter from './ProjectManagerWorkloadCenter.jsx';
 import EngineeringTeamLeadUtilizationPanel from './EngineeringTeamLeadUtilizationPanel.jsx';
 import WorkTaskBuilderPanel from './WorkTaskBuilderPanel.jsx';
@@ -1713,6 +1724,17 @@ const roleWorkspaceModules = [
     description: 'View project workspace readiness, engineering-visible documents, assignments, and timesheet-context artifacts.',
     permissions: ['VIEW_PROJECT_WORKSPACE', 'VIEW_ENGINEERING_PROJECT_DOCUMENTS', 'VIEW_PROJECT_INTAKE', 'VIEW_RESOURCE_SCHEDULING', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   },
+  /* MODULE_066A1_PROJECT_FLOWHIVE_NAV_START */
+  {
+    route: 'project-flowhive',
+    href: '#project-flowhive',
+    title: 'Project FlowHive',
+    navLabel: 'MODULE 066',
+    description: 'Review the role-scoped Project FlowHive portfolio, canonical task grid, assignments, and controlled planning capability roadmap.',
+    permissions: ['VIEW_PROJECT_WORKSPACE', 'VIEW_ENGINEERING_PROJECT_DOCUMENTS', 'VIEW_PROJECT_WORKLOAD', 'VIEW_RESOURCE_SCHEDULING', 'VIEW_TEAM_UTILIZATION', 'VIEW_INDIVIDUAL_UTILIZATION', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    roleCodes: ['ENGINEER', 'ENGINEERING', 'ENGINEERING_MANAGER', 'ENGINEERING_LEAD', 'ENGINEERING_TEAM_LEAD', 'PROJECT_MANAGER', 'PROJECT_MANAGEMENT', 'PROJECT_MANAGEMENT_LEAD', 'PROJECT_MANAGEMENT_TEAM_LEAD', 'PM_TEAM_LEAD', 'PROJECT_TEAM_COORDINATOR', 'PROJECT_COORDINATOR', 'MANAGER', 'EXECUTIVE', 'EXECUTIVE_LEADERSHIP']
+  },
+  /* MODULE_066A1_PROJECT_FLOWHIVE_NAV_END */
   {
     route: 'project-intake',
     href: '#project-intake',
@@ -2048,6 +2070,91 @@ const roleWorkspaceModules = [
     roleCodes: ['ENGINEER', 'ENGINEERING', 'ENGINEERING_MANAGER', 'ENGINEERING_TEAM_LEAD', 'PROJECT_TEAM_COORDINATOR', 'PROJECT_MANAGER', 'PROJECT_MANAGEMENT']
   },
   /* 057_CALENDAR_CAPACITY_END */
+  /* MODULES_064_074_RELEASE_TRAIN_NAV_START */
+  {
+    route: 'ai-provider-configuration',
+    href: '#ai-provider-configuration',
+    title: 'AI Provider Configuration Center',
+    navLabel: 'MODULE 064',
+    description: 'Review the shared Claude-first, OpenAI-second, governed-local-fallback configuration, routing, health, usage, and locked secret controls.',
+    permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
+  },
+  {
+    route: 'entra-secret-administration',
+    href: '#entra-secret-administration',
+    title: 'Entra Secret Administration',
+    navLabel: 'MODULE 065',
+    description: 'Review privileged application-credential readiness and the fail-closed prepare, approval, activation, and rollback contract.',
+    permissions: ['MANAGE_ENTRA_SECRET', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    roleCodes: ['SUPER_ADMINISTRATOR', 'ADMINISTRATOR']
+  },
+  {
+    route: 'global-mail-configuration',
+    href: '#global-mail-configuration',
+    title: 'Global Mail Configuration Center',
+    navLabel: 'MODULE 067',
+    description: 'Review non-secret Microsoft 365 mail configuration, shared consumers, migration readiness, and controlled activation gates.',
+    permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
+  },
+  {
+    route: 'system-architecture',
+    href: '#system-architecture',
+    title: 'System Architecture & Dependency Map',
+    navLabel: 'MODULE 068',
+    description: 'View the role-safe ProjectPulse component, data, authentication, integration, environment, and live-status ownership map.',
+    permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
+  },
+  {
+    route: 'qualifications-certifications',
+    href: '#qualifications-certifications',
+    title: 'Qualifications & Certification Matrix',
+    navLabel: 'MODULE 069',
+    description: 'Review identity-backed skills, certifications, competency, experience, expiration, and role-scoped coverage.',
+    permissions: ['VIEW_RESOURCE_SCHEDULING', 'MANAGE_RESOURCE_SCHEDULING', 'VIEW_OWN_UTILIZATION', 'VIEW_TEAM_UTILIZATION', 'VIEW_INDIVIDUAL_UTILIZATION', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    roleCodes: ['ENGINEER', 'ENGINEERING', 'MANAGER', 'ENGINEERING_MANAGER', 'ENGINEERING_TEAM_LEAD', 'PROJECT_TEAM_COORDINATOR', 'PROJECT_MANAGER', 'PROJECT_MANAGEMENT', 'EXECUTIVE']
+  },
+  {
+    route: 'capacity-pipeline-forecast',
+    href: '#capacity-pipeline-forecast',
+    title: 'Capacity & Pipeline Forecasting',
+    navLabel: 'MODULE 070',
+    description: 'Forecast committed work, weighted pipeline demand, supplemental scenarios, remaining capacity, and utilization by week and engineer.',
+    permissions: ['VIEW_RESOURCE_SCHEDULING', 'MANAGE_RESOURCE_SCHEDULING', 'VIEW_TEAM_UTILIZATION', 'VIEW_INDIVIDUAL_UTILIZATION', 'VIEW_PROJECT_INTAKE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    roleCodes: ['ENGINEER', 'ENGINEERING', 'ENGINEERING_MANAGER', 'ENGINEERING_TEAM_LEAD', 'PROJECT_TEAM_COORDINATOR', 'PROJECT_MANAGER', 'PROJECT_MANAGEMENT', 'EXECUTIVE', 'EXECUTIVE_LEADERSHIP']
+  },
+  {
+    route: 'oncall-scheduling',
+    href: '#oncall-scheduling',
+    title: 'On-Call Scheduling',
+    navLabel: 'MODULE 071',
+    description: 'View the US Signal on-call schedule and roster; Managers and Engineering Team Leads receive governed management controls.',
+    permissions: []
+  },
+  {
+    route: 'oneassist-routing-directory',
+    href: '#oneassist-routing-directory',
+    title: 'OneAssist Routing Directory',
+    navLabel: 'MODULE 072',
+    description: 'View the customer routing directory and unmasked five-digit PINs; authorized roles receive governed editing controls.',
+    permissions: []
+  },
+  {
+    route: 'sales-coverage-alignment',
+    href: '#sales-coverage-alignment',
+    title: 'Sales Coverage Alignment',
+    navLabel: 'MODULE 073',
+    description: 'View current sales-coverage signals and build a validated, effective-dated identity-backed alignment draft.',
+    permissions: []
+  },
+  {
+    route: 'oem-vendor-directory',
+    href: '#oem-vendor-directory',
+    title: 'OEM & Vendor Directory',
+    navLabel: 'MODULE 074',
+    description: 'View and prepare a validated US Signal-branded OEM and vendor directory draft with governed role-aware editing.',
+    permissions: []
+  },
+  /* MODULES_064_074_RELEASE_TRAIN_NAV_END */
   {
     route: 'service-control',
     href: '#service-control',
@@ -2220,12 +2327,16 @@ function getNavigationGroup(item) {
     case 'utilization':
     case 'holiday-admin':
     case 'calendar-capacity':
+    case 'qualifications-certifications':
+    case 'capacity-pipeline-forecast':
+    case 'oncall-scheduling':
     case 'ai-time-entry':
       return 'Work Management';
 
     case 'project-workload':
     case 'project-allocation-info':
     case 'project-workspace':
+    case 'project-flowhive':
       return 'Project Workspace';
     case 'user-guide':
       return 'Help & Documentation';
@@ -2234,6 +2345,8 @@ function getNavigationGroup(item) {
     case 'sow-generator':
     case 'crm-integration':
     case 'signed-handoff':
+    case 'sales-coverage-alignment':
+    case 'oem-vendor-directory':
       return 'Sales & Opportunities';
 
     case 'cost-alerts':
@@ -2250,6 +2363,7 @@ function getNavigationGroup(item) {
       return 'Time Compliance';
     case 'psa-modules':
     case 'certify-integration':
+    case 'oneassist-routing-directory':
       return 'Project Operations';
 
     case 'audit-history':
@@ -2260,11 +2374,15 @@ function getNavigationGroup(item) {
 
     case 'user-admin':
     case 'azure-admin':
+    case 'ai-provider-configuration':
+    case 'entra-secret-administration':
     case 'role-admin':
     case 'roles-permissions-matrix':
       return 'Admin & Identity';
 
     case 'service-control':
+    case 'global-mail-configuration':
+    case 'system-architecture':
     case 'uat-validation':
     case 'cicd-pipeline':
       return 'Platform Operations';
@@ -2851,10 +2969,15 @@ function buildRoleNavigationModel(user, navigationItems) {
       "holiday-admin",
       "project-workload",
       "project-workspace",
+      "project-flowhive",
+      "oncall-scheduling",
       "project-allocation-info",
       "project-intake",
       "customer-directory",
       "opportunities",
+      "oneassist-routing-directory",
+      "sales-coverage-alignment",
+      "oem-vendor-directory",
       "sales-intake",
       "sow-generator",
       "crm-integration",
@@ -2872,8 +2995,14 @@ function buildRoleNavigationModel(user, navigationItems) {
       "audit-history",
       "user-admin",
       "azure-admin",
+      "ai-provider-configuration",
+      "entra-secret-administration",
       "role-admin",
       "service-control",
+      "global-mail-configuration",
+      "system-architecture",
+      "qualifications-certifications",
+      "capacity-pipeline-forecast",
       "uat-validation",
       "cicd-pipeline",
       "backup-dr",
@@ -2989,11 +3118,113 @@ function getInstalledProjectPulseModuleRegistry() {
       title: 'Project Workspace',
     navLabel: 'MODULE 019',
       group: 'Project Delivery',
-      permissions: ['VIEW_PROJECT_WORKSPACE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
-      description: 'Provides a role-scoped workspace for assigned projects, tasks, documents, assigned hours, used hours, and remaining hours.'
-    },
-    {
-      route: 'project-intake',
+    permissions: ['VIEW_PROJECT_WORKSPACE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    description: 'Provides a role-scoped workspace for assigned projects, tasks, documents, assigned hours, used hours, and remaining hours.'
+  },
+  /* MODULE_066A1_PROJECT_FLOWHIVE_INSTALLED_REGISTRY_START */
+  {
+    route: 'project-flowhive',
+    title: 'Project FlowHive',
+    navLabel: 'MODULE 066',
+    group: 'Project Delivery',
+    permissions: ['VIEW_PROJECT_WORKSPACE', 'VIEW_ENGINEERING_PROJECT_DOCUMENTS', 'VIEW_PROJECT_WORKLOAD', 'VIEW_RESOURCE_SCHEDULING', 'VIEW_TEAM_UTILIZATION', 'VIEW_INDIVIDUAL_UTILIZATION', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    description: 'Provides the read-only, server-scoped Project FlowHive portfolio, canonical task grid, assignments, and controlled planning capability roadmap.'
+  },
+  /* MODULE_066A1_PROJECT_FLOWHIVE_INSTALLED_REGISTRY_END */
+  /* MODULES_064_074_RELEASE_TRAIN_INSTALLED_REGISTRY_START */
+  {
+    route: 'ai-provider-configuration',
+    title: 'AI Provider Configuration Center',
+    navLabel: 'MODULE 064',
+    status: 'Release candidate',
+    group: 'Security',
+    permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    description: 'Provides shared Claude-first, OpenAI-second, governed-local-fallback routing, health, circuit, usage, and feature configuration.'
+  },
+  {
+    route: 'entra-secret-administration',
+    title: 'Entra Secret Administration',
+    navLabel: 'MODULE 065',
+    status: 'Locked runtime release candidate',
+    group: 'Security',
+    permissions: ['MANAGE_ENTRA_SECRET', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    description: 'Provides fail-closed application credential lifecycle readiness without storing, activating, or rotating a secret.'
+  },
+  {
+    route: 'global-mail-configuration',
+    title: 'Global Mail Configuration Center',
+    navLabel: 'MODULE 067',
+    status: 'Read-only release candidate',
+    group: 'Operations',
+    permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    description: 'Shows non-secret Microsoft 365 mail configuration, shared consumer ownership, and controlled migration gates.'
+  },
+  {
+    route: 'system-architecture',
+    title: 'System Architecture & Dependency Map',
+    navLabel: 'MODULE 068',
+    status: 'Read-only release candidate',
+    group: 'Operations',
+    permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    description: 'Shows the versioned logical component, data, authentication, integration, environment, and live-status ownership map.'
+  },
+  {
+    route: 'qualifications-certifications',
+    title: 'Qualifications & Certification Matrix',
+    navLabel: 'MODULE 069',
+    status: 'Read-only release candidate',
+    group: 'Resources',
+    permissions: ['VIEW_RESOURCE_SCHEDULING', 'MANAGE_RESOURCE_SCHEDULING', 'VIEW_OWN_UTILIZATION', 'VIEW_TEAM_UTILIZATION', 'VIEW_INDIVIDUAL_UTILIZATION', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    description: 'Provides role-scoped, identity-backed qualification and certification visibility with expiration status.'
+  },
+  {
+    route: 'capacity-pipeline-forecast',
+    title: 'Capacity & Pipeline Forecasting',
+    navLabel: 'MODULE 070',
+    status: 'Read-only release candidate',
+    group: 'Resource Management',
+    permissions: ['VIEW_RESOURCE_SCHEDULING', 'MANAGE_RESOURCE_SCHEDULING', 'VIEW_TEAM_UTILIZATION', 'VIEW_INDIVIDUAL_UTILIZATION', 'VIEW_PROJECT_INTAKE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    description: 'Calculates continuous weekly capacity, committed work, weighted unfilled demand, scenarios, remaining capacity, and utilization.'
+  },
+  {
+    route: 'oncall-scheduling',
+    title: 'On-Call Scheduling',
+    navLabel: 'MODULE 071',
+    status: 'Compatibility-adapter release candidate',
+    group: 'Operations',
+    permissions: [],
+    description: 'Provides a US Signal-branded on-call schedule, role-governed management, identity dropdowns, and versioned public routing APIs.'
+  },
+  {
+    route: 'oneassist-routing-directory',
+    title: 'OneAssist Routing Directory',
+    navLabel: 'MODULE 072',
+    status: 'Compatibility-adapter release candidate',
+    group: 'Operations',
+    permissions: [],
+    description: 'Provides the unmasked five-digit OneAssist routing directory, governed editing, import previews, exports, and public resolution APIs.'
+  },
+  {
+    route: 'sales-coverage-alignment',
+    title: 'Sales Coverage Alignment',
+    navLabel: 'MODULE 073',
+    status: 'Validated unsaved-draft release candidate',
+    group: 'Sales & Opportunities',
+    permissions: [],
+    description: 'Provides current alignment signals and a role-governed, effective-dated identity-backed draft editor without persistence.'
+  },
+  {
+    route: 'oem-vendor-directory',
+    title: 'OEM & Vendor Directory',
+    navLabel: 'MODULE 074',
+    status: 'Validated unsaved-draft release candidate',
+    group: 'Sales & Opportunities',
+    permissions: [],
+    description: 'Provides a US Signal-branded, role-governed OEM and vendor directory draft with validation and export.'
+  },
+  /* MODULES_064_074_RELEASE_TRAIN_INSTALLED_REGISTRY_END */
+  {
+    route: 'project-intake',
       title: 'Project Intake',
     navLabel: 'MODULE 020',
       group: 'Project Intake',
@@ -3404,8 +3635,18 @@ function getInstalledModuleDescription(module) {
     'holiday-admin': 'Manages company holidays, holiday upload, holiday visibility, and holiday-related timesheet automation.',
     'user-admin': 'Manages Project Health Dashboard users, roles, active status, local account status, and administrator-controlled access settings.',
     'azure-admin': 'Manages Azure/Entra import, reconciliation, sync settings, and identity-readiness checks.',
+    'ai-provider-configuration': 'Shows sanitized shared AI configuration, provider health, feature routing, circuit state, and locked secret lifecycle controls.',
+    'entra-secret-administration': 'Shows privileged application-credential readiness and fail-closed rotation workflow contracts without exposing secret values.',
     'role-admin': 'Manages application roles, permissions, module access, and role-based security configuration.',
     'service-control': 'Provides operational service restart controls, service health checks, and audit-backed service management.',
+    'global-mail-configuration': 'Shows non-secret shared Microsoft 365 mail configuration, consumer ownership, and controlled activation readiness.',
+    'system-architecture': 'Shows the versioned ProjectPulse component, data, authentication, integration, environment, and status-ownership map.',
+    'qualifications-certifications': 'Shows identity-backed skills, certifications, competency, experience, and expiration within server-authorized scope.',
+    'capacity-pipeline-forecast': 'Shows continuous weekly engineering capacity, committed work, weighted demand, scenarios, remaining capacity, and utilization.',
+    'oncall-scheduling': 'Shows the US Signal on-call schedule and roster with Manager and Engineering Team Lead management controls.',
+    'oneassist-routing-directory': 'Shows the OneAssist customer routing directory and unmasked five-digit PINs with role-governed editing.',
+    'sales-coverage-alignment': 'Shows current coverage signals and a validated effective-dated alignment draft backed by ProjectPulse identities.',
+    'oem-vendor-directory': 'Shows a validated, US Signal-branded OEM and vendor directory draft with governed role-aware editing.',
     'backup-dr': 'Shows backup and disaster recovery readiness, backup state, service backup status, and restore preparedness.',
     'backup-retention': 'Manages backup retention policy, cleanup readiness, and retention compliance visibility.',
     'restore-validation': 'Validates restore points, restore readiness, and restore test evidence before relying on backups.',
@@ -4905,6 +5146,7 @@ export default function App() {
 
 
   const visibleRoleModules = useMemo(() => getVisibleRoleModules(currentUser.data), [currentUser.data]);
+  const canViewProjectFlowHive = visibleRoleModules.some((module) => module.route === 'project-flowhive');
 
   useEffect(() => {
     if (authSession?.sessionToken) {
@@ -6585,6 +6827,68 @@ Analytics - Variphy / Infortel`}
         <ServiceControlCenter authSession={authSession} />
       ) : null}
 
+      {/* MODULES_064_074_RELEASE_TRAIN_ROUTES_START */}
+      {(activeRoute === 'ai-provider-configuration' && canSeeAny(['SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
+        <section id="ai-provider-configuration" className="panel ai-provider-configuration-route-panel">
+          <AiProviderConfigurationCenter />
+        </section>
+      ) : null}
+
+      {(activeRoute === 'entra-secret-administration' && canSeeAny(['MANAGE_ENTRA_SECRET', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
+        <section id="entra-secret-administration" className="panel entra-secret-administration-route-panel">
+          <EntraSecretAdministrationCenter authSession={authSession} />
+        </section>
+      ) : null}
+
+      {(activeRoute === 'global-mail-configuration' && canSeeAny(['SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
+        <section id="global-mail-configuration" className="panel global-mail-configuration-route-panel">
+          <GlobalMailConfigurationCenter authSession={authSession} />
+        </section>
+      ) : null}
+
+      {(activeRoute === 'system-architecture' && canSeeAny(['SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
+        <section id="system-architecture" className="panel system-architecture-route-panel">
+          <SystemArchitectureCenter authSession={authSession} />
+        </section>
+      ) : null}
+
+      {(activeRoute === 'qualifications-certifications' && canSeeAny(['VIEW_RESOURCE_SCHEDULING', 'MANAGE_RESOURCE_SCHEDULING', 'VIEW_OWN_UTILIZATION', 'VIEW_TEAM_UTILIZATION', 'VIEW_INDIVIDUAL_UTILIZATION', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
+        <section id="qualifications-certifications" className="panel qualifications-certifications-route-panel">
+          <QualificationsCertificationCenter authSession={authSession} />
+        </section>
+      ) : null}
+
+      {(activeRoute === 'capacity-pipeline-forecast' && canSeeAny(['VIEW_RESOURCE_SCHEDULING', 'MANAGE_RESOURCE_SCHEDULING', 'VIEW_TEAM_UTILIZATION', 'VIEW_INDIVIDUAL_UTILIZATION', 'VIEW_PROJECT_INTAKE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
+        <section id="capacity-pipeline-forecast" className="panel capacity-pipeline-forecast-route-panel">
+          <CapacityPipelineForecastCenter authSession={authSession} />
+        </section>
+      ) : null}
+
+      {activeRoute === 'oncall-scheduling' ? (
+        <section id="oncall-scheduling" className="panel oncall-scheduling-route-panel">
+          <OnCallSchedulingCenter authSession={authSession} />
+        </section>
+      ) : null}
+
+      {activeRoute === 'oneassist-routing-directory' ? (
+        <section id="oneassist-routing-directory" className="panel oneassist-routing-directory-route-panel">
+          <OneAssistRoutingDirectoryCenter authSession={authSession} />
+        </section>
+      ) : null}
+
+      {activeRoute === 'sales-coverage-alignment' ? (
+        <section id="sales-coverage-alignment" className="panel sales-coverage-alignment-route-panel">
+          <SalesCoverageAlignmentCenter authSession={authSession} />
+        </section>
+      ) : null}
+
+      {activeRoute === 'oem-vendor-directory' ? (
+        <section id="oem-vendor-directory" className="panel oem-vendor-directory-route-panel">
+          <OemVendorDirectoryCenter authSession={authSession} />
+        </section>
+      ) : null}
+      {/* MODULES_064_074_RELEASE_TRAIN_ROUTES_END */}
+
 {(activeRoute === 'audit-history' && (hasPermission('VIEW_AUDIT_TRAIL') || hasPermission('SYSTEM_ADMINISTRATION') || hasPermission('MANAGE_ALL'))) ? (
         <AuditHistoryPanel />
       ) : null}
@@ -6637,8 +6941,19 @@ Analytics - Variphy / Infortel`}
         </section>
       ) : null}
 
+      {/* MODULE_070_STRUCTURAL_ROUTE_BOUNDARY */}
       {/* MODULE_057_STRUCTURAL_ROUTE_BOUNDARY_V6 */}
       {![
+        'ai-provider-configuration',
+        'entra-secret-administration',
+        'global-mail-configuration',
+        'system-architecture',
+        'qualifications-certifications',
+        'capacity-pipeline-forecast',
+        'oncall-scheduling',
+        'oneassist-routing-directory',
+        'sales-coverage-alignment',
+        'oem-vendor-directory',
         'calendar-capacity',
         'cicd-pipeline',
         'contracts',
@@ -7330,7 +7645,11 @@ Analytics - Variphy / Infortel`}
                       <strong>Suggested description</strong>
                       <p>{aiSuggestionState.suggestion}</p>
                       <small>
-                        Provider: {aiSuggestionState.provider === 'claude' ? 'Claude' : 'Local template fallback'}
+                        Provider: {{
+                          claude: 'Claude',
+                          openai: 'OpenAI',
+                          local_template: 'Governed local template fallback'
+                        }[aiSuggestionState.provider] || 'Shared AI router'}
                       </small>
                     </div>
                   )}
@@ -7476,6 +7795,14 @@ Analytics - Variphy / Infortel`}
           <ProjectWorkspaceCenter />
         </section>
       ) : null}
+
+      {/* MODULE_066A1_PROJECT_FLOWHIVE_ROUTE_START */}
+      {(activeRoute === 'project-flowhive' && canViewProjectFlowHive) ? (
+        <section id="project-flowhive" className="panel project-flowhive-route-panel">
+          <ProjectFlowHiveCenter />
+        </section>
+      ) : null}
+      {/* MODULE_066A1_PROJECT_FLOWHIVE_ROUTE_END */}
 
       {(activeRoute === 'work-task-builder' && canSeeAny(['VIEW_WORK_TASK_BUILDER', 'MANAGE_WORK_TASK_BUILDER', 'ASSIGN_WORK_TASKS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
         <WorkTaskBuilderPanel />

@@ -7,6 +7,9 @@
   not independently assert deployment or business acceptance.
 - `Source candidate` means committed, pushed, and reviewed through an open PR; it
   does not mean merged, registered, deployed, or runtime-active.
+- `Release-train candidate` means semantically integrated and validated in an
+  isolated current-main workspace, but still unstaged, uncommitted, unpushed,
+  unmerged, and undeployed.
 - `Runtime-active` requires shared registration, merge, deployment, and successful
   portal verification.
 - Proposed retirement or reuse never authorizes removal of current behavior.
@@ -14,12 +17,12 @@
   documentation, and dependency impacts are explicitly approved.
 - Customer-facing PDF and Excel artifacts use the approved US Signal logo.
 
-## Installed modules on `main@04fcafd4f49840428645e537db7de436e34b1c88`
+## Installed modules on `main@2b4a6d1a1242a25b52110a2a209ff8ddda0b8ca4`
 
 | Module | Current title | Route/scope | Source state | Governance note |
 |---|---|---|---|---|
 | 001 | Time Entry | `timesheet` | Installed | Active follow-up work is externally owned; preserve current multiview and save behavior |
-| 002 | Approval Inbox | `manager-approval` | Installed | Active semantic integration must protect PM, correction, password-reset, and history workflows |
+| 002 | Approval Inbox | `manager-approval` | Installed through merged PR 23 | Source commit `f5ede8f6717b01c8f4bf7905b433fead38210007`; merge commit `2b4a6d1a1242a25b52110a2a209ff8ddda0b8ca4`; preserve PM, correction, password-reset, and history workflows; three post-merge review threads remain unresolved and separately owned |
 | 003 | Utilization | `utilization` | Installed | Preserve own, manager, and team-lead views |
 | 004 | Holiday Calendar | `holiday-admin` | Installed | No current renumbering decision |
 | 005 | Project Allocation and Info | `project-allocation-info` | Installed legacy behavior | Tracker proposes retirement/reservation; do not remove without explicit approval |
@@ -71,15 +74,23 @@
 | Module | Title | Status | Owner/workspace | Dependencies | Number decision |
 |---|---|---|---|---|---|
 | 061 | Undefined | Scope required | No verified implementation checkpoint | None confirmed | Reserved until explicit scope approval |
-| 064 | AI Provider Configuration Center | Planned | Unassigned | Provider governance, secrets, audit | Number available and tracker-assigned |
-| 065 | Entra Secret Administration | Planned | Unassigned | Module 010, secure secret controls | Number available and tracker-assigned |
-| 066 | Project FlowHive | 066A source candidate — locally validated, committed, pushed, and under PR 20; runtime inactive | `/home/ahmed/project-time-platform-module-066-project-flowhive` | 018, 019, 024–030, 055C, 057, 062, 064 | Number approved and confirmed free before implementation |
+| 064 | AI Provider Configuration Center | Release-train candidate; shared Claude → OpenAI → local router and read-only center integrated | Consolidated 064–074 release train | Provider governance, secrets, audit | Number approved; secret mutation and live-provider readiness assertions remain locked |
+| 065 | Entra Secret Administration | Release-train candidate; read center and complete fail-closed lifecycle contracts integrated | Consolidated 064–074 release train | Module 010, Module 062, secure secret controls | Number approved; no external adapter, secret-store write, durable approval/audit, Azure, or Entra mutation |
+| 066 | Project FlowHive | Release-train candidate; 066A.1–066E safe source registered | Consolidated 064–074 release train | 002, 018, 019, 024–030, 055C, 057, 059, 062, 064 | Number approved; database writes, FlowHive AI execution, customer sharing, and deployment remain locked |
+| 067 | Global Mail Configuration Center | Release-train candidate; read-only configuration/health center registered | Consolidated 064–074 release train | Microsoft 365 readiness and shared outbound-mail ownership | Number approved; provider calls, test delivery, secret mutation, and cutover remain locked |
+| 068 | System Architecture & Dependency Map | Release-train candidate; read-only architecture/status center registered | Consolidated 064–074 release train | Modules 010, 013–017, 058 | Number approved; no physical discovery or external mutation |
+| 069 | Qualifications & Certification Matrix | Release-train candidate; identity-backed read-only matrix registered | Consolidated 064–074 release train | Module 062, existing people/qualification schema | Number approved; qualification writes and renewal notifications remain deferred |
+| 070 | Capacity & Pipeline Forecasting | Release-train candidate; identity dropdown, editable dates, and audited forecast calculations registered | Consolidated 064–074 release train | Modules 020, 057, 062 and existing capacity/request data | Number approved; scenario inputs remain non-persistent |
+| 071 | On-Call Scheduling | Release-train candidate; authenticated center and versioned public GET APIs registered | Consolidated 064–074 release train | Modules 062 and 067; existing Cloudflare compatibility service | Number approved; Cloudflare credentials/configuration, scheduler activation, and email delivery remain unchanged |
+| 072 | OneAssist Routing PIN Directory | Release-train candidate; unmasked public routing PIN center/API registered | Consolidated 064–074 release train | Existing Cloudflare compatibility service | Number approved; Cloudflare credentials/configuration and data migration remain unchanged |
+| 073 | Sales Coverage Alignment | Release-train candidate; role-aware unsaved draft workspace registered | Consolidated 064–074 release train | Module 062 identity and future audited alignment persistence | Number approved; persistence remains locked pending database authorization |
+| 074 | OEM & Vendor Directory | Release-train candidate; role-aware unsaved draft workspace registered | Consolidated 064–074 release train | Future audited vendor persistence | Number approved; persistence remains locked pending database authorization |
 
 ## Unresolved numbering and reuse decisions
 
 | Candidate | Conflict | Required decision |
 |---|---|---|
-| Global SMTP Configuration | Tracker proposes Module 063, but 063 is installed Opportunities | Assign a new unused number; 067 is only a recommendation until approved |
+| Global SMTP historical numbering | Tracker proposed Module 063, but 063 is installed Opportunities | Resolved as Module 067; preserve installed Module 063 |
 | Module 005 reuse | Current Project Allocation route remains installed; tracker says retire/reserve | Preserve route and history until a formal retirement plan is approved |
 | Module 006 reuse | Current PSA Modules route remains installed | Complete route/API/data dependency audit before reuse |
 | Module 011 reuse | Current Work Task Builder route remains installed | Do not replace task behavior with qualifications scope without migration approval |
@@ -89,21 +100,22 @@
 
 | Phase | Outcome | Current state |
 |---|---|---|
-| 066A | Read-only portfolio, task grid, assignment scope, capability/API contract | Foundation commit `ed5ee90e806b9a205225ec4941e558acf6bfb605`; PR 20 open and mergeable; compatible with `main@04fcafd4f49840428645e537db7de436e34b1c88`; shared registration and runtime activation deferred |
-| 066A.1 | Shared Registration and Activation | Planning and overlap discovery permitted; implementation must wait for PR 20 and Module 002 to merge; limited to endpoint registration, route/navigation activation, validator/build wiring, and governance updates; no database changes |
-| 066B | Database-backed planning persistence: versioned WBS, dependencies, baselines, execution, collaboration, and audit | Separate future phase; explicit database design and database-change authorization required before implementation |
-| 066C | Schedule engine, Gantt/timeline/calendar/card views, workload and portfolio risk | Planned |
-| 066D | Templates, automations, alerts, API/webhooks, GSD/SOW AI plan generation | Planned; depends on Module 064 |
-| 066E | Branded PDF/Excel, customer links, external comment/approval | Blocked until verified US Signal logo and external-sharing controls are approved |
+| 066A | Read-only portfolio, task grid, assignment scope, capability/API contract | Foundation merged through PR 20 as `main@6388f3e3677d9c95380e909d5e5671dcf6fbcf27`; runtime registration remained deferred at that checkpoint |
+| 066A.1 | Shared Registration and Activation | Integrated uncommitted source from `main@2b4a6d1a1242a25b52110a2a209ff8ddda0b8ca4`; original activation package passed 42/42 checks, frontend build, .NET 10 candidate build, and zero-warning delta |
+| 066B | Versioned WBS/dependency/assignment planning contracts and persistence boundary | Source validation and browser-local editing implemented; persistence adapter, schema, baseline approval, collaboration, and audit writes remain locked pending database authorization |
+| 066C | Schedule engine, Gantt/timeline, critical path, float, workload, and risk | Deterministic weekday source preview implemented; Module 057 holiday/resource calendars and persisted execution remain gated |
+| 066D | GSD/SOW AI request, templates, automations, alerts, API/webhooks | Sanitized Module 064 request and deterministic local template source implemented; provider execution, automations, and external callbacks remain locked |
+| 066E | Branded PDF/Excel, customer links, external comment/approval | Internal-draft PDF/XLSX source uses verified US Signal logo; customer links, delivery, and external approval remain locked |
 
 ## Current deployment interpretation
 
 | Module | Source status | Runtime-active in portal | Required next step |
 |---|---|---|---|
 | 062 | Merged to `main` | No verified post-merge deployment | Controlled test deployment and profile/presence portal smoke test |
-| 066A | PR 20 source candidate | No; shared registration intentionally absent | Complete review and merge of the source-only foundation |
-| 066A.1 | Planning only | No | After PR 20 and Module 002 merge, create a new isolated branch from then-current `main` for registration-only activation |
-| 066B | Not authorized | No | Obtain explicit database design and database-change authorization before implementation |
+| 066A | Merged foundation | No; foundation alone did not register the route | Preserve the merged read-only foundation |
+| 066A.1–066E | Consolidated uncommitted source package; final full-package validation pending | No; source is not committed, merged, or deployed | Complete full-package backend/frontend/artifact/overlap validation, then request publication authority |
+| 066B persistence | Locked contract only | No | Obtain explicit database-change authorization before creating a schema, repository adapter, or persistent mutation |
+| 064–074 release train | Integrated uncommitted current-main source candidate | No; no source in this workspace is merged or deployed | Complete the full validator/build/warning-delta gates, review every file, then request commit/push/PR authority |
 
 ## Protected global invariants
 
