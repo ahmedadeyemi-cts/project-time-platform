@@ -297,4 +297,195 @@
   overflow-wrap: anywhere;
   font-weight: 750;
 }
+
+/* MODULE_062_PROFILE_MENU_LAYOUT_REPAIR_START */
+
+/*
+ * Keep the compact presence badge outside the photograph rather than
+ * allowing the shared presence surface to cover the avatar.
+ */
+.enterprise-header-utilities .profile-avatar-button {
+  overflow: visible !important;
+  background: transparent !important;
+}
+
+.enterprise-header-utilities
+.profile-avatar-button
+.module062-profile-avatar-surface {
+  position: relative;
+  isolation: isolate;
+  overflow: visible !important;
+}
+
+.enterprise-header-utilities
+.profile-avatar-button
+.module062-profile-avatar-surface
+.identity-avatar {
+  position: relative;
+  overflow: visible !important;
+}
+
+.enterprise-header-utilities
+.profile-avatar-button
+.module062-profile-avatar-surface
+.identity-avatar img {
+  position: relative;
+  z-index: 1;
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+}
+
+/* MODULE_062_FALLBACK_AVATAR_FILL_START */
+
+/*
+ * Preserve a filled and readable avatar when Microsoft Graph, local profile
+ * preferences, or another identity source does not provide a photograph.
+ */
+.enterprise-header-utilities
+.profile-avatar-button
+.module062-profile-avatar-surface
+.identity-avatar-initials {
+  position: relative;
+  z-index: 1;
+  display: grid !important;
+  width: 100% !important;
+  height: 100% !important;
+  place-items: center;
+  border-radius: inherit;
+  background: rgba(100, 116, 139, 0.18) !important;
+  color: var(--pulse-text, #0f172a) !important;
+  box-shadow:
+    inset 0 0 0 2px rgba(100, 116, 139, 0.18);
+}
+
+/* MODULE_062_FALLBACK_AVATAR_FILL_END */
+
+.enterprise-header-utilities
+.profile-avatar-button
+.module062-profile-avatar-surface
+.identity-avatar-presence,
+.module062-profile-menu-summary
+.identity-avatar-presence {
+  z-index: 2;
+  display: grid !important;
+  width: 14px !important;
+  height: 14px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  place-items: center;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.enterprise-header-utilities
+.profile-avatar-button
+.module062-profile-avatar-surface
+.identity-avatar-presence {
+  right: -6px !important;
+  bottom: -6px !important;
+}
+
+.module062-profile-menu-summary
+.identity-avatar-presence {
+  right: -4px !important;
+  bottom: -4px !important;
+}
+
+.enterprise-header-utilities
+.profile-avatar-button
+.identity-avatar-presence
+.identity-presence-dot,
+.module062-profile-menu-summary
+.identity-avatar-presence
+.identity-presence-dot {
+  box-sizing: content-box;
+  width: 10px !important;
+  height: 10px !important;
+  border: 2px solid var(--pulse-card-bg, #ffffff) !important;
+  box-shadow:
+    0 0 0 1px rgba(15, 23, 42, 0.18),
+    0 2px 5px rgba(15, 23, 42, 0.2);
+}
+
+/*
+ * Give the identity summary a real text column and allow complete values
+ * to wrap rather than truncating the name, email, title, and department.
+ */
+.enterprise-header-utilities .profile-dropdown-menu {
+  width: min(440px, calc(100vw - 2rem)) !important;
+  min-width: min(380px, calc(100vw - 2rem)) !important;
+  overflow-x: hidden !important;
+}
+
+.enterprise-header-utilities .profile-dropdown-header {
+  display: block !important;
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
+.module062-profile-menu-summary {
+  display: grid !important;
+  grid-template-columns: 64px minmax(0, 1fr) !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  align-items: start !important;
+  gap: 16px !important;
+}
+
+.module062-profile-menu-copy {
+  display: grid !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  flex: 1 1 auto !important;
+  gap: 4px !important;
+}
+
+.module062-profile-menu-copy strong,
+.module062-profile-menu-copy small {
+  display: block;
+  max-width: 100%;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+}
+
+.module062-profile-menu-copy strong {
+  color: var(--pulse-text, #0f172a);
+  font-size: 1.05rem;
+  line-height: 1.25;
+}
+
+.module062-profile-menu-copy small {
+  line-height: 1.35;
+}
+
+.module062-profile-menu-copy > .identity-presence {
+  width: max-content;
+  max-width: 100%;
+  margin-top: 7px;
+}
+
+@media (max-width: 700px) {
+  .enterprise-header-utilities .profile-dropdown-menu {
+    width: auto !important;
+    min-width: 0 !important;
+  }
+
+  .module062-profile-menu-summary {
+    grid-template-columns: 56px minmax(0, 1fr) !important;
+    gap: 13px !important;
+  }
+
+  .module062-profile-menu-summary .identity-avatar-medium {
+    width: 56px;
+    height: 56px;
+  }
+}
+
+/* MODULE_062_PROFILE_MENU_LAYOUT_REPAIR_END */
+
 /* MODULE_062_PROFILE_CONSUMER_END */
