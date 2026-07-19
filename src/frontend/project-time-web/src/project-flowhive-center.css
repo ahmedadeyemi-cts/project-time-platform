@@ -1,0 +1,530 @@
+.project-flowhive-center {
+  --flowhive-navy: #0b2744;
+  --flowhive-blue: #087aa9;
+  --flowhive-sky: #dff4fb;
+  --flowhive-ink: #14283b;
+  --flowhive-muted: #5b6b7b;
+  --flowhive-line: #d7e1e8;
+  --flowhive-surface: #ffffff;
+  --flowhive-soft: #f4f8fa;
+  display: grid;
+  gap: 1rem;
+  color: var(--flowhive-ink);
+}
+
+.project-flowhive-center *,
+.project-flowhive-center *::before,
+.project-flowhive-center *::after {
+  box-sizing: border-box;
+}
+
+.flowhive-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding: 1.4rem;
+  overflow: hidden;
+  border: 1px solid #183c5d;
+  border-radius: 1rem;
+  color: #ffffff;
+  background:
+    radial-gradient(circle at 86% 18%, rgb(34 184 221 / 35%), transparent 27%),
+    linear-gradient(135deg, #071d34 0%, #0b3659 58%, #086f99 100%);
+  box-shadow: 0 14px 36px rgb(7 29 52 / 18%);
+}
+
+.flowhive-hero h2 {
+  margin: 0.2rem 0 0.45rem;
+  color: #ffffff;
+  font-size: clamp(1.65rem, 3vw, 2.35rem);
+  line-height: 1.05;
+}
+
+.flowhive-hero p {
+  max-width: 52rem;
+  margin: 0;
+  color: #d9edf7;
+  line-height: 1.55;
+}
+
+.flowhive-hero .flowhive-eyebrow {
+  color: #75d7f2;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.flowhive-hero-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.flowhive-hero-actions button,
+.flowhive-view-tabs button {
+  border: 1px solid transparent;
+  border-radius: 0.65rem;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.flowhive-hero-actions button {
+  padding: 0.68rem 0.95rem;
+  color: var(--flowhive-navy);
+  background: #ffffff;
+}
+
+.flowhive-hero-actions button:disabled {
+  cursor: wait;
+  opacity: 0.68;
+}
+
+.flowhive-phase-badge {
+  padding: 0.46rem 0.68rem;
+  border: 1px solid rgb(117 215 242 / 55%);
+  border-radius: 999px;
+  color: #dff8ff;
+  background: rgb(0 0 0 / 18%);
+  font-size: 0.76rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.flowhive-foundation-notice,
+.flowhive-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding: 0.85rem 1rem;
+  border-radius: 0.8rem;
+  line-height: 1.45;
+}
+
+.flowhive-foundation-notice {
+  border: 1px solid #efd59b;
+  color: #664a0a;
+  background: #fff8e8;
+}
+
+.flowhive-foundation-notice strong,
+.flowhive-error strong {
+  flex: 0 0 auto;
+}
+
+.flowhive-error {
+  border: 1px solid #e9a7a7;
+  color: #7e2020;
+  background: #fff2f2;
+}
+
+.flowhive-access-banner {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--flowhive-line);
+  border-radius: 0.85rem;
+  background: var(--flowhive-surface);
+}
+
+.flowhive-access-banner div {
+  display: grid;
+  gap: 0.18rem;
+  min-width: 0;
+}
+
+.flowhive-access-banner span,
+.flowhive-summary-grid span,
+.flowhive-summary-grid small {
+  color: var(--flowhive-muted);
+  font-size: 0.78rem;
+}
+
+.flowhive-access-banner strong {
+  overflow: hidden;
+  font-size: 0.9rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flowhive-view-tabs {
+  display: flex;
+  gap: 0.35rem;
+  padding: 0.3rem;
+  width: fit-content;
+  border: 1px solid var(--flowhive-line);
+  border-radius: 0.8rem;
+  background: var(--flowhive-soft);
+}
+
+.flowhive-view-tabs button {
+  padding: 0.58rem 0.85rem;
+  color: #425568;
+  background: transparent;
+}
+
+.flowhive-view-tabs button:hover,
+.flowhive-view-tabs button:focus-visible {
+  border-color: #9fc7d8;
+  outline: none;
+}
+
+.flowhive-view-tabs button.active {
+  color: #ffffff;
+  background: var(--flowhive-navy);
+  box-shadow: 0 4px 12px rgb(11 39 68 / 16%);
+}
+
+.flowhive-filter-bar {
+  display: grid;
+  grid-template-columns: minmax(15rem, 1.6fr) minmax(12rem, 1fr) minmax(10rem, 0.8fr);
+  gap: 0.75rem;
+  padding: 0.9rem;
+  border: 1px solid var(--flowhive-line);
+  border-radius: 0.85rem;
+  background: var(--flowhive-surface);
+}
+
+.flowhive-filter-bar label {
+  display: grid;
+  gap: 0.35rem;
+  color: #4b5f71;
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.flowhive-filter-bar input,
+.flowhive-filter-bar select {
+  width: 100%;
+  min-height: 2.5rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid #bacbd5;
+  border-radius: 0.55rem;
+  color: var(--flowhive-ink);
+  background: #ffffff;
+  font: inherit;
+}
+
+.flowhive-filter-bar input:focus,
+.flowhive-filter-bar select:focus {
+  border-color: var(--flowhive-blue);
+  outline: 3px solid rgb(8 122 169 / 16%);
+}
+
+.flowhive-view-panel {
+  display: grid;
+  gap: 1rem;
+}
+
+.flowhive-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.flowhive-summary-grid article {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.95rem;
+  border: 1px solid var(--flowhive-line);
+  border-radius: 0.85rem;
+  background: var(--flowhive-surface);
+}
+
+.flowhive-summary-grid strong {
+  color: var(--flowhive-navy);
+  font-size: 1.65rem;
+  line-height: 1;
+}
+
+.flowhive-project-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.flowhive-project-card {
+  display: grid;
+  gap: 0.9rem;
+  padding: 1rem;
+  border: 1px solid var(--flowhive-line);
+  border-left: 4px solid var(--flowhive-blue);
+  border-radius: 0.85rem;
+  background: var(--flowhive-surface);
+  box-shadow: 0 5px 18px rgb(20 40 59 / 6%);
+}
+
+.flowhive-project-card-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+
+.flowhive-project-card-heading div > span {
+  color: var(--flowhive-blue);
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.flowhive-project-card h3 {
+  margin: 0.18rem 0 0;
+  color: var(--flowhive-navy);
+  font-size: 1rem;
+}
+
+.flowhive-project-card dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem 1rem;
+  margin: 0;
+}
+
+.flowhive-project-card dl div {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.flowhive-project-card dt {
+  color: var(--flowhive-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.flowhive-project-card dd {
+  margin: 0;
+  font-size: 0.87rem;
+  font-weight: 700;
+}
+
+.flowhive-project-card footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.7rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid #e8eef2;
+  color: var(--flowhive-muted);
+  font-size: 0.7rem;
+}
+
+.flowhive-status {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 0.27rem 0.52rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.flowhive-status.ready {
+  color: #075b43;
+  background: #dff7ed;
+}
+
+.flowhive-status.planned {
+  color: #6b4d0b;
+  background: #fff1ca;
+}
+
+.flowhive-status.blocked {
+  color: #8a2222;
+  background: #ffe0e0;
+}
+
+.flowhive-table-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.flowhive-table-heading h3 {
+  margin: 0;
+  color: var(--flowhive-navy);
+}
+
+.flowhive-table-heading p {
+  max-width: 54rem;
+  margin: 0.25rem 0 0;
+  color: var(--flowhive-muted);
+  line-height: 1.45;
+}
+
+.flowhive-table-heading > span {
+  flex: 0 0 auto;
+  color: var(--flowhive-muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.flowhive-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--flowhive-line);
+  border-radius: 0.85rem;
+  background: var(--flowhive-surface);
+}
+
+.flowhive-task-table {
+  width: 100%;
+  min-width: 74rem;
+  border-collapse: collapse;
+}
+
+.flowhive-task-table th,
+.flowhive-task-table td {
+  padding: 0.75rem;
+  border-bottom: 1px solid #e3ebf0;
+  text-align: left;
+  vertical-align: top;
+}
+
+.flowhive-task-table th {
+  position: sticky;
+  top: 0;
+  color: #3c5265;
+  background: #edf4f7;
+  font-size: 0.72rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.flowhive-task-table td {
+  font-size: 0.82rem;
+}
+
+.flowhive-task-table td strong,
+.flowhive-task-table td > span:not(.flowhive-status) {
+  display: block;
+}
+
+.flowhive-task-table td > span:not(.flowhive-status) {
+  max-width: 19rem;
+  margin-top: 0.18rem;
+  overflow: hidden;
+  color: var(--flowhive-muted);
+  font-size: 0.73rem;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+}
+
+.flowhive-task-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.flowhive-capability-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.flowhive-capability-grid article {
+  display: grid;
+  align-content: start;
+  gap: 0.55rem;
+  min-height: 9rem;
+  padding: 0.9rem;
+  border: 1px solid var(--flowhive-line);
+  border-radius: 0.8rem;
+  background: var(--flowhive-surface);
+}
+
+.flowhive-capability-grid article > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.flowhive-capability-grid article > div > span:first-child {
+  color: var(--flowhive-blue);
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.flowhive-capability-grid h3 {
+  margin: 0;
+  color: var(--flowhive-navy);
+  font-size: 0.95rem;
+}
+
+.flowhive-capability-grid p {
+  margin: 0;
+  color: var(--flowhive-muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.flowhive-empty-state {
+  padding: 2rem;
+  border: 1px dashed #aebfca;
+  border-radius: 0.85rem;
+  color: var(--flowhive-muted);
+  background: var(--flowhive-soft);
+  text-align: center;
+}
+
+@media (max-width: 1000px) {
+  .flowhive-access-banner,
+  .flowhive-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .flowhive-capability-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .flowhive-hero,
+  .flowhive-table-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .flowhive-hero-actions {
+    justify-content: space-between;
+  }
+
+  .flowhive-foundation-notice,
+  .flowhive-error {
+    display: grid;
+  }
+
+  .flowhive-filter-bar,
+  .flowhive-project-grid,
+  .flowhive-capability-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .flowhive-view-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .flowhive-view-tabs button {
+    padding-inline: 0.4rem;
+  }
+}
+
+@media (max-width: 520px) {
+  .flowhive-access-banner,
+  .flowhive-summary-grid,
+  .flowhive-project-card dl {
+    grid-template-columns: 1fr;
+  }
+
+  .flowhive-project-card footer,
+  .flowhive-project-card-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
