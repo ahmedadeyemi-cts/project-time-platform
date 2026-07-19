@@ -809,3 +809,43 @@
 ## 021 Release Hardening / Production Readiness
 
 The 021 phase begins after the 020 module build sprint and focuses on release hardening, route/production readiness, operational smoke testing, role-based production readiness runbooks, and final release-candidate validation.
+
+<!-- MODULE_RECOVERY_CHECKPOINT_20260718_START -->
+## July 18, 2026 Module Recovery and Controlled Deployment Checkpoint
+
+| Module | Capability | Status |
+|---|---|---|
+| 024 | Sales Intake | Recovered, validated, merged, and deployed |
+| 025 | SOW Generator | Recovered, validated, merged, and deployed |
+| 026 | CRM Integration Framework | Recovered, validated, merged, and deployed |
+| 027 | Signed Sales-to-Delivery Handoff | Recovered, validated, merged, and deployed |
+| 028 | SOW-Aware AI Time Entry Generator | Recovered, validated, merged, and deployed |
+| 029 | UAT Role and Workflow Validation Center | Recovered, validated, merged, and deployed |
+| 030 | Reporting, Accounting, Invoicing, and Analytics | Recovered, validated, merged, and deployed |
+| 058 | CI/CD Pipeline Center | Recovered, validated, merged, and deployed |
+| 059 | Global Session Intelligence | Restored globally, validated, merged, and deployed |
+| 999 | Complete User Guide and Help Assistant | Restored, validated in the public bundle, merged, and deployed |
+
+### Recovery evidence
+
+- Recovery checkpoint: `92c0964afdc26dede72e09bf2c8d7c0629126bc0`
+- Controlled deployment workflow run: `29664610372`
+- Deployed web revision: `ca-phd-test-web-westus3--ciweb-29664610372`
+- Public asset: `index-COUkd92V.js`
+- Module 999 route and title confirmed in the live bundle
+- Module 059 confirmed globally mounted
+- Database schema changed: No
+- ProjectPulse SSO changed: No
+- Workflow rollback required: No
+
+### Module 062 current work
+
+- Integration baseline: `92c0964afdc26dede72e09bf2c8d7c0629126bc0`
+- Integration branch: `feature/module-062-unified-identity-profile-20260719T001319Z`
+- Status: Module 062 source candidate complete; Module 057, Module 059, and Profile consume the shared identity and presence layer; pending PR review
+- Module 057 presence text normalization corrected
+- Module 002 remains paused and untouched
+- Azure changed: No
+- Entra changed: No
+- Database changed in Phase 1: No
+<!-- MODULE_RECOVERY_CHECKPOINT_20260718_END -->

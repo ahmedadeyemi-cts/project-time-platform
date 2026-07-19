@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import './session-intelligence-drawer.css';
+import useIdentityProfile from './identity/useIdentityProfile.js';
+import IdentityPresence from './identity/IdentityPresence.jsx';
+import { presenceLabel } from './identity/presence.js';
 
 const safe = (value, fallback = 'Not available') =>
   value === undefined || value === null || value === '' ? fallback : String(value);
@@ -45,6 +48,11 @@ export default function SessionIntelligenceDrawer({ authSession }) {
   const [open, setOpen] = useState(false);
   const [server, setServer] = useState(null);
   const [error, setError] = useState('');
+  const {
+    profile: identityProfile,
+    error: identityProfileError,
+    refreshedAt: identityProfileRefreshedAt
+  } = useIdentityProfile();
   const device = useMemo(readDevice, []);
 
   useEffect(() => {
@@ -66,11 +74,13 @@ export default function SessionIntelligenceDrawer({ authSession }) {
   }, []);
 
   const signedInUser =
+    identityProfile?.email ||
     authSession?.username ||
     authSession?.email ||
     'Authenticated user';
 
   const displayName =
+    identityProfile?.displayName ||
     authSession?.displayName ||
     authSession?.name ||
     signedInUser.split('@')[0]
@@ -79,8 +89,27 @@ export default function SessionIntelligenceDrawer({ authSession }) {
       .join(' ');
 
   const role =
+    identityProfile?.role ||
     authSession?.role ||
     authSession?.roleName ||
+    'Backend resolved';
+
+  const jobTitle =
+    identityProfile?.jobTitle ||
+    'Title not available';
+
+  const department =
+    identityProfile?.department ||
+    identityProfile?.team ||
+    'Department not available';
+
+  const identityProvider =
+    identityProfile?.authenticationProvider ||
+    'Backend resolved';
+
+  const directoryProvider =
+    identityProfile?.directoryProvider ||
+    identityProfile?.identitySource ||
     'Backend resolved';
 
   const permissionCount =
@@ -94,8 +123,20 @@ export default function SessionIntelligenceDrawer({ authSession }) {
       rows: [
         ['Display name', displayName],
         ['Signed-in user', signedInUser],
-        ['Identity provider', 'Microsoft Entra ID'],
-        ['Tenant', 'OneNeck / US Signal test tenant']
+        ['Job title', jobTitle],
+        ['Department', department],
+        ['Identity provider', identityProvider],
+        ['Directory provider', directoryProvider],
+        ['Identity domain', identityProfile?.domain],
+        [
+          'Presence',
+          presenceLabel(identityProfile?.presence)
+        ],
+        [
+          'Profile refresh',
+          identityProfileRefreshedAt
+          || 'Loading'
+        ]
       ]
     },
     {
@@ -184,6 +225,13 @@ export default function SessionIntelligenceDrawer({ authSession }) {
     displayName,
     signedInUser,
     role,
+    jobTitle,
+    department,
+    identityProvider,
+    directoryProvider,
+    identityProfileError,
+    identityProfileRefreshedAt,
+    presence: identityProfile?.presence,
     permissionCount,
     clientIp: server?.network?.publicIp,
     deviceType: device.type,
@@ -225,7 +273,12 @@ export default function SessionIntelligenceDrawer({ authSession }) {
           <div>
             <strong>{displayName}</strong>
             <span>{signedInUser}</span>
+            <span>{safe(jobTitle)}</span>
+            <span>{safe(department)}</span>
             <em>{safe(role)}</em>
+            <IdentityPresence
+              presence={identityProfile?.presence}
+            />
           </div>
         </section>
 

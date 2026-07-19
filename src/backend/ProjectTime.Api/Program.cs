@@ -37053,6 +37053,8 @@ ProjectTime.Api.Modules.InvoiceBillingModule.MapInvoiceBillingEndpoints(app);
 ProjectTime.Api.Modules.WorkRegisterPurchaseOrderModule.MapWorkRegisterPurchaseOrderEndpoints(app);
 /* WORK_REGISTER_PO_ENDPOINT_MAP_END */
 
+ProjectTime.Api.Modules.IdentityProfileModule.MapIdentityProfileEndpoints(app);
+
 ProjectTime.Api.Modules.CalendarCapacityModule.MapCalendarCapacityEndpoints(app);
 
 ProjectTime.Api.Modules.CiCdPipelineModule.MapCiCdPipelineEndpoints(app);
