@@ -86,6 +86,12 @@ const profileSurface = read(
   'ProfileIdentitySurface.jsx'
 );
 
+const identityProfileCss = read(
+  'src',
+  'identity',
+  'identity-profile.css'
+);
+
 const presenceRuntime = await import(
   pathToFileURL(
     path.join(
@@ -402,6 +408,49 @@ assert(
   )
   && sessionDrawer.includes(
     'presenceLabel(identityProfile?.presence)'
+  )
+);
+
+
+assert(
+  'MODULE_062_AVATAR_PRESENCE_OUTSIDE_PHOTO',
+  identityProfileCss.includes(
+    'MODULE_062_PROFILE_MENU_LAYOUT_REPAIR_START'
+  )
+  && identityProfileCss.includes(
+    'right: -6px !important;'
+  )
+  && identityProfileCss.includes(
+    'width: 10px !important;'
+  )
+  && identityProfileCss.includes(
+    'background: transparent !important;'
+  )
+);
+
+assert(
+  'MODULE_062_PROFILE_MENU_COPY_EXPANDS',
+  identityProfileCss.includes(
+    'grid-template-columns: 64px minmax(0, 1fr) !important;'
+  )
+  && identityProfileCss.includes(
+    'flex: 1 1 auto !important;'
+  )
+  && identityProfileCss.includes(
+    'width: min(440px, calc(100vw - 2rem)) !important;'
+  )
+);
+
+assert(
+  'MODULE_062_PROFILE_MENU_TEXT_READABLE',
+  identityProfileCss.includes(
+    'white-space: normal !important;'
+  )
+  && identityProfileCss.includes(
+    'text-overflow: clip !important;'
+  )
+  && identityProfileCss.includes(
+    'overflow-wrap: anywhere;'
   )
 );
 
