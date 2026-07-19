@@ -189,7 +189,9 @@ public static class IdentityProfileModule
                                 var photo =
                                     await GetGraphPhoto(
                                         token,
-                                        presenceTarget);
+                                        presenceTarget,
+                                        connection,
+                                        local.UserId);
 
                                 if (!string.IsNullOrWhiteSpace(photo))
                                 {
@@ -516,7 +518,9 @@ public static class IdentityProfileModule
 
     private static async Task<string?> GetGraphPhoto(
         string token,
-        string target)
+        string target,
+        NpgsqlConnection connection,
+        Guid userId)
     {
         using var client = GraphClient(token);
 
@@ -525,6 +529,16 @@ public static class IdentityProfileModule
                 "https://graph.microsoft.com/v1.0/users/"
                 + Uri.EscapeDataString(target)
                 + "/photos/96x96/$value");
+
+        if (response.StatusCode
+            == System.Net.HttpStatusCode.NotFound)
+        {
+            await MarkProfilePhotoChecked(
+                connection,
+                userId);
+
+            return null;
+        }
 
         if (!response.IsSuccessStatusCode)
         {
@@ -555,6 +569,25 @@ public static class IdentityProfileModule
         return
             $"data:{mediaType};base64,"
             + Convert.ToBase64String(bytes);
+    }
+
+    private static async Task MarkProfilePhotoChecked(
+        NpgsqlConnection connection,
+        Guid userId)
+    {
+        await using var command = new NpgsqlCommand(
+            """
+            UPDATE app_users
+            SET profile_photo_updated_at = NOW()
+            WHERE user_id = @user_id;
+            """,
+            connection);
+
+        command.Parameters.AddWithValue(
+            "user_id",
+            userId);
+
+        await command.ExecuteNonQueryAsync();
     }
 
     private static async Task CacheProfilePhoto(

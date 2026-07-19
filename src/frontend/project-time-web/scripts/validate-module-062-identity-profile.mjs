@@ -382,6 +382,29 @@ assert(
   )
 );
 
+assert(
+  'MODULE_062_GRAPH_PHOTO_404_BACKOFF',
+  identityBackend.includes(
+    'System.Net.HttpStatusCode.NotFound'
+  )
+  && identityBackend.includes(
+    'MarkProfilePhotoChecked'
+  )
+  && identityBackend.includes(
+    'SET profile_photo_updated_at = NOW()'
+  )
+);
+
+assert(
+  'MODULE_059_NORMALIZED_PRESENCE_DETAIL',
+  sessionDrawer.includes(
+    "from './identity/presence.js';"
+  )
+  && sessionDrawer.includes(
+    'presenceLabel(identityProfile?.presence)'
+  )
+);
+
 const failed = assertions.filter(
   (assertion) => !assertion.condition
 );

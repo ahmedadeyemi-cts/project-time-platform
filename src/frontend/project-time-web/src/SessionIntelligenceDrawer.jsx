@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import './session-intelligence-drawer.css';
 import useIdentityProfile from './identity/useIdentityProfile.js';
 import IdentityPresence from './identity/IdentityPresence.jsx';
+import { presenceLabel } from './identity/presence.js';
 
 const safe = (value, fallback = 'Not available') =>
   value === undefined || value === null || value === '' ? fallback : String(value);
@@ -129,9 +130,7 @@ export default function SessionIntelligenceDrawer({ authSession }) {
         ['Identity domain', identityProfile?.domain],
         [
           'Presence',
-          identityProfile?.presence?.activity
-          || identityProfile?.presence?.availability
-          || 'Status unavailable'
+          presenceLabel(identityProfile?.presence)
         ],
         [
           'Profile refresh',
