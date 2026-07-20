@@ -344,7 +344,7 @@ assertInvariant(
 
 assertInvariant(
   'MODULE_066_CENTRAL_GOVERNANCE_OWNERSHIP',
-  register.includes('feature/module-066-complete-integrated-on-main-20260719') &&
+  register.includes('feature/modules-064-074-release-train-on-main-20260719') &&
     register.includes('2b4a6d1a1242a25b52110a2a209ff8ddda0b8ca4') &&
     catalog.includes('066A.1–066E') &&
     tracker.includes('Module 066 — Project FlowHive'),
