@@ -7,9 +7,9 @@
   not independently assert deployment or business acceptance.
 - `Source candidate` means committed, pushed, and reviewed through an open PR; it
   does not mean merged, registered, deployed, or runtime-active.
-- `Release-train candidate` means semantically integrated and validated in an
-  isolated current-main workspace, but still unstaged, uncommitted, unpushed,
-  unmerged, and undeployed.
+- `Release-train candidate` means semantically integrated, validated, committed,
+  and pushed through an open draft PR; it does not mean merged, deployed, or
+  runtime-active.
 - `Runtime-active` requires shared registration, merge, deployment, and successful
   portal verification.
 - Proposed retirement or reuse never authorizes removal of current behavior.
@@ -101,7 +101,7 @@
 | Phase | Outcome | Current state |
 |---|---|---|
 | 066A | Read-only portfolio, task grid, assignment scope, capability/API contract | Foundation merged through PR 20 as `main@6388f3e3677d9c95380e909d5e5671dcf6fbcf27`; runtime registration remained deferred at that checkpoint |
-| 066A.1 | Shared Registration and Activation | Integrated uncommitted source from `main@2b4a6d1a1242a25b52110a2a209ff8ddda0b8ca4`; original activation package passed 42/42 checks, frontend build, .NET 10 candidate build, and zero-warning delta |
+| 066A.1 | Shared Registration and Activation | Source commit `6e7509cfe9b5704ff291525eb587040f31944ee8` is pushed through open draft PR 24 from `main@2b4a6d1a1242a25b52110a2a209ff8ddda0b8ca4`; activation package passed 42/42 checks, frontend build, .NET 10 candidate build, and zero-warning delta |
 | 066B | Versioned WBS/dependency/assignment planning contracts and persistence boundary | Source validation and browser-local editing implemented; persistence adapter, schema, baseline approval, collaboration, and audit writes remain locked pending database authorization |
 | 066C | Schedule engine, Gantt/timeline, critical path, float, workload, and risk | Deterministic weekday source preview implemented; Module 057 holiday/resource calendars and persisted execution remain gated |
 | 066D | GSD/SOW AI request, templates, automations, alerts, API/webhooks | Sanitized Module 064 request and deterministic local template source implemented; provider execution, automations, and external callbacks remain locked |
@@ -113,9 +113,9 @@
 |---|---|---|---|
 | 062 | Merged to `main` | No verified post-merge deployment | Controlled test deployment and profile/presence portal smoke test |
 | 066A | Merged foundation | No; foundation alone did not register the route | Preserve the merged read-only foundation |
-| 066A.1–066E | Consolidated uncommitted source package; final full-package validation pending | No; source is not committed, merged, or deployed | Complete full-package backend/frontend/artifact/overlap validation, then request publication authority |
+| 066A.1–066E | Validated in source commit `6e7509cfe9b5704ff291525eb587040f31944ee8`; open draft PR 24 | No; source is not merged or deployed | Review PR 24 checks and findings; merge and deployment require separate authorization |
 | 066B persistence | Locked contract only | No | Obtain explicit database-change authorization before creating a schema, repository adapter, or persistent mutation |
-| 064–074 release train | Integrated uncommitted current-main source candidate | No; no source in this workspace is merged or deployed | Complete the full validator/build/warning-delta gates, review every file, then request commit/push/PR authority |
+| 064–074 release train | Validated 133-file source commit `6e7509cfe9b5704ff291525eb587040f31944ee8`; pushed in open draft PR 24 | No; the release train is not merged or deployed | Complete PR review and checks; merge and controlled deployment require separate authorization |
 
 ## Protected global invariants
 
