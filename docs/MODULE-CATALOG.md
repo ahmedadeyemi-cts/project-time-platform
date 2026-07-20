@@ -17,7 +17,13 @@
   documentation, and dependency impacts are explicitly approved.
 - Customer-facing PDF and Excel artifacts use the approved US Signal logo.
 
-## Installed modules on `main@2b4a6d1a1242a25b52110a2a209ff8ddda0b8ca4`
+Current source baseline: `main@3d9a3dca8af479c854dc4c4a9294bc8aad273074`.
+It contains the Modules 064–074 merge at
+`48421d5ba1584d64fc3bd043304c003eff1dc27b` and the subsequent PR 25 web
+container validator-context correction. Runtime deployment is not inferred from
+source presence.
+
+## Installed modules on `main@3d9a3dca8af479c854dc4c4a9294bc8aad273074`
 
 | Module | Current title | Route/scope | Source state | Governance note |
 |---|---|---|---|---|
@@ -69,22 +75,28 @@
 | 063 | Opportunities & Action Tracker | `opportunities` | Installed | Current installed identity owns 063; planned SMTP work must receive another number |
 | 999 | ProjectPulse Complete User Guide | `user-guide` | Installed | Global documentation route restored on current main |
 
-## Approved and planned new modules
+## Approved modules and active source work
 
 | Module | Title | Status | Owner/workspace | Dependencies | Number decision |
 |---|---|---|---|---|---|
 | 061 | Undefined | Scope required | No verified implementation checkpoint | None confirmed | Reserved until explicit scope approval |
-| 064 | AI Provider Configuration Center | Release-train candidate; shared Claude → OpenAI → local router and read-only center integrated | Consolidated 064–074 release train | Provider governance, secrets, audit | Number approved; secret mutation and live-provider readiness assertions remain locked |
-| 065 | Entra Secret Administration | Release-train candidate; read center and complete fail-closed lifecycle contracts integrated | Consolidated 064–074 release train | Module 010, Module 062, secure secret controls | Number approved; no external adapter, secret-store write, durable approval/audit, Azure, or Entra mutation |
-| 066 | Project FlowHive | Release-train candidate; 066A.1–066E safe source registered | Consolidated 064–074 release train | 002, 018, 019, 024–030, 055C, 057, 059, 062, 064 | Number approved; database writes, FlowHive AI execution, customer sharing, and deployment remain locked |
-| 067 | Global Mail Configuration Center | Release-train candidate; read-only configuration/health center registered | Consolidated 064–074 release train | Microsoft 365 readiness and shared outbound-mail ownership | Number approved; provider calls, test delivery, secret mutation, and cutover remain locked |
-| 068 | System Architecture & Dependency Map | Release-train candidate; read-only architecture/status center registered | Consolidated 064–074 release train | Modules 010, 013–017, 058 | Number approved; no physical discovery or external mutation |
-| 069 | Qualifications & Certification Matrix | Release-train candidate; identity-backed read-only matrix registered | Consolidated 064–074 release train | Module 062, existing people/qualification schema | Number approved; qualification writes and renewal notifications remain deferred |
-| 070 | Capacity & Pipeline Forecasting | Release-train candidate; identity dropdown, editable dates, and audited forecast calculations registered | Consolidated 064–074 release train | Modules 020, 057, 062 and existing capacity/request data | Number approved; scenario inputs remain non-persistent |
-| 071 | On-Call Scheduling | Release-train candidate; authenticated center and versioned public GET APIs registered | Consolidated 064–074 release train | Modules 062 and 067; existing Cloudflare compatibility service | Number approved; Cloudflare credentials/configuration, scheduler activation, and email delivery remain unchanged |
-| 072 | OneAssist Routing PIN Directory | Release-train candidate; unmasked public routing PIN center/API registered | Consolidated 064–074 release train | Existing Cloudflare compatibility service | Number approved; Cloudflare credentials/configuration and data migration remain unchanged |
-| 073 | Sales Coverage Alignment | Release-train candidate; role-aware unsaved draft workspace registered | Consolidated 064–074 release train | Module 062 identity and future audited alignment persistence | Number approved; persistence remains locked pending database authorization |
-| 074 | OEM & Vendor Directory | Release-train candidate; role-aware unsaved draft workspace registered | Consolidated 064–074 release train | Future audited vendor persistence | Number approved; persistence remains locked pending database authorization |
+| 064 | AI Provider Configuration Center | Installed source through merged PR 24 | Consolidated 064–074 release train | Provider governance, secrets, audit | Secret mutation and live-provider readiness assertions remain locked |
+| 065 | Entra Secret Administration | Installed fail-closed source through merged PR 24 | Consolidated 064–074 release train | Module 010, Module 062, secure secret controls | No external adapter, secret-store write, durable approval/audit, Azure, or Entra mutation |
+| 066 | Project FlowHive | Installed safe 066A.1–066E source through merged PR 24 | Consolidated 064–074 release train | 002, 018, 019, 024–030, 055C, 057, 059, 062, 064 | Database writes, FlowHive AI execution, customer sharing, and deployment remain locked |
+| 067 | Global Mail Configuration Center | Installed read-only source through merged PR 24 | Consolidated 064–074 release train | Microsoft 365 readiness and shared outbound-mail ownership | Provider calls, test delivery, secret mutation, and cutover remain locked |
+| 068 | System Architecture & Dependency Map | Installed read-only source through merged PR 24 | Consolidated 064–074 release train | Modules 010, 013–017, 058 | No physical discovery or external mutation |
+| 069 | Qualifications & Certification Matrix | Installed read-only source through merged PR 24 | Consolidated 064–074 release train | Module 062, existing people/qualification schema | Qualification writes and renewal notifications remain deferred |
+| 070 | Capacity & Pipeline Forecasting | Installed source through merged PR 24 | Consolidated 064–074 release train | Modules 020, 057, 062 and existing capacity/request data | Scenario persistence remains locked |
+| 071 | On-Call Scheduling | Installed compatibility source through merged PR 24 | Consolidated 064–074 release train | Modules 062 and 067; existing Cloudflare compatibility service | Cloudflare configuration/credentials, scheduler activation, and email delivery remain unchanged |
+| 072 | OneAssist Routing PIN Directory | Installed compatibility source through merged PR 24 | Consolidated 064–074 release train | Existing Cloudflare compatibility service | Cloudflare configuration/credentials and data migration remain unchanged |
+| 073 | Sales Coverage Alignment | Installed unsaved-draft source through merged PR 24 | Consolidated 064–074 release train | Module 062 identity and future audited alignment persistence | Persistence remains locked pending database authorization |
+| 074 | OEM & Vendor Directory | Installed unsaved-draft source through merged PR 24 | Consolidated 064–074 release train | Future audited vendor persistence | Persistence remains locked pending database authorization |
+| 998 | System Diagnostic & Controlled Remediation Center | Validated complete fail-closed source checkpoint; local commit prepared, remote publication pending | Module 998 isolated workspace | Modules 013–017, 058, 064, 067, 068; future Module 997 security signals | Telemetry, AI, notifications, containment, remediation, promotion, rollback, secrets, and persistence remain locked |
+
+Historical PR 24 catalog marker retained for the protected Module 068 validator
+(the current Module 067 status is the installed-source row above):
+
+`HISTORICAL_PR24_ROW=| 067 | Global Mail Configuration Center | Release-train candidate`
 
 ## Unresolved numbering and reuse decisions
 
