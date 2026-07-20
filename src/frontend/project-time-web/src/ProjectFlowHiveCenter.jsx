@@ -3,6 +3,7 @@ import usSignalLogoUrl from '../brand/ussignal.png';
 import IdentityAvatar from './identity/IdentityAvatar.jsx';
 import useIdentityProfile from './identity/useIdentityProfile.js';
 import './project-flowhive-center.css';
+import './projectpulse-module-standard.css';
 
 const views = [
   { id: 'portfolio', label: 'Portfolio' },
@@ -451,8 +452,9 @@ export default function ProjectFlowHiveCenter() {
 
   return (
     <section
-      className="project-flowhive-center"
+      className="project-flowhive-center projectpulse-module-standard"
       data-module="066"
+      data-brand="us-signal"
       data-phase="066A.1-066E"
       data-mode="release-train-source-registered"
     >

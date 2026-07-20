@@ -45,7 +45,7 @@ check('AUTHENTICATED_READS', ['/capabilities', '/schedule', '/roster', '/identit
 check('MANAGEMENT_ENDPOINTS', backend.includes('MapPut') && backend.includes('AutoGenerateAsync') && backend.includes('RestoreHistoryAsync'), 'save, generate, and restore handlers');
 check('MANAGER_ROLE', backend.includes('roles.Contains("MANAGER")'), 'canonical Manager role');
 check('TEAM_LEAD_ROLE', backend.includes('roles.Contains("ENGINEERING_TEAM_LEAD")'), 'canonical Engineering Team Lead role');
-check('NO_IMPLICIT_ADMIN', docs.includes('Administrator status alone does not grant') && !/roles\.Contains\("(?:ADMINISTRATOR|SUPER_ADMINISTRATOR)"\)/.test(backend), 'administrator not in manage predicate');
+check('PLATFORM_ADMIN_ROLES', backend.includes('roles.Contains("SUPER_ADMINISTRATOR")') && backend.includes('roles.Contains("ADMINISTRATOR")') && backend.includes('platformAdministratorAccess = true'), 'platform administrators are explicit management roles');
 check('ACTUAL_SESSION_AUTHORITY', backend.includes('ProjectPulseActualUserId') && docs.includes('actual ProjectPulse session'), 'View-As does not transfer authority');
 check('IDENTITY_DROPDOWN', backend.includes('identity-options') && backend.includes('app_users') && frontend.includes('<select value={person?.userId'), 'stable Module 062 identity selection');
 check('IDENTITY_VALIDATION', (backend.match(/ValidateAssignedIdentitiesAsync\(/g) ?? []).length >= 3 && backend.includes('EnumerateObjects') && backend.includes('inactive_or_unknown_identity'), 'server validates schedule and roster identities');
@@ -82,7 +82,7 @@ check('NO_EXTERNAL_MUTATION', docs.includes('Cloudflare changes: none') && docs.
 console.log('');
 console.log(`MODULE_071_VALIDATION_CHECKS=${checks.length}`);
 console.log('MODULE_071_IMPLEMENTATION=FULL_SOURCE_CLOUDFLARE_COMPATIBILITY_PACKAGE');
-console.log('MODULE_071_MANAGE_ROLES=MANAGER_ENGINEERING_TEAM_LEAD');
+console.log('MODULE_071_MANAGE_ROLES=SUPER_ADMINISTRATOR_ADMINISTRATOR_MANAGER_ENGINEERING_TEAM_LEAD');
 console.log('MODULE_071_PUBLIC_API=VERSIONED_READ_ONLY');
 console.log('MODULE_071_MAIL_PROVIDER=MODULE_067_GLOBAL_SMTP');
 console.log('MODULE_071_RUNTIME_REGISTRATION=REGISTERED_SOURCE_DRAFT_PR_24_OPEN');

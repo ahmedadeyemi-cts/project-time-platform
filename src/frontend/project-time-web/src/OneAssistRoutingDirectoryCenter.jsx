@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usSignalLogoDataUrl } from './assets/usSignalLogoData.js';
 import './oneassist-routing-directory-center.css';
+import './projectpulse-module-standard.css';
 
 function token(authSession) {
   return authSession?.sessionToken
@@ -214,7 +215,7 @@ export default function OneAssistRoutingDirectoryCenter({ authSession }) {
   return (
     <section
       id="oneassist-routing-directory"
-      className="panel oneassist-center"
+      className="panel oneassist-center projectpulse-module-standard"
       data-module="072"
       data-brand="us-signal"
       data-pin-visibility="public-unmasked"

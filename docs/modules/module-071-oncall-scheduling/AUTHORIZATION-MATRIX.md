@@ -18,3 +18,9 @@
 - `ADMINISTRATOR`, `SUPER_ADMINISTRATOR`, `SYSTEM_ADMINISTRATION`, and `MANAGE_ALL` do not implicitly grant Module 071 management authority.
 - Frontend controls reflect the server result but never replace backend enforcement.
 - The governed permission label is `MANAGE_ONCALL_SCHEDULE`.
+
+## MODULES_064_074_PLATFORM_ADMIN_ALIGNMENT
+
+Source checkpoint: `3d9a3dca8af479c854dc4c4a9294bc8aad273074`
+
+Module 071 management authority includes `SUPER_ADMINISTRATOR`, `ADMINISTRATOR`, `MANAGER`, and `ENGINEERING_TEAM_LEAD`. Authority is resolved from the actual ProjectPulse session. View-As remains read-only and cannot transfer schedule, roster, generation, or history-restore authority.

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { usSignalLogoDataUrl } from './assets/usSignalLogoData.js';
 import './ai-provider-configuration-center.css';
+import './projectpulse-module-standard.css';
 
 const PROVIDER_LABELS = {
   claude: 'Claude',
@@ -72,8 +74,14 @@ export default function AiProviderConfigurationCenter() {
   }
 
   return (
-    <div className="ai-provider-center" data-module="064">
+    <div className="ai-provider-center projectpulse-module-standard" data-module="064"
+      data-brand="us-signal">
       <header className="ai-provider-center__header">
+        <img
+          className="projectpulse-module-standard__logo"
+          src={usSignalLogoDataUrl}
+          alt="US Signal"
+        />
         <div>
           <p className="ai-provider-center__eyebrow">Module 064 · governed shared service</p>
           <h1>AI Provider Configuration Center</h1>

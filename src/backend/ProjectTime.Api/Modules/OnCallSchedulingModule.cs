@@ -81,9 +81,15 @@ public static class OnCallSchedulingModule
             authorization = new
             {
                 view = "all authenticated ProjectPulse users",
-                manage = new[] { "MANAGER", "ENGINEERING_TEAM_LEAD" },
+                manage = new[]
+                {
+                    "SUPER_ADMINISTRATOR",
+                    "ADMINISTRATOR",
+                    "MANAGER",
+                    "ENGINEERING_TEAM_LEAD"
+                },
                 permission = ManagePermission,
-                administratorImplicitAccess = false,
+                platformAdministratorAccess = true,
                 serverEnforced = true,
                 viewAsTransfersAuthority = false
             },
@@ -700,7 +706,11 @@ public static class OnCallSchedulingModule
             var roles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             await using var reader = await command.ExecuteReaderAsync();
             while (await reader.ReadAsync()) roles.Add(reader.GetString(0));
-            var canManage = roles.Contains("MANAGER") || roles.Contains("ENGINEERING_TEAM_LEAD");
+            var canManage =
+                roles.Contains("SUPER_ADMINISTRATOR")
+                || roles.Contains("ADMINISTRATOR")
+                || roles.Contains("MANAGER")
+                || roles.Contains("ENGINEERING_TEAM_LEAD");
             if (requireManage && !canManage)
             {
                 return new(null, Results.Json(new
@@ -708,7 +718,7 @@ public static class OnCallSchedulingModule
                     module = ModuleNumber,
                     status = "oncall_manage_permission_required",
                     permission = ManagePermission,
-                    message = "Only Managers and Engineering Team Leads can manage the on-call schedule."
+                    message = "Only Super Administrators, Administrators, Managers, and Engineering Team Leads can manage the on-call schedule."
                 }, statusCode: StatusCodes.Status403Forbidden));
             }
             return new(new AccessContext(actualUserId.Value, effectiveUserId.Value, roles, canManage), null);

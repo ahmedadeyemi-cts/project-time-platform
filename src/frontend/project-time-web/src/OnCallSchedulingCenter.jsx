@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { usSignalLogoDataUrl } from './assets/usSignalLogoData.js';
 import './oncall-scheduling-center.css';
+import './projectpulse-module-standard.css';
 
 const DEFAULT_DEPARTMENTS = ['enterprise_network', 'collaboration', 'system_storage'];
 
@@ -318,7 +319,7 @@ export default function OnCallSchedulingCenter({ authSession }) {
   return (
     <section
       id="oncall-scheduling"
-      className="panel oncall-center"
+      className="panel oncall-center projectpulse-module-standard"
       data-module="071"
       data-brand="us-signal"
       data-persistence="cloudflare-compatibility"
@@ -335,7 +336,7 @@ export default function OnCallSchedulingCenter({ authSession }) {
         </div>
         <div className="oncall-authority">
           <span>{canManage ? 'Schedule manager' : 'Read-only viewer'}</span>
-          <small>{canManage ? 'Manager / Engineering Team Lead' : 'All ProjectPulse users can view'}</small>
+          <small>{canManage ? 'Super Administrator / Administrator / Manager / Engineering Team Lead' : 'All ProjectPulse users can view'}</small>
         </div>
       </header>
 

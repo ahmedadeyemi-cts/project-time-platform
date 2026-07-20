@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { usSignalLogoDataUrl } from './assets/usSignalLogoData.js';
 import './global-mail-configuration-center.css';
+import './projectpulse-module-standard.css';
 
 function sessionToken(authSession) {
   return authSession?.sessionToken
@@ -83,12 +85,18 @@ export default function GlobalMailConfigurationCenter({ authSession }) {
   return (
     <section
       id="global-mail-configuration"
-      className="panel global-mail-center"
+      className="panel global-mail-center projectpulse-module-standard"
       data-module="067"
+      data-brand="us-signal"
       data-mode="read-only-configuration"
       aria-labelledby="global-mail-title"
     >
       <header className="global-mail-hero">
+        <img
+          className="projectpulse-module-standard__logo"
+          src={usSignalLogoDataUrl}
+          alt="US Signal"
+        />
         <div>
           <p className="eyebrow">Module 067 · Administrator-only configuration</p>
           <h1 id="global-mail-title">Global Mail Configuration Center</h1>

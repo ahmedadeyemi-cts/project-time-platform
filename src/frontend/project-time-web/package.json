@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 5173",
-    "build": "npm run validate:module059 && npm run validate:module062 && npm run validate:module002 && npm run validate:module064 && npm run validate:module065 && npm run validate:module066 && npm run validate:module067 && npm run validate:module068 && npm run validate:module069 && npm run validate:module070 && npm run validate:module071 && npm run validate:module072 && npm run validate:module073 && npm run validate:module074 && vite build",
+    "build": "npm run validate:module059 && npm run validate:module062 && npm run validate:module002 && npm run validate:module064 && npm run validate:module065 && npm run validate:module066 && npm run validate:module067 && npm run validate:module068 && npm run validate:module069 && npm run validate:module070 && npm run validate:module071 && npm run validate:module072 && npm run validate:module073 && npm run validate:module074 && npm run validate:modules064074-ui && vite build",
     "preview": "vite preview --host 127.0.0.1 --port 4173",
     "validate:module059": "node ./scripts/validate-module-059-global.mjs",
     "validate:module062": "node ./scripts/validate-module-062-identity-profile.mjs",
@@ -20,7 +20,8 @@
     "validate:module071": "node ./scripts/validate-module-071-oncall-scheduling.mjs",
     "validate:module072": "node ./scripts/validate-module-072-oneassist-routing-directory.mjs",
     "validate:module073": "node ./scripts/validate-module-073-sales-coverage-alignment.mjs",
-    "validate:module074": "node ./scripts/validate-module-074-oem-vendor-directory.mjs"
+    "validate:module074": "node ./scripts/validate-module-074-oem-vendor-directory.mjs",
+    "validate:modules064074-ui": "node ./scripts/validate-modules-064-074-ui-authority.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.3.1",

@@ -1,0 +1,123 @@
+/* Temporary source template used by the atomic Checkpoint A recovery. */
+.projectpulse-module-standard {
+  --pp-module-navy: #102a43;
+  --pp-module-blue: #1261a0;
+  --pp-module-cyan: #00a6d6;
+  --pp-module-green: #75b843;
+  --pp-module-ink: #172b3a;
+  --pp-module-muted: #5c6f7d;
+  --pp-module-line: #d9e4ec;
+  --pp-module-surface: #ffffff;
+  --pp-module-radius: 18px;
+  --pp-module-shadow: 0 16px 42px rgba(16, 42, 67, 0.09);
+  position: relative;
+  width: 100%;
+  color: var(--pp-module-ink);
+  background: linear-gradient(180deg, rgba(0, 166, 214, 0.055), transparent 240px), var(--pp-module-surface);
+  border: 1px solid var(--pp-module-line);
+  border-radius: var(--pp-module-radius);
+  box-shadow: var(--pp-module-shadow);
+  overflow: hidden;
+}
+.projectpulse-module-standard > header {
+  position: relative;
+  min-height: 112px;
+  margin: 0;
+  padding: clamp(1.25rem, 2.3vw, 2rem);
+  border-bottom: 1px solid var(--pp-module-line);
+  background: radial-gradient(circle at top right, rgba(117, 184, 67, 0.16), transparent 35%), linear-gradient(135deg, #f8fbfd, #eef7fb);
+}
+.projectpulse-module-standard > header h1 {
+  margin-block: 0.22rem 0.45rem;
+  color: var(--pp-module-navy);
+  font-size: clamp(1.55rem, 2.6vw, 2.25rem);
+  line-height: 1.1;
+  letter-spacing: -0.025em;
+}
+.projectpulse-module-standard > header p {
+  max-width: 78ch;
+  color: var(--pp-module-muted);
+  line-height: 1.55;
+}
+.projectpulse-module-standard .projectpulse-module-standard__logo {
+  display: block;
+  width: min(142px, 34vw);
+  height: auto;
+  margin: 0 0 0.75rem;
+  object-fit: contain;
+}
+.projectpulse-module-standard :is(.eyebrow, [class*="__eyebrow"], [class$="-eyebrow"]) {
+  color: var(--pp-module-blue);
+  font-size: 0.73rem;
+  font-weight: 800;
+  letter-spacing: 0.095em;
+  text-transform: uppercase;
+}
+.projectpulse-module-standard :is(section, article, [class*="-card"], [class*="__section"]) {
+  border-color: var(--pp-module-line);
+}
+.projectpulse-module-standard :is(button, .primary-action, .secondary-action) {
+  min-height: 38px;
+  border-radius: 10px;
+  font: inherit;
+  font-weight: 700;
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+.projectpulse-module-standard button:not(:disabled):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(16, 42, 67, 0.12);
+}
+.projectpulse-module-standard button:focus-visible,
+.projectpulse-module-standard input:focus-visible,
+.projectpulse-module-standard select:focus-visible,
+.projectpulse-module-standard textarea:focus-visible {
+  outline: 3px solid rgba(0, 166, 214, 0.24);
+  outline-offset: 2px;
+}
+.projectpulse-module-standard :is(input, select, textarea) {
+  min-height: 40px;
+  border: 1px solid #c8d7e2;
+  border-radius: 10px;
+  background: #fff;
+  color: var(--pp-module-ink);
+  font: inherit;
+}
+.projectpulse-module-standard textarea {
+  min-height: 108px;
+  resize: vertical;
+}
+.projectpulse-module-standard label > span {
+  color: var(--pp-module-navy);
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+.projectpulse-module-standard table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.projectpulse-module-standard thead th {
+  background: #edf5f9;
+  color: var(--pp-module-navy);
+  font-size: 0.73rem;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+.projectpulse-module-standard :is(th, td) {
+  border-bottom: 1px solid var(--pp-module-line);
+  padding: 0.72rem 0.8rem;
+  text-align: left;
+  vertical-align: top;
+}
+.projectpulse-module-standard tbody tr:hover {
+  background: rgba(0, 166, 214, 0.035);
+}
+@media (max-width: 720px) {
+  .projectpulse-module-standard {
+    border-radius: 14px;
+  }
+  .projectpulse-module-standard > header {
+    min-height: auto;
+    padding: 1.1rem;
+  }
+}

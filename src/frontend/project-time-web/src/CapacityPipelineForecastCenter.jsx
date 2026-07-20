@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { usSignalLogoDataUrl } from './assets/usSignalLogoData.js';
 import './capacity-pipeline-forecast-center.css';
+import './projectpulse-module-standard.css';
 
 function sessionToken(authSession) {
   return authSession?.sessionToken
@@ -120,12 +122,18 @@ export default function CapacityPipelineForecastCenter({ authSession }) {
   return (
     <section
       id="capacity-pipeline-forecast"
-      className="panel capacity-forecast-center"
+      className="panel capacity-forecast-center projectpulse-module-standard"
       data-module="070"
+      data-brand="us-signal"
       data-mode="read-only-live-scenario"
       aria-labelledby="capacity-forecast-title"
     >
       <header className="capacity-forecast-hero">
+        <img
+          className="projectpulse-module-standard__logo"
+          src={usSignalLogoDataUrl}
+          alt="US Signal"
+        />
         <div>
           <p className="eyebrow">Module 070 · Professional Services capacity planning</p>
           <h1 id="capacity-forecast-title">Capacity &amp; Pipeline Forecasting</h1>

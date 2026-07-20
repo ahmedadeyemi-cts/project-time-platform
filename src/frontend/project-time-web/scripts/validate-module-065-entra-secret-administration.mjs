@@ -74,7 +74,7 @@ check('CONTRACT_VERSION', backend.includes('2026-07-19.2'), 'complete-source con
 check('CURRENT_MAIN_BASELINE', backend.includes('2b4a6d1a1242a25b52110a2a209ff8ddda0b8ca4'), 'Module 002-enabled main');
 check('SUPER_ADMIN', backend.includes('roles.Contains("SUPER_ADMINISTRATOR")'), 'tracker role');
 check('DELEGATED_PERMISSION', backend.includes('permissions.Contains(DelegatedPermission)') && backend.includes('MANAGE_ENTRA_SECRET'), 'explicit capability');
-check('NO_BROAD_ADMIN', !backend.includes('roles.Contains("ADMINISTRATOR")') && !backend.includes('permissions.Contains("MANAGE_ALL")'), 'no implicit broad authority');
+check('PLATFORM_ADMIN', backend.includes('roles.Contains("SUPER_ADMINISTRATOR")') && backend.includes('roles.Contains("ADMINISTRATOR")') && !backend.includes('permissions.Contains("MANAGE_ALL")'), 'explicit platform administrator authority without a global wildcard');
 check('ACTUAL_SESSION', backend.includes('ProjectPulseActualUserId') && backend.includes('ActualEmail(context)'), 'actual user and email authority');
 check('VIEW_AS_BLOCKED', mutationAccess.includes('IsViewAs(context)') && mutationAccess.includes('actual_session_required'), 'no View-As mutation authority');
 check('MODULE_010_METADATA', backend.includes('FROM azure_entra_settings') && backend.includes('module_010_azure_entra_settings'), 'existing tenant settings are primary');

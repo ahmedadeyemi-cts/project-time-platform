@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { usSignalLogoDataUrl } from './assets/usSignalLogoData.js';
 import './sales-coverage-alignment-center.css';
+import './projectpulse-module-standard.css';
 
 function token(authSession){return authSession?.sessionToken??authSession?.token??authSession?.accessToken??window.localStorage.getItem('projectPulseSessionToken')??window.sessionStorage.getItem('projectPulseSessionToken')??''}
 function headers(authSession,extra={}){const value=token(authSession);return {...(value?{Authorization:`Bearer ${value}`,'X-ProjectPulse-Session':value,'X-Project-Pulse-Session':value,'X-Session-Token':value}:{}),...extra}}
@@ -22,7 +23,8 @@ export default function SalesCoverageAlignmentCenter({authSession}){
   const fromSignals=()=>setState(current=>({...current,rows:current.signals.map(signal=>({...blank(),accountExecutiveUserId:signal.accountExecutiveUserId??'',solutionArchitectUserId:signal.solutionArchitectUserId??'',effectiveStartDate:signal.effectiveStartDate??today(),effectiveEndDate:signal.effectiveEndDate??'',notes:`${signal.sourceType}: ${signal.sourceCode} · ${signal.customerName}`})),validation:null,notice:'Source signals copied into an unsaved alignment draft.'}));
   const validate=async()=>{setState(current=>({...current,validating:true,error:'',notice:''}));try{const payload=await requestJson('/api/sales-coverage/validate',authSession,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({alignments:state.rows})});setState(current=>({...current,validating:false,validation:payload,notice:payload.valid?'Draft passed structural validation.':'Draft contains validation errors.'}))}catch(error){setState(current=>({...current,validating:false,error:error?.message??'Draft validation failed.'}))}};
   const options=(category)=><>{byCategory[category].map(identity=><option key={identity.userId} value={identity.userId}>{identity.displayName} · {identity.team||identity.jobTitle}</option>)}</>;
-  return <section className="panel sales-coverage-center" data-module="073" data-persistence="unsaved-draft" aria-labelledby="sales-coverage-title">
+  return <section className="panel sales-coverage-center projectpulse-module-standard" data-module="073"
+      data-brand="us-signal" data-persistence="unsaved-draft" aria-labelledby="sales-coverage-title">
     <header className="sales-coverage-hero"><div className="sales-coverage-lockup"><img src={usSignalLogoDataUrl} alt="US Signal"/><div><p>Module 073 · Sales and delivery alignment</p><h1 id="sales-coverage-title">Sales Coverage Alignment</h1><span>Effective-dated AE, Resale Operations, and Solution Architect responsibility mapping.</span></div></div><div className="sales-coverage-authority"><strong>{canManage?'Draft editor':'Read-only viewer'}</strong><small>{canManage?'Admin · Solution Architect · PTC':'All authenticated users can view'}</small></div></header>
     <div className="sales-coverage-stripe" aria-hidden="true"><i/><i/><i/></div>
     {state.error?<div className="sales-coverage-banner error" role="alert">{state.error}</div>:null}{state.notice?<div className="sales-coverage-banner success" role="status">{state.notice}</div>:null}
