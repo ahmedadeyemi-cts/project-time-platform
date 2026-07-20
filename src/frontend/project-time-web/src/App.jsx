@@ -577,6 +577,7 @@ import ProjectCloseoutCenter from './ProjectCloseoutCenter.jsx';
 import CloseoutEmailAutomationCenter from './CloseoutEmailAutomationCenter.jsx';
 import InvoiceBillingCenter from './InvoiceBillingCenter.jsx';
 import CalendarCapacityCenter from './CalendarCapacityCenter.jsx';
+import SecurityOperationsResponseCenter from './SecurityOperationsResponseCenter.jsx';
 import CiCdPipelineCenter from './CiCdPipelineCenter.jsx';
 import CustomerDirectoryCenter from './CustomerDirectoryCenter.jsx';
 import ContractsCenter from './ContractsCenter.jsx';
@@ -1967,6 +1968,17 @@ const roleWorkspaceModules = [
     description: 'Review login history, password reset history, Azure sync failures, notification failures, and system audit events.',
     permissions: ['VIEW_AUDIT_TRAIL', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   },
+  /* MODULE_997_SECURITY_OPERATIONS_NAV_START */
+  {
+    route: 'security-operations',
+    href: '#security-operations',
+    title: 'Security Operations, Threat Intelligence & Response Center',
+    navLabel: 'MODULE 997',
+    description: 'Review sanitized security readiness, alert and incident contracts, threat-intelligence policy, control ownership, and fail-closed response governance.',
+    permissions: ['VIEW_SECURITY_OPERATIONS', 'MANAGE_SECURITY_RESPONSE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    roleCodes: ['SUPER_ADMINISTRATOR', 'ADMINISTRATOR', 'SECURITY_ANALYST', 'SECURITY_OPERATIONS', 'SECURITY_INCIDENT_COMMANDER']
+  },
+  /* MODULE_997_SECURITY_OPERATIONS_NAV_END */
   {
     route: 'user-admin',
     href: '#user-admin',
@@ -2367,6 +2379,7 @@ function getNavigationGroup(item) {
       return 'Project Operations';
 
     case 'audit-history':
+    case 'security-operations':
       return 'Security & Audit';
 
     case 'work-task-builder':
@@ -2993,6 +3006,7 @@ function buildRoleNavigationModel(user, navigationItems) {
       "reporting",
       "workflow",
       "audit-history",
+      "security-operations",
       "user-admin",
       "azure-admin",
       "ai-provider-configuration",
@@ -3366,6 +3380,17 @@ function getInstalledProjectPulseModuleRegistry() {
       permissions: ['VIEW_AUDIT_TRAIL', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
       description: 'Shows login, admin, notification, approval, export, service, and system audit events for accountability.'
     },
+    /* MODULE_997_SECURITY_OPERATIONS_INSTALLED_REGISTRY_START */
+    {
+      route: 'security-operations',
+      title: 'Security Operations, Threat Intelligence & Response Center',
+      navLabel: 'MODULE 997',
+      status: 'Complete fail-closed source checkpoint',
+      group: 'Security',
+      permissions: ['VIEW_SECURITY_OPERATIONS', 'MANAGE_SECURITY_RESPONSE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+      description: 'Provides sanitized security posture, alert and incident contracts, threat-intelligence policy, control ownership, reporting boundaries, and a locked response lifecycle.'
+    },
+    /* MODULE_997_SECURITY_OPERATIONS_INSTALLED_REGISTRY_END */
     {
       route: 'user-admin',
       title: 'User Administration',
@@ -3631,6 +3656,7 @@ function getInstalledModuleDescription(module) {
     'cost-alerts': 'Monitors project planned cost, assigned hours, used hours, over-assignment risk, and notification routing for cost overrun alerts.',
     workflow: 'Coordinates PM validation, accounting readiness, reconciliation, locking, export preparation, and audit visibility after manager approval.',
     'audit-history': 'Shows login, admin, notification, approval, export, and system audit events for accountability and troubleshooting.',
+    'security-operations': 'Shows sanitized security readiness, alert and incident contracts, threat-intelligence policy, control ownership, and fail-closed incident-response governance.',
     'time-compliance': 'Previews missing time, reminder scenarios, manager/PTC visibility, compliance notification readiness, and month-end time controls.',
     'holiday-admin': 'Manages company holidays, holiday upload, holiday visibility, and holiday-related timesheet automation.',
     'user-admin': 'Manages Project Health Dashboard users, roles, active status, local account status, and administrator-controlled access settings.',
@@ -6893,6 +6919,12 @@ Analytics - Variphy / Infortel`}
         <AuditHistoryPanel />
       ) : null}
 
+      {(activeRoute === 'security-operations' && canSeeAny(['VIEW_SECURITY_OPERATIONS', 'MANAGE_SECURITY_RESPONSE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
+        <section id="security-operations" className="panel security-operations-route-panel">
+          <SecurityOperationsResponseCenter authSession={authSession} />
+        </section>
+      ) : null}
+
       {(activeRoute === 'project-closeout' && canSeeAny(['VIEW_PROJECT_WORKSPACE', 'VIEW_PROJECT_INTAKE', 'VIEW_APPROVAL_WORKFLOW', 'PROJECT_TIME_APPROVAL', 'VIEW_ACCOUNT_RECONCILIATION', 'VIEW_EXPENSES', 'EXPORT_TIME_EXCEL', 'DOWNLOAD_TIME_EXPORT_PACKAGE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
         <section id="project-closeout" className="panel project-closeout-route-panel">
           <ProjectCloseoutCenter />
@@ -6954,6 +6986,7 @@ Analytics - Variphy / Infortel`}
         'oneassist-routing-directory',
         'sales-coverage-alignment',
         'oem-vendor-directory',
+        'security-operations',
         'calendar-capacity',
         'cicd-pipeline',
         'contracts',

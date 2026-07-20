@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 5173",
+    "prebuild": "npm run validate:module997",
+    "validate:module997": "node ./scripts/validate-module-997-security-operations-response.mjs",
     "build": "npm run validate:module059 && npm run validate:module062 && npm run validate:module002 && npm run validate:module064 && npm run validate:module065 && npm run validate:module066 && npm run validate:module067 && npm run validate:module068 && npm run validate:module069 && npm run validate:module070 && npm run validate:module071 && npm run validate:module072 && npm run validate:module073 && npm run validate:module074 && vite build",
     "preview": "vite preview --host 127.0.0.1 --port 4173",
     "validate:module059": "node ./scripts/validate-module-059-global.mjs",

@@ -216,6 +216,24 @@ For Module 066A.1:
 - database changes allowed: no;
 - Azure, Entra, or deployment changes allowed: no.
 
+## Module 997 — Security Operations, Threat Intelligence & Response Center
+
+| Field | Governed value |
+|---|---|
+| Workspace | `/workspace/scratch/467636bfa6c3/project-time-platform-module-997` |
+| Branch | `feature/module-997-security-operations-response-20260720` |
+| Base | `main@3d9a3dca8af479c854dc4c4a9294bc8aad273074` |
+| Required ancestor | `48421d5ba1584d64fc3bd043304c003eff1dc27b` verified |
+| Scope | Security posture, alert/incident contracts, threat-intelligence policy, control map, response lifecycle, reporting, integration inventory, authorization, frontend, validator, and documentation |
+| Expected shared overlap | Additive `Program.cs`, `App.jsx`, `package.json` prebuild, container context, Catalog, Work Register, and Status Tracker entries |
+| Parallel work | Module 998 is published in mergeable draft PR 26 from the same base; no source dependency or cross-branch import |
+| GitHub | Validation and exact 22-file manifest gate passed; commit, push, and draft PR authorized and pending |
+| External systems | No merge, deployment, Azure, database, Entra, Cloudflare, SMTP, security containment, production response, connector, notification, AI, export, or secret action authorized |
+
+Module 997 owns this appended governance checkpoint without removing the current
+central register content. Before merge, compare its shared-file edits with draft
+PR 26 and refresh the remaining draft after whichever module merges first.
+
 For Module 066B:
 
 - safe source contracts, validation, schedule, and browser-local planning authorized by the 2026-07-19 complete-module instruction: yes;
