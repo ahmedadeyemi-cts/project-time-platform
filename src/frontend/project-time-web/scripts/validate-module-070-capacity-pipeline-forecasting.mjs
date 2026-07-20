@@ -85,8 +85,8 @@ for (const required of [files.backend, 'docs/modules/module-070-capacity-pipelin
 check('TRACKER_REQUIREMENTS', docs.includes('RES-013') && docs.includes('RES-014') && docs.includes('RPT-007'), 'RES-013/014 and RPT-007');
 check('WORKBOOK_QUALITY_FINDINGS', docs.includes('nonnumeric marker `x`') && docs.includes('2024 to 2026'), 'audited data-quality findings');
 check('GOVERNANCE_REGISTERED', governance.includes('| 070 | Capacity & Pipeline Forecasting') && governance.includes('feature/modules-064-074-release-train-on-main-20260719'), 'central governance');
-check('STATUS_064', governance.includes('MODULE_064_STATUS=RELEASE_TRAIN_CANDIDATE_UNCOMMITTED'), 'exact Module 064 status');
-check('STATUS_068', governance.includes('MODULE_068_STATUS=RELEASE_TRAIN_CANDIDATE_UNCOMMITTED_READ_ONLY'), 'exact Module 068 status');
+check('STATUS_064', governance.includes('MODULE_064_STATUS=SOURCE_COMMITTED_DRAFT_PR_24_OPEN'), 'exact Module 064 status');
+check('STATUS_068', governance.includes('MODULE_068_STATUS=SOURCE_COMMITTED_DRAFT_PR_24_OPEN_READ_ONLY'), 'exact Module 068 status');
 check('OVERLAP_MODULES', ['Module 002', 'Module 064', 'Module 068'].every((value) => docs.includes(value)), 'three comparison owners');
 check('OVERLAP_SURFACES', ['docs/MODULE-CATALOG.md', 'docs/MODULE-WORK-REGISTER.md', 'AUGUST_PRODUCTION_READINESS_TRACKER.md', 'Program.cs', 'App.jsx', 'package.json'].every((value) => docs.includes(value)), 'all shared commit-gate surfaces');
 check('COMMIT_GATE_BLOCKED', docs.includes('final commit gate is `BLOCKED`'), 'commit requires refreshed overlap evidence');

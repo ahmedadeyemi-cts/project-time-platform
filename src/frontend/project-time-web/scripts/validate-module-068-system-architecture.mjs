@@ -318,7 +318,7 @@ const failed = assertions.filter((assertion) => !assertion.condition);
 console.log('');
 console.log(`MODULE_068_VALIDATION_CHECKS=${assertions.length}`);
 console.log('MODULE_068_IMPLEMENTATION=FULL_READ_ONLY_ARCHITECTURE_PACKAGE');
-console.log('MODULE_068_SHARED_INTEGRATION=RELEASE_TRAIN_SOURCE_REGISTERED_UNCOMMITTED');
+console.log('MODULE_068_SHARED_INTEGRATION=RELEASE_TRAIN_SOURCE_DRAFT_PR_24_OPEN');
 console.log('MODULE_068_AZURE_DATABASE_ENTRA_CHANGES=NONE');
 
 if (failed.length > 0) {

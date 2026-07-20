@@ -81,8 +81,8 @@ for (const required of [files.backend, 'docs/modules/module-067-global-mail/', f
 assert('DOCUMENTATION_SCOPE', documentation.includes('OPS-016') && documentation.includes('CLS-005') && documentation.includes('actual ProjectPulse session'), 'tracker and security scope');
 assert('AUTHORIZATION_BOUNDARY_DOCUMENTED', documentation.includes('no-Azure/no-Entra/no-database/no-deployment') && documentation.includes('separate authorization'), 'mutation boundary');
 assert('GOVERNANCE_REGISTERED', governance.includes('| 067 | Global Mail Configuration Center') && governance.includes('feature/modules-064-074-release-train-on-main-20260719'), 'catalog/register record');
-assert('TRACKER_064_STATUS', governance.includes('MODULE_064_STATUS=RELEASE_TRAIN_CANDIDATE_UNCOMMITTED'), 'Module 064 release-train status');
-assert('TRACKER_068_STATUS', governance.includes('MODULE_068_STATUS=RELEASE_TRAIN_CANDIDATE_UNCOMMITTED_READ_ONLY'), 'Module 068 release-train status');
+assert('TRACKER_064_STATUS', governance.includes('MODULE_064_STATUS=SOURCE_COMMITTED_DRAFT_PR_24_OPEN'), 'Module 064 release-train status');
+assert('TRACKER_068_STATUS', governance.includes('MODULE_068_STATUS=SOURCE_COMMITTED_DRAFT_PR_24_OPEN_READ_ONLY'), 'Module 068 release-train status');
 assert('MODULE_063_PRESERVED', governance.includes('Module 063') && governance.includes('Opportunities'), 'installed numbering preserved');
 assert('INTEGRATION_HOLD', governance.includes('Module 002') && governance.includes('semantically integrated'), 'shared-file checkpoint recorded');
 assert('OVERLAP_MODULES', ['Module 002', 'Module 064', 'Module 068'].every((value) => documentation.includes(value)), '002/064/068 comparison owners');
@@ -93,7 +93,7 @@ assert('NO_DATABASE_OR_DEPLOYMENT_ARTIFACT', !fs.existsSync(path.join(repository
 console.log('');
 console.log(`MODULE_067_VALIDATION_CHECKS=${checks.length}`);
 console.log('MODULE_067_IMPLEMENTATION=FULL_GOVERNED_READ_ONLY_CONFIGURATION_PACKAGE');
-console.log('MODULE_067_SHARED_INTEGRATION=RELEASE_TRAIN_SOURCE_REGISTERED_UNCOMMITTED');
+console.log('MODULE_067_SHARED_INTEGRATION=RELEASE_TRAIN_SOURCE_DRAFT_PR_24_OPEN');
 console.log('MODULE_067_AZURE_DATABASE_ENTRA_CHANGES=NONE');
 
 if (checks.some((check) => !check.condition)) {

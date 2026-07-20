@@ -72,8 +72,8 @@ check('MUTATION_BOUNDARY', docs.includes('No mutation endpoint') || docs.include
 check('GOVERNANCE_REGISTERED', governance.includes('| 069 | Qualifications & Certification Matrix') && governance.includes('feature/modules-064-074-release-train-on-main-20260719'), 'central governance');
 check('MODULE_011_PRESERVED', governance.includes('Module 011') && governance.includes('Work Task Builder'), 'existing module not reused');
 check('MODULE_002_HOLD', governance.includes('Module 002') && governance.includes('semantic'), 'shared-file integration hold');
-check('STATUS_064', governance.includes('MODULE_064_STATUS=RELEASE_TRAIN_CANDIDATE_UNCOMMITTED'), 'exact Module 064 status');
-check('STATUS_068', governance.includes('MODULE_068_STATUS=RELEASE_TRAIN_CANDIDATE_UNCOMMITTED_READ_ONLY'), 'exact Module 068 status');
+check('STATUS_064', governance.includes('MODULE_064_STATUS=SOURCE_COMMITTED_DRAFT_PR_24_OPEN'), 'exact Module 064 status');
+check('STATUS_068', governance.includes('MODULE_068_STATUS=SOURCE_COMMITTED_DRAFT_PR_24_OPEN_READ_ONLY'), 'exact Module 068 status');
 check('OVERLAP_MODULES', ['Module 002', 'Module 064', 'Module 068'].every((value) => docs.includes(value)), '002/064/068 comparison owners');
 check('OVERLAP_SURFACES', ['docs/MODULE-CATALOG.md', 'docs/MODULE-WORK-REGISTER.md', 'AUGUST_PRODUCTION_READINESS_TRACKER.md', 'Program.cs', 'App.jsx', 'package.json'].every((value) => docs.includes(value)), 'mandatory shared surfaces');
 check('FINAL_COMMIT_BLOCKED', docs.includes('final commit gate is `BLOCKED`'), 'refreshed overlap evidence required');
@@ -82,7 +82,7 @@ check('NO_AZURE_DATABASE_ENTRA', docs.includes('No change') && docs.includes('un
 console.log('');
 console.log(`MODULE_069_VALIDATION_CHECKS=${checks.length}`);
 console.log('MODULE_069_IMPLEMENTATION=FULL_READ_ONLY_QUALIFICATIONS_CERTIFICATION_MATRIX');
-console.log('MODULE_069_SHARED_INTEGRATION=RELEASE_TRAIN_SOURCE_REGISTERED_UNCOMMITTED');
+console.log('MODULE_069_SHARED_INTEGRATION=RELEASE_TRAIN_SOURCE_DRAFT_PR_24_OPEN');
 console.log('MODULE_069_AZURE_DATABASE_ENTRA_CHANGES=NONE');
 if (checks.some((value) => !value)) {
   console.error('MODULE_069_CONTRACT=FAILED');
