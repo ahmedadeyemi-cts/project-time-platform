@@ -136,7 +136,15 @@ app.Use(async (httpContext, next) =>
 
 app.Use(async (context, next) =>
 {
+    /* MODULES_071_072_PUBLIC_READ_SESSION_BYPASS */
+    var isExplicitPublicReadApi =
+        HttpMethods.IsGet(context.Request.Method)
+        && context.Request.Path.StartsWithSegments(
+            "/api/public",
+            StringComparison.OrdinalIgnoreCase);
+
     if (context.Request.Method.Equals("OPTIONS", StringComparison.OrdinalIgnoreCase) ||
+        isExplicitPublicReadApi ||
         IsProjectPulsePublicApiPath(context) ||
         CertiniaBillingModule.IsValidIntegrationRequest(context))
     {
