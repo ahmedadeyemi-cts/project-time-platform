@@ -1,145 +1,131 @@
-# Module 066A — Project FlowHive API Contract
+# Module 066 — Project FlowHive API Contract
 
-## Contract status
+## Contract state
 
-This contract defines the unregistered 066A read-only foundation. Registration in
-`Program.cs` is intentionally deferred to the guarded integration phase.
+All routes are module-owned and registered exactly once in this uncommitted
+source package. They are not merged, deployed, or runtime-verified. Every route
+requires a ProjectPulse session. Canonical portfolio reads use the effective
+View-As identity; future persistence/baseline actions must use the actual actor
+identity and server-side project authorization.
 
-## Authentication and identity
+## Read routes
 
-Both endpoints require a valid ProjectPulse session.
+### `GET /api/project-flowhive/capabilities`
 
-Identity resolution order:
+Returns phase flags, evidence-based capabilities, integration readiness, Module
+062/064 dependencies, and the governed US Signal logo checksum.
 
-1. `ProjectPulseEffectiveUserId`, when global View-As middleware established it;
-2. `ProjectPulseSessionUserId` for the normal authenticated session.
+### `GET /api/project-flowhive/portfolio`
 
-The portfolio response includes actual and effective user identifiers so an
-administrator View-As preview remains visible and read-only.
+Returns backend-scoped canonical `projects`, `tasks`, and `assignments` without
+mutation. Assignment records include `resourceUserId`, `resourceName`, and
+`resourceEmail` so the frontend identity dropdown preserves ProjectPulse IDs.
 
-## `GET /api/project-flowhive/capabilities`
+### `GET /api/project-flowhive/readiness`
 
-Returns the phase identity, enabled/disabled flags, dependencies, and evidence-based
-capability statuses. This endpoint does not query or modify the database.
+Returns 066A.1–066E source status, verified Module 002 source/merge commits,
+shared-file status, and activation blockers.
 
-Required response fields:
+### `GET /api/project-flowhive/artifacts/readiness`
 
-- `module = "066"`
-- `moduleName = "Project FlowHive"`
-- `phase = "066A"`
-- `status = "foundation_read_only"`
-- `databaseMutationEnabled = false`
-- `aiGenerationEnabled = false`
-- `customerExportEnabled = false`
-- `capabilities[]`
-- `integration`
+Returns internal PDF/XLSX availability, the repository US Signal logo SHA-256,
+and the customer-sharing lock.
 
-## `GET /api/project-flowhive/portfolio`
+## Side-effect-free computational routes
 
-Returns canonical records filtered by backend role and assignment scope.
+### `POST /api/project-flowhive/planning/validate`
 
-Top-level response fields:
+Accepts `ProjectFlowHivePlanRequest` and validates:
 
-- `module`
-- `moduleName`
-- `phase`
-- `status`
-- `mode`
-- `access`
-- `summary`
-- `projects[]`
-- `tasks[]`
-- `assignments[]`
-- `planningState`
-- `guardrails[]`
+- numeric dotted WBS hierarchy and unique WBS values;
+- parent/child references;
+- duration, milestone, progress, effort, and constraint values;
+- FS, SS, FF, and SF dependencies;
+- positive/negative lead/lag bounds;
+- duplicate dependencies and dependency cycles;
+- assignment WBS references and Module 062-backed identity GUIDs;
+- allocation and planned-hour bounds;
+- maximum request sizes.
 
-### Project fields
+No record is stored.
 
-- `projectId`
-- `projectCode`
-- `projectName`
-- `customerName`
-- `status`
-- `startDate`
-- `endDate`
-- `projectManagerName`
-- `taskCount`
-- `assignmentCount`
-- `source = "canonical_project"`
+### `POST /api/project-flowhive/schedule/calculate`
 
-### Task fields
+Returns a deterministic weekday preview containing earliest/latest indices,
+start/finish dates, total/free float, critical-task flags, project finish, and
+planned-hour summary. `calendarMode` explicitly states that Module 057 holiday
+authority is not applied.
 
-- `taskId`
-- `projectId`
-- `projectCode`
-- `projectName`
-- `taskCode`
-- `taskName`
-- `taskDescription`
-- `billable`
-- `assigneeCount`
-- `assignedHours`
-- `usedHours`
-- `remainingHours`
-- `structureSource = "canonical_task_code"`
-- `isControlledWbs = false`
+### `POST /api/project-flowhive/ai/request-preview`
 
-### Assignment fields
+Returns a sanitized `project_flowhive_plan` request compatible with Module 064,
+the required `claude → openai → local_template` route, refusal behavior, source
+authority, and deterministic local fallback. It does not resolve or call a
+provider.
 
-- `assignmentId`
-- `projectId`
-- `taskId`
-- `projectCode`
-- `projectName`
-- `taskCode`
-- `taskName`
-- `resourceName`
-- `effectiveStartDate`
-- `effectiveEndDate`
-- `allocationPercent`
-- `assignedHours`
+### `POST /api/project-flowhive/artifacts/pdf-preview`
 
-## Server authorization matrix
+### `POST /api/project-flowhive/artifacts/excel-preview`
 
-| Actor | Portfolio visibility | Task visibility | Assignment visibility |
-|---|---|---|---|
-| Engineer | Assigned projects | Assigned tasks or tasks under a project-level assignment | Own assignments |
-| Project Manager | Managed and assigned projects | All tasks in managed/assigned scope | Assignments in managed projects |
-| PM/Engineering Team Lead | Authorized team projects | All tasks in authorized team scope | Authorized team assignments |
-| Project Team Coordinator | Broad business project scope | Broad business task scope | Broad business assignment scope |
-| Administrator | Full module scope | Full module scope | Full module scope |
-| Executive | Read-only organization scope | Read-only organization scope | Read-only organization scope |
+Both endpoints require:
 
-Frontend filters never expand the server-returned dataset.
+- `audience = "internal"`;
+- `acknowledgeInternalDraft = true`;
+- a valid calculable plan.
 
-## Errors
+They return transient bytes only. The actual repository US Signal logo is
+embedded and verified. The result is marked as an internal draft. No artifact
+record, customer link, or delivery is created.
 
-| HTTP | Status/title | Meaning |
+## Explicit locked routes
+
+### `POST /api/project-flowhive/plans/drafts`
+
+Always returns HTTP 423 `persistence_locked` in this package.
+
+### `POST /api/project-flowhive/plans/{planId}/baseline`
+
+Always returns HTTP 423 `baseline_locked` in this package.
+
+These routes document the future boundary without creating hidden in-memory or
+filesystem persistence.
+
+## AI contract
+
+The only allowed execution integration is:
+
+```text
+ProjectPulseAiRouter.GenerateAsync(
+  feature: ProjectPulseAiFeatures.ProjectFlowHivePlan,
+  route: Claude -> OpenAI -> local_template,
+  refusal: stop without failover)
+```
+
+Module 066 contains no `HttpClient`, provider SDK, provider URL, API-key read,
+or secret field.
+
+## Persistence contract
+
+`IProjectFlowHivePlanRepository` is the module boundary. Only
+`LockedProjectFlowHivePlanRepository` exists in this package and reports
+`WritesEnabled = false`. No database artifact is present or applied.
+
+## Error/lock responses
+
+| HTTP | Status | Meaning |
 |---:|---|---|
-| 401 | `session_required` | No valid ProjectPulse session context |
-| 403 | `access_denied` | Effective user is not an active ProjectPulse user |
-| 503 | `configuration_missing` | Required database configuration is unavailable |
-| 500 | `Project FlowHive portfolio unavailable` | Generic server failure; exception details remain in server logs |
+| 400 | `validation_failed` or acknowledgement error | Request cannot be calculated/exported |
+| 401 | `session_required` | Missing ProjectPulse session |
+| 403 | `access_denied` | Canonical portfolio user/scope is invalid |
+| 423 | `persistence_locked`, `baseline_locked`, `customer_export_locked` | Explicit governed capability gate |
+| 503 | `configuration_missing` | Canonical database read configuration unavailable |
+| 500 | Generic problem title | Server error; no provider/customer secret returned |
 
-## Data authority
+## Size limits
 
-066A reads these existing sources:
-
-- `app_users`
-- `app_user_role_assignments`
-- `app_roles`
-- `reporting_relationships`
-- `clients`
-- `projects`
-- `project_tasks`
-- `project_assignments`
-- `time_entries`
-
-No 066A query inserts, updates, deletes, approves, or baselines records.
-
-## Deferred contract changes
-
-Write endpoints, planning IDs, hierarchy, dependencies, schedules, baselines,
-collaboration, AI generation, sharing links, and artifact downloads require a new
-versioned contract and separate authorization. They must not be added silently to
-the 066A endpoints.
+- Tasks: 500
+- Dependencies: 4,000
+- Assignments: 5,000
+- Task duration: 1–730 working days (milestone duration 0)
+- Lead/lag: -365–365 working days
+- Allocation: greater than 0 and no more than 100 percent

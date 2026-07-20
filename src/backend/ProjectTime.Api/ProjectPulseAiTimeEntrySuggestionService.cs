@@ -1,100 +1,33 @@
-using System.Text;
-using System.Text.Json;
 using System.Text.RegularExpressions;
+using ProjectTime.Api.Ai;
 
-static class ProjectPulseAiTimeEntrySuggestionService
+sealed class ProjectPulseAiTimeEntrySuggestionService
 {
-    public static async Task<ProjectPulseAiTimeEntrySuggestionResult> GenerateAsync(ProjectPulseAiTimeEntrySuggestionRequest request)
+    private readonly ProjectPulseAiRouter _router;
+
+    public ProjectPulseAiTimeEntrySuggestionService(ProjectPulseAiRouter router)
     {
-        var fallback = BuildLocalSuggestion(request);
-        var apiKey = Environment.GetEnvironmentVariable("PROJECTPULSE_CLAUDE_API_KEY");
+        _router = router;
+    }
 
-        if (string.IsNullOrWhiteSpace(apiKey))
-        {
-            return new ProjectPulseAiTimeEntrySuggestionResult(
-                fallback,
-                "local_template",
-                "PROJECTPULSE_CLAUDE_API_KEY is not configured.");
-        }
+    public async Task<ProjectPulseAiTimeEntrySuggestionResult> GenerateAsync(
+        ProjectPulseAiTimeEntrySuggestionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var routed = await _router.GenerateAsync(
+            new ProjectPulseAiGenerationRequest(
+                ProjectPulseAiFeatures.TimesheetDescription,
+                "You write concise, accurate, customer-facing professional services timesheet descriptions. You never change hours, submit time, create tasks, or alter allocations.",
+                BuildPrompt(request),
+                MaxOutputTokens: 220,
+                Temperature: 0.2),
+            () => BuildLocalSuggestion(request),
+            cancellationToken);
 
-        var model = Environment.GetEnvironmentVariable("PROJECTPULSE_CLAUDE_MODEL");
-        if (string.IsNullOrWhiteSpace(model))
-        {
-            model = "claude-3-5-sonnet-20241022";
-        }
-
-        using var httpClient = new HttpClient();
-        httpClient.DefaultRequestHeaders.Add("x-api-key", apiKey);
-        httpClient.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
-
-        var body = new
-        {
-            model,
-            max_tokens = 220,
-            temperature = 0.2,
-            system = "You write concise, accurate, customer-facing professional services timesheet descriptions. You never change hours, submit time, create tasks, or alter allocations.",
-            messages = new[]
-            {
-                new
-                {
-                    role = "user",
-                    content = BuildPrompt(request)
-                }
-            }
-        };
-
-        try
-        {
-            using var response = await httpClient.PostAsync(
-                "https://api.anthropic.com/v1/messages",
-                new StringContent(
-                    JsonSerializer.Serialize(body),
-                    Encoding.UTF8,
-                    "application/json"));
-
-            var responseText = await response.Content.ReadAsStringAsync();
-
-            if (!response.IsSuccessStatusCode)
-            {
-                return new ProjectPulseAiTimeEntrySuggestionResult(
-                    fallback,
-                    "local_template",
-                    $"Claude request failed with HTTP {(int)response.StatusCode}. Local suggestion returned.");
-            }
-
-            using var document = JsonDocument.Parse(responseText);
-
-            if (document.RootElement.TryGetProperty("content", out var content)
-                && content.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var item in content.EnumerateArray())
-                {
-                    if (item.TryGetProperty("type", out var typeElement)
-                        && string.Equals(typeElement.GetString(), "text", StringComparison.OrdinalIgnoreCase)
-                        && item.TryGetProperty("text", out var textElement))
-                    {
-                        var suggestion = CleanSuggestion(textElement.GetString());
-
-                        if (!string.IsNullOrWhiteSpace(suggestion))
-                        {
-                            return new ProjectPulseAiTimeEntrySuggestionResult(suggestion, "claude", null);
-                        }
-                    }
-                }
-            }
-
-            return new ProjectPulseAiTimeEntrySuggestionResult(
-                fallback,
-                "local_template",
-                "Claude response did not include usable text. Local suggestion returned.");
-        }
-        catch (Exception ex)
-        {
-            return new ProjectPulseAiTimeEntrySuggestionResult(
-                fallback,
-                "local_template",
-                $"Claude request failed: {ex.Message}. Local suggestion returned.");
-        }
+        return new ProjectPulseAiTimeEntrySuggestionResult(
+            CleanSuggestion(routed.Content),
+            routed.Provider,
+            routed.Warning);
     }
 
     private static string FirstNonBlank(params string?[] values)

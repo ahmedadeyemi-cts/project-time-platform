@@ -1,0 +1,90 @@
+.global-mail-center {
+  --mail-accent: #075985;
+  --mail-teal: #0f766e;
+  display: grid;
+  gap: 20px;
+}
+
+.global-mail-center h1,
+.global-mail-center h2,
+.global-mail-center p { margin-top: 0; }
+
+.global-mail-hero,
+.global-mail-card,
+.global-mail-summary article,
+.global-mail-banner {
+  border: 1px solid var(--pulse-card-border);
+  background: var(--pulse-card-bg);
+  box-shadow: var(--pulse-card-shadow);
+}
+
+.global-mail-hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 28px;
+  border-radius: 26px;
+}
+
+.global-mail-hero h1 { margin-bottom: 10px; font-size: clamp(1.65rem, 2.4vw, 2.4rem); }
+.global-mail-hero p:not(.eyebrow) { max-width: 850px; margin-bottom: 0; color: var(--pulse-muted); line-height: 1.6; }
+
+.global-mail-banner { padding: 14px 16px; border-radius: 16px; }
+.global-mail-banner.governed { border-color: rgba(15, 118, 110, .35); background: rgba(15, 118, 110, .08); }
+.global-mail-banner.error { border-color: rgba(190, 24, 93, .35); background: rgba(190, 24, 93, .08); color: #9f1239; }
+
+.global-mail-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.global-mail-summary article { display: grid; gap: 6px; padding: 18px; border-radius: 19px; }
+.global-mail-summary span,
+.global-mail-summary small,
+.global-mail-secret-list small { color: var(--pulse-muted); }
+.global-mail-summary strong { color: var(--mail-accent); font-size: 1.25rem; }
+
+.global-mail-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.global-mail-card { padding: 22px; border-radius: 23px; }
+.global-mail-heading { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; margin-bottom: 16px; }
+.global-mail-heading h2 { margin-bottom: 0; }
+
+.global-mail-settings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 0; }
+.global-mail-settings div { padding: 13px; border: 1px solid var(--pulse-card-border); border-radius: 14px; }
+.global-mail-settings dt { color: var(--pulse-muted); font-size: .76rem; font-weight: 800; text-transform: uppercase; }
+.global-mail-settings dd { margin: 6px 0 0; overflow-wrap: anywhere; font-weight: 760; }
+
+.global-mail-secret-list,
+.global-mail-check-grid { display: grid; gap: 11px; }
+.global-mail-secret-list article,
+.global-mail-check-grid article { padding: 14px; border: 1px solid var(--pulse-card-border); border-radius: 15px; background: rgba(148, 163, 184, .05); }
+.global-mail-secret-list article > div { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.global-mail-secret-list p,
+.global-mail-check-grid p { margin: 8px 0 0; color: var(--pulse-muted); }
+
+.global-mail-check-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.global-mail-check-grid article { display: grid; align-content: start; gap: 8px; }
+
+.global-mail-state { display: inline-flex; width: fit-content; padding: 6px 9px; border-radius: 999px; font-size: .72rem; font-weight: 850; }
+.global-mail-state.ready,
+.global-mail-summary strong.ready { color: #166534; background: rgba(22, 101, 52, .1); }
+.global-mail-state.governed,
+.global-mail-summary strong.governed { color: #0f766e; background: rgba(15, 118, 110, .1); }
+.global-mail-state.attention,
+.global-mail-summary strong.attention { color: #9a3412; background: rgba(154, 52, 18, .1); }
+.global-mail-state.neutral { color: var(--pulse-muted); background: rgba(100, 116, 139, .1); }
+
+.global-mail-table-wrap { overflow-x: auto; }
+.global-mail-table-wrap table { width: 100%; min-width: 760px; border-collapse: collapse; }
+.global-mail-table-wrap th,
+.global-mail-table-wrap td { padding: 12px; border-bottom: 1px solid var(--pulse-card-border); text-align: left; vertical-align: top; }
+.global-mail-table-wrap th { color: var(--pulse-muted); font-size: .75rem; text-transform: uppercase; letter-spacing: .04em; }
+
+@media (max-width: 1050px) {
+  .global-mail-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .global-mail-check-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 760px) {
+  .global-mail-hero { flex-direction: column; }
+  .global-mail-columns,
+  .global-mail-summary,
+  .global-mail-check-grid,
+  .global-mail-settings { grid-template-columns: 1fr; }
+}

@@ -1,0 +1,227 @@
+.capacity-forecast-center {
+  --forecast-navy: #102c4e;
+  --forecast-blue: #176ea6;
+  --forecast-cyan: #16a5b8;
+  --forecast-green: #2f855a;
+  --forecast-amber: #b7791f;
+  --forecast-red: #c53030;
+  color: #1f2937;
+}
+
+.capacity-forecast-hero,
+.capacity-forecast-heading,
+.capacity-forecast-actions,
+.capacity-forecast-summary,
+.capacity-forecast-filters {
+  display: flex;
+  gap: 1rem;
+}
+
+.capacity-forecast-hero,
+.capacity-forecast-heading {
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.capacity-forecast-hero {
+  padding: 1.5rem;
+  border-radius: 1rem;
+  color: #fff;
+  background: linear-gradient(130deg, var(--forecast-navy), var(--forecast-blue));
+}
+
+.capacity-forecast-hero h1,
+.capacity-forecast-heading h2 {
+  margin: .2rem 0 .45rem;
+}
+
+.capacity-forecast-hero p:last-child {
+  max-width: 58rem;
+  margin-bottom: 0;
+  color: #e6f4fb;
+}
+
+.capacity-forecast-scope {
+  min-width: 10rem;
+  padding: .8rem 1rem;
+  border: 1px solid rgba(255, 255, 255, .35);
+  border-radius: .8rem;
+  background: rgba(255, 255, 255, .12);
+}
+
+.capacity-forecast-scope span,
+.capacity-forecast-scope small,
+.capacity-forecast-summary span,
+.capacity-forecast-summary small,
+.capacity-forecast-table-wrap td small {
+  display: block;
+}
+
+.capacity-forecast-banner {
+  margin-top: 1rem;
+  padding: .85rem 1rem;
+  border-radius: .7rem;
+}
+
+.capacity-forecast-banner.governed {
+  border: 1px solid #bee3f8;
+  background: #ebf8ff;
+}
+
+.capacity-forecast-banner.error {
+  border: 1px solid #feb2b2;
+  color: #822727;
+  background: #fff5f5;
+}
+
+.capacity-forecast-card {
+  margin-top: 1rem;
+  padding: 1.15rem;
+  border: 1px solid #dbe5ee;
+  border-radius: .9rem;
+  background: #fff;
+  box-shadow: 0 .2rem .65rem rgba(16, 44, 78, .07);
+}
+
+.capacity-forecast-filters {
+  margin-top: 1rem;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.capacity-forecast-filters label {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.capacity-forecast-filters label:nth-child(4) {
+  flex-basis: 20rem;
+}
+
+.capacity-forecast-filters label > span,
+.capacity-forecast-filters label > small {
+  display: block;
+}
+
+.capacity-forecast-filters label > span {
+  margin-bottom: .35rem;
+  font-weight: 700;
+}
+
+.capacity-forecast-filters label > small {
+  margin-top: .3rem;
+  color: #667085;
+}
+
+.capacity-forecast-filters input,
+.capacity-forecast-filters select {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 2.6rem;
+  padding: .55rem .65rem;
+  border: 1px solid #b8c8d6;
+  border-radius: .5rem;
+  background: #fff;
+}
+
+.capacity-forecast-actions {
+  flex-wrap: wrap;
+}
+
+.capacity-forecast-summary {
+  margin-top: 1rem;
+  flex-wrap: wrap;
+}
+
+.capacity-forecast-summary article {
+  flex: 1 1 10rem;
+  padding: 1rem;
+  border: 1px solid #dbe5ee;
+  border-top: .25rem solid var(--forecast-cyan);
+  border-radius: .75rem;
+  background: #fff;
+}
+
+.capacity-forecast-summary strong {
+  display: block;
+  margin: .25rem 0;
+  color: var(--forecast-navy);
+  font-size: 1.45rem;
+}
+
+.capacity-forecast-table-wrap {
+  margin-top: .9rem;
+  overflow-x: auto;
+}
+
+.capacity-forecast-table-wrap table {
+  width: 100%;
+  min-width: 64rem;
+  border-collapse: collapse;
+}
+
+.capacity-forecast-table-wrap th,
+.capacity-forecast-table-wrap td {
+  padding: .7rem .6rem;
+  border-bottom: 1px solid #e3eaf0;
+  text-align: left;
+  vertical-align: top;
+}
+
+.capacity-forecast-table-wrap th {
+  color: #425466;
+  background: #f6f9fb;
+  font-size: .78rem;
+  text-transform: uppercase;
+  letter-spacing: .035em;
+}
+
+.capacity-state {
+  display: inline-block;
+  padding: .22rem .48rem;
+  border-radius: 999px;
+  color: #21543a;
+  background: #e6ffed;
+  font-size: .78rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.capacity-state.watch,
+.capacity-state.demand {
+  color: #744210;
+  background: #fffaf0;
+}
+
+.capacity-state.over_capacity,
+.capacity-state.capacity_missing {
+  color: #822727;
+  background: #fff5f5;
+}
+
+.capacity-negative {
+  color: var(--forecast-red);
+  font-weight: 800;
+}
+
+.capacity-forecast-empty,
+.capacity-forecast-footnote {
+  color: #667085;
+  text-align: center;
+}
+
+.capacity-forecast-footnote {
+  margin-top: 1rem;
+  padding: .9rem;
+}
+
+@media (max-width: 760px) {
+  .capacity-forecast-hero,
+  .capacity-forecast-heading {
+    flex-direction: column;
+  }
+
+  .capacity-forecast-scope {
+    min-width: auto;
+  }
+}

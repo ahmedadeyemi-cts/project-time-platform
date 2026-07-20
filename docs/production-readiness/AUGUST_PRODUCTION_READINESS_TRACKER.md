@@ -2,6 +2,100 @@
 
 ## Completed Production Readiness Foundation
 
+### Modules 064–074 — Current-main release train
+
+This release train is based on
+`main@2b4a6d1a1242a25b52110a2a209ff8ddda0b8ca4`. Shared registrations are
+integrated once in source commit
+`6e7509cfe9b5704ff291525eb587040f31944ee8`, which is pushed through open draft
+PR 24. The train remains unmerged, undeployed, and not portal-verified.
+
+| Module | Requirement/outcome | Source readiness | Locked production boundary |
+|---|---|---|---|
+| 064 | `AI-017` shared AI provider configuration | Claude → OpenAI → local router and read-only center integrated | Secret mutation and live-provider readiness assertions |
+| 065 | `RBAC-018` Entra Secret Administration | Read center and fail-closed lifecycle routes integrated | External adapter, step-up middleware, durable approvals/audit, secret-store and Entra mutation |
+| 066 | `GOV-015`, `RBAC-019`, `WRK-011`, `AI-008`, `AI-019`, `RPT-013` Project FlowHive | Complete safe 066A.1–066E source registered | Database persistence, FlowHive provider execution, customer sharing |
+| 067 | `OPS-016`, `CLS-005` Global Mail Configuration | Read-only configuration and health center integrated | Provider calls, test delivery, secret rotation, cutover |
+| 068 | `OPS-013` System Architecture & Dependency Map | Read-only architecture and dependency center integrated | Physical discovery and external mutation |
+| 069 | `RES-007`–`RES-012` Qualifications & Certification Matrix | Identity-backed read-only matrix integrated | Qualification writes and renewal notifications |
+| 070 | `RES-013`, `RES-014`, `RPT-007` Capacity & Pipeline Forecasting | Identity dropdown, editable dates, and audited calculation model integrated | Persistent scenario writes |
+| 071 | `RES-015` On-Call Scheduling | Authenticated center and versioned public GET APIs integrated | Cloudflare configuration/credentials, scheduler activation, and mail delivery |
+| 072 | `RES-016` OneAssist Routing PIN Directory | Public unmasked PIN center and versioned GET APIs integrated | Cloudflare configuration/credentials and data migration |
+| 073 | `SAL-002` Sales Coverage Alignment | Role-aware unsaved draft center integrated | Audited database persistence |
+| 074 | `SAL-003` OEM & Vendor Directory | Role-aware unsaved draft center integrated | Audited database persistence |
+
+`MODULE_064_STATUS=SOURCE_COMMITTED_DRAFT_PR_24_OPEN`
+
+`MODULE_065_STATUS=SOURCE_COMMITTED_DRAFT_PR_24_OPEN_FAIL_CLOSED`
+
+`MODULE_066_STATUS=SOURCE_COMMITTED_DRAFT_PR_24_OPEN_EXTERNAL_LOCKS`
+
+`MODULE_067_STATUS=SOURCE_COMMITTED_DRAFT_PR_24_OPEN_READ_ONLY`
+
+`MODULE_068_STATUS=SOURCE_COMMITTED_DRAFT_PR_24_OPEN_READ_ONLY`
+
+`MODULE_069_STATUS=SOURCE_COMMITTED_DRAFT_PR_24_OPEN_READ_ONLY`
+
+`MODULE_070_STATUS=SOURCE_COMMITTED_DRAFT_PR_24_OPEN_READ_ONLY_SCENARIO`
+
+`MODULE_071_STATUS=SOURCE_COMMITTED_DRAFT_PR_24_OPEN_COMPATIBILITY_ADAPTER`
+
+`MODULE_072_STATUS=SOURCE_COMMITTED_DRAFT_PR_24_OPEN_COMPATIBILITY_ADAPTER`
+
+`MODULE_073_STATUS=SOURCE_COMMITTED_DRAFT_PR_24_OPEN_UNSAVED_DRAFT`
+
+`MODULE_074_STATUS=SOURCE_COMMITTED_DRAFT_PR_24_OPEN_UNSAVED_DRAFT`
+
+#### Release gates
+
+- Monitor draft PR 24 review findings and GitHub checks.
+- Obtain separate authority for merge, deployment, database changes, Azure/Entra
+  changes, Cloudflare changes, mail activation, or external sharing.
+- Keep Module 065 fail-closed and all Module 066 persistence/provider/customer
+  boundaries locked until their specific authorization gates are satisfied.
+
+#### Current local validation evidence
+
+- Module contracts passed: 064 43/43, 065 76/76, 066 88/88, 067 57/57,
+  068 46/46, 069 54/54, 070 65/65, 071 50/50, 072 52/52, 073 42/42,
+  and 074 45/45.
+- Protected Module 002, Module 056E, Module 059, and Module 062 validators passed.
+- The exact production frontend chain and Vite bundle passed; Module 059 covers
+  all 58 registered authenticated routes.
+- Whitespace and secret-value scans passed. The reviewed 133-file source set is
+  committed as `6e7509cfe9b5704ff291525eb587040f31944ee8`, pushed, represented by
+  open draft PR 24, unmerged, and undeployed.
+- Module 002 overlap is limited to additive semantic changes in `Program.cs`,
+  `App.jsx`, and `package.json`.
+- Aggregate .NET 10 baseline/candidate builds passed with zero new warnings, and
+  the Module 066 executable suite passed before the release-train commit.
+
+### Module 066 — Project FlowHive
+
+- Consolidated 066A.1–066E source was validated from
+  `main@2b4a6d1a1242a25b52110a2a209ff8ddda0b8ca4` and committed as
+  `6e7509cfe9b5704ff291525eb587040f31944ee8` in open draft PR 24.
+- Shared endpoint, role-aware route/navigation, installed-module registry, and
+  protected frontend build wiring are integrated in the committed source branch.
+- WBS hierarchy, FS/SS/FF/SF dependencies, lead/lag validation, deterministic
+  weekday scheduling, critical path, total/free float, and timeline source are present.
+- Engineer assignments preserve Module 062 identity IDs and dropdown behavior.
+- GSD/SOW AI request preparation uses the integrated Module 064 contract only;
+  FlowHive provider execution remains deliberately locked.
+- Internal-draft PDF and Excel source embeds the approved US Signal logo.
+- Module 002, Module 056E, Module 059, and Module 062 preservation gates remain required.
+- No database schema or write, Azure/Entra change, provider call, customer link,
+  merge, deployment, or portal activation is claimed.
+
+#### Remaining production gates
+
+- Review draft PR 24 findings and GitHub checks; preserve the validated source boundaries.
+- Obtain database authorization before enabling versioned persistence or baseline writes.
+- Implement and validate a reviewed FlowHive adapter to the Module 064 router
+  before enabling AI-provider execution.
+- Obtain external-sharing approval before customer links, delivery, or external comments.
+- Merge, deploy, and perform portal acceptance only under separate authorization.
+
 ### 019M-O Time Compliance & Notification Center
 - Preflight Time Compliance page created.
 - Session-authenticated API calls fixed.

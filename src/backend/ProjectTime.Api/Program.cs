@@ -4,6 +4,7 @@ using Npgsql;
 using System.Security.Cryptography;
 using System.Text;
 using System.Runtime.InteropServices;
+using ProjectTime.Api.Ai;
 using ProjectTime.Api.Modules;
 
 const string DevelopmentUserEmail = "ahmed.adeyemi@ussignal.local";
@@ -13,6 +14,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddProblemDetails();
+builder.Services.AddProjectPulseAi();
 
 var app = builder.Build();
 
@@ -2719,7 +2721,11 @@ app.MapPost("/api/timesheets/day/unlock", async (TimesheetDayUnlockRequest reque
 app.MapApprovalCenterEndpoints();
 /* MODULE_002_APPROVAL_CENTER_ENDPOINTS_END */
 
-app.MapPost("/api/timesheets/ai-description-suggestions", async (ProjectPulseAiTimeEntrySuggestionRequest request, HttpContext httpContext) =>
+app.MapPost("/api/timesheets/ai-description-suggestions", async (
+    ProjectPulseAiTimeEntrySuggestionRequest request,
+    HttpContext httpContext,
+    ProjectPulseAiTimeEntrySuggestionService aiService,
+    CancellationToken cancellationToken) =>
 {
     var sessionUserId = GetProjectPulseSessionUserId(httpContext);
     if (sessionUserId is null)
@@ -2743,17 +2749,26 @@ app.MapPost("/api/timesheets/ai-description-suggestions", async (ProjectPulseAiT
         return Results.BadRequest(new { status = "validation_failed", message = "Project, task, or activity context is required before generating a suggestion." });
     }
 
-    var result = await ProjectPulseAiTimeEntrySuggestionService.GenerateAsync(request);
+    var result = await aiService.GenerateAsync(request, cancellationToken);
 
     return Results.Ok(new
     {
-        status = "ai_suggestion_generated",
+        status = string.IsNullOrWhiteSpace(result.Suggestion)
+            ? "ai_suggestion_refused"
+            : "ai_suggestion_generated",
         suggestion = result.Suggestion,
         provider = result.Provider,
         warning = result.Warning,
-        message = result.Provider == "claude"
-            ? "Claude generated a time-entry description suggestion."
-            : "Local suggestion generated because Claude is not configured."
+        message = result.Provider switch
+        {
+            ProjectPulseAiProviders.Claude when !string.IsNullOrWhiteSpace(result.Suggestion) =>
+                "Claude generated a time-entry description suggestion.",
+            ProjectPulseAiProviders.OpenAi when !string.IsNullOrWhiteSpace(result.Suggestion) =>
+                "OpenAI generated a time-entry description suggestion.",
+            ProjectPulseAiProviders.Local =>
+                "The governed local template generated a time-entry description suggestion.",
+            _ => "The selected provider declined this request under its safety controls."
+        }
     });
 });
 
@@ -22991,7 +23006,10 @@ app.MapGet("/api/system/service-control/status", async (HttpContext httpContext)
     });
 });
 
-app.MapGet("/api/system/api-status", async (HttpContext httpContext) =>
+app.MapGet("/api/system/api-status", async (
+    HttpContext httpContext,
+    ProjectPulseAiConfiguration aiConfiguration,
+    ProjectPulseAiHealthRegistry aiHealth) =>
 {
     var config = DatabaseConfig.FromEnvironment();
     var missingResult = ValidateConfig(config);
@@ -23198,15 +23216,25 @@ app.MapGet("/api/system/api-status", async (HttpContext httpContext) =>
         };
     });
 
-    await AddComponentAsync("ai-description", "AI Description API", "AI", async () =>
+    await AddComponentAsync("ai-description", "Shared AI Provider Router", "AI", async () =>
     {
-        var hasClaudeKey = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("PROJECTPULSE_CLAUDE_API_KEY"));
-        var model = Environment.GetEnvironmentVariable("PROJECTPULSE_CLAUDE_MODEL");
+        var providers = aiHealth.Snapshots();
 
         return new
         {
-            mode = hasClaudeKey ? "claude_configured" : "local_fallback",
-            model = string.IsNullOrWhiteSpace(model) ? "default" : model
+            module = "064",
+            mode = aiConfiguration.Mode,
+            strategy = "claude_openai_local_sequential_priority",
+            safetyRefusalFailover = false,
+            providers = providers.Select(provider => new
+            {
+                provider.Provider,
+                provider.Enabled,
+                provider.Configured,
+                provider.Status,
+                provider.LastCheckedAt,
+                provider.CircuitOpenUntil
+            })
         };
     });
 
@@ -36862,6 +36890,29 @@ ProjectTime.Api.Modules.WorkRegisterPurchaseOrderModule.MapWorkRegisterPurchaseO
 /* WORK_REGISTER_PO_ENDPOINT_MAP_END */
 
 ProjectTime.Api.Modules.IdentityProfileModule.MapIdentityProfileEndpoints(app);
+
+/* MODULE_064_SHARED_AI_ENDPOINT_MAP_START */
+app.MapAiProviderConfigurationEndpoints();
+/* MODULE_064_SHARED_AI_ENDPOINT_MAP_END */
+
+/* MODULE_065_ENTRA_SECRET_ENDPOINT_MAP_START */
+app.MapEntraSecretAdministrationEndpoints();
+/* MODULE_065_ENTRA_SECRET_ENDPOINT_MAP_END */
+
+/* MODULE_066A1_PROJECT_FLOWHIVE_ENDPOINT_MAP_START */
+app.MapProjectFlowHiveEndpoints();
+/* MODULE_066A1_PROJECT_FLOWHIVE_ENDPOINT_MAP_END */
+
+/* MODULES_067_074_RELEASE_TRAIN_ENDPOINT_MAP_START */
+app.MapGlobalMailConfigurationEndpoints();
+app.MapSystemArchitectureEndpoints();
+app.MapQualificationsCertificationEndpoints();
+app.MapCapacityPipelineForecastEndpoints();
+app.MapOnCallSchedulingEndpoints();
+app.MapOneAssistRoutingDirectoryEndpoints();
+app.MapSalesCoverageAlignmentEndpoints();
+app.MapOemVendorDirectoryEndpoints();
+/* MODULES_067_074_RELEASE_TRAIN_ENDPOINT_MAP_END */
 
 ProjectTime.Api.Modules.CalendarCapacityModule.MapCalendarCapacityEndpoints(app);
 
