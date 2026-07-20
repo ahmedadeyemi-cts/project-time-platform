@@ -82,6 +82,9 @@ COPY src/backend/ProjectTime.Api/Modules/OneAssistRoutingDirectoryModule.cs \
 COPY src/backend/ProjectTime.Api/Modules/Module071072NativePersistence.cs \
      src/backend/ProjectTime.Api/Modules/Module071072NativePersistence.cs
 
+COPY src/backend/ProjectTime.Api/Modules/Module064074NativeAdministration.cs \
+     src/backend/ProjectTime.Api/Modules/Module064074NativeAdministration.cs
+
 COPY src/backend/ProjectTime.Api/Modules/SalesCoverageAlignmentModule.cs \
      src/backend/ProjectTime.Api/Modules/SalesCoverageAlignmentModule.cs
 
@@ -124,6 +127,9 @@ COPY docs/modules/module-073-sales-coverage-alignment/ \
 COPY docs/modules/module-074-oem-vendor-directory/ \
      docs/modules/module-074-oem-vendor-directory/
 
+COPY docs/modules/modules-064-074-native-administration/ \
+     docs/modules/modules-064-074-native-administration/
+
 COPY docs/MODULE-CATALOG.md \
      docs/MODULE-CATALOG.md
 
@@ -138,6 +144,12 @@ COPY database/migrations/031_modules_071_072_native_persistence.sql \
 
 COPY database/rollback/031_modules_071_072_native_persistence_rollback.sql \
      database/rollback/031_modules_071_072_native_persistence_rollback.sql
+
+COPY database/migrations/032_projectpulse_native_administration_documents.sql \
+     database/migrations/032_projectpulse_native_administration_documents.sql
+
+COPY database/rollback/032_projectpulse_native_administration_documents_rollback.sql \
+     database/rollback/032_projectpulse_native_administration_documents_rollback.sql
 
 COPY scripts/module-066-validation/ \
      scripts/module-066-validation/

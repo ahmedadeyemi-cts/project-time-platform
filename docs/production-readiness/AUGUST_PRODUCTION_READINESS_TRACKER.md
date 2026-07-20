@@ -972,3 +972,19 @@ The 021 phase begins after the 020 module build sprint and focuses on release ha
 - Migration applied: no
 - Database changed: no
 - Deployment performed: no
+
+## PROJECTPULSE_NATIVE_ADMINISTRATION_MIGRATION_032
+
+- Release train: Modules 064–074 native administration, Checkpoint B2
+- Parent commit: `42ba87d43526dc9f4a052ca9938473091427cf2a`
+- Native document migration: `database/migrations/032_projectpulse_native_administration_documents.sql`
+- Reviewed rollback: `database/rollback/032_projectpulse_native_administration_documents_rollback.sql`
+- Modules covered: 064, 065, 066, 067, 068, 069, 070, 073, and 074
+- Administrator and Super Administrator authority: explicit
+- Existing delegated editor roles: preserved by module
+- View-As mutation authority: blocked
+- Usable secret values: rejected
+- Entra, Key Vault, AI-provider secrets, SMTP, and external-system activation: none
+- `MIGRATION_032_APPLIED=NO`
+- `DATABASE_CHANGED=NO`
+- `DEPLOYED=NO`

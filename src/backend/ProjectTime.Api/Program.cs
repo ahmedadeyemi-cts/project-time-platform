@@ -36912,6 +36912,7 @@ app.MapOnCallSchedulingEndpoints();
 app.MapOneAssistRoutingDirectoryEndpoints();
 app.MapSalesCoverageAlignmentEndpoints();
 app.MapOemVendorDirectoryEndpoints();
+app.MapModule064074NativeAdministrationEndpoints();
 /* MODULES_067_074_RELEASE_TRAIN_ENDPOINT_MAP_END */
 
 ProjectTime.Api.Modules.CalendarCapacityModule.MapCalendarCapacityEndpoints(app);

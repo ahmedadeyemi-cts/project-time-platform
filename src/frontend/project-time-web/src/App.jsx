@@ -2,6 +2,19 @@ import HelpAssistant from './HelpAssistant.jsx';
 import SessionIntelligenceDrawer from './SessionIntelligenceDrawer.jsx';
 import ProfileIdentitySurface from './identity/ProfileIdentitySurface.jsx';
 import ApprovalMailbox from './ApprovalMailbox.jsx';
+import NativeModuleAdministrationPanel from './NativeModuleAdministrationPanel.jsx';
+
+const MODULE_064_074_NATIVE_ADMINISTRATION_ROUTES = Object.freeze({
+  'ai-provider-configuration': '064',
+  'entra-secret-administration': '065',
+  'project-flowhive': '066',
+  'global-mail-configuration': '067',
+  'system-architecture': '068',
+  'qualifications-certifications': '069',
+  'capacity-pipeline-forecast': '070',
+  'sales-coverage-alignment': '073',
+  'oem-vendor-directory': '074'
+});
 
 const MODULE_002_APPROVAL_ROLE_CODES = Object.freeze([
   'SUPER_ADMINISTRATOR',
@@ -8111,6 +8124,12 @@ Analytics - Variphy / Infortel`}
         </>
       ) : null}
       {/* MODULE_060_NON_CONTRACT_ROUTE_CONTENT_END */}
+
+      {MODULE_064_074_NATIVE_ADMINISTRATION_ROUTES[activeRoute] ? (
+        <NativeModuleAdministrationPanel
+          moduleNumber={MODULE_064_074_NATIVE_ADMINISTRATION_ROUTES[activeRoute]}
+        />
+      ) : null}
 
       {/* MODULE_059_GLOBAL_ROUTE_HOST */}
       <div

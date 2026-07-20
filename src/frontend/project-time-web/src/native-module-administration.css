@@ -1,0 +1,179 @@
+.native-module-administration {
+  margin-top: 1.25rem;
+  padding: 1.25rem;
+  border: 1px solid var(--module-border, rgba(15, 23, 42, 0.14));
+  border-radius: 1rem;
+  background: var(--module-surface, #fff);
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.08);
+}
+
+.native-admin-heading,
+.native-admin-collection-toolbar,
+.native-admin-history-heading,
+.native-admin-record-heading,
+.native-admin-history-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.native-admin-heading h2,
+.native-admin-history-heading h3 {
+  margin: 0.2rem 0 0;
+}
+
+.native-admin-heading-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.55rem;
+}
+
+.native-admin-banner {
+  margin-top: 0.9rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid rgba(14, 165, 233, 0.28);
+  border-radius: 0.75rem;
+  background: rgba(14, 165, 233, 0.08);
+}
+
+.native-admin-banner.warning {
+  border-color: rgba(245, 158, 11, 0.35);
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.native-admin-banner.error {
+  border-color: rgba(220, 38, 38, 0.35);
+  background: rgba(220, 38, 38, 0.08);
+  color: #991b1b;
+}
+
+.native-admin-banner.success {
+  border-color: rgba(5, 150, 105, 0.35);
+  background: rgba(5, 150, 105, 0.08);
+  color: #065f46;
+}
+
+.native-admin-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 0.85rem;
+  margin-top: 1rem;
+}
+
+.native-admin-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-weight: 700;
+}
+
+.native-admin-field.checkbox {
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  min-height: 2.9rem;
+}
+
+.native-admin-field input,
+.native-admin-field select,
+.native-admin-field textarea {
+  width: 100%;
+  padding: 0.7rem 0.75rem;
+  border: 1px solid rgba(15, 23, 42, 0.18);
+  border-radius: 0.65rem;
+  background: #fff;
+  color: #0f172a;
+  font: inherit;
+  font-weight: 500;
+}
+
+.native-admin-field.checkbox input {
+  width: auto;
+}
+
+.native-admin-field small,
+.native-admin-collection-toolbar small,
+.native-admin-history-row span {
+  color: #64748b;
+  font-weight: 500;
+}
+
+.native-admin-collection-toolbar,
+.native-admin-history {
+  margin-top: 1rem;
+}
+
+.native-admin-record-list,
+.native-admin-history-list {
+  display: grid;
+  gap: 0.85rem;
+  margin-top: 0.85rem;
+}
+
+.native-admin-record-card {
+  padding: 1rem;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 0.85rem;
+  background: rgba(248, 250, 252, 0.85);
+}
+
+.native-admin-history {
+  padding-top: 1rem;
+  border-top: 1px solid rgba(15, 23, 42, 0.1);
+}
+
+.native-admin-history-row {
+  align-items: center;
+  padding: 0.7rem 0;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.native-admin-history-row > div {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.native-admin-empty {
+  margin-top: 0.85rem;
+  padding: 1rem;
+  border: 1px dashed rgba(15, 23, 42, 0.2);
+  border-radius: 0.75rem;
+  color: #64748b;
+  text-align: center;
+}
+
+.native-module-administration .danger-action {
+  border: 1px solid rgba(220, 38, 38, 0.3);
+  border-radius: 0.6rem;
+  padding: 0.45rem 0.7rem;
+  background: rgba(220, 38, 38, 0.08);
+  color: #991b1b;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.native-module-administration button:disabled,
+.native-module-administration input:disabled,
+.native-module-administration select:disabled,
+.native-module-administration textarea:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+@media (max-width: 760px) {
+  .native-admin-heading,
+  .native-admin-collection-toolbar,
+  .native-admin-history-heading,
+  .native-admin-record-heading,
+  .native-admin-history-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .native-admin-heading-actions {
+    justify-content: flex-start;
+  }
+}
