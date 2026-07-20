@@ -25,6 +25,9 @@ COPY src/backend/ProjectTime.Api/Program.cs \
 COPY src/backend/ProjectTime.Api/Modules/IdentityProfileModule.cs \
      src/backend/ProjectTime.Api/Modules/IdentityProfileModule.cs
 
+COPY src/backend/ProjectTime.Api/Modules/ApprovalCenterModule.cs \
+     src/backend/ProjectTime.Api/Modules/ApprovalCenterModule.cs
+
 COPY src/backend/ProjectTime.Api/Ai/ \
      src/backend/ProjectTime.Api/Ai/
 
