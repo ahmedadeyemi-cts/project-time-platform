@@ -222,3 +222,10 @@ For Module 066B:
 - persistence design documentation authorized: yes;
 - database schema, migration, repository adapter, and application authorized: no;
 - AI-provider execution, customer sharing, commit, push, and deployment authorized: no.
+# Modules 075 and 077–080 Recovery Work Register — 2026-07-20
+
+Central governance owns shared registration and future replay. Module branches own module-specific backend, frontend, documentation, and validator files. `Program.cs`, `App.jsx`, `package.json`, Dockerfile, the shared validator chain, Azure, database, Entra, Cloudflare, SMTP, and deployment resources are outside this recovery scope.
+
+All five candidates passed their module validator, standalone branded frontend bundle, Module 056E protection, and .NET 10 Release build with zero errors and zero warning delta against the ten-warning baseline. Recovery artifacts are Git bundles verified before branch publication.
+
+Integration order is intentionally deferred until active Modules 076, 997, and 998 and other earlier-module work establish a new authoritative main. Each candidate must then be replayed and revalidated; this register does not authorize merge or deployment.
