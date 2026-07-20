@@ -1,6 +1,4 @@
 using System.Globalization;
-using System.Net.Http.Headers;
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Npgsql;
@@ -10,7 +8,7 @@ namespace ProjectTime.Api.Modules;
 /// <summary>
 /// Module 071 migrates the established US Signal on-call schedule experience
 /// behind ProjectPulse identity and role enforcement. The first source package
-/// uses the existing Cloudflare service as its compatibility store; switching
+/// uses the existing retired external compatibility service as its compatibility store; switching
 /// persistence providers is a separately authorized change.
 /// </summary>
 public static class OnCallSchedulingModule
@@ -21,10 +19,6 @@ public static class OnCallSchedulingModule
         "2b4a6d1a1242a25b52110a2a209ff8ddda0b8ca4";
     private const string DefaultTimeZone = "America/Chicago";
     private const string ManagePermission = "MANAGE_ONCALL_SCHEDULE";
-    private static readonly HttpClient UpstreamClient = new()
-    {
-        Timeout = TimeSpan.FromSeconds(20)
-    };
 
     public static WebApplication MapOnCallSchedulingEndpoints(this WebApplication app)
     {
@@ -137,7 +131,7 @@ public static class OnCallSchedulingModule
             access = AccessResponse(access.Context!, context),
             canManage = access.Context!.CanManage,
             schedule = NormalizeSchedule(upstream.Payload),
-            source = "configured Cloudflare compatibility store",
+            source = "ProjectPulse PostgreSQL native store",
             sourceMutationPerformed = false
         });
     }
@@ -275,7 +269,7 @@ public static class OnCallSchedulingModule
             status = "schedule_saved",
             savedAt = DateTimeOffset.UtcNow,
             savedBy = access.Context!.ActualUserId,
-            upstream = upstream.Payload,
+            persistence = upstream.Payload,
             auditRequired = true
         });
     }
@@ -742,103 +736,68 @@ public static class OnCallSchedulingModule
         authoritySource = "actual ProjectPulse session"
     };
 
+
     private static async Task<UpstreamOutcome> ReadUpstreamAsync(
         string path,
         bool includeAdminHeaders,
-        HttpContext context) =>
-        await SendUpstreamAsync(HttpMethod.Get, path, null, includeAdminHeaders, context);
+        HttpContext context)
+    {
+        _ = includeAdminHeaders;
+        var outcome = path switch
+        {
+            "/api/oncall" => await Module071072NativePersistence.ReadOnCallScheduleAsync(context),
+            "/api/admin/roster" => await Module071072NativePersistence.ReadOnCallRosterAsync(context),
+            "/api/admin/oncall/history" => await Module071072NativePersistence.ReadOnCallHistoryAsync(context),
+            _ => new Module071072NativePersistence.Outcome(
+                null,
+                Results.NotFound(new { module = ModuleNumber, status = "native_persistence_operation_not_supported", path }))
+        };
+        return new(outcome.Payload, outcome.Failure);
+    }
 
     private static async Task<UpstreamOutcome> WriteUpstreamAsync(
         HttpMethod method,
         string path,
         JsonNode payload,
-        HttpContext context) =>
-        await SendUpstreamAsync(method, path, payload, includeAdminHeaders: true, context);
-
-    private static async Task<UpstreamOutcome> SendUpstreamAsync(
-        HttpMethod method,
-        string path,
-        JsonNode? payload,
-        bool includeAdminHeaders,
         HttpContext context)
     {
-        var baseUri = UpstreamBaseUri();
-        if (baseUri is null)
+        _ = method;
+        var actorUserId = SessionUserId(context, "ProjectPulseActualUserId", "ProjectPulseSessionUserId");
+        if (actorUserId is null)
         {
-            return new(null, DependencyUnavailable(
-                "The governed Cloudflare on-call compatibility source is not configured."));
+            return new(null, Results.Json(new { module = ModuleNumber, status = "session_required" }, statusCode: StatusCodes.Status401Unauthorized));
         }
-        if (includeAdminHeaders)
+        if (IsViewAs(context))
         {
-            var clientId = Environment.GetEnvironmentVariable("PROJECTPULSE_ONCALL_ACCESS_CLIENT_ID");
-            var clientSecret = Environment.GetEnvironmentVariable("PROJECTPULSE_ONCALL_ACCESS_CLIENT_SECRET");
-            if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(clientSecret))
+            return new(null, Results.Json(new
             {
-                return new(null, DependencyUnavailable(
-                    "The governed on-call service credential is not configured."));
-            }
+                module = ModuleNumber,
+                status = "actual_session_required",
+                message = "Exit Administrator View-As preview before saving Module 071 changes."
+            }, statusCode: StatusCodes.Status403Forbidden));
         }
 
-        try
+        Module071072NativePersistence.Outcome outcome;
+        if (path == "/api/admin/oncall/save")
         {
-            using var request = new HttpRequestMessage(method, new Uri(baseUri, path));
-            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-            if (includeAdminHeaders)
-            {
-                request.Headers.TryAddWithoutValidation(
-                    "CF-Access-Client-Id",
-                    Environment.GetEnvironmentVariable("PROJECTPULSE_ONCALL_ACCESS_CLIENT_ID"));
-                request.Headers.TryAddWithoutValidation(
-                    "CF-Access-Client-Secret",
-                    Environment.GetEnvironmentVariable("PROJECTPULSE_ONCALL_ACCESS_CLIENT_SECRET"));
-            }
-            if (payload is not null)
-            {
-                request.Content = new StringContent(
-                    payload.ToJsonString(),
-                    Encoding.UTF8,
-                    "application/json");
-            }
-            using var response = await UpstreamClient.SendAsync(request);
-            var raw = await response.Content.ReadAsStringAsync();
-            JsonNode? body = null;
-            if (!string.IsNullOrWhiteSpace(raw))
-            {
-                try { body = JsonNode.Parse(raw); }
-                catch { body = null; }
-            }
-            if (!response.IsSuccessStatusCode)
-            {
-                context.RequestServices
-                    .GetRequiredService<ILoggerFactory>()
-                    .CreateLogger("OnCallSchedulingModule")
-                    .LogWarning(
-                        "Module 071 upstream request {Method} {Path} returned HTTP {StatusCode}.",
-                        method.Method,
-                        path,
-                        (int)response.StatusCode);
-                return new(null, Results.Json(new
-                {
-                    module = ModuleNumber,
-                    status = "oncall_source_unavailable",
-                    message = "The on-call compatibility source did not accept the request."
-                }, statusCode: StatusCodes.Status502BadGateway));
-            }
-            return new(body, null);
+            outcome = await Module071072NativePersistence.SaveOnCallScheduleAsync(payload, actorUserId.Value, context);
         }
-        catch (Exception exception)
+        else if (path == "/api/admin/roster/save")
         {
-            LogFailure(context, exception, "contact the on-call compatibility source");
-            return new(null, DependencyUnavailable("The on-call compatibility source is unavailable."));
+            outcome = await Module071072NativePersistence.SaveOnCallRosterAsync(payload, actorUserId.Value, context);
         }
-    }
-
-    private static Uri? UpstreamBaseUri()
-    {
-        var raw = Environment.GetEnvironmentVariable("PROJECTPULSE_ONCALL_UPSTREAM_BASE_URL");
-        if (!Uri.TryCreate(raw, UriKind.Absolute, out var uri)
-            || !string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)) return null;
-        return uri.AbsoluteUri.EndsWith('/') ? uri : new Uri(uri.AbsoluteUri + "/");
+        else if (path == "/api/admin/oncall/history/restore")
+        {
+            var snapshotId = payload["id"]?.GetValue<string>() ?? string.Empty;
+            outcome = await Module071072NativePersistence.RestoreOnCallScheduleAsync(snapshotId, actorUserId.Value, context);
+        }
+        else
+        {
+            outcome = new Module071072NativePersistence.Outcome(
+                null,
+                Results.NotFound(new { module = ModuleNumber, status = "native_persistence_operation_not_supported", path }));
+        }
+        return new(outcome.Payload, outcome.Failure);
     }
 
     private static async Task<JsonOutcome> ReadJsonBodyAsync(HttpContext context)
@@ -861,13 +820,15 @@ public static class OnCallSchedulingModule
         }
     }
 
+
     private static object PersistenceStatus() => new
     {
-        mode = "cloudflare_compatibility_adapter",
-        configured = UpstreamBaseUri() is not null,
-        databaseSchemaIntroduced = false,
-        cloudflareMutationPerformedBySourcePackage = false,
-        activation = "authorized integration step only"
+        mode = "projectpulse_postgresql",
+        configured = !string.IsNullOrWhiteSpace(BuildConnectionString()),
+        databaseSchemaIntroduced = true,
+        migration = "031_modules_071_072_native_persistence.sql",
+        externalCompatibilityDependency = false,
+        activation = "migration 031 and current API deployment"
     };
 
     private static void SetPublicHeaders(HttpContext context)

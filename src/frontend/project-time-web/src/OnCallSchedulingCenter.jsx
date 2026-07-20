@@ -322,7 +322,7 @@ export default function OnCallSchedulingCenter({ authSession }) {
       className="panel oncall-center projectpulse-module-standard"
       data-module="071"
       data-brand="us-signal"
-      data-persistence="cloudflare-compatibility"
+      data-persistence="projectpulse-postgresql"
       aria-labelledby="oncall-title"
     >
       <header className="oncall-hero">
@@ -345,6 +345,9 @@ export default function OnCallSchedulingCenter({ authSession }) {
       {state.notice ? <div className="oncall-banner success" role="status">{state.notice}</div> : null}
       <div className="oncall-banner governed">
         Email automation is owned by Global SMTP: Monday upcoming notice, Tuesday acknowledgement escalation, and Friday start notice at 8:00 AM America/Chicago.
+      </div>
+      <div className="oncall-banner governed">
+        Schedule, roster, and history changes are stored in the ProjectPulse PostgreSQL application database with actual-session audit evidence.
       </div>
 
       <nav className="oncall-tabs" aria-label="On-call workspace sections">
@@ -411,7 +414,7 @@ export default function OnCallSchedulingCenter({ authSession }) {
             <label><span>Rotation seed</span><input type="number" min="0" step="1" value={generation.seedIndex} onChange={(event) => setGeneration((current) => ({ ...current, seedIndex: event.target.value }))} /></label>
           </div>
           <p className="oncall-help">Each generated entry begins Friday at 4:00 PM and ends the following Friday at 7:00 AM Central. Previewing never saves.</p>
-          {canManage ? <button type="button" className="oncall-primary" onClick={previewRotation} disabled={state.saving}>Preview generated schedule</button> : <p className="oncall-readonly">Only Managers and Engineering Team Leads can generate rotations.</p>}
+          {canManage ? <button type="button" className="oncall-primary" onClick={previewRotation} disabled={state.saving}>Preview generated schedule</button> : <p className="oncall-readonly">Only platform administrators, Managers, and Engineering Team Leads can generate rotations.</p>}
         </section>
       ) : null}
 

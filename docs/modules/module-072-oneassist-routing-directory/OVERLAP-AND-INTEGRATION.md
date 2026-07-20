@@ -17,4 +17,18 @@ Central governance files are changed only in the dedicated governance worktree. 
 
 ## Runtime gate
 
-Runtime activation requires separately authorized Cloudflare Access credentials, public-route middleware changes, upstream connectivity validation, and a cutover decision. No database schema is needed for the initial compatibility mode.
+Runtime activation requires separately authorized retired external compatibility service Access credentials, public-route middleware changes, upstream connectivity validation, and a cutover decision. No database schema is needed for the initial compatibility mode.
+
+## PROJECTPULSE_NATIVE_POSTGRESQL_MIGRATION_031
+
+- Source parent: `603538ad408b70b3e6a26ff2f4f162599fa1cabf`
+- Migration source: `database/migrations/031_modules_071_072_native_persistence.sql`
+- Rollback source: `database/rollback/031_modules_071_072_native_persistence_rollback.sql`
+- Module 071 persistence: ProjectPulse PostgreSQL schedule, roster, acknowledgement, and history tables
+- Module 072 persistence: ProjectPulse PostgreSQL routing directory and immutable revision tables
+- Platform Administrator authority: explicit
+- View-As write authority: blocked
+- External compatibility runtime dependency: removed
+- Migration applied: no
+- Database changed: no
+- Deployment performed: no

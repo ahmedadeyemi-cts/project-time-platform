@@ -218,6 +218,7 @@ export default function OneAssistRoutingDirectoryCenter({ authSession }) {
       className="panel oneassist-center projectpulse-module-standard"
       data-module="072"
       data-brand="us-signal"
+      data-persistence="projectpulse-postgresql"
       data-pin-visibility="public-unmasked"
       aria-labelledby="oneassist-title"
     >
@@ -232,7 +233,7 @@ export default function OneAssistRoutingDirectoryCenter({ authSession }) {
         </div>
         <div className="oneassist-authority">
           <span>{canManage ? 'Directory editor' : 'Directory viewer'}</span>
-          <small>{canManage ? 'Manager / Admin / PTC' : 'Everyone can view routing PINs'}</small>
+          <small>{canManage ? 'Super Administrator / Administrator / Manager / PTC' : 'Everyone can view routing PINs'}</small>
         </div>
       </header>
 
@@ -241,6 +242,9 @@ export default function OneAssistRoutingDirectoryCenter({ authSession }) {
       {state.notice ? <div className="oneassist-banner success" role="status">{state.notice}</div> : null}
       <div className="oneassist-banner governed">
         OneAssist PINs are public routing identifiers and are intentionally displayed without masking. They must never be accepted as proof of identity.
+      </div>
+      <div className="oneassist-banner governed">
+        Directory edits and revision history are stored in the ProjectPulse PostgreSQL application database.
       </div>
 
       <nav className="oneassist-tabs" aria-label="OneAssist workspace sections">
@@ -290,7 +294,7 @@ export default function OneAssistRoutingDirectoryCenter({ authSession }) {
       {tab === 'import' ? (
         <section className="oneassist-card">
           <div className="oneassist-card-head"><div><p className="oneassist-eyebrow">Preview before apply</p><h2>CSV/XLSX import</h2></div>{canManage ? <button type="button" className="oneassist-secondary" onClick={() => fileRef.current?.click()}>Choose file</button> : null}</div>
-          {!canManage ? <p className="oneassist-help">Only Managers, Administrators, and Project Team Coordinators can import directory changes.</p> : null}
+          {!canManage ? <p className="oneassist-help">Only platform administrators, Managers, and Project Team Coordinators can import directory changes.</p> : null}
           {state.importPreview ? (
             <>
               <div className="oneassist-import-summary">

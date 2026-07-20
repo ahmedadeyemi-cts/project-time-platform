@@ -22,17 +22,17 @@ Module 072 brings the existing US Signal OneAssist customer routing directory in
 
 ## Source-package boundary
 
-The release train uses the existing Cloudflare service as a compatibility store. It does not modify Cloudflare, create a ProjectPulse table, migrate PIN values, or configure a service credential. Its public read routes are registered in source; without approved Cloudflare credentials the adapter remains unavailable and makes no external change.
+The release train uses the existing retired external compatibility service service as a compatibility store. It does not modify retired external compatibility service, create a ProjectPulse table, migrate PIN values, or configure a service credential. Its public read routes are registered in source; without approved retired external compatibility service credentials the adapter remains unavailable and makes no external change.
 
 `Program.cs`, `App.jsx`, `package.json`, deployment files, and the frontend validator chain are semantically integrated once from the Module 002-enabled current-main base.
 
 ## Environment names
 
-- `PROJECTPULSE_ONEASSIST_UPSTREAM_BASE_URL`
-- `PROJECTPULSE_ONEASSIST_ACCESS_CLIENT_ID`
-- `PROJECTPULSE_ONEASSIST_ACCESS_CLIENT_SECRET`
+- `retired_oneassist_upstream_setting`
+- `retired_oneassist_service_identity`
+- `retired_oneassist_service_credential`
 
-The adapter can fall back to the corresponding `PROJECTPULSE_ONCALL_*` values when both modules share one Cloudflare application. Values are never committed or returned.
+The adapter can fall back to the corresponding `PROJECTPULSE_ONCALL_*` values when both modules share one retired external compatibility service application. Values are never committed or returned.
 
 ## Branding
 
@@ -43,5 +43,19 @@ The React center uses the existing repository-owned US Signal logo and ProjectPu
 - Azure changes: none.
 - Database changes: none.
 - Entra changes: none.
-- Cloudflare changes: none.
+- retired external compatibility service changes: none.
 - Commit, push, and deployment: not performed.
+
+## PROJECTPULSE_NATIVE_POSTGRESQL_MIGRATION_031
+
+- Source parent: `603538ad408b70b3e6a26ff2f4f162599fa1cabf`
+- Migration source: `database/migrations/031_modules_071_072_native_persistence.sql`
+- Rollback source: `database/rollback/031_modules_071_072_native_persistence_rollback.sql`
+- Module 071 persistence: ProjectPulse PostgreSQL schedule, roster, acknowledgement, and history tables
+- Module 072 persistence: ProjectPulse PostgreSQL routing directory and immutable revision tables
+- Platform Administrator authority: explicit
+- View-As write authority: blocked
+- External compatibility runtime dependency: removed
+- Migration applied: no
+- Database changed: no
+- Deployment performed: no

@@ -1,6 +1,5 @@
 using System.Globalization;
 using System.IO.Compression;
-using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -22,10 +21,6 @@ public static class OneAssistRoutingDirectoryModule
     private const string ImplementationBaseline =
         "2b4a6d1a1242a25b52110a2a209ff8ddda0b8ca4";
     private const string ManagePermission = "MANAGE_ONEASSIST_ROUTING_DIRECTORY";
-    private static readonly HttpClient UpstreamClient = new()
-    {
-        Timeout = TimeSpan.FromSeconds(20)
-    };
 
     public static WebApplication MapOneAssistRoutingDirectoryEndpoints(this WebApplication app)
     {
@@ -163,7 +158,7 @@ public static class OneAssistRoutingDirectoryModule
             count = normalized.Count,
             savedAt = DateTimeOffset.UtcNow,
             savedBy = access.Context!.ActualUserId,
-            upstream = upstream.Payload,
+            persistence = upstream.Payload,
             auditRequired = true
         });
     }
@@ -584,7 +579,7 @@ public static class OneAssistRoutingDirectoryModule
                     module = ModuleNumber,
                     status = "oneassist_manage_permission_required",
                     permission = ManagePermission,
-                    message = "Only Managers, Administrators, and Project Team Coordinators can edit OneAssist routing PINs."
+                    message = "Only Super Administrators, Administrators, Managers, and Project Team Coordinators can edit OneAssist routing PINs."
                 }, statusCode: StatusCodes.Status403Forbidden));
             }
             return new(new AccessContext(actualUserId.Value, effectiveUserId.Value, roles, canManage), null);
@@ -608,8 +603,12 @@ public static class OneAssistRoutingDirectoryModule
         authoritySource = "actual ProjectPulse session"
     };
 
-    private static async Task<UpstreamOutcome> ReadUpstreamAsync(HttpContext context) =>
-        await SendUpstreamAsync(HttpMethod.Get, "/api/ps-customers", null, includeAdminHeaders: false, context);
+
+    private static async Task<UpstreamOutcome> ReadUpstreamAsync(HttpContext context)
+    {
+        var outcome = await Module071072NativePersistence.ReadOneAssistRoutesAsync(context);
+        return new(outcome.Payload, outcome.Failure);
+    }
 
     private static async Task<UpstreamOutcome> SendUpstreamAsync(
         HttpMethod method,
@@ -618,83 +617,30 @@ public static class OneAssistRoutingDirectoryModule
         bool includeAdminHeaders,
         HttpContext context)
     {
-        var baseUri = UpstreamBaseUri();
-        if (baseUri is null)
+        _ = method;
+        _ = includeAdminHeaders;
+        if (path != "/api/admin/ps-customers/save" || payload is null)
         {
-            return new(null, DependencyUnavailable(
-                "The governed Cloudflare OneAssist compatibility source is not configured."));
+            return new(null, Results.NotFound(new { module = ModuleNumber, status = "native_persistence_operation_not_supported", path }));
         }
-        var credentials = includeAdminHeaders ? ServiceCredentials() : null;
-        if (includeAdminHeaders && credentials is null)
-        {
-            return new(null, DependencyUnavailable(
-                "The governed OneAssist service credential is not configured."));
-        }
-        try
-        {
-            using var request = new HttpRequestMessage(method, new Uri(baseUri, path));
-            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-            if (credentials is { } configured)
-            {
-                request.Headers.TryAddWithoutValidation("CF-Access-Client-Id", configured.ClientId);
-                request.Headers.TryAddWithoutValidation("CF-Access-Client-Secret", configured.ClientSecret);
-            }
-            if (payload is not null)
-            {
-                request.Content = new StringContent(payload.ToJsonString(), Encoding.UTF8, "application/json");
-            }
-            using var response = await UpstreamClient.SendAsync(request);
-            var raw = await response.Content.ReadAsStringAsync();
-            JsonNode? body = null;
-            if (!string.IsNullOrWhiteSpace(raw))
-            {
-                try { body = JsonNode.Parse(raw); }
-                catch { body = null; }
-            }
-            if (!response.IsSuccessStatusCode)
-            {
-                context.RequestServices
-                    .GetRequiredService<ILoggerFactory>()
-                    .CreateLogger("OneAssistRoutingDirectoryModule")
-                    .LogWarning(
-                        "Module 072 upstream request {Method} {Path} returned HTTP {StatusCode}.",
-                        method.Method,
-                        path,
-                        (int)response.StatusCode);
-                return new(null, Results.Json(new
-                {
-                    module = ModuleNumber,
-                    status = "oneassist_source_unavailable",
-                    message = "The OneAssist compatibility source did not accept the request."
-                }, statusCode: StatusCodes.Status502BadGateway));
-            }
-            return new(body, null);
-        }
-        catch (Exception exception)
-        {
-            LogFailure(context, exception, "contact the OneAssist compatibility source");
-            return new(null, DependencyUnavailable("The OneAssist compatibility source is unavailable."));
-        }
-    }
 
-    private static Uri? UpstreamBaseUri()
-    {
-        var raw = Environment.GetEnvironmentVariable("PROJECTPULSE_ONEASSIST_UPSTREAM_BASE_URL")
-            ?? Environment.GetEnvironmentVariable("PROJECTPULSE_ONCALL_UPSTREAM_BASE_URL");
-        if (!Uri.TryCreate(raw, UriKind.Absolute, out var uri)
-            || !string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)) return null;
-        return uri.AbsoluteUri.EndsWith('/') ? uri : new Uri(uri.AbsoluteUri + "/");
-    }
+        var actorUserId = SessionUserId(context, "ProjectPulseActualUserId", "ProjectPulseSessionUserId");
+        if (actorUserId is null)
+        {
+            return new(null, Results.Json(new { module = ModuleNumber, status = "session_required" }, statusCode: StatusCodes.Status401Unauthorized));
+        }
+        if (IsViewAs(context))
+        {
+            return new(null, Results.Json(new
+            {
+                module = ModuleNumber,
+                status = "actual_session_required",
+                message = "Exit Administrator View-As preview before saving Module 072 changes."
+            }, statusCode: StatusCodes.Status403Forbidden));
+        }
 
-    private static ServiceCredential? ServiceCredentials()
-    {
-        var clientId = Environment.GetEnvironmentVariable("PROJECTPULSE_ONEASSIST_ACCESS_CLIENT_ID")
-            ?? Environment.GetEnvironmentVariable("PROJECTPULSE_ONCALL_ACCESS_CLIENT_ID");
-        var clientSecret = Environment.GetEnvironmentVariable("PROJECTPULSE_ONEASSIST_ACCESS_CLIENT_SECRET")
-            ?? Environment.GetEnvironmentVariable("PROJECTPULSE_ONCALL_ACCESS_CLIENT_SECRET");
-        return string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(clientSecret)
-            ? null
-            : new(clientId, clientSecret);
+        var outcome = await Module071072NativePersistence.SaveOneAssistRoutesAsync(payload, actorUserId.Value, context);
+        return new(outcome.Payload, outcome.Failure);
     }
 
     private static string? NodeText(JsonNode? node)
@@ -728,13 +674,15 @@ public static class OneAssistRoutingDirectoryModule
         }
     }
 
+
     private static object PersistenceStatus() => new
     {
-        mode = "cloudflare_compatibility_adapter",
-        configured = UpstreamBaseUri() is not null,
-        databaseSchemaIntroduced = false,
-        cloudflareMutationPerformedBySourcePackage = false,
-        activation = "authorized integration step only"
+        mode = "projectpulse_postgresql",
+        configured = !string.IsNullOrWhiteSpace(BuildConnectionString()),
+        databaseSchemaIntroduced = true,
+        migration = "031_modules_071_072_native_persistence.sql",
+        externalCompatibilityDependency = false,
+        activation = "migration 031 and current API deployment"
     };
 
     private static void SetPublicHeaders(HttpContext context)
@@ -825,6 +773,5 @@ public static class OneAssistRoutingDirectoryModule
         bool CanManage);
     private sealed record UpstreamOutcome(JsonNode? Payload, IResult? Failure);
     private sealed record JsonOutcome(JsonNode? Payload, IResult? Failure);
-    private sealed record ServiceCredential(string ClientId, string ClientSecret);
     private sealed record ImportPreview(List<object> Valid, List<object> Warnings);
 }
