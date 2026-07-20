@@ -126,3 +126,14 @@
 - Module 062 remains the shared identity and normalized presence authority.
 - Current Module 001 and Module 002 workflows are not replaced by new-module work.
 - A new route must remain inside the existing authenticated application shell.
+# Parallel Recovery Candidates — Modules 075 and 077–080 (2026-07-20)
+
+These modules are isolated source candidates validated against `origin/main@3d9a3dca8af479c854dc4c4a9294bc8aad273074`. They are not merged, registered, runtime-active, or associated with current-main functionality. Shared integration remains deferred while Modules 076, 997, 998, and other active work continue.
+
+| Module | Name | Recovery branch | Runtime status |
+|---|---|---|---|
+| 075 | Integration Automation & Event Gateway | `feature/module-075-integration-event-gateway-recovery-20260720` | Source-only; all connectors and mutations locked |
+| 077 | Release, Deployment & Rollback Control Center | `feature/module-077-release-control-recovery-20260720` | Source-only; deployment and rollback locked |
+| 078 | Observability, SLO & Application Health Center | `feature/module-078-observability-slo-recovery-20260720` | Source-only; telemetry and alert delivery locked |
+| 079 | Data Governance, Retention & Privacy Center | `feature/module-079-data-governance-recovery-20260720` | Source-only; retention, export, and deletion locked |
+| 080 | Customer Delivery & Acceptance Portal | `feature/module-080-customer-acceptance-recovery-20260720` | Source-only; external identity and sharing locked |
