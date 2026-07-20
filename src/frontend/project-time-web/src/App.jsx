@@ -595,6 +595,7 @@ import OnCallSchedulingCenter from './OnCallSchedulingCenter.jsx';
 import OneAssistRoutingDirectoryCenter from './OneAssistRoutingDirectoryCenter.jsx';
 import SalesCoverageAlignmentCenter from './SalesCoverageAlignmentCenter.jsx';
 import OemVendorDirectoryCenter from './OemVendorDirectoryCenter.jsx';
+import SystemDiagnosticRemediationCenter from './SystemDiagnosticRemediationCenter.jsx';
 import ProjectManagerWorkloadCenter from './ProjectManagerWorkloadCenter.jsx';
 import EngineeringTeamLeadUtilizationPanel from './EngineeringTeamLeadUtilizationPanel.jsx';
 import WorkTaskBuilderPanel from './WorkTaskBuilderPanel.jsx';
@@ -2155,6 +2156,17 @@ const roleWorkspaceModules = [
     permissions: []
   },
   /* MODULES_064_074_RELEASE_TRAIN_NAV_END */
+  /* MODULE_998_SYSTEM_DIAGNOSTICS_NAV_START */
+  {
+    route: 'system-diagnostics',
+    href: '#system-diagnostics',
+    title: 'System Diagnostic & Controlled Remediation Center',
+    navLabel: 'MODULE 998',
+    description: 'Review sanitized platform diagnostics, issue classification, ownership, evidence, runbooks, and fail-closed remediation readiness.',
+    permissions: ['VIEW_SYSTEM_DIAGNOSTICS', 'MANAGE_SYSTEM_REMEDIATION', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    roleCodes: ['SUPER_ADMINISTRATOR', 'ADMINISTRATOR']
+  },
+  /* MODULE_998_SYSTEM_DIAGNOSTICS_NAV_END */
   {
     route: 'service-control',
     href: '#service-control',
@@ -2383,6 +2395,7 @@ function getNavigationGroup(item) {
     case 'service-control':
     case 'global-mail-configuration':
     case 'system-architecture':
+    case 'system-diagnostics':
     case 'uat-validation':
     case 'cicd-pipeline':
       return 'Platform Operations';
@@ -3001,6 +3014,7 @@ function buildRoleNavigationModel(user, navigationItems) {
       "service-control",
       "global-mail-configuration",
       "system-architecture",
+      "system-diagnostics",
       "qualifications-certifications",
       "capacity-pipeline-forecast",
       "uat-validation",
@@ -3223,6 +3237,17 @@ function getInstalledProjectPulseModuleRegistry() {
     description: 'Provides a US Signal-branded, role-governed OEM and vendor directory draft with validation and export.'
   },
   /* MODULES_064_074_RELEASE_TRAIN_INSTALLED_REGISTRY_END */
+  /* MODULE_998_SYSTEM_DIAGNOSTICS_INSTALLED_REGISTRY_START */
+  {
+    route: 'system-diagnostics',
+    title: 'System Diagnostic & Controlled Remediation Center',
+    navLabel: 'MODULE 998',
+    status: 'Complete fail-closed source checkpoint',
+    group: 'Operations',
+    permissions: ['VIEW_SYSTEM_DIAGNOSTICS', 'MANAGE_SYSTEM_REMEDIATION', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    description: 'Provides sanitized diagnostics, issue classification, evidence policy, runbook ownership, and a locked controlled-remediation lifecycle.'
+  },
+  /* MODULE_998_SYSTEM_DIAGNOSTICS_INSTALLED_REGISTRY_END */
   {
     route: 'project-intake',
       title: 'Project Intake',
@@ -3647,6 +3672,7 @@ function getInstalledModuleDescription(module) {
     'oneassist-routing-directory': 'Shows the OneAssist customer routing directory and unmasked five-digit PINs with role-governed editing.',
     'sales-coverage-alignment': 'Shows current coverage signals and a validated effective-dated alignment draft backed by ProjectPulse identities.',
     'oem-vendor-directory': 'Shows a validated, US Signal-branded OEM and vendor directory draft with governed role-aware editing.',
+    'system-diagnostics': 'Shows sanitized system diagnostics, ownership, evidence, runbooks, and fail-closed controlled-remediation readiness.',
     'backup-dr': 'Shows backup and disaster recovery readiness, backup state, service backup status, and restore preparedness.',
     'backup-retention': 'Manages backup retention policy, cleanup readiness, and retention compliance visibility.',
     'restore-validation': 'Validates restore points, restore readiness, and restore test evidence before relying on backups.',
@@ -6852,6 +6878,12 @@ Analytics - Variphy / Infortel`}
         </section>
       ) : null}
 
+      {(activeRoute === 'system-diagnostics' && canSeeAny(['VIEW_SYSTEM_DIAGNOSTICS', 'MANAGE_SYSTEM_REMEDIATION', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
+        <section id="system-diagnostics" className="panel system-diagnostics-route-panel">
+          <SystemDiagnosticRemediationCenter authSession={authSession} />
+        </section>
+      ) : null}
+
       {(activeRoute === 'qualifications-certifications' && canSeeAny(['VIEW_RESOURCE_SCHEDULING', 'MANAGE_RESOURCE_SCHEDULING', 'VIEW_OWN_UTILIZATION', 'VIEW_TEAM_UTILIZATION', 'VIEW_INDIVIDUAL_UTILIZATION', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
         <section id="qualifications-certifications" className="panel qualifications-certifications-route-panel">
           <QualificationsCertificationCenter authSession={authSession} />
@@ -6948,6 +6980,7 @@ Analytics - Variphy / Infortel`}
         'entra-secret-administration',
         'global-mail-configuration',
         'system-architecture',
+        'system-diagnostics',
         'qualifications-certifications',
         'capacity-pipeline-forecast',
         'oncall-scheduling',
