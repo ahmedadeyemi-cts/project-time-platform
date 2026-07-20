@@ -61,6 +61,9 @@ COPY src/backend/ProjectTime.Api/Modules/ProjectFlowHiveBrandAssets.cs \
 COPY src/backend/ProjectTime.Api/Modules/ProjectFlowHiveArtifactRenderer.cs \
      src/backend/ProjectTime.Api/Modules/ProjectFlowHiveArtifactRenderer.cs
 
+COPY src/backend/ProjectTime.Api/Modules/SecurityOperationsResponseModule.cs \
+     src/backend/ProjectTime.Api/Modules/SecurityOperationsResponseModule.cs
+
 COPY src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs \
      src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs
 
@@ -84,6 +87,9 @@ COPY src/backend/ProjectTime.Api/Modules/SalesCoverageAlignmentModule.cs \
 
 COPY src/backend/ProjectTime.Api/Modules/OemVendorDirectoryModule.cs \
      src/backend/ProjectTime.Api/Modules/OemVendorDirectoryModule.cs
+
+COPY docs/modules/module-997-security-operations-response/ \
+     docs/modules/module-997-security-operations-response/
 
 COPY docs/modules/module-062-unified-identity-profile/README.md \
      docs/modules/module-062-unified-identity-profile/README.md

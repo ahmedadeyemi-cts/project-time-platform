@@ -126,3 +126,19 @@
 - Module 062 remains the shared identity and normalized presence authority.
 - Current Module 001 and Module 002 workflows are not replaced by new-module work.
 - A new route must remain inside the existing authenticated application shell.
+
+## Module 997 — Security Operations, Threat Intelligence & Response Center
+
+| Field | Current source status |
+|---|---|
+| Number | 997 |
+| Workspace | `/workspace/scratch/467636bfa6c3/project-time-platform-module-997` |
+| Branch | `feature/module-997-security-operations-response-20260720` |
+| Base | `main@3d9a3dca8af479c854dc4c4a9294bc8aad273074` containing required checkpoint `48421d5ba1584d64fc3bd043304c003eff1dc27b` |
+| Status | Validated complete fail-closed source checkpoint; remote publication pending |
+| Dependencies | Modules 010, 012–017, 037, 058, 059, 062, 064, 067, 068; future Module 998 controlled-remediation handoff |
+| Locked boundary | Telemetry, threat feeds, incident persistence, AI, containment, eradication, recovery, notifications, evidence export, secrets, and every external adapter |
+
+Module 997 is independent of Module 998 draft PR 26. The two modules share
+governance and application-registration surfaces but neither draft imports or
+executes the other's unmerged source.

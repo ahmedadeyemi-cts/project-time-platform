@@ -943,3 +943,39 @@ The 021 phase begins after the 020 module build sprint and focuses on release ha
 - Entra changed: No
 - Database changed in Phase 1: No
 <!-- MODULE_RECOVERY_CHECKPOINT_20260718_END -->
+
+### Module 997 — Security Operations, Threat Intelligence & Response Center
+
+Module 997 is isolated on
+`feature/module-997-security-operations-response-20260720` from verified
+`origin/main@3d9a3dca8af479c854dc4c4a9294bc8aad273074`, which contains required
+checkpoint `48421d5ba1584d64fc3bd043304c003eff1dc27b`.
+
+Tracker v1.8 coverage: `GOV-017`, `RBAC-021`, `RBAC-022`, `INT-013`, `AI-021`,
+`RPT-014`, `OPS-006`, `OPS-017`, `OPS-021`, `OPS-022`, `OPS-023`, `OPS-024`,
+`OPS-025`, `OPS-026`, `OPS-027`, and `DATA-012`.
+
+| Capability | Complete source checkpoint | Locked production boundary |
+|---|---|---|
+| Security overview | Actual session, authorization, severity, domains, ownership, and explicit unknown/delegated states | No live security-health assertion |
+| Alerts and incidents | Required schemas, severity, objectives, lifecycle, and empty non-authoritative inventories | No telemetry connector or durable incident store |
+| Threat intelligence | Source, confidence, freshness, expiry, handling, and minimization policy | No threat feed, indicator import, or automated block |
+| Control posture | Delegated control-owner and evidence map | No live effectiveness claim |
+| Response | Detect → triage → declare → contain → eradicate → recover → review → close | All action endpoints HTTP 423 before body read |
+| Reporting | Restricted audiences, sanitized fields, prohibited content, and decision evidence | No external notification or evidence export |
+| Integrations | Explicit future telemetry, threat, endpoint, network, identity, case, AI, and mail adapters | Every adapter not configured or unauthorized |
+| Module 998 handoff | Future controlled-remediation ownership documented | No import, call, execution, or dependency on draft PR 26 |
+
+`MODULE_997_STATUS=SOURCE_VALIDATED_REMOTE_PUBLICATION_PENDING_FAIL_CLOSED`
+
+Validation evidence: Module 997 validator 91/91 passed; the full protected
+frontend chain and Vite production build passed with 183 transformed modules;
+Module 056E passed; .NET 10.0.302 baseline and candidate builds each completed
+with 0 errors and 10 existing warnings, warning delta 0, and Module 997 warnings
+0; source diff check and the exact 22-file manifest gate passed. The committed
+manifest SHA-256 is `a89fdab5ab16e2c5a031f0b5f53c2296fcbd6c88165daf279a798815022a1b11`.
+
+Commit, push, and draft PR are authorized. Merge, deployment, Azure, database,
+Entra, Cloudflare, SMTP, containment, production response, telemetry, threat
+feeds, external notification, AI execution, evidence export, rollback, and
+secret access remain unauthorized and unchanged.

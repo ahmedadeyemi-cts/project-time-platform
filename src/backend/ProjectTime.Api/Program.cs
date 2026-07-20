@@ -36916,6 +36916,10 @@ app.MapOemVendorDirectoryEndpoints();
 
 ProjectTime.Api.Modules.CalendarCapacityModule.MapCalendarCapacityEndpoints(app);
 
+/* MODULE_997_SECURITY_OPERATIONS_ENDPOINT_MAP_START */
+app.MapSecurityOperationsResponseEndpoints();
+/* MODULE_997_SECURITY_OPERATIONS_ENDPOINT_MAP_END */
+
 ProjectTime.Api.Modules.CiCdPipelineModule.MapCiCdPipelineEndpoints(app);
 
 app.MapCertiniaBillingEndpoints();
