@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { usSignalLogoDataUrl } from './assets/usSignalLogoData.js';
 import './qualifications-certification-center.css';
+import './projectpulse-module-standard.css';
 
 function sessionToken(authSession) {
   return authSession?.sessionToken
@@ -72,12 +74,18 @@ export default function QualificationsCertificationCenter({ authSession }) {
   return (
     <section
       id="qualifications-certifications"
-      className="panel qualifications-center"
+      className="panel qualifications-center projectpulse-module-standard"
       data-module="069"
+      data-brand="us-signal"
       data-mode="read-only-matrix"
       aria-labelledby="qualifications-title"
     >
       <header className="qualifications-hero">
+        <img
+          className="projectpulse-module-standard__logo"
+          src={usSignalLogoDataUrl}
+          alt="US Signal"
+        />
         <div>
           <p className="eyebrow">Module 069 · Role-scoped workforce capability</p>
           <h1 id="qualifications-title">Qualifications &amp; Certification Matrix</h1>

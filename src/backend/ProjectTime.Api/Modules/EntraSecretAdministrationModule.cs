@@ -612,7 +612,10 @@ public static class EntraSecretAdministrationModule
                 if (!reader.IsDBNull(1) && !string.IsNullOrWhiteSpace(reader.GetString(1))) permissions.Add(reader.GetString(1));
             }
 
-            var allowed = roles.Contains("SUPER_ADMINISTRATOR") || permissions.Contains(DelegatedPermission);
+            var allowed =
+                roles.Contains("SUPER_ADMINISTRATOR")
+                || roles.Contains("ADMINISTRATOR")
+                || permissions.Contains(DelegatedPermission);
             if (!allowed)
             {
                 return new(null, Results.Json(new
@@ -620,7 +623,7 @@ public static class EntraSecretAdministrationModule
                     module = ModuleNumber,
                     status = "entra_secret_administration_required",
                     permission = DelegatedPermission,
-                    message = "Super Administrator or explicitly delegated Entra-secret administration access is required."
+                    message = "Super Administrator, Administrator, or explicitly delegated Entra-secret administration access is required."
                 }, statusCode: StatusCodes.Status403Forbidden));
             }
 

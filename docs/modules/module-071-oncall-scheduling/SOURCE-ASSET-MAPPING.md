@@ -17,4 +17,18 @@ Read-only discovery used the attached GitHub archive and current `ahmedadeyemi-c
 
 ## Time normalization
 
-The checked-in cron declarations and live Cloudflare trigger evidence disagree. Module 071 defines the intended business schedule as 08:00 America/Chicago on Monday, Tuesday, and Friday, making daylight-saving behavior explicit. Runtime scheduling remains deferred.
+The checked-in cron declarations and live retired external compatibility service trigger evidence disagree. Module 071 defines the intended business schedule as 08:00 America/Chicago on Monday, Tuesday, and Friday, making daylight-saving behavior explicit. Runtime scheduling remains deferred.
+
+## PROJECTPULSE_NATIVE_POSTGRESQL_MIGRATION_031
+
+- Source parent: `603538ad408b70b3e6a26ff2f4f162599fa1cabf`
+- Migration source: `database/migrations/031_modules_071_072_native_persistence.sql`
+- Rollback source: `database/rollback/031_modules_071_072_native_persistence_rollback.sql`
+- Module 071 persistence: ProjectPulse PostgreSQL schedule, roster, acknowledgement, and history tables
+- Module 072 persistence: ProjectPulse PostgreSQL routing directory and immutable revision tables
+- Platform Administrator authority: explicit
+- View-As write authority: blocked
+- External compatibility runtime dependency: removed
+- Migration applied: no
+- Database changed: no
+- Deployment performed: no

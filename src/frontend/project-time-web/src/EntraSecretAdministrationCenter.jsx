@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { usSignalLogoDataUrl } from './assets/usSignalLogoData.js';
 import './entra-secret-administration-center.css';
+import './projectpulse-module-standard.css';
 
 function sessionToken(authSession) {
   return authSession?.sessionToken ?? authSession?.token ?? authSession?.accessToken
@@ -85,8 +86,9 @@ export default function EntraSecretAdministrationCenter({ authSession }) {
 
   return (
     <section
-      className="panel entra-secret-center"
+      className="panel entra-secret-center projectpulse-module-standard"
       data-module="065"
+      data-brand="us-signal"
       data-phase="065_COMPLETE_SOURCE_LOCKED_RUNTIME"
       aria-labelledby="entra-secret-title"
     >

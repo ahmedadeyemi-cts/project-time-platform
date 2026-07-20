@@ -126,3 +126,33 @@
 - Module 062 remains the shared identity and normalized presence authority.
 - Current Module 001 and Module 002 workflows are not replaced by new-module work.
 - A new route must remain inside the existing authenticated application shell.
+
+## PROJECTPULSE_NATIVE_POSTGRESQL_MIGRATION_031
+
+- Source parent: `603538ad408b70b3e6a26ff2f4f162599fa1cabf`
+- Migration source: `database/migrations/031_modules_071_072_native_persistence.sql`
+- Rollback source: `database/rollback/031_modules_071_072_native_persistence_rollback.sql`
+- Module 071 persistence: ProjectPulse PostgreSQL schedule, roster, acknowledgement, and history tables
+- Module 072 persistence: ProjectPulse PostgreSQL routing directory and immutable revision tables
+- Platform Administrator authority: explicit
+- View-As write authority: blocked
+- External compatibility runtime dependency: removed
+- Migration applied: no
+- Database changed: no
+- Deployment performed: no
+
+## PROJECTPULSE_NATIVE_ADMINISTRATION_MIGRATION_032
+
+- Release train: Modules 064–074 native administration, Checkpoint B2
+- Parent commit: `42ba87d43526dc9f4a052ca9938473091427cf2a`
+- Native document migration: `database/migrations/032_projectpulse_native_administration_documents.sql`
+- Reviewed rollback: `database/rollback/032_projectpulse_native_administration_documents_rollback.sql`
+- Modules covered: 064, 065, 066, 067, 068, 069, 070, 073, and 074
+- Administrator and Super Administrator authority: explicit
+- Existing delegated editor roles: preserved by module
+- View-As mutation authority: blocked
+- Usable secret values: rejected
+- Entra, Key Vault, AI-provider secrets, SMTP, and external-system activation: none
+- `MIGRATION_032_APPLIED=NO`
+- `DATABASE_CHANGED=NO`
+- `DEPLOYED=NO`

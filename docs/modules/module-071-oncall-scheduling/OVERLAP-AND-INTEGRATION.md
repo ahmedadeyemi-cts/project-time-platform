@@ -25,3 +25,17 @@ Central governance files are updated only in the dedicated governance worktree. 
 ## Later integration files
 
 After the gate clears, a dedicated integration branch may change `Program.cs`, `App.jsx`, `package.json`, the container validator context, and central governance documents. Those changes must be semantically merged from the then-current `main`; this source branch must not overwrite them wholesale.
+
+## PROJECTPULSE_NATIVE_POSTGRESQL_MIGRATION_031
+
+- Source parent: `603538ad408b70b3e6a26ff2f4f162599fa1cabf`
+- Migration source: `database/migrations/031_modules_071_072_native_persistence.sql`
+- Rollback source: `database/rollback/031_modules_071_072_native_persistence_rollback.sql`
+- Module 071 persistence: ProjectPulse PostgreSQL schedule, roster, acknowledgement, and history tables
+- Module 072 persistence: ProjectPulse PostgreSQL routing directory and immutable revision tables
+- Platform Administrator authority: explicit
+- View-As write authority: blocked
+- External compatibility runtime dependency: removed
+- Migration applied: no
+- Database changed: no
+- Deployment performed: no

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { usSignalLogoDataUrl } from './assets/usSignalLogoData.js';
 import './system-architecture-center.css';
+import './projectpulse-module-standard.css';
 
 function sessionToken(authSession) {
   return authSession?.sessionToken
@@ -123,13 +125,19 @@ export default function SystemArchitectureCenter({ authSession }) {
   return (
     <section
       id="system-architecture"
-      className="panel system-architecture-center"
+      className="panel system-architecture-center projectpulse-module-standard"
       data-module="068"
+      data-brand="us-signal"
       data-mode="read-only"
       data-contract-version={state.overview?.contractVersion ?? '2026-07-19.1'}
       aria-labelledby="system-architecture-title"
     >
       <header className="system-architecture-hero">
+        <img
+          className="projectpulse-module-standard__logo"
+          src={usSignalLogoDataUrl}
+          alt="US Signal"
+        />
         <div>
           <p className="eyebrow">Module 068 · Administrator read-only</p>
           <h1 id="system-architecture-title">System Architecture &amp; Dependency Map</h1>
