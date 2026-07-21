@@ -43,13 +43,13 @@ public static class SecurityOperationsResponseModule
         app.MapPost("/api/security-operations/response/contain", (Func<HttpContext, Task<IResult>>)PrepareContainmentAsync);
         app.MapPost("/api/security-operations/response/approve", (Func<HttpContext, Task<IResult>>)ApproveContainmentAsync);
         app.MapPost("/api/security-operations/response/execute", (Func<HttpContext, Task<IResult>>)ExecuteContainmentAsync);
-        app.MapPost("/api/security-operations/response/eradicate", (HttpContext context) => UpdateIncidentStageAsync(context, "eradication"));
-        app.MapPost("/api/security-operations/response/recover", (HttpContext context) => UpdateIncidentStageAsync(context, "recovery"));
+        app.MapPost("/api/security-operations/response/eradicate", (Func<HttpContext, Task<IResult>>)(context => UpdateIncidentStageAsync(context, "eradication")));
+        app.MapPost("/api/security-operations/response/recover", (Func<HttpContext, Task<IResult>>)(context => UpdateIncidentStageAsync(context, "recovery")));
         app.MapPost("/api/security-operations/case/close", (Func<HttpContext, Task<IResult>>)CloseIncidentAsync);
 
-        app.MapPost("/api/security-operations/analysis", (HttpContext context) => LockedAdapterAsync(context, "ai_security_analysis", "Configure Module 064 security-analysis authority and an approved redaction policy."));
-        app.MapPost("/api/security-operations/notifications/send", (HttpContext context) => LockedAdapterAsync(context, "external_notification", "Configure Module 067 incident-notification routing and approval authority."));
-        app.MapPost("/api/security-operations/evidence/export", (HttpContext context) => LockedAdapterAsync(context, "evidence_export", "Configure an approved encrypted evidence repository and export policy."));
+        app.MapPost("/api/security-operations/analysis", (Func<HttpContext, Task<IResult>>)(context => LockedAdapterAsync(context, "ai_security_analysis", "Configure Module 064 security-analysis authority and an approved redaction policy.")));
+        app.MapPost("/api/security-operations/notifications/send", (Func<HttpContext, Task<IResult>>)(context => LockedAdapterAsync(context, "external_notification", "Configure Module 067 incident-notification routing and approval authority.")));
+        app.MapPost("/api/security-operations/evidence/export", (Func<HttpContext, Task<IResult>>)(context => LockedAdapterAsync(context, "evidence_export", "Configure an approved encrypted evidence repository and export policy.")));
         return app;
     }
 
@@ -177,7 +177,7 @@ public static class SecurityOperationsResponseModule
                 sessionId = reader.GetGuid(0), userId = reader.GetGuid(1), user = reader.GetString(2),
                 provider = reader.GetString(3), createdAt = reader.GetFieldValue<DateTimeOffset>(4),
                 lastSeenAt = reader.GetFieldValue<DateTimeOffset>(5), expiresAt = reader.GetFieldValue<DateTimeOffset>(6),
-                revokedAt = reader.IsDBNull(7) ? null : reader.GetFieldValue<DateTimeOffset>(7),
+                revokedAt = reader.IsDBNull(7) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(7),
                 sourceIp = reader.IsDBNull(8) ? null : reader.GetString(8),
                 active = reader.IsDBNull(7) && reader.GetFieldValue<DateTimeOffset>(6) > DateTimeOffset.UtcNow
             });
@@ -623,8 +623,8 @@ public static class SecurityOperationsResponseModule
                 declaredByUserId = reader.GetGuid(8), declaredBy = reader.GetString(9),
                 diagnosticSessionId = reader.IsDBNull(10) ? null : reader.GetGuid(10).ToString(),
                 declaredAt = reader.GetFieldValue<DateTimeOffset>(11),
-                acknowledgedAt = reader.IsDBNull(12) ? null : reader.GetFieldValue<DateTimeOffset>(12),
-                closedAt = reader.IsDBNull(13) ? null : reader.GetFieldValue<DateTimeOffset>(13),
+                acknowledgedAt = reader.IsDBNull(12) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(12),
+                closedAt = reader.IsDBNull(13) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(13),
                 updatedAt = reader.GetFieldValue<DateTimeOffset>(14), eventCount = reader.GetInt64(15)
             });
         }
@@ -652,8 +652,8 @@ public static class SecurityOperationsResponseModule
                 requestedBy = reader.GetGuid(6), approvedBy = reader.IsDBNull(7) ? null : reader.GetGuid(7).ToString(),
                 executedBy = reader.IsDBNull(8) ? null : reader.GetGuid(8).ToString(),
                 requestedAt = reader.GetFieldValue<DateTimeOffset>(9),
-                approvedAt = reader.IsDBNull(10) ? null : reader.GetFieldValue<DateTimeOffset>(10),
-                executedAt = reader.IsDBNull(11) ? null : reader.GetFieldValue<DateTimeOffset>(11),
+                approvedAt = reader.IsDBNull(10) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(10),
+                executedAt = reader.IsDBNull(11) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(11),
                 result = JsonSerializer.Deserialize<object>(reader.GetString(12))
             });
         }

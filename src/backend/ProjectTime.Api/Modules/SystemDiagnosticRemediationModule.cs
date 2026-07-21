@@ -35,9 +35,9 @@ public static class SystemDiagnosticRemediationModule
         app.MapPost("/api/system-diagnostics/remediation/stage", (Func<HttpContext, Task<IResult>>)StageRemediationAsync);
         app.MapPost("/api/system-diagnostics/remediation/promote", (Func<HttpContext, Task<IResult>>)ExecuteRemediationAsync);
         app.MapPost("/api/system-diagnostics/remediation/verify", (Func<HttpContext, Task<IResult>>)VerifyRemediationAsync);
-        app.MapPost("/api/system-diagnostics/remediation/rollback", (HttpContext context) => LockedAdapterAsync(context, "rollback", "Select an approved external runbook with a verified rollback adapter."));
+        app.MapPost("/api/system-diagnostics/remediation/rollback", (Func<HttpContext, Task<IResult>>)(context => LockedAdapterAsync(context, "rollback", "Select an approved external runbook with a verified rollback adapter.")));
         app.MapPost("/api/system-diagnostics/remediation/close", (Func<HttpContext, Task<IResult>>)CloseRemediationAsync);
-        app.MapPost("/api/system-diagnostics/analysis", (HttpContext context) => LockedAdapterAsync(context, "ai_diagnostic_analysis", "Configure Module 064 diagnostic-analysis authority and an approved evidence-redaction policy."));
+        app.MapPost("/api/system-diagnostics/analysis", (Func<HttpContext, Task<IResult>>)(context => LockedAdapterAsync(context, "ai_diagnostic_analysis", "Configure Module 064 diagnostic-analysis authority and an approved evidence-redaction policy.")));
         return app;
     }
 
@@ -567,8 +567,8 @@ public static class SystemDiagnosticRemediationModule
                 sessionId = reader.GetGuid(0), incidentId = reader.IsDBNull(1) ? null : reader.GetGuid(1).ToString(),
                 targetKind = reader.GetString(2), targetReference = reader.GetString(3), status = reader.GetString(4), severity = reader.GetString(5),
                 summary = reader.IsDBNull(6) ? null : reader.GetString(6), requestedByUserId = reader.GetGuid(7), requestedBy = reader.GetString(8),
-                createdAt = reader.GetFieldValue<DateTimeOffset>(9), completedAt = reader.IsDBNull(10) ? null : reader.GetFieldValue<DateTimeOffset>(10),
-                closedAt = reader.IsDBNull(11) ? null : reader.GetFieldValue<DateTimeOffset>(11), updatedAt = reader.GetFieldValue<DateTimeOffset>(12),
+                createdAt = reader.GetFieldValue<DateTimeOffset>(9), completedAt = reader.IsDBNull(10) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(10),
+                closedAt = reader.IsDBNull(11) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(11), updatedAt = reader.GetFieldValue<DateTimeOffset>(12),
                 findingCount = reader.GetInt64(13), failedCount = reader.GetInt64(14), warningCount = reader.GetInt64(15)
             });
         }
@@ -606,9 +606,9 @@ public static class SystemDiagnosticRemediationModule
                 targetReference = reader.GetString(4), state = reader.GetString(5), requestedBy = reader.GetGuid(6),
                 approvedBy = reader.IsDBNull(7) ? null : reader.GetGuid(7).ToString(), executedBy = reader.IsDBNull(8) ? null : reader.GetGuid(8).ToString(),
                 plan = JsonSerializer.Deserialize<object>(reader.GetString(9)), result = JsonSerializer.Deserialize<object>(reader.GetString(10)),
-                requestedAt = reader.GetFieldValue<DateTimeOffset>(11), approvedAt = reader.IsDBNull(12) ? null : reader.GetFieldValue<DateTimeOffset>(12),
-                executedAt = reader.IsDBNull(13) ? null : reader.GetFieldValue<DateTimeOffset>(13), verifiedAt = reader.IsDBNull(14) ? null : reader.GetFieldValue<DateTimeOffset>(14),
-                closedAt = reader.IsDBNull(15) ? null : reader.GetFieldValue<DateTimeOffset>(15)
+                requestedAt = reader.GetFieldValue<DateTimeOffset>(11), approvedAt = reader.IsDBNull(12) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(12),
+                executedAt = reader.IsDBNull(13) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(13), verifiedAt = reader.IsDBNull(14) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(14),
+                closedAt = reader.IsDBNull(15) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(15)
             });
         }
         return items;
