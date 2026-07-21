@@ -77,6 +77,12 @@ const register = readRequiredFile('WORK_REGISTER', paths.register);
 const tracker = readRequiredFile('PRODUCTION_TRACKER', paths.tracker);
 
 assertInvariant(
+  'MODULE_076_STANDALONE_ROUTE',
+  app.includes("'defect-tracker',\n        'security-operations'") || app.includes("'defect-tracker',\r\n        'security-operations'"),
+  'Defect Tracker excludes the legacy workspace fallback'
+);
+
+assertInvariant(
   'MODULE_076_MAP_METHOD',
   backend.includes('MapDefectTrackerEndpoints'),
   'isolated endpoint registration exists'

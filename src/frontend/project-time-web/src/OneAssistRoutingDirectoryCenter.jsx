@@ -253,6 +253,15 @@ export default function OneAssistRoutingDirectoryCenter({ authSession }) {
         <button type="button" className={tab === 'api' ? 'active' : ''} onClick={() => setTab('api')}>Public API</button>
       </nav>
 
+      <input
+        id="oneassist-import-file"
+        ref={fileRef}
+        className="oneassist-file-input"
+        type="file"
+        accept=".csv,.xlsx"
+        onChange={(event) => void previewImport(event.target.files?.[0])}
+      />
+
       {tab === 'directory' ? (
         <section className="oneassist-card">
           <div className="oneassist-card-head">
@@ -261,10 +270,9 @@ export default function OneAssistRoutingDirectoryCenter({ authSession }) {
               <button type="button" className="oneassist-secondary" onClick={load} disabled={state.loading || state.saving}>Refresh</button>
               <button type="button" className="oneassist-secondary" onClick={() => downloadCsv('oneassist-routes.csv', state.routes)}>Download CSV</button>
               <button type="button" className="oneassist-secondary" onClick={() => downloadCsv('oneassist-ivr-routes.csv', state.routes, [['pin', 'pin'], ['customer_name', 'name'], ['customer_id', 'id']])}>Download IVR CSV</button>
-              {canManage ? <button type="button" className="oneassist-secondary" onClick={() => fileRef.current?.click()}>Import CSV/XLSX</button> : null}
+              {canManage ? <label className="oneassist-secondary oneassist-file-picker" htmlFor="oneassist-import-file">Import CSV/XLSX</label> : null}
               {canManage ? <button type="button" className="oneassist-secondary" onClick={addRoute}>Add customer</button> : null}
               {canManage ? <button type="button" className="oneassist-primary" onClick={save} disabled={!state.dirty || state.saving}>Save directory</button> : null}
-              <input ref={fileRef} type="file" accept=".csv,.xlsx" hidden onChange={(event) => void previewImport(event.target.files?.[0])} />
             </div>
           </div>
           <label className="oneassist-search">
@@ -293,7 +301,7 @@ export default function OneAssistRoutingDirectoryCenter({ authSession }) {
 
       {tab === 'import' ? (
         <section className="oneassist-card">
-          <div className="oneassist-card-head"><div><p className="oneassist-eyebrow">Preview before apply</p><h2>CSV/XLSX import</h2></div>{canManage ? <button type="button" className="oneassist-secondary" onClick={() => fileRef.current?.click()}>Choose file</button> : null}</div>
+          <div className="oneassist-card-head"><div><p className="oneassist-eyebrow">Preview before apply</p><h2>CSV/XLSX import</h2></div>{canManage ? <label className="oneassist-secondary oneassist-file-picker" htmlFor="oneassist-import-file">Choose file</label> : null}</div>
           {!canManage ? <p className="oneassist-help">Only platform administrators, Managers, and Project Team Coordinators can import directory changes.</p> : null}
           {state.importPreview ? (
             <>
