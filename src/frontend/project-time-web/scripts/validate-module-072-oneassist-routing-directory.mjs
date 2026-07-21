@@ -47,6 +47,8 @@ check('PIN_CONTRACT', backend.includes('Length: 5') && migration.includes("routi
 check('NO_EXTERNAL_ADAPTER', forbidden.every((token) => !backend.includes(token) && !frontend.includes(token) && !docs.includes(token)), 'external compatibility removed');
 check('FRONTEND_NATIVE', frontend.includes('data-persistence="projectpulse-postgresql"') && frontend.includes('ProjectPulse PostgreSQL application database'), 'native storage visible');
 check('IMPORT_PREVIEW', backend.includes('PreviewImportAsync') && frontend.includes('Apply to unsaved directory'), 'preview-first import preserved');
+check('IMPORT_FILE_INPUT_PERSISTENT', frontend.indexOf('id="oneassist-import-file"') < frontend.indexOf("{tab === 'directory' ? (") && frontend.includes('htmlFor="oneassist-import-file"'), 'file input remains mounted across Directory and Import preview tabs');
+check('IMPORT_FILE_INPUT_ACCESSIBLE', stylesheet.includes('.oneassist-file-input') && stylesheet.includes('clip-path: inset(50%)') && !frontend.includes('type="file" accept=".csv,.xlsx" hidden'), 'native picker uses an accessible visually hidden input');
 check('US_SIGNAL', frontend.includes('usSignalLogoDataUrl') && frontend.includes('projectpulse-module-standard'), 'US Signal branding');
 check('ROLLBACK', rollback.includes('projectpulse_oneassist_routes') && rollback.includes('projectpulse_oneassist_route_revisions'), 'reviewed rollback source');
 check('PROGRAM_REGISTRATION', program.split('app.MapOneAssistRoutingDirectoryEndpoints();').length - 1 === 1, 'registered once');

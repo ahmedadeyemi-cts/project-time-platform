@@ -57,6 +57,8 @@
 .oneassist-primary,
 .oneassist-secondary,
 .oneassist-danger { min-height: 39px; padding: .56rem .78rem; border-radius: .62rem; font: inherit; font-weight: 850; cursor: pointer; }
+.oneassist-file-input { position: fixed; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.oneassist-file-picker { display: inline-flex; align-items: center; justify-content: center; }
 .oneassist-primary { border: 1px solid var(--oneassist-blue); background: linear-gradient(135deg, var(--oneassist-blue), var(--oneassist-blue-strong)); color: #fff; box-shadow: 0 8px 18px rgba(0, 75, 141, .18); }
 .oneassist-secondary { border: 1px solid rgba(0, 75, 141, .28); background: transparent; color: var(--oneassist-blue-strong); }
 .oneassist-danger { border: 1px solid rgba(220, 38, 38, .22); background: rgba(220, 38, 38, .06); color: #991b1b; }

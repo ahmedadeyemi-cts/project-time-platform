@@ -90,6 +90,12 @@ const moduleBackend = [backend, contracts, schedule, ai, brand, artifacts].join(
 const moduleDocs = [readme, matrix, apiContract, authorization, persistence, scheduling, aiDoc, artifactsDoc, overlap, evidence].join('\n');
 
 assertInvariant(
+  'MODULE_066_STANDALONE_ROUTE',
+  app.includes("'project-flowhive',\n        'sales-coverage-alignment'") || app.includes("'project-flowhive',\r\n        'sales-coverage-alignment'"),
+  'Project FlowHive excludes the legacy workspace fallback'
+);
+
+assertInvariant(
   'MODULE_066_TYPED_MAP_METHOD',
   backend.includes('MapProjectFlowHiveEndpoints') &&
     backend.includes('(Func<HttpContext, IResult>)GetCapabilities') &&
