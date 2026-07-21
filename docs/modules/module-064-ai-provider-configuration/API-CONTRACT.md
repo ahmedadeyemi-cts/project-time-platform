@@ -39,8 +39,9 @@ Overall status is `healthy`, `degraded`, or `local_fallback_only`.
 
 ## `POST /api/ai-configuration/health/refresh`
 
-Runs a model-access health check against each enabled and configured remote
-provider. Disabled and unconfigured providers are never contacted. This action
+Runs a minimal real generation probe against each enabled and configured remote
+provider. A provider is marked available only when it returns usable generated
+text. Disabled and unconfigured providers are never contacted. This action
 does not change provider configuration, Azure, the database, or Entra.
 
 ## Existing consumer contract
@@ -59,14 +60,17 @@ provider was attempted.
 
 ## Provider adapter contracts
 
-Claude uses the Messages endpoint and model-access endpoint. OpenAI uses the
-Responses endpoint and model-access endpoint. Both adapters:
+Claude uses the Messages endpoint and omits non-default sampling parameters for
+Claude Sonnet 5 compatibility. OpenAI uses the Responses endpoint. Both adapters:
 
 - enforce the approved-model list before an HTTP request;
 - use the shared timeout/retry policy;
 - classify safety refusals separately from availability failures;
 - return normalized content, usage, request identifier, outcome, and sanitized
   failure code to the router;
+- verify health through a minimal generation request rather than model lookup;
+- record structured, sanitized provider, model, outcome, safe error code, HTTP
+  status, and provider request ID in backend logs;
 - never expose raw error bodies or API keys to consumers.
 
 ## Error responses

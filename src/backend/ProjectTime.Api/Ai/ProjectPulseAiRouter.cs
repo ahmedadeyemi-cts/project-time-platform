@@ -86,6 +86,15 @@ public sealed class ProjectPulseAiRouter
                 continue;
             }
 
+            _logger.LogInformation(
+                "Module 064 provider attempt completed. Provider={Provider} Model={Model} Outcome={Outcome} Code={Code} HttpStatus={HttpStatus} RequestId={RequestId}",
+                providerCode,
+                _configuration.Provider(providerCode).Model,
+                result.Outcome,
+                result.Code,
+                result.HttpStatusCode,
+                result.RequestId);
+
             if (result.IsSuccess && !string.IsNullOrWhiteSpace(result.Content))
             {
                 _health.RecordSuccess(

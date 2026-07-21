@@ -58,6 +58,9 @@ assert('MODULE_064_NO_FAILOVER_ON_REFUSAL', router.includes('if (result.IsRefusa
 assert('MODULE_064_REMOTE_RETRY_BOUNDARY', providers.includes('SendWithRetryAsync') && providers.includes('IsTransient'));
 assert('MODULE_064_CLAUDE_MESSAGES_API', providers.includes('"/messages"') && providers.includes('anthropic-version'));
 assert('MODULE_064_OPENAI_RESPONSES_API', providers.includes('"/responses"') && providers.includes('output_text'));
+assert('MODULE_064_CLAUDE_SONNET5_SAMPLING_SAFE', !providers.includes('temperature = request.Temperature') && !providers.includes('top_p') && !providers.includes('top_k'));
+assert('MODULE_064_GENERATION_HEALTH_PROBES', providers.includes('GenerationProbe') && providers.includes('ProbeRequest') && !providers.includes('HttpMethod.Get'));
+assert('MODULE_064_SANITIZED_ATTEMPT_DIAGNOSTICS', router.includes('HttpStatus={HttpStatus}') && router.includes('RequestId={RequestId}') && !router.includes('result.Message'));
 assert('MODULE_064_MODEL_ALLOWLISTS', providers.includes('IsModelApproved') && configuration.includes('APPROVED_MODELS'));
 assert('MODULE_064_SANITIZED_REMOTE_ERRORS', !providers.includes('Exception.Message') && !router.includes('exception.Message'));
 assert('MODULE_064_SECRET_VALUES_NOT_RETURNED', configuration.includes('valueReturned = false') && configuration.includes('apiKeysReturned = false'));

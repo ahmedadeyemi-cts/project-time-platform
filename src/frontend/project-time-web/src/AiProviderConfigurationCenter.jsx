@@ -223,6 +223,8 @@ export default function AiProviderConfigurationCenter() {
                       <div><dt>Last success</dt><dd>{formatDate(health.lastSuccessAt)}</dd></div>
                       <div><dt>Requests succeeded</dt><dd>{health.successCount ?? 0}</dd></div>
                       <div><dt>Failures / refusals</dt><dd>{health.failureCount ?? 0} / {health.refusalCount ?? 0}</dd></div>
+                      <div><dt>Last failure code</dt><dd>{health.lastFailureCode ?? 'None'}</dd></div>
+                      <div><dt>Last provider request</dt><dd>{health.lastRequestId ?? 'Not reported'}</dd></div>
                       <div><dt>Input / output tokens</dt><dd>{health.inputTokens ?? 0} / {health.outputTokens ?? 0}</dd></div>
                       <div><dt>Requests remaining</dt><dd>{health.rateLimits?.requestsRemaining ?? 'Not reported'}</dd></div>
                       <div><dt>Tokens remaining</dt><dd>{health.rateLimits?.tokensRemaining ?? 'Not reported'}</dd></div>
