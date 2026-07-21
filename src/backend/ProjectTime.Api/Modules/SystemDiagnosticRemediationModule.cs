@@ -1,121 +1,81 @@
+using System.Text.Json;
 using Npgsql;
 
 namespace ProjectTime.Api.Modules;
 
 /// <summary>
-/// Module 998 provides a sanitized diagnostic control plane and a complete,
-/// fail-closed remediation lifecycle contract. It observes only the current
-/// ProjectPulse session and authorization database directly. Every provider,
-/// AI, containment, deployment, rollback, and production-remediation action is
-/// locked until a separately reviewed adapter and authorization are supplied.
+/// Module 998 runs safe ProjectPulse-native checks, persists diagnostic
+/// sessions and evidence, ranks findings, and governs remediation requests.
+/// The built-in health-refresh runbook can execute and verify without changing
+/// infrastructure. Production-changing runbooks require separately approved
+/// adapters and remain explicit rather than silently no-op.
 /// </summary>
 public static class SystemDiagnosticRemediationModule
 {
     private const string ModuleNumber = "998";
-    private const string ContractVersion = "2026-07-20.1";
-    private const string ImplementationBaseline =
-        "3d9a3dca8af479c854dc4c4a9294bc8aad273074";
+    private const string ContractVersion = "2026-07-21.2";
+    private static readonly string[] ViewRoles = ["SUPER_ADMINISTRATOR", "ADMINISTRATOR", "SECURITY_ANALYST", "SECURITY_OPERATIONS"];
+    private static readonly string[] ManageRoles = ["SUPER_ADMINISTRATOR", "ADMINISTRATOR"];
 
-    public static WebApplication MapSystemDiagnosticRemediationEndpoints(
-        this WebApplication app)
+    public static WebApplication MapSystemDiagnosticRemediationEndpoints(this WebApplication app)
     {
-        app.MapGet(
-            "/api/system-diagnostics/overview",
-            (Func<HttpContext, Task<IResult>>)GetOverviewAsync);
-        app.MapGet(
-            "/api/system-diagnostics/checks",
-            (Func<HttpContext, Task<IResult>>)GetChecksAsync);
-        app.MapGet(
-            "/api/system-diagnostics/issues",
-            (Func<HttpContext, Task<IResult>>)GetIssuesAsync);
-        app.MapGet(
-            "/api/system-diagnostics/evidence-policy",
-            (Func<HttpContext, Task<IResult>>)GetEvidencePolicyAsync);
-        app.MapGet(
-            "/api/system-diagnostics/remediation-policy",
-            (Func<HttpContext, Task<IResult>>)GetRemediationPolicyAsync);
-        app.MapGet(
-            "/api/system-diagnostics/runbooks",
-            (Func<HttpContext, Task<IResult>>)GetRunbooksAsync);
+        app.MapGet("/api/system-diagnostics/overview", (Func<HttpContext, Task<IResult>>)GetOverviewAsync);
+        app.MapGet("/api/system-diagnostics/checks", (Func<HttpContext, Task<IResult>>)GetChecksAsync);
+        app.MapGet("/api/system-diagnostics/issues", (Func<HttpContext, Task<IResult>>)GetIssuesAsync);
+        app.MapGet("/api/system-diagnostics/sessions", (Func<HttpContext, Task<IResult>>)GetSessionsAsync);
+        app.MapGet("/api/system-diagnostics/sessions/{sessionId:guid}", (Guid sessionId, HttpContext context) => GetSessionAsync(sessionId, context));
+        app.MapGet("/api/system-diagnostics/evidence-policy", (Func<HttpContext, Task<IResult>>)GetEvidencePolicyAsync);
+        app.MapGet("/api/system-diagnostics/remediation-policy", (Func<HttpContext, Task<IResult>>)GetRemediationPolicyAsync);
+        app.MapGet("/api/system-diagnostics/runbooks", (Func<HttpContext, Task<IResult>>)GetRunbooksAsync);
+        app.MapGet("/api/system-diagnostics/remediations", (Func<HttpContext, Task<IResult>>)GetRemediationsAsync);
 
-        // These lifecycle endpoints intentionally remain registered so clients
-        // can discover the complete control contract. They always stop before
-        // reading a request body or invoking any execution adapter.
-        app.MapPost(
-            "/api/system-diagnostics/analysis",
-            (Func<HttpContext, Task<IResult>>)(context =>
-                LockedOperationAsync(context, "ai_diagnostic_analysis")));
-        app.MapPost(
-            "/api/system-diagnostics/remediation/prepare",
-            (Func<HttpContext, Task<IResult>>)(context =>
-                LockedOperationAsync(context, "prepare")));
-        app.MapPost(
-            "/api/system-diagnostics/remediation/approve",
-            (Func<HttpContext, Task<IResult>>)(context =>
-                LockedOperationAsync(context, "approve")));
-        app.MapPost(
-            "/api/system-diagnostics/remediation/stage",
-            (Func<HttpContext, Task<IResult>>)(context =>
-                LockedOperationAsync(context, "stage")));
-        app.MapPost(
-            "/api/system-diagnostics/remediation/promote",
-            (Func<HttpContext, Task<IResult>>)(context =>
-                LockedOperationAsync(context, "promote")));
-        app.MapPost(
-            "/api/system-diagnostics/remediation/verify",
-            (Func<HttpContext, Task<IResult>>)(context =>
-                LockedOperationAsync(context, "verify")));
-        app.MapPost(
-            "/api/system-diagnostics/remediation/rollback",
-            (Func<HttpContext, Task<IResult>>)(context =>
-                LockedOperationAsync(context, "rollback")));
-        app.MapPost(
-            "/api/system-diagnostics/remediation/close",
-            (Func<HttpContext, Task<IResult>>)(context =>
-                LockedOperationAsync(context, "close")));
-
+        app.MapPost("/api/system-diagnostics/sessions", (Func<HttpContext, Task<IResult>>)CreateSessionAsync);
+        app.MapPost("/api/system-diagnostics/remediation/prepare", (Func<HttpContext, Task<IResult>>)PrepareRemediationAsync);
+        app.MapPost("/api/system-diagnostics/remediation/approve", (Func<HttpContext, Task<IResult>>)ApproveRemediationAsync);
+        app.MapPost("/api/system-diagnostics/remediation/stage", (Func<HttpContext, Task<IResult>>)StageRemediationAsync);
+        app.MapPost("/api/system-diagnostics/remediation/promote", (Func<HttpContext, Task<IResult>>)ExecuteRemediationAsync);
+        app.MapPost("/api/system-diagnostics/remediation/verify", (Func<HttpContext, Task<IResult>>)VerifyRemediationAsync);
+        app.MapPost("/api/system-diagnostics/remediation/rollback", (Func<HttpContext, Task<IResult>>)(context => LockedAdapterAsync(context, "rollback", "Select an approved external runbook with a verified rollback adapter.")));
+        app.MapPost("/api/system-diagnostics/remediation/close", (Func<HttpContext, Task<IResult>>)CloseRemediationAsync);
+        app.MapPost("/api/system-diagnostics/analysis", (Func<HttpContext, Task<IResult>>)(context => LockedAdapterAsync(context, "ai_diagnostic_analysis", "Configure Module 064 diagnostic-analysis authority and an approved evidence-redaction policy.")));
         return app;
     }
 
+    private static Task<SecurityDiagnosticsOperations.AccessOutcome> AuthorizeAsync(HttpContext context) =>
+        SecurityDiagnosticsOperations.AuthorizeAsync(
+            context, ModuleNumber, ViewRoles, ManageRoles,
+            "VIEW_SYSTEM_DIAGNOSTICS", "MANAGE_SYSTEM_REMEDIATION");
+
     private static async Task<IResult> GetOverviewAsync(HttpContext context)
     {
-        var authorization = await OpenAuthorizedConnectionAsync(context);
-        if (authorization.Failure is not null) return authorization.Failure;
-
-        await using var connection = authorization.Connection!;
-        await ConfirmDatabaseConnectionAsync(connection);
-
+        var outcome = await AuthorizeAsync(context);
+        if (outcome.Failure is not null) return outcome.Failure;
+        await using var connection = outcome.Connection!;
+        if (!await SecurityDiagnosticsOperations.OperationalSchemaAvailableAsync(connection, context.RequestAborted))
+            return SecurityDiagnosticsOperations.SchemaUnavailable(ModuleNumber);
+        var metrics = await ReadMetricsAsync(connection, context.RequestAborted);
         return Results.Ok(new
         {
             module = ModuleNumber,
             moduleName = "System Diagnostic & Controlled Remediation Center",
-            status = "diagnostic_control_plane_loaded",
+            status = "diagnostic_operations_ready",
             contractVersion = ContractVersion,
-            implementationBaseline = ImplementationBaseline,
             generatedAt = DateTimeOffset.UtcNow,
-            runtimeEnvironment = RuntimeEnvironment(),
-            access = AccessResponse(authorization.Access!, context),
+            runtimeEnvironment = SecurityDiagnosticsOperations.RuntimeEnvironment(),
+            access = SecurityDiagnosticsOperations.AccessResponse(outcome.Access!, context, "restricted_operations"),
             posture = new
             {
-                mode = "safe_local_observation_and_delegated_status",
-                directlyObserved = new[]
-                {
-                    "authenticated ProjectPulse session",
-                    "server-side diagnostic authorization",
-                    "authorization database SELECT 1"
-                },
-                delegated = DiagnosticChecks()
-                    .Where(check => check.ObservationMode != "direct")
-                    .Select(check => check.Owner)
-                    .Distinct()
-                    .ToArray(),
-                productionActionsEnabled = false,
-                aiExecutionEnabled = false,
-                externalNotificationsEnabled = false,
-                secretAccessEnabled = false
+                mode = "projectpulse_native_diagnostics_and_governed_remediation",
+                safeChecksEnabled = true,
+                diagnosticSessionPersistenceEnabled = true,
+                incidentHandoffEnabled = true,
+                nativeHealthRefreshEnabled = true,
+                productionActionAdaptersEnabled = false,
+                secretsRead = false,
+                rawLogsRead = false
             },
+            metrics,
             categories = DiagnosticCategories(),
-            severityModel = SeverityModel(),
             ownership = OwnershipLinks(),
             guardrails = Guardrails()
         });
@@ -123,548 +83,637 @@ public static class SystemDiagnosticRemediationModule
 
     private static async Task<IResult> GetChecksAsync(HttpContext context)
     {
-        var authorization = await OpenAuthorizedConnectionAsync(context);
-        if (authorization.Failure is not null) return authorization.Failure;
-
-        await using var connection = authorization.Connection!;
-        await ConfirmDatabaseConnectionAsync(connection);
-
-        var checks = DiagnosticChecks();
-
+        var outcome = await AuthorizeAsync(context);
+        if (outcome.Failure is not null) return outcome.Failure;
+        await using var connection = outcome.Connection!;
+        if (!await SecurityDiagnosticsOperations.OperationalSchemaAvailableAsync(connection, context.RequestAborted))
+            return SecurityDiagnosticsOperations.SchemaUnavailable(ModuleNumber);
+        var checks = await ExecuteChecksAsync(connection, "platform", "ProjectPulse", context.RequestAborted);
         return Results.Ok(new
         {
             module = ModuleNumber,
             status = "diagnostic_checks_loaded",
             contractVersion = ContractVersion,
             observedAt = DateTimeOffset.UtcNow,
-            summary = new
-            {
-                total = checks.Length,
-                healthy = checks.Count(check => check.Status == "healthy"),
-                delegated = checks.Count(check => check.Status == "delegated"),
-                governed = checks.Count(check => check.Status == "governed"),
-                unknown = checks.Count(check => check.Status == "unknown")
-            },
+            summary = Summarize(checks),
             checks,
-            interpretation = new[]
-            {
-                "Healthy is used only for a check observed directly during this request.",
-                "Delegated checks must be verified in the named owning module.",
-                "Governed checks describe an approved boundary, not live provider health.",
-                "Unknown is never promoted to healthy without authoritative telemetry."
-            }
+            statement = "Every direct check is evaluated from sanitized ProjectPulse runtime and database metadata. External Azure, WAF, container, and network health remains adapter-required."
         });
     }
 
     private static async Task<IResult> GetIssuesAsync(HttpContext context)
     {
-        var authorization = await OpenAuthorizedConnectionAsync(context);
-        if (authorization.Failure is not null) return authorization.Failure;
-
-        await using var connection = authorization.Connection!;
-
-        return Results.Ok(new
+        var outcome = await AuthorizeAsync(context);
+        if (outcome.Failure is not null) return outcome.Failure;
+        await using var connection = outcome.Connection!;
+        if (!await SecurityDiagnosticsOperations.OperationalSchemaAvailableAsync(connection, context.RequestAborted))
+            return SecurityDiagnosticsOperations.SchemaUnavailable(ModuleNumber);
+        var findings = new List<object>();
+        await using var command = new NpgsqlCommand("""
+            SELECT f.diagnostic_finding_id, f.diagnostic_session_id, f.check_code, f.category,
+                   f.status, f.severity, f.summary, f.evidence_json, f.observed_at,
+                   s.target_kind, s.target_reference
+            FROM projectpulse_diagnostic_findings f
+            JOIN projectpulse_diagnostic_sessions s ON s.diagnostic_session_id = f.diagnostic_session_id
+            WHERE f.status IN ('warning','failed','unknown') AND s.status <> 'closed'
+            ORDER BY CASE f.severity WHEN 'critical' THEN 5 WHEN 'high' THEN 4 WHEN 'medium' THEN 3 WHEN 'low' THEN 2 ELSE 1 END DESC,
+                     f.observed_at DESC
+            LIMIT 200;
+            """, connection);
+        await using var reader = await command.ExecuteReaderAsync(context.RequestAborted);
+        while (await reader.ReadAsync(context.RequestAborted))
         {
-            module = ModuleNumber,
-            status = "diagnostic_issue_contract_loaded",
-            contractVersion = ContractVersion,
-            observedAt = DateTimeOffset.UtcNow,
-            inventoryMode = "non_persistent_sanitized_source",
-            activeIssues = Array.Empty<object>(),
-            classifiers = IssueClassifiers(),
-            statement = "Module 998 has not connected a production telemetry or durable issue store, so it reports no live issue findings.",
-            rules = new[]
+            findings.Add(new
             {
-                "Absence of an issue record is not proof that a dependency is healthy.",
-                "Raw logs, stack traces, customer data, private topology, and secret material are excluded.",
-                "A future issue connector must provide source, freshness, confidence, owner, severity, and redaction evidence.",
-                "Containment and remediation remain separately authorized actions."
+                findingId = reader.GetGuid(0), sessionId = reader.GetGuid(1), checkCode = reader.GetString(2),
+                category = reader.GetString(3), status = reader.GetString(4), severity = reader.GetString(5),
+                summary = reader.GetString(6), evidence = JsonSerializer.Deserialize<object>(reader.GetString(7)),
+                observedAt = reader.GetFieldValue<DateTimeOffset>(8), targetKind = reader.GetString(9), targetReference = reader.GetString(10)
+            });
+        }
+        return Results.Ok(new { module = ModuleNumber, status = "diagnostic_issues_loaded", activeIssues = findings, classifiers = IssueClassifiers(), liveCountAuthoritative = true });
+    }
+
+    private static async Task<IResult> GetSessionsAsync(HttpContext context)
+    {
+        var outcome = await AuthorizeAsync(context);
+        if (outcome.Failure is not null) return outcome.Failure;
+        await using var connection = outcome.Connection!;
+        if (!await SecurityDiagnosticsOperations.OperationalSchemaAvailableAsync(connection, context.RequestAborted))
+            return SecurityDiagnosticsOperations.SchemaUnavailable(ModuleNumber);
+        return Results.Ok(new { module = ModuleNumber, status = "diagnostic_sessions_loaded", sessions = await ReadSessionsAsync(connection, null, context.RequestAborted) });
+    }
+
+    private static async Task<IResult> GetSessionAsync(Guid sessionId, HttpContext context)
+    {
+        var outcome = await AuthorizeAsync(context);
+        if (outcome.Failure is not null) return outcome.Failure;
+        await using var connection = outcome.Connection!;
+        var sessions = await ReadSessionsAsync(connection, sessionId, context.RequestAborted);
+        if (sessions.Count == 0) return Results.NotFound(new { module = ModuleNumber, status = "diagnostic_session_not_found" });
+        return Results.Ok(new { module = ModuleNumber, session = sessions[0], findings = await ReadFindingsAsync(connection, sessionId, context.RequestAborted), remediations = await ReadRemediationsAsync(connection, sessionId, context.RequestAborted) });
+    }
+
+    private static async Task<IResult> CreateSessionAsync(HttpContext context)
+    {
+        var managed = await PrepareManagedBodyAsync<CreateSessionRequest>(context);
+        if (managed.Result is not null) return managed.Result;
+        var (connection, access, request) = managed.Value!;
+        await using (connection)
+        {
+            var targetKind = request.TargetKind?.Trim().ToLowerInvariant() ?? "";
+            var targetReference = request.TargetReference?.Trim() ?? "";
+            if (!new[] { "platform", "api", "web", "database", "identity", "integration", "deployment", "incident" }.Contains(targetKind)
+                || targetReference.Length is < 1 or > 250)
+                return Results.BadRequest(new { module = ModuleNumber, status = "invalid_diagnostic_target" });
+
+            if (request.IncidentId is not null)
+            {
+                await using var incidentCheck = new NpgsqlCommand("SELECT EXISTS (SELECT 1 FROM projectpulse_security_incidents WHERE incident_id = @incident_id AND status <> 'closed');", connection);
+                incidentCheck.Parameters.AddWithValue("incident_id", request.IncidentId.Value);
+                if (await incidentCheck.ExecuteScalarAsync(context.RequestAborted) is not true)
+                    return Results.NotFound(new { module = ModuleNumber, status = "active_incident_not_found" });
             }
-        });
+
+            var sessionId = Guid.NewGuid();
+            var checks = await ExecuteChecksAsync(connection, targetKind, targetReference, context.RequestAborted);
+            var summary = Summarize(checks);
+            var sessionStatus = checks.Any(check => check.Status == "failed") ? "attention_required" : "completed";
+            var severity = HighestSeverity(checks);
+
+            await using var transaction = await connection.BeginTransactionAsync(context.RequestAborted);
+            await using (var insert = new NpgsqlCommand("""
+                INSERT INTO projectpulse_diagnostic_sessions
+                (diagnostic_session_id, incident_id, target_kind, target_reference, status, severity, summary, requested_by, completed_at)
+                VALUES (@session_id, @incident_id, @target_kind, @target_reference, @status, @severity, @summary, @requested_by, now());
+                """, connection, transaction))
+            {
+                insert.Parameters.AddWithValue("session_id", sessionId);
+                insert.Parameters.AddWithValue("incident_id", (object?)request.IncidentId ?? DBNull.Value);
+                insert.Parameters.AddWithValue("target_kind", targetKind);
+                insert.Parameters.AddWithValue("target_reference", targetReference);
+                insert.Parameters.AddWithValue("status", sessionStatus);
+                insert.Parameters.AddWithValue("severity", severity);
+                insert.Parameters.AddWithValue("summary", $"{summary.Healthy} healthy, {summary.Warning} warning, {summary.Failed} failed, {summary.Unknown} unknown.");
+                insert.Parameters.AddWithValue("requested_by", access.UserId);
+                await insert.ExecuteNonQueryAsync(context.RequestAborted);
+            }
+            await PersistFindingsAsync(connection, transaction, sessionId, checks, context.RequestAborted);
+
+            if (request.IncidentId is Guid incidentId)
+            {
+                await using (var update = new NpgsqlCommand("UPDATE projectpulse_security_incidents SET diagnostic_session_id = @session_id, status = 'investigating', updated_at = now() WHERE incident_id = @incident_id;", connection, transaction))
+                {
+                    update.Parameters.AddWithValue("session_id", sessionId);
+                    update.Parameters.AddWithValue("incident_id", incidentId);
+                    await update.ExecuteNonQueryAsync(context.RequestAborted);
+                }
+                await using var timeline = new NpgsqlCommand("""
+                    INSERT INTO projectpulse_security_incident_events
+                    (event_id, incident_id, action_code, actor_user_id, note, evidence_json)
+                    VALUES (@event_id, @incident_id, 'diagnostic_session_created', @actor, @note, CAST(@evidence AS jsonb));
+                    """, connection, transaction);
+                timeline.Parameters.AddWithValue("event_id", Guid.NewGuid());
+                timeline.Parameters.AddWithValue("incident_id", incidentId);
+                timeline.Parameters.AddWithValue("actor", access.UserId);
+                timeline.Parameters.AddWithValue("note", (object?)request.Note?.Trim() ?? "Diagnostic session started from Module 997.");
+                timeline.Parameters.AddWithValue("evidence", JsonSerializer.Serialize(new { diagnosticSessionId = sessionId, targetKind, targetReference }));
+                await timeline.ExecuteNonQueryAsync(context.RequestAborted);
+            }
+
+            await SecurityDiagnosticsOperations.WriteAuditAsync(connection, transaction, ModuleNumber, "diagnostic_session", sessionId.ToString(), "diagnostic_session_completed", access.UserId, new { request.IncidentId, targetKind, targetReference, sessionStatus, severity }, context.RequestAborted);
+            await transaction.CommitAsync(context.RequestAborted);
+            return Results.Ok(new { module = ModuleNumber, status = "diagnostic_session_completed", sessionId, incidentId = request.IncidentId, sessionStatus, severity, summary, findings = checks });
+        }
     }
 
     private static async Task<IResult> GetEvidencePolicyAsync(HttpContext context)
     {
-        var authorization = await OpenAuthorizedConnectionAsync(context);
-        if (authorization.Failure is not null) return authorization.Failure;
-
-        await using var connection = authorization.Connection!;
-
+        var outcome = await AuthorizeAsync(context); if (outcome.Failure is not null) return outcome.Failure;
+        await using var connection = outcome.Connection!;
         return Results.Ok(new
         {
-            module = ModuleNumber,
-            status = "diagnostic_evidence_policy_loaded",
-            contractVersion = ContractVersion,
+            module = ModuleNumber, status = "diagnostic_evidence_policy_loaded",
             evidence = new
             {
-                classification = "restricted_operational_metadata",
-                exportEnabled = false,
-                rawLogAccessEnabled = false,
-                secretAccessEnabled = false,
-                retentionOwner = "central ProjectPulse governance",
-                requiredFields = new[]
-                {
-                    "evidence ID", "source owner", "observation time",
-                    "freshness", "severity", "confidence", "redaction result",
-                    "correlation ID", "review status"
-                },
-                prohibitedFields = new[]
-                {
-                    "secret values", "tokens", "connection strings",
-                    "raw exception messages", "private host names",
-                    "tenant identifiers", "unredacted customer or user data"
-                }
-            },
-            chainOfCustody = new[]
-            {
-                "collect from an approved owner",
-                "minimize and redact",
-                "hash the governed artifact",
-                "record source and observation timestamps",
-                "review access and classification",
-                "retain or dispose under approved policy"
+                classification = "restricted_operational_metadata", persistenceEnabled = true,
+                rawLogAccessEnabled = false, secretAccessEnabled = false, connectionStringAccessEnabled = false,
+                requiredFields = new[] { "session ID", "check code", "status", "severity", "sanitized summary", "observation time", "actor" },
+                prohibited = new[] { "secret values", "tokens", "passwords", "connection strings", "raw provider payloads", "full log bodies" }
             }
         });
     }
 
     private static async Task<IResult> GetRemediationPolicyAsync(HttpContext context)
     {
-        var authorization = await OpenAuthorizedConnectionAsync(context);
-        if (authorization.Failure is not null) return authorization.Failure;
-
-        await using var connection = authorization.Connection!;
-
+        var outcome = await AuthorizeAsync(context); if (outcome.Failure is not null) return outcome.Failure;
+        await using var connection = outcome.Connection!;
         return Results.Ok(new
         {
-            module = ModuleNumber,
-            status = "remediation_policy_loaded",
-            contractVersion = ContractVersion,
-            lifecycle = new[]
-            {
-                new { step = 1, code = "prepare", state = "locked", purpose = "Create a bounded proposal without execution." },
-                new { step = 2, code = "approve", state = "locked", purpose = "Record separated human authorization." },
-                new { step = 3, code = "stage", state = "locked", purpose = "Validate a non-production execution target." },
-                new { step = 4, code = "promote", state = "locked", purpose = "Execute only after production authorization." },
-                new { step = 5, code = "verify", state = "locked", purpose = "Collect sanitized post-action evidence." },
-                new { step = 6, code = "rollback", state = "locked", purpose = "Execute a pre-approved recovery path." },
-                new { step = 7, code = "close", state = "locked", purpose = "Complete review and evidence retention." }
-            },
-            gates = LockedGates(),
-            separationOfDuties = new
-            {
-                requesterMaySelfApprove = false,
-                approverMayBypassStaging = false,
-                viewAsTransfersAuthority = false,
-                productionExecutionRequiresSeparateAuthorization = true
-            }
+            module = ModuleNumber, status = "remediation_policy_loaded", lifecycle = RemediationLifecycle(),
+            gates = new { persistedPlan = true, requesterApproverSeparation = true, previewRequired = true, evidenceRequired = true, rollbackRequiredForExternalActions = true },
+            execution = new { nativeActions = new[] { "refresh_health_snapshot" }, externalActions = new[] { "restart_service", "scale_service", "rollback_deployment", "replay_integration_event", "refresh_configuration", "database_repair" }, externalAdapterConfigured = false }
         });
     }
 
     private static async Task<IResult> GetRunbooksAsync(HttpContext context)
     {
-        var authorization = await OpenAuthorizedConnectionAsync(context);
-        if (authorization.Failure is not null) return authorization.Failure;
-
-        await using var connection = authorization.Connection!;
-
-        return Results.Ok(new
-        {
-            module = ModuleNumber,
-            status = "diagnostic_runbooks_loaded",
-            contractVersion = ContractVersion,
-            executionMode = "guidance_only",
-            runbooks = Runbooks(),
-            statement = "Runbooks provide triage guidance and ownership links only. Module 998 executes no command, connector, notification, containment, deployment, or rollback."
-        });
+        var outcome = await AuthorizeAsync(context); if (outcome.Failure is not null) return outcome.Failure;
+        await using var connection = outcome.Connection!;
+        return Results.Ok(new { module = ModuleNumber, status = "diagnostic_runbooks_loaded", executionMode = "native_safe_checks_and_adapter_gated_production_actions", runbooks = Runbooks() });
     }
 
-    private static async Task<IResult> LockedOperationAsync(
-        HttpContext context,
-        string operation)
+    private static async Task<IResult> GetRemediationsAsync(HttpContext context)
     {
-        var authorization = await OpenAuthorizedConnectionAsync(context);
-        if (authorization.Failure is not null) return authorization.Failure;
-
-        await using var connection = authorization.Connection!;
-
-        return Results.Json(new
-        {
-            module = ModuleNumber,
-            status = "operation_locked",
-            operation,
-            contractVersion = ContractVersion,
-            requestBodyRead = false,
-            adapterInvoked = false,
-            stateChanged = false,
-            externalNotificationSent = false,
-            secretAccessed = false,
-            aiExecuted = false,
-            containmentExecuted = false,
-            deploymentExecuted = false,
-            rollbackExecuted = false,
-            gates = LockedGates(),
-            message = "This Module 998 operation is fail-closed pending separate authorization and an approved execution adapter."
-        }, statusCode: StatusCodes.Status423Locked);
+        var outcome = await AuthorizeAsync(context); if (outcome.Failure is not null) return outcome.Failure;
+        await using var connection = outcome.Connection!;
+        return Results.Ok(new { module = ModuleNumber, status = "remediation_queue_loaded", remediations = await ReadRemediationsAsync(connection, null, context.RequestAborted) });
     }
 
-    private static DiagnosticCategory[] DiagnosticCategories() =>
+    private static async Task<IResult> PrepareRemediationAsync(HttpContext context)
+    {
+        var managed = await PrepareManagedBodyAsync<PrepareRemediationRequest>(context);
+        if (managed.Result is not null) return managed.Result;
+        var (connection, access, request) = managed.Value!;
+        await using (connection)
+        {
+            var runbook = Runbooks().FirstOrDefault(item => string.Equals(item.Id, request.RunbookCode, StringComparison.OrdinalIgnoreCase));
+            var action = request.ActionCode?.Trim().ToLowerInvariant() ?? "";
+            var target = request.TargetReference?.Trim() ?? "";
+            var justification = request.Justification?.Trim() ?? "";
+            if (runbook is null || !runbook.Actions.Contains(action) || target.Length is < 1 or > 250 || justification.Length is < 10 or > 2000)
+                return Results.BadRequest(new { module = ModuleNumber, status = "invalid_remediation_plan" });
+
+            await using var sessionCheck = new NpgsqlCommand("SELECT EXISTS (SELECT 1 FROM projectpulse_diagnostic_sessions WHERE diagnostic_session_id = @session_id AND status <> 'closed');", connection);
+            sessionCheck.Parameters.AddWithValue("session_id", request.DiagnosticSessionId);
+            if (await sessionCheck.ExecuteScalarAsync(context.RequestAborted) is not true)
+                return Results.NotFound(new { module = ModuleNumber, status = "active_diagnostic_session_not_found" });
+
+            var remediationId = Guid.NewGuid();
+            var plan = new { runbook = runbook.Id, action, target, justification, runbook.Owner, runbook.Adapter, runbook.Rollback, preview = runbook.Preview };
+            await using var transaction = await connection.BeginTransactionAsync(context.RequestAborted);
+            await using (var insert = new NpgsqlCommand("""
+                INSERT INTO projectpulse_remediation_requests
+                (remediation_request_id, diagnostic_session_id, runbook_code, action_code, target_reference, requested_by, plan_json)
+                VALUES (@request_id, @session_id, @runbook, @action, @target, @requested_by, CAST(@plan AS jsonb));
+                """, connection, transaction))
+            {
+                insert.Parameters.AddWithValue("request_id", remediationId);
+                insert.Parameters.AddWithValue("session_id", request.DiagnosticSessionId);
+                insert.Parameters.AddWithValue("runbook", runbook.Id);
+                insert.Parameters.AddWithValue("action", action);
+                insert.Parameters.AddWithValue("target", target);
+                insert.Parameters.AddWithValue("requested_by", access.UserId);
+                insert.Parameters.AddWithValue("plan", JsonSerializer.Serialize(plan));
+                await insert.ExecuteNonQueryAsync(context.RequestAborted);
+            }
+            await SecurityDiagnosticsOperations.WriteAuditAsync(connection, transaction, ModuleNumber, "remediation_request", remediationId.ToString(), "remediation_prepared", access.UserId, new { request.DiagnosticSessionId, runbook = runbook.Id, action }, context.RequestAborted);
+            await transaction.CommitAsync(context.RequestAborted);
+            return Results.Ok(new { module = ModuleNumber, status = "remediation_awaiting_approval", remediationRequestId = remediationId, plan, nativeExecutionAvailable = action == "refresh_health_snapshot" });
+        }
+    }
+
+    private static async Task<IResult> ApproveRemediationAsync(HttpContext context)
+    {
+        var managed = await PrepareManagedBodyAsync<RemediationActionRequest>(context);
+        if (managed.Result is not null) return managed.Result;
+        var (connection, access, request) = managed.Value!;
+        await using (connection)
+        {
+            await using var transaction = await connection.BeginTransactionAsync(context.RequestAborted);
+            await using var command = new NpgsqlCommand("""
+                UPDATE projectpulse_remediation_requests
+                SET state = 'approved', approved_by = @actor, approved_at = now()
+                WHERE remediation_request_id = @request_id AND state = 'awaiting_approval' AND requested_by <> @actor
+                RETURNING diagnostic_session_id, action_code;
+                """, connection, transaction);
+            command.Parameters.AddWithValue("actor", access.UserId);
+            command.Parameters.AddWithValue("request_id", request.RemediationRequestId);
+            await using var reader = await command.ExecuteReaderAsync(context.RequestAborted);
+            if (!await reader.ReadAsync(context.RequestAborted))
+                return Results.Json(new { module = ModuleNumber, status = "approval_rejected", message = "The request is not awaiting approval or separation of duties was not met." }, statusCode: StatusCodes.Status409Conflict);
+            var sessionId = reader.GetGuid(0); var action = reader.GetString(1); await reader.DisposeAsync();
+            await SecurityDiagnosticsOperations.WriteAuditAsync(connection, transaction, ModuleNumber, "remediation_request", request.RemediationRequestId.ToString(), "remediation_approved", access.UserId, new { sessionId, action }, context.RequestAborted);
+            await transaction.CommitAsync(context.RequestAborted);
+            return Results.Ok(new { module = ModuleNumber, status = "remediation_approved", request.RemediationRequestId, action });
+        }
+    }
+
+    private static Task<IResult> StageRemediationAsync(HttpContext context) => TransitionRemediationAsync(context, "approved", "staged", "remediation_staged");
+
+    private static async Task<IResult> ExecuteRemediationAsync(HttpContext context)
+    {
+        var managed = await PrepareManagedBodyAsync<RemediationActionRequest>(context);
+        if (managed.Result is not null) return managed.Result;
+        var (connection, access, request) = managed.Value!;
+        await using (connection)
+        {
+            await using var read = new NpgsqlCommand("""
+                SELECT diagnostic_session_id, action_code, target_reference, state, requested_by, approved_by
+                FROM projectpulse_remediation_requests WHERE remediation_request_id = @request_id;
+                """, connection);
+            read.Parameters.AddWithValue("request_id", request.RemediationRequestId);
+            await using var reader = await read.ExecuteReaderAsync(context.RequestAborted);
+            if (!await reader.ReadAsync(context.RequestAborted)) return Results.NotFound(new { module = ModuleNumber, status = "remediation_not_found" });
+            var sessionId = reader.GetGuid(0); var action = reader.GetString(1); var target = reader.GetString(2); var state = reader.GetString(3);
+            var requestedBy = reader.GetGuid(4); var approvedBy = reader.IsDBNull(5) ? (Guid?)null : reader.GetGuid(5); await reader.DisposeAsync();
+            if (state is not ("approved" or "staged") || approvedBy is null || requestedBy == approvedBy)
+                return Results.Json(new { module = ModuleNumber, status = "approved_remediation_required" }, statusCode: StatusCodes.Status409Conflict);
+            if (action != "refresh_health_snapshot")
+                return Results.Json(new { module = ModuleNumber, status = "execution_adapter_required", action, target, configured = false, requiredConfiguration = AdapterConfiguration(action), message = "The approved plan is preserved; connect the owning adapter before production execution." }, statusCode: StatusCodes.Status423Locked);
+
+            var checks = await ExecuteChecksAsync(connection, "platform", target, context.RequestAborted);
+            var summary = Summarize(checks);
+            await using var transaction = await connection.BeginTransactionAsync(context.RequestAborted);
+            await using (var update = new NpgsqlCommand("""
+                UPDATE projectpulse_remediation_requests
+                SET state = 'executed', executed_by = @actor, executed_at = now(), result_json = CAST(@result AS jsonb)
+                WHERE remediation_request_id = @request_id;
+                """, connection, transaction))
+            {
+                update.Parameters.AddWithValue("actor", access.UserId);
+                update.Parameters.AddWithValue("result", JsonSerializer.Serialize(new { action, observedAt = DateTimeOffset.UtcNow, summary }));
+                update.Parameters.AddWithValue("request_id", request.RemediationRequestId);
+                await update.ExecuteNonQueryAsync(context.RequestAborted);
+            }
+            await ReplaceFindingsAsync(connection, transaction, sessionId, checks, context.RequestAborted);
+            await SecurityDiagnosticsOperations.WriteAuditAsync(connection, transaction, ModuleNumber, "remediation_request", request.RemediationRequestId.ToString(), "native_health_refresh_executed", access.UserId, new { sessionId, summary }, context.RequestAborted);
+            await transaction.CommitAsync(context.RequestAborted);
+            return Results.Ok(new { module = ModuleNumber, status = "native_health_refresh_executed", request.RemediationRequestId, sessionId, summary, findings = checks });
+        }
+    }
+
+    private static async Task<IResult> VerifyRemediationAsync(HttpContext context)
+    {
+        var managed = await PrepareManagedBodyAsync<RemediationActionRequest>(context);
+        if (managed.Result is not null) return managed.Result;
+        var (connection, access, request) = managed.Value!;
+        await using (connection)
+        {
+            await using var read = new NpgsqlCommand("SELECT diagnostic_session_id, target_reference, state FROM projectpulse_remediation_requests WHERE remediation_request_id = @request_id;", connection);
+            read.Parameters.AddWithValue("request_id", request.RemediationRequestId);
+            await using var reader = await read.ExecuteReaderAsync(context.RequestAborted);
+            if (!await reader.ReadAsync(context.RequestAborted)) return Results.NotFound(new { module = ModuleNumber, status = "remediation_not_found" });
+            var sessionId = reader.GetGuid(0); var target = reader.GetString(1); var state = reader.GetString(2); await reader.DisposeAsync();
+            if (state != "executed") return Results.Json(new { module = ModuleNumber, status = "executed_remediation_required" }, statusCode: StatusCodes.Status409Conflict);
+            var checks = await ExecuteChecksAsync(connection, "platform", target, context.RequestAborted);
+            var summary = Summarize(checks);
+            var verified = !checks.Any(check => check.Status == "failed");
+            await using var transaction = await connection.BeginTransactionAsync(context.RequestAborted);
+            await using (var update = new NpgsqlCommand("UPDATE projectpulse_remediation_requests SET state = @state, verified_at = CASE WHEN @verified THEN now() ELSE verified_at END, result_json = CAST(@result AS jsonb) WHERE remediation_request_id = @request_id;", connection, transaction))
+            {
+                update.Parameters.AddWithValue("state", verified ? "verified" : "failed");
+                update.Parameters.AddWithValue("verified", verified);
+                update.Parameters.AddWithValue("result", JsonSerializer.Serialize(new { verified, observedAt = DateTimeOffset.UtcNow, summary }));
+                update.Parameters.AddWithValue("request_id", request.RemediationRequestId);
+                await update.ExecuteNonQueryAsync(context.RequestAborted);
+            }
+            await ReplaceFindingsAsync(connection, transaction, sessionId, checks, context.RequestAborted);
+            await SecurityDiagnosticsOperations.WriteAuditAsync(connection, transaction, ModuleNumber, "remediation_request", request.RemediationRequestId.ToString(), verified ? "remediation_verified" : "remediation_verification_failed", access.UserId, new { sessionId, summary }, context.RequestAborted);
+            await transaction.CommitAsync(context.RequestAborted);
+            return Results.Ok(new { module = ModuleNumber, status = verified ? "remediation_verified" : "remediation_verification_failed", request.RemediationRequestId, sessionId, summary, findings = checks });
+        }
+    }
+
+    private static async Task<IResult> CloseRemediationAsync(HttpContext context)
+    {
+        var managed = await PrepareManagedBodyAsync<RemediationActionRequest>(context);
+        if (managed.Result is not null) return managed.Result;
+        var (connection, access, request) = managed.Value!;
+        await using (connection)
+        {
+            if (string.IsNullOrWhiteSpace(request.Note) || request.Note.Trim().Length < 10)
+                return Results.BadRequest(new { module = ModuleNumber, status = "closure_evidence_required" });
+            await using var transaction = await connection.BeginTransactionAsync(context.RequestAborted);
+            await using var update = new NpgsqlCommand("UPDATE projectpulse_remediation_requests SET state = 'closed', closed_at = now() WHERE remediation_request_id = @request_id AND state IN ('verified','rolled_back');", connection, transaction);
+            update.Parameters.AddWithValue("request_id", request.RemediationRequestId);
+            if (await update.ExecuteNonQueryAsync(context.RequestAborted) == 0)
+                return Results.Json(new { module = ModuleNumber, status = "remediation_not_ready_to_close" }, statusCode: StatusCodes.Status409Conflict);
+            await SecurityDiagnosticsOperations.WriteAuditAsync(connection, transaction, ModuleNumber, "remediation_request", request.RemediationRequestId.ToString(), "remediation_closed", access.UserId, new { note = request.Note.Trim() }, context.RequestAborted);
+            await transaction.CommitAsync(context.RequestAborted);
+            return Results.Ok(new { module = ModuleNumber, status = "remediation_closed", request.RemediationRequestId });
+        }
+    }
+
+    private static async Task<IResult> TransitionRemediationAsync(HttpContext context, string from, string to, string auditAction)
+    {
+        var managed = await PrepareManagedBodyAsync<RemediationActionRequest>(context);
+        if (managed.Result is not null) return managed.Result;
+        var (connection, access, request) = managed.Value!;
+        await using (connection)
+        {
+            await using var transaction = await connection.BeginTransactionAsync(context.RequestAborted);
+            await using var update = new NpgsqlCommand("UPDATE projectpulse_remediation_requests SET state = @to WHERE remediation_request_id = @request_id AND state = @from;", connection, transaction);
+            update.Parameters.AddWithValue("to", to); update.Parameters.AddWithValue("from", from); update.Parameters.AddWithValue("request_id", request.RemediationRequestId);
+            if (await update.ExecuteNonQueryAsync(context.RequestAborted) == 0)
+                return Results.Json(new { module = ModuleNumber, status = "invalid_remediation_transition", expectedState = from }, statusCode: StatusCodes.Status409Conflict);
+            await SecurityDiagnosticsOperations.WriteAuditAsync(connection, transaction, ModuleNumber, "remediation_request", request.RemediationRequestId.ToString(), auditAction, access.UserId, new { from, to }, context.RequestAborted);
+            await transaction.CommitAsync(context.RequestAborted);
+            return Results.Ok(new { module = ModuleNumber, status = auditAction, request.RemediationRequestId });
+        }
+    }
+
+    private static async Task<IResult> LockedAdapterAsync(HttpContext context, string operation, string configurationPath)
+    {
+        var outcome = await AuthorizeAsync(context); if (outcome.Failure is not null) return outcome.Failure;
+        await using var connection = outcome.Connection!;
+        var blocked = SecurityDiagnosticsOperations.RequireMutation(context, ModuleNumber, outcome.Access!); if (blocked is not null) return blocked;
+        return Results.Json(new { module = ModuleNumber, status = "execution_adapter_required", operation, adapterInvoked = false, stateChanged = false, configurationPath, message = "The diagnostic and approval evidence remains available; this production action needs an approved adapter." }, statusCode: StatusCodes.Status423Locked);
+    }
+
+    private static async Task<(ManagedBody<T>? Value, IResult? Result)> PrepareManagedBodyAsync<T>(HttpContext context)
+    {
+        var outcome = await AuthorizeAsync(context);
+        if (outcome.Failure is not null) return (null, outcome.Failure);
+        var blocked = SecurityDiagnosticsOperations.RequireMutation(context, ModuleNumber, outcome.Access!);
+        if (blocked is not null) { await outcome.Connection!.DisposeAsync(); return (null, blocked); }
+        if (!await SecurityDiagnosticsOperations.OperationalSchemaAvailableAsync(outcome.Connection!, context.RequestAborted))
+        { await outcome.Connection!.DisposeAsync(); return (null, SecurityDiagnosticsOperations.SchemaUnavailable(ModuleNumber)); }
+        var body = await SecurityDiagnosticsOperations.ReadBodyAsync<T>(context, ModuleNumber);
+        if (body.Failure is not null) { await outcome.Connection!.DisposeAsync(); return (null, body.Failure); }
+        return (new ManagedBody<T>(outcome.Connection!, outcome.Access!, body.Value!), null);
+    }
+
+    private static async Task<List<DiagnosticFinding>> ExecuteChecksAsync(NpgsqlConnection connection, string targetKind, string targetReference, CancellationToken cancellationToken)
+    {
+        var findings = new List<DiagnosticFinding>
+        {
+            new("database_connectivity", "data_resilience", "healthy", "informational", "ProjectPulse database connection and authorization query succeeded.", new { targetKind, targetReference }),
+            new("api_request_path", "application_runtime", "healthy", "informational", "The authenticated Module 998 API request completed to the diagnostic engine.", new { environment = SecurityDiagnosticsOperations.RuntimeEnvironment() })
+        };
+
+        await using var command = new NpgsqlCommand("""
+            SELECT
+                (SELECT COUNT(*) FROM auth_login_events WHERE created_at >= now() - interval '1 hour' AND lower(login_result) NOT IN ('success','succeeded')),
+                (SELECT COUNT(*) FROM projectpulse_security_incidents WHERE status <> 'closed'),
+                (SELECT COUNT(*) FROM projectpulse_security_incidents WHERE status <> 'closed' AND severity IN ('high','critical')),
+                (SELECT COUNT(*) FROM projectpulse_security_response_requests WHERE state = 'awaiting_approval'),
+                (SELECT COUNT(*) FROM projectpulse_remediation_requests WHERE state IN ('awaiting_approval','approved','staged','executed')),
+                (SELECT MAX(applied_at) FROM schema_migrations),
+                (SELECT COUNT(*) FROM auth_sessions WHERE revoked_at IS NULL AND expires_at > now()),
+                (SELECT COUNT(*) FROM auth_sessions WHERE revoked_at IS NOT NULL AND revoked_at >= now() - interval '24 hours');
+            """, connection);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        await reader.ReadAsync(cancellationToken);
+        var failedLogins = reader.GetInt64(0); var incidents = reader.GetInt64(1); var severeIncidents = reader.GetInt64(2);
+        var containmentQueue = reader.GetInt64(3); var remediationQueue = reader.GetInt64(4);
+        var latestMigration = reader.IsDBNull(5) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(5);
+        var activeSessions = reader.GetInt64(6); var revokedSessions = reader.GetInt64(7);
+
+        findings.Add(new("authentication_failures", "identity_access", failedLogins >= 20 ? "failed" : failedLogins >= 5 ? "warning" : "healthy", failedLogins >= 20 ? "high" : failedLogins >= 5 ? "medium" : "informational", $"{failedLogins} failed authentication events were recorded in the last hour.", new { failedLogins, windowMinutes = 60 }));
+        findings.Add(new("security_incident_queue", "security_operations", severeIncidents > 0 ? "failed" : incidents > 0 ? "warning" : "healthy", severeIncidents > 0 ? "high" : incidents > 0 ? "medium" : "informational", $"{incidents} active incidents, including {severeIncidents} high or critical incidents.", new { incidents, severeIncidents, route = "#security-operations" }));
+        findings.Add(new("containment_approval_queue", "security_operations", containmentQueue > 0 ? "warning" : "healthy", containmentQueue > 0 ? "medium" : "informational", $"{containmentQueue} containment requests are waiting for a separate approver.", new { containmentQueue }));
+        findings.Add(new("remediation_queue", "application_runtime", remediationQueue > 10 ? "warning" : "healthy", remediationQueue > 10 ? "low" : "informational", $"{remediationQueue} remediation requests are currently open.", new { remediationQueue }));
+        findings.Add(new("schema_migration_recency", "delivery", latestMigration is null ? "unknown" : "healthy", latestMigration is null ? "medium" : "informational", latestMigration is null ? "No schema migration timestamp was available." : $"Latest recorded migration was applied {latestMigration:O}.", new { latestMigration }));
+        findings.Add(new("session_inventory", "identity_access", "healthy", "informational", $"{activeSessions} active sessions and {revokedSessions} revocations in the last 24 hours.", new { activeSessions, revokedSessions }));
+        findings.Add(new("external_infrastructure", "cloud_platform", "unknown", "informational", "Azure Container Apps, Application Gateway/WAF, DNS, certificate, and regional resource health require the approved Azure diagnostics adapter.", new { adapter = "azure_diagnostics", configured = false }));
+        return findings;
+    }
+
+    private static async Task PersistFindingsAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid sessionId, IEnumerable<DiagnosticFinding> findings, CancellationToken cancellationToken)
+    {
+        foreach (var finding in findings)
+        {
+            await using var command = new NpgsqlCommand("""
+                INSERT INTO projectpulse_diagnostic_findings
+                (diagnostic_finding_id, diagnostic_session_id, check_code, category, status, severity, summary, evidence_json)
+                VALUES (@finding_id, @session_id, @check_code, @category, @status, @severity, @summary, CAST(@evidence AS jsonb));
+                """, connection, transaction);
+            command.Parameters.AddWithValue("finding_id", Guid.NewGuid()); command.Parameters.AddWithValue("session_id", sessionId);
+            command.Parameters.AddWithValue("check_code", finding.CheckCode); command.Parameters.AddWithValue("category", finding.Category);
+            command.Parameters.AddWithValue("status", finding.Status); command.Parameters.AddWithValue("severity", finding.Severity);
+            command.Parameters.AddWithValue("summary", finding.Summary); command.Parameters.AddWithValue("evidence", JsonSerializer.Serialize(finding.Evidence));
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+    }
+
+    private static async Task ReplaceFindingsAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid sessionId, IEnumerable<DiagnosticFinding> findings, CancellationToken cancellationToken)
+    {
+        await using (var delete = new NpgsqlCommand("DELETE FROM projectpulse_diagnostic_findings WHERE diagnostic_session_id = @session_id;", connection, transaction))
+        { delete.Parameters.AddWithValue("session_id", sessionId); await delete.ExecuteNonQueryAsync(cancellationToken); }
+        await PersistFindingsAsync(connection, transaction, sessionId, findings, cancellationToken);
+        var items = findings.ToArray(); var summary = Summarize(items);
+        await using var update = new NpgsqlCommand("UPDATE projectpulse_diagnostic_sessions SET status = @status, severity = @severity, summary = @summary, completed_at = now(), updated_at = now() WHERE diagnostic_session_id = @session_id;", connection, transaction);
+        update.Parameters.AddWithValue("status", items.Any(item => item.Status == "failed") ? "attention_required" : "completed");
+        update.Parameters.AddWithValue("severity", HighestSeverity(items));
+        update.Parameters.AddWithValue("summary", $"{summary.Healthy} healthy, {summary.Warning} warning, {summary.Failed} failed, {summary.Unknown} unknown.");
+        update.Parameters.AddWithValue("session_id", sessionId);
+        await update.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static async Task<List<object>> ReadSessionsAsync(NpgsqlConnection connection, Guid? sessionId, CancellationToken cancellationToken)
+    {
+        var sessions = new List<object>();
+        await using var command = new NpgsqlCommand("""
+            SELECT s.diagnostic_session_id, s.incident_id, s.target_kind, s.target_reference, s.status,
+                   s.severity, s.summary, s.requested_by, COALESCE(u.display_name, u.email, s.requested_by::text),
+                   s.created_at, s.completed_at, s.closed_at, s.updated_at,
+                   COUNT(f.diagnostic_finding_id),
+                   COUNT(f.diagnostic_finding_id) FILTER (WHERE f.status = 'failed'),
+                   COUNT(f.diagnostic_finding_id) FILTER (WHERE f.status = 'warning')
+            FROM projectpulse_diagnostic_sessions s
+            LEFT JOIN app_users u ON u.user_id = s.requested_by
+            LEFT JOIN projectpulse_diagnostic_findings f ON f.diagnostic_session_id = s.diagnostic_session_id
+            WHERE (@session_id IS NULL OR s.diagnostic_session_id = @session_id)
+            GROUP BY s.diagnostic_session_id, u.display_name, u.email
+            ORDER BY s.updated_at DESC LIMIT 200;
+            """, connection);
+        command.Parameters.AddWithValue("session_id", (object?)sessionId ?? DBNull.Value);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            sessions.Add(new
+            {
+                sessionId = reader.GetGuid(0), incidentId = reader.IsDBNull(1) ? null : reader.GetGuid(1).ToString(),
+                targetKind = reader.GetString(2), targetReference = reader.GetString(3), status = reader.GetString(4), severity = reader.GetString(5),
+                summary = reader.IsDBNull(6) ? null : reader.GetString(6), requestedByUserId = reader.GetGuid(7), requestedBy = reader.GetString(8),
+                createdAt = reader.GetFieldValue<DateTimeOffset>(9), completedAt = reader.IsDBNull(10) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(10),
+                closedAt = reader.IsDBNull(11) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(11), updatedAt = reader.GetFieldValue<DateTimeOffset>(12),
+                findingCount = reader.GetInt64(13), failedCount = reader.GetInt64(14), warningCount = reader.GetInt64(15)
+            });
+        }
+        return sessions;
+    }
+
+    private static async Task<List<object>> ReadFindingsAsync(NpgsqlConnection connection, Guid sessionId, CancellationToken cancellationToken)
+    {
+        var findings = new List<object>();
+        await using var command = new NpgsqlCommand("SELECT diagnostic_finding_id, check_code, category, status, severity, summary, evidence_json, observed_at FROM projectpulse_diagnostic_findings WHERE diagnostic_session_id = @session_id ORDER BY observed_at, check_code;", connection);
+        command.Parameters.AddWithValue("session_id", sessionId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken)) findings.Add(new { findingId = reader.GetGuid(0), checkCode = reader.GetString(1), category = reader.GetString(2), status = reader.GetString(3), severity = reader.GetString(4), summary = reader.GetString(5), evidence = JsonSerializer.Deserialize<object>(reader.GetString(6)), observedAt = reader.GetFieldValue<DateTimeOffset>(7) });
+        return findings;
+    }
+
+    private static async Task<List<object>> ReadRemediationsAsync(NpgsqlConnection connection, Guid? sessionId, CancellationToken cancellationToken)
+    {
+        var items = new List<object>();
+        await using var command = new NpgsqlCommand("""
+            SELECT remediation_request_id, diagnostic_session_id, runbook_code, action_code, target_reference,
+                   state, requested_by, approved_by, executed_by, plan_json, result_json,
+                   requested_at, approved_at, executed_at, verified_at, closed_at
+            FROM projectpulse_remediation_requests
+            WHERE (@session_id IS NULL OR diagnostic_session_id = @session_id)
+            ORDER BY requested_at DESC LIMIT 200;
+            """, connection);
+        command.Parameters.AddWithValue("session_id", (object?)sessionId ?? DBNull.Value);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            items.Add(new
+            {
+                remediationRequestId = reader.GetGuid(0), sessionId = reader.GetGuid(1), runbook = reader.GetString(2), action = reader.GetString(3),
+                targetReference = reader.GetString(4), state = reader.GetString(5), requestedBy = reader.GetGuid(6),
+                approvedBy = reader.IsDBNull(7) ? null : reader.GetGuid(7).ToString(), executedBy = reader.IsDBNull(8) ? null : reader.GetGuid(8).ToString(),
+                plan = JsonSerializer.Deserialize<object>(reader.GetString(9)), result = JsonSerializer.Deserialize<object>(reader.GetString(10)),
+                requestedAt = reader.GetFieldValue<DateTimeOffset>(11), approvedAt = reader.IsDBNull(12) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(12),
+                executedAt = reader.IsDBNull(13) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(13), verifiedAt = reader.IsDBNull(14) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(14),
+                closedAt = reader.IsDBNull(15) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(15)
+            });
+        }
+        return items;
+    }
+
+    private static async Task<object> ReadMetricsAsync(NpgsqlConnection connection, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand("""
+            SELECT
+                (SELECT COUNT(*) FROM projectpulse_diagnostic_sessions WHERE status <> 'closed'),
+                (SELECT COUNT(*) FROM projectpulse_diagnostic_sessions WHERE status = 'attention_required'),
+                (SELECT COUNT(*) FROM projectpulse_diagnostic_findings WHERE status = 'failed'),
+                (SELECT COUNT(*) FROM projectpulse_remediation_requests WHERE state = 'awaiting_approval'),
+                (SELECT COUNT(*) FROM projectpulse_remediation_requests WHERE state = 'verified');
+            """, connection);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken); await reader.ReadAsync(cancellationToken);
+        return new { activeSessions = reader.GetInt64(0), attentionRequired = reader.GetInt64(1), failedFindings = reader.GetInt64(2), awaitingApproval = reader.GetInt64(3), verifiedRemediations = reader.GetInt64(4) };
+    }
+
+    private static DiagnosticSummary Summarize(IEnumerable<DiagnosticFinding> findings)
+    {
+        var items = findings.ToArray();
+        return new DiagnosticSummary(items.Length, items.Count(item => item.Status == "healthy"), items.Count(item => item.Status == "warning"), items.Count(item => item.Status == "failed"), items.Count(item => item.Status == "unknown"));
+    }
+
+    private static string HighestSeverity(IEnumerable<DiagnosticFinding> findings)
+    {
+        var rank = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) { ["informational"] = 0, ["low"] = 1, ["medium"] = 2, ["high"] = 3, ["critical"] = 4 };
+        return findings.OrderByDescending(item => rank.GetValueOrDefault(item.Severity)).FirstOrDefault()?.Severity ?? "informational";
+    }
+
+    private static string AdapterConfiguration(string action) => action switch
+    {
+        "restart_service" or "scale_service" => "Configure an approved Azure Container Apps operations adapter and production scope.",
+        "rollback_deployment" => "Configure Module 077 release evidence, a known-good revision, and the approved Azure deployment adapter.",
+        "replay_integration_event" => "Configure Module 075 event validation, quarantine release, and replay authority.",
+        "refresh_configuration" => "Configure a bounded configuration-refresh adapter that never returns secrets.",
+        "database_repair" => "Configure a reviewed database runbook, backup checkpoint, maintenance window, and rollback plan.",
+        _ => "Configure the approved owner adapter and production authorization."
+    };
+
+    private static object[] DiagnosticCategories() =>
     [
-        new("application_runtime", "Application runtime", "Module 013", "Service, API, version, and application-shell signals"),
-        new("data_resilience", "Data and resilience", "Modules 014-017", "Database, backup, restore, retention, and replication evidence"),
-        new("identity_access", "Identity and access", "Modules 010, 012, 037, 062", "Authentication, authorization, role, and identity-profile controls"),
-        new("delivery", "Build and delivery", "Module 058", "Source, validation, image, promotion, and rollback readiness"),
-        new("shared_services", "Shared platform services", "Modules 064 and 067", "AI routing and outbound-mail configuration boundaries"),
-        new("security_operations", "Security operations", "Module 997", "Threat, incident, containment, and response ownership")
+        new { id = "application_runtime", name = "Application runtime", owner = "ProjectPulse API and Module 013" },
+        new { id = "data_resilience", name = "Data and resilience", owner = "PostgreSQL and Modules 014-017" },
+        new { id = "identity_access", name = "Identity and access", owner = "ProjectPulse authentication and Modules 010/062" },
+        new { id = "delivery", name = "Build and delivery", owner = "Modules 077 and 058" },
+        new { id = "security_operations", name = "Security operations", owner = "Module 997" },
+        new { id = "cloud_platform", name = "Cloud platform", owner = "Approved Azure diagnostics adapter" }
     ];
 
-    private static DiagnosticCheck[] DiagnosticChecks() =>
+    private static object[] IssueClassifiers() =>
     [
-        new("session", "Authenticated session", "application_runtime", "healthy", "direct", "Module 059", "Current request passed the ProjectPulse session boundary.", null),
-        new("authorization_database", "Authorization database", "data_resilience", "healthy", "direct", "ProjectPulse API", "Role authorization and SELECT 1 completed.", "#service-control"),
-        new("service_runtime", "Service and API runtime", "application_runtime", "delegated", "live_status_owner", "Module 013", "Open the Service Control Center for live status.", "#service-control"),
-        new("backup_restore", "Backup and restore", "data_resilience", "delegated", "live_status_owner", "Modules 014-016", "Open the resilience centers for current evidence.", "#backup-dr"),
-        new("replication", "Replication and synchronization", "data_resilience", "delegated", "live_status_owner", "Module 017", "Open Replication & Sync Status for current evidence.", "#replication-sync"),
-        new("identity", "Identity and access", "identity_access", "delegated", "live_status_owner", "Modules 010 and 062", "Open the owning identity centers for current status.", "#azure-admin"),
-        new("delivery", "Build and delivery", "delivery", "delegated", "live_status_owner", "Module 058", "Open CI/CD Pipeline for current source and delivery status.", "#cicd-pipeline"),
-        new("ai_router", "Shared AI routing", "shared_services", "governed", "configuration_owner", "Module 064", "Provider execution is not performed by Module 998.", "#ai-provider-configuration"),
-        new("outbound_mail", "Shared outbound mail", "shared_services", "governed", "configuration_owner", "Module 067", "External notifications are not sent by Module 998.", "#global-mail-configuration"),
-        new("security_operations", "Security operations", "security_operations", "unknown", "future_owner", "Module 997", "Module 997 will own authoritative threat and response signals.", null)
+        new { severity = "informational", order = 1, definition = "Context or successful evidence.", responseExpectation = "retain" },
+        new { severity = "low", order = 2, definition = "Localized degradation with workaround.", responseExpectation = "planned triage" },
+        new { severity = "medium", order = 3, definition = "Material degradation or control gap.", responseExpectation = "same-day owner assessment" },
+        new { severity = "high", order = 4, definition = "Major service, identity, data, or security risk.", responseExpectation = "immediate incident coordination" },
+        new { severity = "critical", order = 5, definition = "Confirmed severe impact or active compromise.", responseExpectation = "invoke incident authority" }
     ];
 
-    private static IssueClassifier[] IssueClassifiers() =>
+    private static object[] RemediationLifecycle() =>
     [
-        new("informational", 1, "Context or observation that does not require immediate action.", "owner review"),
-        new("low", 2, "Localized degradation with a documented workaround.", "planned triage"),
-        new("medium", 3, "Material degradation or control gap with bounded impact.", "same-day owner assessment"),
-        new("high", 4, "Major service, data, identity, or security risk.", "immediate incident coordination"),
-        new("critical", 5, "Confirmed severe impact or active compromise.", "invoke approved incident authority; containment remains separately authorized")
-    ];
-
-    private static object[] SeverityModel() =>
-    [
-        new { code = "informational", order = 1, color = "blue" },
-        new { code = "low", order = 2, color = "teal" },
-        new { code = "medium", order = 3, color = "amber" },
-        new { code = "high", order = 4, color = "orange" },
-        new { code = "critical", order = 5, color = "red" }
-    ];
-
-    private static OwnershipLink[] OwnershipLinks() =>
-    [
-        new("service-control", "Service Control Center", "#service-control", "Module 013"),
-        new("backup-dr", "Backup / DR Center", "#backup-dr", "Module 014"),
-        new("restore-validation", "Restore Validation", "#restore-validation", "Module 015"),
-        new("backup-retention", "Backup Retention", "#backup-retention", "Module 016"),
-        new("replication-sync", "Replication & Sync Status", "#replication-sync", "Module 017"),
-        new("cicd-pipeline", "CI/CD Pipeline", "#cicd-pipeline", "Module 058"),
-        new("ai-provider-configuration", "AI Provider Configuration", "#ai-provider-configuration", "Module 064"),
-        new("global-mail-configuration", "Global Mail Configuration", "#global-mail-configuration", "Module 067"),
-        new("system-architecture", "System Architecture", "#system-architecture", "Module 068")
+        new { step = 1, code = "prepare", state = "active", purpose = "Choose a runbook and retain a preview." },
+        new { step = 2, code = "approve", state = "active", purpose = "Require a separate eligible actor." },
+        new { step = 3, code = "stage", state = "active", purpose = "Confirm target and rollback readiness." },
+        new { step = 4, code = "promote", state = "native_or_adapter_gated", purpose = "Execute only an enabled native or approved adapter action." },
+        new { step = 5, code = "verify", state = "active", purpose = "Rerun checks and retain before/after evidence." },
+        new { step = 6, code = "rollback", state = "adapter_gated", purpose = "Use the approved rollback path when required." },
+        new { step = 7, code = "close", state = "active", purpose = "Close only verified or rolled-back work." }
     ];
 
     private static Runbook[] Runbooks() =>
     [
-        new("service_degradation", "Service degradation", "Module 013", "#service-control", new[] { "Confirm user impact", "Review sanitized runtime status", "Assign an incident owner", "Prepare a bounded remediation proposal" }),
-        new("data_resilience", "Data or resilience concern", "Modules 014-017", "#backup-dr", new[] { "Stop assumptions about data currency", "Review backup and replication evidence", "Define recovery point and recovery time objectives", "Request separate restore or rollback authority" }),
-        new("identity_access", "Identity or access concern", "Modules 010, 012, 037, 062", "#azure-admin", new[] { "Confirm actual-session identity", "Review role and permission evidence", "Avoid secret inspection", "Escalate provider changes under separate authorization" }),
-        new("delivery_failure", "Build or deployment concern", "Module 058", "#cicd-pipeline", new[] { "Preserve source and check evidence", "Identify the last verified immutable revision", "Do not promote or roll back without authorization", "Record post-action verification criteria" }),
-        new("security_event", "Suspected security event", "Module 997", null, new[] { "Preserve evidence", "Classify severity and confidence", "Avoid unauthorized containment", "Transfer response ownership to the approved security workflow" })
+        new("platform_health_refresh", "Refresh platform health evidence", "Module 998", "native", new[] { "refresh_health_snapshot" }, "Rerun sanitized native checks and replace session findings.", "No infrastructure change; prior evidence remains in audit."),
+        new("service_recovery", "Service recovery", "Module 013 / Azure Operations", "azure_container_apps", new[] { "restart_service", "scale_service" }, "Preview service, revision, replicas, health probes, and expected impact.", "Return to the prior healthy revision or replica configuration."),
+        new("deployment_recovery", "Deployment rollback", "Modules 077 and 058", "azure_deployment", new[] { "rollback_deployment" }, "Require a known-good immutable revision and gate evidence.", "Restore the pre-change revision and verify API/web health."),
+        new("integration_recovery", "Integration delivery recovery", "Module 075", "integration_gateway", new[] { "replay_integration_event" }, "Validate payload, contract, idempotency, and quarantine release.", "Stop replay and re-quarantine failed deliveries."),
+        new("configuration_recovery", "Configuration refresh", "Modules 064-068", "configuration_adapter", new[] { "refresh_configuration" }, "Show changed non-secret references and affected services.", "Restore prior reference versions."),
+        new("database_recovery", "Database repair", "Database Operations", "database_runbook", new[] { "database_repair" }, "Require backup checkpoint, bounded SQL, lock/capacity review, and maintenance window.", "Use the approved restore or reversal script.")
     ];
 
-    private static object LockedGates() => new
-    {
-        sourceContractPresent = true,
-        executionAdapterConfigured = false,
-        productionAuthorizationRecorded = false,
-        separatedApprovalRecorded = false,
-        durableAuditStoreConfigured = false,
-        telemetryConnectorConfigured = false,
-        notificationAdapterConfigured = false,
-        aiExecutionAuthorized = false,
-        secretAccessAuthorized = false,
-        enabled = false
-    };
+    private static object[] OwnershipLinks() =>
+    [
+        new { id = "security-operations", name = "Security Operations", route = "#security-operations", owner = "Module 997" },
+        new { id = "service-control", name = "Service Control Center", route = "#service-control", owner = "Module 013" },
+        new { id = "cicd-pipeline", name = "CI/CD Pipeline", route = "#cicd-pipeline", owner = "Module 058" },
+        new { id = "release-control", name = "Release and Rollback", route = "#release-deployment-control", owner = "Module 077" },
+        new { id = "integration-gateway", name = "Integration Gateway", route = "#integration-event-gateway", owner = "Module 075" }
+    ];
 
     private static string[] Guardrails() =>
     [
-        "Actual-session authority is required; View-As never grants access.",
-        "Direct health is limited to the current session, authorization query, and SELECT 1.",
-        "Delegated or unknown status is never represented as healthy.",
-        "Raw logs, raw exceptions, secrets, tokens, connection strings, and private topology are excluded.",
-        "No production remediation, containment, notification, AI, deployment, promotion, or rollback action executes.",
-        "No request body is read by a locked operation.",
-        "Modules 002, 056E, 059, 062, and 064-074 remain preserved."
+        "Actual-session authority is required; View-As is read-only.",
+        "Diagnostic sessions store sanitized findings and never secret values or raw log bodies.",
+        "A requester cannot approve their own remediation.",
+        "Native health refresh changes diagnostic evidence only.",
+        "Production-changing actions return the exact missing adapter or authority instead of pretending to execute.",
+        "Verification reruns checks and retains before/after evidence."
     ];
 
-    private static async Task ConfirmDatabaseConnectionAsync(
-        NpgsqlConnection connection)
-    {
-        await using var command = new NpgsqlCommand("SELECT 1;", connection);
-        await command.ExecuteScalarAsync();
-    }
-
-    private static async Task<AuthorizationOutcome> OpenAuthorizedConnectionAsync(
-        HttpContext context)
-    {
-        var actualUserId = ActualSessionUserId(context);
-
-        if (actualUserId is null)
-        {
-            return new AuthorizationOutcome(
-                null,
-                null,
-                Results.Json(new
-                {
-                    module = ModuleNumber,
-                    status = "session_required",
-                    message = "A valid ProjectPulse session is required."
-                }, statusCode: StatusCodes.Status401Unauthorized));
-        }
-
-        var connectionString = BuildConnectionString();
-        if (string.IsNullOrWhiteSpace(connectionString))
-        {
-            return new AuthorizationOutcome(
-                null,
-                null,
-                Results.Json(new
-                {
-                    module = ModuleNumber,
-                    status = "authorization_dependency_unavailable",
-                    message = "System diagnostics authorization is temporarily unavailable."
-                }, statusCode: StatusCodes.Status503ServiceUnavailable));
-        }
-
-        var connection = new NpgsqlConnection(connectionString);
-
-        try
-        {
-            await connection.OpenAsync();
-
-            await using var command = new NpgsqlCommand("""
-                SELECT
-                    EXISTS (
-                        SELECT 1
-                        FROM app_user_role_assignments ura
-                        JOIN app_roles r
-                          ON r.app_role_id = ura.app_role_id
-                         AND r.is_active = TRUE
-                        LEFT JOIN app_role_permissions rp
-                          ON rp.app_role_id = r.app_role_id
-                        LEFT JOIN app_permissions p
-                          ON p.app_permission_id = rp.app_permission_id
-                        WHERE ura.user_id = @user_id
-                          AND ura.is_active = TRUE
-                          AND (
-                              upper(COALESCE(r.role_code, '')) IN (
-                                  'SUPER_ADMINISTRATOR', 'ADMINISTRATOR'
-                              )
-                              OR upper(COALESCE(p.permission_code, '')) IN (
-                                  'VIEW_SYSTEM_DIAGNOSTICS',
-                                  'MANAGE_SYSTEM_REMEDIATION',
-                                  'SYSTEM_ADMINISTRATION',
-                                  'MANAGE_ALL'
-                              )
-                          )
-                    ) AS can_view,
-                    EXISTS (
-                        SELECT 1
-                        FROM app_user_role_assignments ura
-                        JOIN app_roles r
-                          ON r.app_role_id = ura.app_role_id
-                         AND r.is_active = TRUE
-                        LEFT JOIN app_role_permissions rp
-                          ON rp.app_role_id = r.app_role_id
-                        LEFT JOIN app_permissions p
-                          ON p.app_permission_id = rp.app_permission_id
-                        WHERE ura.user_id = @user_id
-                          AND ura.is_active = TRUE
-                          AND (
-                              upper(COALESCE(r.role_code, '')) = 'SUPER_ADMINISTRATOR'
-                              OR upper(COALESCE(p.permission_code, '')) IN (
-                                  'MANAGE_SYSTEM_REMEDIATION', 'MANAGE_ALL'
-                              )
-                          )
-                    ) AS can_manage;
-                """, connection);
-
-            command.Parameters.AddWithValue("user_id", actualUserId.Value);
-            await using var reader = await command.ExecuteReaderAsync();
-            await reader.ReadAsync();
-
-            var canView = reader.GetBoolean(0);
-            var canManage = reader.GetBoolean(1);
-
-            if (!canView)
-            {
-                await connection.DisposeAsync();
-                return new AuthorizationOutcome(
-                    null,
-                    null,
-                    Results.Json(new
-                    {
-                        module = ModuleNumber,
-                        status = "diagnostic_access_required",
-                        message = "System diagnostics are restricted to authorized administrators."
-                    }, statusCode: StatusCodes.Status403Forbidden));
-            }
-
-            return new AuthorizationOutcome(
-                connection,
-                new DiagnosticAccess(canView, canManage),
-                null);
-        }
-        catch (Exception exception)
-        {
-            await connection.DisposeAsync();
-
-            var logger = context.RequestServices
-                .GetRequiredService<ILoggerFactory>()
-                .CreateLogger("SystemDiagnosticRemediationModule");
-
-            logger.LogWarning(
-                "Module 998 authorization dependency unavailable ({ExceptionType}).",
-                exception.GetType().Name);
-
-            return new AuthorizationOutcome(
-                null,
-                null,
-                Results.Json(new
-                {
-                    module = ModuleNumber,
-                    status = "authorization_dependency_unavailable",
-                    message = "System diagnostics authorization is temporarily unavailable."
-                }, statusCode: StatusCodes.Status503ServiceUnavailable));
-        }
-    }
-
-    private static object AccessResponse(
-        DiagnosticAccess access,
-        HttpContext context) => new
-    {
-        classification = "restricted_operations",
-        serverAuthorized = access.CanView,
-        canRequestRemediation = access.CanManage,
-        remediationExecutionEnabled = false,
-        authoritySource = "actual_projectpulse_session",
-        viewAsTransfersAuthority = false,
-        isViewAs = IsViewAs(context)
-    };
-
-    private static Guid? ActualSessionUserId(HttpContext context)
-    {
-        foreach (var key in new[]
-                 {
-                     "ProjectPulseActualUserId",
-                     "ProjectPulseSessionUserId"
-                 })
-        {
-            if (!context.Items.TryGetValue(key, out var value)) continue;
-            if (value is Guid userId) return userId;
-            if (Guid.TryParse(value?.ToString(), out var parsed)) return parsed;
-        }
-
-        return null;
-    }
-
-    private static bool IsViewAs(HttpContext context) =>
-        context.Items.TryGetValue("ProjectPulseIsViewAs", out var value)
-        && value is bool isViewAs
-        && isViewAs;
-
-    private static string? BuildConnectionString()
-    {
-        foreach (var name in new[]
-                 {
-                     "ConnectionStrings__DefaultConnection",
-                     "ConnectionStrings__ProjectPulse",
-                     "ConnectionStrings__ProjectTime",
-                     "PROJECTPULSE_CONNECTION_STRING",
-                     "PROJECTTIME_DATABASE_CONNECTION"
-                 })
-        {
-            var configured = Environment.GetEnvironmentVariable(name);
-            if (!string.IsNullOrWhiteSpace(configured)) return configured;
-        }
-
-        var host = Environment.GetEnvironmentVariable("PTP_DB_HOST");
-        var port = Environment.GetEnvironmentVariable("PTP_DB_PORT");
-        var database = Environment.GetEnvironmentVariable("PTP_DB_NAME");
-        var username = Environment.GetEnvironmentVariable("PTP_DB_USER");
-        var password = Environment.GetEnvironmentVariable("PTP_DB_PASSWORD");
-
-        if (string.IsNullOrWhiteSpace(host)
-            || string.IsNullOrWhiteSpace(database)
-            || string.IsNullOrWhiteSpace(username)
-            || string.IsNullOrWhiteSpace(password))
-        {
-            return null;
-        }
-
-        return new NpgsqlConnectionStringBuilder
-        {
-            Host = host,
-            Port = int.TryParse(port, out var parsedPort) ? parsedPort : 5432,
-            Database = database,
-            Username = username,
-            Password = password,
-            IncludeErrorDetail = false,
-            Pooling = true,
-            MinPoolSize = 0,
-            MaxPoolSize = 5
-        }.ConnectionString;
-    }
-
-    private static string RuntimeEnvironment()
-    {
-        var value = (
-            Environment.GetEnvironmentVariable("PROJECTPULSE_ENVIRONMENT")
-            ?? Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")
-            ?? "unknown").Trim().ToLowerInvariant();
-
-        if (value.Contains("prod", StringComparison.Ordinal)) return "production";
-        if (value.Contains("test", StringComparison.Ordinal)
-            || value.Contains("qa", StringComparison.Ordinal)
-            || value.Contains("uat", StringComparison.Ordinal)) return "test";
-        if (value.Contains("dev", StringComparison.Ordinal)) return "development";
-        if (value.Contains("local", StringComparison.Ordinal)) return "local";
-        return "runtime_managed";
-    }
-
-    private sealed record AuthorizationOutcome(
-        NpgsqlConnection? Connection,
-        DiagnosticAccess? Access,
-        IResult? Failure);
-
-    private sealed record DiagnosticAccess(bool CanView, bool CanManage);
-    private sealed record DiagnosticCategory(
-        string Id,
-        string Name,
-        string Owner,
-        string Description);
-    private sealed record DiagnosticCheck(
-        string Id,
-        string Name,
-        string Category,
-        string Status,
-        string ObservationMode,
-        string Owner,
-        string Detail,
-        string? Route);
-    private sealed record IssueClassifier(
-        string Severity,
-        int Order,
-        string Definition,
-        string ResponseExpectation);
-    private sealed record OwnershipLink(
-        string Id,
-        string Name,
-        string Route,
-        string Owner);
-    private sealed record Runbook(
-        string Id,
-        string Name,
-        string Owner,
-        string? Route,
-        string[] Steps);
+    private sealed record ManagedBody<T>(NpgsqlConnection Connection, SecurityDiagnosticsOperations.AccessContext Access, T Request);
+    private sealed record CreateSessionRequest(Guid? IncidentId, string? TargetKind, string? TargetReference, string? Note);
+    private sealed record PrepareRemediationRequest(Guid DiagnosticSessionId, string? RunbookCode, string? ActionCode, string? TargetReference, string? Justification);
+    private sealed record RemediationActionRequest(Guid RemediationRequestId, string? Note);
+    private sealed record DiagnosticFinding(string CheckCode, string Category, string Status, string Severity, string Summary, object Evidence);
+    private sealed record DiagnosticSummary(int Total, int Healthy, int Warning, int Failed, int Unknown);
+    private sealed record Runbook(string Id, string Name, string Owner, string Adapter, string[] Actions, string Preview, string Rollback);
 }

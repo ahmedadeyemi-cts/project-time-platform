@@ -1,18 +1,18 @@
 # Module 997 Integration Boundary
 
-| Future adapter | Owner | Current state |
+| Integration | Owner | State |
 |---|---|---|
-| Security telemetry / SIEM | Separately approved security connector | Not configured |
-| Threat intelligence | Separately approved licensed/public-source adapter | Not configured |
-| Endpoint containment | Separately approved endpoint platform | Not configured |
-| Network containment | Separately approved network platform | Not configured |
-| Identity containment | Separately approved Entra adapter | Not configured |
-| Durable cases | Separately approved incident store/database change | Not configured |
-| AI analysis | Module 064 shared AI router | Not authorized; no call |
-| External notification | Module 067 shared mail | Not authorized; no call |
-| Controlled remediation | Module 998 | Parallel draft handoff only; no call |
+| ProjectPulse authentication and session telemetry | Module 997 | Connected |
+| ProjectPulse incident and response store | Migration 033 / Module 997 | Operational activation |
+| Controlled diagnostics | Module 998 | Connected through incident handoff |
+| Native session revocation | Module 997 | Explicit runtime switch |
+| Entra user containment | Identity adapter | Not configured |
+| WAF/network blocking | Network security adapter | Not configured |
+| Endpoint isolation | Endpoint security adapter | Not configured |
+| Integration quarantine | Module 075 adapter | Not configured |
+| AI analysis | Module 064 | Not authorized for security evidence |
+| External notification | Module 067 | Not authorized for incident data |
 
-Adding a product name, environment variable, or secret is not sufficient to
-enable an adapter. Each adapter requires authorization, security review,
-sanitized error behavior, health/freshness evidence, rate limits, auditability,
-rollback, and production approval.
+Every external adapter requires least privilege, sanitized errors, health and
+freshness evidence, rate limits, audit, rollback, and separate production
+approval.

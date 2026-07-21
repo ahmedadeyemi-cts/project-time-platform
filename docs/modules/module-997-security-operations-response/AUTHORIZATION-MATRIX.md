@@ -1,16 +1,16 @@
 # Module 997 Authorization Matrix
 
-Authorization is evaluated on the server from the actual ProjectPulse user ID.
-View-As never grants or transfers security authority.
+Authority is evaluated from `ProjectPulseActualUserId` or the normal
+`ProjectPulseSessionUserId`. View-As never transfers authority.
 
-| Capability | Role or permission contract | Source behavior |
+| Capability | Required authority | Additional control |
 |---|---|---|
-| View security center | `SUPER_ADMINISTRATOR`, `ADMINISTRATOR`, `SECURITY_ANALYST`, `SECURITY_OPERATIONS`, `SECURITY_INCIDENT_COMMANDER`, `VIEW_SECURITY_OPERATIONS`, `MANAGE_SECURITY_RESPONSE`, `SYSTEM_ADMINISTRATION`, or `MANAGE_ALL` | Read sanitized policy and readiness contracts |
-| Request future response | `SUPER_ADMINISTRATOR`, `SECURITY_INCIDENT_COMMANDER`, `MANAGE_SECURITY_RESPONSE`, or `MANAGE_ALL` | Authority is reported; execution remains locked |
-| Contain, eradicate, recover | Separate incident authority plus future approved adapter | HTTP 423; no body read or action |
-| Notify or export | Separate communication/evidence authority | HTTP 423; no transmission |
-| Configure connectors or secrets | Separate module and infrastructure authority | No endpoint exists |
+| View telemetry, sessions, alerts, and incidents | Security/admin role, `VIEW_SECURITY_OPERATIONS`, `SYSTEM_ADMINISTRATION`, or `MANAGE_ALL` | Restricted security classification |
+| Declare, acknowledge, and update incidents | `MANAGE_SECURITY_RESPONSE`, `MANAGE_ALL`, Super Administrator, or Incident Commander | View-As blocked and audited |
+| Prepare containment | Management authority | Creates `awaiting_approval` only |
+| Approve containment | Management authority | Requester/approver separation of duties enforced in API and database |
+| Execute native session revocation | Approved request plus management authority | Explicit runtime switch and active-session target required |
+| Execute external containment | Approved request plus owning adapter authority | HTTP 423 until adapter is configured |
 
-Analysts cannot self-authorize containment. Incident commanders cannot bypass
-evidence review, change control, business verification, or separately authorized
-production execution.
+The initiating actor cannot approve their own request. All incident and response
+mutations write Module 997 audit evidence.

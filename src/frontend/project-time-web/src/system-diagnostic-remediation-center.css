@@ -9,6 +9,58 @@
   gap: 20px;
 }
 
+.system-diagnostic-mode.is-live { color: var(--diagnostic-green); background: rgba(25, 135, 84, .12); }
+.system-diagnostic-result { display: flex; flex-wrap: wrap; gap: 8px; padding: 14px 17px; border: 1px solid var(--pulse-card-border); border-radius: 16px; background: var(--pulse-card-bg); }
+.system-diagnostic-result.is-success { border-color: rgba(25, 135, 84, .38); background: rgba(25, 135, 84, .08); }
+.system-diagnostic-result.is-failure { border-color: rgba(180, 35, 24, .38); background: rgba(180, 35, 24, .08); }
+.system-diagnostic-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.system-diagnostic-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.system-diagnostic-form label { display: grid; gap: 6px; color: var(--pulse-muted); font-size: .82rem; font-weight: 800; }
+.system-diagnostic-form .is-wide { grid-column: 1 / -1; }
+.system-diagnostic-form input,
+.system-diagnostic-form select,
+.system-diagnostic-form textarea { width: 100%; min-width: 0; border: 1px solid var(--pulse-card-border); border-radius: 10px; padding: 10px 11px; color: var(--pulse-text); background: var(--pulse-card-bg); font: inherit; }
+.system-diagnostic-form textarea { min-height: 88px; resize: vertical; }
+.system-diagnostic-form button,
+.system-diagnostic-table button,
+.system-diagnostic-row-actions button { width: fit-content; border: 0; border-radius: 10px; padding: 9px 12px; color: #fff; background: var(--diagnostic-blue); font-weight: 850; cursor: pointer; }
+.system-diagnostic-form button:disabled,
+.system-diagnostic-table button:disabled,
+.system-diagnostic-row-actions button:disabled { cursor: not-allowed; opacity: .55; }
+.system-diagnostic-checks { display: grid; gap: 9px; }
+.system-diagnostic-checks > article { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 10px; padding: 12px; border: 1px solid var(--pulse-card-border); border-radius: 13px; }
+.system-diagnostic-checks p { margin: 4px 0; }
+.system-diagnostic-checks small { color: var(--pulse-muted); }
+.diagnostic-badge { display: inline-flex; width: fit-content; padding: 5px 8px; border-radius: 999px; font-size: .7rem; font-weight: 900; }
+.diagnostic-badge.is-danger { color: var(--diagnostic-red); background: rgba(180, 35, 24, .11); }
+.diagnostic-badge.is-warning { color: var(--diagnostic-amber); background: rgba(199, 120, 0, .11); }
+.diagnostic-badge.is-success { color: var(--diagnostic-green); background: rgba(25, 135, 84, .11); }
+.diagnostic-badge.is-info { color: var(--diagnostic-blue); background: rgba(0, 91, 170, .11); }
+.system-diagnostic-table-wrap { overflow-x: auto; }
+.system-diagnostic-table { width: 100%; border-collapse: collapse; }
+.system-diagnostic-table th,
+.system-diagnostic-table td { padding: 12px 10px; border-bottom: 1px solid var(--pulse-card-border); text-align: left; vertical-align: top; }
+.system-diagnostic-table td:first-child { display: grid; gap: 4px; min-width: 220px; }
+.system-diagnostic-table small { color: var(--pulse-muted); }
+.system-diagnostic-evidence-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.system-diagnostic-evidence-grid article { display: grid; align-content: start; gap: 8px; padding: 14px; border: 1px solid var(--pulse-card-border); border-radius: 14px; }
+.system-diagnostic-evidence-grid p { margin-bottom: 0; }
+.system-diagnostic-evidence-grid small { color: var(--pulse-muted); }
+.system-diagnostic-preview { display: grid; gap: 5px; padding: 12px; border-left: 4px solid var(--diagnostic-cyan); background: rgba(0, 166, 206, .07); }
+.system-diagnostic-preview small { color: var(--pulse-muted); }
+.system-diagnostic-remediation-queue { display: grid; gap: 10px; }
+.system-diagnostic-remediation-queue > article { display: grid; gap: 7px; padding: 13px; border: 1px solid var(--pulse-card-border); border-radius: 14px; }
+.system-diagnostic-remediation-queue > article > div:first-child { display: flex; align-items: center; gap: 9px; }
+.system-diagnostic-remediation-queue p { margin-bottom: 0; }
+.system-diagnostic-remediation-queue small { color: var(--pulse-muted); }
+.system-diagnostic-row-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+
+@media (max-width: 860px) {
+  .system-diagnostic-grid,
+  .system-diagnostic-form { grid-template-columns: 1fr; }
+  .system-diagnostic-form .is-wide { grid-column: auto; }
+}
+
 .system-diagnostic-center h1,
 .system-diagnostic-center h2,
 .system-diagnostic-center h3,
