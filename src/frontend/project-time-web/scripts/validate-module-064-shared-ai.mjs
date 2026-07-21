@@ -71,6 +71,11 @@ assert('MODULE_064_WRITE_ONLY_SECRET_ENDPOINT', moduleBackend.includes('MapPut('
 assert('MODULE_064_ENCRYPTED_SECRET_STORE', secretStore.includes('AesGcm') && secretStore.includes('PROJECTPULSE_AI_SECRET_ENCRYPTION_KEY') && secretStore.includes('CryptographicOperations.ZeroMemory'));
 assert('MODULE_064_SANITIZED_SECRET_AUDIT', secretStore.includes('ai_provider_secret_audit') && !secretStore.includes('api_key'));
 assert('MODULE_064_SAME_ORIGIN_WRITE', moduleBackend.includes('SameOrigin(context)'));
+assert('MODULE_064_PROXY_SAFE_ORIGIN', moduleBackend.includes('context.Request.Host.Port is null'));
+assert('MODULE_064_MODEL_MANAGEMENT', moduleBackend.includes('/providers/{providerCode}/model') && center.includes('Save and test') && configuration.includes('ApplyStoredModel'));
+assert('MODULE_064_ENABLE_DISABLE', moduleBackend.includes('/providers/{providerCode}/enabled') && center.includes("provider.enabled ? 'Disable' : 'Enable'") && configuration.includes('ApplyStoredEnabled'));
+assert('MODULE_064_REPLICA_SYNCHRONIZATION', secretStore.includes('ProjectPulseAiConfigurationSynchronizer') && secretStore.includes('LoadEnabledAsync'));
+assert('MODULE_064_MODEL_ROLLBACK', moduleBackend.includes('The previous model remains active') && moduleBackend.includes('previousModel'));
 assert('MODULE_064_NO_MUTATING_SQL', !/\b(INSERT|UPDATE|DELETE|ALTER|CREATE|DROP)\b/i.test(moduleBackend.replaceAll('configuration updates', '')));
 assert('MODULE_064_PROGRAM_ENDPOINT_MAP', count(program, 'app.MapAiProviderConfigurationEndpoints();') === 1);
 assert('MODULE_064_SYSTEM_STATUS_USES_SHARED_HEALTH', program.includes('"Shared AI Provider Router"') && program.includes('aiHealth.Snapshots()'));

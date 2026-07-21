@@ -30,6 +30,18 @@ and records only provider, version, actor, action, and timestamp in audit. Key
 values cannot be read back through the UI or API. Replacement is immediate;
 rollback and key deletion are not exposed.
 
+Provider model and enabled state are stored separately from the encrypted key.
+Administrators can change models only through the approved dropdown; activation
+requires a successful provider check and a failed check restores the prior model.
+Disabling a provider stops routing and remote probes without deleting its key or
+model. Configuration is reloaded from the shared database on status reads and
+synchronized across API replicas.
+
+Same-origin mutation checks compare the browser origin with the public request
+host. When the host does not explicitly contain a port, the check does not infer
+the API container's internal HTTP port, which keeps HTTPS requests valid behind
+Azure's reverse proxy without trusting client-supplied forwarding headers.
+
 ## Core runtime variables
 
 | Variable | Default | Constraint |

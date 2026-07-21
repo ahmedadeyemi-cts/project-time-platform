@@ -51,6 +51,12 @@ an availability failure and never causes a request to be sent to another provide
   feature routes, and secret version metadata.
 - Write-only Claude and OpenAI key entry with AES-256-GCM encrypted database
   storage, immediate activation, and sanitized replacement audit.
+- Administrator model dropdowns with save-and-test activation and automatic
+  rollback when the stored key cannot verify the selected model.
+- Persistent Enable/Disable controls that preserve each provider's encrypted key
+  and model while removing disabled providers from routing and health probes.
+- Proxy-safe same-origin validation and shared-database synchronization across
+  API replicas.
 - Migration of the existing timesheet-description generator from a direct Claude
   call to the Module 064 router.
 - Shared API Status Dashboard integration.

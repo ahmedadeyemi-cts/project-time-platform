@@ -90,3 +90,22 @@ the 32-byte base64 `PROJECTPULSE_AI_SECRET_ENCRYPTION_KEY` bootstrap secret.
 
 There is no key-read, rollback, or delete endpoint. Replacing a key activates the
 new version immediately and records sanitized audit metadata.
+
+## Change and test provider model
+
+`PUT /api/ai-configuration/providers/{providerCode}/model`
+
+Administrator-only and same-origin. The JSON body is `{ "model": "..." }` and
+must name a model returned in that provider's `approvedModels` list. The provider
+must already have a saved key. The selected model is persisted, activated, and
+tested with the stored key. A failed test restores the previous model without
+returning or replacing the key.
+
+## Enable or disable provider
+
+`PUT /api/ai-configuration/providers/{providerCode}/enabled`
+
+Administrator-only and same-origin. The JSON body is `{ "enabled": true }` or
+`{ "enabled": false }`. Disabling removes the provider from routing and health
+calls while preserving its encrypted key and model. Enabling requires a saved
+key and initiates a provider health check.

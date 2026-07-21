@@ -8,6 +8,7 @@ public static class ProjectPulseAiServiceCollectionExtensions
         services.AddSingleton<ProjectPulseAiConfiguration>();
         services.AddSingleton<ProjectPulseAiSecretStore>();
         services.AddHostedService<ProjectPulseAiSecretLoader>();
+        services.AddHostedService<ProjectPulseAiConfigurationSynchronizer>();
         services.AddSingleton<ProjectPulseAiHealthRegistry>();
         services.AddSingleton<ProjectPulseClaudeProvider>();
         services.AddSingleton<ProjectPulseOpenAiProvider>();
