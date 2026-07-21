@@ -76,9 +76,13 @@ const catalog = readRequiredFile('CATALOG', paths.catalog);
 const register = readRequiredFile('WORK_REGISTER', paths.register);
 const tracker = readRequiredFile('PRODUCTION_TRACKER', paths.tracker);
 
+const legacyWorkspaceExclusion = app.match(
+  /\{\s*!\s*\[([\s\S]*?)\]\.includes\(activeRoute\)\s*\?\s*\(/
+)?.[1] ?? '';
+
 assertInvariant(
   'MODULE_076_STANDALONE_ROUTE',
-  app.includes("'defect-tracker',\n        'security-operations'") || app.includes("'defect-tracker',\r\n        'security-operations'"),
+  legacyWorkspaceExclusion.includes("'defect-tracker'"),
   'Defect Tracker excludes the legacy workspace fallback'
 );
 
