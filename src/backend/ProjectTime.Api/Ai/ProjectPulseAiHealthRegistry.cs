@@ -63,6 +63,8 @@ public sealed class ProjectPulseAiHealthRegistry
             state.Enabled = configuration.Enabled;
             state.Configured = configuration.Configured;
             if (configuration.Configured && state.Status == "not_configured") state.Status = "not_checked";
+            if (!configuration.Configured) state.ProbeStatus = "not_configured";
+            else if (state.ProbeStatus == "not_configured") state.ProbeStatus = "not_checked";
         }
     }
 
@@ -138,13 +140,28 @@ public sealed class ProjectPulseAiHealthRegistry
 
     public void RecordProbe(ProjectPulseAiProbeResult result)
     {
-        if (result.Available)
-        {
-            RecordSuccess(result.Provider, null, result.RequestId, "health_check_success");
-            return;
-        }
+        if (!_states.TryGetValue(result.Provider, out var state)) return;
 
-        RecordFailure(result.Provider, result.Code, result.RequestId);
+        lock (state.Sync)
+        {
+            var now = DateTimeOffset.UtcNow;
+            state.LastProbeAt = now;
+            state.LastProbeRequestId = result.RequestId;
+
+            if (result.Available)
+            {
+                state.ProbeStatus = "available";
+                state.LastProbeSuccessAt = now;
+                state.LastProbeFailureCode = null;
+                state.ProbeSuccessCount++;
+                return;
+            }
+
+            state.ProbeStatus = "degraded";
+            state.LastProbeFailureAt = now;
+            state.LastProbeFailureCode = SanitizeCode(result.Code);
+            state.ProbeFailureCount++;
+        }
     }
 
     public IReadOnlyList<ProjectPulseAiProviderHealthSnapshot> Snapshots()
@@ -191,7 +208,15 @@ public sealed class ProjectPulseAiHealthRegistry
                 state.InputTokens,
                 state.OutputTokens,
                 state.LastRequestId,
-                state.RateLimits);
+                state.RateLimits,
+                state.ProbeStatus,
+                state.LastProbeAt,
+                state.LastProbeSuccessAt,
+                state.LastProbeFailureAt,
+                state.LastProbeFailureCode,
+                state.ProbeSuccessCount,
+                state.ProbeFailureCount,
+                state.LastProbeRequestId);
         }
     }
 
@@ -229,6 +254,14 @@ public sealed class ProjectPulseAiHealthRegistry
         public long? OutputTokens { get; set; }
         public string? LastRequestId { get; set; }
         public ProjectPulseAiRateLimits? RateLimits { get; set; }
+        public required string ProbeStatus { get; set; }
+        public DateTimeOffset? LastProbeAt { get; set; }
+        public DateTimeOffset? LastProbeSuccessAt { get; set; }
+        public DateTimeOffset? LastProbeFailureAt { get; set; }
+        public string? LastProbeFailureCode { get; set; }
+        public long ProbeSuccessCount { get; set; }
+        public long ProbeFailureCount { get; set; }
+        public string? LastProbeRequestId { get; set; }
 
         public static ProviderState Remote(ProjectPulseAiProviderConfiguration configuration) => new()
         {
@@ -240,7 +273,8 @@ public sealed class ProjectPulseAiHealthRegistry
                 : configuration.Configured
                     ? "not_checked"
                     : "not_configured",
-            LastOutcome = "none"
+            LastOutcome = "none",
+            ProbeStatus = configuration.Configured ? "not_checked" : "not_configured"
         };
 
         public static ProviderState Local() => new()
@@ -249,7 +283,8 @@ public sealed class ProjectPulseAiHealthRegistry
             Enabled = true,
             Configured = true,
             Status = "available",
-            LastOutcome = "ready"
+            LastOutcome = "ready",
+            ProbeStatus = "available"
         };
     }
 }

@@ -106,7 +106,15 @@ public sealed record ProjectPulseAiProviderHealthSnapshot(
     long? InputTokens,
     long? OutputTokens,
     string? LastRequestId,
-    ProjectPulseAiRateLimits? RateLimits);
+    ProjectPulseAiRateLimits? RateLimits,
+    string ProbeStatus,
+    DateTimeOffset? LastProbeAt,
+    DateTimeOffset? LastProbeSuccessAt,
+    DateTimeOffset? LastProbeFailureAt,
+    string? LastProbeFailureCode,
+    long ProbeSuccessCount,
+    long ProbeFailureCount,
+    string? LastProbeRequestId);
 
 public interface IProjectPulseAiProvider
 {

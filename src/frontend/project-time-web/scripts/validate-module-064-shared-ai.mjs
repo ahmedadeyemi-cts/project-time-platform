@@ -60,6 +60,9 @@ assert('MODULE_064_CLAUDE_MESSAGES_API', providers.includes('"/messages"') && pr
 assert('MODULE_064_OPENAI_RESPONSES_API', providers.includes('"/responses"') && providers.includes('output_text'));
 assert('MODULE_064_CLAUDE_SONNET5_SAMPLING_SAFE', !providers.includes('temperature = request.Temperature') && !providers.includes('top_p') && !providers.includes('top_k'));
 assert('MODULE_064_GENERATION_HEALTH_PROBES', providers.includes('GenerationProbe') && providers.includes('ProbeRequest') && !providers.includes('HttpMethod.Get'));
+assert('MODULE_064_OPENAI_PROBE_TOKEN_MINIMUM', providers.includes('MaxOutputTokens: 16'));
+assert('MODULE_064_PROBE_TELEMETRY_ISOLATED', health.includes('ProbeSuccessCount') && health.includes('ProbeFailureCount') && !/RecordProbe[\\s\\S]*RecordSuccess/.test(health) && !/RecordProbe[\\s\\S]*RecordFailure/.test(health));
+assert('MODULE_064_AVAILABILITY_USES_PROBE_STATUS', moduleBackend.includes('item.ProbeStatus == "available"') && center.includes('statusClass(health.probeStatus)'));
 assert('MODULE_064_SANITIZED_ATTEMPT_DIAGNOSTICS', router.includes('HttpStatus={HttpStatus}') && router.includes('RequestId={RequestId}') && !router.includes('result.Message'));
 assert('MODULE_064_MODEL_ALLOWLISTS', providers.includes('IsModelApproved') && configuration.includes('APPROVED_MODELS'));
 assert('MODULE_064_SANITIZED_REMOTE_ERRORS', !providers.includes('Exception.Message') && !router.includes('exception.Message'));

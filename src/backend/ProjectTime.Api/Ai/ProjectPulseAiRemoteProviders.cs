@@ -417,7 +417,9 @@ internal static class ProjectPulseAiHttp
         ProjectPulseAiFeatures.TimesheetDescription,
         "Return only the requested word.",
         "Return OK.",
-        MaxOutputTokens: 8,
+        // OpenAI Responses requires max_output_tokens to be at least 16. Keep
+        // the shared probe valid for every governed provider adapter.
+        MaxOutputTokens: 16,
         Temperature: 0);
 
     public static ProjectPulseAiProbeResult GenerationProbe(ProjectPulseAiProviderResult result, string displayName) =>
