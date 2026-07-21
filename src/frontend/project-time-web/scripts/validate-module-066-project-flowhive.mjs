@@ -95,6 +95,18 @@ assertInvariant(
   'Project FlowHive excludes the legacy workspace fallback'
 );
 
+const nativeAdministrationRoutes = app.match(
+  /const MODULE_064_074_NATIVE_ADMINISTRATION_ROUTES = Object\.freeze\(\{([\s\S]*?)\}\);/
+)?.[1] ?? '';
+
+assertInvariant(
+  'MODULE_066_NO_NATIVE_ADMINISTRATION_ROUTE_COLLISION',
+  nativeAdministrationRoutes.length > 0 &&
+    !nativeAdministrationRoutes.includes("'project-flowhive'") &&
+    !nativeAdministrationRoutes.includes("'066'"),
+  'Project FlowHive cannot be rendered by NativeModuleAdministrationPanel'
+);
+
 assertInvariant(
   'MODULE_066_TYPED_MAP_METHOD',
   backend.includes('MapProjectFlowHiveEndpoints') &&
