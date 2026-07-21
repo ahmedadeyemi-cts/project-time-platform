@@ -1,6 +1,9 @@
 .git
 .gitignore
-.github
+.github/*
+!.github/ISSUE_TEMPLATE
+.github/ISSUE_TEMPLATE/*
+!.github/ISSUE_TEMPLATE/projectpulse-defect.yml
 
 **/bin
 **/obj
