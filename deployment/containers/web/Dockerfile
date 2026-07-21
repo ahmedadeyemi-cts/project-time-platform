@@ -61,6 +61,9 @@ COPY src/backend/ProjectTime.Api/Modules/ProjectFlowHiveBrandAssets.cs \
 COPY src/backend/ProjectTime.Api/Modules/ProjectFlowHiveArtifactRenderer.cs \
      src/backend/ProjectTime.Api/Modules/ProjectFlowHiveArtifactRenderer.cs
 
+COPY src/backend/ProjectTime.Api/Modules/SecurityOperationsResponseModule.cs \
+     src/backend/ProjectTime.Api/Modules/SecurityOperationsResponseModule.cs
+
 COPY src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs \
      src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs
 
@@ -129,6 +132,9 @@ COPY docs/modules/module-073-sales-coverage-alignment/ \
 
 COPY docs/modules/module-074-oem-vendor-directory/ \
      docs/modules/module-074-oem-vendor-directory/
+
+COPY docs/modules/module-997-security-operations-response/ \
+     docs/modules/module-997-security-operations-response/
 
 COPY docs/modules/module-998-system-diagnostic-remediation/ \
      docs/modules/module-998-system-diagnostic-remediation/

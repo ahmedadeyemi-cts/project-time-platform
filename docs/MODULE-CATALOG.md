@@ -17,14 +17,13 @@
   documentation, and dependency impacts are explicitly approved.
 - Customer-facing PDF and Excel artifacts use the approved US Signal logo.
 
-Current integration base: `main@13b945247d89db26136129ac8fbbe8e92ff84159`.
-It includes the merged Modules 064–074 source, the Modules 071/072 GET-only
-public-session bypass, and the Module 072 JSON-array normalization correction.
-The current test deployment is GitHub Actions run `29789119238`; targeted public
-runtime checks for Modules 071 and 072 return HTTP 200 while native schema access
-without a session remains HTTP 401.
+Current deployed baseline: `main@44e73c4283a33b85ed0dd2832e93059ada37335f`.
+It includes the Modules 071/072 runtime repairs and the merged fail-closed Module
+998 source. Test deployment run `29791085444` verified healthy API/web revisions,
+public Modules 071/072 HTTP 200 responses, protected native and Module 998 HTTP
+401 barriers, and the Module 998 web bundle.
 
-## Installed modules on integration base `main@13b945247d89db26136129ac8fbbe8e92ff84159`
+## Installed modules on deployed baseline `main@44e73c4283a33b85ed0dd2832e93059ada37335f`
 
 | Module | Current title | Route/scope | Source state | Governance note |
 |---|---|---|---|---|
@@ -92,7 +91,7 @@ without a session remains HTTP 401.
 | 072 | OneAssist Routing PIN Directory | Deployed test source with native persistence, verified public GET access, and JSON-array normalization fix | Current main through PRs 35–36 | ProjectPulse PostgreSQL | Public bypass is GET-only; native APIs remain authenticated; Cloudflare settings and database state are unchanged |
 | 073 | Sales Coverage Alignment | Installed unsaved-draft source through merged PR 24 | Consolidated 064–074 release train | Module 062 identity and future audited alignment persistence | Persistence remains locked pending database authorization |
 | 074 | OEM & Vendor Directory | Installed unsaved-draft source through merged PR 24 | Consolidated 064–074 release train | Future audited vendor persistence | Persistence remains locked pending database authorization |
-| 998 | System Diagnostic & Controlled Remediation Center | Validated complete fail-closed current-main replay | Module 998 integration branch | Modules 013–017, 058, 064, 067, 068; future Module 997 security signals | Telemetry, AI, notifications, containment, remediation, promotion, rollback, secrets, and persistence remain locked |
+| 998 | System Diagnostic & Controlled Remediation Center | Merged through PR 37 and deployed to test in run 29791085444 | Current main | Modules 013–017, 058, 064, 067, 068; Module 997 security signals remain independently owned | Authenticated diagnostics are installed; remediation, AI, notifications, containment, promotion, rollback, secrets, and external connectors remain locked |
 
 Historical PR 24 catalog marker retained for the protected Module 068 validator
 (the current Module 067 status is the installed-source row above):
@@ -139,6 +138,21 @@ Historical PR 24 catalog marker retained for the protected Module 068 validator
 - Module 062 remains the shared identity and normalized presence authority.
 - Current Module 001 and Module 002 workflows are not replaced by new-module work.
 - A new route must remain inside the existing authenticated application shell.
+
+## Module 997 — Security Operations, Threat Intelligence & Response Center
+
+| Field | Current integration status |
+|---|---|
+| Number | 997 |
+| Workspace | `/home/ahmed/project-time-platform-module-997-integration-20260721` |
+| Branch | `integration/module-997-current-main-20260721` |
+| Base | `main@44e73c4283a33b85ed0dd2832e93059ada37335f`; recovery source `fc4dafa34783fd6b8f5557e7feee8f7626d86766` |
+| Status | Validated complete fail-closed current-main replay; integration commit and ready PR next |
+| Dependencies | Modules 010, 012–017, 037, 058, 059, 062, 064, 067, 068; deployed Module 998 remains independent |
+| Locked boundary | Telemetry, threat feeds, incident persistence, AI, containment, eradication, recovery, notifications, evidence export, secrets, and every external adapter |
+
+Module 997 preserves deployed Module 998 registrations while retaining separate
+authorization, source ownership, UI, and fail-closed execution boundaries.
 
 ## PROJECTPULSE_NATIVE_POSTGRESQL_MIGRATION_031
 
