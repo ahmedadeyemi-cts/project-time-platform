@@ -95,6 +95,17 @@ assertInvariant(
   'Project FlowHive excludes the legacy workspace fallback'
 );
 
+const flowHiveRouteStart = app.indexOf('MODULE_066A1_PROJECT_FLOWHIVE_ROUTE_START');
+const legacyWorkspaceExclusionStart = app.indexOf("{![\n        'ai-provider-configuration'");
+
+assertInvariant(
+  'MODULE_066_INDEPENDENT_ROUTE_MOUNT',
+  flowHiveRouteStart >= 0 &&
+    legacyWorkspaceExclusionStart >= 0 &&
+    flowHiveRouteStart < legacyWorkspaceExclusionStart,
+  'Project FlowHive mounts before and outside the legacy workspace exclusion'
+);
+
 const nativeAdministrationRoutes = app.match(
   /const MODULE_064_074_NATIVE_ADMINISTRATION_ROUTES = Object\.freeze\(\{([\s\S]*?)\}\);/
 )?.[1] ?? '';
