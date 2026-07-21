@@ -100,6 +100,9 @@ COPY src/backend/ProjectTime.Api/Modules/OemVendorDirectoryModule.cs \
 COPY src/backend/ProjectTime.Api/Modules/DefectTrackerModule.cs \
      src/backend/ProjectTime.Api/Modules/DefectTrackerModule.cs
 
+COPY src/backend/ProjectTime.Api/Modules/GovernedOperationsReadModule.cs \
+     src/backend/ProjectTime.Api/Modules/GovernedOperationsReadModule.cs
+
 COPY src/backend/ProjectTime.Api/Modules/IntegrationEventGatewayModule.cs \
      src/backend/ProjectTime.Api/Modules/IntegrationEventGatewayModule.cs
 
