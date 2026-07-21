@@ -19,6 +19,9 @@ WORKDIR /workspace
 COPY src/frontend/project-time-web/ \
      src/frontend/project-time-web/
 
+COPY .github/ISSUE_TEMPLATE/projectpulse-defect.yml \
+     .github/ISSUE_TEMPLATE/projectpulse-defect.yml
+
 COPY src/backend/ProjectTime.Api/Program.cs \
      src/backend/ProjectTime.Api/Program.cs
 

@@ -426,6 +426,7 @@ assertInvariant(
   'MODULE_076_CONTAINER_CONTEXT',
   dockerfile.includes('DefectTrackerModule.cs')
     && dockerfile.includes('module-076-defect-tracker')
+    && dockerfile.includes('.github/ISSUE_TEMPLATE/projectpulse-defect.yml')
     && dockerfile.includes('ApprovalCenterModule.cs')
     && dockerfile.includes('IdentityProfileModule.cs')
     && dockerfile.includes('GlobalMailConfigurationModule.cs')
