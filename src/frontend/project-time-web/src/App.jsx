@@ -610,6 +610,7 @@ import OneAssistRoutingDirectoryCenter from './OneAssistRoutingDirectoryCenter.j
 import SalesCoverageAlignmentCenter from './SalesCoverageAlignmentCenter.jsx';
 import OemVendorDirectoryCenter from './OemVendorDirectoryCenter.jsx';
 import SystemDiagnosticRemediationCenter from './SystemDiagnosticRemediationCenter.jsx';
+import DefectTrackerCenter from './DefectTrackerCenter.jsx';
 import ProjectManagerWorkloadCenter from './ProjectManagerWorkloadCenter.jsx';
 import EngineeringTeamLeadUtilizationPanel from './EngineeringTeamLeadUtilizationPanel.jsx';
 import WorkTaskBuilderPanel from './WorkTaskBuilderPanel.jsx';
@@ -2180,6 +2181,14 @@ const roleWorkspaceModules = [
     description: 'View and prepare a validated US Signal-branded OEM and vendor directory draft with governed role-aware editing.',
     permissions: []
   },
+  {
+    route: 'defect-tracker',
+    href: '#defect-tracker',
+    title: 'Defect Intake & Resolution Tracker',
+    navLabel: 'MODULE 076',
+    description: 'Report and track defects from ProjectPulse Help, GitHub, Claude through GitHub, and ChatGPT through GitHub with identity-backed assignment and governed notification contracts.',
+    permissions: []
+  },
   /* MODULES_064_074_RELEASE_TRAIN_NAV_END */
   /* MODULE_998_SYSTEM_DIAGNOSTICS_NAV_START */
   {
@@ -2376,6 +2385,7 @@ function getNavigationGroup(item) {
     case 'project-flowhive':
       return 'Project Workspace';
     case 'user-guide':
+    case 'defect-tracker':
       return 'Help & Documentation';
     case 'opportunities':
     case 'sales-intake':
@@ -3002,6 +3012,7 @@ function buildRoleNavigationModel(user, navigationItems) {
   const routeOrder = [
       "timesheet",
       "user-guide",
+      "defect-tracker",
       "ai-time-entry",
       "manager-approval",
       "utilization",
@@ -3262,6 +3273,15 @@ function getInstalledProjectPulseModuleRegistry() {
     group: 'Sales & Opportunities',
     permissions: [],
     description: 'Provides a US Signal-branded, role-governed OEM and vendor directory draft with validation and export.'
+  },
+  {
+    route: 'defect-tracker',
+    title: 'Defect Intake & Resolution Tracker',
+    navLabel: 'MODULE 076',
+    status: 'Complete source · fail-closed persistence',
+    group: 'Help & Documentation',
+    permissions: [],
+    description: 'Provides a US Signal-branded defect register, Help and GitHub intake contracts, identity-backed assignment, dates, comments, resolution timing, and locked notification automation.'
   },
   /* MODULES_064_074_RELEASE_TRAIN_INSTALLED_REGISTRY_END */
   /* MODULE_998_SYSTEM_DIAGNOSTICS_INSTALLED_REGISTRY_START */
@@ -3712,6 +3732,7 @@ function getInstalledModuleDescription(module) {
     'sales-coverage-alignment': 'Shows current coverage signals and a validated effective-dated alignment draft backed by ProjectPulse identities.',
     'oem-vendor-directory': 'Shows a validated, US Signal-branded OEM and vendor directory draft with governed role-aware editing.',
     'system-diagnostics': 'Shows sanitized system diagnostics, ownership, evidence, runbooks, and fail-closed controlled-remediation readiness.',
+    'defect-tracker': 'Shows the governed defect register and intake surface for Help, GitHub, Claude through GitHub, and ChatGPT through GitHub with automatic-ID, identity assignment, date, resolution, comment, and notification contracts.',
     'backup-dr': 'Shows backup and disaster recovery readiness, backup state, service backup status, and restore preparedness.',
     'backup-retention': 'Manages backup retention policy, cleanup readiness, and retention compliance visibility.',
     'restore-validation': 'Validates restore points, restore readiness, and restore test evidence before relying on backups.',
@@ -6956,6 +6977,12 @@ Analytics - Variphy / Infortel`}
       {activeRoute === 'oem-vendor-directory' ? (
         <section id="oem-vendor-directory" className="panel oem-vendor-directory-route-panel">
           <OemVendorDirectoryCenter authSession={authSession} />
+        </section>
+      ) : null}
+
+      {activeRoute === 'defect-tracker' ? (
+        <section id="defect-tracker" className="panel defect-tracker-route-panel">
+          <DefectTrackerCenter authSession={authSession} />
         </section>
       ) : null}
       {/* MODULES_064_074_RELEASE_TRAIN_ROUTES_END */}

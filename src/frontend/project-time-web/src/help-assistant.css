@@ -39,3 +39,19 @@
   cursor: pointer;
   font-weight: 900;
 }
+
+.help-report-defect-button {
+  width: calc(100% - 24px);
+  margin: 0 12px 12px;
+  border: 1px solid color-mix(in srgb, var(--brand-blue) 35%, var(--border));
+  border-radius: 12px;
+  padding: 11px 12px;
+  background: var(--surface-strong);
+  color: var(--brand-blue-strong);
+  cursor: pointer;
+  font-weight: 900;
+}
+
+.help-report-defect-button:hover {
+  background: color-mix(in srgb, var(--brand-blue) 10%, var(--surface));
+}

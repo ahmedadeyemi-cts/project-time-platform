@@ -1,0 +1,118 @@
+name: ProjectPulse defect
+description: Report a ProjectPulse defect for governed Module 076 intake.
+title: "[Defect]: "
+labels:
+  - defect
+  - module-076-intake
+assignees:
+  - ahmedadeyemi-cts
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a ProjectPulse defect. Do not include passwords, tokens, connection strings, customer secrets, or other credentials. Module 076 assigns the durable defect ID and dates after the signed GitHub intake adapter is authorized.
+
+  - type: dropdown
+    id: source_channel
+    attributes:
+      label: Reporting source
+      description: Select the system or assistant that is creating this GitHub issue.
+      options:
+        - GitHub
+        - ProjectPulse Help
+        - Claude through GitHub
+        - ChatGPT through GitHub
+    validations:
+      required: true
+
+  - type: input
+    id: affected_module
+    attributes:
+      label: Affected module
+      description: Enter the ProjectPulse module number or name, when known.
+      placeholder: "Example: Module 002 — Approval Center"
+
+  - type: input
+    id: affected_route
+    attributes:
+      label: Affected route or page
+      placeholder: "Example: manager-approval"
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      options:
+        - Bug
+        - Regression
+        - User Interface
+        - API
+        - Authentication
+        - Authorization
+        - Data
+        - Integration
+        - Performance
+        - Documentation
+        - Feature Gap
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: Choose the best initial business-impact estimate. Triage may adjust it.
+      options:
+        - Critical
+        - High
+        - Medium
+        - Low
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Explain what happened and the impact.
+      placeholder: "Describe the defect and who is affected."
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction_steps
+    attributes:
+      label: Steps to reproduce
+      description: Provide a minimal, ordered sequence without sensitive data.
+      placeholder: |
+        1. Open ...
+        2. Select ...
+        3. Observe ...
+
+  - type: textarea
+    id: expected_behavior
+    attributes:
+      label: Expected behavior
+      placeholder: "What should have happened?"
+
+  - type: textarea
+    id: actual_behavior
+    attributes:
+      label: Actual behavior
+      placeholder: "What happened instead?"
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: State test, production, local, browser, or device context without credentials.
+      placeholder: "Example: test portal, Edge 128"
+
+  - type: checkboxes
+    id: safety_confirmation
+    attributes:
+      label: Safety confirmation
+      options:
+        - label: I removed passwords, tokens, connection strings, secret values, and customer-sensitive content.
+          required: true

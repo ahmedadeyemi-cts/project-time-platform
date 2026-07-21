@@ -17,13 +17,13 @@
   documentation, and dependency impacts are explicitly approved.
 - Customer-facing PDF and Excel artifacts use the approved US Signal logo.
 
-Current deployed baseline: `main@44e73c4283a33b85ed0dd2832e93059ada37335f`.
-It includes the Modules 071/072 runtime repairs and the merged fail-closed Module
-998 source. Test deployment run `29791085444` verified healthy API/web revisions,
-public Modules 071/072 HTTP 200 responses, protected native and Module 998 HTTP
-401 barriers, and the Module 998 web bundle.
+Current deployed baseline: `main@93b519ca54a5322582ed7d33adf91db7ea9e9919`.
+It includes the Modules 071/072 runtime repairs and the merged fail-closed Modules
+998 and 997 source. Test deployment run `29794000240` verified healthy API/web
+revisions, public Modules 071/072 HTTP 200 responses, protected native and
+Modules 998/997 HTTP 401 barriers, and both protected web bundles.
 
-## Installed modules on deployed baseline `main@44e73c4283a33b85ed0dd2832e93059ada37335f`
+## Installed modules on deployed baseline `main@93b519ca54a5322582ed7d33adf91db7ea9e9919`
 
 | Module | Current title | Route/scope | Source state | Governance note |
 |---|---|---|---|---|
@@ -91,6 +91,8 @@ public Modules 071/072 HTTP 200 responses, protected native and Module 998 HTTP
 | 072 | OneAssist Routing PIN Directory | Deployed test source with native persistence, verified public GET access, and JSON-array normalization fix | Current main through PRs 35–36 | ProjectPulse PostgreSQL | Public bypass is GET-only; native APIs remain authenticated; Cloudflare settings and database state are unchanged |
 | 073 | Sales Coverage Alignment | Installed unsaved-draft source through merged PR 24 | Consolidated 064–074 release train | Module 062 identity and future audited alignment persistence | Persistence remains locked pending database authorization |
 | 074 | OEM & Vendor Directory | Installed unsaved-draft source through merged PR 24 | Consolidated 064–074 release train | Future audited vendor persistence | Persistence remains locked pending database authorization |
+| 076 | Defect Intake & Resolution Tracker | Complete source in progress; fail-closed current-main replay | Module 076 integration worktree | Modules 059, 062, 064, 067; ProjectPulse Help; future signed GitHub adapter | Number approved; database persistence, outbox/email delivery, GitHub webhook activation, AI execution, and external mutation remain locked |
+| 997 | Security Operations, Threat Intelligence & Response Center | Merged through PR 38 and deployed to test in run 29794000240 | Current main | Modules 010, 012–017, 037, 058, 059, 062, 064, 067, 068; deployed Module 998 remains independent | Authenticated security contracts are installed; telemetry, threat feeds, response, AI, notifications, evidence export, secrets, and external adapters remain locked |
 | 998 | System Diagnostic & Controlled Remediation Center | Merged through PR 37 and deployed to test in run 29791085444 | Current main | Modules 013–017, 058, 064, 067, 068; Module 997 security signals remain independently owned | Authenticated diagnostics are installed; remediation, AI, notifications, containment, promotion, rollback, secrets, and external connectors remain locked |
 
 Historical PR 24 catalog marker retained for the protected Module 068 validator
@@ -141,13 +143,13 @@ Historical PR 24 catalog marker retained for the protected Module 068 validator
 
 ## Module 997 — Security Operations, Threat Intelligence & Response Center
 
-| Field | Current integration status |
+| Field | Current deployed status |
 |---|---|
 | Number | 997 |
-| Workspace | `/home/ahmed/project-time-platform-module-997-integration-20260721` |
+| Historical workspace | `/home/ahmed/project-time-platform-module-997-integration-20260721` |
 | Branch | `integration/module-997-current-main-20260721` |
-| Base | `main@44e73c4283a33b85ed0dd2832e93059ada37335f`; recovery source `fc4dafa34783fd6b8f5557e7feee8f7626d86766` |
-| Status | Validated complete fail-closed current-main replay; integration commit and ready PR next |
+| Source | Recovery `fc4dafa34783fd6b8f5557e7feee8f7626d86766`; integration `6dc90425371b032969d539fe5158892c40a6b268` |
+| Status | PR 38 merged as `93b519ca54a5322582ed7d33adf91db7ea9e9919`; CI `29792880067` and deployment `29794000240` succeeded |
 | Dependencies | Modules 010, 012–017, 037, 058, 059, 062, 064, 067, 068; deployed Module 998 remains independent |
 | Locked boundary | Telemetry, threat feeds, incident persistence, AI, containment, eradication, recovery, notifications, evidence export, secrets, and every external adapter |
 
