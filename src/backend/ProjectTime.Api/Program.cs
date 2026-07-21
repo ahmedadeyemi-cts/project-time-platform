@@ -36923,6 +36923,10 @@ app.MapOemVendorDirectoryEndpoints();
 app.MapModule064074NativeAdministrationEndpoints();
 /* MODULES_067_074_RELEASE_TRAIN_ENDPOINT_MAP_END */
 
+/* MODULE_998_SYSTEM_DIAGNOSTIC_ENDPOINT_MAP_START */
+app.MapSystemDiagnosticRemediationEndpoints();
+/* MODULE_998_SYSTEM_DIAGNOSTIC_ENDPOINT_MAP_END */
+
 ProjectTime.Api.Modules.CalendarCapacityModule.MapCalendarCapacityEndpoints(app);
 
 ProjectTime.Api.Modules.CiCdPipelineModule.MapCiCdPipelineEndpoints(app);

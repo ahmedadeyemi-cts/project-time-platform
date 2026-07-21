@@ -91,6 +91,9 @@ COPY src/backend/ProjectTime.Api/Modules/SalesCoverageAlignmentModule.cs \
 COPY src/backend/ProjectTime.Api/Modules/OemVendorDirectoryModule.cs \
      src/backend/ProjectTime.Api/Modules/OemVendorDirectoryModule.cs
 
+COPY src/backend/ProjectTime.Api/Modules/SystemDiagnosticRemediationModule.cs \
+     src/backend/ProjectTime.Api/Modules/SystemDiagnosticRemediationModule.cs
+
 COPY docs/modules/module-062-unified-identity-profile/README.md \
      docs/modules/module-062-unified-identity-profile/README.md
 
@@ -126,6 +129,9 @@ COPY docs/modules/module-073-sales-coverage-alignment/ \
 
 COPY docs/modules/module-074-oem-vendor-directory/ \
      docs/modules/module-074-oem-vendor-directory/
+
+COPY docs/modules/module-998-system-diagnostic-remediation/ \
+     docs/modules/module-998-system-diagnostic-remediation/
 
 COPY docs/modules/modules-064-074-native-administration/ \
      docs/modules/modules-064-074-native-administration/

@@ -3,8 +3,8 @@
 ## Register authority
 
 This file is the central source work register for concurrent ProjectPulse module
-development. Central-register ownership is assigned to the consolidated Modules
-064–074 release-train workspace for the current coordination cycle. Individual module workspaces continue to own
+development. Central-register ownership is assigned to the Module 998 isolated
+workspace for the current coordination cycle. Individual module workspaces continue to own
 their module-specific README and evidence.
 
 ## Current forward-moving source baseline
@@ -12,11 +12,11 @@ their module-specific README and evidence.
 | Field | Value |
 |---|---|
 | Base branch | `main` |
-| Base commit | `2b4a6d1a1242a25b52110a2a209ff8ddda0b8ca4` |
-| Base description | Merges PR 23 Module 002 role-aware Approval Center on top of the merged Module 066A foundation and all protected prior modules |
-| Source status | Approved base for new isolated work as of 2026-07-19 |
-| Deployment status | Module 062 is merged to source but has not received a post-merge deployment; controlled test deployment and portal validation remain pending |
-| Prior approved baseline | `main@297ac59918389334d1a1d125dbafa37b419ca663` |
+| Base commit | `13b945247d89db26136129ac8fbbe8e92ff84159` |
+| Base description | Current main through PR 36, including the Modules 071/072 GET-only public-session bypass and Module 072 JSON-array normalization correction |
+| Source status | Verified current `origin/main` base for the Module 998 replay as of 2026-07-21 |
+| Deployment status | Current main is deployed to test in run `29789119238`; Module 998 is not runtime-active at this source checkpoint |
+| Prior approved baseline | `main@02fabf80b2ff71feefa5e61bc6ba3484da822e0d` |
 | Governance lineage | `docs/module-development-governance-20260717@66cf0f6457efaa33196f2c91b03bd3a35d13bf19` |
 
 The current `main` commit contains the prior approved baseline. New modules must
@@ -32,9 +32,14 @@ start from current `main` or a later verified forward-moving commit.
 | 066A | Nine-file read-only foundation | PR 20 merged as `6388f3e3677d9c95380e909d5e5671dcf6fbcf27` | Foundation is on current source; route remained inactive until 066A.1 | Preserve the read-only/no-mutation foundation |
 | 066A.1 | Shared Registration and Activation source package | Included in source commit `6e7509cfe9b5704ff291525eb587040f31944ee8`; pushed in open draft PR 24 | Source activation is not deployed; 42/42 activation contract, protected frontend build, .NET 10 builds, and zero-warning delta passed | Review PR 24 checks and findings; merge and deployment require separate authorization |
 | 066B–066E | Complete safe Project FlowHive source package | Included in source commit `6e7509cfe9b5704ff291525eb587040f31944ee8`; pushed in open draft PR 24 | Planning/schedule/AI-request/internal-artifact source present; persistence, provider execution, customer sharing, and deployment remain locked | Review PR 24 while preserving every locked boundary |
-| 064–074 | Consolidated current-main release train | Source commit `6e7509cfe9b5704ff291525eb587040f31944ee8` pushed; draft PR 24 open and not merged | Shared registration is integrated in source; all external-system, database, and deployment locks remain in force | Complete PR review and GitHub checks; request separate merge and controlled-deployment authority |
+| 064–074 | Consolidated release train | Source is merged; current test image is `main@13b945247d89db26136129ac8fbbe8e92ff84159` | Current application image is deployed; targeted public/native runtime verification is recorded for Modules 071/072 and all external-operation locks remain in force | Preserve current-main behavior while replaying Modules 998 and 997 |
+| 998 | Validated complete fail-closed current-main replay | Integration branch `integration/module-998-current-main-20260721` from `main@13b945247d89db26136129ac8fbbe8e92ff84159` | No Module 998 runtime deployment; every remediation, containment, connector, notification, AI, promotion, rollback, and secret operation remains locked | Commit, push, and create a ready integration PR after validation; merge and deployment remain CI-gated |
 
 ## Active work ownership
+
+The Module 064–074 rows below preserve their original release-train publication
+checkpoint. Their current merged source state is authoritative in the checkpoint
+summary above. Module 998 owns the present central-governance update.
 
 | Module/area | Status | Workspace | Branch | Base | Confirmed scope | Expected files/areas | GitHub | Azure/DB/Entra |
 |---|---|---|---|---|---|---|---|---|
@@ -55,7 +60,8 @@ start from current `main` or a later verified forward-moving commit.
 | 072 | Release-train candidate, compatibility adapter | Same release-train workspace | Same release-train branch | Same current-main base | Public unmasked OneAssist PIN directory and authorized edits | Module-owned backend/frontend/docs plus shared registration | Commit `6e7509cfe9b5704ff291525eb587040f31944ee8` pushed; draft PR 24 open; not merged | No Cloudflare, database, Azure, Entra, or deployment action |
 | 073 | Release-train candidate, unsaved draft | Same release-train workspace | Same release-train branch | Same current-main base | Sales coverage alignment draft | Module-owned backend/frontend/docs plus shared registration | Commit `6e7509cfe9b5704ff291525eb587040f31944ee8` pushed; draft PR 24 open; not merged | Persistence/database/Azure/Entra/deployment remain unauthorized |
 | 074 | Release-train candidate, unsaved draft | Same release-train workspace | Same release-train branch | Same current-main base | OEM/vendor directory draft | Module-owned backend/frontend/docs plus shared registration | Commit `6e7509cfe9b5704ff291525eb587040f31944ee8` pushed; draft PR 24 open; not merged | Persistence/database/Azure/Entra/deployment remain unauthorized |
-| Central governance | Active under consolidated 064–074 release-train ownership for this checkpoint | `/home/ahmed/project-time-platform-modules-064-074-release-train-20260719` | `feature/modules-064-074-release-train-on-main-20260719` | Current register aligned to `main@2b4a6d1a1242a25b52110a2a209ff8ddda0b8ca4` | Maintain release-train status in register, catalog, and production tracker | `docs/MODULE-WORK-REGISTER.md`, `docs/MODULE-CATALOG.md`, production-readiness tracker | Commit `6e7509cfe9b5704ff291525eb587040f31944ee8` pushed; draft PR 24 open; not merged | Not applicable |
+| 998 | Validated complete fail-closed current-main replay | `/home/ahmed/project-time-platform-module-998-integration-20260721` | `integration/module-998-current-main-20260721` | `13b945247d89db26136129ac8fbbe8e92ff84159` | Diagnostic overview, safe checks, issue classification, evidence, runbooks, authorization, and locked remediation lifecycle | Module-owned backend/frontend/docs/validator plus reconciled shared integration and governance | Exact 20-file manifest and protected builds passed; integration commit and ready PR are next | No Azure, database, Entra, Cloudflare, SMTP, deployment, containment, production remediation, AI execution, notification, rollback, or secret action |
+| Central governance | Active under Module 998 integration ownership for this checkpoint | `/home/ahmed/project-time-platform-module-998-integration-20260721` | `integration/module-998-current-main-20260721` | Current register aligned to `main@13b945247d89db26136129ac8fbbe8e92ff84159` | Maintain truthful Module 998 status and preserve deployed current-main Modules 064–074 behavior | `docs/MODULE-WORK-REGISTER.md`, `docs/MODULE-CATALOG.md`, production-readiness tracker | Integration commit and ready PR pending | Not applicable |
 
 `Not reported` is an evidence state, not a placeholder path to use in a command.
 
