@@ -27,11 +27,13 @@ public sealed class ProjectPulseClaudeProvider : IProjectPulseAiProvider
     {
         if (!IsModelApproved()) return ModelNotApproved();
 
+        // Claude Sonnet 5 accepts only default sampling behavior. Omitting
+        // temperature also keeps the adapter compatible with models that do not
+        // expose sampling controls.
         var payload = JsonSerializer.Serialize(new
         {
             model = Provider.Model,
             max_tokens = Math.Min(request.MaxOutputTokens, _configuration.MaxOutputTokens),
-            temperature = request.Temperature,
             system = request.SystemPrompt,
             messages = new[] { new { role = "user", content = request.UserPrompt } }
         });
@@ -159,32 +161,8 @@ public sealed class ProjectPulseClaudeProvider : IProjectPulseAiProvider
             return new ProjectPulseAiProbeResult(Code, false, "model_not_approved", "The configured Claude model is not approved.", null, null);
         }
 
-        var response = await ProjectPulseAiHttp.SendWithRetryAsync(
-            _httpClientFactory,
-            _configuration,
-            () => CreateRequest(HttpMethod.Get, $"/models/{Uri.EscapeDataString(Provider.Model)}", null),
-            cancellationToken);
-
-        if (response.ExceptionCode is not null || response.Response is null)
-        {
-            return new ProjectPulseAiProbeResult(Code, false, response.ExceptionCode ?? "claude_no_response", "Claude is unavailable.", null, null);
-        }
-
-        using var httpResponse = response.Response;
-        var requestId = ProjectPulseAiHttp.Header(httpResponse, "request-id");
-        if (httpResponse.IsSuccessStatusCode)
-        {
-            return new ProjectPulseAiProbeResult(Code, true, "available", "Claude is available.", (int)httpResponse.StatusCode, requestId);
-        }
-
-        var body = await ProjectPulseAiHttp.ReadBodyAsync(httpResponse, cancellationToken);
-        return new ProjectPulseAiProbeResult(
-            Code,
-            false,
-            ProjectPulseAiHttp.ErrorCode(body, "claude_health_failed"),
-            "Claude is unavailable.",
-            (int)httpResponse.StatusCode,
-            requestId);
+        var result = await GenerateAsync(ProjectPulseAiHttp.ProbeRequest, cancellationToken);
+        return ProjectPulseAiHttp.GenerationProbe(result, "Claude");
     }
 
     private HttpRequestMessage CreateRequest(HttpMethod method, string path, string? payload)
@@ -379,32 +357,8 @@ public sealed class ProjectPulseOpenAiProvider : IProjectPulseAiProvider
             return new ProjectPulseAiProbeResult(Code, false, "model_not_approved", "The configured OpenAI model is not approved.", null, null);
         }
 
-        var response = await ProjectPulseAiHttp.SendWithRetryAsync(
-            _httpClientFactory,
-            _configuration,
-            () => CreateRequest(HttpMethod.Get, $"/models/{Uri.EscapeDataString(Provider.Model)}", null),
-            cancellationToken);
-
-        if (response.ExceptionCode is not null || response.Response is null)
-        {
-            return new ProjectPulseAiProbeResult(Code, false, response.ExceptionCode ?? "openai_no_response", "OpenAI is unavailable.", null, null);
-        }
-
-        using var httpResponse = response.Response;
-        var requestId = ProjectPulseAiHttp.Header(httpResponse, "x-request-id");
-        if (httpResponse.IsSuccessStatusCode)
-        {
-            return new ProjectPulseAiProbeResult(Code, true, "available", "OpenAI is available.", (int)httpResponse.StatusCode, requestId);
-        }
-
-        var body = await ProjectPulseAiHttp.ReadBodyAsync(httpResponse, cancellationToken);
-        return new ProjectPulseAiProbeResult(
-            Code,
-            false,
-            ProjectPulseAiHttp.ErrorCode(body, "openai_health_failed"),
-            "OpenAI is unavailable.",
-            (int)httpResponse.StatusCode,
-            requestId);
+        var result = await GenerateAsync(ProjectPulseAiHttp.ProbeRequest, cancellationToken);
+        return ProjectPulseAiHttp.GenerationProbe(result, "OpenAI");
     }
 
     private HttpRequestMessage CreateRequest(HttpMethod method, string path, string? payload)
@@ -459,6 +413,22 @@ public sealed class ProjectPulseOpenAiProvider : IProjectPulseAiProvider
 
 internal static class ProjectPulseAiHttp
 {
+    public static readonly ProjectPulseAiGenerationRequest ProbeRequest = new(
+        ProjectPulseAiFeatures.TimesheetDescription,
+        "Return only the requested word.",
+        "Return OK.",
+        MaxOutputTokens: 8,
+        Temperature: 0);
+
+    public static ProjectPulseAiProbeResult GenerationProbe(ProjectPulseAiProviderResult result, string displayName) =>
+        new(
+            result.Provider,
+            result.IsSuccess && !string.IsNullOrWhiteSpace(result.Content),
+            result.IsSuccess ? "generation_verified" : result.Code ?? "generation_probe_failed",
+            result.IsSuccess ? $"{displayName} generation is verified." : $"{displayName} generation is unavailable.",
+            result.HttpStatusCode,
+            result.RequestId);
+
     public static async Task<(HttpResponseMessage? Response, string? ExceptionCode)> SendWithRetryAsync(
         IHttpClientFactory httpClientFactory,
         ProjectPulseAiConfiguration configuration,
