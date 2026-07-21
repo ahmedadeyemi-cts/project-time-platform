@@ -100,6 +100,21 @@ COPY src/backend/ProjectTime.Api/Modules/OemVendorDirectoryModule.cs \
 COPY src/backend/ProjectTime.Api/Modules/DefectTrackerModule.cs \
      src/backend/ProjectTime.Api/Modules/DefectTrackerModule.cs
 
+COPY src/backend/ProjectTime.Api/Modules/IntegrationEventGatewayModule.cs \
+     src/backend/ProjectTime.Api/Modules/IntegrationEventGatewayModule.cs
+
+COPY src/backend/ProjectTime.Api/Modules/ReleaseDeploymentControlModule.cs \
+     src/backend/ProjectTime.Api/Modules/ReleaseDeploymentControlModule.cs
+
+COPY src/backend/ProjectTime.Api/Modules/ObservabilitySloHealthModule.cs \
+     src/backend/ProjectTime.Api/Modules/ObservabilitySloHealthModule.cs
+
+COPY src/backend/ProjectTime.Api/Modules/DataGovernanceRetentionModule.cs \
+     src/backend/ProjectTime.Api/Modules/DataGovernanceRetentionModule.cs
+
+COPY src/backend/ProjectTime.Api/Modules/CustomerDeliveryAcceptanceModule.cs \
+     src/backend/ProjectTime.Api/Modules/CustomerDeliveryAcceptanceModule.cs
+
 COPY src/backend/ProjectTime.Api/Modules/SystemDiagnosticRemediationModule.cs \
      src/backend/ProjectTime.Api/Modules/SystemDiagnosticRemediationModule.cs
 
@@ -139,8 +154,23 @@ COPY docs/modules/module-073-sales-coverage-alignment/ \
 COPY docs/modules/module-074-oem-vendor-directory/ \
      docs/modules/module-074-oem-vendor-directory/
 
+COPY docs/modules/module-075-integration-event-gateway/ \
+     docs/modules/module-075-integration-event-gateway/
+
 COPY docs/modules/module-076-defect-tracker/ \
      docs/modules/module-076-defect-tracker/
+
+COPY docs/modules/module-077-release-deployment-control/ \
+     docs/modules/module-077-release-deployment-control/
+
+COPY docs/modules/module-078-observability-slo-health/ \
+     docs/modules/module-078-observability-slo-health/
+
+COPY docs/modules/module-079-data-governance-retention/ \
+     docs/modules/module-079-data-governance-retention/
+
+COPY docs/modules/module-080-customer-delivery-acceptance/ \
+     docs/modules/module-080-customer-delivery-acceptance/
 
 COPY docs/modules/module-997-security-operations-response/ \
      docs/modules/module-997-security-operations-response/
