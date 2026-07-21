@@ -1,9 +1,14 @@
 import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const program = fs.readFileSync("src/backend/ProjectTime.Api/Program.cs", "utf8");
-const app = fs.readFileSync("src/frontend/project-time-web/src/App.jsx", "utf8");
-const pkg = fs.readFileSync("src/frontend/project-time-web/package.json", "utf8");
-const dockerfile = fs.readFileSync("deployment/containers/web/Dockerfile", "utf8");
+const repoRoot = fileURLToPath(new URL("../../../../", import.meta.url));
+const repoPath = (relativePath) => path.join(repoRoot, relativePath);
+
+const program = fs.readFileSync(repoPath("src/backend/ProjectTime.Api/Program.cs"), "utf8");
+const app = fs.readFileSync(repoPath("src/frontend/project-time-web/src/App.jsx"), "utf8");
+const pkg = fs.readFileSync(repoPath("src/frontend/project-time-web/package.json"), "utf8");
+const dockerfile = fs.readFileSync(repoPath("deployment/containers/web/Dockerfile"), "utf8");
 
 const modules = [
   ["075", "IntegrationEventGateway", "integration-event-gateway", "IntegrationEventGatewayModule.cs"],
@@ -36,7 +41,7 @@ test("CROSS_VALIDATOR_CHAINED", pkg.includes("validate:modules075080-runtime"));
 test("RUNTIME_MARKERS", app.includes("MODULES_075_080_RUNTIME_ROUTES_START") && program.includes("MODULES_075_080_RUNTIME_ENDPOINT_MAP_START"));
 test("NO_EXTERNAL_ACTIVATION", !program.includes("HttpClient") || modules.every(([, component]) => {
   const modulePath = `src/backend/ProjectTime.Api/Modules/${component}Module.cs`;
-  const source = fs.readFileSync(modulePath, "utf8");
+  const source = fs.readFileSync(repoPath(modulePath), "utf8");
   return !source.includes("HttpClient") && source.includes("423Locked") && source.includes("requestBodyRead = false");
 }));
 
