@@ -71,7 +71,7 @@ assert('MODULE_064_WRITE_ONLY_SECRET_ENDPOINT', moduleBackend.includes('MapPut('
 assert('MODULE_064_ENCRYPTED_SECRET_STORE', secretStore.includes('AesGcm') && secretStore.includes('PROJECTPULSE_AI_SECRET_ENCRYPTION_KEY') && secretStore.includes('CryptographicOperations.ZeroMemory'));
 assert('MODULE_064_SANITIZED_SECRET_AUDIT', secretStore.includes('ai_provider_secret_audit') && !secretStore.includes('api_key'));
 assert('MODULE_064_SAME_ORIGIN_WRITE', moduleBackend.includes('SameOrigin(context)'));
-assert('MODULE_064_PROXY_SAFE_ORIGIN', moduleBackend.includes('context.Request.Host.Port is null'));
+assert('MODULE_064_PROXY_SAFE_ORIGIN', moduleBackend.includes('Sec-Fetch-Site') && moduleBackend.includes('same-origin') && moduleBackend.includes('X-Forwarded-Host'));
 assert('MODULE_064_MODEL_MANAGEMENT', moduleBackend.includes('/providers/{providerCode}/model') && center.includes('Save and test') && configuration.includes('ApplyStoredModel'));
 assert('MODULE_064_ENABLE_DISABLE', moduleBackend.includes('/providers/{providerCode}/enabled') && center.includes("provider.enabled ? 'Disable' : 'Enable'") && configuration.includes('ApplyStoredEnabled'));
 assert('MODULE_064_REPLICA_SYNCHRONIZATION', secretStore.includes('ProjectPulseAiConfigurationSynchronizer') && secretStore.includes('LoadEnabledAsync'));
