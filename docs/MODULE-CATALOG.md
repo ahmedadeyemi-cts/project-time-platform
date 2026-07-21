@@ -80,7 +80,7 @@ Modules 998/997 HTTP 401 barriers, and both protected web bundles.
 | Module | Title | Status | Owner/workspace | Dependencies | Number decision |
 |---|---|---|---|---|---|
 | 061 | Undefined | Scope required | No verified implementation checkpoint | None confirmed | Reserved until explicit scope approval |
-| 064 | AI Provider Configuration Center | Installed source through merged PR 24 | Consolidated 064–074 release train | Provider governance, secrets, audit | Secret mutation and live-provider readiness assertions remain locked |
+| 064 | AI Provider Configuration Center | Shared runtime plus write-only administrator key entry | Module 064 secure provider-key update | Provider governance, encrypted secrets, sanitized audit | Key readback, deletion, and rollback remain unavailable |
 | 065 | Entra Secret Administration | Installed fail-closed source through merged PR 24 | Consolidated 064–074 release train | Module 010, Module 062, secure secret controls | No external adapter, secret-store write, durable approval/audit, Azure, or Entra mutation |
 | 066 | Project FlowHive | Installed safe 066A.1–066E source through merged PR 24 | Consolidated 064–074 release train | 002, 018, 019, 024–030, 055C, 057, 059, 062, 064 | Database writes, FlowHive AI execution, customer sharing, and deployment remain locked |
 | 067 | Global Mail Configuration Center | Installed read-only source through merged PR 24 | Consolidated 064–074 release train | Microsoft 365 readiness and shared outbound-mail ownership | Provider calls, test delivery, secret mutation, and cutover remain locked |

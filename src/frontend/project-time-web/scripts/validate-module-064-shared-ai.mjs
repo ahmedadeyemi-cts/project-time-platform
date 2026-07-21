@@ -15,6 +15,7 @@ const providers = readRepository('src', 'backend', 'ProjectTime.Api', 'Ai', 'Pro
 const router = readRepository('src', 'backend', 'ProjectTime.Api', 'Ai', 'ProjectPulseAiRouter.cs');
 const monitor = readRepository('src', 'backend', 'ProjectTime.Api', 'Ai', 'ProjectPulseAiHealthMonitor.cs');
 const registration = readRepository('src', 'backend', 'ProjectTime.Api', 'Ai', 'ProjectPulseAiServiceCollectionExtensions.cs');
+const secretStore = readRepository('src', 'backend', 'ProjectTime.Api', 'Ai', 'ProjectPulseAiSecretStore.cs');
 const moduleBackend = readRepository('src', 'backend', 'ProjectTime.Api', 'Modules', 'AiProviderConfigurationModule.cs');
 const consumer = readRepository('src', 'backend', 'ProjectTime.Api', 'ProjectPulseAiTimeEntrySuggestionService.cs');
 const program = readRepository('src', 'backend', 'ProjectTime.Api', 'Program.cs');
@@ -66,12 +67,15 @@ assert('MODULE_064_CONSUMER_HAS_NO_DIRECT_CLIENT', !consumer.includes('new HttpC
 assert('MODULE_064_PROGRAM_DI', program.includes('builder.Services.AddProjectPulseAi();') && program.includes('ProjectPulseAiTimeEntrySuggestionService aiService'));
 assert('MODULE_064_BACKEND_ENDPOINTS', moduleBackend.includes('"/api/ai-configuration"') && moduleBackend.includes('"/api/ai-configuration/health"'));
 assert('MODULE_064_ADMIN_AUTHORITY', moduleBackend.includes('ProjectPulseActualUserId') && moduleBackend.includes('AdministratorRoles'));
-assert('MODULE_064_NO_CONFIGURATION_MUTATION_ENDPOINT', !moduleBackend.includes('MapPut(') && !moduleBackend.includes('MapPatch(') && !moduleBackend.includes('MapDelete('));
+assert('MODULE_064_WRITE_ONLY_SECRET_ENDPOINT', moduleBackend.includes('MapPut(') && moduleBackend.includes('/providers/{providerCode}/secret') && moduleBackend.includes('valueReturned = false'));
+assert('MODULE_064_ENCRYPTED_SECRET_STORE', secretStore.includes('AesGcm') && secretStore.includes('PROJECTPULSE_AI_SECRET_ENCRYPTION_KEY') && secretStore.includes('CryptographicOperations.ZeroMemory'));
+assert('MODULE_064_SANITIZED_SECRET_AUDIT', secretStore.includes('ai_provider_secret_audit') && !secretStore.includes('api_key'));
+assert('MODULE_064_SAME_ORIGIN_WRITE', moduleBackend.includes('SameOrigin(context)'));
 assert('MODULE_064_NO_MUTATING_SQL', !/\b(INSERT|UPDATE|DELETE|ALTER|CREATE|DROP)\b/i.test(moduleBackend.replaceAll('configuration updates', '')));
 assert('MODULE_064_PROGRAM_ENDPOINT_MAP', count(program, 'app.MapAiProviderConfigurationEndpoints();') === 1);
 assert('MODULE_064_SYSTEM_STATUS_USES_SHARED_HEALTH', program.includes('"Shared AI Provider Router"') && program.includes('aiHealth.Snapshots()'));
 assert('MODULE_064_FRONTEND_CENTER', center.includes('data-module="064"') && center.includes('/api/ai-configuration/health/refresh'));
-assert('MODULE_064_FRONTEND_SECRET_BOUNDARY', center.includes('Keys are never returned') && center.includes('Secret writes and activation remain locked'));
+assert('MODULE_064_FRONTEND_SECRET_BOUNDARY', center.includes('Keys are never returned') && center.includes('type="password"') && center.includes('write-only'));
 assert('MODULE_064_SCOPED_STYLES', styles.includes('.ai-provider-center') && !styles.includes('\n.panel ') && !styles.includes('\nbody '));
 assert('MODULE_064_APP_IMPORT_COUNT', count(app, "import AiProviderConfigurationCenter from './AiProviderConfigurationCenter.jsx';") === 1);
 assert('MODULE_064_APP_ROUTE_COUNT', count(app, "activeRoute === 'ai-provider-configuration'") === 1);
@@ -87,7 +91,7 @@ assert(
     webDockerfile.includes('AUGUST_PRODUCTION_READINESS_TRACKER.md') &&
     webDockerfile.includes('COPY deployment/containers/web/Dockerfile'),
 );
-assert('MODULE_064_DOCUMENTATION_SET', readme.includes('Module 064') && contract.includes('/api/ai-configuration') && security.includes('step-up authentication'));
+assert('MODULE_064_DOCUMENTATION_SET', readme.includes('Module 064') && contract.includes('/providers/{providerCode}/secret') && security.includes('AES-256-GCM'));
 assert('MODULE_064_GOVERNANCE_REGISTERED', workRegister.includes('| 064 |') && catalog.includes('| 064 |'));
 assert('MODULE_064_TRACKER_AI_017', tracker.includes('AI-017') && tracker.includes('Module 064'));
 assert('MODULE_064_NO_DATABASE_ARTIFACT', !fs.existsSync(path.join(repository, 'database', 'module-064')) && !fs.existsSync(path.join(repository, 'src', 'backend', 'ProjectTime.Api', 'Migrations', 'Module064')));
@@ -96,7 +100,7 @@ const failed = assertions.filter((assertion) => !assertion.condition);
 console.log(`\nMODULE_064_VALIDATION_CHECKS=${assertions.length}`);
 console.log('MODULE_064_ROUTING=CLAUDE_OPENAI_LOCAL');
 console.log('MODULE_064_SAFETY_REFUSAL_FAILOVER=BLOCKED');
-console.log('MODULE_064_SECRET_MUTATION=LOCKED_PENDING_AUTHORIZATION');
+console.log('MODULE_064_SECRET_MUTATION=ADMIN_WRITE_ONLY_ENCRYPTED');
 console.log(`MODULE_064_CONTRACT=${failed.length === 0 ? 'PASSED' : 'FAILED'}`);
 
 if (failed.length > 0) process.exitCode = 1;

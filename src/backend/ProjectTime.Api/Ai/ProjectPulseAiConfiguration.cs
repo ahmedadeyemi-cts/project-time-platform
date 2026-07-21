@@ -5,6 +5,9 @@ namespace ProjectTime.Api.Ai;
 
 public sealed class ProjectPulseAiConfiguration
 {
+    private readonly object _providerLock = new();
+    private ProjectPulseAiProviderConfiguration _claude;
+    private ProjectPulseAiProviderConfiguration _openAi;
     private static readonly HashSet<string> ValidModes =
         new(StringComparer.OrdinalIgnoreCase)
         {
@@ -25,8 +28,8 @@ public sealed class ProjectPulseAiConfiguration
         FailureThreshold = Integer("PROJECTPULSE_AI_FAILURE_THRESHOLD", 3, 1, 10);
         CircuitBreakSeconds = Integer("PROJECTPULSE_AI_CIRCUIT_BREAK_SECONDS", 180, 30, 3600);
 
-        Claude = BuildClaude();
-        OpenAi = BuildOpenAi();
+        _claude = BuildClaude();
+        _openAi = BuildOpenAi();
         FeatureRoutes = ProjectPulseAiFeatures.All.ToDictionary(
             feature => feature,
             ResolveFeatureRoute,
@@ -41,8 +44,8 @@ public sealed class ProjectPulseAiConfiguration
     public int HealthIntervalSeconds { get; }
     public int FailureThreshold { get; }
     public int CircuitBreakSeconds { get; }
-    public ProjectPulseAiProviderConfiguration Claude { get; }
-    public ProjectPulseAiProviderConfiguration OpenAi { get; }
+    public ProjectPulseAiProviderConfiguration Claude { get { lock (_providerLock) return _claude; } }
+    public ProjectPulseAiProviderConfiguration OpenAi { get { lock (_providerLock) return _openAi; } }
     public IReadOnlyDictionary<string, IReadOnlyList<string>> FeatureRoutes { get; }
 
     public ProjectPulseAiProviderConfiguration Provider(string code) =>
@@ -51,6 +54,25 @@ public sealed class ProjectPulseAiConfiguration
             : string.Equals(code, ProjectPulseAiProviders.OpenAi, StringComparison.OrdinalIgnoreCase)
                 ? OpenAi
                 : throw new ArgumentOutOfRangeException(nameof(code), code, "Unknown remote AI provider.");
+
+    public void ApplyStoredSecret(string providerCode, string apiKey, string version, DateTimeOffset rotatedAt)
+    {
+        lock (_providerLock)
+        {
+            var current = string.Equals(providerCode, ProjectPulseAiProviders.Claude, StringComparison.OrdinalIgnoreCase)
+                ? _claude
+                : string.Equals(providerCode, ProjectPulseAiProviders.OpenAi, StringComparison.OrdinalIgnoreCase)
+                    ? _openAi
+                    : throw new ArgumentOutOfRangeException(nameof(providerCode));
+            var updated = current with
+            {
+                ApiKey = apiKey,
+                Secret = new ProjectPulseAiSecretMetadata(true, "encrypted_database", version, rotatedAt, null, Fingerprint(apiKey))
+            };
+            if (string.Equals(providerCode, ProjectPulseAiProviders.Claude, StringComparison.OrdinalIgnoreCase)) _claude = updated;
+            else _openAi = updated;
+        }
+    }
 
     public IReadOnlyList<string> RouteFor(string feature)
     {
@@ -110,10 +132,10 @@ public sealed class ProjectPulseAiConfiguration
             secretLifecycle = new
             {
                 apiKeysReturned = false,
-                mutationEnabled = false,
-                activationEnabled = false,
+                mutationEnabled = true,
+                activationEnabled = true,
                 rollbackEnabled = false,
-                reason = "Secret writes, activation, rollback, and immutable audit require separately authorized secure-store and persistence work."
+                reason = "Administrators can replace provider keys through a write-only encrypted store. Secret values are never returned."
             }
         };
     }

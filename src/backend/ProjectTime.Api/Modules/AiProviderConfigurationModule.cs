@@ -30,8 +30,61 @@ public static class AiProviderConfigurationModule
         app.MapPost(
             "/api/ai-configuration/health/refresh",
             (Func<HttpContext, ProjectPulseAiConfiguration, ProjectPulseAiHealthCoordinator, CancellationToken, Task<IResult>>)RefreshHealthAsync);
+        app.MapPut(
+            "/api/ai-configuration/providers/{providerCode}/secret",
+            (Func<string, HttpContext, ProjectPulseAiConfiguration, ProjectPulseAiSecretStore, ProjectPulseAiHealthRegistry, CancellationToken, Task<IResult>>)ReplaceSecretAsync);
 
         return app;
+    }
+
+    private static async Task<IResult> ReplaceSecretAsync(
+        string providerCode,
+        HttpContext context,
+        ProjectPulseAiConfiguration configuration,
+        ProjectPulseAiSecretStore secretStore,
+        ProjectPulseAiHealthRegistry healthRegistry,
+        CancellationToken cancellationToken)
+    {
+        context.Response.Headers.CacheControl = "no-store";
+        var authorization = await AuthorizeAdministratorAsync(context);
+        if (authorization is not null) return authorization;
+        if (!SameOrigin(context)) return Results.Json(new { status = "origin_rejected", message = "The request origin is not allowed." }, statusCode: 403);
+        providerCode = providerCode.Trim().ToLowerInvariant();
+        if (providerCode is not (ProjectPulseAiProviders.Claude or ProjectPulseAiProviders.OpenAi))
+            return Results.BadRequest(new { status = "invalid_provider", message = "Provider must be claude or openai." });
+        if (!secretStore.Available)
+            return Results.Json(new { status = "secure_store_unavailable", message = secretStore.UnavailableReason }, statusCode: 503);
+
+        ReplaceSecretRequest? request;
+        try { request = await context.Request.ReadFromJsonAsync<ReplaceSecretRequest>(cancellationToken); }
+        catch (System.Text.Json.JsonException) { return Results.BadRequest(new { status = "invalid_request", message = "A valid JSON request is required." }); }
+        var apiKey = request?.ApiKey?.Trim();
+        if (string.IsNullOrWhiteSpace(apiKey)) return Results.BadRequest(new { status = "invalid_secret", message = "API key is required." });
+        if (apiKey.Any(char.IsWhiteSpace)) return Results.BadRequest(new { status = "invalid_secret", message = "API key cannot contain whitespace." });
+
+        try
+        {
+            var stored = await secretStore.SaveAsync(providerCode, apiKey, ActualSessionUserId(context)!.Value, cancellationToken);
+            configuration.ApplyStoredSecret(stored.ProviderCode, stored.ApiKey, stored.Version, stored.RotatedAt);
+            healthRegistry.ApplyConfiguration(configuration.Provider(providerCode));
+            return Results.Ok(new
+            {
+                status = "secret_replaced",
+                provider = providerCode,
+                configured = true,
+                version = stored.Version,
+                rotatedAt = stored.RotatedAt,
+                valueReturned = false,
+                message = $"{configuration.Provider(providerCode).DisplayName} API key was saved securely. The value cannot be viewed after saving."
+            });
+        }
+        catch (ArgumentException exception) { return Results.BadRequest(new { status = "invalid_secret", message = exception.Message }); }
+        catch (Exception exception)
+        {
+            context.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("AiProviderConfigurationModule")
+                .LogError(exception, "Module 064 failed to replace the {Provider} secret.", providerCode);
+            return Results.Json(new { status = "secret_store_error", message = "The API key could not be saved securely." }, statusCode: 503);
+        }
     }
 
     private static async Task<IResult> GetConfigurationAsync(
@@ -108,10 +161,10 @@ public static class AiProviderConfigurationModule
         safetyRefusalFailover = false,
         secretValuesReturned = false,
         sharedRouterRequiredForAllConsumers = true,
-        configurationMutation = "locked_pending_secure_store_authorization",
-        secretRotation = "locked_pending_secure_store_authorization",
-        activationAndRollback = "locked_pending_persistence_authorization",
-        immutableAudit = "locked_pending_database_authorization",
+        configurationMutation = "administrator_write_only_secret_replacement",
+        secretRotation = "replace_in_place_with_encrypted_version",
+        activationAndRollback = "replacement_active_immediately_rollback_not_exposed",
+        immutableAudit = "sanitized_database_audit_enabled",
         azureChanged = false,
         databaseChanged = false,
         entraChanged = false
@@ -206,6 +259,17 @@ public static class AiProviderConfigurationModule
 
         return null;
     }
+
+    private static bool SameOrigin(HttpContext context)
+    {
+        var origin = context.Request.Headers.Origin.ToString();
+        if (string.IsNullOrWhiteSpace(origin)) return false;
+        return Uri.TryCreate(origin, UriKind.Absolute, out var uri)
+            && string.Equals(uri.Host, context.Request.Host.Host, StringComparison.OrdinalIgnoreCase)
+            && uri.Port == (context.Request.Host.Port ?? (context.Request.IsHttps ? 443 : 80));
+    }
+
+    private sealed record ReplaceSecretRequest(string? ApiKey);
 
     private static string? ConnectionString()
     {

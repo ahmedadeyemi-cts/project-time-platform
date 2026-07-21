@@ -33,6 +33,8 @@ export default function AiProviderConfigurationCenter() {
   const [state, setState] = useState({ loading: true, error: '', payload: null });
   const [refreshing, setRefreshing] = useState(false);
   const [notice, setNotice] = useState('');
+  const [keys, setKeys] = useState({ claude: '', openai: '' });
+  const [savingProvider, setSavingProvider] = useState('');
 
   const load = useCallback(async () => {
     setState((current) => ({ ...current, loading: true, error: '' }));
@@ -70,6 +72,28 @@ export default function AiProviderConfigurationCenter() {
       setNotice(error instanceof Error ? error.message : 'Provider health checks could not be completed.');
     } finally {
       setRefreshing(false);
+    }
+  }
+
+  async function saveKey(event, providerCode) {
+    event.preventDefault();
+    const apiKey = keys[providerCode]?.trim();
+    if (!apiKey) return;
+    setSavingProvider(providerCode);
+    setNotice('');
+    try {
+      const result = await readJson(await fetch(`/api/ai-configuration/providers/${providerCode}/secret`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apiKey }),
+      }));
+      setKeys((current) => ({ ...current, [providerCode]: '' }));
+      setNotice(result.message || 'API key saved securely.');
+      await load();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'The API key could not be saved.');
+    } finally {
+      setSavingProvider('');
     }
   }
 
@@ -172,6 +196,28 @@ export default function AiProviderConfigurationCenter() {
                         <span>Fingerprint: {provider.secret.fingerprint || 'Not configured'}</span>
                         <span>Rotation: {formatDate(provider.secret.rotatedAt)}</span>
                         <span>Expiry: {formatDate(provider.secret.expiresAt)}</span>
+                        <form className="ai-provider-center__secret-form" onSubmit={(event) => saveKey(event, provider.code)}>
+                          <label htmlFor={`provider-key-${provider.code}`}>
+                            {provider.configured ? 'Replace API key' : 'Add API key'}
+                          </label>
+                          <div>
+                            <input
+                              id={`provider-key-${provider.code}`}
+                              type="password"
+                              value={keys[provider.code] || ''}
+                              onChange={(event) => setKeys((current) => ({ ...current, [provider.code]: event.target.value }))}
+                              autoComplete="new-password"
+                              spellCheck="false"
+                              maxLength={8192}
+                              placeholder="Paste key once"
+                              disabled={savingProvider === provider.code}
+                            />
+                            <button type="submit" disabled={!keys[provider.code]?.trim() || savingProvider === provider.code}>
+                              {savingProvider === provider.code ? 'Saving…' : 'Save securely'}
+                            </button>
+                          </div>
+                          <small>The key is write-only and disappears from this form immediately after saving.</small>
+                        </form>
                       </div>
                     ) : null}
                   </article>
@@ -202,17 +248,17 @@ export default function AiProviderConfigurationCenter() {
           <section className="ai-provider-center__locked" aria-label="Controlled configuration boundary">
             <div>
               <p className="ai-provider-center__eyebrow">Protected change controls</p>
-              <h2>Secret writes and activation remain locked</h2>
+              <h2>Provider keys are write-only</h2>
               <p>
-                Runtime routing and read-only status are active in source. Key entry, rotation, activation,
-                rollback, and immutable configuration audit require approved secure-store and persistence work.
+                Administrators can add or replace Claude and OpenAI keys. Keys are encrypted before database
+                storage, activate immediately, and are never returned by the API after submission.
               </p>
             </div>
             <ul>
               <li>API key values are never returned.</li>
               <li>No browser or repository secret storage is permitted.</li>
-              <li>No Azure, database, or Entra change is performed by this center.</li>
-              <li>Future configuration updates must require step-up authentication and sanitized audit evidence.</li>
+              <li>Only administrators with an active ProjectPulse session may replace keys.</li>
+              <li>Every replacement creates sanitized audit evidence without the key value.</li>
             </ul>
           </section>
         </>

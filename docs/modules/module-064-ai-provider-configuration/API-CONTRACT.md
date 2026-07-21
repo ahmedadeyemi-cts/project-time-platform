@@ -78,5 +78,15 @@ Responses endpoint and model-access endpoint. Both adapters:
 | 503 | `configuration_unavailable` | Database connection is unavailable for role verification |
 | 503 | `authorization_unavailable` | Administrator authority could not be safely verified |
 
-There is intentionally no configuration mutation, secret-write, activation,
-rollback, or delete endpoint in this authorization phase.
+## Replace provider API key
+
+`PUT /api/ai-configuration/providers/{providerCode}/secret`
+
+Administrator-only, same-origin, write-only replacement for `claude` or `openai`.
+The JSON body is `{ "apiKey": "..." }`. A successful response contains provider,
+version, rotation time, and `valueReturned: false`; it never contains the key.
+The endpoint returns `503 secure_store_unavailable` until the deployment supplies
+the 32-byte base64 `PROJECTPULSE_AI_SECRET_ENCRYPTION_KEY` bootstrap secret.
+
+There is no key-read, rollback, or delete endpoint. Replacing a key activates the
+new version immediately and records sanitized audit metadata.

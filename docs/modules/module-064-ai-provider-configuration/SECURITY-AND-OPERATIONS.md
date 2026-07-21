@@ -2,10 +2,16 @@
 
 ## Secret handling
 
-Provider secrets are read at process startup from runtime environment references.
-The preferred deployment design is for the hosting platform to inject those
-values from an approved versioned secret store. Module 064 does not write secrets
-to source, browser storage, logs, responses, or the database.
+Provider secrets may be supplied through runtime environment references or entered
+by an administrator in Module 064. Web-entered secrets are encrypted with
+AES-256-GCM before database storage and become active immediately. Module 064 does
+not write secrets to source, browser storage, logs, responses, or audit records.
+
+The encrypted store requires `PROJECTPULSE_AI_SECRET_ENCRYPTION_KEY`, a
+base64-encoded 32-byte key supplied by the hosting platform. If it is absent or
+invalid, the web write endpoint fails closed while environment-backed providers
+continue to work. The encryption key must be backed up separately; changing or
+losing it makes stored provider keys unreadable.
 
 Accepted compatibility names:
 
@@ -18,10 +24,11 @@ The center displays only configured/not-configured state and a short SHA-256
 fingerprint for operator comparison. A fingerprint is not an API key and cannot
 be used to authenticate.
 
-The secure-write phase must require step-up authentication, versioned encrypted
-storage, connectivity and model validation before activation, explicit activation,
-rollback, rotation/expiry controls, and immutable sanitized audit. That phase is
-not implemented because Azure, database, and Entra changes are not authorized.
+Only active ProjectPulse administrators may replace a key. The endpoint accepts
+same-origin requests, limits the secret size, encrypts at the application boundary,
+and records only provider, version, actor, action, and timestamp in audit. Key
+values cannot be read back through the UI or API. Replacement is immediate;
+rollback and key deletion are not exposed.
 
 ## Core runtime variables
 

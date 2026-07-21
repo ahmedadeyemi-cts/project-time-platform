@@ -14,7 +14,7 @@ source-checkpoint language below remains evidence, not current runtime state.
 
 | Module | Requirement/outcome | Source readiness | Locked production boundary |
 |---|---|---|---|
-| 064 | `AI-017` shared AI provider configuration | Claude → OpenAI → local router and read-only center integrated | Secret mutation and live-provider readiness assertions |
+| 064 | `AI-017` shared AI provider configuration | Claude → OpenAI → local router plus encrypted write-only administrator key entry | Bootstrap encryption key and live-provider readiness assertions |
 | 065 | `RBAC-018` Entra Secret Administration | Read center and fail-closed lifecycle routes integrated | External adapter, step-up middleware, durable approvals/audit, secret-store and Entra mutation |
 | 066 | `GOV-015`, `RBAC-019`, `WRK-011`, `AI-008`, `AI-019`, `RPT-013` Project FlowHive | Complete safe 066A.1–066E source registered | Database persistence, FlowHive provider execution, customer sharing |
 | 067 | `OPS-016`, `CLS-005` Global Mail Configuration | Read-only configuration and health center integrated | Provider calls, test delivery, secret rotation, cutover |

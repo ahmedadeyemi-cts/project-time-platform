@@ -177,6 +177,13 @@
   font-size: 0.8rem;
 }
 
+.ai-provider-center__secret-form { border-top: 1px solid rgba(148,163,184,.35); margin-top: .8rem; padding-top: .8rem; }
+.ai-provider-center__secret-form label { display: block; font-weight: 700; margin-bottom: .45rem; }
+.ai-provider-center__secret-form > div { display: flex; gap: .5rem; }
+.ai-provider-center__secret-form input { flex: 1; min-width: 0; border: 1px solid #94a3b8; border-radius: .45rem; padding: .65rem .75rem; }
+.ai-provider-center__secret-form button { white-space: nowrap; }
+.ai-provider-center__secret-form small { display: block; margin-top: .45rem; color: #475569; }
+
 .ai-provider-center__routes {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
