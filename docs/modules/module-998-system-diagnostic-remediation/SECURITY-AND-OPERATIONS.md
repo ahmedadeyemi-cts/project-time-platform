@@ -1,35 +1,15 @@
 # Module 998 Security and Operations Boundary
 
-## Observation boundary
+Module 998 reads sanitized ProjectPulse runtime and database metadata. It does
+not retrieve secret values, tokens, connection strings, raw log bodies, packet
+data, or raw provider errors. Request bodies are bounded and processed only
+after actual-session authorization, View-As protection, management permission,
+and schema readiness.
 
-The module directly observes only:
+Native diagnostics and evidence persistence are operational. The native health
+refresh runbook changes diagnostic evidence only. Every production-changing
+action is adapter-gated, preserves its approved plan, returns the exact missing
+adapter, and performs no command or network call.
 
-1. the authenticated ProjectPulse request;
-2. actual-session server authorization; and
-3. an authorization-database `SELECT 1`.
-
-Service, identity, backup, restore, replication, delivery, AI, mail, and future
-security status remains delegated to the module that owns it. Delegated,
-governed, or unknown status is never converted to healthy.
-
-## Data minimization
-
-The API excludes raw logs, provider payloads, exception messages, stack traces,
-private host names, IP addresses, tenant identifiers, credentials, tokens,
-connection strings, secret values, and unredacted customer or user data.
-Authorization failures log only the exception type and return a generic 503.
-
-## Execution boundary
-
-All mutation routes are present only as discoverable contracts. The locked
-handler authenticates and authorizes, does not read the request body, invokes no
-adapter, changes no state, and returns HTTP 423. There is no command execution,
-network discovery, process launch, provider client, production remediation,
-security containment, mail delivery, AI execution, promotion, or rollback.
-
-## Post-deployment checks
-
-A separately authorized deployment must verify administrator navigation,
-non-administrator 403 behavior, View-As non-transfer, response redaction, safe
-status interpretation, all ownership links, disabled controls, and preservation
-of Modules 002, 056E, 059, 062, and 064–074.
+All session and remediation changes write Module 998 audit evidence. Approval
+by the requester is rejected by both the API transition and database constraint.

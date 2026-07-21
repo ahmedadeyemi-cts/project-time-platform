@@ -1,23 +1,13 @@
 # Module 998 Authorization Matrix
 
-Authority always comes from `ProjectPulseActualUserId`, falling back to the
-normal `ProjectPulseSessionUserId`. `ProjectPulseEffectiveUserId` is not an
-authority source, so View-As never transfers diagnostic or remediation access.
+| Capability | Required authority | Additional control |
+|---|---|---|
+| View checks, sessions, findings, and runbooks | Admin/security role, `VIEW_SYSTEM_DIAGNOSTICS`, `SYSTEM_ADMINISTRATION`, or `MANAGE_ALL` | Restricted operational metadata |
+| Run and persist a diagnostic session | `MANAGE_SYSTEM_REMEDIATION`, Administrator, Super Administrator, or `MANAGE_ALL` | View-As blocked |
+| Prepare or stage remediation | Management authority | Preview and audit evidence required |
+| Approve remediation | Management authority | Requester/approver separation of duties |
+| Execute native health refresh | Approved/staged request | Changes evidence only, then verification required |
+| Execute production-changing runbook | Approved request plus owning adapter authority | HTTP 423 until adapter is configured |
 
-| Capability | Super Administrator | Administrator | Delegated `VIEW_SYSTEM_DIAGNOSTICS` | Delegated `MANAGE_SYSTEM_REMEDIATION` | Other authenticated roles |
-|---|---:|---:|---:|---:|---:|
-| View safe diagnostic APIs | Yes | Yes | Yes | Yes | No |
-| View evidence and remediation policy | Yes | Yes | Yes | Yes | No |
-| View guidance-only runbooks | Yes | Yes | Yes | Yes | No |
-| Request remediation | Contract only | Contract only | No | Contract only | No |
-| Approve, stage, promote, or rollback | Locked | Locked | Locked | Locked | Locked |
-| Run AI diagnostic analysis | Locked | Locked | Locked | Locked | Locked |
-| Access secrets or raw logs | No | No | No | No | No |
-
-`SYSTEM_ADMINISTRATION` and `MANAGE_ALL` also grant read access. Only a Super
-Administrator, `MANAGE_SYSTEM_REMEDIATION`, or `MANAGE_ALL` may be represented
-as a future remediation requester. That does not enable execution.
-
-All production actions still require a separately approved adapter,
-authorization record, separated approval, durable audit, staging evidence, and
-explicit production authority.
+Actual-session identity is mandatory. A View-As effective user is never an
+authority source.

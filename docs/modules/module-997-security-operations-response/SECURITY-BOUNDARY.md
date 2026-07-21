@@ -1,25 +1,22 @@
 # Module 997 Security Boundary
 
-## Directly observed
+## Native evidence
 
-- Valid ProjectPulse actual session.
-- Server-side role and permission authorization.
-- Authorization-database connectivity through `SELECT 1`.
+Module 997 reads restricted ProjectPulse authentication events, session
+metadata, platform audit events, alerts, incidents, and response requests. It
+does not expose passwords, hashes, tokens, secret values, raw provider payloads,
+packet captures, or unredacted exception messages.
 
-## Never inferred
+## Containment boundary
 
-- An empty alert or incident list does not mean the environment is healthy.
-- A delegated control does not mean the control is currently effective.
-- A configured product name does not mean its connector is available.
-- An indicator does not authorize blocking or containment.
+Native session revocation is the only built-in containment action. It requires:
 
-## Excluded data and behavior
+1. a durable incident;
+2. a prepared response request;
+3. approval by an eligible actor other than the requester;
+4. management permission outside View-As;
+5. `PROJECTPULSE_SECURITY_NATIVE_SESSION_REVOCATION_ENABLED=true`; and
+6. an active ProjectPulse session UUID as the bounded target.
 
-- Raw logs, packet captures, exploit payloads, customer content, credentials,
-  tokens, secret values, private topology, and raw provider errors.
-- Security-product queries, threat-feed queries, AI calls, identity-provider
-  calls, endpoint or firewall actions, external mail, and ticketing actions.
-- Durable case mutation, containment, eradication, recovery, export, and closure.
-
-Exceptions are logged only by exception type. Responses contain sanitized
-dependency-unavailable messages and no provider or secret detail.
+All other containment requires an approved adapter. Missing external telemetry
+or adapters remains explicit and is never represented as healthy.

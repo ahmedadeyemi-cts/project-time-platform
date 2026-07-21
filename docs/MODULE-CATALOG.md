@@ -92,8 +92,8 @@ Modules 998/997 HTTP 401 barriers, and both protected web bundles.
 | 073 | Sales Coverage Alignment | Installed unsaved-draft source through merged PR 24 | Consolidated 064–074 release train | Module 062 identity and future audited alignment persistence | Persistence remains locked pending database authorization |
 | 074 | OEM & Vendor Directory | Installed unsaved-draft source through merged PR 24 | Consolidated 064–074 release train | Future audited vendor persistence | Persistence remains locked pending database authorization |
 | 076 | Defect Intake & Resolution Tracker | Complete source in progress; fail-closed current-main replay | Module 076 integration worktree | Modules 059, 062, 064, 067; ProjectPulse Help; future signed GitHub adapter | Number approved; database persistence, outbox/email delivery, GitHub webhook activation, AI execution, and external mutation remain locked |
-| 997 | Security Operations, Threat Intelligence & Response Center | Merged through PR 38 and deployed to test in run 29794000240 | Current main | Modules 010, 012–017, 037, 058, 059, 062, 064, 067, 068; deployed Module 998 remains independent | Authenticated security contracts are installed; telemetry, threat feeds, response, AI, notifications, evidence export, secrets, and external adapters remain locked |
-| 998 | System Diagnostic & Controlled Remediation Center | Merged through PR 37 and deployed to test in run 29791085444 | Current main | Modules 013–017, 058, 064, 067, 068; Module 997 security signals remain independently owned | Authenticated diagnostics are installed; remediation, AI, notifications, containment, promotion, rollback, secrets, and external connectors remain locked |
+| 997 | Security Operations, Threat Intelligence & Response Center | Operational activation source validated on the post-PR-51 baseline; PR and deployment pending | `feature/modules-997-998-operational-response-20260721` | ProjectPulse authentication/session/audit telemetry, Module 998 diagnostic handoff, and approved future security adapters | Native telemetry, durable incidents/timelines, approvals, and gated session revocation are implemented; external Entra/WAF/endpoint/notification/export/AI adapters remain locked |
+| 998 | System Diagnostic & Controlled Remediation Center | Operational activation source validated on the post-PR-51 baseline; PR and deployment pending | `feature/modules-997-998-operational-response-20260721` | Module 997 incidents, ProjectPulse PostgreSQL/runtime metadata, Modules 075/077, and approved future Azure/database adapters | Native sessions, findings, runbook previews, approvals, health refresh, and verification are implemented; production-changing adapters remain locked |
 
 Historical PR 24 catalog marker retained for the protected Module 068 validator
 (the current Module 067 status is the installed-source row above):
@@ -151,10 +151,12 @@ Historical PR 24 catalog marker retained for the protected Module 068 validator
 | Source | Recovery `fc4dafa34783fd6b8f5557e7feee8f7626d86766`; integration `6dc90425371b032969d539fe5158892c40a6b268` |
 | Status | PR 38 merged as `93b519ca54a5322582ed7d33adf91db7ea9e9919`; CI `29792880067` and deployment `29794000240` succeeded |
 | Dependencies | Modules 010, 012–017, 037, 058, 059, 062, 064, 067, 068; deployed Module 998 remains independent |
-| Locked boundary | Telemetry, threat feeds, incident persistence, AI, containment, eradication, recovery, notifications, evidence export, secrets, and every external adapter |
+| Locked boundary | External threat feeds, Entra/WAF/endpoint containment, AI, notifications, evidence export, secrets, and every unapproved external adapter |
 
-Module 997 preserves deployed Module 998 registrations while retaining separate
-authorization, source ownership, UI, and fail-closed execution boundaries.
+Module 997 preserves deployed Module 998 registrations. The operational
+activation adds ProjectPulse-native telemetry, incident persistence, separated
+containment approval, and the Module 998 diagnostic handoff without enabling an
+unapproved external adapter.
 
 ## PROJECTPULSE_NATIVE_POSTGRESQL_MIGRATION_031
 

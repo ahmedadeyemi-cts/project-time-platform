@@ -1,53 +1,35 @@
 # Module 997 — Security Operations, Threat Intelligence & Response Center
 
-## Purpose
+## Operational activation
 
-Module 997 provides the governed ProjectPulse security-operations control plane:
-sanitized readiness, alert and incident contracts, threat-intelligence handling,
-control ownership, incident lifecycle, reporting boundaries, and explicit future
-integration adapters.
+Module 997 is the ProjectPulse-native security operations center. It reads
+authentication events, active/revoked sessions, platform audit events, stored
+alerts, and durable incident records. Authorized analysts can declare and
+acknowledge incidents, preserve a timeline, start a Module 998 diagnostic
+session, and prepare a controlled containment request.
 
-## Source checkpoint
+The operational schema is supplied by migration
+`033_security_diagnostics_native_operations.sql`. Until that migration is
+applied, the API returns `503 operational_schema_unavailable` and names the
+missing migration.
 
-| Field | Value |
-|---|---|
-| Module | 997 |
-| Route | `security-operations` |
-| API prefix | `/api/security-operations` |
-| Base | `main@3d9a3dca8af479c854dc4c4a9294bc8aad273074` |
-| Required ancestor | `48421d5ba1584d64fc3bd043304c003eff1dc27b` |
-| Branch | `feature/module-997-security-operations-response-20260720` |
-| Contract | `2026-07-20.1` |
-| Source phase | Validated complete fail-closed source checkpoint; remote publication pending |
+## Available now
 
-## Included
+- Live ProjectPulse authentication-failure and session evidence.
+- Persistent security alerts, incidents, owners, states, and timelines.
+- Incident-to-diagnostic handoff to Module 998.
+- Dual-controlled containment requests with immutable audit evidence.
+- Native ProjectPulse session revocation when the action is approved and
+  `PROJECTPULSE_SECURITY_NATIVE_SESSION_REVOCATION_ENABLED=true`.
+- Exact configuration guidance for actions that still need an external adapter.
 
-- Actual-session, server-authorized restricted operations center.
-- Sanitized security posture and ownership map.
-- Non-authoritative alert and incident contracts that never equate missing
-  telemetry with health.
-- Threat-source, confidence, expiry, and handling policy.
-- Eight-step incident response lifecycle and separation of duties.
-- Restricted reporting, redaction, and evidence rules.
-- Explicit connector inventory with every adapter disabled.
-- US Signal-branded responsive frontend and protected source validator.
+## Adapter-gated capabilities
 
-## Fail-closed boundary
+Entra suspension, role restriction, integration quarantine, WAF/network
+blocking, endpoint isolation, external notification, evidence export, and AI
+analysis remain unavailable until their owning adapter, permission, redaction,
+rollback, and production authority are separately configured. An unavailable
+adapter returns HTTP 423 and never pretends that an action executed.
 
-This checkpoint makes no telemetry, threat-feed, AI, mail, cloud, Entra,
-endpoint, firewall, ticketing, evidence-store, or secret-store call. It performs
-no incident persistence, containment, eradication, recovery, notification,
-evidence export, or case closure. Every mutation-shaped route returns HTTP 423
-after actual-session authorization and before request-body processing.
-
-## Module ownership
-
-Module 997 owns security signal governance, threat-intelligence policy, incident
-command, response controls, and security reporting. Existing identity,
-resilience, delivery, AI, mail, and architecture modules keep their established
-ownership. Module 998 owns controlled-remediation governance and is referenced
-as a future handoff only; this branch does not depend on its unmerged source.
-
-Passing source and build validation means the module is ready for a draft PR.
-It does not mean merged, deployed, connected to security products, or authorized
-to take security action.
+Actual-session authority is mandatory. View-As is read-only and never grants
+security response authority.

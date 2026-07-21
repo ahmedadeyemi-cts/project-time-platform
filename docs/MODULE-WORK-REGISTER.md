@@ -12,10 +12,10 @@ their module-specific README and evidence.
 | Field | Value |
 |---|---|
 | Base branch | `main` |
-| Base commit | `93b519ca54a5322582ed7d33adf91db7ea9e9919` |
-| Base description | Current main through PR 38 with deployed Modules 071/072 runtime repairs and deployed fail-closed Modules 998 and 997 source |
-| Source status | Verified current `origin/main` base for the Module 076 replay as of 2026-07-21 |
-| Deployment status | Current main is deployed to test in run `29794000240`; Modules 998 and 997 are runtime-active with authentication and fail-closed boundaries verified |
+| Base commit | `26e6b0116c4d0c4d258c6c23009c9e4c13575b7c` |
+| Base description | Current main through PR 51 with the Modules 075/077–080 authorization, contrast, independent-loading, and container-context repair |
+| Source status | PR 51 passed CI run `29869802703` and merged; Modules 997/998 operational activation is isolated on `feature/modules-997-998-operational-response-20260721` |
+| Deployment status | The PR 51 source and Modules 997/998 operational activation have not been deployed in this workstream |
 | Prior approved baseline | `main@44e73c4283a33b85ed0dd2832e93059ada37335f` |
 | Governance lineage | `docs/module-development-governance-20260717@66cf0f6457efaa33196f2c91b03bd3a35d13bf19` |
 
@@ -33,8 +33,8 @@ start from current `main` or a later verified forward-moving commit.
 | 066A.1 | Shared Registration and Activation source package | Included in source commit `6e7509cfe9b5704ff291525eb587040f31944ee8`; pushed in open draft PR 24 | Source activation is not deployed; 42/42 activation contract, protected frontend build, .NET 10 builds, and zero-warning delta passed | Review PR 24 checks and findings; merge and deployment require separate authorization |
 | 066B–066E | Complete safe Project FlowHive source package | Included in source commit `6e7509cfe9b5704ff291525eb587040f31944ee8`; pushed in open draft PR 24 | Planning/schedule/AI-request/internal-artifact source present; persistence, provider execution, customer sharing, and deployment remain locked | Review PR 24 while preserving every locked boundary |
 | 064–074 | Consolidated release train | Source is merged; current test image is `main@93b519ca54a5322582ed7d33adf91db7ea9e9919` | Current application image is deployed; targeted public/native runtime verification is recorded for Modules 071/072 and all external-operation locks remain in force | Preserve current-main behavior while replaying Module 076 |
-| 998 | Merged and deployed fail-closed diagnostic/remediation center | PR 37 merged as `44e73c4283a33b85ed0dd2832e93059ada37335f`; deployment run `29791085444` succeeded | Authenticated route and web-bundle boundaries verified; every remediation, containment, connector, notification, AI, promotion, rollback, and secret operation remains locked | Preserve while integrating Module 076 |
-| 997 | Merged and deployed fail-closed security operations center | PR 38 merged as `93b519ca54a5322582ed7d33adf91db7ea9e9919`; deployment run `29794000240` succeeded | Authenticated route and web-bundle boundaries verified; security response, telemetry, threat feeds, connectors, notifications, AI, evidence export, and secrets remain locked | Preserve while integrating Module 076 |
+| 998 | Operational activation source locally validated | PR pending from `feature/modules-997-998-operational-response-20260721` | Persistent diagnostic sessions/findings, Module 997 handoff, runbook previews, dual approvals, native health refresh, and verification implemented; production adapters remain locked | Publish through a separate CI-gated PR; apply migration 033 and deploy only after separate authorization |
+| 997 | Operational activation source locally validated | PR pending from `feature/modules-997-998-operational-response-20260721` | Native authentication/session telemetry, durable incidents/timelines, diagnostic handoff, separated containment requests, and gated session revocation implemented | Publish through a separate CI-gated PR; apply migration 033 and deploy only after separate authorization |
 | 076 | Exact source commit `81b91272285e7ecab29b9b3ce385ce27f1f2d508` restored through verified bundle and replayed on current main | No source PR; integration branch remains local and unpublished | Source-only fail-closed capability; no database, webhook, mail, AI, Azure, Entra, Cloudflare, or deployment change | Validate the reconciled 21-file replay before commit, push, PR, merge, or deployment |
 
 ## Active work ownership

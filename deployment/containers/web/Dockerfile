@@ -67,6 +67,9 @@ COPY src/backend/ProjectTime.Api/Modules/ProjectFlowHiveArtifactRenderer.cs \
 COPY src/backend/ProjectTime.Api/Modules/SecurityOperationsResponseModule.cs \
      src/backend/ProjectTime.Api/Modules/SecurityOperationsResponseModule.cs
 
+COPY src/backend/ProjectTime.Api/Modules/SecurityDiagnosticsOperations.cs \
+     src/backend/ProjectTime.Api/Modules/SecurityDiagnosticsOperations.cs
+
 COPY src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs \
      src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs
 

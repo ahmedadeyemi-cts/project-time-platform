@@ -1,5 +1,38 @@
 # ProjectPulse August Production Readiness Tracker
 
+## Active functional-completion workstream — Modules 075, 077–080, 997, and 998
+
+PR 51 passed ProjectPulse CI run `29869802703` and merged as
+`26e6b0116c4d0c4d258c6c23009c9e4c13575b7c`. That prerequisite repaired the
+actual-session authorization mismatch, heading contrast, independent surface
+loading, structured operational content, and web-container validation context
+for Modules 075 and 077–080. It has not been deployed by this workstream.
+
+The next source slice is isolated on
+`feature/modules-997-998-operational-response-20260721` and is not yet merged or
+deployed. Local validation currently records:
+
+- Module 997 operational validator: 74 checks passed.
+- Module 998 operational validator: 76 checks passed.
+- Full protected frontend validation chain and Vite production build: passed.
+- Migration 033 and its rollback exist but have not been applied.
+- .NET Release compilation and web-container compilation remain GitHub CI gates.
+
+Module 997 now includes ProjectPulse-native authentication/session evidence,
+durable incidents and timelines, a Module 998 diagnostic handoff, separated
+containment approval, and optionally enabled native session revocation. Module
+998 now includes persistent diagnostic sessions/findings, issue ranking,
+runbook previews, separated approvals, native health refresh, and post-action
+verification. Entra, WAF, endpoint, Azure restart/scale, deployment rollback,
+integration replay, database repair, external notification/export, and AI
+execution remain adapter-gated.
+
+`MODULE_997_998_OPERATIONAL_ACTIVATION=SOURCE_VALIDATED_PR_PENDING`
+
+`MIGRATION_033_APPLIED=NO`
+
+`DEPLOYMENT_PERFORMED=NO`
+
 ## Completed Production Readiness Foundation
 
 ### Modules 064–074 — Current-main release train
