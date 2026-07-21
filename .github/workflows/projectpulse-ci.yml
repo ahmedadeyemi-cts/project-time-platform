@@ -38,10 +38,14 @@ jobs:
         working-directory: src/frontend/project-time-web
         run: npm run build
 
-      - name: Validate container definitions
+      - name: Validate container definitions and web build context
         run: |
           test -f deployment/containers/api/Dockerfile
           test -f deployment/containers/web/Dockerfile
+          docker build \
+            --file deployment/containers/web/Dockerfile \
+            --tag "projectpulse-web-ci:${GITHUB_SHA}" \
+            .
 
       - name: Generate release manifest
         run: |
