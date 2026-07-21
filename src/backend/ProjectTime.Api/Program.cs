@@ -36927,6 +36927,14 @@ app.MapModule064074NativeAdministrationEndpoints();
 app.MapDefectTrackerEndpoints();
 /* MODULE_076_DEFECT_TRACKER_ENDPOINT_MAP_END */
 
+/* MODULES_075_080_RUNTIME_ENDPOINT_MAP_START */
+app.MapIntegrationEventGatewayEndpoints();
+app.MapReleaseDeploymentControlEndpoints();
+app.MapObservabilitySloHealthEndpoints();
+app.MapDataGovernanceRetentionEndpoints();
+app.MapCustomerDeliveryAcceptanceEndpoints();
+/* MODULES_075_080_RUNTIME_ENDPOINT_MAP_END */
+
 /* MODULE_998_SYSTEM_DIAGNOSTIC_ENDPOINT_MAP_START */
 app.MapSystemDiagnosticRemediationEndpoints();
 /* MODULE_998_SYSTEM_DIAGNOSTIC_ENDPOINT_MAP_END */
