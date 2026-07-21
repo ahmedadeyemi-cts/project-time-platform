@@ -282,3 +282,10 @@ For Module 066B:
 - `MIGRATION_032_APPLIED=NO`
 - `DATABASE_CHANGED=NO`
 - `DEPLOYED=NO`
+
+## Modules 075 and 077–080 current-main work register — 2026-07-21
+<!-- MODULES_075_080_CURRENT_MAIN_INTEGRATION_20260721 -->
+
+Integration completed in the required order: 075, 077, 078, 079, then 080. The source PR heads and eight-file module boundaries were preserved, GitHub recomputed each PR as mergeable after the preceding merge, and each merge was pinned to its reviewed head SHA.
+
+Central governance continues to own shared registration and any future runtime activation. The integrated packages remain fail-closed: no connector, deployment, rollback, telemetry delivery, retention execution, export, deletion, external identity, sharing, database, cloud, Entra, SMTP, or other external-system mutation was authorized or performed.
