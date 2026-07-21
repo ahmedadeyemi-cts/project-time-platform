@@ -7044,6 +7044,14 @@ Analytics - Variphy / Infortel`}
         </section>
       ) : null}
 
+      {/* MODULE_066A1_PROJECT_FLOWHIVE_ROUTE_START */}
+      {(activeRoute === 'project-flowhive' && canViewProjectFlowHive) ? (
+        <section id="project-flowhive" className="panel project-flowhive-route-panel">
+          <ProjectFlowHiveCenter />
+        </section>
+      ) : null}
+      {/* MODULE_066A1_PROJECT_FLOWHIVE_ROUTE_END */}
+
       {/* MODULE_070_STRUCTURAL_ROUTE_BOUNDARY */}
       {/* MODULE_057_STRUCTURAL_ROUTE_BOUNDARY_V6 */}
       {![
@@ -7902,14 +7910,6 @@ Analytics - Variphy / Infortel`}
           <ProjectWorkspaceCenter />
         </section>
       ) : null}
-
-      {/* MODULE_066A1_PROJECT_FLOWHIVE_ROUTE_START */}
-      {(activeRoute === 'project-flowhive' && canViewProjectFlowHive) ? (
-        <section id="project-flowhive" className="panel project-flowhive-route-panel">
-          <ProjectFlowHiveCenter />
-        </section>
-      ) : null}
-      {/* MODULE_066A1_PROJECT_FLOWHIVE_ROUTE_END */}
 
       {(activeRoute === 'work-task-builder' && canSeeAny(['VIEW_WORK_TASK_BUILDER', 'MANAGE_WORK_TASK_BUILDER', 'ASSIGN_WORK_TASKS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
         <WorkTaskBuilderPanel />
