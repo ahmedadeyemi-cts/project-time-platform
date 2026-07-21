@@ -210,8 +210,8 @@ export default function AiProviderConfigurationCenter() {
                         <h3>{provider.displayName || PROVIDER_LABELS[provider.code] || provider.code}</h3>
                         <p>{provider.model}</p>
                       </div>
-                      <span className={`ai-provider-center__status ai-provider-center__status--${statusClass(health.status)}`}>
-                        {(health.status || 'not checked').replaceAll('_', ' ')}
+                      <span className={`ai-provider-center__status ai-provider-center__status--${statusClass(health.probeStatus)}`}>
+                        {(health.probeStatus || 'not checked').replaceAll('_', ' ')}
                       </span>
                     </div>
                     <dl>
@@ -219,12 +219,18 @@ export default function AiProviderConfigurationCenter() {
                       <div><dt>Configured</dt><dd>{provider.configured ? 'Yes' : 'No'}</dd></div>
                       <div><dt>Endpoint</dt><dd>{provider.endpoint || 'Local only'}</dd></div>
                       <div><dt>API version</dt><dd>{provider.apiVersion || 'Not applicable'}</dd></div>
+                      <div><dt>Generation route status</dt><dd>{(health.status || 'not checked').replaceAll('_', ' ')}</dd></div>
                       <div><dt>Last check</dt><dd>{formatDate(health.lastCheckedAt)}</dd></div>
                       <div><dt>Last success</dt><dd>{formatDate(health.lastSuccessAt)}</dd></div>
-                      <div><dt>Requests succeeded</dt><dd>{health.successCount ?? 0}</dd></div>
-                      <div><dt>Failures / refusals</dt><dd>{health.failureCount ?? 0} / {health.refusalCount ?? 0}</dd></div>
-                      <div><dt>Last failure code</dt><dd>{health.lastFailureCode ?? 'None'}</dd></div>
-                      <div><dt>Last provider request</dt><dd>{health.lastRequestId ?? 'Not reported'}</dd></div>
+                      <div><dt>Generations succeeded</dt><dd>{health.successCount ?? 0}</dd></div>
+                      <div><dt>Generation failures / refusals</dt><dd>{health.failureCount ?? 0} / {health.refusalCount ?? 0}</dd></div>
+                      <div><dt>Last generation failure</dt><dd>{health.lastFailureCode ?? 'None'}</dd></div>
+                      <div><dt>Last generation request</dt><dd>{health.lastRequestId ?? 'Not reported'}</dd></div>
+                      <div><dt>Probe status</dt><dd>{(health.probeStatus || 'not checked').replaceAll('_', ' ')}</dd></div>
+                      <div><dt>Last probe</dt><dd>{formatDate(health.lastProbeAt)}</dd></div>
+                      <div><dt>Probe successes / failures</dt><dd>{health.probeSuccessCount ?? 0} / {health.probeFailureCount ?? 0}</dd></div>
+                      <div><dt>Last probe failure</dt><dd>{health.lastProbeFailureCode ?? 'None'}</dd></div>
+                      <div><dt>Last probe request</dt><dd>{health.lastProbeRequestId ?? 'Not reported'}</dd></div>
                       <div><dt>Input / output tokens</dt><dd>{health.inputTokens ?? 0} / {health.outputTokens ?? 0}</dd></div>
                       <div><dt>Requests remaining</dt><dd>{health.rateLimits?.requestsRemaining ?? 'Not reported'}</dd></div>
                       <div><dt>Tokens remaining</dt><dd>{health.rateLimits?.tokensRemaining ?? 'Not reported'}</dd></div>

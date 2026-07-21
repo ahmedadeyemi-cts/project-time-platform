@@ -313,7 +313,7 @@ public static class AiProviderConfigurationModule
         var remotes = health.Where(item =>
             !string.Equals(item.Provider, ProjectPulseAiProviders.Local, StringComparison.OrdinalIgnoreCase)).ToArray();
 
-        if (remotes.Any(item => item.Status == "available")) return "healthy";
+        if (remotes.Any(item => item.ProbeStatus == "available")) return "healthy";
         if (remotes.Any(item => item.Enabled && item.Configured)) return "degraded";
         return "local_fallback_only";
     }

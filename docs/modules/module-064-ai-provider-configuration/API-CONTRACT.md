@@ -34,6 +34,9 @@ includes:
 - cumulative input/output token counts;
 - provider-reported remaining request/token limits and reset values when present;
 - last provider request identifier when supplied by the provider.
+- independently tracked probe status, timestamps, counts, failure code, and
+  request identifier. Probe results never overwrite generation counters,
+  failure details, or circuit state.
 
 Overall status is `healthy`, `degraded`, or `local_fallback_only`.
 
@@ -42,7 +45,9 @@ Overall status is `healthy`, `degraded`, or `local_fallback_only`.
 Runs a minimal real generation probe against each enabled and configured remote
 provider. A provider is marked available only when it returns usable generated
 text. Disabled and unconfigured providers are never contacted. This action
-does not change provider configuration, Azure, the database, or Entra.
+uses the same provider request builders as generation, with an output-token
+limit valid for every provider. It does not change provider configuration,
+generation telemetry, Azure, the database, or Entra.
 
 ## Existing consumer contract
 
