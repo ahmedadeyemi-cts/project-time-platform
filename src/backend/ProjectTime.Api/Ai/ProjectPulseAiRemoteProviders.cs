@@ -9,7 +9,7 @@ public sealed class ProjectPulseClaudeProvider : IProjectPulseAiProvider
 {
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ProjectPulseAiConfiguration _configuration;
-    private readonly ProjectPulseAiProviderConfiguration _provider;
+    private ProjectPulseAiProviderConfiguration Provider => _configuration.Claude;
 
     public ProjectPulseClaudeProvider(
         IHttpClientFactory httpClientFactory,
@@ -17,7 +17,6 @@ public sealed class ProjectPulseClaudeProvider : IProjectPulseAiProvider
     {
         _httpClientFactory = httpClientFactory;
         _configuration = configuration;
-        _provider = configuration.Claude;
     }
 
     public string Code => ProjectPulseAiProviders.Claude;
@@ -30,7 +29,7 @@ public sealed class ProjectPulseClaudeProvider : IProjectPulseAiProvider
 
         var payload = JsonSerializer.Serialize(new
         {
-            model = _provider.Model,
+            model = Provider.Model,
             max_tokens = Math.Min(request.MaxOutputTokens, _configuration.MaxOutputTokens),
             temperature = request.Temperature,
             system = request.SystemPrompt,
@@ -163,7 +162,7 @@ public sealed class ProjectPulseClaudeProvider : IProjectPulseAiProvider
         var response = await ProjectPulseAiHttp.SendWithRetryAsync(
             _httpClientFactory,
             _configuration,
-            () => CreateRequest(HttpMethod.Get, $"/models/{Uri.EscapeDataString(_provider.Model)}", null),
+            () => CreateRequest(HttpMethod.Get, $"/models/{Uri.EscapeDataString(Provider.Model)}", null),
             cancellationToken);
 
         if (response.ExceptionCode is not null || response.Response is null)
@@ -190,15 +189,16 @@ public sealed class ProjectPulseClaudeProvider : IProjectPulseAiProvider
 
     private HttpRequestMessage CreateRequest(HttpMethod method, string path, string? payload)
     {
-        var request = new HttpRequestMessage(method, _provider.Endpoint + path);
-        request.Headers.Add("x-api-key", _provider.ApiKey);
-        request.Headers.Add("anthropic-version", _provider.ApiVersion);
+        var provider = Provider;
+        var request = new HttpRequestMessage(method, provider.Endpoint + path);
+        request.Headers.Add("x-api-key", provider.ApiKey);
+        request.Headers.Add("anthropic-version", provider.ApiVersion);
         if (payload is not null) request.Content = new StringContent(payload, Encoding.UTF8, "application/json");
         return request;
     }
 
     private bool IsModelApproved() =>
-        _provider.ApprovedModels.Contains(_provider.Model, StringComparer.OrdinalIgnoreCase);
+        Provider.ApprovedModels.Contains(Provider.Model, StringComparer.OrdinalIgnoreCase);
 
     private ProjectPulseAiProviderResult ModelNotApproved() => new(
         Code,
@@ -240,7 +240,7 @@ public sealed class ProjectPulseOpenAiProvider : IProjectPulseAiProvider
 {
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ProjectPulseAiConfiguration _configuration;
-    private readonly ProjectPulseAiProviderConfiguration _provider;
+    private ProjectPulseAiProviderConfiguration Provider => _configuration.OpenAi;
 
     public ProjectPulseOpenAiProvider(
         IHttpClientFactory httpClientFactory,
@@ -248,7 +248,6 @@ public sealed class ProjectPulseOpenAiProvider : IProjectPulseAiProvider
     {
         _httpClientFactory = httpClientFactory;
         _configuration = configuration;
-        _provider = configuration.OpenAi;
     }
 
     public string Code => ProjectPulseAiProviders.OpenAi;
@@ -261,7 +260,7 @@ public sealed class ProjectPulseOpenAiProvider : IProjectPulseAiProvider
 
         var payload = JsonSerializer.Serialize(new
         {
-            model = _provider.Model,
+            model = Provider.Model,
             instructions = request.SystemPrompt,
             input = request.UserPrompt,
             max_output_tokens = Math.Min(request.MaxOutputTokens, _configuration.MaxOutputTokens)
@@ -383,7 +382,7 @@ public sealed class ProjectPulseOpenAiProvider : IProjectPulseAiProvider
         var response = await ProjectPulseAiHttp.SendWithRetryAsync(
             _httpClientFactory,
             _configuration,
-            () => CreateRequest(HttpMethod.Get, $"/models/{Uri.EscapeDataString(_provider.Model)}", null),
+            () => CreateRequest(HttpMethod.Get, $"/models/{Uri.EscapeDataString(Provider.Model)}", null),
             cancellationToken);
 
         if (response.ExceptionCode is not null || response.Response is null)
@@ -410,16 +409,17 @@ public sealed class ProjectPulseOpenAiProvider : IProjectPulseAiProvider
 
     private HttpRequestMessage CreateRequest(HttpMethod method, string path, string? payload)
     {
-        var request = new HttpRequestMessage(method, _provider.Endpoint + path);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _provider.ApiKey);
-        if (!string.IsNullOrWhiteSpace(_provider.Organization)) request.Headers.Add("OpenAI-Organization", _provider.Organization);
-        if (!string.IsNullOrWhiteSpace(_provider.Project)) request.Headers.Add("OpenAI-Project", _provider.Project);
+        var provider = Provider;
+        var request = new HttpRequestMessage(method, provider.Endpoint + path);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", provider.ApiKey);
+        if (!string.IsNullOrWhiteSpace(provider.Organization)) request.Headers.Add("OpenAI-Organization", provider.Organization);
+        if (!string.IsNullOrWhiteSpace(provider.Project)) request.Headers.Add("OpenAI-Project", provider.Project);
         if (payload is not null) request.Content = new StringContent(payload, Encoding.UTF8, "application/json");
         return request;
     }
 
     private bool IsModelApproved() =>
-        _provider.ApprovedModels.Contains(_provider.Model, StringComparer.OrdinalIgnoreCase);
+        Provider.ApprovedModels.Contains(Provider.Model, StringComparer.OrdinalIgnoreCase);
 
     private ProjectPulseAiProviderResult ModelNotApproved() => new(
         Code,

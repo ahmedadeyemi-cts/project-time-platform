@@ -55,6 +55,17 @@ public sealed class ProjectPulseAiHealthRegistry
         }
     }
 
+    public void ApplyConfiguration(ProjectPulseAiProviderConfiguration configuration)
+    {
+        if (!_states.TryGetValue(configuration.Code, out var state)) return;
+        lock (state.Sync)
+        {
+            state.Enabled = configuration.Enabled;
+            state.Configured = configuration.Configured;
+            if (configuration.Configured && state.Status == "not_configured") state.Status = "not_checked";
+        }
+    }
+
     public void RecordSuccess(
         string provider,
         ProjectPulseAiUsage? usage,
@@ -201,8 +212,8 @@ public sealed class ProjectPulseAiHealthRegistry
     {
         public object Sync { get; } = new();
         public required string Provider { get; init; }
-        public required bool Enabled { get; init; }
-        public required bool Configured { get; init; }
+        public required bool Enabled { get; set; }
+        public required bool Configured { get; set; }
         public required string Status { get; set; }
         public required string LastOutcome { get; set; }
         public DateTimeOffset? LastCheckedAt { get; set; }

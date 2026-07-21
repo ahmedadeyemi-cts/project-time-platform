@@ -9,13 +9,13 @@
 | Availability check and skip | Implemented | Cached health, background probe, failure threshold, circuit |
 | Safety refusal does not fail over | Implemented | Refusal is a terminal normalized outcome |
 | Approved models | Implemented | Per-provider allowlist enforced before HTTP |
-| Write-only API keys | Read-only runtime boundary implemented | Values are never serialized; write UI/API intentionally absent |
-| Versioned encrypted secret storage | Blocked | Requires authorized Key Vault or approved secure-store integration |
-| Rotation / expiry / version / fingerprint | Metadata read implemented | Rotation writes require secure-store authorization |
-| Step-up authentication for updates | Blocked | No update endpoint exists; Entra/auth design requires authorization |
+| Write-only API keys | Implemented | Admin-only password fields and PUT endpoint; values are never serialized |
+| Versioned encrypted secret storage | Implemented | AES-256-GCM database storage with deployment bootstrap key |
+| Rotation / expiry / version / fingerprint | Replacement implemented | Version, rotation time, and fingerprint are returned without the value |
+| Update authorization | Implemented | Actual signed-in administrator authority plus same-origin enforcement |
 | Connectivity/model validation | Implemented for runtime references | Background and manual model-access probes |
-| Explicit activation and rollback | Blocked | Requires authorized persistent configuration versions |
-| Immutable sanitized audit | Blocked | Requires authorized persistence/database design |
+| Explicit activation and rollback | Partial | Replacement activates immediately; rollback is not exposed |
+| Immutable sanitized audit | Implemented | Append-only sanitized replacement records; no key material |
 | Last success/failure and usage | Implemented | In-memory health registry and admin API/UI |
 | Provider limits | Implemented configuration and runtime view | Timeout, retry, output-token, health, circuit, and provider-reported remaining request/token limits |
 | SOW/GSD routing | Reserved | `sow_gsd_planning` feature route; no live caller currently exists |
@@ -24,5 +24,4 @@
 | Closeout routing | Reserved | `closeout_communication` feature route |
 | Project FlowHive routing | Reserved | `project_flowhive_plan` feature route; Module 066 unchanged |
 
-The three blocked areas are not simulated or marked complete. Their source
-contracts can be added only after explicit Azure/database/Entra authorization.
+Key readback, deletion, and rollback remain intentionally unavailable.

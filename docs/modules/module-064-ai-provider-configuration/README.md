@@ -26,7 +26,7 @@ an availability failure and never causes a request to be sent to another provide
 | Workspace branch | `feature/modules-064-074-release-train-on-main-20260719` |
 | Implementation base | `main@2b4a6d1a1242a25b52110a2a209ff8ddda0b8ca4` |
 | Current-main compatibility target | `main@2b4a6d1a1242a25b52110a2a209ff8ddda0b8ca4` |
-| Source phase | Full shared runtime and read-only administration center |
+| Source phase | Shared runtime with administrator write-only provider keys |
 | Commit/push/deployment | Not performed; separate authorization required |
 | Azure/database/Entra changes | None |
 
@@ -45,10 +45,12 @@ an availability failure and never causes a request to be sent to another provide
 - Safety-refusal handling that does not fail over.
 - Sanitized error handling. Provider response bodies, API keys, and exception
   messages are not returned to the browser.
-- Administrator-only read APIs and an administration route showing non-secret
+- Administrator-only APIs and an administration route showing non-secret
   provider configuration, model/endpoint metadata, health, last success/failure,
   circuit state, usage totals, provider-reported remaining request/token limits,
   feature routes, and secret version metadata.
+- Write-only Claude and OpenAI key entry with AES-256-GCM encrypted database
+  storage, immediate activation, and sanitized replacement audit.
 - Migration of the existing timesheet-description generator from a direct Claude
   call to the Module 064 router.
 - Shared API Status Dashboard integration.
@@ -100,26 +102,20 @@ an explicit health refresh from the Module 064 center.
 
 ## Secure-secret and persistence boundary
 
-The administration center is read-only. It never returns an API key and has no
-endpoint to create, update, rotate, activate, roll back, or delete provider
-configuration.
+The administration center never returns an API key. Active administrators may
+add or replace Claude and OpenAI keys through a same-origin write endpoint. Keys
+are encrypted before persistence, loaded at startup, and activated immediately.
+Audit records contain only provider, version, actor, action, and time.
 
-Tracker acceptance for write-only Key Vault secret entry, versioned encrypted
-storage, step-up authentication, explicit activation, rollback, and immutable
-sanitized audit cannot be truthfully activated under the current authorization:
-
-- Azure changes: not authorized;
-- database changes: not authorized;
-- Entra changes: not authorized.
-
-Those controls are visibly locked in the UI and API response. A later authorized
-phase must add the secure-store adapter and persistence/audit design without
-changing the router contract or exposing secret values.
+The deployment must supply `PROJECTPULSE_AI_SECRET_ENCRYPTION_KEY` as a
+base64-encoded 32-byte bootstrap key. Without it, writes fail closed. Key reads,
+deletion, and rollback are intentionally not exposed.
 
 ## Files owned by Module 064
 
 - `src/backend/ProjectTime.Api/Ai/ProjectPulseAiContracts.cs`
 - `src/backend/ProjectTime.Api/Ai/ProjectPulseAiConfiguration.cs`
+- `src/backend/ProjectTime.Api/Ai/ProjectPulseAiSecretStore.cs`
 - `src/backend/ProjectTime.Api/Ai/ProjectPulseAiHealthRegistry.cs`
 - `src/backend/ProjectTime.Api/Ai/ProjectPulseAiRemoteProviders.cs`
 - `src/backend/ProjectTime.Api/Ai/ProjectPulseAiRouter.cs`
