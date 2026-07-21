@@ -1,0 +1,468 @@
+.security-operations-center {
+  --security-blue: #005baa;
+  --security-navy: #002f5d;
+  --security-cyan: #00a6ce;
+  --security-green: #198754;
+  --security-amber: #c77800;
+  --security-orange: #d85b00;
+  --security-red: #b42318;
+  display: grid;
+  gap: 20px;
+}
+
+.security-operations-center h1,
+.security-operations-center h2,
+.security-operations-center h3,
+.security-operations-center p {
+  margin-top: 0;
+}
+
+.security-operations-hero,
+.security-operations-panel,
+.security-operations-metrics article,
+.security-operations-boundary,
+.security-operations-error,
+.security-operations-view-as {
+  border: 1px solid var(--pulse-card-border);
+  background: var(--pulse-card-bg);
+  box-shadow: var(--pulse-card-shadow);
+}
+
+.security-operations-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 28px;
+  border-radius: 26px;
+  border-top: 6px solid var(--security-blue);
+  background:
+    radial-gradient(circle at 94% 9%, rgba(0, 166, 206, 0.18), transparent 30%),
+    linear-gradient(140deg, rgba(0, 47, 93, 0.03), transparent 55%),
+    var(--pulse-card-bg);
+}
+
+.security-operations-brand {
+  display: flex;
+  align-items: flex-start;
+  gap: 22px;
+}
+
+.security-operations-brand img {
+  width: min(190px, 24vw);
+  height: auto;
+  margin-top: 4px;
+}
+
+.security-operations-brand h1 {
+  margin-bottom: 9px;
+  color: var(--security-navy);
+  font-size: clamp(1.65rem, 2.5vw, 2.5rem);
+}
+
+.security-operations-brand p:not(.security-operations-eyebrow) {
+  max-width: 820px;
+  margin-bottom: 0;
+  color: var(--pulse-muted);
+  line-height: 1.65;
+}
+
+.security-operations-eyebrow {
+  margin-bottom: 6px;
+  color: var(--security-blue);
+  font-size: 0.76rem;
+  font-weight: 900;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.security-operations-hero-actions {
+  display: grid;
+  justify-items: end;
+  gap: 12px;
+  min-width: 215px;
+}
+
+.security-operations-hero-actions > span,
+.security-operations-locked {
+  width: fit-content;
+  padding: 7px 11px;
+  border-radius: 999px;
+  color: var(--security-red);
+  background: rgba(180, 35, 24, 0.1);
+  font-size: 0.75rem;
+  font-weight: 850;
+}
+
+.security-operations-hero-actions button {
+  border: 0;
+  border-radius: 12px;
+  padding: 11px 15px;
+  color: #fff;
+  background: var(--security-blue);
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.security-operations-hero-actions button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.security-operations-boundary,
+.security-operations-error,
+.security-operations-view-as {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 14px 17px;
+  border-radius: 16px;
+}
+
+.security-operations-boundary {
+  border-color: rgba(199, 120, 0, 0.34);
+  background: rgba(199, 120, 0, 0.08);
+}
+
+.security-operations-error {
+  border-color: rgba(180, 35, 24, 0.35);
+  color: var(--security-red);
+  background: rgba(180, 35, 24, 0.08);
+}
+
+.security-operations-view-as {
+  border-color: rgba(0, 91, 170, 0.3);
+  background: rgba(0, 91, 170, 0.08);
+}
+
+.security-operations-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.security-operations-metrics article {
+  display: grid;
+  gap: 6px;
+  padding: 18px;
+  border-radius: 19px;
+}
+
+.security-operations-metrics span,
+.security-operations-metrics small,
+.security-operations-heading > span,
+.security-operations-copy {
+  color: var(--pulse-muted);
+}
+
+.security-operations-metrics strong {
+  color: var(--security-blue);
+  font-size: 1.6rem;
+}
+
+.security-operations-panel {
+  min-width: 0;
+  padding: 22px;
+  border-radius: 24px;
+}
+
+.security-operations-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.security-operations-grid-wide {
+  grid-template-columns: 1.15fr 0.85fr;
+}
+
+.security-operations-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.security-operations-heading h2 {
+  margin-bottom: 0;
+}
+
+.security-operations-domain-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.security-operations-domain-grid > div {
+  display: grid;
+  gap: 7px;
+  padding: 14px;
+  border: 1px solid var(--pulse-card-border);
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(0, 91, 170, 0.06), transparent 55%);
+}
+
+.security-operations-domain-grid small,
+.security-operations-source-list small,
+.security-operations-control-list small,
+.security-operations-severity-bar small {
+  color: var(--pulse-muted);
+}
+
+.security-operations-domain-grid > div > span,
+.security-operations-source-list > div > span,
+.security-operations-control-list > div > span,
+.security-operations-lifecycle b {
+  width: fit-content;
+  padding: 5px 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 850;
+}
+
+.security-operations-center .tone-governed {
+  color: var(--security-blue);
+  background: rgba(0, 91, 170, 0.1);
+}
+
+.security-operations-center .tone-guidance {
+  color: var(--security-green);
+  background: rgba(25, 135, 84, 0.1);
+}
+
+.security-operations-center .tone-locked,
+.security-operations-center .tone-unknown {
+  color: var(--security-amber);
+  background: rgba(199, 120, 0, 0.1);
+}
+
+.security-operations-severity-bar {
+  display: grid;
+  gap: 7px;
+}
+
+.security-operations-severity-bar > div {
+  display: grid;
+  grid-template-columns: 28px 90px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  padding: 9px 0;
+  border-top: 1px solid var(--pulse-card-border);
+}
+
+.security-operations-severity-bar > div > span {
+  display: grid;
+  place-items: center;
+  width: 27px;
+  height: 27px;
+  border-radius: 8px;
+  color: #fff;
+  background: var(--security-blue);
+  font-weight: 900;
+}
+
+.security-operations-severity-bar .severity-medium > span {
+  background: var(--security-amber);
+}
+
+.security-operations-severity-bar .severity-high > span {
+  background: var(--security-orange);
+}
+
+.security-operations-severity-bar .severity-critical > span {
+  background: var(--security-red);
+}
+
+.security-operations-lifecycle {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.security-operations-lifecycle article {
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid rgba(180, 35, 24, 0.2);
+  border-radius: 15px;
+  background: rgba(180, 35, 24, 0.04);
+}
+
+.security-operations-lifecycle article > span {
+  display: grid;
+  place-items: center;
+  width: 27px;
+  height: 27px;
+  margin-bottom: 9px;
+  border-radius: 8px;
+  color: #fff;
+  background: var(--security-red);
+  font-weight: 900;
+}
+
+.security-operations-lifecycle p {
+  min-height: 86px;
+  margin: 7px 0 10px;
+  color: var(--pulse-muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.security-operations-locked-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-top: 16px;
+}
+
+.security-operations-locked-actions button {
+  padding: 9px 12px;
+  border: 1px solid rgba(180, 35, 24, 0.25);
+  border-radius: 11px;
+  color: var(--security-red);
+  background: rgba(180, 35, 24, 0.06);
+  font-weight: 800;
+}
+
+.security-operations-locked-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
+.security-operations-source-list,
+.security-operations-control-list,
+.security-operations-integration-list {
+  display: grid;
+  gap: 8px;
+}
+
+.security-operations-source-list > div,
+.security-operations-control-list > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--pulse-card-border);
+}
+
+.security-operations-source-list > div > div,
+.security-operations-control-list > div > div {
+  display: grid;
+  gap: 3px;
+}
+
+.security-operations-confidence {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.security-operations-confidence li {
+  display: grid;
+  gap: 3px;
+  padding: 9px 11px;
+  border-radius: 12px;
+  background: rgba(0, 166, 206, 0.08);
+}
+
+.security-operations-confidence span {
+  color: var(--pulse-muted);
+  font-size: 0.8rem;
+}
+
+.security-operations-policy {
+  display: grid;
+  gap: 8px;
+}
+
+.security-operations-policy > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--pulse-card-border);
+}
+
+.security-operations-policy dt {
+  color: var(--pulse-muted);
+}
+
+.security-operations-policy dd {
+  margin: 0;
+  font-weight: 850;
+}
+
+.security-operations-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.security-operations-tags li {
+  padding: 6px 9px;
+  border-radius: 999px;
+  color: var(--security-navy);
+  background: rgba(0, 166, 206, 0.1);
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.security-operations-integration-list > div {
+  display: grid;
+  grid-template-columns: 145px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 0;
+  border-top: 1px solid var(--pulse-card-border);
+}
+
+.security-operations-integration-list span,
+.security-operations-integration-list b {
+  color: var(--pulse-muted);
+  font-size: 0.76rem;
+}
+
+@media (max-width: 1180px) {
+  .security-operations-lifecycle {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 850px) {
+  .security-operations-hero,
+  .security-operations-brand {
+    flex-direction: column;
+  }
+
+  .security-operations-hero-actions {
+    justify-items: start;
+  }
+
+  .security-operations-metrics,
+  .security-operations-grid,
+  .security-operations-grid-wide,
+  .security-operations-domain-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 580px) {
+  .security-operations-brand img {
+    width: 150px;
+  }
+
+  .security-operations-lifecycle {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .security-operations-severity-bar > div,
+  .security-operations-integration-list > div {
+    grid-template-columns: 1fr;
+  }
+}

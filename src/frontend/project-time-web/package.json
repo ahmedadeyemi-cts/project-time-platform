@@ -24,7 +24,9 @@
     "validate:modules064074-ui": "node ./scripts/validate-modules-064-074-ui-authority.mjs",
     "validate:modules071072-native": "node ./scripts/validate-modules-071-072-native-persistence.mjs",
     "validate:modules064074-native-admin": "node ./scripts/validate-modules-064-074-native-administration.mjs",
-    "validate:module998": "node ./scripts/validate-module-998-system-diagnostic-remediation.mjs"
+    "validate:module998": "node ./scripts/validate-module-998-system-diagnostic-remediation.mjs",
+    "prebuild": "npm run validate:module997",
+    "validate:module997": "node ./scripts/validate-module-997-security-operations-response.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.3.1",

@@ -98,7 +98,7 @@ operational overlap in `RBAC-022`.
 | AI diagnostics | Discoverable locked endpoint and Module 064 boundary | No AI execution or provider call |
 | Security operations | Explicit Module 997 ownership handoff | No containment or security response action |
 
-`MODULE_998_STATUS=SOURCE_VALIDATED_CURRENT_MAIN_REPLAY_FAIL_CLOSED`
+`MODULE_998_STATUS=MERGED_TEST_DEPLOYED_AUTHENTICATED_FAIL_CLOSED`
 
 #### Module 998 validation evidence
 
@@ -114,10 +114,12 @@ operational overlap in `RBAC-022`.
   and Module 998 warnings 0.
 - Source diff check and exact 20-file current-main replay manifest gate: passed;
   all 13 module-owned files match the recovery source commit exactly.
-- Integration commit, push, and ready PR are authorized next. Merge and test
-  deployment remain gated on the new PR checks.
-- Do not merge, deploy, change Azure/database/Entra/Cloudflare/SMTP, execute
-  containment/remediation/AI/notifications/rollback, or access secrets.
+- Integration commit `ad155946ded90486324fd28771c023ed92a43dd1` passed CI
+  run `29790721925`; PR 37 merged as `44e73c4283a33b85ed0dd2832e93059ada37335f`.
+- Test deployment run `29791085444` succeeded with healthy revisions, expected
+  authentication barriers, public API regressions clear, and the web bundle present.
+- Database, migrations, Entra, Cloudflare, SMTP, containment, remediation, AI,
+  notifications, rollback, secrets, and every external execution remain unchanged.
 
 ### Module 066 — Project FlowHive
 
@@ -1007,6 +1009,41 @@ The 021 phase begins after the 020 module build sprint and focuses on release ha
 - Migration applied: no
 - Commit created: no
 - Deployment performed: no
+
+### Module 997 — Security Operations, Threat Intelligence & Response Center
+
+Module 997 recovery source `fc4dafa34783fd6b8f5557e7feee8f7626d86766`
+was replayed onto deployed `main@44e73c4283a33b85ed0dd2832e93059ada37335f`
+in `integration/module-997-current-main-20260721`. Historical PR 27 and PR 26
+remain unchanged recovery evidence. Deployed Module 998 is preserved as an
+independent diagnostic/remediation owner with no Module 997 runtime dependency.
+
+Tracker v1.8 coverage: `GOV-017`, `RBAC-021`, `RBAC-022`, `INT-013`, `AI-021`,
+`RPT-014`, `OPS-006`, `OPS-017`, `OPS-021`, `OPS-022`, `OPS-023`, `OPS-024`,
+`OPS-025`, `OPS-026`, `OPS-027`, and `DATA-012`.
+
+| Capability | Current-main source checkpoint | Locked production boundary |
+|---|---|---|
+| Security overview | Actual session, authorization, severity, domains, ownership, and explicit unknown/delegated states | No live security-health assertion |
+| Alerts and incidents | Required schemas, severity, objectives, lifecycle, and empty non-authoritative inventories | No telemetry connector or durable incident store |
+| Threat intelligence | Source, confidence, freshness, expiry, handling, and minimization policy | No threat feed, indicator import, or automated block |
+| Control posture | Delegated control-owner and evidence map | No live effectiveness claim |
+| Response | Detect → triage → declare → contain → eradicate → recover → review → close | All action endpoints HTTP 423 before body read |
+| Reporting | Restricted audiences, sanitized fields, prohibited content, and decision evidence | No external notification or evidence export |
+| Integrations | Explicit future telemetry, threat, endpoint, network, identity, case, AI, and mail adapters | Every adapter not configured or unauthorized |
+| Module 998 coexistence | Both modules remain independently registered and authorized | No cross-module execution or ownership transfer |
+
+`MODULE_997_STATUS=SOURCE_VALIDATED_CURRENT_MAIN_REPLAY_FAIL_CLOSED`
+
+Validation evidence: Module 997 validator 91/91 passed; deployed Module 998
+validator passed; the full protected frontend chain and Vite production build
+passed; Module 056E preservation passed; .NET 10.0.302 completed with 0 errors
+and 10 existing warnings; source diff check and exact 22-file manifest passed.
+
+Integration commit, push, and a ready PR are next. Merge and test deployment are
+CI-gated. Database, migrations, Azure, Entra, Cloudflare, SMTP, containment,
+production response, telemetry, threat feeds, notifications, AI, evidence export,
+rollback, secret access, and every external adapter remain unchanged and locked.
 
 ## PROJECTPULSE_NATIVE_POSTGRESQL_MIGRATION_031
 
