@@ -299,7 +299,10 @@ public static class OneAssistRoutingDirectoryModule
 
     private static JsonArray NormalizeRoutes(JsonNode? payload)
     {
-        var source = payload?["routes"] ?? payload?["customers"] ?? payload;
+        /* MODULE_072_JSON_ARRAY_ROUTE_NORMALIZATION */
+        var source = payload is JsonObject objectPayload
+            ? objectPayload["routes"] ?? objectPayload["customers"] ?? objectPayload
+            : payload;
         var routes = source as JsonArray ?? new JsonArray();
         var normalized = new JsonArray();
         foreach (var node in routes)
