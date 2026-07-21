@@ -4,11 +4,12 @@
 
 ### Modules 064–074 — Current-main release train
 
-This release train is based on
-`main@2b4a6d1a1242a25b52110a2a209ff8ddda0b8ca4`. Shared registrations are
-integrated once in source commit
-`6e7509cfe9b5704ff291525eb587040f31944ee8`, which is pushed through open draft
-PR 24. The train remains unmerged, undeployed, and not portal-verified.
+The release train source was merged through PR 24. Current main is
+`13b945247d89db26136129ac8fbbe8e92ff84159` after the Modules 071/072 public-read
+repair and Module 072 JSON-array normalization correction. Deployment run
+`29789119238` placed that image in test. Targeted verification recorded HTTP 200
+for both public GET APIs and HTTP 401 for unauthenticated native schema access.
+Historical source-checkpoint language below remains evidence, not current runtime state.
 
 | Module | Requirement/outcome | Source readiness | Locked production boundary |
 |---|---|---|---|
@@ -24,27 +25,34 @@ PR 24. The train remains unmerged, undeployed, and not portal-verified.
 | 073 | `SAL-002` Sales Coverage Alignment | Role-aware unsaved draft center integrated | Audited database persistence |
 | 074 | `SAL-003` OEM & Vendor Directory | Role-aware unsaved draft center integrated | Audited database persistence |
 
-`MODULE_064_STATUS=SOURCE_COMMITTED_DRAFT_PR_24_OPEN`
+`MODULE_064_STATUS=SOURCE_MERGED_TEST_IMAGE_ACTIVE`
 
-`MODULE_065_STATUS=SOURCE_COMMITTED_DRAFT_PR_24_OPEN_FAIL_CLOSED`
+`MODULE_065_STATUS=SOURCE_MERGED_TEST_IMAGE_ACTIVE_FAIL_CLOSED`
 
-`MODULE_066_STATUS=SOURCE_COMMITTED_DRAFT_PR_24_OPEN_EXTERNAL_LOCKS`
+`MODULE_066_STATUS=SOURCE_MERGED_TEST_IMAGE_ACTIVE_EXTERNAL_LOCKS`
 
-`MODULE_067_STATUS=SOURCE_COMMITTED_DRAFT_PR_24_OPEN_READ_ONLY`
+`MODULE_067_STATUS=SOURCE_MERGED_TEST_IMAGE_ACTIVE_READ_ONLY`
 
-`MODULE_068_STATUS=SOURCE_COMMITTED_DRAFT_PR_24_OPEN_READ_ONLY`
+`MODULE_068_STATUS=SOURCE_MERGED_TEST_IMAGE_ACTIVE_READ_ONLY`
 
-`MODULE_069_STATUS=SOURCE_COMMITTED_DRAFT_PR_24_OPEN_READ_ONLY`
+`MODULE_069_STATUS=SOURCE_MERGED_TEST_IMAGE_ACTIVE_READ_ONLY`
 
-`MODULE_070_STATUS=SOURCE_COMMITTED_DRAFT_PR_24_OPEN_READ_ONLY_SCENARIO`
+`MODULE_070_STATUS=SOURCE_MERGED_TEST_IMAGE_ACTIVE_READ_ONLY_SCENARIO`
 
-`MODULE_071_STATUS=SOURCE_COMMITTED_DRAFT_PR_24_OPEN_COMPATIBILITY_ADAPTER`
+`MODULE_071_STATUS=SOURCE_MERGED_TEST_PUBLIC_GET_VERIFIED_NATIVE`
 
-`MODULE_072_STATUS=SOURCE_COMMITTED_DRAFT_PR_24_OPEN_COMPATIBILITY_ADAPTER`
+`MODULE_072_STATUS=SOURCE_MERGED_TEST_PUBLIC_GET_VERIFIED_NATIVE_JSON_NORMALIZED`
 
-`MODULE_073_STATUS=SOURCE_COMMITTED_DRAFT_PR_24_OPEN_UNSAVED_DRAFT`
+`MODULE_073_STATUS=SOURCE_MERGED_TEST_IMAGE_ACTIVE_UNSAVED_DRAFT`
 
-`MODULE_074_STATUS=SOURCE_COMMITTED_DRAFT_PR_24_OPEN_UNSAVED_DRAFT`
+`MODULE_074_STATUS=SOURCE_MERGED_TEST_IMAGE_ACTIVE_UNSAVED_DRAFT`
+
+Protected validators for the original release-train checkpoint retain these
+historical evidence aliases; they are not the current status:
+
+`HISTORICAL_PR24_MODULE_064_STATUS=SOURCE_COMMITTED_DRAFT_PR_24_OPEN`
+
+`HISTORICAL_PR24_MODULE_068_STATUS=SOURCE_COMMITTED_DRAFT_PR_24_OPEN_READ_ONLY`
 
 #### Release gates
 
@@ -69,6 +77,47 @@ PR 24. The train remains unmerged, undeployed, and not portal-verified.
   `App.jsx`, and `package.json`.
 - Aggregate .NET 10 baseline/candidate builds passed with zero new warnings, and
   the Module 066 executable suite passed before the release-train commit.
+
+### Module 998 — System Diagnostic & Controlled Remediation Center
+
+Module 998 source commit `076c4129a752d3cd05d6a63b66b80679d32ee915`
+was replayed onto `main@13b945247d89db26136129ac8fbbe8e92ff84159` in
+`integration/module-998-current-main-20260721`. The original checkpoint
+`48421d5ba1584d64fc3bd043304c003eff1dc27b` remains a verified ancestor. Scope
+covers `GOV-016`, `AI-020`, `AI-021`, `OPS-005`, `OPS-006`, `OPS-015`,
+`OPS-017`, `OPS-018`, `OPS-019`, `OPS-020`, `DATA-011`, and the privileged
+operational overlap in `RBAC-022`.
+
+| Capability | Source checkpoint | Production boundary |
+|---|---|---|
+| Diagnostic overview and categorized checks | Direct session/authorization/`SELECT 1`; all other health delegated or unknown | No production telemetry connector |
+| Issue classification | Sanitized severity, confidence, ownership, freshness, and response contract | No durable issue store or live finding claim |
+| Evidence governance | Required metadata, exclusions, redaction, and chain of custody | No raw-log access, secret access, collection, storage, or export |
+| Runbooks | Guidance-only triage steps and owning-module links | No command or connector execution |
+| Controlled remediation | Prepare → approve → stage → promote → verify → rollback → close contract | Every action returns fail-closed HTTP 423 before body read |
+| AI diagnostics | Discoverable locked endpoint and Module 064 boundary | No AI execution or provider call |
+| Security operations | Explicit Module 997 ownership handoff | No containment or security response action |
+
+`MODULE_998_STATUS=SOURCE_VALIDATED_CURRENT_MAIN_REPLAY_FAIL_CLOSED`
+
+#### Module 998 validation evidence
+
+- Module 998 contract validator: 77/77 passed.
+- Protected production frontend chain: passed for Modules 059, 062, 002, and
+  064–074; Module 059 covers 59 authenticated routes including
+  `system-diagnostics`.
+- Production Vite build: passed with 183 transformed modules; existing chunk
+  size guidance remains advisory.
+- Module 056E global suppression and route-workspace guard: passed.
+- .NET 10.0.302 Release baseline: 0 errors and 10 pre-existing warnings.
+- .NET 10.0.302 Release candidate: 0 errors and 10 warnings; warning delta 0
+  and Module 998 warnings 0.
+- Source diff check and exact 20-file current-main replay manifest gate: passed;
+  all 13 module-owned files match the recovery source commit exactly.
+- Integration commit, push, and ready PR are authorized next. Merge and test
+  deployment remain gated on the new PR checks.
+- Do not merge, deploy, change Azure/database/Entra/Cloudflare/SMTP, execute
+  containment/remediation/AI/notifications/rollback, or access secrets.
 
 ### Module 066 — Project FlowHive
 
