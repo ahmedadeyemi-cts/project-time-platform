@@ -401,10 +401,27 @@ public static class AiProviderConfigurationModule
     private static bool SameOrigin(HttpContext context)
     {
         var origin = context.Request.Headers.Origin.ToString();
-        if (string.IsNullOrWhiteSpace(origin)) return false;
-        if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri)) return false;
-        if (!string.Equals(uri.Host, context.Request.Host.Host, StringComparison.OrdinalIgnoreCase)) return false;
-        return context.Request.Host.Port is null || uri.Port == context.Request.Host.Port;
+        if (string.IsNullOrWhiteSpace(origin) || !Uri.TryCreate(origin, UriKind.Absolute, out var uri)) return false;
+        if (uri.Scheme is not ("https" or "http")) return false;
+
+        // Sec-Fetch-Site is a forbidden browser-controlled header. For same-origin
+        // requests it remains reliable even when the web reverse proxy replaces Host
+        // with the API container's internal hostname.
+        var fetchSite = context.Request.Headers["Sec-Fetch-Site"].ToString();
+        if (string.Equals(fetchSite, "same-origin", StringComparison.OrdinalIgnoreCase)) return true;
+
+        // Preserve exact host validation for clients and deployments that do not send
+        // Fetch Metadata headers. Prefer the original public host supplied by the
+        // trusted reverse proxy, then fall back to the request host.
+        var forwardedHost = context.Request.Headers["X-Forwarded-Host"].ToString()
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .FirstOrDefault();
+        var publicHost = !string.IsNullOrWhiteSpace(forwardedHost)
+            ? HostString.FromUriComponent(forwardedHost)
+            : context.Request.Host;
+
+        if (!string.Equals(uri.Host, publicHost.Host, StringComparison.OrdinalIgnoreCase)) return false;
+        return publicHost.Port is null || uri.Port == publicHost.Port;
     }
 
     private sealed record ReplaceSecretRequest(string? ApiKey);
