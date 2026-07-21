@@ -208,6 +208,12 @@ COPY database/migrations/032_projectpulse_native_administration_documents.sql \
 COPY database/rollback/032_projectpulse_native_administration_documents_rollback.sql \
      database/rollback/032_projectpulse_native_administration_documents_rollback.sql
 
+COPY database/migrations/033_security_diagnostics_native_operations.sql \
+     database/migrations/033_security_diagnostics_native_operations.sql
+
+COPY database/rollback/033_security_diagnostics_native_operations_rollback.sql \
+     database/rollback/033_security_diagnostics_native_operations_rollback.sql
+
 COPY scripts/module-066-validation/ \
      scripts/module-066-validation/
 
