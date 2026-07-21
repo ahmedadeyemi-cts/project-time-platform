@@ -5,11 +5,12 @@
 ### Modules 064–074 — Current-main release train
 
 The release train source was merged through PR 24. Current main is
-`13b945247d89db26136129ac8fbbe8e92ff84159` after the Modules 071/072 public-read
-repair and Module 072 JSON-array normalization correction. Deployment run
-`29789119238` placed that image in test. Targeted verification recorded HTTP 200
-for both public GET APIs and HTTP 401 for unauthenticated native schema access.
-Historical source-checkpoint language below remains evidence, not current runtime state.
+`93b519ca54a5322582ed7d33adf91db7ea9e9919` after the Modules 071/072 public-read
+repairs, Module 072 JSON-array normalization correction, and fail-closed Modules
+998 and 997 integrations. Deployment run `29794000240` placed that image in test.
+Targeted verification recorded HTTP 200 for both public GET APIs and HTTP 401 for
+unauthenticated native, Module 998, and Module 997 access. Historical
+source-checkpoint language below remains evidence, not current runtime state.
 
 | Module | Requirement/outcome | Source readiness | Locked production boundary |
 |---|---|---|---|
@@ -120,6 +121,53 @@ operational overlap in `RBAC-022`.
   authentication barriers, public API regressions clear, and the web bundle present.
 - Database, migrations, Entra, Cloudflare, SMTP, containment, remediation, AI,
   notifications, rollback, secrets, and every external execution remain unchanged.
+
+### Module 076 — Defect Intake & Resolution Tracker
+
+Module 076 was approved on 2026-07-20. Its exact recovery source is commit
+`81b91272285e7ecab29b9b3ce385ce27f1f2d508` from
+`main@3d9a3dca8af479c854dc4c4a9294bc8aad273074`; required checkpoint
+`48421d5ba1584d64fc3bd043304c003eff1dc27b` is a verified ancestor. The source
+was restored from a verified one-commit Git bundle and replayed onto deployed
+`main@93b519ca54a5322582ed7d33adf91db7ea9e9919` in
+`integration/module-076-current-main-20260721`.
+
+`MODULE_076_STATUS=COMPLETE_SOURCE_IN_PROGRESS_FAIL_CLOSED`
+
+`MODULE_076_INTEGRATION_STATUS=CURRENT_MAIN_REPLAY_RECONCILED_VALIDATED_UNPUBLISHED_FAIL_CLOSED`
+
+Current source scope:
+
+- US Signal-branded defect register with Defect ID, Status, Description,
+  Category, Priority, Assignee, Raised By, Source, Date Added, Date Resolved,
+  Resolution Time, and Comments headers;
+- Help assistant route into Module 076;
+- governed GitHub issue form assigned to `ahmedadeyemi-cts`;
+- GitHub, Claude-through-GitHub, and ChatGPT-through-GitHub synchronization
+  contracts;
+- server-owned `DEF-{YYYY}-{SEQUENCE:000000}` identifier policy;
+- Module 062 identity resolution with Ahmed Adeyemi as default assignee and an
+  authorized identity dropdown for reassignment;
+- manager notification policy when opened and original-reporter notification
+  policy when resolved, owned by Module 067 Global Mail; and
+- server-owned date-added, date-resolved, and resolution-time rules.
+
+Current-main reconciliation preserves the deployed Module 998 and Module 997
+routes, validators, container context, governance evidence, and fail-closed
+boundaries. The 21-file replay has seven adapted shared files; all remaining
+Module 076 source is preserved from the recovery commit.
+
+Locked production boundaries:
+
+- no defect schema, migration, data write, ID allocation, or outbox write;
+- no GitHub App installation, webhook secret, webhook processing, or GitHub
+  mutation;
+- no direct Claude/OpenAI execution; any future triage must use Module 064;
+- no SMTP/Global Mail delivery until separately authorized; and
+- no Azure, Entra, Cloudflare, database, or external-system change.
+
+Module 076 remains unpublished. Commit, push, ready PR, CI, merge, deployment,
+and authenticated portal acceptance are separate controlled gates.
 
 ### Module 066 — Project FlowHive
 
@@ -1014,9 +1062,12 @@ The 021 phase begins after the 020 module build sprint and focuses on release ha
 
 Module 997 recovery source `fc4dafa34783fd6b8f5557e7feee8f7626d86766`
 was replayed onto deployed `main@44e73c4283a33b85ed0dd2832e93059ada37335f`
-in `integration/module-997-current-main-20260721`. Historical PR 27 and PR 26
-remain unchanged recovery evidence. Deployed Module 998 is preserved as an
-independent diagnostic/remediation owner with no Module 997 runtime dependency.
+and committed as `6dc90425371b032969d539fe5158892c40a6b268` in
+`integration/module-997-current-main-20260721`. PR 38 merged as
+`93b519ca54a5322582ed7d33adf91db7ea9e9919`; CI `29792880067` and deployment
+`29794000240` succeeded. Historical PR 27 and PR 26 remain unchanged recovery
+evidence. Deployed Module 998 remains an independent diagnostic/remediation
+owner with no Module 997 runtime dependency.
 
 Tracker v1.8 coverage: `GOV-017`, `RBAC-021`, `RBAC-022`, `INT-013`, `AI-021`,
 `RPT-014`, `OPS-006`, `OPS-017`, `OPS-021`, `OPS-022`, `OPS-023`, `OPS-024`,
@@ -1035,13 +1086,15 @@ Tracker v1.8 coverage: `GOV-017`, `RBAC-021`, `RBAC-022`, `INT-013`, `AI-021`,
 
 `MODULE_997_STATUS=SOURCE_VALIDATED_CURRENT_MAIN_REPLAY_FAIL_CLOSED`
 
+`MODULE_997_DEPLOYMENT_STATUS=MERGED_TEST_DEPLOYED_AUTHENTICATED_FAIL_CLOSED`
+
 Validation evidence: Module 997 validator 91/91 passed; deployed Module 998
 validator passed; the full protected frontend chain and Vite production build
 passed; Module 056E preservation passed; .NET 10.0.302 completed with 0 errors
 and 10 existing warnings; source diff check and exact 22-file manifest passed.
 
-Integration commit, push, and a ready PR are next. Merge and test deployment are
-CI-gated. Database, migrations, Azure, Entra, Cloudflare, SMTP, containment,
+The integration commit, ready PR, CI, merge, and controlled test deployment are
+complete. Database, migrations, Azure, Entra, Cloudflare, SMTP, containment,
 production response, telemetry, threat feeds, notifications, AI, evidence export,
 rollback, secret access, and every external adapter remain unchanged and locked.
 

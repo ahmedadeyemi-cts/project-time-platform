@@ -3,7 +3,7 @@
 ## Register authority
 
 This file is the central source work register for concurrent ProjectPulse module
-development. Central-register ownership is assigned to the Module 997 current-main
+development. Central-register ownership is assigned to the Module 076 current-main
 integration workspace for the current coordination cycle. Individual module workspaces continue to own
 their module-specific README and evidence.
 
@@ -12,11 +12,11 @@ their module-specific README and evidence.
 | Field | Value |
 |---|---|
 | Base branch | `main` |
-| Base commit | `44e73c4283a33b85ed0dd2832e93059ada37335f` |
-| Base description | Current main through PR 37 with deployed Modules 071/072 runtime repairs and deployed fail-closed Module 998 source |
-| Source status | Verified current `origin/main` base for the Module 997 replay as of 2026-07-21 |
-| Deployment status | Current main is deployed to test in run `29791085444`; Module 998 is runtime-active with authentication and fail-closed boundaries verified |
-| Prior approved baseline | `main@13b945247d89db26136129ac8fbbe8e92ff84159` |
+| Base commit | `93b519ca54a5322582ed7d33adf91db7ea9e9919` |
+| Base description | Current main through PR 38 with deployed Modules 071/072 runtime repairs and deployed fail-closed Modules 998 and 997 source |
+| Source status | Verified current `origin/main` base for the Module 076 replay as of 2026-07-21 |
+| Deployment status | Current main is deployed to test in run `29794000240`; Modules 998 and 997 are runtime-active with authentication and fail-closed boundaries verified |
+| Prior approved baseline | `main@44e73c4283a33b85ed0dd2832e93059ada37335f` |
 | Governance lineage | `docs/module-development-governance-20260717@66cf0f6457efaa33196f2c91b03bd3a35d13bf19` |
 
 The current `main` commit contains the prior approved baseline. New modules must
@@ -32,14 +32,16 @@ start from current `main` or a later verified forward-moving commit.
 | 066A | Nine-file read-only foundation | PR 20 merged as `6388f3e3677d9c95380e909d5e5671dcf6fbcf27` | Foundation is on current source; route remained inactive until 066A.1 | Preserve the read-only/no-mutation foundation |
 | 066A.1 | Shared Registration and Activation source package | Included in source commit `6e7509cfe9b5704ff291525eb587040f31944ee8`; pushed in open draft PR 24 | Source activation is not deployed; 42/42 activation contract, protected frontend build, .NET 10 builds, and zero-warning delta passed | Review PR 24 checks and findings; merge and deployment require separate authorization |
 | 066B–066E | Complete safe Project FlowHive source package | Included in source commit `6e7509cfe9b5704ff291525eb587040f31944ee8`; pushed in open draft PR 24 | Planning/schedule/AI-request/internal-artifact source present; persistence, provider execution, customer sharing, and deployment remain locked | Review PR 24 while preserving every locked boundary |
-| 064–074 | Consolidated release train | Source is merged; current test image is `main@13b945247d89db26136129ac8fbbe8e92ff84159` | Current application image is deployed; targeted public/native runtime verification is recorded for Modules 071/072 and all external-operation locks remain in force | Preserve current-main behavior while replaying Modules 998 and 997 |
-| 998 | Merged and deployed fail-closed diagnostic/remediation center | PR 37 merged as `44e73c4283a33b85ed0dd2832e93059ada37335f`; deployment run `29791085444` succeeded | Authenticated route and web-bundle boundaries verified; every remediation, containment, connector, notification, AI, promotion, rollback, and secret operation remains locked | Preserve while integrating Module 997 |
+| 064–074 | Consolidated release train | Source is merged; current test image is `main@93b519ca54a5322582ed7d33adf91db7ea9e9919` | Current application image is deployed; targeted public/native runtime verification is recorded for Modules 071/072 and all external-operation locks remain in force | Preserve current-main behavior while replaying Module 076 |
+| 998 | Merged and deployed fail-closed diagnostic/remediation center | PR 37 merged as `44e73c4283a33b85ed0dd2832e93059ada37335f`; deployment run `29791085444` succeeded | Authenticated route and web-bundle boundaries verified; every remediation, containment, connector, notification, AI, promotion, rollback, and secret operation remains locked | Preserve while integrating Module 076 |
+| 997 | Merged and deployed fail-closed security operations center | PR 38 merged as `93b519ca54a5322582ed7d33adf91db7ea9e9919`; deployment run `29794000240` succeeded | Authenticated route and web-bundle boundaries verified; security response, telemetry, threat feeds, connectors, notifications, AI, evidence export, and secrets remain locked | Preserve while integrating Module 076 |
+| 076 | Exact source commit `81b91272285e7ecab29b9b3ce385ce27f1f2d508` restored through verified bundle and replayed on current main | No source PR; integration branch remains local and unpublished | Source-only fail-closed capability; no database, webhook, mail, AI, Azure, Entra, Cloudflare, or deployment change | Validate the reconciled 21-file replay before commit, push, PR, merge, or deployment |
 
 ## Active work ownership
 
 The Module 064–074 rows below preserve their original release-train publication
 checkpoint. Their current merged source state is authoritative in the checkpoint
-summary above. Module 997 owns the present current-main integration update.
+summary above. Module 076 owns the present current-main integration update.
 
 | Module/area | Status | Workspace | Branch | Base | Confirmed scope | Expected files/areas | GitHub | Azure/DB/Entra |
 |---|---|---|---|---|---|---|---|---|
@@ -61,7 +63,9 @@ summary above. Module 997 owns the present current-main integration update.
 | 073 | Release-train candidate, unsaved draft | Same release-train workspace | Same release-train branch | Same current-main base | Sales coverage alignment draft | Module-owned backend/frontend/docs plus shared registration | Commit `6e7509cfe9b5704ff291525eb587040f31944ee8` pushed; draft PR 24 open; not merged | Persistence/database/Azure/Entra/deployment remain unauthorized |
 | 074 | Release-train candidate, unsaved draft | Same release-train workspace | Same release-train branch | Same current-main base | OEM/vendor directory draft | Module-owned backend/frontend/docs plus shared registration | Commit `6e7509cfe9b5704ff291525eb587040f31944ee8` pushed; draft PR 24 open; not merged | Persistence/database/Azure/Entra/deployment remain unauthorized |
 | 998 | Merged and deployed fail-closed source | Historical integration workspace preserved | `integration/module-998-current-main-20260721` | Merge `44e73c4283a33b85ed0dd2832e93059ada37335f` | Diagnostic overview, safe checks, evidence, runbooks, authorization, and locked remediation lifecycle | Module-owned source plus reconciled shared integration | PR 37 merged; CI `29790721925` and deployment `29791085444` succeeded | No database, migration, Entra, Cloudflare, SMTP, AI, remediation, containment, notification, rollback, or secret action |
-| Central governance | Active under Module 997 integration ownership for this checkpoint | `/home/ahmed/project-time-platform-module-997-integration-20260721` | `integration/module-997-current-main-20260721` | Current register aligned to `main@44e73c4283a33b85ed0dd2832e93059ada37335f` | Integrate Module 997 while preserving deployed Module 998 and current-main behavior | `docs/MODULE-WORK-REGISTER.md`, `docs/MODULE-CATALOG.md`, production-readiness tracker | Validation complete; integration commit and ready PR next | Not applicable |
+| 997 | Merged and deployed fail-closed source | Historical integration workspace preserved | `integration/module-997-current-main-20260721` | Merge `93b519ca54a5322582ed7d33adf91db7ea9e9919` | Security posture, alert/incident contracts, threat intelligence, control map, reporting, authorization, and locked response lifecycle | Module-owned source plus reconciled shared integration | PR 38 merged; CI `29792880067` and deployment `29794000240` succeeded | No database, migration, Entra, Cloudflare, SMTP, AI, security response, telemetry, notification, export, rollback, or secret action |
+| 076 | Complete source in progress; fail-closed persistence/integrations | `/home/ahmed/project-time-platform-module-076-integration-20260721` | `integration/module-076-current-main-20260721` | `93b519ca54a5322582ed7d33adf91db7ea9e9919`; recovery source `81b91272285e7ecab29b9b3ce385ce27f1f2d508` | Defect register, Help and GitHub intake contracts, automatic ID/date policy, Ahmed default assignment, identity reassignment, manager-open and reporter-resolution notification policy | Module-owned backend/frontend/docs/validator/issue form plus additive shared registration/build/governance surfaces | No commit, push, or PR yet for the current-main integration branch | No database, SMTP, GitHub webhook, AI provider, Azure, Entra, Cloudflare, or deployment action |
+| Central governance | Active under Module 076 integration ownership for this checkpoint | `/home/ahmed/project-time-platform-module-076-integration-20260721` | `integration/module-076-current-main-20260721` | Current register aligned to `main@93b519ca54a5322582ed7d33adf91db7ea9e9919` | Integrate Module 076 while preserving deployed Modules 998/997 and current-main behavior | `docs/MODULE-WORK-REGISTER.md`, `docs/MODULE-CATALOG.md`, production-readiness tracker | Reconciled validation required before integration commit and ready PR | Not applicable |
 
 `Not reported` is an evidence state, not a placeholder path to use in a command.
 
@@ -74,6 +78,9 @@ summary above. Module 997 owns the present current-main integration update.
 | 066A.1–066E | Validated source in commit `6e7509cfe9b5704ff291525eb587040f31944ee8`; draft PR 24 open | No | Portal testing applies only after review, merge, and separately authorized controlled deployment |
 | 066B persistent operation | Locked | No | Requires separately authorized schema, audit, approval, and deployment work |
 | 064–074 release train | Validated 133-file source commit `6e7509cfe9b5704ff291525eb587040f31944ee8`; pushed in draft PR 24 | No | Portal verification begins only after review, separately authorized merge, and controlled deployment; locked external capabilities require their own authorization |
+| 998 | Merged through PR 37 | Yes, run `29791085444` | Authenticated HTTP 401 barrier, web bundle, healthy revisions, and fail-closed remediation verified |
+| 997 | Merged through PR 38 | Yes, run `29794000240` | Authenticated HTTP 401 barrier, web bundle, healthy revisions, Module 998 regression, and fail-closed security response verified |
+| 076 | Current-main source replay only | No | Portal verification begins only after validation, commit, PR review, merge, and controlled deployment |
 
 ## Shared-file integration hold
 
@@ -82,9 +89,9 @@ integration pass after module checkpoints:
 
 | Shared target | Active consumers | Current rule |
 |---|---|---|
-| `src/backend/ProjectTime.Api/Program.cs` | 001, merged 002, Modules 064–074, PR 12; Module 062 is on `main` | Add each module map exactly once on current main; preserve every existing route and helper |
-| `src/frontend/project-time-web/src/App.jsx` | 001, merged 002, Modules 064–074, route recovery, 059, 062 | Add each role-aware route/navigation record and mount exactly once; preserve every installed route and global placement |
-| `src/frontend/project-time-web/package.json` | merged 002, Modules 064–074, Module 059/062 guards | Preserve the `059 -> 062 -> 002` validator order and append `064 -> 065 -> 066 -> 067 -> 068 -> 069 -> 070 -> 071 -> 072 -> 073 -> 074` before Vite |
+| `src/backend/ProjectTime.Api/Program.cs` | 001, merged 002, Modules 064–076, 997, 998, PR 12; Module 062 is on `main` | Add each module map exactly once on current main; preserve every existing route and helper |
+| `src/frontend/project-time-web/src/App.jsx` | 001, merged 002, Modules 064–076, route recovery, 059, 062, 997, 998 | Add each role-aware route/navigation record and mount exactly once; preserve every installed route and global placement |
+| `src/frontend/project-time-web/package.json` | merged 002, Modules 064–076, 997, 998, Module 059/062 guards | Preserve the protected validator chain, Module 997 prebuild, and Module 998 build gate while adding Module 076 before Vite |
 | `src/frontend/project-time-web/src/styles.css` | Multiple active modules | New modules use module-scoped CSS; avoid bulk global replacement |
 | `src/frontend/project-time-web/src/SystemUserGuide.jsx` | Module 999 and future modules | Update only after final route and behavior are stable |
 | `docs/production-readiness/AUGUST_PRODUCTION_READINESS_TRACKER.md` | 002 and central readiness reporting | Consolidate after active source checkpoints and controlled deployment evidence are known |
@@ -226,18 +233,18 @@ For Module 066A.1:
 
 | Field | Governed value |
 |---|---|
-| Workspace | `/home/ahmed/project-time-platform-module-997-integration-20260721` |
+| Historical workspace | `/home/ahmed/project-time-platform-module-997-integration-20260721` |
 | Branch | `integration/module-997-current-main-20260721` |
 | Base | `main@44e73c4283a33b85ed0dd2832e93059ada37335f` |
 | Recovery source | `fc4dafa34783fd6b8f5557e7feee8f7626d86766`; required ancestor `48421d5ba1584d64fc3bd043304c003eff1dc27b` preserved |
 | Scope | Security posture, alert/incident contracts, threat-intelligence policy, control map, response lifecycle, reporting, integration inventory, authorization, frontend, validator, and documentation |
 | Shared reconciliation | Additive `Program.cs`, `App.jsx`, package prebuild, container context, Catalog, Work Register, and Status Tracker integration on deployed current main |
 | Module 998 boundary | PR 26 remains draft recovery evidence; deployed PR 37 source is preserved without Module 997 import or runtime call |
-| GitHub | Exact 22-file replay, Module 997/998 validators, protected frontend build, and .NET build passed; integration commit and ready PR next |
+| GitHub | Exact 22-file replay committed as `6dc90425371b032969d539fe5158892c40a6b268`; PR 38 merged as `93b519ca54a5322582ed7d33adf91db7ea9e9919`; CI `29792880067` and deployment `29794000240` succeeded |
 | External systems | No database, migration, Azure, Entra, Cloudflare, SMTP, containment, response, connector, notification, AI, export, rollback, or secret action |
 
-Module 997 owns this integration checkpoint without removing deployed Module 998
-or any protected current-main route, validator, container entry, or governance evidence.
+Module 997 is deployed without removing Module 998 or any protected current-main
+route, validator, container entry, or governance evidence.
 
 For Module 066B:
 

@@ -4,6 +4,11 @@ import './help-assistant.css';
 
 const helpTopics = [
   {
+    keywords: ['defect', 'bug', 'broken', 'issue', 'report a problem', 'module 076', '076'],
+    answer:
+      'Open Module 076 to prepare a governed defect report. The tracker captures the source, affected module or route, priority, assignee, reporter, date added, date resolved, resolution time, comments, and GitHub linkage.'
+  },
+  {
     keywords: ['guide', 'help', 'manual', 'documentation', 'module 999', '999'],
     answer:
       'Open Module 999 for the complete ProjectPulse user guide. It documents global functions, every installed module route, role expectations, step-by-step procedures, statuses, and troubleshooting.'
@@ -88,10 +93,10 @@ export default function HelpAssistant() {
 
   const suggestions = useMemo(
     () => [
+      'How do I report a defect?',
       'How do I use Module 999?',
       'How do I save my timesheet?',
-      'How do approvals work?',
-      'How do opportunities work?'
+      'How do approvals work?'
     ],
     []
   );
@@ -111,6 +116,14 @@ export default function HelpAssistant() {
   function openCompleteGuide() {
     setIsOpen(false);
     window.location.hash = 'user-guide';
+  }
+
+  function openDefectTracker() {
+    setIsOpen(false);
+    const destination = new URL(window.location.href);
+    destination.searchParams.set('defectSource', 'help');
+    destination.hash = 'defect-tracker';
+    window.location.assign(destination.toString());
   }
 
   return (
@@ -133,6 +146,10 @@ export default function HelpAssistant() {
 
           <button className="help-full-guide-button" type="button" onClick={openCompleteGuide}>
             Open Module 999 — Complete User Guide
+          </button>
+
+          <button className="help-report-defect-button" type="button" onClick={openDefectTracker}>
+            Report a defect — Module 076
           </button>
 
           <div className="help-messages">

@@ -19,6 +19,9 @@ WORKDIR /workspace
 COPY src/frontend/project-time-web/ \
      src/frontend/project-time-web/
 
+COPY .github/ISSUE_TEMPLATE/projectpulse-defect.yml \
+     .github/ISSUE_TEMPLATE/projectpulse-defect.yml
+
 COPY src/backend/ProjectTime.Api/Program.cs \
      src/backend/ProjectTime.Api/Program.cs
 
@@ -94,6 +97,9 @@ COPY src/backend/ProjectTime.Api/Modules/SalesCoverageAlignmentModule.cs \
 COPY src/backend/ProjectTime.Api/Modules/OemVendorDirectoryModule.cs \
      src/backend/ProjectTime.Api/Modules/OemVendorDirectoryModule.cs
 
+COPY src/backend/ProjectTime.Api/Modules/DefectTrackerModule.cs \
+     src/backend/ProjectTime.Api/Modules/DefectTrackerModule.cs
+
 COPY src/backend/ProjectTime.Api/Modules/SystemDiagnosticRemediationModule.cs \
      src/backend/ProjectTime.Api/Modules/SystemDiagnosticRemediationModule.cs
 
@@ -132,6 +138,9 @@ COPY docs/modules/module-073-sales-coverage-alignment/ \
 
 COPY docs/modules/module-074-oem-vendor-directory/ \
      docs/modules/module-074-oem-vendor-directory/
+
+COPY docs/modules/module-076-defect-tracker/ \
+     docs/modules/module-076-defect-tracker/
 
 COPY docs/modules/module-997-security-operations-response/ \
      docs/modules/module-997-security-operations-response/

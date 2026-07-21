@@ -1,0 +1,531 @@
+.defect-tracker-center {
+  --defect-blue: #005baa;
+  --defect-navy: #002f5d;
+  --defect-cyan: #00a4d6;
+  --defect-green: #168a5b;
+  --defect-amber: #b86a00;
+  --defect-red: #b42318;
+  display: grid;
+  gap: 20px;
+  color: var(--text);
+}
+
+.defect-tracker-hero {
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--defect-blue) 34%, var(--border));
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 92% 0%, rgba(0, 164, 214, 0.3), transparent 34%),
+    linear-gradient(135deg, var(--defect-navy), var(--defect-blue));
+  color: #fff;
+  box-shadow: 0 20px 42px rgba(0, 47, 93, 0.19);
+}
+
+.defect-brand-lockup {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 22px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.97);
+  color: var(--defect-navy);
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.defect-brand-lockup img {
+  width: min(170px, 42vw);
+  max-height: 44px;
+  object-fit: contain;
+  object-position: left center;
+}
+
+.defect-hero-content {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 28px;
+}
+
+.defect-hero-content h1,
+.defect-hero-content p {
+  margin: 0;
+}
+
+.defect-hero-content h1 {
+  margin-top: 5px;
+  font-size: clamp(1.75rem, 4vw, 2.8rem);
+  line-height: 1.05;
+}
+
+.defect-hero-content p:not(.defect-eyebrow) {
+  max-width: 780px;
+  margin-top: 12px;
+  color: rgba(255, 255, 255, 0.84);
+  line-height: 1.55;
+}
+
+.defect-eyebrow,
+.defect-card-kicker {
+  color: var(--defect-cyan);
+  font-size: 0.76rem;
+  font-weight: 950;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.defect-state {
+  flex: 0 0 auto;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 999px;
+  padding: 9px 13px;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.defect-state.ready {
+  background: rgba(22, 138, 91, 0.9);
+}
+
+.defect-state.locked {
+  background: rgba(0, 47, 93, 0.72);
+}
+
+.defect-banner {
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 13px 16px;
+  line-height: 1.45;
+  font-weight: 750;
+}
+
+.defect-banner.neutral {
+  background: color-mix(in srgb, var(--defect-blue) 8%, var(--surface));
+}
+
+.defect-banner.warning {
+  border-color: color-mix(in srgb, var(--defect-amber) 38%, var(--border));
+  background: color-mix(in srgb, #fdb81e 12%, var(--surface));
+}
+
+.defect-banner.error {
+  border-color: color-mix(in srgb, var(--defect-red) 42%, var(--border));
+  background: color-mix(in srgb, var(--defect-red) 8%, var(--surface));
+  color: var(--defect-red);
+}
+
+.defect-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.defect-summary-card,
+.defect-policy-card,
+.defect-intake-card,
+.defect-integration-card,
+.defect-table-card,
+.defect-contract-footer {
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface);
+  box-shadow: 0 12px 28px rgba(0, 47, 93, 0.07);
+}
+
+.defect-summary-card {
+  display: grid;
+  gap: 5px;
+  padding: 16px;
+}
+
+.defect-summary-card span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.defect-summary-card strong {
+  color: var(--defect-navy);
+  font-size: 1.8rem;
+}
+
+.defect-policy-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.defect-policy-card {
+  padding: 18px;
+}
+
+.defect-policy-card h2,
+.defect-policy-card p {
+  margin: 0;
+}
+
+.defect-policy-card h2 {
+  margin-top: 8px;
+  color: var(--defect-navy);
+  font-size: 1.05rem;
+}
+
+.defect-policy-card p {
+  margin-top: 7px;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.defect-policy-card small {
+  display: block;
+  margin-top: 8px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.defect-content-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(300px, 0.85fr);
+  gap: 18px;
+}
+
+.defect-intake-card,
+.defect-integration-card,
+.defect-table-card {
+  padding: 20px;
+}
+
+.defect-section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.defect-section-heading h2,
+.defect-section-heading p {
+  margin: 0;
+}
+
+.defect-section-heading h2 {
+  margin-top: 4px;
+  color: var(--defect-navy);
+  font-size: 1.25rem;
+}
+
+.defect-section-heading > span:not(.defect-card-kicker) {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.defect-source-pill {
+  border: 1px solid color-mix(in srgb, var(--defect-cyan) 50%, var(--border));
+  border-radius: 999px;
+  padding: 7px 10px;
+  background: color-mix(in srgb, var(--defect-cyan) 10%, var(--surface));
+  color: var(--defect-navy) !important;
+  white-space: nowrap;
+}
+
+.defect-intake-card label {
+  display: grid;
+  gap: 7px;
+  margin-bottom: 14px;
+  color: var(--defect-navy);
+  font-size: 0.79rem;
+  font-weight: 900;
+}
+
+.defect-intake-card input,
+.defect-intake-card textarea,
+.defect-intake-card select {
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  padding: 10px 12px;
+  background: var(--surface-strong);
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+}
+
+.defect-intake-card textarea {
+  resize: vertical;
+}
+
+.defect-intake-card input:focus,
+.defect-intake-card textarea:focus,
+.defect-intake-card select:focus {
+  outline: 3px solid color-mix(in srgb, var(--defect-cyan) 20%, transparent);
+  border-color: var(--defect-blue);
+}
+
+.defect-intake-card select:disabled,
+.defect-intake-card button:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.defect-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 14px;
+}
+
+.defect-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.defect-form-actions button {
+  border-radius: 999px;
+  padding: 10px 15px;
+  cursor: pointer;
+  font-weight: 900;
+}
+
+.defect-primary-action {
+  border: 1px solid var(--defect-blue);
+  background: var(--defect-blue);
+  color: #fff;
+}
+
+.defect-secondary-action {
+  border: 1px solid var(--border);
+  background: var(--surface-strong);
+  color: var(--defect-navy);
+}
+
+.defect-draft-preview {
+  display: grid;
+  gap: 5px;
+  margin-top: 16px;
+  border-left: 4px solid var(--defect-cyan);
+  border-radius: 10px;
+  padding: 13px 15px;
+  background: color-mix(in srgb, var(--defect-cyan) 8%, var(--surface-strong));
+}
+
+.defect-draft-preview p {
+  margin: 0;
+}
+
+.defect-draft-preview span,
+.defect-draft-preview small {
+  color: var(--muted);
+}
+
+.defect-channel-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.defect-channel-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  background: var(--surface-strong);
+}
+
+.defect-channel-list p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.defect-channel-list li > span {
+  align-self: flex-start;
+  border-radius: 999px;
+  padding: 5px 8px;
+  background: color-mix(in srgb, var(--defect-amber) 12%, var(--surface));
+  color: var(--defect-amber);
+  font-size: 0.66rem;
+  font-weight: 900;
+  text-align: right;
+}
+
+.defect-integration-note {
+  margin-top: 14px;
+  border-radius: 12px;
+  padding: 13px;
+  background: color-mix(in srgb, var(--defect-navy) 7%, var(--surface-strong));
+}
+
+.defect-integration-note p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.defect-table-card {
+  overflow: hidden;
+}
+
+.defect-table-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+}
+
+.defect-table-card table {
+  width: 100%;
+  min-width: 1450px;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.defect-table-card th,
+.defect-table-card td {
+  border-bottom: 1px solid var(--border);
+  padding: 11px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.defect-table-card th {
+  position: sticky;
+  top: 0;
+  background: var(--defect-navy);
+  color: #fff;
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+}
+
+.defect-empty-state {
+  padding: 36px !important;
+  text-align: center !important;
+}
+
+.defect-empty-state strong,
+.defect-empty-state span {
+  display: block;
+}
+
+.defect-empty-state span {
+  margin-top: 7px;
+  color: var(--muted);
+}
+
+.defect-status,
+.defect-priority {
+  display: inline-flex;
+  border-radius: 999px;
+  padding: 5px 8px;
+  font-size: 0.7rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.defect-status.open,
+.defect-status.reopened {
+  background: #e6f2ff;
+  color: var(--defect-blue);
+}
+
+.defect-status.in-progress {
+  background: #fff4d6;
+  color: var(--defect-amber);
+}
+
+.defect-status.blocked,
+.defect-priority.critical {
+  background: #fee4e2;
+  color: var(--defect-red);
+}
+
+.defect-status.resolved,
+.defect-status.closed {
+  background: #dcfae6;
+  color: var(--defect-green);
+}
+
+.defect-priority.high {
+  background: #ffead5;
+  color: #9a3412;
+}
+
+.defect-priority.medium {
+  background: #fff4d6;
+  color: var(--defect-amber);
+}
+
+.defect-priority.low {
+  background: #eef2f6;
+  color: #344054;
+}
+
+.defect-contract-footer {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  padding: 18px;
+}
+
+.defect-contract-footer strong {
+  color: var(--defect-navy);
+}
+
+.defect-contract-footer p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+@media (max-width: 1100px) {
+  .defect-summary-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .defect-policy-grid,
+  .defect-contract-footer {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .defect-content-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 680px) {
+  .defect-hero-content,
+  .defect-section-heading,
+  .defect-channel-list li {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .defect-summary-grid,
+  .defect-policy-grid,
+  .defect-form-grid,
+  .defect-contract-footer {
+    grid-template-columns: 1fr;
+  }
+
+  .defect-form-actions {
+    flex-direction: column-reverse;
+  }
+
+  .defect-form-actions button {
+    width: 100%;
+  }
+}
