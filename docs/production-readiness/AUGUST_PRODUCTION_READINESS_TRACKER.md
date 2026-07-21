@@ -1127,3 +1127,24 @@ rollback, secret access, and every external adapter remain unchanged and locked.
 - `MIGRATION_032_APPLIED=NO`
 - `DATABASE_CHANGED=NO`
 - `DEPLOYED=NO`
+
+## Current-main source integration status — Modules 075 and 077–080 (2026-07-21)
+<!-- MODULES_075_080_CURRENT_MAIN_INTEGRATION_20260721 -->
+
+| Module | Merge commit | Source state | Runtime state | Next gate |
+|---|---|---|---|---|
+| 075 | `ca4b45bd8b248bd9eb2a69bfa663fd42f3ea7d97` | Integrated through PR #29 | Not active; connectors and mutations locked | Shared registration and current-main validation require separate authorization |
+| 077 | `45ac799e1a24a82439a9275add81b3cb60b68464` | Integrated through PR #30 | Not active; deployment and rollback locked | Shared registration and current-main validation require separate authorization |
+| 078 | `8130d65723cc1a10b4c275233dd75779663506e2` | Integrated through PR #31 | Not active; telemetry and alert delivery locked | Shared registration and current-main validation require separate authorization |
+| 079 | `0f87d3a863948b95425ec90d7f940734c8c2f55b` | Integrated through PR #32 | Not active; retention, export, and deletion locked | Shared registration and current-main validation require separate authorization |
+| 080 | `4e73e729b075e10508c11172724fb5d91a0e0905` | Integrated through PR #33 | Not active; external identity and sharing locked | Shared registration and current-main validation require separate authorization |
+
+`MODULE_075_STATUS=MERGED_SOURCE_NOT_RUNTIME_ACTIVE`
+
+`MODULE_077_STATUS=MERGED_SOURCE_NOT_RUNTIME_ACTIVE`
+
+`MODULE_078_STATUS=MERGED_SOURCE_NOT_RUNTIME_ACTIVE`
+
+`MODULE_079_STATUS=MERGED_SOURCE_NOT_RUNTIME_ACTIVE`
+
+`MODULE_080_STATUS=MERGED_SOURCE_NOT_RUNTIME_ACTIVE`
