@@ -184,6 +184,18 @@
 .ai-provider-center__secret-form button { white-space: nowrap; }
 .ai-provider-center__secret-form small { display: block; margin-top: .45rem; color: #475569; }
 
+.ai-provider-center__model-form { border-top: 1px solid var(--ai064-border); margin-top: .8rem; padding-top: .8rem; }
+.ai-provider-center__model-form label { display: block; font-weight: 700; margin-bottom: .45rem; }
+.ai-provider-center__model-form > div { display: flex; gap: .5rem; }
+.ai-provider-center__model-form select { flex: 1; min-width: 0; border: 1px solid #94a3b8; border-radius: .45rem; background: #fff; padding: .65rem .75rem; }
+.ai-provider-center__model-form button { white-space: nowrap; }
+.ai-provider-center__model-form small { display: block; margin-top: .45rem; color: #475569; }
+.ai-provider-center__provider-controls { border-top: 1px solid var(--ai064-border); margin-top: .8rem; padding-top: .8rem; }
+.ai-provider-center__enable-control { display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
+.ai-provider-center__enable-control strong, .ai-provider-center__enable-control small { display: block; }
+.ai-provider-center__enable-control small { margin-top: .2rem; color: #475569; }
+.ai-provider-center .ai-provider-center__danger-button { border-color: #b91c1c; background: #fff; color: #b91c1c; }
+
 .ai-provider-center__routes {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -5,6 +5,8 @@ namespace ProjectTime.Api.Ai;
 
 public sealed class ProjectPulseAiConfiguration
 {
+    private static readonly string[] DefaultClaudeModels = ["claude-sonnet-5", "claude-opus-4-8", "claude-fable-5"];
+    private static readonly string[] DefaultOpenAiModels = ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5", "gpt-5.4"];
     private readonly object _providerLock = new();
     private ProjectPulseAiProviderConfiguration _claude;
     private ProjectPulseAiProviderConfiguration _openAi;
@@ -69,6 +71,38 @@ public sealed class ProjectPulseAiConfiguration
                 ApiKey = apiKey,
                 Secret = new ProjectPulseAiSecretMetadata(true, "encrypted_database", version, rotatedAt, null, Fingerprint(apiKey))
             };
+            if (string.Equals(providerCode, ProjectPulseAiProviders.Claude, StringComparison.OrdinalIgnoreCase)) _claude = updated;
+            else _openAi = updated;
+        }
+    }
+
+    public void ApplyStoredModel(string providerCode, string model)
+    {
+        lock (_providerLock)
+        {
+            var current = string.Equals(providerCode, ProjectPulseAiProviders.Claude, StringComparison.OrdinalIgnoreCase)
+                ? _claude
+                : string.Equals(providerCode, ProjectPulseAiProviders.OpenAi, StringComparison.OrdinalIgnoreCase)
+                    ? _openAi
+                    : throw new ArgumentOutOfRangeException(nameof(providerCode));
+            if (!current.ApprovedModels.Contains(model, StringComparer.OrdinalIgnoreCase))
+                throw new ArgumentException("The selected model is not in the provider allowlist.");
+            var updated = current with { Model = model };
+            if (string.Equals(providerCode, ProjectPulseAiProviders.Claude, StringComparison.OrdinalIgnoreCase)) _claude = updated;
+            else _openAi = updated;
+        }
+    }
+
+    public void ApplyStoredEnabled(string providerCode, bool enabled)
+    {
+        lock (_providerLock)
+        {
+            var current = string.Equals(providerCode, ProjectPulseAiProviders.Claude, StringComparison.OrdinalIgnoreCase)
+                ? _claude
+                : string.Equals(providerCode, ProjectPulseAiProviders.OpenAi, StringComparison.OrdinalIgnoreCase)
+                    ? _openAi
+                    : throw new ArgumentOutOfRangeException(nameof(providerCode));
+            var updated = current with { Enabled = enabled };
             if (string.Equals(providerCode, ProjectPulseAiProviders.Claude, StringComparison.OrdinalIgnoreCase)) _claude = updated;
             else _openAi = updated;
         }
@@ -154,7 +188,7 @@ public sealed class ProjectPulseAiConfiguration
             model,
             Value("PROJECTPULSE_CLAUDE_ENDPOINT", "https://api.anthropic.com/v1").TrimEnd('/'),
             Value("PROJECTPULSE_CLAUDE_API_VERSION", "2023-06-01"),
-            Csv("PROJECTPULSE_CLAUDE_APPROVED_MODELS", [model]),
+            ApprovedModels("PROJECTPULSE_CLAUDE_APPROVED_MODELS", model, DefaultClaudeModels),
             null,
             null,
             SecretMetadata("CLAUDE", key));
@@ -174,7 +208,7 @@ public sealed class ProjectPulseAiConfiguration
             model,
             Value("PROJECTPULSE_OPENAI_ENDPOINT", "https://api.openai.com/v1").TrimEnd('/'),
             Value("PROJECTPULSE_OPENAI_API_VERSION", "responses-v1"),
-            Csv("PROJECTPULSE_OPENAI_APPROVED_MODELS", [model]),
+            ApprovedModels("PROJECTPULSE_OPENAI_APPROVED_MODELS", model, DefaultOpenAiModels),
             Optional("PROJECTPULSE_OPENAI_ORGANIZATION"),
             Optional("PROJECTPULSE_OPENAI_PROJECT"),
             SecretMetadata("OPENAI", key));
@@ -263,6 +297,9 @@ public sealed class ProjectPulseAiConfiguration
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
     }
+
+    private static IReadOnlyList<string> ApprovedModels(string name, string activeModel, IReadOnlyList<string> defaults) =>
+        Csv(name, defaults).Append(activeModel).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
 
     private static DateTimeOffset? DateTimeValue(string name) =>
         DateTimeOffset.TryParse(Environment.GetEnvironmentVariable(name), out var value) ? value : null;

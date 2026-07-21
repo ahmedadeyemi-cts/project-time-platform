@@ -23,7 +23,7 @@ public static class AiProviderConfigurationModule
     {
         app.MapGet(
             "/api/ai-configuration",
-            (Func<HttpContext, ProjectPulseAiConfiguration, ProjectPulseAiHealthRegistry, Task<IResult>>)GetConfigurationAsync);
+            (Func<HttpContext, ProjectPulseAiConfiguration, ProjectPulseAiSecretStore, ProjectPulseAiHealthRegistry, CancellationToken, Task<IResult>>)GetConfigurationAsync);
         app.MapGet(
             "/api/ai-configuration/health",
             (Func<HttpContext, ProjectPulseAiConfiguration, ProjectPulseAiHealthRegistry, Task<IResult>>)GetHealthAsync);
@@ -33,8 +33,126 @@ public static class AiProviderConfigurationModule
         app.MapPut(
             "/api/ai-configuration/providers/{providerCode}/secret",
             (Func<string, HttpContext, ProjectPulseAiConfiguration, ProjectPulseAiSecretStore, ProjectPulseAiHealthRegistry, CancellationToken, Task<IResult>>)ReplaceSecretAsync);
+        app.MapPut(
+            "/api/ai-configuration/providers/{providerCode}/model",
+            (Func<string, HttpContext, ProjectPulseAiConfiguration, ProjectPulseAiSecretStore, ProjectPulseAiHealthRegistry, ProjectPulseAiHealthCoordinator, CancellationToken, Task<IResult>>)ReplaceModelAsync);
+        app.MapPut(
+            "/api/ai-configuration/providers/{providerCode}/enabled",
+            (Func<string, HttpContext, ProjectPulseAiConfiguration, ProjectPulseAiSecretStore, ProjectPulseAiHealthRegistry, ProjectPulseAiHealthCoordinator, CancellationToken, Task<IResult>>)SetEnabledAsync);
 
         return app;
+    }
+
+    private static async Task<IResult> ReplaceModelAsync(
+        string providerCode,
+        HttpContext context,
+        ProjectPulseAiConfiguration configuration,
+        ProjectPulseAiSecretStore store,
+        ProjectPulseAiHealthRegistry healthRegistry,
+        ProjectPulseAiHealthCoordinator coordinator,
+        CancellationToken cancellationToken)
+    {
+        context.Response.Headers.CacheControl = "no-store";
+        var authorization = await AuthorizeAdministratorAsync(context);
+        if (authorization is not null) return authorization;
+        if (!SameOrigin(context)) return Results.Json(new { status = "origin_rejected", message = "The request origin is not allowed." }, statusCode: 403);
+        providerCode = providerCode.Trim().ToLowerInvariant();
+        if (providerCode is not (ProjectPulseAiProviders.Claude or ProjectPulseAiProviders.OpenAi))
+            return Results.BadRequest(new { status = "invalid_provider", message = "Provider must be claude or openai." });
+
+        ReplaceModelRequest? request;
+        try { request = await context.Request.ReadFromJsonAsync<ReplaceModelRequest>(cancellationToken); }
+        catch (System.Text.Json.JsonException) { return Results.BadRequest(new { status = "invalid_request", message = "A valid JSON request is required." }); }
+        var model = request?.Model?.Trim();
+        var current = configuration.Provider(providerCode);
+        if (string.IsNullOrWhiteSpace(model) || !current.ApprovedModels.Contains(model, StringComparer.OrdinalIgnoreCase))
+            return Results.BadRequest(new { status = "model_not_approved", message = "Select a model from the approved list." });
+        if (!current.Configured)
+            return Results.BadRequest(new { status = "provider_not_configured", message = "Save the provider API key before changing its model." });
+
+        var previousModel = current.Model;
+        try
+        {
+            await store.SaveModelAsync(providerCode, model, ActualSessionUserId(context)!.Value, cancellationToken);
+            configuration.ApplyStoredModel(providerCode, model);
+            healthRegistry.ApplyConfiguration(configuration.Provider(providerCode));
+            var snapshots = await coordinator.RefreshAsync(true, cancellationToken);
+            var probe = snapshots.First(item => string.Equals(item.Provider, providerCode, StringComparison.OrdinalIgnoreCase));
+            if (probe.Status != "available")
+            {
+                await store.SaveModelAsync(providerCode, previousModel, ActualSessionUserId(context)!.Value, cancellationToken);
+                configuration.ApplyStoredModel(providerCode, previousModel);
+                healthRegistry.ApplyConfiguration(configuration.Provider(providerCode));
+                return Results.BadRequest(new
+                {
+                    status = "model_test_failed",
+                    message = $"{model} could not be verified with the saved key. The previous model remains active.",
+                    activeModel = previousModel
+                });
+            }
+
+            return Results.Ok(new
+            {
+                status = "model_changed",
+                provider = providerCode,
+                model,
+                tested = true,
+                message = $"{model} was verified and is now active."
+            });
+        }
+        catch (Exception exception)
+        {
+            context.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("AiProviderConfigurationModule")
+                .LogError(exception, "Module 064 failed to change the {Provider} model.", providerCode);
+            return Results.Json(new { status = "model_change_error", message = "The model could not be saved and tested." }, statusCode: 503);
+        }
+    }
+
+    private static async Task<IResult> SetEnabledAsync(
+        string providerCode,
+        HttpContext context,
+        ProjectPulseAiConfiguration configuration,
+        ProjectPulseAiSecretStore store,
+        ProjectPulseAiHealthRegistry healthRegistry,
+        ProjectPulseAiHealthCoordinator coordinator,
+        CancellationToken cancellationToken)
+    {
+        context.Response.Headers.CacheControl = "no-store";
+        var authorization = await AuthorizeAdministratorAsync(context);
+        if (authorization is not null) return authorization;
+        if (!SameOrigin(context)) return Results.Json(new { status = "origin_rejected", message = "The request origin is not allowed." }, statusCode: 403);
+        providerCode = providerCode.Trim().ToLowerInvariant();
+        if (providerCode is not (ProjectPulseAiProviders.Claude or ProjectPulseAiProviders.OpenAi))
+            return Results.BadRequest(new { status = "invalid_provider", message = "Provider must be claude or openai." });
+        SetEnabledRequest? request;
+        try { request = await context.Request.ReadFromJsonAsync<SetEnabledRequest>(cancellationToken); }
+        catch (System.Text.Json.JsonException) { return Results.BadRequest(new { status = "invalid_request", message = "A valid JSON request is required." }); }
+        var enabled = request?.Enabled;
+        if (!enabled.HasValue) return Results.BadRequest(new { status = "invalid_request", message = "Enabled must be true or false." });
+
+        var provider = configuration.Provider(providerCode);
+        if (enabled.Value && !provider.Configured)
+            return Results.BadRequest(new { status = "provider_not_configured", message = "Save an API key before enabling this provider." });
+        try
+        {
+            await store.SaveEnabledAsync(providerCode, enabled.Value, provider.Model, ActualSessionUserId(context)!.Value, cancellationToken);
+            configuration.ApplyStoredEnabled(providerCode, enabled.Value);
+            healthRegistry.ApplyConfiguration(configuration.Provider(providerCode));
+            if (enabled.Value) await coordinator.RefreshAsync(true, cancellationToken);
+            return Results.Ok(new
+            {
+                status = enabled.Value ? "provider_enabled" : "provider_disabled",
+                provider = providerCode,
+                enabled = enabled.Value,
+                message = $"{provider.DisplayName} is now {(enabled.Value ? "enabled" : "disabled")}. The saved key and model were preserved."
+            });
+        }
+        catch (Exception exception)
+        {
+            context.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("AiProviderConfigurationModule")
+                .LogError(exception, "Module 064 failed to change the {Provider} enabled state.", providerCode);
+            return Results.Json(new { status = "provider_state_error", message = "The provider state could not be changed." }, statusCode: 503);
+        }
     }
 
     private static async Task<IResult> ReplaceSecretAsync(
@@ -90,10 +208,30 @@ public static class AiProviderConfigurationModule
     private static async Task<IResult> GetConfigurationAsync(
         HttpContext context,
         ProjectPulseAiConfiguration configuration,
-        ProjectPulseAiHealthRegistry health)
+        ProjectPulseAiSecretStore store,
+        ProjectPulseAiHealthRegistry health,
+        CancellationToken cancellationToken)
     {
         var authorization = await AuthorizeAdministratorAsync(context);
         if (authorization is not null) return authorization;
+        if (store.Available)
+        {
+            foreach (var secret in await store.LoadAsync(cancellationToken))
+            {
+                configuration.ApplyStoredSecret(secret.ProviderCode, secret.ApiKey, secret.Version, secret.RotatedAt);
+                health.ApplyConfiguration(configuration.Provider(secret.ProviderCode));
+            }
+            foreach (var setting in await store.LoadModelsAsync(cancellationToken))
+            {
+                configuration.ApplyStoredModel(setting.Key, setting.Value);
+                health.ApplyConfiguration(configuration.Provider(setting.Key));
+            }
+            foreach (var setting in await store.LoadEnabledAsync(cancellationToken))
+            {
+                configuration.ApplyStoredEnabled(setting.Key, setting.Value);
+                health.ApplyConfiguration(configuration.Provider(setting.Key));
+            }
+        }
 
         return Results.Ok(new
         {
@@ -264,12 +402,14 @@ public static class AiProviderConfigurationModule
     {
         var origin = context.Request.Headers.Origin.ToString();
         if (string.IsNullOrWhiteSpace(origin)) return false;
-        return Uri.TryCreate(origin, UriKind.Absolute, out var uri)
-            && string.Equals(uri.Host, context.Request.Host.Host, StringComparison.OrdinalIgnoreCase)
-            && uri.Port == (context.Request.Host.Port ?? (context.Request.IsHttps ? 443 : 80));
+        if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri)) return false;
+        if (!string.Equals(uri.Host, context.Request.Host.Host, StringComparison.OrdinalIgnoreCase)) return false;
+        return context.Request.Host.Port is null || uri.Port == context.Request.Host.Port;
     }
 
     private sealed record ReplaceSecretRequest(string? ApiKey);
+    private sealed record ReplaceModelRequest(string? Model);
+    private sealed record SetEnabledRequest(bool? Enabled);
 
     private static string? ConnectionString()
     {

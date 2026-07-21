@@ -102,6 +102,98 @@ public sealed class ProjectPulseAiSecretStore
         return new StoredSecret(providerCode, apiKey, version, rotatedAt);
     }
 
+    public async Task<IReadOnlyDictionary<string, string>> LoadModelsAsync(CancellationToken cancellationToken = default)
+    {
+        if (_connectionString is null) return new Dictionary<string, string>();
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await EnsureSchemaAsync(connection, cancellationToken);
+        const string sql = "SELECT provider_code, model FROM ai_provider_settings;";
+        await using var command = new NpgsqlCommand(sql, connection);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        while (await reader.ReadAsync(cancellationToken)) result[reader.GetString(0)] = reader.GetString(1);
+        return result;
+    }
+
+    public async Task<IReadOnlyDictionary<string, bool>> LoadEnabledAsync(CancellationToken cancellationToken = default)
+    {
+        if (_connectionString is null) return new Dictionary<string, bool>();
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await EnsureSchemaAsync(connection, cancellationToken);
+        const string sql = "SELECT provider_code, enabled FROM ai_provider_settings;";
+        await using var command = new NpgsqlCommand(sql, connection);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var result = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        while (await reader.ReadAsync(cancellationToken)) result[reader.GetString(0)] = reader.GetBoolean(1);
+        return result;
+    }
+
+    public async Task SaveModelAsync(string providerCode, string model, Guid actorUserId, CancellationToken cancellationToken)
+    {
+        if (_connectionString is null) throw new InvalidOperationException("Database configuration is unavailable.");
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await EnsureSchemaAsync(connection, cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        const string upsert = """
+            INSERT INTO ai_provider_settings (provider_code, model, updated_at, updated_by)
+            VALUES (@provider, @model, CURRENT_TIMESTAMP, @actor)
+            ON CONFLICT (provider_code) DO UPDATE SET model = EXCLUDED.model,
+                updated_at = EXCLUDED.updated_at, updated_by = EXCLUDED.updated_by;
+            """;
+        await using (var command = new NpgsqlCommand(upsert, connection, transaction))
+        {
+            command.Parameters.AddWithValue("provider", providerCode);
+            command.Parameters.AddWithValue("model", model);
+            command.Parameters.AddWithValue("actor", actorUserId);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        const string audit = "INSERT INTO ai_provider_settings_audit (provider_code, action, model, actor_user_id) VALUES (@provider, 'model_changed', @model, @actor);";
+        await using (var command = new NpgsqlCommand(audit, connection, transaction))
+        {
+            command.Parameters.AddWithValue("provider", providerCode);
+            command.Parameters.AddWithValue("model", model);
+            command.Parameters.AddWithValue("actor", actorUserId);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    public async Task SaveEnabledAsync(string providerCode, bool enabled, string model, Guid actorUserId, CancellationToken cancellationToken)
+    {
+        if (_connectionString is null) throw new InvalidOperationException("Database configuration is unavailable.");
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await EnsureSchemaAsync(connection, cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        const string upsert = """
+            INSERT INTO ai_provider_settings (provider_code, model, enabled, updated_at, updated_by)
+            VALUES (@provider, @model, @enabled, CURRENT_TIMESTAMP, @actor)
+            ON CONFLICT (provider_code) DO UPDATE SET enabled = EXCLUDED.enabled,
+                updated_at = EXCLUDED.updated_at, updated_by = EXCLUDED.updated_by;
+            """;
+        await using (var command = new NpgsqlCommand(upsert, connection, transaction))
+        {
+            command.Parameters.AddWithValue("provider", providerCode);
+            command.Parameters.AddWithValue("model", model);
+            command.Parameters.AddWithValue("enabled", enabled);
+            command.Parameters.AddWithValue("actor", actorUserId);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        const string audit = "INSERT INTO ai_provider_settings_audit (provider_code, action, model, actor_user_id) VALUES (@provider, @action, @model, @actor);";
+        await using (var command = new NpgsqlCommand(audit, connection, transaction))
+        {
+            command.Parameters.AddWithValue("provider", providerCode);
+            command.Parameters.AddWithValue("action", enabled ? "enabled" : "disabled");
+            command.Parameters.AddWithValue("model", model);
+            command.Parameters.AddWithValue("actor", actorUserId);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        await transaction.CommitAsync(cancellationToken);
+    }
+
     private async Task EnsureSchemaAsync(NpgsqlConnection connection, CancellationToken cancellationToken)
     {
         const string sql = """
@@ -113,6 +205,18 @@ public sealed class ProjectPulseAiSecretStore
             CREATE TABLE IF NOT EXISTS ai_provider_secret_audit (
                 audit_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
                 provider_code TEXT NOT NULL, action TEXT NOT NULL, version TEXT NOT NULL,
+                actor_user_id UUID NOT NULL, occurred_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE IF NOT EXISTS ai_provider_settings (
+                provider_code TEXT PRIMARY KEY CHECK (provider_code IN ('claude','openai')),
+                model TEXT NOT NULL, enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_by UUID NOT NULL
+            );
+            ALTER TABLE ai_provider_settings ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT TRUE;
+            CREATE TABLE IF NOT EXISTS ai_provider_settings_audit (
+                audit_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                provider_code TEXT NOT NULL, action TEXT NOT NULL, model TEXT NOT NULL,
                 actor_user_id UUID NOT NULL, occurred_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
             """;
@@ -156,6 +260,27 @@ public sealed class ProjectPulseAiSecretLoader(ProjectPulseAiSecretStore store, 
     {
         if (!store.Available) { logger.LogWarning("Module 064 write-only secret store is unavailable: {Reason}", store.UnavailableReason); return; }
         foreach (var secret in await store.LoadAsync(cancellationToken)) configuration.ApplyStoredSecret(secret.ProviderCode, secret.ApiKey, secret.Version, secret.RotatedAt);
+        foreach (var setting in await store.LoadModelsAsync(cancellationToken)) configuration.ApplyStoredModel(setting.Key, setting.Value);
+        foreach (var setting in await store.LoadEnabledAsync(cancellationToken)) configuration.ApplyStoredEnabled(setting.Key, setting.Value);
     }
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+}
+
+public sealed class ProjectPulseAiConfigurationSynchronizer(ProjectPulseAiSecretStore store, ProjectPulseAiConfiguration configuration, ILogger<ProjectPulseAiConfigurationSynchronizer> logger) : BackgroundService
+{
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(15));
+        while (await timer.WaitForNextTickAsync(stoppingToken))
+        {
+            try
+            {
+                foreach (var secret in await store.LoadAsync(stoppingToken)) configuration.ApplyStoredSecret(secret.ProviderCode, secret.ApiKey, secret.Version, secret.RotatedAt);
+                foreach (var setting in await store.LoadModelsAsync(stoppingToken)) configuration.ApplyStoredModel(setting.Key, setting.Value);
+                foreach (var setting in await store.LoadEnabledAsync(stoppingToken)) configuration.ApplyStoredEnabled(setting.Key, setting.Value);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
+            catch (Exception exception) { logger.LogWarning(exception, "Module 064 could not synchronize provider configuration."); }
+        }
+    }
 }

@@ -34,7 +34,10 @@ export default function AiProviderConfigurationCenter() {
   const [refreshing, setRefreshing] = useState(false);
   const [notice, setNotice] = useState('');
   const [keys, setKeys] = useState({ claude: '', openai: '' });
+  const [models, setModels] = useState({});
   const [savingProvider, setSavingProvider] = useState('');
+  const [savingModel, setSavingModel] = useState('');
+  const [changingState, setChangingState] = useState('');
 
   const load = useCallback(async () => {
     setState((current) => ({ ...current, loading: true, error: '' }));
@@ -94,6 +97,45 @@ export default function AiProviderConfigurationCenter() {
       setNotice(error instanceof Error ? error.message : 'The API key could not be saved.');
     } finally {
       setSavingProvider('');
+    }
+  }
+
+  async function saveModel(event, providerCode, activeModel) {
+    event.preventDefault();
+    const model = models[providerCode] || activeModel;
+    if (!model || model === activeModel) return;
+    setSavingModel(providerCode);
+    setNotice('');
+    try {
+      const result = await readJson(await fetch(`/api/ai-configuration/providers/${providerCode}/model`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model }),
+      }));
+      setNotice(result.message || 'Model saved and tested.');
+      await load();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'The model could not be saved and tested.');
+    } finally {
+      setSavingModel('');
+    }
+  }
+
+  async function setProviderEnabled(providerCode, enabled) {
+    setChangingState(providerCode);
+    setNotice('');
+    try {
+      const result = await readJson(await fetch(`/api/ai-configuration/providers/${providerCode}/enabled`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled }),
+      }));
+      setNotice(result.message || `Provider ${enabled ? 'enabled' : 'disabled'}.`);
+      await load();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'The provider state could not be changed.');
+    } finally {
+      setChangingState('');
     }
   }
 
@@ -188,6 +230,38 @@ export default function AiProviderConfigurationCenter() {
                       <div><dt>Token reset</dt><dd>{health.rateLimits?.tokensReset ?? 'Not reported'}</dd></div>
                       <div><dt>Circuit open until</dt><dd>{formatDate(health.circuitOpenUntil)}</dd></div>
                     </dl>
+                    {provider.code !== 'local_template' ? (
+                      <div className="ai-provider-center__provider-controls">
+                      <div className="ai-provider-center__enable-control">
+                        <div><strong>Provider routing</strong><small>Disabling preserves the saved key and model.</small></div>
+                        <button
+                          type="button"
+                          className={provider.enabled ? 'ai-provider-center__danger-button' : ''}
+                          onClick={() => setProviderEnabled(provider.code, !provider.enabled)}
+                          disabled={changingState === provider.code || (!provider.configured && !provider.enabled)}
+                        >
+                          {changingState === provider.code ? 'Updating…' : provider.enabled ? 'Disable' : 'Enable'}
+                        </button>
+                      </div>
+                      <form className="ai-provider-center__model-form" onSubmit={(event) => saveModel(event, provider.code, provider.model)}>
+                        <label htmlFor={`provider-model-${provider.code}`}>Active model</label>
+                        <div>
+                          <select
+                            id={`provider-model-${provider.code}`}
+                            value={models[provider.code] || provider.model}
+                            onChange={(event) => setModels((current) => ({ ...current, [provider.code]: event.target.value }))}
+                            disabled={!provider.configured || savingModel === provider.code}
+                          >
+                            {(provider.approvedModels || [provider.model]).map((model) => <option value={model} key={model}>{model}</option>)}
+                          </select>
+                          <button type="submit" disabled={!provider.configured || savingModel === provider.code || (models[provider.code] || provider.model) === provider.model}>
+                            {savingModel === provider.code ? 'Testing…' : 'Save and test'}
+                          </button>
+                        </div>
+                        <small>{provider.configured ? 'The new model activates only after the saved key verifies it.' : 'Save an API key before changing the model.'}</small>
+                      </form>
+                      </div>
+                    ) : null}
                     {provider.secret ? (
                       <div className="ai-provider-center__secret">
                         <strong>Write-only secret metadata</strong>
