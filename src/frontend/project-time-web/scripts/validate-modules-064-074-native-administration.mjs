@@ -48,7 +48,6 @@ const moduleNumbers = ['064', '065', '066', '067', '068', '069', '070', '073', '
 const routeMap = {
   '064': 'ai-provider-configuration',
   '065': 'entra-secret-administration',
-  '066': 'project-flowhive',
   '067': 'global-mail-configuration',
   '068': 'system-architecture',
   '069': 'qualifications-certifications',
