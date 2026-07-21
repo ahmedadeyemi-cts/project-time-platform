@@ -7,7 +7,6 @@ import NativeModuleAdministrationPanel from './NativeModuleAdministrationPanel.j
 const MODULE_064_074_NATIVE_ADMINISTRATION_ROUTES = Object.freeze({
   'ai-provider-configuration': '064',
   'entra-secret-administration': '065',
-  'project-flowhive': '066',
   'global-mail-configuration': '067',
   'system-architecture': '068',
   'qualifications-certifications': '069',
