@@ -610,6 +610,11 @@ import SalesCoverageAlignmentCenter from './SalesCoverageAlignmentCenter.jsx';
 import OemVendorDirectoryCenter from './OemVendorDirectoryCenter.jsx';
 import SystemDiagnosticRemediationCenter from './SystemDiagnosticRemediationCenter.jsx';
 import DefectTrackerCenter from './DefectTrackerCenter.jsx';
+import IntegrationEventGatewayCenter from './IntegrationEventGatewayCenter.jsx';
+import ReleaseDeploymentControlCenter from './ReleaseDeploymentControlCenter.jsx';
+import ObservabilitySloHealthCenter from './ObservabilitySloHealthCenter.jsx';
+import DataGovernanceRetentionCenter from './DataGovernanceRetentionCenter.jsx';
+import CustomerDeliveryAcceptanceCenter from './CustomerDeliveryAcceptanceCenter.jsx';
 import ProjectManagerWorkloadCenter from './ProjectManagerWorkloadCenter.jsx';
 import EngineeringTeamLeadUtilizationPanel from './EngineeringTeamLeadUtilizationPanel.jsx';
 import WorkTaskBuilderPanel from './WorkTaskBuilderPanel.jsx';
@@ -2188,6 +2193,48 @@ const roleWorkspaceModules = [
     description: 'Report and track defects from ProjectPulse Help, GitHub, Claude through GitHub, and ChatGPT through GitHub with identity-backed assignment and governed notification contracts.',
     permissions: []
   },
+  /* MODULES_075_080_RUNTIME_NAV_START */
+  {
+    route: 'integration-event-gateway',
+    href: '#integration-event-gateway',
+    title: 'Integration Automation & Event Gateway',
+    navLabel: 'MODULE 075',
+    description: 'Review signed event contracts, sources, deliveries, dead-letter policy, and locked integration controls.',
+    permissions: []
+  },
+  {
+    route: 'release-deployment-control',
+    href: '#release-deployment-control',
+    title: 'Release, Deployment & Rollback Control Center',
+    navLabel: 'MODULE 077',
+    description: 'Review release evidence, environments, gates, and locked deployment and rollback controls.',
+    permissions: []
+  },
+  {
+    route: 'observability-slo-health',
+    href: '#observability-slo-health',
+    title: 'Observability, SLO & Application Health Center',
+    navLabel: 'MODULE 078',
+    description: 'Review services, signals, SLOs, alerts, integrations, and governed retention boundaries.',
+    permissions: []
+  },
+  {
+    route: 'data-governance-retention',
+    href: '#data-governance-retention',
+    title: 'Data Governance, Retention & Privacy Center',
+    navLabel: 'MODULE 079',
+    description: 'Review data domains, classifications, retention policies, lineage, legal holds, and privacy boundaries.',
+    permissions: []
+  },
+  {
+    route: 'customer-delivery-acceptance',
+    href: '#customer-delivery-acceptance',
+    title: 'Customer Delivery & Acceptance Portal',
+    navLabel: 'MODULE 080',
+    description: 'Review delivery engagements, milestones, artifacts, reviews, acceptance policy, and sharing boundaries.',
+    permissions: []
+  },
+  /* MODULES_075_080_RUNTIME_NAV_END */
   /* MODULES_064_074_RELEASE_TRAIN_NAV_END */
   /* MODULE_998_SYSTEM_DIAGNOSTICS_NAV_START */
   {
@@ -2410,10 +2457,12 @@ function getNavigationGroup(item) {
     case 'psa-modules':
     case 'certify-integration':
     case 'oneassist-routing-directory':
+    case 'customer-delivery-acceptance':
       return 'Project Operations';
 
     case 'audit-history':
     case 'security-operations':
+    case 'data-governance-retention':
       return 'Security & Audit';
 
     case 'work-task-builder':
@@ -2433,6 +2482,9 @@ function getNavigationGroup(item) {
     case 'system-diagnostics':
     case 'uat-validation':
     case 'cicd-pipeline':
+    case 'integration-event-gateway':
+    case 'release-deployment-control':
+    case 'observability-slo-health':
       return 'Platform Operations';
 
     case 'backup-dr':
@@ -3012,6 +3064,11 @@ function buildRoleNavigationModel(user, navigationItems) {
       "timesheet",
       "user-guide",
       "defect-tracker",
+      "integration-event-gateway",
+      "release-deployment-control",
+      "observability-slo-health",
+      "data-governance-retention",
+      "customer-delivery-acceptance",
       "ai-time-entry",
       "manager-approval",
       "utilization",
@@ -3282,6 +3339,53 @@ function getInstalledProjectPulseModuleRegistry() {
     permissions: [],
     description: 'Provides a US Signal-branded defect register, Help and GitHub intake contracts, identity-backed assignment, dates, comments, resolution timing, and locked notification automation.'
   },
+  /* MODULES_075_080_RUNTIME_REGISTRY_START */
+  {
+    route: 'integration-event-gateway',
+    title: 'Integration Automation & Event Gateway',
+    navLabel: 'MODULE 075',
+    status: 'Runtime registered · mutations locked',
+    group: 'Platform Operations',
+    permissions: [],
+    description: 'Provides governed read-only integration contracts and delivery evidence while connector actions remain locked.'
+  },
+  {
+    route: 'release-deployment-control',
+    title: 'Release, Deployment & Rollback Control Center',
+    navLabel: 'MODULE 077',
+    status: 'Runtime registered · deployment locked',
+    group: 'Platform Operations',
+    permissions: [],
+    description: 'Provides governed release and environment evidence while deployment and rollback actions remain locked.'
+  },
+  {
+    route: 'observability-slo-health',
+    title: 'Observability, SLO & Application Health Center',
+    navLabel: 'MODULE 078',
+    status: 'Runtime registered · delivery locked',
+    group: 'Platform Operations',
+    permissions: [],
+    description: 'Provides governed health, signal, SLO, alert, and retention-policy read surfaces without external telemetry delivery.'
+  },
+  {
+    route: 'data-governance-retention',
+    title: 'Data Governance, Retention & Privacy Center',
+    navLabel: 'MODULE 079',
+    status: 'Runtime registered · actions locked',
+    group: 'Security & Audit',
+    permissions: [],
+    description: 'Provides governed data classification, lineage, retention, legal-hold, and privacy read surfaces while actions remain locked.'
+  },
+  {
+    route: 'customer-delivery-acceptance',
+    title: 'Customer Delivery & Acceptance Portal',
+    navLabel: 'MODULE 080',
+    status: 'Runtime registered · sharing locked',
+    group: 'Project Operations',
+    permissions: [],
+    description: 'Provides governed delivery, milestone, artifact, review, acceptance, and sharing-policy read surfaces while external actions remain locked.'
+  },
+  /* MODULES_075_080_RUNTIME_REGISTRY_END */
   /* MODULES_064_074_RELEASE_TRAIN_INSTALLED_REGISTRY_END */
   /* MODULE_998_SYSTEM_DIAGNOSTICS_INSTALLED_REGISTRY_START */
   {
@@ -6985,6 +7089,34 @@ Analytics - Variphy / Infortel`}
         </section>
       ) : null}
       {/* MODULES_064_074_RELEASE_TRAIN_ROUTES_END */}
+      {/* MODULES_075_080_RUNTIME_ROUTES_START */}
+      {activeRoute === 'integration-event-gateway' ? (
+        <section id="integration-event-gateway" className="panel integration-event-gateway-route-panel">
+          <IntegrationEventGatewayCenter authSession={authSession} />
+        </section>
+      ) : null}
+      {activeRoute === 'release-deployment-control' ? (
+        <section id="release-deployment-control" className="panel release-deployment-control-route-panel">
+          <ReleaseDeploymentControlCenter authSession={authSession} />
+        </section>
+      ) : null}
+      {activeRoute === 'observability-slo-health' ? (
+        <section id="observability-slo-health" className="panel observability-slo-health-route-panel">
+          <ObservabilitySloHealthCenter authSession={authSession} />
+        </section>
+      ) : null}
+      {activeRoute === 'data-governance-retention' ? (
+        <section id="data-governance-retention" className="panel data-governance-retention-route-panel">
+          <DataGovernanceRetentionCenter authSession={authSession} />
+        </section>
+      ) : null}
+      {activeRoute === 'customer-delivery-acceptance' ? (
+        <section id="customer-delivery-acceptance" className="panel customer-delivery-acceptance-route-panel">
+          <CustomerDeliveryAcceptanceCenter authSession={authSession} />
+        </section>
+      ) : null}
+      {/* MODULES_075_080_RUNTIME_ROUTES_END */}
+
 
 {(activeRoute === 'audit-history' && (hasPermission('VIEW_AUDIT_TRAIL') || hasPermission('SYSTEM_ADMINISTRATION') || hasPermission('MANAGE_ALL'))) ? (
         <AuditHistoryPanel />
@@ -7068,6 +7200,11 @@ Analytics - Variphy / Infortel`}
         'sales-coverage-alignment',
         'oem-vendor-directory',
         'defect-tracker',
+        'integration-event-gateway',
+        'release-deployment-control',
+        'observability-slo-health',
+        'data-governance-retention',
+        'customer-delivery-acceptance',
         'security-operations',
         'calendar-capacity',
         'cicd-pipeline',
