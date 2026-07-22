@@ -30,13 +30,13 @@ jobs:
       EXPECTED_RELEASE_COMMIT: ea23da6cfdd21a9444489ee4ffd14a6555de8c34
     steps:
       - name: Check out deployment controls
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           path: control
           fetch-depth: 0
 
       - name: Check out exact release source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ inputs.release_commit }}
           path: release
@@ -45,8 +45,6 @@ jobs:
       - name: Guard workflow source and release commit
         id: release
         shell: bash
-        env:
-          PROJECTPULSE_TEST_DATABASE_URL: ${{ secrets.PROJECTPULSE_TEST_DATABASE_URL }}
         run: |
           set -Eeuo pipefail
           [[ '${{ github.ref }}' == 'refs/heads/main' ]] || {
@@ -80,10 +78,6 @@ jobs:
             echo 'The target release is not an ancestor of the deployment-control commit.' >&2
             exit 1
           }
-          [[ -n "${PROJECTPULSE_TEST_DATABASE_URL:-}" ]] || {
-            echo 'The test environment secret PROJECTPULSE_TEST_DATABASE_URL is not configured.' >&2
-            exit 1
-          }
           echo "target_commit=$TARGET_COMMIT" >> "$GITHUB_OUTPUT"
           echo "TARGET_RELEASE_VERIFIED=$TARGET_COMMIT"
 
@@ -96,6 +90,13 @@ jobs:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Load test database connection from Azure
+        shell: bash
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_API_APP: ${{ vars.AZURE_API_APP }}
+        run: control/scripts/export-pr55-test-database-url.sh
 
       - name: Install PostgreSQL client
         shell: bash
@@ -198,8 +199,6 @@ jobs:
       - name: Apply and verify migrations 034 and 035 atomically
         id: migrations
         shell: bash
-        env:
-          PROJECTPULSE_TEST_DATABASE_URL: ${{ secrets.PROJECTPULSE_TEST_DATABASE_URL }}
         run: control/scripts/apply-pr55-test-migrations.sh release
 
       - name: Deploy API
