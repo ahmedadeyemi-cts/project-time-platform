@@ -3,6 +3,10 @@ import SessionIntelligenceDrawer from './SessionIntelligenceDrawer.jsx';
 import ProfileIdentitySurface from './identity/ProfileIdentitySurface.jsx';
 import ApprovalMailbox from './ApprovalMailbox.jsx';
 import NativeModuleAdministrationPanel from './NativeModuleAdministrationPanel.jsx';
+import {
+  compareProjectPulseModules,
+  sortProjectPulseModules
+} from './module-ordering.js';
 
 const MODULE_064_074_NATIVE_ADMINISTRATION_ROUTES = Object.freeze({
   'ai-provider-configuration': '064',
@@ -1727,7 +1731,7 @@ function statusToLabel(status, totalHours = 0) {
 }
 
 
-const roleWorkspaceModules = [
+const roleWorkspaceModules = sortProjectPulseModules([
   {
     route: 'project-workload',
     href: '#project-workload',
@@ -2287,7 +2291,7 @@ const roleWorkspaceModules = [
     description: 'Review failover readiness, database role, service health, backup freshness, deployment state, and peer configuration.',
     permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   }
-];
+]);
 
 function normalizeRoute(hash) {
   const cleaned = (hash || window.location.hash || '#dashboard').replace('#', '').trim();
@@ -3043,113 +3047,13 @@ function buildRoleNavigationModel(user, navigationItems) {
 
   const primary = [dashboardItem];
 
-  const groupOrder = [
-    'Work Management',
-    'Help & Documentation',
-    'Sales & Opportunities',
-    'Project Workspace',
-    'Project Intake',
-    'Time Compliance',
-    'Project Operations',
-    'Work Task Builder',
-    'Reports & Workflow',
-    'Security & Audit',
-    'Admin & Identity',
-    'Platform Operations',
-    'Resilience & Recovery',
-    'Other'
-  ];
-
-  const routeOrder = [
-      "timesheet",
-      "user-guide",
-      "defect-tracker",
-      "integration-event-gateway",
-      "release-deployment-control",
-      "observability-slo-health",
-      "data-governance-retention",
-      "customer-delivery-acceptance",
-      "ai-time-entry",
-      "manager-approval",
-      "utilization",
-      "holiday-admin",
-      "project-workload",
-      "project-workspace",
-      "project-flowhive",
-      "oncall-scheduling",
-      "project-allocation-info",
-      "project-intake",
-      "customer-directory",
-      "opportunities",
-      "oneassist-routing-directory",
-      "sales-coverage-alignment",
-      "oem-vendor-directory",
-      "sales-intake",
-      "sow-generator",
-      "crm-integration",
-      "signed-handoff",
-      "cost-alerts",
-      "time-compliance",
-      "psa-modules",
-      "work-task-builder",
-      "billing-readiness",
-      "project-closeout",
-      "closeout-email",
-      "invoice-billing-center",
-      "reporting",
-      "workflow",
-      "audit-history",
-      "security-operations",
-      "user-admin",
-      "azure-admin",
-      "ai-provider-configuration",
-      "entra-secret-administration",
-      "role-admin",
-      "service-control",
-      "global-mail-configuration",
-      "system-architecture",
-      "system-diagnostics",
-      "qualifications-certifications",
-      "capacity-pipeline-forecast",
-      "uat-validation",
-      "cicd-pipeline",
-      "backup-dr",
-      "restore-validation",
-      "backup-retention",
-      "replication-sync",
-  ];
-
-  const routeRank = new Map(routeOrder.map((route, index) => [route, index]));
-  const groupMap = new Map(groupOrder.map((name) => [name, {
-    name,
-    expanded: true,
-    items: []
-  }]));
-
-  [...availableByRoute.values()]
+  const orderedModuleItems = [...availableByRoute.values()]
     .filter((item) => item.route !== 'dashboard')
-    .sort((a, b) => {
-      const aRank = routeRank.has(a.route) ? routeRank.get(a.route) : 999;
-      const bRank = routeRank.has(b.route) ? routeRank.get(b.route) : 999;
+    .sort(compareProjectPulseModules);
 
-      if (aRank !== bRank) return aRank - bRank;
-      return String(a.label || '').localeCompare(String(b.label || ''));
-    })
-    .forEach((item) => {
-      const groupName = getNavigationGroup(item);
-
-      if (!groupMap.has(groupName)) {
-        groupMap.set(groupName, {
-          name: groupName,
-          expanded: true,
-          items: []
-        });
-      }
-
-      groupMap.get(groupName).items.push(item);
-    });
-
-  const groups = [...groupMap.values()].filter((group) => group.items.length > 0);
+  const groups = orderedModuleItems.length > 0
+    ? [{ name: 'Modules', expanded: true, items: orderedModuleItems }]
+    : [];
 
   return {
     primary,
@@ -3180,7 +3084,7 @@ function DataState({ loading, error, children }) {
 
 
 function getInstalledProjectPulseModuleRegistry() {
-  return [
+  return sortProjectPulseModules([
     {
       route: 'timesheet',
       title: 'Timesheet',
@@ -3792,7 +3696,7 @@ function getInstalledProjectPulseModuleRegistry() {
     permissions: ['VIEW_ACCOUNT_RECONCILIATION', 'VIEW_APPROVAL_WORKFLOW', 'PROJECT_TIME_APPROVAL', 'VIEW_PROJECT_WORKSPACE', 'VIEW_PROJECT_INTAKE', 'EXPORT_TIME_EXCEL', 'EXPORT_TIME_PDF', 'DOWNLOAD_TIME_EXPORT_PACKAGE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
     description: 'Prepares detailed partial and final invoice packages with customer identifiers, time-entry evidence, rates, hours, amounts, flexible headers, recently closed work, and billing reports.'
   },
-  ];
+  ]);
 }
 
 
@@ -8153,7 +8057,7 @@ Analytics - Variphy / Infortel`}
                 <div className="installed-module-grid">
                   {installedModules.map((module) => (
                     <a className="installed-module-card" href={`#${module.route}`} key={module.route}>
-                      <span>{module.group}</span>
+                      <span>{module.navLabel || 'Platform'} • {module.group}</span>
                       <strong>{module.title}</strong>
                       <p>{module.description}</p>
                       <small>Open module →</small>

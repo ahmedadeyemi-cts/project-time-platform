@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import './system-user-guide.css';
+import { compareProjectPulseModules } from './module-ordering.js';
 
 const roleOptions = [
   'All roles',
@@ -896,10 +897,7 @@ export default function SystemUserGuide({ modules = [] }) {
           sourceDescription: module.description || ''
         };
       })
-      .sort((left, right) => {
-        const categoryOrder = left.category.localeCompare(right.category);
-        return categoryOrder || left.code.localeCompare(right.code);
-      });
+      .sort(compareProjectPulseModules);
   }, [modules]);
 
   const allEntries = useMemo(() => {
