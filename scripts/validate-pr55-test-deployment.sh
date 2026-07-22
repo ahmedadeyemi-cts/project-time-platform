@@ -54,6 +54,17 @@ grep -Fq 'activeRevisionsMode' "$WORKFLOW" || fail "Single-revision traffic guar
 grep -Fq 'az acr repository show' "$WORKFLOW" || fail "Immutable image digest resolution is missing."
 grep -Fq '@$API_DIGEST' "$WORKFLOW" || fail "API deployment is not pinned to an immutable digest."
 grep -Fq '@$WEB_DIGEST' "$WORKFLOW" || fail "Web deployment is not pinned to an immutable digest."
+build_block="$(sed -n '/- name: Build exact API and web images/,/- name: Apply and verify migrations/p' "$WORKFLOW")"
+grep -Fq 'working-directory: release' <<<"$build_block" || fail "ACR builds must run inside the exact release checkout."
+grep -Fq 'test -f deployment/containers/api/Dockerfile' <<<"$build_block" || fail "API Dockerfile preflight is missing."
+grep -Fq 'test -f deployment/containers/web/Dockerfile' <<<"$build_block" || fail "Web Dockerfile preflight is missing."
+grep -Fq -- '--file deployment/containers/api/Dockerfile' <<<"$build_block" || fail "API ACR build Dockerfile path is missing."
+grep -Fq -- '--file deployment/containers/web/Dockerfile' <<<"$build_block" || fail "Web ACR build Dockerfile path is missing."
+[[ "$(grep -Ec '^[[:space:]]+\.$' <<<"$build_block")" -eq 2 ]] ||
+  fail "Both ACR builds must submit the release checkout as dot context."
+if grep -Eq '^[[:space:]]+release[[:space:]]*$' <<<"$build_block"; then
+  fail "ACR builds must not resolve a sibling release context from the runner root."
+fi
 grep -Fq 'Roll back application images on failure' "$WORKFLOW" || fail "Failure rollback step is missing."
 grep -Fq '/health' "$WORKFLOW" || fail "Public API health check is missing."
 grep -Fq '/api/version' "$WORKFLOW" || fail "Public version check is missing."

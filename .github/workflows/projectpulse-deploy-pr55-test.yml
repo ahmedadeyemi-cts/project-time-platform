@@ -164,6 +164,7 @@ jobs:
       - name: Build exact API and web images
         id: build
         shell: bash
+        working-directory: release
         run: |
           set -Eeuo pipefail
           TARGET_COMMIT='${{ steps.release.outputs.target_commit }}'
@@ -171,16 +172,19 @@ jobs:
           WEB_REPOSITORY='project-health-dashboard-web'
           RELEASE_TAG="pr55-$TARGET_COMMIT"
 
+          test -f deployment/containers/api/Dockerfile
+          test -f deployment/containers/web/Dockerfile
+
           az acr build \
             --registry '${{ vars.AZURE_ACR_NAME }}' \
             --image "project-health-dashboard-api:pr55-$TARGET_COMMIT" \
             --file deployment/containers/api/Dockerfile \
-            release
+            .
           az acr build \
             --registry '${{ vars.AZURE_ACR_NAME }}' \
             --image "project-health-dashboard-web:pr55-$TARGET_COMMIT" \
             --file deployment/containers/web/Dockerfile \
-            release
+            .
 
           API_DIGEST="$(az acr repository show --name '${{ vars.AZURE_ACR_NAME }}' --image "$API_REPOSITORY:$RELEASE_TAG" --query digest -o tsv)"
           WEB_DIGEST="$(az acr repository show --name '${{ vars.AZURE_ACR_NAME }}' --image "$WEB_REPOSITORY:$RELEASE_TAG" --query digest -o tsv)"
