@@ -360,39 +360,95 @@ jobs:
           set -Eeuo pipefail
           BASE_URL='${{ vars.PUBLIC_URL }}'
           BASE_URL="${BASE_URL%/}"
+          EXPECTED_LABELS=(
+            'Manage Existing Projects'
+            'Create New Project'
+            'MODULE 055C'
+            'MODULE 055D'
+            'MODULE 999'
+          )
+          WEB_CONTENT_READY='false'
+          LAST_STATUS='not-requested'
+          LAST_ASSET='not-resolved'
+          LAST_MISSING_LABELS="${EXPECTED_LABELS[*]}"
 
           for attempt in $(seq 1 30); do
-            STATUS="$(curl --silent --show-error --output /tmp/pr55-index.html --write-out '%{http_code}' "$BASE_URL/" || true)"
-            [[ "$STATUS" == '200' ]] && break
-            sleep 10
+            CACHE_BUSTER="pr55-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${attempt}"
+            INDEX_URL="$BASE_URL/?release_check=$CACHE_BUSTER"
+            STATUS="$(
+              curl \
+                --silent \
+                --show-error \
+                --location \
+                --header 'Cache-Control: no-cache' \
+                --header 'Pragma: no-cache' \
+                --output /tmp/pr55-index.html \
+                --write-out '%{http_code}' \
+                "$INDEX_URL" || true
+            )"
+            LAST_STATUS="$STATUS"
+            LAST_ASSET='not-resolved'
+            MISSING_LABELS=("${EXPECTED_LABELS[@]}")
+
+            if [[ "$STATUS" == '200' ]]; then
+              ASSET_PATH="$(sed -nE 's/.*src="([^"]+\.js)".*/\1/p' /tmp/pr55-index.html | head -1)"
+              if [[ -n "$ASSET_PATH" ]]; then
+                case "$ASSET_PATH" in
+                  http://*|https://*) ASSET_URL="$ASSET_PATH" ;;
+                  /*) ASSET_URL="$BASE_URL$ASSET_PATH" ;;
+                  *) ASSET_URL="$BASE_URL/$ASSET_PATH" ;;
+                esac
+                ASSET_URL_WITH_BUSTER="$ASSET_URL?release_check=$CACHE_BUSTER"
+                ASSET_STATUS="$(
+                  curl \
+                    --silent \
+                    --show-error \
+                    --location \
+                    --header 'Cache-Control: no-cache' \
+                    --header 'Pragma: no-cache' \
+                    --output /tmp/pr55-app.js \
+                    --write-out '%{http_code}' \
+                    "$ASSET_URL_WITH_BUSTER" || true
+                )"
+                LAST_STATUS="html=$STATUS,asset=$ASSET_STATUS"
+                LAST_ASSET="$ASSET_PATH"
+                MISSING_LABELS=()
+                if [[ "$ASSET_STATUS" == '200' ]]; then
+                  for label in "${EXPECTED_LABELS[@]}"; do
+                    grep -Fq "$label" /tmp/pr55-app.js || MISSING_LABELS+=("$label")
+                  done
+                else
+                  MISSING_LABELS=("${EXPECTED_LABELS[@]}")
+                fi
+              fi
+            fi
+
+            if (( ${#MISSING_LABELS[@]} == 0 )); then
+              WEB_CONTENT_READY='true'
+              echo "WEB_READINESS_ATTEMPT=$attempt HTTP=$LAST_STATUS ASSET=$LAST_ASSET MISSING_LABELS=NONE"
+              break
+            fi
+
+            LAST_MISSING_LABELS="$(IFS='|'; echo "${MISSING_LABELS[*]}")"
+            echo "WEB_READINESS_ATTEMPT=$attempt HTTP=$LAST_STATUS ASSET=$LAST_ASSET MISSING_LABELS=$LAST_MISSING_LABELS" >&2
+            (( attempt < 30 )) && sleep 10
           done
-          [[ "$STATUS" == '200' ]] || {
-            echo "Web validation failed with HTTP $STATUS." >&2
+
+          [[ "$WEB_CONTENT_READY" == 'true' ]] || {
+            echo "Web release content did not become ready after 30 attempts: HTTP=$LAST_STATUS ASSET=$LAST_ASSET MISSING_LABELS=$LAST_MISSING_LABELS" >&2
             exit 1
           }
-
-          ASSET_PATH="$(sed -nE 's/.*src="([^"]+\.js)".*/\1/p' /tmp/pr55-index.html | head -1)"
-          [[ -n "$ASSET_PATH" ]] || {
-            echo 'Could not locate the deployed JavaScript asset.' >&2
-            exit 1
-          }
-          case "$ASSET_PATH" in
-            http://*|https://*) ASSET_URL="$ASSET_PATH" ;;
-            /*) ASSET_URL="$BASE_URL$ASSET_PATH" ;;
-            *) ASSET_URL="$BASE_URL/$ASSET_PATH" ;;
-          esac
-          curl --fail --silent --show-error "$ASSET_URL" --output /tmp/pr55-app.js
-
-          grep -Fq 'Manage Existing Projects' /tmp/pr55-app.js
-          grep -Fq 'Create New Project' /tmp/pr55-app.js
-          grep -Fq 'MODULE 055C' /tmp/pr55-app.js
-          grep -Fq 'MODULE 055D' /tmp/pr55-app.js
-          grep -Fq 'MODULE 999' /tmp/pr55-app.js
 
           ACTIVE_API_IMAGE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
           ACTIVE_WEB_IMAGE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
-          [[ "$ACTIVE_API_IMAGE" == '${{ steps.build.outputs.api_image }}' ]]
-          [[ "$ACTIVE_WEB_IMAGE" == '${{ steps.build.outputs.web_image }}' ]]
+          [[ "$ACTIVE_API_IMAGE" == '${{ steps.build.outputs.api_image }}' ]] || {
+            echo "Active API image does not match the expected release image: expected=${{ steps.build.outputs.api_image }} actual=$ACTIVE_API_IMAGE" >&2
+            exit 1
+          }
+          [[ "$ACTIVE_WEB_IMAGE" == '${{ steps.build.outputs.web_image }}' ]] || {
+            echo "Active web image does not match the expected release image: expected=${{ steps.build.outputs.web_image }} actual=$ACTIVE_WEB_IMAGE" >&2
+            exit 1
+          }
 
           echo "DEPLOYED_RELEASE_COMMIT=${{ steps.release.outputs.target_commit }}"
           echo "DEPLOYED_API_IMAGE=$ACTIVE_API_IMAGE"
