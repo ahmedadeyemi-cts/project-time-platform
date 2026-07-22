@@ -58,7 +58,8 @@ test('EDIT_ASSIGNED_ROLES', ['PROJECT_MANAGER', 'PROJECT_MANAGEMENT_LEAD', 'PM_T
 test('CREATE_AUTHORIZED_ROLES', authorization.includes('private static readonly string[] CreateRoleCodes') && ['PROJECT_TEAM_COORDINATOR', 'ADMINISTRATOR', 'SUPER_ADMINISTRATOR'].every((role) => authorization.includes(`"${role}"`)));
 test('VIEW_AS_MUTATION_BLOCK', authorization.includes('CanEditAll: !isViewAs') && authorization.includes('CanEditAssigned: !isViewAs') && authorization.includes('CanCreate: !isViewAs'));
 test('ASSIGNED_PM_SERVER_SCOPE', authorization.includes('IsAssignedProjectManagerAsync') && authorization.includes('project.project_manager_user_id = @user_id'));
-test('PROJECT_ID_MUTATION_SCOPE', authorization.includes('ResolveProjectIdAsync') && authorization.includes('ReadFormAsync') && authorization.includes('EnableBuffering'));
+test('PROJECT_ID_MUTATION_SCOPE', authorization.includes('ResolveProjectIdAsync') && authorization.includes('canonicalJsonPaths') && authorization.includes('aliasJsonPaths') && authorization.includes('ReadFormAsync') && authorization.includes('EnableBuffering'));
+test('PROJECT_ID_CONFLICT_REJECTION', authorization.includes('WorkRegisterProjectIdResolutionStatus.Conflicting') && authorization.includes('conflicting_project_ids') && authorization.includes('IsEndpointProjectId'));
 test('CENTRAL_AUTHORIZATION_MIDDLEWARE', program.includes('app.UseWorkRegisterAuthorization();'));
 test('CREATE_API_GUARDED', program.includes('HasCreateAuthorityAsync') && sellImport.includes('HasCreateAuthorityAsync'));
 test('GSD_AND_SELL_OPTIONS', frontend.includes('Import from GSD') && frontend.includes('Import from SELL'));
