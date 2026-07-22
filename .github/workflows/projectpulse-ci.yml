@@ -30,6 +30,9 @@ jobs:
       - name: Restore and build API
         run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
 
+      - name: Test Work Register project authorization
+        run: dotnet run --project tests/ProjectTime.Api.AuthorizationTests/ProjectTime.Api.AuthorizationTests.csproj --configuration Release
+
       - name: Install frontend dependencies
         working-directory: src/frontend/project-time-web
         run: npm ci --no-audit --no-fund

@@ -4,6 +4,18 @@ namespace ProjectTime.Api.Modules;
 
 public static class WorkRegisterAuthorization
 {
+    internal static readonly string[] ProjectUpdateIdAliases =
+    [
+        "projectId",
+        "project_id",
+        "id",
+        "workId",
+        "work_id",
+        "workRegisterProjectId",
+        "selectedProjectId",
+        "selectedWorkRegisterProjectId"
+    ];
+
     private static readonly string[] EditAllRoleCodes =
     [
         "SUPER_ADMINISTRATOR",
@@ -55,6 +67,27 @@ public static class WorkRegisterAuthorization
             bool allowed;
             try
             {
+                var projectIdResolution = isCreateWorkflow
+                    ? WorkRegisterProjectIdResolution.NotRequired()
+                    : await ResolveProjectIdAsync(context, context.RequestAborted);
+
+                if (projectIdResolution.Status is WorkRegisterProjectIdResolutionStatus.Invalid
+                    or WorkRegisterProjectIdResolutionStatus.Conflicting)
+                {
+                    context.Response.StatusCode = StatusCodes.Status400BadRequest;
+                    await context.Response.WriteAsJsonAsync(new
+                    {
+                        status = projectIdResolution.Status == WorkRegisterProjectIdResolutionStatus.Conflicting
+                            ? "conflicting_project_ids"
+                            : "invalid_project_id",
+                        module = "055C",
+                        message = projectIdResolution.Status == WorkRegisterProjectIdResolutionStatus.Conflicting
+                            ? "The request contains conflicting Work Register project IDs. Submit one consistent project ID."
+                            : "The request contains an invalid Work Register project ID."
+                    }, context.RequestAborted);
+                    return;
+                }
+
                 await using var connection = await OpenAsync(context.RequestAborted);
                 var access = await GetAccessAsync(connection, context, cancellationToken: context.RequestAborted);
 
@@ -68,12 +101,12 @@ public static class WorkRegisterAuthorization
                 }
                 else if (access.CanEditAssigned)
                 {
-                    var projectId = await ResolveProjectIdAsync(context, context.RequestAborted);
-                    allowed = projectId.HasValue
+                    allowed = projectIdResolution.Status == WorkRegisterProjectIdResolutionStatus.Found
+                        && projectIdResolution.ProjectId.HasValue
                         && await IsAssignedProjectManagerAsync(
                             connection,
                             access.ActualUserId,
-                            projectId.Value,
+                            projectIdResolution.ProjectId.Value,
                             context.RequestAborted);
                 }
                 else
@@ -157,47 +190,153 @@ public static class WorkRegisterAuthorization
         CancellationToken cancellationToken = default) =>
         (await GetAccessAsync(connection, context, transaction, cancellationToken)).CanCreate;
 
-    private static async Task<Guid?> ResolveProjectIdAsync(
+    internal static async Task<WorkRegisterProjectIdResolution> ResolveProjectIdAsync(
         HttpContext context,
         CancellationToken cancellationToken)
     {
-        foreach (var key in new[] { "projectId", "project_id", "workId", "work_id" })
+        const string documentUploadPath = "/api/work-register/projects/documents/upload";
+        var canonicalJsonPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            if (context.Request.RouteValues.TryGetValue(key, out var routeValue)
-                && Guid.TryParse(routeValue?.ToString(), out var routeProjectId))
-            {
-                return routeProjectId;
-            }
+            "/api/work-register/projects/documents/save",
+            "/api/work-register/projects/documents/archive",
+            "/api/work-register/projects/change-orders/save",
+            "/api/work-register/tasks/assignments/roster/save",
+            "/api/work-register/tasks/assignments/update"
+        };
+        var standardAliases = new[] { "projectId", "project_id", "workId", "work_id" };
+        var recognizedAliases = ProjectUpdateIdAliases;
+        var aliasJsonPaths = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["/api/work-register/projects/update"] = ProjectUpdateIdAliases,
+            ["/api/work-register/projects/lifecycle"] = standardAliases
+        };
+        var normalizedPath = (context.Request.Path.Value ?? string.Empty).TrimEnd('/');
+        var candidates = new List<WorkRegisterProjectIdCandidate>();
+
+        var pathSegments = normalizedPath
+            .Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        var isPurchaseOrderPath = pathSegments.Length == 5
+            && string.Equals(pathSegments[0], "api", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(pathSegments[1], "work-register", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(pathSegments[2], "projects", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(pathSegments[4], "purchase-order", StringComparison.OrdinalIgnoreCase);
+
+        if (isPurchaseOrderPath)
+        {
+            candidates.Add(new WorkRegisterProjectIdCandidate(
+                "route:projectId",
+                pathSegments[3],
+                IsEndpointProjectId: true));
+
+            var jsonCandidates = await ReadJsonProjectIdCandidatesAsync(
+                context,
+                actualNames: [],
+                recognizedAliases,
+                cancellationToken);
+            if (jsonCandidates.InvalidJson) return WorkRegisterProjectIdResolution.Invalid();
+            candidates.AddRange(jsonCandidates.Candidates);
         }
-
-        var pathSegments = context.Request.Path.Value?
-            .Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            ?? [];
-
-        for (var index = 0; index < pathSegments.Length - 1; index += 1)
+        else if (string.Equals(normalizedPath, documentUploadPath, StringComparison.OrdinalIgnoreCase))
         {
-            if (string.Equals(pathSegments[index], "projects", StringComparison.OrdinalIgnoreCase)
-                && Guid.TryParse(pathSegments[index + 1], out var pathProjectId))
+            if (!context.Request.HasFormContentType)
             {
-                return pathProjectId;
+                return WorkRegisterProjectIdResolution.Missing();
             }
-        }
 
-        if (context.Request.HasFormContentType)
-        {
             var form = await context.Request.ReadFormAsync(cancellationToken);
-            foreach (var key in new[] { "projectId", "project_id", "workId", "work_id" })
+            foreach (var pair in form)
             {
-                if (form.TryGetValue(key, out var formValue)
-                    && Guid.TryParse(formValue.ToString(), out var formProjectId))
+                if (!recognizedAliases.Contains(pair.Key, StringComparer.OrdinalIgnoreCase))
                 {
-                    return formProjectId;
+                    continue;
                 }
-            }
 
-            return null;
+                candidates.Add(new WorkRegisterProjectIdCandidate(
+                    $"form:{pair.Key}",
+                    pair.Value.ToString(),
+                    IsEndpointProjectId: string.Equals(pair.Key, "projectId", StringComparison.OrdinalIgnoreCase)));
+            }
+        }
+        else if (canonicalJsonPaths.Contains(normalizedPath)
+                 || aliasJsonPaths.TryGetValue(normalizedPath, out _))
+        {
+            IReadOnlyList<string> actualNames = canonicalJsonPaths.Contains(normalizedPath)
+                ? new[] { "projectId" }
+                : aliasJsonPaths[normalizedPath];
+            var jsonCandidates = await ReadJsonProjectIdCandidatesAsync(
+                context,
+                actualNames,
+                recognizedAliases,
+                cancellationToken);
+            if (jsonCandidates.InvalidJson) return WorkRegisterProjectIdResolution.Invalid();
+            candidates.AddRange(jsonCandidates.Candidates);
+        }
+        else
+        {
+            return WorkRegisterProjectIdResolution.Unsupported();
         }
 
+        if (candidates.Count == 0)
+        {
+            return WorkRegisterProjectIdResolution.Missing();
+        }
+
+        var parsedCandidates = new List<(WorkRegisterProjectIdCandidate Candidate, Guid ProjectId)>();
+        foreach (var candidate in candidates)
+        {
+            if (!Guid.TryParse(candidate.Value, out var parsedProjectId) || parsedProjectId == Guid.Empty)
+            {
+                return WorkRegisterProjectIdResolution.Invalid();
+            }
+
+            parsedCandidates.Add((candidate, parsedProjectId));
+        }
+
+        if (parsedCandidates.Select(candidate => candidate.ProjectId).Distinct().Skip(1).Any())
+        {
+            return WorkRegisterProjectIdResolution.Conflicting();
+        }
+
+        var endpointProjectIds = parsedCandidates
+            .Where(candidate => candidate.Candidate.IsEndpointProjectId)
+            .Select(candidate => candidate.ProjectId)
+            .Distinct()
+            .ToArray();
+
+        return endpointProjectIds.Length switch
+        {
+            0 => WorkRegisterProjectIdResolution.Missing(),
+            1 => WorkRegisterProjectIdResolution.Found(endpointProjectIds[0]),
+            _ => WorkRegisterProjectIdResolution.Conflicting()
+        };
+    }
+
+    internal static string ReadProjectUpdateIdText(System.Text.Json.JsonElement payload)
+    {
+        foreach (var name in ProjectUpdateIdAliases)
+        {
+            if (!payload.TryGetProperty(name, out var value)
+                || value.ValueKind == System.Text.Json.JsonValueKind.Null
+                || value.ValueKind == System.Text.Json.JsonValueKind.Undefined)
+            {
+                continue;
+            }
+
+            var text = value.ToString().Trim();
+            if (!string.IsNullOrWhiteSpace(text)) return text;
+        }
+
+        return string.Empty;
+    }
+
+    private static async Task<(IReadOnlyList<WorkRegisterProjectIdCandidate> Candidates, bool InvalidJson)>
+        ReadJsonProjectIdCandidatesAsync(
+            HttpContext context,
+            IReadOnlyList<string> actualNames,
+            IReadOnlyList<string> aliases,
+            CancellationToken cancellationToken)
+    {
         context.Request.EnableBuffering();
         if (context.Request.Body.CanSeek)
         {
@@ -209,27 +348,30 @@ public static class WorkRegisterAuthorization
             using var document = await System.Text.Json.JsonDocument.ParseAsync(
                 context.Request.Body,
                 cancellationToken: cancellationToken);
-
             if (document.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object)
             {
-                return null;
+                return ([], true);
             }
 
+            var candidates = new List<WorkRegisterProjectIdCandidate>();
             foreach (var property in document.RootElement.EnumerateObject())
             {
-                if (!new[] { "projectId", "project_id", "workId", "work_id" }
-                        .Contains(property.Name, StringComparer.OrdinalIgnoreCase))
+                if (!aliases.Contains(property.Name, StringComparer.OrdinalIgnoreCase))
                 {
                     continue;
                 }
 
-                if (Guid.TryParse(property.Value.ToString(), out var bodyProjectId))
-                {
-                    return bodyProjectId;
-                }
+                candidates.Add(new WorkRegisterProjectIdCandidate(
+                    $"json:{property.Name}",
+                    property.Value.ToString(),
+                    IsEndpointProjectId: actualNames.Contains(property.Name, StringComparer.Ordinal)));
             }
 
-            return null;
+            return (candidates, false);
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return ([], true);
         }
         finally
         {
@@ -312,6 +454,44 @@ public static class WorkRegisterAuthorization
         }.ConnectionString;
     }
 }
+
+internal enum WorkRegisterProjectIdResolutionStatus
+{
+    NotRequired,
+    Found,
+    Missing,
+    Invalid,
+    Conflicting,
+    Unsupported
+}
+
+internal readonly record struct WorkRegisterProjectIdResolution(
+    WorkRegisterProjectIdResolutionStatus Status,
+    Guid? ProjectId)
+{
+    public static WorkRegisterProjectIdResolution NotRequired() =>
+        new(WorkRegisterProjectIdResolutionStatus.NotRequired, null);
+
+    public static WorkRegisterProjectIdResolution Found(Guid projectId) =>
+        new(WorkRegisterProjectIdResolutionStatus.Found, projectId);
+
+    public static WorkRegisterProjectIdResolution Missing() =>
+        new(WorkRegisterProjectIdResolutionStatus.Missing, null);
+
+    public static WorkRegisterProjectIdResolution Invalid() =>
+        new(WorkRegisterProjectIdResolutionStatus.Invalid, null);
+
+    public static WorkRegisterProjectIdResolution Conflicting() =>
+        new(WorkRegisterProjectIdResolutionStatus.Conflicting, null);
+
+    public static WorkRegisterProjectIdResolution Unsupported() =>
+        new(WorkRegisterProjectIdResolutionStatus.Unsupported, null);
+}
+
+internal readonly record struct WorkRegisterProjectIdCandidate(
+    string Source,
+    string Value,
+    bool IsEndpointProjectId);
 
 public sealed record WorkRegisterAccess(
     bool CanEditAll,

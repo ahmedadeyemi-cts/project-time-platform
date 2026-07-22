@@ -11406,11 +11406,8 @@ app.MapPost("/api/work-register/projects/update", async (HttpContext httpContext
                 return "";
             }
 
-            var guardedProjectIdText = LifecycleString(
-                "projectId",
-                "project_id",
-                "workId",
-                "work_id");
+            var guardedProjectIdText =
+                WorkRegisterAuthorization.ReadProjectUpdateIdText(lifecycleRoot);
 
             var requestedProjectStatus = LifecycleString(
                 "status",
