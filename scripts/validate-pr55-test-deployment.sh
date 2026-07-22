@@ -28,7 +28,7 @@ grep -Fq "$EXPECTED_RELEASE" "$WORKFLOW" || fail "Workflow is not pinned to the 
 grep -Fq "$EXPECTED_RELEASE" "$MIGRATOR" || fail "Migrator is not pinned to the PR #55 merge commit."
 grep -Fq "$EXPECTED_034" "$MIGRATOR" || fail "Migration 034 checksum guard is missing."
 grep -Fq "$EXPECTED_035" "$MIGRATOR" || fail "Migration 035 checksum guard is missing."
-grep -Fq 'export-pr55-test-database-url.sh' "$WORKFLOW" || fail "Azure database configuration loader is missing."
+grep -Fq 'run: bash control/scripts/export-pr55-test-database-url.sh' "$WORKFLOW" || fail "Azure database configuration loader is missing."
 if grep -Fq 'secrets.PROJECTPULSE_TEST_DATABASE_URL' "$WORKFLOW"; then
   fail "The workflow must not require a separately copied GitHub database secret."
 fi
