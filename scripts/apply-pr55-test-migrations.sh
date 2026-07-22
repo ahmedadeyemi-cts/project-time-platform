@@ -18,16 +18,22 @@ require_command() {
 }
 
 [[ -n "$RELEASE_ROOT" ]] || fail "Usage: $0 <checked-out-release-root>"
-[[ -d "$RELEASE_ROOT/.git" ]] || fail "Release root is not a Git checkout: $RELEASE_ROOT"
 [[ -n "$DATABASE_URL" ]] || fail "PROJECTPULSE_TEST_DATABASE_URL is not configured."
 
-require_command git
 require_command psql
 require_command sha256sum
 require_command awk
 require_command grep
 
-ACTUAL_RELEASE_COMMIT="$(git -C "$RELEASE_ROOT" rev-parse HEAD)"
+if [[ -d "$RELEASE_ROOT/.git" ]]; then
+  require_command git
+  ACTUAL_RELEASE_COMMIT="$(git -C "$RELEASE_ROOT" rev-parse HEAD)"
+elif [[ -f "$RELEASE_ROOT/.projectpulse-release-commit" ]]; then
+  ACTUAL_RELEASE_COMMIT="$(tr -d '\r\n' < "$RELEASE_ROOT/.projectpulse-release-commit")"
+else
+  fail "Release root has neither Git metadata nor a pinned release marker: $RELEASE_ROOT"
+fi
+
 [[ "$ACTUAL_RELEASE_COMMIT" == "$EXPECTED_RELEASE_COMMIT" ]] ||
   fail "Migration source must be release $EXPECTED_RELEASE_COMMIT, not $ACTUAL_RELEASE_COMMIT."
 

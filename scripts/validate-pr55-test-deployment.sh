@@ -5,6 +5,8 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKFLOW="$REPO_ROOT/.github/workflows/projectpulse-deploy-pr55-test.yml"
 MIGRATOR="$REPO_ROOT/scripts/apply-pr55-test-migrations.sh"
 DATABASE_CONFIG="$REPO_ROOT/scripts/export-pr55-test-database-url.sh"
+MIGRATION_JOB="$REPO_ROOT/scripts/run-pr55-test-migration-job.sh"
+MIGRATION_DOCKERFILE="$REPO_ROOT/deployment/containers/pr55-migrator/Dockerfile"
 CI_WORKFLOW="$REPO_ROOT/.github/workflows/projectpulse-ci.yml"
 GUIDE="$REPO_ROOT/docs/PR55-TEST-DEPLOYMENT-VERIFICATION.md"
 
@@ -13,12 +15,20 @@ fail() {
   exit 1
 }
 
-for file in "$WORKFLOW" "$MIGRATOR" "$DATABASE_CONFIG" "$CI_WORKFLOW" "$GUIDE"; do
+for file in \
+  "$WORKFLOW" \
+  "$MIGRATOR" \
+  "$DATABASE_CONFIG" \
+  "$MIGRATION_JOB" \
+  "$MIGRATION_DOCKERFILE" \
+  "$CI_WORKFLOW" \
+  "$GUIDE"; do
   [[ -f "$file" ]] || fail "Required deployment-safety file is missing: $file"
 done
 
 bash -n "$MIGRATOR"
 bash -n "$DATABASE_CONFIG"
+bash -n "$MIGRATION_JOB"
 
 EXPECTED_RELEASE="ea23da6cfdd21a9444489ee4ffd14a6555de8c34"
 EXPECTED_034="275c2f3f5ad56d80f303327baeb665506bc41014d52af8a2b7082c6e451974b9"
@@ -28,6 +38,7 @@ grep -Fq "$EXPECTED_RELEASE" "$WORKFLOW" || fail "Workflow is not pinned to the 
 grep -Fq "$EXPECTED_RELEASE" "$MIGRATOR" || fail "Migrator is not pinned to the PR #55 merge commit."
 grep -Fq "$EXPECTED_034" "$MIGRATOR" || fail "Migration 034 checksum guard is missing."
 grep -Fq "$EXPECTED_035" "$MIGRATOR" || fail "Migration 035 checksum guard is missing."
+grep -Fq '.projectpulse-release-commit' "$MIGRATOR" || fail "Containerized release-marker guard is missing."
 grep -Fq 'run: bash control/scripts/export-pr55-test-database-url.sh' "$WORKFLOW" || fail "Azure database configuration loader is missing."
 if grep -Fq 'secrets.PROJECTPULSE_TEST_DATABASE_URL' "$WORKFLOW"; then
   fail "The workflow must not require a separately copied GitHub database secret."
@@ -45,6 +56,13 @@ grep -Fq 'environment: test' "$WORKFLOW" || fail "Workflow is not restricted to 
 grep -Fq 'refs/heads/main' "$WORKFLOW" || fail "Main-branch dispatch guard is missing."
 grep -Fq 'DEPLOY-PR55-TO-TEST' "$WORKFLOW" || fail "Explicit deployment confirmation is missing."
 grep -Fq 'apply-pr55-test-migrations.sh' "$WORKFLOW" || fail "Atomic migration step is missing."
+grep -Fq 'run-pr55-test-migration-job.sh' "$WORKFLOW" || fail "Private-network migration job is missing."
+if grep -Fq 'run: control/scripts/apply-pr55-test-migrations.sh release' "$WORKFLOW"; then
+  fail "Migrations must not run directly on the public GitHub runner."
+fi
+if grep -Fq 'Install PostgreSQL client' "$WORKFLOW"; then
+  fail "The GitHub runner must not install a database client for the private test database."
+fi
 grep -Fq 'old_api_image' "$WORKFLOW" || fail "API rollback image capture is missing."
 grep -Fq 'old_web_image' "$WORKFLOW" || fail "Web rollback image capture is missing."
 grep -Fq 'resolve_acr_image_digest' "$WORKFLOW" || fail "Immutable rollback-image resolution is missing."
@@ -65,6 +83,37 @@ grep -Fq -- '--file deployment/containers/web/Dockerfile' <<<"$build_block" || f
 if grep -Eq '^[[:space:]]+release[[:space:]]*$' <<<"$build_block"; then
   fail "ACR builds must not resolve a sibling release context from the runner root."
 fi
+grep -Fq 'Build checksum-pinned migration image' "$WORKFLOW" || fail "Migration image build step is missing."
+grep -Fq 'project-health-dashboard-pr55-migrator' "$WORKFLOW" || fail "Dedicated migration image repository is missing."
+grep -Fq 'IMMUTABLE_MIGRATION_IMAGE=' "$WORKFLOW" || fail "Migration image digest evidence is missing."
+grep -Fq 'steps.migration_image.outputs.image' "$WORKFLOW" || fail "Migration job is not pinned to the built digest."
+grep -Fq 'EXPECTED_FILES=(' "$WORKFLOW" || fail "Minimal migration build-context allowlist is missing."
+grep -Fq 'COPY release-commit .projectpulse-release-commit' "$MIGRATION_DOCKERFILE" || fail "Migration image release marker is missing."
+grep -Fq 'COPY migrations/ database/migrations/' "$MIGRATION_DOCKERFILE" || fail "Migration image does not contain the pinned SQL files."
+grep -Fq 'ENTRYPOINT ["/usr/local/bin/apply-pr55-test-migrations.sh", "/opt/projectpulse/release"]' "$MIGRATION_DOCKERFILE" ||
+  fail "Migration image entrypoint is not pinned to the guarded migrator."
+grep -Fq 'properties.managedEnvironmentId' "$MIGRATION_JOB" || fail "Migration job does not inherit the API Container Apps environment."
+grep -Fq 'az containerapp job create' "$MIGRATION_JOB" || fail "Temporary migration job creation is missing."
+grep -Fq 'az containerapp job start' "$MIGRATION_JOB" || fail "Temporary migration job execution is missing."
+grep -Fq 'az containerapp job execution list' "$MIGRATION_JOB" || fail "Migration job status verification is missing."
+grep -Fq 'az containerapp job delete' "$MIGRATION_JOB" || fail "Temporary migration job cleanup is missing."
+grep -Fq -- '--replica-retry-limit 0' "$MIGRATION_JOB" || fail "Migration job retries must be disabled."
+grep -Fq 'PROJECTPULSE_TEST_DATABASE_URL=secretref:pr55-db-url' "$MIGRATION_JOB" ||
+  fail "Database URI is not passed through a temporary Container Apps secret."
+grep -Fq 'MIGRATION_IMAGE" == "$ACR_NAME.azurecr.io/"*@sha256:' "$MIGRATION_JOB" ||
+  fail "Migration job does not require an immutable approved-ACR image."
+grep -Fq 'system-environment|/subscriptions/*/resourceGroups/*/providers/Microsoft.ManagedIdentity/userAssignedIdentities/*)' "$MIGRATION_JOB" ||
+  fail "Migration job does not restrict identity reuse to reusable ACR identities."
+grep -Fq -- '--expose-token' "$MIGRATION_JOB" || fail "Ephemeral ACR-token fallback is missing."
+grep -Fq "REGISTRY_USERNAME='00000000-0000-0000-0000-000000000000'" "$MIGRATION_JOB" ||
+  fail "The documented ACR token username is missing."
+grep -Fq 'Remove temporary PR55 migration job' "$WORKFLOW" || fail "Always-run migration cleanup step is missing."
+cleanup_block="$(sed -n '/- name: Remove temporary PR55 migration job/,/- name: Deploy API/p' "$WORKFLOW")"
+grep -Fq 'if: ${{ always() }}' <<<"$cleanup_block" || fail "Migration cleanup must run after success, failure, or cancellation."
+grep -Fq 'az containerapp job delete' <<<"$cleanup_block" || fail "Workflow-level migration cleanup deletion is missing."
+grep -Fq 'az containerapp job list' <<<"$cleanup_block" || fail "Workflow-level migration cleanup verification is missing."
+grep -Fq 'The temporary migration job or its secret still exists. Deployment stopped.' <<<"$cleanup_block" ||
+  fail "Deployment does not stop when migration-job cleanup is incomplete."
 grep -Fq 'Roll back application images on failure' "$WORKFLOW" || fail "Failure rollback step is missing."
 grep -Fq '/health' "$WORKFLOW" || fail "Public API health check is missing."
 grep -Fq '/api/version' "$WORKFLOW" || fail "Public version check is missing."
@@ -76,17 +125,21 @@ grep -Fq 'scripts/validate-pr55-test-deployment.sh' "$CI_WORKFLOW" || fail "CI d
 
 azure_login_line="$(grep -n 'uses: azure/login@v2' "$WORKFLOW" | head -1 | cut -d: -f1)"
 database_config_line="$(grep -n 'export-pr55-test-database-url.sh' "$WORKFLOW" | head -1 | cut -d: -f1)"
-migration_line="$(grep -n 'apply-pr55-test-migrations.sh' "$WORKFLOW" | head -1 | cut -d: -f1)"
+migration_image_line="$(grep -n -- '- name: Build checksum-pinned migration image' "$WORKFLOW" | head -1 | cut -d: -f1)"
+migration_line="$(grep -n 'run-pr55-test-migration-job.sh' "$WORKFLOW" | head -1 | cut -d: -f1)"
+cleanup_line="$(grep -n -- '- name: Remove temporary PR55 migration job' "$WORKFLOW" | head -1 | cut -d: -f1)"
 api_deploy_line="$(grep -n -- '- name: Deploy API' "$WORKFLOW" | head -1 | cut -d: -f1)"
 
-[[ -n "$azure_login_line" && -n "$database_config_line" && -n "$migration_line" && -n "$api_deploy_line" ]] ||
-  fail "Cannot determine Azure login, database configuration, migration, and deployment ordering."
+[[ -n "$azure_login_line" && -n "$database_config_line" && -n "$migration_image_line" && -n "$migration_line" && -n "$cleanup_line" && -n "$api_deploy_line" ]] ||
+  fail "Cannot determine Azure login, database configuration, private migration, cleanup, and deployment ordering."
 (( azure_login_line < database_config_line )) ||
   fail "Azure login must complete before database configuration is read."
-(( database_config_line < migration_line )) ||
-  fail "Database configuration must be ready before migrations start."
-(( migration_line < api_deploy_line )) ||
-  fail "Migrations must complete before the API deployment starts."
+(( database_config_line < migration_image_line )) ||
+  fail "Database configuration must be ready before the migration image is built."
+(( migration_image_line < migration_line )) ||
+  fail "The immutable migration image must exist before the private job starts."
+(( migration_line < cleanup_line && cleanup_line < api_deploy_line )) ||
+  fail "The migration job must succeed and be cleaned up before API deployment starts."
 
 echo "PR55_TEST_DEPLOYMENT_VALIDATION=PASS"
 echo "EXPECTED_RELEASE_COMMIT=$EXPECTED_RELEASE"

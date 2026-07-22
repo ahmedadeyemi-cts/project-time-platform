@@ -98,14 +98,6 @@ jobs:
           AZURE_API_APP: ${{ vars.AZURE_API_APP }}
         run: bash control/scripts/export-pr55-test-database-url.sh
 
-      - name: Install PostgreSQL client
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          sudo apt-get update
-          sudo apt-get install --yes postgresql-client
-          psql --version
-
       - name: Capture current release
         id: before
         shell: bash
@@ -200,10 +192,109 @@ jobs:
           echo "IMMUTABLE_API_IMAGE=$API_IMAGE"
           echo "IMMUTABLE_WEB_IMAGE=$WEB_IMAGE"
 
-      - name: Apply and verify migrations 034 and 035 atomically
+      - name: Build checksum-pinned migration image
+        id: migration_image
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          TARGET_COMMIT='${{ steps.release.outputs.target_commit }}'
+          MIGRATION_REPOSITORY='project-health-dashboard-pr55-migrator'
+          MIGRATION_TAG="pr55-${TARGET_COMMIT}-${GITHUB_SHA:0:12}"
+          CONTEXT="$RUNNER_TEMP/pr55-migrator-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+
+          install -d -m 0700 "$CONTEXT/migrations"
+          install -m 0644 \
+            control/deployment/containers/pr55-migrator/Dockerfile \
+            "$CONTEXT/Dockerfile"
+          install -m 0755 \
+            control/scripts/apply-pr55-test-migrations.sh \
+            "$CONTEXT/apply-pr55-test-migrations.sh"
+          install -m 0644 \
+            release/database/migrations/034_module_026_crm_erp_integrations.sql \
+            "$CONTEXT/migrations/034_module_026_crm_erp_integrations.sql"
+          install -m 0644 \
+            release/database/migrations/035_work_register_055c_055d_split.sql \
+            "$CONTEXT/migrations/035_work_register_055c_055d_split.sql"
+          printf '%s\n' "$TARGET_COMMIT" > "$CONTEXT/release-commit"
+
+          mapfile -t CONTEXT_FILES < <(
+            find "$CONTEXT" -type f -printf '%P\n' | LC_ALL=C sort
+          )
+          EXPECTED_FILES=(
+            Dockerfile
+            apply-pr55-test-migrations.sh
+            migrations/034_module_026_crm_erp_integrations.sql
+            migrations/035_work_register_055c_055d_split.sql
+            release-commit
+          )
+          [[ "${CONTEXT_FILES[*]}" == "${EXPECTED_FILES[*]}" ]] || {
+            echo 'The migration image context contains unexpected or missing files.' >&2
+            printf 'Actual: %s\n' "${CONTEXT_FILES[*]}" >&2
+            exit 1
+          }
+
+          az acr build \
+            --registry '${{ vars.AZURE_ACR_NAME }}' \
+            --image "$MIGRATION_REPOSITORY:$MIGRATION_TAG" \
+            --file "$CONTEXT/Dockerfile" \
+            "$CONTEXT"
+
+          MIGRATION_DIGEST="$(az acr repository show \
+            --name '${{ vars.AZURE_ACR_NAME }}' \
+            --image "$MIGRATION_REPOSITORY:$MIGRATION_TAG" \
+            --query digest \
+            --output tsv)"
+          [[ "$MIGRATION_DIGEST" == sha256:* ]] || {
+            echo 'Could not resolve the immutable migration image digest.' >&2
+            exit 1
+          }
+
+          MIGRATION_IMAGE='${{ vars.AZURE_ACR_NAME }}.azurecr.io/'"$MIGRATION_REPOSITORY@$MIGRATION_DIGEST"
+          echo "image=$MIGRATION_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "IMMUTABLE_MIGRATION_IMAGE=$MIGRATION_IMAGE"
+
+      - name: Apply and verify migrations 034 and 035 inside the private network
         id: migrations
         shell: bash
-        run: control/scripts/apply-pr55-test-migrations.sh release
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_API_APP: ${{ vars.AZURE_API_APP }}
+          AZURE_ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
+          PR55_MIGRATION_IMAGE: ${{ steps.migration_image.outputs.image }}
+          PR55_MIGRATION_JOB_NAME: pr55-mig-${{ github.run_id }}-${{ github.run_attempt }}
+        run: control/scripts/run-pr55-test-migration-job.sh
+
+      - name: Remove temporary PR55 migration job
+        if: ${{ always() }}
+        shell: bash
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          PR55_MIGRATION_JOB_NAME: pr55-mig-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set -Eeuo pipefail
+          EXISTING_JOB="$(az containerapp job list \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --query "[?name=='$PR55_MIGRATION_JOB_NAME'].name | [0]" \
+            --output tsv \
+            --only-show-errors)"
+          if [[ "$EXISTING_JOB" == "$PR55_MIGRATION_JOB_NAME" ]]; then
+            az containerapp job delete \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --name "$PR55_MIGRATION_JOB_NAME" \
+              --yes \
+              --output none \
+              --only-show-errors
+          fi
+          REMAINING_JOB="$(az containerapp job list \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --query "[?name=='$PR55_MIGRATION_JOB_NAME'].name | [0]" \
+            --output tsv \
+            --only-show-errors)"
+          [[ -z "$REMAINING_JOB" ]] || {
+            echo 'The temporary migration job or its secret still exists. Deployment stopped.' >&2
+            exit 1
+          }
+          echo 'PR55_MIGRATION_JOB_POST_STEP_CLEANUP=COMPLETE'
 
       - name: Deploy API
         id: deploy_api
@@ -324,6 +415,7 @@ jobs:
             "runId": "${{ github.run_id }}",
             "migration034": "applied-and-verified",
             "migration035": "applied-and-verified",
+            "migrationImage": "${{ steps.migration_image.outputs.image }}",
             "apiImage": "${{ steps.build.outputs.api_image }}",
             "webImage": "${{ steps.build.outputs.web_image }}",
             "previousApiImage": "${{ steps.before.outputs.old_api_image }}",
