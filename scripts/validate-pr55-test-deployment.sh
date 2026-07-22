@@ -4,9 +4,11 @@ set -Eeuo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKFLOW="$REPO_ROOT/.github/workflows/projectpulse-deploy-pr55-test.yml"
 MIGRATOR="$REPO_ROOT/scripts/apply-pr55-test-migrations.sh"
+ACR_BUILD_HELPER="$REPO_ROOT/scripts/build-pr55-acr-image.sh"
 DATABASE_CONFIG="$REPO_ROOT/scripts/export-pr55-test-database-url.sh"
 MIGRATION_JOB="$REPO_ROOT/scripts/run-pr55-test-migration-job.sh"
 MIGRATION_JOB_IDENTITY_TEST="$REPO_ROOT/tests/test-pr55-migration-job-identity.sh"
+ACR_BUILD_DIGEST_TEST="$REPO_ROOT/tests/test-pr55-acr-build-digest.sh"
 MIGRATION_DOCKERFILE="$REPO_ROOT/deployment/containers/pr55-migrator/Dockerfile"
 CI_WORKFLOW="$REPO_ROOT/.github/workflows/projectpulse-ci.yml"
 GUIDE="$REPO_ROOT/docs/PR55-TEST-DEPLOYMENT-VERIFICATION.md"
@@ -19,9 +21,11 @@ fail() {
 for file in \
   "$WORKFLOW" \
   "$MIGRATOR" \
+  "$ACR_BUILD_HELPER" \
   "$DATABASE_CONFIG" \
   "$MIGRATION_JOB" \
   "$MIGRATION_JOB_IDENTITY_TEST" \
+  "$ACR_BUILD_DIGEST_TEST" \
   "$MIGRATION_DOCKERFILE" \
   "$CI_WORKFLOW" \
   "$GUIDE"; do
@@ -29,9 +33,11 @@ for file in \
 done
 
 bash -n "$MIGRATOR"
+bash -n "$ACR_BUILD_HELPER"
 bash -n "$DATABASE_CONFIG"
 bash -n "$MIGRATION_JOB"
 bash -n "$MIGRATION_JOB_IDENTITY_TEST"
+bash -n "$ACR_BUILD_DIGEST_TEST"
 
 EXPECTED_RELEASE="ea23da6cfdd21a9444489ee4ffd14a6555de8c34"
 EXPECTED_034="275c2f3f5ad56d80f303327baeb665506bc41014d52af8a2b7082c6e451974b9"
@@ -73,18 +79,33 @@ grep -Fq 'CURRENT_API_IMAGE_IMMUTABLE' "$WORKFLOW" || fail "Immutable API rollba
 grep -Fq 'CURRENT_WEB_IMAGE_IMMUTABLE' "$WORKFLOW" || fail "Immutable web rollback evidence is missing."
 grep -Fq 'activeRevisionsMode' "$WORKFLOW" || fail "Single-revision traffic guard is missing."
 grep -Fq 'az acr repository show' "$WORKFLOW" || fail "Immutable image digest resolution is missing."
+[[ "$(grep -Fc 'az acr repository show' "$WORKFLOW")" -eq 1 ]] ||
+  fail "Newly built images must use the ACR build result instead of immediate tag lookups."
 grep -Fq '@$API_DIGEST' "$WORKFLOW" || fail "API deployment is not pinned to an immutable digest."
 grep -Fq '@$WEB_DIGEST' "$WORKFLOW" || fail "Web deployment is not pinned to an immutable digest."
 build_block="$(sed -n '/- name: Build exact API and web images/,/- name: Apply and verify migrations/p' "$WORKFLOW")"
 grep -Fq 'working-directory: release' <<<"$build_block" || fail "ACR builds must run inside the exact release checkout."
 grep -Fq 'test -f deployment/containers/api/Dockerfile' <<<"$build_block" || fail "API Dockerfile preflight is missing."
 grep -Fq 'test -f deployment/containers/web/Dockerfile' <<<"$build_block" || fail "Web Dockerfile preflight is missing."
-grep -Fq -- '--file deployment/containers/api/Dockerfile' <<<"$build_block" || fail "API ACR build Dockerfile path is missing."
-grep -Fq -- '--file deployment/containers/web/Dockerfile' <<<"$build_block" || fail "Web ACR build Dockerfile path is missing."
+grep -Fq 'deployment/containers/api/Dockerfile' <<<"$build_block" || fail "API ACR build Dockerfile path is missing."
+grep -Fq 'deployment/containers/web/Dockerfile' <<<"$build_block" || fail "Web ACR build Dockerfile path is missing."
+[[ "$(grep -Fc 'build-pr55-acr-image.sh' <<<"$build_block")" -eq 3 ]] ||
+  fail "API, web, and migration builds must share the guarded ACR digest helper."
 [[ "$(grep -Ec '^[[:space:]]+\.$' <<<"$build_block")" -eq 2 ]] ||
   fail "Both ACR builds must submit the release checkout as dot context."
 if grep -Eq '^[[:space:]]+release[[:space:]]*$' <<<"$build_block"; then
   fail "ACR builds must not resolve a sibling release context from the runner root."
+fi
+if grep -Fq 'az acr repository show' <<<"$build_block"; then
+  fail "A newly pushed image tag must not be queried to recover its digest."
+fi
+grep -Fq -- '--no-logs' "$ACR_BUILD_HELPER" || fail "ACR build-result capture must suppress streamed logs."
+grep -Fq -- "--query 'outputImages[0].digest'" "$ACR_BUILD_HELPER" ||
+  fail "ACR build-result digest query is missing."
+grep -Fq '^sha256:[0-9a-f]{64}$' "$ACR_BUILD_HELPER" ||
+  fail "ACR build-result digests are not strictly validated."
+if grep -Fq 'az acr repository show' "$ACR_BUILD_HELPER"; then
+  fail "The ACR build helper must not perform a post-build tag lookup."
 fi
 grep -Fq 'Build checksum-pinned migration image' "$WORKFLOW" || fail "Migration image build step is missing."
 grep -Fq 'project-health-dashboard-pr55-migrator' "$WORKFLOW" || fail "Dedicated migration image repository is missing."
@@ -191,6 +212,7 @@ api_deploy_line="$(grep -n -- '- name: Deploy API' "$WORKFLOW" | head -1 | cut -
   fail "The migration job must succeed and be cleaned up before API deployment starts."
 
 "$MIGRATION_JOB_IDENTITY_TEST"
+"$ACR_BUILD_DIGEST_TEST"
 
 echo "PR55_TEST_DEPLOYMENT_VALIDATION=PASS"
 echo "EXPECTED_RELEASE_COMMIT=$EXPECTED_RELEASE"
