@@ -4,6 +4,18 @@
 
 BEGIN;
 
+ALTER TABLE work_register_intake_packages
+    ADD COLUMN IF NOT EXISTS source_mode VARCHAR(60);
+
+UPDATE work_register_intake_packages
+SET source_mode = 'gsd_sow_upload'
+WHERE source_mode IS NULL
+   OR btrim(source_mode) = '';
+
+ALTER TABLE work_register_intake_packages
+    ALTER COLUMN source_mode SET DEFAULT 'gsd_sow_upload',
+    ALTER COLUMN source_mode SET NOT NULL;
+
 CREATE TABLE IF NOT EXISTS work_register_change_history (
     work_register_change_history_id UUID PRIMARY KEY,
     source_table VARCHAR(120) NOT NULL,

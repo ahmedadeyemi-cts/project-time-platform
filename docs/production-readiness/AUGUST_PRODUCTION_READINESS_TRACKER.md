@@ -316,7 +316,7 @@ and authenticated portal acceptance are separate controlled gates.
 - Migration `035_work_register_055c_055d_split.sql` is created but has **not** been applied.
 - Source is published only in draft PR #55. No database migration, SELL call, credential configuration, OAuth consent, merge, or deployment has been performed in this checkpoint.
 - The permanent module-ordering guard confirms Module 999 is the highest-numbered and last module.
-- The expanded 055C/055D validator passed 35 checks, including atomic creation/audit, existing-table user-FK, renamed-title, and post-create-control guards; the complete protected frontend build passed.
+- The expanded 055C/055D validator passed 36 checks, including atomic creation/audit, intake `source_mode` schema/backfill, existing-table user-FK, renamed-title, and post-create-control guards; the complete protected frontend build passed.
 
 ## Items Not in August Production Readiness Scope
 - Full production Azure migration.

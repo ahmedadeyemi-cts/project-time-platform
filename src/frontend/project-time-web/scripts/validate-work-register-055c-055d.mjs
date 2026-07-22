@@ -56,6 +56,7 @@ test('SELL_ENDPOINT', sellImport.includes('/api/work-register/intake/packages/se
 test('SELL_MODULE_026_CREDENTIAL', sellImport.includes('CrmErpIntegrationModule.LoadCredentialAsync'));
 test('SELL_SOURCE_LOCK_UI', frontend.includes('sellAuthoritativeReview') && frontend.includes('disabled={sellAuthoritativeReview}'));
 test('SELL_SOURCE_LOCK_SERVER', program.includes("WHEN source_mode = 'sell_import'") && program.includes("'projectName', extracted_json->'projectName'") && program.includes("'rates', extracted_json->'rates'"));
+test('SOURCE_MODE_SCHEMA', migration.includes('ADD COLUMN IF NOT EXISTS source_mode') && migration.includes("SET source_mode = 'gsd_sow_upload'") && migration.includes("ALTER COLUMN source_mode SET DEFAULT 'gsd_sow_upload'") && migration.includes('ALTER COLUMN source_mode SET NOT NULL'));
 const createEndpoint = program.slice(
   program.indexOf('app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/commit"'),
   program.indexOf('/* 055D_4C_FINAL_SAVE_ENDPOINT_END */')
