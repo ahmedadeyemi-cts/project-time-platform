@@ -10,12 +10,18 @@ or test an external provider.
 
 ## Before running the workflow
 
-The GitHub `test` environment must contain the secret
-`PROJECTPULSE_TEST_DATABASE_URL`. Store the PostgreSQL connection URI only in the
-GitHub environment secret. Do not place it in source, workflow inputs, logs, or
-chat.
+No separate GitHub database secret is required. After Azure login, the workflow
+reads `PTP_DB_HOST`, `PTP_DB_PORT`, `PTP_DB_USER`, and `PTP_DB_NAME` from
+the existing test API Container App. It follows the `PTP_DB_PASSWORD` secret
+reference, masks sensitive values immediately, URL-encodes them, and exports the
+PostgreSQL URI only to the current runner's ephemeral environment.
 
-The existing test-environment Azure variables must also remain configured:
+The Azure identity used by the workflow must be able to read the test Container
+App configuration and list its secrets. The workflow stops before migrations or
+deployment if any value or permission is unavailable. Do not copy database
+credentials into GitHub, source, workflow inputs, logs, or chat.
+
+The existing test-environment Azure variables must remain configured:
 
 - `AZURE_CLIENT_ID`
 - `AZURE_TENANT_ID`
@@ -49,6 +55,8 @@ application.
 
 ## What the workflow verifies automatically
 
+- The database connection is reconstructed from the existing test API Container
+  App without exposing or duplicating credentials.
 - The release source is exactly the PR #55 merge commit.
 - Migration 034 and migration 035 match the reviewed SHA-256 checksums.
 - Both migrations apply in one PostgreSQL transaction.
