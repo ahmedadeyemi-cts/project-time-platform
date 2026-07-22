@@ -322,10 +322,6 @@ public static class WorkRegisterAuthorization
         if (context.Request.Body.CanSeek)
         {
             context.Request.Body.Position = 0;
-            if (context.Request.Body.Length == 0)
-            {
-                return ([], false);
-            }
         }
 
         try

@@ -111,7 +111,7 @@ await ExpectResolutionAsync(
 var purchaseOrderPath = $"/api/work-register/projects/{assignedProjectId}/purchase-order";
 await ExpectResolutionAsync(
     "PURCHASE_ORDER:ROUTE_PROJECT_ID",
-    JsonContext(purchaseOrderPath, ""),
+    JsonContext(purchaseOrderPath, "{\"purchaseOrderRequired\":false}"),
     WorkRegisterProjectIdResolutionStatus.Found,
     assignedProjectId);
 await ExpectResolutionAsync(
@@ -131,6 +131,13 @@ await ExpectResolutionAsync(
     "CANONICAL_ROUTE:MALFORMED_JSON",
     JsonContext(canonicalJsonRoutes[0], "{\"projectId\":"),
     WorkRegisterProjectIdResolutionStatus.Invalid);
+await ExpectResolutionAsync(
+    "CANONICAL_ROUTE:KESTREL_BUFFERED_BODY",
+    KestrelJsonContext(
+        canonicalJsonRoutes[0],
+        JsonIds(("projectId", assignedProjectId))),
+    WorkRegisterProjectIdResolutionStatus.Found,
+    assignedProjectId);
 await ExpectResolutionAsync(
     "UNKNOWN_MUTATION:FAILS_CLOSED_FOR_ASSIGNED_PM",
     JsonContext(
@@ -188,6 +195,13 @@ static DefaultHttpContext JsonContext(string path, string json)
     return context;
 }
 
+static DefaultHttpContext KestrelJsonContext(string path, string json)
+{
+    var context = JsonContext(path, json);
+    context.Request.Body = new NonSeekableReadStream(Encoding.UTF8.GetBytes(json));
+    return context;
+}
+
 static DefaultHttpContext FormContext(string path, Dictionary<string, StringValues> values)
 {
     var context = new DefaultHttpContext();
@@ -196,4 +210,46 @@ static DefaultHttpContext FormContext(string path, Dictionary<string, StringValu
     context.Request.ContentType = "multipart/form-data; boundary=projectpulse-test";
     context.Features.Set<IFormFeature>(new FormFeature(new FormCollection(values)));
     return context;
+}
+
+sealed class NonSeekableReadStream(byte[] bytes) : Stream
+{
+    private readonly MemoryStream inner = new(bytes);
+
+    public override bool CanRead => true;
+    public override bool CanSeek => false;
+    public override bool CanWrite => false;
+    public override long Length => throw new NotSupportedException();
+    public override long Position
+    {
+        get => throw new NotSupportedException();
+        set => throw new NotSupportedException();
+    }
+
+    public override void Flush()
+    {
+    }
+
+    public override int Read(byte[] buffer, int offset, int count) =>
+        inner.Read(buffer, offset, count);
+
+    public override ValueTask<int> ReadAsync(
+        Memory<byte> buffer,
+        CancellationToken cancellationToken = default) =>
+        inner.ReadAsync(buffer, cancellationToken);
+
+    public override long Seek(long offset, SeekOrigin origin) =>
+        throw new NotSupportedException();
+
+    public override void SetLength(long value) =>
+        throw new NotSupportedException();
+
+    public override void Write(byte[] buffer, int offset, int count) =>
+        throw new NotSupportedException();
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) inner.Dispose();
+        base.Dispose(disposing);
+    }
 }

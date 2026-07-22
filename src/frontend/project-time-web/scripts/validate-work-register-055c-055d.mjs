@@ -60,6 +60,7 @@ test('VIEW_AS_MUTATION_BLOCK', authorization.includes('CanEditAll: !isViewAs') &
 test('ASSIGNED_PM_SERVER_SCOPE', authorization.includes('IsAssignedProjectManagerAsync') && authorization.includes('project.project_manager_user_id = @user_id'));
 test('PROJECT_ID_MUTATION_SCOPE', authorization.includes('ResolveProjectIdAsync') && authorization.includes('canonicalJsonPaths') && authorization.includes('aliasJsonPaths') && authorization.includes('ReadFormAsync') && authorization.includes('EnableBuffering'));
 test('PROJECT_ID_CONFLICT_REJECTION', authorization.includes('WorkRegisterProjectIdResolutionStatus.Conflicting') && authorization.includes('conflicting_project_ids') && authorization.includes('IsEndpointProjectId'));
+test('BUFFERED_JSON_BODY_READ', !authorization.includes('Request.Body.Length == 0') && authorization.includes('JsonDocument.ParseAsync'));
 test('CENTRAL_AUTHORIZATION_MIDDLEWARE', program.includes('app.UseWorkRegisterAuthorization();'));
 test('CREATE_API_GUARDED', program.includes('HasCreateAuthorityAsync') && sellImport.includes('HasCreateAuthorityAsync'));
 test('GSD_AND_SELL_OPTIONS', frontend.includes('Import from GSD') && frontend.includes('Import from SELL'));
