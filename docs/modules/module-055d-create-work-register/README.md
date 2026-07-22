@@ -1,9 +1,10 @@
 # Module 055D — Create New Project
 
-Module 055D is the only new-project creation page. Only a Project Team
-Coordinator (`PROJECT_TEAM_COORDINATOR`) can open or execute its create APIs.
-Administrators, Project Managers, and Project Management Leads do not inherit
-055D creation authority. View-As is always read-only.
+Module 055D is the only new-project creation page. A Project Team Coordinator
+(`PROJECT_TEAM_COORDINATOR`), Administrator (`ADMINISTRATOR`), or Super
+Administrator (`SUPER_ADMINISTRATOR`) can open and execute its create APIs.
+Project Managers and Project Management Leads do not inherit 055D creation
+authority. View-As is always read-only.
 
 ## Creation sources
 
@@ -45,6 +46,7 @@ server-side credential protections are inherited from Module 026.
 
 ## Release boundary
 
-Migration `035_work_register_055c_055d_split.sql` is source-only. Module 026
-migration 034, provider credentials, OAuth consent, provider calls, database
-migration, and deployment each require their own governed production action.
+Migration `036_work_register_role_scope_and_closeout_handoff.sql` aligns the
+permission catalog with the PTC/Administrator creation policy. Provider
+credentials, OAuth consent, provider calls, database migration, and deployment
+each require their own governed production action.

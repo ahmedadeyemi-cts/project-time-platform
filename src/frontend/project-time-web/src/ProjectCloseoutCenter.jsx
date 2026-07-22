@@ -12,6 +12,17 @@ function getProjectPulseAuthHeaders() {
   }
 }
 
+function readProjectCloseoutHandoff() {
+  try {
+    const raw = window.sessionStorage.getItem('projectPulseProjectCloseoutHandoff');
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed?.projectId || parsed?.projectCode ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 async function readApiErrorMessage(response, path) {
   const raw = await response.text();
   if (!raw) return `${path} returned HTTP ${response.status}`;
@@ -517,6 +528,8 @@ export default function ProjectCloseoutCenter() {
   });
   const [selectedProjectKey, setSelectedProjectKey] = useState('');
   const [copiedStatus, setCopiedStatus] = useState('');
+  const [closeoutHandoff] = useState(() => readProjectCloseoutHandoff());
+  const [handoffStatus, setHandoffStatus] = useState('');
 
   async function loadCloseoutData() {
     setPayload((current) => ({ ...current, loading: true, error: null }));
@@ -644,10 +657,39 @@ export default function ProjectCloseoutCenter() {
   }, [payload.data]);
 
   useEffect(() => {
-    if (!selectedProjectKey && projects.length > 0) {
-      setSelectedProjectKey(projects[0].key);
+    if (selectedProjectKey || projects.length === 0) return;
+
+    const handoffProject = closeoutHandoff
+      ? projects.find((project) => (
+          (closeoutHandoff.projectId
+            && String(project.projectId).toLowerCase() === String(closeoutHandoff.projectId).toLowerCase())
+          || (closeoutHandoff.projectCode
+            && String(project.projectCode).toLowerCase() === String(closeoutHandoff.projectCode).toLowerCase())
+        ))
+      : null;
+
+    if (handoffProject) {
+      setSelectedProjectKey(handoffProject.key);
+      setHandoffStatus(`Opened ${handoffProject.projectCode} from Module 055C for governed closeout review.`);
+      try {
+        window.sessionStorage.removeItem('projectPulseProjectCloseoutHandoff');
+      } catch {
+        // The selected project is already preserved in component state.
+      }
+      return;
     }
-  }, [projects, selectedProjectKey]);
+
+    if (closeoutHandoff) {
+      setHandoffStatus('The Module 055C project could not be matched in the available closeout data. Select the project manually.');
+      try {
+        window.sessionStorage.removeItem('projectPulseProjectCloseoutHandoff');
+      } catch {
+        // Ignore browser storage cleanup failures.
+      }
+    }
+
+    setSelectedProjectKey(projects[0].key);
+  }, [closeoutHandoff, projects, selectedProjectKey]);
 
   const selectedProject = useMemo(() => {
     return projects.find((project) => project.key === selectedProjectKey) ?? projects[0] ?? null;
@@ -754,6 +796,13 @@ export default function ProjectCloseoutCenter() {
           send an invoice, mark a PSA project closed, or replace customer acceptance evidence.
         </span>
       </section>
+
+      {handoffStatus ? (
+        <section className="project-closeout-handoff">
+          <strong>Module 055C handoff</strong>
+          <span>{handoffStatus}</span>
+        </section>
+      ) : null}
 
       <section className="project-closeout-toolbar">
         <label>

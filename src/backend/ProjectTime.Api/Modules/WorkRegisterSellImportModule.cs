@@ -38,7 +38,7 @@ public static class WorkRegisterSellImportModule
             return Results.Json(new
             {
                 status = "access_denied",
-                message = "Only a Project Team Coordinator can import SELL work into the Work Register."
+                message = "Only a Project Team Coordinator, Administrator, or Super Administrator can import SELL work into the Work Register."
             }, statusCode: StatusCodes.Status403Forbidden);
         }
 

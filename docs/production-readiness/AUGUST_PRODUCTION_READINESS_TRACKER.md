@@ -306,17 +306,18 @@ and authenticated portal acceptance are separate controlled gates.
 ## Modules 055C/055D Work Register Split — July 22, 2026 Source Checkpoint
 
 - Module 055C is now **Manage Existing Projects** and does not expose creation controls.
-- Module 055C mutations are restricted to Project Managers, Project Management Leads, and Project Team Coordinators; View-As remains read-only.
+- Module 055C limits Project Managers and Project Management Leads to projects assigned to them. Project Team Coordinators, Administrators, and Super Administrators can edit every project; View-As remains read-only.
 - Project setup, lifecycle, task/roster, document, change-order, and purchase-order saves retain actor/reason and old/new evidence in the Audit tab.
-- Module 055D is now **Create New Project** and is restricted to the Project Team Coordinator role only.
+- Module 055C now opens Module 040 with the selected project preserved through **Start Project Closeout**.
+- Module 055D is now **Create New Project** and is restricted to Project Team Coordinators, Administrators, and Super Administrators.
 - Module 055D offers two sources: Import from GSD or Import from SELL.
 - SELL is authoritative for project name and Actual Rate / Pricing / Rate Review; the UI disables those fields and the server restores them from the protected source snapshot on every review save.
 - SELL access reuses Module 026 OAuth 2.0 or write-only API-key configuration and retains no raw provider response or credential.
 - Final creation writes `work_register_created` evidence that is visible from the new project's Module 055C Audit tab.
-- Migration `035_work_register_055c_055d_split.sql` is created but has **not** been applied.
-- Source is published only in draft PR #55. No database migration, SELL call, credential configuration, OAuth consent, merge, or deployment has been performed in this checkpoint.
+- Migrations 034 and 035 were applied to the test database by deployment run `29947623198`; migration `036_work_register_role_scope_and_closeout_handoff.sql` remains unapplied.
+- The authorization correction and Module 040 handoff remain source-only until their guarded PR and a separately authorized test deployment complete.
 - The permanent module-ordering guard confirms Module 999 is the highest-numbered and last module.
-- The expanded 055C/055D validator passed 36 checks, including atomic creation/audit, intake `source_mode` schema/backfill, existing-table user-FK, renamed-title, and post-create-control guards; the complete protected frontend build passed.
+- The expanded 055C/055D validator now covers assigned-PM enforcement, PTC/Administrator edit-all and create authority, View-As protection, row-specific controls, and the selected-project Module 040 handoff in addition to the original creation and audit guards.
 
 ## Items Not in August Production Readiness Scope
 - Full production Azure migration.

@@ -193,11 +193,17 @@ COPY database/migrations/034_module_026_crm_erp_integrations.sql \
 COPY database/migrations/035_work_register_055c_055d_split.sql \
      database/migrations/035_work_register_055c_055d_split.sql
 
+COPY database/migrations/036_work_register_role_scope_and_closeout_handoff.sql \
+     database/migrations/036_work_register_role_scope_and_closeout_handoff.sql
+
 COPY database/rollback/034_module_026_crm_erp_integrations_rollback.sql \
      database/rollback/034_module_026_crm_erp_integrations_rollback.sql
 
 COPY database/rollback/035_work_register_055c_055d_split_rollback.sql \
      database/rollback/035_work_register_055c_055d_split_rollback.sql
+
+COPY database/rollback/036_work_register_role_scope_and_closeout_handoff_rollback.sql \
+     database/rollback/036_work_register_role_scope_and_closeout_handoff_rollback.sql
 
 COPY docs/modules/module-077-release-deployment-control/ \
      docs/modules/module-077-release-deployment-control/
