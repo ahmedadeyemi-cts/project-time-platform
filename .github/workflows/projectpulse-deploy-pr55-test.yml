@@ -1,0 +1,327 @@
+name: ProjectPulse Deploy PR55 Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_commit:
+        description: Exact verified PR 55 merge commit
+        required: true
+        default: ea23da6cfdd21a9444489ee4ffd14a6555de8c34
+        type: string
+      confirmation:
+        description: Enter DEPLOY-PR55-TO-TEST
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: projectpulse-deploy-pr55-test
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Guarded PR55 test deployment
+    environment: test
+    runs-on: ubuntu-latest
+    env:
+      EXPECTED_RELEASE_COMMIT: ea23da6cfdd21a9444489ee4ffd14a6555de8c34
+    steps:
+      - name: Check out deployment controls
+        uses: actions/checkout@v4
+        with:
+          path: control
+          fetch-depth: 0
+
+      - name: Check out exact release source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_commit }}
+          path: release
+          fetch-depth: 1
+
+      - name: Guard workflow source and release commit
+        id: release
+        shell: bash
+        env:
+          PROJECTPULSE_TEST_DATABASE_URL: ${{ secrets.PROJECTPULSE_TEST_DATABASE_URL }}
+        run: |
+          set -Eeuo pipefail
+          [[ '${{ github.ref }}' == 'refs/heads/main' ]] || {
+            echo 'This deployment workflow must be dispatched from main.' >&2
+            exit 1
+          }
+          [[ '${{ inputs.confirmation }}' == 'DEPLOY-PR55-TO-TEST' ]] || {
+            echo 'The deployment confirmation text does not match.' >&2
+            exit 1
+          }
+          [[ '${{ inputs.release_commit }}' =~ ^[0-9a-f]{40}$ ]] || {
+            echo 'release_commit must be a complete 40-character SHA.' >&2
+            exit 1
+          }
+
+          CONTROL_COMMIT="$(git -C control rev-parse HEAD)"
+          TARGET_COMMIT="$(git -C release rev-parse HEAD)"
+          [[ "$CONTROL_COMMIT" == '${{ github.sha }}' ]] || {
+            echo 'The checked-out deployment control does not match this workflow run.' >&2
+            exit 1
+          }
+          [[ "$TARGET_COMMIT" == '${{ inputs.release_commit }}' ]] || {
+            echo 'The checked-out release does not match the requested commit.' >&2
+            exit 1
+          }
+          [[ "$TARGET_COMMIT" == "$EXPECTED_RELEASE_COMMIT" ]] || {
+            echo "Only the verified PR #55 merge commit may be deployed by this workflow." >&2
+            exit 1
+          }
+          git -C control merge-base --is-ancestor "$TARGET_COMMIT" HEAD || {
+            echo 'The target release is not an ancestor of the deployment-control commit.' >&2
+            exit 1
+          }
+          [[ -n "${PROJECTPULSE_TEST_DATABASE_URL:-}" ]] || {
+            echo 'The test environment secret PROJECTPULSE_TEST_DATABASE_URL is not configured.' >&2
+            exit 1
+          }
+          echo "target_commit=$TARGET_COMMIT" >> "$GITHUB_OUTPUT"
+          echo "TARGET_RELEASE_VERIFIED=$TARGET_COMMIT"
+
+      - name: Validate deployment controls
+        shell: bash
+        run: control/scripts/validate-pr55-test-deployment.sh
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Install PostgreSQL client
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-client
+          psql --version
+
+      - name: Capture current release
+        id: before
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          OLD_API_IMAGE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
+          OLD_WEB_IMAGE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
+          API_REVISION_MODE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.configuration.activeRevisionsMode' -o tsv)"
+          WEB_REVISION_MODE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.configuration.activeRevisionsMode' -o tsv)"
+          [[ -n "$OLD_API_IMAGE" && -n "$OLD_WEB_IMAGE" ]] || {
+            echo 'Could not capture both active image references. Deployment stopped.' >&2
+            exit 1
+          }
+          [[ "${API_REVISION_MODE,,}" == 'single' && "${WEB_REVISION_MODE,,}" == 'single' ]] || {
+            echo 'Both Container Apps must use single-revision mode before this deployment.' >&2
+            exit 1
+          }
+          echo "old_api_image=$OLD_API_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "old_web_image=$OLD_WEB_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "CURRENT_API_IMAGE=$OLD_API_IMAGE"
+          echo "CURRENT_WEB_IMAGE=$OLD_WEB_IMAGE"
+          echo "API_REVISION_MODE=$API_REVISION_MODE"
+          echo "WEB_REVISION_MODE=$WEB_REVISION_MODE"
+
+      - name: Build exact API and web images
+        id: build
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          TARGET_COMMIT='${{ steps.release.outputs.target_commit }}'
+          API_REPOSITORY='project-health-dashboard-api'
+          WEB_REPOSITORY='project-health-dashboard-web'
+          RELEASE_TAG="pr55-$TARGET_COMMIT"
+
+          az acr build \
+            --registry '${{ vars.AZURE_ACR_NAME }}' \
+            --image "project-health-dashboard-api:pr55-$TARGET_COMMIT" \
+            --file deployment/containers/api/Dockerfile \
+            release
+          az acr build \
+            --registry '${{ vars.AZURE_ACR_NAME }}' \
+            --image "project-health-dashboard-web:pr55-$TARGET_COMMIT" \
+            --file deployment/containers/web/Dockerfile \
+            release
+
+          API_DIGEST="$(az acr repository show --name '${{ vars.AZURE_ACR_NAME }}' --image "$API_REPOSITORY:$RELEASE_TAG" --query digest -o tsv)"
+          WEB_DIGEST="$(az acr repository show --name '${{ vars.AZURE_ACR_NAME }}' --image "$WEB_REPOSITORY:$RELEASE_TAG" --query digest -o tsv)"
+          [[ "$API_DIGEST" == sha256:* && "$WEB_DIGEST" == sha256:* ]] || {
+            echo 'Could not resolve immutable image digests for both release images.' >&2
+            exit 1
+          }
+
+          API_IMAGE='${{ vars.AZURE_ACR_NAME }}.azurecr.io/'"$API_REPOSITORY@$API_DIGEST"
+          WEB_IMAGE='${{ vars.AZURE_ACR_NAME }}.azurecr.io/'"$WEB_REPOSITORY@$WEB_DIGEST"
+          echo "api_image=$API_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "web_image=$WEB_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "IMMUTABLE_API_IMAGE=$API_IMAGE"
+          echo "IMMUTABLE_WEB_IMAGE=$WEB_IMAGE"
+
+      - name: Apply and verify migrations 034 and 035 atomically
+        id: migrations
+        shell: bash
+        env:
+          PROJECTPULSE_TEST_DATABASE_URL: ${{ secrets.PROJECTPULSE_TEST_DATABASE_URL }}
+        run: control/scripts/apply-pr55-test-migrations.sh release
+
+      - name: Deploy API
+        id: deploy_api
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          az containerapp update \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' \
+            --image '${{ steps.build.outputs.api_image }}' \
+            --set-env-vars \
+              PROJECTPULSE_ENVIRONMENT=test \
+              PROJECTPULSE_SOURCE_COMMIT='${{ steps.release.outputs.target_commit }}' \
+            --revision-suffix "pr55api-${GITHUB_RUN_ID}" \
+            --output none
+
+      - name: Validate API and protected routes
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          BASE_URL='${{ vars.PUBLIC_URL }}'
+          BASE_URL="${BASE_URL%/}"
+
+          wait_for_status() {
+            local url="$1"
+            local expected="$2"
+            local status
+            for attempt in $(seq 1 30); do
+              status="$(curl --silent --show-error --output /tmp/pr55-response --write-out '%{http_code}' "$url" || true)"
+              if [[ ",$expected," == *",$status,"* ]]; then
+                echo "ROUTE_OK=$url HTTP=$status"
+                return 0
+              fi
+              sleep 10
+            done
+            echo "Route validation failed: $url returned $status; expected one of $expected." >&2
+            sed -n '1,40p' /tmp/pr55-response >&2 || true
+            return 1
+          }
+
+          wait_for_status "$BASE_URL/health" '200'
+          wait_for_status "$BASE_URL/api/version" '200'
+          wait_for_status "$BASE_URL/api/integrations/026/providers" '401,403'
+          wait_for_status "$BASE_URL/api/work-register/overview" '401,403'
+
+      - name: Deploy web
+        id: deploy_web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          az containerapp update \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_WEB_APP }}' \
+            --image '${{ steps.build.outputs.web_image }}' \
+            --revision-suffix "pr55web-${GITHUB_RUN_ID}" \
+            --output none
+
+      - name: Validate deployed web and release identity
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          BASE_URL='${{ vars.PUBLIC_URL }}'
+          BASE_URL="${BASE_URL%/}"
+
+          for attempt in $(seq 1 30); do
+            STATUS="$(curl --silent --show-error --output /tmp/pr55-index.html --write-out '%{http_code}' "$BASE_URL/" || true)"
+            [[ "$STATUS" == '200' ]] && break
+            sleep 10
+          done
+          [[ "$STATUS" == '200' ]] || {
+            echo "Web validation failed with HTTP $STATUS." >&2
+            exit 1
+          }
+
+          ASSET_PATH="$(sed -nE 's/.*src="([^"]+\.js)".*/\1/p' /tmp/pr55-index.html | head -1)"
+          [[ -n "$ASSET_PATH" ]] || {
+            echo 'Could not locate the deployed JavaScript asset.' >&2
+            exit 1
+          }
+          case "$ASSET_PATH" in
+            http://*|https://*) ASSET_URL="$ASSET_PATH" ;;
+            /*) ASSET_URL="$BASE_URL$ASSET_PATH" ;;
+            *) ASSET_URL="$BASE_URL/$ASSET_PATH" ;;
+          esac
+          curl --fail --silent --show-error "$ASSET_URL" --output /tmp/pr55-app.js
+
+          grep -Fq 'Manage Existing Projects' /tmp/pr55-app.js
+          grep -Fq 'Create New Project' /tmp/pr55-app.js
+          grep -Fq 'MODULE 055C' /tmp/pr55-app.js
+          grep -Fq 'MODULE 055D' /tmp/pr55-app.js
+          grep -Fq 'MODULE 999' /tmp/pr55-app.js
+
+          ACTIVE_API_IMAGE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
+          ACTIVE_WEB_IMAGE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
+          [[ "$ACTIVE_API_IMAGE" == '${{ steps.build.outputs.api_image }}' ]]
+          [[ "$ACTIVE_WEB_IMAGE" == '${{ steps.build.outputs.web_image }}' ]]
+
+          echo "DEPLOYED_RELEASE_COMMIT=${{ steps.release.outputs.target_commit }}"
+          echo "DEPLOYED_API_IMAGE=$ACTIVE_API_IMAGE"
+          echo "DEPLOYED_WEB_IMAGE=$ACTIVE_WEB_IMAGE"
+          echo 'MODULE_055C_LABEL=VERIFIED'
+          echo 'MODULE_055D_LABEL=VERIFIED'
+          echo 'MODULE_999_LABEL=VERIFIED'
+
+      - name: Write deployment evidence
+        if: success()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p evidence
+          cat > evidence/pr55-test-deployment.json <<JSON
+          {
+            "environment": "test",
+            "releaseCommit": "${{ steps.release.outputs.target_commit }}",
+            "workflowCommit": "${{ github.sha }}",
+            "runId": "${{ github.run_id }}",
+            "migration034": "applied-and-verified",
+            "migration035": "applied-and-verified",
+            "apiImage": "${{ steps.build.outputs.api_image }}",
+            "webImage": "${{ steps.build.outputs.web_image }}",
+            "previousApiImage": "${{ steps.before.outputs.old_api_image }}",
+            "previousWebImage": "${{ steps.before.outputs.old_web_image }}",
+            "smokeTests": "passed"
+          }
+          JSON
+
+      - name: Upload deployment evidence
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr55-test-deployment-${{ github.run_id }}
+          path: evidence/pr55-test-deployment.json
+          retention-days: 30
+
+      - name: Roll back application images on failure
+        if: ${{ failure() && steps.deploy_api.outputs.started == 'true' }}
+        shell: bash
+        run: |
+          set +e
+          echo 'A deployment or smoke-test step failed. Restoring both captured application images.' >&2
+          az containerapp update \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' \
+            --image '${{ steps.before.outputs.old_api_image }}' \
+            --revision-suffix "pr55rbapi-${GITHUB_RUN_ID}" \
+            --output none
+          az containerapp update \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_WEB_APP }}' \
+            --image '${{ steps.before.outputs.old_web_image }}' \
+            --revision-suffix "pr55rbweb-${GITHUB_RUN_ID}" \
+            --output none
+          echo 'Application image rollback was requested. Migrations 034 and 035 are additive and remain applied if their transaction committed.' >&2
