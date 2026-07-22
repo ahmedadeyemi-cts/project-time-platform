@@ -4,6 +4,18 @@ namespace ProjectTime.Api.Modules;
 
 public static class WorkRegisterAuthorization
 {
+    internal static readonly string[] ProjectUpdateIdAliases =
+    [
+        "projectId",
+        "project_id",
+        "id",
+        "workId",
+        "work_id",
+        "workRegisterProjectId",
+        "selectedProjectId",
+        "selectedWorkRegisterProjectId"
+    ];
+
     private static readonly string[] EditAllRoleCodes =
     [
         "SUPER_ADMINISTRATOR",
@@ -192,21 +204,10 @@ public static class WorkRegisterAuthorization
             "/api/work-register/tasks/assignments/update"
         };
         var standardAliases = new[] { "projectId", "project_id", "workId", "work_id" };
-        var projectUpdateAliases = new[]
-        {
-            "projectId",
-            "project_id",
-            "id",
-            "workId",
-            "work_id",
-            "workRegisterProjectId",
-            "selectedProjectId",
-            "selectedWorkRegisterProjectId"
-        };
-        var recognizedAliases = projectUpdateAliases;
+        var recognizedAliases = ProjectUpdateIdAliases;
         var aliasJsonPaths = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase)
         {
-            ["/api/work-register/projects/update"] = projectUpdateAliases,
+            ["/api/work-register/projects/update"] = ProjectUpdateIdAliases,
             ["/api/work-register/projects/lifecycle"] = standardAliases
         };
         var normalizedPath = (context.Request.Path.Value ?? string.Empty).TrimEnd('/');
@@ -309,6 +310,24 @@ public static class WorkRegisterAuthorization
             1 => WorkRegisterProjectIdResolution.Found(endpointProjectIds[0]),
             _ => WorkRegisterProjectIdResolution.Conflicting()
         };
+    }
+
+    internal static string ReadProjectUpdateIdText(System.Text.Json.JsonElement payload)
+    {
+        foreach (var name in ProjectUpdateIdAliases)
+        {
+            if (!payload.TryGetProperty(name, out var value)
+                || value.ValueKind == System.Text.Json.JsonValueKind.Null
+                || value.ValueKind == System.Text.Json.JsonValueKind.Undefined)
+            {
+                continue;
+            }
+
+            var text = value.ToString().Trim();
+            if (!string.IsNullOrWhiteSpace(text)) return text;
+        }
+
+        return string.Empty;
     }
 
     private static async Task<(IReadOnlyList<WorkRegisterProjectIdCandidate> Candidates, bool InvalidJson)>

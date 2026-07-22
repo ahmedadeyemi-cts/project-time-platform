@@ -91,6 +91,16 @@ await ExpectResolutionAsync(
             ("selectedProjectId", assignedProjectId))),
     WorkRegisterProjectIdResolutionStatus.Conflicting);
 
+foreach (var alias in WorkRegisterAuthorization.ProjectUpdateIdAliases)
+{
+    using var payload = JsonDocument.Parse(JsonIds((alias, assignedProjectId)));
+    var guardedProjectIdText = WorkRegisterAuthorization.ReadProjectUpdateIdText(payload.RootElement);
+    Expect(
+        $"PROJECT_UPDATE:ARCHIVE_GUARD_{alias}",
+        string.Equals(guardedProjectIdText, assignedProjectId.ToString(), StringComparison.OrdinalIgnoreCase),
+        $"archive guard did not resolve {alias}");
+}
+
 await ExpectResolutionAsync(
     "DOCUMENT_UPLOAD:ACTUAL_PROJECT_ID",
     FormContext("/api/work-register/projects/documents/upload", new()

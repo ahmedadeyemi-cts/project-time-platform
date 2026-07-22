@@ -61,6 +61,7 @@ test('ASSIGNED_PM_SERVER_SCOPE', authorization.includes('IsAssignedProjectManage
 test('PROJECT_ID_MUTATION_SCOPE', authorization.includes('ResolveProjectIdAsync') && authorization.includes('canonicalJsonPaths') && authorization.includes('aliasJsonPaths') && authorization.includes('ReadFormAsync') && authorization.includes('EnableBuffering'));
 test('PROJECT_ID_CONFLICT_REJECTION', authorization.includes('WorkRegisterProjectIdResolutionStatus.Conflicting') && authorization.includes('conflicting_project_ids') && authorization.includes('IsEndpointProjectId'));
 test('BUFFERED_JSON_BODY_READ', !authorization.includes('Request.Body.Length == 0') && authorization.includes('JsonDocument.ParseAsync'));
+test('ARCHIVE_GUARD_SHARED_ID_RESOLUTION', program.includes('WorkRegisterAuthorization.ReadProjectUpdateIdText(lifecycleRoot)') && authorization.includes('internal static readonly string[] ProjectUpdateIdAliases'));
 test('CENTRAL_AUTHORIZATION_MIDDLEWARE', program.includes('app.UseWorkRegisterAuthorization();'));
 test('CREATE_API_GUARDED', program.includes('HasCreateAuthorityAsync') && sellImport.includes('HasCreateAuthorityAsync'));
 test('GSD_AND_SELL_OPTIONS', frontend.includes('Import from GSD') && frontend.includes('Import from SELL'));
