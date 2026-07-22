@@ -12,6 +12,7 @@ const files = {
   sellImport: 'src/backend/ProjectTime.Api/Modules/WorkRegisterSellImportModule.cs',
   purchaseOrder: 'src/backend/ProjectTime.Api/Modules/WorkRegisterPurchaseOrderModule.cs',
   frontend: 'src/frontend/project-time-web/src/WorkRegisterCenter.jsx',
+  css: 'src/frontend/project-time-web/src/work-register-center.css',
   app: 'src/frontend/project-time-web/src/App.jsx',
   migration: 'database/migrations/035_work_register_055c_055d_split.sql',
   rollback: 'database/rollback/035_work_register_055c_055d_split_rollback.sql',
@@ -22,6 +23,7 @@ const files = {
 const program = read('src/backend/ProjectTime.Api/Program.cs');
 const app = read(files.app);
 const frontend = read(files.frontend);
+const css = read(files.css);
 const authorization = read(files.authorization);
 const sellImport = read(files.sellImport);
 const purchaseOrder = read(files.purchaseOrder);
@@ -41,7 +43,7 @@ function test(name, condition) {
 for (const [name, file] of Object.entries(files)) test(`FILE_${name.toUpperCase()}`, exists(file));
 
 test('SEPARATE_ROUTES', app.includes("route: 'work-register'") && app.includes("route: 'create-work-register'"));
-test('SEPARATE_TITLES', app.includes("title: 'Edit Work Register'") && app.includes("title: 'Create Work Register'"));
+test('SEPARATE_TITLES', app.includes("title: 'Manage Existing Projects'") && app.includes("title: 'Create New Project'"));
 test('SEPARATE_MODES', app.includes('<WorkRegisterCenter mode="edit" />') && app.includes('<WorkRegisterCenter mode="create" />'));
 test('CREATE_STRICT_PTC_NAV', app.includes("strictRoleCodes: ['PROJECT_TEAM_COORDINATOR']"));
 test('EDIT_EXACT_ROLES', ['PROJECT_MANAGER', 'PROJECT_MANAGEMENT_LEAD', 'PROJECT_TEAM_COORDINATOR'].every((role) => authorization.includes(`"${role}"`)));
@@ -54,7 +56,14 @@ test('SELL_ENDPOINT', sellImport.includes('/api/work-register/intake/packages/se
 test('SELL_MODULE_026_CREDENTIAL', sellImport.includes('CrmErpIntegrationModule.LoadCredentialAsync'));
 test('SELL_SOURCE_LOCK_UI', frontend.includes('sellAuthoritativeReview') && frontend.includes('disabled={sellAuthoritativeReview}'));
 test('SELL_SOURCE_LOCK_SERVER', program.includes("WHEN source_mode = 'sell_import'") && program.includes("'projectName', extracted_json->'projectName'") && program.includes("'rates', extracted_json->'rates'"));
-test('CREATE_AUDIT', program.includes("'work_register_created'") && program.includes('Project Team Coordinator created Work Register'));
+const createEndpoint = program.slice(
+  program.indexOf('app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/commit"'),
+  program.indexOf('/* 055D_4C_FINAL_SAVE_ENDPOINT_END */')
+);
+test('CREATE_AUDIT', createEndpoint.includes("'work_register_created'") && createEndpoint.includes('Project Team Coordinator created Work Register'));
+test('CREATE_AUDIT_ATOMIC', createEndpoint.includes('BeginTransactionAsync') && createEndpoint.includes('connection, transaction') && createEndpoint.includes('auditGuardCommand') && createEndpoint.includes('transaction.CommitAsync'));
+test('EXISTING_HISTORY_TABLE_USER_FK', migration.includes('ADD COLUMN IF NOT EXISTS changed_by_user_id') && migration.includes('fk_work_register_change_history_changed_by_user') && migration.includes('FOREIGN KEY (changed_by_user_id)'));
+test('POST_CREATE_CONTROLS', frontend.includes('Create Another Project') && !css.includes('.work-register-center.create-mode > .work-register-create-button'));
 test('EDIT_AUDIT', program.includes('work_register_change_history') && purchaseOrder.includes("'purchase_order_updated'"));
 test('REASON_REQUIRED', purchaseOrder.includes('A change reason is required for Work Register audit history'));
 test('PERMISSIONS', migration.includes('EDIT_WORK_REGISTER_055C') && migration.includes('CREATE_WORK_REGISTER_055D'));
@@ -62,9 +71,8 @@ test('ROLLBACK_PRESERVES_AUDIT', rollback.includes('Preserves Work Register audi
 test('MIGRATION_NOT_RUNTIME_APPLIED', !program.includes('035_work_register_055c_055d_split.sql'));
 test('CONTAINER_CONTEXT', Object.values(files).every((file) => (
   docker.includes(file)
+  || (file.startsWith('src/frontend/project-time-web/') && docker.includes('COPY src/frontend/project-time-web/'))
   || (file.startsWith('docs/modules/') && docker.includes(`${path.dirname(file)}/`))
-  || file.includes('WorkRegisterCenter.jsx')
-  || file.includes('App.jsx')
 )));
 test('BUILD_GATE', pkg.scripts?.['validate:work-register-055c-055d'] === 'node ./scripts/validate-work-register-055c-055d.mjs' && pkg.scripts?.build?.includes('npm run validate:work-register-055c-055d'));
 

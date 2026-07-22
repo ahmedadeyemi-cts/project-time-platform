@@ -934,8 +934,7 @@ body[data-projectpulse-active-route="work-register"] #work-register .work-regist
 
 .work-register-center.create-mode > .work-register-summary,
 .work-register-center.create-mode > .work-register-toolbar,
-.work-register-center.create-mode > .work-register-table-wrap,
-.work-register-center.create-mode > .work-register-create-button {
+.work-register-center.create-mode > .work-register-table-wrap {
   display: none;
 }
 

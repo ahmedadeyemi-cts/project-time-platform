@@ -17,6 +17,35 @@ CREATE TABLE IF NOT EXISTS work_register_change_history (
     changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+ALTER TABLE work_register_change_history
+    ADD COLUMN IF NOT EXISTS changed_by_user_id UUID NULL;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint constraint_record
+        WHERE constraint_record.conrelid = 'work_register_change_history'::regclass
+          AND constraint_record.confrelid = 'app_users'::regclass
+          AND constraint_record.contype = 'f'
+          AND constraint_record.conkey = ARRAY[
+              (
+                  SELECT attribute_record.attnum::smallint
+                  FROM pg_attribute attribute_record
+                  WHERE attribute_record.attrelid = 'work_register_change_history'::regclass
+                    AND attribute_record.attname = 'changed_by_user_id'
+                    AND NOT attribute_record.attisdropped
+              )
+          ]
+    ) THEN
+        ALTER TABLE work_register_change_history
+            ADD CONSTRAINT fk_work_register_change_history_changed_by_user
+            FOREIGN KEY (changed_by_user_id)
+            REFERENCES app_users(user_id)
+            ON DELETE SET NULL;
+    END IF;
+END $$;
+
 CREATE INDEX IF NOT EXISTS idx_work_register_change_history_work
     ON work_register_change_history(source_table, work_id);
 
@@ -27,15 +56,15 @@ INSERT INTO app_permissions (permission_code, permission_name, module_code, perm
 VALUES
     (
         'EDIT_WORK_REGISTER_055C',
-        'Edit Work Register',
+        'Manage Existing Projects',
         '055C',
-        'Edit Work Register projects, tasks, assignments, documents, purchase orders, and lifecycle fields with audit history.'
+        'Manage existing projects, tasks, assignments, documents, purchase orders, lifecycle fields, closeout entry points, and billing requests with audit history.'
     ),
     (
         'CREATE_WORK_REGISTER_055D',
-        'Create Work Register',
+        'Create New Project',
         '055D',
-        'Create Work Register records from controlled GSD or SELL intake with durable audit history.'
+        'Create new projects from controlled GSD or SELL intake with durable Work Register audit history.'
     )
 ON CONFLICT (permission_code) DO UPDATE
 SET permission_name = EXCLUDED.permission_name,
@@ -77,20 +106,20 @@ INSERT INTO app_feature_catalog (
 VALUES
     (
         'EDIT_WORK_REGISTER_055C',
-        'Edit Work Register',
+        'Manage Existing Projects',
         '055C',
         '#work-register',
         'EDIT_WORK_REGISTER_055C',
-        'Search and edit existing Work Register records. All saved mutations are recorded in the Audit tab.',
+        'Search and manage existing projects. All saved mutations are recorded in the Audit tab.',
         553
     ),
     (
         'CREATE_WORK_REGISTER_055D',
-        'Create Work Register',
+        'Create New Project',
         '055D',
         '#create-work-register',
         'CREATE_WORK_REGISTER_055D',
-        'Create a Work Register from GSD or SELL. SELL remains authoritative for project name and Actual Rate / Pricing / Rate Review.',
+        'Create a new project from GSD or SELL. SELL remains authoritative for project name and Actual Rate / Pricing / Rate Review.',
         554
     )
 ON CONFLICT (feature_code) DO UPDATE

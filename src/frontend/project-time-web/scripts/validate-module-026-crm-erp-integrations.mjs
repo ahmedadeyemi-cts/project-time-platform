@@ -45,7 +45,11 @@ test('OAUTH_START_ROUTE', backend.includes('/providers/{providerKey}/oauth/start
 test('OAUTH_CALLBACK_ROUTE', backend.includes('/api/public/integrations/026/oauth/callback'));
 test('API_KEY_AND_OAUTH', migration.includes("CHECK (auth_model IN ('api_key', 'oauth2'))"));
 test('WRITE_ONLY_ENCRYPTION', backend.includes('PROJECTPULSE_INTEGRATION_SECRET_ENCRYPTION_KEY') && backend.includes('new AesGcm(encryptionKey, 16)') && backend.includes('valueReturned = false'));
-test('SSRF_BOUNDARY', backend.includes('IsSafeExternalUriAsync') && backend.includes('IsPublicAddress') && program.includes('AllowAutoRedirect = false'));
+test('SSRF_BOUNDARY', backend.includes('IsSafeExternalUriAsync') && backend.includes('IsPublicAddress') && backend.includes('AllowAutoRedirect = false'));
+test('DNS_REBINDING_BLOCKED', backend.includes('ConnectCallback = ConnectToPublicEndpointAsync') && backend.includes('socket.ConnectAsync') && backend.includes('addresses.Any(address => !IsPublicAddress(address))'));
+test('PRIVATE_IPV6_BLOCKED', backend.includes('IsIPv4MappedToIPv6') && backend.includes('isUniqueLocal') && backend.includes('isGlobalUnicast'));
+test('PROXY_BYPASS_BLOCKED', backend.includes('UseProxy = false'));
+test('AUDIT_MODULE_CONSTRAINT', migration.includes("'026'") && migration.includes('ck_projectpulse_module_audit_module'));
 test('BOUNDED_PROVIDER_RESPONSE', backend.includes('MaximumProviderResponseBytes') && backend.includes('ReadBoundedResponseBodyAsync'));
 test('CONNECTION_STATUS_SET', ['available', 'authentication_failed', 'unavailable', 'not_configured'].every((status) => migration.includes(`'${status}'`)));
 test('SANITIZED_CONNECTION_CHECK', migration.includes('crm_integration_connection_checks') && backend.includes('remote_authentication_rejected') && backend.includes('remote_non_success_status'));
@@ -61,7 +65,7 @@ test('SELL_AUTHORITATIVE_FIELDS', sellImport.includes('sourceFieldsLocked') && s
 test('PERMISSIONS', migration.includes('VIEW_INTEGRATIONS_026') && migration.includes('MANAGE_INTEGRATIONS_026'));
 test('MIGRATION_NOT_RUNTIME_APPLIED', !program.includes('034_module_026_crm_erp_integrations.sql'));
 test('PROGRAM_MAP', program.includes('app.MapCrmErpIntegrationEndpoints();'));
-test('HTTP_CLIENT_BOUNDARY', program.includes('AddHttpClient("Module026"') && program.includes('TimeSpan.FromSeconds(12)'));
+test('HTTP_CLIENT_BOUNDARY', program.includes('AddHttpClient("Module026"') && program.includes('TimeSpan.FromSeconds(12)') && program.includes('CreateSecureHttpHandler'));
 test('CONTAINER_CONTEXT', docker.includes(files.backend) && docker.includes(files.migration) && docker.includes('docs/modules/module-026-crm-erp-integrations/'));
 test('BUILD_GATE', pkg.scripts?.['validate:module026'] === 'node ./scripts/validate-module-026-crm-erp-integrations.mjs' && pkg.scripts?.build?.includes('npm run validate:module026'));
 

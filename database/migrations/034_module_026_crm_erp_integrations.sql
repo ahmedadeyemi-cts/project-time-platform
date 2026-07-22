@@ -90,16 +90,23 @@ CREATE INDEX IF NOT EXISTS idx_crm_integration_oauth_states_expiry
     ON crm_integration_oauth_states(expires_at)
     WHERE used_at IS NULL;
 
-CREATE TABLE IF NOT EXISTS projectpulse_module_audit_events (
-    event_id UUID PRIMARY KEY,
-    module_number TEXT NOT NULL,
-    entity_type TEXT NOT NULL,
-    entity_id TEXT NOT NULL,
-    action_code TEXT NOT NULL,
-    actor_user_id UUID NOT NULL REFERENCES app_users(user_id),
-    evidence_json JSONB NOT NULL DEFAULT '{}'::jsonb,
-    occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
+DO $$
+BEGIN
+    IF to_regclass('public.projectpulse_module_audit_events') IS NULL THEN
+        RAISE EXCEPTION 'Migration 031 must be applied before migration 034.';
+    END IF;
+END $$;
+
+ALTER TABLE projectpulse_module_audit_events
+    DROP CONSTRAINT IF EXISTS ck_projectpulse_module_audit_module;
+
+ALTER TABLE projectpulse_module_audit_events
+    ADD CONSTRAINT ck_projectpulse_module_audit_module
+    CHECK (module_number IN (
+        '026',
+        '064','065','066','067','068','069','070','071','072','073','074',
+        '075','076','077','078','079','080','997','998'
+    ));
 
 INSERT INTO crm_integration_providers (
     provider_key,

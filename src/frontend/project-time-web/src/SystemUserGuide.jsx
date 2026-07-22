@@ -489,14 +489,14 @@ const detailedModuleGuides = {
   'work-register': {
     category: 'Customers & Commercial',
     audience: ['Project Manager', 'Project Management Lead', 'Project Team Coordinator', 'Authorized read-only viewers'],
-    purpose: 'Search and edit existing Work Register records with accountable Audit-tab history.',
+    purpose: 'Manage existing projects with accountable Work Register Audit-tab history.',
     functions: [
       'Searches customers, projects, intakes, stakeholders, tasks, documents, hours, and cost indicators.',
       'Filters work by lifecycle status.',
       'Shows consolidated work detail.',
       'Allows Project Managers, Project Management Leads, and Project Team Coordinators to save authorized changes.',
       'Records actor, reason, changed fields, and old/new values in the Audit tab.',
-      'Does not create new Work Register records; creation belongs to Module 055D.'
+      'Does not create new projects; project creation belongs to Module 055D.'
     ],
     steps: ['Find the existing work item.', 'Open its detail drawer.', 'Edit only the authorized fields.', 'Enter the required change reason.', 'Save and verify the Audit tab.'],
     notes: ['View-As and non-editor roles remain read-only. Historical records are preserved rather than deleted.']
@@ -504,7 +504,7 @@ const detailedModuleGuides = {
   'create-work-register': {
     category: 'Customers & Commercial',
     audience: ['Project Team Coordinator'],
-    purpose: 'Create a new Work Register record from either GSD or SELL.',
+    purpose: 'Create a new project from either GSD or SELL.',
     functions: [
       'Offers Import from GSD and Import from SELL as separate controlled sources.',
       'Uses Module 026 OAuth or API-key configuration for SELL.',

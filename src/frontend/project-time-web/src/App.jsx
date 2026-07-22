@@ -1782,18 +1782,18 @@ const roleWorkspaceModules = sortProjectPulseModules([
   {
     route: 'work-register',
     href: '#work-register',
-    title: 'Edit Work Register',
+    title: 'Manage Existing Projects',
     navLabel: 'MODULE 055C',
-    description: 'Search and edit existing Work Register records with every saved mutation recorded in the Audit tab.',
+    description: 'Search and manage existing projects with every saved mutation recorded in the Audit tab.',
     permissions: ['EDIT_WORK_REGISTER_055C', 'VIEW_CUSTOMERS', 'VIEW_REPORTS', 'MANAGE_TIME', 'APPROVE_TIME'],
     roleCodes: ['PROJECT_TEAM_COORDINATOR', 'PROJECT_MANAGER', 'PROJECT_MANAGEMENT', 'PROJECT_MANAGEMENT_LEAD', 'PROJECT_MANAGEMENT_TEAM_LEAD', 'PM_TEAM_LEAD', 'ENGINEER', 'ENGINEERING', 'SALES', 'ACCOUNT_EXECUTIVE', 'SOLUTION_ARCHITECT', 'SA', 'SAA', 'INSIDE_SALES']
   },
   {
     route: 'create-work-register',
     href: '#create-work-register',
-    title: 'Create Work Register',
+    title: 'Create New Project',
     navLabel: 'MODULE 055D',
-    description: 'Create a Work Register from GSD or SELL. SELL supplies the authoritative project name and Actual Rate / Pricing / Rate Review.',
+    description: 'Create a new project from GSD or SELL. SELL supplies the authoritative project name and Actual Rate / Pricing / Rate Review.',
     permissions: ['CREATE_WORK_REGISTER_055D'],
     roleCodes: ['PROJECT_TEAM_COORDINATOR'],
     strictRoleCodes: ['PROJECT_TEAM_COORDINATOR']
@@ -8018,7 +8018,7 @@ Analytics - Variphy / Infortel`}
           <section id="create-work-register" className="panel work-register-route-panel">
             <div className="work-register-center">
               <div className="work-register-banner error">
-                Create Work Register (Module 055D) is restricted to Project Team Coordinators.
+                Create New Project (Module 055D) is restricted to Project Team Coordinators.
               </div>
             </div>
           </section>

@@ -17,11 +17,7 @@ builder.Services.AddProblemDetails();
 builder.Services.AddProjectPulseAi();
 builder.Services
     .AddHttpClient("Module026", client => client.Timeout = TimeSpan.FromSeconds(12))
-    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
-    {
-        AllowAutoRedirect = false,
-        AutomaticDecompression = System.Net.DecompressionMethods.GZip | System.Net.DecompressionMethods.Deflate
-    });
+    .ConfigurePrimaryHttpMessageHandler(CrmErpIntegrationModule.CreateSecureHttpHandler);
 
 var app = builder.Build();
 
@@ -8136,9 +8132,10 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/commit", 
             }, statusCode: StatusCodes.Status403Forbidden);
         }
 
+        await using var transaction = await connection.BeginTransactionAsync(httpContext.RequestAborted);
         await using var command = new NpgsqlCommand("""
             SELECT projectpulse055d4d_commit_intake_package(@intake_package_id, @actor_user_id)::text;
-            """, connection);
+            """, connection, transaction);
 
         command.Parameters.AddWithValue("intake_package_id", intakePackageId);
         command.Parameters.AddWithValue("actor_user_id", sessionUserId.Value);
@@ -8152,19 +8149,19 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/commit", 
 
         if (status is "database_error" or "validation_error" or "not_found")
         {
+            await transaction.RollbackAsync(httpContext.RequestAborted);
             return Results.Content(jsonText, "application/json", statusCode: StatusCodes.Status400BadRequest);
         }
 
         if (status is "committed" or "already_committed")
         {
-            await ProjectPulse055D4CCopyIntakeDocumentsToCustomerFolderAsync(connection, intakePackageId, jsonText);
-            await ProjectPulse055D4JNotifyProjectTeamCoordinatorsAsync(connection, intakePackageId, jsonText, sessionUserId.Value);
-
-            if (status == "committed"
-                && parsed.RootElement.TryGetProperty("projectId", out var projectIdProperty)
-                && Guid.TryParse(projectIdProperty.GetString(), out var createdProjectId))
+            if (!parsed.RootElement.TryGetProperty("projectId", out var projectIdProperty)
+                || !Guid.TryParse(projectIdProperty.GetString(), out var createdProjectId))
             {
-                await using var auditCommand = new NpgsqlCommand("""
+                throw new InvalidOperationException("The committed Work Register response did not include a project ID.");
+            }
+
+            await using var auditCommand = new NpgsqlCommand("""
                     INSERT INTO work_register_change_history (
                         work_register_change_history_id, source_table, work_id, action,
                         change_summary, changed_fields_csv, changed_by_user_id,
@@ -8193,12 +8190,35 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/commit", 
                             AND work_id = @project_id
                             AND action = 'work_register_created'
                       );
-                    """, connection);
-                auditCommand.Parameters.AddWithValue("project_id", createdProjectId);
-                auditCommand.Parameters.AddWithValue("actor", sessionUserId.Value);
-                auditCommand.Parameters.AddWithValue("intake_package_id", intakePackageId);
-                await auditCommand.ExecuteNonQueryAsync(httpContext.RequestAborted);
+                    """, connection, transaction);
+            auditCommand.Parameters.AddWithValue("project_id", createdProjectId);
+            auditCommand.Parameters.AddWithValue("actor", sessionUserId.Value);
+            auditCommand.Parameters.AddWithValue("intake_package_id", intakePackageId);
+            await auditCommand.ExecuteNonQueryAsync(httpContext.RequestAborted);
+
+            await using var auditGuardCommand = new NpgsqlCommand("""
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM work_register_change_history
+                    WHERE source_table = 'projects'
+                      AND work_id = @project_id
+                      AND action = 'work_register_created'
+                );
+                """, connection, transaction);
+            auditGuardCommand.Parameters.AddWithValue("project_id", createdProjectId);
+            var auditRecorded = Convert.ToBoolean(await auditGuardCommand.ExecuteScalarAsync(httpContext.RequestAborted));
+            if (!auditRecorded)
+            {
+                throw new InvalidOperationException("Work Register creation audit evidence was not recorded.");
             }
+        }
+
+        await transaction.CommitAsync(httpContext.RequestAborted);
+
+        if (status is "committed" or "already_committed")
+        {
+            await ProjectPulse055D4CCopyIntakeDocumentsToCustomerFolderAsync(connection, intakePackageId, jsonText);
+            await ProjectPulse055D4JNotifyProjectTeamCoordinatorsAsync(connection, intakePackageId, jsonText, sessionUserId.Value);
         }
 
         return Results.Content(jsonText, "application/json");

@@ -4,6 +4,16 @@
 
 BEGIN;
 
+ALTER TABLE projectpulse_module_audit_events
+    DROP CONSTRAINT IF EXISTS ck_projectpulse_module_audit_module;
+
+ALTER TABLE projectpulse_module_audit_events
+    ADD CONSTRAINT ck_projectpulse_module_audit_module
+    CHECK (module_number IN (
+        '064','065','066','067','068','069','070','071','072','073','074',
+        '075','076','077','078','079','080','997','998'
+    )) NOT VALID;
+
 DELETE FROM app_feature_catalog
 WHERE feature_code = 'CRM_ERP_INTEGRATIONS_026';
 

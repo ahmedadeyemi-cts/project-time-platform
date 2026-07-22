@@ -1,6 +1,6 @@
-# Module 055D — Create Work Register
+# Module 055D — Create New Project
 
-Module 055D is the only Work Register creation page. Only a Project Team
+Module 055D is the only new-project creation page. Only a Project Team
 Coordinator (`PROJECT_TEAM_COORDINATOR`) can open or execute its create APIs.
 Administrators, Project Managers, and Project Management Leads do not inherit
 055D creation authority. View-As is always read-only.
@@ -35,7 +35,8 @@ tampering therefore cannot replace the authoritative values.
 
 The intake-package creation and review history record the actual coordinator,
 source, reason, record reference, and source-lock evidence. Final creation also
-writes `work_register_created` evidence to `work_register_change_history`,
+writes `work_register_created` evidence to `work_register_change_history` in
+the same database transaction as project creation,
 which is visible in Module 055C's Audit tab.
 
 The SELL response is size-bounded. Only mapped operational fields are retained;

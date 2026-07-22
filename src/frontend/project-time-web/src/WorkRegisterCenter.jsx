@@ -2993,6 +2993,7 @@ async function createWorkRegisterFromReviewedIntake() {
     setIntakeReviewForm(null);
     setIntakeWizardStatus('');
     setIntakeReviewStatus('');
+    setIntakeSaveBanner('');
   }
 
   function intakeRequiresProjectDocuments() {
@@ -3415,7 +3416,7 @@ async function createWorkRegisterFromReviewedIntake() {
       <div className="work-register-header">
         <div>
           <p className="eyebrow">{isCreateMode ? 'Module 055D' : 'Module 055C'}</p>
-          <h2>{isCreateMode ? 'Create Work Register' : 'Edit Work Register'}</h2>
+          <h2>{isCreateMode ? 'Create New Project' : 'Manage Existing Projects'}</h2>
           <p className="muted">
             {isCreateMode
               ? 'Create new work from either GSD documents or a connected SELL record. Only Project Team Coordinators can complete this workflow.'
@@ -3629,10 +3630,17 @@ async function createWorkRegisterFromReviewedIntake() {
             {isCreateMode && canCreateWorkRegister && !intakeWizardOpen ? (
 
 
-              <button type="button" className="work-register-create-button" onClick={() => setIntakeWizardOpen(true)}>
+              <button
+                type="button"
+                className="work-register-create-button"
+                onClick={() => {
+                  resetIntakeWizard();
+                  setIntakeWizardOpen(true);
+                }}
+              >
 
 
-                Resume Create Work Register
+                {intakeSaveBanner ? 'Create Another Project' : 'Resume Create New Project'}
 
 
               </button>
@@ -3659,7 +3667,7 @@ async function createWorkRegisterFromReviewedIntake() {
                     <div>
 
 
-                      <span>MODULE 055D · CREATE WORK REGISTER</span>
+                      <span>MODULE 055D · CREATE NEW PROJECT</span>
 
 
                       <h3>Create from GSD or SELL</h3>
@@ -4608,7 +4616,7 @@ async function createWorkRegisterFromReviewedIntake() {
                         <div className="work-register-save-banner success">{intakeSaveBanner}</div>
                       ) : null}
                       <button type="button" className="primary-action" onClick={createWorkRegisterFromReviewedIntake}>
-                        Save Project / Create Work Register
+                        Save and Create New Project
                       </button>
                     </div>
 

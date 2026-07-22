@@ -23,7 +23,7 @@ It includes the Modules 071/072 runtime repairs and the merged fail-closed Modul
 revisions, public Modules 071/072 HTTP 200 responses, protected native and
 Modules 998/997 HTTP 401 barriers, and both protected web bundles.
 
-## Installed modules on deployed baseline `main@93b519ca54a5322582ed7d33adf91db7ea9e9919`
+## Installed modules on current source baseline `main@ed76eae30f6b69c97ca597b8926b8bd1f675942b`
 
 | Module | Current title | Route/scope | Source state | Governance note |
 |---|---|---|---|---|
@@ -57,6 +57,8 @@ Modules 998/997 HTTP 401 barriers, and both protected web bundles.
 | 028 | SOW-Aware AI Time Entry Generator | `ai-time-entry` | Installed | AI output remains engineer-reviewed |
 | 029 | User Acceptance / Role + Workflow Validation Center | `uat-validation` | Installed | Validation dependency |
 | 030 | Reporting / Accounting / Invoicing / Analytics | `reporting` | Installed | Future FlowHive portfolio and export integration |
+| 034 | Dashboard and Navigation Labeling | Global enhancement; no standalone route | Installed on `main` | Displays module numbers on dashboard cards and page names in navigation/workspace headers; not a separate module page |
+| 035 | Guided Project Intake Launch | Embedded in Module 020 `project-intake`; no standalone route | Installed on `main` | Guided intake launch workflow inside Module 020; not a separate dashboard card |
 | 036 | Sales Insights Dashboard | `sales-insights` | Installed | Sales-to-delivery readiness |
 | 037 | Roles and Permissions Matrix | `roles-permissions-matrix` | Installed | Least-privilege governance dependency |
 | 038 | Certify Integration Center | `certify-integration` | Installed | Expense integration foundation |
@@ -65,8 +67,8 @@ Modules 998/997 HTTP 401 barriers, and both protected web bundles.
 | 041 | Closeout Email Automation Center | `closeout-email` | Installed | Real email remains governed separately |
 | 042 | Invoice & Billing Center | `invoice-billing-center` | Installed route | Open PR 12 is older-lineage work and is not automatically safe to merge |
 | 055B | Rate Card Administration | `rate-card-administration` | Installed | Commercial data remains restricted |
-| 055C | Edit Work Register | `work-register` | Native split implemented; migration 035 not applied | PM, Project Management Lead, and PTC edits with mandatory Audit-tab evidence; no create controls |
-| 055D | Create Work Register | `create-work-register` | Native split implemented; migration 035 not applied | PTC-only GSD or SELL creation; SELL is authoritative for project name and Actual Rate / Pricing / Rate Review |
+| 055C | Manage Existing Projects | `work-register` | Native split implemented; migration 035 not applied | PM, Project Management Lead, and PTC project management with mandatory Audit-tab evidence; future closeout and partial-invoice actions launch governed Modules 040, 039, and 042 |
+| 055D | Create New Project | `create-work-register` | Native split implemented; migration 035 not applied | PTC-only GSD or SELL creation; SELL is authoritative for project name and Actual Rate / Pricing / Rate Review |
 | 056E | Contract-management evolution guard | Cross-cutting source invariant | Protected | Preserve 056E fragments and keep forbidden 056D fragments absent |
 | 057 | Resource & Team Calendar Capacity | `calendar-capacity` | Installed | FlowHive calendar and workload dependency |
 | 058 | Autonomous CI/CD Foundation | `cicd-pipeline` | Installed | Restored registry/navigation on current main |

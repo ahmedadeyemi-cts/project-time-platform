@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -1054,20 +1055,106 @@ public static class CrmErpIntegrationModule
         }
     }
 
-    private static bool IsPublicAddress(IPAddress address)
+    internal static SocketsHttpHandler CreateSecureHttpHandler() => new()
     {
+        AllowAutoRedirect = false,
+        AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate,
+        ConnectTimeout = TimeSpan.FromSeconds(5),
+        PooledConnectionLifetime = TimeSpan.FromMinutes(2),
+        UseCookies = false,
+        UseProxy = false,
+        ConnectCallback = ConnectToPublicEndpointAsync
+    };
+
+    internal static async ValueTask<Stream> ConnectToPublicEndpointAsync(
+        SocketsHttpConnectionContext context,
+        CancellationToken cancellationToken)
+    {
+        var host = context.DnsEndPoint.Host;
+        if (string.IsNullOrWhiteSpace(host)
+            || string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase)
+            || host.EndsWith(".local", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new HttpRequestException("The integration endpoint is not a public address.");
+        }
+
+        IPAddress[] addresses;
+        try
+        {
+            addresses = IPAddress.TryParse(host, out var literal)
+                ? [literal]
+                : await Dns.GetHostAddressesAsync(host, cancellationToken);
+        }
+        catch (Exception exception) when (exception is SocketException or ArgumentException)
+        {
+            throw new HttpRequestException("The integration endpoint could not be resolved.", exception);
+        }
+
+        if (addresses.Length == 0 || addresses.Any(address => !IsPublicAddress(address)))
+        {
+            throw new HttpRequestException("The integration endpoint resolved to a non-public address.");
+        }
+
+        Exception? lastFailure = null;
+        foreach (var address in addresses)
+        {
+            var socket = new Socket(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp)
+            {
+                NoDelay = true
+            };
+
+            try
+            {
+                await socket.ConnectAsync(
+                    new IPEndPoint(address, context.DnsEndPoint.Port),
+                    cancellationToken);
+                return new NetworkStream(socket, ownsSocket: true);
+            }
+            catch (Exception exception) when (exception is SocketException or OperationCanceledException)
+            {
+                socket.Dispose();
+                if (exception is OperationCanceledException) throw;
+                lastFailure = exception;
+            }
+        }
+
+        throw new HttpRequestException("The integration endpoint could not be reached.", lastFailure);
+    }
+
+    internal static bool IsPublicAddress(IPAddress address)
+    {
+        if (address.IsIPv4MappedToIPv6) return IsPublicAddress(address.MapToIPv4());
         if (IPAddress.IsLoopback(address) || address.Equals(IPAddress.Any) || address.Equals(IPAddress.IPv6Any)) return false;
         if (address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
         {
             var bytes = address.GetAddressBytes();
             if (bytes[0] == 10 || bytes[0] == 127 || bytes[0] == 0) return false;
+            if (bytes[0] == 100 && bytes[1] is >= 64 and <= 127) return false;
             if (bytes[0] == 169 && bytes[1] == 254) return false;
             if (bytes[0] == 172 && bytes[1] is >= 16 and <= 31) return false;
             if (bytes[0] == 192 && bytes[1] == 168) return false;
+            if (bytes[0] == 192 && bytes[1] == 0 && bytes[2] is 0 or 2) return false;
+            if (bytes[0] == 198 && bytes[1] is 18 or 19) return false;
+            if (bytes[0] == 198 && bytes[1] == 51 && bytes[2] == 100) return false;
+            if (bytes[0] == 203 && bytes[1] == 0 && bytes[2] == 113) return false;
             if (bytes[0] >= 224) return false;
             return true;
         }
-        return !address.IsIPv6LinkLocal && !address.IsIPv6SiteLocal && !address.IsIPv6Multicast;
+
+        if (address.AddressFamily != AddressFamily.InterNetworkV6) return false;
+        var ipv6 = address.GetAddressBytes();
+        var isGlobalUnicast = (ipv6[0] & 0xE0) == 0x20;
+        var isUniqueLocal = (ipv6[0] & 0xFE) == 0xFC;
+        var isDocumentation = ipv6[0] == 0x20 && ipv6[1] == 0x01 && ipv6[2] == 0x0D && ipv6[3] == 0xB8;
+        var isSixToFour = ipv6[0] == 0x20 && ipv6[1] == 0x02;
+
+        return isGlobalUnicast
+            && !isUniqueLocal
+            && !isDocumentation
+            && !isSixToFour
+            && !address.IsIPv6LinkLocal
+            && !address.IsIPv6SiteLocal
+            && !address.IsIPv6Multicast;
     }
 
     private static bool SameOrigin(HttpContext context)

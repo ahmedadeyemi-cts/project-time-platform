@@ -1,7 +1,7 @@
-# Module 055C — Edit Work Register
+# Module 055C — Manage Existing Projects
 
-Module 055C is the existing-record workspace for the Work Register. It does
-not create new Work Register records.
+Module 055C is the existing-project workspace for the Work Register. It does
+not create new projects.
 
 ## Authorized editors
 
@@ -20,6 +20,20 @@ change-order, and purchase-order saves record the actual actor, timestamp,
 reason or summary, changed fields, and old/new values in
 `work_register_change_history`. Project details expose that evidence in the
 Audit tab.
+
+## Governed launch ownership
+
+Module 055C is the approved project-context starting point for two follow-up
+workflows:
+
+- **Start Project Closeout** will transfer the selected project to Module 040,
+  which remains the governed closeout engine.
+- **Request Partial Invoice** will transfer the selected project through Module
+  039 billing readiness and then Module 042 invoice preparation. Accounting or
+  Billing retains final issuance authority.
+
+These launch controls are documented decisions and are not implemented in
+draft PR #55. They remain separate current-main follow-up work.
 
 ## Database boundary
 
