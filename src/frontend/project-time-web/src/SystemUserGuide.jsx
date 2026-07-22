@@ -488,22 +488,24 @@ const detailedModuleGuides = {
   },
   'work-register': {
     category: 'Customers & Commercial',
-    audience: ['Project Manager', 'Project Management Lead', 'Project Team Coordinator', 'Authorized read-only viewers'],
+    audience: ['Project Manager', 'Project Management Lead', 'Project Team Coordinator', 'Administrator', 'Authorized read-only viewers'],
     purpose: 'Manage existing projects with accountable Work Register Audit-tab history.',
     functions: [
       'Searches customers, projects, intakes, stakeholders, tasks, documents, hours, and cost indicators.',
       'Filters work by lifecycle status.',
       'Shows consolidated work detail.',
-      'Allows Project Managers, Project Management Leads, and Project Team Coordinators to save authorized changes.',
+      'Allows a Project Manager or Project Management Lead to edit only projects assigned to them.',
+      'Allows Project Team Coordinators, Administrators, and Super Administrators to edit every project.',
       'Records actor, reason, changed fields, and old/new values in the Audit tab.',
+      'Starts governed project closeout in Module 040 with the selected project preserved.',
       'Does not create new projects; project creation belongs to Module 055D.'
     ],
-    steps: ['Find the existing work item.', 'Open its detail drawer.', 'Edit only the authorized fields.', 'Enter the required change reason.', 'Save and verify the Audit tab.'],
+    steps: ['Find the existing work item.', 'Open its detail drawer.', 'Edit only the authorized fields.', 'Enter the required change reason.', 'Save and verify the Audit tab.', 'Use Start Project Closeout to continue the selected project in Module 040.'],
     notes: ['View-As and non-editor roles remain read-only. Historical records are preserved rather than deleted.']
   },
   'create-work-register': {
     category: 'Customers & Commercial',
-    audience: ['Project Team Coordinator'],
+    audience: ['Project Team Coordinator', 'Administrator'],
     purpose: 'Create a new project from either GSD or SELL.',
     functions: [
       'Offers Import from GSD and Import from SELL as separate controlled sources.',
@@ -513,7 +515,7 @@ const detailedModuleGuides = {
       'Records intake, review, and final-creation audit evidence.'
     ],
     steps: ['Choose GSD or SELL.', 'Select the ProjectPulse customer and enter the audit reason.', 'Upload GSD/SOW files or enter the SELL record ID.', 'Review the permitted fields and assignments.', 'Create the record and verify its Audit tab in Module 055C.'],
-    notes: ['Only a Project Team Coordinator can create. SELL project name and pricing fields cannot be overwritten during review.']
+    notes: ['Project Team Coordinators, Administrators, and Super Administrators can create. SELL project name and pricing fields cannot be overwritten during review.']
   },
   'rate-card-administration': {
     category: 'Customers & Commercial',

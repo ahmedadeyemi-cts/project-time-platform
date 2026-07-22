@@ -4,9 +4,15 @@ namespace ProjectTime.Api.Modules;
 
 public static class WorkRegisterAuthorization
 {
-    private static readonly string[] EditRoleCodes =
+    private static readonly string[] EditAllRoleCodes =
     [
-        "PROJECT_TEAM_COORDINATOR",
+        "SUPER_ADMINISTRATOR",
+        "ADMINISTRATOR",
+        "PROJECT_TEAM_COORDINATOR"
+    ];
+
+    private static readonly string[] EditAssignedRoleCodes =
+    [
         "PROJECT_MANAGER",
         "PROJECT_MANAGEMENT",
         "PROJECT_MANAGEMENT_LEAD",
@@ -14,7 +20,12 @@ public static class WorkRegisterAuthorization
         "PM_TEAM_LEAD"
     ];
 
-    private static readonly string[] CreateRoleCodes = ["PROJECT_TEAM_COORDINATOR"];
+    private static readonly string[] CreateRoleCodes =
+    [
+        "SUPER_ADMINISTRATOR",
+        "ADMINISTRATOR",
+        "PROJECT_TEAM_COORDINATOR"
+    ];
 
     public static WebApplication UseWorkRegisterAuthorization(this WebApplication app)
     {
@@ -46,7 +57,29 @@ public static class WorkRegisterAuthorization
             {
                 await using var connection = await OpenAsync(context.RequestAborted);
                 var access = await GetAccessAsync(connection, context, cancellationToken: context.RequestAborted);
-                allowed = isCreateWorkflow ? access.CanCreate : access.CanEdit;
+
+                if (isCreateWorkflow)
+                {
+                    allowed = access.CanCreate;
+                }
+                else if (access.CanEditAll)
+                {
+                    allowed = true;
+                }
+                else if (access.CanEditAssigned)
+                {
+                    var projectId = await ResolveProjectIdAsync(context, context.RequestAborted);
+                    allowed = projectId.HasValue
+                        && await IsAssignedProjectManagerAsync(
+                            connection,
+                            access.ActualUserId,
+                            projectId.Value,
+                            context.RequestAborted);
+                }
+                else
+                {
+                    allowed = false;
+                }
             }
             catch (Exception exception)
             {
@@ -70,8 +103,8 @@ public static class WorkRegisterAuthorization
                     status = "access_denied",
                     module = isCreateWorkflow ? "055D" : "055C",
                     message = isCreateWorkflow
-                        ? "Only a Project Team Coordinator can create a Work Register record."
-                        : "Work Register edits are restricted to Project Managers, the Project Management Lead, and Project Team Coordinators."
+                        ? "Only a Project Team Coordinator, Administrator, or Super Administrator can create a Work Register record."
+                        : "Only the assigned Project Manager can edit this project. Project Team Coordinators, Administrators, and Super Administrators can edit every project."
                 }, context.RequestAborted);
                 return;
             }
@@ -109,7 +142,8 @@ public static class WorkRegisterAuthorization
         var isViewAs = context.Items.TryGetValue("ProjectPulseIsViewAs", out var viewAsValue)
             && viewAsValue is true;
         return new WorkRegisterAccess(
-            CanEdit: !isViewAs && EditRoleCodes.Any(roles.Contains),
+            CanEditAll: !isViewAs && EditAllRoleCodes.Any(roles.Contains),
+            CanEditAssigned: !isViewAs && EditAssignedRoleCodes.Any(roles.Contains),
             CanCreate: !isViewAs && CreateRoleCodes.Any(roles.Contains),
             IsViewAs: isViewAs,
             ActualUserId: actualUserId.Value,
@@ -122,6 +156,108 @@ public static class WorkRegisterAuthorization
         NpgsqlTransaction? transaction = null,
         CancellationToken cancellationToken = default) =>
         (await GetAccessAsync(connection, context, transaction, cancellationToken)).CanCreate;
+
+    private static async Task<Guid?> ResolveProjectIdAsync(
+        HttpContext context,
+        CancellationToken cancellationToken)
+    {
+        foreach (var key in new[] { "projectId", "project_id", "workId", "work_id" })
+        {
+            if (context.Request.RouteValues.TryGetValue(key, out var routeValue)
+                && Guid.TryParse(routeValue?.ToString(), out var routeProjectId))
+            {
+                return routeProjectId;
+            }
+        }
+
+        var pathSegments = context.Request.Path.Value?
+            .Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            ?? [];
+
+        for (var index = 0; index < pathSegments.Length - 1; index += 1)
+        {
+            if (string.Equals(pathSegments[index], "projects", StringComparison.OrdinalIgnoreCase)
+                && Guid.TryParse(pathSegments[index + 1], out var pathProjectId))
+            {
+                return pathProjectId;
+            }
+        }
+
+        if (context.Request.HasFormContentType)
+        {
+            var form = await context.Request.ReadFormAsync(cancellationToken);
+            foreach (var key in new[] { "projectId", "project_id", "workId", "work_id" })
+            {
+                if (form.TryGetValue(key, out var formValue)
+                    && Guid.TryParse(formValue.ToString(), out var formProjectId))
+                {
+                    return formProjectId;
+                }
+            }
+
+            return null;
+        }
+
+        context.Request.EnableBuffering();
+        if (context.Request.Body.CanSeek)
+        {
+            context.Request.Body.Position = 0;
+        }
+
+        try
+        {
+            using var document = await System.Text.Json.JsonDocument.ParseAsync(
+                context.Request.Body,
+                cancellationToken: cancellationToken);
+
+            if (document.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object)
+            {
+                return null;
+            }
+
+            foreach (var property in document.RootElement.EnumerateObject())
+            {
+                if (!new[] { "projectId", "project_id", "workId", "work_id" }
+                        .Contains(property.Name, StringComparer.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (Guid.TryParse(property.Value.ToString(), out var bodyProjectId))
+                {
+                    return bodyProjectId;
+                }
+            }
+
+            return null;
+        }
+        finally
+        {
+            if (context.Request.Body.CanSeek)
+            {
+                context.Request.Body.Position = 0;
+            }
+        }
+    }
+
+    private static async Task<bool> IsAssignedProjectManagerAsync(
+        NpgsqlConnection connection,
+        Guid userId,
+        Guid projectId,
+        CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand("""
+            SELECT EXISTS (
+                SELECT 1
+                FROM projects project
+                WHERE project.project_id = @project_id
+                  AND project.project_manager_user_id = @user_id
+            );
+            """, connection);
+        command.Parameters.AddWithValue("project_id", projectId);
+        command.Parameters.AddWithValue("user_id", userId);
+        return Convert.ToBoolean(await command.ExecuteScalarAsync(cancellationToken) ?? false);
+    }
 
     private static Guid? ActualUserId(HttpContext context)
     {
@@ -178,11 +314,14 @@ public static class WorkRegisterAuthorization
 }
 
 public sealed record WorkRegisterAccess(
-    bool CanEdit,
+    bool CanEditAll,
+    bool CanEditAssigned,
     bool CanCreate,
     bool IsViewAs,
     Guid ActualUserId,
     IReadOnlyList<string> RoleCodes)
 {
-    public static WorkRegisterAccess Denied => new(false, false, false, Guid.Empty, []);
+    public bool CanEdit => CanEditAll || CanEditAssigned;
+
+    public static WorkRegisterAccess Denied => new(false, false, false, false, Guid.Empty, []);
 }

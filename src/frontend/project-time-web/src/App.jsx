@@ -1795,8 +1795,8 @@ const roleWorkspaceModules = sortProjectPulseModules([
     navLabel: 'MODULE 055D',
     description: 'Create a new project from GSD or SELL. SELL supplies the authoritative project name and Actual Rate / Pricing / Rate Review.',
     permissions: ['CREATE_WORK_REGISTER_055D'],
-    roleCodes: ['PROJECT_TEAM_COORDINATOR'],
-    strictRoleCodes: ['PROJECT_TEAM_COORDINATOR']
+    roleCodes: ['PROJECT_TEAM_COORDINATOR', 'ADMINISTRATOR', 'SUPER_ADMINISTRATOR'],
+    strictRoleCodes: ['PROJECT_TEAM_COORDINATOR', 'ADMINISTRATOR', 'SUPER_ADMINISTRATOR']
   },
   /* 055C_WORK_REGISTER_NAV_END */
   /* 055B_RATE_CARD_ADMIN_NAV_START */
@@ -5910,7 +5910,11 @@ export default function App() {
       'INSIDE_SALES'
     ].includes(roleCode));
   const canCreateWorkRegister =
-    currentRoleCodes.includes('PROJECT_TEAM_COORDINATOR')
+    currentRoleCodes.some((roleCode) => [
+      'PROJECT_TEAM_COORDINATOR',
+      'ADMINISTRATOR',
+      'SUPER_ADMINISTRATOR'
+    ].includes(roleCode))
     && !securityContext.data?.isViewAs;
   /* 055C_1_WORK_REGISTER_ACCESS_SCOPE_END */
   const canViewManagerApprovalPanel = hasPermission('APPROVE_TIME') || hasPermission('REJECT_TIME') || hasPermission('MANAGE_ALL') || hasPermission('SYSTEM_ADMINISTRATION');
@@ -8018,7 +8022,7 @@ Analytics - Variphy / Infortel`}
           <section id="create-work-register" className="panel work-register-route-panel">
             <div className="work-register-center">
               <div className="work-register-banner error">
-                Create New Project (Module 055D) is restricted to Project Team Coordinators.
+                Create New Project (Module 055D) is restricted to Project Team Coordinators, Administrators, and Super Administrators.
               </div>
             </div>
           </section>

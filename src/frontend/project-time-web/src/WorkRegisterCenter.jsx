@@ -650,10 +650,11 @@ const updateIntakeForm = (field, value) => {
 
   const canArchiveWorkRegister =
     editFoundation.data?.canArchiveWorkRegister === true
-    || canEditWorkRegister;
+    && selectedWorkItem?.canEditProject === true;
 
   const canRestoreWorkRegister =
-    editFoundation.data?.canRestoreWorkRegister === true;
+    editFoundation.data?.canRestoreWorkRegister === true
+    && selectedWorkItem?.canEditProject === true;
 
   const selectedWorkItemIsArchived =
     selectedWorkItem?.isArchived === true
@@ -663,7 +664,9 @@ const updateIntakeForm = (field, value) => {
       .toLowerCase() === 'archived';
 
   const canModifySelectedProject =
-    canEditWorkRegister && !selectedWorkItemIsArchived;
+    canEditWorkRegister
+    && selectedWorkItem?.canEditProject === true
+    && !selectedWorkItemIsArchived;
 
   // 055D_6B2_PROJECT_LIFECYCLE_UI_PERMISSION
   // 055D_6B5B_SIDECAR_PROJECT_LIFECYCLE_UI
@@ -1139,8 +1142,8 @@ function updateTaskAssignmentForm(task, field, value) {
       return;
     }
 
-    if (!canEditWorkRegister) {
-      setTaskAssignmentStatus('This tab is view-only for your role. Only Project Managers, Project Management Leads, and Project Team Coordinators can save task assignments.');
+    if (!canModifySelectedProject) {
+      setTaskAssignmentStatus('This project is view-only. An assigned Project Manager, Project Team Coordinator, Administrator, or Super Administrator is required to save task assignments.');
       return;
     }
 
@@ -1378,8 +1381,8 @@ function updateRosterEngineer(task, index, field, value) {
       return;
     }
 
-    if (!canEditWorkRegister) {
-      setTaskAssignmentStatus('This tab is view-only for your role. Only Project Managers, Project Management Leads, and Project Team Coordinators can save task rosters.');
+    if (!canModifySelectedProject) {
+      setTaskAssignmentStatus('This project is view-only. An assigned Project Manager, Project Team Coordinator, Administrator, or Super Administrator is required to save task rosters.');
       return;
     }
 
@@ -1516,8 +1519,8 @@ function updateRosterEngineer(task, index, field, value) {
       return;
     }
 
-    if (!canEditWorkRegister) {
-      setChangeOrderStatus('This tab is view-only for your role. Only Project Managers, Project Management Leads, and Project Team Coordinators can save change orders.');
+    if (!canModifySelectedProject) {
+      setChangeOrderStatus('This project is view-only. An assigned Project Manager, Project Team Coordinator, Administrator, or Super Administrator is required to save change orders.');
       return;
     }
 
@@ -1640,8 +1643,8 @@ function updateRosterEngineer(task, index, field, value) {
       return;
     }
 
-    if (!canEditWorkRegister) {
-      setDocumentUploadStatus('This tab is view-only for your role. Only Project Managers, Project Management Leads, and Project Team Coordinators can upload documents.');
+    if (!canModifySelectedProject) {
+      setDocumentUploadStatus('This project is view-only. An assigned Project Manager, Project Team Coordinator, Administrator, or Super Administrator is required to upload documents.');
       return;
     }
 
@@ -1736,8 +1739,8 @@ function updateRosterEngineer(task, index, field, value) {
       return;
     }
 
-    if (!canEditWorkRegister) {
-      setDocumentStatus('This tab is view-only for your role. Only Project Managers, Project Management Leads, and Project Team Coordinators can manage documents.');
+    if (!canModifySelectedProject) {
+      setDocumentStatus('This project is view-only. An assigned Project Manager, Project Team Coordinator, Administrator, or Super Administrator is required to manage documents.');
       return;
     }
 
@@ -1787,8 +1790,8 @@ function updateRosterEngineer(task, index, field, value) {
       return;
     }
 
-    if (!canEditWorkRegister) {
-      setDocumentStatus('This tab is view-only for your role. Only Project Managers, Project Management Leads, and Project Team Coordinators can archive documents.');
+    if (!canModifySelectedProject) {
+      setDocumentStatus('This project is view-only. An assigned Project Manager, Project Team Coordinator, Administrator, or Super Administrator is required to archive documents.');
       return;
     }
 
@@ -3005,7 +3008,7 @@ async function createWorkRegisterFromReviewedIntake() {
     event.preventDefault();
 
     if (!canCreateWorkRegister) {
-      setIntakeWizardStatus('Only a Project Team Coordinator can create intake packages.');
+      setIntakeWizardStatus('Only a Project Team Coordinator, Administrator, or Super Administrator can create intake packages.');
       return;
     }
 
@@ -3128,7 +3131,7 @@ async function createWorkRegisterFromReviewedIntake() {
     event.preventDefault();
 
     if (!canCreateWorkRegister) {
-      setIntakeWizardStatus('Only a Project Team Coordinator can create a Work Register record.');
+      setIntakeWizardStatus('Only a Project Team Coordinator, Administrator, or Super Administrator can create a Work Register record.');
       return;
     }
     if (!String(intakeForm.sellRecordId || '').trim()) {
@@ -3179,6 +3182,36 @@ async function createWorkRegisterFromReviewedIntake() {
 
 
 
+  function startProjectCloseout() {
+    if (!selectedWorkItem?.workId || selectedWorkItem?.sourceTable !== 'projects') {
+      setEditStatus('A saved Work Register project is required to start project closeout.');
+      return;
+    }
+
+    if (!canModifySelectedProject) {
+      setEditStatus('Only the assigned Project Manager, Project Team Coordinator, Administrator, or Super Administrator can start closeout for this project.');
+      return;
+    }
+
+    try {
+      window.sessionStorage.setItem('projectPulseProjectCloseoutHandoff', JSON.stringify({
+        projectId: selectedWorkItem.workId,
+        projectCode: selectedWorkItem.projectCode || '',
+        projectName: selectedWorkItem.workName || '',
+        customerName: selectedWorkItem.customerName || '',
+        sourceModule: '055C',
+        createdAtUtc: new Date().toISOString()
+      }));
+    } catch {
+      setEditStatus('Unable to prepare the Module 040 closeout handoff in this browser.');
+      return;
+    }
+
+    window.location.hash = 'project-closeout';
+  }
+
+
+
   async function changeWorkRegisterProjectLifecycle(action) {
     const normalizedAction =
       String(action || '').trim().toLowerCase();
@@ -3210,7 +3243,7 @@ async function createWorkRegisterFromReviewedIntake() {
       && !canArchiveWorkRegister
     ) {
       setEditStatus(
-        'Only Project Managers, Project Management Leads, and Project Team Coordinators can archive projects.'
+        'Only the assigned Project Manager can archive this project. Project Team Coordinators, Administrators, and Super Administrators can archive every project.'
       );
       return;
     }
@@ -3220,7 +3253,7 @@ async function createWorkRegisterFromReviewedIntake() {
       && !canRestoreWorkRegister
     ) {
       setEditStatus(
-        'Only Project Managers, Project Management Leads, and Project Team Coordinators can restore archived projects.'
+        'Only a Project Team Coordinator, Administrator, or Super Administrator can restore archived projects.'
       );
       return;
     }
@@ -3314,8 +3347,8 @@ async function createWorkRegisterFromReviewedIntake() {
 
     if (!selectedWorkItem) return;
 
-    if (!canEditWorkRegister) {
-      setEditStatus('This page is view-only for your role. Only Project Managers, Project Management Leads, and Project Team Coordinators can save changes.');
+    if (!canModifySelectedProject) {
+      setEditStatus('This project is view-only. Only its assigned Project Manager, a Project Team Coordinator, an Administrator, or a Super Administrator can save changes.');
       return;
     }
 
@@ -3419,7 +3452,7 @@ async function createWorkRegisterFromReviewedIntake() {
           <h2>{isCreateMode ? 'Create New Project' : 'Manage Existing Projects'}</h2>
           <p className="muted">
             {isCreateMode
-              ? 'Create new work from either GSD documents or a connected SELL record. Only Project Team Coordinators can complete this workflow.'
+              ? 'Create new work from either GSD documents or a connected SELL record. Project Team Coordinators, Administrators, and Super Administrators can complete this workflow.'
               : 'Search and edit existing work. Every saved mutation is recorded with the actor, reason, old values, and new values in the Audit tab.'}
           </p>
         </div>
@@ -3546,7 +3579,7 @@ async function createWorkRegisterFromReviewedIntake() {
                   <small>{item.contractType ? `Contract: ${labelize(item.contractType)}` : 'Contract: not set'}</small>
 
                   <button type="button" className="work-register-row-action" onClick={() => openEditDrawer(item)}>
-                    {canEditWorkRegister ? 'Edit work' : 'View details'}
+                    {item.canEditProject === true ? 'Edit work' : 'View details'}
                   </button>
                 </td>
                 <td>
@@ -4710,8 +4743,10 @@ async function createWorkRegisterFromReviewedIntake() {
 
             <div className={canModifySelectedProject ? 'work-register-edit-notice allowed' : 'work-register-edit-notice'}>
               {canModifySelectedProject
-                ? 'Project Team Coordinator/Admin edit mode. All saves require a reason and are audited.'
-                : 'View-only mode. Solution Architects, PMs, Engineers, Sales, and SAA cannot edit Work Register setup fields.'}
+                ? (editFoundation.data?.canEditAllWorkRegisterProjects === true
+                    ? 'Project Team Coordinator/Administrator edit mode. You can edit every project; all saves require a reason and are audited.'
+                    : 'Assigned Project Manager edit mode. You can edit this assigned project; all saves require a reason and are audited.')
+                : 'View-only mode. Project Managers can edit only projects assigned to them; Project Team Coordinators, Administrators, and Super Administrators can edit every project.'}
             </div>
 
             {editFoundation.error ? (
@@ -4891,6 +4926,7 @@ async function createWorkRegisterFromReviewedIntake() {
                     value={editForm.sellQuoteNumber || ''}
                     onChange={(event) => updateEditField('sellQuoteNumber', event.target.value)}
                     placeholder={selectedWorkItem.sellQuoteNumber || selectedWorkItem.sell_quote_number || 'Optional SELL quote number'}
+                    disabled={!canModifySelectedProject}
                   />
                 </label>
                 <label>
@@ -4900,6 +4936,7 @@ async function createWorkRegisterFromReviewedIntake() {
                     value={editForm.salesforceIdNumber || ''}
                     onChange={(event) => updateEditField('salesforceIdNumber', event.target.value)}
                     placeholder={selectedWorkItem.salesforceIdNumber || selectedWorkItem.salesforce_id_number || 'Optional Salesforce ID'}
+                    disabled={!canModifySelectedProject}
                   />
                 </label>
                 <label>
@@ -4909,6 +4946,7 @@ async function createWorkRegisterFromReviewedIntake() {
                     value={editForm.certiniaIdNumber || ''}
                     onChange={(event) => updateEditField('certiniaIdNumber', event.target.value)}
                     placeholder={selectedWorkItem.certiniaIdNumber || selectedWorkItem.certinia_id_number || 'Optional Certinia ID'}
+                    disabled={!canModifySelectedProject}
                   />
                 </label>
 
@@ -5033,7 +5071,7 @@ async function createWorkRegisterFromReviewedIntake() {
                       </div>
                     ) : (
                       <p className="muted">
-                        Only an Administrator or Super Administrator can restore this project.
+                        Only a Project Team Coordinator, Administrator, or Super Administrator can restore this project.
                       </p>
                     )}
                   </>
@@ -5042,6 +5080,19 @@ async function createWorkRegisterFromReviewedIntake() {
                     <p className="muted">
                       Archiving removes this project from the Active view without deleting its tasks, documents, assignments, costs, time, or audit history.
                     </p>
+
+                    {canModifySelectedProject ? (
+                      <div className="work-register-task-assignment-actions">
+                        <button
+                          type="button"
+                          className="primary-action"
+                          onClick={startProjectCloseout}
+                        >
+                          Start Project Closeout
+                        </button>
+                        <small>Opens Module 040 with this project selected for governed closeout readiness.</small>
+                      </div>
+                    ) : null}
 
                     {canArchiveWorkRegister ? (
                       <div className="work-register-task-assignment-actions">
