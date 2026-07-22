@@ -7,15 +7,31 @@ development. Central-register ownership is assigned to the Module 076 current-ma
 integration workspace for the current coordination cycle. Individual module workspaces continue to own
 their module-specific README and evidence.
 
+## Current authorized work — 2026-07-22
+
+| Workstream | Source state | Branch / checkpoint | Database / external state | Next controlled action |
+|---|---|---|---|---|
+| Numeric module ordering | Validated and published for review | Draft PR #55 on `feature/module-ordering-20260722`; ordering commit `6400680` | No database or external action | Keep PR #55 draft until the review-fix commit and CI are revalidated; preserve automatic `001` through `999` ordering with Module 999 last |
+| 026 CRM/ERP Integration Control Center | Native React/API source implemented; expanded 38-check validator and protected frontend build passed after audit/network review fixes | Draft PR #55; Module 026 commit `ff789aa` plus the current review-fix head | Migration 034 created but not applied; zero external provider calls; no credentials configured | Recheck PR #55 CI; migration, secrets, external OAuth, connection tests, and deployment remain separate actions |
+| 055C Manage Existing Projects | Native split implemented; expanded 36-check validator and protected frontend build passed after atomic-audit, intake-source schema, and post-create fixes | PR #55 on `feature/module-ordering-20260722` | Migration 035 created but not applied | Recheck PR #55 CI; migration and deployment remain separate actions |
+| 055D Create New Project | Native PTC-only GSD/SELL creation implemented; expanded authority/source-lock validator and protected frontend build passed | Draft PR #55 on `feature/module-ordering-20260722` | Migrations 034/035 not applied; no SELL call, OAuth consent, API key, or deployment action performed | Recheck PR #55 CI; provider configuration, migration, and deployment remain separate actions |
+
+The Module 026 source supports SELL, Salesforce, Certinia, ServiceNow, and
+manually registered CRM/ERP platforms. OAuth 2.0 and write-only API-key
+configuration are present. Secret values are encrypted server-side and never
+returned. Only Integration Administrators and Administrators can configure or
+test connections; authorized Sales and Project Team Coordinator users can view
+sanitized availability.
+
 ## Current forward-moving source baseline
 
 | Field | Value |
 |---|---|
 | Base branch | `main` |
-| Base commit | `26e6b0116c4d0c4d258c6c23009c9e4c13575b7c` |
-| Base description | Current main through PR 51 with the Modules 075/077–080 authorization, contrast, independent-loading, and container-context repair |
-| Source status | PR 51 passed CI run `29869802703` and merged; Modules 997/998 operational activation is isolated on `feature/modules-997-998-operational-response-20260721` |
-| Deployment status | The PR 51 source and Modules 997/998 operational activation have not been deployed in this workstream |
+| Base commit | `ed76eae30f6b69c97ca597b8926b8bd1f675942b` |
+| Base description | Current main after PR 53 merged the accepted Modules 997/998 test-acceptance hotfix |
+| Source status | Draft PR #55 is open on `feature/module-ordering-20260722`; remote source commits are `6400680`, `ff789aa`, and `67bf284`, with the current review-fix commit extending that branch |
+| Deployment status | The branch is published only for draft review; it has not been merged, migrated, configured, or deployed, and no external CRM/ERP provider was called |
 | Prior approved baseline | `main@44e73c4283a33b85ed0dd2832e93059ada37335f` |
 | Governance lineage | `docs/module-development-governance-20260717@66cf0f6457efaa33196f2c91b03bd3a35d13bf19` |
 
@@ -26,6 +42,9 @@ start from current `main` or a later verified forward-moving commit.
 
 | Module | Source checkpoint | GitHub state | Runtime/deployment state | Next controlled action |
 |---|---|---|---|---|
+| 026 | Native CRM/ERP control-center source implemented with connection-time public-IP enforcement | Draft PR #55 open; review fixes included in its current branch | Migration 034 not applied; no credential, OAuth, connection-test, or deployment action performed | Keep draft until revalidation and CI pass; migration/deployment require separate authorization |
+| 055C | Manage Existing Projects split with exact editor roles and durable mutation evidence | Draft PR #55 open; review fixes included in its current branch | Migration 035 not applied; no runtime/database action performed | Keep draft until revalidation and CI pass; migration/deployment require separate authorization |
+| 055D | PTC-only Create New Project with GSD/SELL source selection and SELL field locks | Draft PR #55 open; review fixes included in its current branch | Migrations 034/035 not applied; no SELL call or deployment action performed | Keep draft until revalidation and CI pass; provider configuration, migration, and deployment require separate authorization |
 | 001 | Existing installed Time Entry plus separately managed follow-up work | No new central-register success asserted in this checkpoint | Existing installed behavior remains protected | Reconcile only through its separately governed worktree/PR |
 | 002 | Role-aware Approval Center source commit `f5ede8f6717b01c8f4bf7905b433fead38210007` | PR 23 merged as `2b4a6d1a1242a25b52110a2a209ff8ddda0b8ca4`; three review threads remain unresolved | Merged to source; no deployment asserted here | Preserve current behavior in later integration; address two P1 and one P2 review findings only in separately governed Module 002 work |
 | 062 | Final head `3852a21e1098de9ad907e3da91e0646d99adcb7c`; merged as `04fcafd4f49840428645e537db7de436e34b1c88` | PR 19 merged; review correction and checks passed | **Not post-merge deployed**; portal verification pending | Controlled test deployment, then identity/profile/photo/presence smoke tests |

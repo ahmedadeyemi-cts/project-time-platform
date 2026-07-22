@@ -290,9 +290,37 @@ and authenticated portal acceptance are separate controlled gates.
 - Add per-module help article links.
 - Add admin support guidance.
 
+## Module 026 CRM/ERP Integration Control Center — July 22, 2026 Source Checkpoint
+
+- The historical browser-local Module 026 overlay is disabled in favor of a native React page and protected backend API.
+- Built-in providers are SELL (Zendesk Sell), Salesforce, Certinia, and ServiceNow.
+- Integration Administrators and Administrators can add other CRM/ERP platforms manually.
+- Provider authentication supports OAuth 2.0 or a write-only API key.
+- Credentials and OAuth tokens require encrypted server-side storage and are never returned to the UI, logs, or audit evidence.
+- Explicit connection tests report Available, Authentication Failed, Unavailable, Disabled, or Not Configured and record sanitized audit evidence.
+- Migration `034_module_026_crm_erp_integrations.sql` is created but has **not** been applied.
+- No external provider call, credential configuration, OAuth consent, database migration, or production deployment has been performed in this checkpoint.
+- The expanded Module 026 validator passed 38 checks, including audit-constraint, private-IPv6, proxy, and connection-time DNS-rebinding guards; the complete protected frontend build passed.
+- Draft PR review and CI are still required before any separately authorized migration, secret configuration, external test, or deployment.
+
+## Modules 055C/055D Work Register Split — July 22, 2026 Source Checkpoint
+
+- Module 055C is now **Manage Existing Projects** and does not expose creation controls.
+- Module 055C mutations are restricted to Project Managers, Project Management Leads, and Project Team Coordinators; View-As remains read-only.
+- Project setup, lifecycle, task/roster, document, change-order, and purchase-order saves retain actor/reason and old/new evidence in the Audit tab.
+- Module 055D is now **Create New Project** and is restricted to the Project Team Coordinator role only.
+- Module 055D offers two sources: Import from GSD or Import from SELL.
+- SELL is authoritative for project name and Actual Rate / Pricing / Rate Review; the UI disables those fields and the server restores them from the protected source snapshot on every review save.
+- SELL access reuses Module 026 OAuth 2.0 or write-only API-key configuration and retains no raw provider response or credential.
+- Final creation writes `work_register_created` evidence that is visible from the new project's Module 055C Audit tab.
+- Migration `035_work_register_055c_055d_split.sql` is created but has **not** been applied.
+- Source is published only in draft PR #55. No database migration, SELL call, credential configuration, OAuth consent, merge, or deployment has been performed in this checkpoint.
+- The permanent module-ordering guard confirms Module 999 is the highest-numbered and last module.
+- The expanded 055C/055D validator passed 36 checks, including atomic creation/audit, intake `source_mode` schema/backfill, existing-table user-FK, renamed-title, and post-create-control guards; the complete protected frontend build passed.
+
 ## Items Not in August Production Readiness Scope
 - Full production Azure migration.
-- Salesforce API integration.
+- Production activation of Salesforce, SELL, Certinia, ServiceNow, or another Module 026 connector before migration, secret, provider, security, and deployment approvals.
 - Outlook calendar sync.
 - Multi-server communication.
 - Real email sending.
@@ -312,7 +340,7 @@ and authenticated portal acceptance are separate controlled gates.
 - Add intake approval status workflow.
 - Add manager approval for assignments.
 - Add conversion from approved intake into project workspace.
-- Add Salesforce opportunity integration later.
+- Connect approved Salesforce opportunity fields through Module 026 after its migration, OAuth, mapping, and production activation gates pass.
 - Add Outlook calendar/resource sync later.
 - Add export and audit detail views.
 
@@ -320,7 +348,7 @@ and authenticated portal acceptance are separate controlled gates.
 - Project intake supports manual entry, manual document upload, and Salesforce source references.
 - Salesforce source support stores source system, external reference ID, record type, and source URL.
 - Manual upload support stores intake document metadata and file path.
-- Future production item: connect Salesforce API/OAuth and field mapping.
+- Module 026 now contains the Salesforce OAuth/configuration source boundary; production OAuth consent and field mapping remain gated and unperformed.
 - Future production item: add document scanning, retention, and extraction/parsing workflow.
 
 ### Project Document Handling

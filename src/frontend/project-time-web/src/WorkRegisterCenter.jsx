@@ -148,7 +148,8 @@ function dateOnly(value) {
   return String(value).slice(0, 10);
 }
 
-export default function WorkRegisterCenter() {
+export default function WorkRegisterCenter({ mode = 'edit' }) {
+  const isCreateMode = mode === 'create';
   const [payload, setPayload] = useState({ loading: true, data: null, error: null });
   const [searchTerm, setSearchTerm] = useState('');
   const [lifecycleFilter, setLifecycleFilter] = useState('active');
@@ -213,7 +214,7 @@ export default function WorkRegisterCenter() {
 
   const [documentUploadStatus, setDocumentUploadStatus] = useState('');
 
-  const [intakeWizardOpen, setIntakeWizardOpen] = useState(false);
+  const [intakeWizardOpen, setIntakeWizardOpen] = useState(isCreateMode);
   const [intakeWizardStatus, setIntakeWizardStatus] = useState('');
   const [intakePackageResult, setIntakePackageResult] = useState(null);
 
@@ -237,6 +238,8 @@ export default function WorkRegisterCenter() {
   // 055D_3A_ASSIGNMENT_POOL_REPAIR
 
   const [intakeForm, setIntakeForm] = useState({
+    sourceMode: 'gsd',
+    sellRecordId: '',
     requestedWorkType: 'Project',
     contractType: 'Fixed Price',
     customerId: '',
@@ -529,7 +532,8 @@ const updateIntakeForm = (field, value) => {
           : Number(values.authorizedAmount),
       effectiveStartDate: values.poEffectiveStartDate || null,
       effectiveEndDate: values.poEffectiveEndDate || null,
-      customerReference: String(values.poCustomerReference || '').trim()
+      customerReference: String(values.poCustomerReference || '').trim(),
+      changeReason: String(values.editReason || values.reason || intakeForm.reason || 'Work Register creation').trim()
     });
   }
 
@@ -639,6 +643,10 @@ const updateIntakeForm = (field, value) => {
 
 
   const canEditWorkRegister = editFoundation.data?.canEditWorkRegister === true;
+  const canCreateWorkRegister = editFoundation.data?.canCreateWorkRegister === true;
+  const sellAuthoritativeReview =
+    selectedIntakeReview?.package?.sourceMode === 'sell_import'
+    || intakeReviewForm?.sourceMode === 'sell_import';
 
   const canArchiveWorkRegister =
     editFoundation.data?.canArchiveWorkRegister === true
@@ -915,7 +923,7 @@ function projectPulseNormalizeTaskAssignments(task = {}, assignments = [], chang
   }
 
 function projectPulseCreateWorkReason() {
-    const workTypeLabel = intakeForm.workType || intakeForm.workItemType || intakeForm.type || 'Project';
+    const workTypeLabel = intakeForm.requestedWorkType || intakeForm.workType || intakeForm.workItemType || intakeForm.type || 'Project';
     const customerLabel = intakeForm.customerName || intakeForm.clientName || intakeForm.customer || '';
     const projectLabel = intakeForm.projectName || intakeForm.workName || intakeForm.name || '';
     const pieces = ['Creating New Project'];
@@ -1132,7 +1140,7 @@ function updateTaskAssignmentForm(task, field, value) {
     }
 
     if (!canEditWorkRegister) {
-      setTaskAssignmentStatus('This tab is view-only for your role. Only Project Team Coordinators, Administrators, and Super Administrators can save task assignments.');
+      setTaskAssignmentStatus('This tab is view-only for your role. Only Project Managers, Project Management Leads, and Project Team Coordinators can save task assignments.');
       return;
     }
 
@@ -1371,7 +1379,7 @@ function updateRosterEngineer(task, index, field, value) {
     }
 
     if (!canEditWorkRegister) {
-      setTaskAssignmentStatus('This tab is view-only for your role. Only Project Team Coordinators, Administrators, and Super Administrators can save task rosters.');
+      setTaskAssignmentStatus('This tab is view-only for your role. Only Project Managers, Project Management Leads, and Project Team Coordinators can save task rosters.');
       return;
     }
 
@@ -1509,7 +1517,7 @@ function updateRosterEngineer(task, index, field, value) {
     }
 
     if (!canEditWorkRegister) {
-      setChangeOrderStatus('This tab is view-only for your role. Only PTC/Admin can save change orders.');
+      setChangeOrderStatus('This tab is view-only for your role. Only Project Managers, Project Management Leads, and Project Team Coordinators can save change orders.');
       return;
     }
 
@@ -1633,7 +1641,7 @@ function updateRosterEngineer(task, index, field, value) {
     }
 
     if (!canEditWorkRegister) {
-      setDocumentUploadStatus('This tab is view-only for your role. Only PTC/Admin can upload documents.');
+      setDocumentUploadStatus('This tab is view-only for your role. Only Project Managers, Project Management Leads, and Project Team Coordinators can upload documents.');
       return;
     }
 
@@ -1729,7 +1737,7 @@ function updateRosterEngineer(task, index, field, value) {
     }
 
     if (!canEditWorkRegister) {
-      setDocumentStatus('This tab is view-only for your role. Only PTC/Admin can manage documents.');
+      setDocumentStatus('This tab is view-only for your role. Only Project Managers, Project Management Leads, and Project Team Coordinators can manage documents.');
       return;
     }
 
@@ -1780,7 +1788,7 @@ function updateRosterEngineer(task, index, field, value) {
     }
 
     if (!canEditWorkRegister) {
-      setDocumentStatus('This tab is view-only for your role. Only PTC/Admin can archive documents.');
+      setDocumentStatus('This tab is view-only for your role. Only Project Managers, Project Management Leads, and Project Team Coordinators can archive documents.');
       return;
     }
 
@@ -1842,6 +1850,7 @@ function updateRosterEngineer(task, index, field, value) {
       || {};
 
     return {
+      sourceMode: data.sourceMode || packageData?.package?.sourceMode || 'gsd_sow_upload',
       projectName: data.projectName || packageData?.package?.projectNameHint || '',
       customerId: data.customerId || packageData?.package?.customerId || '',
       customerName: data.customerName || packageData?.package?.customerHint || '',
@@ -2660,6 +2669,7 @@ function removeTaskAssignmentRow(taskIndex, assignmentIndex) {
     });
 
     const reviewedData = {
+      sourceMode: intakeReviewForm.sourceMode || selectedIntakeReview?.package?.sourceMode || 'gsd_sow_upload',
       projectName: intakeReviewForm.projectName,
       customerId: intakeReviewForm.customerId,
       customerName: intakeReviewForm.customerName,
@@ -2672,7 +2682,7 @@ function removeTaskAssignmentRow(taskIndex, assignmentIndex) {
       certiniaIdNumber: intakeReviewForm.certiniaIdNumber || intakeForm.certiniaIdNumber || '',
       // 055D_5K_FINAL_SOW_SIGNED_DATE_VALUE
       sowSignedDate: intakeReviewForm.sowSignedDate || intakeForm.sowSignedDate || '',
-      intakeReason: intakeReviewForm.intakeReason || intakeForm.intakeReason || projectPulseCreateWorkReason(),
+      intakeReason: intakeReviewForm.intakeReason || intakeForm.reason || intakeForm.intakeReason || projectPulseCreateWorkReason(),
 
       requestedWorkType: projectPulseCanonicalWorkType(intakeReviewForm.requestedWorkType),
       contractType: intakeReviewForm.contractType,
@@ -2765,7 +2775,7 @@ async function createWorkRegisterFromReviewedIntake() {
     await saveIntakeReviewMapping({ throwOnError: true });
 
     const result = await postJson(`/api/work-register/intake/packages/${intakePackageId}/commit`, {
-      intakeReason: intakeReviewForm.intakeReason || intakeForm.intakeReason || projectPulseCreateWorkReason(),
+      intakeReason: intakeReviewForm.intakeReason || intakeForm.reason || intakeForm.intakeReason || projectPulseCreateWorkReason(),
       requestedWorkType: finalFields.requestedWorkType,
       contractType: finalFields.contractType,
       sellQuoteNumber: finalFields.sellQuoteNumber,
@@ -2855,14 +2865,26 @@ async function createWorkRegisterFromReviewedIntake() {
 
   function defaultIntakeForm() {
     return {
+      sourceMode: 'gsd',
+      sellRecordId: '',
       requestedWorkType: 'Project',
       contractType: 'Fixed Price',
       customerId: '',
       projectNameHint: '',
+      sellQuoteNumber: '',
+      salesforceIdNumber: '',
+      certiniaIdNumber: '',
+      sowSignedDate: '',
       skipGsd: false,
       skipSow: false,
       notes: '',
-      reason: ''
+      reason: '',
+      purchaseOrderRequired: false,
+      poNumber: '',
+      authorizedAmount: '',
+      poEffectiveStartDate: '',
+      poEffectiveEndDate: '',
+      poCustomerReference: ''
     };
   }
 
@@ -2971,6 +2993,7 @@ async function createWorkRegisterFromReviewedIntake() {
     setIntakeReviewForm(null);
     setIntakeWizardStatus('');
     setIntakeReviewStatus('');
+    setIntakeSaveBanner('');
   }
 
   function intakeRequiresProjectDocuments() {
@@ -2981,8 +3004,8 @@ async function createWorkRegisterFromReviewedIntake() {
   async function uploadInitialIntakePackage(event) {
     event.preventDefault();
 
-    if (!canEditWorkRegister) {
-      setIntakeWizardStatus('Only PTC/Admin can create intake packages.');
+    if (!canCreateWorkRegister) {
+      setIntakeWizardStatus('Only a Project Team Coordinator can create intake packages.');
       return;
     }
 
@@ -3085,9 +3108,6 @@ async function createWorkRegisterFromReviewedIntake() {
         reviewStatus: 'needs_review'
       }]);
 
-      form.reset();
-      setIntakeForm(defaultIntakeForm());
-
       const rateCount = Array.isArray(extractResult.extractedData?.rates) ? extractResult.extractedData.rates.length : 0;
       const taskCount = Array.isArray(extractResult.extractedData?.tasks) ? extractResult.extractedData.tasks.length : 0;
 
@@ -3101,6 +3121,59 @@ async function createWorkRegisterFromReviewedIntake() {
       if (uploadedPackage) {
         setIntakePackages([uploadedPackage]);
       }
+    }
+  }
+
+  async function importSellIntakePackage(event) {
+    event.preventDefault();
+
+    if (!canCreateWorkRegister) {
+      setIntakeWizardStatus('Only a Project Team Coordinator can create a Work Register record.');
+      return;
+    }
+    if (!String(intakeForm.sellRecordId || '').trim()) {
+      setIntakeWizardStatus('Enter the SELL deal, quote, or opportunity record ID.');
+      return;
+    }
+    if (!intakeForm.customerId) {
+      setIntakeWizardStatus('Select the matching ProjectPulse customer.');
+      return;
+    }
+    if (!String(intakeForm.reason || '').trim()) {
+      setIntakeWizardStatus('Intake reason is required for audit history.');
+      return;
+    }
+
+    setSelectedIntakeReview(null);
+    setIntakeReviewForm(null);
+    setIntakePackages([]);
+    setIntakeWizardStatus('Importing the authoritative project name and Actual Rate / Pricing / Rate Review from SELL...');
+    setIntakeReviewStatus('Connecting to SELL through Module 026...');
+
+    try {
+      const result = await postJson('/api/work-register/intake/packages/sell/import', {
+        sellRecordId: String(intakeForm.sellRecordId).trim(),
+        customerId: intakeForm.customerId,
+        requestedWorkType: intakeForm.requestedWorkType,
+        contractType: intakeForm.contractType,
+        notes: intakeForm.notes,
+        reason: intakeForm.reason
+      });
+
+      setIntakePackageResult({ ...result, uploadedDocumentCount: 0 });
+      setCurrentIntakePackageId(result.intakePackageId);
+      sessionStorage.setItem('projectPulseCurrentIntakePackageId', result.intakePackageId);
+      setIntakePackages([{
+        ...result,
+        sourceMode: 'sell_import',
+        documentCount: 0
+      }]);
+      await openIntakeReview(result.intakePackageId);
+      setIntakeWizardStatus('SELL intake imported. Project name and pricing are source-locked; complete assignments and final review.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to import the SELL record.';
+      setIntakeWizardStatus(message);
+      setIntakeReviewStatus(message);
     }
   }
 
@@ -3137,7 +3210,7 @@ async function createWorkRegisterFromReviewedIntake() {
       && !canArchiveWorkRegister
     ) {
       setEditStatus(
-        'Only Project Team Coordinators, Administrators, and Super Administrators can archive projects.'
+        'Only Project Managers, Project Management Leads, and Project Team Coordinators can archive projects.'
       );
       return;
     }
@@ -3147,7 +3220,7 @@ async function createWorkRegisterFromReviewedIntake() {
       && !canRestoreWorkRegister
     ) {
       setEditStatus(
-        'Only Administrators and Super Administrators can restore archived projects.'
+        'Only Project Managers, Project Management Leads, and Project Team Coordinators can restore archived projects.'
       );
       return;
     }
@@ -3242,7 +3315,7 @@ async function createWorkRegisterFromReviewedIntake() {
     if (!selectedWorkItem) return;
 
     if (!canEditWorkRegister) {
-      setEditStatus('This page is view-only for your role. Only Project Team Coordinators, Administrators, and Super Administrators can save changes.');
+      setEditStatus('This page is view-only for your role. Only Project Managers, Project Management Leads, and Project Team Coordinators can save changes.');
       return;
     }
 
@@ -3339,13 +3412,15 @@ async function createWorkRegisterFromReviewedIntake() {
 
 
   return (
-    <section className="work-register-center">
+    <section className={`work-register-center ${isCreateMode ? 'create-mode' : 'edit-mode'}`}>
       <div className="work-register-header">
         <div>
-          <p className="eyebrow">Work Register</p>
-          <h2>Active, closed, and historical work</h2>
+          <p className="eyebrow">{isCreateMode ? 'Module 055D' : 'Module 055C'}</p>
+          <h2>{isCreateMode ? 'Create New Project' : 'Manage Existing Projects'}</h2>
           <p className="muted">
-            Search and filter projects, intakes, tasks, customers, stakeholders, documents, hours, and cost indicators without removing any existing modules.
+            {isCreateMode
+              ? 'Create new work from either GSD documents or a connected SELL record. Only Project Team Coordinators can complete this workflow.'
+              : 'Search and edit existing work. Every saved mutation is recorded with the actor, reason, old values, and new values in the Audit tab.'}
           </p>
         </div>
 
@@ -3353,9 +3428,11 @@ async function createWorkRegisterFromReviewedIntake() {
                           {intakeSaveBanner ? (
                             <div className="work-register-save-banner success">{intakeSaveBanner}</div>
                           ) : null}
-        <button data-pp-marker="055D_5C_SAVE_ASSIGNMENT_BUTTON" type="button" className="secondary-action" onClick={load}>
-          Refresh
-        </button>
+        {!isCreateMode ? (
+          <button data-pp-marker="055C_REFRESH_BUTTON" type="button" className="secondary-action" onClick={load}>
+            Refresh
+          </button>
+        ) : null}
       </div>
 
       {payload.error ? <div className="work-register-banner error">{payload.error}</div> : null}
@@ -3550,13 +3627,20 @@ async function createWorkRegisterFromReviewedIntake() {
 
 
 
-            {canEditWorkRegister ? (
+            {isCreateMode && canCreateWorkRegister && !intakeWizardOpen ? (
 
 
-              <button type="button" className="work-register-create-button" onClick={() => setIntakeWizardOpen(true)}>
+              <button
+                type="button"
+                className="work-register-create-button"
+                onClick={() => {
+                  resetIntakeWizard();
+                  setIntakeWizardOpen(true);
+                }}
+              >
 
 
-                Create Work / Intake
+                {intakeSaveBanner ? 'Create Another Project' : 'Resume Create New Project'}
 
 
               </button>
@@ -3568,7 +3652,7 @@ async function createWorkRegisterFromReviewedIntake() {
 
 
 
-            {intakeWizardOpen ? (
+            {isCreateMode && canCreateWorkRegister && intakeWizardOpen ? (
 
 
               <div className="work-register-create-overlay">
@@ -3583,19 +3667,19 @@ async function createWorkRegisterFromReviewedIntake() {
                     <div>
 
 
-                      <span>INITIAL INTAKE WIZARD</span>
+                      <span>MODULE 055D · CREATE NEW PROJECT</span>
 
 
-                      <h3>Upload GSD/SOW and start work onboarding</h3>
+                      <h3>Create from GSD or SELL</h3>
 
 
-                      <p>Start here so the PTC can upload source documents first. GSD extraction will populate project name, AE, SA, SAA, rates, tasks, and hours in the next parser step.</p>
+                      <p>Choose a controlled source. SELL supplies the authoritative project name and Actual Rate / Pricing / Rate Review; GSD uses the existing extraction and review workflow.</p>
 
 
                     </div>
 
 
-                    <button type="button" onClick={() => setIntakeWizardOpen(false)}>Close</button>
+                    {!isCreateMode ? <button type="button" onClick={() => setIntakeWizardOpen(false)}>Close</button> : null}
 
 
                   </header>
@@ -3616,11 +3700,40 @@ async function createWorkRegisterFromReviewedIntake() {
 
 
 
-                  <form className="work-register-intake-form" onSubmit={uploadInitialIntakePackage}>
+                  <form
+                    className="work-register-intake-form"
+                    onSubmit={intakeForm.sourceMode === 'sell' ? importSellIntakePackage : uploadInitialIntakePackage}
+                  >
 
 
                     <section>
-                <h4>1. Work type and source documents</h4>
+                <h4>1. Choose creation source</h4>
+                <div className="work-register-source-choice" role="radiogroup" aria-label="Work Register creation source">
+                  <label className={intakeForm.sourceMode === 'gsd' ? 'selected' : ''}>
+                    <input
+                      type="radio"
+                      name="sourceModeChoice"
+                      value="gsd"
+                      checked={intakeForm.sourceMode === 'gsd'}
+                      onChange={() => updateIntakeField('sourceMode', 'gsd')}
+                    />
+                    <strong>Import from GSD</strong>
+                    <small>Upload GSD/SOW files, extract them, and review the mapped fields.</small>
+                  </label>
+                  <label className={intakeForm.sourceMode === 'sell' ? 'selected' : ''}>
+                    <input
+                      type="radio"
+                      name="sourceModeChoice"
+                      value="sell"
+                      checked={intakeForm.sourceMode === 'sell'}
+                      onChange={() => updateIntakeField('sourceMode', 'sell')}
+                    />
+                    <strong>Import from SELL</strong>
+                    <small>Use Module 026 to retrieve the authoritative project name and Actual Rate / Pricing / Rate Review.</small>
+                  </label>
+                </div>
+
+                <h4>2. Work details</h4>
                 <div className="work-register-edit-grid">
                   <label>
                     Work type
@@ -3668,15 +3781,28 @@ async function createWorkRegisterFromReviewedIntake() {
                   </label>
 
                   <label>
-                    Project / Work Name
+                    {intakeForm.sourceMode === 'sell' ? 'Project / Work Name (from SELL)' : 'Project / Work Name'}
                     <input
                       type="text"
                       name="projectNameHint"
                       value={intakeForm.projectNameHint}
                       onChange={(event) => updateIntakeField('projectNameHint', event.target.value)}
-                      placeholder="Optional; GSD extraction should populate this"
+                      placeholder={intakeForm.sourceMode === 'sell' ? 'Imported from SELL after connection' : 'Optional; GSD extraction should populate this'}
+                      disabled={intakeForm.sourceMode === 'sell'}
                     />
                   </label>
+                  {intakeForm.sourceMode === 'sell' ? (
+                    <label>
+                      SELL deal / quote / opportunity record ID
+                      <input
+                        type="text"
+                        value={intakeForm.sellRecordId || ''}
+                        onChange={(event) => updateIntakeField('sellRecordId', event.target.value)}
+                        placeholder="Required SELL record ID"
+                        required
+                      />
+                    </label>
+                  ) : null}
                   {/* 055D_5A_CREATE_BILLING_IDENTIFIERS */}
                   <label>
                     SELL Quote <span className="optional-pill">Optional</span>
@@ -3684,7 +3810,8 @@ async function createWorkRegisterFromReviewedIntake() {
                       type="text"
                       value={intakeForm.sellQuoteNumber || ''}
                       onChange={(event) => updateIntakeForm('sellQuoteNumber', event.target.value)}
-                      placeholder="Optional SELL quote number"
+                      placeholder={intakeForm.sourceMode === 'sell' ? 'Imported from SELL' : 'Optional SELL quote number'}
+                      disabled={intakeForm.sourceMode === 'sell'}
                     />
                   </label>
                   <label>
@@ -3717,6 +3844,7 @@ async function createWorkRegisterFromReviewedIntake() {
                     </label>
                 </div>
 
+                {intakeForm.sourceMode === 'gsd' ? (
                 <div className="work-register-intake-upload-grid">
                   <label className="work-register-intake-upload-card">
                     <strong>GSD upload</strong>
@@ -3736,15 +3864,25 @@ async function createWorkRegisterFromReviewedIntake() {
                     <input type="file" name="approvalFile" />
                   </label>
                 </div>
+                ) : (
+                  <div className="work-register-sell-authority-notice">
+                    <strong>SELL authority boundary</strong>
+                    <p>The project name and all Actual Rate / Pricing / Rate Review rows are read from SELL through Module 026 and cannot be overwritten during review.</p>
+                  </div>
+                )}
 
                 <div className="work-register-intake-primary-submit" data-marker="055D_2E_PRIMARY_UPLOAD_BUTTON">
                   <button type="submit" className="primary-action">
-                    Upload and extract current intake package
+                    {intakeForm.sourceMode === 'sell' ? 'Connect to SELL and import' : 'Upload and extract current intake package'}
                   </button>
-                  <span className="muted">This creates the package and immediately extracts the current GSD/SOW for review.</span>
+                  <span className="muted">
+                    {intakeForm.sourceMode === 'sell'
+                      ? 'This uses the configured Module 026 API key or OAuth connection and creates an audited intake package.'
+                      : 'This creates the package and immediately extracts the current GSD/SOW for review.'}
+                  </span>
                 </div>
 
-                {intakeRequiresProjectDocuments() ? (
+                {intakeForm.sourceMode === 'gsd' && intakeRequiresProjectDocuments() ? (
                   <div className="work-register-intake-checkboxes">
                     <label className="checkbox-line">
                       <input
@@ -3764,9 +3902,9 @@ async function createWorkRegisterFromReviewedIntake() {
                       No SOW available yet
                     </label>
                   </div>
-                ) : (
+                ) : intakeForm.sourceMode === 'gsd' ? (
                   <p className="muted">GSD/SOW are optional for this work type. Service Requests can proceed by manual intake in a later step.</p>
-                )}
+                ) : null}
               </section>
 
 
@@ -3776,7 +3914,7 @@ async function createWorkRegisterFromReviewedIntake() {
                     <section>
 
 
-                      <h4>2. Purchase Order / Billing</h4>
+                      <h4>3. Purchase Order / Billing</h4>
                       <p className="muted">Optional during intake. The PO is saved immediately after the Work Register project is created.</p>
 
                       <label className="checkbox-line" data-projectpulse-create-work-po-editor="true">
@@ -3839,7 +3977,7 @@ async function createWorkRegisterFromReviewedIntake() {
                         </label>
                       </div>
 
-                      <h4>3. Intake notes and audit reason</h4>
+                      <h4>4. Intake notes and audit reason</h4>
 
 
                       <label>
@@ -3863,7 +4001,7 @@ async function createWorkRegisterFromReviewedIntake() {
                           onChange={(event) => updateIntakeField('notes', event.target.value)}
 
 
-                          placeholder="Optional intake notes for PTC/Admin review."
+                          placeholder="Optional intake notes for Project Team Coordinator review."
 
 
                         />
@@ -3917,7 +4055,7 @@ async function createWorkRegisterFromReviewedIntake() {
                     <section>
 
 
-                      <h4>3. Extraction and review status</h4>
+                      <h4>5. Import and review status</h4>
 
 
                       {intakePackageResult ? (
@@ -3970,10 +4108,10 @@ async function createWorkRegisterFromReviewedIntake() {
 
 
               <section>
-                <h4>4. GSD extraction and review mapping</h4>
+                <h4>6. Source extraction and review mapping</h4>
                 <p className="muted">
-                  Run XLSX GSD extraction after upload, then review and correct the mapping before it becomes a Work Register record.
-                  This step prepares project name, customer, AE, SA, SAA, rates, tasks, and hours for 055D.3.
+                  GSD packages are extracted from the uploaded workbook. SELL packages arrive already extracted through Module 026.
+                  Review the permitted fields before creating the Work Register record.
                 </p>
 
                 {intakeReviewStatus ? (
@@ -4004,9 +4142,11 @@ async function createWorkRegisterFromReviewedIntake() {
                         <small>Review: {labelize(pkg.reviewStatus || 'not started')}</small>
                       </div>
                       <div>
-                        <button type="button" className="secondary-action" onClick={() => runIntakeExtraction(pkg.intakePackageId)}>
-                          Extract
-                        </button>
+                        {pkg.sourceMode !== 'sell_import' ? (
+                          <button type="button" className="secondary-action" onClick={() => runIntakeExtraction(pkg.intakePackageId)}>
+                            Extract
+                          </button>
+                        ) : null}
                         <button type="button" className="secondary-action" onClick={() => openIntakeReview(pkg.intakePackageId)}>
                           Review
                         </button>
@@ -4026,7 +4166,9 @@ async function createWorkRegisterFromReviewedIntake() {
                           type="text"
                           value={intakeReviewForm.projectName}
                           onChange={(event) => updateIntakeReviewForm('projectName', event.target.value)}
+                          disabled={sellAuthoritativeReview}
                         />
+                        {sellAuthoritativeReview ? <small>Authoritative value supplied by SELL.</small> : null}
                       </label>
 
                       <label>
@@ -4127,7 +4269,7 @@ async function createWorkRegisterFromReviewedIntake() {
 
                     <div className="work-register-gsd-review-summary">
                       <div>
-                        <span>GSD project list price</span>
+                        <span>{sellAuthoritativeReview ? 'SELL project list price' : 'GSD project list price'}</span>
                         <strong>{moneyReviewValue(intakeReviewForm.projectListPrice)}</strong>
                       </div>
                       <div>
@@ -4139,20 +4281,26 @@ async function createWorkRegisterFromReviewedIntake() {
                         <strong>{calculatedGsdTaskHoursTotal().toLocaleString()} hrs</strong>
                       </div>
                       <div>
-                        <span>Task source</span>
-                        <strong>GSD snapshot</strong>
+                        <span>Pricing source</span>
+                        <strong>{sellAuthoritativeReview ? 'SELL authoritative snapshot' : 'GSD snapshot'}</strong>
                       </div>
                     </div>
 
                     <div className="work-register-gsd-review-table">
                       <div className="work-register-gsd-review-table-header">
                         <div>
-                          <h5>GSD Pricing / Rate Review</h5>
-                          <p className="muted">These rows become the project-specific rate snapshot when the intake is committed to Work Register.</p>
+                          <h5>{sellAuthoritativeReview ? 'SELL Actual Rate / Pricing / Rate Review' : 'GSD Pricing / Rate Review'}</h5>
+                          <p className="muted">
+                            {sellAuthoritativeReview
+                              ? 'These source-locked rows came directly from SELL and become the project-specific rate snapshot.'
+                              : 'These rows become the project-specific rate snapshot when the intake is committed to Work Register.'}
+                          </p>
                         </div>
-                        <button type="button" className="secondary-action" onClick={addGsdRateRow}>
-                          Add rate row
-                        </button>
+                        {!sellAuthoritativeReview ? (
+                          <button type="button" className="secondary-action" onClick={addGsdRateRow}>
+                            Add rate row
+                          </button>
+                        ) : null}
                       </div>
 
                       {gsdRateRows().length > 0 ? (
@@ -4171,6 +4319,7 @@ async function createWorkRegisterFromReviewedIntake() {
                                   type="checkbox"
                                   checked={rate?.include !== false}
                                   onChange={(event) => updateIntakeReviewArrayItem('ratesText', index, 'include', event.target.checked)}
+                                  disabled={sellAuthoritativeReview}
                                 />
                               </label>
 
@@ -4179,6 +4328,7 @@ async function createWorkRegisterFromReviewedIntake() {
                                 value={rate?.sku || ''}
                                 onChange={(event) => updateIntakeReviewArrayItem('ratesText', index, 'sku', event.target.value)}
                                 placeholder="SKU"
+                                disabled={sellAuthoritativeReview}
                               />
 
                               <input
@@ -4186,6 +4336,7 @@ async function createWorkRegisterFromReviewedIntake() {
                                 value={rate?.description || rate?.role || ''}
                                 onChange={(event) => updateIntakeReviewArrayItem('ratesText', index, 'description', event.target.value)}
                                 placeholder="Description / role"
+                                disabled={sellAuthoritativeReview}
                               />
 
                               <input
@@ -4193,6 +4344,7 @@ async function createWorkRegisterFromReviewedIntake() {
                                 step="0.01"
                                 value={rate?.rate ?? rate?.rateAmount ?? rate?.unitRate ?? 0}
                                 onChange={(event) => updateIntakeReviewArrayItem('ratesText', index, 'rate', Number(event.target.value || 0))}
+                                disabled={sellAuthoritativeReview}
                               />
 
                               <input
@@ -4200,6 +4352,7 @@ async function createWorkRegisterFromReviewedIntake() {
                                 step="0.25"
                                 value={rate?.hours ?? rate?.quantity ?? rate?.qty ?? 0}
                                 onChange={(event) => updateIntakeReviewArrayItem('ratesText', index, 'hours', Number(event.target.value || 0))}
+                                disabled={sellAuthoritativeReview}
                               />
 
                               <strong>{moneyReviewValue(intakeRateExtended(rate))}</strong>
@@ -4463,7 +4616,7 @@ async function createWorkRegisterFromReviewedIntake() {
                         <div className="work-register-save-banner success">{intakeSaveBanner}</div>
                       ) : null}
                       <button type="button" className="primary-action" onClick={createWorkRegisterFromReviewedIntake}>
-                        Save Project / Create Work Register
+                        Save and Create New Project
                       </button>
                     </div>
 
@@ -4477,6 +4630,7 @@ async function createWorkRegisterFromReviewedIntake() {
                         rows={7}
                         value={intakeReviewForm.ratesText}
                         onChange={(event) => updateIntakeReviewForm('ratesText', event.target.value)}
+                        disabled={sellAuthoritativeReview}
                       />
                     </label>
 
@@ -4514,7 +4668,9 @@ async function createWorkRegisterFromReviewedIntake() {
                       <button type="button" className="secondary-action" onClick={resetIntakeWizard}>Reset</button>
 
 
-                      <button type="submit" className="primary-action">Upload and extract intake package</button>
+                      <button type="submit" className="primary-action">
+                        {intakeForm.sourceMode === 'sell' ? 'Connect to SELL and import' : 'Upload and extract intake package'}
+                      </button>
 
 
                     </div>

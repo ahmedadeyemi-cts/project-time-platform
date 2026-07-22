@@ -3,6 +3,11 @@ import SessionIntelligenceDrawer from './SessionIntelligenceDrawer.jsx';
 import ProfileIdentitySurface from './identity/ProfileIdentitySurface.jsx';
 import ApprovalMailbox from './ApprovalMailbox.jsx';
 import NativeModuleAdministrationPanel from './NativeModuleAdministrationPanel.jsx';
+import CrmErpIntegrationCenter from './CrmErpIntegrationCenter.jsx';
+import {
+  compareProjectPulseModules,
+  sortProjectPulseModules
+} from './module-ordering.js';
 
 const MODULE_064_074_NATIVE_ADMINISTRATION_ROUTES = Object.freeze({
   'ai-provider-configuration': '064',
@@ -1727,7 +1732,7 @@ function statusToLabel(status, totalHours = 0) {
 }
 
 
-const roleWorkspaceModules = [
+const roleWorkspaceModules = sortProjectPulseModules([
   {
     route: 'project-workload',
     href: '#project-workload',
@@ -1777,11 +1782,21 @@ const roleWorkspaceModules = [
   {
     route: 'work-register',
     href: '#work-register',
-    title: 'Work Register',
+    title: 'Manage Existing Projects',
     navLabel: 'MODULE 055C',
-    description: 'Search and filter active, closed, archived, and historical work across customers, projects, intakes, stakeholders, tasks, documents, hours, and cost indicators.',
-    permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL', 'MANAGE_PROJECT_INTAKE', 'VIEW_CUSTOMERS', 'MANAGE_CUSTOMERS', 'VIEW_REPORTS', 'MANAGE_REPORTS', 'MANAGE_TIME', 'APPROVE_TIME'],
-    roleCodes: ['PROJECT_TEAM_COORDINATOR', 'PROJECT_MANAGER', 'PROJECT_MANAGEMENT', 'ENGINEER', 'ENGINEERING', 'SALES', 'ACCOUNT_EXECUTIVE', 'SOLUTION_ARCHITECT', 'SA', 'SAA', 'INSIDE_SALES']
+    description: 'Search and manage existing projects with every saved mutation recorded in the Audit tab.',
+    permissions: ['EDIT_WORK_REGISTER_055C', 'VIEW_CUSTOMERS', 'VIEW_REPORTS', 'MANAGE_TIME', 'APPROVE_TIME'],
+    roleCodes: ['PROJECT_TEAM_COORDINATOR', 'PROJECT_MANAGER', 'PROJECT_MANAGEMENT', 'PROJECT_MANAGEMENT_LEAD', 'PROJECT_MANAGEMENT_TEAM_LEAD', 'PM_TEAM_LEAD', 'ENGINEER', 'ENGINEERING', 'SALES', 'ACCOUNT_EXECUTIVE', 'SOLUTION_ARCHITECT', 'SA', 'SAA', 'INSIDE_SALES']
+  },
+  {
+    route: 'create-work-register',
+    href: '#create-work-register',
+    title: 'Create New Project',
+    navLabel: 'MODULE 055D',
+    description: 'Create a new project from GSD or SELL. SELL supplies the authoritative project name and Actual Rate / Pricing / Rate Review.',
+    permissions: ['CREATE_WORK_REGISTER_055D'],
+    roleCodes: ['PROJECT_TEAM_COORDINATOR'],
+    strictRoleCodes: ['PROJECT_TEAM_COORDINATOR']
   },
   /* 055C_WORK_REGISTER_NAV_END */
   /* 055B_RATE_CARD_ADMIN_NAV_START */
@@ -1871,10 +1886,10 @@ const roleWorkspaceModules = [
   {
     route: "crm-integration",
     href: "#crm-integration",
-    title: "CRM Integration Framework",
+    title: "CRM/ERP Integration Control Center",
     navLabel: "MODULE 026",
-    description: "Review CRM mappings, synchronization previews, and controlled promotion into intake workflows.",
-    permissions: ["VIEW_CUSTOMERS", "VIEW_PROJECT_INTAKE", "MANAGE_PROJECT_INTAKE", "SYSTEM_ADMINISTRATION", "MANAGE_ALL"],
+    description: "Connect SELL, Salesforce, Certinia, ServiceNow, and manually registered CRM/ERP platforms and review sanitized availability status.",
+    permissions: ["VIEW_INTEGRATIONS_026", "MANAGE_INTEGRATIONS_026", "VIEW_CUSTOMERS", "VIEW_PROJECT_INTAKE", "SYSTEM_ADMINISTRATION", "MANAGE_ALL"],
     roleCodes: ["SALES", "ACCOUNT_EXECUTIVE", "INSIDE_SALES", "SOLUTION_ARCHITECT", "SA", "SAA", "PROJECT_TEAM_COORDINATOR"],
   },
   {
@@ -2287,7 +2302,7 @@ const roleWorkspaceModules = [
     description: 'Review failover readiness, database role, service health, backup freshness, deployment state, and peer configuration.',
     permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   }
-];
+]);
 
 function normalizeRoute(hash) {
   const cleaned = (hash || window.location.hash || '#dashboard').replace('#', '').trim();
@@ -2316,10 +2331,16 @@ function getVisibleRoleModules(user) {
   if (!user) return [];
 
   const assignedRoleCodes = new Set((user?.roles ?? []).map((role) => String(role.roleCode ?? '').toUpperCase()));
-  const modules = roleWorkspaceModules.filter((module) => (
-    userHasAnyPermission(user, module.permissions) ||
-    (module.roleCodes ?? []).some((roleCode) => assignedRoleCodes.has(String(roleCode).toUpperCase()))
-  ));
+  const modules = roleWorkspaceModules.filter((module) => {
+    const strictRoleCodes = module.strictRoleCodes ?? [];
+    if (strictRoleCodes.length > 0
+        && !strictRoleCodes.some((roleCode) => assignedRoleCodes.has(String(roleCode).toUpperCase()))) {
+      return false;
+    }
+
+    return userHasAnyPermission(user, module.permissions)
+      || (module.roleCodes ?? []).some((roleCode) => assignedRoleCodes.has(String(roleCode).toUpperCase()));
+  });
 
   if (userIsProjectManagementRole(user) && !userIsAdministrator(user)) {
     return modules.filter((module) => module.route !== 'utilization');
@@ -2446,6 +2467,7 @@ function getNavigationGroup(item) {
     case 'customer-directory':
     case 'contracts':
     case 'work-register':
+    case 'create-work-register':
       return 'Work Register';
     case 'rate-card-administration':
       return 'Rate Card Administration';
@@ -3043,113 +3065,13 @@ function buildRoleNavigationModel(user, navigationItems) {
 
   const primary = [dashboardItem];
 
-  const groupOrder = [
-    'Work Management',
-    'Help & Documentation',
-    'Sales & Opportunities',
-    'Project Workspace',
-    'Project Intake',
-    'Time Compliance',
-    'Project Operations',
-    'Work Task Builder',
-    'Reports & Workflow',
-    'Security & Audit',
-    'Admin & Identity',
-    'Platform Operations',
-    'Resilience & Recovery',
-    'Other'
-  ];
-
-  const routeOrder = [
-      "timesheet",
-      "user-guide",
-      "defect-tracker",
-      "integration-event-gateway",
-      "release-deployment-control",
-      "observability-slo-health",
-      "data-governance-retention",
-      "customer-delivery-acceptance",
-      "ai-time-entry",
-      "manager-approval",
-      "utilization",
-      "holiday-admin",
-      "project-workload",
-      "project-workspace",
-      "project-flowhive",
-      "oncall-scheduling",
-      "project-allocation-info",
-      "project-intake",
-      "customer-directory",
-      "opportunities",
-      "oneassist-routing-directory",
-      "sales-coverage-alignment",
-      "oem-vendor-directory",
-      "sales-intake",
-      "sow-generator",
-      "crm-integration",
-      "signed-handoff",
-      "cost-alerts",
-      "time-compliance",
-      "psa-modules",
-      "work-task-builder",
-      "billing-readiness",
-      "project-closeout",
-      "closeout-email",
-      "invoice-billing-center",
-      "reporting",
-      "workflow",
-      "audit-history",
-      "security-operations",
-      "user-admin",
-      "azure-admin",
-      "ai-provider-configuration",
-      "entra-secret-administration",
-      "role-admin",
-      "service-control",
-      "global-mail-configuration",
-      "system-architecture",
-      "system-diagnostics",
-      "qualifications-certifications",
-      "capacity-pipeline-forecast",
-      "uat-validation",
-      "cicd-pipeline",
-      "backup-dr",
-      "restore-validation",
-      "backup-retention",
-      "replication-sync",
-  ];
-
-  const routeRank = new Map(routeOrder.map((route, index) => [route, index]));
-  const groupMap = new Map(groupOrder.map((name) => [name, {
-    name,
-    expanded: true,
-    items: []
-  }]));
-
-  [...availableByRoute.values()]
+  const orderedModuleItems = [...availableByRoute.values()]
     .filter((item) => item.route !== 'dashboard')
-    .sort((a, b) => {
-      const aRank = routeRank.has(a.route) ? routeRank.get(a.route) : 999;
-      const bRank = routeRank.has(b.route) ? routeRank.get(b.route) : 999;
+    .sort(compareProjectPulseModules);
 
-      if (aRank !== bRank) return aRank - bRank;
-      return String(a.label || '').localeCompare(String(b.label || ''));
-    })
-    .forEach((item) => {
-      const groupName = getNavigationGroup(item);
-
-      if (!groupMap.has(groupName)) {
-        groupMap.set(groupName, {
-          name: groupName,
-          expanded: true,
-          items: []
-        });
-      }
-
-      groupMap.get(groupName).items.push(item);
-    });
-
-  const groups = [...groupMap.values()].filter((group) => group.items.length > 0);
+  const groups = orderedModuleItems.length > 0
+    ? [{ name: 'Modules', expanded: true, items: orderedModuleItems }]
+    : [];
 
   return {
     primary,
@@ -3180,7 +3102,7 @@ function DataState({ loading, error, children }) {
 
 
 function getInstalledProjectPulseModuleRegistry() {
-  return [
+  return sortProjectPulseModules([
     {
       route: 'timesheet',
       title: 'Timesheet',
@@ -3472,11 +3394,11 @@ function getInstalledProjectPulseModuleRegistry() {
     {
       route: "crm-integration",
       href: "#crm-integration",
-      title: "CRM Integration Framework",
+      title: "CRM/ERP Integration Control Center",
       navLabel: "MODULE 026",
       group: "Sales & Opportunities",
-      description: "Review CRM mappings, synchronization previews, and controlled promotion into intake workflows.",
-      permissions: ["VIEW_CUSTOMERS", "VIEW_PROJECT_INTAKE", "MANAGE_PROJECT_INTAKE", "SYSTEM_ADMINISTRATION", "MANAGE_ALL"],
+      description: "Connect SELL, Salesforce, Certinia, ServiceNow, and manually registered CRM/ERP platforms and review sanitized availability status.",
+      permissions: ["VIEW_INTEGRATIONS_026", "MANAGE_INTEGRATIONS_026", "VIEW_CUSTOMERS", "VIEW_PROJECT_INTAKE", "SYSTEM_ADMINISTRATION", "MANAGE_ALL"],
     },
     {
       route: "signed-handoff",
@@ -3792,7 +3714,7 @@ function getInstalledProjectPulseModuleRegistry() {
     permissions: ['VIEW_ACCOUNT_RECONCILIATION', 'VIEW_APPROVAL_WORKFLOW', 'PROJECT_TIME_APPROVAL', 'VIEW_PROJECT_WORKSPACE', 'VIEW_PROJECT_INTAKE', 'EXPORT_TIME_EXCEL', 'EXPORT_TIME_PDF', 'DOWNLOAD_TIME_EXPORT_PACKAGE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
     description: 'Prepares detailed partial and final invoice packages with customer identifiers, time-entry evidence, rates, hours, amounts, flexible headers, recently closed work, and billing reports.'
   },
-  ];
+  ]);
 }
 
 
@@ -3809,7 +3731,8 @@ function getInstalledModuleDescription(module) {
     'manager-approval': 'Lets managers review submitted time, approve valid days, return days for correction, and monitor pending approval counts.',
     'project-workspace': 'Gives engineers and project roles a scoped project workspace with assigned projects, tasks, documents, assigned hours, used hours, and remaining hours.',
     'project-intake': 'Captures project intake requests, customer selection, planned costs, documents, triage information, and resource request readiness.',
-    'work-register': 'Searches active, closed, archived, and historical work across customers, stakeholders, tasks, documents, hours, and costs.',
+    'work-register': 'Searches and edits existing Work Register records, with saved changes visible in the Audit tab.',
+    'create-work-register': 'Creates Work Register records from GSD or SELL; SELL is authoritative for project name and Actual Rate / Pricing / Rate Review.',
     'rate-card-administration': 'Manages standard, customer-specific, Toyota, Hyundai, service request, emergency, and travel rate cards.',
     'customer-directory': 'Maintains customer/account records, customer contacts, and customer data used by intake, project, cost, billing, and reconciliation workflows.',
     'user-guide': 'Explains every global ProjectPulse function and every installed module with searchable procedures, roles, statuses, and troubleshooting.',
@@ -5986,6 +5909,9 @@ export default function App() {
       'SAA',
       'INSIDE_SALES'
     ].includes(roleCode));
+  const canCreateWorkRegister =
+    currentRoleCodes.includes('PROJECT_TEAM_COORDINATOR')
+    && !securityContext.data?.isViewAs;
   /* 055C_1_WORK_REGISTER_ACCESS_SCOPE_END */
   const canViewManagerApprovalPanel = hasPermission('APPROVE_TIME') || hasPermission('REJECT_TIME') || hasPermission('MANAGE_ALL') || hasPermission('SYSTEM_ADMINISTRATION');
   const canViewPmApprovalPanel =
@@ -7162,6 +7088,12 @@ Analytics - Variphy / Infortel`}
         </section>
       ) : null}
 
+      {(activeRoute === 'crm-integration' && canSeeAny(['VIEW_INTEGRATIONS_026', 'MANAGE_INTEGRATIONS_026', 'VIEW_CUSTOMERS', 'VIEW_PROJECT_INTAKE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
+        <section id="crm-integration" className="panel crm-erp-integration-route-panel">
+          <CrmErpIntegrationCenter />
+        </section>
+      ) : null}
+
       {/* MODULE_999_STRUCTURAL_ROUTE_BOUNDARY */}
       {(activeRoute === 'user-guide') ? (
         <section id="user-guide" className="panel system-user-guide-route-panel">
@@ -8062,7 +7994,7 @@ Analytics - Variphy / Infortel`}
       {activeRoute === 'work-register' ? (
         canViewWorkRegister ? (
           <section id="work-register" className="panel work-register-route-panel">
-            <WorkRegisterCenter />
+            <WorkRegisterCenter mode="edit" />
           </section>
         ) : (
           <section id="work-register" className="panel work-register-route-panel">
@@ -8075,6 +8007,24 @@ Analytics - Variphy / Infortel`}
         )
       ) : null}
       {/* 055C_WORK_REGISTER_ROUTE_END */}
+
+      {/* 055D_CREATE_WORK_REGISTER_ROUTE_START */}
+      {activeRoute === 'create-work-register' ? (
+        canCreateWorkRegister ? (
+          <section id="create-work-register" className="panel work-register-route-panel">
+            <WorkRegisterCenter mode="create" />
+          </section>
+        ) : (
+          <section id="create-work-register" className="panel work-register-route-panel">
+            <div className="work-register-center">
+              <div className="work-register-banner error">
+                Create New Project (Module 055D) is restricted to Project Team Coordinators.
+              </div>
+            </div>
+          </section>
+        )
+      ) : null}
+      {/* 055D_CREATE_WORK_REGISTER_ROUTE_END */}
 
       {/* 055B_RATE_CARD_ADMIN_ROUTE_START */}
       {activeRoute === 'rate-card-administration' ? (
@@ -8153,7 +8103,7 @@ Analytics - Variphy / Infortel`}
                 <div className="installed-module-grid">
                   {installedModules.map((module) => (
                     <a className="installed-module-card" href={`#${module.route}`} key={module.route}>
-                      <span>{module.group}</span>
+                      <span>{module.navLabel || 'Platform'} • {module.group}</span>
                       <strong>{module.title}</strong>
                       <p>{module.description}</p>
                       <small>Open module →</small>

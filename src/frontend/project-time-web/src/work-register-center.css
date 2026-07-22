@@ -932,6 +932,80 @@ body[data-projectpulse-active-route="work-register"] #work-register .work-regist
   background: rgba(15, 23, 42, 0.42);
 }
 
+.work-register-center.create-mode > .work-register-summary,
+.work-register-center.create-mode > .work-register-toolbar,
+.work-register-center.create-mode > .work-register-table-wrap {
+  display: none;
+}
+
+.work-register-center.create-mode .work-register-create-overlay {
+  position: static;
+  inset: auto;
+  display: block;
+  background: transparent;
+}
+
+.work-register-center.create-mode .work-register-create-wizard {
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+  box-shadow: none;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 1rem;
+}
+
+.work-register-source-choice {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+  margin: 0.75rem 0 1.25rem;
+}
+
+.work-register-source-choice label {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.2rem 0.65rem;
+  align-items: start;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  border-radius: 0.8rem;
+  padding: 0.9rem;
+  cursor: pointer;
+}
+
+.work-register-source-choice label.selected {
+  border-color: #0f5f9f;
+  background: rgba(15, 95, 159, 0.08);
+}
+
+.work-register-source-choice input {
+  grid-row: 1 / span 2;
+  margin-top: 0.15rem;
+}
+
+.work-register-source-choice small {
+  color: #64748b;
+}
+
+.work-register-sell-authority-notice {
+  margin: 0.9rem 0;
+  border-left: 4px solid #0f5f9f;
+  border-radius: 0.65rem;
+  background: rgba(15, 95, 159, 0.08);
+  padding: 0.85rem 1rem;
+}
+
+.work-register-sell-authority-notice p {
+  margin: 0.3rem 0 0;
+  color: #475569;
+}
+
+@media (max-width: 760px) {
+  .work-register-source-choice {
+    grid-template-columns: 1fr;
+  }
+}
+
 .work-register-create-wizard {
   width: min(980px, 98vw);
   height: 100vh;
