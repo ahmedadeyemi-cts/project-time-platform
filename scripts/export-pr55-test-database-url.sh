@@ -21,6 +21,12 @@ normalize_az_value() {
   esac
 }
 
+mask_value() {
+  local value="$1"
+  value="${value//%/%25}"
+  printf '::add-mask::%s\n' "$value"
+}
+
 read_container_env() {
   local name="$1"
   local value secret_ref
@@ -85,8 +91,8 @@ esac
 [[ "$DB_USER" != *$'\n'* && "$DB_NAME" != *$'\n'* && "$DB_PASSWORD" != *$'\n'* ]] ||
   fail "Database configuration contains an unsupported newline."
 
-printf '::add-mask::%s\n' "$DB_USER"
-printf '::add-mask::%s\n' "$DB_PASSWORD"
+mask_value "$DB_USER"
+mask_value "$DB_PASSWORD"
 
 PROJECTPULSE_TEST_DATABASE_URL="$(
   DB_HOST="$DB_HOST" \
@@ -113,7 +119,7 @@ PY
 [[ -n "$PROJECTPULSE_TEST_DATABASE_URL" ]] ||
   fail "The PostgreSQL connection URI could not be constructed."
 
-printf '::add-mask::%s\n' "$PROJECTPULSE_TEST_DATABASE_URL"
+mask_value "$PROJECTPULSE_TEST_DATABASE_URL"
 printf 'PROJECTPULSE_TEST_DATABASE_URL=%s\n' "$PROJECTPULSE_TEST_DATABASE_URL" >> "$GITHUB_ENV_FILE"
 
 echo "PR55_DATABASE_CONFIG_SOURCE=AZURE_CONTAINER_APP"
