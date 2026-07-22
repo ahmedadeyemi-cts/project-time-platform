@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Npgsql;
+using NpgsqlTypes;
 
 namespace ProjectTime.Api.Modules;
 
@@ -611,7 +612,7 @@ public static class SecurityOperationsResponseModule
                      i.updated_at DESC
             LIMIT 200;
             """, connection);
-        command.Parameters.AddWithValue("incident_id", (object?)incidentId ?? DBNull.Value);
+        command.Parameters.Add("incident_id", NpgsqlDbType.Uuid).Value = (object?)incidentId ?? DBNull.Value;
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
@@ -641,7 +642,7 @@ public static class SecurityOperationsResponseModule
             WHERE (@incident_id IS NULL OR incident_id = @incident_id)
             ORDER BY requested_at DESC LIMIT 200;
             """, connection);
-        command.Parameters.AddWithValue("incident_id", (object?)incidentId ?? DBNull.Value);
+        command.Parameters.Add("incident_id", NpgsqlDbType.Uuid).Value = (object?)incidentId ?? DBNull.Value;
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Npgsql;
+using NpgsqlTypes;
 
 namespace ProjectTime.Api.Modules;
 
@@ -558,7 +559,7 @@ public static class SystemDiagnosticRemediationModule
             GROUP BY s.diagnostic_session_id, u.display_name, u.email
             ORDER BY s.updated_at DESC LIMIT 200;
             """, connection);
-        command.Parameters.AddWithValue("session_id", (object?)sessionId ?? DBNull.Value);
+        command.Parameters.Add("session_id", NpgsqlDbType.Uuid).Value = (object?)sessionId ?? DBNull.Value;
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
@@ -596,7 +597,7 @@ public static class SystemDiagnosticRemediationModule
             WHERE (@session_id IS NULL OR diagnostic_session_id = @session_id)
             ORDER BY requested_at DESC LIMIT 200;
             """, connection);
-        command.Parameters.AddWithValue("session_id", (object?)sessionId ?? DBNull.Value);
+        command.Parameters.Add("session_id", NpgsqlDbType.Uuid).Value = (object?)sessionId ?? DBNull.Value;
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {

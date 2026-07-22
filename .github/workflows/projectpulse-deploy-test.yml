@@ -55,7 +55,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           API_IMAGE='${{ vars.AZURE_ACR_NAME }}.azurecr.io/project-health-dashboard-api:ci-${{ github.sha }}'
-          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --image "$API_IMAGE" --revision-suffix "ciapi-${GITHUB_RUN_ID}" --output none
+          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --image "$API_IMAGE" --set-env-vars PROJECTPULSE_ENVIRONMENT=test --revision-suffix "ciapi-${GITHUB_RUN_ID}" --output none
 
       - name: Validate API
         shell: bash
