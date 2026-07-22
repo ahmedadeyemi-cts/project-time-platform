@@ -12,15 +12,15 @@ or test an external provider.
 
 No separate GitHub database secret is required. After Azure login, the workflow
 reads `PTP_DB_HOST`, `PTP_DB_PORT`, `PTP_DB_USER`, and `PTP_DB_NAME` from
-the existing test API Container App. It follows the `PTP_DB_PASSWORD` secret
-reference, masks sensitive values immediately, URL-encodes them, and exports the
-PostgreSQL URI only to the current runner's ephemeral environment.
+the existing test API Container App, along with `PTP_DB_SSLMODE` when present.
+It follows the `PTP_DB_PASSWORD` secret reference, masks sensitive values
+immediately, URL-encodes them, and exports the PostgreSQL URI only to the current
+runner's ephemeral environment.
 
 The Azure identity used by the workflow must be able to read the test Container
 App configuration and list its secrets. The workflow stops before migrations or
 deployment if any value or permission is unavailable. Do not copy database
 credentials into GitHub, source, workflow inputs, logs, or chat.
-
 The existing test-environment Azure variables must remain configured:
 
 - `AZURE_CLIENT_ID`
@@ -41,11 +41,23 @@ The existing test-environment Azure variables must remain configured:
 5. Enter `DEPLOY-PR55-TO-TEST` in the confirmation field.
 6. Start the workflow and wait for every step to pass.
 
+The test PostgreSQL hostname is private and cannot be resolved by a
+GitHub-hosted runner. The workflow therefore builds a dedicated migration image
+whose context contains only the guarded migrator, migrations 034 and 035, the
+migration Dockerfile, and the exact release-commit marker. It resolves that
+image to an immutable ACR digest and runs it as a one-time manual Container Apps
+Job in the same managed environment as the test API, where the linked private
+DNS zone is available. The database URI exists on the temporary job only as an
+Azure secret reference.
+
 The workflow stops before changing either application if the commit, migration
-checksums, database prerequisites, container builds, or atomic migration
-transaction fails. After deployment starts, a failed health or smoke check
-restores both previously captured application images. Migrations 034 and 035 are
-additive and remain in place after a successful transaction.
+checksums, database prerequisites, container builds, private migration job, or
+atomic migration transaction fails. The job has no automatic retries, is
+bounded to 15 minutes, and is deleted after success or failure by both a script
+trap and an always-run workflow cleanup step. After application deployment
+starts, a failed health or smoke check restores both previously captured
+application images. Migrations 034 and 035 are additive and remain in place
+after a successful transaction.
 
 Both Container Apps must already use single-revision mode. The workflow builds
 commit-specific tags, resolves their registry digests, and deploys the immutable
@@ -59,9 +71,14 @@ application.
   App without exposing or duplicating credentials.
 - The release source is exactly the PR #55 merge commit.
 - Migration 034 and migration 035 match the reviewed SHA-256 checksums.
-- Both migrations apply in one PostgreSQL transaction.
+- The migration image is resolved to an immutable digest in the approved ACR.
+- The migration runs inside the test API's Container Apps environment and
+  reaches the database through private DNS.
+- Both migrations apply in one PostgreSQL transaction with retries disabled.
 - The Module 026 audit constraint accepts module `026`.
 - The Work Register `source_mode` and audit foreign-key contracts exist.
+- The temporary migration job and its database secret are removed before API
+  deployment begins.
 - The active API and web image references match the immutable release digests.
 - The production frontend build reruns the module-ordering contract checks.
 - `/health` and `/api/version` respond successfully.
