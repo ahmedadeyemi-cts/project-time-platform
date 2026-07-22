@@ -7,6 +7,21 @@ development. Central-register ownership is assigned to the Module 076 current-ma
 integration workspace for the current coordination cycle. Individual module workspaces continue to own
 their module-specific README and evidence.
 
+## Current authorized work — 2026-07-22
+
+| Workstream | Source state | Branch / checkpoint | Database / external state | Next controlled action |
+|---|---|---|---|---|
+| Numeric module ordering | Validated and locally committed | `feature/module-ordering-20260722@2b5b4ee` | No database or external action | Preserve automatic `001` through `999` ordering; Module 999 is always last |
+| 026 CRM/ERP Integration Control Center | Native React/API source implemented; protected validation in progress | `feature/module-ordering-20260722` after `2b5b4ee` | Migration 034 created but not applied; zero external provider calls; no credentials configured | Complete protected source validation, then publish through a reviewable PR; migration, secrets, external OAuth, connection tests, and deployment remain separate actions |
+| 055C / 055D Work Register split | Approved scope; implementation pending after Module 026 | Same isolated branch unless separated at checkpoint | No database action | Implement 055C edit and 055D create with role enforcement, SELL/GSD source rules, and audit evidence |
+
+The Module 026 source supports SELL, Salesforce, Certinia, ServiceNow, and
+manually registered CRM/ERP platforms. OAuth 2.0 and write-only API-key
+configuration are present. Secret values are encrypted server-side and never
+returned. Only Integration Administrators and Administrators can configure or
+test connections; authorized Sales and Project Team Coordinator users can view
+sanitized availability.
+
 ## Current forward-moving source baseline
 
 | Field | Value |
@@ -26,6 +41,7 @@ start from current `main` or a later verified forward-moving commit.
 
 | Module | Source checkpoint | GitHub state | Runtime/deployment state | Next controlled action |
 |---|---|---|---|---|
+| 026 | Native CRM/ERP control-center source implemented on the numeric-ordering checkpoint | Local branch; no PR yet | Migration 034 not applied; no credential, OAuth, connection-test, or deployment action performed | Finish protected validation and publish source through a separate CI-gated PR |
 | 001 | Existing installed Time Entry plus separately managed follow-up work | No new central-register success asserted in this checkpoint | Existing installed behavior remains protected | Reconcile only through its separately governed worktree/PR |
 | 002 | Role-aware Approval Center source commit `f5ede8f6717b01c8f4bf7905b433fead38210007` | PR 23 merged as `2b4a6d1a1242a25b52110a2a209ff8ddda0b8ca4`; three review threads remain unresolved | Merged to source; no deployment asserted here | Preserve current behavior in later integration; address two P1 and one P2 review findings only in separately governed Module 002 work |
 | 062 | Final head `3852a21e1098de9ad907e3da91e0646d99adcb7c`; merged as `04fcafd4f49840428645e537db7de436e34b1c88` | PR 19 merged; review correction and checks passed | **Not post-merge deployed**; portal verification pending | Controlled test deployment, then identity/profile/photo/presence smoke tests |

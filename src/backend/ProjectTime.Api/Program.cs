@@ -15,6 +15,13 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddProblemDetails();
 builder.Services.AddProjectPulseAi();
+builder.Services
+    .AddHttpClient("Module026", client => client.Timeout = TimeSpan.FromSeconds(12))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+    {
+        AllowAutoRedirect = false,
+        AutomaticDecompression = System.Net.DecompressionMethods.GZip | System.Net.DecompressionMethods.Deflate
+    });
 
 var app = builder.Build();
 
@@ -36898,6 +36905,10 @@ ProjectTime.Api.Modules.WorkRegisterPurchaseOrderModule.MapWorkRegisterPurchaseO
 /* WORK_REGISTER_PO_ENDPOINT_MAP_END */
 
 ProjectTime.Api.Modules.IdentityProfileModule.MapIdentityProfileEndpoints(app);
+
+/* MODULE_026_CRM_ERP_INTEGRATION_ENDPOINT_MAP_START */
+app.MapCrmErpIntegrationEndpoints();
+/* MODULE_026_CRM_ERP_INTEGRATION_ENDPOINT_MAP_END */
 
 /* MODULE_064_SHARED_AI_ENDPOINT_MAP_START */
 app.MapAiProviderConfigurationEndpoints();

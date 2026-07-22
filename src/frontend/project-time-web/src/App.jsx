@@ -3,6 +3,7 @@ import SessionIntelligenceDrawer from './SessionIntelligenceDrawer.jsx';
 import ProfileIdentitySurface from './identity/ProfileIdentitySurface.jsx';
 import ApprovalMailbox from './ApprovalMailbox.jsx';
 import NativeModuleAdministrationPanel from './NativeModuleAdministrationPanel.jsx';
+import CrmErpIntegrationCenter from './CrmErpIntegrationCenter.jsx';
 import {
   compareProjectPulseModules,
   sortProjectPulseModules
@@ -1875,10 +1876,10 @@ const roleWorkspaceModules = sortProjectPulseModules([
   {
     route: "crm-integration",
     href: "#crm-integration",
-    title: "CRM Integration Framework",
+    title: "CRM/ERP Integration Control Center",
     navLabel: "MODULE 026",
-    description: "Review CRM mappings, synchronization previews, and controlled promotion into intake workflows.",
-    permissions: ["VIEW_CUSTOMERS", "VIEW_PROJECT_INTAKE", "MANAGE_PROJECT_INTAKE", "SYSTEM_ADMINISTRATION", "MANAGE_ALL"],
+    description: "Connect SELL, Salesforce, Certinia, ServiceNow, and manually registered CRM/ERP platforms and review sanitized availability status.",
+    permissions: ["VIEW_INTEGRATIONS_026", "MANAGE_INTEGRATIONS_026", "VIEW_CUSTOMERS", "VIEW_PROJECT_INTAKE", "SYSTEM_ADMINISTRATION", "MANAGE_ALL"],
     roleCodes: ["SALES", "ACCOUNT_EXECUTIVE", "INSIDE_SALES", "SOLUTION_ARCHITECT", "SA", "SAA", "PROJECT_TEAM_COORDINATOR"],
   },
   {
@@ -3376,11 +3377,11 @@ function getInstalledProjectPulseModuleRegistry() {
     {
       route: "crm-integration",
       href: "#crm-integration",
-      title: "CRM Integration Framework",
+      title: "CRM/ERP Integration Control Center",
       navLabel: "MODULE 026",
       group: "Sales & Opportunities",
-      description: "Review CRM mappings, synchronization previews, and controlled promotion into intake workflows.",
-      permissions: ["VIEW_CUSTOMERS", "VIEW_PROJECT_INTAKE", "MANAGE_PROJECT_INTAKE", "SYSTEM_ADMINISTRATION", "MANAGE_ALL"],
+      description: "Connect SELL, Salesforce, Certinia, ServiceNow, and manually registered CRM/ERP platforms and review sanitized availability status.",
+      permissions: ["VIEW_INTEGRATIONS_026", "MANAGE_INTEGRATIONS_026", "VIEW_CUSTOMERS", "VIEW_PROJECT_INTAKE", "SYSTEM_ADMINISTRATION", "MANAGE_ALL"],
     },
     {
       route: "signed-handoff",
@@ -7063,6 +7064,12 @@ Analytics - Variphy / Infortel`}
       {(activeRoute === 'cicd-pipeline' && canSeeAny(['SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
         <section id="cicd-pipeline" className="panel cicd-pipeline-route-panel">
           <CiCdPipelineCenter />
+        </section>
+      ) : null}
+
+      {(activeRoute === 'crm-integration' && canSeeAny(['VIEW_INTEGRATIONS_026', 'MANAGE_INTEGRATIONS_026', 'VIEW_CUSTOMERS', 'VIEW_PROJECT_INTAKE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
+        <section id="crm-integration" className="panel crm-erp-integration-route-panel">
+          <CrmErpIntegrationCenter />
         </section>
       ) : null}
 

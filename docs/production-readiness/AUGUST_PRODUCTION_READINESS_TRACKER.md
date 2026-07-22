@@ -290,9 +290,21 @@ and authenticated portal acceptance are separate controlled gates.
 - Add per-module help article links.
 - Add admin support guidance.
 
+## Module 026 CRM/ERP Integration Control Center — July 22, 2026 Source Checkpoint
+
+- The historical browser-local Module 026 overlay is disabled in favor of a native React page and protected backend API.
+- Built-in providers are SELL (Zendesk Sell), Salesforce, Certinia, and ServiceNow.
+- Integration Administrators and Administrators can add other CRM/ERP platforms manually.
+- Provider authentication supports OAuth 2.0 or a write-only API key.
+- Credentials and OAuth tokens require encrypted server-side storage and are never returned to the UI, logs, or audit evidence.
+- Explicit connection tests report Available, Authentication Failed, Unavailable, Disabled, or Not Configured and record sanitized audit evidence.
+- Migration `034_module_026_crm_erp_integrations.sql` is created but has **not** been applied.
+- No external provider call, credential configuration, OAuth consent, database migration, or production deployment has been performed in this checkpoint.
+- Source validation and PR review are required before any separately authorized migration, secret configuration, external test, or deployment.
+
 ## Items Not in August Production Readiness Scope
 - Full production Azure migration.
-- Salesforce API integration.
+- Production activation of Salesforce, SELL, Certinia, ServiceNow, or another Module 026 connector before migration, secret, provider, security, and deployment approvals.
 - Outlook calendar sync.
 - Multi-server communication.
 - Real email sending.
@@ -312,7 +324,7 @@ and authenticated portal acceptance are separate controlled gates.
 - Add intake approval status workflow.
 - Add manager approval for assignments.
 - Add conversion from approved intake into project workspace.
-- Add Salesforce opportunity integration later.
+- Connect approved Salesforce opportunity fields through Module 026 after its migration, OAuth, mapping, and production activation gates pass.
 - Add Outlook calendar/resource sync later.
 - Add export and audit detail views.
 
@@ -320,7 +332,7 @@ and authenticated portal acceptance are separate controlled gates.
 - Project intake supports manual entry, manual document upload, and Salesforce source references.
 - Salesforce source support stores source system, external reference ID, record type, and source URL.
 - Manual upload support stores intake document metadata and file path.
-- Future production item: connect Salesforce API/OAuth and field mapping.
+- Module 026 now contains the Salesforce OAuth/configuration source boundary; production OAuth consent and field mapping remain gated and unperformed.
 - Future production item: add document scanning, retention, and extraction/parsing workflow.
 
 ### Project Document Handling

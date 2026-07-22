@@ -103,6 +103,9 @@ COPY src/backend/ProjectTime.Api/Modules/OemVendorDirectoryModule.cs \
 COPY src/backend/ProjectTime.Api/Modules/DefectTrackerModule.cs \
      src/backend/ProjectTime.Api/Modules/DefectTrackerModule.cs
 
+COPY src/backend/ProjectTime.Api/Modules/CrmErpIntegrationModule.cs \
+     src/backend/ProjectTime.Api/Modules/CrmErpIntegrationModule.cs
+
 COPY src/backend/ProjectTime.Api/Modules/GovernedOperationsReadModule.cs \
      src/backend/ProjectTime.Api/Modules/GovernedOperationsReadModule.cs
 
@@ -165,6 +168,12 @@ COPY docs/modules/module-075-integration-event-gateway/ \
 
 COPY docs/modules/module-076-defect-tracker/ \
      docs/modules/module-076-defect-tracker/
+
+COPY docs/modules/module-026-crm-erp-integrations/ \
+     docs/modules/module-026-crm-erp-integrations/
+
+COPY database/migrations/034_module_026_crm_erp_integrations.sql \
+     database/migrations/034_module_026_crm_erp_integrations.sql
 
 COPY docs/modules/module-077-release-deployment-control/ \
      docs/modules/module-077-release-deployment-control/

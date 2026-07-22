@@ -1,7 +1,14 @@
-# 026 CRM Integration Framework
+# 026 CRM/ERP Integration Control Center
 
 ## Status
-Applied as complete Module 026 framework pending validation and commit.
+Native source implemented for validation. Migration 034 is created but not applied, and no production deployment or external provider call has been performed.
+
+## 026E Native integration control center
+
+The historical browser-local overlay is disabled. The native React and API
+surfaces support SELL, Salesforce, Certinia, ServiceNow, and manually registered
+platforms with OAuth 2.0 or write-only API-key configuration, encrypted server-
+side credential storage, explicit availability tests, and audit evidence.
 
 ## 026A CRM Integration Framework Foundation
 Created the dashboard module and standalone `#crm-integration` route.

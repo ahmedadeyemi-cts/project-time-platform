@@ -627,6 +627,20 @@ const detailedModuleGuides = {
     steps: ['Review integration status.', 'Select the approved import/staging action.', 'Validate source and mapping.', 'Review errors before committing records.'],
     notes: ['Do not treat a preview or staged row as a completed financial posting.']
   },
+  'crm-integration': {
+    category: 'Expenses & Integrations',
+    audience: ['Sales / Account Executive', 'Project Team Coordinator', 'Administrator'],
+    purpose: 'Connect SELL, Salesforce, Certinia, ServiceNow, and approved custom CRM/ERP platforms and review sanitized service availability.',
+    functions: [
+      'Shows built-in and manually registered CRM/ERP providers.',
+      'Supports OAuth 2.0 or write-only API-key configuration.',
+      'Encrypts credentials server-side and never returns their values.',
+      'Runs explicit public-HTTPS availability tests and records sanitized status.',
+      'Audits provider, credential, OAuth, and connection-test actions.'
+    ],
+    steps: ['Select a provider.', 'Save its non-secret endpoint and authentication metadata.', 'Save the write-only credential.', 'Complete OAuth consent when required.', 'Run Test availability and review the resulting status.'],
+    notes: ['Only Integration Administrators and Administrators can change connection settings. View-As remains read-only.']
+  },
   'psa-modules': {
     category: 'Expenses & Integrations',
     audience: ['Accounting', 'Project Manager', 'Administrator'],

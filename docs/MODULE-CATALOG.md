@@ -52,7 +52,7 @@ Modules 998/997 HTTP 401 barriers, and both protected web bundles.
 | 023 | Time Compliance & Notification Center | `time-compliance` | Installed | Notification and compliance dependency |
 | 024 | Sales-to-Delivery Intake Foundation | `sales-intake` | Installed | Restored registry/navigation on current main |
 | 025 | SOW Generator + Claude Review Workflow | `sow-generator` | Installed | GSD/SOW generation dependency |
-| 026 | CRM Integration Framework | `crm-integration` | Installed | SELL/CRM intake dependency |
+| 026 | CRM/ERP Integration Control Center | `crm-integration` | Native source implemented; migration 034 not applied | SELL, Salesforce, Certinia, ServiceNow, and manually registered platforms; OAuth 2.0/API-key status and audit boundary |
 | 027 | Signed SOW Handoff + Assignment Trigger | `signed-handoff` | Installed | Assignment and launch dependency |
 | 028 | SOW-Aware AI Time Entry Generator | `ai-time-entry` | Installed | AI output remains engineer-reviewed |
 | 029 | User Acceptance / Role + Workflow Validation Center | `uat-validation` | Installed | Validation dependency |
