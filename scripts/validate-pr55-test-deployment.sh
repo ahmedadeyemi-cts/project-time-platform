@@ -132,6 +132,44 @@ grep -Fq '/api/integrations/026/providers' "$WORKFLOW" || fail "Module 026 route
 grep -Fq '/api/work-register/overview' "$WORKFLOW" || fail "Work Register route check is missing."
 grep -Fq 'Manage Existing Projects' "$WORKFLOW" || fail "Module 055C frontend check is missing."
 grep -Fq 'Create New Project' "$WORKFLOW" || fail "Module 055D frontend check is missing."
+web_validation_block="$(sed -n '/- name: Validate deployed web and release identity/,/- name: Write deployment evidence/p' "$WORKFLOW")"
+grep -Fq 'EXPECTED_LABELS=(' <<<"$web_validation_block" || fail "Web readiness expected-label set is missing."
+expected_labels_block="$(sed -n '/EXPECTED_LABELS=(/,/          )/p' <<<"$web_validation_block")"
+for expected_label in \
+  'Manage Existing Projects' \
+  'Create New Project' \
+  'MODULE 055C' \
+  'MODULE 055D' \
+  'MODULE 999'; do
+  grep -Fq "'$expected_label'" <<<"$expected_labels_block" ||
+    fail "Web readiness expected-label set is missing: $expected_label"
+done
+grep -Fq 'for attempt in $(seq 1 30); do' <<<"$web_validation_block" || fail "Five-minute web readiness retry loop is missing."
+grep -Fq 'CACHE_BUSTER="pr55-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${attempt}"' <<<"$web_validation_block" ||
+  fail "Per-attempt web cache buster is missing."
+grep -Fq 'INDEX_URL="$BASE_URL/?release_check=$CACHE_BUSTER"' <<<"$web_validation_block" ||
+  fail "HTML readiness request is not cache-busted."
+grep -Fq 'ASSET_URL_WITH_BUSTER="$ASSET_URL?release_check=$CACHE_BUSTER"' <<<"$web_validation_block" ||
+  fail "JavaScript readiness request is not cache-busted."
+grep -Fq -- "--header 'Cache-Control: no-cache'" <<<"$web_validation_block" ||
+  fail "Web readiness requests do not bypass intermediary caches."
+grep -Fq 'for label in "${EXPECTED_LABELS[@]}"; do' <<<"$web_validation_block" ||
+  fail "Expected release labels are not checked inside the readiness loop."
+grep -Fq 'MISSING_LABELS+=("$label")' <<<"$web_validation_block" ||
+  fail "Web readiness does not retain missing-label evidence."
+grep -Fq 'WEB_READINESS_ATTEMPT=' <<<"$web_validation_block" ||
+  fail "Web readiness does not print per-attempt diagnostics."
+grep -Fq "WEB_CONTENT_READY='true'" <<<"$web_validation_block" ||
+  fail "Web readiness cannot distinguish expected release content from a stale HTTP 200."
+grep -Fq '(( attempt < 30 )) && sleep 10' <<<"$web_validation_block" ||
+  fail "Web readiness no longer preserves the bounded five-minute wait."
+grep -Fq 'Active API image does not match the expected release image:' <<<"$web_validation_block" ||
+  fail "API image identity failure does not print actionable evidence."
+grep -Fq 'Active web image does not match the expected release image:' <<<"$web_validation_block" ||
+  fail "Web image identity failure does not print actionable evidence."
+if grep -Fq '[[ "$STATUS" == '\''200'\'' ]] && break' <<<"$web_validation_block"; then
+  fail "Web readiness must not accept HTTP 200 before expected release content is verified."
+fi
 grep -Fq 'scripts/validate-pr55-test-deployment.sh' "$CI_WORKFLOW" || fail "CI does not enforce this deployment guard."
 
 azure_login_line="$(grep -n 'uses: azure/login@v2' "$WORKFLOW" | head -1 | cut -d: -f1)"
