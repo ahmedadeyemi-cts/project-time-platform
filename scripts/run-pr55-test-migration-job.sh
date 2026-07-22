@@ -91,14 +91,41 @@ REGISTRY_IDENTITY="$(az containerapp show \
   --query "properties.configuration.registries[?server=='$ACR_SERVER'].identity | [0]" \
   --output tsv \
   --only-show-errors)"
+REGISTRY_IDENTITY_LOWER="${REGISTRY_IDENTITY,,}"
 
 registry_args=(--registry-server "$ACR_SERVER")
-case "$REGISTRY_IDENTITY" in
-  system-environment|/subscriptions/*/resourceGroups/*/providers/Microsoft.ManagedIdentity/userAssignedIdentities/*)
+job_identity_args=()
+case "$REGISTRY_IDENTITY_LOWER" in
+  system-environment)
     registry_args+=(--registry-identity "$REGISTRY_IDENTITY")
     echo "PR55_MIGRATION_JOB_REGISTRY_AUTH=REUSABLE_MANAGED_IDENTITY"
     ;;
-  ""|None|null|system)
+  /subscriptions/*)
+    [[ "$REGISTRY_IDENTITY_LOWER" =~ ^/subscriptions/[^/]+/resourcegroups/[^/]+/providers/microsoft\.managedidentity/userassignedidentities/[^/]+$ ]] ||
+      fail "The test API uses an unsupported ACR identity reference."
+
+    mapfile -t API_USER_ASSIGNED_IDENTITIES < <(az containerapp show \
+      --resource-group "$RESOURCE_GROUP" \
+      --name "$API_APP" \
+      --query "identity.userAssignedIdentities | keys(@)" \
+      --output tsv \
+      --only-show-errors)
+
+    REGISTRY_IDENTITY_ASSIGNED=0
+    for assigned_identity in "${API_USER_ASSIGNED_IDENTITIES[@]}"; do
+      if [[ "${assigned_identity,,}" == "$REGISTRY_IDENTITY_LOWER" ]]; then
+        REGISTRY_IDENTITY_ASSIGNED=1
+        break
+      fi
+    done
+    (( REGISTRY_IDENTITY_ASSIGNED == 1 )) ||
+      fail "The test API ACR user-assigned identity is not assigned to the API app."
+
+    job_identity_args+=(--mi-user-assigned "$REGISTRY_IDENTITY")
+    registry_args+=(--registry-identity "$REGISTRY_IDENTITY")
+    echo "PR55_MIGRATION_JOB_REGISTRY_AUTH=REUSABLE_USER_ASSIGNED_IDENTITY"
+    ;;
+  ""|none|null|system)
     ;;
   *)
     fail "The test API uses an unsupported ACR identity reference."
@@ -165,6 +192,7 @@ az containerapp job create \
   --image "$MIGRATION_IMAGE" \
   --cpu 0.25 \
   --memory 0.5Gi \
+  "${job_identity_args[@]}" \
   --secrets "pr55-db-url=$DATABASE_URL" \
   --env-vars \
     PROJECTPULSE_TEST_DATABASE_URL=secretref:pr55-db-url \
