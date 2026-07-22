@@ -43,7 +43,9 @@ additive and remain in place after a successful transaction.
 
 Both Container Apps must already use single-revision mode. The workflow builds
 commit-specific tags, resolves their registry digests, and deploys the immutable
-digest references so a mutable tag cannot change the tested release.
+digest references so a mutable tag cannot change the tested release. It also
+resolves both active rollback images to immutable digests before changing either
+application.
 
 ## What the workflow verifies automatically
 

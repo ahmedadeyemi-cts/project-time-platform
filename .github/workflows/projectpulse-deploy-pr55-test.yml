@@ -110,11 +110,11 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          OLD_API_IMAGE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
-          OLD_WEB_IMAGE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
+          RAW_OLD_API_IMAGE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
+          RAW_OLD_WEB_IMAGE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
           API_REVISION_MODE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.configuration.activeRevisionsMode' -o tsv)"
           WEB_REVISION_MODE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.configuration.activeRevisionsMode' -o tsv)"
-          [[ -n "$OLD_API_IMAGE" && -n "$OLD_WEB_IMAGE" ]] || {
+          [[ -n "$RAW_OLD_API_IMAGE" && -n "$RAW_OLD_WEB_IMAGE" ]] || {
             echo 'Could not capture both active image references. Deployment stopped.' >&2
             exit 1
           }
@@ -122,10 +122,41 @@ jobs:
             echo 'Both Container Apps must use single-revision mode before this deployment.' >&2
             exit 1
           }
+
+          resolve_acr_image_digest() {
+            local image="$1"
+            local registry='${{ vars.AZURE_ACR_NAME }}.azurecr.io/'
+            local relative repository digest
+
+            case "$image" in
+              "$registry"*@sha256:*) printf '%s\n' "$image"; return 0 ;;
+              "$registry"*:*) ;;
+              *)
+                echo "Rollback image is not a tagged or digest-pinned image in the approved ACR: $image" >&2
+                return 1
+                ;;
+            esac
+
+            relative="${image#"$registry"}"
+            repository="${relative%:*}"
+            digest="$(az acr repository show \
+              --name '${{ vars.AZURE_ACR_NAME }}' \
+              --image "$relative" \
+              --query digest \
+              -o tsv)"
+            [[ "$digest" == sha256:* ]] || {
+              echo "Could not resolve the rollback digest for $image." >&2
+              return 1
+            }
+            printf '%s%s@%s\n' "$registry" "$repository" "$digest"
+          }
+
+          OLD_API_IMAGE="$(resolve_acr_image_digest "$RAW_OLD_API_IMAGE")"
+          OLD_WEB_IMAGE="$(resolve_acr_image_digest "$RAW_OLD_WEB_IMAGE")"
           echo "old_api_image=$OLD_API_IMAGE" >> "$GITHUB_OUTPUT"
           echo "old_web_image=$OLD_WEB_IMAGE" >> "$GITHUB_OUTPUT"
-          echo "CURRENT_API_IMAGE=$OLD_API_IMAGE"
-          echo "CURRENT_WEB_IMAGE=$OLD_WEB_IMAGE"
+          echo "CURRENT_API_IMAGE_IMMUTABLE=$OLD_API_IMAGE"
+          echo "CURRENT_WEB_IMAGE_IMMUTABLE=$OLD_WEB_IMAGE"
           echo "API_REVISION_MODE=$API_REVISION_MODE"
           echo "WEB_REVISION_MODE=$WEB_REVISION_MODE"
 
