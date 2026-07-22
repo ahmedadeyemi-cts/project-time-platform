@@ -96,7 +96,7 @@ jobs:
         env:
           AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
           AZURE_API_APP: ${{ vars.AZURE_API_APP }}
-        run: control/scripts/export-pr55-test-database-url.sh
+        run: bash control/scripts/export-pr55-test-database-url.sh
 
       - name: Install PostgreSQL client
         shell: bash
