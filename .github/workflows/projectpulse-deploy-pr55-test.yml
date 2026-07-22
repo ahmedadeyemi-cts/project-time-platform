@@ -167,23 +167,20 @@ jobs:
           test -f deployment/containers/api/Dockerfile
           test -f deployment/containers/web/Dockerfile
 
-          az acr build \
-            --registry '${{ vars.AZURE_ACR_NAME }}' \
-            --image "project-health-dashboard-api:pr55-$TARGET_COMMIT" \
-            --file deployment/containers/api/Dockerfile \
-            .
-          az acr build \
-            --registry '${{ vars.AZURE_ACR_NAME }}' \
-            --image "project-health-dashboard-web:pr55-$TARGET_COMMIT" \
-            --file deployment/containers/web/Dockerfile \
-            .
-
-          API_DIGEST="$(az acr repository show --name '${{ vars.AZURE_ACR_NAME }}' --image "$API_REPOSITORY:$RELEASE_TAG" --query digest -o tsv)"
-          WEB_DIGEST="$(az acr repository show --name '${{ vars.AZURE_ACR_NAME }}' --image "$WEB_REPOSITORY:$RELEASE_TAG" --query digest -o tsv)"
-          [[ "$API_DIGEST" == sha256:* && "$WEB_DIGEST" == sha256:* ]] || {
-            echo 'Could not resolve immutable image digests for both release images.' >&2
-            exit 1
-          }
+          API_DIGEST="$(
+            ../control/scripts/build-pr55-acr-image.sh \
+              '${{ vars.AZURE_ACR_NAME }}' \
+              "$API_REPOSITORY:$RELEASE_TAG" \
+              deployment/containers/api/Dockerfile \
+              .
+          )"
+          WEB_DIGEST="$(
+            ../control/scripts/build-pr55-acr-image.sh \
+              '${{ vars.AZURE_ACR_NAME }}' \
+              "$WEB_REPOSITORY:$RELEASE_TAG" \
+              deployment/containers/web/Dockerfile \
+              .
+          )"
 
           API_IMAGE='${{ vars.AZURE_ACR_NAME }}.azurecr.io/'"$API_REPOSITORY@$API_DIGEST"
           WEB_IMAGE='${{ vars.AZURE_ACR_NAME }}.azurecr.io/'"$WEB_REPOSITORY@$WEB_DIGEST"
@@ -233,21 +230,13 @@ jobs:
             exit 1
           }
 
-          az acr build \
-            --registry '${{ vars.AZURE_ACR_NAME }}' \
-            --image "$MIGRATION_REPOSITORY:$MIGRATION_TAG" \
-            --file "$CONTEXT/Dockerfile" \
-            "$CONTEXT"
-
-          MIGRATION_DIGEST="$(az acr repository show \
-            --name '${{ vars.AZURE_ACR_NAME }}' \
-            --image "$MIGRATION_REPOSITORY:$MIGRATION_TAG" \
-            --query digest \
-            --output tsv)"
-          [[ "$MIGRATION_DIGEST" == sha256:* ]] || {
-            echo 'Could not resolve the immutable migration image digest.' >&2
-            exit 1
-          }
+          MIGRATION_DIGEST="$(
+            control/scripts/build-pr55-acr-image.sh \
+              '${{ vars.AZURE_ACR_NAME }}' \
+              "$MIGRATION_REPOSITORY:$MIGRATION_TAG" \
+              "$CONTEXT/Dockerfile" \
+              "$CONTEXT"
+          )"
 
           MIGRATION_IMAGE='${{ vars.AZURE_ACR_NAME }}.azurecr.io/'"$MIGRATION_REPOSITORY@$MIGRATION_DIGEST"
           echo "image=$MIGRATION_IMAGE" >> "$GITHUB_OUTPUT"
