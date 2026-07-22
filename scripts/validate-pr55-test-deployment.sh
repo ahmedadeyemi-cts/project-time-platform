@@ -6,6 +6,7 @@ WORKFLOW="$REPO_ROOT/.github/workflows/projectpulse-deploy-pr55-test.yml"
 MIGRATOR="$REPO_ROOT/scripts/apply-pr55-test-migrations.sh"
 DATABASE_CONFIG="$REPO_ROOT/scripts/export-pr55-test-database-url.sh"
 MIGRATION_JOB="$REPO_ROOT/scripts/run-pr55-test-migration-job.sh"
+MIGRATION_JOB_IDENTITY_TEST="$REPO_ROOT/tests/test-pr55-migration-job-identity.sh"
 MIGRATION_DOCKERFILE="$REPO_ROOT/deployment/containers/pr55-migrator/Dockerfile"
 CI_WORKFLOW="$REPO_ROOT/.github/workflows/projectpulse-ci.yml"
 GUIDE="$REPO_ROOT/docs/PR55-TEST-DEPLOYMENT-VERIFICATION.md"
@@ -20,6 +21,7 @@ for file in \
   "$MIGRATOR" \
   "$DATABASE_CONFIG" \
   "$MIGRATION_JOB" \
+  "$MIGRATION_JOB_IDENTITY_TEST" \
   "$MIGRATION_DOCKERFILE" \
   "$CI_WORKFLOW" \
   "$GUIDE"; do
@@ -29,6 +31,7 @@ done
 bash -n "$MIGRATOR"
 bash -n "$DATABASE_CONFIG"
 bash -n "$MIGRATION_JOB"
+bash -n "$MIGRATION_JOB_IDENTITY_TEST"
 
 EXPECTED_RELEASE="ea23da6cfdd21a9444489ee4ffd14a6555de8c34"
 EXPECTED_034="275c2f3f5ad56d80f303327baeb665506bc41014d52af8a2b7082c6e451974b9"
@@ -102,8 +105,16 @@ grep -Fq 'PROJECTPULSE_TEST_DATABASE_URL=secretref:pr55-db-url' "$MIGRATION_JOB"
   fail "Database URI is not passed through a temporary Container Apps secret."
 grep -Fq 'MIGRATION_IMAGE" == "$ACR_NAME.azurecr.io/"*@sha256:' "$MIGRATION_JOB" ||
   fail "Migration job does not require an immutable approved-ACR image."
-grep -Fq 'system-environment|/subscriptions/*/resourceGroups/*/providers/Microsoft.ManagedIdentity/userAssignedIdentities/*)' "$MIGRATION_JOB" ||
-  fail "Migration job does not restrict identity reuse to reusable ACR identities."
+grep -Fq 'REGISTRY_IDENTITY_LOWER="${REGISTRY_IDENTITY,,}"' "$MIGRATION_JOB" ||
+  fail "Migration job does not normalize Azure identity resource-ID casing."
+grep -Fq '^/subscriptions/[^/]+/resourcegroups/[^/]+/providers/microsoft\.managedidentity/userassignedidentities/[^/]+$' "$MIGRATION_JOB" ||
+  fail "Migration job does not restrict identity reuse to user-assigned identity resource IDs."
+grep -Fq 'identity.userAssignedIdentities | keys(@)' "$MIGRATION_JOB" ||
+  fail "Migration job does not verify that the ACR identity is assigned to the API app."
+grep -Fq 'job_identity_args+=(--mi-user-assigned "$REGISTRY_IDENTITY")' "$MIGRATION_JOB" ||
+  fail "Migration job does not assign the reusable user identity to the temporary job."
+grep -Fq 'registry_args+=(--registry-identity "$REGISTRY_IDENTITY")' "$MIGRATION_JOB" ||
+  fail "Migration job does not use the reusable identity for the private registry."
 grep -Fq -- '--expose-token' "$MIGRATION_JOB" || fail "Ephemeral ACR-token fallback is missing."
 grep -Fq "REGISTRY_USERNAME='00000000-0000-0000-0000-000000000000'" "$MIGRATION_JOB" ||
   fail "The documented ACR token username is missing."
@@ -140,6 +151,8 @@ api_deploy_line="$(grep -n -- '- name: Deploy API' "$WORKFLOW" | head -1 | cut -
   fail "The immutable migration image must exist before the private job starts."
 (( migration_line < cleanup_line && cleanup_line < api_deploy_line )) ||
   fail "The migration job must succeed and be cleaned up before API deployment starts."
+
+"$MIGRATION_JOB_IDENTITY_TEST"
 
 echo "PR55_TEST_DEPLOYMENT_VALIDATION=PASS"
 echo "EXPECTED_RELEASE_COMMIT=$EXPECTED_RELEASE"
