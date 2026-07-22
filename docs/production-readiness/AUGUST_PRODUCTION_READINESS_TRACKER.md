@@ -2,21 +2,25 @@
 
 ## Active functional-completion workstream — Modules 075, 077–080, 997, and 998
 
-PR 51 passed ProjectPulse CI run `29869802703` and merged as
-`26e6b0116c4d0c4d258c6c23009c9e4c13575b7c`. That prerequisite repaired the
-actual-session authorization mismatch, heading contrast, independent surface
-loading, structured operational content, and web-container validation context
-for Modules 075 and 077–080. It has not been deployed by this workstream.
+PR 52 merged the Modules 997/998 operational activation as
+`ad82324722ad5dc3d1d7b1c729298b35aa8c0781`. PR 53 then merged the accepted
+nullable UUID and explicit test-environment repair as
+`ed76eae30f6b69c97ca597b8926b8bd1f675942b`. Source and US Signal mirror `main`
+contain the same merge commit. Production has not been deployed by this
+workstream.
 
-The next source slice is isolated on
-`feature/modules-997-998-operational-response-20260721` and is not yet merged or
-deployed. Local validation currently records:
+Accepted hotfix `c385f5b89f90b31bcdf1ca26844e4cf1cb939adb` passed ProjectPulse
+Deploy Test workflow `29884354571`. Targeted read-only acceptance recorded:
 
 - Module 997 operational validator: 74 checks passed.
 - Module 998 operational validator: 76 checks passed.
-- Full protected frontend validation chain and Vite production build: passed.
-- Migration 033 and its rollback exist but have not been applied.
-- .NET Release compilation and web-container compilation remain GitHub CI gates.
+- Module 997 overview and incidents: HTTP 200 with expected test contracts.
+- Module 998 overview, sessions, and remediations: HTTP 200 with expected test
+  contracts.
+- Full protected frontend validation chain, Vite production build, .NET Release
+  compilation, and web-container compilation: passed.
+- No mutation endpoint, direct database command, or database migration was
+  executed during targeted acceptance; Migration 033 was not reexecuted.
 
 Module 997 now includes ProjectPulse-native authentication/session evidence,
 durable incidents and timelines, a Module 998 diagnostic handoff, separated
@@ -27,11 +31,15 @@ verification. Entra, WAF, endpoint, Azure restart/scale, deployment rollback,
 integration replay, database repair, external notification/export, and AI
 execution remain adapter-gated.
 
-`MODULE_997_998_OPERATIONAL_ACTIVATION=SOURCE_VALIDATED_PR_PENDING`
+`MODULE_997_998_OPERATIONAL_ACTIVATION=SOURCE_MERGED_TEST_ACCEPTED_PRODUCTION_PENDING`
 
-`MIGRATION_033_APPLIED=NO`
+`MIGRATION_033_PRODUCTION_STATUS=UNVERIFIED_PENDING_GUARDED_CHECK`
 
-`DEPLOYMENT_PERFORMED=NO`
+`DEPLOYMENT_PERFORMED=TEST_ONLY_PRODUCTION_PENDING`
+
+`TARGETED_READ_ENDPOINT_COUNT=5`
+
+`PRODUCTION_DEPLOYMENT_STARTED=NO`
 
 ## Completed Production Readiness Foundation
 
@@ -201,6 +209,11 @@ Locked production boundaries:
 
 Module 076 remains unpublished. Commit, push, ready PR, CI, merge, deployment,
 and authenticated portal acceptance are separate controlled gates.
+
+The next defect workstream is tracker-ordered triage beginning with the live
+Show Stopper rows. No defect identifier, description, owner, or remediation is
+inferred from this repository snapshot; work begins only from the authoritative
+tracker records while all locked Module 076 integrations remain unchanged.
 
 ### Module 066 — Project FlowHive
 

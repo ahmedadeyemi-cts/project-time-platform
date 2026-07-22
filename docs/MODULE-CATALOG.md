@@ -17,11 +17,13 @@
   documentation, and dependency impacts are explicitly approved.
 - Customer-facing PDF and Excel artifacts use the approved US Signal logo.
 
-Current deployed baseline: `main@93b519ca54a5322582ed7d33adf91db7ea9e9919`.
-It includes the Modules 071/072 runtime repairs and the merged fail-closed Modules
-998 and 997 source. Test deployment run `29794000240` verified healthy API/web
-revisions, public Modules 071/072 HTTP 200 responses, protected native and
-Modules 998/997 HTTP 401 barriers, and both protected web bundles.
+Current source baseline: `main@ed76eae30f6b69c97ca597b8926b8bd1f675942b`.
+PR 52 merged the Modules 997/998 operational activation and PR 53 merged the
+accepted nullable UUID and test-environment hotfix. Test workflow `29884354571`
+validated accepted hotfix `c385f5b89f90b31bcdf1ca26844e4cf1cb939adb`:
+five targeted read endpoints returned HTTP 200 with the expected test contracts.
+The US Signal mirror contains the same `main` commit. Production deployment and
+production Migration 033 verification remain pending separate authorization.
 
 ## Installed modules on deployed baseline `main@93b519ca54a5322582ed7d33adf91db7ea9e9919`
 
@@ -91,9 +93,9 @@ Modules 998/997 HTTP 401 barriers, and both protected web bundles.
 | 072 | OneAssist Routing PIN Directory | Deployed test source with native persistence, verified public GET access, and JSON-array normalization fix | Current main through PRs 35–36 | ProjectPulse PostgreSQL | Public bypass is GET-only; native APIs remain authenticated; Cloudflare settings and database state are unchanged |
 | 073 | Sales Coverage Alignment | Installed unsaved-draft source through merged PR 24 | Consolidated 064–074 release train | Module 062 identity and future audited alignment persistence | Persistence remains locked pending database authorization |
 | 074 | OEM & Vendor Directory | Installed unsaved-draft source through merged PR 24 | Consolidated 064–074 release train | Future audited vendor persistence | Persistence remains locked pending database authorization |
-| 076 | Defect Intake & Resolution Tracker | Complete source in progress; fail-closed current-main replay | Module 076 integration worktree | Modules 059, 062, 064, 067; ProjectPulse Help; future signed GitHub adapter | Number approved; database persistence, outbox/email delivery, GitHub webhook activation, AI execution, and external mutation remain locked |
-| 997 | Security Operations, Threat Intelligence & Response Center | Operational activation source validated on the post-PR-51 baseline; PR and deployment pending | `feature/modules-997-998-operational-response-20260721` | ProjectPulse authentication/session/audit telemetry, Module 998 diagnostic handoff, and approved future security adapters | Native telemetry, durable incidents/timelines, approvals, and gated session revocation are implemented; external Entra/WAF/endpoint/notification/export/AI adapters remain locked |
-| 998 | System Diagnostic & Controlled Remediation Center | Operational activation source validated on the post-PR-51 baseline; PR and deployment pending | `feature/modules-997-998-operational-response-20260721` | Module 997 incidents, ProjectPulse PostgreSQL/runtime metadata, Modules 075/077, and approved future Azure/database adapters | Native sessions, findings, runbook previews, approvals, health refresh, and verification are implemented; production-changing adapters remain locked |
+| 076 | Defect Intake & Resolution Tracker | Complete source in progress; fail-closed current-main replay; Show Stopper triage is next | Module 076 integration worktree | Modules 059, 062, 064, 067; ProjectPulse Help; future signed GitHub adapter | Begin only from live tracker rows; database persistence, outbox/email delivery, GitHub webhook activation, AI execution, and external mutation remain locked |
+| 997 | Security Operations, Threat Intelligence & Response Center | Operational activation merged through PR 52; PR 53 acceptance repair and five-endpoint test acceptance passed; production pending | `feature/modules-997-998-operational-response-20260721` | ProjectPulse authentication/session/audit telemetry, Module 998 diagnostic handoff, and approved future security adapters | Native telemetry, durable incidents/timelines, approvals, and gated session revocation are implemented; external Entra/WAF/endpoint/notification/export/AI adapters remain locked |
+| 998 | System Diagnostic & Controlled Remediation Center | Operational activation merged through PR 52; PR 53 acceptance repair and five-endpoint test acceptance passed; production pending | `feature/modules-997-998-operational-response-20260721` | Module 997 incidents, ProjectPulse PostgreSQL/runtime metadata, Modules 075/077, and approved future Azure/database adapters | Native sessions, findings, runbook previews, approvals, health refresh, and verification are implemented; production-changing adapters remain locked |
 
 Historical PR 24 catalog marker retained for the protected Module 068 validator
 (the current Module 067 status is the installed-source row above):
@@ -150,6 +152,7 @@ Historical PR 24 catalog marker retained for the protected Module 068 validator
 | Branch | `integration/module-997-current-main-20260721` |
 | Source | Recovery `fc4dafa34783fd6b8f5557e7feee8f7626d86766`; integration `6dc90425371b032969d539fe5158892c40a6b268` |
 | Status | PR 38 merged as `93b519ca54a5322582ed7d33adf91db7ea9e9919`; CI `29792880067` and deployment `29794000240` succeeded |
+| Operational activation | PR 52 merged as `ad82324722ad5dc3d1d7b1c729298b35aa8c0781`; PR 53 merged as `ed76eae30f6b69c97ca597b8926b8bd1f675942b`; test workflow `29884354571` and five targeted reads passed; production pending |
 | Dependencies | Modules 010, 012–017, 037, 058, 059, 062, 064, 067, 068; deployed Module 998 remains independent |
 | Locked boundary | External threat feeds, Entra/WAF/endpoint containment, AI, notifications, evidence export, secrets, and every unapproved external adapter |
 
