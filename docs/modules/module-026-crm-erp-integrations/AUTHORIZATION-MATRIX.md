@@ -9,6 +9,7 @@
 | Replace a write-only credential | No | No | Yes | Yes |
 | Start OAuth consent | No | No | Yes | Yes |
 | Run an availability test | No | No | Yes | Yes |
+| Use configured SELL connection in Module 055D | No | Yes | No | No |
 | Mutate while using View-As | No | No | No | No |
 
 Permission codes:
@@ -18,3 +19,6 @@ Permission codes:
 
 Provider configuration, credential rotation, OAuth completion, and connection
 tests create Module 026 audit events using the actual ProjectPulse user ID.
+The Project Team Coordinator can consume the configured SELL connection only
+through the PTC-only Module 055D import route and cannot view its credential or
+change its mapping.

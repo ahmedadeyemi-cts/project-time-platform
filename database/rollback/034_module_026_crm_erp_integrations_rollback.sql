@@ -58,6 +58,8 @@ ALTER TABLE crm_integration_providers
     DROP COLUMN IF EXISTS oauth_scopes,
     DROP COLUMN IF EXISTS api_key_header,
     DROP COLUMN IF EXISTS api_key_prefix,
+    DROP COLUMN IF EXISTS record_lookup_url_template,
+    DROP COLUMN IF EXISTS import_mapping_json,
     DROP COLUMN IF EXISTS is_builtin,
     DROP COLUMN IF EXISTS is_enabled,
     DROP COLUMN IF EXISTS availability_status,

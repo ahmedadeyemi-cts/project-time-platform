@@ -1782,11 +1782,21 @@ const roleWorkspaceModules = sortProjectPulseModules([
   {
     route: 'work-register',
     href: '#work-register',
-    title: 'Work Register',
+    title: 'Edit Work Register',
     navLabel: 'MODULE 055C',
-    description: 'Search and filter active, closed, archived, and historical work across customers, projects, intakes, stakeholders, tasks, documents, hours, and cost indicators.',
-    permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL', 'MANAGE_PROJECT_INTAKE', 'VIEW_CUSTOMERS', 'MANAGE_CUSTOMERS', 'VIEW_REPORTS', 'MANAGE_REPORTS', 'MANAGE_TIME', 'APPROVE_TIME'],
-    roleCodes: ['PROJECT_TEAM_COORDINATOR', 'PROJECT_MANAGER', 'PROJECT_MANAGEMENT', 'ENGINEER', 'ENGINEERING', 'SALES', 'ACCOUNT_EXECUTIVE', 'SOLUTION_ARCHITECT', 'SA', 'SAA', 'INSIDE_SALES']
+    description: 'Search and edit existing Work Register records with every saved mutation recorded in the Audit tab.',
+    permissions: ['EDIT_WORK_REGISTER_055C', 'VIEW_CUSTOMERS', 'VIEW_REPORTS', 'MANAGE_TIME', 'APPROVE_TIME'],
+    roleCodes: ['PROJECT_TEAM_COORDINATOR', 'PROJECT_MANAGER', 'PROJECT_MANAGEMENT', 'PROJECT_MANAGEMENT_LEAD', 'PROJECT_MANAGEMENT_TEAM_LEAD', 'PM_TEAM_LEAD', 'ENGINEER', 'ENGINEERING', 'SALES', 'ACCOUNT_EXECUTIVE', 'SOLUTION_ARCHITECT', 'SA', 'SAA', 'INSIDE_SALES']
+  },
+  {
+    route: 'create-work-register',
+    href: '#create-work-register',
+    title: 'Create Work Register',
+    navLabel: 'MODULE 055D',
+    description: 'Create a Work Register from GSD or SELL. SELL supplies the authoritative project name and Actual Rate / Pricing / Rate Review.',
+    permissions: ['CREATE_WORK_REGISTER_055D'],
+    roleCodes: ['PROJECT_TEAM_COORDINATOR'],
+    strictRoleCodes: ['PROJECT_TEAM_COORDINATOR']
   },
   /* 055C_WORK_REGISTER_NAV_END */
   /* 055B_RATE_CARD_ADMIN_NAV_START */
@@ -2321,10 +2331,16 @@ function getVisibleRoleModules(user) {
   if (!user) return [];
 
   const assignedRoleCodes = new Set((user?.roles ?? []).map((role) => String(role.roleCode ?? '').toUpperCase()));
-  const modules = roleWorkspaceModules.filter((module) => (
-    userHasAnyPermission(user, module.permissions) ||
-    (module.roleCodes ?? []).some((roleCode) => assignedRoleCodes.has(String(roleCode).toUpperCase()))
-  ));
+  const modules = roleWorkspaceModules.filter((module) => {
+    const strictRoleCodes = module.strictRoleCodes ?? [];
+    if (strictRoleCodes.length > 0
+        && !strictRoleCodes.some((roleCode) => assignedRoleCodes.has(String(roleCode).toUpperCase()))) {
+      return false;
+    }
+
+    return userHasAnyPermission(user, module.permissions)
+      || (module.roleCodes ?? []).some((roleCode) => assignedRoleCodes.has(String(roleCode).toUpperCase()));
+  });
 
   if (userIsProjectManagementRole(user) && !userIsAdministrator(user)) {
     return modules.filter((module) => module.route !== 'utilization');
@@ -2451,6 +2467,7 @@ function getNavigationGroup(item) {
     case 'customer-directory':
     case 'contracts':
     case 'work-register':
+    case 'create-work-register':
       return 'Work Register';
     case 'rate-card-administration':
       return 'Rate Card Administration';
@@ -3714,7 +3731,8 @@ function getInstalledModuleDescription(module) {
     'manager-approval': 'Lets managers review submitted time, approve valid days, return days for correction, and monitor pending approval counts.',
     'project-workspace': 'Gives engineers and project roles a scoped project workspace with assigned projects, tasks, documents, assigned hours, used hours, and remaining hours.',
     'project-intake': 'Captures project intake requests, customer selection, planned costs, documents, triage information, and resource request readiness.',
-    'work-register': 'Searches active, closed, archived, and historical work across customers, stakeholders, tasks, documents, hours, and costs.',
+    'work-register': 'Searches and edits existing Work Register records, with saved changes visible in the Audit tab.',
+    'create-work-register': 'Creates Work Register records from GSD or SELL; SELL is authoritative for project name and Actual Rate / Pricing / Rate Review.',
     'rate-card-administration': 'Manages standard, customer-specific, Toyota, Hyundai, service request, emergency, and travel rate cards.',
     'customer-directory': 'Maintains customer/account records, customer contacts, and customer data used by intake, project, cost, billing, and reconciliation workflows.',
     'user-guide': 'Explains every global ProjectPulse function and every installed module with searchable procedures, roles, statuses, and troubleshooting.',
@@ -5891,6 +5909,9 @@ export default function App() {
       'SAA',
       'INSIDE_SALES'
     ].includes(roleCode));
+  const canCreateWorkRegister =
+    currentRoleCodes.includes('PROJECT_TEAM_COORDINATOR')
+    && !securityContext.data?.isViewAs;
   /* 055C_1_WORK_REGISTER_ACCESS_SCOPE_END */
   const canViewManagerApprovalPanel = hasPermission('APPROVE_TIME') || hasPermission('REJECT_TIME') || hasPermission('MANAGE_ALL') || hasPermission('SYSTEM_ADMINISTRATION');
   const canViewPmApprovalPanel =
@@ -7973,7 +7994,7 @@ Analytics - Variphy / Infortel`}
       {activeRoute === 'work-register' ? (
         canViewWorkRegister ? (
           <section id="work-register" className="panel work-register-route-panel">
-            <WorkRegisterCenter />
+            <WorkRegisterCenter mode="edit" />
           </section>
         ) : (
           <section id="work-register" className="panel work-register-route-panel">
@@ -7986,6 +8007,24 @@ Analytics - Variphy / Infortel`}
         )
       ) : null}
       {/* 055C_WORK_REGISTER_ROUTE_END */}
+
+      {/* 055D_CREATE_WORK_REGISTER_ROUTE_START */}
+      {activeRoute === 'create-work-register' ? (
+        canCreateWorkRegister ? (
+          <section id="create-work-register" className="panel work-register-route-panel">
+            <WorkRegisterCenter mode="create" />
+          </section>
+        ) : (
+          <section id="create-work-register" className="panel work-register-route-panel">
+            <div className="work-register-center">
+              <div className="work-register-banner error">
+                Create Work Register (Module 055D) is restricted to Project Team Coordinators.
+              </div>
+            </div>
+          </section>
+        )
+      ) : null}
+      {/* 055D_CREATE_WORK_REGISTER_ROUTE_END */}
 
       {/* 055B_RATE_CARD_ADMIN_ROUTE_START */}
       {activeRoute === 'rate-card-administration' ? (

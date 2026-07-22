@@ -23,6 +23,7 @@ const app = read('src/frontend/project-time-web/src/App.jsx');
 const program = read('src/backend/ProjectTime.Api/Program.cs');
 const legacy = read('src/frontend/project-time-web/index.html');
 const backend = read(files.backend);
+const sellImport = read('src/backend/ProjectTime.Api/Modules/WorkRegisterSellImportModule.cs');
 const frontend = read(files.frontend);
 const migration = read(files.migration);
 const docker = read('deployment/containers/web/Dockerfile');
@@ -54,6 +55,9 @@ test('NATIVE_REACT_ROUTE', app.includes("import CrmErpIntegrationCenter from './
 test('LEGACY_OVERLAY_DISABLED', legacy.includes('MODULE_026_NATIVE_REACT_ROUTE') && legacy.includes("(function () {\n  // MODULE_026_NATIVE_REACT_ROUTE: the historical local-only overlay is disabled.\n  return;"));
 test('PROVIDER_STATUS_UI', frontend.includes('SELL, Salesforce, Certinia, ServiceNow') && frontend.includes('Test availability') && frontend.includes('Add another platform'));
 test('AUTHENTICATION_UI', frontend.includes('OAuth 2.0') && frontend.includes('API key') && frontend.includes('Write-only credential'));
+test('SELL_RECORD_LOOKUP', migration.includes('record_lookup_url_template') && frontend.includes('Record lookup URL template'));
+test('SELL_IMPORT_MAPPING', migration.includes('import_mapping_json') && frontend.includes('Import field mapping (JSON)'));
+test('SELL_AUTHORITATIVE_FIELDS', sellImport.includes('sourceFieldsLocked') && sellImport.includes('projectName') && sellImport.includes('rates'));
 test('PERMISSIONS', migration.includes('VIEW_INTEGRATIONS_026') && migration.includes('MANAGE_INTEGRATIONS_026'));
 test('MIGRATION_NOT_RUNTIME_APPLIED', !program.includes('034_module_026_crm_erp_integrations.sql'));
 test('PROGRAM_MAP', program.includes('app.MapCrmErpIntegrationEndpoints();'));

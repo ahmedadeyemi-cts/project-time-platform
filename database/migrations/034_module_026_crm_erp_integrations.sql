@@ -14,6 +14,8 @@ ALTER TABLE crm_integration_providers
     ADD COLUMN IF NOT EXISTS oauth_scopes TEXT NOT NULL DEFAULT '',
     ADD COLUMN IF NOT EXISTS api_key_header TEXT NOT NULL DEFAULT 'Authorization',
     ADD COLUMN IF NOT EXISTS api_key_prefix TEXT NOT NULL DEFAULT 'Bearer',
+    ADD COLUMN IF NOT EXISTS record_lookup_url_template TEXT NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS import_mapping_json JSONB NOT NULL DEFAULT '{}'::jsonb,
     ADD COLUMN IF NOT EXISTS is_builtin BOOLEAN NOT NULL DEFAULT FALSE,
     ADD COLUMN IF NOT EXISTS is_enabled BOOLEAN NOT NULL DEFAULT FALSE,
     ADD COLUMN IF NOT EXISTS availability_status TEXT NOT NULL DEFAULT 'not_configured',
@@ -108,13 +110,14 @@ INSERT INTO crm_integration_providers (
     configuration_scope,
     secret_storage_policy,
     notes,
+    import_mapping_json,
     is_builtin
 )
 VALUES
-    ('zendesk_sell', 'SELL (Zendesk Sell)', 'crm', 'native_configuration', 'oauth2', 'server_side_only', 'encrypted_write_only', 'Sales and commercial source for project names, quotes, pricing, and rate review.', TRUE),
-    ('salesforce', 'Salesforce', 'crm', 'native_configuration', 'oauth2', 'server_side_only', 'encrypted_write_only', 'Salesforce connected-app integration.', TRUE),
-    ('certinia', 'Certinia', 'erp_psa', 'native_configuration', 'oauth2', 'server_side_only', 'encrypted_write_only', 'Certinia integration through an approved Salesforce connected app.', TRUE),
-    ('servicenow', 'ServiceNow', 'itsm_erp', 'native_configuration', 'oauth2', 'server_side_only', 'encrypted_write_only', 'ServiceNow instance integration.', TRUE)
+    ('zendesk_sell', 'SELL (Zendesk Sell)', 'crm', 'native_configuration', 'oauth2', 'server_side_only', 'encrypted_write_only', 'Sales and commercial source for project names, quotes, pricing, and rate review.', '{"projectNamePath":"data.name","quoteNumberPath":"data.quote_number","customerNamePath":"data.organization.name","rateLinesPath":"data.line_items","rateCodePath":"sku","descriptionPath":"name","unitRatePath":"unit_price","laborCategoryPath":"labor_category","timeTypePath":"time_type","unitTypePath":"unit_type","billablePath":"billable"}'::jsonb, TRUE),
+    ('salesforce', 'Salesforce', 'crm', 'native_configuration', 'oauth2', 'server_side_only', 'encrypted_write_only', 'Salesforce connected-app integration.', '{}'::jsonb, TRUE),
+    ('certinia', 'Certinia', 'erp_psa', 'native_configuration', 'oauth2', 'server_side_only', 'encrypted_write_only', 'Certinia integration through an approved Salesforce connected app.', '{}'::jsonb, TRUE),
+    ('servicenow', 'ServiceNow', 'itsm_erp', 'native_configuration', 'oauth2', 'server_side_only', 'encrypted_write_only', 'ServiceNow instance integration.', '{}'::jsonb, TRUE)
 ON CONFLICT (provider_key) DO UPDATE
 SET provider_name = EXCLUDED.provider_name,
     provider_type = EXCLUDED.provider_type,
@@ -122,6 +125,10 @@ SET provider_name = EXCLUDED.provider_name,
     configuration_scope = EXCLUDED.configuration_scope,
     secret_storage_policy = EXCLUDED.secret_storage_policy,
     notes = EXCLUDED.notes,
+    import_mapping_json = CASE
+        WHEN crm_integration_providers.import_mapping_json = '{}'::jsonb THEN EXCLUDED.import_mapping_json
+        ELSE crm_integration_providers.import_mapping_json
+    END,
     is_builtin = TRUE,
     updated_at = NOW();
 
@@ -180,5 +187,15 @@ SET feature_name = EXCLUDED.feature_name,
     display_order = EXCLUDED.display_order,
     is_active = TRUE,
     updated_at = NOW();
+
+INSERT INTO schema_migrations (migration_id, description, applied_at)
+VALUES (
+    '034_module_026_crm_erp_integrations',
+    'Native Module 026 CRM/ERP integrations with encrypted API-key/OAuth credentials, availability checks, and SELL import mapping',
+    NOW()
+)
+ON CONFLICT (migration_id) DO UPDATE
+SET description = EXCLUDED.description,
+    applied_at = EXCLUDED.applied_at;
 
 COMMIT;

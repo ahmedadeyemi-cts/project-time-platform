@@ -82,7 +82,7 @@ const declaredModuleCodes = Array.from(
   (match) => match[1]
 );
 
-for (const requiredCode of ['001', '055B', '055C', '997', '998', '999']) {
+for (const requiredCode of ['001', '055B', '055C', '055D', '997', '998', '999']) {
   test(`REQUIRED_${requiredCode}_PRESENT`, declaredModuleCodes.includes(requiredCode));
 }
 

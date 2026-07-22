@@ -26,6 +26,11 @@ Certinia uses an approved Salesforce connected-app/OAuth boundary. Tenant- or
 instance-specific endpoints are administrator configuration; the repository
 does not guess an organization URL.
 
+For 055D SELL creation, Module 026 also owns the public-HTTPS record lookup URL
+template and JSON field mapping. The template must contain `{recordId}`. The
+mapping selects project name, quote/reference, customer context, and rate rows;
+raw provider payloads are not retained by the Work Register.
+
 ## Availability status
 
 An Integration Administrator or Administrator runs an explicit connection

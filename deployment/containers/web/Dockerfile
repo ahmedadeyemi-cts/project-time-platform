@@ -106,6 +106,15 @@ COPY src/backend/ProjectTime.Api/Modules/DefectTrackerModule.cs \
 COPY src/backend/ProjectTime.Api/Modules/CrmErpIntegrationModule.cs \
      src/backend/ProjectTime.Api/Modules/CrmErpIntegrationModule.cs
 
+COPY src/backend/ProjectTime.Api/Modules/WorkRegisterAuthorization.cs \
+     src/backend/ProjectTime.Api/Modules/WorkRegisterAuthorization.cs
+
+COPY src/backend/ProjectTime.Api/Modules/WorkRegisterSellImportModule.cs \
+     src/backend/ProjectTime.Api/Modules/WorkRegisterSellImportModule.cs
+
+COPY src/backend/ProjectTime.Api/Modules/WorkRegisterPurchaseOrderModule.cs \
+     src/backend/ProjectTime.Api/Modules/WorkRegisterPurchaseOrderModule.cs
+
 COPY src/backend/ProjectTime.Api/Modules/GovernedOperationsReadModule.cs \
      src/backend/ProjectTime.Api/Modules/GovernedOperationsReadModule.cs
 
@@ -172,8 +181,23 @@ COPY docs/modules/module-076-defect-tracker/ \
 COPY docs/modules/module-026-crm-erp-integrations/ \
      docs/modules/module-026-crm-erp-integrations/
 
+COPY docs/modules/module-055c-edit-work-register/ \
+     docs/modules/module-055c-edit-work-register/
+
+COPY docs/modules/module-055d-create-work-register/ \
+     docs/modules/module-055d-create-work-register/
+
 COPY database/migrations/034_module_026_crm_erp_integrations.sql \
      database/migrations/034_module_026_crm_erp_integrations.sql
+
+COPY database/migrations/035_work_register_055c_055d_split.sql \
+     database/migrations/035_work_register_055c_055d_split.sql
+
+COPY database/rollback/034_module_026_crm_erp_integrations_rollback.sql \
+     database/rollback/034_module_026_crm_erp_integrations_rollback.sql
+
+COPY database/rollback/035_work_register_055c_055d_split_rollback.sql \
+     database/rollback/035_work_register_055c_055d_split_rollback.sql
 
 COPY docs/modules/module-077-release-deployment-control/ \
      docs/modules/module-077-release-deployment-control/

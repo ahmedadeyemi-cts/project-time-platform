@@ -66,6 +66,8 @@ public static class CrmErpIntegrationModule
                 p.oauth_scopes,
                 p.api_key_header,
                 p.api_key_prefix,
+                p.record_lookup_url_template,
+                p.import_mapping_json::text,
                 p.is_builtin,
                 p.is_enabled,
                 p.availability_status,
@@ -116,16 +118,18 @@ public static class CrmErpIntegrationModule
                 oauthScopes = reader.GetString(9),
                 apiKeyHeader = reader.GetString(10),
                 apiKeyPrefix = reader.GetString(11),
-                isBuiltin = reader.GetBoolean(12),
-                isEnabled = reader.GetBoolean(13),
-                availabilityStatus = reader.GetString(14),
-                lastCheckedAt = reader.IsDBNull(15) ? (DateTime?)null : reader.GetDateTime(15),
-                lastAvailableAt = reader.IsDBNull(16) ? (DateTime?)null : reader.GetDateTime(16),
-                lastStatusCode = reader.IsDBNull(17) ? (int?)null : reader.GetInt32(17),
-                lastErrorCode = reader.GetString(18),
-                notes = reader.GetString(19),
-                credentialConfigured = reader.GetBoolean(20),
-                oauthConnected = reader.GetBoolean(21),
+                recordLookupUrlTemplate = reader.GetString(12),
+                importMappingJson = reader.GetString(13),
+                isBuiltin = reader.GetBoolean(14),
+                isEnabled = reader.GetBoolean(15),
+                availabilityStatus = reader.GetString(16),
+                lastCheckedAt = reader.IsDBNull(17) ? (DateTime?)null : reader.GetDateTime(17),
+                lastAvailableAt = reader.IsDBNull(18) ? (DateTime?)null : reader.GetDateTime(18),
+                lastStatusCode = reader.IsDBNull(19) ? (int?)null : reader.GetInt32(19),
+                lastErrorCode = reader.GetString(20),
+                notes = reader.GetString(21),
+                credentialConfigured = reader.GetBoolean(22),
+                oauthConnected = reader.GetBoolean(23),
                 secretValueReturned = false
             });
         }
@@ -178,13 +182,15 @@ public static class CrmErpIntegrationModule
                     provider_key, provider_name, provider_type, provider_status, auth_model,
                     configuration_scope, secret_storage_policy, base_url, health_check_url,
                     oauth_authorization_url, oauth_token_url, oauth_client_id, oauth_scopes,
-                    api_key_header, api_key_prefix, is_builtin, is_enabled,
+                    api_key_header, api_key_prefix, record_lookup_url_template, import_mapping_json,
+                    is_builtin, is_enabled,
                     availability_status, notes, created_by, updated_by
                 ) VALUES (
                     @key, @name, @type, 'native_configuration', @auth,
                     'server_side_only', 'encrypted_write_only', @base_url, @health_url,
                     @authorization_url, @token_url, @client_id, @scopes,
-                    @api_key_header, @api_key_prefix, FALSE, @enabled,
+                    @api_key_header, @api_key_prefix, @record_lookup_url_template,
+                    CAST(@import_mapping_json AS jsonb), FALSE, @enabled,
                     'not_configured', @notes, @actor, @actor
                 );
                 """, connection, transaction))
@@ -258,6 +264,8 @@ public static class CrmErpIntegrationModule
                     oauth_scopes = @scopes,
                     api_key_header = @api_key_header,
                     api_key_prefix = @api_key_prefix,
+                    record_lookup_url_template = @record_lookup_url_template,
+                    import_mapping_json = CAST(@import_mapping_json AS jsonb),
                     is_enabled = @enabled,
                     notes = @notes,
                     availability_status = CASE WHEN @enabled THEN 'not_configured' ELSE 'disabled' END,
@@ -859,7 +867,7 @@ public static class CrmErpIntegrationModule
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    private static async Task<string?> LoadCredentialAsync(
+    internal static async Task<string?> LoadCredentialAsync(
         NpgsqlConnection connection,
         string providerKey,
         string credentialKind,
@@ -904,6 +912,24 @@ public static class CrmErpIntegrationModule
         }
         if (request.AuthModel == "api_key" && string.IsNullOrWhiteSpace(request.ApiKeyHeader)) return Invalid("API-key header name is required.");
         if (request.ApiKeyHeader?.Any(character => !char.IsLetterOrDigit(character) && character != '-') is true) return Invalid("API-key header name is invalid.");
+        if (!string.IsNullOrWhiteSpace(request.RecordLookupUrlTemplate))
+        {
+            if (!request.RecordLookupUrlTemplate.Contains("{recordId}", StringComparison.Ordinal)) return Invalid("Record lookup URL template must contain {recordId}.");
+            if (!TryHttpsUri(request.RecordLookupUrlTemplate.Replace("{recordId}", "record", StringComparison.Ordinal), out _)) return Invalid("Record lookup URL template must use a public HTTPS URL.");
+        }
+        if ((request.ImportMappingJson?.Length ?? 0) > 8000) return Invalid("Import mapping JSON must be 8,000 characters or fewer.");
+        if (!string.IsNullOrWhiteSpace(request.ImportMappingJson))
+        {
+            try
+            {
+                using var mapping = JsonDocument.Parse(request.ImportMappingJson);
+                if (mapping.RootElement.ValueKind != JsonValueKind.Object) return Invalid("Import mapping JSON must be an object.");
+            }
+            catch (JsonException)
+            {
+                return Invalid("Import mapping JSON is invalid.");
+            }
+        }
         return null;
     }
 
@@ -921,6 +947,8 @@ public static class CrmErpIntegrationModule
         command.Parameters.AddWithValue("scopes", Clean(request.OAuthScopes, 1000));
         command.Parameters.AddWithValue("api_key_header", Clean(request.ApiKeyHeader, 100, "Authorization"));
         command.Parameters.AddWithValue("api_key_prefix", Clean(request.ApiKeyPrefix, 100));
+        command.Parameters.AddWithValue("record_lookup_url_template", Clean(request.RecordLookupUrlTemplate, 1000));
+        command.Parameters.AddWithValue("import_mapping_json", Clean(request.ImportMappingJson, 8000, "{}"));
         command.Parameters.AddWithValue("enabled", request.IsEnabled);
         command.Parameters.AddWithValue("notes", Clean(request.Notes, 2000));
         command.Parameters.AddWithValue("actor", actor);
@@ -936,6 +964,8 @@ public static class CrmErpIntegrationModule
         baseUrlConfigured = !string.IsNullOrWhiteSpace(request.BaseUrl),
         healthCheckConfigured = !string.IsNullOrWhiteSpace(request.HealthCheckUrl),
         oauthClientConfigured = !string.IsNullOrWhiteSpace(request.OAuthClientId),
+        recordLookupConfigured = !string.IsNullOrWhiteSpace(request.RecordLookupUrlTemplate),
+        importMappingConfigured = !string.IsNullOrWhiteSpace(request.ImportMappingJson) && request.ImportMappingJson.Trim() != "{}",
         credentialValueIncluded = false
     };
 
@@ -963,7 +993,7 @@ public static class CrmErpIntegrationModule
         }
     }
 
-    private static async Task<string?> ReadBoundedResponseBodyAsync(
+    internal static async Task<string?> ReadBoundedResponseBodyAsync(
         HttpContent content,
         CancellationToken cancellationToken)
     {
@@ -1009,7 +1039,7 @@ public static class CrmErpIntegrationModule
         return true;
     }
 
-    private static async Task<bool> IsSafeExternalUriAsync(Uri uri, CancellationToken cancellationToken)
+    internal static async Task<bool> IsSafeExternalUriAsync(Uri uri, CancellationToken cancellationToken)
     {
         if (uri.Scheme != Uri.UriSchemeHttps || string.IsNullOrWhiteSpace(uri.Host) || !string.IsNullOrWhiteSpace(uri.UserInfo)) return false;
         if (string.Equals(uri.Host, "localhost", StringComparison.OrdinalIgnoreCase) || uri.Host.EndsWith(".local", StringComparison.OrdinalIgnoreCase)) return false;
@@ -1079,7 +1109,7 @@ public static class CrmErpIntegrationModule
         return string.IsNullOrWhiteSpace(cleaned) ? fallback : cleaned;
     }
 
-    private static byte[]? ReadEncryptionKey()
+    internal static byte[]? ReadEncryptionKey()
     {
         try
         {
@@ -1174,6 +1204,8 @@ public static class CrmErpIntegrationModule
         string? OAuthScopes,
         string? ApiKeyHeader,
         string? ApiKeyPrefix,
+        string? RecordLookupUrlTemplate,
+        string? ImportMappingJson,
         bool IsEnabled,
         string? Notes);
 

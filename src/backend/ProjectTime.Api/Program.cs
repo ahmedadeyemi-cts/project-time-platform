@@ -191,6 +191,8 @@ app.Use(async (context, next) =>
     await next();
 });
 
+app.UseWorkRegisterAuthorization();
+
 
 
 
@@ -5627,6 +5629,7 @@ app.MapGet("/api/work-register/intake/packages/recent", async (HttpContext httpC
             p.requested_work_type,
             COALESCE(p.contract_type, 'Fixed Price'),
             p.customer_id,
+            p.source_mode,
             p.customer_hint,
             p.project_name_hint,
             p.extraction_status,
@@ -5642,6 +5645,7 @@ app.MapGet("/api/work-register/intake/packages/recent", async (HttpContext httpC
             p.requested_work_type,
             p.contract_type,
             p.customer_id,
+            p.source_mode,
             p.customer_hint,
             p.project_name_hint,
             p.extraction_status,
@@ -5661,12 +5665,13 @@ app.MapGet("/api/work-register/intake/packages/recent", async (HttpContext httpC
             requestedWorkType = reader.GetString(2),
             contractType = reader.GetString(3),
             customerId = reader.IsDBNull(4) ? "" : reader.GetGuid(4).ToString(),
-            customerHint = reader.GetString(5),
-            projectNameHint = reader.GetString(6),
-            extractionStatus = reader.GetString(7),
-            reviewStatus = reader.GetString(8),
-            createdAt = reader.GetDateTime(9),
-            documentCount = reader.GetInt64(10)
+            sourceMode = reader.GetString(5),
+            customerHint = reader.GetString(6),
+            projectNameHint = reader.GetString(7),
+            extractionStatus = reader.GetString(8),
+            reviewStatus = reader.GetString(9),
+            createdAt = reader.GetDateTime(10),
+            documentCount = reader.GetInt64(11)
         });
     }
 
@@ -7277,24 +7282,39 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/review/sa
     await connection.OpenAsync();
     await using var transaction = await connection.BeginTransactionAsync();
 
-    var affected = 0;
+    string? savedReviewedDataJson = null;
     await using (var updateCommand = new NpgsqlCommand("""
         UPDATE work_register_intake_packages
         SET review_status = 'reviewed',
-            reviewed_json = CAST(@reviewed_json AS jsonb),
+            reviewed_json = CASE
+                WHEN source_mode = 'sell_import' THEN
+                    CAST(@reviewed_json AS jsonb)
+                    || jsonb_build_object(
+                        'sourceMode', 'sell_import',
+                        'sourceSystem', 'SELL',
+                        'sourceRecordId', extracted_json->'sourceRecordId',
+                        'sourceFieldsLocked', jsonb_build_array('projectName', 'rates'),
+                        'projectName', extracted_json->'projectName',
+                        'projectListPrice', extracted_json->'projectListPrice',
+                        'rates', extracted_json->'rates',
+                        'sellQuoteNumber', extracted_json->'sellQuoteNumber'
+                    )
+                ELSE CAST(@reviewed_json AS jsonb)
+            END,
             reviewed_by_user_id = @reviewed_by_user_id,
             reviewed_at = NOW(),
             updated_at = NOW()
-        WHERE work_register_intake_package_id = @intake_package_id;
+        WHERE work_register_intake_package_id = @intake_package_id
+        RETURNING reviewed_json::text;
         """, connection, transaction))
     {
         updateCommand.Parameters.AddWithValue("intake_package_id", intakePackageId);
         updateCommand.Parameters.AddWithValue("reviewed_json", reviewedDataJson);
         updateCommand.Parameters.AddWithValue("reviewed_by_user_id", sessionUserId.Value);
-        affected = await updateCommand.ExecuteNonQueryAsync();
+        savedReviewedDataJson = Convert.ToString(await updateCommand.ExecuteScalarAsync());
     }
 
-    if (affected == 0)
+    if (string.IsNullOrWhiteSpace(savedReviewedDataJson))
     {
         await transaction.RollbackAsync();
         return Results.NotFound(new { status = "intake_package_not_found", message = "Intake package was not found." });
@@ -7313,7 +7333,7 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/review/sa
             @history_id,
             @intake_package_id,
             'intake_review_mapping_saved',
-            'PTC/Admin saved reviewed intake mapping.',
+            'Project Team Coordinator saved reviewed intake mapping.',
             @changed_by_user_id,
             CAST(@payload_json AS jsonb)
         );
@@ -7322,7 +7342,7 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/review/sa
         historyCommand.Parameters.AddWithValue("history_id", Guid.NewGuid());
         historyCommand.Parameters.AddWithValue("intake_package_id", intakePackageId);
         historyCommand.Parameters.AddWithValue("changed_by_user_id", sessionUserId.Value);
-        historyCommand.Parameters.AddWithValue("payload_json", reviewedDataJson);
+        historyCommand.Parameters.AddWithValue("payload_json", savedReviewedDataJson);
         await historyCommand.ExecuteNonQueryAsync();
     }
 
@@ -8106,99 +8126,14 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/commit", 
         await using var connection = new NpgsqlConnection(config.ConnectionString);
         await connection.OpenAsync();
 
-        await using (var accessCommand = new NpgsqlCommand("""
-            WITH allowed_terms AS (
-                SELECT ARRAY[
-                    'super admin',
-                    'super administrator',
-                    'administrator',
-                    'admin',
-                    'project team coordinator',
-                    'project management',
-                    'project manager',
-                    'pmo',
-                    'project management team lead',
-                    'project management manager'
-                ]::text[] AS terms
-            ),
-            app_role_match AS (
-                SELECT 1
-                FROM app_user_role_assignments ura
-                JOIN app_roles ar ON ar.app_role_id = ura.app_role_id
-                CROSS JOIN allowed_terms at
-                WHERE ura.user_id = @user_id
-                  AND ura.is_active = TRUE
-                  AND ar.is_active = TRUE
-                  AND EXISTS (
-                    SELECT 1 FROM unnest(at.terms) term
-                    WHERE lower(ar.role_name) LIKE '%' || term || '%'
-                       OR replace(lower(ar.role_code), '_', ' ') LIKE '%' || term || '%'
-                  )
-                LIMIT 1
-            ),
-            legacy_role_match AS (
-                SELECT 1
-                FROM user_roles ur
-                JOIN roles r ON r.role_id = ur.role_id
-                CROSS JOIN allowed_terms at
-                WHERE ur.user_id = @user_id
-                  AND ur.effective_start_date <= CURRENT_DATE
-                  AND (ur.effective_end_date IS NULL OR ur.effective_end_date >= CURRENT_DATE)
-                  AND EXISTS (
-                    SELECT 1 FROM unnest(at.terms) term
-                    WHERE lower(r.role_name) LIKE '%' || term || '%'
-                  )
-                LIMIT 1
-            ),
-            team_match AS (
-                SELECT 1
-                FROM team_memberships tm
-                JOIN teams t ON t.team_id = tm.team_id
-                CROSS JOIN allowed_terms at
-                WHERE tm.user_id = @user_id
-                  AND t.is_active = TRUE
-                  AND tm.effective_start_date <= CURRENT_DATE
-                  AND (tm.effective_end_date IS NULL OR tm.effective_end_date >= CURRENT_DATE)
-                  AND EXISTS (
-                    SELECT 1 FROM unnest(at.terms) term
-                    WHERE lower(t.team_name) LIKE '%' || term || '%'
-                  )
-                LIMIT 1
-            ),
-            app_profile_match AS (
-                SELECT 1
-                FROM app_users u
-                CROSS JOIN allowed_terms at
-                WHERE u.user_id = @user_id
-                  AND u.is_active = TRUE
-                  AND EXISTS (
-                    SELECT 1 FROM unnest(at.terms) term
-                    WHERE lower(coalesce(u.job_title, '')) LIKE '%' || term || '%'
-                       OR lower(coalesce(u.department, '')) LIKE '%' || term || '%'
-                       OR lower(coalesce(u.department_name, '')) LIKE '%' || term || '%'
-                       OR lower(coalesce(u.team_name, '')) LIKE '%' || term || '%'
-                  )
-                LIMIT 1
-            )
-            SELECT EXISTS (
-                SELECT 1 FROM app_role_match
-                UNION ALL SELECT 1 FROM legacy_role_match
-                UNION ALL SELECT 1 FROM team_match
-                UNION ALL SELECT 1 FROM app_profile_match
-            );
-            """, connection))
+        if (!await ProjectTime.Api.Modules.WorkRegisterAuthorization.HasCreateAuthorityAsync(
+                connection, httpContext, cancellationToken: httpContext.RequestAborted))
         {
-            accessCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
-            var canCommit = await accessCommand.ExecuteScalarAsync();
-
-            if (canCommit is not bool allowed || !allowed)
+            return Results.Json(new
             {
-                return Results.Json(new
-                {
-                    status = "access_denied",
-                    message = "Complete Intake is restricted to PTC, Project Management, PMO, Project Manager, Administrator, or Super Administrator roles/teams."
-                }, statusCode: StatusCodes.Status403Forbidden);
-            }
+                status = "access_denied",
+                message = "Only a Project Team Coordinator can create a Work Register record."
+            }, statusCode: StatusCodes.Status403Forbidden);
         }
 
         await using var command = new NpgsqlCommand("""
@@ -8224,6 +8159,46 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/commit", 
         {
             await ProjectPulse055D4CCopyIntakeDocumentsToCustomerFolderAsync(connection, intakePackageId, jsonText);
             await ProjectPulse055D4JNotifyProjectTeamCoordinatorsAsync(connection, intakePackageId, jsonText, sessionUserId.Value);
+
+            if (status == "committed"
+                && parsed.RootElement.TryGetProperty("projectId", out var projectIdProperty)
+                && Guid.TryParse(projectIdProperty.GetString(), out var createdProjectId))
+            {
+                await using var auditCommand = new NpgsqlCommand("""
+                    INSERT INTO work_register_change_history (
+                        work_register_change_history_id, source_table, work_id, action,
+                        change_summary, changed_fields_csv, changed_by_user_id,
+                        old_value_json, new_value_json, changed_at)
+                    SELECT
+                        gen_random_uuid(), 'projects', @project_id, 'work_register_created',
+                        'Project Team Coordinator created Work Register from ' ||
+                            CASE WHEN source_mode = 'sell_import' THEN 'SELL' ELSE 'GSD' END ||
+                            ' intake package.',
+                        'Project Name,Customer,Source,SELL Quote,Pricing / Rate Review',
+                        @actor, NULL,
+                        jsonb_build_object(
+                            'intakePackageId', work_register_intake_package_id,
+                            'sourceMode', source_mode,
+                            'projectName', COALESCE(reviewed_json->'projectName', extracted_json->'projectName'),
+                            'customerId', customer_id,
+                            'sellQuoteNumber', COALESCE(reviewed_json->'sellQuoteNumber', extracted_json->'sellQuoteNumber'),
+                            'rates', COALESCE(reviewed_json->'rates', extracted_json->'rates', '[]'::jsonb)
+                        ),
+                        NOW()
+                    FROM work_register_intake_packages
+                    WHERE work_register_intake_package_id = @intake_package_id
+                      AND NOT EXISTS (
+                          SELECT 1 FROM work_register_change_history
+                          WHERE source_table = 'projects'
+                            AND work_id = @project_id
+                            AND action = 'work_register_created'
+                      );
+                    """, connection);
+                auditCommand.Parameters.AddWithValue("project_id", createdProjectId);
+                auditCommand.Parameters.AddWithValue("actor", sessionUserId.Value);
+                auditCommand.Parameters.AddWithValue("intake_package_id", intakePackageId);
+                await auditCommand.ExecuteNonQueryAsync(httpContext.RequestAborted);
+            }
         }
 
         return Results.Content(jsonText, "application/json");
@@ -8360,34 +8335,15 @@ app.MapPost("/api/work-register/intake/packages/upload", async (HttpContext http
     await using var connection = new NpgsqlConnection(dbConfig.ConnectionString);
     await connection.OpenAsync();
 
-    var canCreateIntake = false;
-    await using (var accessCommand = new NpgsqlCommand("""
-        SELECT EXISTS (
-            SELECT 1
-            FROM app_user_role_assignments ura
-            JOIN app_roles r
-              ON r.app_role_id = ura.app_role_id
-            WHERE ura.user_id = @user_id
-              AND ura.is_active = TRUE
-              AND r.is_active = TRUE
-              AND r.role_code IN (
-                  'SUPER_ADMINISTRATOR',
-                  'ADMINISTRATOR',
-                  'PROJECT_TEAM_COORDINATOR'
-              )
-        );
-        """, connection))
-    {
-        accessCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
-        canCreateIntake = Convert.ToBoolean(await accessCommand.ExecuteScalarAsync() ?? false);
-    }
+    var canCreateIntake = await ProjectTime.Api.Modules.WorkRegisterAuthorization.HasCreateAuthorityAsync(
+        connection, httpContext, cancellationToken: httpContext.RequestAborted);
 
     if (!canCreateIntake)
     {
         return Results.Json(new
         {
             status = "access_denied",
-            message = "Only Project Team Coordinators, Administrators, and Super Administrators can create intake packages."
+            message = "Only a Project Team Coordinator can create intake packages."
         }, statusCode: StatusCodes.Status403Forbidden);
     }
 
@@ -8744,9 +8700,12 @@ app.MapPost("/api/work-register/projects/documents/upload", async (HttpContext h
               AND ura.is_active = TRUE
               AND r.is_active = TRUE
               AND r.role_code IN (
-                  'SUPER_ADMINISTRATOR',
-                  'ADMINISTRATOR',
-                  'PROJECT_TEAM_COORDINATOR'
+                  'PROJECT_TEAM_COORDINATOR',
+                  'PROJECT_MANAGER',
+                  'PROJECT_MANAGEMENT',
+                  'PROJECT_MANAGEMENT_LEAD',
+                  'PROJECT_MANAGEMENT_TEAM_LEAD',
+                  'PM_TEAM_LEAD'
               )
         );
         """, connection))
@@ -8760,7 +8719,7 @@ app.MapPost("/api/work-register/projects/documents/upload", async (HttpContext h
         return Results.Json(new
         {
             status = "access_denied",
-            message = "Only Project Team Coordinators, Administrators, and Super Administrators can upload Work Register documents. Solution Architects are view-only."
+            message = "Only Project Managers, Project Management Leads, and Project Team Coordinators can upload Work Register documents."
         }, statusCode: StatusCodes.Status403Forbidden);
     }
 
@@ -9051,9 +9010,12 @@ app.MapPost("/api/work-register/projects/documents/save", async (HttpContext htt
               AND ura.is_active = TRUE
               AND r.is_active = TRUE
               AND r.role_code IN (
-                  'SUPER_ADMINISTRATOR',
-                  'ADMINISTRATOR',
-                  'PROJECT_TEAM_COORDINATOR'
+                  'PROJECT_TEAM_COORDINATOR',
+                  'PROJECT_MANAGER',
+                  'PROJECT_MANAGEMENT',
+                  'PROJECT_MANAGEMENT_LEAD',
+                  'PROJECT_MANAGEMENT_TEAM_LEAD',
+                  'PM_TEAM_LEAD'
               )
         );
         """, connection))
@@ -9067,7 +9029,7 @@ app.MapPost("/api/work-register/projects/documents/save", async (HttpContext htt
         return Results.Json(new
         {
             status = "access_denied",
-            message = "Only Project Team Coordinators, Administrators, and Super Administrators can manage Work Register documents. Solution Architects are view-only."
+            message = "Only Project Managers, Project Management Leads, and Project Team Coordinators can manage Work Register documents."
         }, statusCode: StatusCodes.Status403Forbidden);
     }
 
@@ -9243,9 +9205,12 @@ app.MapPost("/api/work-register/projects/documents/archive", async (HttpContext 
               AND ura.is_active = TRUE
               AND r.is_active = TRUE
               AND r.role_code IN (
-                  'SUPER_ADMINISTRATOR',
-                  'ADMINISTRATOR',
-                  'PROJECT_TEAM_COORDINATOR'
+                  'PROJECT_TEAM_COORDINATOR',
+                  'PROJECT_MANAGER',
+                  'PROJECT_MANAGEMENT',
+                  'PROJECT_MANAGEMENT_LEAD',
+                  'PROJECT_MANAGEMENT_TEAM_LEAD',
+                  'PM_TEAM_LEAD'
               )
         );
         """, connection))
@@ -9259,7 +9224,7 @@ app.MapPost("/api/work-register/projects/documents/archive", async (HttpContext 
         return Results.Json(new
         {
             status = "access_denied",
-            message = "Only Project Team Coordinators, Administrators, and Super Administrators can archive Work Register documents. Solution Architects are view-only."
+            message = "Only Project Managers, Project Management Leads, and Project Team Coordinators can archive Work Register documents."
         }, statusCode: StatusCodes.Status403Forbidden);
     }
 
@@ -9540,9 +9505,12 @@ app.MapPost("/api/work-register/projects/change-orders/save", async (HttpContext
               AND ura.is_active = TRUE
               AND r.is_active = TRUE
               AND r.role_code IN (
-                  'SUPER_ADMINISTRATOR',
-                  'ADMINISTRATOR',
-                  'PROJECT_TEAM_COORDINATOR'
+                  'PROJECT_TEAM_COORDINATOR',
+                  'PROJECT_MANAGER',
+                  'PROJECT_MANAGEMENT',
+                  'PROJECT_MANAGEMENT_LEAD',
+                  'PROJECT_MANAGEMENT_TEAM_LEAD',
+                  'PM_TEAM_LEAD'
               )
         );
         """, connection))
@@ -9556,7 +9524,7 @@ app.MapPost("/api/work-register/projects/change-orders/save", async (HttpContext
         return Results.Json(new
         {
             status = "access_denied",
-            message = "Only Project Team Coordinators, Administrators, and Super Administrators can add change orders. Solution Architects are view-only."
+            message = "Only Project Managers, Project Management Leads, and Project Team Coordinators can add change orders."
         }, statusCode: StatusCodes.Status403Forbidden);
     }
 
@@ -9944,9 +9912,12 @@ app.MapPost("/api/work-register/tasks/assignments/roster/save", async (HttpConte
               AND ura.is_active = TRUE
               AND r.is_active = TRUE
               AND r.role_code IN (
-                  'SUPER_ADMINISTRATOR',
-                  'ADMINISTRATOR',
-                  'PROJECT_TEAM_COORDINATOR'
+                  'PROJECT_TEAM_COORDINATOR',
+                  'PROJECT_MANAGER',
+                  'PROJECT_MANAGEMENT',
+                  'PROJECT_MANAGEMENT_LEAD',
+                  'PROJECT_MANAGEMENT_TEAM_LEAD',
+                  'PM_TEAM_LEAD'
               )
         );
         """, connection))
@@ -9960,7 +9931,7 @@ app.MapPost("/api/work-register/tasks/assignments/roster/save", async (HttpConte
         return Results.Json(new
         {
             status = "access_denied",
-            message = "Only Project Team Coordinators, Administrators, and Super Administrators can manage multi-engineer task rosters. Solution Architects are view-only."
+            message = "Only Project Managers, Project Management Leads, and Project Team Coordinators can manage multi-engineer task rosters."
         }, statusCode: StatusCodes.Status403Forbidden);
     }
 
@@ -10383,9 +10354,12 @@ app.MapPost("/api/work-register/tasks/assignments/update", async (HttpContext ht
               AND ura.is_active = TRUE
               AND r.is_active = TRUE
               AND r.role_code IN (
-                  'SUPER_ADMINISTRATOR',
-                  'ADMINISTRATOR',
-                  'PROJECT_TEAM_COORDINATOR'
+                  'PROJECT_TEAM_COORDINATOR',
+                  'PROJECT_MANAGER',
+                  'PROJECT_MANAGEMENT',
+                  'PROJECT_MANAGEMENT_LEAD',
+                  'PROJECT_MANAGEMENT_TEAM_LEAD',
+                  'PM_TEAM_LEAD'
               )
         );
         """, connection))
@@ -10399,7 +10373,7 @@ app.MapPost("/api/work-register/tasks/assignments/update", async (HttpContext ht
         return Results.Json(new
         {
             status = "access_denied",
-            message = "Only Project Team Coordinators, Administrators, and Super Administrators can change task engineer assignments. Solution Architects are view-only."
+            message = "Only Project Managers, Project Management Leads, and Project Team Coordinators can change task engineer assignments."
         }, statusCode: StatusCodes.Status403Forbidden);
     }
 
@@ -11188,56 +11162,13 @@ app.MapGet("/api/work-register/edit-foundation", async (HttpContext httpContext)
     await using var connection = new NpgsqlConnection(dbConfig.ConnectionString);
     await connection.OpenAsync();
 
-    var canEditWorkRegister = false;
-    await using (var accessCommand = new NpgsqlCommand("""
-        SELECT EXISTS (
-            SELECT 1
-            FROM app_user_role_assignments ura
-            JOIN app_roles r
-              ON r.app_role_id = ura.app_role_id
-            WHERE ura.user_id = @user_id
-              AND ura.is_active = TRUE
-              AND r.is_active = TRUE
-              AND r.role_code IN (
-                  'SUPER_ADMINISTRATOR',
-                  'ADMINISTRATOR',
-                  'PROJECT_TEAM_COORDINATOR'
-              )
-        );
-        """, connection))
-    {
-        accessCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
-        canEditWorkRegister = Convert.ToBoolean(await accessCommand.ExecuteScalarAsync() ?? false);
-    }
-
-    /* 055D_6B2_PROJECT_LIFECYCLE_RESTORE_PERMISSION_START */
-    var canRestoreWorkRegister = false;
-
-    await using (var restoreAccessCommand = new NpgsqlCommand("""
-        SELECT EXISTS (
-            SELECT 1
-            FROM app_user_role_assignments ura
-            JOIN app_roles r
-              ON r.app_role_id = ura.app_role_id
-            WHERE ura.user_id = @user_id
-              AND ura.is_active = TRUE
-              AND r.is_active = TRUE
-              AND r.role_code IN (
-                  'SUPER_ADMINISTRATOR',
-                  'ADMINISTRATOR'
-              )
-        );
-        """, connection))
-    {
-        restoreAccessCommand.Parameters.AddWithValue(
-            "user_id",
-            sessionUserId.Value);
-
-        canRestoreWorkRegister =
-            Convert.ToBoolean(
-                await restoreAccessCommand.ExecuteScalarAsync() ?? false);
-    }
-    /* 055D_6B2_PROJECT_LIFECYCLE_RESTORE_PERMISSION_END */
+    var workRegisterAccess = await WorkRegisterAuthorization.GetAccessAsync(
+        connection,
+        httpContext,
+        cancellationToken: httpContext.RequestAborted);
+    var canEditWorkRegister = workRegisterAccess.CanEdit;
+    var canCreateWorkRegister = workRegisterAccess.CanCreate;
+    var canRestoreWorkRegister = workRegisterAccess.CanEdit;
 
     var customers = new List<object>();
     await using (var customerCommand = new NpgsqlCommand("""
@@ -11334,10 +11265,13 @@ app.MapGet("/api/work-register/edit-foundation", async (HttpContext httpContext)
     {
         status = "work_register_edit_foundation_loaded",
         canEditWorkRegister,
+        canCreateWorkRegister,
         canArchiveWorkRegister = canEditWorkRegister,
         canRestoreWorkRegister,
-        editAllowedRoles = new[] { "SUPER_ADMINISTRATOR", "ADMINISTRATOR", "PROJECT_TEAM_COORDINATOR" },
-        viewOnlyRoles = new[] { "SOLUTION_ARCHITECT", "PROJECT_MANAGER", "ENGINEER", "ACCOUNT_EXECUTIVE", "SAA" },
+        editAllowedRoles = new[] { "PROJECT_MANAGER", "PROJECT_MANAGEMENT", "PROJECT_MANAGEMENT_LEAD", "PROJECT_MANAGEMENT_TEAM_LEAD", "PM_TEAM_LEAD", "PROJECT_TEAM_COORDINATOR" },
+        createAllowedRoles = new[] { "PROJECT_TEAM_COORDINATOR" },
+        viewOnlyRoles = new[] { "SOLUTION_ARCHITECT", "ENGINEER", "ACCOUNT_EXECUTIVE", "SAA" },
+        isViewAs = workRegisterAccess.IsViewAs,
         customers,
         users,
         contractTypes = new[]
@@ -11669,17 +11603,24 @@ app.MapPost("/api/work-register/projects/lifecycle", async (HttpContext httpCont
                             (
                                 @action = 'archive'
                                 AND r.role_code IN (
-                                    'SUPER_ADMINISTRATOR',
-                                    'ADMINISTRATOR',
-                                    'PROJECT_TEAM_COORDINATOR'
+                                    'PROJECT_TEAM_COORDINATOR',
+                                    'PROJECT_MANAGER',
+                                    'PROJECT_MANAGEMENT',
+                                    'PROJECT_MANAGEMENT_LEAD',
+                                    'PROJECT_MANAGEMENT_TEAM_LEAD',
+                                    'PM_TEAM_LEAD'
                                 )
                             )
                             OR
                             (
                                 @action = 'restore'
                                 AND r.role_code IN (
-                                    'SUPER_ADMINISTRATOR',
-                                    'ADMINISTRATOR'
+                                    'PROJECT_TEAM_COORDINATOR',
+                                    'PROJECT_MANAGER',
+                                    'PROJECT_MANAGEMENT',
+                                    'PROJECT_MANAGEMENT_LEAD',
+                                    'PROJECT_MANAGEMENT_TEAM_LEAD',
+                                    'PM_TEAM_LEAD'
                                 )
                             )
                       )
@@ -11706,8 +11647,8 @@ app.MapPost("/api/work-register/projects/lifecycle", async (HttpContext httpCont
                 {
                     status = "access_denied",
                     message = action == "archive"
-                        ? "Only Project Team Coordinators, Administrators, and Super Administrators can archive projects."
-                        : "Only Administrators and Super Administrators can restore archived projects."
+                        ? "Only Project Managers, Project Management Leads, and Project Team Coordinators can archive projects."
+                        : "Only Project Managers, Project Management Leads, and Project Team Coordinators can restore archived projects."
                 }, statusCode: StatusCodes.Status403Forbidden);
             }
 
@@ -36903,6 +36844,10 @@ ProjectTime.Api.Modules.InvoiceBillingModule.MapInvoiceBillingEndpoints(app);
 /* WORK_REGISTER_PO_ENDPOINT_MAP_START */
 ProjectTime.Api.Modules.WorkRegisterPurchaseOrderModule.MapWorkRegisterPurchaseOrderEndpoints(app);
 /* WORK_REGISTER_PO_ENDPOINT_MAP_END */
+
+/* 055D_SELL_IMPORT_ENDPOINT_MAP_START */
+app.MapWorkRegisterSellImportEndpoints();
+/* 055D_SELL_IMPORT_ENDPOINT_MAP_END */
 
 ProjectTime.Api.Modules.IdentityProfileModule.MapIdentityProfileEndpoints(app);
 

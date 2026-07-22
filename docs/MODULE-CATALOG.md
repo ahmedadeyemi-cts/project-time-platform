@@ -65,7 +65,8 @@ Modules 998/997 HTTP 401 barriers, and both protected web bundles.
 | 041 | Closeout Email Automation Center | `closeout-email` | Installed | Real email remains governed separately |
 | 042 | Invoice & Billing Center | `invoice-billing-center` | Installed route | Open PR 12 is older-lineage work and is not automatically safe to merge |
 | 055B | Rate Card Administration | `rate-card-administration` | Installed | Commercial data remains restricted |
-| 055C | Work Register | `work-register` | Installed | FlowHive intake, changes, assignments, and closure dependency |
+| 055C | Edit Work Register | `work-register` | Native split implemented; migration 035 not applied | PM, Project Management Lead, and PTC edits with mandatory Audit-tab evidence; no create controls |
+| 055D | Create Work Register | `create-work-register` | Native split implemented; migration 035 not applied | PTC-only GSD or SELL creation; SELL is authoritative for project name and Actual Rate / Pricing / Rate Review |
 | 056E | Contract-management evolution guard | Cross-cutting source invariant | Protected | Preserve 056E fragments and keep forbidden 056D fragments absent |
 | 057 | Resource & Team Calendar Capacity | `calendar-capacity` | Installed | FlowHive calendar and workload dependency |
 | 058 | Autonomous CI/CD Foundation | `cicd-pipeline` | Installed | Restored registry/navigation on current main |

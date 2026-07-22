@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Npgsql;
 using NpgsqlTypes;
+using System.Text.Json;
 
 namespace ProjectTime.Api.Modules;
 
@@ -67,11 +68,32 @@ public static class WorkRegisterPurchaseOrderModule
         if(request.PurchaseOrderRequired && string.IsNullOrWhiteSpace(po)) return Results.BadRequest(new { status="validation_failed", message="PO Number is required when PO Required is selected." });
         if(request.AuthorizedAmount is decimal a && a<0) return Results.BadRequest(new { status="validation_failed", message="Authorized amount cannot be negative." });
         if(request.EffectiveStartDate is DateOnly s && request.EffectiveEndDate is DateOnly e && e<s) return Results.BadRequest(new { status="validation_failed", message="Effective end date cannot be before start date." });
+        if(string.IsNullOrWhiteSpace(request.ChangeReason)) return Results.BadRequest(new { status="validation_failed", message="A change reason is required for Work Register audit history." });
         var config=InvoiceBillingDatabaseConfig.FromEnvironment();
         if(config.Missing.Count>0) return Results.BadRequest(new { status="configuration_missing", missing=config.Missing });
         await using var connection=new NpgsqlConnection(config.ConnectionString); await connection.OpenAsync();
         await using var tx=await connection.BeginTransactionAsync(); var access=await AccessAsync(connection,userId.Value,tx);
         if(!access.CanWrite || !await CanAccessAsync(connection,tx,access,projectId)){await tx.RollbackAsync();return Results.Json(new { status="access_denied", message="Current role cannot modify this Work Register project." },statusCode:403);}
+        var oldSnapshot="{}";
+        await using(var before=new NpgsqlCommand("""
+          SELECT jsonb_build_object(
+            'purchaseOrderRequired',COALESCE(profile.purchase_order_required,FALSE),
+            'poNumber',COALESCE(po.po_number,''),
+            'authorizedAmount',po.authorized_amount,
+            'effectiveStartDate',po.effective_start_date,
+            'effectiveEndDate',po.effective_end_date,
+            'customerReference',COALESCE(po.customer_reference,'')
+          )::text
+          FROM projects project
+          LEFT JOIN project_billing_profiles profile ON profile.project_id=project.project_id
+          LEFT JOIN LATERAL (
+            SELECT candidate.po_number,candidate.authorized_amount,candidate.effective_start_date,candidate.effective_end_date,candidate.customer_reference
+            FROM project_purchase_orders candidate
+            WHERE candidate.project_id=project.project_id AND candidate.is_primary=TRUE AND candidate.po_status='active'
+            ORDER BY candidate.updated_at DESC LIMIT 1
+          ) po ON TRUE
+          WHERE project.project_id=@project_id;
+          """,connection,tx)){before.Parameters.AddWithValue("project_id",projectId);oldSnapshot=Convert.ToString(await before.ExecuteScalarAsync())??"{}";}
         await using(var profile=new NpgsqlCommand("""
           INSERT INTO project_billing_profiles(project_id,purchase_order_required,created_by_user_id,updated_by_user_id,created_at,updated_at)
           VALUES(@project_id,@required,@user_id,@user_id,NOW(),NOW())
@@ -90,6 +112,22 @@ public static class WorkRegisterPurchaseOrderModule
           cmd.Parameters.Add("end",NpgsqlDbType.Date).Value=request.EffectiveEndDate is DateOnly end?end:DBNull.Value;
           cmd.Parameters.AddWithValue("reference",reference);cmd.Parameters.AddWithValue("user_id",userId.Value);await cmd.ExecuteNonQueryAsync();
         }
+        var newSnapshot=JsonSerializer.Serialize(new {
+          purchaseOrderRequired=request.PurchaseOrderRequired,poNumber=po,request.AuthorizedAmount,
+          request.EffectiveStartDate,request.EffectiveEndDate,customerReference=reference
+        });
+        await using(var audit=new NpgsqlCommand("""
+          INSERT INTO work_register_change_history(
+            work_register_change_history_id,source_table,work_id,action,change_summary,
+            changed_fields_csv,changed_by_user_id,old_value_json,new_value_json)
+          VALUES(gen_random_uuid(),'projects',@project_id,'purchase_order_updated',@reason,
+            'Purchase Order Required, PO Number, Authorized Amount, Effective Dates, Customer Reference',
+            @user_id,CAST(@old_value AS jsonb),CAST(@new_value AS jsonb));
+          """,connection,tx)){
+          audit.Parameters.AddWithValue("project_id",projectId);audit.Parameters.AddWithValue("reason",request.ChangeReason!.Trim());
+          audit.Parameters.AddWithValue("user_id",userId.Value);audit.Parameters.AddWithValue("old_value",oldSnapshot);audit.Parameters.AddWithValue("new_value",newSnapshot);
+          await audit.ExecuteNonQueryAsync();
+        }
         await tx.CommitAsync(); return Results.Ok(new { status="work_register_purchase_order_saved", projectId, purchaseOrderRequired=request.PurchaseOrderRequired, poNumber=po });
     }
 
@@ -106,10 +144,10 @@ public static class WorkRegisterPurchaseOrderModule
     }
 }
 
-internal sealed record WorkRegisterPurchaseOrderRequest(bool PurchaseOrderRequired,string? PoNumber,decimal? AuthorizedAmount,DateOnly? EffectiveStartDate,DateOnly? EffectiveEndDate,string? CustomerReference);
+internal sealed record WorkRegisterPurchaseOrderRequest(bool PurchaseOrderRequired,string? PoNumber,decimal? AuthorizedAmount,DateOnly? EffectiveStartDate,DateOnly? EffectiveEndDate,string? CustomerReference,string? ChangeReason);
 internal sealed record PoAccess(Guid UserId,IReadOnlySet<string> Roles)
 {
-    private static readonly HashSet<string> BroadRoles=new(StringComparer.OrdinalIgnoreCase){"SUPER_ADMINISTRATOR","ADMINISTRATOR","PROJECT_TEAM_COORDINATOR","ACCOUNTING","ACCOUNTING_BILLING","BILLING","FINANCE","EXECUTIVE"};
-    private static readonly HashSet<string> WriteRoles=new(StringComparer.OrdinalIgnoreCase){"SUPER_ADMINISTRATOR","ADMINISTRATOR","PROJECT_TEAM_COORDINATOR","ACCOUNTING","ACCOUNTING_BILLING","BILLING","FINANCE","PROJECT_MANAGEMENT","PROJECT_MANAGER","PROJECT_MANAGEMENT_LEAD","PROJECT_MANAGEMENT_TEAM_LEAD"};
+    private static readonly HashSet<string> BroadRoles=new(StringComparer.OrdinalIgnoreCase){"SUPER_ADMINISTRATOR","ADMINISTRATOR","PROJECT_TEAM_COORDINATOR","PROJECT_MANAGEMENT_LEAD","PROJECT_MANAGEMENT_TEAM_LEAD","PM_TEAM_LEAD","ACCOUNTING","ACCOUNTING_BILLING","BILLING","FINANCE","EXECUTIVE"};
+    private static readonly HashSet<string> WriteRoles=new(StringComparer.OrdinalIgnoreCase){"SUPER_ADMINISTRATOR","ADMINISTRATOR","PROJECT_TEAM_COORDINATOR","ACCOUNTING","ACCOUNTING_BILLING","BILLING","FINANCE","PROJECT_MANAGEMENT","PROJECT_MANAGER","PROJECT_MANAGEMENT_LEAD","PROJECT_MANAGEMENT_TEAM_LEAD","PM_TEAM_LEAD"};
     public bool Broad=>Roles.Any(BroadRoles.Contains); public bool CanRead=>Roles.Count>0; public bool CanWrite=>Roles.Any(WriteRoles.Contains);
 }

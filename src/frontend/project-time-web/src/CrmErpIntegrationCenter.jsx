@@ -16,6 +16,8 @@ const EMPTY_PROVIDER = {
   oauthScopes: '',
   apiKeyHeader: 'Authorization',
   apiKeyPrefix: 'Bearer',
+  recordLookupUrlTemplate: '',
+  importMappingJson: '{}',
   isEnabled: false,
   notes: '',
 };
@@ -68,6 +70,8 @@ function providerPayload(provider) {
     oauthScopes: provider.oauthScopes,
     apiKeyHeader: provider.apiKeyHeader,
     apiKeyPrefix: provider.apiKeyPrefix,
+    recordLookupUrlTemplate: provider.recordLookupUrlTemplate,
+    importMappingJson: provider.importMappingJson,
     isEnabled: Boolean(provider.isEnabled),
     notes: provider.notes,
   };
@@ -308,6 +312,8 @@ export default function CrmErpIntegrationCenter() {
                         <label>Value prefix<input value={draft.apiKeyPrefix} placeholder="Bearer" onChange={(event) => updateDraft('apiKeyPrefix', event.target.value)} /></label>
                       </>
                     )}
+                    <label className="wide">Record lookup URL template<input type="text" inputMode="url" placeholder="https://provider.example.com/api/records/{recordId}" value={draft.recordLookupUrlTemplate || ''} onChange={(event) => updateDraft('recordLookupUrlTemplate', event.target.value)} /><small>Required for source-record imports. Keep the literal {'{recordId}'} placeholder.</small></label>
+                    <label className="wide">Import field mapping (JSON)<textarea rows={8} value={draft.importMappingJson || '{}'} onChange={(event) => updateDraft('importMappingJson', event.target.value)} /><small>Maps projectNamePath, quoteNumberPath, customerNamePath, rateLinesPath, and the rate-field paths used by Module 055D.</small></label>
                     <label className="wide">Notes<textarea value={draft.notes} onChange={(event) => updateDraft('notes', event.target.value)} /></label>
                   </div>
                   <button type="submit" className="primary-action" disabled={busy === `save:${draft.providerKey}`}>{busy === `save:${draft.providerKey}` ? 'Saving…' : 'Save configuration'}</button>

@@ -12,8 +12,9 @@ their module-specific README and evidence.
 | Workstream | Source state | Branch / checkpoint | Database / external state | Next controlled action |
 |---|---|---|---|---|
 | Numeric module ordering | Validated and locally committed | `feature/module-ordering-20260722@2b5b4ee` | No database or external action | Preserve automatic `001` through `999` ordering; Module 999 is always last |
-| 026 CRM/ERP Integration Control Center | Native React/API source implemented; protected validation in progress | `feature/module-ordering-20260722` after `2b5b4ee` | Migration 034 created but not applied; zero external provider calls; no credentials configured | Complete protected source validation, then publish through a reviewable PR; migration, secrets, external OAuth, connection tests, and deployment remain separate actions |
-| 055C / 055D Work Register split | Approved scope; implementation pending after Module 026 | Same isolated branch unless separated at checkpoint | No database action | Implement 055C edit and 055D create with role enforcement, SELL/GSD source rules, and audit evidence |
+| 026 CRM/ERP Integration Control Center | Native React/API source implemented and protected validation passed | `feature/module-ordering-20260722@73d2870` plus SELL-import mapping in the current checkpoint | Migration 034 created but not applied; zero external provider calls; no credentials configured | Publish through a reviewable PR; migration, secrets, external OAuth, connection tests, and deployment remain separate actions |
+| 055C Edit Work Register | Native split implemented; 31-check Work Register validator and protected frontend build passed | `feature/module-ordering-20260722` | Migration 035 created but not applied | Publish through the same reviewable PR; migration and deployment remain separate actions |
+| 055D Create Work Register | Native PTC-only GSD/SELL creation implemented; authority/source-lock validator and protected frontend build passed | `feature/module-ordering-20260722` | Migrations 034/035 not applied; no SELL call, OAuth consent, API key, or deployment action performed | Publish through the same reviewable PR; provider configuration, migration, and deployment remain separate actions |
 
 The Module 026 source supports SELL, Salesforce, Certinia, ServiceNow, and
 manually registered CRM/ERP platforms. OAuth 2.0 and write-only API-key
@@ -27,10 +28,10 @@ sanitized availability.
 | Field | Value |
 |---|---|
 | Base branch | `main` |
-| Base commit | `26e6b0116c4d0c4d258c6c23009c9e4c13575b7c` |
-| Base description | Current main through PR 51 with the Modules 075/077–080 authorization, contrast, independent-loading, and container-context repair |
-| Source status | PR 51 passed CI run `29869802703` and merged; Modules 997/998 operational activation is isolated on `feature/modules-997-998-operational-response-20260721` |
-| Deployment status | The PR 51 source and Modules 997/998 operational activation have not been deployed in this workstream |
+| Base commit | `ed76eae30f6b69c97ca597b8926b8bd1f675942b` |
+| Base description | Current main after PR 53 merged the accepted Modules 997/998 test-acceptance hotfix |
+| Source status | Numeric ordering committed as `2b5b4ee`; Module 026 committed as `73d2870`; Modules 055C/055D are implemented in the current local checkpoint pending final validation |
+| Deployment status | This branch has not been pushed, merged, migrated, or deployed; no external CRM/ERP provider was called |
 | Prior approved baseline | `main@44e73c4283a33b85ed0dd2832e93059ada37335f` |
 | Governance lineage | `docs/module-development-governance-20260717@66cf0f6457efaa33196f2c91b03bd3a35d13bf19` |
 
@@ -41,7 +42,9 @@ start from current `main` or a later verified forward-moving commit.
 
 | Module | Source checkpoint | GitHub state | Runtime/deployment state | Next controlled action |
 |---|---|---|---|---|
-| 026 | Native CRM/ERP control-center source implemented on the numeric-ordering checkpoint | Local branch; no PR yet | Migration 034 not applied; no credential, OAuth, connection-test, or deployment action performed | Finish protected validation and publish source through a separate CI-gated PR |
+| 026 | Native CRM/ERP control-center source implemented on the numeric-ordering checkpoint | Local branch; no PR yet | Migration 034 not applied; no credential, OAuth, connection-test, or deployment action performed | Publish validated source through a CI-gated PR |
+| 055C | Edit Work Register split with exact editor roles and durable mutation evidence | Local branch; no PR yet; validator/build passed | Migration 035 not applied; no runtime/database action performed | Publish through a CI-gated PR; migration/deployment require separate authorization |
+| 055D | PTC-only Create Work Register with GSD/SELL source selection and SELL field locks | Local branch; no PR yet; validator/build passed | Migrations 034/035 not applied; no SELL call or deployment action performed | Publish through a CI-gated PR; provider configuration, migration, and deployment require separate authorization |
 | 001 | Existing installed Time Entry plus separately managed follow-up work | No new central-register success asserted in this checkpoint | Existing installed behavior remains protected | Reconcile only through its separately governed worktree/PR |
 | 002 | Role-aware Approval Center source commit `f5ede8f6717b01c8f4bf7905b433fead38210007` | PR 23 merged as `2b4a6d1a1242a25b52110a2a209ff8ddda0b8ca4`; three review threads remain unresolved | Merged to source; no deployment asserted here | Preserve current behavior in later integration; address two P1 and one P2 review findings only in separately governed Module 002 work |
 | 062 | Final head `3852a21e1098de9ad907e3da91e0646d99adcb7c`; merged as `04fcafd4f49840428645e537db7de436e34b1c88` | PR 19 merged; review correction and checks passed | **Not post-merge deployed**; portal verification pending | Controlled test deployment, then identity/profile/photo/presence smoke tests |
