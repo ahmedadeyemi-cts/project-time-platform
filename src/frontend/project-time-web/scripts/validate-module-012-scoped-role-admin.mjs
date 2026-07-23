@@ -16,11 +16,12 @@ const paths = {
   persistence: 'src/backend/ProjectTime.Api/Modules/ScopedRolePolicyPersistence.cs',
   support: 'src/backend/ProjectTime.Api/Modules/ScopedRolePolicySupport.cs',
   evaluator: 'src/backend/ProjectTime.Api/Modules/ScopedAuthorizationEvaluator.cs',
+  rules: 'src/backend/ProjectTime.Api/Modules/ScopedRolePolicyRules.cs',
   css: 'src/frontend/project-time-web/src/scoped-role-policy-admin.css',
   project: 'src/backend/ProjectTime.Api/ProjectTime.Api.csproj'
 };
 
-const [ui, backend, writes, persistence, support, evaluator, css, project] = await Promise.all(
+const [ui, backend, writes, persistence, support, evaluator, rules, css, project] = await Promise.all(
   Object.values(paths).map(text)
 );
 
@@ -87,12 +88,22 @@ requireAll(support, [
 ], 'Actor and validation contracts');
 
 requireAll(evaluator, [
-  'ExplicitDeny',
-  'LegacyFallback',
-  'CUSTOM_RULE',
-  'IsViewAs',
-  'non-bypassable'
+  'var explicitDeny',
+  'grant_effect = \'DENY\'',
+  'LEGACY_FALLBACK',
+  'case "CUSTOM_RULE"',
+  'actor.IsViewAs && isWrite',
+  'non-bypassable safety control',
+  'ScopedAuthorizationDecision.Denied'
 ], 'Central scoped evaluator');
+
+requireAll(rules, [
+  'public sealed record ScopedAuthorizationDecision',
+  'bool ExplicitDeny',
+  'bool LegacyFallback',
+  'bool IsViewAs',
+  'NonBypassableActions'
+], 'Scoped authorization result contract');
 
 requireAll(css, [
   '.role-policy-admin',
