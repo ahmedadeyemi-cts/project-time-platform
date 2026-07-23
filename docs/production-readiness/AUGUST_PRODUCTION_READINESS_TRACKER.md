@@ -315,9 +315,9 @@ and authenticated portal acceptance are separate controlled gates.
 - SELL access reuses Module 026 OAuth 2.0 or write-only API-key configuration and retains no raw provider response or credential.
 - Final creation writes `work_register_created` evidence that is visible from the new project's Module 055C Audit tab.
 - Migrations 034, 035, and 036 were applied successfully to the test database through the checksum-pinned controlled rollout.
-- The deployed application release is `5b4debe8218560de357f37e567f38aa497482d69`, which includes the authorization correction and Module 040 handoff.
-- The 055D route-isolation and authenticated project-document download correction is merged in source at `99daf05493bee2f6415c484da12f15486592d838` and remains pending a separately controlled rollout.
-- Migration `037_work_register_dates_and_contract_types.sql` is source-only and unapplied. It preserves 055C/055D SOW signed and estimated-end dates, consolidates `TM`, `T&M`, and **Time and Material**, and maps GSD `FP` to **Fixed Price**.
+- The currently deployed application release remains `5b4debe8218560de357f37e567f38aa497482d69`.
+- The verified source release `4cddc469f7bd20e4cb0e028e9ff1d47842ef7532` includes the role-aware welcome page, 055C/055D date and contract corrections, authenticated document downloads, governed Work-to-Cash readiness/invoicing/closeout, unified immutable audit, and exact US Signal invoice branding. It remains undeployed pending this separately controlled rollout.
+- Migrations `037_work_register_dates_and_contract_types.sql`, `038_work_to_cash_lifecycle_and_audit.sql`, and `039_work_to_cash_reactivation_lock_order.sql` are source-only and unapplied. The guarded rollout order is 037 → 038 → 039 after the already-applied migrations 034–036.
 - The permanent module-ordering guard confirms Module 999 is the highest-numbered and last module.
 - The expanded 055C/055D validator now covers assigned-PM enforcement, PTC/Administrator edit-all and create authority, View-As protection, row-specific controls, selected-project Module 040 handoff, date persistence, and canonical GSD contract mapping.
 
