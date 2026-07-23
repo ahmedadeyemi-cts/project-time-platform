@@ -341,7 +341,8 @@ export default function RoleWelcomeDashboard({
                   <span>{project.customerName || project.projectName}</span>
                 </div>
                 <div>
-                  <strong>{project.completionPercent}%</strong>
+                  <strong>{project.activeTaskCount ?? 0}</strong>
+                  <span>{project.activeTaskCount === 1 ? 'active task' : 'active tasks'}</span>
                   <span>{titleCase(project.status)}</span>
                 </div>
               </a>
