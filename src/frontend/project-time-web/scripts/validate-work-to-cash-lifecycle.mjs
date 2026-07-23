@@ -308,6 +308,10 @@ requireText(readiness, [
   "source: 'Billing candidate'",
   'payload.billingCandidates\n    );',
   '[payload.workspace, payload.intake, payload.customers, payload.billingCandidates]',
+  'const blockingCertifyExceptions = useMemo(() => {',
+  "if (exceptionStatus.includes('placeholder')) return [];",
+  'blockingCertifyExceptions.length',
+  'live Certify exception(s) need review.',
   'const key = String(candidate.id).toLowerCase()',
   'if (!isGuid(selectedProject?.id))',
   'Select a persisted project before saving billing readiness.',
@@ -428,6 +432,15 @@ if (readiness.includes('request.projectIntakeRequestId ?? request.requestId')
     || readiness.includes('`intake-${index}`')
     || readiness.includes('`workspace-${index}`')) {
   throw new Error('Billing readiness must not call GUID lifecycle endpoints with intake or synthetic IDs.');
+}
+
+const certifyExceptionsEndpoint = program.slice(
+  program.indexOf('app.MapGet("/api/certify/exceptions"'),
+  program.indexOf('app.MapPost("/api/certify/test-connection"')
+);
+if (certifyExceptionsEndpoint.includes('status = "placeholder"')
+    && !readiness.includes("if (exceptionStatus.includes('placeholder')) return [];")) {
+  throw new Error('Placeholder Certify exception definitions must not block billing-readiness persistence.');
 }
 
 if (closeout.includes("['projectId', 'id', 'projectID', 'project_id']")) {
