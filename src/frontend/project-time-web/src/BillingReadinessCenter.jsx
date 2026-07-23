@@ -197,6 +197,10 @@ function normalizeArrayPayload(payload, possibleKeys) {
   return [];
 }
 
+function isGuid(value) {
+  return /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(String(value ?? ''));
+}
+
 function deriveProjectCandidates(workspacePayload, intakePayload, customerPayload) {
   const workspaceProjects = normalizeArrayPayload(workspacePayload, [
     'projects',
@@ -227,12 +231,15 @@ function deriveProjectCandidates(workspacePayload, intakePayload, customerPayloa
   const candidates = [];
 
   workspaceProjects.forEach((project, index) => {
+    const projectId = project.projectId ?? project.id;
+    if (!isGuid(projectId)) return;
+
     const customerId = String(project.customerId ?? project.clientId ?? '');
     const customer = customerById.get(customerId);
 
     candidates.push({
       source: 'Workspace',
-      id: project.projectId ?? project.id ?? `workspace-${index}`,
+      id: projectId,
       projectCode: project.projectCode ?? project.code ?? project.projectNumber ?? `WORKSPACE-${index + 1}`,
       projectName: project.projectName ?? project.name ?? project.title ?? 'Workspace project',
       customerName: project.customerName ?? project.clientName ?? customer?.customerName ?? customer?.name ?? 'Customer pending',
@@ -244,9 +251,12 @@ function deriveProjectCandidates(workspacePayload, intakePayload, customerPayloa
   });
 
   intakeProjects.forEach((request, index) => {
+    const projectId = request.projectId ?? request.linkedProjectId ?? request.createdProjectId;
+    if (!isGuid(projectId)) return;
+
     candidates.push({
-      source: 'Intake',
-      id: request.projectIntakeRequestId ?? request.requestId ?? request.id ?? `intake-${index}`,
+      source: 'Linked intake',
+      id: projectId,
       projectCode: request.projectCode ?? request.opportunityId ?? request.requestNumber ?? `INTAKE-${index + 1}`,
       projectName: request.projectName ?? request.opportunityName ?? request.requestName ?? 'Intake project',
       customerName: request.customerName ?? request.clientName ?? request.accountName ?? 'Customer pending',
@@ -260,7 +270,7 @@ function deriveProjectCandidates(workspacePayload, intakePayload, customerPayloa
   const deduped = new Map();
 
   candidates.forEach((candidate) => {
-    const key = `${candidate.projectCode}|${candidate.customerName}`.toLowerCase();
+    const key = String(candidate.id).toLowerCase();
     if (!deduped.has(key)) {
       deduped.set(key, candidate);
     }
@@ -479,7 +489,7 @@ export default function BillingReadinessCenter() {
   useEffect(() => {
     let cancelled = false;
 
-    if (!selectedProject?.id) {
+    if (!isGuid(selectedProject?.id)) {
       setLifecycle({ loading: false, error: null, data: null });
       return () => {
         cancelled = true;
@@ -624,8 +634,8 @@ export default function BillingReadinessCenter() {
       return;
     }
 
-    if (!selectedProject?.id) {
-      setStatusMessage('Select a project before saving billing readiness.');
+    if (!isGuid(selectedProject?.id)) {
+      setStatusMessage('Select a persisted project before saving billing readiness.');
       return;
     }
 
