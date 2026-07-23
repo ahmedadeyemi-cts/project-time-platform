@@ -349,7 +349,7 @@ function normalizeCertifyExpenseRows(expenses, selectedProject) {
   return expenses.map((expense, index) => {
     const amount = Number(expense.amount ?? expense.totalAmount ?? expense.approvedAmount ?? 0);
     const billingStatus = expense.billingStatus || expense.mappingStatus || 'Requires review';
-    const blocked = /missing|not ready|pending|exception|placeholder/i.test(billingStatus);
+    const blocked = /missing|not ready|pending|exception|placeholder|requires review|requires_review|requires mapping|requires_mapping|unmapped|rejected/i.test(billingStatus);
 
     return {
       type: 'Expense',
@@ -392,7 +392,7 @@ function getFinancialTotals(rows) {
     .filter((row) => /non-billable|included|excluded/i.test(row.treatment))
     .reduce((total, row) => total + Number(row.amount || 0), 0);
   const blockedTotal = rows
-    .filter((row) => row.status === 'blocked' || /missing|not ready|pending|exception/i.test(row.readiness))
+    .filter((row) => row.status === 'blocked' || /missing|not ready|pending|exception|requires review|requires_review|requires mapping|requires_mapping|unmapped|rejected/i.test(row.readiness))
     .reduce((total, row) => total + Number(row.amount || 0), 0);
   const readyToInvoiceTotal = rows.reduce((total, row) => total + Number(row.amount || 0), 0) - blockedTotal - nonBillableTotal;
 
@@ -439,7 +439,7 @@ function summarizeMonthEndPackages(rows) {
     existing.packageTotal += Number(row.amount || 0);
     existing.lineCount += 1;
 
-    if (row.status === 'blocked' || /missing|not ready|pending|exception/i.test(row.readiness)) {
+    if (row.status === 'blocked' || /missing|not ready|pending|exception|requires review|requires_review|requires mapping|requires_mapping|unmapped|rejected/i.test(row.readiness)) {
       existing.blockedTotal += Number(row.amount || 0);
       existing.status = 'Blocked / exception review';
     }
