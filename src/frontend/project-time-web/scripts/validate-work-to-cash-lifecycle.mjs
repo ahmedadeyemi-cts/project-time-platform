@@ -74,6 +74,10 @@ requireText(lifecycle, [
   'JOIN billing_invoices invoice',
   "invoice.invoice_status <> 'void'",
   'project_tasks',
+  'line.rate_amount > 0',
+  "entry.status IN ('manager_declined', 'pm_declined')",
+  'details.TryGetProperty("changedFields"',
+  'changedFieldsElement.GetString()',
   "purchase_order.po_status = 'active'",
   'purchase_order.effective_start_date <= CURRENT_DATE',
   'purchase_order.effective_end_date >= CURRENT_DATE',
@@ -130,6 +134,11 @@ requireText(migration, [
   'projectpulse038_reject_audit_mutation',
   'trg_projectpulse038_work_register_audit',
   'trg_projectpulse038_invoice_audit',
+  'DROP INDEX IF EXISTS uq_billing_invoice_lines_time_entry',
+  'uq_billing_invoice_lines_invoice_time_entry',
+  'projectpulse038_guard_live_time_entry_line',
+  'pg_advisory_xact_lock',
+  'projectpulse038_guard_invoice_reactivation',
   'FROM work_register_change_history',
   'FROM billing_invoice_events',
   "'038_work_to_cash_lifecycle_and_audit'"
@@ -141,12 +150,22 @@ if ((migration.match(/\bBEGIN;/g) ?? []).length !== 1
 }
 
 requireText(rollback, [
+  'trg_projectpulse038_invoice_reactivation',
+  'trg_projectpulse038_live_time_entry_line',
+  'DROP INDEX IF EXISTS uq_billing_invoice_lines_invoice_time_entry',
+  'HAVING COUNT(*) > 1',
+  'CREATE UNIQUE INDEX IF NOT EXISTS uq_billing_invoice_lines_time_entry',
   'DROP TRIGGER IF EXISTS trg_projectpulse038_invoice_audit',
   'DROP TABLE IF EXISTS work_lifecycle_audit_events',
   'DROP TABLE IF EXISTS work_closeout_records',
   'DROP TABLE IF EXISTS work_billing_readiness_reviews',
   "'038_work_to_cash_lifecycle_and_audit'"
 ], 'Migration 038 rollback');
+
+if (lifecycle.includes("entry.status IN ('rejected', 'returned')")
+    || lifecycle.includes('changedFields = reader.GetString(1)')) {
+  throw new Error('Welcome attention and unified audit must use persisted status/detail fields.');
+}
 
 requireText(readiness, [
   '/api/work-lifecycle/projects/',
