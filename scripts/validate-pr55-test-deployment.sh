@@ -92,6 +92,8 @@ grep -Fq 'recognized contract variants remain unnormalized' "$MIGRATOR" ||
   fail "Migration 037 contract-normalization verification is missing."
 grep -Fq 'lifecycle, audit, or live-source guards are incomplete' "$MIGRATOR" ||
   fail "Migration 038 lifecycle/audit verification is missing."
+grep -Fq 'application-role lifecycle grants are incomplete' "$MIGRATOR" ||
+  fail "Migration 038 application-role grant verification is missing."
 grep -Fq 'invoice-reactivation advisory-lock order is incorrect' "$MIGRATOR" ||
   fail "Migration 039 advisory-lock-order verification is missing."
 grep -Fq 'administrator Work Register grants are incomplete' "$MIGRATOR" ||
