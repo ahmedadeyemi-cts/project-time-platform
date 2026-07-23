@@ -148,6 +148,16 @@ function dateOnly(value) {
   return String(value).slice(0, 10);
 }
 
+function projectPulseCreateEstimatedEndDateValidationMessage(value) {
+  const estimatedEndDate = dateOnly(value);
+  if (!estimatedEndDate) return '';
+
+  const projectStartDate = new Date().toISOString().slice(0, 10);
+  return estimatedEndDate < projectStartDate
+    ? 'Estimated end date cannot be before the project creation date.'
+    : '';
+}
+
 export default function WorkRegisterCenter({ mode = 'edit' }) {
   const isCreateMode = mode === 'create';
   const [payload, setPayload] = useState({ loading: true, data: null, error: null });
@@ -244,6 +254,11 @@ export default function WorkRegisterCenter({ mode = 'edit' }) {
     contractType: 'Fixed Price',
     customerId: '',
     projectNameHint: '',
+    sellQuoteNumber: '',
+    salesforceIdNumber: '',
+    certiniaIdNumber: '',
+    sowSignedDate: '',
+    estimatedEndDate: '',
     skipGsd: false,
     skipSow: false,
     notes: '',
@@ -281,6 +296,7 @@ function projectPulseCreateWorkSnapshotWrite(field, value) {
     'poEffectiveEndDate',
     'poCustomerReference',
     'sowSignedDate',
+    'estimatedEndDate',
     'customerId',
     'customerName',
     'projectName',
@@ -307,6 +323,32 @@ function projectPulseCanonicalWorkType(value) {
   return 'Other';
 }
 
+function projectPulseCanonicalContractType(value) {
+  const original = String(value || '').trim();
+  const normalized = original.toLowerCase().replace(/[^a-z0-9]+/g, '');
+
+  if (
+    normalized === 'tm'
+    || normalized === 'timematerial'
+    || normalized === 'timematerials'
+    || normalized === 'timeandmaterial'
+    || normalized === 'timeandmaterials'
+  ) {
+    return 'Time and Material';
+  }
+
+  if (normalized === 'fp' || normalized === 'fixedprice') {
+    return 'Fixed Price';
+  }
+
+  if (normalized === 'presales' || normalized === 'presale') return 'Pre-Sales';
+  if (normalized === 'internal') return 'Internal';
+  if (normalized === 'nonbillable') return 'Non-billable';
+  if (normalized === 'other') return 'Other';
+
+  return original;
+}
+
 function projectPulseCreateWorkFinalFieldSnapshot() {
   const stored = projectPulseCreateWorkSnapshotRead();
 
@@ -317,7 +359,12 @@ function projectPulseCreateWorkFinalFieldSnapshot() {
       || stored.requestedWorkType
       || 'Project'
     ),
-    contractType: intakeReviewForm?.contractType || intakeForm.contractType || stored.contractType || '',
+    contractType: projectPulseCanonicalContractType(
+      intakeReviewForm?.contractType
+      || intakeForm.contractType
+      || stored.contractType
+      || ''
+    ),
     sellQuoteNumber: intakeReviewForm?.sellQuoteNumber || intakeForm.sellQuoteNumber || stored.sellQuoteNumber || '',
     salesforceIdNumber: intakeReviewForm?.salesforceIdNumber || intakeForm.salesforceIdNumber || stored.salesforceIdNumber || '',
     certiniaIdNumber: intakeReviewForm?.certiniaIdNumber || intakeForm.certiniaIdNumber || stored.certiniaIdNumber || '',
@@ -327,7 +374,8 @@ function projectPulseCreateWorkFinalFieldSnapshot() {
     poEffectiveStartDate: intakeForm.poEffectiveStartDate || stored.poEffectiveStartDate || '',
     poEffectiveEndDate: intakeForm.poEffectiveEndDate || stored.poEffectiveEndDate || '',
     poCustomerReference: intakeForm.poCustomerReference || stored.poCustomerReference || '',
-    sowSignedDate: intakeReviewForm?.sowSignedDate || intakeForm.sowSignedDate || stored.sowSignedDate || '',
+    sowSignedDate: dateOnly(intakeReviewForm?.sowSignedDate ?? intakeForm.sowSignedDate ?? stored.sowSignedDate),
+    estimatedEndDate: dateOnly(intakeReviewForm?.estimatedEndDate ?? intakeForm.estimatedEndDate ?? stored.estimatedEndDate),
     projectName: intakeReviewForm?.projectName || intakeForm.projectName || intakeForm.workName || stored.projectName || stored.workName || '',
     customerId: intakeReviewForm?.customerId || intakeForm.customerId || stored.customerId || '',
     customerName: intakeReviewForm?.customerName || intakeForm.customerName || stored.customerName || ''
@@ -672,7 +720,11 @@ const updateIntakeForm = (field, value) => {
   // 055D_6B5B_SIDECAR_PROJECT_LIFECYCLE_UI
   const editCustomerOptions = editFoundation.data?.customers ?? [];
   const userOptions = editFoundation.data?.users ?? [];
-  const contractOptions = editFoundation.data?.contractTypes ?? [];
+  const contractOptions = [...new Set(
+    (editFoundation.data?.contractTypes ?? [])
+      .map((value) => projectPulseCanonicalContractType(value))
+      .filter(Boolean)
+  )];
   const statusEditOptions = editFoundation.data?.statuses ?? [];
 
   const pmOptions = activeUsersByRole(userOptions, ['PROJECT_MANAGER', 'PROJECT_MANAGEMENT', 'PROJECT_MANAGEMENT_LEAD', 'PM_TEAM_LEAD']);
@@ -722,7 +774,7 @@ const updateIntakeForm = (field, value) => {
       workId: item.workId,
       sourceTable: item.sourceTable,
       clientId: item.customerId || '',
-      contractType: item.contractType || '',
+      contractType: projectPulseCanonicalContractType(item.contractType),
       projectManagerUserId: '',
       projectCoordinatorUserId: '',
       accountExecutiveUserId: '',
@@ -731,7 +783,7 @@ const updateIntakeForm = (field, value) => {
       sellQuoteNumber: '',
       salesforceIdNumber: '',
       certiniaIdNumber: '',
-      sowSignedDate: '',
+      sowSignedDate: dateOnly(item.sowSignedDate),
       projectStartDate: dateOnly(item.startDate),
       estimatedEndDate: dateOnly(item.estimatedEndDate),
       status: item.status || '',
@@ -1864,7 +1916,9 @@ function updateRosterEngineer(task, index, field, value) {
       salesforceIdNumber: data.salesforceIdNumber || data.salesforce_id_number || '',
       certiniaIdNumber: data.certiniaIdNumber || data.certinia_id_number || '',
       requestedWorkType: projectPulseCanonicalWorkType(data.requestedWorkType || packageData?.package?.requestedWorkType || 'Project'),
-      contractType: data.contractType || packageData?.package?.contractType || 'Fixed Price',
+      contractType: projectPulseCanonicalContractType(data.contractType || packageData?.package?.contractType || 'Fixed Price'),
+      sowSignedDate: dateOnly(data.sowSignedDate ?? intakeForm.sowSignedDate),
+      estimatedEndDate: dateOnly(data.estimatedEndDate ?? data.endDate ?? intakeForm.estimatedEndDate),
       pmHours: data.pmHours || '',
       engineeringHours: data.engineeringHours || '',
       totalProjectHours: data.totalProjectHours || '',
@@ -2615,6 +2669,14 @@ function removeTaskAssignmentRow(taskIndex, assignmentIndex) {
       return null;
     }
 
+    const estimatedEndDateValidationMessage =
+      projectPulseCreateEstimatedEndDateValidationMessage(intakeReviewForm.estimatedEndDate);
+    if (estimatedEndDateValidationMessage) {
+      setIntakeReviewStatus(estimatedEndDateValidationMessage);
+      if (throwOnError) throw new Error(estimatedEndDateValidationMessage);
+      return null;
+    }
+
     const intakePackageId =
       selectedIntakeReview?.package?.intakePackageId
       || selectedIntakeReview?.intakePackageId
@@ -2684,11 +2746,12 @@ function removeTaskAssignmentRow(taskIndex, assignmentIndex) {
       salesforceIdNumber: intakeReviewForm.salesforceIdNumber || intakeForm.salesforceIdNumber || '',
       certiniaIdNumber: intakeReviewForm.certiniaIdNumber || intakeForm.certiniaIdNumber || '',
       // 055D_5K_FINAL_SOW_SIGNED_DATE_VALUE
-      sowSignedDate: intakeReviewForm.sowSignedDate || intakeForm.sowSignedDate || '',
+      sowSignedDate: intakeReviewForm.sowSignedDate ?? intakeForm.sowSignedDate ?? '',
+      estimatedEndDate: intakeReviewForm.estimatedEndDate ?? intakeForm.estimatedEndDate ?? '',
       intakeReason: intakeReviewForm.intakeReason || intakeForm.reason || intakeForm.intakeReason || projectPulseCreateWorkReason(),
 
       requestedWorkType: projectPulseCanonicalWorkType(intakeReviewForm.requestedWorkType),
-      contractType: intakeReviewForm.contractType,
+      contractType: projectPulseCanonicalContractType(intakeReviewForm.contractType),
       // 055D_5K_REVIEW_SAVE_SOW_SIGNED_DATE
       pmHours: intakeReviewForm.pmHours,
       engineeringHours: intakeReviewForm.engineeringHours,
@@ -2784,7 +2847,8 @@ async function createWorkRegisterFromReviewedIntake() {
       sellQuoteNumber: finalFields.sellQuoteNumber,
       salesforceIdNumber: finalFields.salesforceIdNumber,
       certiniaIdNumber: finalFields.certiniaIdNumber,
-      sowSignedDate: finalFields.sowSignedDate
+      sowSignedDate: finalFields.sowSignedDate,
+      estimatedEndDate: finalFields.estimatedEndDate
     });
 
     const createdProjectId =
@@ -2878,6 +2942,7 @@ async function createWorkRegisterFromReviewedIntake() {
       salesforceIdNumber: '',
       certiniaIdNumber: '',
       sowSignedDate: '',
+      estimatedEndDate: '',
       skipGsd: false,
       skipSow: false,
       notes: '',
@@ -3037,6 +3102,13 @@ async function createWorkRegisterFromReviewedIntake() {
       return;
     }
 
+    const estimatedEndDateValidationMessage =
+      projectPulseCreateEstimatedEndDateValidationMessage(intakeForm.estimatedEndDate);
+    if (estimatedEndDateValidationMessage) {
+      setIntakeWizardStatus(estimatedEndDateValidationMessage);
+      return;
+    }
+
     const customerSelect = form.elements.customerId;
     const visibleCustomerName = customerSelect?.selectedOptions?.[0]?.textContent?.trim() || 'Selected customer';
 
@@ -3146,6 +3218,12 @@ async function createWorkRegisterFromReviewedIntake() {
       setIntakeWizardStatus('Intake reason is required for audit history.');
       return;
     }
+    const estimatedEndDateValidationMessage =
+      projectPulseCreateEstimatedEndDateValidationMessage(intakeForm.estimatedEndDate);
+    if (estimatedEndDateValidationMessage) {
+      setIntakeWizardStatus(estimatedEndDateValidationMessage);
+      return;
+    }
 
     setSelectedIntakeReview(null);
     setIntakeReviewForm(null);
@@ -3159,6 +3237,8 @@ async function createWorkRegisterFromReviewedIntake() {
         customerId: intakeForm.customerId,
         requestedWorkType: intakeForm.requestedWorkType,
         contractType: intakeForm.contractType,
+        sowSignedDate: intakeForm.sowSignedDate,
+        estimatedEndDate: intakeForm.estimatedEndDate,
         notes: intakeForm.notes,
         reason: intakeForm.reason
       });
@@ -3357,6 +3437,15 @@ async function createWorkRegisterFromReviewedIntake() {
       return;
     }
 
+    if (
+      editForm.projectStartDate
+      && editForm.estimatedEndDate
+      && editForm.estimatedEndDate < editForm.projectStartDate
+    ) {
+      setEditStatus('Estimated end date cannot be before the project start date.');
+      return;
+    }
+
     const payload = {
       workId: selectedWorkItem.workId,
       sourceTable: selectedWorkItem.sourceTable,
@@ -3365,11 +3454,11 @@ async function createWorkRegisterFromReviewedIntake() {
 
     // 055C_3_WORK_REGISTER_CHANGED_FIELD_PAYLOAD_START
     /* 055C_4_CASE_INSENSITIVE_CHANGED_FIELD_START */
-    const addIfChanged = (field, originalValue = '') => {
+    const addIfChanged = (field, originalValue = '', allowEmpty = false) => {
       const nextValue = String(editForm[field] ?? '').trim();
       const priorValue = String(originalValue ?? '').trim();
 
-      if (nextValue && nextValue.toLowerCase() !== priorValue.toLowerCase()) {
+      if ((allowEmpty || nextValue) && nextValue.toLowerCase() !== priorValue.toLowerCase()) {
         payload[field] = nextValue;
       }
     };
@@ -3384,10 +3473,10 @@ async function createWorkRegisterFromReviewedIntake() {
     };
 
     addIfChanged('clientId', selectedWorkItem.customerId || '');
-    addIfChanged('contractType', selectedWorkItem.contractType || '');
-    addIfChanged('projectStartDate', dateOnly(selectedWorkItem.startDate));
-    addIfChanged('estimatedEndDate', dateOnly(selectedWorkItem.estimatedEndDate));
-    addIfChanged('sowSignedDate', dateOnly(selectedWorkItem.sowSignedDate));
+    addIfChanged('contractType', projectPulseCanonicalContractType(selectedWorkItem.contractType));
+    addIfChanged('projectStartDate', dateOnly(selectedWorkItem.startDate), true);
+    addIfChanged('estimatedEndDate', dateOnly(selectedWorkItem.estimatedEndDate), true);
+    addIfChanged('sowSignedDate', dateOnly(selectedWorkItem.sowSignedDate), true);
     addIfChanged('status', selectedWorkItem.status || '');
 
     // User dropdowns start as blank, meaning "keep current".
@@ -3576,7 +3665,7 @@ async function createWorkRegisterFromReviewedIntake() {
                 <td>
                   <strong>{item.customerName || 'No customer linked'}</strong>
                   <small>{item.workName}</small>
-                  <small>{item.contractType ? `Contract: ${labelize(item.contractType)}` : 'Contract: not set'}</small>
+                  <small>{item.contractType ? `Contract: ${projectPulseCanonicalContractType(item.contractType)}` : 'Contract: not set'}</small>
 
                   <button type="button" className="work-register-row-action" onClick={() => openEditDrawer(item)}>
                     {item.canEditProject === true ? 'Edit work' : 'View details'}
@@ -3788,10 +3877,10 @@ async function createWorkRegisterFromReviewedIntake() {
                       onChange={(event) => updateIntakeField('contractType', event.target.value)}
                       name="contractType"
                     >
-                      <option value="FP">Fixed Price (FP)</option>
-                      <option value="TM">Time and Material (TM)</option>
+                      <option value="Fixed Price">Fixed Price</option>
+                      <option value="Time and Material">Time and Material</option>
                       <option value="Internal">Internal</option>
-                      <option value="Presales">Presales</option>
+                      <option value="Pre-Sales">Pre-Sales</option>
                       <option value="Other">Other</option>
                     </select>
                   </label>
@@ -3873,6 +3962,15 @@ async function createWorkRegisterFromReviewedIntake() {
                         type="date"
                         value={intakeForm.sowSignedDate || ''}
                         onChange={(event) => updateIntakeForm('sowSignedDate', event.target.value)}
+                      />
+                    </label>
+                    <label>
+                      Estimated End Date
+                      <input
+                        type="date"
+                        value={intakeForm.estimatedEndDate || ''}
+                        min={new Date().toISOString().slice(0, 10)}
+                        onChange={(event) => updateIntakeForm('estimatedEndDate', event.target.value)}
                       />
                     </label>
                 </div>
@@ -4265,10 +4363,29 @@ async function createWorkRegisterFromReviewedIntake() {
                           value={intakeReviewForm.contractType}
                           onChange={(event) => updateIntakeReviewForm('contractType', event.target.value)}
                         >
-                          {['Fixed Price', 'T&M', 'Internal', 'Pre-Sales', 'Other'].map((type) => (
+                          {['Fixed Price', 'Time and Material', 'Internal', 'Pre-Sales', 'Other'].map((type) => (
                             <option value={type} key={type}>{type}</option>
                           ))}
                         </select>
+                      </label>
+
+                      <label>
+                        SOW Signed Date
+                        <input
+                          type="date"
+                          value={intakeReviewForm.sowSignedDate || ''}
+                          onChange={(event) => updateIntakeReviewForm('sowSignedDate', event.target.value)}
+                        />
+                      </label>
+
+                      <label>
+                        Estimated End Date
+                        <input
+                          type="date"
+                          value={intakeReviewForm.estimatedEndDate || ''}
+                          min={new Date().toISOString().slice(0, 10)}
+                          onChange={(event) => updateIntakeReviewForm('estimatedEndDate', event.target.value)}
+                        />
                       </label>
 
                       <label>

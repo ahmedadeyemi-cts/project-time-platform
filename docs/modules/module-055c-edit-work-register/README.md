@@ -25,6 +25,14 @@ reason or summary, changed fields, and old/new values in
 `work_register_change_history`. Project details expose that evidence in the
 Audit tab.
 
+Project setup preserves and updates the existing SOW signed date and estimated
+end date. Contract types use the canonical labels **Time and Material** and
+**Fixed Price**; legacy `TM`, `T&M`, and `FP` values are normalized without
+creating duplicate choices. Invalid historical or partial date changes are
+skipped during audit replay so they cannot violate the project date range.
+Clearing an optional SOW signed or estimated end date records an explicit clear
+instead of silently retaining the previous value.
+
 ## Governed launch ownership
 
 Module 055C is the approved project-context starting point for two follow-up
@@ -44,5 +52,7 @@ remains separate follow-up work.
 Migration `035_work_register_055c_055d_split.sql` formalizes the base 055C edit
 permission and guarantees the audit table and indexes. Migration
 `036_work_register_role_scope_and_closeout_handoff.sql` aligns Administrator
-grants and permission metadata with the resource-scoped policy. Migrations are
+grants and permission metadata with the resource-scoped policy. Migration
+`037_work_register_dates_and_contract_types.sql` persists the shared date
+contract and consolidates recognized contract-type variants. Migrations are
 never applied by the application at runtime.
