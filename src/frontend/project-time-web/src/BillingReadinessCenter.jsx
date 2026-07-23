@@ -563,21 +563,25 @@ export default function BillingReadinessCenter() {
 
   const blockingIssues = useMemo(() => {
     const issues = [];
+    const requiresLaborEvidence = !packageType.toLowerCase().includes('expense-only')
+      && !packageType.toLowerCase().includes('milestone');
 
     if (billingMode === 'project' && !selectedProject) issues.push('No project selected.');
-    if (!Number(billingRate || 0)) issues.push('Billing rate is missing for labor estimate.');
+    if (requiresLaborEvidence && !Number(billingRate || 0)) issues.push('Billing rate is missing for labor estimate.');
     if (certifyExceptions.length > 0) issues.push(`${certifyExceptions.length} Certify placeholder exception(s) need review.`);
     readinessChecks
       .filter((item) => !checkedItems.has(item.key))
       .forEach((item) => issues.push(`${item.label} is not confirmed.`));
     if (financialTotals.blockedTotal > 0) issues.push(`${currency(financialTotals.blockedTotal)} is currently blocked or pending review.`);
-    (billingCandidate?.blockers ?? []).forEach((blocker) => issues.push(blocker));
-    if (billingMode === 'project' && billingCandidate && Number(billingCandidate.approvedLineCount || 0) === 0) {
-      issues.push('No approved uninvoiced labor lines are currently available.');
+    if (requiresLaborEvidence) {
+      (billingCandidate?.blockers ?? []).forEach((blocker) => issues.push(blocker));
+      if (billingMode === 'project' && billingCandidate && Number(billingCandidate.approvedLineCount || 0) === 0) {
+        issues.push('No approved uninvoiced labor lines are currently available.');
+      }
     }
 
     return [...new Set(issues)];
-  }, [billingMode, billingRate, certifyExceptions, checkedItems, financialTotals.blockedTotal, selectedProject, billingCandidate]);
+  }, [billingMode, billingRate, certifyExceptions, checkedItems, financialTotals.blockedTotal, packageType, selectedProject, billingCandidate]);
 
   const readinessTone = blockingIssues.length === 0 && readinessPercent >= 90 ? 'safe' : readinessPercent >= 50 ? 'attention' : 'blocked';
 
