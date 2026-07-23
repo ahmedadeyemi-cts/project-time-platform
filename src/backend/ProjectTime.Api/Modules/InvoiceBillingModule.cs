@@ -13,6 +13,7 @@ public static class InvoiceBillingModule
 {
     private static readonly string[] InvoiceEligibleStatuses =
     [
+        "pm_approved",
         "manager_approved",
         "project_approved",
         "project_validated",
@@ -697,7 +698,10 @@ public static class InvoiceBillingModule
               AND NOT EXISTS (
                   SELECT 1
                   FROM billing_invoice_lines invoiced
+                  JOIN billing_invoices invoice
+                    ON invoice.billing_invoice_id = invoiced.billing_invoice_id
                   WHERE invoiced.time_entry_id = te.time_entry_id
+                    AND invoice.invoice_status <> 'void'
               )
             ORDER BY te.work_date, resource.display_name, task.task_code;
             """;
@@ -1135,7 +1139,10 @@ public static class InvoiceBillingModule
               AND NOT EXISTS (
                   SELECT 1
                   FROM billing_invoice_lines invoiced
+                  JOIN billing_invoices invoice
+                    ON invoice.billing_invoice_id = invoiced.billing_invoice_id
                   WHERE invoiced.time_entry_id = entry.time_entry_id
+                    AND invoice.invoice_status <> 'void'
               )
               AND (
                     (
@@ -1211,7 +1218,10 @@ public static class InvoiceBillingModule
               AND NOT EXISTS (
                   SELECT 1
                   FROM billing_invoice_lines invoiced
+                  JOIN billing_invoices invoice
+                    ON invoice.billing_invoice_id = invoiced.billing_invoice_id
                   WHERE invoiced.time_entry_id = entry.time_entry_id
+                    AND invoice.invoice_status <> 'void'
               );
             """;
 

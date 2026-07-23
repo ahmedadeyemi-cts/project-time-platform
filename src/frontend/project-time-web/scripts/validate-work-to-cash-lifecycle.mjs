@@ -18,6 +18,7 @@ function requireText(source, values, label) {
 const paths = {
   program: 'src/backend/ProjectTime.Api/Program.cs',
   lifecycle: 'src/backend/ProjectTime.Api/Modules/WorkLifecycleModule.cs',
+  invoiceModule: 'src/backend/ProjectTime.Api/Modules/InvoiceBillingModule.cs',
   renderer: 'src/backend/ProjectTime.Api/Modules/InvoiceArtifactBrandingRenderer.cs',
   brandingAssets: 'src/backend/ProjectTime.Api/Modules/InvoiceBrandingAssets.cs',
   csproj: 'src/backend/ProjectTime.Api/ProjectTime.Api.csproj',
@@ -35,6 +36,7 @@ const paths = {
 const [
   program,
   lifecycle,
+  invoiceModule,
   renderer,
   brandingAssets,
   csproj,
@@ -59,6 +61,7 @@ requireText(lifecycle, [
   '/closeout/complete',
   '/closeout/reopen',
   'WorkRegisterAuthorization.GetAccessAsync',
+  '"pm_approved"',
   'access.IsViewAs',
   'project.IsArchived',
   'BuildCloseoutBlockersAsync',
@@ -66,6 +69,8 @@ requireText(lifecycle, [
   'if (requiresInvoiceReadiness)',
   'if (requiresInvoiceReadiness && readiness?.ReviewStatus != "ready")',
   'billing_invoice_lines',
+  'JOIN billing_invoices invoice',
+  "invoice.invoice_status <> 'void'",
   'project_tasks',
   "purchase_order.po_status = 'active'",
   'purchase_order.effective_start_date <= CURRENT_DATE',
@@ -94,6 +99,23 @@ if (lifecycle.includes("SET status = 'closed'")) {
 
 if (lifecycle.includes("purchase_order.po_status IN ('draft', 'active')")) {
   throw new Error('Billing readiness must reject draft purchase orders.');
+}
+
+if ((lifecycle.match(/FROM billing_invoice_lines/g) ?? []).length !== 4
+    || (lifecycle.match(/JOIN billing_invoices invoice/g) ?? []).length !== 4) {
+  throw new Error('Every lifecycle invoiced-time check must exclude void invoice state.');
+}
+
+requireText(invoiceModule, [
+  'InvoiceEligibleStatuses',
+  '"pm_approved"',
+  'JOIN billing_invoices invoice',
+  "invoice.invoice_status <> 'void'"
+], 'Module 042 invoice eligibility');
+
+if ((invoiceModule.match(/FROM billing_invoice_lines invoiced/g) ?? []).length !== 3
+    || (invoiceModule.match(/JOIN billing_invoices invoice/g) ?? []).length !== 3) {
+  throw new Error('Every Module 042 eligibility check must release voided invoice lines.');
 }
 
 requireText(migration, [
@@ -147,6 +169,9 @@ requireText(closeout, [
 
 requireText(workRegister, [
   '/api/work-lifecycle/projects/',
+  'Promise.allSettled',
+  "lifecycleResult.status === 'fulfilled'",
+  'lifecycle?.audit ?? data.changeHistory ?? []',
   'Work-to-Cash Audit History',
   'billing readiness, partial/final invoices',
   'changeHistory: lifecycle.audit'
@@ -217,6 +242,7 @@ requireText(app, [
 
 requireText(docker, [
   'WorkLifecycleModule.cs',
+  'InvoiceBillingModule.cs',
   'InvoiceArtifactBrandingRenderer.cs',
   'InvoiceBrandingAssets.cs',
   'ProjectTime.Api.csproj',

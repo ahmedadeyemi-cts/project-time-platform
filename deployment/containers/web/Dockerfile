@@ -121,6 +121,9 @@ COPY src/backend/ProjectTime.Api/Modules/WorkRegisterPurchaseOrderModule.cs \
 COPY src/backend/ProjectTime.Api/Modules/WorkLifecycleModule.cs \
      src/backend/ProjectTime.Api/Modules/WorkLifecycleModule.cs
 
+COPY src/backend/ProjectTime.Api/Modules/InvoiceBillingModule.cs \
+     src/backend/ProjectTime.Api/Modules/InvoiceBillingModule.cs
+
 COPY src/backend/ProjectTime.Api/Modules/InvoiceArtifactBrandingRenderer.cs \
      src/backend/ProjectTime.Api/Modules/InvoiceArtifactBrandingRenderer.cs
 

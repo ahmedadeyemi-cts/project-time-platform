@@ -745,16 +745,24 @@ const updateIntakeForm = (field, value) => {
     setProjectDetails({ loading: true, data: null, error: null });
 
     try {
-      const [data, lifecycle] = await Promise.all([
+      const [detailsResult, lifecycleResult] = await Promise.allSettled([
         fetchJson(`/api/work-register/projects/${item.workId}/details`),
         fetchJson(`/api/work-lifecycle/projects/${item.workId}`)
       ]);
+      if (detailsResult.status === 'rejected') {
+        throw detailsResult.reason;
+      }
+
+      const data = detailsResult.value;
+      const lifecycle = lifecycleResult.status === 'fulfilled'
+        ? lifecycleResult.value
+        : null;
       setProjectDetails({
         loading: false,
         data: {
           ...data,
           workLifecycle: lifecycle,
-          changeHistory: lifecycle.audit ?? data.changeHistory ?? []
+          changeHistory: lifecycle?.audit ?? data.changeHistory ?? []
         },
         error: null
       });

@@ -8,6 +8,7 @@ public static class WorkLifecycleModule
 {
     private static readonly string[] ApprovedTimeStatuses =
     [
+        "pm_approved",
         "manager_approved",
         "project_approved",
         "project_validated",
@@ -898,7 +899,10 @@ public static class WorkLifecycleModule
                           AND NOT EXISTS (
                               SELECT 1
                               FROM billing_invoice_lines line
+                              JOIN billing_invoices invoice
+                                ON invoice.billing_invoice_id = line.billing_invoice_id
                               WHERE line.time_entry_id = entry.time_entry_id
+                                AND invoice.invoice_status <> 'void'
                           )
                     ),
                     COUNT(*) FILTER (
@@ -908,7 +912,10 @@ public static class WorkLifecycleModule
                           AND NOT EXISTS (
                               SELECT 1
                               FROM billing_invoice_lines line
+                              JOIN billing_invoices invoice
+                                ON invoice.billing_invoice_id = line.billing_invoice_id
                               WHERE line.time_entry_id = entry.time_entry_id
+                                AND invoice.invoice_status <> 'void'
                           )
                     )
                 FROM time_entries entry
@@ -1066,7 +1073,10 @@ public static class WorkLifecycleModule
                   AND NOT EXISTS (
                       SELECT 1
                       FROM billing_invoice_lines invoiced
+                      JOIN billing_invoices invoice
+                        ON invoice.billing_invoice_id = invoiced.billing_invoice_id
                       WHERE invoiced.time_entry_id = entry.time_entry_id
+                        AND invoice.invoice_status <> 'void'
                   )
             )
             SELECT
@@ -1499,7 +1509,10 @@ public static class WorkLifecycleModule
                       AND NOT EXISTS (
                           SELECT 1
                           FROM billing_invoice_lines line
+                          JOIN billing_invoices invoice
+                            ON invoice.billing_invoice_id = line.billing_invoice_id
                           WHERE line.time_entry_id = entry.time_entry_id
+                            AND invoice.invoice_status <> 'void'
                       )
                 ), 0),
                 (
