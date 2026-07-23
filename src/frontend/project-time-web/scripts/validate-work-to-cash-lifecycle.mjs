@@ -152,10 +152,19 @@ requireText(migration, [
   'projectpulse038_guard_live_time_entry_line',
   'pg_advisory_xact_lock',
   'projectpulse038_guard_invoice_reactivation',
+  'FOR v_time_entry_id IN',
+  'ORDER BY target_line.time_entry_id',
+  'hashtextextended(v_time_entry_id::text, 0)',
   'FROM work_register_change_history',
   'FROM billing_invoice_events',
   "'038_work_to_cash_lifecycle_and_audit'"
 ], 'Migration 038');
+
+requireText(lifecycle, [
+  "WHEN EXCLUDED.closeout_status = 'closed'",
+  'work_closeout_records.requested_by_user_id',
+  'work_closeout_records.requested_at'
+], 'Closeout request attribution');
 
 if ((migration.match(/\bBEGIN;/g) ?? []).length !== 1
     || (migration.match(/\bCOMMIT;/g) ?? []).length !== 1) {
