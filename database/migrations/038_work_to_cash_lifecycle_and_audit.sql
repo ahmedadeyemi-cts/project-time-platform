@@ -14,6 +14,9 @@ CREATE TABLE IF NOT EXISTS work_billing_readiness_reviews (
     review_status TEXT NOT NULL DEFAULT 'draft',
     checklist_json JSONB NOT NULL DEFAULT '{}'::jsonb,
     notes TEXT NOT NULL DEFAULT '',
+    evidence_source_type TEXT NOT NULL DEFAULT 'labor',
+    evidence_description TEXT NOT NULL DEFAULT '',
+    evidence_amount NUMERIC(14,2) NULL,
     reviewed_by_user_id UUID NULL REFERENCES app_users(user_id),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -22,11 +25,27 @@ CREATE TABLE IF NOT EXISTS work_billing_readiness_reviews (
     CONSTRAINT ck_work_billing_readiness_period
         CHECK (billing_period_end >= billing_period_start),
     CONSTRAINT ck_work_billing_readiness_status
-        CHECK (review_status IN ('draft', 'blocked', 'ready'))
+        CHECK (review_status IN ('draft', 'blocked', 'ready')),
+    CONSTRAINT ck_work_billing_readiness_evidence_source
+        CHECK (evidence_source_type IN ('labor', 'expense', 'fixed_price_milestone')),
+    CONSTRAINT ck_work_billing_readiness_evidence_amount
+        CHECK (evidence_amount IS NULL OR evidence_amount > 0)
 );
 
 CREATE INDEX IF NOT EXISTS idx_work_billing_readiness_project
     ON work_billing_readiness_reviews(project_id, updated_at DESC);
+
+ALTER TABLE billing_invoice_lines
+    ADD COLUMN IF NOT EXISTS billing_readiness_review_id UUID NULL
+        REFERENCES work_billing_readiness_reviews(work_billing_readiness_review_id);
+
+CREATE INDEX IF NOT EXISTS idx_billing_invoice_lines_readiness_review
+    ON billing_invoice_lines(billing_readiness_review_id)
+    WHERE billing_readiness_review_id IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_billing_invoice_lines_invoice_readiness_review
+    ON billing_invoice_lines(billing_invoice_id, billing_readiness_review_id)
+    WHERE billing_readiness_review_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS work_closeout_records (
     project_id UUID PRIMARY KEY REFERENCES projects(project_id) ON DELETE CASCADE,
@@ -410,12 +429,62 @@ ON billing_invoice_lines
 FOR EACH ROW
 EXECUTE FUNCTION projectpulse038_guard_live_time_entry_line();
 
+CREATE OR REPLACE FUNCTION projectpulse038_guard_live_readiness_line()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $
+DECLARE
+    v_target_status TEXT;
+BEGIN
+    IF NEW.billing_readiness_review_id IS NULL THEN
+        RETURN NEW;
+    END IF;
+
+    PERFORM pg_advisory_xact_lock(
+        hashtextextended(NEW.billing_readiness_review_id::text, 38)
+    );
+
+    SELECT lower(COALESCE(invoice.invoice_status, ''))
+    INTO v_target_status
+    FROM billing_invoices invoice
+    WHERE invoice.billing_invoice_id = NEW.billing_invoice_id;
+
+    IF v_target_status <> 'void'
+       AND EXISTS (
+            SELECT 1
+            FROM billing_invoice_lines existing
+            JOIN billing_invoices existing_invoice
+              ON existing_invoice.billing_invoice_id = existing.billing_invoice_id
+            WHERE existing.billing_readiness_review_id = NEW.billing_readiness_review_id
+              AND existing.billing_invoice_line_id
+                  IS DISTINCT FROM NEW.billing_invoice_line_id
+              AND lower(COALESCE(existing_invoice.invoice_status, '')) <> 'void'
+       )
+    THEN
+        RAISE EXCEPTION
+            'Billing readiness package % already belongs to a non-void invoice.',
+            NEW.billing_readiness_review_id;
+    END IF;
+
+    RETURN NEW;
+END;
+$;
+
+DROP TRIGGER IF EXISTS trg_projectpulse038_live_readiness_line
+    ON billing_invoice_lines;
+CREATE TRIGGER trg_projectpulse038_live_readiness_line
+BEFORE INSERT OR UPDATE OF billing_readiness_review_id, billing_invoice_id
+ON billing_invoice_lines
+FOR EACH ROW
+EXECUTE FUNCTION projectpulse038_guard_live_readiness_line();
+
 CREATE OR REPLACE FUNCTION projectpulse038_guard_invoice_reactivation()
 RETURNS trigger
 LANGUAGE plpgsql
 AS $$
 DECLARE
     v_time_entry_id UUID;
+    v_readiness_review_id UUID;
 BEGIN
     IF lower(COALESCE(OLD.invoice_status, '')) = 'void'
        AND lower(COALESCE(NEW.invoice_status, '')) <> 'void'
@@ -429,6 +498,18 @@ BEGIN
         LOOP
             PERFORM pg_advisory_xact_lock(
                 hashtextextended(v_time_entry_id::text, 0)
+            );
+        END LOOP;
+
+        FOR v_readiness_review_id IN
+            SELECT DISTINCT target_line.billing_readiness_review_id
+            FROM billing_invoice_lines target_line
+            WHERE target_line.billing_invoice_id = NEW.billing_invoice_id
+              AND target_line.billing_readiness_review_id IS NOT NULL
+            ORDER BY target_line.billing_readiness_review_id
+        LOOP
+            PERFORM pg_advisory_xact_lock(
+                hashtextextended(v_readiness_review_id::text, 38)
             );
         END LOOP;
 
@@ -449,6 +530,24 @@ BEGIN
                 'Invoice % cannot be reactivated because replacement invoice lines exist.',
                 NEW.billing_invoice_id;
         END IF;
+
+        IF EXISTS (
+            SELECT 1
+            FROM billing_invoice_lines target_line
+            JOIN billing_invoice_lines other_line
+              ON other_line.billing_readiness_review_id = target_line.billing_readiness_review_id
+             AND other_line.billing_invoice_id <> target_line.billing_invoice_id
+            JOIN billing_invoices other_invoice
+              ON other_invoice.billing_invoice_id = other_line.billing_invoice_id
+            WHERE target_line.billing_invoice_id = NEW.billing_invoice_id
+              AND target_line.billing_readiness_review_id IS NOT NULL
+              AND lower(COALESCE(other_invoice.invoice_status, '')) <> 'void'
+        )
+        THEN
+            RAISE EXCEPTION
+                'Invoice % cannot be reactivated because a replacement non-labor package line exists.',
+                NEW.billing_invoice_id;
+        END IF;
     END IF;
 
     RETURN NEW;
@@ -466,7 +565,7 @@ EXECUTE FUNCTION projectpulse038_guard_invoice_reactivation();
 INSERT INTO schema_migrations (migration_id, description, applied_at)
 VALUES (
     '038_work_to_cash_lifecycle_and_audit',
-    'Persist Work-to-Cash decisions and audit events and support void-safe replacement invoices',
+    'Persist Work-to-Cash decisions, governed non-labor evidence, audit events, and void-safe replacement invoices',
     NOW()
 )
 ON CONFLICT (migration_id) DO UPDATE
