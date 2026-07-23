@@ -252,6 +252,16 @@ public static class WorkLifecycleModule
             });
         }
 
+        var auditReason = Clean(request.Reason);
+        if (auditReason.Length < 5)
+        {
+            return Results.BadRequest(new
+            {
+                status = "validation_failed",
+                message = "A specific audit reason is required before saving billing readiness."
+            });
+        }
+
         var isExpenseOnlyPackage = packageType.Contains(
             "expense-only",
             StringComparison.OrdinalIgnoreCase);
@@ -453,7 +463,7 @@ public static class WorkLifecycleModule
             prior?.ReviewStatus ?? string.Empty,
             requestedStatus,
             $"Billing readiness package saved as {requestedStatus}.",
-            Clean(request.Reason),
+            auditReason,
             access.ActualUserId,
             "billing_readiness_review",
             reviewId,
