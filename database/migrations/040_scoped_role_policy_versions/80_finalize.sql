@@ -2,7 +2,7 @@ INSERT INTO scoped_role_policy_audit_events (
     policy_version_id, event_code, actor_user_id, actor_email, reason,
     previous_state, new_state, event_metadata
 )
-VALUES (
+SELECT
     '04000000-0000-0000-0000-000000000001'::uuid,
     'POLICY_BASELINE_PUBLISHED',
     (
@@ -32,6 +32,11 @@ VALUES (
         'notSetCellsPreserveLegacy', TRUE,
         'nonBypassableControlsRemainSeparate', TRUE
     )
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM scoped_role_policy_audit_events
+    WHERE policy_version_id = '04000000-0000-0000-0000-000000000001'::uuid
+      AND event_code = 'POLICY_BASELINE_PUBLISHED'
 );
 
 INSERT INTO schema_migrations (migration_id, description, applied_at)
