@@ -1090,6 +1090,7 @@ public static class WorkLifecycleModule
                           ON line.rate_card_id = card.rate_card_id
                          AND line.is_active = TRUE
                          AND line.billable_default = TRUE
+                         AND line.rate_amount > 0
                          AND lower(line.unit_type) = 'hour'
                          AND lower(line.time_type) = lower(COALESCE(eligible.time_type, 'normal'))
                         LEFT JOIN project_billing_profiles profile
@@ -1193,6 +1194,13 @@ public static class WorkLifecycleModule
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
+            var details = JsonSerializer.Deserialize<JsonElement>(reader.GetString(10));
+            var changedFields = details.ValueKind == JsonValueKind.Object
+                && details.TryGetProperty("changedFields", out var changedFieldsElement)
+                    ? changedFieldsElement.ValueKind == JsonValueKind.String
+                        ? changedFieldsElement.GetString() ?? string.Empty
+                        : changedFieldsElement.ToString()
+                    : string.Empty;
             audit.Add(new
             {
                 eventId = reader.GetGuid(0),
@@ -1205,8 +1213,8 @@ public static class WorkLifecycleModule
                 changedBy = reader.GetString(7),
                 relatedEntityType = reader.GetString(8),
                 relatedEntityId = reader.IsDBNull(9) ? (Guid?)null : reader.GetGuid(9),
-                details = JsonSerializer.Deserialize<JsonElement>(reader.GetString(10)),
-                changedFields = reader.GetString(1),
+                details,
+                changedFields,
                 changedAt = reader.GetFieldValue<DateTimeOffset>(11)
             });
         }
@@ -1369,7 +1377,7 @@ public static class WorkLifecycleModule
                     SELECT COUNT(*)
                     FROM time_entries entry
                     WHERE entry.user_id = @user_id
-                      AND entry.status IN ('rejected', 'returned')
+                      AND entry.status IN ('manager_declined', 'pm_declined')
                 ),
                 (
                     SELECT COUNT(*)
