@@ -18,8 +18,10 @@ const files = {
   app: 'src/frontend/project-time-web/src/App.jsx',
   migration: 'database/migrations/035_work_register_055c_055d_split.sql',
   scopeMigration: 'database/migrations/036_work_register_role_scope_and_closeout_handoff.sql',
+  dateContractMigration: 'database/migrations/037_work_register_dates_and_contract_types.sql',
   rollback: 'database/rollback/035_work_register_055c_055d_split_rollback.sql',
   scopeRollback: 'database/rollback/036_work_register_role_scope_and_closeout_handoff_rollback.sql',
+  dateContractRollback: 'database/rollback/037_work_register_dates_and_contract_types_rollback.sql',
   editReadme: 'docs/modules/module-055c-edit-work-register/README.md',
   createReadme: 'docs/modules/module-055d-create-work-register/README.md'
 };
@@ -34,8 +36,10 @@ const sellImport = read(files.sellImport);
 const purchaseOrder = read(files.purchaseOrder);
 const migration = read(files.migration);
 const scopeMigration = read(files.scopeMigration);
+const dateContractMigration = read(files.dateContractMigration);
 const rollback = read(files.rollback);
 const scopeRollback = read(files.scopeRollback);
+const dateContractRollback = read(files.dateContractRollback);
 const docker = read('deployment/containers/web/Dockerfile');
 const pkg = JSON.parse(read('src/frontend/project-time-web/package.json'));
 
@@ -69,6 +73,38 @@ test('SELL_ENDPOINT', sellImport.includes('/api/work-register/intake/packages/se
 test('SELL_MODULE_026_CREDENTIAL', sellImport.includes('CrmErpIntegrationModule.LoadCredentialAsync'));
 test('SELL_SOURCE_LOCK_UI', frontend.includes('sellAuthoritativeReview') && frontend.includes('disabled={sellAuthoritativeReview}'));
 test('SELL_SOURCE_LOCK_SERVER', program.includes("WHEN source_mode = 'sell_import'") && program.includes("'projectName', extracted_json->'projectName'") && program.includes("'rates', extracted_json->'rates'"));
+test(
+  'CANONICAL_CONTRACT_TYPES',
+  frontend.includes("return 'Time and Material';")
+    && frontend.includes("return 'Fixed Price';")
+    && frontend.includes('<option value="Time and Material">Time and Material</option>')
+    && !frontend.includes('<option value="TM">Time and Material (TM)</option>')
+    && sellImport.includes('"tm" or "timeandmaterial" or "timeandmaterials" => "Time and Material"')
+);
+test(
+  'GSD_CONTRACT_CODE_MAPPING',
+  dateContractMigration.includes("('tm', 'timeandmaterial', 'timeandmaterials')")
+    && dateContractMigration.includes("THEN 'Time and Material'")
+    && dateContractMigration.includes("('fp', 'fixedprice')")
+    && dateContractMigration.includes("THEN 'Fixed Price'")
+);
+test(
+  'EDIT_DATE_PERSISTENCE',
+  frontend.includes('sowSignedDate: dateOnly(item.sowSignedDate)')
+    && frontend.includes("addIfChanged('estimatedEndDate'")
+    && frontend.includes("addIfChanged('sowSignedDate'")
+    && dateContractMigration.includes("'estimatedEndDate'")
+    && dateContractMigration.includes("'sowSignedDate'")
+    && dateContractMigration.includes('trg_projectpulse037_after_edit_save')
+);
+test(
+  'CREATE_DATE_PERSISTENCE',
+  frontend.includes('estimatedEndDate: dateOnly(intakeReviewForm?.estimatedEndDate')
+    && frontend.includes('estimatedEndDate: finalFields.estimatedEndDate')
+    && frontend.includes('value={intakeReviewForm.estimatedEndDate ||')
+    && dateContractMigration.includes('trg_projectpulse037_after_intake_commit')
+    && dateContractMigration.includes("'estimatedEndDate', v_estimated_end_date")
+);
 test('SOURCE_MODE_SCHEMA', migration.includes('ADD COLUMN IF NOT EXISTS source_mode') && migration.includes("SET source_mode = 'gsd_sow_upload'") && migration.includes("ALTER COLUMN source_mode SET DEFAULT 'gsd_sow_upload'") && migration.includes('ALTER COLUMN source_mode SET NOT NULL'));
 const createEndpoint = program.slice(
   program.indexOf('app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/commit"'),
@@ -95,7 +131,8 @@ test('PERMISSIONS', migration.includes('EDIT_WORK_REGISTER_055C') && migration.i
 test('SCOPED_PERMISSION_MIGRATION', scopeMigration.includes("'SUPER_ADMINISTRATOR', 'ADMINISTRATOR'") && scopeMigration.includes('036_work_register_role_scope_and_closeout_handoff'));
 test('ROLLBACK_PRESERVES_AUDIT', rollback.includes('Preserves Work Register audit history') && !rollback.includes('DROP TABLE'));
 test('SCOPED_ROLLBACK', scopeRollback.includes("DELETE FROM app_role_permissions") && scopeRollback.includes("036_work_register_role_scope_and_closeout_handoff"));
-test('MIGRATION_NOT_RUNTIME_APPLIED', !program.includes('035_work_register_055c_055d_split.sql') && !program.includes('036_work_register_role_scope_and_closeout_handoff.sql'));
+test('DATE_CONTRACT_ROLLBACK', dateContractRollback.includes('Existing human-readable contract data is') && dateContractRollback.includes('trg_projectpulse037_after_edit_save') && dateContractRollback.includes('037_work_register_dates_and_contract_types'));
+test('MIGRATION_NOT_RUNTIME_APPLIED', !program.includes('035_work_register_055c_055d_split.sql') && !program.includes('036_work_register_role_scope_and_closeout_handoff.sql') && !program.includes('037_work_register_dates_and_contract_types.sql'));
 test('CONTAINER_CONTEXT', Object.values(files).every((file) => (
   docker.includes(file)
   || (file.startsWith('src/frontend/project-time-web/') && docker.includes('COPY src/frontend/project-time-web/'))
@@ -108,6 +145,6 @@ console.log('WORK_REGISTER_055C_ASSIGNED_EDIT_ROLES=PROJECT_MANAGER_PROJECT_MANA
 console.log('WORK_REGISTER_055C_EDIT_ALL_ROLES=PROJECT_TEAM_COORDINATOR_ADMINISTRATOR_SUPER_ADMINISTRATOR');
 console.log('WORK_REGISTER_055D_CREATE_ROLES=PROJECT_TEAM_COORDINATOR_ADMINISTRATOR_SUPER_ADMINISTRATOR');
 console.log('WORK_REGISTER_055D_SOURCES=GSD_SELL');
-console.log('WORK_REGISTER_055C_055D_MIGRATION_036=CREATED_NOT_APPLIED');
+console.log('WORK_REGISTER_055C_055D_MIGRATION_037=CREATED_NOT_APPLIED');
 console.log(`WORK_REGISTER_055C_055D_CONTRACT=${failures ? 'FAILED' : 'PASSED'}`);
 process.exitCode = failures ? 1 : 0;

@@ -164,6 +164,7 @@ public static class WorkRegisterSellImportModule
 
             var customerName = await CustomerNameAsync(connection, request.CustomerId, context.RequestAborted);
             if (customerName is null) return Invalid("The selected ProjectPulse customer was not found.");
+            var contractType = CanonicalContractType(request.ContractType);
             var extracted = new
             {
                 sourceMode = "sell_import",
@@ -176,7 +177,7 @@ public static class WorkRegisterSellImportModule
                 sellCustomerName,
                 sellQuoteNumber = quoteNumber,
                 requestedWorkType = Clean(request.RequestedWorkType, "Project"),
-                contractType = Clean(request.ContractType, "Fixed Price"),
+                contractType,
                 projectListPrice = contractedAmount,
                 rates,
                 tasks = Array.Empty<object>(),
@@ -204,7 +205,7 @@ public static class WorkRegisterSellImportModule
             {
                 insert.Parameters.AddWithValue("id", intakePackageId);
                 insert.Parameters.AddWithValue("work_type", Clean(request.RequestedWorkType, "Project"));
-                insert.Parameters.AddWithValue("contract_type", Clean(request.ContractType, "Fixed Price"));
+                insert.Parameters.AddWithValue("contract_type", contractType);
                 insert.Parameters.AddWithValue("quote", quoteNumber);
                 insert.Parameters.AddWithValue("customer_id", request.CustomerId);
                 insert.Parameters.AddWithValue("customer_name", customerName);
@@ -243,7 +244,7 @@ public static class WorkRegisterSellImportModule
                 status = "sell_intake_imported",
                 intakePackageId,
                 requestedWorkType = Clean(request.RequestedWorkType, "Project"),
-                contractType = Clean(request.ContractType, "Fixed Price"),
+                contractType,
                 customerId = request.CustomerId,
                 customerHint = customerName,
                 projectNameHint = projectName,
@@ -377,6 +378,21 @@ public static class WorkRegisterSellImportModule
 
     private static IResult Invalid(string message) => Results.BadRequest(new { status = "validation_failed", message });
     private static string Clean(string? value, string fallback = "") => string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
+    private static string CanonicalContractType(string? value)
+    {
+        var original = Clean(value, "Fixed Price");
+        var normalized = System.Text.RegularExpressions.Regex.Replace(
+            original.ToLowerInvariant(),
+            "[^a-z0-9]+",
+            string.Empty);
+
+        return normalized switch
+        {
+            "tm" or "timeandmaterial" or "timeandmaterials" => "Time and Material",
+            "fp" or "fixedprice" => "Fixed Price",
+            _ => original
+        };
+    }
 
     private sealed record SellProvider(
         string AuthModel,

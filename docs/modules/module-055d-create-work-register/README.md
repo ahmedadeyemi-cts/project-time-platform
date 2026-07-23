@@ -14,6 +14,14 @@ The coordinator uploads the GSD and supporting SOW/approval documents. The
 existing controlled extraction flow prepares project, task, hour, assignment,
 and pricing fields for review before final creation.
 
+GSD contract codes are mapped into the shared Work Register vocabulary:
+
+- `T&M` maps to **Time and Material**.
+- `FP` maps to **Fixed Price**.
+
+The reviewed SOW signed date and estimated end date are persisted on the
+created project and are shown in Module 055C after creation.
+
 ### Import from SELL
 
 The coordinator supplies a SELL record ID and the matching ProjectPulse
@@ -49,4 +57,6 @@ server-side credential protections are inherited from Module 026.
 Migration `036_work_register_role_scope_and_closeout_handoff.sql` aligns the
 permission catalog with the PTC/Administrator creation policy. Provider
 credentials, OAuth consent, provider calls, database migration, and deployment
-each require their own governed production action.
+each require their own governed production action. Migration
+`037_work_register_dates_and_contract_types.sql` applies the date and contract
+mapping only through a separately approved rollout.

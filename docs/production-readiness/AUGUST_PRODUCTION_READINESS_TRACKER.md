@@ -303,7 +303,7 @@ and authenticated portal acceptance are separate controlled gates.
 - The expanded Module 026 validator passed 38 checks, including audit-constraint, private-IPv6, proxy, and connection-time DNS-rebinding guards; the complete protected frontend build passed.
 - Draft PR review and CI are still required before any separately authorized migration, secret configuration, external test, or deployment.
 
-## Modules 055C/055D Work Register Split — July 22, 2026 Source Checkpoint
+## Modules 055C/055D Work Register Split — July 23, 2026 Checkpoint
 
 - Module 055C is now **Manage Existing Projects** and does not expose creation controls.
 - Module 055C limits Project Managers and Project Management Leads to projects assigned to them. Project Team Coordinators, Administrators, and Super Administrators can edit every project; View-As remains read-only.
@@ -314,10 +314,12 @@ and authenticated portal acceptance are separate controlled gates.
 - SELL is authoritative for project name and Actual Rate / Pricing / Rate Review; the UI disables those fields and the server restores them from the protected source snapshot on every review save.
 - SELL access reuses Module 026 OAuth 2.0 or write-only API-key configuration and retains no raw provider response or credential.
 - Final creation writes `work_register_created` evidence that is visible from the new project's Module 055C Audit tab.
-- Migrations 034 and 035 were applied to the test database by deployment run `29947623198`; migration `036_work_register_role_scope_and_closeout_handoff.sql` remains unapplied.
-- The authorization correction and Module 040 handoff are merged in source at `5b4debe8218560de357f37e567f38aa497482d69`; they remain undeployed until the checksum-pinned migration 036 rollout and a separately authorized test deployment complete.
+- Migrations 034, 035, and 036 were applied successfully to the test database through the checksum-pinned controlled rollout.
+- The deployed application release is `5b4debe8218560de357f37e567f38aa497482d69`, which includes the authorization correction and Module 040 handoff.
+- The 055D route-isolation and authenticated project-document download correction is merged in source at `99daf05493bee2f6415c484da12f15486592d838` and remains pending a separately controlled rollout.
+- Migration `037_work_register_dates_and_contract_types.sql` is source-only and unapplied. It preserves 055C/055D SOW signed and estimated-end dates, consolidates `TM`, `T&M`, and **Time and Material**, and maps GSD `FP` to **Fixed Price**.
 - The permanent module-ordering guard confirms Module 999 is the highest-numbered and last module.
-- The expanded 055C/055D validator now covers assigned-PM enforcement, PTC/Administrator edit-all and create authority, View-As protection, row-specific controls, and the selected-project Module 040 handoff in addition to the original creation and audit guards.
+- The expanded 055C/055D validator now covers assigned-PM enforcement, PTC/Administrator edit-all and create authority, View-As protection, row-specific controls, selected-project Module 040 handoff, date persistence, and canonical GSD contract mapping.
 
 ## Items Not in August Production Readiness Scope
 - Full production Azure migration.
