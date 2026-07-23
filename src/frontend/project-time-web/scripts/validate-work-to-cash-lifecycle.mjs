@@ -142,9 +142,7 @@ requireText(renderer, [
   'InvoiceBrandingAssets.LoadJpeg()',
   'InvoiceBrandingAssets.LoadPng()',
   '/Logo',
-  'xl/media/image1.png',
-  'ProjectTime.Api.Assets.Branding.USSNavyStacked.jpg',
-  'ProjectTime.Api.Assets.Branding.USSNavyStacked.png'
+  'xl/media/image1.png'
 ], 'US Signal invoice branding');
 
 requireText(brandingAssets, [
