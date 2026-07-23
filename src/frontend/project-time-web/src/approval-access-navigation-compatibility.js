@@ -187,6 +187,10 @@ function navigationLabelForRoute(route) {
   return cleanText(link?.querySelector('.enterprise-nav-label')?.textContent || link?.textContent);
 }
 
+function pageContextLabel() {
+  return cleanText(document.querySelector('.page-context-guide summary strong')?.textContent);
+}
+
 function restoreWorkspaceTitle() {
   const route = currentRoute();
   if (route === MODULES_ROUTE) return;
@@ -194,8 +198,8 @@ function restoreWorkspaceTitle() {
   const heading = document.querySelector('.workspace-header-context h1');
   if (!heading || cleanText(heading.textContent) !== 'Modules') return;
 
-  const label = navigationLabelForRoute(route);
-  if (label) heading.textContent = label;
+  const label = navigationLabelForRoute(route) || pageContextLabel();
+  if (label && label !== 'Modules') heading.textContent = label;
 }
 
 function installWorkspaceTitleCompatibility() {
