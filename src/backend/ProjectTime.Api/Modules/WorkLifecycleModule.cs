@@ -74,7 +74,9 @@ public static class WorkLifecycleModule
 
     public static void MapWorkLifecycleEndpoints(this WebApplication app)
     {
-        app.MapGet("/api/work-lifecycle/dashboard", GetDashboardAsync);
+        app.MapGet(
+            "/api/work-lifecycle/dashboard",
+            (Func<HttpContext, Task<IResult>>)GetDashboardAsync);
         app.MapGet("/api/work-lifecycle/projects/{projectId:guid}", GetProjectLifecycleAsync);
         app.MapPost(
             "/api/work-lifecycle/projects/{projectId:guid}/billing-readiness",
@@ -1177,7 +1179,7 @@ public static class WorkLifecycleModule
                 reason = reader.GetString(6),
                 changedBy = reader.GetString(7),
                 relatedEntityType = reader.GetString(8),
-                relatedEntityId = reader.IsDBNull(9) ? null : reader.GetGuid(9),
+                relatedEntityId = reader.IsDBNull(9) ? (Guid?)null : reader.GetGuid(9),
                 details = JsonSerializer.Deserialize<JsonElement>(reader.GetString(10)),
                 changedFields = reader.GetString(1),
                 changedAt = reader.GetFieldValue<DateTimeOffset>(11)
