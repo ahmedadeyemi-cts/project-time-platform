@@ -701,7 +701,7 @@ public static class InvoiceBillingModule
                   JOIN billing_invoices invoice
                     ON invoice.billing_invoice_id = invoiced.billing_invoice_id
                   WHERE invoiced.time_entry_id = te.time_entry_id
-                    AND invoice.invoice_status <> 'void'
+                    AND lower(COALESCE(invoice.invoice_status, '')) <> 'void'
               )
             ORDER BY te.work_date, resource.display_name, task.task_code;
             """;
@@ -1135,14 +1135,14 @@ public static class InvoiceBillingModule
               AND entry.billable = TRUE
               AND entry.hours > 0
               AND entry.status = ANY(@approved_statuses)
-              AND line.rate_amount > 0
+              AND COALESCE(line.rate_amount, 0) > 0
               AND NOT EXISTS (
                   SELECT 1
                   FROM billing_invoice_lines invoiced
                   JOIN billing_invoices invoice
                     ON invoice.billing_invoice_id = invoiced.billing_invoice_id
                   WHERE invoiced.time_entry_id = entry.time_entry_id
-                    AND invoice.invoice_status <> 'void'
+                    AND lower(COALESCE(invoice.invoice_status, '')) <> 'void'
               )
               AND (
                     (
@@ -1221,7 +1221,7 @@ public static class InvoiceBillingModule
                   JOIN billing_invoices invoice
                     ON invoice.billing_invoice_id = invoiced.billing_invoice_id
                   WHERE invoiced.time_entry_id = entry.time_entry_id
-                    AND invoice.invoice_status <> 'void'
+                    AND lower(COALESCE(invoice.invoice_status, '')) <> 'void'
               );
             """;
 
