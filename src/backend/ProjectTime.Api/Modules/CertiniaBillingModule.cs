@@ -2661,6 +2661,10 @@ public static class CertiniaBillingModule
         CertiniaInvoiceLine line,
         bool includeResourceNames)
     {
+        var laborCategory = Clean(line.LaborCategory).ToLowerInvariant();
+        if (laborCategory == "expense") return "Reimbursable Expense";
+        if (laborCategory == "fixed_price_milestone") return "Fixed Price Milestone";
+
         if (includeResourceNames)
         {
             return Fallback(line.ResourceName, "Professional Services Engineer");
