@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import './billing-readiness-center.css';
 
+const NON_LABOR_DRAFT_EVIDENCE_BLOCKERS = new Set([
+  'No approved uninvoiced labor or governed ready non-labor package is currently eligible.',
+  'Fixed Price invoice dollars require a governed ready milestone or expense package; hourly time remains utilization evidence only.'
+]);
+
 const readinessChecks = [
   {
     key: 'timeApproved',
@@ -604,11 +609,14 @@ export default function BillingReadinessCenter() {
       .filter((item) => !checkedItems.has(item.key))
       .forEach((item) => issues.push(`${item.label} is not confirmed.`));
     if (financialTotals.blockedTotal > 0) issues.push(`${currency(financialTotals.blockedTotal)} is currently blocked or pending review.`);
-    if (requiresLaborEvidence) {
-      (billingCandidate?.blockers ?? []).forEach((blocker) => issues.push(blocker));
-      if (billingMode === 'project' && billingCandidate && Number(billingCandidate.approvedLineCount || 0) === 0) {
-        issues.push('No approved uninvoiced labor lines are currently available.');
-      }
+    (billingCandidate?.blockers ?? [])
+      .filter((blocker) => requiresLaborEvidence || !NON_LABOR_DRAFT_EVIDENCE_BLOCKERS.has(blocker))
+      .forEach((blocker) => issues.push(blocker));
+    if (requiresLaborEvidence
+        && billingMode === 'project'
+        && billingCandidate
+        && Number(billingCandidate.approvedLineCount || 0) === 0) {
+      issues.push('No approved uninvoiced labor lines are currently available.');
     }
 
     return [...new Set(issues)];
@@ -666,7 +674,9 @@ export default function BillingReadinessCenter() {
           checklist,
           notes: packageNotes,
           evidenceDescription: requiresNonLaborEvidence ? evidenceDescription.trim() : '',
-          evidenceAmount: requiresNonLaborEvidence ? Number(evidenceAmount) : null,
+          evidenceAmount: requiresNonLaborEvidence && String(evidenceAmount).trim() !== ''
+            ? Number(evidenceAmount)
+            : null,
           reason: auditReason.trim()
         }
       );
