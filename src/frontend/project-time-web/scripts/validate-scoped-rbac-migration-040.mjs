@@ -7,6 +7,7 @@ const migrationRoot = 'database/migrations/040_scoped_role_policy_versions';
 const fragments = [
   '00_schema.sql',
   '10_workbook_cells.sql',
+  '12_super_administrator_override.sql',
   '15_workbook_metadata.sql',
   '20_standard_grants.sql',
   '30_time_entry.sql',
@@ -66,9 +67,37 @@ const workbook = JSON.parse(workbookMatch[1]);
 if (workbook.roles.length !== 12) throw new Error(`Expected 12 canonical roles, found ${workbook.roles.length}.`);
 if (workbook.rows.length !== 70) throw new Error(`Expected 70 workbook module rows, found ${workbook.rows.length}.`);
 if (workbook.roles.at(-1) !== 'SUPER_ADMINISTRATOR') throw new Error('Super Administrator must remain the canonical final role column.');
-if (!workbook.rows.every((row) => row[1].at(-1) === workbook.designations.indexOf('Full Control'))) {
-  throw new Error('Every workbook module must retain Full Control for Super Administrator.');
+
+const fullControlIndex = workbook.designations.indexOf('Full Control');
+const customIndex = workbook.designations.indexOf('Custom');
+const noAccessIndex = workbook.designations.indexOf('No Access');
+const superAdministratorDesignations = workbook.rows.map((row) => row[1].at(-1));
+const superAdministratorCounts = {
+  fullControl: superAdministratorDesignations.filter((value) => value === fullControlIndex).length,
+  custom: superAdministratorDesignations.filter((value) => value === customIndex).length,
+  noAccess: superAdministratorDesignations.filter((value) => value === noAccessIndex).length
+};
+if (superAdministratorCounts.fullControl !== 65
+    || superAdministratorCounts.custom !== 3
+    || superAdministratorCounts.noAccess !== 2) {
+  throw new Error(`Unexpected workbook Super Administrator designations: ${JSON.stringify(superAdministratorCounts)}.`);
 }
+
+const superAdminOverride = fragmentText[2];
+for (const required of [
+  "role_code = 'SUPER_ADMINISTRATOR'",
+  "designation IN ('No Access', 'Not Set')",
+  "SET designation = 'Full Control'",
+  "scope_code = 'ORGANIZATION'",
+  'Modules 001-003',
+  'non-bypassable',
+  'read-only'
+]) {
+  if (!superAdminOverride.includes(required)) {
+    throw new Error(`Super Administrator override missing contract: ${required}`);
+  }
+}
+
 const notSetIndex = workbook.designations.indexOf('Not Set');
 const notSetCount = workbook.rows.reduce(
   (total, row) => total + row[1].filter((designation) => designation === notSetIndex).length,
@@ -87,7 +116,7 @@ for (const required of [
   'rollback blocked',
   'DROP TABLE IF EXISTS scoped_role_policy_grants',
   'DROP TABLE IF EXISTS scoped_role_policy_versions',
-  "DELETE FROM schema_migrations",
+  'DELETE FROM schema_migrations',
   "migration_id = '040_scoped_role_policy_versions'"
 ]) {
   if (!rollback.includes(required)) throw new Error(`Migration 040 rollback missing safety contract: ${required}`);
@@ -96,4 +125,4 @@ if (/DROP TABLE IF EXISTS\s+app_|DELETE FROM\s+app_/i.test(rollback)) {
   throw new Error('Migration 040 rollback must not drop or delete legacy application RBAC data.');
 }
 
-console.log('Migration 040 workbook authority, additive schema, idempotence, and rollback safety contracts passed.');
+console.log('Migration 040 workbook authority, Super Administrator override, additive schema, idempotence, and rollback safety contracts passed.');
