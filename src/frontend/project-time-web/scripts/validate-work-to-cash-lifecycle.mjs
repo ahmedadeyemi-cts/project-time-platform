@@ -203,6 +203,192 @@ requireText(migration, [
   'evidence_amount',
   'billing_readiness_review_id',
   'projectpulse038_guard_live_readiness_line',
+  'AS $projectpulse038_readiness
+  'FOR v_readiness_review_id IN',
+  'hashtextextended(v_readiness_review_id::text, 38)',
+  'FOR v_time_entry_id IN',
+  'ORDER BY target_line.time_entry_id',
+  'hashtextextended(v_time_entry_id::text, 0)',
+  'FROM work_register_change_history',
+  'FROM billing_invoice_events',
+  "'038_work_to_cash_lifecycle_and_audit'"
+], 'Migration 038');
+
+requireText(lifecycle, [
+  "WHEN EXCLUDED.closeout_status = 'closed'",
+  'work_closeout_records.requested_by_user_id',
+  'work_closeout_records.requested_at'
+], 'Closeout request attribution');
+
+if ((migration.match(/\bBEGIN;/g) ?? []).length !== 1
+    || (migration.match(/\bCOMMIT;/g) ?? []).length !== 1) {
+  throw new Error('Migration 038 must remain one atomic transaction.');
+}
+
+requireText(rollback, [
+  'trg_projectpulse038_invoice_reactivation',
+  'trg_projectpulse038_live_time_entry_line',
+  'trg_projectpulse038_live_readiness_line',
+  'projectpulse038_guard_live_readiness_line',
+  'DROP INDEX IF EXISTS uq_billing_invoice_lines_invoice_time_entry',
+  'DROP INDEX IF EXISTS uq_billing_invoice_lines_invoice_readiness_review',
+  'DROP COLUMN IF EXISTS billing_readiness_review_id',
+  'HAVING COUNT(*) > 1',
+  'CREATE UNIQUE INDEX IF NOT EXISTS uq_billing_invoice_lines_time_entry',
+  'DROP TRIGGER IF EXISTS trg_projectpulse038_invoice_audit',
+  'DROP TABLE IF EXISTS work_lifecycle_audit_events',
+  'DROP TABLE IF EXISTS work_closeout_records',
+  'DROP TABLE IF EXISTS work_billing_readiness_reviews',
+  "'038_work_to_cash_lifecycle_and_audit'"
+], 'Migration 038 rollback');
+
+if (lifecycle.includes("entry.status IN ('rejected', 'returned')")
+    || lifecycle.includes('changedFields = reader.GetString(1)')) {
+  throw new Error('Welcome attention and unified audit must use persisted status/detail fields.');
+}
+
+requireText(readiness, [
+  '/api/work-lifecycle/projects/',
+  '/billing-readiness',
+  'saveBillingReadiness',
+  "saveBillingReadiness('ready')",
+  "if (billingMode === 'monthEnd')",
+  "billingMode === 'monthEnd' || isSavingReadiness",
+  '.filter((item) => !checkedItems.has(item.key))',
+  'issues.push(`${item.label} is not confirmed.`)',
+  'requiresNonLaborEvidence',
+  'evidenceDescription',
+  'evidenceAmount',
+  'Enter the approved expense description.',
+  'Enter a positive governed milestone amount.',
+  'if (requiresLaborEvidence) {',
+  'if (!saved) {',
+  'setPeriodStart(firstDayOfCurrentMonth())',
+  'setPeriodEnd(lastDayOfCurrentMonth())',
+  "setPackageType('Partial project invoice')",
+  'setPackageNotes(\'\')',
+  'setCheckedItems(new Set())',
+  'Month-end mode is a read-only multi-project preview.',
+  "switch to Project Billing Package",
+  "? 'Preview only'",
+  'Audit reason',
+  'Saved:',
+  'Persisted and audited'
+], 'Module 039 billing readiness');
+
+requireText(closeout, [
+  '/api/work-lifecycle/projects/',
+  '/closeout/reopen',
+  'saveGovernedCloseout',
+  "saveGovernedCloseout('request')",
+  "saveGovernedCloseout('complete')",
+  'Server-validated blockers',
+  'Final billing disposition',
+  'Audit reason',
+  'Governed closeout'
+], 'Module 040 closeout');
+
+requireText(workRegister, [
+  '/api/work-lifecycle/projects/',
+  'Promise.allSettled',
+  "lifecycleResult.status === 'fulfilled'",
+  'lifecycle?.audit ?? data.changeHistory ?? []',
+  'Work-to-Cash Audit History',
+  'billing readiness, partial/final invoices'
+], 'Module 055C unified audit');
+
+requireText(invoice, [
+  'invoiceNotes',
+  'notes: invoiceNotes.trim()',
+  'billingReadinessReviewIds',
+  'selectedEvidenceDetails',
+  'updateEvidenceSelection',
+  'governed package',
+  'Invoice notes',
+  "createInvoice('partial')",
+  "createInvoice('final')"
+], 'Module 042 invoice creation');
+
+requireText(renderer, [
+  'InvoiceBrandingAssets.LoadJpeg()',
+  'InvoiceBrandingAssets.LoadPng()',
+  '/Logo',
+  'xl/media/image1.png'
+], 'US Signal invoice branding');
+
+requireText(brandingAssets, [
+  'GetManifestResourceStream',
+  'ProjectTime.Api.Assets.Branding.USSNavyStacked.jpg',
+  'ProjectTime.Api.Assets.Branding.USSNavyStacked.png'
+], 'US Signal embedded branding loader');
+
+requireText(csproj, [
+  'ClosedXML',
+  'EmbeddedResource Include="Assets/Branding/USSNavyStacked.png"',
+  'EmbeddedResource Include="Assets/Branding/USSNavyStacked.jpg"'
+], 'API embedded branding resources');
+
+for (const [path, minimumBytes] of [
+  ['src/backend/ProjectTime.Api/Assets/Branding/USSNavyStacked.jpg', 30_000],
+  ['src/backend/ProjectTime.Api/Assets/Branding/USSNavyStacked.png', 15_000]
+]) {
+  const file = await stat(resolve(root, path));
+  if (file.size < minimumBytes) {
+    throw new Error(`${path} is missing or too small to be the supplied US Signal artwork.`);
+  }
+}
+
+requireText(welcome, [
+  '/api/work-lifecycle/dashboard',
+  'TIME_ENTRY_EXCLUDED_ROLES',
+  "'MANAGER'",
+  "'SALES'",
+  "'INSIDE_SALES'",
+  "'EXECUTIVE'",
+  "'PROJECT_TEAM_COORDINATOR'",
+  "persona-${persona}",
+  'Requires attention',
+  'Project health',
+  'Team / billing snapshot',
+  'Recent items'
+], 'Role-aware welcome dashboard');
+
+requireText(welcome, [
+  'project.activeTaskCount',
+  "'active task'",
+  "'active tasks'"
+], 'Welcome project task state');
+
+if (welcome.includes('project.completionPercent')) {
+  throw new Error('The welcome page must not present invented task-completion percentages.');
+}
+
+if (welcome.includes('Start Timer')) {
+  throw new Error('The welcome dashboard must not expose a non-functional timer action.');
+}
+
+requireText(app, [
+  "import RoleWelcomeDashboard from './RoleWelcomeDashboard.jsx';",
+  '<RoleWelcomeDashboard',
+  'roleCodes={currentRoleCodes}',
+  'roleModules={visibleRoleModules}'
+], 'Welcome dashboard integration');
+
+requireText(docker, [
+  'WorkLifecycleModule.cs',
+  'InvoiceBillingModule.cs',
+  'InvoiceArtifactBrandingRenderer.cs',
+  'InvoiceBrandingAssets.cs',
+  'ProjectTime.Api.csproj',
+  'Assets/Branding/USSNavyStacked.png',
+  'Assets/Branding/USSNavyStacked.jpg',
+  '038_work_to_cash_lifecycle_and_audit.sql',
+  '038_work_to_cash_lifecycle_and_audit_rollback.sql'
+], 'Web container validation context');
+
+console.log('Work-to-Cash lifecycle, audit, role-aware welcome page, and invoice branding contracts passed.');
+,
+  '$projectpulse038_readiness$;',
   'trg_projectpulse038_live_readiness_line',
   'FOR v_readiness_review_id IN',
   'hashtextextended(v_readiness_review_id::text, 38)',
