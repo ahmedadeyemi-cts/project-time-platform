@@ -5,6 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>ProjectTime.Api</RootNamespace>
     <AssemblyName>ProjectTime.Api</AssemblyName>
+    <ScopedRbacGeneratedProgram>$(IntermediateOutputPath)Program.ScopedRbac.g.cs</ScopedRbacGeneratedProgram>
   </PropertyGroup>
 
   <ItemGroup>
@@ -16,4 +17,19 @@
     <EmbeddedResource Include="Assets/Branding/USSNavyStacked.png" LogicalName="ProjectTime.Api.Assets.Branding.USSNavyStacked.png" />
     <EmbeddedResource Include="Assets/Branding/USSNavyStacked.jpg" LogicalName="ProjectTime.Api.Assets.Branding.USSNavyStacked.jpg" />
   </ItemGroup>
+
+  <!-- Program.cs remains the canonical oversized entrypoint. The generated
+       compile copy inserts one idempotent endpoint registration immediately
+       before app.Run(). CI and ProjectPulse deployment builds run on Linux. -->
+  <ItemGroup>
+    <Compile Remove="Program.cs" />
+  </ItemGroup>
+
+  <Target Name="GenerateScopedRbacProgram" BeforeTargets="CoreCompile">
+    <MakeDir Directories="$(IntermediateOutputPath)" />
+    <Exec Command="awk 'BEGIN { inserted=0 } /^[[:space:]]*app\.Run\(\);[[:space:]]*$/ &amp;&amp; inserted==0 { print &quot;app.MapScopedRolePolicyEndpoints();&quot;; inserted=1 } { print } END { if (inserted==0) exit 42 }' &quot;$(MSBuildProjectDirectory)/Program.cs&quot; &gt; &quot;$(ScopedRbacGeneratedProgram)&quot;" />
+    <ItemGroup>
+      <Compile Include="$(ScopedRbacGeneratedProgram)" />
+    </ItemGroup>
+  </Target>
 </Project>
