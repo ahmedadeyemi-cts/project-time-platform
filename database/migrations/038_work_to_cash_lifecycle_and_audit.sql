@@ -324,10 +324,104 @@ JOIN billing_invoices invoice
 ON CONFLICT (source_table, source_id) WHERE source_table <> '' AND source_id IS NOT NULL
 DO NOTHING;
 
+-- A void invoice must release its source time for a replacement invoice while
+-- non-void invoices retain the original one-live-invoice-per-time-entry rule.
+DROP INDEX IF EXISTS uq_billing_invoice_lines_time_entry;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_billing_invoice_lines_invoice_time_entry
+    ON billing_invoice_lines(billing_invoice_id, time_entry_id)
+    WHERE time_entry_id IS NOT NULL;
+
+CREATE OR REPLACE FUNCTION projectpulse038_guard_live_time_entry_line()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_target_status TEXT;
+BEGIN
+    IF NEW.time_entry_id IS NULL THEN
+        RETURN NEW;
+    END IF;
+
+    PERFORM pg_advisory_xact_lock(
+        hashtextextended(NEW.time_entry_id::text, 0)
+    );
+
+    SELECT lower(COALESCE(invoice.invoice_status, ''))
+    INTO v_target_status
+    FROM billing_invoices invoice
+    WHERE invoice.billing_invoice_id = NEW.billing_invoice_id;
+
+    IF v_target_status <> 'void'
+       AND EXISTS (
+            SELECT 1
+            FROM billing_invoice_lines existing
+            JOIN billing_invoices existing_invoice
+              ON existing_invoice.billing_invoice_id = existing.billing_invoice_id
+            WHERE existing.time_entry_id = NEW.time_entry_id
+              AND existing.billing_invoice_line_id
+                  IS DISTINCT FROM NEW.billing_invoice_line_id
+              AND lower(COALESCE(existing_invoice.invoice_status, '')) <> 'void'
+       )
+    THEN
+        RAISE EXCEPTION
+            'Time entry % already belongs to a non-void invoice.',
+            NEW.time_entry_id;
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_projectpulse038_live_time_entry_line
+    ON billing_invoice_lines;
+CREATE TRIGGER trg_projectpulse038_live_time_entry_line
+BEFORE INSERT OR UPDATE OF time_entry_id, billing_invoice_id
+ON billing_invoice_lines
+FOR EACH ROW
+EXECUTE FUNCTION projectpulse038_guard_live_time_entry_line();
+
+CREATE OR REPLACE FUNCTION projectpulse038_guard_invoice_reactivation()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF lower(COALESCE(OLD.invoice_status, '')) = 'void'
+       AND lower(COALESCE(NEW.invoice_status, '')) <> 'void'
+       AND EXISTS (
+            SELECT 1
+            FROM billing_invoice_lines target_line
+            JOIN billing_invoice_lines other_line
+              ON other_line.time_entry_id = target_line.time_entry_id
+             AND other_line.billing_invoice_id <> target_line.billing_invoice_id
+            JOIN billing_invoices other_invoice
+              ON other_invoice.billing_invoice_id = other_line.billing_invoice_id
+            WHERE target_line.billing_invoice_id = NEW.billing_invoice_id
+              AND target_line.time_entry_id IS NOT NULL
+              AND lower(COALESCE(other_invoice.invoice_status, '')) <> 'void'
+       )
+    THEN
+        RAISE EXCEPTION
+            'Invoice % cannot be reactivated because replacement invoice lines exist.',
+            NEW.billing_invoice_id;
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_projectpulse038_invoice_reactivation
+    ON billing_invoices;
+CREATE TRIGGER trg_projectpulse038_invoice_reactivation
+BEFORE UPDATE OF invoice_status
+ON billing_invoices
+FOR EACH ROW
+EXECUTE FUNCTION projectpulse038_guard_invoice_reactivation();
+
 INSERT INTO schema_migrations (migration_id, description, applied_at)
 VALUES (
     '038_work_to_cash_lifecycle_and_audit',
-    'Persist billing readiness and closeout decisions and unify Work Register, invoice, and lifecycle audit events',
+    'Persist Work-to-Cash decisions and audit events and support void-safe replacement invoices',
     NOW()
 )
 ON CONFLICT (migration_id) DO UPDATE
