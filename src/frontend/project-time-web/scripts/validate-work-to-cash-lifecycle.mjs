@@ -342,6 +342,7 @@ requireText(readiness, [
   "source: 'Module 042 verified invoice candidate'",
   'matchesProject(expense, selectedProject)',
   'buildMonthEndRows(payload.billingCandidates, stagedCertifyExpenses)',
+  'requires review|requires_review|requires mapping|requires_mapping|unmapped|rejected',
   '.filter((blocker) => requiresLaborEvidence || !NON_LABOR_DRAFT_EVIDENCE_BLOCKERS.has(blocker))',
   "requiresNonLaborEvidence && String(evidenceAmount).trim() !== ''",
   'setPeriodStart(firstDayOfCurrentMonth())',
