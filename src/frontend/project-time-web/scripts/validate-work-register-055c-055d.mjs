@@ -98,6 +98,15 @@ test(
     && dateContractMigration.includes('trg_projectpulse037_after_edit_save')
 );
 test(
+  'EDIT_DATE_CONSTRAINT_GUARD',
+  dateContractMigration.includes('v_existing_start_date')
+    && dateContractMigration.includes('v_existing_end_date')
+    && dateContractMigration.includes('Invalid historical or partial date edits')
+    && dateContractMigration.includes('coalesce(v_estimated_end_date, v_existing_end_date)')
+    && dateContractMigration.includes('< coalesce(v_project_start_date, v_existing_start_date)')
+    && dateContractMigration.includes("v_metadata_payload - ARRAY[")
+);
+test(
   'CREATE_DATE_PERSISTENCE',
   frontend.includes('estimatedEndDate: dateOnly(intakeReviewForm?.estimatedEndDate')
     && frontend.includes('estimatedEndDate: finalFields.estimatedEndDate')

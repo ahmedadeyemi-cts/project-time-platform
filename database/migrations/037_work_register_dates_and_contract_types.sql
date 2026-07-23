@@ -117,9 +117,14 @@ AS $$
 DECLARE
     v_contract_source TEXT;
     v_contract_type TEXT;
+    v_project_start_source TEXT;
+    v_estimated_end_source TEXT;
     v_project_start_date DATE;
     v_estimated_end_date DATE;
+    v_existing_start_date DATE;
+    v_existing_end_date DATE;
     v_sow_signed_date DATE;
+    v_metadata_payload JSONB := coalesce(p_payload, '{}'::jsonb);
 BEGIN
     v_contract_source := projectpulse037_payload_text(
         p_payload,
@@ -128,12 +133,27 @@ BEGIN
         'contract'
     );
     v_contract_type := projectpulse037_canonical_contract_type(v_contract_source);
+    v_project_start_source := projectpulse037_payload_text(
+        p_payload,
+        'projectStartDate',
+        'startDate',
+        'start_date',
+        'plannedStartDate'
+    );
     v_project_start_date := projectpulse037_payload_date(
         p_payload,
         'projectStartDate',
         'startDate',
         'start_date',
         'plannedStartDate'
+    );
+    v_estimated_end_source := projectpulse037_payload_text(
+        p_payload,
+        'estimatedEndDate',
+        'endDate',
+        'end_date',
+        'projectEndDate',
+        'plannedEndDate'
     );
     v_estimated_end_date := projectpulse037_payload_date(
         p_payload,
@@ -150,6 +170,48 @@ BEGIN
         'sowDate',
         'sow_date'
     );
+
+    SELECT start_date,
+           end_date
+      INTO v_existing_start_date,
+           v_existing_end_date
+      FROM projects
+     WHERE project_id = p_project_id;
+
+    IF v_project_start_source IS NOT NULL AND v_project_start_date IS NULL THEN
+        v_metadata_payload := v_metadata_payload - ARRAY[
+            'projectStartDate', 'startDate', 'start_date', 'plannedStartDate'
+        ];
+    END IF;
+
+    IF v_estimated_end_source IS NOT NULL AND v_estimated_end_date IS NULL THEN
+        v_metadata_payload := v_metadata_payload - ARRAY[
+            'estimatedEndDate', 'endDate', 'end_date',
+            'projectEndDate', 'plannedEndDate'
+        ];
+    END IF;
+
+    IF coalesce(v_estimated_end_date, v_existing_end_date) IS NOT NULL
+       AND coalesce(v_project_start_date, v_existing_start_date) IS NOT NULL
+       AND coalesce(v_estimated_end_date, v_existing_end_date)
+           < coalesce(v_project_start_date, v_existing_start_date)
+    THEN
+        -- Invalid historical or partial date edits must not abort migration
+        -- replay or a future non-UI save. Ignore only the supplied date keys.
+        IF v_project_start_source IS NOT NULL THEN
+            v_project_start_date := NULL;
+            v_metadata_payload := v_metadata_payload - ARRAY[
+                'projectStartDate', 'startDate', 'start_date', 'plannedStartDate'
+            ];
+        END IF;
+        IF v_estimated_end_source IS NOT NULL THEN
+            v_estimated_end_date := NULL;
+            v_metadata_payload := v_metadata_payload - ARRAY[
+                'estimatedEndDate', 'endDate', 'end_date',
+                'projectEndDate', 'plannedEndDate'
+            ];
+        END IF;
+    END IF;
 
     IF v_contract_source IS NULL
        AND v_project_start_date IS NULL
@@ -177,7 +239,7 @@ BEGIN
            END,
            sow_signed_date = coalesce(v_sow_signed_date, sow_signed_date),
            metadata_json = coalesce(metadata_json, '{}'::jsonb)
-               || coalesce(p_payload, '{}'::jsonb),
+               || v_metadata_payload,
            updated_at = NOW()
      WHERE project_id = p_project_id;
 

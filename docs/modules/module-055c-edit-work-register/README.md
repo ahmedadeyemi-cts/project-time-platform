@@ -28,7 +28,8 @@ Audit tab.
 Project setup preserves and updates the existing SOW signed date and estimated
 end date. Contract types use the canonical labels **Time and Material** and
 **Fixed Price**; legacy `TM`, `T&M`, and `FP` values are normalized without
-creating duplicate choices.
+creating duplicate choices. Invalid historical or partial date changes are
+skipped during audit replay so they cannot violate the project date range.
 
 ## Governed launch ownership
 
