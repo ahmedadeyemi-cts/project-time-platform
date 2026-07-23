@@ -20,12 +20,12 @@ const paths = {
   portal: 'src/frontend/project-time-web/src/DashboardPersonalCalendarPortal.jsx',
   css: 'src/frontend/project-time-web/src/dashboard-personal-calendar.css',
   context: 'src/frontend/project-time-web/src/PageContextGuide.jsx',
-  calendarBackend: 'src/backend/ProjectTime.Api/Modules/CalendarCapacityModule.cs',
+  calendarCenter: 'src/frontend/project-time-web/src/CalendarCapacityCenter.jsx',
   approvalBackend: 'src/backend/ProjectTime.Api/Modules/ApprovalCenterModule.cs',
   packageJson: 'src/frontend/project-time-web/package.json'
 };
 
-const [main, portal, css, context, calendarBackend, approvalBackend, packageJson] = await Promise.all(
+const [main, portal, css, context, calendarCenter, approvalBackend, packageJson] = await Promise.all(
   Object.values(paths).map(text)
 );
 
@@ -95,13 +95,13 @@ if (/<details\s+open(?:=|\s|>)/.test(context)) {
   throw new Error('The page context guide must be collapsed by default on every page.');
 }
 
-requireText(calendarBackend, [
-  'app.MapGet("/api/calendar/resources"',
-  'currentUserId = actor.Value',
-  'app.MapPost("/api/calendar/schedule"',
-  'request.ResourceIds',
-  'scheduleItems = items'
-], 'Existing calendar API authority');
+requireText(calendarCenter, [
+  "api('/api/calendar/resources')",
+  "api('/api/calendar/schedule'",
+  'resourceIds:',
+  "view === 'workweek'",
+  'schedule?.schedules || []'
+], 'Existing Resource and Team Calendar API contract');
 
 requireText(approvalBackend, [
   'app.MapGet("/api/manager/approvals"',
