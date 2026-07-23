@@ -197,6 +197,7 @@ public static class WorkLifecycleModule
             project,
             readiness?.BillingPeriodStart,
             readiness?.BillingPeriodEnd,
+            readiness?.PackageType ?? string.Empty,
             context.RequestAborted);
         var closeout = await LoadCloseoutAsync(connection, null, projectId, context.RequestAborted);
         var blockers = await BuildCloseoutBlockersAsync(
@@ -310,6 +311,7 @@ public static class WorkLifecycleModule
             project,
             request.BillingPeriodStart,
             request.BillingPeriodEnd,
+            packageType,
             context.RequestAborted);
         if (requestedStatus == "ready" && serverBlockers.Count > 0)
         {
@@ -1165,9 +1167,15 @@ public static class WorkLifecycleModule
         WorkLifecycleProject project,
         DateOnly? billingPeriodStart,
         DateOnly? billingPeriodEnd,
+        string packageType,
         CancellationToken cancellationToken)
     {
         var blockers = new List<string>();
+        var isExpenseOnlyPackage = packageType.Contains(
+            "expense-only",
+            StringComparison.OrdinalIgnoreCase);
+        var requiresLaborEvidence = !isExpenseOnlyPackage
+            && !packageType.Contains("milestone", StringComparison.OrdinalIgnoreCase);
 
         if (string.IsNullOrWhiteSpace(project.CustomerName))
         {
@@ -1185,7 +1193,8 @@ public static class WorkLifecycleModule
         {
             blockers.Add("Contract type is missing.");
         }
-        if (project.ContractType.Contains("Fixed", StringComparison.OrdinalIgnoreCase))
+        if (!isExpenseOnlyPackage
+            && project.ContractType.Contains("Fixed", StringComparison.OrdinalIgnoreCase))
         {
             blockers.Add("Fixed Price invoice dollars require a governed milestone or approved no-further-billing disposition; hourly time remains utilization evidence only.");
         }
@@ -1224,7 +1233,9 @@ public static class WorkLifecycleModule
             }
         }
 
-        await using (var command = new NpgsqlCommand("""
+        if (requiresLaborEvidence)
+        {
+            await using var command = new NpgsqlCommand("""
             WITH eligible AS (
                 SELECT
                     entry.time_entry_id,
@@ -1281,8 +1292,7 @@ public static class WorkLifecycleModule
                   )
                 LIMIT 1
             ) rate_match ON TRUE;
-            """, connection, transaction))
-        {
+            """, connection, transaction);
             command.Parameters.AddWithValue("project_id", project.ProjectId);
             command.Parameters.Add("approved_statuses", NpgsqlDbType.Array | NpgsqlDbType.Text).Value =
                 LifecycleApprovedTimeStatuses;
