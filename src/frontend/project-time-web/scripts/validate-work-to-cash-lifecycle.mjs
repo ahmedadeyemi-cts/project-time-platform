@@ -234,6 +234,12 @@ requireText(lifecycle, [
   'command.Parameters.AddWithValue("prior_project_status", priorProjectStatus)'
 ], 'Repeatable closeout-cycle status restoration');
 
+requireText(lifecycle, [
+  'string.Equals(prior?.CloseoutStatus, "closed", StringComparison.OrdinalIgnoreCase)',
+  'status = "closeout_reopen_required"',
+  'must be reopened through the governed reopen workflow before another closeout decision'
+], 'Closed closeout reopen enforcement');
+
 if ((migration.match(/\bBEGIN;/g) ?? []).length !== 1
     || (migration.match(/\bCOMMIT;/g) ?? []).length !== 1) {
   throw new Error('Migration 038 must remain one atomic transaction.');
