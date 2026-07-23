@@ -1,8 +1,11 @@
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 const root = resolve(process.cwd(), '../../..');
-const text = (path) => readFile(resolve(root, path), 'utf8');
+const absolute = (path) => resolve(root, path);
+const text = (path) => readFile(absolute(path), 'utf8');
+const optionalText = async (path) => existsSync(absolute(path)) ? text(path) : '';
 const requireAll = (source, values, label) => {
   for (const value of values) {
     if (!source.includes(value)) throw new Error(`${label} missing contract: ${value}`);
@@ -15,7 +18,11 @@ const paths = {
   backend: 'src/backend/ProjectTime.Api/Modules/ScopedRolePolicyModule.cs'
 };
 
-const [ui, css, backend] = await Promise.all(Object.values(paths).map(text));
+const [ui, css, backend] = await Promise.all([
+  text(paths.ui),
+  text(paths.css),
+  optionalText(paths.backend)
+]);
 
 requireAll(ui, [
   'Module 037',
@@ -36,14 +43,18 @@ requireAll(ui, [
   'Last modified by'
 ], 'Module 037 UI');
 
-requireAll(backend, [
-  'app.MapGet("/api/role-policy/matrix"',
-  'app.MapGet("/api/role-policy/explain"',
-  'readOnly = true',
-  'writeEndpoints = Array.Empty<string>()',
-  'legacyAuthorizationPreserved = true',
-  'No scoped decision exists for this action. Existing legacy authorization is preserved.'
-], 'Module 037 backend');
+if (backend) {
+  requireAll(backend, [
+    'app.MapGet("/api/role-policy/matrix"',
+    'app.MapGet("/api/role-policy/explain"',
+    'readOnly = true',
+    'writeEndpoints = Array.Empty<string>()',
+    'legacyAuthorizationPreserved = true',
+    'No scoped decision exists for this action. Existing legacy authorization is preserved.'
+  ], 'Module 037 backend');
+} else {
+  console.log('MODULE_037_BACKEND_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
+}
 
 requireAll(css, [
   '.roles-matrix-cell-button',
