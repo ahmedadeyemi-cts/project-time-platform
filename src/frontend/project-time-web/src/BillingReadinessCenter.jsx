@@ -590,6 +590,25 @@ export default function BillingReadinessCenter() {
     return normalizeArrayPayload(payload.certifyExceptions, ['exceptions', 'items']);
   }, [payload.certifyExceptions]);
 
+  const blockingCertifyExceptions = useMemo(() => {
+    const exceptionStatus = String(payload.certifyExceptions?.status ?? '').toLowerCase();
+    if (exceptionStatus.includes('placeholder')) return [];
+
+    return certifyExceptions.filter((exception) => {
+      const exceptionProjectId = exception.projectId ?? exception.linkedProjectId;
+      if (exceptionProjectId) {
+        return String(exceptionProjectId).toLowerCase() === String(selectedProject?.id ?? '').toLowerCase();
+      }
+
+      const exceptionProjectCode = exception.projectCode ?? exception.projectNumber;
+      if (exceptionProjectCode) {
+        return String(exceptionProjectCode).toLowerCase() === String(selectedProject?.projectCode ?? '').toLowerCase();
+      }
+
+      return true;
+    });
+  }, [certifyExceptions, payload.certifyExceptions, selectedProject?.id, selectedProject?.projectCode]);
+
   const projectPackageRows = useMemo(() => {
     return [
       ...buildLaborRows(selectedProject, billingRate, 'project'),
@@ -631,7 +650,9 @@ export default function BillingReadinessCenter() {
         : 'Enter a positive governed milestone amount.');
     }
     if (requiresLaborEvidence && !Number(billingRate || 0)) issues.push('Billing rate is missing for labor estimate.');
-    if (certifyExceptions.length > 0) issues.push(`${certifyExceptions.length} Certify placeholder exception(s) need review.`);
+    if (blockingCertifyExceptions.length > 0) {
+      issues.push(`${blockingCertifyExceptions.length} live Certify exception(s) need review.`);
+    }
     readinessChecks
       .filter((item) => !checkedItems.has(item.key))
       .forEach((item) => issues.push(`${item.label} is not confirmed.`));
@@ -647,7 +668,7 @@ export default function BillingReadinessCenter() {
     }
 
     return [...new Set(issues)];
-  }, [billingMode, billingRate, certifyExceptions, checkedItems, evidenceAmount, evidenceDescription, financialTotals.blockedTotal, isExpenseOnlyPackage, requiresNonLaborEvidence, selectedProject, billingCandidate]);
+  }, [billingMode, billingRate, blockingCertifyExceptions, checkedItems, evidenceAmount, evidenceDescription, financialTotals.blockedTotal, isExpenseOnlyPackage, requiresNonLaborEvidence, selectedProject, billingCandidate]);
 
   const readinessTone = blockingIssues.length === 0 && readinessPercent >= 90 ? 'safe' : readinessPercent >= 50 ? 'attention' : 'blocked';
 
