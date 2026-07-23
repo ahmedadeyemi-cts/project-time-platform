@@ -227,6 +227,13 @@ requireText(lifecycle, [
   'work_closeout_records.requested_at'
 ], 'Closeout request attribution');
 
+requireText(lifecycle, [
+  'operation == "request" || prior is null',
+  "WHEN EXCLUDED.closeout_status <> 'closed'",
+  "SET closeout_status = 'reopened',\n                prior_project_status = ''",
+  'command.Parameters.AddWithValue("prior_project_status", priorProjectStatus)'
+], 'Repeatable closeout-cycle status restoration');
+
 if ((migration.match(/\bBEGIN;/g) ?? []).length !== 1
     || (migration.match(/\bCOMMIT;/g) ?? []).length !== 1) {
   throw new Error('Migration 038 must remain one atomic transaction.');
@@ -365,6 +372,17 @@ requireText(welcome, [
   "'active task'",
   "'active tasks'"
 ], 'Welcome project task state');
+
+requireText(welcome, [
+  "return module?.href || '';",
+  '.filter((action) => action.href)',
+  'href={workRegisterHref || undefined}',
+  'href={itemHref || undefined}'
+], 'Welcome authorized-route navigation');
+
+if (welcome.includes('return module?.href || `#${route}`;') || welcome.includes('href="#timesheet"')) {
+  throw new Error('The welcome dashboard must not construct links outside visibleRoleModules.');
+}
 
 if (welcome.includes('project.completionPercent')) {
   throw new Error('The welcome page must not present invented task-completion percentages.');
