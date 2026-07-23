@@ -67,42 +67,53 @@ function restoreNavigationGroups(expandedForDirectory) {
   expandedForDirectory.clear();
 }
 
+function addAuthorizedModule(modules, seenRoutes, anchor, groupName) {
+  const href = anchor.getAttribute('href') || '';
+  const route = href.replace(/^#/, '').trim();
+  if (!route || route === 'dashboard' || route === MODULES_ROUTE || seenRoutes.has(route)) return;
+
+  const label = cleanText(anchor.querySelector('.enterprise-nav-label')?.textContent || anchor.textContent);
+  if (!label) return;
+
+  const moduleNumberSource = [
+    anchor.getAttribute('aria-label'),
+    anchor.getAttribute('title'),
+    anchor.dataset.moduleNumber,
+    label
+  ].filter(Boolean).join(' ');
+
+  seenRoutes.add(route);
+  modules.push({
+    route,
+    href,
+    label,
+    moduleNumber: moduleNumberFromLabel(moduleNumberSource),
+    group: groupName,
+    order: modules.length
+  });
+}
+
 function collectAuthorizedModules() {
   const modules = [];
   const seenRoutes = new Set();
-  const groups = Array.from(document.querySelectorAll('.enterprise-sidebar-group'));
+  const sections = Array.from(document.querySelectorAll('.enterprise-sidebar-section'));
+  const pinnedSection = sections.find((section) => (
+    cleanText(section.querySelector('.enterprise-sidebar-section-title')?.textContent).toLowerCase() === 'pinned'
+  ));
 
+  const pinnedAnchors = Array.from(
+    pinnedSection?.querySelectorAll('.enterprise-sidebar-links:not(.nested) > a[href^="#"]') ?? []
+  );
+  for (const anchor of pinnedAnchors) addAuthorizedModule(modules, seenRoutes, anchor, 'Pinned');
+
+  const groups = Array.from(document.querySelectorAll('.enterprise-sidebar-group'));
   for (const groupElement of groups) {
     const groupName = cleanText(
       groupElement.querySelector('.enterprise-sidebar-group-toggle .enterprise-nav-label')?.textContent
     ) || 'Modules';
 
     const anchors = Array.from(groupElement.querySelectorAll('.enterprise-sidebar-links.nested a[href^="#"]'));
-    for (const anchor of anchors) {
-      const href = anchor.getAttribute('href') || '';
-      const route = href.replace(/^#/, '').trim();
-      if (!route || route === 'dashboard' || route === MODULES_ROUTE || seenRoutes.has(route)) continue;
-
-      const label = cleanText(anchor.querySelector('.enterprise-nav-label')?.textContent || anchor.textContent);
-      if (!label) continue;
-
-      const moduleNumberSource = [
-        anchor.getAttribute('aria-label'),
-        anchor.getAttribute('title'),
-        anchor.dataset.moduleNumber,
-        label
-      ].filter(Boolean).join(' ');
-
-      seenRoutes.add(route);
-      modules.push({
-        route,
-        href,
-        label,
-        moduleNumber: moduleNumberFromLabel(moduleNumberSource),
-        group: groupName,
-        order: modules.length
-      });
-    }
+    for (const anchor of anchors) addAuthorizedModule(modules, seenRoutes, anchor, groupName);
   }
 
   return modules;
