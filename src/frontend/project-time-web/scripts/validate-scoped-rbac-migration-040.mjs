@@ -1,9 +1,13 @@
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 const root = resolve(process.cwd(), '../../..');
-const text = (path) => readFile(resolve(root, path), 'utf8');
+const absolute = (path) => resolve(root, path);
+const text = (path) => readFile(absolute(path), 'utf8');
 const migrationRoot = 'database/migrations/040_scoped_role_policy_versions';
+const entryPath = 'database/migrations/040_scoped_role_policy_versions.sql';
+const rollbackPath = 'database/rollback/040_scoped_role_policy_versions_rollback.sql';
 const fragments = [
   '00_schema.sql',
   '10_workbook_cells.sql',
@@ -18,9 +22,14 @@ const fragments = [
   '80_finalize.sql'
 ];
 
+if (!existsSync(absolute(entryPath))) {
+  console.log('MIGRATION_040_EXTERNAL_SOURCE_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
+  process.exit(0);
+}
+
 const [entry, rollback, ...fragmentText] = await Promise.all([
-  text('database/migrations/040_scoped_role_policy_versions.sql'),
-  text('database/rollback/040_scoped_role_policy_versions_rollback.sql'),
+  text(entryPath),
+  text(rollbackPath),
   ...fragments.map((name) => text(`${migrationRoot}/${name}`))
 ]);
 const combined = fragmentText.join('\n');
