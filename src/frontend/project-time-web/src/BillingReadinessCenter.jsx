@@ -414,6 +414,8 @@ export default function BillingReadinessCenter() {
   const [billingMode, setBillingMode] = useState('project');
   const [selectedProjectKey, setSelectedProjectKey] = useState('');
   const [packageType, setPackageType] = useState('Partial project invoice');
+  const [evidenceDescription, setEvidenceDescription] = useState('');
+  const [evidenceAmount, setEvidenceAmount] = useState('');
   const [periodStart, setPeriodStart] = useState(firstDayOfCurrentMonth());
   const [periodEnd, setPeriodEnd] = useState(lastDayOfCurrentMonth());
   const [billingRate, setBillingRate] = useState('175');
@@ -494,6 +496,8 @@ export default function BillingReadinessCenter() {
           setPeriodStart(firstDayOfCurrentMonth());
           setPeriodEnd(lastDayOfCurrentMonth());
           setPackageType('Partial project invoice');
+          setEvidenceDescription('');
+          setEvidenceAmount('');
           setPackageNotes('');
           setCheckedItems(new Set());
           setAuditReason('');
@@ -504,6 +508,10 @@ export default function BillingReadinessCenter() {
         setPeriodStart(saved.billingPeriodStart || firstDayOfCurrentMonth());
         setPeriodEnd(saved.billingPeriodEnd || lastDayOfCurrentMonth());
         setPackageType(saved.packageType || 'Partial project invoice');
+        setEvidenceDescription(saved.evidenceDescription || '');
+        setEvidenceAmount(saved.evidenceAmount === null || saved.evidenceAmount === undefined
+          ? ''
+          : String(saved.evidenceAmount));
         setPackageNotes(saved.notes || '');
         setCheckedItems(new Set(
           Object.entries(saved.checklist || {})
@@ -561,12 +569,25 @@ export default function BillingReadinessCenter() {
     return readinessChecks.length === 0 ? 0 : (checkedItems.size / readinessChecks.length) * 100;
   }, [checkedItems]);
 
+  const isExpenseOnlyPackage = packageType.toLowerCase().includes('expense-only');
+  const isMilestonePackage = packageType.toLowerCase().includes('milestone');
+  const requiresNonLaborEvidence = isExpenseOnlyPackage || isMilestonePackage;
+
   const blockingIssues = useMemo(() => {
     const issues = [];
-    const requiresLaborEvidence = !packageType.toLowerCase().includes('expense-only')
-      && !packageType.toLowerCase().includes('milestone');
+    const requiresLaborEvidence = !requiresNonLaborEvidence;
 
     if (billingMode === 'project' && !selectedProject) issues.push('No project selected.');
+    if (requiresNonLaborEvidence && evidenceDescription.trim().length < 5) {
+      issues.push(isExpenseOnlyPackage
+        ? 'Enter the approved expense description.'
+        : 'Enter the governed milestone description.');
+    }
+    if (requiresNonLaborEvidence && !(Number(evidenceAmount) > 0)) {
+      issues.push(isExpenseOnlyPackage
+        ? 'Enter a positive approved expense amount.'
+        : 'Enter a positive governed milestone amount.');
+    }
     if (requiresLaborEvidence && !Number(billingRate || 0)) issues.push('Billing rate is missing for labor estimate.');
     if (certifyExceptions.length > 0) issues.push(`${certifyExceptions.length} Certify placeholder exception(s) need review.`);
     readinessChecks
@@ -581,7 +602,7 @@ export default function BillingReadinessCenter() {
     }
 
     return [...new Set(issues)];
-  }, [billingMode, billingRate, certifyExceptions, checkedItems, financialTotals.blockedTotal, packageType, selectedProject, billingCandidate]);
+  }, [billingMode, billingRate, certifyExceptions, checkedItems, evidenceAmount, evidenceDescription, financialTotals.blockedTotal, isExpenseOnlyPackage, requiresNonLaborEvidence, selectedProject, billingCandidate]);
 
   const readinessTone = blockingIssues.length === 0 && readinessPercent >= 90 ? 'safe' : readinessPercent >= 50 ? 'attention' : 'blocked';
 
@@ -634,6 +655,8 @@ export default function BillingReadinessCenter() {
           reviewStatus,
           checklist,
           notes: packageNotes,
+          evidenceDescription: requiresNonLaborEvidence ? evidenceDescription.trim() : '',
+          evidenceAmount: requiresNonLaborEvidence ? Number(evidenceAmount) : null,
           reason: auditReason.trim()
         }
       );
@@ -735,7 +758,8 @@ export default function BillingReadinessCenter() {
       `Approved labor estimate: ${currency(financialTotals.laborTotal)}`,
       `Staged Certify expenses: ${currency(financialTotals.expenseTotal)}`,
       `Total project/customer cost package: ${currency(financialTotals.packageTotal)}`,
-      `Ready-to-invoice amount: ${currency(financialTotals.readyToInvoiceTotal)}`,
+      `Ready-to-invoice amount: ${currency(requiresNonLaborEvidence ? Number(evidenceAmount || 0) : financialTotals.readyToInvoiceTotal)}`,
+      requiresNonLaborEvidence ? `Evidence: ${evidenceDescription || 'Not entered'}` : '',
       `Blocked / exception amount: ${currency(financialTotals.blockedTotal)}`,
       `Non-billable / excluded amount: ${currency(financialTotals.nonBillableTotal)}`,
       `Readiness: ${percent(readinessPercent)}`,
@@ -838,8 +862,8 @@ export default function BillingReadinessCenter() {
         </article>
         <article>
           <span>Ready to invoice</span>
-          <strong>{currency(financialTotals.readyToInvoiceTotal)}</strong>
-          <small>Excludes blocked and non-billable lines</small>
+          <strong>{currency(requiresNonLaborEvidence ? Number(evidenceAmount || 0) : financialTotals.readyToInvoiceTotal)}</strong>
+          <small>{requiresNonLaborEvidence ? 'Governed package evidence amount' : 'Excludes blocked and non-billable lines'}</small>
         </article>
         <article>
           <span>Blocked amount</span>
@@ -887,6 +911,33 @@ export default function BillingReadinessCenter() {
               ))}
             </select>
           </label>
+
+          {requiresNonLaborEvidence ? (
+            <>
+              <label>
+                {isExpenseOnlyPackage ? 'Approved expense description' : 'Governed milestone description'}
+                <input
+                  value={evidenceDescription}
+                  onChange={(event) => setEvidenceDescription(event.target.value)}
+                  placeholder={isExpenseOnlyPackage
+                    ? 'Expense report/reference and customer-facing description'
+                    : 'Accepted milestone and customer-facing description'}
+                  maxLength={500}
+                />
+              </label>
+              <label>
+                {isExpenseOnlyPackage ? 'Approved expense amount' : 'Governed milestone amount'}
+                <input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={evidenceAmount}
+                  onChange={(event) => setEvidenceAmount(event.target.value)}
+                  placeholder="0.00"
+                />
+              </label>
+            </>
+          ) : null}
 
           <label>
             Period start
