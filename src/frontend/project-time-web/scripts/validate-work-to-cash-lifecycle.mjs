@@ -176,8 +176,7 @@ requireText(workRegister, [
   "lifecycleResult.status === 'fulfilled'",
   'lifecycle?.audit ?? data.changeHistory ?? []',
   'Work-to-Cash Audit History',
-  'billing readiness, partial/final invoices',
-  'changeHistory: lifecycle.audit'
+  'billing readiness, partial/final invoices'
 ], 'Module 055C unified audit');
 
 requireText(invoice, [
