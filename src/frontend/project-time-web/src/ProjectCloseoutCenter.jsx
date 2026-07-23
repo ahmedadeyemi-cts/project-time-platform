@@ -121,6 +121,11 @@ function normalizeStatus(value) {
     .replaceAll(' ', '_');
 }
 
+function isGuid(value) {
+  return /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i
+    .test(normalizeText(value));
+}
+
 function titleCase(value) {
   return normalizeText(value)
     .replaceAll('_', ' ')
@@ -169,12 +174,9 @@ function collectObjects(payload, collector = [], options = {}) {
 function looksLikeProject(item) {
   if (!item || typeof item !== 'object') return false;
 
-  const explicitProjectIdentifier = Boolean(
-    item.projectId ||
-    item.projectCode ||
-    item.projectNumber ||
-    item.projectNo ||
-    item.projectKey
+  const explicitProjectIdentifier = getFirstValue(
+    item,
+    ['projectId', 'projectID', 'project_id', 'linkedProjectId', 'createdProjectId']
   );
 
   const hasProjectName = Boolean(item.projectName || item.name || item.title || item.displayName);
@@ -197,7 +199,8 @@ function looksLikeProject(item) {
 
   if (taskOnlyRecord) return false;
 
-  return explicitProjectIdentifier && (hasProjectName || hasCustomer || hasProjectOwner || isProjectRecordType);
+  return isGuid(explicitProjectIdentifier)
+    && (hasProjectName || hasCustomer || hasProjectOwner || isProjectRecordType);
 }
 /* 040A_CLOSEOUT_SCROLL_CONTAINMENT_END */
 
@@ -221,7 +224,12 @@ function getNumericValue(item, keys) {
 }
 
 function normalizeProjectCandidate(item, source) {
-  const projectId = getFirstValue(item, ['projectId', 'id', 'projectID', 'project_id']);
+  const projectId = getFirstValue(
+    item,
+    ['projectId', 'projectID', 'project_id', 'linkedProjectId', 'createdProjectId']
+  );
+  if (!isGuid(projectId)) return null;
+
   const projectCode = getFirstValue(item, ['projectCode', 'projectNumber', 'projectNo', 'projectKey', 'code', 'number']);
   const projectName = getFirstValue(item, ['projectName', 'name', 'title', 'displayName']);
   const customerName = getFirstValue(item, ['customerName', 'clientName', 'accountName', 'companyName', 'customer']);
