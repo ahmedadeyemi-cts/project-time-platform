@@ -103,8 +103,9 @@ if (lifecycle.includes("purchase_order.po_status IN ('draft', 'active')")) {
   throw new Error('Billing readiness must reject draft purchase orders.');
 }
 
-if ((lifecycle.match(/FROM billing_invoice_lines/g) ?? []).length !== 4
-    || (lifecycle.match(/JOIN billing_invoices invoice/g) ?? []).length !== 4) {
+if ((lifecycle.match(/FROM billing_invoice_lines/g) ?? []).length !== 3
+    || (lifecycle.match(/JOIN billing_invoices invoice/g) ?? []).length !== 3
+    || !lifecycle.includes('AS has_live_invoice')) {
   throw new Error('Every lifecycle invoiced-time check must exclude void invoice state.');
 }
 
