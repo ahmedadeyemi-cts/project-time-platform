@@ -124,6 +124,9 @@ COPY src/backend/ProjectTime.Api/Modules/WorkLifecycleModule.cs \
 COPY src/backend/ProjectTime.Api/Modules/InvoiceBillingModule.cs \
      src/backend/ProjectTime.Api/Modules/InvoiceBillingModule.cs
 
+COPY src/backend/ProjectTime.Api/Modules/CertiniaBillingModule.cs \
+     src/backend/ProjectTime.Api/Modules/CertiniaBillingModule.cs
+
 COPY src/backend/ProjectTime.Api/Modules/InvoiceArtifactBrandingRenderer.cs \
      src/backend/ProjectTime.Api/Modules/InvoiceArtifactBrandingRenderer.cs
 
