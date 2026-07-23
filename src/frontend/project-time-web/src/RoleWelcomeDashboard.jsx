@@ -122,7 +122,7 @@ function getPersona(roleCodes) {
 
 function routeHref(routeModules, route) {
   const module = (routeModules ?? []).find((item) => item.route === route);
-  return module?.href || `#${route}`;
+  return module?.href || '';
 }
 
 function percent(value, total) {
@@ -192,7 +192,13 @@ export default function RoleWelcomeDashboard({
   });
   const actions = (ROLE_ACTIONS[persona] ?? ROLE_ACTIONS.engineering)
     .filter(([, route]) => showTimeEntry || route !== 'timesheet')
-    .map(([label, route]) => ({ label, route, href: routeHref(roleModules, route) }));
+    .map(([label, route]) => ({ label, route, href: routeHref(roleModules, route) }))
+    .filter((action) => action.href);
+  const timesheetHref = routeHref(roleModules, 'timesheet');
+  const priorityHref = routeHref(roleModules, persona === 'sales' ? 'opportunities' : 'manager-approval');
+  const projectHealthHref = routeHref(roleModules, 'project-workload');
+  const billingReadinessHref = routeHref(roleModules, 'billing-readiness');
+  const workRegisterHref = routeHref(roleModules, 'work-register');
   const week = state.data?.week ?? { applicable: showTimeEntry, enteredHours: 0, targetHours: 40, days: [] };
   const attention = state.data?.attention ?? {
     timeApprovals: approvalPendingCount,
@@ -254,7 +260,9 @@ export default function RoleWelcomeDashboard({
                 </div>
               ))}
             </div>
-            <a className="welcome-card-link" href="#timesheet">Open weekly timesheet →</a>
+            {timesheetHref ? (
+              <a className="welcome-card-link" href={timesheetHref}>Open weekly timesheet →</a>
+            ) : null}
           </article>
         ) : (
           <article className="welcome-card welcome-priorities-card">
@@ -289,9 +297,9 @@ export default function RoleWelcomeDashboard({
             <div><dt>Project alerts</dt><dd>{attention.projectAlerts}</dd></div>
             <div><dt>Closeout pending</dt><dd>{attention.closeoutPending}</dd></div>
           </dl>
-          <a className="welcome-card-link" href={routeHref(roleModules, persona === 'sales' ? 'opportunities' : 'manager-approval')}>
-            Open priority workspace →
-          </a>
+          {priorityHref ? (
+            <a className="welcome-card-link" href={priorityHref}>Open priority workspace →</a>
+          ) : null}
         </article>
 
         <article className="welcome-card welcome-project-health-card">
@@ -306,7 +314,9 @@ export default function RoleWelcomeDashboard({
             <div className="review"><dt>Needs review</dt><dd>{projectHealth.needsReview}</dd></div>
             <div className="risk"><dt>At risk</dt><dd>{projectHealth.atRisk}</dd></div>
           </dl>
-          <a className="welcome-card-link" href={routeHref(roleModules, 'project-workload')}>Open project health →</a>
+          {projectHealthHref ? (
+            <a className="welcome-card-link" href={projectHealthHref}>Open project health →</a>
+          ) : null}
         </article>
 
         <article className="welcome-card welcome-billing-card">
@@ -321,7 +331,9 @@ export default function RoleWelcomeDashboard({
             <div><dt>Ready to invoice</dt><dd>{billing.readyToInvoice}</dd></div>
             <div><dt>Open invoices</dt><dd>{billing.openInvoices}</dd></div>
           </dl>
-          <a className="welcome-card-link" href={routeHref(roleModules, 'billing-readiness')}>Open billing readiness →</a>
+          {billingReadinessHref ? (
+            <a className="welcome-card-link" href={billingReadinessHref}>Open billing readiness →</a>
+          ) : null}
         </article>
 
         <article className="welcome-card welcome-projects-card">
@@ -335,7 +347,11 @@ export default function RoleWelcomeDashboard({
             {projects.length === 0 ? (
               <p className="welcome-empty">No scoped projects require attention.</p>
             ) : projects.map((project) => (
-              <a href={routeHref(roleModules, 'work-register')} key={project.projectId}>
+              <a
+                href={workRegisterHref || undefined}
+                aria-disabled={workRegisterHref ? undefined : 'true'}
+                key={project.projectId}
+              >
                 <div>
                   <strong>{project.projectCode || project.projectName}</strong>
                   <span>{project.customerName || project.projectName}</span>
@@ -360,13 +376,23 @@ export default function RoleWelcomeDashboard({
           <div className="welcome-recent-list">
             {recent.length === 0 ? (
               <p className="welcome-empty">{state.loading ? 'Loading current activity…' : 'No recent scoped activity.'}</p>
-            ) : recent.slice(0, 6).map((item, index) => (
-              <a href={routeHref(roleModules, item.processArea === 'invoice' ? 'invoice-billing-center' : 'work-register')} key={`${item.createdAt}-${index}`}>
+            ) : recent.slice(0, 6).map((item, index) => {
+              const itemHref = routeHref(
+                roleModules,
+                item.processArea === 'invoice' ? 'invoice-billing-center' : 'work-register'
+              );
+              return (
+              <a
+                href={itemHref || undefined}
+                aria-disabled={itemHref ? undefined : 'true'}
+                key={`${item.createdAt}-${index}`}
+              >
                 <span>{titleCase(item.processArea)}</span>
                 <strong>{item.summary}</strong>
                 <small>{item.projectCode} {formatDate(item.createdAt)}</small>
               </a>
-            ))}
+              );
+            })}
           </div>
         </article>
       </div>
