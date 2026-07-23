@@ -75,6 +75,8 @@ requireText(lifecycle, [
   "lower(COALESCE(invoice.invoice_status, '')) <> 'void'",
   'project_tasks',
   'COALESCE(line.rate_amount, 0) > 0',
+  'LEFT JOIN LATERAL',
+  'has_positive_rate',
   "entry.status IN ('manager_declined', 'pm_declined')",
   'details.TryGetProperty("changedFields"',
   'changedFieldsElement.GetString()',
