@@ -159,7 +159,7 @@ export default function PageContextGuide({ activeRoute }) {
 
   return (
     <aside className="page-context-guide" aria-label="Page context guide">
-      <details open>
+      <details>
         <summary>
           <span>
             <strong>{context.page}</strong>
