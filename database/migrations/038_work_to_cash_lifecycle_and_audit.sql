@@ -432,7 +432,7 @@ EXECUTE FUNCTION projectpulse038_guard_live_time_entry_line();
 CREATE OR REPLACE FUNCTION projectpulse038_guard_live_readiness_line()
 RETURNS trigger
 LANGUAGE plpgsql
-AS $
+AS $projectpulse038_readiness$
 DECLARE
     v_target_status TEXT;
 BEGIN
@@ -468,7 +468,7 @@ BEGIN
 
     RETURN NEW;
 END;
-$;
+$projectpulse038_readiness$;
 
 DROP TRIGGER IF EXISTS trg_projectpulse038_live_readiness_line
     ON billing_invoice_lines;
