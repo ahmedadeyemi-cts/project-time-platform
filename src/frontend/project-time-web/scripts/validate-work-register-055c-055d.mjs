@@ -79,11 +79,15 @@ test(
     && frontend.includes("return 'Fixed Price';")
     && frontend.includes('<option value="Time and Material">Time and Material</option>')
     && !frontend.includes('<option value="TM">Time and Material (TM)</option>')
-    && sellImport.includes('"tm" or "timeandmaterial" or "timeandmaterials" => "Time and Material"')
+    && frontend.includes("normalized === 'timematerial'")
+    && sellImport.includes('"tm" or "timematerial" or "timematerials"')
+    && sellImport.includes('or "timeandmaterial" or "timeandmaterials" => "Time and Material"')
+    && program.includes('"tm" or "tandm" or "timematerial" or "timematerials"')
+    && program.includes('rowNormalized.Contains("timematerial")')
 );
 test(
   'GSD_CONTRACT_CODE_MAPPING',
-  dateContractMigration.includes("('tm', 'timeandmaterial', 'timeandmaterials')")
+  dateContractMigration.includes("'timematerial', 'timematerials'")
     && dateContractMigration.includes("THEN 'Time and Material'")
     && dateContractMigration.includes("('fp', 'fixedprice')")
     && dateContractMigration.includes("THEN 'Fixed Price'")
@@ -113,6 +117,12 @@ test(
     && frontend.includes('value={intakeReviewForm.estimatedEndDate ||')
     && dateContractMigration.includes('trg_projectpulse037_after_intake_commit')
     && dateContractMigration.includes("'estimatedEndDate', v_estimated_end_date")
+);
+test(
+  'CREATE_DATE_CLEARING',
+  frontend.includes('sowSignedDate: intakeReviewForm.sowSignedDate ?? intakeForm.sowSignedDate')
+    && frontend.includes('estimatedEndDate: intakeReviewForm.estimatedEndDate ?? intakeForm.estimatedEndDate')
+    && !frontend.includes('estimatedEndDate: intakeReviewForm.estimatedEndDate || intakeForm.estimatedEndDate')
 );
 test(
   'CREATE_INITIAL_DATE_ROUND_TRIP',

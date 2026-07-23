@@ -424,7 +424,8 @@ public static class WorkRegisterSellImportModule
 
         return normalized switch
         {
-            "tm" or "timeandmaterial" or "timeandmaterials" => "Time and Material",
+            "tm" or "timematerial" or "timematerials"
+                or "timeandmaterial" or "timeandmaterials" => "Time and Material",
             "fp" or "fixedprice" => "Fixed Price",
             _ => original
         };

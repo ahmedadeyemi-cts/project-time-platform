@@ -11,7 +11,7 @@ IMMUTABLE
 AS $$
     SELECT CASE
         WHEN regexp_replace(lower(btrim(coalesce(p_value, ''))), '[^a-z0-9]+', '', 'g') IN
-             ('tm', 'timeandmaterial', 'timeandmaterials')
+             ('tm', 'timematerial', 'timematerials', 'timeandmaterial', 'timeandmaterials')
             THEN 'Time and Material'
         WHEN regexp_replace(lower(btrim(coalesce(p_value, ''))), '[^a-z0-9]+', '', 'g') IN
              ('fp', 'fixedprice')
@@ -394,19 +394,19 @@ UPDATE projects
    SET contract_type = projectpulse037_canonical_contract_type(contract_type),
        updated_at = NOW()
  WHERE regexp_replace(lower(btrim(coalesce(contract_type, ''))), '[^a-z0-9]+', '', 'g') IN
-       ('tm', 'timeandmaterial', 'timeandmaterials', 'fp', 'fixedprice');
+       ('tm', 'timematerial', 'timematerials', 'timeandmaterial', 'timeandmaterials', 'fp', 'fixedprice');
 
 UPDATE work_register_project_metadata
    SET contract_type = projectpulse037_canonical_contract_type(contract_type),
        updated_at = NOW()
  WHERE regexp_replace(lower(btrim(coalesce(contract_type, ''))), '[^a-z0-9]+', '', 'g') IN
-       ('tm', 'timeandmaterial', 'timeandmaterials', 'fp', 'fixedprice');
+       ('tm', 'timematerial', 'timematerials', 'timeandmaterial', 'timeandmaterials', 'fp', 'fixedprice');
 
 UPDATE work_register_intake_packages
    SET contract_type = projectpulse037_canonical_contract_type(contract_type),
        updated_at = NOW()
  WHERE regexp_replace(lower(btrim(coalesce(contract_type, ''))), '[^a-z0-9]+', '', 'g') IN
-       ('tm', 'timeandmaterial', 'timeandmaterials', 'fp', 'fixedprice');
+       ('tm', 'timematerial', 'timematerials', 'timeandmaterial', 'timeandmaterials', 'fp', 'fixedprice');
 
 INSERT INTO schema_migrations (migration_id, description, applied_at)
 VALUES (

@@ -327,7 +327,13 @@ function projectPulseCanonicalContractType(value) {
   const original = String(value || '').trim();
   const normalized = original.toLowerCase().replace(/[^a-z0-9]+/g, '');
 
-  if (normalized === 'tm' || normalized === 'timeandmaterial' || normalized === 'timeandmaterials') {
+  if (
+    normalized === 'tm'
+    || normalized === 'timematerial'
+    || normalized === 'timematerials'
+    || normalized === 'timeandmaterial'
+    || normalized === 'timeandmaterials'
+  ) {
     return 'Time and Material';
   }
 
@@ -368,8 +374,8 @@ function projectPulseCreateWorkFinalFieldSnapshot() {
     poEffectiveStartDate: intakeForm.poEffectiveStartDate || stored.poEffectiveStartDate || '',
     poEffectiveEndDate: intakeForm.poEffectiveEndDate || stored.poEffectiveEndDate || '',
     poCustomerReference: intakeForm.poCustomerReference || stored.poCustomerReference || '',
-    sowSignedDate: dateOnly(intakeReviewForm?.sowSignedDate || intakeForm.sowSignedDate || stored.sowSignedDate),
-    estimatedEndDate: dateOnly(intakeReviewForm?.estimatedEndDate || intakeForm.estimatedEndDate || stored.estimatedEndDate),
+    sowSignedDate: dateOnly(intakeReviewForm?.sowSignedDate ?? intakeForm.sowSignedDate ?? stored.sowSignedDate),
+    estimatedEndDate: dateOnly(intakeReviewForm?.estimatedEndDate ?? intakeForm.estimatedEndDate ?? stored.estimatedEndDate),
     projectName: intakeReviewForm?.projectName || intakeForm.projectName || intakeForm.workName || stored.projectName || stored.workName || '',
     customerId: intakeReviewForm?.customerId || intakeForm.customerId || stored.customerId || '',
     customerName: intakeReviewForm?.customerName || intakeForm.customerName || stored.customerName || ''
@@ -2740,8 +2746,8 @@ function removeTaskAssignmentRow(taskIndex, assignmentIndex) {
       salesforceIdNumber: intakeReviewForm.salesforceIdNumber || intakeForm.salesforceIdNumber || '',
       certiniaIdNumber: intakeReviewForm.certiniaIdNumber || intakeForm.certiniaIdNumber || '',
       // 055D_5K_FINAL_SOW_SIGNED_DATE_VALUE
-      sowSignedDate: intakeReviewForm.sowSignedDate || intakeForm.sowSignedDate || '',
-      estimatedEndDate: intakeReviewForm.estimatedEndDate || intakeForm.estimatedEndDate || '',
+      sowSignedDate: intakeReviewForm.sowSignedDate ?? intakeForm.sowSignedDate ?? '',
+      estimatedEndDate: intakeReviewForm.estimatedEndDate ?? intakeForm.estimatedEndDate ?? '',
       intakeReason: intakeReviewForm.intakeReason || intakeForm.reason || intakeForm.intakeReason || projectPulseCreateWorkReason(),
 
       requestedWorkType: projectPulseCanonicalWorkType(intakeReviewForm.requestedWorkType),

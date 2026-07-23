@@ -19,10 +19,14 @@ GSD contract codes are mapped into the shared Work Register vocabulary:
 - `T&M` maps to **Time and Material**.
 - `FP` maps to **Fixed Price**.
 
+Legacy `TM`, `Time & Material`, and `Time & Materials` spellings map to the
+same **Time and Material** value rather than creating duplicate types.
+
 The reviewed SOW signed date and estimated end date are persisted on the
 created project and are shown in Module 055C after creation. Both initial dates
 survive intake-package reloads across GSD and SELL paths. The estimated end date
-must be on or after the project creation date.
+must be on or after the project creation date; clearing either optional review
+date keeps it cleared.
 
 ### Import from SELL
 

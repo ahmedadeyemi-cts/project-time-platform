@@ -6031,7 +6031,8 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
     {
         var normalized = NormalizeLabel(value);
 
-        if (normalized is "tm" or "tandm" or "timeandmaterial" or "timeandmaterials" or "timeampmaterial" or "timeampmaterials")
+        if (normalized is "tm" or "tandm" or "timematerial" or "timematerials"
+            or "timeandmaterial" or "timeandmaterials" or "timeampmaterial" or "timeampmaterials")
         {
             return "TM";
         }
@@ -6195,7 +6196,7 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
             var rowText = string.Join(" ", Enumerable.Range(1, 14).Select(col => GetCell(sell, row, col))).Trim();
             var rowNormalized = NormalizeLabel(rowText);
 
-            if (rowNormalized.Contains("timeandmaterial") || rowNormalized.Contains("timeampmaterial") || rowNormalized.Contains("tandm"))
+            if (rowNormalized.Contains("timematerial") || rowNormalized.Contains("timeandmaterial") || rowNormalized.Contains("timeampmaterial") || rowNormalized.Contains("tandm"))
             {
                 activeSection = "TM";
             }
@@ -6282,7 +6283,7 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
             var rowText = string.Join(" ", Enumerable.Range(1, 14).Select(col => GetCell(sell, row, col))).Trim();
             var rowNormalized = NormalizeLabel(rowText);
 
-            if (rowNormalized.Contains("timeandmaterial") || rowNormalized.Contains("timeampmaterial") || rowNormalized.Contains("tandm"))
+            if (rowNormalized.Contains("timematerial") || rowNormalized.Contains("timeandmaterial") || rowNormalized.Contains("timeampmaterial") || rowNormalized.Contains("tandm"))
             {
                 activeSection = "TM";
             }
@@ -6546,7 +6547,7 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
             var rowText = string.Join(" ", Enumerable.Range(1, 14).Select(col => GetCell(sell, row, col))).Trim();
             var rowNormalized = NormalizeLabel(rowText);
 
-            if (rowNormalized.Contains("timeandmaterial") || rowNormalized.Contains("timeampmaterial") || rowNormalized.Contains("tandm"))
+            if (rowNormalized.Contains("timematerial") || rowNormalized.Contains("timeandmaterial") || rowNormalized.Contains("timeampmaterial") || rowNormalized.Contains("tandm"))
             {
                 activeSection = "TM";
             }
@@ -6654,7 +6655,7 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
             var rowText = string.Join(" ", Enumerable.Range(1, 14).Select(col => GetCell(sell, row, col))).Trim();
             var rowNormalized = NormalizeLabel(rowText);
 
-            if (rowNormalized.Contains("timeandmaterial") || rowNormalized.Contains("timeampmaterial") || rowNormalized.Contains("tandm"))
+            if (rowNormalized.Contains("timematerial") || rowNormalized.Contains("timeandmaterial") || rowNormalized.Contains("timeampmaterial") || rowNormalized.Contains("tandm"))
             {
                 activeSection = "TM";
             }
