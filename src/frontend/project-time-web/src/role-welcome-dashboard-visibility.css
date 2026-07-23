@@ -1,0 +1,15 @@
+/*
+ * Dashboard route visibility contract.
+ *
+ * ProjectPulse has broad route-isolation rules that hide inactive direct-child
+ * sections. The role-aware welcome dashboard is the active dashboard surface,
+ * so it must explicitly win that cascade instead of being hidden with legacy
+ * dashboard sections.
+ */
+main.app-shell.route-dashboard > #role-welcome-dashboard.role-welcome-dashboard {
+  display: grid !important;
+  width: 100% !important;
+  min-width: 0;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
