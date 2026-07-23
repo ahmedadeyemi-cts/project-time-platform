@@ -28,7 +28,18 @@ jobs:
           cache-dependency-path: src/frontend/project-time-web/package-lock.json
 
       - name: Restore and build API
-        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+        shell: bash
+        run: |
+          set +e
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release > /tmp/projectpulse-api-build.log 2>&1
+          status=$?
+          if [[ $status -ne 0 ]]; then
+            echo 'SCOPED_RBAC_API_BUILD_ERRORS_BEGIN'
+            grep -E 'error (CS|MSB|NU)|Build FAILED|error:' /tmp/projectpulse-api-build.log | tail -n 120 || tail -n 120 /tmp/projectpulse-api-build.log
+            echo 'SCOPED_RBAC_API_BUILD_ERRORS_END'
+            exit $status
+          fi
+          cat /tmp/projectpulse-api-build.log
 
       - name: Test Work Register project authorization
         run: dotnet run --project tests/ProjectTime.Api.AuthorizationTests/ProjectTime.Api.AuthorizationTests.csproj --configuration Release
