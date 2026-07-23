@@ -522,9 +522,11 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
   }
 
   function customerResourceLabel(line) {
-    if (outputPrivacy.engineerNames) return text(line?.resourceName, 'Professional Services Engineer');
-
     const labor = text(line?.laborCategory).toLowerCase();
+    if (labor === 'expense') return 'Reimbursable Expense';
+    if (labor === 'fixed_price_milestone') return 'Fixed Price Milestone';
+
+    if (outputPrivacy.engineerNames) return text(line?.resourceName, 'Professional Services Engineer');
     const task = `${text(line?.taskCode)} ${text(line?.taskName)}`.toLowerCase();
 
     if (labor.includes('project') || task.includes('project management') || task.includes('coordination')) {
