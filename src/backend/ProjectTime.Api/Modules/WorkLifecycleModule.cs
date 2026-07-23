@@ -660,8 +660,22 @@ public static class WorkLifecycleModule
                         THEN EXCLUDED.prior_project_status
                     ELSE work_closeout_records.prior_project_status
                 END,
-                requested_by_user_id = EXCLUDED.requested_by_user_id,
-                requested_at = EXCLUDED.requested_at,
+                requested_by_user_id = CASE
+                    WHEN EXCLUDED.closeout_status = 'closed'
+                        THEN COALESCE(
+                            work_closeout_records.requested_by_user_id,
+                            EXCLUDED.requested_by_user_id
+                        )
+                    ELSE EXCLUDED.requested_by_user_id
+                END,
+                requested_at = CASE
+                    WHEN EXCLUDED.closeout_status = 'closed'
+                        THEN COALESCE(
+                            work_closeout_records.requested_at,
+                            EXCLUDED.requested_at
+                        )
+                    ELSE EXCLUDED.requested_at
+                END,
                 closed_by_user_id = EXCLUDED.closed_by_user_id,
                 closed_at = EXCLUDED.closed_at,
                 reopened_by_user_id = NULL,
