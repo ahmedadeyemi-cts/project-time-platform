@@ -442,6 +442,7 @@ public static class WorkLifecycleModule
 
         var restoredStatus = string.IsNullOrWhiteSpace(closeout.PriorProjectStatus)
             || string.Equals(closeout.PriorProjectStatus, "closed", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(closeout.PriorProjectStatus, "completed", StringComparison.OrdinalIgnoreCase)
                 ? "active"
                 : closeout.PriorProjectStatus;
 
@@ -681,7 +682,7 @@ public static class WorkLifecycleModule
         {
             await using var projectCommand = new NpgsqlCommand("""
                 UPDATE projects
-                SET status = 'closed',
+                SET status = 'completed',
                     updated_at = NOW()
                 WHERE project_id = @project_id;
                 """, connection, transaction);
@@ -1260,7 +1261,9 @@ public static class WorkLifecycleModule
         var days = new List<object>();
         await using var command = new NpgsqlCommand("""
             WITH week AS (
-                SELECT (CURRENT_DATE - EXTRACT(DOW FROM CURRENT_DATE)::integer)::date AS week_start
+                SELECT (
+                    CURRENT_DATE - (EXTRACT(ISODOW FROM CURRENT_DATE)::integer - 1)
+                )::date AS week_start
             ),
             dates AS (
                 SELECT generate_series(
@@ -1298,14 +1301,46 @@ public static class WorkLifecycleModule
         bool broadScope,
         CancellationToken cancellationToken)
     {
+        var roleCodes = access.RoleCodes.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var canViewAllApprovals = access.CanEditAll;
+        var isManager = roleCodes.Contains("MANAGER") || roleCodes.Contains("PEOPLE_MANAGER");
+        var isProjectManager = roleCodes.Contains("PROJECT_MANAGER")
+            || roleCodes.Contains("PROJECT_MANAGEMENT")
+            || roleCodes.Contains("PROJECT_MANAGEMENT_LEAD")
+            || roleCodes.Contains("PROJECT_MANAGEMENT_TEAM_LEAD")
+            || roleCodes.Contains("PM_TEAM_LEAD");
+
         await using var command = new NpgsqlCommand("""
             SELECT
                 (
                     SELECT COUNT(*)
-                    FROM time_entries entry
-                    JOIN projects project ON project.project_id = entry.project_id
-                    WHERE entry.status IN ('submitted', 'manager_review', 'project_review')
-                      AND (@broad_scope OR project.project_manager_user_id = @user_id)
+                    FROM timesheet_day_statuses day_status
+                    JOIN app_users submitter ON submitter.user_id = day_status.user_id
+                    WHERE day_status.user_id <> @user_id
+                      AND day_status.status = 'submitted'
+                      AND (
+                            @can_view_all_approvals
+                         OR (
+                                @is_manager
+                            AND lower(COALESCE(submitter.manager_email, '')) = lower(COALESCE((
+                                SELECT actor.email
+                                FROM app_users actor
+                                WHERE actor.user_id = @user_id
+                            ), ''))
+                         )
+                         OR (
+                                @is_project_manager
+                            AND EXISTS (
+                                SELECT 1
+                                FROM time_entries scope_entry
+                                JOIN projects scope_project
+                                  ON scope_project.project_id = scope_entry.project_id
+                                WHERE scope_entry.timesheet_id = day_status.timesheet_id
+                                  AND scope_entry.work_date = day_status.work_date
+                                  AND scope_project.project_manager_user_id = @user_id
+                            )
+                         )
+                      )
                 ),
                 (
                     SELECT COUNT(*)
@@ -1332,6 +1367,9 @@ public static class WorkLifecycleModule
             """, connection);
         command.Parameters.AddWithValue("broad_scope", broadScope);
         command.Parameters.AddWithValue("user_id", access.ActualUserId);
+        command.Parameters.AddWithValue("can_view_all_approvals", canViewAllApprovals);
+        command.Parameters.AddWithValue("is_manager", isManager);
+        command.Parameters.AddWithValue("is_project_manager", isProjectManager);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         await reader.ReadAsync(cancellationToken);
         return new

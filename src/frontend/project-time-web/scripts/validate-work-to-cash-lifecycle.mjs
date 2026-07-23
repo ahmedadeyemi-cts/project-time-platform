@@ -67,12 +67,23 @@ requireText(lifecycle, [
   'final_invoice_complete',
   'write_off_approved',
   'InsertAuditAsync',
+  "SET status = 'completed'",
+  'EXTRACT(ISODOW FROM CURRENT_DATE)',
+  'FROM timesheet_day_statuses day_status',
+  "lower(COALESCE(submitter.manager_email, ''))",
+  '@can_view_all_approvals',
+  '@is_manager',
+  '@is_project_manager',
   'TimeEntryExcludedRoles',
   '"PROJECT_TEAM_COORDINATOR"',
   '"SALES"',
   '"INSIDE_SALES"',
   '"EXECUTIVE"'
 ], 'Work lifecycle API');
+
+if (lifecycle.includes("SET status = 'closed'")) {
+  throw new Error("Project closeout must use the schema-supported 'completed' project status.");
+}
 
 requireText(migration, [
   'BEGIN;',
