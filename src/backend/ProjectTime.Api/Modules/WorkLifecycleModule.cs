@@ -942,10 +942,7 @@ public static class WorkLifecycleModule
             SELECT COUNT(*)
             FROM project_tasks task
             WHERE task.project_id = @project_id
-              AND task.is_active = TRUE
-              AND lower(COALESCE(task.status, '')) NOT IN (
-                  'complete', 'completed', 'closed', 'cancelled', 'canceled', 'done'
-              );
+              AND task.is_active = TRUE;
             """, connection, transaction))
         {
             command.Parameters.AddWithValue("project_id", project.ProjectId);
@@ -1481,14 +1478,7 @@ public static class WorkLifecycleModule
                 COALESCE(project.project_name, ''),
                 COALESCE(client.client_name, ''),
                 COALESCE(project.status, ''),
-                COALESCE(
-                    ROUND(
-                        100.0 * COUNT(task.task_id) FILTER (
-                            WHERE lower(COALESCE(task.status, '')) IN ('complete', 'completed', 'closed', 'done')
-                        ) / NULLIF(COUNT(task.task_id), 0)
-                    ),
-                    0
-                )::integer AS completion_percent
+                COUNT(task.task_id) FILTER (WHERE task.is_active = TRUE)::integer AS active_task_count
             FROM projects project
             LEFT JOIN clients client ON client.client_id = project.client_id
             LEFT JOIN project_tasks task ON task.project_id = project.project_id
@@ -1518,7 +1508,7 @@ public static class WorkLifecycleModule
                 projectName = reader.GetString(2),
                 customerName = reader.GetString(3),
                 status = reader.GetString(4),
-                completionPercent = reader.GetInt32(5)
+                activeTaskCount = reader.GetInt32(5)
             });
         }
         return projects;
