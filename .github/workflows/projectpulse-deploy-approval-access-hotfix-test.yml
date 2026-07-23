@@ -1,0 +1,264 @@
+name: ProjectPulse Deploy Approval Access Hotfix Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_commit:
+        description: Exact verified Approval Center hotfix commit
+        required: true
+        default: 79822a4aaf1d7d07a0be45ec3671bc61536f87a7
+        type: string
+      confirmation:
+        description: Enter DEPLOY-APPROVAL-ACCESS-HOTFIX-TO-TEST
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: projectpulse-deploy-approval-access-hotfix-test
+  cancel-in-progress: false
+
+jobs:
+  deploy-web:
+    name: Guarded Approval Center web-only test deployment
+    environment: test
+    runs-on: ubuntu-latest
+    env:
+      EXPECTED_RELEASE_COMMIT: 79822a4aaf1d7d07a0be45ec3671bc61536f87a7
+    steps:
+      - name: Check out deployment controls
+        uses: actions/checkout@v5
+        with:
+          path: control
+          fetch-depth: 0
+
+      - name: Check out exact Approval Center hotfix source
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.release_commit }}
+          path: release
+          fetch-depth: 1
+
+      - name: Guard workflow source and Approval Center hotfix commit
+        id: release
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ '${{ github.ref }}' == 'refs/heads/main' ]] || {
+            echo 'This workflow must be dispatched from main.' >&2
+            exit 1
+          }
+          [[ '${{ inputs.confirmation }}' == 'DEPLOY-APPROVAL-ACCESS-HOTFIX-TO-TEST' ]] || {
+            echo 'The deployment confirmation text does not match.' >&2
+            exit 1
+          }
+          [[ '${{ inputs.release_commit }}' =~ ^[0-9a-f]{40}$ ]] || {
+            echo 'release_commit must be a complete 40-character SHA.' >&2
+            exit 1
+          }
+
+          CONTROL_COMMIT="$(git -C control rev-parse HEAD)"
+          TARGET_COMMIT="$(git -C release rev-parse HEAD)"
+          [[ "$CONTROL_COMMIT" == '${{ github.sha }}' ]] || {
+            echo 'The checked-out control commit does not match this workflow run.' >&2
+            exit 1
+          }
+          [[ "$TARGET_COMMIT" == '${{ inputs.release_commit }}' ]] || {
+            echo 'The checked-out release does not match the requested commit.' >&2
+            exit 1
+          }
+          [[ "$TARGET_COMMIT" == "$EXPECTED_RELEASE_COMMIT" ]] || {
+            echo 'Only the verified Approval Center hotfix commit may be deployed.' >&2
+            exit 1
+          }
+          git -C control merge-base --is-ancestor "$TARGET_COMMIT" HEAD || {
+            echo 'The Approval Center hotfix is not an ancestor of the deployment-control commit.' >&2
+            exit 1
+          }
+          grep -Fq '/api/approval-center/access' release/src/frontend/project-time-web/src/approval-access-navigation-compatibility.js
+          grep -Fq 'approval_contract' release/src/frontend/project-time-web/src/approval-access-navigation-compatibility.js
+          grep -Fq "cache: 'no-store'" release/src/frontend/project-time-web/src/approval-access-navigation-compatibility.js
+          grep -Fq 'page-context-guide summary strong' release/src/frontend/project-time-web/src/approval-access-navigation-compatibility.js
+          grep -Fq './approval-access-navigation-compatibility.js' release/src/frontend/project-time-web/src/main.jsx
+          echo "target_commit=$TARGET_COMMIT" >> "$GITHUB_OUTPUT"
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Capture current web image
+        id: before
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          RAW_OLD_WEB_IMAGE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
+          WEB_REVISION_MODE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.configuration.activeRevisionsMode' -o tsv)"
+          [[ -n "$RAW_OLD_WEB_IMAGE" ]] || {
+            echo 'Could not capture the active web image.' >&2
+            exit 1
+          }
+          [[ "${WEB_REVISION_MODE,,}" == 'single' ]] || {
+            echo 'The web Container App must use single-revision mode.' >&2
+            exit 1
+          }
+
+          resolve_acr_image_digest() {
+            local image="$1"
+            local registry='${{ vars.AZURE_ACR_NAME }}.azurecr.io/'
+            local relative repository digest
+            case "$image" in
+              "$registry"*@sha256:*) printf '%s\n' "$image"; return 0 ;;
+              "$registry"*:*) ;;
+              *) echo "Rollback image is outside the approved ACR: $image" >&2; return 1 ;;
+            esac
+            relative="${image#"$registry"}"
+            repository="${relative%:*}"
+            digest="$(az acr repository show --name '${{ vars.AZURE_ACR_NAME }}' --image "$relative" --query digest -o tsv)"
+            [[ "$digest" == sha256:* ]] || {
+              echo "Could not resolve rollback digest for $image." >&2
+              return 1
+            }
+            printf '%s%s@%s\n' "$registry" "$repository" "$digest"
+          }
+
+          OLD_WEB_IMAGE="$(resolve_acr_image_digest "$RAW_OLD_WEB_IMAGE")"
+          echo "old_web_image=$OLD_WEB_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "CURRENT_WEB_IMAGE_IMMUTABLE=$OLD_WEB_IMAGE"
+
+      - name: Build exact Approval Center hotfix web image
+        id: build
+        shell: bash
+        working-directory: release
+        run: |
+          set -Eeuo pipefail
+          TARGET_COMMIT='${{ steps.release.outputs.target_commit }}'
+          WEB_REPOSITORY='project-health-dashboard-web'
+          RELEASE_TAG="approval-access-hotfix-$TARGET_COMMIT"
+          WEB_DIGEST="$(
+            ../control/scripts/build-pr55-acr-image.sh \
+              '${{ vars.AZURE_ACR_NAME }}' \
+              "$WEB_REPOSITORY:$RELEASE_TAG" \
+              deployment/containers/web/Dockerfile \
+              .
+          )"
+          WEB_IMAGE='${{ vars.AZURE_ACR_NAME }}.azurecr.io/'"$WEB_REPOSITORY@$WEB_DIGEST"
+          echo "web_image=$WEB_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "IMMUTABLE_WEB_IMAGE=$WEB_IMAGE"
+
+      - name: Deploy Approval Center hotfix web image only
+        id: deploy_web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          az containerapp update \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_WEB_APP }}' \
+            --image '${{ steps.build.outputs.web_image }}' \
+            --revision-suffix "approval-${GITHUB_RUN_ID}" \
+            --output none
+
+      - name: Validate served Approval Center hotfix and web image
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          BASE_URL='${{ vars.PUBLIC_URL }}'
+          BASE_URL="${BASE_URL%/}"
+          READY='false'
+          LAST_STATUS='not-requested'
+          LAST_JS='not-resolved'
+
+          absolute_asset_url() {
+            local asset_path="$1"
+            case "$asset_path" in
+              http://*|https://*) printf '%s\n' "$asset_path" ;;
+              /*) printf '%s%s\n' "$BASE_URL" "$asset_path" ;;
+              *) printf '%s/%s\n' "$BASE_URL" "$asset_path" ;;
+            esac
+          }
+
+          for attempt in $(seq 1 30); do
+            CACHE_BUSTER="approval-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${attempt}"
+            STATUS="$(curl --silent --show-error --location --header 'Cache-Control: no-cache' --header 'Pragma: no-cache' --output /tmp/approval-index.html --write-out '%{http_code}' "$BASE_URL/?release_check=$CACHE_BUSTER" || true)"
+            LAST_STATUS="$STATUS"
+            LAST_JS='not-resolved'
+
+            if [[ "$STATUS" == '200' ]]; then
+              JS_PATH="$(sed -nE 's/.*src="([^"]+\.js)".*/\1/p' /tmp/approval-index.html | head -1)"
+              if [[ -n "$JS_PATH" ]]; then
+                LAST_JS="$JS_PATH"
+                JS_URL="$(absolute_asset_url "$JS_PATH")"
+                JS_STATUS="$(curl --silent --show-error --location --header 'Cache-Control: no-cache' --header 'Pragma: no-cache' --output /tmp/approval-app.js --write-out '%{http_code}' "$JS_URL?release_check=$CACHE_BUSTER" || true)"
+                LAST_STATUS="html=$STATUS,js=$JS_STATUS"
+                if [[ "$JS_STATUS" == '200' ]] \
+                  && grep -Fq '/api/approval-center/access' /tmp/approval-app.js \
+                  && grep -Fq 'approval_contract' /tmp/approval-app.js \
+                  && grep -Fq 'projectpulse-modules-navigation-link' /tmp/approval-app.js \
+                  && grep -Fq 'Approval Inbox' /tmp/approval-app.js; then
+                  READY='true'
+                  echo "APPROVAL_ACCESS_HOTFIX_READY attempt=$attempt js=$JS_PATH"
+                  break
+                fi
+              fi
+            fi
+            (( attempt < 30 )) && sleep 10
+          done
+
+          [[ "$READY" == 'true' ]] || {
+            echo "Approval Center hotfix did not become ready: HTTP=$LAST_STATUS JS=$LAST_JS" >&2
+            exit 1
+          }
+
+          ACTIVE_WEB_IMAGE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
+          [[ "$ACTIVE_WEB_IMAGE" == '${{ steps.build.outputs.web_image }}' ]] || {
+            echo "Active web image mismatch: expected=${{ steps.build.outputs.web_image }} actual=$ACTIVE_WEB_IMAGE" >&2
+            exit 1
+          }
+          echo "DEPLOYED_APPROVAL_ACCESS_HOTFIX_COMMIT=${{ steps.release.outputs.target_commit }}"
+          echo "DEPLOYED_WEB_IMAGE=$ACTIVE_WEB_IMAGE"
+
+      - name: Write Approval Center hotfix deployment evidence
+        if: success()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p evidence
+          cat > evidence/approval-access-hotfix-test-deployment.json <<JSON
+          {
+            "environment": "test",
+            "releaseCommit": "${{ steps.release.outputs.target_commit }}",
+            "workflowCommit": "${{ github.sha }}",
+            "runId": "${{ github.run_id }}",
+            "webImage": "${{ steps.build.outputs.web_image }}",
+            "previousWebImage": "${{ steps.before.outputs.old_web_image }}",
+            "apiDeployment": "unchanged",
+            "migrations": "unchanged",
+            "servedAssetValidation": "passed"
+          }
+          JSON
+
+      - name: Upload Approval Center hotfix deployment evidence
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: approval-access-hotfix-test-deployment-${{ github.run_id }}
+          path: evidence/approval-access-hotfix-test-deployment.json
+          retention-days: 30
+
+      - name: Roll back web image on failure
+        if: ${{ failure() && steps.deploy_web.outputs.started == 'true' }}
+        shell: bash
+        run: |
+          set +e
+          echo 'Approval Center hotfix deployment failed. Restoring the captured web image.' >&2
+          az containerapp update \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_WEB_APP }}' \
+            --image '${{ steps.before.outputs.old_web_image }}' \
+            --revision-suffix "approvalrb-${GITHUB_RUN_ID}" \
+            --output none
