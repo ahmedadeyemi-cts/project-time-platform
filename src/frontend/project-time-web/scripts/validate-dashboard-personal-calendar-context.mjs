@@ -99,7 +99,7 @@ requireText(calendarBackend, [
   'app.MapGet("/api/calendar/resources"',
   'currentUserId = actor.Value',
   'app.MapPost("/api/calendar/schedule"',
-  'resourceIds',
+  'request.ResourceIds',
   'scheduleItems = items'
 ], 'Existing calendar API authority');
 
