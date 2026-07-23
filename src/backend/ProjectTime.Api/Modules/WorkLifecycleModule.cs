@@ -682,6 +682,16 @@ public static class WorkLifecycleModule
         }
 
         var prior = await LoadCloseoutAsync(connection, transaction, projectId, context.RequestAborted);
+        if (string.Equals(prior?.CloseoutStatus, "closed", StringComparison.OrdinalIgnoreCase))
+        {
+            await transaction.RollbackAsync(context.RequestAborted);
+            return Results.Conflict(new
+            {
+                status = "closeout_reopen_required",
+                message = "A closed project must be reopened through the governed reopen workflow before another closeout decision."
+            });
+        }
+
         var priorProjectStatus = operation == "request" || prior is null
             ? project.Status
             : prior.PriorProjectStatus;
