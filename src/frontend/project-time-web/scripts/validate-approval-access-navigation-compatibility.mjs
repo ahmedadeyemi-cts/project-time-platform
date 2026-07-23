@@ -17,6 +17,7 @@ function requireText(source, values, label) {
 
 const paths = {
   main: 'src/frontend/project-time-web/src/main.jsx',
+  app: 'src/frontend/project-time-web/src/App.jsx',
   compatibility: 'src/frontend/project-time-web/src/approval-access-navigation-compatibility.js',
   approvalCenter: 'src/frontend/project-time-web/src/ApprovalCenter.jsx',
   mailbox: 'src/frontend/project-time-web/src/ApprovalMailbox.jsx',
@@ -24,15 +25,20 @@ const paths = {
   packageJson: 'src/frontend/project-time-web/package.json'
 };
 
-const [main, compatibility, approvalCenter, mailbox, backend, packageJson] = await Promise.all(
+const [main, app, compatibility, approvalCenter, mailbox, backend, packageJson] = await Promise.all(
   Object.values(paths).map(text)
 );
 
 requireText(main, [
   "import App from './App.jsx';",
-  "import './approval-access-navigation-compatibility.js';",
-  '<ApprovalMailbox />'
+  "import './approval-access-navigation-compatibility.js';"
 ], 'Application compatibility integration');
+
+requireText(app, [
+  "import ApprovalMailbox from './ApprovalMailbox.jsx';",
+  '<ApprovalMailbox />',
+  '<ApprovalCenter />'
+], 'Approval surfaces integration');
 
 if (main.indexOf("import './approval-access-navigation-compatibility.js';") < main.indexOf("import App from './App.jsx';")) {
   throw new Error('The compatibility bridge must load after App installs the authenticated fetch pipeline.');
@@ -57,6 +63,8 @@ requireText(compatibility, [
   "if (route === MODULES_ROUTE) return;",
   "cleanText(heading.textContent) !== 'Modules'",
   "navigationLabelForRoute(route)",
+  "pageContextLabel()",
+  "document.querySelector('.page-context-guide summary strong')",
   "window.addEventListener('hashchange', schedule)"
 ], 'Approval access and workspace title compatibility');
 
