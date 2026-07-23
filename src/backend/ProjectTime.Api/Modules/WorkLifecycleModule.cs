@@ -322,7 +322,14 @@ public static class WorkLifecycleModule
             });
         }
 
-        var prior = await LoadLatestReadinessAsync(connection, transaction, projectId, context.RequestAborted);
+        var prior = await LoadReadinessByPackageAsync(
+            connection,
+            transaction,
+            projectId,
+            request.BillingPeriodStart,
+            request.BillingPeriodEnd,
+            packageType,
+            context.RequestAborted);
         var reviewId = Guid.NewGuid();
         var checklistJson = JsonSerializer.Serialize(normalizedChecklist);
 
@@ -933,6 +940,54 @@ public static class WorkLifecycleModule
             LIMIT 1;
             """, connection, transaction);
         command.Parameters.AddWithValue("project_id", projectId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken)) return null;
+
+        return new WorkBillingReadinessSnapshot(
+            reader.GetGuid(0),
+            reader.GetFieldValue<DateOnly>(1),
+            reader.GetFieldValue<DateOnly>(2),
+            reader.GetString(3),
+            reader.GetString(4),
+            JsonSerializer.Deserialize<Dictionary<string, bool>>(reader.GetString(5))
+                ?? new Dictionary<string, bool>(),
+            reader.GetString(6),
+            reader.GetString(7),
+            reader.GetFieldValue<DateTimeOffset>(8));
+    }
+
+    private static async Task<WorkBillingReadinessSnapshot?> LoadReadinessByPackageAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction? transaction,
+        Guid projectId,
+        DateOnly billingPeriodStart,
+        DateOnly billingPeriodEnd,
+        string packageType,
+        CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand("""
+            SELECT
+                review.work_billing_readiness_review_id,
+                review.billing_period_start,
+                review.billing_period_end,
+                review.package_type,
+                review.review_status,
+                review.checklist_json::text,
+                review.notes,
+                COALESCE(actor.display_name, actor.email, ''),
+                review.updated_at
+            FROM work_billing_readiness_reviews review
+            LEFT JOIN app_users actor ON actor.user_id = review.reviewed_by_user_id
+            WHERE review.project_id = @project_id
+              AND review.billing_period_start = @period_start
+              AND review.billing_period_end = @period_end
+              AND review.package_type = @package_type
+            LIMIT 1;
+            """, connection, transaction);
+        command.Parameters.AddWithValue("project_id", projectId);
+        command.Parameters.Add("period_start", NpgsqlDbType.Date).Value = billingPeriodStart;
+        command.Parameters.Add("period_end", NpgsqlDbType.Date).Value = billingPeriodEnd;
+        command.Parameters.AddWithValue("package_type", packageType);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         if (!await reader.ReadAsync(cancellationToken)) return null;
 
