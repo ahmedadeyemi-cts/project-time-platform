@@ -62,8 +62,14 @@ requireText(lifecycle, [
   'access.IsViewAs',
   'project.IsArchived',
   'BuildCloseoutBlockersAsync',
+  'requiresInvoiceReadiness',
+  'if (requiresInvoiceReadiness)',
+  'if (requiresInvoiceReadiness && readiness?.ReviewStatus != "ready")',
   'billing_invoice_lines',
   'project_tasks',
+  "purchase_order.po_status = 'active'",
+  'purchase_order.effective_start_date <= CURRENT_DATE',
+  'purchase_order.effective_end_date >= CURRENT_DATE',
   'final_invoice_complete',
   'write_off_approved',
   'InsertAuditAsync',
@@ -84,6 +90,10 @@ requireText(lifecycle, [
 
 if (lifecycle.includes("SET status = 'closed'")) {
   throw new Error("Project closeout must use the schema-supported 'completed' project status.");
+}
+
+if (lifecycle.includes("purchase_order.po_status IN ('draft', 'active')")) {
+  throw new Error('Billing readiness must reject draft purchase orders.');
 }
 
 requireText(migration, [

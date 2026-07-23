@@ -882,33 +882,38 @@ public static class WorkLifecycleModule
         CancellationToken cancellationToken)
     {
         var blockers = new List<string>();
+        var requiresInvoiceReadiness = string.Equals(
+            closeout?.BillingDisposition,
+            "final_invoice_complete",
+            StringComparison.OrdinalIgnoreCase);
 
-        await using (var command = new NpgsqlCommand("""
-            SELECT
-                COUNT(*) FILTER (
-                    WHERE entry.billable = TRUE
-                      AND entry.hours > 0
-                      AND entry.status = ANY(@approved_statuses)
-                      AND NOT EXISTS (
-                          SELECT 1
-                          FROM billing_invoice_lines line
-                          WHERE line.time_entry_id = entry.time_entry_id
-                      )
-                ),
-                COUNT(*) FILTER (
-                    WHERE entry.billable = TRUE
-                      AND entry.hours > 0
-                      AND NOT (entry.status = ANY(@approved_statuses))
-                      AND NOT EXISTS (
-                          SELECT 1
-                          FROM billing_invoice_lines line
-                          WHERE line.time_entry_id = entry.time_entry_id
-                      )
-                )
-            FROM time_entries entry
-            WHERE entry.project_id = @project_id;
-            """, connection, transaction))
+        if (requiresInvoiceReadiness)
         {
+            await using var command = new NpgsqlCommand("""
+                SELECT
+                    COUNT(*) FILTER (
+                        WHERE entry.billable = TRUE
+                          AND entry.hours > 0
+                          AND entry.status = ANY(@approved_statuses)
+                          AND NOT EXISTS (
+                              SELECT 1
+                              FROM billing_invoice_lines line
+                              WHERE line.time_entry_id = entry.time_entry_id
+                          )
+                    ),
+                    COUNT(*) FILTER (
+                        WHERE entry.billable = TRUE
+                          AND entry.hours > 0
+                          AND NOT (entry.status = ANY(@approved_statuses))
+                          AND NOT EXISTS (
+                              SELECT 1
+                              FROM billing_invoice_lines line
+                              WHERE line.time_entry_id = entry.time_entry_id
+                          )
+                    )
+                FROM time_entries entry
+                WHERE entry.project_id = @project_id;
+                """, connection, transaction);
             command.Parameters.AddWithValue("project_id", project.ProjectId);
             command.Parameters.AddWithValue("approved_statuses", ApprovedTimeStatuses);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -935,7 +940,7 @@ public static class WorkLifecycleModule
             if (count > 0) blockers.Add($"{count} project task{(count == 1 ? " remains" : "s remain")} open.");
         }
 
-        if (readiness?.ReviewStatus != "ready")
+        if (requiresInvoiceReadiness && readiness?.ReviewStatus != "ready")
         {
             blockers.Add("The latest billing readiness package is not marked ready.");
         }
@@ -1019,7 +1024,15 @@ public static class WorkLifecycleModule
                     FROM project_purchase_orders purchase_order
                     WHERE purchase_order.project_id = @project_id
                       AND purchase_order.is_primary = TRUE
-                      AND purchase_order.po_status IN ('draft', 'active')
+                      AND purchase_order.po_status = 'active'
+                      AND (
+                          purchase_order.effective_start_date IS NULL
+                          OR purchase_order.effective_start_date <= CURRENT_DATE
+                      )
+                      AND (
+                          purchase_order.effective_end_date IS NULL
+                          OR purchase_order.effective_end_date >= CURRENT_DATE
+                      )
                 )
             FROM projects project
             LEFT JOIN project_billing_profiles profile
