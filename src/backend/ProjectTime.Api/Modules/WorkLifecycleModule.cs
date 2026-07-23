@@ -1178,6 +1178,23 @@ public static class WorkLifecycleModule
                           AND entry.hours > 0
                           AND NOT (entry.status = ANY(@approved_statuses))
                           AND entry.has_live_invoice = FALSE
+                    ),
+                    (
+                        SELECT COUNT(*)
+                        FROM work_billing_readiness_reviews review
+                        WHERE review.project_id = @project_id
+                          AND review.review_status = 'ready'
+                          AND review.evidence_source_type IN ('expense', 'fixed_price_milestone')
+                          AND COALESCE(review.evidence_amount, 0) > 0
+                          AND review.evidence_description <> ''
+                          AND NOT EXISTS (
+                              SELECT 1
+                              FROM billing_invoice_lines line
+                              JOIN billing_invoices invoice
+                                ON invoice.billing_invoice_id = line.billing_invoice_id
+                              WHERE line.billing_readiness_review_id = review.work_billing_readiness_review_id
+                                AND lower(COALESCE(invoice.invoice_status, '')) <> 'void'
+                          )
                     )
                 FROM scoped_entries entry;
                 """, connection, transaction);
@@ -1188,8 +1205,10 @@ public static class WorkLifecycleModule
             {
                 var eligible = reader.GetInt64(0);
                 var pending = reader.GetInt64(1);
+                var nonLaborPackages = reader.GetInt64(2);
                 if (eligible > 0) blockers.Add($"{eligible} approved billable time entr{(eligible == 1 ? "y is" : "ies are")} not invoiced.");
                 if (pending > 0) blockers.Add($"{pending} billable time entr{(pending == 1 ? "y still requires" : "ies still require")} approval or disposition.");
+                if (nonLaborPackages > 0) blockers.Add($"{nonLaborPackages} ready non-labor package{(nonLaborPackages == 1 ? " remains" : "s remain")} uninvoiced.");
             }
         }
 
