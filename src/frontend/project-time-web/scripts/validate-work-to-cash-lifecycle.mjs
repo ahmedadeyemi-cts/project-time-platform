@@ -129,6 +129,10 @@ requireText(lifecycle, [
   'EXTRACT(ISODOW FROM CURRENT_DATE)',
   'FROM generate_series(0, 4) AS weekday_offset',
   "'hold', 'on hold', 'on_hold'",
+  '|| string.IsNullOrWhiteSpace(prior.PriorProjectStatus)',
+  'var requiresLaborInvoice = !project.ContractType.Contains(',
+  '@requires_labor_invoice = TRUE',
+  'command.Parameters.AddWithValue("requires_labor_invoice", requiresLaborInvoice);',
   'scope_lifecycle.is_archived',
   'rejected_lifecycle.is_archived',
   'closeout_lifecycle.is_archived',
@@ -257,7 +261,7 @@ requireText(lifecycle, [
 ], 'Closeout request attribution');
 
 requireText(lifecycle, [
-  'operation == "request" || prior is null',
+  'operation == "request"\n            || prior is null\n            || string.IsNullOrWhiteSpace(prior.PriorProjectStatus)',
   "WHEN EXCLUDED.closeout_status <> 'closed'",
   "SET closeout_status = 'reopened',\n                prior_project_status = ''",
   'command.Parameters.AddWithValue("prior_project_status", priorProjectStatus)'
