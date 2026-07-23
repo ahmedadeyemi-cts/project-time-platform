@@ -9,6 +9,7 @@ const read = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath)
 const frontend = read('src/frontend/project-time-web/src/ProjectWorkspaceCenter.jsx');
 const css = read('src/frontend/project-time-web/src/project-workspace-center.css');
 const backend = read('src/backend/ProjectTime.Api/Modules/ProjectWorkspaceModule.cs');
+const docker = read('deployment/containers/web/Dockerfile');
 const pkg = JSON.parse(read('src/frontend/project-time-web/package.json'));
 
 let checks = 0;
@@ -63,6 +64,11 @@ test(
   'BUTTON_STYLING',
   css.includes('.workspace-download-link:disabled')
     && css.includes('.workspace-download-status.error')
+);
+test(
+  'CONTAINER_CONTEXT',
+  docker.includes('COPY src/backend/ProjectTime.Api/Modules/ProjectWorkspaceModule.cs')
+    && docker.includes('src/backend/ProjectTime.Api/Modules/ProjectWorkspaceModule.cs')
 );
 test(
   'BUILD_GATE',
