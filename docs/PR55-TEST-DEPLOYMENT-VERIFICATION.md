@@ -1,9 +1,9 @@
 # PR #55 Test Deployment and Browser Verification
 
-This runbook covers the one-time guarded test deployment of the verified PR #55
-merge commit:
+This runbook covers the guarded test rollout of the verified Work Register
+authorization and closeout release commit:
 
-`ea23da6cfdd21a9444489ee4ffd14a6555de8c34`
+`5b4debe8218560de357f37e567f38aa497482d69`
 
 It does not deploy production, configure credentials, connect a CRM/ERP provider,
 or test an external provider.
@@ -43,7 +43,7 @@ The existing test-environment Azure variables must remain configured:
 
 The test PostgreSQL hostname is private and cannot be resolved by a
 GitHub-hosted runner. The workflow therefore builds a dedicated migration image
-whose context contains only the guarded migrator, migrations 034 and 035, the
+whose context contains only the guarded migrator, migrations 034, 035, and 036, the
 migration Dockerfile, and the exact release-commit marker. It resolves that
 image to an immutable ACR digest and runs it as a one-time manual Container Apps
 Job in the same managed environment as the test API, where the linked private
@@ -56,7 +56,7 @@ atomic migration transaction fails. The job has no automatic retries, is
 bounded to 15 minutes, and is deleted after success or failure by both a script
 trap and an always-run workflow cleanup step. After application deployment
 starts, a failed health or smoke check restores both previously captured
-application images. Migrations 034 and 035 are additive and remain in place
+application images. Migrations 034, 035, and 036 are additive and remain in place
 after a successful transaction.
 
 Both Container Apps must already use single-revision mode. The workflow builds
@@ -69,14 +69,17 @@ application.
 
 - The database connection is reconstructed from the existing test API Container
   App without exposing or duplicating credentials.
-- The release source is exactly the PR #55 merge commit.
-- Migration 034 and migration 035 match the reviewed SHA-256 checksums.
+- The release source is exactly the verified Work Register rollout commit.
+- Migrations 034, 035, and 036 match the reviewed SHA-256 checksums.
 - The migration image is resolved to an immutable digest in the approved ACR.
 - The migration runs inside the test API's Container Apps environment and
   reaches the database through private DNS.
-- Both migrations apply in one PostgreSQL transaction with retries disabled.
+- All three migrations apply in one PostgreSQL transaction with retries disabled.
 - The Module 026 audit constraint accepts module `026`.
 - The Work Register `source_mode` and audit foreign-key contracts exist.
+- Migration 036 is registered, the Administrator and Super Administrator roles
+  hold the 055C edit and 055D create permissions, and the Work Register feature
+  metadata is present.
 - The temporary migration job and its database secret are removed before API
   deployment begins.
 - The active API and web image references match the immutable release digests.
@@ -95,15 +98,20 @@ following with your normal test accounts:
    through Module 999.
 2. Module 055B appears before 055C, and 055C appears before 055D.
 3. Module 999 appears last.
-4. Module 055C is named **Manage Existing Projects** and is accessible to the
-   expected PM and Project Team Coordinator roles.
-5. Module 055D is named **Create New Project** and is restricted to the Project
-   Team Coordinator role.
+4. Module 055C is named **Manage Existing Projects**. An assigned PM can edit
+   the project, an unassigned PM is view-only, and Project Team Coordinator,
+   Administrator, and Super Administrator can edit every project.
+5. Module 055D is named **Create New Project** and is available only to Project
+   Team Coordinator, Administrator, and Super Administrator.
 6. Module 026 opens without a schema error. Do not enter credentials or run a
    provider connection test during this release verification.
 7. In Module 055D, use test-only records to verify that the GSD and SELL intake
    choices load and that a controlled test project can be created.
 8. Return to Module 055C and confirm the test project can be located and opened.
 
-Record any ordering, access, label, or workflow problem before beginning the
-separate 055C closeout and partial-invoice implementation.
+9. From a selected project in Module 055C, choose **Start Project Closeout** and
+   confirm Module 040 opens with that project selected. Do not bypass Module
+   040 readiness, billing, approval, expense, customer-acceptance, or audit gates.
+
+Record any ordering, access, label, authorization, or closeout-handoff problem
+before authorizing another rollout.

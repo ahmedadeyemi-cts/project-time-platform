@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-EXPECTED_RELEASE_COMMIT="ea23da6cfdd21a9444489ee4ffd14a6555de8c34"
+EXPECTED_RELEASE_COMMIT="5b4debe8218560de357f37e567f38aa497482d69"
 EXPECTED_034_SHA256="275c2f3f5ad56d80f303327baeb665506bc41014d52af8a2b7082c6e451974b9"
 EXPECTED_035_SHA256="87c6fcea07a25b829ca58c62c18992c9f01d8477a48b55f70aa1c710807b180d"
+EXPECTED_036_SHA256="b8f9dab7d7465ce06af2ee287867759ee718f6b7d1fc96d4b8629e65b58d80f3"
 
 RELEASE_ROOT="${1:-}"
 DATABASE_URL="${PROJECTPULSE_TEST_DATABASE_URL:-}"
@@ -39,17 +40,22 @@ fi
 
 MIGRATION_034="$RELEASE_ROOT/database/migrations/034_module_026_crm_erp_integrations.sql"
 MIGRATION_035="$RELEASE_ROOT/database/migrations/035_work_register_055c_055d_split.sql"
+MIGRATION_036="$RELEASE_ROOT/database/migrations/036_work_register_role_scope_and_closeout_handoff.sql"
 
 [[ -f "$MIGRATION_034" ]] || fail "Missing migration: $MIGRATION_034"
 [[ -f "$MIGRATION_035" ]] || fail "Missing migration: $MIGRATION_035"
+[[ -f "$MIGRATION_036" ]] || fail "Missing migration: $MIGRATION_036"
 
 ACTUAL_034_SHA256="$(sha256sum "$MIGRATION_034" | awk '{print $1}')"
 ACTUAL_035_SHA256="$(sha256sum "$MIGRATION_035" | awk '{print $1}')"
+ACTUAL_036_SHA256="$(sha256sum "$MIGRATION_036" | awk '{print $1}')"
 
 [[ "$ACTUAL_034_SHA256" == "$EXPECTED_034_SHA256" ]] ||
   fail "Migration 034 checksum does not match the reviewed release."
 [[ "$ACTUAL_035_SHA256" == "$EXPECTED_035_SHA256" ]] ||
   fail "Migration 035 checksum does not match the reviewed release."
+[[ "$ACTUAL_036_SHA256" == "$EXPECTED_036_SHA256" ]] ||
+  fail "Migration 036 checksum does not match the reviewed release."
 
 validate_transaction_boundary() {
   local migration_file="$1"
@@ -64,6 +70,7 @@ validate_transaction_boundary() {
 
 validate_transaction_boundary "$MIGRATION_034"
 validate_transaction_boundary "$MIGRATION_035"
+validate_transaction_boundary "$MIGRATION_036"
 
 echo "PR55_DATABASE_PREFLIGHT=STARTED"
 psql "$DATABASE_URL" \
@@ -74,6 +81,10 @@ psql "$DATABASE_URL" \
     BEGIN
       IF to_regclass('public.schema_migrations') IS NULL
          OR to_regclass('public.app_users') IS NULL
+         OR to_regclass('public.app_roles') IS NULL
+         OR to_regclass('public.app_permissions') IS NULL
+         OR to_regclass('public.app_role_permissions') IS NULL
+         OR to_regclass('public.app_feature_catalog') IS NULL
          OR to_regclass('public.crm_integration_providers') IS NULL
          OR to_regclass('public.work_register_intake_packages') IS NULL
          OR to_regclass('public.projectpulse_module_audit_events') IS NULL THEN
@@ -103,6 +114,7 @@ SQL
 
 append_migration_body "$MIGRATION_034"
 append_migration_body "$MIGRATION_035"
+append_migration_body "$MIGRATION_036"
 
 cat >> "$BUNDLE" <<'SQL'
 
@@ -124,6 +136,14 @@ BEGIN
         WHERE migration_id = '035_work_register_055c_055d_split'
     ) THEN
         RAISE EXCEPTION 'Migration 035 did not register in schema_migrations.';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM schema_migrations
+        WHERE migration_id = '036_work_register_role_scope_and_closeout_handoff'
+    ) THEN
+        RAISE EXCEPTION 'Migration 036 did not register in schema_migrations.';
     END IF;
 
     IF to_regclass('public.crm_integration_credentials') IS NULL
@@ -168,6 +188,61 @@ BEGIN
     ) THEN
         RAISE EXCEPTION 'Migration 035 changed-by user foreign key is missing.';
     END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM (VALUES
+            ('SUPER_ADMINISTRATOR'),
+            ('ADMINISTRATOR')
+        ) AS required_role(role_code)
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM app_roles role
+            WHERE upper(role.role_code) = required_role.role_code
+        )
+    ) THEN
+        RAISE EXCEPTION 'Migration 036 requires the Administrator and Super Administrator roles.';
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM (VALUES
+            ('EDIT_WORK_REGISTER_055C'),
+            ('CREATE_WORK_REGISTER_055D')
+        ) AS required_permission(permission_code)
+        CROSS JOIN (VALUES
+            ('SUPER_ADMINISTRATOR'),
+            ('ADMINISTRATOR')
+        ) AS required_role(role_code)
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM app_role_permissions role_permission
+            JOIN app_roles role
+              ON role.app_role_id = role_permission.app_role_id
+            JOIN app_permissions permission
+              ON permission.app_permission_id = role_permission.app_permission_id
+            WHERE upper(role.role_code) = required_role.role_code
+              AND permission.permission_code = required_permission.permission_code
+        )
+    ) THEN
+        RAISE EXCEPTION 'Migration 036 administrator Work Register grants are incomplete.';
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM (VALUES
+            ('EDIT_WORK_REGISTER_055C'),
+            ('CREATE_WORK_REGISTER_055D')
+        ) AS required_feature(feature_code)
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM app_feature_catalog feature
+            WHERE feature.feature_code = required_feature.feature_code
+              AND feature.updated_at IS NOT NULL
+        )
+    ) THEN
+        RAISE EXCEPTION 'Migration 036 Work Register feature metadata is incomplete.';
+    END IF;
 END
 $pr55_verify$;
 
@@ -183,6 +258,12 @@ SELECT 'MIGRATION_035_APPLIED=YES'
 WHERE EXISTS (
     SELECT 1 FROM schema_migrations
     WHERE migration_id = '035_work_register_055c_055d_split'
+);
+
+SELECT 'MIGRATION_036_APPLIED=YES'
+WHERE EXISTS (
+    SELECT 1 FROM schema_migrations
+    WHERE migration_id = '036_work_register_role_scope_and_closeout_handoff'
 );
 SQL
 

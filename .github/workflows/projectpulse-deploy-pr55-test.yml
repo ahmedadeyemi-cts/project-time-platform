@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       release_commit:
-        description: Exact verified PR 55 merge commit
+        description: Exact verified Work Register rollout commit
         required: true
-        default: ea23da6cfdd21a9444489ee4ffd14a6555de8c34
+        default: 5b4debe8218560de357f37e567f38aa497482d69
         type: string
       confirmation:
         description: Enter DEPLOY-PR55-TO-TEST
@@ -27,7 +27,7 @@ jobs:
     environment: test
     runs-on: ubuntu-latest
     env:
-      EXPECTED_RELEASE_COMMIT: ea23da6cfdd21a9444489ee4ffd14a6555de8c34
+      EXPECTED_RELEASE_COMMIT: 5b4debe8218560de357f37e567f38aa497482d69
     steps:
       - name: Check out deployment controls
         uses: actions/checkout@v5
@@ -71,7 +71,7 @@ jobs:
             exit 1
           }
           [[ "$TARGET_COMMIT" == "$EXPECTED_RELEASE_COMMIT" ]] || {
-            echo "Only the verified PR #55 merge commit may be deployed by this workflow." >&2
+            echo "Only the verified Work Register rollout commit may be deployed by this workflow." >&2
             exit 1
           }
           git -C control merge-base --is-ancestor "$TARGET_COMMIT" HEAD || {
@@ -212,6 +212,9 @@ jobs:
           install -m 0644 \
             release/database/migrations/035_work_register_055c_055d_split.sql \
             "$CONTEXT/migrations/035_work_register_055c_055d_split.sql"
+          install -m 0644 \
+            release/database/migrations/036_work_register_role_scope_and_closeout_handoff.sql \
+            "$CONTEXT/migrations/036_work_register_role_scope_and_closeout_handoff.sql"
           printf '%s\n' "$TARGET_COMMIT" > "$CONTEXT/release-commit"
 
           mapfile -t CONTEXT_FILES < <(
@@ -222,6 +225,7 @@ jobs:
             apply-pr55-test-migrations.sh
             migrations/034_module_026_crm_erp_integrations.sql
             migrations/035_work_register_055c_055d_split.sql
+            migrations/036_work_register_role_scope_and_closeout_handoff.sql
             release-commit
           )
           [[ "${CONTEXT_FILES[*]}" == "${EXPECTED_FILES[*]}" ]] || {
@@ -242,7 +246,7 @@ jobs:
           echo "image=$MIGRATION_IMAGE" >> "$GITHUB_OUTPUT"
           echo "IMMUTABLE_MIGRATION_IMAGE=$MIGRATION_IMAGE"
 
-      - name: Apply and verify migrations 034 and 035 inside the private network
+      - name: Apply and verify migrations 034, 035, and 036 inside the private network
         id: migrations
         shell: bash
         env:
@@ -460,6 +464,7 @@ jobs:
             "runId": "${{ github.run_id }}",
             "migration034": "applied-and-verified",
             "migration035": "applied-and-verified",
+            "migration036": "applied-and-verified",
             "migrationImage": "${{ steps.migration_image.outputs.image }}",
             "apiImage": "${{ steps.build.outputs.api_image }}",
             "webImage": "${{ steps.build.outputs.web_image }}",
@@ -495,4 +500,4 @@ jobs:
             --image '${{ steps.before.outputs.old_web_image }}' \
             --revision-suffix "pr55rbweb-${GITHUB_RUN_ID}" \
             --output none
-          echo 'Application image rollback was requested. Migrations 034 and 035 are additive and remain applied if their transaction committed.' >&2
+          echo 'Application image rollback was requested. Migrations 034, 035, and 036 are additive and remain applied if their transaction committed.' >&2
