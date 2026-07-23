@@ -306,38 +306,43 @@ function deriveProjectCandidates(workspacePayload, intakePayload, customerPayloa
   return [...deduped.values()].sort((a, b) => `${a.customerName} ${a.projectCode}`.localeCompare(`${b.customerName} ${b.projectCode}`));
 }
 
-function getProjectSeed(project) {
-  if (!project) return 1;
-  return String(project.projectCode || project.id || '1')
-    .split('')
-    .reduce((total, char) => total + char.charCodeAt(0), 0);
+function resolveSuggestedRate(line) {
+  const suggestedRateLineId = String(line?.suggestedRateLineId ?? '');
+  if (!suggestedRateLineId) return null;
+
+  return (line?.rateOptions ?? []).find((option) => (
+    String(option.rateLineId) === suggestedRateLineId
+  )) ?? null;
 }
 
-function buildLaborRows(project, billingRate, mode = 'project') {
-  if (!project) return [];
+function buildVerifiedLaborRows(candidate) {
+  if (!candidate) return [];
 
-  const seed = getProjectSeed(project);
-  const baseHours = mode === 'monthEnd' ? 12 + (seed % 26) : 18 + (seed % 22);
-  const rate = Number(billingRate || 0);
-  const amount = baseHours * rate;
+  return (candidate.lines ?? []).map((line) => {
+    const rate = resolveSuggestedRate(line);
+    const quantity = Number(line.approvedHours || 0);
+    const unitRate = Number(rate?.unitRate || 0);
+    const blocked = !rate || !(unitRate > 0);
+    const taskLabel = [line.taskCode, line.taskName].filter(Boolean).join(' · ');
 
-  return [
-    {
+    return {
       type: 'Labor',
-      source: 'PHD approved time',
-      customerName: project.customerName,
-      projectCode: project.projectCode,
-      projectName: project.projectName,
-      projectManagerName: project.projectManagerName,
-      description: `${project.projectName} approved labor placeholder`,
-      quantity: baseHours,
-      unitRate: rate,
-      amount,
+      source: 'Module 042 verified invoice candidate',
+      customerName: candidate.customerName,
+      projectCode: candidate.projectCode,
+      projectName: candidate.projectName,
+      projectManagerName: candidate.projectManagerName,
+      description: line.description || taskLabel || 'Approved professional services',
+      quantity,
+      unitRate,
+      amount: quantity * unitRate,
       treatment: 'Billable labor',
-      readiness: rate > 0 ? 'Ready for PM/accounting review' : 'Missing billing rate',
-      status: rate > 0 ? 'review' : 'blocked'
-    }
-  ];
+      readiness: blocked
+        ? (line.rateBlocker || 'Stored billing rate is unavailable')
+        : `Stored rate: ${rate.rateCardCode || rate.skuCode || rate.displayName || 'verified'}`,
+      status: blocked ? 'blocked' : 'review'
+    };
+  });
 }
 
 function normalizeCertifyExpenseRows(expenses, selectedProject) {
@@ -364,6 +369,22 @@ function normalizeCertifyExpenseRows(expenses, selectedProject) {
   });
 }
 
+function matchesProject(expense, project) {
+  if (!project) return false;
+
+  const expenseProjectId = expense?.projectId ?? expense?.linkedProjectId;
+  if (expenseProjectId) {
+    return String(expenseProjectId).toLowerCase() === String(project.id).toLowerCase();
+  }
+
+  const expenseProjectCode = expense?.projectCode ?? expense?.projectNumber;
+  if (expenseProjectCode) {
+    return String(expenseProjectCode).toLowerCase() === String(project.projectCode).toLowerCase();
+  }
+
+  return false;
+}
+
 function getFinancialTotals(rows) {
   const laborTotal = rows.filter((row) => row.type === 'Labor').reduce((total, row) => total + Number(row.amount || 0), 0);
   const expenseTotal = rows.filter((row) => row.type === 'Expense').reduce((total, row) => total + Number(row.amount || 0), 0);
@@ -386,27 +407,11 @@ function getFinancialTotals(rows) {
   };
 }
 
-function buildMonthEndRows(projects, billingRate, stagedExpenses) {
-  const selectedProjects = projects.slice(0, 12);
-  const rows = [];
-
-  selectedProjects.forEach((project) => {
-    rows.push(...buildLaborRows(project, billingRate, 'monthEnd'));
-  });
-
-  const expenseRows = normalizeCertifyExpenseRows(stagedExpenses, null).map((row, index) => {
-    const project = selectedProjects[index % Math.max(1, selectedProjects.length)] ?? null;
-    return {
-      ...row,
-      customerName: project?.customerName || row.customerName,
-      projectCode: project?.projectCode || row.projectCode,
-      projectName: project?.projectName || row.projectName,
-      projectManagerName: project?.projectManagerName || row.projectManagerName
-    };
-  });
-
-  rows.push(...expenseRows);
-  return rows;
+function buildMonthEndRows(billingCandidates, stagedExpenses) {
+  return [
+    ...(billingCandidates ?? []).flatMap((candidate) => buildVerifiedLaborRows(candidate)),
+    ...normalizeCertifyExpenseRows(stagedExpenses, null)
+  ];
 }
 
 function summarizeMonthEndPackages(rows) {
@@ -455,7 +460,6 @@ export default function BillingReadinessCenter() {
   const [evidenceAmount, setEvidenceAmount] = useState('');
   const [periodStart, setPeriodStart] = useState(firstDayOfCurrentMonth());
   const [periodEnd, setPeriodEnd] = useState(lastDayOfCurrentMonth());
-  const [billingRate, setBillingRate] = useState('175');
   const [checkedItems, setCheckedItems] = useState(() => new Set(['customerMapped', 'billingTreatment']));
   const [packageNotes, setPackageNotes] = useState('Billing readiness package can be prepared while the project remains active. Final project closeout is handled separately.');
   const [auditReason, setAuditReason] = useState('');
@@ -610,15 +614,19 @@ export default function BillingReadinessCenter() {
   }, [certifyExceptions, payload.certifyExceptions, selectedProject?.id, selectedProject?.projectCode]);
 
   const projectPackageRows = useMemo(() => {
+    const projectExpenses = stagedCertifyExpenses.filter((expense) => (
+      matchesProject(expense, selectedProject)
+    ));
+
     return [
-      ...buildLaborRows(selectedProject, billingRate, 'project'),
-      ...normalizeCertifyExpenseRows(stagedCertifyExpenses, selectedProject)
+      ...buildVerifiedLaborRows(billingCandidate),
+      ...normalizeCertifyExpenseRows(projectExpenses, selectedProject)
     ];
-  }, [billingRate, selectedProject, stagedCertifyExpenses]);
+  }, [billingCandidate, selectedProject, stagedCertifyExpenses]);
 
   const monthEndRows = useMemo(() => {
-    return buildMonthEndRows(projectCandidates, billingRate, stagedCertifyExpenses);
-  }, [billingRate, projectCandidates, stagedCertifyExpenses]);
+    return buildMonthEndRows(payload.billingCandidates, stagedCertifyExpenses);
+  }, [payload.billingCandidates, stagedCertifyExpenses]);
 
   const activeRows = billingMode === 'monthEnd' ? monthEndRows : projectPackageRows;
 
@@ -649,7 +657,6 @@ export default function BillingReadinessCenter() {
         ? 'Enter a positive approved expense amount.'
         : 'Enter a positive governed milestone amount.');
     }
-    if (requiresLaborEvidence && !Number(billingRate || 0)) issues.push('Billing rate is missing for labor estimate.');
     if (blockingCertifyExceptions.length > 0) {
       issues.push(`${blockingCertifyExceptions.length} live Certify exception(s) need review.`);
     }
@@ -668,7 +675,7 @@ export default function BillingReadinessCenter() {
     }
 
     return [...new Set(issues)];
-  }, [billingMode, billingRate, blockingCertifyExceptions, checkedItems, evidenceAmount, evidenceDescription, financialTotals.blockedTotal, isExpenseOnlyPackage, requiresNonLaborEvidence, selectedProject, billingCandidate]);
+  }, [billingMode, blockingCertifyExceptions, checkedItems, evidenceAmount, evidenceDescription, financialTotals.blockedTotal, isExpenseOnlyPackage, requiresNonLaborEvidence, selectedProject, billingCandidate]);
 
   const readinessTone = blockingIssues.length === 0 && readinessPercent >= 90 ? 'safe' : readinessPercent >= 50 ? 'attention' : 'blocked';
 
@@ -1018,11 +1025,6 @@ export default function BillingReadinessCenter() {
           </label>
 
           <label>
-            Labor billing rate estimate
-            <input type="number" min="0" step="1" value={billingRate} onChange={(event) => setBillingRate(event.target.value)} />
-          </label>
-
-          <label>
             Audit reason
             <input
               value={auditReason}
@@ -1105,7 +1107,7 @@ export default function BillingReadinessCenter() {
             {blockingIssues.length === 0 ? (
               <article className="safe">
                 <strong>No blocking issues detected</strong>
-                <p>This billing package is ready for accounting review based on current placeholder data and checklist selections.</p>
+                <p>This billing package is ready for accounting review based on verified invoice candidates, mapped expenses, and checklist selections.</p>
               </article>
             ) : (
               blockingIssues.map((issue) => (
