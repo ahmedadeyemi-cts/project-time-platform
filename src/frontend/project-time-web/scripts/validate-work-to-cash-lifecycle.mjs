@@ -104,6 +104,8 @@ requireText(lifecycle, [
   'review.billing_period_start = @period_start',
   'review.billing_period_end = @period_end',
   'review.package_type = @package_type',
+  'var saved = await LoadReadinessByPackageAsync(',
+  'request.BillingPeriodStart,\n            request.BillingPeriodEnd,\n            packageType,',
   '(@period_start IS NULL OR entry.work_date >= @period_start)',
   '(@period_end IS NULL OR entry.work_date <= @period_end)',
   'billingPeriodStart.HasValue ? billingPeriodStart.Value : DBNull.Value',
@@ -330,7 +332,10 @@ requireText(closeout, [
   'Server-validated blockers',
   'Final billing disposition',
   'Audit reason',
-  'Governed closeout'
+  'Governed closeout',
+  'function isGuid(value)',
+  "['projectId', 'projectID', 'project_id', 'linkedProjectId', 'createdProjectId']",
+  'if (!isGuid(projectId)) return null;'
 ], 'Module 040 closeout');
 
 requireText(workRegister, [
@@ -419,6 +424,10 @@ if (readiness.includes('request.projectIntakeRequestId ?? request.requestId')
     || readiness.includes('`intake-${index}`')
     || readiness.includes('`workspace-${index}`')) {
   throw new Error('Billing readiness must not call GUID lifecycle endpoints with intake or synthetic IDs.');
+}
+
+if (closeout.includes("['projectId', 'id', 'projectID', 'project_id']")) {
+  throw new Error('Project closeout must not use generic intake or customer IDs as persisted project IDs.');
 }
 
 if (welcome.includes('project.completionPercent')) {
