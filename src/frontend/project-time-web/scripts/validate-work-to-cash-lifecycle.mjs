@@ -72,9 +72,9 @@ requireText(lifecycle, [
   'if (requiresInvoiceReadiness && readiness?.ReviewStatus != "ready")',
   'billing_invoice_lines',
   'JOIN billing_invoices invoice',
-  "invoice.invoice_status <> 'void'",
+  "lower(COALESCE(invoice.invoice_status, '')) <> 'void'",
   'project_tasks',
-  'line.rate_amount > 0',
+  'COALESCE(line.rate_amount, 0) > 0',
   "entry.status IN ('manager_declined', 'pm_declined')",
   'details.TryGetProperty("changedFields"',
   'changedFieldsElement.GetString()',
@@ -117,7 +117,7 @@ requireText(invoiceModule, [
   'InvoiceEligibleStatuses',
   '"pm_approved"',
   'JOIN billing_invoices invoice',
-  "invoice.invoice_status <> 'void'"
+  "lower(COALESCE(invoice.invoice_status, '')) <> 'void'"
 ], 'Module 042 invoice eligibility');
 
 if ((invoiceModule.match(/FROM billing_invoice_lines invoiced/g) ?? []).length !== 3
