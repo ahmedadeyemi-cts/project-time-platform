@@ -161,7 +161,7 @@ jobs:
             --revision-suffix "dashfix-${GITHUB_RUN_ID}" \
             --output none
 
-      - name: Validate served hotfix bundle and web image
+      - name: Validate served hotfix assets and web image
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -169,28 +169,42 @@ jobs:
           BASE_URL="${BASE_URL%/}"
           READY='false'
           LAST_STATUS='not-requested'
-          LAST_ASSET='not-resolved'
+          LAST_JS='not-resolved'
+          LAST_CSS='not-resolved'
+
+          absolute_asset_url() {
+            local asset_path="$1"
+            case "$asset_path" in
+              http://*|https://*) printf '%s\n' "$asset_path" ;;
+              /*) printf '%s%s\n' "$BASE_URL" "$asset_path" ;;
+              *) printf '%s/%s\n' "$BASE_URL" "$asset_path" ;;
+            esac
+          }
 
           for attempt in $(seq 1 30); do
             CACHE_BUSTER="dashfix-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${attempt}"
             STATUS="$(curl --silent --show-error --location --header 'Cache-Control: no-cache' --header 'Pragma: no-cache' --output /tmp/dashfix-index.html --write-out '%{http_code}' "$BASE_URL/?release_check=$CACHE_BUSTER" || true)"
             LAST_STATUS="$STATUS"
-            LAST_ASSET='not-resolved'
+            LAST_JS='not-resolved'
+            LAST_CSS='not-resolved'
+
             if [[ "$STATUS" == '200' ]]; then
-              ASSET_PATH="$(sed -nE 's/.*src="([^"]+\.js)".*/\1/p' /tmp/dashfix-index.html | head -1)"
-              if [[ -n "$ASSET_PATH" ]]; then
-                case "$ASSET_PATH" in
-                  http://*|https://*) ASSET_URL="$ASSET_PATH" ;;
-                  /*) ASSET_URL="$BASE_URL$ASSET_PATH" ;;
-                  *) ASSET_URL="$BASE_URL/$ASSET_PATH" ;;
-                esac
-                LAST_ASSET="$ASSET_PATH"
-                ASSET_STATUS="$(curl --silent --show-error --location --header 'Cache-Control: no-cache' --header 'Pragma: no-cache' --output /tmp/dashfix-app.js --write-out '%{http_code}' "$ASSET_URL?release_check=$CACHE_BUSTER" || true)"
-                LAST_STATUS="html=$STATUS,asset=$ASSET_STATUS"
-                if [[ "$ASSET_STATUS" == '200' ]] \
+              JS_PATH="$(sed -nE 's/.*src="([^"]+\.js)".*/\1/p' /tmp/dashfix-index.html | head -1)"
+              CSS_PATH="$(sed -nE 's/.*href="([^"]+\.css)".*/\1/p' /tmp/dashfix-index.html | head -1)"
+              if [[ -n "$JS_PATH" && -n "$CSS_PATH" ]]; then
+                LAST_JS="$JS_PATH"
+                LAST_CSS="$CSS_PATH"
+                JS_URL="$(absolute_asset_url "$JS_PATH")"
+                CSS_URL="$(absolute_asset_url "$CSS_PATH")"
+                JS_STATUS="$(curl --silent --show-error --location --header 'Cache-Control: no-cache' --header 'Pragma: no-cache' --output /tmp/dashfix-app.js --write-out '%{http_code}' "$JS_URL?release_check=$CACHE_BUSTER" || true)"
+                CSS_STATUS="$(curl --silent --show-error --location --header 'Cache-Control: no-cache' --header 'Pragma: no-cache' --output /tmp/dashfix-app.css --write-out '%{http_code}' "$CSS_URL?release_check=$CACHE_BUSTER" || true)"
+                LAST_STATUS="html=$STATUS,js=$JS_STATUS,css=$CSS_STATUS"
+                tr -d '[:space:]' < /tmp/dashfix-app.css > /tmp/dashfix-app.compact.css
+                if [[ "$JS_STATUS" == '200' && "$CSS_STATUS" == '200' ]] \
                   && grep -Fq 'role-welcome-dashboard' /tmp/dashfix-app.js \
-                  && grep -Fq 'Dashboard visibility contract' /tmp/dashfix-app.js; then
+                  && grep -Fq 'main.app-shell.route-dashboard>#role-welcome-dashboard.role-welcome-dashboard{display:grid!important' /tmp/dashfix-app.compact.css; then
                   READY='true'
+                  echo "DASHBOARD_HOTFIX_ASSETS_READY attempt=$attempt js=$JS_PATH css=$CSS_PATH"
                   break
                 fi
               fi
@@ -199,7 +213,7 @@ jobs:
           done
 
           [[ "$READY" == 'true' ]] || {
-            echo "Dashboard hotfix bundle did not become ready: HTTP=$LAST_STATUS ASSET=$LAST_ASSET" >&2
+            echo "Dashboard hotfix assets did not become ready: HTTP=$LAST_STATUS JS=$LAST_JS CSS=$LAST_CSS" >&2
             exit 1
           }
 
@@ -227,7 +241,7 @@ jobs:
             "previousWebImage": "${{ steps.before.outputs.old_web_image }}",
             "apiDeployment": "unchanged",
             "migrations": "unchanged",
-            "servedBundleValidation": "passed"
+            "servedAssetValidation": "passed"
           }
           JSON
 
