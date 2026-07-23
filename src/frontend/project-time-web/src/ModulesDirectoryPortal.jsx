@@ -83,6 +83,15 @@ function collectAuthorizedModules() {
   return modules;
 }
 
+function moduleListsMatch(left, right) {
+  if (left.length !== right.length) return false;
+  return left.every((item, index) => (
+    item.route === right[index]?.route
+    && item.label === right[index]?.label
+    && item.group === right[index]?.group
+  ));
+}
+
 function updateWorkspaceHeading(active) {
   if (!active) return;
   const heading = document.querySelector('.workspace-header-context h1');
@@ -130,17 +139,32 @@ export default function ModulesDirectoryPortal() {
       expandAuthorizedNavigationGroups();
       window.clearTimeout(refreshTimer.current);
       refreshTimer.current = window.setTimeout(() => {
-        setModules(collectAuthorizedModules());
+        const nextModules = collectAuthorizedModules();
+        setModules((current) => moduleListsMatch(current, nextModules) ? current : nextModules);
       }, 80);
     };
 
     refresh();
-    const observer = new MutationObserver(refresh);
-    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['aria-expanded', 'class'] });
+    const observers = [];
+    const navigation = document.querySelector('.enterprise-top-navigation');
+    const sidebar = document.querySelector('.enterprise-sidebar');
+
+    if (navigation) {
+      const navigationObserver = new MutationObserver(refresh);
+      navigationObserver.observe(navigation, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+      observers.push(navigationObserver);
+    }
+
+    if (sidebar) {
+      const sidebarObserver = new MutationObserver(refresh);
+      sidebarObserver.observe(sidebar, { childList: true, subtree: true, attributes: true, attributeFilter: ['aria-expanded', 'class'] });
+      observers.push(sidebarObserver);
+    }
+
     window.addEventListener('projectpulse:view-as-changed', refresh);
 
     return () => {
-      observer.disconnect();
+      observers.forEach((observer) => observer.disconnect());
       window.removeEventListener('projectpulse:view-as-changed', refresh);
       window.clearTimeout(refreshTimer.current);
     };
