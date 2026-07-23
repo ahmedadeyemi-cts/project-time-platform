@@ -471,7 +471,14 @@ public static class WorkLifecycleModule
             context.RequestAborted);
 
         await transaction.CommitAsync(context.RequestAborted);
-        var saved = await LoadLatestReadinessAsync(connection, null, projectId, context.RequestAborted);
+        var saved = await LoadReadinessByPackageAsync(
+            connection,
+            null,
+            projectId,
+            request.BillingPeriodStart,
+            request.BillingPeriodEnd,
+            packageType,
+            context.RequestAborted);
 
         return Results.Ok(new
         {
