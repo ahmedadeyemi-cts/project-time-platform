@@ -1379,11 +1379,14 @@ public static class WorkLifecycleModule
                     FROM timesheet_day_statuses day_status
                     JOIN app_users submitter ON submitter.user_id = day_status.user_id
                     WHERE day_status.user_id <> @user_id
-                      AND day_status.status = 'submitted'
                       AND (
-                            @can_view_all_approvals
+                            (
+                                @can_view_all_approvals
+                                AND day_status.status IN ('submitted', 'manager_approved')
+                            )
                          OR (
                                 @is_manager
+                            AND day_status.status = 'submitted'
                             AND lower(COALESCE(submitter.manager_email, '')) = lower(COALESCE((
                                 SELECT actor.email
                                 FROM app_users actor
@@ -1392,6 +1395,7 @@ public static class WorkLifecycleModule
                          )
                          OR (
                                 @is_project_manager
+                            AND day_status.status = 'manager_approved'
                             AND EXISTS (
                                 SELECT 1
                                 FROM time_entries scope_entry
