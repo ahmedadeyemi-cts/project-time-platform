@@ -13,13 +13,14 @@ const paths = {
   ui: 'src/frontend/project-time-web/src/RoleAdminDirectoryPanel.jsx',
   backend: 'src/backend/ProjectTime.Api/Modules/ScopedRolePolicyModule.cs',
   writes: 'src/backend/ProjectTime.Api/Modules/ScopedRolePolicyWrites.cs',
+  persistence: 'src/backend/ProjectTime.Api/Modules/ScopedRolePolicyPersistence.cs',
   support: 'src/backend/ProjectTime.Api/Modules/ScopedRolePolicySupport.cs',
   evaluator: 'src/backend/ProjectTime.Api/Modules/ScopedAuthorizationEvaluator.cs',
   css: 'src/frontend/project-time-web/src/scoped-role-policy-admin.css',
   project: 'src/backend/ProjectTime.Api/ProjectTime.Api.csproj'
 };
 
-const [ui, backend, writes, support, evaluator, css, project] = await Promise.all(
+const [ui, backend, writes, persistence, support, evaluator, css, project] = await Promise.all(
   Object.values(paths).map(text)
 );
 
@@ -57,22 +58,33 @@ requireAll(backend, [
 ], 'Module 012 backend');
 
 requireAll(writes, [
-  'RequirePolicyWriterAsync',
-  'SUPER_ADMINISTRATOR',
-  'View-As',
-  'reason',
-  'version',
-  'scoped_role_policy_audit_events',
+  'RequireOwnSessionSuperAdministratorAsync',
+  'A reason is required to publish a policy version.',
+  'A reason is required to restore a policy version.',
+  'policy_version_conflict',
   'POLICY_VERSION_PUBLISHED',
-  'POLICY_VERSION_RESTORED'
-], 'Policy write safety');
+  'POLICY_VERSION_RESTORED',
+  'InsertAuditAsync',
+  'ValidatePolicyVersionAsync'
+], 'Policy write workflow');
+
+requireAll(persistence, [
+  'RequireOwnSessionSuperAdministratorAsync',
+  'actor.IsViewAs',
+  'view_as_read_only',
+  'SUPER_ADMINISTRATOR',
+  'Only an authenticated Super Administrator in their own session may change scoped role policy.',
+  'CountActiveSuperAdministratorsAsync',
+  'ProjectPulseActualUserId',
+  'ProjectPulseEffectiveUserId'
+], 'Own-session Super Administrator enforcement');
 
 requireAll(support, [
-  'CountActiveSuperAdministratorsAsync',
   'IsViewAs',
   'ActualUserId',
-  'EffectiveUserId'
-], 'Actor and lockout support');
+  'EffectiveUserId',
+  'PolicyValidationResult'
+], 'Actor and validation contracts');
 
 requireAll(evaluator, [
   'ExplicitDeny',
