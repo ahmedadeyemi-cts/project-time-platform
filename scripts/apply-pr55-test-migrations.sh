@@ -298,11 +298,13 @@ BEGIN
        OR NOT EXISTS (
            SELECT 1 FROM pg_trigger
            WHERE tgname = 'trg_projectpulse037_after_edit_save'
+             AND tgrelid = 'public.work_register_project_edit_save_audit'::regclass
              AND NOT tgisinternal
        )
        OR NOT EXISTS (
            SELECT 1 FROM pg_trigger
            WHERE tgname = 'trg_projectpulse037_after_intake_commit'
+             AND tgrelid = 'public.work_register_intake_commits'::regclass
              AND NOT tgisinternal
        ) THEN
         RAISE EXCEPTION 'Migration 037 contract/date functions or triggers are incomplete.';
@@ -310,11 +312,17 @@ BEGIN
 
     IF EXISTS (
         SELECT 1
-        FROM projects project
-        WHERE projectpulse037_canonical_contract_type(project.contract_type)
+        FROM (
+            SELECT contract_type FROM projects
+            UNION ALL
+            SELECT contract_type FROM work_register_project_metadata
+            UNION ALL
+            SELECT contract_type FROM work_register_intake_packages
+        ) persisted_contract
+        WHERE projectpulse037_canonical_contract_type(persisted_contract.contract_type)
               IN ('Time and Material', 'Fixed Price')
-          AND project.contract_type IS DISTINCT FROM
-              projectpulse037_canonical_contract_type(project.contract_type)
+          AND persisted_contract.contract_type IS DISTINCT FROM
+              projectpulse037_canonical_contract_type(persisted_contract.contract_type)
     ) THEN
         RAISE EXCEPTION 'Migration 037 recognized contract variants remain unnormalized.';
     END IF;
@@ -328,24 +336,65 @@ BEGIN
        OR NOT EXISTS (
            SELECT 1 FROM pg_trigger
            WHERE tgname = 'trg_projectpulse038_audit_immutable'
+             AND tgrelid = 'public.work_lifecycle_audit_events'::regclass
              AND NOT tgisinternal
        )
        OR NOT EXISTS (
            SELECT 1 FROM pg_trigger
            WHERE tgname = 'trg_projectpulse038_live_time_entry_line'
+             AND tgrelid = 'public.billing_invoice_lines'::regclass
              AND NOT tgisinternal
        )
        OR NOT EXISTS (
            SELECT 1 FROM pg_trigger
            WHERE tgname = 'trg_projectpulse038_live_readiness_line'
+             AND tgrelid = 'public.billing_invoice_lines'::regclass
              AND NOT tgisinternal
        )
        OR NOT EXISTS (
            SELECT 1 FROM pg_trigger
            WHERE tgname = 'trg_projectpulse038_invoice_reactivation'
+             AND tgrelid = 'public.billing_invoices'::regclass
+             AND NOT tgisinternal
+       )
+       OR NOT EXISTS (
+           SELECT 1 FROM pg_trigger
+           WHERE tgname = 'trg_projectpulse038_work_register_audit'
+             AND tgrelid = 'public.work_register_change_history'::regclass
+             AND NOT tgisinternal
+       )
+       OR NOT EXISTS (
+           SELECT 1 FROM pg_trigger
+           WHERE tgname = 'trg_projectpulse038_invoice_audit'
+             AND tgrelid = 'public.billing_invoice_events'::regclass
              AND NOT tgisinternal
        ) THEN
         RAISE EXCEPTION 'Migration 038 lifecycle, audit, or live-source guards are incomplete.';
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM (VALUES ('ptp_app'), ('projectpulse_app')) runtime_role(role_name)
+        JOIN pg_roles role
+          ON role.rolname = runtime_role.role_name
+        WHERE NOT has_schema_privilege(role.rolname, 'public', 'USAGE')
+           OR NOT has_table_privilege(
+               role.rolname,
+               'public.work_billing_readiness_reviews',
+               'SELECT,INSERT,UPDATE'
+           )
+           OR NOT has_table_privilege(
+               role.rolname,
+               'public.work_closeout_records',
+               'SELECT,INSERT,UPDATE'
+           )
+           OR NOT has_table_privilege(
+               role.rolname,
+               'public.work_lifecycle_audit_events',
+               'SELECT,INSERT'
+           )
+    ) THEN
+        RAISE EXCEPTION 'Migration 038 application-role lifecycle grants are incomplete.';
     END IF;
 
     SELECT pg_get_functiondef(
