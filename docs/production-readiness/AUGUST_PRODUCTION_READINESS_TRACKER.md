@@ -315,7 +315,7 @@ and authenticated portal acceptance are separate controlled gates.
 - SELL access reuses Module 026 OAuth 2.0 or write-only API-key configuration and retains no raw provider response or credential.
 - Final creation writes `work_register_created` evidence that is visible from the new project's Module 055C Audit tab.
 - Migrations 034 and 035 were applied to the test database by deployment run `29947623198`; migration `036_work_register_role_scope_and_closeout_handoff.sql` remains unapplied.
-- The authorization correction and Module 040 handoff remain source-only until their guarded PR and a separately authorized test deployment complete.
+- The authorization correction and Module 040 handoff are merged in source at `5b4debe8218560de357f37e567f38aa497482d69`; they remain undeployed until the checksum-pinned migration 036 rollout and a separately authorized test deployment complete.
 - The permanent module-ordering guard confirms Module 999 is the highest-numbered and last module.
 - The expanded 055C/055D validator now covers assigned-PM enforcement, PTC/Administrator edit-all and create authority, View-As protection, row-specific controls, and the selected-project Module 040 handoff in addition to the original creation and audit guards.
 
