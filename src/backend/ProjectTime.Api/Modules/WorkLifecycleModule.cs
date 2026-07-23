@@ -1397,9 +1397,12 @@ public static class WorkLifecycleModule
                                 FROM time_entries scope_entry
                                 JOIN projects scope_project
                                   ON scope_project.project_id = scope_entry.project_id
+                                LEFT JOIN work_register_project_lifecycle scope_lifecycle
+                                  ON scope_lifecycle.project_id = scope_project.project_id
                                 WHERE scope_entry.timesheet_id = day_status.timesheet_id
                                   AND scope_entry.work_date = day_status.work_date
                                   AND scope_project.project_manager_user_id = @user_id
+                                  AND COALESCE(scope_lifecycle.is_archived, FALSE) = FALSE
                             )
                          )
                       )
@@ -1407,8 +1410,13 @@ public static class WorkLifecycleModule
                 (
                     SELECT COUNT(*)
                     FROM time_entries entry
+                    JOIN projects rejected_project
+                      ON rejected_project.project_id = entry.project_id
+                    LEFT JOIN work_register_project_lifecycle rejected_lifecycle
+                      ON rejected_lifecycle.project_id = rejected_project.project_id
                     WHERE entry.user_id = @user_id
                       AND entry.status IN ('manager_declined', 'pm_declined')
+                      AND COALESCE(rejected_lifecycle.is_archived, FALSE) = FALSE
                 ),
                 (
                     SELECT COUNT(*)
@@ -1416,14 +1424,21 @@ public static class WorkLifecycleModule
                     LEFT JOIN work_register_project_lifecycle lifecycle
                       ON lifecycle.project_id = project.project_id
                     WHERE COALESCE(lifecycle.is_archived, FALSE) = FALSE
-                      AND lower(COALESCE(project.status, '')) IN ('at risk', 'at_risk', 'blocked', 'needs review', 'needs_review')
+                      AND lower(COALESCE(project.status, '')) IN (
+                          'at risk', 'at_risk', 'blocked',
+                          'needs review', 'needs_review',
+                          'hold', 'on hold', 'on_hold'
+                      )
                       AND (@broad_scope OR project.project_manager_user_id = @user_id)
                 ),
                 (
                     SELECT COUNT(*)
                     FROM work_closeout_records closeout
                     JOIN projects project ON project.project_id = closeout.project_id
+                    LEFT JOIN work_register_project_lifecycle closeout_lifecycle
+                      ON closeout_lifecycle.project_id = project.project_id
                     WHERE closeout.closeout_status IN ('requested', 'ready')
+                      AND COALESCE(closeout_lifecycle.is_archived, FALSE) = FALSE
                       AND (@broad_scope OR project.project_manager_user_id = @user_id)
                 );
             """, connection);
@@ -1504,7 +1519,9 @@ public static class WorkLifecycleModule
             ORDER BY
                 CASE
                     WHEN lower(COALESCE(project.status, '')) IN ('at risk', 'at_risk', 'blocked') THEN 0
-                    WHEN lower(COALESCE(project.status, '')) IN ('needs review', 'needs_review') THEN 1
+                    WHEN lower(COALESCE(project.status, '')) IN (
+                        'needs review', 'needs_review', 'hold', 'on hold', 'on_hold'
+                    ) THEN 1
                     ELSE 2
                 END,
                 project.updated_at DESC
@@ -1552,19 +1569,28 @@ public static class WorkLifecycleModule
                     SELECT COUNT(*)
                     FROM work_billing_readiness_reviews review
                     JOIN projects project ON project.project_id = review.project_id
+                    LEFT JOIN work_register_project_lifecycle review_lifecycle
+                      ON review_lifecycle.project_id = project.project_id
                     WHERE review.review_status = 'ready'
+                      AND COALESCE(review_lifecycle.is_archived, FALSE) = FALSE
                       AND (@broad_scope OR project.project_manager_user_id = @user_id)
                 ),
                 (
                     SELECT COUNT(*)
                     FROM billing_invoices invoice
                     JOIN projects project ON project.project_id = invoice.project_id
+                    LEFT JOIN work_register_project_lifecycle invoice_lifecycle
+                      ON invoice_lifecycle.project_id = project.project_id
                     WHERE invoice.invoice_status IN ('draft', 'ready_for_pm', 'ready_for_accounting', 'approved', 'finalized')
+                      AND COALESCE(invoice_lifecycle.is_archived, FALSE) = FALSE
                       AND (@broad_scope OR project.project_manager_user_id = @user_id)
                 )
             FROM time_entries entry
             JOIN projects project ON project.project_id = entry.project_id
-            WHERE (@broad_scope OR project.project_manager_user_id = @user_id);
+            LEFT JOIN work_register_project_lifecycle entry_lifecycle
+              ON entry_lifecycle.project_id = project.project_id
+            WHERE COALESCE(entry_lifecycle.is_archived, FALSE) = FALSE
+              AND (@broad_scope OR project.project_manager_user_id = @user_id);
             """, connection);
         command.Parameters.AddWithValue("approved_statuses", LifecycleApprovedTimeStatuses);
         command.Parameters.AddWithValue("broad_scope", broadScope);
