@@ -78,6 +78,14 @@ test('CREATE_AUDIT', createEndpoint.includes("'work_register_created'") && creat
 test('CREATE_AUDIT_ATOMIC', createEndpoint.includes('BeginTransactionAsync') && createEndpoint.includes('connection, transaction') && createEndpoint.includes('auditGuardCommand') && createEndpoint.includes('transaction.CommitAsync'));
 test('EXISTING_HISTORY_TABLE_USER_FK', migration.includes('ADD COLUMN IF NOT EXISTS changed_by_user_id') && migration.includes('fk_work_register_change_history_changed_by_user') && migration.includes('FOREIGN KEY (changed_by_user_id)'));
 test('POST_CREATE_CONTROLS', frontend.includes('Create Another Project') && !css.includes('.work-register-center.create-mode > .work-register-create-button'));
+test(
+  'ROUTE_ISOLATION_BOTH_MODES',
+  css.includes('055C_WORK_REGISTER_ROUTE_ISOLATION_START')
+    && css.includes('body[data-projectpulse-active-route="work-register"] section.panel:not(#work-register):not(.work-register-route-panel)')
+    && css.includes('055D_CREATE_WORK_REGISTER_ROUTE_ISOLATION_START')
+    && css.includes('body[data-projectpulse-active-route="create-work-register"] section.panel:not(#create-work-register):not(.work-register-route-panel)')
+    && css.includes('body[data-projectpulse-active-route="create-work-register"] #create-work-register .work-register-center')
+);
 test('ROW_SPECIFIC_EDIT_SCOPE', program.includes('canEditProject = CanEditProject') && frontend.includes("item.canEditProject === true ? 'Edit work' : 'View details'") && frontend.includes('selectedWorkItem?.canEditProject === true'));
 test('CLOSEOUT_HANDOFF_SOURCE', frontend.includes('startProjectCloseout') && frontend.includes('projectPulseProjectCloseoutHandoff') && frontend.includes("window.location.hash = 'project-closeout'"));
 test('CLOSEOUT_HANDOFF_TARGET', closeoutFrontend.includes('readProjectCloseoutHandoff') && closeoutFrontend.includes('Opened ${handoffProject.projectCode} from Module 055C') && closeoutFrontend.includes("removeItem('projectPulseProjectCloseoutHandoff')"));
