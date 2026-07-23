@@ -345,8 +345,35 @@ function countActionableApprovals(payload) {
   }).length;
 }
 
-function countCertifyExceptions(payload) {
-  const objects = collectObjects(payload);
+function getBlockingCertifyExceptionObjects(payload, project) {
+  const payloadStatus = normalizeStatus(payload?.status);
+  if (payloadStatus.includes('placeholder')) return [];
+
+  return collectObjects(payload).filter((item) => {
+    const exceptionProjectId = getFirstValue(
+      item,
+      ['projectId', 'projectID', 'project_id', 'linkedProjectId']
+    );
+    if (exceptionProjectId) {
+      return normalizeText(exceptionProjectId).toLowerCase() ===
+        normalizeText(project?.projectId).toLowerCase();
+    }
+
+    const exceptionProjectCode = getFirstValue(
+      item,
+      ['projectCode', 'projectNumber', 'projectNo', 'project_code']
+    );
+    if (exceptionProjectCode) {
+      return normalizeText(exceptionProjectCode).toLowerCase() ===
+        normalizeText(project?.projectCode).toLowerCase();
+    }
+
+    return true;
+  });
+}
+
+function countCertifyExceptions(payload, project) {
+  const objects = getBlockingCertifyExceptionObjects(payload, project);
 
   const exceptionLikeObjects = objects.filter((item) => {
     const status = normalizeStatus(item.status ?? item.exceptionStatus ?? item.workflowStatus);
@@ -746,7 +773,7 @@ export default function ProjectCloseoutCenter() {
     );
 
     const stagedExpenses = countStagedExpenses(payload.data.certifyStaged);
-    const certifyExceptions = countCertifyExceptions(payload.data.certifyExceptions);
+    const certifyExceptions = countCertifyExceptions(payload.data.certifyExceptions, selectedProject);
     const stakeholderCount = extractStakeholders(selectedProject).length;
 
     return {
