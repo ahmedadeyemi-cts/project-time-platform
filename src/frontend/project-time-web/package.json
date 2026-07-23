@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 5173",
-    "build": "npm run validate:module-ordering && npm run validate:module026 && npm run validate:work-register-055c-055d && npm run validate:project-workspace-download && npm run validate:module059 && npm run validate:module062 && npm run validate:module002 && npm run validate:module064 && npm run validate:module065 && npm run validate:module066 && npm run validate:module067 && npm run validate:module068 && npm run validate:module069 && npm run validate:module070 && npm run validate:module071 && npm run validate:module072 && npm run validate:module073 && npm run validate:module074 && npm run validate:module075 && npm run validate:module076 && npm run validate:module077 && npm run validate:module078 && npm run validate:module079 && npm run validate:module080 && npm run validate:modules075080-runtime && npm run validate:modules071072-native && npm run validate:modules064074-native-admin && npm run validate:modules064074-ui && npm run validate:module998 && vite build",
+    "build": "npm run validate:module-ordering && npm run validate:module026 && npm run validate:work-register-055c-055d && npm run validate:work-to-cash-lifecycle && npm run validate:project-workspace-download && npm run validate:module059 && npm run validate:module062 && npm run validate:module002 && npm run validate:module064 && npm run validate:module065 && npm run validate:module066 && npm run validate:module067 && npm run validate:module068 && npm run validate:module069 && npm run validate:module070 && npm run validate:module071 && npm run validate:module072 && npm run validate:module073 && npm run validate:module074 && npm run validate:module075 && npm run validate:module076 && npm run validate:module077 && npm run validate:module078 && npm run validate:module079 && npm run validate:module080 && npm run validate:modules075080-runtime && npm run validate:modules071072-native && npm run validate:modules064074-native-admin && npm run validate:modules064074-ui && npm run validate:module998 && vite build",
     "preview": "vite preview --host 127.0.0.1 --port 4173",
     "validate:module059": "node ./scripts/validate-module-059-global.mjs",
     "validate:module-ordering": "node ./scripts/validate-module-ordering.mjs",
@@ -37,7 +37,8 @@
     "validate:module078": "node ./scripts/validate-module-078-observability-slo-health.mjs",
     "validate:module079": "node ./scripts/validate-module-079-data-governance-retention.mjs",
     "validate:module080": "node ./scripts/validate-module-080-customer-delivery-acceptance.mjs",
-    "validate:modules075080-runtime": "node ./scripts/validate-modules-075-080-runtime-integration.mjs"
+    "validate:modules075080-runtime": "node ./scripts/validate-modules-075-080-runtime-integration.mjs",
+    "validate:work-to-cash-lifecycle": "node ./scripts/validate-work-to-cash-lifecycle.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.3.1",

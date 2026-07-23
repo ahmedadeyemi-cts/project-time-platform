@@ -1,0 +1,310 @@
+.role-welcome-dashboard {
+  display: grid;
+  gap: 1rem;
+}
+
+.welcome-dashboard-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem 2rem;
+  padding: clamp(1.25rem, 2vw, 2rem);
+  color: #fff;
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 90% 10%, rgba(52, 183, 197, .28), transparent 35%),
+    linear-gradient(135deg, #061f3d 0%, #0a3159 58%, #0b5f72 100%);
+  box-shadow: 0 18px 42px rgba(5, 31, 61, .18);
+}
+
+.welcome-dashboard-hero .eyebrow {
+  margin: 0 0 .35rem;
+  color: #8ee3e8;
+}
+
+.welcome-dashboard-hero h1 {
+  margin: 0;
+  color: #fff;
+  font-size: clamp(1.75rem, 4vw, 2.65rem);
+}
+
+.welcome-dashboard-hero p:not(.eyebrow) {
+  margin: .5rem 0 0;
+  color: rgba(255, 255, 255, .78);
+}
+
+.welcome-dashboard-date {
+  display: grid;
+  align-content: start;
+  justify-items: end;
+  gap: .25rem;
+  padding-top: .35rem;
+}
+
+.welcome-dashboard-date span {
+  font-weight: 800;
+}
+
+.welcome-dashboard-date small {
+  color: #8ee3e8;
+}
+
+.welcome-quick-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .65rem;
+}
+
+.welcome-quick-actions a {
+  padding: .68rem .9rem;
+  color: #06253d;
+  font-size: .88rem;
+  font-weight: 800;
+  text-decoration: none;
+  border: 1px solid rgba(255, 255, 255, .45);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.welcome-quick-actions a:hover {
+  transform: translateY(-1px);
+  background: #dff8f8;
+}
+
+.welcome-dashboard-warning {
+  padding: .85rem 1rem;
+  border: 1px solid #efc96d;
+  border-radius: 12px;
+  color: #6f4b00;
+  background: #fff8df;
+}
+
+.welcome-dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.welcome-card {
+  display: grid;
+  align-content: start;
+  gap: 1rem;
+  min-width: 0;
+  padding: 1.2rem;
+  border: 1px solid #dbe5ee;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(6, 31, 61, .07);
+}
+
+.welcome-week-card,
+.welcome-priorities-card,
+.welcome-projects-card {
+  grid-column: span 7;
+}
+
+.welcome-attention-card,
+.welcome-project-health-card,
+.welcome-billing-card,
+.welcome-recent-card {
+  grid-column: span 5;
+}
+
+.welcome-card-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.welcome-card-heading span {
+  color: #587086;
+  font-size: .75rem;
+  font-weight: 900;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+
+.welcome-card-heading h2 {
+  margin: .25rem 0 0;
+  color: #0b2f52;
+  font-size: 1.15rem;
+}
+
+.welcome-card-heading > strong {
+  color: #0b7583;
+  font-size: 1.55rem;
+}
+
+.welcome-progress {
+  overflow: hidden;
+  height: 12px;
+  border-radius: 999px;
+  background: #e6edf3;
+}
+
+.welcome-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #0b7285, #22a7a8);
+}
+
+.welcome-week-days {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: .55rem;
+}
+
+.welcome-week-days div {
+  display: grid;
+  gap: .2rem;
+  padding: .65rem;
+  text-align: center;
+  border-radius: 10px;
+  background: #f4f8fb;
+}
+
+.welcome-week-days span,
+.welcome-project-list span,
+.welcome-recent-list small {
+  color: #60768a;
+  font-size: .78rem;
+}
+
+.welcome-card-link,
+.welcome-priority-links a {
+  color: #0b6f7d;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.welcome-metric-list,
+.welcome-health-list {
+  display: grid;
+  gap: .65rem;
+  margin: 0;
+}
+
+.welcome-metric-list div,
+.welcome-health-list div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: .75rem .8rem;
+  border-radius: 11px;
+  background: #f5f8fb;
+}
+
+.welcome-metric-list dt,
+.welcome-health-list dt {
+  color: #334e67;
+}
+
+.welcome-metric-list dd,
+.welcome-health-list dd {
+  margin: 0;
+  color: #0b2f52;
+  font-size: 1.15rem;
+  font-weight: 900;
+}
+
+.welcome-health-list .healthy { border-left: 4px solid #2a9d62; }
+.welcome-health-list .review { border-left: 4px solid #e8a71c; }
+.welcome-health-list .risk { border-left: 4px solid #cc485a; }
+
+.welcome-card-copy,
+.welcome-empty {
+  margin: 0;
+  color: #587086;
+  line-height: 1.55;
+}
+
+.welcome-priority-links {
+  display: grid;
+  gap: .6rem;
+}
+
+.welcome-project-list,
+.welcome-recent-list {
+  display: grid;
+  gap: .55rem;
+}
+
+.welcome-project-list a,
+.welcome-recent-list a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: .75rem;
+  color: #123a5d;
+  text-decoration: none;
+  border: 1px solid #e3ebf1;
+  border-radius: 11px;
+  background: #f9fbfc;
+}
+
+.welcome-project-list a > div {
+  display: grid;
+  gap: .15rem;
+}
+
+.welcome-project-list a > div:last-child {
+  justify-items: end;
+}
+
+.welcome-recent-list a {
+  display: grid;
+  grid-template-columns: minmax(6rem, auto) 1fr auto;
+}
+
+.welcome-recent-list a > span {
+  color: #0b7583;
+  font-size: .72rem;
+  font-weight: 900;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+/* The dashboard is a focused role-aware welcome page. Legacy directory,
+   health, and timesheet panels remain available at their own routes. */
+.route-dashboard .hero-polished,
+.route-dashboard > .status-grid,
+.route-dashboard .role-workspace-panel,
+.route-dashboard .timesheet-page,
+.route-dashboard .installed-modules-dashboard-panel,
+.route-dashboard .module-foundation-panel,
+.route-dashboard #current-quarter-utilization {
+  display: none !important;
+}
+
+@media (max-width: 900px) {
+  .welcome-dashboard-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .welcome-dashboard-date {
+    justify-items: start;
+  }
+
+  .welcome-week-card,
+  .welcome-priorities-card,
+  .welcome-projects-card,
+  .welcome-attention-card,
+  .welcome-project-health-card,
+  .welcome-billing-card,
+  .welcome-recent-card {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 620px) {
+  .welcome-week-days {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .welcome-recent-list a {
+    grid-template-columns: 1fr;
+  }
+}

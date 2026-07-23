@@ -745,8 +745,19 @@ const updateIntakeForm = (field, value) => {
     setProjectDetails({ loading: true, data: null, error: null });
 
     try {
-      const data = await fetchJson(`/api/work-register/projects/${item.workId}/details`);
-      setProjectDetails({ loading: false, data, error: null });
+      const [data, lifecycle] = await Promise.all([
+        fetchJson(`/api/work-register/projects/${item.workId}/details`),
+        fetchJson(`/api/work-lifecycle/projects/${item.workId}`)
+      ]);
+      setProjectDetails({
+        loading: false,
+        data: {
+          ...data,
+          workLifecycle: lifecycle,
+          changeHistory: lifecycle.audit ?? data.changeHistory ?? []
+        },
+        error: null
+      });
     } catch (error) {
       setProjectDetails({
         loading: false,
@@ -5921,8 +5932,11 @@ async function createWorkRegisterFromReviewedIntake() {
 
             {activeDrawerTab === 'audit' ? (
               <div className="work-register-detail-panel">
-                <h4>Audit History</h4>
-                <p className="muted">Project setup edits are written to the Work Register audit sidecar table.</p>
+                <h4>Work-to-Cash Audit History</h4>
+                <p className="muted">
+                  Immutable history across work creation, project edits, billing readiness, partial/final invoices,
+                  closeout, reopen, archive, and restore.
+                </p>
                 <div className="work-register-detail-grid">
                   {(projectDetails.data?.changeHistory ?? []).map((event, index) => (
                     <article key={`${event.changedAt}-${index}`}>
@@ -5933,7 +5947,7 @@ async function createWorkRegisterFromReviewedIntake() {
                     </article>
                   ))}
                   {projectDetails.data && (projectDetails.data.changeHistory ?? []).length === 0 ? (
-                    <p className="muted">No Work Register audit events were found for this work item yet.</p>
+                    <p className="muted">No Work-to-Cash audit events were found for this work item yet.</p>
                   ) : null}
                 </div>
               </div>

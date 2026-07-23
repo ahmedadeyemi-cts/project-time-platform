@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import CertiniaInvoiceDeliveryPanel from './CertiniaInvoiceDeliveryPanel';
+import './invoice-billing-enhancements.css';
 
 const columns = [
   ['projectCode', 'Project code', 'Essential', true],
@@ -237,6 +238,7 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
   const [invoiceDetailError, setInvoiceDetailError] = useState('');
   const [outputPrivacy, setOutputPrivacy] = useState(() => ({ ...hiddenOutputPrivacy }));
   const [certiniaPreview, setCertiniaPreview] = useState('');
+  const [invoiceNotes, setInvoiceNotes] = useState('');
 
   async function loadLiveData(preferredProjectId = '') {
     setPayload((current) => ({ ...current, loading: true, error: '' }));
@@ -380,7 +382,7 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
             timeEntryId: item.line.timeEntryId,
             rateLineId: item.rate.rateLineId
           })),
-          notes: ''
+          notes: invoiceNotes.trim()
         })
       });
 
@@ -391,6 +393,7 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
         success: `${invoiceNumber} was created from ${rows.length} verified approved time entr${rows.length === 1 ? 'y' : 'ies'}.`
       });
 
+      setInvoiceNotes('');
       await loadLiveData(selected.projectId);
     } catch (error) {
       const blockers = Array.isArray(error?.payload?.blockers)
@@ -885,6 +888,19 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
                       <span>Selected lines</span>
                       <strong>{selectedReadyRows.length} of {selectedRows.length}</strong>
                     </div>
+                  </section>
+
+                  <section className="m042-invoice-notes">
+                    <label>
+                      Invoice notes
+                      <textarea
+                        value={invoiceNotes}
+                        onChange={(event) => setInvoiceNotes(event.target.value)}
+                        placeholder="Customer-facing billing context, partial-invoice scope, milestone, or final invoice note"
+                        maxLength={2000}
+                      />
+                    </label>
+                    <small>Notes are stored in the immutable invoice snapshot and appear in the generated package.</small>
                   </section>
 
                   <footer className="m042-invoice-foot">

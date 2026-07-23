@@ -36994,6 +36994,7 @@ static async System.Threading.Tasks.Task<string> ProjectPulse041AWriteOutboxEmai
 
 /* 042_LIVE_BILLING_API_MAP_START */
 ProjectTime.Api.Modules.InvoiceBillingModule.MapInvoiceBillingEndpoints(app);
+app.MapWorkLifecycleEndpoints();
 /* 042_LIVE_BILLING_API_MAP_END */
 
 /* WORK_REGISTER_PO_ENDPOINT_MAP_START */
