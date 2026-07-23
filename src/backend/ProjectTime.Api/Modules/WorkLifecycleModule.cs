@@ -709,7 +709,9 @@ public static class WorkLifecycleModule
             });
         }
 
-        var priorProjectStatus = operation == "request" || prior is null
+        var priorProjectStatus = operation == "request"
+            || prior is null
+            || string.IsNullOrWhiteSpace(prior.PriorProjectStatus)
             ? project.Status
             : prior.PriorProjectStatus;
         var proposed = new WorkCloseoutSnapshot(
@@ -1163,6 +1165,9 @@ public static class WorkLifecycleModule
             closeout?.BillingDisposition,
             "final_invoice_complete",
             StringComparison.OrdinalIgnoreCase);
+        var requiresLaborInvoice = !project.ContractType.Contains(
+            "Fixed",
+            StringComparison.OrdinalIgnoreCase);
 
         if (requiresInvoiceReadiness)
         {
@@ -1185,7 +1190,8 @@ public static class WorkLifecycleModule
                 )
                 SELECT
                     COUNT(*) FILTER (
-                        WHERE entry.billable = TRUE
+                        WHERE @requires_labor_invoice = TRUE
+                          AND entry.billable = TRUE
                           AND entry.hours > 0
                           AND entry.status = ANY(@approved_statuses)
                           AND entry.has_live_invoice = FALSE
@@ -1217,6 +1223,7 @@ public static class WorkLifecycleModule
                 """, connection, transaction);
             command.Parameters.AddWithValue("project_id", project.ProjectId);
             command.Parameters.AddWithValue("approved_statuses", LifecycleApprovedTimeStatuses);
+            command.Parameters.AddWithValue("requires_labor_invoice", requiresLaborInvoice);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             if (await reader.ReadAsync(cancellationToken))
             {
