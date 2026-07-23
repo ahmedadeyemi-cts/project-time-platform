@@ -56,6 +56,37 @@ function fmt(value) {
   return value ?? 'Not set';
 }
 
+function readDownloadFileName(response, fallbackName) {
+  const disposition = response.headers.get('Content-Disposition') || '';
+  const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1].replace(/^["']|["']$/g, ''));
+    } catch {
+      // Continue to the ordinary filename or API-provided fallback.
+    }
+  }
+
+  const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
+  return filenameMatch?.[1]?.trim() || fallbackName || 'project-document';
+}
+
+async function readDownloadError(response) {
+  const body = await response.text();
+
+  if (!body.trim()) {
+    return `Document download returned HTTP ${response.status}.`;
+  }
+
+  try {
+    const result = JSON.parse(body);
+    return result?.message || result?.status || `Document download returned HTTP ${response.status}.`;
+  } catch {
+    return body.slice(0, 240);
+  }
+}
+
 function StatusBadge({ children, tone = 'neutral' }) {
   return <span className={`workspace-badge ${tone}`}>{children}</span>;
 }
@@ -65,6 +96,11 @@ export default function ProjectWorkspaceCenter() {
   const [documentFilter, setDocumentFilter] = useState('engineering');
   const [viewAsUsers, setViewAsUsers] = useState([]);
   const [selectedViewAsUserId, setSelectedViewAsUserId] = useState('');
+  const [documentDownload, setDocumentDownload] = useState({
+    documentId: '',
+    message: '',
+    error: false
+  });
 
   async function loadViewAsUsers() {
     try {
@@ -97,6 +133,56 @@ export default function ProjectWorkspaceCenter() {
   useEffect(() => {
     loadOverview(selectedViewAsUserId);
   }, [selectedViewAsUserId]);
+
+  async function downloadDocument(workspaceDocument) {
+    if (!workspaceDocument?.downloadUrl) {
+      setDocumentDownload({
+        documentId: workspaceDocument?.id || '',
+        message: 'This project document does not have a download URL.',
+        error: true
+      });
+      return;
+    }
+
+    setDocumentDownload({
+      documentId: workspaceDocument.id,
+      message: `Downloading ${workspaceDocument.originalFileName || 'project document'}...`,
+      error: false
+    });
+
+    try {
+      const response = await fetch(workspaceDocument.downloadUrl, {
+        method: 'GET',
+        headers: getProjectPulseAuthHeaders(selectedViewAsUserId)
+      });
+
+      if (!response.ok) {
+        throw new Error(await readDownloadError(response));
+      }
+
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const anchor = window.document.createElement('a');
+      anchor.href = blobUrl;
+      anchor.download = readDownloadFileName(response, workspaceDocument.originalFileName);
+      window.document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+
+      setDocumentDownload({
+        documentId: workspaceDocument.id,
+        message: `${workspaceDocument.originalFileName || 'Project document'} downloaded.`,
+        error: false
+      });
+    } catch (error) {
+      setDocumentDownload({
+        documentId: workspaceDocument.id,
+        message: error instanceof Error ? error.message : 'Unable to download this project document.',
+        error: true
+      });
+    }
+  }
 
   const projects = overview.data?.projects ?? [];
   const documents = overview.data?.documents ?? [];
@@ -243,14 +329,21 @@ export default function ProjectWorkspaceCenter() {
                 <span>{document.aiTimesheetContextEnabled ? 'Timesheet assistant context ready' : 'Not used for timesheet context'}</span>
                 <span>Extraction: {document.extractionStatus}</span>
               </div>
-              <a
+              <button
+                type="button"
                 className="workspace-download-link"
-                href={selectedViewAsUserId ? `${document.downloadUrl}?viewAsUserId=${selectedViewAsUserId}` : document.downloadUrl}
-                target="_blank"
-                rel="noreferrer"
+                onClick={() => downloadDocument(document)}
+                disabled={documentDownload.documentId === document.id && !documentDownload.error && documentDownload.message.startsWith('Downloading ')}
               >
-                Download document
-              </a>
+                {documentDownload.documentId === document.id && !documentDownload.error && documentDownload.message.startsWith('Downloading ')
+                  ? 'Downloading...'
+                  : 'Download document'}
+              </button>
+              {documentDownload.documentId === document.id && documentDownload.message ? (
+                <small className={`workspace-download-status ${documentDownload.error ? 'error' : ''}`}>
+                  {documentDownload.message}
+                </small>
+              ) : null}
             </div>
           ))}
         </div>

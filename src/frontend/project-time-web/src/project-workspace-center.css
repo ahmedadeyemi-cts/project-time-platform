@@ -99,7 +99,30 @@
 .workspace-download-link {
   display: inline-flex;
   margin-top: 0.5rem;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: #0369a1;
+  cursor: pointer;
+  font: inherit;
   font-weight: 800;
+  text-decoration: underline;
+}
+
+.workspace-download-link:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.workspace-download-status {
+  display: block;
+  margin-top: 0.35rem;
+  color: #166534;
+  font-weight: 700;
+}
+
+.workspace-download-status.error {
+  color: #b91c1c;
 }
 
 .workspace-filter-row {

@@ -225,6 +225,31 @@ body[data-projectpulse-active-route="work-register"] #work-register .work-regist
 }
 /* 055C_WORK_REGISTER_ROUTE_ISOLATION_END */
 
+/* 055D_CREATE_WORK_REGISTER_ROUTE_ISOLATION_START */
+body[data-projectpulse-active-route="create-work-register"] section.panel:not(#create-work-register):not(.work-register-route-panel) {
+  display: none !important;
+}
+
+body[data-projectpulse-active-route="create-work-register"] main > section:not(#create-work-register):not(.work-register-route-panel),
+body[data-projectpulse-active-route="create-work-register"] .app-main > section:not(#create-work-register):not(.work-register-route-panel),
+body[data-projectpulse-active-route="create-work-register"] .dashboard-main > section:not(#create-work-register):not(.work-register-route-panel),
+body[data-projectpulse-active-route="create-work-register"] .workspace-main > section:not(#create-work-register):not(.work-register-route-panel) {
+  display: none !important;
+}
+
+body[data-projectpulse-active-route="create-work-register"] #create-work-register,
+body[data-projectpulse-active-route="create-work-register"] .work-register-route-panel {
+  display: block !important;
+  visibility: visible !important;
+  min-height: auto !important;
+  margin-top: 0 !important;
+}
+
+body[data-projectpulse-active-route="create-work-register"] #create-work-register .work-register-center {
+  display: grid !important;
+}
+/* 055D_CREATE_WORK_REGISTER_ROUTE_ISOLATION_END */
+
 @media (max-width: 1200px) {
   .work-register-summary,
   .work-register-toolbar {
