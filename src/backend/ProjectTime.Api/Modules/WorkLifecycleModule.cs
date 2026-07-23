@@ -564,6 +564,7 @@ public static class WorkLifecycleModule
 
             UPDATE work_closeout_records
             SET closeout_status = 'reopened',
+                prior_project_status = '',
                 reason = @reason,
                 reopened_by_user_id = @actor_user_id,
                 reopened_at = NOW(),
@@ -681,6 +682,9 @@ public static class WorkLifecycleModule
         }
 
         var prior = await LoadCloseoutAsync(connection, transaction, projectId, context.RequestAborted);
+        var priorProjectStatus = operation == "request" || prior is null
+            ? project.Status
+            : prior.PriorProjectStatus;
         var proposed = new WorkCloseoutSnapshot(
             operation == "complete" ? "ready" : "requested",
             disposition,
@@ -761,6 +765,8 @@ public static class WorkLifecycleModule
                 reason = EXCLUDED.reason,
                 notes = EXCLUDED.notes,
                 prior_project_status = CASE
+                    WHEN EXCLUDED.closeout_status <> 'closed'
+                        THEN EXCLUDED.prior_project_status
                     WHEN work_closeout_records.prior_project_status = ''
                         THEN EXCLUDED.prior_project_status
                     ELSE work_closeout_records.prior_project_status
@@ -797,7 +803,7 @@ public static class WorkLifecycleModule
             command.Parameters.AddWithValue("billing_complete", request.BillingComplete);
             command.Parameters.AddWithValue("reason", reason);
             command.Parameters.AddWithValue("notes", Clean(request.Notes));
-            command.Parameters.AddWithValue("prior_project_status", prior?.PriorProjectStatus ?? project.Status);
+            command.Parameters.AddWithValue("prior_project_status", priorProjectStatus);
             command.Parameters.AddWithValue("actor_user_id", access.ActualUserId);
             await command.ExecuteNonQueryAsync(context.RequestAborted);
         }
