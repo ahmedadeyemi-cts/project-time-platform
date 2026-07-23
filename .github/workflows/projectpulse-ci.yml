@@ -58,7 +58,26 @@ jobs:
 
       - name: Build frontend
         working-directory: src/frontend/project-time-web
-        run: npm run build
+        shell: bash
+        run: |
+          set +e
+          npm run build > /tmp/projectpulse-frontend-build.log 2>&1
+          status=$?
+          if [[ $status -ne 0 ]]; then
+            echo 'SCOPED_RBAC_FRONTEND_BUILD_ERRORS_BEGIN'
+            tail -n 120 /tmp/projectpulse-frontend-build.log
+            echo 'SCOPED_RBAC_FRONTEND_BUILD_ERRORS_END'
+            exit $status
+          fi
+          cat /tmp/projectpulse-frontend-build.log
+
+      - name: Upload frontend diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scoped-rbac-frontend-build-diagnostics
+          path: /tmp/projectpulse-frontend-build.log
+          retention-days: 7
 
       - name: Validate PR55 test deployment guard
         run: scripts/validate-pr55-test-deployment.sh
