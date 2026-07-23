@@ -92,12 +92,13 @@ public static class InvoiceBillingModule
         {
             var assignedEngineers = await LoadAssignedEngineersAsync(connection, project.ProjectId);
             var lines = await LoadCandidateLinesAsync(connection, project.ProjectId);
+            var nonLaborLines = await LoadNonLaborCandidateLinesAsync(connection, project.ProjectId);
             var invoiceHistory = await LoadInvoiceHistoryAsync(connection, project.ProjectId);
             var commercial = await SellCommercialReadModelModule.LoadProjectCommercialSummaryAsync(
                 connection,
                 project.ProjectId);
 
-            var projectBlockers = BuildProjectBlockers(project, lines);
+            var projectBlockers = BuildProjectBlockers(project, lines, nonLaborLines);
             var approvedHours = lines.Sum(line => line.ApprovedHours);
             decimal? autoCalculatedAmount = null;
 
@@ -135,12 +136,15 @@ public static class InvoiceBillingModule
                 project.PurchaseOrderRequired,
                 project.PurchaseOrder,
                 lines,
+                nonLaborLines,
                 lines.Count,
+                nonLaborLines.Count,
                 approvedHours,
                 autoCalculatedAmount,
                 rateResolutionStatus,
                 projectBlockers,
-                projectBlockers.Count == 0 && lines.Any(line => line.RateOptions.Count > 0),
+                projectBlockers.Count == 0
+                    && (lines.Any(line => line.RateOptions.Count > 0) || nonLaborLines.Count > 0),
                 access.CanCreateInvoices,
                 invoiceHistory,
                 commercial));
@@ -281,22 +285,25 @@ public static class InvoiceBillingModule
         var requestedLines = (request.Lines ?? [])
             .Where(line => line.TimeEntryId != Guid.Empty && line.RateLineId != Guid.Empty)
             .ToList();
+        var requestedReadinessReviewIds = (request.BillingReadinessReviewIds ?? [])
+            .Where(reviewId => reviewId != Guid.Empty)
+            .ToList();
 
-        if (requestedLines.Count == 0)
+        if (requestedLines.Count == 0 && requestedReadinessReviewIds.Count == 0)
         {
             return Results.BadRequest(new
             {
                 status = "validation_failed",
-                message = "Select at least one approved time-entry line and one stored rate line."
+                message = "Select at least one approved labor line or one governed ready non-labor package."
             });
         }
 
-        if (requestedLines.Count > 250)
+        if (requestedLines.Count + requestedReadinessReviewIds.Count > 250)
         {
             return Results.BadRequest(new
             {
                 status = "validation_failed",
-                message = "A single invoice may contain no more than 250 selected time-entry lines."
+                message = "A single invoice may contain no more than 250 selected source lines."
             });
         }
 
@@ -306,6 +313,15 @@ public static class InvoiceBillingModule
             {
                 status = "validation_failed",
                 message = "Each time entry may appear only once in an invoice request."
+            });
+        }
+
+        if (requestedReadinessReviewIds.Distinct().Count() != requestedReadinessReviewIds.Count)
+        {
+            return Results.BadRequest(new
+            {
+                status = "validation_failed",
+                message = "Each governed non-labor package may appear only once in an invoice request."
             });
         }
 
@@ -356,6 +372,11 @@ public static class InvoiceBillingModule
 
             var projectBlockers = BuildProjectStructuralBlockers(project);
 
+            if (IsFixedPrice(project.ContractType) && requestedLines.Count > 0)
+            {
+                projectBlockers.Add("Fixed Price hourly time is utilization evidence only; invoice the governed milestone or expense package instead.");
+            }
+
             if (projectBlockers.Count > 0)
             {
                 await SafeRollbackAsync(transaction);
@@ -368,6 +389,7 @@ public static class InvoiceBillingModule
             }
 
             var selectedLines = new List<InvoiceBillingResolvedLine>();
+            var selectedNonLaborLines = new List<InvoiceBillingResolvedNonLaborLine>();
 
             foreach (var requestedLine in requestedLines)
             {
@@ -391,22 +413,53 @@ public static class InvoiceBillingModule
                 selectedLines.Add(line);
             }
 
+            foreach (var reviewId in requestedReadinessReviewIds)
+            {
+                var line = await LoadResolvedNonLaborLineAsync(
+                    connection,
+                    transaction,
+                    projectId,
+                    reviewId);
+
+                if (line is null)
+                {
+                    await SafeRollbackAsync(transaction);
+                    return Results.Conflict(new
+                    {
+                        status = "package_not_invoice_eligible",
+                        message = $"Billing readiness package {reviewId} is no longer ready, lacks governed evidence, or is already invoiced."
+                    });
+                }
+
+                selectedNonLaborLines.Add(line);
+            }
+
             if (invoiceType == "final")
             {
-                var remainingEligibleCount = await CountEligibleTimeEntriesAsync(
+                var remainingEligibleCount = IsFixedPrice(project.ContractType)
+                    ? 0
+                    : await CountEligibleTimeEntriesAsync(
+                        connection,
+                        transaction,
+                        projectId);
+
+                var remainingNonLaborCount = await CountEligibleNonLaborPackagesAsync(
                     connection,
                     transaction,
                     projectId);
 
-                if (remainingEligibleCount != selectedLines.Count)
+                if (remainingEligibleCount != selectedLines.Count
+                    || remainingNonLaborCount != selectedNonLaborLines.Count)
                 {
                     await SafeRollbackAsync(transaction);
                     return Results.Conflict(new
                     {
                         status = "final_invoice_incomplete",
-                        message = "A final invoice must include every currently eligible uninvoiced time entry for the project.",
+                        message = "A final invoice must include every currently eligible uninvoiced labor line and ready non-labor package for the project.",
                         remainingEligibleCount,
-                        selectedCount = selectedLines.Count
+                        remainingNonLaborCount,
+                        selectedCount = selectedLines.Count,
+                        selectedNonLaborCount = selectedNonLaborLines.Count
                     });
                 }
             }
@@ -418,10 +471,15 @@ public static class InvoiceBillingModule
                 sessionUserId.Value);
 
             var invoiceId = Guid.NewGuid();
-            var billingPeriodStart = selectedLines.Min(line => line.WorkDate);
-            var billingPeriodEnd = selectedLines.Max(line => line.WorkDate);
+            var billingPeriodStart = selectedLines.Select(line => line.WorkDate)
+                .Concat(selectedNonLaborLines.Select(line => line.BillingPeriodStart))
+                .Min();
+            var billingPeriodEnd = selectedLines.Select(line => line.WorkDate)
+                .Concat(selectedNonLaborLines.Select(line => line.BillingPeriodEnd))
+                .Max();
             var subtotal = decimal.Round(
-                selectedLines.Sum(line => line.LineAmount),
+                selectedLines.Sum(line => line.LineAmount)
+                    + selectedNonLaborLines.Sum(line => line.LineAmount),
                 2,
                 MidpointRounding.AwayFromZero);
 
@@ -435,6 +493,9 @@ public static class InvoiceBillingModule
                 createdAt = DateTimeOffset.UtcNow,
                 selectedTimeEntryIds = selectedLines.Select(line => line.TimeEntryId).ToArray(),
                 selectedRateLineIds = selectedLines.Select(line => line.RateLineId).ToArray(),
+                selectedBillingReadinessReviewIds = selectedNonLaborLines
+                    .Select(line => line.ReadinessReviewId)
+                    .ToArray(),
                 project = new
                 {
                     project.ProjectCode,
@@ -479,6 +540,20 @@ public static class InvoiceBillingModule
                 lineNumber++;
             }
 
+            foreach (var line in selectedNonLaborLines
+                .OrderBy(line => line.BillingPeriodStart)
+                .ThenBy(line => line.Description))
+            {
+                await InsertNonLaborInvoiceLineAsync(
+                    connection,
+                    transaction,
+                    invoiceId,
+                    lineNumber,
+                    line);
+
+                lineNumber++;
+            }
+
             await InsertInvoiceEventAsync(
                 connection,
                 transaction,
@@ -486,7 +561,7 @@ public static class InvoiceBillingModule
                 sessionUserId.Value,
                 invoiceType,
                 identity.InvoiceNumber,
-                selectedLines.Count,
+                selectedLines.Count + selectedNonLaborLines.Count,
                 subtotal);
 
             await transaction.CommitAsync();
@@ -498,7 +573,7 @@ public static class InvoiceBillingModule
                 new
                 {
                     status = "billing_invoice_created",
-                    message = $"{(invoiceType == "final" ? "Final" : "Partial")} invoice {identity.InvoiceNumber} was created from verified system records.",
+                    message = $"{(invoiceType == "final" ? "Final" : "Partial")} invoice {identity.InvoiceNumber} was created from verified labor and governed package records.",
                     invoice
                 });
         }
@@ -762,6 +837,60 @@ public static class InvoiceBillingModule
         return rows;
     }
 
+    private static async Task<List<InvoiceBillingNonLaborCandidateLine>> LoadNonLaborCandidateLinesAsync(
+        NpgsqlConnection connection,
+        Guid projectId)
+    {
+        var rows = new List<InvoiceBillingNonLaborCandidateLine>();
+
+        await using var command = new NpgsqlCommand("""
+            SELECT
+                review.work_billing_readiness_review_id,
+                review.billing_period_start,
+                review.billing_period_end,
+                review.package_type,
+                review.evidence_source_type,
+                review.evidence_description,
+                review.evidence_amount,
+                COALESCE(actor.display_name, actor.email, ''),
+                review.updated_at
+            FROM work_billing_readiness_reviews review
+            LEFT JOIN app_users actor ON actor.user_id = review.reviewed_by_user_id
+            WHERE review.project_id = @project_id
+              AND review.review_status = 'ready'
+              AND review.evidence_source_type IN ('expense', 'fixed_price_milestone')
+              AND COALESCE(review.evidence_amount, 0) > 0
+              AND review.evidence_description <> ''
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM billing_invoice_lines line
+                  JOIN billing_invoices invoice
+                    ON invoice.billing_invoice_id = line.billing_invoice_id
+                  WHERE line.billing_readiness_review_id = review.work_billing_readiness_review_id
+                    AND lower(COALESCE(invoice.invoice_status, '')) <> 'void'
+              )
+            ORDER BY review.billing_period_start, review.updated_at;
+            """, connection);
+        command.Parameters.AddWithValue("project_id", projectId);
+
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            rows.Add(new InvoiceBillingNonLaborCandidateLine(
+                reader.GetGuid(0),
+                ReadDateOnly(reader, 1),
+                ReadDateOnly(reader, 2),
+                reader.GetString(3),
+                reader.GetString(4),
+                reader.GetString(5),
+                reader.GetDecimal(6),
+                reader.GetString(7),
+                ReadDateTimeOffset(reader, 8)));
+        }
+
+        return rows;
+    }
+
     private static async Task<List<InvoiceBillingRateOption>> LoadRateOptionsAsync(
         NpgsqlConnection connection,
         Guid timeEntryId,
@@ -945,12 +1074,19 @@ public static class InvoiceBillingModule
 
     private static List<string> BuildProjectBlockers(
         InvoiceBillingProjectRow project,
-        IReadOnlyList<InvoiceBillingCandidateLine> lines)
+        IReadOnlyList<InvoiceBillingCandidateLine> lines,
+        IReadOnlyList<InvoiceBillingNonLaborCandidateLine> nonLaborLines)
     {
         var blockers = BuildProjectStructuralBlockers(project);
 
-        if (lines.Count == 0)
-            blockers.Add("No approved, billable, uninvoiced time entries are currently eligible.");
+        if (lines.Count == 0 && nonLaborLines.Count == 0)
+            blockers.Add("No approved uninvoiced labor or governed ready non-labor package is currently eligible.");
+
+        if (IsFixedPrice(project.ContractType)
+            && nonLaborLines.Count == 0)
+        {
+            blockers.Add("Fixed Price invoice dollars require a governed ready milestone or expense package; hourly time remains utilization evidence only.");
+        }
 
         return blockers;
     }
@@ -971,9 +1107,6 @@ public static class InvoiceBillingModule
 
         if (string.IsNullOrWhiteSpace(project.ProjectManagerName))
             blockers.Add("Project Manager is not assigned.");
-
-        if (IsFixedPrice(project.ContractType))
-            blockers.Add("Fixed Price invoice dollars require stored milestone or fixed-price billing records; hourly time is evidence only.");
 
         if (project.PurchaseOrderRequired && project.PurchaseOrder is null)
             blockers.Add("An active primary purchase order is required before invoicing.");
@@ -1201,6 +1334,80 @@ public static class InvoiceBillingModule
             reader.GetString(19),
             unitRate,
             amount);
+    }
+
+    private static async Task<InvoiceBillingResolvedNonLaborLine?> LoadResolvedNonLaborLineAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid projectId,
+        Guid readinessReviewId)
+    {
+        await using var command = new NpgsqlCommand("""
+            SELECT
+                review.work_billing_readiness_review_id,
+                review.billing_period_start,
+                review.billing_period_end,
+                review.package_type,
+                review.evidence_source_type,
+                review.evidence_description,
+                review.evidence_amount
+            FROM work_billing_readiness_reviews review
+            WHERE review.work_billing_readiness_review_id = @review_id
+              AND review.project_id = @project_id
+              AND review.review_status = 'ready'
+              AND review.evidence_source_type IN ('expense', 'fixed_price_milestone')
+              AND COALESCE(review.evidence_amount, 0) > 0
+              AND review.evidence_description <> ''
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM billing_invoice_lines line
+                  JOIN billing_invoices invoice
+                    ON invoice.billing_invoice_id = line.billing_invoice_id
+                  WHERE line.billing_readiness_review_id = review.work_billing_readiness_review_id
+                    AND lower(COALESCE(invoice.invoice_status, '')) <> 'void'
+              )
+            FOR UPDATE OF review;
+            """, connection, transaction);
+        command.Parameters.AddWithValue("review_id", readinessReviewId);
+        command.Parameters.AddWithValue("project_id", projectId);
+
+        await using var reader = await command.ExecuteReaderAsync();
+        if (!await reader.ReadAsync()) return null;
+
+        return new InvoiceBillingResolvedNonLaborLine(
+            reader.GetGuid(0),
+            ReadDateOnly(reader, 1),
+            ReadDateOnly(reader, 2),
+            reader.GetString(3),
+            reader.GetString(4),
+            reader.GetString(5),
+            reader.GetDecimal(6));
+    }
+
+    private static async Task<int> CountEligibleNonLaborPackagesAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid projectId)
+    {
+        await using var command = new NpgsqlCommand("""
+            SELECT COUNT(*)::integer
+            FROM work_billing_readiness_reviews review
+            WHERE review.project_id = @project_id
+              AND review.review_status = 'ready'
+              AND review.evidence_source_type IN ('expense', 'fixed_price_milestone')
+              AND COALESCE(review.evidence_amount, 0) > 0
+              AND review.evidence_description <> ''
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM billing_invoice_lines line
+                  JOIN billing_invoices invoice
+                    ON invoice.billing_invoice_id = line.billing_invoice_id
+                  WHERE line.billing_readiness_review_id = review.work_billing_readiness_review_id
+                    AND lower(COALESCE(invoice.invoice_status, '')) <> 'void'
+              );
+            """, connection, transaction);
+        command.Parameters.AddWithValue("project_id", projectId);
+        return Convert.ToInt32(await command.ExecuteScalarAsync() ?? 0);
     }
 
     private static async Task<int> CountEligibleTimeEntriesAsync(
@@ -1542,6 +1749,85 @@ public static class InvoiceBillingModule
                 : "manager_approved");
         command.Parameters.AddWithValue("source_snapshot", sourceSnapshot);
 
+        await command.ExecuteNonQueryAsync();
+    }
+
+    private static async Task InsertNonLaborInvoiceLineAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid invoiceId,
+        int lineNumber,
+        InvoiceBillingResolvedNonLaborLine line)
+    {
+        await using var command = new NpgsqlCommand("""
+            INSERT INTO billing_invoice_lines (
+                billing_invoice_id,
+                line_number,
+                source_type,
+                billing_readiness_review_id,
+                work_date,
+                customer_facing_description,
+                internal_description,
+                time_type,
+                labor_category,
+                approved_hours,
+                rate_code_snapshot,
+                rate_description_snapshot,
+                unit_rate,
+                line_amount,
+                manager_approval_snapshot,
+                project_approval_snapshot,
+                accounting_readiness_snapshot,
+                source_snapshot_json
+            )
+            VALUES (
+                @invoice_id,
+                @line_number,
+                @source_type,
+                @review_id,
+                @work_date,
+                @description,
+                @internal_description,
+                'non_labor',
+                @source_type,
+                1,
+                @rate_code,
+                @rate_description,
+                @amount,
+                @amount,
+                'not_applicable',
+                'ready',
+                'ready',
+                @source_snapshot::jsonb
+            );
+            """, connection, transaction);
+
+        var sourceSnapshot = JsonSerializer.Serialize(new
+        {
+            line.ReadinessReviewId,
+            line.BillingPeriodStart,
+            line.BillingPeriodEnd,
+            line.PackageType,
+            line.SourceType,
+            line.Description,
+            line.LineAmount,
+            capturedAt = DateTimeOffset.UtcNow
+        });
+        var rateCode = line.SourceType == "fixed_price_milestone"
+            ? "MILESTONE"
+            : "EXPENSE";
+
+        command.Parameters.AddWithValue("invoice_id", invoiceId);
+        command.Parameters.AddWithValue("line_number", lineNumber);
+        command.Parameters.AddWithValue("source_type", line.SourceType);
+        command.Parameters.AddWithValue("review_id", line.ReadinessReviewId);
+        command.Parameters.Add("work_date", NpgsqlDbType.Date).Value = line.BillingPeriodEnd;
+        command.Parameters.AddWithValue("description", line.Description);
+        command.Parameters.AddWithValue("internal_description", line.PackageType);
+        command.Parameters.AddWithValue("rate_code", rateCode);
+        command.Parameters.AddWithValue("rate_description", line.PackageType);
+        command.Parameters.AddWithValue("amount", line.LineAmount);
+        command.Parameters.Add("source_snapshot", NpgsqlDbType.Jsonb).Value = sourceSnapshot;
         await command.ExecuteNonQueryAsync();
     }
 
@@ -1940,6 +2226,7 @@ public static class InvoiceBillingModule
 internal sealed record InvoiceBillingCreateInvoiceRequest(
     string? InvoiceType,
     List<InvoiceBillingCreateInvoiceLineRequest>? Lines,
+    List<Guid>? BillingReadinessReviewIds,
     string? Notes);
 
 internal sealed record InvoiceBillingCreateInvoiceLineRequest(
@@ -2043,7 +2330,9 @@ internal sealed record InvoiceBillingCandidate(
     bool PurchaseOrderRequired,
     InvoiceBillingPurchaseOrder? PurchaseOrder,
     IReadOnlyList<InvoiceBillingCandidateLine> Lines,
+    IReadOnlyList<InvoiceBillingNonLaborCandidateLine> NonLaborLines,
     int ApprovedLineCount,
+    int ReadyNonLaborLineCount,
     decimal ApprovedHours,
     decimal? AutoCalculatedAmount,
     string RateResolutionStatus,
@@ -2083,6 +2372,17 @@ internal sealed record InvoiceBillingCandidateLine(
     IReadOnlyList<InvoiceBillingRateOption> RateOptions,
     Guid? SuggestedRateLineId,
     string RateBlocker);
+
+internal sealed record InvoiceBillingNonLaborCandidateLine(
+    Guid ReadinessReviewId,
+    DateOnly BillingPeriodStart,
+    DateOnly BillingPeriodEnd,
+    string PackageType,
+    string SourceType,
+    string Description,
+    decimal Amount,
+    string ReviewedBy,
+    DateTimeOffset UpdatedAt);
 
 internal sealed record InvoiceBillingRateOption(
     Guid RateLineId,
@@ -2146,6 +2446,15 @@ internal sealed record InvoiceBillingResolvedLine(
     string RateDescription,
     string LaborCategory,
     decimal UnitRate,
+    decimal LineAmount);
+
+internal sealed record InvoiceBillingResolvedNonLaborLine(
+    Guid ReadinessReviewId,
+    DateOnly BillingPeriodStart,
+    DateOnly BillingPeriodEnd,
+    string PackageType,
+    string SourceType,
+    string Description,
     decimal LineAmount);
 
 internal sealed record InvoiceBillingIdentity(
