@@ -6,7 +6,7 @@ namespace ProjectTime.Api.Modules;
 
 public static class WorkLifecycleModule
 {
-    private static readonly string[] ApprovedTimeStatuses =
+    private static readonly string[] LifecycleApprovedTimeStatuses =
     [
         "pm_approved",
         "manager_approved",
@@ -891,38 +891,39 @@ public static class WorkLifecycleModule
         if (requiresInvoiceReadiness)
         {
             await using var command = new NpgsqlCommand("""
+                WITH scoped_entries AS (
+                    SELECT
+                        entry.billable,
+                        entry.hours,
+                        entry.status,
+                        EXISTS (
+                            SELECT 1
+                            FROM billing_invoice_lines line
+                            JOIN billing_invoices invoice
+                              ON invoice.billing_invoice_id = line.billing_invoice_id
+                            WHERE line.time_entry_id = entry.time_entry_id
+                              AND invoice.invoice_status <> 'void'
+                        ) AS has_live_invoice
+                    FROM time_entries entry
+                    WHERE entry.project_id = @project_id
+                )
                 SELECT
                     COUNT(*) FILTER (
                         WHERE entry.billable = TRUE
                           AND entry.hours > 0
                           AND entry.status = ANY(@approved_statuses)
-                          AND NOT EXISTS (
-                              SELECT 1
-                              FROM billing_invoice_lines line
-                              JOIN billing_invoices invoice
-                                ON invoice.billing_invoice_id = line.billing_invoice_id
-                              WHERE line.time_entry_id = entry.time_entry_id
-                                AND invoice.invoice_status <> 'void'
-                          )
+                          AND entry.has_live_invoice = FALSE
                     ),
                     COUNT(*) FILTER (
                         WHERE entry.billable = TRUE
                           AND entry.hours > 0
                           AND NOT (entry.status = ANY(@approved_statuses))
-                          AND NOT EXISTS (
-                              SELECT 1
-                              FROM billing_invoice_lines line
-                              JOIN billing_invoices invoice
-                                ON invoice.billing_invoice_id = line.billing_invoice_id
-                              WHERE line.time_entry_id = entry.time_entry_id
-                                AND invoice.invoice_status <> 'void'
-                          )
+                          AND entry.has_live_invoice = FALSE
                     )
-                FROM time_entries entry
-                WHERE entry.project_id = @project_id;
+                FROM scoped_entries entry;
                 """, connection, transaction);
             command.Parameters.AddWithValue("project_id", project.ProjectId);
-            command.Parameters.AddWithValue("approved_statuses", ApprovedTimeStatuses);
+            command.Parameters.AddWithValue("approved_statuses", LifecycleApprovedTimeStatuses);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             if (await reader.ReadAsync(cancellationToken))
             {
@@ -1113,7 +1114,7 @@ public static class WorkLifecycleModule
         {
             command.Parameters.AddWithValue("project_id", project.ProjectId);
             command.Parameters.Add("approved_statuses", NpgsqlDbType.Array | NpgsqlDbType.Text).Value =
-                ApprovedTimeStatuses;
+                LifecycleApprovedTimeStatuses;
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             if (await reader.ReadAsync(cancellationToken))
             {
@@ -1533,7 +1534,7 @@ public static class WorkLifecycleModule
             JOIN projects project ON project.project_id = entry.project_id
             WHERE (@broad_scope OR project.project_manager_user_id = @user_id);
             """, connection);
-        command.Parameters.AddWithValue("approved_statuses", ApprovedTimeStatuses);
+        command.Parameters.AddWithValue("approved_statuses", LifecycleApprovedTimeStatuses);
         command.Parameters.AddWithValue("broad_scope", broadScope);
         command.Parameters.AddWithValue("user_id", access.ActualUserId);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
