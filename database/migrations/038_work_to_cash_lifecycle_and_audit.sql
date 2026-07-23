@@ -87,8 +87,37 @@ CREATE TABLE IF NOT EXISTS work_lifecycle_audit_events (
                 'closeout',
                 'archive'
             )
-        )
+    )
 );
+
+DO $projectpulse038_runtime_grants$
+DECLARE
+    role_name TEXT;
+BEGIN
+    FOREACH role_name IN ARRAY ARRAY['ptp_app', 'projectpulse_app']
+    LOOP
+        IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = role_name)
+        THEN
+            EXECUTE format(
+                'GRANT USAGE ON SCHEMA public TO %I',
+                role_name
+            );
+            EXECUTE format(
+                'GRANT SELECT, INSERT, UPDATE ON TABLE work_billing_readiness_reviews, work_closeout_records TO %I',
+                role_name
+            );
+            EXECUTE format(
+                'GRANT SELECT, INSERT ON TABLE work_lifecycle_audit_events TO %I',
+                role_name
+            );
+            EXECUTE format(
+                'GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO %I',
+                role_name
+            );
+        END IF;
+    END LOOP;
+END;
+$projectpulse038_runtime_grants$;
 
 CREATE INDEX IF NOT EXISTS idx_work_lifecycle_audit_project
     ON work_lifecycle_audit_events(project_id, created_at DESC);
