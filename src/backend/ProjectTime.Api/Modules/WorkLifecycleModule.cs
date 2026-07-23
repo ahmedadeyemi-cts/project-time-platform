@@ -46,6 +46,22 @@ public static class WorkLifecycleModule
         "SALES_MANAGER"
     };
 
+    private static readonly HashSet<string> ReadAllRoles = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "SUPER_ADMINISTRATOR",
+        "ADMINISTRATOR",
+        "PROJECT_TEAM_COORDINATOR"
+    };
+
+    private static readonly HashSet<string> ReadAssignedRoles = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "PROJECT_MANAGER",
+        "PROJECT_MANAGEMENT",
+        "PROJECT_MANAGEMENT_LEAD",
+        "PROJECT_MANAGEMENT_TEAM_LEAD",
+        "PM_TEAM_LEAD"
+    };
+
     private static readonly HashSet<string> TimeEntryExcludedRoles = new(StringComparer.OrdinalIgnoreCase)
     {
         "MANAGER",
@@ -96,16 +112,28 @@ public static class WorkLifecycleModule
     private static async Task<IResult> GetDashboardAsync(HttpContext context)
     {
         await using var connection = await OpenAsync(context.RequestAborted);
-        var access = await WorkRegisterAuthorization.GetAccessAsync(
+        var sessionAccess = await WorkRegisterAuthorization.GetAccessAsync(
             connection,
             context,
             cancellationToken: context.RequestAborted);
 
-        if (access.ActualUserId == Guid.Empty)
+        if (sessionAccess.ActualUserId == Guid.Empty)
         {
             return Results.Json(
                 new { status = "session_required", message = "A valid ProjectPulse session is required." },
                 statusCode: StatusCodes.Status401Unauthorized);
+        }
+
+        var access = await ResolveReadAccessAsync(
+            connection,
+            context,
+            sessionAccess,
+            context.RequestAborted);
+        if (access.ActualUserId == Guid.Empty)
+        {
+            return Results.Json(
+                new { status = "view_as_identity_required", message = "The selected View-As identity is unavailable." },
+                statusCode: StatusCodes.Status403Forbidden);
         }
 
         var roleCodes = access.RoleCodes.ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -138,10 +166,15 @@ public static class WorkLifecycleModule
     private static async Task<IResult> GetProjectLifecycleAsync(Guid projectId, HttpContext context)
     {
         await using var connection = await OpenAsync(context.RequestAborted);
-        var access = await WorkRegisterAuthorization.GetAccessAsync(
+        var sessionAccess = await WorkRegisterAuthorization.GetAccessAsync(
             connection,
             context,
             cancellationToken: context.RequestAborted);
+        var access = await ResolveReadAccessAsync(
+            connection,
+            context,
+            sessionAccess,
+            context.RequestAborted);
         var project = await LoadProjectAsync(connection, null, projectId, context.RequestAborted);
 
         if (project is null)
@@ -768,6 +801,66 @@ public static class WorkLifecycleModule
             CanReopenProject: !access.IsViewAs && access.CanEditAll,
             IsAssignedProjectManager: assigned,
             IsViewAs: access.IsViewAs);
+    }
+
+    private static async Task<WorkRegisterAccess> ResolveReadAccessAsync(
+        NpgsqlConnection connection,
+        HttpContext context,
+        WorkRegisterAccess sessionAccess,
+        CancellationToken cancellationToken)
+    {
+        if (!sessionAccess.IsViewAs)
+        {
+            return sessionAccess;
+        }
+
+        if (!TryReadContextGuid(context, "ProjectPulseEffectiveUserId", out var effectiveUserId))
+        {
+            return new WorkRegisterAccess(false, false, false, true, Guid.Empty, []);
+        }
+
+        var roles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        await using var command = new NpgsqlCommand("""
+            SELECT upper(role.role_code)
+            FROM app_user_role_assignments assignment
+            JOIN app_roles role ON role.app_role_id = assignment.app_role_id
+            JOIN app_users app_user ON app_user.user_id = assignment.user_id
+            WHERE assignment.user_id = @effective_user_id
+              AND assignment.is_active = TRUE
+              AND role.is_active = TRUE
+              AND app_user.is_active = TRUE;
+            """, connection);
+        command.Parameters.AddWithValue("effective_user_id", effectiveUserId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            roles.Add(reader.GetString(0));
+        }
+
+        return new WorkRegisterAccess(
+            CanEditAll: roles.Any(ReadAllRoles.Contains),
+            CanEditAssigned: roles.Any(ReadAssignedRoles.Contains),
+            CanCreate: false,
+            IsViewAs: true,
+            ActualUserId: effectiveUserId,
+            RoleCodes: roles.OrderBy(value => value).ToArray());
+    }
+
+    private static bool TryReadContextGuid(HttpContext context, string key, out Guid value)
+    {
+        value = Guid.Empty;
+        if (!context.Items.TryGetValue(key, out var raw))
+        {
+            return false;
+        }
+
+        if (raw is Guid guid && guid != Guid.Empty)
+        {
+            value = guid;
+            return true;
+        }
+
+        return Guid.TryParse(raw?.ToString(), out value) && value != Guid.Empty;
     }
 
     private static async Task<WorkLifecycleProject?> LoadProjectAsync(
