@@ -37,6 +37,14 @@ jobs:
         working-directory: src/frontend/project-time-web
         run: npm ci --no-audit --no-fund
 
+      - name: Validate Modules directory feature
+        working-directory: src/frontend/project-time-web
+        run: npm run validate:modules-directory
+
+      - name: Compile Modules frontend bundle
+        working-directory: src/frontend/project-time-web
+        run: npx vite build
+
       - name: Build frontend
         working-directory: src/frontend/project-time-web
         run: npm run build
