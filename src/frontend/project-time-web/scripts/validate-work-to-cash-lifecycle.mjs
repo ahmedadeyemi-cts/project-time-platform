@@ -82,6 +82,9 @@ requireText(lifecycle, [
   "lower(COALESCE(invoice.invoice_status, '')) <> 'void'",
   'project_tasks',
   'task.is_active = TRUE',
+  'var nonLaborPackages = reader.GetInt64(2)',
+  'line.billing_readiness_review_id = review.work_billing_readiness_review_id',
+  'ready non-labor package',
   'DateOnly? billingPeriodStart',
   'DateOnly? billingPeriodEnd',
   'string packageType',
@@ -295,6 +298,12 @@ requireText(readiness, [
   'Enter a positive governed milestone amount.',
   'if (requiresLaborEvidence) {',
   'if (!saved) {',
+  'function isGuid(value)',
+  'const projectId = project.projectId ?? project.id',
+  'const projectId = request.projectId ?? request.linkedProjectId ?? request.createdProjectId',
+  'const key = String(candidate.id).toLowerCase()',
+  'if (!isGuid(selectedProject?.id))',
+  'Select a persisted project before saving billing readiness.',
   'setPeriodStart(firstDayOfCurrentMonth())',
   'setPeriodEnd(lastDayOfCurrentMonth())',
   "setPackageType('Partial project invoice')",
@@ -400,6 +409,12 @@ requireText(welcome, [
 
 if (welcome.includes('return module?.href || `#${route}`;') || welcome.includes('href="#timesheet"')) {
   throw new Error('The welcome dashboard must not construct links outside visibleRoleModules.');
+}
+
+if (readiness.includes('request.projectIntakeRequestId ?? request.requestId')
+    || readiness.includes('`intake-${index}`')
+    || readiness.includes('`workspace-${index}`')) {
+  throw new Error('Billing readiness must not call GUID lifecycle endpoints with intake or synthetic IDs.');
 }
 
 if (welcome.includes('project.completionPercent')) {
