@@ -585,6 +585,11 @@ export default function BillingReadinessCenter() {
   }
 
   async function saveBillingReadiness(reviewStatus) {
+    if (billingMode === 'monthEnd') {
+      setStatusMessage('Month-end mode is a read-only multi-project preview. Switch to Project Billing Package to save readiness for one project at a time.');
+      return;
+    }
+
     if (!selectedProject?.id) {
       setStatusMessage('Select a project before saving billing readiness.');
       return;
@@ -755,7 +760,7 @@ export default function BillingReadinessCenter() {
             type="button"
             className="secondary-action"
             onClick={() => saveBillingReadiness('blocked')}
-            disabled={isSavingReadiness || lifecycle.loading || !lifecycle.data?.capabilities?.canManageBillingReadiness}
+            disabled={billingMode === 'monthEnd' || isSavingReadiness || lifecycle.loading || !lifecycle.data?.capabilities?.canManageBillingReadiness}
           >
             {isSavingReadiness ? 'Saving…' : 'Save progress'}
           </button>
@@ -763,7 +768,7 @@ export default function BillingReadinessCenter() {
             type="button"
             className="primary-action"
             onClick={() => saveBillingReadiness('ready')}
-            disabled={isSavingReadiness || lifecycle.loading || blockingIssues.length > 0 || !lifecycle.data?.capabilities?.canManageBillingReadiness}
+            disabled={billingMode === 'monthEnd' || isSavingReadiness || lifecycle.loading || blockingIssues.length > 0 || !lifecycle.data?.capabilities?.canManageBillingReadiness}
           >
             Mark ready
           </button>
@@ -837,9 +842,11 @@ export default function BillingReadinessCenter() {
             <p className="muted">{modeDescription}</p>
           </div>
           <span className={`billing-readiness-status-pill ${readinessTone}`}>
-            {lifecycle.data?.billingReadiness?.reviewStatus
-              ? `Saved: ${lifecycle.data.billingReadiness.reviewStatus}`
-              : readinessTone === 'safe' ? 'Ready for accounting' : readinessTone === 'attention' ? 'Needs review' : 'Blocked'}
+            {billingMode === 'monthEnd'
+              ? 'Preview only'
+              : lifecycle.data?.billingReadiness?.reviewStatus
+                ? `Saved: ${lifecycle.data.billingReadiness.reviewStatus}`
+                : readinessTone === 'safe' ? 'Ready for accounting' : readinessTone === 'attention' ? 'Needs review' : 'Blocked'}
           </span>
         </div>
 
@@ -918,8 +925,8 @@ export default function BillingReadinessCenter() {
 
         {billingMode === 'monthEnd' ? (
           <div className="billing-month-end-callout">
-            <strong>Month-end mode reviews all loaded project/customer candidates.</strong>
-            <span>{monthEndPackages.length} customer/project package(s) are included in this month-end billing run preview.</span>
+            <strong>Month-end mode is a read-only multi-project preview.</strong>
+            <span>{monthEndPackages.length} customer/project package(s) are included. Export the summary, then switch to Project Billing Package to save or mark each project ready with its own audit record.</span>
           </div>
         ) : null}
       </article>
