@@ -490,7 +490,16 @@ export default function BillingReadinessCenter() {
         if (cancelled) return;
         setLifecycle({ loading: false, error: null, data });
         const saved = data?.billingReadiness;
-        if (!saved) return;
+        if (!saved) {
+          setPeriodStart(firstDayOfCurrentMonth());
+          setPeriodEnd(lastDayOfCurrentMonth());
+          setPackageType('Partial project invoice');
+          setPackageNotes('');
+          setCheckedItems(new Set());
+          setAuditReason('');
+          setStatusMessage('');
+          return;
+        }
 
         setPeriodStart(saved.billingPeriodStart || firstDayOfCurrentMonth());
         setPeriodEnd(saved.billingPeriodEnd || lastDayOfCurrentMonth());
