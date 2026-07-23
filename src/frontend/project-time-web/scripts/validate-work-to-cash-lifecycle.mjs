@@ -112,6 +112,10 @@ if (lifecycle.includes("SET status = 'closed'")) {
   throw new Error("Project closeout must use the schema-supported 'completed' project status.");
 }
 
+if (lifecycle.includes('task.status')) {
+  throw new Error('Project lifecycle must use the real project_tasks schema; task state is represented by is_active.');
+}
+
 if (lifecycle.includes("purchase_order.po_status IN ('draft', 'active')")) {
   throw new Error('Billing readiness must reject draft purchase orders.');
 }
@@ -258,6 +262,16 @@ requireText(welcome, [
   'Team / billing snapshot',
   'Recent items'
 ], 'Role-aware welcome dashboard');
+
+requireText(welcome, [
+  'project.activeTaskCount',
+  "'active task'",
+  "'active tasks'"
+], 'Welcome project task state');
+
+if (welcome.includes('project.completionPercent')) {
+  throw new Error('The welcome page must not present invented task-completion percentages.');
+}
 
 if (welcome.includes('Start Timer')) {
   throw new Error('The welcome dashboard must not expose a non-functional timer action.');
