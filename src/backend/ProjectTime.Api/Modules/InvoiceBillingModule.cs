@@ -284,9 +284,12 @@ public static class InvoiceBillingModule
 
         var requestedLines = (request.Lines ?? [])
             .Where(line => line.TimeEntryId != Guid.Empty && line.RateLineId != Guid.Empty)
+            .OrderBy(line => line.TimeEntryId)
+            .ThenBy(line => line.RateLineId)
             .ToList();
         var requestedReadinessReviewIds = (request.BillingReadinessReviewIds ?? [])
             .Where(reviewId => reviewId != Guid.Empty)
+            .OrderBy(reviewId => reviewId)
             .ToList();
 
         if (requestedLines.Count == 0 && requestedReadinessReviewIds.Count == 0)
