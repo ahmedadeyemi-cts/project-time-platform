@@ -50,6 +50,9 @@ jobs:
       - name: Validate Modules page test deployment guard
         run: bash scripts/validate-modules-page-test-deployment.sh
 
+      - name: Validate Approval Center hotfix test deployment guard
+        run: bash scripts/validate-approval-access-hotfix-test-deployment.sh
+
       - name: Validate container definitions and web build context
         run: |
           test -f deployment/containers/api/Dockerfile
