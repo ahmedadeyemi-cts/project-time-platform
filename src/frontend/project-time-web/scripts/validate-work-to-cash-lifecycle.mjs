@@ -86,7 +86,12 @@ requireText(lifecycle, [
   'isExpenseOnlyPackage',
   'isMilestonePackage',
   'requiresLaborEvidence',
+  'requiresNonLaborEvidence',
   '&& !isMilestonePackage',
+  'evidenceDescription',
+  'evidenceAmount',
+  "review.evidence_source_type IN ('expense', 'fixed_price_milestone')",
+  'ready_line.billing_readiness_review_id',
   'if (requiresLaborEvidence)',
   'readiness?.PackageType ?? string.Empty',
   'LoadReadinessByPackageAsync',
@@ -146,17 +151,25 @@ if (lifecycle.includes("purchase_order.po_status IN ('draft', 'active')")) {
   throw new Error('Billing readiness must reject draft purchase orders.');
 }
 
-if ((lifecycle.match(/FROM billing_invoice_lines/g) ?? []).length !== 3
-    || (lifecycle.match(/JOIN billing_invoices invoice/g) ?? []).length !== 3
+if ((lifecycle.match(/FROM billing_invoice_lines/g) ?? []).length < 5
+    || (lifecycle.match(/lower\(COALESCE\([^\n]*invoice\.invoice_status, ''\)\) <> 'void'/g) ?? []).length < 5
     || !lifecycle.includes('AS has_live_invoice')) {
-  throw new Error('Every lifecycle invoiced-time check must exclude void invoice state.');
+  throw new Error('Every lifecycle ready/invoiced source check must exclude void invoice state.');
 }
 
 requireText(invoiceModule, [
   'InvoiceEligibleStatuses',
   '"pm_approved"',
   'JOIN billing_invoices invoice',
-  "lower(COALESCE(invoice.invoice_status, '')) <> 'void'"
+  "lower(COALESCE(invoice.invoice_status, '')) <> 'void'",
+  'LoadNonLaborCandidateLinesAsync',
+  'LoadResolvedNonLaborLineAsync',
+  'CountEligibleNonLaborPackagesAsync',
+  'InsertNonLaborInvoiceLineAsync',
+  'BillingReadinessReviewIds',
+  'billing_readiness_review_id',
+  "'fixed_price_milestone'",
+  "'expense'"
 ], 'Module 042 invoice eligibility');
 
 if ((invoiceModule.match(/FROM billing_invoice_lines invoiced/g) ?? []).length !== 3
@@ -184,6 +197,14 @@ requireText(migration, [
   'projectpulse038_guard_live_time_entry_line',
   'pg_advisory_xact_lock',
   'projectpulse038_guard_invoice_reactivation',
+  'evidence_source_type',
+  'evidence_description',
+  'evidence_amount',
+  'billing_readiness_review_id',
+  'projectpulse038_guard_live_readiness_line',
+  'trg_projectpulse038_live_readiness_line',
+  'FOR v_readiness_review_id IN',
+  'hashtextextended(v_readiness_review_id::text, 38)',
   'FOR v_time_entry_id IN',
   'ORDER BY target_line.time_entry_id',
   'hashtextextended(v_time_entry_id::text, 0)',
@@ -206,7 +227,11 @@ if ((migration.match(/\bBEGIN;/g) ?? []).length !== 1
 requireText(rollback, [
   'trg_projectpulse038_invoice_reactivation',
   'trg_projectpulse038_live_time_entry_line',
+  'trg_projectpulse038_live_readiness_line',
+  'projectpulse038_guard_live_readiness_line',
   'DROP INDEX IF EXISTS uq_billing_invoice_lines_invoice_time_entry',
+  'DROP INDEX IF EXISTS uq_billing_invoice_lines_invoice_readiness_review',
+  'DROP COLUMN IF EXISTS billing_readiness_review_id',
   'HAVING COUNT(*) > 1',
   'CREATE UNIQUE INDEX IF NOT EXISTS uq_billing_invoice_lines_time_entry',
   'DROP TRIGGER IF EXISTS trg_projectpulse038_invoice_audit',
@@ -230,7 +255,11 @@ requireText(readiness, [
   "billingMode === 'monthEnd' || isSavingReadiness",
   '.filter((item) => !checkedItems.has(item.key))',
   'issues.push(`${item.label} is not confirmed.`)',
-  "const requiresLaborEvidence = !packageType.toLowerCase().includes('expense-only')",
+  'requiresNonLaborEvidence',
+  'evidenceDescription',
+  'evidenceAmount',
+  'Enter the approved expense description.',
+  'Enter a positive governed milestone amount.',
   'if (requiresLaborEvidence) {',
   'if (!saved) {',
   'setPeriodStart(firstDayOfCurrentMonth())',
@@ -270,6 +299,10 @@ requireText(workRegister, [
 requireText(invoice, [
   'invoiceNotes',
   'notes: invoiceNotes.trim()',
+  'billingReadinessReviewIds',
+  'selectedEvidenceDetails',
+  'updateEvidenceSelection',
+  'governed package',
   'Invoice notes',
   "createInvoice('partial')",
   "createInvoice('final')"
