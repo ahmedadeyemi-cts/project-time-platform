@@ -60,7 +60,7 @@ requireText(portal, [
   'createPortal('
 ], 'Role-aware Modules directory');
 
-if (portal.includes('getInstalledProjectPulseModuleRegistry') || portal.includes('const modules = [')) {
+if (portal.includes('getInstalledProjectPulseModuleRegistry') || /const\s+modules\s*=\s*\[\s*\{/.test(portal)) {
   throw new Error('The Modules page must reuse authorized navigation output instead of duplicating the module registry.');
 }
 
