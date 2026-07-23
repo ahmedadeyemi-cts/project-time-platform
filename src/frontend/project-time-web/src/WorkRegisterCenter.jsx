@@ -1917,8 +1917,8 @@ function updateRosterEngineer(task, index, field, value) {
       certiniaIdNumber: data.certiniaIdNumber || data.certinia_id_number || '',
       requestedWorkType: projectPulseCanonicalWorkType(data.requestedWorkType || packageData?.package?.requestedWorkType || 'Project'),
       contractType: projectPulseCanonicalContractType(data.contractType || packageData?.package?.contractType || 'Fixed Price'),
-      sowSignedDate: dateOnly(data.sowSignedDate || intakeForm.sowSignedDate),
-      estimatedEndDate: dateOnly(data.estimatedEndDate || data.endDate || intakeForm.estimatedEndDate),
+      sowSignedDate: dateOnly(data.sowSignedDate ?? intakeForm.sowSignedDate),
+      estimatedEndDate: dateOnly(data.estimatedEndDate ?? data.endDate ?? intakeForm.estimatedEndDate),
       pmHours: data.pmHours || '',
       engineeringHours: data.engineeringHours || '',
       totalProjectHours: data.totalProjectHours || '',
@@ -3454,11 +3454,11 @@ async function createWorkRegisterFromReviewedIntake() {
 
     // 055C_3_WORK_REGISTER_CHANGED_FIELD_PAYLOAD_START
     /* 055C_4_CASE_INSENSITIVE_CHANGED_FIELD_START */
-    const addIfChanged = (field, originalValue = '') => {
+    const addIfChanged = (field, originalValue = '', allowEmpty = false) => {
       const nextValue = String(editForm[field] ?? '').trim();
       const priorValue = String(originalValue ?? '').trim();
 
-      if (nextValue && nextValue.toLowerCase() !== priorValue.toLowerCase()) {
+      if ((allowEmpty || nextValue) && nextValue.toLowerCase() !== priorValue.toLowerCase()) {
         payload[field] = nextValue;
       }
     };
@@ -3474,9 +3474,9 @@ async function createWorkRegisterFromReviewedIntake() {
 
     addIfChanged('clientId', selectedWorkItem.customerId || '');
     addIfChanged('contractType', projectPulseCanonicalContractType(selectedWorkItem.contractType));
-    addIfChanged('projectStartDate', dateOnly(selectedWorkItem.startDate));
-    addIfChanged('estimatedEndDate', dateOnly(selectedWorkItem.estimatedEndDate));
-    addIfChanged('sowSignedDate', dateOnly(selectedWorkItem.sowSignedDate));
+    addIfChanged('projectStartDate', dateOnly(selectedWorkItem.startDate), true);
+    addIfChanged('estimatedEndDate', dateOnly(selectedWorkItem.estimatedEndDate), true);
+    addIfChanged('sowSignedDate', dateOnly(selectedWorkItem.sowSignedDate), true);
     addIfChanged('status', selectedWorkItem.status || '');
 
     // User dropdowns start as blank, meaning "keep current".

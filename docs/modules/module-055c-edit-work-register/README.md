@@ -30,6 +30,8 @@ end date. Contract types use the canonical labels **Time and Material** and
 **Fixed Price**; legacy `TM`, `T&M`, and `FP` values are normalized without
 creating duplicate choices. Invalid historical or partial date changes are
 skipped during audit replay so they cannot violate the project date range.
+Clearing an optional SOW signed or estimated end date records an explicit clear
+instead of silently retaining the previous value.
 
 ## Governed launch ownership
 

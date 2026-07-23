@@ -106,8 +106,8 @@ test(
   dateContractMigration.includes('v_existing_start_date')
     && dateContractMigration.includes('v_existing_end_date')
     && dateContractMigration.includes('Invalid historical or partial date edits')
-    && dateContractMigration.includes('coalesce(v_estimated_end_date, v_existing_end_date)')
-    && dateContractMigration.includes('< coalesce(v_project_start_date, v_existing_start_date)')
+    && dateContractMigration.includes('WHEN v_estimated_end_supplied THEN v_estimated_end_date')
+    && dateContractMigration.includes('WHEN v_project_start_supplied THEN v_project_start_date')
     && dateContractMigration.includes("v_metadata_payload - ARRAY[")
 );
 test(
@@ -122,7 +122,17 @@ test(
   'CREATE_DATE_CLEARING',
   frontend.includes('sowSignedDate: intakeReviewForm.sowSignedDate ?? intakeForm.sowSignedDate')
     && frontend.includes('estimatedEndDate: intakeReviewForm.estimatedEndDate ?? intakeForm.estimatedEndDate')
+    && frontend.includes('sowSignedDate: dateOnly(data.sowSignedDate ?? intakeForm.sowSignedDate)')
+    && frontend.includes('estimatedEndDate: dateOnly(data.estimatedEndDate ?? data.endDate ?? intakeForm.estimatedEndDate)')
     && !frontend.includes('estimatedEndDate: intakeReviewForm.estimatedEndDate || intakeForm.estimatedEndDate')
+);
+test(
+  'EDIT_DATE_CLEARING',
+  frontend.includes("addIfChanged('estimatedEndDate', dateOnly(selectedWorkItem.estimatedEndDate), true)")
+    && frontend.includes("addIfChanged('sowSignedDate', dateOnly(selectedWorkItem.sowSignedDate), true)")
+    && dateContractMigration.includes('v_estimated_end_supplied := coalesce(p_payload')
+    && dateContractMigration.includes('WHEN v_estimated_end_supplied THEN v_estimated_end_date')
+    && dateContractMigration.includes('WHEN v_sow_signed_supplied THEN v_sow_signed_date')
 );
 test(
   'CREATE_INITIAL_DATE_ROUND_TRIP',
