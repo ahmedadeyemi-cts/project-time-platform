@@ -1826,7 +1826,21 @@ public static class WorkLifecycleModule
             LEFT JOIN work_register_project_lifecycle lifecycle
               ON lifecycle.project_id = project.project_id
             WHERE COALESCE(lifecycle.is_archived, FALSE) = FALSE
-              AND (@broad_scope OR project.project_manager_user_id = @user_id);
+              AND (
+                    @broad_scope
+                    OR project.project_manager_user_id = @user_id
+                    OR EXISTS (
+                        SELECT 1
+                        FROM project_assignments assignment
+                        WHERE assignment.project_id = project.project_id
+                          AND assignment.user_id = @user_id
+                          AND assignment.effective_start_date <= CURRENT_DATE
+                          AND (
+                              assignment.effective_end_date IS NULL
+                              OR assignment.effective_end_date >= CURRENT_DATE
+                          )
+                    )
+              );
             """, connection);
         command.Parameters.AddWithValue("broad_scope", broadScope);
         command.Parameters.AddWithValue("user_id", access.ActualUserId);
@@ -1861,7 +1875,22 @@ public static class WorkLifecycleModule
             LEFT JOIN work_register_project_lifecycle lifecycle
               ON lifecycle.project_id = project.project_id
             WHERE COALESCE(lifecycle.is_archived, FALSE) = FALSE
-              AND (@broad_scope OR project.project_manager_user_id = @user_id)
+              AND (
+                    @broad_scope
+                    OR project.project_manager_user_id = @user_id
+                    OR EXISTS (
+                        SELECT 1
+                        FROM project_assignments assignment
+                        WHERE assignment.project_id = project.project_id
+                          AND assignment.user_id = @user_id
+                          AND assignment.effective_start_date <= CURRENT_DATE
+                          AND (
+                              assignment.effective_end_date IS NULL
+                              OR assignment.effective_end_date >= CURRENT_DATE
+                          )
+                    )
+              )
+              AND lower(COALESCE(project.status, '')) NOT IN ('completed', 'cancelled')
             GROUP BY project.project_id, client.client_name
             ORDER BY
                 CASE
