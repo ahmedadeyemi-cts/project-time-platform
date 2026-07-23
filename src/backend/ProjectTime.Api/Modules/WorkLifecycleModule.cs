@@ -902,7 +902,7 @@ public static class WorkLifecycleModule
                             JOIN billing_invoices invoice
                               ON invoice.billing_invoice_id = line.billing_invoice_id
                             WHERE line.time_entry_id = entry.time_entry_id
-                              AND invoice.invoice_status <> 'void'
+                              AND lower(COALESCE(invoice.invoice_status, '')) <> 'void'
                         ) AS has_live_invoice
                     FROM time_entries entry
                     WHERE entry.project_id = @project_id
@@ -973,7 +973,7 @@ public static class WorkLifecycleModule
                         FROM billing_invoices invoice
                         WHERE invoice.project_id = @project_id
                           AND invoice.invoice_type = 'final'
-                          AND invoice.invoice_status <> 'void'
+                          AND lower(COALESCE(invoice.invoice_status, '')) <> 'void'
                     );
                     """, connection, transaction))
                 {
@@ -1077,7 +1077,7 @@ public static class WorkLifecycleModule
                       JOIN billing_invoices invoice
                         ON invoice.billing_invoice_id = invoiced.billing_invoice_id
                       WHERE invoiced.time_entry_id = entry.time_entry_id
-                        AND invoice.invoice_status <> 'void'
+                        AND lower(COALESCE(invoice.invoice_status, '')) <> 'void'
                   )
             )
             SELECT
@@ -1090,7 +1090,7 @@ public static class WorkLifecycleModule
                           ON line.rate_card_id = card.rate_card_id
                          AND line.is_active = TRUE
                          AND line.billable_default = TRUE
-                         AND line.rate_amount > 0
+                         AND COALESCE(line.rate_amount, 0) > 0
                          AND lower(line.unit_type) = 'hour'
                          AND lower(line.time_type) = lower(COALESCE(eligible.time_type, 'normal'))
                         LEFT JOIN project_billing_profiles profile
@@ -1145,8 +1145,13 @@ public static class WorkLifecycleModule
             SELECT
                 COUNT(*),
                 COUNT(*) FILTER (WHERE invoice.invoice_type = 'partial'),
-                COUNT(*) FILTER (WHERE invoice.invoice_type = 'final' AND invoice.invoice_status <> 'void'),
-                COALESCE(SUM(invoice.total_amount) FILTER (WHERE invoice.invoice_status <> 'void'), 0),
+                COUNT(*) FILTER (
+                    WHERE invoice.invoice_type = 'final'
+                      AND lower(COALESCE(invoice.invoice_status, '')) <> 'void'
+                ),
+                COALESCE(SUM(invoice.total_amount) FILTER (
+                    WHERE lower(COALESCE(invoice.invoice_status, '')) <> 'void'
+                ), 0),
                 MAX(invoice.created_at)
             FROM billing_invoices invoice
             WHERE invoice.project_id = @project_id;
@@ -1521,7 +1526,7 @@ public static class WorkLifecycleModule
                           JOIN billing_invoices invoice
                             ON invoice.billing_invoice_id = line.billing_invoice_id
                           WHERE line.time_entry_id = entry.time_entry_id
-                            AND invoice.invoice_status <> 'void'
+                            AND lower(COALESCE(invoice.invoice_status, '')) <> 'void'
                       )
                 ), 0),
                 (
