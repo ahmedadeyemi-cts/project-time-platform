@@ -174,7 +174,9 @@ function locateApprovalMetric() {
 
 async function synchronizeCurrentWeekApprovalCount() {
   const row = locateApprovalMetric();
-  if (!row) return;
+  if (!row || row.dataset.dashboardApprovalScope) return;
+
+  row.dataset.dashboardApprovalScope = 'loading';
 
   const params = new URLSearchParams({
     weekStart: startOfApprovalWeek(),
@@ -188,20 +190,27 @@ async function synchronizeCurrentWeekApprovalCount() {
     const payload = await api(`/api/manager/approvals?${params.toString()}`);
     const items = Array.isArray(payload?.items) ? payload.items : [];
     const count = items.filter((item) => item?.status === 'submitted').length;
-    const label = row.querySelector('dt');
-    const value = row.querySelector('dd');
+    const currentRow = locateApprovalMetric();
+    const targetRow = currentRow?.isConnected ? currentRow : row;
+    const label = targetRow.querySelector('dt');
+    const value = targetRow.querySelector('dd');
 
     if (label) label.textContent = 'Current week approvals';
     if (value) value.textContent = String(count);
-    row.title = 'Matches the currently selected week when Approval Center opens.';
-    row.dataset.dashboardApprovalScope = 'current-week';
+    targetRow.title = 'Matches the currently selected week when Approval Center opens.';
+    targetRow.dataset.dashboardApprovalScope = 'current-week';
   } catch (error) {
+    const currentRow = locateApprovalMetric();
+    const targetRow = currentRow?.isConnected ? currentRow : row;
+
     if (error?.status === 401 || error?.status === 403) {
-      const label = row.querySelector('dt');
-      const value = row.querySelector('dd');
+      const label = targetRow.querySelector('dt');
+      const value = targetRow.querySelector('dd');
       if (label) label.textContent = 'Current week approvals';
       if (value) value.textContent = '0';
-      row.dataset.dashboardApprovalScope = 'not-authorized';
+      targetRow.dataset.dashboardApprovalScope = 'not-authorized';
+    } else {
+      targetRow.removeAttribute('data-dashboard-approval-scope');
     }
   }
 }
@@ -249,6 +258,7 @@ export default function DashboardPersonalCalendarPortal() {
   const [weekStart, setWeekStart] = useState(() => startOfWorkWeek());
   const [state, setState] = useState({ loading: true, error: '', resource: null, schedule: null });
   const requestId = useRef(0);
+  const approvalSyncTimer = useRef(0);
   const active = route === DASHBOARD_ROUTE;
   const days = useMemo(() => workingDays(weekStart), [weekStart]);
 
@@ -355,17 +365,50 @@ export default function DashboardPersonalCalendarPortal() {
   useEffect(() => {
     if (!active) return undefined;
 
+    const scheduleApprovalSynchronization = () => {
+      const row = locateApprovalMetric();
+      if (!row || row.dataset.dashboardApprovalScope) return;
+
+      window.clearTimeout(approvalSyncTimer.current);
+      approvalSyncTimer.current = window.setTimeout(() => {
+        void synchronizeCurrentWeekApprovalCount();
+      }, 60);
+    };
+
+    const forceApprovalSynchronization = () => {
+      locateApprovalMetric()?.removeAttribute('data-dashboard-approval-scope');
+      scheduleApprovalSynchronization();
+    };
+
     const refreshDashboard = () => {
-      void synchronizeCurrentWeekApprovalCount();
+      forceApprovalSynchronization();
       void loadCalendar();
     };
 
-    const timer = window.setTimeout(refreshDashboard, 100);
+    const dashboard = document.querySelector('#role-welcome-dashboard');
+    const approvalObserver = dashboard
+      ? new MutationObserver(scheduleApprovalSynchronization)
+      : null;
+
+    approvalObserver?.observe(dashboard, {
+      childList: true,
+      subtree: true,
+      characterData: true
+    });
+
+    const initialApprovalTimers = [100, 600, 1800].map((delay) => (
+      window.setTimeout(scheduleApprovalSynchronization, delay)
+    ));
+    const calendarTimer = window.setTimeout(() => void loadCalendar(), 100);
+
     window.addEventListener('projectpulse:view-as-changed', refreshDashboard);
     window.addEventListener('projectpulse:approval-queue-changed', refreshDashboard);
 
     return () => {
-      window.clearTimeout(timer);
+      approvalObserver?.disconnect();
+      initialApprovalTimers.forEach((timer) => window.clearTimeout(timer));
+      window.clearTimeout(calendarTimer);
+      window.clearTimeout(approvalSyncTimer.current);
       window.removeEventListener('projectpulse:view-as-changed', refreshDashboard);
       window.removeEventListener('projectpulse:approval-queue-changed', refreshDashboard);
       requestId.current += 1;
