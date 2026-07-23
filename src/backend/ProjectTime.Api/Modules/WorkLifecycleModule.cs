@@ -1174,8 +1174,10 @@ public static class WorkLifecycleModule
         var isExpenseOnlyPackage = packageType.Contains(
             "expense-only",
             StringComparison.OrdinalIgnoreCase);
-        var requiresLaborEvidence = !isExpenseOnlyPackage
-            && !packageType.Contains("milestone", StringComparison.OrdinalIgnoreCase);
+        var isMilestonePackage = packageType.Contains(
+            "milestone",
+            StringComparison.OrdinalIgnoreCase);
+        var requiresLaborEvidence = !isExpenseOnlyPackage && !isMilestonePackage;
 
         if (string.IsNullOrWhiteSpace(project.CustomerName))
         {
@@ -1194,6 +1196,7 @@ public static class WorkLifecycleModule
             blockers.Add("Contract type is missing.");
         }
         if (!isExpenseOnlyPackage
+            && !isMilestonePackage
             && project.ContractType.Contains("Fixed", StringComparison.OrdinalIgnoreCase))
         {
             blockers.Add("Fixed Price invoice dollars require a governed milestone or approved no-further-billing disposition; hourly time remains utilization evidence only.");
