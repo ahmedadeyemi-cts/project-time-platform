@@ -1,9 +1,9 @@
 # PR #55 Test Deployment and Browser Verification
 
 This runbook covers the guarded test rollout of the verified Work Register
-authorization and closeout release commit:
+Work-to-Cash and role-aware welcome-page release commit:
 
-`5b4debe8218560de357f37e567f38aa497482d69`
+`4cddc469f7bd20e4cb0e028e9ff1d47842ef7532`
 
 It does not deploy production, configure credentials, connect a CRM/ERP provider,
 or test an external provider.
@@ -43,7 +43,7 @@ The existing test-environment Azure variables must remain configured:
 
 The test PostgreSQL hostname is private and cannot be resolved by a
 GitHub-hosted runner. The workflow therefore builds a dedicated migration image
-whose context contains only the guarded migrator, migrations 034, 035, and 036, the
+whose context contains only the guarded migrator, migrations 034 through 039, the
 migration Dockerfile, and the exact release-commit marker. It resolves that
 image to an immutable ACR digest and runs it as a one-time manual Container Apps
 Job in the same managed environment as the test API, where the linked private
@@ -56,7 +56,7 @@ atomic migration transaction fails. The job has no automatic retries, is
 bounded to 15 minutes, and is deleted after success or failure by both a script
 trap and an always-run workflow cleanup step. After application deployment
 starts, a failed health or smoke check restores both previously captured
-application images. Migrations 034, 035, and 036 are additive and remain in place
+application images. Migrations 034 through 039 are additive and remain in place
 after a successful transaction.
 
 Both Container Apps must already use single-revision mode. The workflow builds
@@ -70,16 +70,22 @@ application.
 - The database connection is reconstructed from the existing test API Container
   App without exposing or duplicating credentials.
 - The release source is exactly the verified Work Register rollout commit.
-- Migrations 034, 035, and 036 match the reviewed SHA-256 checksums.
+- Migrations 034 through 039 match the reviewed SHA-256 checksums.
 - The migration image is resolved to an immutable digest in the approved ACR.
 - The migration runs inside the test API's Container Apps environment and
   reaches the database through private DNS.
-- All three migrations apply in one PostgreSQL transaction with retries disabled.
+- All six migrations apply in one PostgreSQL transaction with retries disabled.
 - The Module 026 audit constraint accepts module `026`.
 - The Work Register `source_mode` and audit foreign-key contracts exist.
 - Migration 036 is registered, the Administrator and Super Administrator roles
   hold the 055C edit and 055D create permissions, and the Work Register feature
   metadata is present.
+- Migration 037 is registered; recognized contract variants are canonicalized to
+  **Time and Material** or **Fixed Price**, and both 055C/055D date triggers exist.
+- Migration 038 is registered; billing readiness, closeout, immutable lifecycle
+  audit, void-safe source guards, and their required triggers/functions exist.
+- Migration 039 is registered, and the deployed invoice-reactivation function
+  acquires readiness-package advisory locks before time-entry locks.
 - The temporary migration job and its database secret are removed before API
   deployment begins.
 - The active API and web image references match the immutable release digests.
@@ -110,8 +116,25 @@ following with your normal test accounts:
 8. Return to Module 055C and confirm the test project can be located and opened.
 
 9. From a selected project in Module 055C, choose **Start Project Closeout** and
-   confirm Module 040 opens with that project selected. Do not bypass Module
-   040 readiness, billing, approval, expense, customer-acceptance, or audit gates.
+   confirm Module 040 opens with that project selected.
+10. Confirm the welcome page shows role-appropriate actions, attention items,
+    project health, assigned projects, billing snapshot, and recent activity.
+    Engineering users should see time-entry content; Managers, Sales, Inside
+    Sales, Executives, and Project Team Coordinators should not.
+11. In Module 055C, edit and explicitly clear the SOW signed and estimated-end
+    dates, then reopen the project and confirm the saved values remain correct.
+    Confirm **T&M**, **TM**, and equivalent variants display as **Time and
+    Material**, while GSD **FP** displays as **Fixed Price**.
+12. In Module 039, save a readiness review for a defined billing period and
+    confirm it uses verified invoice candidates and mapped Certify expenses only.
+13. In Module 042, create a controlled partial invoice, verify the supplied US
+    Signal logo appears in both PDF and Excel, void the invoice, and confirm the
+    governed labor/package sources become available for replacement billing.
+14. In Module 040, verify request, complete, and reopen. Confirm active tasks,
+    pending time, billing readiness, invoice disposition, and confirmations
+    block closeout when incomplete.
+15. Return to Module 055C and confirm creation, edit, billing readiness, invoice,
+    closeout, reopen, archive, and restore evidence appears in the Audit tab.
 
-Record any ordering, access, label, authorization, or closeout-handoff problem
-before authorizing another rollout.
+Record any welcome, ordering, access, persistence, billing, invoice, branding,
+audit, or closeout problem before authorizing another rollout.

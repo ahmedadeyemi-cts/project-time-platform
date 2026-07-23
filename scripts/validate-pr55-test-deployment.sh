@@ -14,6 +14,9 @@ MIGRATION_DOCKERFILE="$REPO_ROOT/deployment/containers/pr55-migrator/Dockerfile"
 MIGRATION_034_SOURCE="$REPO_ROOT/database/migrations/034_module_026_crm_erp_integrations.sql"
 MIGRATION_035_SOURCE="$REPO_ROOT/database/migrations/035_work_register_055c_055d_split.sql"
 MIGRATION_036_SOURCE="$REPO_ROOT/database/migrations/036_work_register_role_scope_and_closeout_handoff.sql"
+MIGRATION_037_SOURCE="$REPO_ROOT/database/migrations/037_work_register_dates_and_contract_types.sql"
+MIGRATION_038_SOURCE="$REPO_ROOT/database/migrations/038_work_to_cash_lifecycle_and_audit.sql"
+MIGRATION_039_SOURCE="$REPO_ROOT/database/migrations/039_work_to_cash_reactivation_lock_order.sql"
 CI_WORKFLOW="$REPO_ROOT/.github/workflows/projectpulse-ci.yml"
 GUIDE="$REPO_ROOT/docs/PR55-TEST-DEPLOYMENT-VERIFICATION.md"
 
@@ -35,6 +38,9 @@ for file in \
   "$MIGRATION_034_SOURCE" \
   "$MIGRATION_035_SOURCE" \
   "$MIGRATION_036_SOURCE" \
+  "$MIGRATION_037_SOURCE" \
+  "$MIGRATION_038_SOURCE" \
+  "$MIGRATION_039_SOURCE" \
   "$CI_WORKFLOW" \
   "$GUIDE"; do
   [[ -f "$file" ]] || fail "Required deployment-safety file is missing: $file"
@@ -48,10 +54,13 @@ bash -n "$MIGRATION_JOB_IDENTITY_TEST"
 bash -n "$ACR_BUILD_DIGEST_TEST"
 bash -n "$MIGRATION_BUNDLE_TEST"
 
-EXPECTED_RELEASE="5b4debe8218560de357f37e567f38aa497482d69"
+EXPECTED_RELEASE="4cddc469f7bd20e4cb0e028e9ff1d47842ef7532"
 EXPECTED_034="275c2f3f5ad56d80f303327baeb665506bc41014d52af8a2b7082c6e451974b9"
 EXPECTED_035="87c6fcea07a25b829ca58c62c18992c9f01d8477a48b55f70aa1c710807b180d"
 EXPECTED_036="b8f9dab7d7465ce06af2ee287867759ee718f6b7d1fc96d4b8629e65b58d80f3"
+EXPECTED_037="00bd6bc9e4f63701831c03e75eb76b09914d7682a8511df27157feed22c311c5"
+EXPECTED_038="19f4843d3501c9162ab04e50f820d921c026fb316ea565a0290d1409e53c790f"
+EXPECTED_039="04a192736864c30ad60af7a4259d40159ceaddbf16c9dec2d7b5b6c6be4fb35c"
 
 [[ "$(sha256sum "$MIGRATION_034_SOURCE" | awk '{print $1}')" == "$EXPECTED_034" ]] ||
   fail "Migration 034 source does not match its guarded checksum."
@@ -59,6 +68,12 @@ EXPECTED_036="b8f9dab7d7465ce06af2ee287867759ee718f6b7d1fc96d4b8629e65b58d80f3"
   fail "Migration 035 source does not match its guarded checksum."
 [[ "$(sha256sum "$MIGRATION_036_SOURCE" | awk '{print $1}')" == "$EXPECTED_036" ]] ||
   fail "Migration 036 source does not match its guarded checksum."
+[[ "$(sha256sum "$MIGRATION_037_SOURCE" | awk '{print $1}')" == "$EXPECTED_037" ]] ||
+  fail "Migration 037 source does not match its guarded checksum."
+[[ "$(sha256sum "$MIGRATION_038_SOURCE" | awk '{print $1}')" == "$EXPECTED_038" ]] ||
+  fail "Migration 038 source does not match its guarded checksum."
+[[ "$(sha256sum "$MIGRATION_039_SOURCE" | awk '{print $1}')" == "$EXPECTED_039" ]] ||
+  fail "Migration 039 source does not match its guarded checksum."
 
 grep -Fq "$EXPECTED_RELEASE" "$WORKFLOW" || fail "Workflow is not pinned to the verified Work Register rollout commit."
 grep -Fq "$EXPECTED_RELEASE" "$MIGRATOR" || fail "Migrator is not pinned to the verified Work Register rollout commit."
@@ -66,7 +81,21 @@ grep -Fq "$EXPECTED_RELEASE" "$MIGRATION_JOB" || fail "Migration job is not tagg
 grep -Fq "$EXPECTED_034" "$MIGRATOR" || fail "Migration 034 checksum guard is missing."
 grep -Fq "$EXPECTED_035" "$MIGRATOR" || fail "Migration 035 checksum guard is missing."
 grep -Fq "$EXPECTED_036" "$MIGRATOR" || fail "Migration 036 checksum guard is missing."
+grep -Fq "$EXPECTED_037" "$MIGRATOR" || fail "Migration 037 checksum guard is missing."
+grep -Fq "$EXPECTED_038" "$MIGRATOR" || fail "Migration 038 checksum guard is missing."
+grep -Fq "$EXPECTED_039" "$MIGRATOR" || fail "Migration 039 checksum guard is missing."
 grep -Fq 'MIGRATION_036_APPLIED=YES' "$MIGRATOR" || fail "Migration 036 verification evidence is missing."
+grep -Fq 'MIGRATION_037_APPLIED=YES' "$MIGRATOR" || fail "Migration 037 verification evidence is missing."
+grep -Fq 'MIGRATION_038_APPLIED=YES' "$MIGRATOR" || fail "Migration 038 verification evidence is missing."
+grep -Fq 'MIGRATION_039_APPLIED=YES' "$MIGRATOR" || fail "Migration 039 verification evidence is missing."
+grep -Fq 'recognized contract variants remain unnormalized' "$MIGRATOR" ||
+  fail "Migration 037 contract-normalization verification is missing."
+grep -Fq 'lifecycle, audit, or live-source guards are incomplete' "$MIGRATOR" ||
+  fail "Migration 038 lifecycle/audit verification is missing."
+grep -Fq 'application-role lifecycle grants are incomplete' "$MIGRATOR" ||
+  fail "Migration 038 application-role grant verification is missing."
+grep -Fq 'invoice-reactivation advisory-lock order is incorrect' "$MIGRATOR" ||
+  fail "Migration 039 advisory-lock-order verification is missing."
 grep -Fq 'administrator Work Register grants are incomplete' "$MIGRATOR" ||
   fail "Migration 036 administrator-grant verification is missing."
 grep -Fq '.projectpulse-release-commit' "$MIGRATOR" || fail "Containerized release-marker guard is missing."
@@ -140,6 +169,24 @@ grep -Fq 'EXPECTED_FILES=(' "$WORKFLOW" || fail "Minimal migration build-context
   fail "Migration 036 must have exactly one destination in the immutable migration build context."
 [[ "$(grep -Ec '^[[:space:]]+migrations/036_work_register_role_scope_and_closeout_handoff\.sql$' "$WORKFLOW")" -eq 1 ]] ||
   fail "Migration 036 must be allowlisted exactly once in the immutable migration build context."
+[[ "$(grep -Fc 'release/database/migrations/037_work_register_dates_and_contract_types.sql' "$WORKFLOW")" -eq 1 ]] ||
+  fail "Migration 037 must be copied exactly once from the verified release."
+[[ "$(grep -Fc '"$CONTEXT/migrations/037_work_register_dates_and_contract_types.sql"' "$WORKFLOW")" -eq 1 ]] ||
+  fail "Migration 037 must have exactly one destination in the immutable migration build context."
+[[ "$(grep -Ec '^[[:space:]]+migrations/037_work_register_dates_and_contract_types\.sql$' "$WORKFLOW")" -eq 1 ]] ||
+  fail "Migration 037 must be allowlisted exactly once in the immutable migration build context."
+[[ "$(grep -Fc 'release/database/migrations/038_work_to_cash_lifecycle_and_audit.sql' "$WORKFLOW")" -eq 1 ]] ||
+  fail "Migration 038 must be copied exactly once from the verified release."
+[[ "$(grep -Fc '"$CONTEXT/migrations/038_work_to_cash_lifecycle_and_audit.sql"' "$WORKFLOW")" -eq 1 ]] ||
+  fail "Migration 038 must have exactly one destination in the immutable migration build context."
+[[ "$(grep -Ec '^[[:space:]]+migrations/038_work_to_cash_lifecycle_and_audit\.sql$' "$WORKFLOW")" -eq 1 ]] ||
+  fail "Migration 038 must be allowlisted exactly once in the immutable migration build context."
+[[ "$(grep -Fc 'release/database/migrations/039_work_to_cash_reactivation_lock_order.sql' "$WORKFLOW")" -eq 1 ]] ||
+  fail "Migration 039 must be copied exactly once from the verified release."
+[[ "$(grep -Fc '"$CONTEXT/migrations/039_work_to_cash_reactivation_lock_order.sql"' "$WORKFLOW")" -eq 1 ]] ||
+  fail "Migration 039 must have exactly one destination in the immutable migration build context."
+[[ "$(grep -Ec '^[[:space:]]+migrations/039_work_to_cash_reactivation_lock_order\.sql$' "$WORKFLOW")" -eq 1 ]] ||
+  fail "Migration 039 must be allowlisted exactly once in the immutable migration build context."
 grep -Fq 'COPY release-commit .projectpulse-release-commit' "$MIGRATION_DOCKERFILE" || fail "Migration image release marker is missing."
 grep -Fq 'COPY migrations/ database/migrations/' "$MIGRATION_DOCKERFILE" || fail "Migration image does not contain the pinned SQL files."
 grep -Fq 'ENTRYPOINT ["/usr/local/bin/apply-pr55-test-migrations.sh", "/opt/projectpulse/release"]' "$MIGRATION_DOCKERFILE" ||
@@ -248,3 +295,6 @@ echo "EXPECTED_RELEASE_COMMIT=$EXPECTED_RELEASE"
 echo "MIGRATION_034_CHECKSUM=$EXPECTED_034"
 echo "MIGRATION_035_CHECKSUM=$EXPECTED_035"
 echo "MIGRATION_036_CHECKSUM=$EXPECTED_036"
+echo "MIGRATION_037_CHECKSUM=$EXPECTED_037"
+echo "MIGRATION_038_CHECKSUM=$EXPECTED_038"
+echo "MIGRATION_039_CHECKSUM=$EXPECTED_039"
