@@ -1940,7 +1940,7 @@ public static class WorkLifecycleModule
                     JOIN projects project ON project.project_id = invoice.project_id
                     LEFT JOIN work_register_project_lifecycle invoice_lifecycle
                       ON invoice_lifecycle.project_id = project.project_id
-                    WHERE invoice.invoice_status IN ('draft', 'ready_for_pm', 'ready_for_accounting', 'approved', 'finalized')
+                    WHERE lower(COALESCE(invoice.invoice_status, '')) NOT IN ('paid', 'void', 'voided')
                       AND COALESCE(invoice_lifecycle.is_archived, FALSE) = FALSE
                       AND (@broad_scope OR project.project_manager_user_id = @user_id)
                 )
