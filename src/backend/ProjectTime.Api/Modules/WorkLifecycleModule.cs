@@ -162,6 +162,8 @@ public static class WorkLifecycleModule
             connection,
             null,
             project,
+            readiness?.BillingPeriodStart,
+            readiness?.BillingPeriodEnd,
             context.RequestAborted);
         var closeout = await LoadCloseoutAsync(connection, null, projectId, context.RequestAborted);
         var blockers = await BuildCloseoutBlockersAsync(
@@ -273,6 +275,8 @@ public static class WorkLifecycleModule
             connection,
             transaction,
             project,
+            request.BillingPeriodStart,
+            request.BillingPeriodEnd,
             context.RequestAborted);
         if (requestedStatus == "ready" && serverBlockers.Count > 0)
         {
@@ -938,6 +942,7 @@ public static class WorkLifecycleModule
             SELECT COUNT(*)
             FROM project_tasks task
             WHERE task.project_id = @project_id
+              AND task.is_active = TRUE
               AND lower(COALESCE(task.status, '')) NOT IN (
                   'complete', 'completed', 'closed', 'cancelled', 'canceled', 'done'
               );
@@ -999,6 +1004,8 @@ public static class WorkLifecycleModule
         NpgsqlConnection connection,
         NpgsqlTransaction? transaction,
         WorkLifecycleProject project,
+        DateOnly? billingPeriodStart,
+        DateOnly? billingPeriodEnd,
         CancellationToken cancellationToken)
     {
         var blockers = new List<string>();
@@ -1071,6 +1078,8 @@ public static class WorkLifecycleModule
                   AND entry.billable = TRUE
                   AND entry.hours > 0
                   AND entry.status = ANY(@approved_statuses)
+                  AND (@period_start IS NULL OR entry.work_date >= @period_start)
+                  AND (@period_end IS NULL OR entry.work_date <= @period_end)
                   AND NOT EXISTS (
                       SELECT 1
                       FROM billing_invoice_lines invoiced
@@ -1118,6 +1127,10 @@ public static class WorkLifecycleModule
             command.Parameters.AddWithValue("project_id", project.ProjectId);
             command.Parameters.Add("approved_statuses", NpgsqlDbType.Array | NpgsqlDbType.Text).Value =
                 LifecycleApprovedTimeStatuses;
+            command.Parameters.Add("period_start", NpgsqlDbType.Date).Value =
+                billingPeriodStart.HasValue ? billingPeriodStart.Value : DBNull.Value;
+            command.Parameters.Add("period_end", NpgsqlDbType.Date).Value =
+                billingPeriodEnd.HasValue ? billingPeriodEnd.Value : DBNull.Value;
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             if (await reader.ReadAsync(cancellationToken))
             {
