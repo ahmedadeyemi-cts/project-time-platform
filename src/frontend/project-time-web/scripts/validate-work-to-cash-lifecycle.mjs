@@ -139,6 +139,10 @@ requireText(lifecycle, [
   'review_lifecycle.is_archived',
   'invoice_lifecycle.is_archived',
   'entry_lifecycle.is_archived',
+  'FROM project_assignments assignment',
+  'assignment.effective_start_date <= CURRENT_DATE',
+  'assignment.effective_end_date >= CURRENT_DATE',
+  "lower(COALESCE(project.status, '')) NOT IN ('completed', 'cancelled')",
   'FROM timesheet_day_statuses day_status',
   "lower(COALESCE(submitter.manager_email, ''))",
   '@can_view_all_approvals',
@@ -190,6 +194,9 @@ requireText(invoiceModule, [
   'CountEligibleNonLaborPackagesAsync',
   'InsertNonLaborInvoiceLineAsync',
   'BillingReadinessReviewIds',
+  '.OrderBy(line => line.TimeEntryId)',
+  '.ThenBy(line => line.RateLineId)',
+  '.OrderBy(reviewId => reviewId)',
   'billing_readiness_review_id',
   "'fixed_price_milestone'",
   "'expense'"
@@ -331,6 +338,10 @@ requireText(readiness, [
   'if (!isGuid(selectedProject?.id))',
   'Select a persisted project before saving billing readiness.',
   'NON_LABOR_DRAFT_EVIDENCE_BLOCKERS',
+  'buildVerifiedLaborRows',
+  "source: 'Module 042 verified invoice candidate'",
+  'matchesProject(expense, selectedProject)',
+  'buildMonthEndRows(payload.billingCandidates, stagedCertifyExpenses)',
   '.filter((blocker) => requiresLaborEvidence || !NON_LABOR_DRAFT_EVIDENCE_BLOCKERS.has(blocker))',
   "requiresNonLaborEvidence && String(evidenceAmount).trim() !== ''",
   'setPeriodStart(firstDayOfCurrentMonth())',
@@ -345,6 +356,16 @@ requireText(readiness, [
   'Saved:',
   'Persisted and audited'
 ], 'Module 039 billing readiness');
+
+if (readiness.includes('getProjectSeed')
+    || readiness.includes('approved labor placeholder')
+    || readiness.includes('index % Math.max')) {
+  throw new Error('Module 039 must not fabricate labor totals or randomly assign Certify expenses.');
+}
+
+if ((lifecycle.match(/FROM project_assignments assignment/g) ?? []).length < 2) {
+  throw new Error('The welcome dashboard must scope project health and My Projects through active assignments.');
+}
 
 requireText(closeout, [
   '/api/work-lifecycle/projects/',
