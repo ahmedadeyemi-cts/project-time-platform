@@ -122,6 +122,9 @@ requireText(lifecycle, [
   'final_invoice_complete',
   'write_off_approved',
   'InsertAuditAsync',
+  'var auditReason = Clean(request.Reason);',
+  'if (auditReason.Length < 5)',
+  'A specific audit reason is required before saving billing readiness.',
   "SET status = 'completed'",
   'EXTRACT(ISODOW FROM CURRENT_DATE)',
   'FROM generate_series(0, 4) AS weekday_offset',
@@ -157,6 +160,14 @@ if (lifecycle.includes('task.status')) {
 
 if (lifecycle.includes("purchase_order.po_status IN ('draft', 'active')")) {
   throw new Error('Billing readiness must reject draft purchase orders.');
+}
+
+const billingReadinessSaveEndpoint = lifecycle.slice(
+  lifecycle.indexOf('private static async Task<IResult> SaveBillingReadinessAsync'),
+  lifecycle.indexOf('private static async Task<IResult> RequestCloseoutAsync')
+);
+if (billingReadinessSaveEndpoint.includes('Clean(request.Reason),')) {
+  throw new Error('Billing readiness audit writes must use the server-validated audit reason.');
 }
 
 if ((lifecycle.match(/FROM billing_invoice_lines/g) ?? []).length < 5
@@ -442,6 +453,20 @@ if (certifyExceptionsEndpoint.includes('status = "placeholder"')
     && !readiness.includes("if (exceptionStatus.includes('placeholder')) return [];")) {
   throw new Error('Placeholder Certify exception definitions must not block billing-readiness persistence.');
 }
+
+if (certifyExceptionsEndpoint.includes('status = "placeholder"')
+    && !closeout.includes("if (payloadStatus.includes('placeholder')) return [];")) {
+  throw new Error('Placeholder Certify exception definitions must not block project closeout.');
+}
+
+requireText(closeout, [
+  'getBlockingCertifyExceptionObjects(payload, project)',
+  "['projectId', 'projectID', 'project_id', 'linkedProjectId']",
+  'normalizeText(project?.projectId).toLowerCase()',
+  "['projectCode', 'projectNumber', 'projectNo', 'project_code']",
+  'normalizeText(project?.projectCode).toLowerCase()',
+  'countCertifyExceptions(payload.data.certifyExceptions, selectedProject)'
+], 'Live Certify closeout exception scope');
 
 if (closeout.includes("['projectId', 'id', 'projectID', 'project_id']")) {
   throw new Error('Project closeout must not use generic intake or customer IDs as persisted project IDs.');
