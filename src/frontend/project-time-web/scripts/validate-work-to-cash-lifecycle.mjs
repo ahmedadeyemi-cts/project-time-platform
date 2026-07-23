@@ -21,6 +21,7 @@ const paths = {
   program: 'src/backend/ProjectTime.Api/Program.cs',
   lifecycle: 'src/backend/ProjectTime.Api/Modules/WorkLifecycleModule.cs',
   invoiceModule: 'src/backend/ProjectTime.Api/Modules/InvoiceBillingModule.cs',
+  certiniaModule: 'src/backend/ProjectTime.Api/Modules/CertiniaBillingModule.cs',
   renderer: 'src/backend/ProjectTime.Api/Modules/InvoiceArtifactBrandingRenderer.cs',
   brandingAssets: 'src/backend/ProjectTime.Api/Modules/InvoiceBrandingAssets.cs',
   csproj: 'src/backend/ProjectTime.Api/ProjectTime.Api.csproj',
@@ -39,6 +40,7 @@ const [
   program,
   lifecycle,
   invoiceModule,
+  certiniaModule,
   renderer,
   brandingAssets,
   csproj,
@@ -171,6 +173,16 @@ requireText(invoiceModule, [
   "'fixed_price_milestone'",
   "'expense'"
 ], 'Module 042 invoice eligibility');
+
+requireText(certiniaModule, [
+  'if (laborCategory == "expense") return "Reimbursable Expense";',
+  'if (laborCategory == "fixed_price_milestone") return "Fixed Price Milestone";'
+], 'Non-labor customer resource labels');
+
+requireText(invoice, [
+  "if (labor === 'expense') return 'Reimbursable Expense';",
+  "if (labor === 'fixed_price_milestone') return 'Fixed Price Milestone';"
+], 'Non-labor invoice preview labels');
 
 if ((invoiceModule.match(/FROM billing_invoice_lines invoiced/g) ?? []).length !== 3
     || (invoiceModule.match(/JOIN billing_invoices invoice/g) ?? []).length < 6
@@ -408,6 +420,7 @@ requireText(app, [
 requireText(docker, [
   'WorkLifecycleModule.cs',
   'InvoiceBillingModule.cs',
+  'CertiniaBillingModule.cs',
   'InvoiceArtifactBrandingRenderer.cs',
   'InvoiceBrandingAssets.cs',
   'ProjectTime.Api.csproj',
