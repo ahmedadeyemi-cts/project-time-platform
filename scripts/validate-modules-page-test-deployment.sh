@@ -55,7 +55,7 @@ update_count="$(grep -Fc 'az containerapp update' "$WORKFLOW")"
 [[ "$update_count" == '2' ]] || fail "Expected exactly one web deployment and one web rollback update; found $update_count."
 
 web_target_count="$(grep -Fc -- "-n '\${{ vars.AZURE_WEB_APP }}'" "$WORKFLOW")"
-[[ "$web_target_count" == '3' ]] || fail "Every read/deploy/rollback operation must target the web app; found $web_target_count expected references."
+[[ "$web_target_count" == '5' ]] || fail "Every capture, deployment, validation, and rollback operation must target the web app; found $web_target_count expected references."
 
 if ! grep -Fq "git -C control merge-base --is-ancestor" "$WORKFLOW"; then
   fail "The release must be an ancestor of the merged deployment-control commit."
