@@ -17,7 +17,7 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Assets/Branding/USSNavyStacked.png" LogicalName="ProjectTime.Api.Assets.Branding.USSNavyStacked.png" />
-    <EmbeddedResource Include="Assets/Branding/USSNavyStacked.jpg" LogicalName="ProjectTime.Api.Assets.Branding/USSNavyStacked.jpg" />
+    <EmbeddedResource Include="Assets/Branding/USSNavyStacked.jpg" LogicalName="ProjectTime.Api.Assets.Branding.USSNavyStacked.jpg" />
   </ItemGroup>
 
   <!-- Program.cs remains the canonical oversized entrypoint. Generated compile
