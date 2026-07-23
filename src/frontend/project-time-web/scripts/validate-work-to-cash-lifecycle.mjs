@@ -297,7 +297,7 @@ requireText(readiness, [
   'evidenceAmount',
   'Enter the approved expense description.',
   'Enter a positive governed milestone amount.',
-  'if (requiresLaborEvidence) {',
+  'if (requiresLaborEvidence',
   'if (!saved) {',
   'function isGuid(value)',
   'const projectId = project.projectId ?? project.id',
