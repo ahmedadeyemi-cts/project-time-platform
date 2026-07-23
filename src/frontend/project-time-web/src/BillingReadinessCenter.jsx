@@ -558,9 +558,9 @@ export default function BillingReadinessCenter() {
     if (billingMode === 'project' && !selectedProject) issues.push('No project selected.');
     if (!Number(billingRate || 0)) issues.push('Billing rate is missing for labor estimate.');
     if (certifyExceptions.length > 0) issues.push(`${certifyExceptions.length} Certify placeholder exception(s) need review.`);
-    if (!checkedItems.has('timeApproved')) issues.push('Approved labor review is not confirmed.');
-    if (!checkedItems.has('certifyReviewed')) issues.push('Certify expense review is not confirmed.');
-    if (!checkedItems.has('exceptionsCleared')) issues.push('Billing exceptions are not confirmed as cleared.');
+    readinessChecks
+      .filter((item) => !checkedItems.has(item.key))
+      .forEach((item) => issues.push(`${item.label} is not confirmed.`));
     if (financialTotals.blockedTotal > 0) issues.push(`${currency(financialTotals.blockedTotal)} is currently blocked or pending review.`);
     (billingCandidate?.blockers ?? []).forEach((blocker) => issues.push(blocker));
     if (billingMode === 'project' && billingCandidate && Number(billingCandidate.approvedLineCount || 0) === 0) {
