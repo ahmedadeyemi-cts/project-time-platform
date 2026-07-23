@@ -206,7 +206,7 @@ function isGuid(value) {
   return /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(String(value ?? ''));
 }
 
-function deriveProjectCandidates(workspacePayload, intakePayload, customerPayload) {
+function deriveProjectCandidates(workspacePayload, intakePayload, customerPayload, billingCandidatePayload) {
   const workspaceProjects = normalizeArrayPayload(workspacePayload, [
     'projects',
     'activeProjects',
@@ -225,6 +225,11 @@ function deriveProjectCandidates(workspacePayload, intakePayload, customerPayloa
   const customers = normalizeArrayPayload(customerPayload, [
     'customers',
     'customerSummaries',
+    'items'
+  ]);
+
+  const billingProjects = normalizeArrayPayload(billingCandidatePayload, [
+    'candidates',
     'items'
   ]);
 
@@ -269,6 +274,23 @@ function deriveProjectCandidates(workspacePayload, intakePayload, customerPayloa
       status: request.status ?? request.intakeStatus ?? 'Intake',
       risk: request.launchReadinessStatus ?? request.readinessStatus ?? 'Review',
       sourceRecord: request
+    });
+  });
+
+  billingProjects.forEach((project, index) => {
+    const projectId = project.projectId;
+    if (!isGuid(projectId)) return;
+
+    candidates.push({
+      source: 'Billing candidate',
+      id: projectId,
+      projectCode: project.projectCode ?? `BILLING-${index + 1}`,
+      projectName: project.projectName ?? 'Billing project',
+      customerName: project.customerName ?? 'Customer pending',
+      projectManagerName: project.projectManagerName ?? 'PM pending',
+      status: project.status ?? 'Active',
+      risk: Array.isArray(project.blockers) && project.blockers.length > 0 ? 'Review' : 'Ready',
+      sourceRecord: project
     });
   });
 
@@ -478,8 +500,13 @@ export default function BillingReadinessCenter() {
   }, []);
 
   const projectCandidates = useMemo(() => {
-    return deriveProjectCandidates(payload.workspace, payload.intake, payload.customers);
-  }, [payload.workspace, payload.intake, payload.customers]);
+    return deriveProjectCandidates(
+      payload.workspace,
+      payload.intake,
+      payload.customers,
+      payload.billingCandidates
+    );
+  }, [payload.workspace, payload.intake, payload.customers, payload.billingCandidates]);
 
   useEffect(() => {
     if (!selectedProjectKey && projectCandidates.length > 0) {
