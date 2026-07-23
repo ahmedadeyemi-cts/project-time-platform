@@ -173,8 +173,9 @@ requireText(invoiceModule, [
 ], 'Module 042 invoice eligibility');
 
 if ((invoiceModule.match(/FROM billing_invoice_lines invoiced/g) ?? []).length !== 3
-    || (invoiceModule.match(/JOIN billing_invoices invoice/g) ?? []).length !== 3) {
-  throw new Error('Every Module 042 eligibility check must release voided invoice lines.');
+    || (invoiceModule.match(/JOIN billing_invoices invoice/g) ?? []).length < 6
+    || (invoiceModule.match(/lower\(COALESCE\(invoice\.invoice_status, ''\)\) <> 'void'/g) ?? []).length < 6) {
+  throw new Error('Every Module 042 labor and governed-package eligibility check must release voided invoice lines.');
 }
 
 requireText(migration, [
