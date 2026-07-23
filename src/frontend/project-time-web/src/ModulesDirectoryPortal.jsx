@@ -42,11 +42,29 @@ function ensurePersistentModulesLink(active) {
   return link;
 }
 
-function expandAuthorizedNavigationGroups() {
+function groupKey(toggle) {
+  return cleanText(toggle.querySelector('.enterprise-nav-label')?.textContent || toggle.textContent);
+}
+
+function expandAuthorizedNavigationGroups(expandedForDirectory) {
   const toggles = Array.from(document.querySelectorAll('.enterprise-sidebar-group-toggle'));
   for (const toggle of toggles) {
-    if (toggle.getAttribute('aria-expanded') === 'false') toggle.click();
+    if (toggle.getAttribute('aria-expanded') === 'false') {
+      expandedForDirectory.add(groupKey(toggle));
+      toggle.click();
+    }
   }
+}
+
+function restoreNavigationGroups(expandedForDirectory) {
+  if (!expandedForDirectory.size) return;
+  const toggles = Array.from(document.querySelectorAll('.enterprise-sidebar-group-toggle'));
+  for (const toggle of toggles) {
+    if (expandedForDirectory.has(groupKey(toggle)) && toggle.getAttribute('aria-expanded') === 'true') {
+      toggle.click();
+    }
+  }
+  expandedForDirectory.clear();
 }
 
 function collectAuthorizedModules() {
@@ -68,12 +86,19 @@ function collectAuthorizedModules() {
       const label = cleanText(anchor.querySelector('.enterprise-nav-label')?.textContent || anchor.textContent);
       if (!label) continue;
 
+      const moduleNumberSource = [
+        anchor.getAttribute('aria-label'),
+        anchor.getAttribute('title'),
+        anchor.dataset.moduleNumber,
+        label
+      ].filter(Boolean).join(' ');
+
       seenRoutes.add(route);
       modules.push({
         route,
         href,
         label,
-        moduleNumber: moduleNumberFromLabel(label),
+        moduleNumber: moduleNumberFromLabel(moduleNumberSource),
         group: groupName,
         order: modules.length
       });
@@ -89,6 +114,7 @@ function moduleListsMatch(left, right) {
     item.route === right[index]?.route
     && item.label === right[index]?.label
     && item.group === right[index]?.group
+    && item.moduleNumber === right[index]?.moduleNumber
   ));
 }
 
@@ -98,6 +124,11 @@ function updateWorkspaceHeading(active) {
   if (heading && heading.textContent !== 'Modules') heading.textContent = 'Modules';
 }
 
+function mutationOriginatesInsidePortal(mutation) {
+  const target = mutation.target instanceof Element ? mutation.target : mutation.target.parentElement;
+  return Boolean(target?.closest('#modules-directory-portal-host'));
+}
+
 export default function ModulesDirectoryPortal() {
   const [route, setRoute] = useState(currentRoute);
   const [portalHost, setPortalHost] = useState(null);
@@ -105,6 +136,7 @@ export default function ModulesDirectoryPortal() {
   const [search, setSearch] = useState('');
   const [group, setGroup] = useState('all');
   const refreshTimer = useRef(null);
+  const expandedForDirectory = useRef(new Set());
   const active = route === MODULES_ROUTE;
 
   useEffect(() => {
@@ -114,19 +146,40 @@ export default function ModulesDirectoryPortal() {
   }, []);
 
   useEffect(() => {
-    let host = document.getElementById('modules-directory-portal-host');
-    const main = document.querySelector('main.app-shell');
-    if (!main) return undefined;
+    const root = document.getElementById('root');
+    if (!root) return undefined;
 
-    if (!host) {
-      host = document.createElement('div');
-      host.id = 'modules-directory-portal-host';
-      main.appendChild(host);
-    }
-    setPortalHost(host);
+    let currentHost = null;
+    const ensurePortalHost = () => {
+      const main = document.querySelector('main.app-shell.enterprise-nav-enabled');
+      if (!main) {
+        if (currentHost?.isConnected) currentHost.remove();
+        currentHost = null;
+        setPortalHost(null);
+        return;
+      }
+
+      let host = main.querySelector(':scope > #modules-directory-portal-host');
+      if (!host) {
+        document.getElementById('modules-directory-portal-host')?.remove();
+        host = document.createElement('div');
+        host.id = 'modules-directory-portal-host';
+        main.appendChild(host);
+      }
+
+      if (currentHost !== host) {
+        currentHost = host;
+        setPortalHost(host);
+      }
+    };
+
+    ensurePortalHost();
+    const rootObserver = new MutationObserver(ensurePortalHost);
+    rootObserver.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
 
     return () => {
-      if (host?.isConnected) host.remove();
+      rootObserver.disconnect();
+      if (currentHost?.isConnected) currentHost.remove();
     };
   }, []);
 
@@ -136,7 +189,7 @@ export default function ModulesDirectoryPortal() {
       updateWorkspaceHeading(active);
       if (!active) return;
 
-      expandAuthorizedNavigationGroups();
+      expandAuthorizedNavigationGroups(expandedForDirectory.current);
       window.clearTimeout(refreshTimer.current);
       refreshTimer.current = window.setTimeout(() => {
         const nextModules = collectAuthorizedModules();
@@ -145,28 +198,27 @@ export default function ModulesDirectoryPortal() {
     };
 
     refresh();
-    const observers = [];
-    const navigation = document.querySelector('.enterprise-top-navigation');
-    const sidebar = document.querySelector('.enterprise-sidebar');
+    const root = document.getElementById('root');
+    const observer = root ? new MutationObserver((mutations) => {
+      if (mutations.every(mutationOriginatesInsidePortal)) return;
+      refresh();
+    }) : null;
 
-    if (navigation) {
-      const navigationObserver = new MutationObserver(refresh);
-      navigationObserver.observe(navigation, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
-      observers.push(navigationObserver);
-    }
-
-    if (sidebar) {
-      const sidebarObserver = new MutationObserver(refresh);
-      sidebarObserver.observe(sidebar, { childList: true, subtree: true, attributes: true, attributeFilter: ['aria-expanded', 'class'] });
-      observers.push(sidebarObserver);
-    }
+    observer?.observe(root, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+      attributes: true,
+      attributeFilter: ['aria-expanded', 'class']
+    });
 
     window.addEventListener('projectpulse:view-as-changed', refresh);
 
     return () => {
-      observers.forEach((observer) => observer.disconnect());
+      observer?.disconnect();
       window.removeEventListener('projectpulse:view-as-changed', refresh);
       window.clearTimeout(refreshTimer.current);
+      if (active) restoreNavigationGroups(expandedForDirectory.current);
     };
   }, [active]);
 
