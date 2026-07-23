@@ -385,10 +385,25 @@ CREATE OR REPLACE FUNCTION projectpulse038_guard_invoice_reactivation()
 RETURNS trigger
 LANGUAGE plpgsql
 AS $$
+DECLARE
+    v_time_entry_id UUID;
 BEGIN
     IF lower(COALESCE(OLD.invoice_status, '')) = 'void'
        AND lower(COALESCE(NEW.invoice_status, '')) <> 'void'
-       AND EXISTS (
+    THEN
+        FOR v_time_entry_id IN
+            SELECT DISTINCT target_line.time_entry_id
+            FROM billing_invoice_lines target_line
+            WHERE target_line.billing_invoice_id = NEW.billing_invoice_id
+              AND target_line.time_entry_id IS NOT NULL
+            ORDER BY target_line.time_entry_id
+        LOOP
+            PERFORM pg_advisory_xact_lock(
+                hashtextextended(v_time_entry_id::text, 0)
+            );
+        END LOOP;
+
+        IF EXISTS (
             SELECT 1
             FROM billing_invoice_lines target_line
             JOIN billing_invoice_lines other_line
@@ -399,11 +414,12 @@ BEGIN
             WHERE target_line.billing_invoice_id = NEW.billing_invoice_id
               AND target_line.time_entry_id IS NOT NULL
               AND lower(COALESCE(other_invoice.invoice_status, '')) <> 'void'
-       )
-    THEN
-        RAISE EXCEPTION
-            'Invoice % cannot be reactivated because replacement invoice lines exist.',
-            NEW.billing_invoice_id;
+        )
+        THEN
+            RAISE EXCEPTION
+                'Invoice % cannot be reactivated because replacement invoice lines exist.',
+                NEW.billing_invoice_id;
+        END IF;
     END IF;
 
     RETURN NEW;
