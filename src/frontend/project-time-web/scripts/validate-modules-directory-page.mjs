@@ -40,12 +40,20 @@ requireText(portal, [
   "navigation.querySelector('#projectpulse-modules-navigation-link')",
   "candidate.getAttribute('href') === '#dashboard'",
   "dashboardLink.insertAdjacentElement('afterend', link)",
+  "document.querySelectorAll('.enterprise-sidebar-section')",
+  "cleanText(section.querySelector('.enterprise-sidebar-section-title')?.textContent).toLowerCase() === 'pinned'",
+  "pinnedSection?.querySelectorAll('.enterprise-sidebar-links:not(.nested) > a[href^=\"#\"]')",
   "document.querySelectorAll('.enterprise-sidebar-group')",
   "document.querySelectorAll('.enterprise-sidebar-group-toggle')",
   "groupElement.querySelectorAll('.enterprise-sidebar-links.nested a[href^=\"#\"]')",
   "route === 'dashboard' || route === MODULES_ROUTE",
+  "document.querySelector('main.app-shell.enterprise-nav-enabled')",
+  "mutationOriginatesInsidePortal",
+  "mutations.every(mutationOriginatesInsidePortal)",
+  'moduleListsMatch(current, nextModules)',
   "window.addEventListener('projectpulse:view-as-changed', refresh)",
   "window.addEventListener('hashchange', handleHashChange)",
+  'restoreNavigationGroups(expandedForDirectory.current)',
   'Search modules',
   'All categories',
   'Open module →',
@@ -54,6 +62,10 @@ requireText(portal, [
 
 if (portal.includes('getInstalledProjectPulseModuleRegistry') || portal.includes('const modules = [')) {
   throw new Error('The Modules page must reuse authorized navigation output instead of duplicating the module registry.');
+}
+
+if (portal.includes('observer.observe(document.body')) {
+  throw new Error('The Modules observer must not watch the whole body and retrigger itself from portal card rendering.');
 }
 
 requireText(css, [
@@ -71,4 +83,4 @@ requireText(packageJson, [
   'npm run validate:modules-directory'
 ], 'Production build wiring');
 
-console.log('Persistent Dashboard and Modules navigation, role-aware directory, filtering, and route-isolation contracts passed.');
+console.log('Persistent Dashboard and Modules navigation, role-aware directory, filtering, shell lifecycle, and route-isolation contracts passed.');
