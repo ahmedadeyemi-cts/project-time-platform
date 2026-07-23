@@ -41,6 +41,14 @@ jobs:
           fi
           cat /tmp/projectpulse-api-build.log
 
+      - name: Upload API compiler diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scoped-rbac-api-build-diagnostics
+          path: /tmp/projectpulse-api-build.log
+          retention-days: 7
+
       - name: Test Work Register project authorization
         run: dotnet run --project tests/ProjectTime.Api.AuthorizationTests/ProjectTime.Api.AuthorizationTests.csproj --configuration Release
 
