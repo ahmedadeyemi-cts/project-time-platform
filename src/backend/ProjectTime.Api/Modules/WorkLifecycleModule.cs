@@ -1083,34 +1083,36 @@ public static class WorkLifecycleModule
             SELECT
                 COUNT(*),
                 COUNT(*) FILTER (
-                    WHERE NOT EXISTS (
-                        SELECT 1
-                        FROM work_rate_cards card
-                        JOIN work_rate_card_lines line
-                          ON line.rate_card_id = card.rate_card_id
-                         AND line.is_active = TRUE
-                         AND line.billable_default = TRUE
-                         AND COALESCE(line.rate_amount, 0) > 0
-                         AND lower(line.unit_type) = 'hour'
-                         AND lower(line.time_type) = lower(COALESCE(eligible.time_type, 'normal'))
-                        LEFT JOIN project_billing_profiles profile
-                          ON profile.project_id = @project_id
-                        WHERE lower(card.status) IN ('active', 'published', 'approved')
-                          AND card.effective_start_date <= eligible.work_date
-                          AND (card.effective_end_date IS NULL OR card.effective_end_date >= eligible.work_date)
-                          AND (
-                              (
-                                  profile.default_rate_card_id IS NOT NULL
-                                  AND card.rate_card_id = profile.default_rate_card_id
-                              )
-                              OR (
-                                  profile.default_rate_card_id IS NULL
-                                  AND (card.client_id = eligible.client_id OR card.client_id IS NULL)
-                              )
-                          )
-                    )
+                    WHERE rate_match.has_positive_rate IS NULL
                 )
-            FROM eligible;
+            FROM eligible
+            LEFT JOIN LATERAL (
+                SELECT TRUE AS has_positive_rate
+                FROM work_rate_cards card
+                JOIN work_rate_card_lines line
+                  ON line.rate_card_id = card.rate_card_id
+                 AND line.is_active = TRUE
+                 AND line.billable_default = TRUE
+                 AND COALESCE(line.rate_amount, 0) > 0
+                 AND lower(line.unit_type) = 'hour'
+                 AND lower(line.time_type) = lower(COALESCE(eligible.time_type, 'normal'))
+                LEFT JOIN project_billing_profiles profile
+                  ON profile.project_id = @project_id
+                WHERE lower(card.status) IN ('active', 'published', 'approved')
+                  AND card.effective_start_date <= eligible.work_date
+                  AND (card.effective_end_date IS NULL OR card.effective_end_date >= eligible.work_date)
+                  AND (
+                      (
+                          profile.default_rate_card_id IS NOT NULL
+                          AND card.rate_card_id = profile.default_rate_card_id
+                      )
+                      OR (
+                          profile.default_rate_card_id IS NULL
+                          AND (card.client_id = eligible.client_id OR card.client_id IS NULL)
+                      )
+                  )
+                LIMIT 1
+            ) rate_match ON TRUE;
             """, connection, transaction))
         {
             command.Parameters.AddWithValue("project_id", project.ProjectId);
