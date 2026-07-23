@@ -118,6 +118,28 @@ COPY src/backend/ProjectTime.Api/Modules/WorkRegisterSellImportModule.cs \
 COPY src/backend/ProjectTime.Api/Modules/WorkRegisterPurchaseOrderModule.cs \
      src/backend/ProjectTime.Api/Modules/WorkRegisterPurchaseOrderModule.cs
 
+COPY src/backend/ProjectTime.Api/Modules/WorkLifecycleModule.cs \
+     src/backend/ProjectTime.Api/Modules/WorkLifecycleModule.cs
+
+COPY src/backend/ProjectTime.Api/Modules/InvoiceBillingModule.cs \
+     src/backend/ProjectTime.Api/Modules/InvoiceBillingModule.cs
+
+COPY src/backend/ProjectTime.Api/Modules/CertiniaBillingModule.cs \
+     src/backend/ProjectTime.Api/Modules/CertiniaBillingModule.cs
+
+COPY src/backend/ProjectTime.Api/Modules/InvoiceArtifactBrandingRenderer.cs \
+     src/backend/ProjectTime.Api/Modules/InvoiceArtifactBrandingRenderer.cs
+
+COPY src/backend/ProjectTime.Api/Modules/InvoiceBrandingAssets.cs \
+     src/backend/ProjectTime.Api/Modules/InvoiceBrandingAssets.cs
+
+COPY src/backend/ProjectTime.Api/ProjectTime.Api.csproj \
+     src/backend/ProjectTime.Api/ProjectTime.Api.csproj
+
+COPY src/backend/ProjectTime.Api/Assets/Branding/USSNavyStacked.png \
+     src/backend/ProjectTime.Api/Assets/Branding/USSNavyStacked.jpg \
+     src/backend/ProjectTime.Api/Assets/Branding/
+
 COPY src/backend/ProjectTime.Api/Modules/GovernedOperationsReadModule.cs \
      src/backend/ProjectTime.Api/Modules/GovernedOperationsReadModule.cs
 
@@ -202,6 +224,12 @@ COPY database/migrations/036_work_register_role_scope_and_closeout_handoff.sql \
 COPY database/migrations/037_work_register_dates_and_contract_types.sql \
      database/migrations/037_work_register_dates_and_contract_types.sql
 
+COPY database/migrations/038_work_to_cash_lifecycle_and_audit.sql \
+     database/migrations/038_work_to_cash_lifecycle_and_audit.sql
+
+COPY database/migrations/039_work_to_cash_reactivation_lock_order.sql \
+     database/migrations/039_work_to_cash_reactivation_lock_order.sql
+
 COPY database/rollback/034_module_026_crm_erp_integrations_rollback.sql \
      database/rollback/034_module_026_crm_erp_integrations_rollback.sql
 
@@ -213,6 +241,12 @@ COPY database/rollback/036_work_register_role_scope_and_closeout_handoff_rollbac
 
 COPY database/rollback/037_work_register_dates_and_contract_types_rollback.sql \
      database/rollback/037_work_register_dates_and_contract_types_rollback.sql
+
+COPY database/rollback/038_work_to_cash_lifecycle_and_audit_rollback.sql \
+     database/rollback/038_work_to_cash_lifecycle_and_audit_rollback.sql
+
+COPY database/rollback/039_work_to_cash_reactivation_lock_order_rollback.sql \
+     database/rollback/039_work_to_cash_reactivation_lock_order_rollback.sql
 
 COPY docs/modules/module-077-release-deployment-control/ \
      docs/modules/module-077-release-deployment-control/

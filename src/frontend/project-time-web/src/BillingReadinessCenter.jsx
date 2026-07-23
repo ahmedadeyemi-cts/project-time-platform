@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import './billing-readiness-center.css';
 
+const NON_LABOR_DRAFT_EVIDENCE_BLOCKERS = new Set([
+  'No approved uninvoiced labor or governed ready non-labor package is currently eligible.',
+  'Fixed Price invoice dollars require a governed ready milestone or expense package; hourly time remains utilization evidence only.'
+]);
+
 const readinessChecks = [
   {
     key: 'timeApproved',
@@ -131,6 +136,24 @@ async function fetchJson(path) {
   return response.json();
 }
 
+async function postJson(path, payload) {
+  const response = await fetch(path, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...getProjectPulseAuthHeaders()
+    },
+    cache: 'no-store',
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiErrorMessage(response, path));
+  }
+
+  return response.json();
+}
+
 function currency(value) {
   const number = Number(value || 0);
   return number.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
@@ -179,7 +202,11 @@ function normalizeArrayPayload(payload, possibleKeys) {
   return [];
 }
 
-function deriveProjectCandidates(workspacePayload, intakePayload, customerPayload) {
+function isGuid(value) {
+  return /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(String(value ?? ''));
+}
+
+function deriveProjectCandidates(workspacePayload, intakePayload, customerPayload, billingCandidatePayload) {
   const workspaceProjects = normalizeArrayPayload(workspacePayload, [
     'projects',
     'activeProjects',
@@ -201,6 +228,11 @@ function deriveProjectCandidates(workspacePayload, intakePayload, customerPayloa
     'items'
   ]);
 
+  const billingProjects = normalizeArrayPayload(billingCandidatePayload, [
+    'candidates',
+    'items'
+  ]);
+
   const customerById = new Map(customers.map((customer) => [
     String(customer.customerId ?? customer.id ?? customer.clientId ?? ''),
     customer
@@ -209,12 +241,15 @@ function deriveProjectCandidates(workspacePayload, intakePayload, customerPayloa
   const candidates = [];
 
   workspaceProjects.forEach((project, index) => {
+    const projectId = project.projectId ?? project.id;
+    if (!isGuid(projectId)) return;
+
     const customerId = String(project.customerId ?? project.clientId ?? '');
     const customer = customerById.get(customerId);
 
     candidates.push({
       source: 'Workspace',
-      id: project.projectId ?? project.id ?? `workspace-${index}`,
+      id: projectId,
       projectCode: project.projectCode ?? project.code ?? project.projectNumber ?? `WORKSPACE-${index + 1}`,
       projectName: project.projectName ?? project.name ?? project.title ?? 'Workspace project',
       customerName: project.customerName ?? project.clientName ?? customer?.customerName ?? customer?.name ?? 'Customer pending',
@@ -226,9 +261,12 @@ function deriveProjectCandidates(workspacePayload, intakePayload, customerPayloa
   });
 
   intakeProjects.forEach((request, index) => {
+    const projectId = request.projectId ?? request.linkedProjectId ?? request.createdProjectId;
+    if (!isGuid(projectId)) return;
+
     candidates.push({
-      source: 'Intake',
-      id: request.projectIntakeRequestId ?? request.requestId ?? request.id ?? `intake-${index}`,
+      source: 'Linked intake',
+      id: projectId,
       projectCode: request.projectCode ?? request.opportunityId ?? request.requestNumber ?? `INTAKE-${index + 1}`,
       projectName: request.projectName ?? request.opportunityName ?? request.requestName ?? 'Intake project',
       customerName: request.customerName ?? request.clientName ?? request.accountName ?? 'Customer pending',
@@ -239,10 +277,27 @@ function deriveProjectCandidates(workspacePayload, intakePayload, customerPayloa
     });
   });
 
+  billingProjects.forEach((project, index) => {
+    const projectId = project.projectId;
+    if (!isGuid(projectId)) return;
+
+    candidates.push({
+      source: 'Billing candidate',
+      id: projectId,
+      projectCode: project.projectCode ?? `BILLING-${index + 1}`,
+      projectName: project.projectName ?? 'Billing project',
+      customerName: project.customerName ?? 'Customer pending',
+      projectManagerName: project.projectManagerName ?? 'PM pending',
+      status: project.status ?? 'Active',
+      risk: Array.isArray(project.blockers) && project.blockers.length > 0 ? 'Review' : 'Ready',
+      sourceRecord: project
+    });
+  });
+
   const deduped = new Map();
 
   candidates.forEach((candidate) => {
-    const key = `${candidate.projectCode}|${candidate.customerName}`.toLowerCase();
+    const key = String(candidate.id).toLowerCase();
     if (!deduped.has(key)) {
       deduped.set(key, candidate);
     }
@@ -251,45 +306,50 @@ function deriveProjectCandidates(workspacePayload, intakePayload, customerPayloa
   return [...deduped.values()].sort((a, b) => `${a.customerName} ${a.projectCode}`.localeCompare(`${b.customerName} ${b.projectCode}`));
 }
 
-function getProjectSeed(project) {
-  if (!project) return 1;
-  return String(project.projectCode || project.id || '1')
-    .split('')
-    .reduce((total, char) => total + char.charCodeAt(0), 0);
+function resolveSuggestedRate(line) {
+  const suggestedRateLineId = String(line?.suggestedRateLineId ?? '');
+  if (!suggestedRateLineId) return null;
+
+  return (line?.rateOptions ?? []).find((option) => (
+    String(option.rateLineId) === suggestedRateLineId
+  )) ?? null;
 }
 
-function buildLaborRows(project, billingRate, mode = 'project') {
-  if (!project) return [];
+function buildVerifiedLaborRows(candidate) {
+  if (!candidate) return [];
 
-  const seed = getProjectSeed(project);
-  const baseHours = mode === 'monthEnd' ? 12 + (seed % 26) : 18 + (seed % 22);
-  const rate = Number(billingRate || 0);
-  const amount = baseHours * rate;
+  return (candidate.lines ?? []).map((line) => {
+    const rate = resolveSuggestedRate(line);
+    const quantity = Number(line.approvedHours || 0);
+    const unitRate = Number(rate?.unitRate || 0);
+    const blocked = !rate || !(unitRate > 0);
+    const taskLabel = [line.taskCode, line.taskName].filter(Boolean).join(' · ');
 
-  return [
-    {
+    return {
       type: 'Labor',
-      source: 'PHD approved time',
-      customerName: project.customerName,
-      projectCode: project.projectCode,
-      projectName: project.projectName,
-      projectManagerName: project.projectManagerName,
-      description: `${project.projectName} approved labor placeholder`,
-      quantity: baseHours,
-      unitRate: rate,
-      amount,
+      source: 'Module 042 verified invoice candidate',
+      customerName: candidate.customerName,
+      projectCode: candidate.projectCode,
+      projectName: candidate.projectName,
+      projectManagerName: candidate.projectManagerName,
+      description: line.description || taskLabel || 'Approved professional services',
+      quantity,
+      unitRate,
+      amount: quantity * unitRate,
       treatment: 'Billable labor',
-      readiness: rate > 0 ? 'Ready for PM/accounting review' : 'Missing billing rate',
-      status: rate > 0 ? 'review' : 'blocked'
-    }
-  ];
+      readiness: blocked
+        ? (line.rateBlocker || 'Stored billing rate is unavailable')
+        : `Stored rate: ${rate.rateCardCode || rate.skuCode || rate.displayName || 'verified'}`,
+      status: blocked ? 'blocked' : 'review'
+    };
+  });
 }
 
 function normalizeCertifyExpenseRows(expenses, selectedProject) {
   return expenses.map((expense, index) => {
     const amount = Number(expense.amount ?? expense.totalAmount ?? expense.approvedAmount ?? 0);
     const billingStatus = expense.billingStatus || expense.mappingStatus || 'Requires review';
-    const blocked = /missing|not ready|pending|exception|placeholder/i.test(billingStatus);
+    const blocked = /missing|not ready|pending|exception|placeholder|requires review|requires_review|requires mapping|requires_mapping|unmapped|rejected/i.test(billingStatus);
 
     return {
       type: 'Expense',
@@ -309,6 +369,22 @@ function normalizeCertifyExpenseRows(expenses, selectedProject) {
   });
 }
 
+function matchesProject(expense, project) {
+  if (!project) return false;
+
+  const expenseProjectId = expense?.projectId ?? expense?.linkedProjectId;
+  if (expenseProjectId) {
+    return String(expenseProjectId).toLowerCase() === String(project.id).toLowerCase();
+  }
+
+  const expenseProjectCode = expense?.projectCode ?? expense?.projectNumber;
+  if (expenseProjectCode) {
+    return String(expenseProjectCode).toLowerCase() === String(project.projectCode).toLowerCase();
+  }
+
+  return false;
+}
+
 function getFinancialTotals(rows) {
   const laborTotal = rows.filter((row) => row.type === 'Labor').reduce((total, row) => total + Number(row.amount || 0), 0);
   const expenseTotal = rows.filter((row) => row.type === 'Expense').reduce((total, row) => total + Number(row.amount || 0), 0);
@@ -316,7 +392,7 @@ function getFinancialTotals(rows) {
     .filter((row) => /non-billable|included|excluded/i.test(row.treatment))
     .reduce((total, row) => total + Number(row.amount || 0), 0);
   const blockedTotal = rows
-    .filter((row) => row.status === 'blocked' || /missing|not ready|pending|exception/i.test(row.readiness))
+    .filter((row) => row.status === 'blocked' || /missing|not ready|pending|exception|requires review|requires_review|requires mapping|requires_mapping|unmapped|rejected/i.test(row.readiness))
     .reduce((total, row) => total + Number(row.amount || 0), 0);
   const readyToInvoiceTotal = rows.reduce((total, row) => total + Number(row.amount || 0), 0) - blockedTotal - nonBillableTotal;
 
@@ -331,27 +407,11 @@ function getFinancialTotals(rows) {
   };
 }
 
-function buildMonthEndRows(projects, billingRate, stagedExpenses) {
-  const selectedProjects = projects.slice(0, 12);
-  const rows = [];
-
-  selectedProjects.forEach((project) => {
-    rows.push(...buildLaborRows(project, billingRate, 'monthEnd'));
-  });
-
-  const expenseRows = normalizeCertifyExpenseRows(stagedExpenses, null).map((row, index) => {
-    const project = selectedProjects[index % Math.max(1, selectedProjects.length)] ?? null;
-    return {
-      ...row,
-      customerName: project?.customerName || row.customerName,
-      projectCode: project?.projectCode || row.projectCode,
-      projectName: project?.projectName || row.projectName,
-      projectManagerName: project?.projectManagerName || row.projectManagerName
-    };
-  });
-
-  rows.push(...expenseRows);
-  return rows;
+function buildMonthEndRows(billingCandidates, stagedExpenses) {
+  return [
+    ...(billingCandidates ?? []).flatMap((candidate) => buildVerifiedLaborRows(candidate)),
+    ...normalizeCertifyExpenseRows(stagedExpenses, null)
+  ];
 }
 
 function summarizeMonthEndPackages(rows) {
@@ -379,7 +439,7 @@ function summarizeMonthEndPackages(rows) {
     existing.packageTotal += Number(row.amount || 0);
     existing.lineCount += 1;
 
-    if (row.status === 'blocked' || /missing|not ready|pending|exception/i.test(row.readiness)) {
+    if (row.status === 'blocked' || /missing|not ready|pending|exception|requires review|requires_review|requires mapping|requires_mapping|unmapped|rejected/i.test(row.readiness)) {
       existing.blockedTotal += Number(row.amount || 0);
       existing.status = 'Blocked / exception review';
     }
@@ -392,16 +452,20 @@ function summarizeMonthEndPackages(rows) {
 }
 
 export default function BillingReadinessCenter() {
-  const [payload, setPayload] = useState({ loading: true, error: null, workspace: null, intake: null, customers: null, certifyExpenses: null, certifyExceptions: null });
+  const [payload, setPayload] = useState({ loading: true, error: null, workspace: null, intake: null, customers: null, certifyExpenses: null, certifyExceptions: null, billingCandidates: [] });
   const [billingMode, setBillingMode] = useState('project');
   const [selectedProjectKey, setSelectedProjectKey] = useState('');
   const [packageType, setPackageType] = useState('Partial project invoice');
+  const [evidenceDescription, setEvidenceDescription] = useState('');
+  const [evidenceAmount, setEvidenceAmount] = useState('');
   const [periodStart, setPeriodStart] = useState(firstDayOfCurrentMonth());
   const [periodEnd, setPeriodEnd] = useState(lastDayOfCurrentMonth());
-  const [billingRate, setBillingRate] = useState('175');
   const [checkedItems, setCheckedItems] = useState(() => new Set(['customerMapped', 'billingTreatment']));
   const [packageNotes, setPackageNotes] = useState('Billing readiness package can be prepared while the project remains active. Final project closeout is handled separately.');
+  const [auditReason, setAuditReason] = useState('');
   const [statusMessage, setStatusMessage] = useState('');
+  const [lifecycle, setLifecycle] = useState({ loading: false, error: null, data: null });
+  const [isSavingReadiness, setIsSavingReadiness] = useState(false);
 
   async function loadBillingReadinessData() {
     setPayload((current) => ({ ...current, loading: true, error: null }));
@@ -411,10 +475,11 @@ export default function BillingReadinessCenter() {
       fetchJson('/api/project-intake/overview'),
       fetchJson('/api/customers/overview'),
       fetchJson('/api/certify/expenses/staged'),
-      fetchJson('/api/certify/exceptions')
+      fetchJson('/api/certify/exceptions'),
+      fetchJson('/api/billing/candidates')
     ]);
 
-    const [workspace, intake, customers, certifyExpenses, certifyExceptions] = results;
+    const [workspace, intake, customers, certifyExpenses, certifyExceptions, billingCandidates] = results;
 
     const failures = results
       .filter((result) => result.status === 'rejected')
@@ -427,7 +492,10 @@ export default function BillingReadinessCenter() {
       intake: intake.status === 'fulfilled' ? intake.value : null,
       customers: customers.status === 'fulfilled' ? customers.value : null,
       certifyExpenses: certifyExpenses.status === 'fulfilled' ? certifyExpenses.value : null,
-      certifyExceptions: certifyExceptions.status === 'fulfilled' ? certifyExceptions.value : null
+      certifyExceptions: certifyExceptions.status === 'fulfilled' ? certifyExceptions.value : null,
+      billingCandidates: billingCandidates.status === 'fulfilled'
+        ? (billingCandidates.value?.candidates ?? [])
+        : []
     });
   }
 
@@ -436,8 +504,13 @@ export default function BillingReadinessCenter() {
   }, []);
 
   const projectCandidates = useMemo(() => {
-    return deriveProjectCandidates(payload.workspace, payload.intake, payload.customers);
-  }, [payload.workspace, payload.intake, payload.customers]);
+    return deriveProjectCandidates(
+      payload.workspace,
+      payload.intake,
+      payload.customers,
+      payload.billingCandidates
+    );
+  }, [payload.workspace, payload.intake, payload.customers, payload.billingCandidates]);
 
   useEffect(() => {
     if (!selectedProjectKey && projectCandidates.length > 0) {
@@ -449,6 +522,70 @@ export default function BillingReadinessCenter() {
     return projectCandidates.find((project) => String(project.id) === String(selectedProjectKey)) ?? projectCandidates[0] ?? null;
   }, [projectCandidates, selectedProjectKey]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!isGuid(selectedProject?.id)) {
+      setLifecycle({ loading: false, error: null, data: null });
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setLifecycle({ loading: true, error: null, data: null });
+    fetchJson(`/api/work-lifecycle/projects/${selectedProject.id}`)
+      .then((data) => {
+        if (cancelled) return;
+        setLifecycle({ loading: false, error: null, data });
+        const saved = data?.billingReadiness;
+        if (!saved) {
+          setPeriodStart(firstDayOfCurrentMonth());
+          setPeriodEnd(lastDayOfCurrentMonth());
+          setPackageType('Partial project invoice');
+          setEvidenceDescription('');
+          setEvidenceAmount('');
+          setPackageNotes('');
+          setCheckedItems(new Set());
+          setAuditReason('');
+          setStatusMessage('');
+          return;
+        }
+
+        setPeriodStart(saved.billingPeriodStart || firstDayOfCurrentMonth());
+        setPeriodEnd(saved.billingPeriodEnd || lastDayOfCurrentMonth());
+        setPackageType(saved.packageType || 'Partial project invoice');
+        setEvidenceDescription(saved.evidenceDescription || '');
+        setEvidenceAmount(saved.evidenceAmount === null || saved.evidenceAmount === undefined
+          ? ''
+          : String(saved.evidenceAmount));
+        setPackageNotes(saved.notes || '');
+        setCheckedItems(new Set(
+          Object.entries(saved.checklist || {})
+            .filter(([, value]) => value)
+            .map(([key]) => key)
+        ));
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setLifecycle({
+            loading: false,
+            error: error instanceof Error ? error.message : 'Unable to load persisted billing readiness.',
+            data: null
+          });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedProject?.id]);
+
+  const billingCandidate = useMemo(() => (
+    (payload.billingCandidates ?? []).find((candidate) => (
+      String(candidate.projectId) === String(selectedProject?.id)
+    )) ?? null
+  ), [payload.billingCandidates, selectedProject?.id]);
+
   const stagedCertifyExpenses = useMemo(() => {
     return normalizeArrayPayload(payload.certifyExpenses, ['stagedExpenses', 'expenses', 'items']);
   }, [payload.certifyExpenses]);
@@ -457,16 +594,39 @@ export default function BillingReadinessCenter() {
     return normalizeArrayPayload(payload.certifyExceptions, ['exceptions', 'items']);
   }, [payload.certifyExceptions]);
 
+  const blockingCertifyExceptions = useMemo(() => {
+    const exceptionStatus = String(payload.certifyExceptions?.status ?? '').toLowerCase();
+    if (exceptionStatus.includes('placeholder')) return [];
+
+    return certifyExceptions.filter((exception) => {
+      const exceptionProjectId = exception.projectId ?? exception.linkedProjectId;
+      if (exceptionProjectId) {
+        return String(exceptionProjectId).toLowerCase() === String(selectedProject?.id ?? '').toLowerCase();
+      }
+
+      const exceptionProjectCode = exception.projectCode ?? exception.projectNumber;
+      if (exceptionProjectCode) {
+        return String(exceptionProjectCode).toLowerCase() === String(selectedProject?.projectCode ?? '').toLowerCase();
+      }
+
+      return true;
+    });
+  }, [certifyExceptions, payload.certifyExceptions, selectedProject?.id, selectedProject?.projectCode]);
+
   const projectPackageRows = useMemo(() => {
+    const projectExpenses = stagedCertifyExpenses.filter((expense) => (
+      matchesProject(expense, selectedProject)
+    ));
+
     return [
-      ...buildLaborRows(selectedProject, billingRate, 'project'),
-      ...normalizeCertifyExpenseRows(stagedCertifyExpenses, selectedProject)
+      ...buildVerifiedLaborRows(billingCandidate),
+      ...normalizeCertifyExpenseRows(projectExpenses, selectedProject)
     ];
-  }, [billingRate, selectedProject, stagedCertifyExpenses]);
+  }, [billingCandidate, selectedProject, stagedCertifyExpenses]);
 
   const monthEndRows = useMemo(() => {
-    return buildMonthEndRows(projectCandidates, billingRate, stagedCertifyExpenses);
-  }, [billingRate, projectCandidates, stagedCertifyExpenses]);
+    return buildMonthEndRows(payload.billingCandidates, stagedCertifyExpenses);
+  }, [payload.billingCandidates, stagedCertifyExpenses]);
 
   const activeRows = billingMode === 'monthEnd' ? monthEndRows : projectPackageRows;
 
@@ -478,19 +638,44 @@ export default function BillingReadinessCenter() {
     return readinessChecks.length === 0 ? 0 : (checkedItems.size / readinessChecks.length) * 100;
   }, [checkedItems]);
 
+  const isExpenseOnlyPackage = packageType.toLowerCase().includes('expense-only');
+  const isMilestonePackage = packageType.toLowerCase().includes('milestone');
+  const requiresNonLaborEvidence = isExpenseOnlyPackage || isMilestonePackage;
+
   const blockingIssues = useMemo(() => {
     const issues = [];
+    const requiresLaborEvidence = !requiresNonLaborEvidence;
 
     if (billingMode === 'project' && !selectedProject) issues.push('No project selected.');
-    if (!Number(billingRate || 0)) issues.push('Billing rate is missing for labor estimate.');
-    if (certifyExceptions.length > 0) issues.push(`${certifyExceptions.length} Certify placeholder exception(s) need review.`);
-    if (!checkedItems.has('timeApproved')) issues.push('Approved labor review is not confirmed.');
-    if (!checkedItems.has('certifyReviewed')) issues.push('Certify expense review is not confirmed.');
-    if (!checkedItems.has('exceptionsCleared')) issues.push('Billing exceptions are not confirmed as cleared.');
+    if (requiresNonLaborEvidence && evidenceDescription.trim().length < 5) {
+      issues.push(isExpenseOnlyPackage
+        ? 'Enter the approved expense description.'
+        : 'Enter the governed milestone description.');
+    }
+    if (requiresNonLaborEvidence && !(Number(evidenceAmount) > 0)) {
+      issues.push(isExpenseOnlyPackage
+        ? 'Enter a positive approved expense amount.'
+        : 'Enter a positive governed milestone amount.');
+    }
+    if (blockingCertifyExceptions.length > 0) {
+      issues.push(`${blockingCertifyExceptions.length} live Certify exception(s) need review.`);
+    }
+    readinessChecks
+      .filter((item) => !checkedItems.has(item.key))
+      .forEach((item) => issues.push(`${item.label} is not confirmed.`));
     if (financialTotals.blockedTotal > 0) issues.push(`${currency(financialTotals.blockedTotal)} is currently blocked or pending review.`);
+    (billingCandidate?.blockers ?? [])
+      .filter((blocker) => requiresLaborEvidence || !NON_LABOR_DRAFT_EVIDENCE_BLOCKERS.has(blocker))
+      .forEach((blocker) => issues.push(blocker));
+    if (requiresLaborEvidence
+        && billingMode === 'project'
+        && billingCandidate
+        && Number(billingCandidate.approvedLineCount || 0) === 0) {
+      issues.push('No approved uninvoiced labor lines are currently available.');
+    }
 
-    return issues;
-  }, [billingMode, billingRate, certifyExceptions, checkedItems, financialTotals.blockedTotal, selectedProject]);
+    return [...new Set(issues)];
+  }, [billingMode, blockingCertifyExceptions, checkedItems, evidenceAmount, evidenceDescription, financialTotals.blockedTotal, isExpenseOnlyPackage, requiresNonLaborEvidence, selectedProject, billingCandidate]);
 
   const readinessTone = blockingIssues.length === 0 && readinessPercent >= 90 ? 'safe' : readinessPercent >= 50 ? 'attention' : 'blocked';
 
@@ -504,6 +689,67 @@ export default function BillingReadinessCenter() {
       }
       return next;
     });
+  }
+
+  async function saveBillingReadiness(reviewStatus) {
+    if (billingMode === 'monthEnd') {
+      setStatusMessage('Month-end mode is a read-only multi-project preview. Switch to Project Billing Package to save readiness for one project at a time.');
+      return;
+    }
+
+    if (!isGuid(selectedProject?.id)) {
+      setStatusMessage('Select a persisted project before saving billing readiness.');
+      return;
+    }
+
+    if (reviewStatus === 'ready' && blockingIssues.length > 0) {
+      setStatusMessage('Resolve every blocking issue before marking this package ready.');
+      return;
+    }
+
+    if (auditReason.trim().length < 5) {
+      setStatusMessage('Enter a specific audit reason before saving.');
+      return;
+    }
+
+    setIsSavingReadiness(true);
+    setStatusMessage('');
+
+    try {
+      const checklist = Object.fromEntries(
+        readinessChecks.map((item) => [item.key, checkedItems.has(item.key)])
+      );
+      const result = await postJson(
+        `/api/work-lifecycle/projects/${selectedProject.id}/billing-readiness`,
+        {
+          billingPeriodStart: periodStart,
+          billingPeriodEnd: periodEnd,
+          packageType,
+          reviewStatus,
+          checklist,
+          notes: packageNotes,
+          evidenceDescription: requiresNonLaborEvidence ? evidenceDescription.trim() : '',
+          evidenceAmount: requiresNonLaborEvidence && String(evidenceAmount).trim() !== ''
+            ? Number(evidenceAmount)
+            : null,
+          reason: auditReason.trim()
+        }
+      );
+      setLifecycle((current) => ({
+        ...current,
+        error: null,
+        data: {
+          ...(current.data || {}),
+          billingReadiness: result.billingReadiness
+        }
+      }));
+      setAuditReason('');
+      setStatusMessage(result.message || 'Billing readiness saved.');
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : 'Unable to save billing readiness.');
+    } finally {
+      setIsSavingReadiness(false);
+    }
   }
 
   function exportBillingReadinessCsv() {
@@ -587,7 +833,8 @@ export default function BillingReadinessCenter() {
       `Approved labor estimate: ${currency(financialTotals.laborTotal)}`,
       `Staged Certify expenses: ${currency(financialTotals.expenseTotal)}`,
       `Total project/customer cost package: ${currency(financialTotals.packageTotal)}`,
-      `Ready-to-invoice amount: ${currency(financialTotals.readyToInvoiceTotal)}`,
+      `Ready-to-invoice amount: ${currency(requiresNonLaborEvidence ? Number(evidenceAmount || 0) : financialTotals.readyToInvoiceTotal)}`,
+      requiresNonLaborEvidence ? `Evidence: ${evidenceDescription || 'Not entered'}` : '',
       `Blocked / exception amount: ${currency(financialTotals.blockedTotal)}`,
       `Non-billable / excluded amount: ${currency(financialTotals.nonBillableTotal)}`,
       `Readiness: ${percent(readinessPercent)}`,
@@ -621,6 +868,22 @@ export default function BillingReadinessCenter() {
         </div>
         <div className="billing-readiness-actions">
           <button type="button" className="secondary-action" onClick={loadBillingReadinessData}>Refresh data</button>
+          <button
+            type="button"
+            className="secondary-action"
+            onClick={() => saveBillingReadiness('blocked')}
+            disabled={billingMode === 'monthEnd' || isSavingReadiness || lifecycle.loading || !lifecycle.data?.capabilities?.canManageBillingReadiness}
+          >
+            {isSavingReadiness ? 'Saving…' : 'Save progress'}
+          </button>
+          <button
+            type="button"
+            className="primary-action"
+            onClick={() => saveBillingReadiness('ready')}
+            disabled={billingMode === 'monthEnd' || isSavingReadiness || lifecycle.loading || blockingIssues.length > 0 || !lifecycle.data?.capabilities?.canManageBillingReadiness}
+          >
+            Mark ready
+          </button>
           <button type="button" className="secondary-action" onClick={copyBillingSummary}>Copy summary</button>
           <button type="button" className="secondary-action" onClick={exportMonthEndSummaryCsv}>Export month-end summary</button>
           <button type="button" className="primary-action" onClick={exportBillingReadinessCsv}>Export financial report</button>
@@ -629,6 +892,7 @@ export default function BillingReadinessCenter() {
 
       {statusMessage ? <div className="billing-readiness-alert">{statusMessage}</div> : null}
       {payload.error ? <div className="billing-readiness-error">{payload.error}</div> : null}
+      {lifecycle.error ? <div className="billing-readiness-error">{lifecycle.error}</div> : null}
 
       <div className="billing-mode-selector" role="tablist" aria-label="Billing readiness mode">
         {billingModes.map((mode) => (
@@ -655,7 +919,11 @@ export default function BillingReadinessCenter() {
         <article>
           <span>Approved labor</span>
           <strong>{currency(financialTotals.laborTotal)}</strong>
-          <small>Estimated from approved-time placeholder logic</small>
+          <small>
+            {billingCandidate?.autoCalculatedAmount !== null && billingCandidate?.autoCalculatedAmount !== undefined
+              ? `Verified invoice candidate: ${currency(billingCandidate.autoCalculatedAmount)}`
+              : 'Estimated from currently loaded approved labor'}
+          </small>
         </article>
         <article>
           <span>Certify expenses</span>
@@ -669,8 +937,8 @@ export default function BillingReadinessCenter() {
         </article>
         <article>
           <span>Ready to invoice</span>
-          <strong>{currency(financialTotals.readyToInvoiceTotal)}</strong>
-          <small>Excludes blocked and non-billable lines</small>
+          <strong>{currency(requiresNonLaborEvidence ? Number(evidenceAmount || 0) : financialTotals.readyToInvoiceTotal)}</strong>
+          <small>{requiresNonLaborEvidence ? 'Governed package evidence amount' : 'Excludes blocked and non-billable lines'}</small>
         </article>
         <article>
           <span>Blocked amount</span>
@@ -686,7 +954,11 @@ export default function BillingReadinessCenter() {
             <p className="muted">{modeDescription}</p>
           </div>
           <span className={`billing-readiness-status-pill ${readinessTone}`}>
-            {readinessTone === 'safe' ? 'Ready for accounting' : readinessTone === 'attention' ? 'Needs review' : 'Blocked'}
+            {billingMode === 'monthEnd'
+              ? 'Preview only'
+              : lifecycle.data?.billingReadiness?.reviewStatus
+                ? `Saved: ${lifecycle.data.billingReadiness.reviewStatus}`
+                : readinessTone === 'safe' ? 'Ready for accounting' : readinessTone === 'attention' ? 'Needs review' : 'Blocked'}
           </span>
         </div>
 
@@ -715,6 +987,33 @@ export default function BillingReadinessCenter() {
             </select>
           </label>
 
+          {requiresNonLaborEvidence ? (
+            <>
+              <label>
+                {isExpenseOnlyPackage ? 'Approved expense description' : 'Governed milestone description'}
+                <input
+                  value={evidenceDescription}
+                  onChange={(event) => setEvidenceDescription(event.target.value)}
+                  placeholder={isExpenseOnlyPackage
+                    ? 'Expense report/reference and customer-facing description'
+                    : 'Accepted milestone and customer-facing description'}
+                  maxLength={500}
+                />
+              </label>
+              <label>
+                {isExpenseOnlyPackage ? 'Approved expense amount' : 'Governed milestone amount'}
+                <input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={evidenceAmount}
+                  onChange={(event) => setEvidenceAmount(event.target.value)}
+                  placeholder="0.00"
+                />
+              </label>
+            </>
+          ) : null}
+
           <label>
             Period start
             <input type="date" value={periodStart} onChange={(event) => setPeriodStart(event.target.value)} />
@@ -726,8 +1025,12 @@ export default function BillingReadinessCenter() {
           </label>
 
           <label>
-            Labor billing rate placeholder
-            <input type="number" min="0" step="1" value={billingRate} onChange={(event) => setBillingRate(event.target.value)} />
+            Audit reason
+            <input
+              value={auditReason}
+              onChange={(event) => setAuditReason(event.target.value)}
+              placeholder="Why this readiness decision is being saved"
+            />
           </label>
         </div>
 
@@ -756,8 +1059,8 @@ export default function BillingReadinessCenter() {
 
         {billingMode === 'monthEnd' ? (
           <div className="billing-month-end-callout">
-            <strong>Month-end mode reviews all loaded project/customer candidates.</strong>
-            <span>{monthEndPackages.length} customer/project package(s) are included in this month-end billing run preview.</span>
+            <strong>Month-end mode is a read-only multi-project preview.</strong>
+            <span>{monthEndPackages.length} customer/project package(s) are included. Export the summary, then switch to Project Billing Package to save or mark each project ready with its own audit record.</span>
           </div>
         ) : null}
       </article>
@@ -804,7 +1107,7 @@ export default function BillingReadinessCenter() {
             {blockingIssues.length === 0 ? (
               <article className="safe">
                 <strong>No blocking issues detected</strong>
-                <p>This billing package is ready for accounting review based on current placeholder data and checklist selections.</p>
+                <p>This billing package is ready for accounting review based on verified invoice candidates, mapped expenses, and checklist selections.</p>
               </article>
             ) : (
               blockingIssues.map((issue) => (
@@ -881,7 +1184,7 @@ export default function BillingReadinessCenter() {
         <div className="billing-readiness-panel-heading">
           <div>
             <h3>Billing readiness financial report</h3>
-            <p className="muted">Detailed financial lines combining PHD approved labor placeholders and staged Certify expense placeholders.</p>
+            <p className="muted">Detailed financial lines combining approved labor and staged Certify expense records.</p>
           </div>
           <span className="billing-readiness-status-pill neutral">Project stays active</span>
         </div>
@@ -932,7 +1235,7 @@ export default function BillingReadinessCenter() {
         <div className="billing-readiness-panel-heading">
           <div>
             <h3>Certify exception review</h3>
-            <p className="muted">Certify placeholder exceptions are shown here so future imported expenses can be blocked from billing until mapping is corrected.</p>
+            <p className="muted">Certify exceptions are shown here so imported expenses remain blocked until mapping is corrected.</p>
           </div>
         </div>
 
@@ -940,7 +1243,7 @@ export default function BillingReadinessCenter() {
           {certifyExceptions.length === 0 ? (
             <article className="safe">
               <strong>No Certify exceptions loaded</strong>
-              <p>When live Certify import is enabled, unmapped project/customer/category/receipt exceptions will appear here.</p>
+              <p>Unmapped project, customer, category, or receipt exceptions will appear here.</p>
             </article>
           ) : (
             certifyExceptions.map((exception) => (
@@ -967,10 +1270,10 @@ export default function BillingReadinessCenter() {
         <div>
           <h3>Workflow guardrail</h3>
           <p>
-            Module 039 prepares billing readiness only. It does not close the project, does not finalize accounting reconciliation, and does not send invoices to customers. Final invoice generation and customer delivery should remain controlled by the accounting approval/export workflow.
+            Module 039 now persists the PM/Accounting readiness decision and its audit reason. It does not close the project or send an invoice; approved packages continue to Module 042 for controlled partial or final invoice creation and delivery.
           </p>
         </div>
-        <span className="billing-readiness-status-pill safe">Billing readiness only</span>
+        <span className="billing-readiness-status-pill safe">Persisted and audited</span>
       </article>
     </section>
   );

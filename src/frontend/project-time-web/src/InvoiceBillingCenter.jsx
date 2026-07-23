@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import CertiniaInvoiceDeliveryPanel from './CertiniaInvoiceDeliveryPanel';
+import './invoice-billing-enhancements.css';
 
 const columns = [
   ['projectCode', 'Project code', 'Essential', true],
@@ -99,19 +100,31 @@ function lineSelectionKey(projectId, timeEntryId) {
   return `${projectId}:${timeEntryId}`;
 }
 
+function evidenceSelectionKey(projectId, readinessReviewId) {
+  return `${projectId}:evidence:${readinessReviewId}`;
+}
+
 function initializeSelections(candidates, current) {
   const next = { ...current };
 
   candidates.forEach((candidate) => {
+    const fixedPrice = text(candidate.contractType).toLowerCase().includes('fixed');
     (candidate.lines || []).forEach((line) => {
       const key = lineSelectionKey(candidate.projectId, line.timeEntryId);
-      if (next[key]) return;
+      if (next[key]) {
+        if (fixedPrice) next[key] = { ...next[key], selected: false };
+        return;
+      }
 
       const suggested = text(line.suggestedRateLineId);
       next[key] = {
-        selected: Boolean(suggested),
+        selected: Boolean(suggested) && !fixedPrice,
         rateLineId: suggested
       };
+    });
+    (candidate.nonLaborLines || []).forEach((line) => {
+      const key = evidenceSelectionKey(candidate.projectId, line.readinessReviewId);
+      if (!next[key]) next[key] = { selected: true };
     });
   });
 
@@ -136,10 +149,24 @@ function selectedLineDetails(candidate, selections) {
   });
 }
 
+function selectedEvidenceDetails(candidate, selections) {
+  return (candidate?.nonLaborLines || []).map((line) => {
+    const key = evidenceSelectionKey(candidate.projectId, line.readinessReviewId);
+    return {
+      line,
+      key,
+      selected: selections[key]?.selected !== false,
+      amount: Number(line.amount || 0)
+    };
+  });
+}
+
 function candidateSelectedAmount(candidate, selections) {
-  const rows = selectedLineDetails(candidate, selections).filter((item) => item.selected && item.rate);
-  if (!rows.length) return null;
-  return rows.reduce((total, item) => total + Number(item.amount || 0), 0);
+  const laborRows = selectedLineDetails(candidate, selections).filter((item) => item.selected && item.rate);
+  const evidenceRows = selectedEvidenceDetails(candidate, selections).filter((item) => item.selected);
+  if (!laborRows.length && !evidenceRows.length) return null;
+  return laborRows.reduce((total, item) => total + Number(item.amount || 0), 0)
+    + evidenceRows.reduce((total, item) => total + Number(item.amount || 0), 0);
 }
 
 function candidateCellValue(candidate, columnKey, selections) {
@@ -180,8 +207,10 @@ function candidateCellValue(candidate, columnKey, selections) {
   }
 
   if (columnKey === 'approvedLines') {
-    const count = Number(candidate.approvedLineCount || 0);
-    return count ? String(count) : candidate.invoiceHistory?.length ? '0 — fully invoiced' : '0 — none approved';
+    const laborCount = Number(candidate.approvedLineCount || 0);
+    const nonLaborCount = Number(candidate.readyNonLaborLineCount || 0);
+    const count = laborCount + nonLaborCount;
+    return count ? `${count} (${laborCount} labor, ${nonLaborCount} package)` : candidate.invoiceHistory?.length ? '0 — fully invoiced' : '0 — none approved';
   }
   if (columnKey === 'approvedHours') {
     const hours = Number(candidate.approvedHours || 0);
@@ -237,6 +266,7 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
   const [invoiceDetailError, setInvoiceDetailError] = useState('');
   const [outputPrivacy, setOutputPrivacy] = useState(() => ({ ...hiddenOutputPrivacy }));
   const [certiniaPreview, setCertiniaPreview] = useState('');
+  const [invoiceNotes, setInvoiceNotes] = useState('');
 
   async function loadLiveData(preferredProjectId = '') {
     setPayload((current) => ({ ...current, loading: true, error: '' }));
@@ -334,14 +364,20 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
   }, [candidates, model, search, statusFilter, view]);
 
   const selectedRows = selectedLineDetails(selected, selections);
+  const selectedEvidenceRows = selectedEvidenceDetails(selected, selections);
   const selectedReadyRows = selectedRows.filter((item) => item.selected && item.rate);
+  const selectedReadyEvidenceRows = selectedEvidenceRows.filter((item) => item.selected);
   const selectedIncompleteRows = selectedRows.filter((item) => item.selected && !item.rate);
-  const currentAmount = selectedReadyRows.reduce((total, item) => total + Number(item.amount || 0), 0);
-  const allEligibleLinesSelected = selectedRows.length > 0
-    && selectedRows.every((item) => item.selected && item.rate);
+  const currentAmount = selectedReadyRows.reduce((total, item) => total + Number(item.amount || 0), 0)
+    + selectedReadyEvidenceRows.reduce((total, item) => total + Number(item.amount || 0), 0);
+  const fixedPrice = text(selected?.contractType).toLowerCase().includes('fixed');
+  const allEligibleLinesSelected = (fixedPrice || selectedRows.every((item) => item.selected && item.rate))
+    && selectedEvidenceRows.every((item) => item.selected)
+    && (selectedRows.length > 0 || selectedEvidenceRows.length > 0);
   const projectAllowsInvoice = selected?.canCreateInvoice === true;
   const userAllowsInvoice = payload.canCreateInvoices === true && selected?.currentUserCanCreateInvoices === true;
-  const partialReady = projectAllowsInvoice && userAllowsInvoice && selectedReadyRows.length > 0 && selectedIncompleteRows.length === 0;
+  const selectedSourceCount = selectedReadyRows.length + selectedReadyEvidenceRows.length;
+  const partialReady = projectAllowsInvoice && userAllowsInvoice && selectedSourceCount > 0 && selectedIncompleteRows.length === 0;
   const finalReady = partialReady && allEligibleLinesSelected;
 
   const invoiceCount = candidates.reduce((total, candidate) => total + (candidate.invoiceHistory?.length || 0), 0);
@@ -363,11 +399,22 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
     }));
   }
 
+  function updateEvidenceSelection(line, selectedValue) {
+    if (!selected) return;
+    const key = evidenceSelectionKey(selected.projectId, line.readinessReviewId);
+    setSelections((current) => ({
+      ...current,
+      [key]: { selected: selectedValue }
+    }));
+  }
+
   async function createInvoice(invoiceType) {
     if (!selected) return;
 
     const rows = selectedLineDetails(selected, selections)
       .filter((item) => item.selected && item.rate);
+    const evidenceRows = selectedEvidenceDetails(selected, selections)
+      .filter((item) => item.selected);
 
     setAction({ running: true, error: '', success: '' });
 
@@ -380,7 +427,8 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
             timeEntryId: item.line.timeEntryId,
             rateLineId: item.rate.rateLineId
           })),
-          notes: ''
+          billingReadinessReviewIds: evidenceRows.map((item) => item.line.readinessReviewId),
+          notes: invoiceNotes.trim()
         })
       });
 
@@ -388,9 +436,10 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
       setAction({
         running: false,
         error: '',
-        success: `${invoiceNumber} was created from ${rows.length} verified approved time entr${rows.length === 1 ? 'y' : 'ies'}.`
+        success: `${invoiceNumber} was created from ${rows.length + evidenceRows.length} verified source line${rows.length + evidenceRows.length === 1 ? '' : 's'}.`
       });
 
+      setInvoiceNotes('');
       await loadLiveData(selected.projectId);
     } catch (error) {
       const blockers = Array.isArray(error?.payload?.blockers)
@@ -473,9 +522,11 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
   }
 
   function customerResourceLabel(line) {
-    if (outputPrivacy.engineerNames) return text(line?.resourceName, 'Professional Services Engineer');
-
     const labor = text(line?.laborCategory).toLowerCase();
+    if (labor === 'expense') return 'Reimbursable Expense';
+    if (labor === 'fixed_price_milestone') return 'Fixed Price Milestone';
+
+    if (outputPrivacy.engineerNames) return text(line?.resourceName, 'Professional Services Engineer');
     const task = `${text(line?.taskCode)} ${text(line?.taskName)}`.toLowerCase();
 
     if (labor.includes('project') || task.includes('project management') || task.includes('coordination')) {
@@ -847,12 +898,35 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
                             <td>{item.amount === null ? 'Not calculated' : formatMoney(item.amount)}</td>
                           </tr>
                         ))}
-                        {!selectedRows.length ? (
+                        {selectedEvidenceRows.map((item) => (
+                          <tr key={item.line.readinessReviewId}>
+                            <td>
+                              <input
+                                type="checkbox"
+                                checked={item.selected}
+                                onChange={(event) => updateEvidenceSelection(item.line, event.target.checked)}
+                                aria-label={`Select ${item.line.description}`}
+                              />
+                            </td>
+                            <td>{formatDate(item.line.billingPeriodEnd)}</td>
+                            <td>
+                              <span className="m042-stack">
+                                <strong>{item.line.description}</strong>
+                                <small>{item.line.packageType}</small>
+                                <small>Reviewed by {text(item.line.reviewedBy, 'authorized billing user')}</small>
+                              </span>
+                            </td>
+                            <td>1.00</td>
+                            <td>{text(item.line.sourceType).replaceAll('_', ' ')}</td>
+                            <td>{formatMoney(item.amount)}</td>
+                          </tr>
+                        ))}
+                        {!selectedRows.length && !selectedEvidenceRows.length ? (
                           <tr>
                             <td colSpan="6">
                               <div className="m042-empty-state">
-                                <strong>No approved uninvoiced lines</strong>
-                                <span>Complete the approval workflow or select another project.</span>
+                                <strong>No approved uninvoiced sources</strong>
+                                <span>Complete approvals or mark a governed expense/milestone package ready in Module 039.</span>
                               </div>
                             </td>
                           </tr>
@@ -879,12 +953,25 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
                     </div>
                     <div>
                       <span>Current selection</span>
-                      <strong>{selectedReadyRows.length ? formatMoney(currentAmount) : 'Not calculated'}</strong>
+                      <strong>{selectedSourceCount ? formatMoney(currentAmount) : 'Not calculated'}</strong>
                     </div>
                     <div>
                       <span>Selected lines</span>
-                      <strong>{selectedReadyRows.length} of {selectedRows.length}</strong>
+                      <strong>{selectedSourceCount} of {selectedRows.length + selectedEvidenceRows.length}</strong>
                     </div>
+                  </section>
+
+                  <section className="m042-invoice-notes">
+                    <label>
+                      Invoice notes
+                      <textarea
+                        value={invoiceNotes}
+                        onChange={(event) => setInvoiceNotes(event.target.value)}
+                        placeholder="Customer-facing billing context, partial-invoice scope, milestone, or final invoice note"
+                        maxLength={2000}
+                      />
+                    </label>
+                    <small>Notes are stored in the immutable invoice snapshot and appear in the generated package.</small>
                   </section>
 
                   <footer className="m042-invoice-foot">
@@ -902,13 +989,13 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
                         className="primary-action"
                         disabled={!finalReady || action.running}
                         onClick={() => void createInvoice('final')}
-                        title={finalReady ? 'Create final invoice' : 'Final invoice requires every eligible line and rate.'}
+                        title={finalReady ? 'Create final invoice' : 'Final invoice requires every eligible labor line, governed package, and rate.'}
                       >
                         {action.running ? 'Creating…' : 'Generate Final Invoice'}
                       </button>
                     </div>
                     <span>
-                      The server revalidates approval, rate effectiveness, PO readiness, project access, and duplicate billing before committing an invoice number.
+                      The server revalidates approval, package evidence, rate effectiveness, PO readiness, project access, and duplicate billing before committing an invoice number.
                     </span>
                   </footer>
 

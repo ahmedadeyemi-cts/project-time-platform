@@ -36,13 +36,29 @@ async function readApiErrorMessage(response, path) {
 }
 
 async function fetchJson(path) {
-  const response = await fetch(path, { headers: getProjectPulseAuthHeaders() });
+  const response = await fetch(path, { headers: getProjectPulseAuthHeaders(), cache: 'no-store' });
 
   if (response.status === 403) {
     return { forbidden: true, message: `${path} is not available for this role.` };
   }
 
   if (!response.ok) throw new Error(await readApiErrorMessage(response, path));
+  return response.json();
+}
+
+async function postJson(path, payload) {
+  const response = await fetch(path, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...getProjectPulseAuthHeaders()
+    },
+    cache: 'no-store',
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) {
+    throw new Error(await readApiErrorMessage(response, path));
+  }
   return response.json();
 }
 
@@ -105,6 +121,11 @@ function normalizeStatus(value) {
     .replaceAll(' ', '_');
 }
 
+function isGuid(value) {
+  return /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i
+    .test(normalizeText(value));
+}
+
 function titleCase(value) {
   return normalizeText(value)
     .replaceAll('_', ' ')
@@ -153,12 +174,9 @@ function collectObjects(payload, collector = [], options = {}) {
 function looksLikeProject(item) {
   if (!item || typeof item !== 'object') return false;
 
-  const explicitProjectIdentifier = Boolean(
-    item.projectId ||
-    item.projectCode ||
-    item.projectNumber ||
-    item.projectNo ||
-    item.projectKey
+  const explicitProjectIdentifier = getFirstValue(
+    item,
+    ['projectId', 'projectID', 'project_id', 'linkedProjectId', 'createdProjectId']
   );
 
   const hasProjectName = Boolean(item.projectName || item.name || item.title || item.displayName);
@@ -181,7 +199,8 @@ function looksLikeProject(item) {
 
   if (taskOnlyRecord) return false;
 
-  return explicitProjectIdentifier && (hasProjectName || hasCustomer || hasProjectOwner || isProjectRecordType);
+  return isGuid(explicitProjectIdentifier)
+    && (hasProjectName || hasCustomer || hasProjectOwner || isProjectRecordType);
 }
 /* 040A_CLOSEOUT_SCROLL_CONTAINMENT_END */
 
@@ -205,7 +224,12 @@ function getNumericValue(item, keys) {
 }
 
 function normalizeProjectCandidate(item, source) {
-  const projectId = getFirstValue(item, ['projectId', 'id', 'projectID', 'project_id']);
+  const projectId = getFirstValue(
+    item,
+    ['projectId', 'projectID', 'project_id', 'linkedProjectId', 'createdProjectId']
+  );
+  if (!isGuid(projectId)) return null;
+
   const projectCode = getFirstValue(item, ['projectCode', 'projectNumber', 'projectNo', 'projectKey', 'code', 'number']);
   const projectName = getFirstValue(item, ['projectName', 'name', 'title', 'displayName']);
   const customerName = getFirstValue(item, ['customerName', 'clientName', 'accountName', 'companyName', 'customer']);
@@ -321,8 +345,35 @@ function countActionableApprovals(payload) {
   }).length;
 }
 
-function countCertifyExceptions(payload) {
-  const objects = collectObjects(payload);
+function getBlockingCertifyExceptionObjects(payload, project) {
+  const payloadStatus = normalizeStatus(payload?.status);
+  if (payloadStatus.includes('placeholder')) return [];
+
+  return collectObjects(payload).filter((item) => {
+    const exceptionProjectId = getFirstValue(
+      item,
+      ['projectId', 'projectID', 'project_id', 'linkedProjectId']
+    );
+    if (exceptionProjectId) {
+      return normalizeText(exceptionProjectId).toLowerCase() ===
+        normalizeText(project?.projectId).toLowerCase();
+    }
+
+    const exceptionProjectCode = getFirstValue(
+      item,
+      ['projectCode', 'projectNumber', 'projectNo', 'project_code']
+    );
+    if (exceptionProjectCode) {
+      return normalizeText(exceptionProjectCode).toLowerCase() ===
+        normalizeText(project?.projectCode).toLowerCase();
+    }
+
+    return true;
+  });
+}
+
+function countCertifyExceptions(payload, project) {
+  const objects = getBlockingCertifyExceptionObjects(payload, project);
 
   const exceptionLikeObjects = objects.filter((item) => {
     const status = normalizeStatus(item.status ?? item.exceptionStatus ?? item.workflowStatus);
@@ -530,6 +581,17 @@ export default function ProjectCloseoutCenter() {
   const [copiedStatus, setCopiedStatus] = useState('');
   const [closeoutHandoff] = useState(() => readProjectCloseoutHandoff());
   const [handoffStatus, setHandoffStatus] = useState('');
+  const [lifecycle, setLifecycle] = useState({ loading: false, error: null, data: null });
+  const [closeoutForm, setCloseoutForm] = useState({
+    billingDisposition: '',
+    deliveryComplete: false,
+    customerAcceptanceComplete: false,
+    timeExpenseComplete: false,
+    billingComplete: false,
+    reason: '',
+    notes: ''
+  });
+  const [isSavingCloseout, setIsSavingCloseout] = useState(false);
 
   async function loadCloseoutData() {
     setPayload((current) => ({ ...current, loading: true, error: null }));
@@ -711,7 +773,7 @@ export default function ProjectCloseoutCenter() {
     );
 
     const stagedExpenses = countStagedExpenses(payload.data.certifyStaged);
-    const certifyExceptions = countCertifyExceptions(payload.data.certifyExceptions);
+    const certifyExceptions = countCertifyExceptions(payload.data.certifyExceptions, selectedProject);
     const stakeholderCount = extractStakeholders(selectedProject).length;
 
     return {
@@ -723,9 +785,106 @@ export default function ProjectCloseoutCenter() {
   }, [payload.data, selectedProject]);
 
   const stakeholders = useMemo(() => selectedProject ? extractStakeholders(selectedProject) : [], [selectedProject]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!selectedProject?.projectId) {
+      setLifecycle({ loading: false, error: null, data: null });
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setLifecycle({ loading: true, error: null, data: null });
+    fetchJson(`/api/work-lifecycle/projects/${selectedProject.projectId}`)
+      .then((data) => {
+        if (cancelled) return;
+        if (data?.forbidden) {
+          setLifecycle({ loading: false, error: data.message, data: null });
+          return;
+        }
+        setLifecycle({ loading: false, error: null, data });
+        const saved = data?.closeout;
+        if (!saved) {
+          setCloseoutForm({
+            billingDisposition: '',
+            deliveryComplete: false,
+            customerAcceptanceComplete: false,
+            timeExpenseComplete: false,
+            billingComplete: false,
+            reason: '',
+            notes: ''
+          });
+          return;
+        }
+
+        setCloseoutForm({
+          billingDisposition: saved.billingDisposition || '',
+          deliveryComplete: Boolean(saved.deliveryComplete),
+          customerAcceptanceComplete: Boolean(saved.customerAcceptanceComplete),
+          timeExpenseComplete: Boolean(saved.timeExpenseComplete),
+          billingComplete: Boolean(saved.billingComplete),
+          reason: '',
+          notes: saved.notes || ''
+        });
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setLifecycle({
+            loading: false,
+            error: error instanceof Error ? error.message : 'Unable to load governed closeout state.',
+            data: null
+          });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedProject?.projectId]);
+
   const checks = useMemo(() => selectedProject ? buildCloseoutChecks(selectedProject, counts) : [], [selectedProject, counts]);
   const closeoutStage = selectedProject ? getCloseoutStage(selectedProject, counts) : 'Blocked';
   const notificationText = selectedProject ? buildNotificationText(selectedProject, stakeholders) : '';
+
+  function updateCloseoutField(field, value) {
+    setCloseoutForm((current) => ({ ...current, [field]: value }));
+  }
+
+  async function saveGovernedCloseout(operation) {
+    if (!selectedProject?.projectId) {
+      setCopiedStatus('Select a project before saving closeout.');
+      return;
+    }
+
+    if (closeoutForm.reason.trim().length < 5) {
+      setCopiedStatus('Enter a specific audit reason before saving closeout.');
+      return;
+    }
+
+    setIsSavingCloseout(true);
+    setCopiedStatus('');
+
+    try {
+      const path = operation === 'reopen'
+        ? `/api/work-lifecycle/projects/${selectedProject.projectId}/closeout/reopen`
+        : `/api/work-lifecycle/projects/${selectedProject.projectId}/closeout/${operation}`;
+      const body = operation === 'reopen'
+        ? { reason: closeoutForm.reason.trim() }
+        : { ...closeoutForm, reason: closeoutForm.reason.trim() };
+      const result = await postJson(path, body);
+      setCopiedStatus(result.message || 'Closeout state saved.');
+      const refreshed = await fetchJson(`/api/work-lifecycle/projects/${selectedProject.projectId}`);
+      setLifecycle({ loading: false, error: null, data: refreshed });
+      setCloseoutForm((current) => ({ ...current, reason: '' }));
+      await loadCloseoutData();
+    } catch (error) {
+      setCopiedStatus(error instanceof Error ? error.message : 'Unable to save closeout state.');
+    } finally {
+      setIsSavingCloseout(false);
+    }
+  }
 
   function exportCloseoutCsv() {
     if (!selectedProject) return;
@@ -790,10 +949,10 @@ export default function ProjectCloseoutCenter() {
       </section>
 
       <section className="project-closeout-guardrail">
-        <strong>Closeout guardrail</strong>
+        <strong>Governed closeout</strong>
         <span>
-          This module prepares closeout evidence and notification readiness only. It does not finalize accounting,
-          send an invoice, mark a PSA project closed, or replace customer acceptance evidence.
+          Assigned PMs can request closeout. PTCs and administrators complete or reopen it only after the server
+          verifies tasks, time, billing readiness, invoice disposition, and required confirmations.
         </span>
       </section>
 
@@ -839,6 +998,9 @@ export default function ProjectCloseoutCenter() {
 
       {payload.error ? (
         <div className="project-closeout-error">{payload.error}</div>
+      ) : null}
+      {lifecycle.error ? (
+        <div className="project-closeout-error">{lifecycle.error}</div>
       ) : null}
 
       {payload.data?.loadWarnings?.length ? (
@@ -928,6 +1090,111 @@ export default function ProjectCloseoutCenter() {
                 </div>
               )}
             </article>
+          </section>
+
+          <section className="project-closeout-card">
+            <div className="project-closeout-card-heading">
+              <div>
+                <p className="eyebrow">Governed decision</p>
+                <h2>Request or complete closeout</h2>
+                <p className="muted">
+                  Every saved decision includes the actor, reason, confirmations, blockers, and final billing disposition.
+                </p>
+              </div>
+              <span className={`project-closeout-pill stage-${String(lifecycle.data?.closeout?.closeoutStatus || 'not-started').toLowerCase()}`}>
+                {titleCase(lifecycle.data?.closeout?.closeoutStatus || 'Not started')}
+              </span>
+            </div>
+
+            <div className="project-closeout-form-grid">
+              <label>
+                Final billing disposition
+                <select
+                  value={closeoutForm.billingDisposition}
+                  onChange={(event) => updateCloseoutField('billingDisposition', event.target.value)}
+                >
+                  <option value="">Select disposition</option>
+                  <option value="final_invoice_complete">Final invoice complete</option>
+                  <option value="no_further_billing">No further billing</option>
+                  <option value="non_billable">Non-billable project</option>
+                  <option value="write_off_approved">Approved write-off</option>
+                </select>
+              </label>
+
+              <label>
+                Audit reason
+                <input
+                  value={closeoutForm.reason}
+                  onChange={(event) => updateCloseoutField('reason', event.target.value)}
+                  placeholder="Why closeout is being requested, completed, or reopened"
+                />
+              </label>
+
+              <label className="project-closeout-form-wide">
+                Closeout notes
+                <textarea
+                  value={closeoutForm.notes}
+                  onChange={(event) => updateCloseoutField('notes', event.target.value)}
+                  placeholder="Customer acceptance, billing disposition, exceptions, or handoff notes"
+                />
+              </label>
+            </div>
+
+            <div className="project-closeout-confirmations">
+              {[
+                ['deliveryComplete', 'Delivery complete'],
+                ['customerAcceptanceComplete', 'Customer acceptance complete'],
+                ['timeExpenseComplete', 'Final time and expense review complete'],
+                ['billingComplete', 'Billing complete']
+              ].map(([field, label]) => (
+                <label key={field}>
+                  <input
+                    type="checkbox"
+                    checked={closeoutForm[field]}
+                    onChange={(event) => updateCloseoutField(field, event.target.checked)}
+                  />
+                  <span>{label}</span>
+                </label>
+              ))}
+            </div>
+
+            <div className="project-closeout-server-blockers">
+              <strong>Server-validated blockers</strong>
+              {(lifecycle.data?.closeoutBlockers || []).length === 0 ? (
+                <p>No blockers remain. An authorized PTC or administrator can complete closeout.</p>
+              ) : (
+                <ul>
+                  {(lifecycle.data?.closeoutBlockers || []).map((blocker) => <li key={blocker}>{blocker}</li>)}
+                </ul>
+              )}
+            </div>
+
+            <div className="project-closeout-actions">
+              <button
+                type="button"
+                className="secondary-action"
+                disabled={isSavingCloseout || !lifecycle.data?.capabilities?.canRequestCloseout}
+                onClick={() => saveGovernedCloseout('request')}
+              >
+                {isSavingCloseout ? 'Saving…' : 'Request closeout'}
+              </button>
+              <button
+                type="button"
+                className="primary-action"
+                disabled={isSavingCloseout || !lifecycle.data?.capabilities?.canCompleteCloseout || (lifecycle.data?.closeoutBlockers || []).length > 0}
+                onClick={() => saveGovernedCloseout('complete')}
+              >
+                Complete project closeout
+              </button>
+              <button
+                type="button"
+                className="secondary-action"
+                disabled={isSavingCloseout || !lifecycle.data?.capabilities?.canReopenProject || lifecycle.data?.closeout?.closeoutStatus !== 'closed'}
+                onClick={() => saveGovernedCloseout('reopen')}
+              >
+                Reopen project
+              </button>
+            </div>
           </section>
 
           <section className="project-closeout-card">

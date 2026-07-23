@@ -1,0 +1,32 @@
+.m042-invoice-notes {
+  display: grid;
+  gap: .45rem;
+  margin: 1rem 0;
+  padding: 1rem;
+  border: 1px solid #dbe5ee;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.m042-invoice-notes label {
+  display: grid;
+  gap: .45rem;
+  color: #334e67;
+  font-size: .82rem;
+  font-weight: 800;
+}
+
+.m042-invoice-notes textarea {
+  width: 100%;
+  min-height: 88px;
+  padding: .75rem .8rem;
+  border: 1px solid #c7d4df;
+  border-radius: 10px;
+  color: #102f4d;
+  background: #fff;
+  resize: vertical;
+}
+
+.m042-invoice-notes small {
+  color: #60768a;
+}

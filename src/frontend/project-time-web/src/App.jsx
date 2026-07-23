@@ -4,6 +4,7 @@ import ProfileIdentitySurface from './identity/ProfileIdentitySurface.jsx';
 import ApprovalMailbox from './ApprovalMailbox.jsx';
 import NativeModuleAdministrationPanel from './NativeModuleAdministrationPanel.jsx';
 import CrmErpIntegrationCenter from './CrmErpIntegrationCenter.jsx';
+import RoleWelcomeDashboard from './RoleWelcomeDashboard.jsx';
 import {
   compareProjectPulseModules,
   sortProjectPulseModules
@@ -7158,38 +7159,12 @@ Analytics - Variphy / Infortel`}
         <>
 
       {(activeRoute === 'dashboard') ? (
-<section id="role-dashboard" className="panel role-dashboard-panel">
-        <div className="section-heading">
-          <div>
-            <p className="eyebrow">Role-based workspace</p>
-            <h1>{workspaceRoleName}</h1>
-            <p className="section-copy">
-              Select a workspace module below. The dashboard only shows the views and actions available to your assigned role.
-            </p>
-          </div>
-          <span className="badge">{visibleRoleModules.length} available views</span>
-        </div>
-
-        {currentUser.error && (
-          <div className="error-text">Unable to load current user: {currentUser.error}</div>
-        )}
-
-        <div className="role-dashboard-grid">
-          {visibleRoleModules.map((module) => (
-            <a className="role-dashboard-card" href={module.href} key={`${module.title}-${module.route}`}>
-              <span><span className="nav-label-with-badge">
-                    {module.navLabel}
-                    {module.route === 'manager-approval' && approvalPendingCount > 0 && (
-                      <span className="nav-pending-badge">{approvalPendingCount}</span>
-                    )}
-                  </span></span>
-              <strong>{module.title}</strong>
-              <small>{module.description}</small>
-            </a>
-          ))}
-        </div>
-
-      </section>
+        <RoleWelcomeDashboard
+          displayName={currentUser.data?.displayName || authSession?.displayName || authSession?.username}
+          roleCodes={currentRoleCodes}
+          roleModules={visibleRoleModules}
+          approvalPendingCount={approvalPendingCount}
+        />
       ) : null}
 
       <section id="dashboard" className="hero hero-polished">
