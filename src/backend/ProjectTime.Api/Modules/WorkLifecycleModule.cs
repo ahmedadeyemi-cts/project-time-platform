@@ -1266,11 +1266,10 @@ public static class WorkLifecycleModule
                 )::date AS week_start
             ),
             dates AS (
-                SELECT generate_series(
-                    (SELECT week_start FROM week),
-                    (SELECT week_start FROM week) + 4,
-                    INTERVAL '1 day'
+                SELECT (
+                    (SELECT week_start FROM week) + weekday_offset
                 )::date AS work_date
+                FROM generate_series(0, 4) AS weekday_offset
             )
             SELECT
                 dates.work_date,

@@ -69,6 +69,7 @@ requireText(lifecycle, [
   'InsertAuditAsync',
   "SET status = 'completed'",
   'EXTRACT(ISODOW FROM CURRENT_DATE)',
+  'FROM generate_series(0, 4) AS weekday_offset',
   'FROM timesheet_day_statuses day_status',
   "lower(COALESCE(submitter.manager_email, ''))",
   '@can_view_all_approvals',
