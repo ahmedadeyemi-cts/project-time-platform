@@ -87,6 +87,8 @@ grep -Fq 'recognized contract variants remain unnormalized' "$CAPTURED_BUNDLE" |
   fail "The bundle does not verify migration 037 contract normalization."
 grep -Fq 'lifecycle, audit, or live-source guards are incomplete' "$CAPTURED_BUNDLE" ||
   fail "The bundle does not verify migration 038 lifecycle and audit guards."
+grep -Fq 'application-role lifecycle grants are incomplete' "$CAPTURED_BUNDLE" ||
+  fail "The bundle does not verify migration 038 application-role grants."
 grep -Fq 'invoice-reactivation advisory-lock order is incorrect' "$CAPTURED_BUNDLE" ||
   fail "The bundle does not verify migration 039 lock order."
 
