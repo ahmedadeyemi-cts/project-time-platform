@@ -105,10 +105,32 @@ test(
     && dateContractMigration.includes('trg_projectpulse037_after_intake_commit')
     && dateContractMigration.includes("'estimatedEndDate', v_estimated_end_date")
 );
+test(
+  'CREATE_INITIAL_DATE_ROUND_TRIP',
+  frontend.includes('sowSignedDate: intakeForm.sowSignedDate')
+    && frontend.includes('estimatedEndDate: intakeForm.estimatedEndDate')
+    && program.includes('var sowSignedDateText = ReadFormString("sowSignedDate")')
+    && program.includes('var estimatedEndDateText = ReadFormString("estimatedEndDate")')
+    && program.includes("COALESCE(extracted_json->>'estimatedEndDate', '')")
+    && program.includes('["estimatedEndDate"] = estimatedEndDate')
+    && sellImport.includes('string? SowSignedDate')
+    && sellImport.includes('string? EstimatedEndDate')
+);
 test('SOURCE_MODE_SCHEMA', migration.includes('ADD COLUMN IF NOT EXISTS source_mode') && migration.includes("SET source_mode = 'gsd_sow_upload'") && migration.includes("ALTER COLUMN source_mode SET DEFAULT 'gsd_sow_upload'") && migration.includes('ALTER COLUMN source_mode SET NOT NULL'));
 const createEndpoint = program.slice(
   program.indexOf('app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/commit"'),
   program.indexOf('/* 055D_4C_FINAL_SAVE_ENDPOINT_END */')
+);
+test(
+  'CREATE_DATE_VALIDATION',
+  frontend.includes('projectPulseCreateEstimatedEndDateValidationMessage')
+    && frontend.includes('Estimated end date cannot be before the project creation date.')
+    && createEndpoint.includes('CURRENT_DATE')
+    && createEndpoint.includes('DateOnly.TryParseExact')
+    && createEndpoint.includes('estimatedEndDate < projectStartDate')
+    && sellImport.includes('parsedEstimatedEndDate < DateOnly.FromDateTime(DateTime.UtcNow)')
+    && dateContractMigration.includes('v_estimated_end_date < v_project_start_date')
+    && dateContractMigration.includes('violating chk_project_dates')
 );
 test('CREATE_AUDIT', createEndpoint.includes("'work_register_created'") && createEndpoint.includes('Authorized 055D user created Work Register'));
 test('CREATE_AUDIT_ATOMIC', createEndpoint.includes('BeginTransactionAsync') && createEndpoint.includes('connection, transaction') && createEndpoint.includes('auditGuardCommand') && createEndpoint.includes('transaction.CommitAsync'));

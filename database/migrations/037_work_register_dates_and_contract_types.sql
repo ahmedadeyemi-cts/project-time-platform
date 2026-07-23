@@ -248,6 +248,7 @@ DECLARE
     v_review JSONB;
     v_package_contract_type TEXT;
     v_contract_type TEXT;
+    v_project_start_date DATE;
     v_estimated_end_date DATE;
     v_sow_signed_date DATE;
 BEGIN
@@ -279,6 +280,20 @@ BEGIN
         'sowDate',
         'sow_date'
     );
+
+    SELECT start_date
+      INTO v_project_start_date
+      FROM projects
+     WHERE project_id = NEW.project_id;
+
+    IF v_estimated_end_date IS NOT NULL
+       AND v_project_start_date IS NOT NULL
+       AND v_estimated_end_date < v_project_start_date
+    THEN
+        -- The API returns a validation message before commit. This guard keeps
+        -- direct or legacy callers from violating chk_project_dates.
+        v_estimated_end_date := NULL;
+    END IF;
 
     UPDATE projects
        SET contract_type = coalesce(nullif(v_contract_type, ''), contract_type),

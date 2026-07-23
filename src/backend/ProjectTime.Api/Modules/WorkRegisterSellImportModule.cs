@@ -31,6 +31,40 @@ public static class WorkRegisterSellImportModule
         if (request.CustomerId == Guid.Empty) return Invalid("Select the ProjectPulse customer for this SELL record.");
         if (string.IsNullOrWhiteSpace(request.Reason)) return Invalid("An intake reason is required for audit history.");
 
+        DateOnly? sowSignedDate = null;
+        if (!string.IsNullOrWhiteSpace(request.SowSignedDate))
+        {
+            if (!DateOnly.TryParseExact(
+                    request.SowSignedDate.Trim(),
+                    "yyyy-MM-dd",
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.None,
+                    out var parsedSowSignedDate))
+            {
+                return Invalid("SOW signed date must use YYYY-MM-DD.");
+            }
+            sowSignedDate = parsedSowSignedDate;
+        }
+
+        DateOnly? estimatedEndDate = null;
+        if (!string.IsNullOrWhiteSpace(request.EstimatedEndDate))
+        {
+            if (!DateOnly.TryParseExact(
+                    request.EstimatedEndDate.Trim(),
+                    "yyyy-MM-dd",
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.None,
+                    out var parsedEstimatedEndDate))
+            {
+                return Invalid("Estimated end date must use YYYY-MM-DD.");
+            }
+            if (parsedEstimatedEndDate < DateOnly.FromDateTime(DateTime.UtcNow))
+            {
+                return Invalid("Estimated end date cannot be before the project creation date.");
+            }
+            estimatedEndDate = parsedEstimatedEndDate;
+        }
+
         await using var connection = await OpenAsync(context.RequestAborted);
         if (!await WorkRegisterAuthorization.HasCreateAuthorityAsync(
                 connection, context, cancellationToken: context.RequestAborted))
@@ -178,6 +212,8 @@ public static class WorkRegisterSellImportModule
                 sellQuoteNumber = quoteNumber,
                 requestedWorkType = Clean(request.RequestedWorkType, "Project"),
                 contractType,
+                sowSignedDate,
+                estimatedEndDate,
                 projectListPrice = contractedAmount,
                 rates,
                 tasks = Array.Empty<object>(),
@@ -409,5 +445,7 @@ public sealed record WorkRegisterSellImportRequest(
     Guid CustomerId,
     string? RequestedWorkType,
     string? ContractType,
+    string? SowSignedDate,
+    string? EstimatedEndDate,
     string? Notes,
     string? Reason);

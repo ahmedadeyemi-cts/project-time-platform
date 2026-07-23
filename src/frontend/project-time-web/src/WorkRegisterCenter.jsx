@@ -148,6 +148,16 @@ function dateOnly(value) {
   return String(value).slice(0, 10);
 }
 
+function projectPulseCreateEstimatedEndDateValidationMessage(value) {
+  const estimatedEndDate = dateOnly(value);
+  if (!estimatedEndDate) return '';
+
+  const projectStartDate = new Date().toISOString().slice(0, 10);
+  return estimatedEndDate < projectStartDate
+    ? 'Estimated end date cannot be before the project creation date.'
+    : '';
+}
+
 export default function WorkRegisterCenter({ mode = 'edit' }) {
   const isCreateMode = mode === 'create';
   const [payload, setPayload] = useState({ loading: true, data: null, error: null });
@@ -2653,6 +2663,14 @@ function removeTaskAssignmentRow(taskIndex, assignmentIndex) {
       return null;
     }
 
+    const estimatedEndDateValidationMessage =
+      projectPulseCreateEstimatedEndDateValidationMessage(intakeReviewForm.estimatedEndDate);
+    if (estimatedEndDateValidationMessage) {
+      setIntakeReviewStatus(estimatedEndDateValidationMessage);
+      if (throwOnError) throw new Error(estimatedEndDateValidationMessage);
+      return null;
+    }
+
     const intakePackageId =
       selectedIntakeReview?.package?.intakePackageId
       || selectedIntakeReview?.intakePackageId
@@ -3078,6 +3096,13 @@ async function createWorkRegisterFromReviewedIntake() {
       return;
     }
 
+    const estimatedEndDateValidationMessage =
+      projectPulseCreateEstimatedEndDateValidationMessage(intakeForm.estimatedEndDate);
+    if (estimatedEndDateValidationMessage) {
+      setIntakeWizardStatus(estimatedEndDateValidationMessage);
+      return;
+    }
+
     const customerSelect = form.elements.customerId;
     const visibleCustomerName = customerSelect?.selectedOptions?.[0]?.textContent?.trim() || 'Selected customer';
 
@@ -3187,6 +3212,12 @@ async function createWorkRegisterFromReviewedIntake() {
       setIntakeWizardStatus('Intake reason is required for audit history.');
       return;
     }
+    const estimatedEndDateValidationMessage =
+      projectPulseCreateEstimatedEndDateValidationMessage(intakeForm.estimatedEndDate);
+    if (estimatedEndDateValidationMessage) {
+      setIntakeWizardStatus(estimatedEndDateValidationMessage);
+      return;
+    }
 
     setSelectedIntakeReview(null);
     setIntakeReviewForm(null);
@@ -3200,6 +3231,8 @@ async function createWorkRegisterFromReviewedIntake() {
         customerId: intakeForm.customerId,
         requestedWorkType: intakeForm.requestedWorkType,
         contractType: intakeForm.contractType,
+        sowSignedDate: intakeForm.sowSignedDate,
+        estimatedEndDate: intakeForm.estimatedEndDate,
         notes: intakeForm.notes,
         reason: intakeForm.reason
       });
@@ -3930,6 +3963,7 @@ async function createWorkRegisterFromReviewedIntake() {
                       <input
                         type="date"
                         value={intakeForm.estimatedEndDate || ''}
+                        min={new Date().toISOString().slice(0, 10)}
                         onChange={(event) => updateIntakeForm('estimatedEndDate', event.target.value)}
                       />
                     </label>
@@ -4343,6 +4377,7 @@ async function createWorkRegisterFromReviewedIntake() {
                         <input
                           type="date"
                           value={intakeReviewForm.estimatedEndDate || ''}
+                          min={new Date().toISOString().slice(0, 10)}
                           onChange={(event) => updateIntakeReviewForm('estimatedEndDate', event.target.value)}
                         />
                       </label>

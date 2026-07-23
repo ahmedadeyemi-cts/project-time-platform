@@ -5797,13 +5797,17 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
     string customerHint = "";
     string projectNameHint = "";
     string customerIdText = "";
+    string sowSignedDate = "";
+    string estimatedEndDate = "";
 
     await using (var packageCommand = new NpgsqlCommand("""
         SELECT requested_work_type,
                COALESCE(contract_type, 'Fixed Price'),
                customer_hint,
                project_name_hint,
-               customer_id
+               customer_id,
+               COALESCE(extracted_json->>'sowSignedDate', ''),
+               COALESCE(extracted_json->>'estimatedEndDate', '')
         FROM work_register_intake_packages
         WHERE work_register_intake_package_id = @intake_package_id
         LIMIT 1;
@@ -5822,6 +5826,8 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
         customerHint = reader.GetString(2);
         projectNameHint = reader.GetString(3);
         customerIdText = reader.IsDBNull(4) ? "" : reader.GetGuid(4).ToString();
+        sowSignedDate = reader.GetString(5);
+        estimatedEndDate = reader.GetString(6);
     }
 
     var documents = new List<(Guid DocumentId, string DocumentType, string OriginalFileName, string StoredFilePath, string ContentType, long FileSizeBytes)>();
@@ -7147,6 +7153,8 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
                 ["customerId"] = customerIdText,
                 ["customerName"] = string.IsNullOrWhiteSpace(FindLabelValue(summary, "Client Name", "Customer", "Customer Name")) ? customerHint : FindLabelValue(summary, "Client Name", "Customer", "Customer Name"),
                 ["projectName"] = string.IsNullOrWhiteSpace(FindLabelValue(summary, "Project Name", "Work Name")) ? projectNameHint : FindLabelValue(summary, "Project Name", "Work Name"),
+                ["sowSignedDate"] = sowSignedDate,
+                ["estimatedEndDate"] = estimatedEndDate,
                 ["accountExecutiveName"] = FindLabelValue(summary, "AE", "Account Executive"),
                 ["solutionArchitectName"] = FindLabelValue(summary, "SA", "Solution Architect"),
                 ["insideSalesName"] = FindLabelValue(summary, "SAA", "Inside Sales"),
@@ -7180,6 +7188,8 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
         ["customerId"] = customerIdText,
         ["customerName"] = customerHint,
         ["projectName"] = projectNameHint,
+        ["sowSignedDate"] = sowSignedDate,
+        ["estimatedEndDate"] = estimatedEndDate,
         ["accountExecutiveName"] = "",
         ["solutionArchitectName"] = "",
         ["insideSalesName"] = "",
@@ -8132,6 +8142,57 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/commit", 
             }, statusCode: StatusCodes.Status403Forbidden);
         }
 
+        await using (var dateValidationCommand = new NpgsqlCommand("""
+            SELECT
+                NULLIF(btrim(reviewed_json->>'estimatedEndDate'), ''),
+                CURRENT_DATE,
+                EXISTS (
+                    SELECT 1
+                    FROM work_register_intake_commits committed
+                    WHERE committed.work_register_intake_package_id =
+                          work_register_intake_packages.work_register_intake_package_id
+                )
+            FROM work_register_intake_packages
+            WHERE work_register_intake_package_id = @intake_package_id
+            LIMIT 1;
+            """, connection))
+        {
+            dateValidationCommand.Parameters.AddWithValue("intake_package_id", intakePackageId);
+
+            await using var dateReader = await dateValidationCommand.ExecuteReaderAsync(httpContext.RequestAborted);
+            if (await dateReader.ReadAsync(httpContext.RequestAborted) && !dateReader.GetBoolean(2))
+            {
+                var estimatedEndDateText = dateReader.IsDBNull(0) ? "" : dateReader.GetString(0);
+                var projectStartDate = dateReader.GetFieldValue<DateOnly>(1);
+
+                if (!string.IsNullOrWhiteSpace(estimatedEndDateText))
+                {
+                    if (!DateOnly.TryParseExact(
+                            estimatedEndDateText,
+                            "yyyy-MM-dd",
+                            System.Globalization.CultureInfo.InvariantCulture,
+                            System.Globalization.DateTimeStyles.None,
+                            out var estimatedEndDate))
+                    {
+                        return Results.BadRequest(new
+                        {
+                            status = "validation_error",
+                            message = "Estimated end date must use YYYY-MM-DD."
+                        });
+                    }
+
+                    if (estimatedEndDate < projectStartDate)
+                    {
+                        return Results.BadRequest(new
+                        {
+                            status = "validation_error",
+                            message = "Estimated end date cannot be before the project creation date."
+                        });
+                    }
+                }
+            }
+        }
+
         await using var transaction = await connection.BeginTransactionAsync(httpContext.RequestAborted);
         await using var command = new NpgsqlCommand("""
             SELECT projectpulse055d4d_commit_intake_package(@intake_package_id, @actor_user_id)::text;
@@ -8311,6 +8372,8 @@ app.MapPost("/api/work-register/intake/packages/upload", async (HttpContext http
     var projectNameHint = ReadFormString("projectNameHint");
     var notes = ReadFormString("notes");
     var reason = ReadFormString("reason");
+    var sowSignedDateText = ReadFormString("sowSignedDate");
+    var estimatedEndDateText = ReadFormString("estimatedEndDate");
     /* 055D_2A_INTAKE_UPLOAD_CUSTOMER_CONTRACT_PATCH */
     var skipGsd = ReadFormBool("skipGsd", false);
     var skipSow = ReadFormBool("skipSow", false);
@@ -8330,6 +8393,40 @@ app.MapPost("/api/work-register/intake/packages/upload", async (HttpContext http
     if (string.IsNullOrWhiteSpace(reason))
     {
         return Results.BadRequest(new { status = "validation_failed", message = "Intake reason is required for audit history." });
+    }
+
+    DateOnly? sowSignedDate = null;
+    if (!string.IsNullOrWhiteSpace(sowSignedDateText))
+    {
+        if (!DateOnly.TryParseExact(
+                sowSignedDateText,
+                "yyyy-MM-dd",
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None,
+                out var parsedSowSignedDate))
+        {
+            return Results.BadRequest(new { status = "validation_failed", message = "SOW signed date must use YYYY-MM-DD." });
+        }
+        sowSignedDate = parsedSowSignedDate;
+    }
+
+    DateOnly? estimatedEndDate = null;
+    if (!string.IsNullOrWhiteSpace(estimatedEndDateText))
+    {
+        if (!DateOnly.TryParseExact(
+                estimatedEndDateText,
+                "yyyy-MM-dd",
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None,
+                out var parsedEstimatedEndDate))
+        {
+            return Results.BadRequest(new { status = "validation_failed", message = "Estimated end date must use YYYY-MM-DD." });
+        }
+        if (parsedEstimatedEndDate < DateOnly.FromDateTime(DateTime.UtcNow))
+        {
+            return Results.BadRequest(new { status = "validation_failed", message = "Estimated end date cannot be before the project creation date." });
+        }
+        estimatedEndDate = parsedEstimatedEndDate;
     }
 
     if (isProjectLike && !skipGsd && (gsdFile is null || gsdFile.Length <= 0))
@@ -8430,6 +8527,8 @@ app.MapPost("/api/work-register/intake/packages/upload", async (HttpContext http
         customerId,
         customerHint,
         projectNameHint,
+        sowSignedDate,
+        estimatedEndDate,
         uploadedDocuments = savedDocuments.Select(document => new
         {
             document.DocumentId,

@@ -20,7 +20,9 @@ GSD contract codes are mapped into the shared Work Register vocabulary:
 - `FP` maps to **Fixed Price**.
 
 The reviewed SOW signed date and estimated end date are persisted on the
-created project and are shown in Module 055C after creation.
+created project and are shown in Module 055C after creation. Both initial dates
+survive intake-package reloads across GSD and SELL paths. The estimated end date
+must be on or after the project creation date.
 
 ### Import from SELL
 
