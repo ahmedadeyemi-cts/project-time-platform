@@ -1,6 +1,8 @@
 import { readFile, stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
+// PM-approved time and void-invoice release semantics must remain identical
+// between lifecycle summaries and the Module 042 invoice engine.
 const root = resolve(process.cwd(), '../../..');
 
 async function text(path) {
