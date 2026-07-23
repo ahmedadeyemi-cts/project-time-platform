@@ -56,7 +56,12 @@ requireText(portal, [
   "includeAll: 'false'",
   "allDates: 'false'",
   "label.textContent = 'Current week approvals'",
-  "row.dataset.dashboardApprovalScope = 'current-week'",
+  "targetRow.dataset.dashboardApprovalScope = 'current-week'",
+  "if (!row || row.dataset.dashboardApprovalScope) return;",
+  'const approvalObserver = dashboard',
+  'new MutationObserver(scheduleApprovalSynchronization)',
+  "locateApprovalMetric()?.removeAttribute('data-dashboard-approval-scope')",
+  'const initialApprovalTimers = [100, 600, 1800]',
   "window.addEventListener('projectpulse:view-as-changed', refreshDashboard)",
   "window.addEventListener('projectpulse:approval-queue-changed', refreshDashboard)"
 ], 'Dashboard personal calendar and current-week approval alignment');
@@ -65,10 +70,11 @@ for (const forbidden of [
   "scope === 'team'",
   "scope === 'department'",
   'resourceIds: resources.map',
-  'resourceIds: selected'
+  'resourceIds: selected',
+  'setInterval(synchronizeCurrentWeekApprovalCount'
 ]) {
   if (portal.includes(forbidden)) {
-    throw new Error(`The dashboard calendar must remain individual-only: ${forbidden}`);
+    throw new Error(`The dashboard calendar and approval synchronization must remain scoped: ${forbidden}`);
   }
 }
 
@@ -116,4 +122,4 @@ requireText(packageJson, [
   'npm run validate:dashboard-personal-calendar'
 ], 'Production build wiring');
 
-console.log('Individual dashboard calendar, current-week approval alignment, and default-collapsed page context contracts passed.');
+console.log('Individual dashboard calendar, current-week approval alignment with rerender protection, and default-collapsed page context contracts passed.');
