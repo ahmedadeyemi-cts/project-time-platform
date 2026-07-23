@@ -53,6 +53,9 @@ jobs:
       - name: Validate Approval Center hotfix test deployment guard
         run: bash scripts/validate-approval-access-hotfix-test-deployment.sh
 
+      - name: Validate dashboard calendar test deployment guard
+        run: bash scripts/validate-dashboard-calendar-test-deployment.sh
+
       - name: Validate container definitions and web build context
         run: |
           test -f deployment/containers/api/Dockerfile
