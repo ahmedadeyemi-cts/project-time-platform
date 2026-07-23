@@ -5,6 +5,76 @@ import './modules-directory-page.css';
 const MODULES_ROUTE = 'modules';
 const MODULES_HASH = '#modules';
 
+const CANONICAL_MODULE_NUMBER_BY_ROUTE = Object.freeze({
+  timesheet: '001',
+  'manager-approval': '002',
+  utilization: '003',
+  'holiday-admin': '004',
+  'project-allocation-info': '005',
+  'psa-modules': '006',
+  workflow: '007',
+  'audit-history': '008',
+  'user-admin': '009',
+  'azure-admin': '010',
+  'work-task-builder': '011',
+  'role-admin': '012',
+  'service-control': '013',
+  'backup-dr': '014',
+  'restore-validation': '015',
+  'backup-retention': '016',
+  'replication-sync': '017',
+  'project-workload': '018',
+  'project-manager-workload': '018',
+  'project-management-workload': '018',
+  'project-workspace': '019',
+  'project-intake': '020',
+  'customer-directory': '021',
+  'cost-alerts': '022',
+  'time-compliance': '023',
+  'sales-intake': '024',
+  'sow-generator': '025',
+  'crm-integration': '026',
+  'signed-handoff': '027',
+  'resource-assignment-handoff': '027',
+  'ai-time-entry': '028',
+  'uat-validation': '029',
+  reporting: '030',
+  'sales-insights': '036',
+  'roles-permissions-matrix': '037',
+  'certify-integration': '038',
+  'billing-readiness': '039',
+  'project-closeout': '040',
+  'closeout-email': '041',
+  'invoice-billing-center': '042',
+  'rate-card-administration': '055B',
+  'work-register': '055C',
+  'create-work-register': '055D',
+  'calendar-capacity': '057',
+  'cicd-pipeline': '058',
+  contracts: '060',
+  opportunities: '063',
+  'ai-provider-configuration': '064',
+  'entra-secret-administration': '065',
+  'project-flowhive': '066',
+  'global-mail-configuration': '067',
+  'system-architecture': '068',
+  'qualifications-certifications': '069',
+  'capacity-pipeline-forecast': '070',
+  'oncall-scheduling': '071',
+  'oneassist-routing-directory': '072',
+  'sales-coverage-alignment': '073',
+  'oem-vendor-directory': '074',
+  'integration-event-gateway': '075',
+  'defect-tracker': '076',
+  'release-deployment-control': '077',
+  'observability-slo-health': '078',
+  'data-governance-retention': '079',
+  'customer-delivery-acceptance': '080',
+  'security-operations': '997',
+  'system-diagnostics': '998',
+  'user-guide': '999'
+});
+
 function currentRoute() {
   return String(window.location.hash || '#dashboard').replace(/^#/, '').trim() || 'dashboard';
 }
@@ -16,6 +86,12 @@ function cleanText(value) {
 function moduleNumberFromLabel(label) {
   const match = cleanText(label).match(/\b(?:module\s*)?(\d{3}|\d{2}[a-z])\b/i);
   return match ? match[1].toUpperCase() : '';
+}
+
+function moduleNumberForRoute(route, source) {
+  return moduleNumberFromLabel(source)
+    || CANONICAL_MODULE_NUMBER_BY_ROUTE[route]
+    || '';
 }
 
 function ensurePersistentModulesLink(active) {
@@ -87,7 +163,7 @@ function addAuthorizedModule(modules, seenRoutes, anchor, groupName) {
     route,
     href,
     label,
-    moduleNumber: moduleNumberFromLabel(moduleNumberSource),
+    moduleNumber: moduleNumberForRoute(route, moduleNumberSource),
     group: groupName,
     order: modules.length
   });
@@ -278,7 +354,7 @@ export default function ModulesDirectoryPortal() {
             type="search"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search by module name, route, or category"
+            placeholder="Search by module number, name, route, or category"
           />
         </label>
 
@@ -302,7 +378,7 @@ export default function ModulesDirectoryPortal() {
           {filteredModules.map((module) => (
             <a className="modules-directory-card" href={module.href} key={module.route}>
               <div className="modules-directory-card-heading">
-                <span>{module.moduleNumber ? `Module ${module.moduleNumber}` : module.group}</span>
+                <span>{module.moduleNumber ? `Module ${module.moduleNumber}` : 'Module number unavailable'}</span>
                 <small>{module.group}</small>
               </div>
               <h2>{module.label}</h2>
