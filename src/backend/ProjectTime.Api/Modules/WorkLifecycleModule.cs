@@ -198,6 +198,8 @@ public static class WorkLifecycleModule
             readiness?.BillingPeriodStart,
             readiness?.BillingPeriodEnd,
             readiness?.PackageType ?? string.Empty,
+            readiness?.EvidenceDescription ?? string.Empty,
+            readiness?.EvidenceAmount,
             context.RequestAborted);
         var closeout = await LoadCloseoutAsync(connection, null, projectId, context.RequestAborted);
         var blockers = await BuildCloseoutBlockersAsync(
@@ -248,6 +250,49 @@ public static class WorkLifecycleModule
                 status = "validation_failed",
                 message = "Select a valid billing package type."
             });
+        }
+
+        var isExpenseOnlyPackage = packageType.Contains(
+            "expense-only",
+            StringComparison.OrdinalIgnoreCase);
+        var isMilestonePackage = packageType.Contains(
+            "milestone",
+            StringComparison.OrdinalIgnoreCase);
+        var evidenceSourceType = isExpenseOnlyPackage
+            ? "expense"
+            : isMilestonePackage
+                ? "fixed_price_milestone"
+                : "labor";
+        var evidenceDescription = Clean(request.EvidenceDescription);
+        if (evidenceDescription.Length > 500)
+        {
+            return Results.BadRequest(new
+            {
+                status = "validation_failed",
+                message = "Package evidence description may not exceed 500 characters."
+            });
+        }
+
+        decimal? evidenceAmount = request.EvidenceAmount;
+        if (evidenceAmount.HasValue)
+        {
+            evidenceAmount = decimal.Round(
+                evidenceAmount.Value,
+                2,
+                MidpointRounding.AwayFromZero);
+            if (evidenceAmount <= 0 || evidenceAmount > 999999999999.99m)
+            {
+                return Results.BadRequest(new
+                {
+                    status = "validation_failed",
+                    message = "Package evidence amount must be greater than zero and within the supported invoice range."
+                });
+            }
+        }
+        if (evidenceSourceType == "labor")
+        {
+            evidenceDescription = string.Empty;
+            evidenceAmount = null;
         }
 
         var requestedStatus = Clean(request.ReviewStatus).ToLowerInvariant();
@@ -312,6 +357,8 @@ public static class WorkLifecycleModule
             request.BillingPeriodStart,
             request.BillingPeriodEnd,
             packageType,
+            evidenceDescription,
+            evidenceAmount,
             context.RequestAborted);
         if (requestedStatus == "ready" && serverBlockers.Count > 0)
         {
@@ -345,6 +392,9 @@ public static class WorkLifecycleModule
                 review_status,
                 checklist_json,
                 notes,
+                evidence_source_type,
+                evidence_description,
+                evidence_amount,
                 reviewed_by_user_id,
                 created_at,
                 updated_at
@@ -358,6 +408,9 @@ public static class WorkLifecycleModule
                 @review_status,
                 @checklist,
                 @notes,
+                @evidence_source_type,
+                @evidence_description,
+                @evidence_amount,
                 @actor_user_id,
                 NOW(),
                 NOW()
@@ -367,6 +420,9 @@ public static class WorkLifecycleModule
                 review_status = EXCLUDED.review_status,
                 checklist_json = EXCLUDED.checklist_json,
                 notes = EXCLUDED.notes,
+                evidence_source_type = EXCLUDED.evidence_source_type,
+                evidence_description = EXCLUDED.evidence_description,
+                evidence_amount = EXCLUDED.evidence_amount,
                 reviewed_by_user_id = EXCLUDED.reviewed_by_user_id,
                 updated_at = NOW()
             RETURNING work_billing_readiness_review_id;
@@ -380,6 +436,10 @@ public static class WorkLifecycleModule
             command.Parameters.AddWithValue("review_status", requestedStatus);
             command.Parameters.Add("checklist", NpgsqlDbType.Jsonb).Value = checklistJson;
             command.Parameters.AddWithValue("notes", Clean(request.Notes));
+            command.Parameters.AddWithValue("evidence_source_type", evidenceSourceType);
+            command.Parameters.AddWithValue("evidence_description", evidenceDescription);
+            command.Parameters.Add("evidence_amount", NpgsqlDbType.Numeric).Value =
+                evidenceAmount.HasValue ? evidenceAmount.Value : DBNull.Value;
             command.Parameters.AddWithValue("actor_user_id", access.ActualUserId);
             reviewId = (Guid)(await command.ExecuteScalarAsync(context.RequestAborted) ?? reviewId);
         }
@@ -403,7 +463,10 @@ public static class WorkLifecycleModule
                 request.BillingPeriodEnd,
                 packageType,
                 checklist = normalizedChecklist,
-                notes = Clean(request.Notes)
+                notes = Clean(request.Notes),
+                evidenceSourceType,
+                evidenceDescription,
+                evidenceAmount
             },
             context.RequestAborted);
 
@@ -933,6 +996,9 @@ public static class WorkLifecycleModule
                 review.review_status,
                 review.checklist_json::text,
                 review.notes,
+                review.evidence_source_type,
+                review.evidence_description,
+                review.evidence_amount,
                 COALESCE(actor.display_name, actor.email, ''),
                 review.updated_at
             FROM work_billing_readiness_reviews review
@@ -955,7 +1021,10 @@ public static class WorkLifecycleModule
                 ?? new Dictionary<string, bool>(),
             reader.GetString(6),
             reader.GetString(7),
-            reader.GetFieldValue<DateTimeOffset>(8));
+            reader.GetString(8),
+            reader.IsDBNull(9) ? null : reader.GetDecimal(9),
+            reader.GetString(10),
+            reader.GetFieldValue<DateTimeOffset>(11));
     }
 
     private static async Task<WorkBillingReadinessSnapshot?> LoadReadinessByPackageAsync(
@@ -976,6 +1045,9 @@ public static class WorkLifecycleModule
                 review.review_status,
                 review.checklist_json::text,
                 review.notes,
+                review.evidence_source_type,
+                review.evidence_description,
+                review.evidence_amount,
                 COALESCE(actor.display_name, actor.email, ''),
                 review.updated_at
             FROM work_billing_readiness_reviews review
@@ -1003,7 +1075,10 @@ public static class WorkLifecycleModule
                 ?? new Dictionary<string, bool>(),
             reader.GetString(6),
             reader.GetString(7),
-            reader.GetFieldValue<DateTimeOffset>(8));
+            reader.GetString(8),
+            reader.IsDBNull(9) ? null : reader.GetDecimal(9),
+            reader.GetString(10),
+            reader.GetFieldValue<DateTimeOffset>(11));
     }
 
     private static async Task<WorkCloseoutSnapshot?> LoadCloseoutAsync(
@@ -1168,6 +1243,8 @@ public static class WorkLifecycleModule
         DateOnly? billingPeriodStart,
         DateOnly? billingPeriodEnd,
         string packageType,
+        string evidenceDescription,
+        decimal? evidenceAmount,
         CancellationToken cancellationToken)
     {
         var blockers = new List<string>();
@@ -1178,6 +1255,23 @@ public static class WorkLifecycleModule
             "milestone",
             StringComparison.OrdinalIgnoreCase);
         var requiresLaborEvidence = !isExpenseOnlyPackage && !isMilestonePackage;
+        var requiresNonLaborEvidence = isExpenseOnlyPackage || isMilestonePackage;
+
+        if (requiresNonLaborEvidence)
+        {
+            if (string.IsNullOrWhiteSpace(evidenceDescription))
+            {
+                blockers.Add(isExpenseOnlyPackage
+                    ? "A specific approved expense description is required."
+                    : "A specific governed milestone description is required.");
+            }
+            if (!evidenceAmount.HasValue || evidenceAmount.Value <= 0)
+            {
+                blockers.Add(isExpenseOnlyPackage
+                    ? "A positive approved expense amount is required."
+                    : "A positive governed milestone amount is required.");
+            }
+        }
 
         if (string.IsNullOrWhiteSpace(project.CustomerName))
         {
@@ -1233,6 +1327,35 @@ public static class WorkLifecycleModule
                 && !reader.GetBoolean(1))
             {
                 blockers.Add("A primary active purchase order is required.");
+            }
+        }
+
+        if (requiresNonLaborEvidence
+            && billingPeriodStart.HasValue
+            && billingPeriodEnd.HasValue)
+        {
+            await using var command = new NpgsqlCommand("""
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM work_billing_readiness_reviews review
+                    JOIN billing_invoice_lines line
+                      ON line.billing_readiness_review_id = review.work_billing_readiness_review_id
+                    JOIN billing_invoices invoice
+                      ON invoice.billing_invoice_id = line.billing_invoice_id
+                    WHERE review.project_id = @project_id
+                      AND review.billing_period_start = @period_start
+                      AND review.billing_period_end = @period_end
+                      AND review.package_type = @package_type
+                      AND lower(COALESCE(invoice.invoice_status, '')) <> 'void'
+                );
+                """, connection, transaction);
+            command.Parameters.AddWithValue("project_id", project.ProjectId);
+            command.Parameters.Add("period_start", NpgsqlDbType.Date).Value = billingPeriodStart.Value;
+            command.Parameters.Add("period_end", NpgsqlDbType.Date).Value = billingPeriodEnd.Value;
+            command.Parameters.AddWithValue("package_type", packageType);
+            if (Convert.ToBoolean(await command.ExecuteScalarAsync(cancellationToken)))
+            {
+                blockers.Add("This exact non-labor package is already included on a non-void invoice.");
             }
         }
 
@@ -1738,6 +1861,42 @@ public static class WorkLifecycleModule
                       ON review_lifecycle.project_id = project.project_id
                     WHERE review.review_status = 'ready'
                       AND COALESCE(review_lifecycle.is_archived, FALSE) = FALSE
+                      AND (
+                            (
+                                review.evidence_source_type = 'labor'
+                                AND EXISTS (
+                                    SELECT 1
+                                    FROM time_entries ready_entry
+                                    WHERE ready_entry.project_id = review.project_id
+                                      AND ready_entry.billable = TRUE
+                                      AND ready_entry.hours > 0
+                                      AND ready_entry.status = ANY(@approved_statuses)
+                                      AND ready_entry.work_date >= review.billing_period_start
+                                      AND ready_entry.work_date <= review.billing_period_end
+                                      AND NOT EXISTS (
+                                          SELECT 1
+                                          FROM billing_invoice_lines ready_line
+                                          JOIN billing_invoices ready_invoice
+                                            ON ready_invoice.billing_invoice_id = ready_line.billing_invoice_id
+                                          WHERE ready_line.time_entry_id = ready_entry.time_entry_id
+                                            AND lower(COALESCE(ready_invoice.invoice_status, '')) <> 'void'
+                                      )
+                                )
+                            )
+                            OR
+                            (
+                                review.evidence_source_type IN ('expense', 'fixed_price_milestone')
+                                AND COALESCE(review.evidence_amount, 0) > 0
+                                AND NOT EXISTS (
+                                    SELECT 1
+                                    FROM billing_invoice_lines ready_line
+                                    JOIN billing_invoices ready_invoice
+                                      ON ready_invoice.billing_invoice_id = ready_line.billing_invoice_id
+                                    WHERE ready_line.billing_readiness_review_id = review.work_billing_readiness_review_id
+                                      AND lower(COALESCE(ready_invoice.invoice_status, '')) <> 'void'
+                                )
+                            )
+                      )
                       AND (@broad_scope OR project.project_manager_user_id = @user_id)
                 ),
                 (
@@ -1872,6 +2031,8 @@ public sealed record BillingReadinessSaveRequest(
     string? ReviewStatus,
     Dictionary<string, bool>? Checklist,
     string? Notes,
+    string? EvidenceDescription,
+    decimal? EvidenceAmount,
     string? Reason);
 
 public sealed record CloseoutSaveRequest(
@@ -1913,6 +2074,9 @@ public sealed record WorkBillingReadinessSnapshot(
     string ReviewStatus,
     Dictionary<string, bool> Checklist,
     string Notes,
+    string EvidenceSourceType,
+    string EvidenceDescription,
+    decimal? EvidenceAmount,
     string ReviewedBy,
     DateTimeOffset UpdatedAt);
 
