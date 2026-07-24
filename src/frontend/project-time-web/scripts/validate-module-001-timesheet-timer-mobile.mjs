@@ -54,17 +54,25 @@ rejectText(generator, 'assignedTasks.data', 'undefined assignedTasks reference')
 rejectText(generator, 'nonProjectCategories.data', 'undefined nonProjectCategories reference');
 requireText(app, 'const assignedOpenTasks = openTasks.data?.tasks ?? [];', 'canonical assigned task declaration');
 requireText(app, 'const categories = timesheet.data?.nonProjectCategories ?? [];', 'canonical non-project declaration');
+requireText(app, '/api/assignments/available-tasks?weekStart=', 'working Timesheet task endpoint');
+requireText(app, "projectPulseTaskTimeEntrySection(task) === 'regular'", 'working regular-task classification');
+requireText(app, "projectPulseTaskTimeEntrySection(task) === 'requests'", 'working request-task classification');
 requireText(generated, 'MODULE_001_CANONICAL_STATE_BRIDGE_START', 'generated App bridge');
 requireText(generated, 'assignedTasks: assignedOpenTasks', 'generated assigned tasks');
 requireText(generated, 'nonProjectCategories: categories', 'generated non-project categories');
 requireText(main, './App.Module001.g.jsx', 'generated App import');
 requireText(main, '<TimesheetEnhancementPortal />', 'portal root integration');
 
-requireText(portalEntry, '/api/timesheet/timers/targets?weekStart=', 'authoritative timer target refresh');
-requireText(portalEntry, 'normalizeAssignmentTarget', 'authoritative assignment normalization');
-requireText(portalEntry, 'workTaskCategory', 'task category projection');
-requireText(portalEntry, 'serviceRequestNumber', 'service request projection');
-requireText(portalEntry, 'mergeAssignedTasks', 'canonical and authoritative task merge');
+requireText(portalEntry, '/api/assignments/available-tasks?weekStart=', 'shared available-task timer refresh');
+rejectText(portalEntry, '/api/timesheet/timers/targets?weekStart=', 'divergent timer-only task source');
+requireText(portalEntry, 'normalizeAvailableTask', 'available-task normalization');
+requireText(portalEntry, 'canonicalWorkTypeGroup', 'shared Work Type classification');
+requireText(portalEntry, "workType === 'project' || workType === 'iqs'", 'Project and IQS regular-task routing');
+requireText(portalEntry, "? 'Regular Tasks'", 'regular task group');
+requireText(portalEntry, ": 'Service Request Tasks'", 'request task group');
+requireText(portalEntry, 'regularAssignedTasks:', 'published regular-task collection');
+requireText(portalEntry, 'requestAssignedTasks:', 'published request-task collection');
+requireText(portalEntry, 'mergeAssignedTasks', 'canonical and shared task merge');
 requireText(portalEntry, 'projectpulse:module001-state', 'enriched state publication');
 requireText(portalEntry, 'AUGMENTED_MARKER', 'state enrichment loop guard');
 
@@ -75,7 +83,7 @@ requireText(portal, 'snapshot?.assignedTasks', 'timer assigned-task source');
 requireText(portal, 'snapshot?.nonProjectCategories', 'timer visible category source');
 requireText(portal, 'categoryTarget', 'category normalization');
 requireText(portal, "targetType: 'categoryCode'", 'category-code target construction');
-requireText(portal, "category-code:${code}", 'category-code selector value');
+requireText(portal, 'category-code:${code}', 'category-code selector value');
 requireText(portal, 'nonProjectCategoryCode: target.targetCode', 'category-code start payload');
 requireText(portal, 'Promise.allSettled', 'independent timer runtime loading');
 requireText(portal, 'window.setInterval(refresh, 5000)', 'active-timer polling');
@@ -197,4 +205,4 @@ if (backendAvailable) {
   requireText(rollback, 'DROP TABLE IF EXISTS module001_timer_sessions', 'reviewed rollback');
 }
 
-console.log(`MODULE_001_TIMESHEET_TIMER_MOBILE_VALIDATION=PASS roundingCases=${roundingCases.length} backend=${backendAvailable ? 'full' : 'frontend-container'} architecture=streamlined authoritativeTaskGroups=true autocompleteCombobox=true`);
+console.log(`MODULE_001_TIMESHEET_TIMER_MOBILE_VALIDATION=PASS roundingCases=${roundingCases.length} backend=${backendAvailable ? 'full' : 'frontend-container'} architecture=streamlined sharedAvailableTasks=true autocompleteCombobox=true`);
