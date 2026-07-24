@@ -3,29 +3,32 @@ set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKFLOW="$ROOT/.github/workflows/projectpulse-deploy-module-001-view-sync-test.yml"
-EXPECTED="5cc3739897acf6f5913622eddf979bd7f11843c0"
+EXPECTED="191a6a22b2235fa53282684bf2e084d99bac87b4"
 
-fail() { echo "MODULE001_VIEW_SYNC_DEPLOYMENT_GUARD=FAIL: $*" >&2; exit 1; }
+fail() { echo "MODULE001_TIMER_SEARCH_DEPLOYMENT_GUARD=FAIL: $*" >&2; exit 1; }
 [[ -f "$WORKFLOW" ]] || fail "Workflow is missing."
 
 require() { grep -Fq -- "$1" "$WORKFLOW" || fail "Workflow missing: $1"; }
 
 for value in \
-  'name: ProjectPulse Deploy Module 001 View Sync Test' \
+  'name: ProjectPulse Deploy Module 001 Timer Search Test' \
   "default: $EXPECTED" \
   "EXPECTED_RELEASE_COMMIT: $EXPECTED" \
-  'DEPLOY-MODULE-001-VIEW-SYNC-TO-TEST' \
+  'DEPLOY-MODULE-001-TIMER-SEARCH-TO-TEST' \
   'refs/heads/main' \
   'environment: test' \
-  'Promise.allSettled' \
-  'normalizeNonProjectCategory' \
-  'Current Timesheet activities' \
-  'focusActivityPicker' \
-  'module001-activity-picker-attention' \
-  '#timesheet .timesheet-workspace > .timesheet-view-panel' \
-  '#timesheet .timesheet-workspace > .module001-enhancement-view-host' \
-  'Deploy view-sync web image only' \
-  'Choose an activity from the Activities panel' \
+  './TimesheetEnhancementPortalV2.jsx' \
+  'type="search"' \
+  'Search activity, task, project, customer, or request' \
+  'Non-Project Time' \
+  'Regular Tasks' \
+  'Service Request Tasks' \
+  'window.setInterval(refresh, 5000)' \
+  'error?.status === 409' \
+  'error?.payload?.activeTimer' \
+  'A timer was already running. It is now displayed' \
+  '.module001-task-search' \
+  'Deploy timer-search web image only' \
   'apiDeployment":"unchanged' \
   'migration041":"unchanged' \
   'database":"unchanged' \
@@ -55,4 +58,4 @@ do
 done
 
 bash -n "$0"
-echo 'MODULE001_VIEW_SYNC_DEPLOYMENT_GUARD=PASS'
+echo 'MODULE001_TIMER_SEARCH_DEPLOYMENT_GUARD=PASS'
