@@ -5,6 +5,7 @@ import HelpAssistant from './HelpAssistant.jsx';
 import ModulesDirectoryPortal from './ModulesDirectoryPortal.jsx';
 import DashboardPersonalCalendarPortal from './DashboardPersonalCalendarPortal.jsx';
 import './approval-access-navigation-compatibility.js';
+import './scoped-rbac-catalog-compatibility.js';
 import './styles.css';
 import './role-welcome-dashboard-visibility.css';
 import './scoped-role-policy-admin.css';
