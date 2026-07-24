@@ -130,14 +130,9 @@ jobs:
           AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
           AZURE_API_APP: ${{ vars.AZURE_API_APP }}
           AZURE_ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
-          PR55_MIGRATION_IMAGE: ${{ steps.migration.outputs.image }}
-          PR55_MIGRATION_JOB_NAME: rbac-mig-${{ github.run_id }}-${{ github.run_attempt }}
-        run: |
-          set -Eeuo pipefail
-          sed "s/EXPECTED_RELEASE_COMMIT=\"4cddc469f7bd20e4cb0e028e9ff1d47842ef7532\"/EXPECTED_RELEASE_COMMIT=\"$EXPECTED_RELEASE_COMMIT\"/" \
-            control/scripts/run-pr55-test-migration-job.sh > /tmp/run-scoped-rbac-migration-job.sh
-          chmod 0700 /tmp/run-scoped-rbac-migration-job.sh
-          /tmp/run-scoped-rbac-migration-job.sh
+          SCOPED_RBAC_MIGRATION_IMAGE: ${{ steps.migration.outputs.image }}
+          SCOPED_RBAC_MIGRATION_JOB_NAME: rbac-mig-${{ github.run_id }}-${{ github.run_attempt }}
+        run: bash control/scripts/run-scoped-rbac-test-migration-job.sh
 
       - name: Deploy API
         id: deploy_api
