@@ -15,7 +15,7 @@ cleanup() {
 trap cleanup EXIT
 
 psql_exec() {
-  docker exec -e PGPASSWORD="$DB_PASSWORD" "$CONTAINER" \
+  docker exec -i -e PGPASSWORD="$DB_PASSWORD" "$CONTAINER" \
     psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" "$@"
 }
 
