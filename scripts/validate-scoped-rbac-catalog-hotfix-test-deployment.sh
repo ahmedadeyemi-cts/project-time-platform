@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKFLOW="$ROOT/.github/workflows/projectpulse-deploy-scoped-rbac-catalog-hotfix-test.yml"
-EXPECTED="49713d8afad8200ebe558f4e410e8351e7328759"
+EXPECTED="648ed3015060f3b5e874626161a8f60a0813741d"
 
 fail() { echo "SCOPED_RBAC_CATALOG_HOTFIX_DEPLOYMENT_GUARD=FAIL: $*" >&2; exit 1; }
 [[ -f "$WORKFLOW" ]] || fail "Workflow is missing."
@@ -17,9 +17,12 @@ for value in \
   'DEPLOY-SCOPED-RBAC-CATALOG-HOTFIX-TO-TEST' \
   'refs/heads/main' \
   'environment: test' \
-  'projectpulse-scoped-rbac-catalog-normalized' \
-  '/api/role-policy/catalog' \
-  'x-projectpulse-compatibility' \
+  'const catalogActions = asArray(catalog?.actions);' \
+  'const catalogScopes = asArray(catalog?.scopes);' \
+  'catalogActions.map((action)' \
+  'catalogScopes.map((scope)' \
+  'Direct Module 012 array-safe bundle was not served.' \
+  'module012DirectArraySafety":"verified' \
   'Deploy catalog hotfix web image only' \
   'apiDeployment":"unchanged' \
   'migration040":"unchanged' \
@@ -32,11 +35,8 @@ grep -Fq 'PROJECTPULSE_TEST_DATABASE_URL' "$WORKFLOW" && fail "Web-only rollout 
 grep -Fq 'database/migrations' "$WORKFLOW" && fail "Web-only rollout must not run migrations."
 grep -Fq 'environment: production' "$WORKFLOW" && fail "Production environment is forbidden."
 
-# These source-shape strings are permitted exactly once in the pre-deployment
-# source contract. Served-bundle validation must rely only on stable runtime
-# strings because Vite minifies local variable names.
-[[ "$(grep -Fc 'source.Actions' "$WORKFLOW")" == 1 ]] || fail "Expected one PascalCase Actions source-contract check."
-[[ "$(grep -Fc 'source.Scopes' "$WORKFLOW")" == 0 ]] || fail "Unexpected minification-sensitive Scopes check remains."
+grep -Fq "! grep -Fq 'catalog.actions.map'" "$WORKFLOW" || fail "Unsafe direct actions.map rejection is missing."
+grep -Fq "! grep -Fq 'catalog.scopes.map'" "$WORKFLOW" || fail "Unsafe direct scopes.map rejection is missing."
 
 served_block="$(sed -n '/Validate served catalog compatibility and active image/,/Write deployment evidence/p' "$WORKFLOW")"
 grep -Fq 'source.Actions' <<<"$served_block" && fail "Served-bundle validation must not depend on source.Actions."
