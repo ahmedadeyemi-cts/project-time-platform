@@ -1,9 +1,10 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import App from './App.jsx';
+import App from './.module001-generated/App.Module001.g.jsx';
 import HelpAssistant from './HelpAssistant.jsx';
 import ModulesDirectoryPortal from './ModulesDirectoryPortal.jsx';
 import DashboardPersonalCalendarPortal from './DashboardPersonalCalendarPortal.jsx';
+import TimesheetEnhancementPortal from './module001/TimesheetEnhancementPortal.jsx';
 import './approval-access-navigation-compatibility.js';
 import './scoped-rbac-catalog-compatibility.js';
 import './styles.css';
@@ -16,6 +17,7 @@ createRoot(document.getElementById('root')).render(
     <App />
     <ModulesDirectoryPortal />
     <DashboardPersonalCalendarPortal />
+    <TimesheetEnhancementPortal />
     <HelpAssistant />
   </React.StrictMode>
 );
