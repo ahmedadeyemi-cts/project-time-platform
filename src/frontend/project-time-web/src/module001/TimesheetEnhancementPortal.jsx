@@ -18,43 +18,72 @@ function canonicalWorkTypeGroup(task) {
     : 'Service Request Tasks';
 }
 
+function projectTaskKey(task) {
+  const projectId = String(task?.projectId || '');
+  const taskId = String(task?.taskId || '');
+  return projectId && taskId ? `${projectId}:${taskId}` : '';
+}
+
 function taskKey(task) {
   const assignmentId = String(task?.assignmentId || task?.projectAssignmentId || '');
   if (UUID_PATTERN.test(assignmentId)) return `assignment:${assignmentId}`;
 
-  const projectId = String(task?.projectId || '');
-  const taskId = String(task?.taskId || '');
-  return projectId && taskId ? `project-task:${projectId}:${taskId}` : '';
+  const projectTask = projectTaskKey(task);
+  return projectTask ? `project-task:${projectTask}` : '';
 }
 
-function normalizeAvailableTask(task) {
-  const assignmentId = String(task?.assignmentId || task?.projectAssignmentId || '');
+function buildWorkQueueAssignmentIndex(tasks) {
+  const assignmentIndex = new Map();
+
+  for (const task of tasks || []) {
+    const assignmentId = String(task?.assignmentId || task?.projectAssignmentId || '');
+    const key = projectTaskKey(task);
+    if (!key || !UUID_PATTERN.test(assignmentId)) continue;
+    assignmentIndex.set(key, task);
+  }
+
+  return assignmentIndex;
+}
+
+function normalizeAvailableTask(task, assignmentIndex) {
+  const matchingAssignment = assignmentIndex.get(projectTaskKey(task)) || {};
+  const assignmentId = String(
+    task?.assignmentId
+      || task?.projectAssignmentId
+      || matchingAssignment?.assignmentId
+      || matchingAssignment?.projectAssignmentId
+      || ''
+  );
   if (!UUID_PATTERN.test(assignmentId)) return null;
 
+  const source = {
+    ...matchingAssignment,
+    ...task
+  };
   const workType = String(
-    task?.workType
-      || task?.canonicalWorkType
-      || task?.projectWorkType
-      || task?.assignmentWorkType
+    source?.workType
+      || source?.canonicalWorkType
+      || source?.projectWorkType
+      || source?.assignmentWorkType
       || ''
   ).trim();
   const serviceRequestNumber = String(
-    task?.serviceRequestNumber
-      || task?.requestNumber
-      || task?.ticketNumber
+    source?.serviceRequestNumber
+      || source?.requestNumber
+      || source?.ticketNumber
       || ''
   ).trim();
-  const groupLabel = canonicalWorkTypeGroup(task);
-  const customerName = task?.customerName || task?.clientName || '';
+  const groupLabel = canonicalWorkTypeGroup(source);
+  const customerName = source?.customerName || source?.clientName || '';
   const selectionLabel = [
     serviceRequestNumber,
     customerName,
-    task?.projectCode || task?.projectName,
-    task?.taskName || task?.workItemName
+    source?.projectCode || source?.projectName,
+    source?.taskName || source?.workItemName
   ].filter(Boolean).join(' · ') || 'Assigned task';
 
   return {
-    ...task,
+    ...source,
     assignmentId,
     projectAssignmentId: assignmentId,
     customerName,
@@ -62,7 +91,7 @@ function normalizeAvailableTask(task) {
     workType,
     canonicalWorkType: workType,
     serviceRequestNumber,
-    serviceRequestId: serviceRequestNumber || task?.serviceRequestId || null,
+    serviceRequestId: serviceRequestNumber || source?.serviceRequestId || null,
     requestType: groupLabel === 'Service Request Tasks' ? 'service request' : '',
     selectionLabel,
     groupLabel
@@ -130,25 +159,40 @@ export default function TimesheetEnhancementPortal() {
       pendingRef.current.add(weekStart);
 
       try {
-        const response = await fetch(
-          `/api/assignments/available-tasks?weekStart=${encodeURIComponent(weekStart)}`,
-          {
-            credentials: 'include',
-            cache: 'no-store'
-          }
+        const [availableResult, workQueueResult] = await Promise.allSettled([
+          fetch(
+            `/api/assignments/available-tasks?weekStart=${encodeURIComponent(weekStart)}`,
+            {
+              credentials: 'include',
+              cache: 'no-store'
+            }
+          ),
+          fetch(
+            `/api/timesheet/work-queue?weekStart=${encodeURIComponent(weekStart)}`,
+            {
+              credentials: 'include',
+              cache: 'no-store'
+            }
+          )
+        ]);
+
+        if (availableResult.status !== 'fulfilled' || !availableResult.value.ok) return;
+
+        const availablePayload = await availableResult.value.json();
+        const workQueuePayload = workQueueResult.status === 'fulfilled' && workQueueResult.value.ok
+          ? await workQueueResult.value.json()
+          : { tasks: [] };
+        const assignmentIndex = buildWorkQueueAssignmentIndex(
+          Array.isArray(workQueuePayload?.tasks) ? workQueuePayload.tasks : []
         );
-
-        if (!response.ok) return;
-
-        const result = await response.json();
-        const availableTasks = (Array.isArray(result?.tasks) ? result.tasks : [])
-          .map(normalizeAvailableTask)
+        const availableTasks = (Array.isArray(availablePayload?.tasks) ? availablePayload.tasks : [])
+          .map((task) => normalizeAvailableTask(task, assignmentIndex))
           .filter(Boolean);
 
         cacheRef.current.set(weekStart, availableTasks);
         publish(latestSnapshotRef.current.get(weekStart) || snapshot, availableTasks);
       } catch {
-        // The canonical Timesheet snapshot remains usable if the shared available-task refresh fails.
+        // The canonical Timesheet snapshot remains usable if the assignment join refresh fails.
       } finally {
         pendingRef.current.delete(weekStart);
       }
