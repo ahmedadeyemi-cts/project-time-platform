@@ -41,9 +41,27 @@ requireText(generator, 'buildTimesheetPayload()', 'shared canonical weekly draft
 requireText(generator, 'canonicalCalendarEntries', 'shared Calendar projection');
 requireText(generator, 'projectpulse:module001-state', 'canonical state event');
 requireText(generator, 'projectpulse:module001-action', 'canonical state action');
+requireText(generator, 'assignedTasks: assignedOpenTasks', 'canonical assigned-task source');
+requireText(generator, 'nonProjectCategories: categories', 'canonical non-project category source');
+rejectText(generator, 'assignedTasks.data', 'undefined assignedTasks reference');
+rejectText(generator, 'nonProjectCategories.data', 'undefined nonProjectCategories reference');
+requireText(app, 'const assignedOpenTasks = openTasks.data?.tasks ?? [];', 'canonical assigned task declaration');
+requireText(app, 'const categories = timesheet.data?.nonProjectCategories ?? [];', 'canonical non-project declaration');
 requireText(generated, 'MODULE_001_CANONICAL_STATE_BRIDGE_START', 'generated App bridge');
 requireText(generated, 'draftPayload: buildTimesheetPayload()', 'generated canonical payload');
+requireText(generated, 'assignedTasks: assignedOpenTasks', 'generated assigned-task source');
+requireText(generated, 'nonProjectCategories: categories', 'generated non-project source');
+rejectText(generated, 'assignedTasks.data', 'generated undefined assignedTasks reference');
+rejectText(generated, 'nonProjectCategories.data', 'generated undefined nonProjectCategories reference');
 requireText(generated, "./SystemUserGuide.Module001.g.jsx", 'generated user-guide import');
+assert.ok(
+  generated.indexOf('const assignedOpenTasks = openTasks.data?.tasks ?? [];') < generated.indexOf('MODULE_001_CANONICAL_STATE_BRIDGE_START'),
+  'assignedOpenTasks must be declared before the generated bridge'
+);
+assert.ok(
+  generated.indexOf('const categories = timesheet.data?.nonProjectCategories ?? [];') < generated.indexOf('MODULE_001_CANONICAL_STATE_BRIDGE_START'),
+  'categories must be declared before the generated bridge'
+);
 requireText(main, "./App.Module001.g.jsx", 'generated App import');
 requireText(main, '<TimesheetEnhancementPortal />', 'portal root integration');
 for (const guideContract of ['Start / Stop Timer', 'Mobile mode', 'Module 002 Approval Inbox', 'server-authoritative UTC timestamps']) {
