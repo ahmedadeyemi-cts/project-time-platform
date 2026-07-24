@@ -1,0 +1,155 @@
+name: ProjectPulse Deploy Scoped RBAC Catalog Hotfix Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_commit:
+        description: Exact verified scoped RBAC catalog hotfix commit
+        required: true
+        default: 49713d8afad8200ebe558f4e410e8351e7328759
+        type: string
+      confirmation:
+        description: Enter DEPLOY-SCOPED-RBAC-CATALOG-HOTFIX-TO-TEST
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: projectpulse-deploy-scoped-rbac-catalog-hotfix-test
+  cancel-in-progress: false
+
+jobs:
+  deploy-web:
+    name: Guarded scoped RBAC catalog web-only test deployment
+    environment: test
+    runs-on: ubuntu-latest
+    env:
+      EXPECTED_RELEASE_COMMIT: 49713d8afad8200ebe558f4e410e8351e7328759
+    steps:
+      - name: Check out deployment controls
+        uses: actions/checkout@v5
+        with:
+          path: control
+          fetch-depth: 0
+
+      - name: Check out exact catalog hotfix source
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.release_commit }}
+          path: release
+          fetch-depth: 1
+
+      - name: Guard workflow source and catalog hotfix commit
+        id: release
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ '${{ github.ref }}' == 'refs/heads/main' ]] || { echo 'Dispatch this workflow from main.' >&2; exit 1; }
+          [[ '${{ inputs.confirmation }}' == 'DEPLOY-SCOPED-RBAC-CATALOG-HOTFIX-TO-TEST' ]] || { echo 'Confirmation text does not match.' >&2; exit 1; }
+          [[ '${{ inputs.release_commit }}' =~ ^[0-9a-f]{40}$ ]] || { echo 'release_commit must be a complete SHA.' >&2; exit 1; }
+          CONTROL_COMMIT="$(git -C control rev-parse HEAD)"
+          TARGET_COMMIT="$(git -C release rev-parse HEAD)"
+          [[ "$CONTROL_COMMIT" == '${{ github.sha }}' ]]
+          [[ "$TARGET_COMMIT" == '${{ inputs.release_commit }}' ]]
+          [[ "$TARGET_COMMIT" == "$EXPECTED_RELEASE_COMMIT" ]] || { echo 'Only the verified catalog hotfix may deploy.' >&2; exit 1; }
+          git -C control merge-base --is-ancestor "$TARGET_COMMIT" HEAD || { echo 'Hotfix is not an ancestor of deployment controls.' >&2; exit 1; }
+          grep -Fq 'projectpulse-scoped-rbac-catalog-normalized' release/src/frontend/project-time-web/src/scoped-rbac-catalog-compatibility.js
+          grep -Fq 'actions: asArray(source.actions ?? source.Actions)' release/src/frontend/project-time-web/src/scoped-rbac-catalog-compatibility.js
+          grep -Fq 'scoped-rbac-catalog-compatibility.js' release/src/frontend/project-time-web/src/main.jsx
+          echo "target_commit=$TARGET_COMMIT" >> "$GITHUB_OUTPUT"
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Capture current web image
+        id: before
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          RAW="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
+          MODE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.configuration.activeRevisionsMode' -o tsv)"
+          [[ -n "$RAW" && "${MODE,,}" == single ]]
+          resolve_digest() {
+            local image="$1" registry='${{ vars.AZURE_ACR_NAME }}.azurecr.io/' relative repository digest
+            case "$image" in "$registry"*@sha256:*) printf '%s\n' "$image"; return;; "$registry"*:*) ;; *) return 1;; esac
+            relative="${image#"$registry"}"; repository="${relative%:*}"
+            digest="$(az acr repository show --name '${{ vars.AZURE_ACR_NAME }}' --image "$relative" --query digest -o tsv)"
+            [[ "$digest" == sha256:* ]]
+            printf '%s%s@%s\n' "$registry" "$repository" "$digest"
+          }
+          OLD="$(resolve_digest "$RAW")"
+          echo "old_web_image=$OLD" >> "$GITHUB_OUTPUT"
+
+      - name: Build exact catalog hotfix web image
+        id: build
+        working-directory: release
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          SHA='${{ steps.release.outputs.target_commit }}'
+          REPOSITORY='project-health-dashboard-web'
+          DIGEST="$(../control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "$REPOSITORY:rbac-catalog-hotfix-$SHA" deployment/containers/web/Dockerfile .)"
+          echo "web_image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/$REPOSITORY@$DIGEST" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy catalog hotfix web image only
+        id: deploy_web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' \
+            --image '${{ steps.build.outputs.web_image }}' --revision-suffix "rbaccat-${GITHUB_RUN_ID}" --output none
+
+      - name: Validate served catalog compatibility and active image
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"; READY=false
+          for attempt in $(seq 1 30); do
+            BUSTER="rbaccat-${GITHUB_RUN_ID}-${attempt}"
+            STATUS="$(curl -sSL -H 'Cache-Control: no-cache' -o /tmp/index.html -w '%{http_code}' "$BASE/?release_check=$BUSTER" || true)"
+            JS="$(sed -nE 's/.*src="([^"]+\.js)".*/\1/p' /tmp/index.html | head -1)"
+            if [[ "$STATUS" == 200 && -n "$JS" ]]; then
+              case "$JS" in http*) URL="$JS";; /*) URL="$BASE$JS";; *) URL="$BASE/$JS";; esac
+              curl -sSL -H 'Cache-Control: no-cache' -o /tmp/app.js "$URL?release_check=$BUSTER" || true
+              if grep -Fq 'projectpulse-scoped-rbac-catalog-normalized' /tmp/app.js \
+                && grep -Fq '/api/role-policy/catalog' /tmp/app.js \
+                && grep -Fq 'source.Actions' /tmp/app.js \
+                && grep -Fq 'source.Scopes' /tmp/app.js; then READY=true; break; fi
+            fi
+            sleep 10
+          done
+          [[ "$READY" == true ]] || { echo 'Scoped RBAC catalog compatibility was not served.' >&2; exit 1; }
+          ACTIVE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
+          [[ "$ACTIVE" == '${{ steps.build.outputs.web_image }}' ]]
+
+      - name: Write deployment evidence
+        if: success()
+        shell: bash
+        run: |
+          mkdir -p evidence
+          cat > evidence/scoped-rbac-catalog-hotfix-test.json <<JSON
+          {"environment":"test","releaseCommit":"${{ steps.release.outputs.target_commit }}","workflowCommit":"${{ github.sha }}","runId":"${{ github.run_id }}","webImage":"${{ steps.build.outputs.web_image }}","previousWebImage":"${{ steps.before.outputs.old_web_image }}","apiDeployment":"unchanged","migration040":"unchanged"}
+          JSON
+
+      - name: Upload deployment evidence
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scoped-rbac-catalog-hotfix-test-${{ github.run_id }}
+          path: evidence/scoped-rbac-catalog-hotfix-test.json
+          retention-days: 30
+
+      - name: Roll back web image on failure
+        if: ${{ failure() && steps.deploy_web.outputs.started == 'true' }}
+        shell: bash
+        run: |
+          set +e
+          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' \
+            --image '${{ steps.before.outputs.old_web_image }}' --revision-suffix "rbaccatrb-${GITHUB_RUN_ID}" --output none
