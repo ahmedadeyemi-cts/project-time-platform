@@ -201,7 +201,7 @@ public static partial class ScopedRolePolicyModule
         if (timerSessionId.HasValue) sql += " AND t.timer_session_id = @timer_session_id";
         if (runningOnly) sql += " AND t.timer_status = 'RUNNING'";
         sql += " ORDER BY t.started_at_utc DESC LIMIT 1";
-        if (forUpdate) sql += " FOR UPDATE";
+        if (forUpdate) sql += " FOR UPDATE OF t";
         sql += ";";
 
         await using var command = new NpgsqlCommand(sql, connection, transaction);
