@@ -73,21 +73,7 @@ jobs:
 
       - name: Build frontend
         working-directory: src/frontend/project-time-web
-        shell: bash
-        run: |
-          set +e
-          npm run build > /tmp/module-001-frontend-build.log 2>&1
-          status=$?
-          cat /tmp/module-001-frontend-build.log
-          exit $status
-
-      - name: Upload Module 001 frontend diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: module-001-frontend-build-diagnostics
-          path: /tmp/module-001-frontend-build.log
-          retention-days: 7
+        run: npm run build
 
       - name: Validate PR55 test deployment guard
         run: scripts/validate-pr55-test-deployment.sh
