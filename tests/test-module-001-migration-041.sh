@@ -52,7 +52,6 @@ done
 
 psql_exec <<'SQL'
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
-CREATE ROLE ptp_app;
 
 CREATE TABLE schema_migrations (
   migration_id TEXT PRIMARY KEY,
@@ -170,8 +169,14 @@ legacy_projects="$(value 'SELECT COUNT(*) FROM projects;')"
 legacy_tasks="$(value 'SELECT COUNT(*) FROM project_tasks;')"
 legacy_assignments="$(value 'SELECT COUNT(*) FROM project_assignments;')"
 
+assert_eq 0 "$(value "SELECT COUNT(*) FROM pg_roles WHERE rolname IN ('ptp_app','projectpulse_app');")" known_runtime_roles_initially_absent
 psql_exec -f "$MIGRATION" >/dev/null
+assert_eq 1 "$(value "SELECT COUNT(*) FROM schema_migrations WHERE migration_id='041_module_001_timesheet_timer_and_task_association';")" migration_succeeds_without_known_runtime_role
+
+psql_exec -c 'CREATE ROLE ptp_app;' >/dev/null
 psql_exec -f "$MIGRATION" >/dev/null
+assert_eq true "$(value "SELECT has_table_privilege('ptp_app','module001_timer_sessions','SELECT,INSERT,UPDATE')::text;")" ptp_app_timer_grants_added_on_idempotent_apply
+assert_eq true "$(value "SELECT has_table_privilege('ptp_app','module001_timer_audit_events','SELECT,INSERT')::text;")" ptp_app_audit_grants_added_on_idempotent_apply
 
 assert_eq 1 "$(value "SELECT COUNT(*) FROM schema_migrations WHERE migration_id='041_module_001_timesheet_timer_and_task_association';")" migration_registered_once
 assert_eq Timesheet "$(value "SELECT module_name FROM scoped_role_policy_modules WHERE module_code='001';")" module001_renamed

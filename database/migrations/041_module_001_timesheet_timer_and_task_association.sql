@@ -223,11 +223,27 @@ SET module_name = 'Timesheet',
     END
 WHERE module_code = '001';
 
-GRANT SELECT, INSERT, UPDATE ON TABLE module001_weekly_task_lines TO "ptp_app";
-GRANT SELECT, INSERT, UPDATE ON TABLE module001_timer_sessions TO "ptp_app";
-GRANT SELECT, INSERT, UPDATE ON TABLE module001_timer_daily_segments TO "ptp_app";
-GRANT SELECT, INSERT, UPDATE ON TABLE module001_timesheet_entry_associations TO "ptp_app";
-GRANT SELECT, INSERT ON TABLE module001_timer_audit_events TO "ptp_app";
+DO $module001_041_runtime_grants$
+DECLARE
+    role_name TEXT;
+BEGIN
+    FOREACH role_name IN ARRAY ARRAY['ptp_app', 'projectpulse_app']
+    LOOP
+        IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = role_name)
+        THEN
+            EXECUTE format('GRANT USAGE ON SCHEMA public TO %I', role_name);
+            EXECUTE format(
+                'GRANT SELECT, INSERT, UPDATE ON TABLE module001_weekly_task_lines, module001_timer_sessions, module001_timer_daily_segments, module001_timesheet_entry_associations TO %I',
+                role_name
+            );
+            EXECUTE format(
+                'GRANT SELECT, INSERT ON TABLE module001_timer_audit_events TO %I',
+                role_name
+            );
+        END IF;
+    END LOOP;
+END;
+$module001_041_runtime_grants$;
 
 INSERT INTO schema_migrations (migration_id, description, applied_at)
 VALUES (
