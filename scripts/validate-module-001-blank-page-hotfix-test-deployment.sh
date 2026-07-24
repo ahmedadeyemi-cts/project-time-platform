@@ -41,6 +41,6 @@ grep -Fq 'environment: production' "$WORKFLOW" && fail "Production environment i
 grep -Fq 'git -C control merge-base --is-ancestor' "$WORKFLOW" || fail "Release ancestry guard is missing."
 grep -Fq '@$DIGEST' "$WORKFLOW" || fail "Immutable web digest construction is missing."
 grep -Fq 'steps.before.outputs.old_web_image' "$WORKFLOW" || fail "Web rollback image capture is missing."
-bash -n "$WORKFLOW"
+bash -n "$0"
 
 echo 'MODULE001_BLANK_PAGE_HOTFIX_DEPLOYMENT_GUARD=PASS'
