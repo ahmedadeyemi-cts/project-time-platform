@@ -111,6 +111,9 @@ jobs:
       - name: Validate Module 001 view-sync deployment guard
         run: bash scripts/validate-module-001-view-sync-test-deployment.sh
 
+      - name: Validate simplified Module 001 deployment guard
+        run: bash scripts/validate-module-001-simplified-timer-test-deployment.sh
+
       - name: Validate container definitions and web build context
         run: |
           test -f deployment/containers/api/Dockerfile
