@@ -38,6 +38,23 @@
   word-break: normal;
 }
 
+#timesheet.module001-timer-mode .module001-task-search {
+  width: 100%;
+  min-height: 44px;
+  box-sizing: border-box;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  padding: 0.75rem;
+  background: #fff;
+  color: #172033;
+}
+
+#timesheet.module001-timer-mode .module001-task-search:focus,
+#timesheet.module001-timer-mode .module001-task-picker select:focus {
+  outline: 3px solid rgba(7, 89, 155, 0.18);
+  border-color: #07599b;
+}
+
 @media (max-width: 760px) {
   #timesheet.module001-timer-mode .module001-timer-view {
     padding: 1rem;
