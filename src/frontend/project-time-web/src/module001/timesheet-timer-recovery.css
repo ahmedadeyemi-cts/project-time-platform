@@ -1,31 +1,20 @@
-#timesheet .timesheet-workspace > .activities-panel {
-  grid-column: 1;
-  min-width: 0;
-}
-
-#timesheet .timesheet-workspace > .timesheet-view-panel {
-  grid-column: 2;
-  min-width: 0;
-}
-
 #timesheet .timesheet-workspace > .module001-enhancement-view-host {
   display: none;
-  grid-column: 2;
   width: 100%;
   min-width: 0;
-}
-
-#timesheet.module001-enhanced-queue .module001-enhancement-view-host,
-#timesheet.module001-enhanced-calendar .module001-enhancement-view-host,
-#timesheet.module001-timer-mode .module001-enhancement-view-host {
-  display: block;
 }
 
 #timesheet.module001-timer-mode .timesheet-workspace {
   grid-template-columns: minmax(0, 1fr);
 }
 
+#timesheet.module001-timer-mode .activities-panel,
+#timesheet.module001-timer-mode .timesheet-view-panel {
+  display: none !important;
+}
+
 #timesheet.module001-timer-mode .module001-enhancement-view-host {
+  display: block;
   grid-column: 1 / -1;
 }
 
@@ -49,89 +38,8 @@
   word-break: normal;
 }
 
-.module001-current-activities,
-.module001-assigned-work {
-  margin-top: 1rem;
-}
-
-.module001-current-activities > h4,
-.module001-assigned-work > h4 {
-  margin: 0 0 0.7rem;
-}
-
-.module001-current-activity-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 0.8rem;
-}
-
-.module001-current-activity-card {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 0.8rem;
-  align-items: start;
-  padding: 0.9rem;
-  border: 1px solid #d9e2ec;
-  border-radius: 14px;
-  background: #f8fafc;
-}
-
-.module001-current-activity-card small,
-.module001-current-activity-card p {
-  display: block;
-  margin: 0.2rem 0 0;
-  color: #667b96;
-}
-
-.module001-current-activity-card h4 {
-  margin: 0.15rem 0 0;
-}
-
-.module001-current-activity-actions {
-  grid-column: 1 / -1;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.55rem;
-}
-
-.module001-current-activity-actions button {
-  border: 0;
-  border-radius: 999px;
-  padding: 0.65rem 0.9rem;
-  background: #07599b;
-  color: #fff;
-  font-weight: 800;
-  cursor: pointer;
-}
-
-.module001-current-activity-actions button.secondary {
-  background: #e2e8f0;
-  color: #172033;
-}
-
-.module001-current-activity-actions button:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
-#timesheet .activities-panel.module001-activity-picker-attention {
-  border-color: #07599b;
-  box-shadow: 0 0 0 4px rgba(7, 89, 155, 0.16), 0 16px 36px rgba(7, 89, 155, 0.14);
-  transition: border-color 160ms ease, box-shadow 160ms ease;
-}
-
 @media (max-width: 760px) {
-  #timesheet .timesheet-workspace > .activities-panel,
-  #timesheet .timesheet-workspace > .timesheet-view-panel,
-  #timesheet .timesheet-workspace > .module001-enhancement-view-host {
-    grid-column: 1;
-  }
-
   #timesheet.module001-timer-mode .module001-timer-view {
     padding: 1rem;
-  }
-
-  .module001-current-activity-card {
-    grid-template-columns: 1fr;
   }
 }
