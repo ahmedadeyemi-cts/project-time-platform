@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import TimesheetTimerView from './TimesheetTimerView.jsx';
 import './timesheet-prep.css';
 
 const MOBILE_KEY = 'projectPulseModule001MobileMode';
+const UUID_PATTERN = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
+const CATEGORY_CODE_PATTERN = /^[A-Z0-9][A-Z0-9_-]{0,99}$/i;
 
 function authHeaders() {
   try {
@@ -52,12 +54,81 @@ function ensureHost(parent, id, className) {
   return host;
 }
 
+function assignmentTarget(task) {
+  const assignmentId = String(task?.assignmentId || task?.projectAssignmentId || '');
+  if (!UUID_PATTERN.test(assignmentId)) return null;
+  const label = [
+    task?.customerName || task?.clientName,
+    task?.projectCode || task?.projectName,
+    task?.taskName || task?.workItemName
+  ].filter(Boolean).join(' · ') || 'Assigned project task';
+
+  return {
+    targetType: 'assignment',
+    targetId: assignmentId,
+    selectionValue: `assignment:${assignmentId}`,
+    selectionLabel: label,
+    groupLabel: 'Assigned project work'
+  };
+}
+
+function categoryTarget(category) {
+  const code = String(
+    category?.code
+      || category?.categoryCode
+      || category?.category_code
+      || ''
+  ).trim().toUpperCase();
+  const name = String(
+    category?.name
+      || category?.categoryName
+      || category?.category_name
+      || code
+      || 'Non-project activity'
+  );
+
+  if (CATEGORY_CODE_PATTERN.test(code)) {
+    return {
+      targetType: 'categoryCode',
+      targetCode: code,
+      selectionValue: `category-code:${code}`,
+      selectionLabel: name,
+      groupLabel: 'Authorized non-project activities'
+    };
+  }
+
+  const categoryId = String(
+    category?.nonProjectTimeCategoryId
+      || category?.nonProjectCategoryId
+      || category?.categoryId
+      || category?.id
+      || ''
+  );
+  if (!UUID_PATTERN.test(categoryId)) return null;
+
+  return {
+    targetType: 'category',
+    targetId: categoryId,
+    selectionValue: `category:${categoryId}`,
+    selectionLabel: name,
+    groupLabel: 'Authorized non-project activities'
+  };
+}
+
+function deduplicateTargets(targets) {
+  const seen = new Set();
+  return targets.filter((target) => {
+    if (!target?.selectionValue || seen.has(target.selectionValue)) return false;
+    seen.add(target.selectionValue);
+    return true;
+  });
+}
+
 export default function TimesheetEnhancementPortal() {
   const [hosts, setHosts] = useState({ page: null, switcher: null, toolbar: null, workspace: null });
   const [snapshot, setSnapshot] = useState(() => window.__projectPulseModule001Snapshot || null);
   const [timerMode, setTimerMode] = useState(false);
   const [mobileMode, setMobileMode] = useState(() => localStorage.getItem(MOBILE_KEY) === 'true');
-  const [timerTargets, setTimerTargets] = useState([]);
   const [activeTimer, setActiveTimer] = useState(null);
   const [timerHistory, setTimerHistory] = useState([]);
   const [selectedTarget, setSelectedTarget] = useState('');
@@ -134,23 +205,20 @@ export default function TimesheetEnhancementPortal() {
     return () => hosts.switcher?.parentElement?.removeEventListener('click', clearTimer, true);
   }, [hosts.switcher]);
 
+  const timerTargets = useMemo(() => deduplicateTargets([
+    ...(snapshot?.assignedTasks || []).map(assignmentTarget),
+    ...(snapshot?.nonProjectCategories || []).map(categoryTarget)
+  ].filter(Boolean)), [snapshot?.assignedTasks, snapshot?.nonProjectCategories]);
+
   const loadTimerData = useCallback(async () => {
     if (!snapshot?.selectedWeekStart || !hosts.page) return;
 
-    const [targetResult, activeResult, historyResult] = await Promise.allSettled([
-      api(`/api/timesheet/timers/targets?weekStart=${snapshot.selectedWeekStart}`),
+    const [activeResult, historyResult] = await Promise.allSettled([
       api('/api/timesheet/timers/active'),
       api(`/api/timesheet/timers/history?weekStart=${snapshot.selectedWeekStart}`)
     ]);
 
     const errors = [];
-    if (targetResult.status === 'fulfilled') {
-      setTimerTargets(targetResult.value.targets || []);
-    } else {
-      setTimerTargets([]);
-      errors.push(targetResult.reason?.message || 'Unable to load timer activities.');
-    }
-
     if (activeResult.status === 'fulfilled') {
       setActiveTimer(activeResult.value.activeTimer || null);
       if (activeResult.value.activeTimer) {
@@ -170,7 +238,7 @@ export default function TimesheetEnhancementPortal() {
       errors.push(historyResult.reason?.message || 'Unable to load timer history.');
     }
 
-    if (errors.length) setStatusMessage(errors.join(' '));
+    setStatusMessage(errors.join(' '));
   }, [snapshot?.selectedWeekStart, hosts.page]);
 
   useEffect(() => { void loadTimerData(); }, [loadTimerData]);
@@ -183,7 +251,7 @@ export default function TimesheetEnhancementPortal() {
 
   const startTimer = async () => {
     const target = timerTargets.find((item) => item.selectionValue === selectedTarget);
-    if (!target || !['assignment', 'category'].includes(target.targetType)) {
+    if (!target) {
       setStatusMessage('Select an assigned project task or authorized non-project activity before starting the timer.');
       return;
     }
@@ -191,17 +259,26 @@ export default function TimesheetEnhancementPortal() {
     setBusy(true);
     setStatusMessage('');
     try {
-      const targetId = target.targetId;
-      const result = await api('/api/timesheet/timers/start', {
-        method: 'POST',
-        body: JSON.stringify({
-          assignmentId: target.targetType === 'assignment' ? targetId : null,
-          nonProjectTimeCategoryId: target.targetType === 'category' ? targetId : null,
-          timeClassification: classification,
-          description,
-          timeZoneId: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
-        })
-      });
+      const isCodeTarget = target.targetType === 'categoryCode';
+      const path = isCodeTarget
+        ? '/api/timesheet/timers/start-by-code'
+        : '/api/timesheet/timers/start';
+      const body = isCodeTarget
+        ? {
+            nonProjectCategoryCode: target.targetCode,
+            timeClassification: classification,
+            description,
+            timeZoneId: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+          }
+        : {
+            assignmentId: target.targetType === 'assignment' ? target.targetId : null,
+            nonProjectTimeCategoryId: target.targetType === 'category' ? target.targetId : null,
+            timeClassification: classification,
+            description,
+            timeZoneId: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+          };
+
+      const result = await api(path, { method: 'POST', body: JSON.stringify(body) });
       setActiveTimer(result.timer);
       setDescription(result.timer?.description || description);
       setStatusMessage('Timer started. It will continue across refreshes and devices.');
