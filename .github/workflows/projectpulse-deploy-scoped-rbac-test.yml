@@ -120,6 +120,13 @@ jobs:
           install -m 0755 control/scripts/apply-scoped-rbac-test-migration.sh "$CONTEXT/apply-pr55-test-migrations.sh"
           install -m 0644 release/database/migrations/040_scoped_role_policy_versions.sql "$CONTEXT/migrations/040_scoped_role_policy_versions.sql"
           cp -R release/database/migrations/040_scoped_role_policy_versions "$CONTEXT/migrations/"
+          mapfile -t SQL_FILES < <(find "$CONTEXT/migrations" -type f -name '*.sql' -printf '%P\n' | LC_ALL=C sort)
+          [[ "${#SQL_FILES[@]}" == "12" ]] || { echo "Expected 12 scoped RBAC migration SQL files; found ${#SQL_FILES[@]}." >&2; exit 1; }
+          (
+            cd "$CONTEXT/migrations"
+            sha256sum "${SQL_FILES[@]}" > SHA256SUMS
+          )
+          [[ "$(wc -l < "$CONTEXT/migrations/SHA256SUMS")" == "12" ]]
           printf '%s\n' '${{ steps.release.outputs.target_commit }}' > "$CONTEXT/release-commit"
           DIGEST="$(control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "project-health-dashboard-rbac-migrator:${{ steps.release.outputs.target_commit }}-${GITHUB_SHA:0:12}" "$CONTEXT/Dockerfile" "$CONTEXT")"
           echo "image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/project-health-dashboard-rbac-migrator@$DIGEST" >> "$GITHUB_OUTPUT"
