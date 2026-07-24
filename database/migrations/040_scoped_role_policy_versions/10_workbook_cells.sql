@@ -17,12 +17,12 @@ expanded AS (
     SELECT
         row_value->>0 AS module_code,
         role_index.ordinality,
-        (SELECT value->'roles'->>(role_index.ordinality - 1) FROM payload) AS role_code,
+        (SELECT value->'roles'->>((role_index.ordinality - 1)::integer) FROM payload) AS role_code,
         (SELECT value->'designations'->>(
-            (row_value->1->>(role_index.ordinality - 1))::integer
+            (row_value->1->>((role_index.ordinality - 1)::integer))::integer
         ) FROM payload) AS designation,
         (SELECT value->'scopes'->>(
-            (row_value->2->>(role_index.ordinality - 1))::integer
+            (row_value->2->>((role_index.ordinality - 1)::integer))::integer
         ) FROM payload) AS scope_code
     FROM rows
     CROSS JOIN LATERAL generate_series(1, 12) WITH ORDINALITY
