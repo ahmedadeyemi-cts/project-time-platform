@@ -3,28 +3,36 @@ set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKFLOW="$ROOT/.github/workflows/projectpulse-deploy-module-001-simplified-timer-test.yml"
-EXPECTED="8768199458f847892b094b375676df5dd29d70d6"
+EXPECTED="48c796f22e1651ef35a5839f4a521f545a417c56"
 
-fail() { echo "MODULE001_STREAMLINED_TIMER_DEPLOYMENT_GUARD=FAIL: $*" >&2; exit 1; }
+fail() { echo "MODULE001_AUTHORITATIVE_COMBOBOX_DEPLOYMENT_GUARD=FAIL: $*" >&2; exit 1; }
 [[ -f "$WORKFLOW" ]] || fail "Workflow is missing."
 
 require() { grep -Fq -- "$1" "$WORKFLOW" || fail "Workflow missing: $1"; }
 
 for value in \
-  'name: ProjectPulse Deploy Module 001 Streamlined Timer Test' \
+  'name: ProjectPulse Deploy Module 001 Authoritative Combobox Test' \
   "default: $EXPECTED" \
   "EXPECTED_RELEASE_COMMIT: $EXPECTED" \
-  'DEPLOY-MODULE-001-STREAMLINED-TIMER-TO-TEST' \
+  'DEPLOY-MODULE-001-AUTHORITATIVE-COMBOBOX-TO-TEST' \
   'refs/heads/main' \
   'environment: test' \
-  '/api/timesheet/timers/start-by-code' \
-  'UPPER(category_code) = @category_code' \
-  'snapshot?.assignedTasks' \
-  'snapshot?.nonProjectCategories' \
-  'category-code:' \
-  'retiredTabsRemoved=2' \
-  'Deploy streamlined API image' \
-  'Deploy streamlined web image' \
+  "to_jsonb(pt)->>'work_task_category'" \
+  "to_jsonb(pt)->>'service_request_number'" \
+  'regularTaskCount' \
+  'serviceRequestTaskCount' \
+  '/api/timesheet/timers/targets?weekStart=' \
+  'normalizeAssignmentTarget' \
+  'AUGMENTED_MARKER' \
+  'role="combobox"' \
+  'aria-autocomplete="list"' \
+  'role="listbox"' \
+  'Non-Project Time' \
+  'Regular Tasks' \
+  'Service Request Tasks' \
+  'No matching activity or task.' \
+  'Deploy authoritative timer API image' \
+  'Deploy authoritative timer web image' \
   'migration041":"unchanged' \
   'database":"unchanged' \
   'Roll back API and web images on failure'
@@ -41,7 +49,6 @@ grep -Fq 'steps.before.outputs.old_api_image' "$WORKFLOW" || fail "API rollback 
 grep -Fq 'steps.before.outputs.old_web_image' "$WORKFLOW" || fail "Web rollback image capture is missing."
 grep -Fq "! grep -Fq \"{ key: 'queue', label: 'My Work Queue'\"" "$WORKFLOW" || fail "Queue tab absence check is missing."
 grep -Fq "! grep -Fq \"{ key: 'calendar', label: 'Calendar / Timeline'\"" "$WORKFLOW" || fail "Calendar tab absence check is missing."
-grep -Fq "! grep -Fq '/api/timesheet/timers/targets?weekStart='" "$WORKFLOW" || fail "Empty target endpoint rejection is missing."
 
 for forbidden in \
   'PROJECTPULSE_TEST_DATABASE_URL' \
@@ -57,4 +64,4 @@ do
 done
 
 bash -n "$0"
-echo 'MODULE001_STREAMLINED_TIMER_DEPLOYMENT_GUARD=PASS'
+echo 'MODULE001_AUTHORITATIVE_COMBOBOX_DEPLOYMENT_GUARD=PASS'
