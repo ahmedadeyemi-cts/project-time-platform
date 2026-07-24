@@ -1,6 +1,5 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import process from 'node:process';
 
 const webRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const sourcePath = path.join(webRoot, 'src', 'App.jsx');
@@ -12,9 +11,7 @@ let generated = original;
 
 const handleSubmitMarker = '  async function handleSubmit() {';
 const handleSubmitIndex = generated.indexOf(handleSubmitMarker);
-if (handleSubmitIndex < 0) {
-  throw new Error('Module 001 generator could not locate handleSubmit.');
-}
+if (handleSubmitIndex < 0) throw new Error('Module 001 generator could not locate handleSubmit.');
 
 const draftPrefix = generated.slice(0, handleSubmitIndex);
 const submitSuffix = generated.slice(handleSubmitIndex);
@@ -41,6 +38,8 @@ const bridge = `
       timeTypes,
       activeRows,
       entries,
+      timesheetView,
+      focusedDayDate,
       grandTotal,
       normalTotal,
       afterhoursTotal,
@@ -60,6 +59,8 @@ const bridge = `
     timeTypes,
     activeRows,
     entries,
+    timesheetView,
+    focusedDayDate,
     grandTotal,
     normalTotal,
     afterhoursTotal,
@@ -102,11 +103,10 @@ for (const required of [
   'MODULE_001_CANONICAL_STATE_BRIDGE_START',
   'projectpulse:module001-state',
   'projectpulse:module001-action',
+  'timesheetView',
   'async function handleSubmit()'
 ]) {
-  if (!generated.includes(required)) {
-    throw new Error(`Generated App is missing required contract: ${required}`);
-  }
+  if (!generated.includes(required)) throw new Error(`Generated App is missing required contract: ${required}`);
 }
 
 if (generated.includes('MODULE_001_GENERATOR_ALREADY_APPLIED')) {
