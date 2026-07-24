@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-EXPECTED_RELEASE_COMMIT="1e67168a7c8d8ad8c2c6bb0e0007327b53805878"
+EXPECTED_RELEASE_COMMIT="8c4afed94bfb949ad158f029ebd498f6d930fcce"
 RELEASE_ROOT="${1:-}"
 DATABASE_URL="${PROJECTPULSE_TEST_DATABASE_URL:-}"
 
@@ -108,9 +108,25 @@ BEGIN
     RAISE EXCEPTION 'Immutable timer audit trigger is missing.';
   END IF;
 
-  IF NOT has_table_privilege('ptp_app', 'module001_timer_sessions', 'SELECT,INSERT,UPDATE')
-     OR NOT has_table_privilege('ptp_app', 'module001_timer_audit_events', 'SELECT,INSERT') THEN
-    RAISE EXCEPTION 'Module 001 application grants are incomplete.';
+  IF NOT has_table_privilege(current_user, 'module001_timer_sessions', 'SELECT,INSERT,UPDATE')
+     OR NOT has_table_privilege(current_user, 'module001_timer_audit_events', 'SELECT,INSERT') THEN
+    RAISE EXCEPTION 'The test API database principal cannot use the Module 001 tables.';
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='ptp_app')
+     AND (
+       NOT has_table_privilege('ptp_app', 'module001_timer_sessions', 'SELECT,INSERT,UPDATE')
+       OR NOT has_table_privilege('ptp_app', 'module001_timer_audit_events', 'SELECT,INSERT')
+     ) THEN
+    RAISE EXCEPTION 'Module 001 grants for ptp_app are incomplete.';
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='projectpulse_app')
+     AND (
+       NOT has_table_privilege('projectpulse_app', 'module001_timer_sessions', 'SELECT,INSERT,UPDATE')
+       OR NOT has_table_privilege('projectpulse_app', 'module001_timer_audit_events', 'SELECT,INSERT')
+     ) THEN
+    RAISE EXCEPTION 'Module 001 grants for projectpulse_app are incomplete.';
   END IF;
 
   IF NOT EXISTS (

@@ -6,7 +6,8 @@ WORKFLOW="$ROOT/.github/workflows/projectpulse-deploy-module-001-test.yml"
 EXECUTOR="$ROOT/scripts/apply-module-001-test-migration.sh"
 RUNNER="$ROOT/scripts/run-module-001-test-migration-job.sh"
 MIGRATOR="$ROOT/deployment/containers/module001-migrator/Dockerfile"
-EXPECTED="1e67168a7c8d8ad8c2c6bb0e0007327b53805878"
+EXPECTED="8c4afed94bfb949ad158f029ebd498f6d930fcce"
+REJECTED="1e67168a7c8d8ad8c2c6bb0e0007327b53805878"
 
 fail() { echo "MODULE001_DEPLOYMENT_GUARD=FAIL: $*" >&2; exit 1; }
 [[ -f "$WORKFLOW" && -f "$EXECUTOR" && -f "$RUNNER" && -f "$MIGRATOR" ]] ||
@@ -29,6 +30,7 @@ for value in \
   'MODULE001_MIGRATION_JOB_NAME' \
   'run-module-001-test-migration-job.sh' \
   'sha256sum 041_module_001_timesheet_timer_and_task_association.sql > SHA256SUMS' \
+  "FOREACH role_name IN ARRAY ARRAY['ptp_app', 'projectpulse_app']" \
   'Deploy API' \
   'Deploy web' \
   'Roll back API and web images on failure' \
@@ -48,7 +50,10 @@ for value in \
   'Existing Timesheet, Time Entry, assignment, or task row counts changed during migration 041.' \
   'One-running-timer unique index is missing.' \
   'Immutable timer audit trigger is missing.' \
-  'Module 001 application grants are incomplete.'
+  'has_table_privilege(current_user' \
+  "IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='ptp_app')" \
+  "IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='projectpulse_app')" \
+  'The test API database principal cannot use the Module 001 tables.'
 do require_executor "$value"; done
 
 for value in \
@@ -77,6 +82,10 @@ do require_migrator "$value"; done
   fail "Immutable image references are not enforced."
 [[ "$(grep -Fc 'sha256sum --check --strict SHA256SUMS' "$EXECUTOR")" == 1 ]] ||
   fail "Executor must verify the generated checksum manifest exactly once."
+
+for file in "$WORKFLOW" "$EXECUTOR" "$RUNNER"; do
+  grep -Fq "$REJECTED" "$file" && fail "Stale failed release pin remains in $file."
+done
 
 for forbidden in \
   'environment: production' \
