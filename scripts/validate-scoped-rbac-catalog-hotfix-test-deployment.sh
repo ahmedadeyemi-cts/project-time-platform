@@ -18,8 +18,8 @@ for value in \
   'refs/heads/main' \
   'environment: test' \
   'projectpulse-scoped-rbac-catalog-normalized' \
-  'source.Actions' \
-  'source.Scopes' \
+  '/api/role-policy/catalog' \
+  'x-projectpulse-compatibility' \
   'Deploy catalog hotfix web image only' \
   'apiDeployment":"unchanged' \
   'migration040":"unchanged' \
@@ -31,6 +31,8 @@ grep -Fq 'AZURE_API_APP' "$WORKFLOW" && fail "Web-only rollout must not referenc
 grep -Fq 'PROJECTPULSE_TEST_DATABASE_URL' "$WORKFLOW" && fail "Web-only rollout must not connect to the database."
 grep -Fq 'database/migrations' "$WORKFLOW" && fail "Web-only rollout must not run migrations."
 grep -Fq 'environment: production' "$WORKFLOW" && fail "Production environment is forbidden."
+grep -Fq 'source.Actions' "$WORKFLOW" && fail "Served-bundle checks must not depend on minified source variable names."
+grep -Fq 'source.Scopes' "$WORKFLOW" && fail "Served-bundle checks must not depend on minified source variable names."
 grep -Fq 'git -C control merge-base --is-ancestor' "$WORKFLOW" || fail "Release ancestry guard is missing."
 grep -Fq '@$DIGEST' "$WORKFLOW" || fail "Immutable web digest construction is missing."
 
