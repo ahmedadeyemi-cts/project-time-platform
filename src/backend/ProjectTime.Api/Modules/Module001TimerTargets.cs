@@ -4,10 +4,70 @@ namespace ProjectTime.Api.Modules;
 
 public static partial class ScopedRolePolicyModule
 {
+    public sealed record Module001TimerStartByCodeRequest(
+        string? NonProjectCategoryCode,
+        string? TimeClassification,
+        string? Description,
+        string? TimeZoneId);
+
     public static WebApplication MapModule001TimerTargetEndpoints(this WebApplication app)
     {
         app.MapGet("/api/timesheet/timers/targets", Module001TimerTargetsAsync);
+        app.MapPost("/api/timesheet/timers/start-by-code", Module001StartTimerByCodeAsync);
         return app;
+    }
+
+    private static async Task<IResult> Module001StartTimerByCodeAsync(
+        Module001TimerStartByCodeRequest request,
+        HttpContext context)
+    {
+        var categoryCode = (request.NonProjectCategoryCode ?? string.Empty).Trim().ToUpperInvariant();
+        if (categoryCode.Length is < 1 or > 100
+            || categoryCode.Any(character => !char.IsLetterOrDigit(character) && character is not ('_' or '-')))
+        {
+            return Results.BadRequest(new
+            {
+                status = "invalid_non_project_category_code",
+                message = "Select an authorized non-project activity before starting the timer."
+            });
+        }
+
+        await using var connection = new NpgsqlConnection(ConnectionString());
+        await connection.OpenAsync();
+
+        var readiness = await RequireModule001TablesAsync(connection);
+        if (readiness is not null) return readiness;
+
+        var access = await RequireModule001AccessAsync(context, connection, "TIME_EDIT_OWN", true);
+        if (access.Error is not null) return access.Error;
+
+        await using var command = new NpgsqlCommand("""
+            SELECT non_project_time_category_id
+            FROM non_project_time_categories
+            WHERE UPPER(category_code) = @category_code
+              AND is_active = TRUE
+            LIMIT 1;
+            """, connection);
+        command.Parameters.AddWithValue("category_code", categoryCode);
+
+        var value = await command.ExecuteScalarAsync();
+        if (value is not Guid categoryId)
+        {
+            return Results.NotFound(new
+            {
+                status = "timer_target_not_authorized",
+                message = "The selected non-project activity is unavailable."
+            });
+        }
+
+        return await Module001StartTimerAsync(
+            new Module001TimerStartRequest(
+                null,
+                categoryId,
+                request.TimeClassification,
+                request.Description,
+                request.TimeZoneId),
+            context);
     }
 
     private static async Task<IResult> Module001TimerTargetsAsync(HttpContext context)
@@ -97,7 +157,7 @@ public static partial class ScopedRolePolicyModule
                    category_name
             FROM non_project_time_categories
             WHERE is_active = TRUE
-            ORDER BY category_name;
+            ORDER BY display_order, category_name;
             """, connection))
         {
             await using var reader = await categories.ExecuteReaderAsync();
