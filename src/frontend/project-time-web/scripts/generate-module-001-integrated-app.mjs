@@ -22,22 +22,19 @@ const guideBlock = `  timesheet: {
     functions: [
       'Weekly Grid preserves the complete seven-day entry grid.',
       'Daily Focus provides a day-centered, mobile-friendly entry view.',
-      'My Work Queue loads actual tasks assigned to the authenticated engineer and preserves customer, project, task, and assignment identifiers.',
       'Quick Entry List provides compact activity entry against the same weekly draft.',
-      'Calendar / Timeline shows the project, task, classification, status, description completeness, and rounded hours behind every entry.',
       'Start / Stop Timer tracks assigned tasks or authorized non-project activities using server-authoritative UTC timestamps.',
       'Only one timer may run per user, timer time rounds upward once to a quarter hour, and the server caps a timer at 12 hours.',
-      'Mobile mode provides a manually selectable single-column presentation while preserving all six views and actions.',
-      'Normal and Afterhours hours remain separate in every view.',
+      'Mobile mode provides a manually selectable single-column presentation while preserving the four streamlined views and actions.',
+      'Normal and Afterhours hours remain separate in every entry view.',
       'Save draft persists editable entries without submitting them, including incomplete descriptions that must be corrected later.',
       'Submit week saves the shared draft, validates descriptions and task associations, requires confirmation, and routes valid time to Module 002 Approval Inbox.',
       'Submitted or approved time follows the existing return, reopen, correction, and approval rules.'
     ],
     steps: [
       'Choose the correct week.',
-      'Select or add an assigned task or authorized non-project activity.',
-      'Enter time directly or start and stop the task timer.',
-      'Review the same entries in Weekly Grid, Daily Focus, My Work Queue, Quick Entry List, or Calendar / Timeline.',
+      'Select or add an assigned task or authorized non-project activity from the Activities panel.',
+      'Enter time in Weekly Grid, Daily Focus, or Quick Entry List, or start and stop the task timer.',
       'Save the draft, then complete every positive-hour description and task association.',
       'Select Submit week, review the validation summary, and confirm the Module 002 handoff.'
     ],
@@ -74,6 +71,22 @@ generated = generated.replace(
   "import SystemUserGuide from './SystemUserGuide.Module001.g.jsx';"
 );
 
+const removedViewDefinitions = [
+  "            { key: 'queue', label: 'My Work Queue', description: 'Assigned tasks and requests' },\n",
+  "            { key: 'calendar', label: 'Calendar / Timeline', description: 'Week-at-a-glance totals' }\n"
+];
+for (const definition of removedViewDefinitions) {
+  if (!generated.includes(definition)) {
+    throw new Error(`Module 001 generator could not locate retired view definition: ${definition.trim()}`);
+  }
+  generated = generated.replace(definition, '');
+}
+
+generated = generated.replace(
+  "            { key: 'quick', label: 'Quick Entry List', description: 'Compact activity entry' },\n          ].map((view) => (",
+  "            { key: 'quick', label: 'Quick Entry List', description: 'Compact activity entry' }\n          ].map((view) => ("
+);
+
 const handleSubmitMarker = '  async function handleSubmit() {';
 const handleSubmitIndex = generated.indexOf(handleSubmitMarker);
 if (handleSubmitIndex < 0) throw new Error('Module 001 generator could not locate handleSubmit.');
@@ -96,6 +109,13 @@ if (authIndex < 0 || generated.indexOf(authMarker, authIndex + authMarker.length
 const bridge = `
 
   /* MODULE_001_CANONICAL_STATE_BRIDGE_START */
+  useEffect(() => {
+    if (timesheetView === 'queue' || timesheetView === 'calendar') {
+      setTimesheetView('weekly');
+      window.localStorage.setItem('projectPulseTimesheetView', 'weekly');
+    }
+  }, [timesheetView]);
+
   useEffect(() => {
     const canonicalCalendarEntries = activeRows.flatMap((row) =>
       days.flatMap((day) =>
@@ -184,11 +204,19 @@ for (const required of [
   'projectpulse:module001-action',
   'buildTimesheetPayload()',
   'canonicalCalendarEntries',
+  "setTimesheetView('weekly')",
   "./SystemUserGuide.Module001.g.jsx",
   'timesheetView',
   'async function handleSubmit()'
 ]) {
   if (!generated.includes(required)) throw new Error(`Generated App is missing required contract: ${required}`);
+}
+
+for (const retired of [
+  "{ key: 'queue', label: 'My Work Queue'",
+  "{ key: 'calendar', label: 'Calendar / Timeline'"
+]) {
+  if (generated.includes(retired)) throw new Error(`Generated App still exposes retired view: ${retired}`);
 }
 
 if (generated.includes('MODULE_001_GENERATOR_ALREADY_APPLIED')) {
@@ -206,4 +234,4 @@ fs.writeFileSync(
   'utf8'
 );
 
-console.log(`MODULE_001_APP_GENERATION=PASS app=${path.relative(webRoot, appOutputPath)} guide=${path.relative(webRoot, guideOutputPath)} draftGuardsRemoved=2`);
+console.log(`MODULE_001_APP_GENERATION=PASS app=${path.relative(webRoot, appOutputPath)} guide=${path.relative(webRoot, guideOutputPath)} draftGuardsRemoved=2 retiredTabsRemoved=2`);
