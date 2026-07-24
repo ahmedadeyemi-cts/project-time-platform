@@ -21,7 +21,7 @@
   </ItemGroup>
 
   <!-- Program.cs remains the canonical oversized entrypoint. Generated compile
-       copies insert the scoped endpoint registration and normalize the five
+       copies insert scoped endpoint registrations and normalize the five
        nullable anonymous-object properties rejected by the compiler. -->
   <ItemGroup>
     <Compile Remove="Program.cs" />
@@ -31,7 +31,7 @@
 
   <Target Name="GenerateScopedRbacSources" BeforeTargets="CoreCompile">
     <MakeDir Directories="$(IntermediateOutputPath)" />
-    <Exec Command="awk 'BEGIN { print &quot;#nullable enable&quot;; inserted=0 } /^[[:space:]]*app\.Run\(\);[[:space:]]*$/ &amp;&amp; inserted==0 { print &quot;app.MapScopedRolePolicyEndpoints();&quot;; inserted=1 } { print } END { if (inserted==0) exit 42 }' &quot;$(MSBuildProjectDirectory)/Program.cs&quot; &gt; &quot;$(ScopedRbacGeneratedProgram)&quot;" />
+    <Exec Command="awk 'BEGIN { print &quot;#nullable enable&quot;; inserted=0 } /^[[:space:]]*app\.Run\(\);[[:space:]]*$/ &amp;&amp; inserted==0 { print &quot;app.MapScopedRolePolicyEndpoints();&quot;; print &quot;app.MapModule001TimesheetEnhancementEndpoints();&quot;; inserted=1 } { print } END { if (inserted==0) exit 42 }' &quot;$(MSBuildProjectDirectory)/Program.cs&quot; &gt; &quot;$(ScopedRbacGeneratedProgram)&quot;" />
     <Exec Command="sed -e 's/reader.IsDBNull(7) ? null : reader.GetGuid(7)/reader.IsDBNull(7) ? (Guid?)null : reader.GetGuid(7)/' -e 's/reader.IsDBNull(9) ? null : reader.GetFieldValue&lt;DateTimeOffset&gt;(9)/reader.IsDBNull(9) ? (DateTimeOffset?)null : reader.GetFieldValue&lt;DateTimeOffset&gt;(9)/' -e 's/reader.IsDBNull(10) ? null : reader.GetFieldValue&lt;DateTimeOffset&gt;(10)/reader.IsDBNull(10) ? (DateTimeOffset?)null : reader.GetFieldValue&lt;DateTimeOffset&gt;(10)/' &quot;$(MSBuildProjectDirectory)/Modules/ScopedRolePolicyModule.cs&quot; &gt; &quot;$(ScopedRbacGeneratedModule)&quot;" />
     <Exec Command="sed -e 's/reader.IsDBNull(3) ? null : reader.GetGuid(3)/reader.IsDBNull(3) ? (Guid?)null : reader.GetGuid(3)/' -e 's/reader.IsDBNull(5) ? null : reader.GetDecimal(5)/reader.IsDBNull(5) ? (decimal?)null : reader.GetDecimal(5)/' &quot;$(MSBuildProjectDirectory)/Modules/ScopedRolePolicyPersistence.cs&quot; &gt; &quot;$(ScopedRbacGeneratedPersistence)&quot;" />
     <ItemGroup>
