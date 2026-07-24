@@ -86,6 +86,8 @@ public static partial class ScopedRolePolicyModule
         var weekEnd = weekStart.AddDays(6);
         var targets = new List<object>();
         var assignmentCount = 0;
+        var regularTaskCount = 0;
+        var serviceRequestTaskCount = 0;
         var nonProjectCount = 0;
 
         await using (var assignments = new NpgsqlCommand("""
@@ -96,7 +98,13 @@ public static partial class ScopedRolePolicyModule
                    p.project_name,
                    pt.task_id,
                    pt.task_code,
-                   pt.task_name
+                   pt.task_name,
+                   COALESCE(
+                       NULLIF(to_jsonb(pt)->>'work_task_category', ''),
+                       NULLIF(to_jsonb(pt)->>'work_type', ''),
+                       'project_task'
+                   ) AS work_task_category,
+                   COALESCE(NULLIF(to_jsonb(pt)->>'service_request_number', ''), '') AS service_request_number
             FROM project_assignments pa
             JOIN projects p ON p.project_id = pa.project_id
             JOIN project_tasks pt
@@ -108,7 +116,13 @@ public static partial class ScopedRolePolicyModule
               AND (pa.effective_end_date IS NULL OR pa.effective_end_date >= @week_start)
               AND p.status IN ('active','on_hold')
               AND pt.is_active = TRUE
-            ORDER BY p.project_code, pt.task_code;
+            ORDER BY
+                CASE
+                    WHEN COALESCE(NULLIF(to_jsonb(pt)->>'work_task_category', ''), '') = 'service_request_task' THEN 1
+                    ELSE 0
+                END,
+                p.project_code,
+                pt.task_code;
             """, connection))
         {
             assignments.Parameters.AddWithValue("user_id", actor.EffectiveUserId);
@@ -126,7 +140,13 @@ public static partial class ScopedRolePolicyModule
                 var taskId = reader.GetGuid(5);
                 var taskCode = reader.GetString(6);
                 var taskName = reader.GetString(7);
+                var workTaskCategory = reader.GetString(8).Trim().ToLowerInvariant();
+                var serviceRequestNumber = reader.GetString(9).Trim();
+                var serviceRequestTask = workTaskCategory == "service_request_task"
+                    || !string.IsNullOrWhiteSpace(serviceRequestNumber);
+                var groupLabel = serviceRequestTask ? "Service Request Tasks" : "Regular Tasks";
                 var labelParts = new List<string>();
+                if (!string.IsNullOrWhiteSpace(serviceRequestNumber)) labelParts.Add(serviceRequestNumber);
                 if (!string.IsNullOrWhiteSpace(customerName)) labelParts.Add(customerName);
                 if (!string.IsNullOrWhiteSpace(projectCode)) labelParts.Add(projectCode);
                 labelParts.Add(taskName);
@@ -137,7 +157,7 @@ public static partial class ScopedRolePolicyModule
                     targetId = assignmentId,
                     selectionValue = $"assignment:{assignmentId:D}",
                     selectionLabel = string.Join(" · ", labelParts),
-                    groupLabel = "Assigned project work",
+                    groupLabel,
                     assignmentId,
                     customerName,
                     projectId,
@@ -145,9 +165,14 @@ public static partial class ScopedRolePolicyModule
                     projectName,
                     taskId,
                     taskCode,
-                    taskName
+                    taskName,
+                    workTaskCategory,
+                    workType = workTaskCategory,
+                    serviceRequestNumber
                 });
                 assignmentCount++;
+                if (serviceRequestTask) serviceRequestTaskCount++;
+                else regularTaskCount++;
             }
         }
 
@@ -173,7 +198,7 @@ public static partial class ScopedRolePolicyModule
                     targetId = categoryId,
                     selectionValue = $"category:{categoryId:D}",
                     selectionLabel = categoryName,
-                    groupLabel = "Authorized non-project activities",
+                    groupLabel = "Non-Project Time",
                     nonProjectTimeCategoryId = categoryId,
                     categoryCode,
                     categoryName
@@ -188,8 +213,16 @@ public static partial class ScopedRolePolicyModule
             weekEnd,
             count = targets.Count,
             assignmentCount,
+            regularTaskCount,
+            serviceRequestTaskCount,
             nonProjectCount,
-            authoritativeSources = new[] { "project_assignments", "non_project_time_categories" },
+            authoritativeSources = new[]
+            {
+                "project_assignments",
+                "project_tasks.work_task_category",
+                "project_tasks.service_request_number",
+                "non_project_time_categories"
+            },
             targets
         });
     }

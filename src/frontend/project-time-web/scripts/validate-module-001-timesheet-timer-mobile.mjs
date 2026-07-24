@@ -35,7 +35,7 @@ const module059Validator = read('src/frontend/project-time-web/scripts/validate-
 for (const view of ['Weekly Grid', 'Daily Focus', 'Quick Entry List']) {
   requireText(generated, view, 'streamlined Timesheet view');
 }
-requireText(portalEntry, "./TimesheetEnhancementPortalV2.jsx", 'timer portal entrypoint');
+requireText(portalEntry, './TimesheetEnhancementPortalV2.jsx', 'timer portal implementation');
 requireText(portal, 'Start / Stop Timer', 'timer Timesheet view');
 rejectText(generated, "{ key: 'queue', label: 'My Work Queue'", 'retired My Work Queue tab');
 rejectText(generated, "{ key: 'calendar', label: 'Calendar / Timeline'", 'retired Calendar tab');
@@ -60,6 +60,14 @@ requireText(generated, 'nonProjectCategories: categories', 'generated non-projec
 requireText(main, './App.Module001.g.jsx', 'generated App import');
 requireText(main, '<TimesheetEnhancementPortal />', 'portal root integration');
 
+requireText(portalEntry, '/api/timesheet/timers/targets?weekStart=', 'authoritative timer target refresh');
+requireText(portalEntry, 'normalizeAssignmentTarget', 'authoritative assignment normalization');
+requireText(portalEntry, 'workTaskCategory', 'task category projection');
+requireText(portalEntry, 'serviceRequestNumber', 'service request projection');
+requireText(portalEntry, 'mergeAssignedTasks', 'canonical and authoritative task merge');
+requireText(portalEntry, 'projectpulse:module001-state', 'enriched state publication');
+requireText(portalEntry, 'AUGMENTED_MARKER', 'state enrichment loop guard');
+
 for (const contract of ['/api/timesheet/timers/active', '/api/timesheet/timers/start', '/api/timesheet/timers/start-by-code', '/stop', '/discard']) {
   requireText(`${portal}\n${timerView}`, contract, 'timer frontend contract');
 }
@@ -75,18 +83,23 @@ requireText(portal, "error?.status === 409", 'running-timer conflict recovery');
 requireText(portal, 'error?.payload?.activeTimer', 'running-timer response adoption');
 requireText(portal, "groupLabel: isServiceRequestTask(task) ? 'Service Request Tasks' : 'Regular Tasks'", 'assigned task grouping');
 requireText(portal, "groupLabel: 'Non-Project Time'", 'non-project grouping');
-rejectText(portal, '/api/timesheet/timers/targets?weekStart=', 'empty target endpoint dependency');
 rejectText(portal, 'TimesheetWorkQueueCard', 'duplicate enhanced Queue implementation');
 rejectText(portal, 'CalendarEnhancement', 'duplicate enhanced Calendar implementation');
 rejectText(portal, 'CurrentTimesheetActivityCard', 'duplicate active-row Queue implementation');
 
-requireText(taskPicker, 'type="search"', 'timer search input');
+requireText(taskPicker, 'role="combobox"', 'autocomplete combobox');
+requireText(taskPicker, 'aria-autocomplete="list"', 'combobox autocomplete mode');
+requireText(taskPicker, 'role="listbox"', 'autocomplete result list');
+requireText(taskPicker, 'role="option"', 'selectable autocomplete result');
 requireText(taskPicker, 'Search activity, task, project, customer, or request', 'timer search prompt');
 requireText(taskPicker, 'Non-Project Time', 'non-project target group');
 requireText(taskPicker, 'Regular Tasks', 'regular task group');
 requireText(taskPicker, 'Service Request Tasks', 'service request group');
-requireText(taskPicker, '<optgroup', 'grouped timer selector');
-requireText(taskPicker, 'No authorized timer activity available', 'empty timer safeguard');
+requireText(taskPicker, 'No matching activity or task.', 'search empty state');
+requireText(taskPicker, 'onFocus', 'result panel opens on focus');
+requireText(taskPicker, 'setOpen(true)', 'result panel opens while searching');
+requireText(taskPicker, 'chooseOption', 'matching result selection');
+rejectText(taskPicker, '<select', 'legacy separate search and select controls');
 requireText(timerView, 'category-code:', 'category-code start eligibility');
 requireText(timerView, 'validSelectedTarget', 'timer start eligibility');
 requireText(timerView, "onClick={() => validSelectedTarget && onStart()}", 'guarded timer start');
@@ -95,7 +108,9 @@ requireText(timerRecoveryCss, '#timesheet .timesheet-workspace > .module001-enha
 requireText(timerRecoveryCss, 'display: none;', 'inactive host hidden');
 requireText(timerRecoveryCss, '#timesheet.module001-timer-mode .module001-enhancement-view-host', 'timer host visibility');
 requireText(timerRecoveryCss, 'grid-column: 1 / -1;', 'full-width timer host');
-requireText(timerRecoveryCss, '.module001-task-search', 'timer search styling');
+requireText(timerRecoveryCss, '.module001-task-results', 'autocomplete panel styling');
+requireText(timerRecoveryCss, 'position: absolute;', 'autocomplete dropdown positioning');
+requireText(timerRecoveryCss, '.module001-task-result-group', 'grouped result styling');
 requireText(portal, 'projectPulseModule001MobileMode', 'mobile preference');
 requireText(portal, 'Mobile mode', 'mobile selector label');
 requireText(css, '#timesheet.module001-mobile-mode', 'mobile presentation');
@@ -164,6 +179,12 @@ if (backendAvailable) {
   requireText(timerTargets, 'UPPER(category_code) = @category_code', 'active category-code resolution');
   requireText(timerTargets, 'TIME_EDIT_OWN', 'category-code write authorization');
   requireText(timerTargets, 'new Module001TimerStartRequest(', 'shared timer-start execution');
+  requireText(timerTargets, "to_jsonb(pt)->>'work_task_category'", 'authoritative task category');
+  requireText(timerTargets, "to_jsonb(pt)->>'service_request_number'", 'service request number');
+  requireText(timerTargets, 'groupLabel = serviceRequestTask ? "Service Request Tasks" : "Regular Tasks"', 'task group assignment');
+  requireText(timerTargets, 'regularTaskCount', 'regular task count');
+  requireText(timerTargets, 'serviceRequestTaskCount', 'service request task count');
+  requireText(timerTargets, 'groupLabel = "Non-Project Time"', 'non-project API group');
   requireText(projectFile, 'app.MapModule001TimerTargetEndpoints();', 'generated Program endpoint registration');
 
   requireText(migration, 'ux_module001_one_running_timer_per_user', 'one running timer constraint');
@@ -176,4 +197,4 @@ if (backendAvailable) {
   requireText(rollback, 'DROP TABLE IF EXISTS module001_timer_sessions', 'reviewed rollback');
 }
 
-console.log(`MODULE_001_TIMESHEET_TIMER_MOBILE_VALIDATION=PASS roundingCases=${roundingCases.length} backend=${backendAvailable ? 'full' : 'frontend-container'} architecture=streamlined timerSource=visibleActivities searchableGroups=3 activeConflictRecovery=true`);
+console.log(`MODULE_001_TIMESHEET_TIMER_MOBILE_VALIDATION=PASS roundingCases=${roundingCases.length} backend=${backendAvailable ? 'full' : 'frontend-container'} architecture=streamlined authoritativeTaskGroups=true autocompleteCombobox=true`);
