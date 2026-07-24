@@ -5,6 +5,7 @@ import TimesheetWorkQueueCard from './TimesheetWorkQueueCard.jsx';
 import './timesheet-prep.css';
 
 const MOBILE_KEY = 'projectPulseModule001MobileMode';
+const UUID_PATTERN = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 
 function authHeaders() {
   try {
@@ -63,7 +64,31 @@ function dispatchModule001Action(detail) {
   window.dispatchEvent(new CustomEvent('projectpulse:module001-action', { detail }));
 }
 
-function CalendarEnhancement({ snapshot, tasks, disabled, onChangeTask, onRemove }) {
+function normalizeNonProjectCategory(category) {
+  const id = category?.nonProjectTimeCategoryId
+    || category?.nonProjectCategoryId
+    || category?.categoryId
+    || category?.id
+    || category?.non_project_time_category_id
+    || '';
+  const code = category?.code || category?.categoryCode || category?.category_code || '';
+  const name = category?.name || category?.categoryName || category?.category_name || code || 'Non-project activity';
+
+  return {
+    ...category,
+    id: String(id || ''),
+    code: String(code || ''),
+    name: String(name || 'Non-project activity')
+  };
+}
+
+function getActivityHours(snapshot, rowId) {
+  return (snapshot?.calendarEntries || [])
+    .filter((item) => item.row?.id === rowId)
+    .reduce((total, item) => total + Number(item.entry?.hours || 0), 0);
+}
+
+function CalendarEnhancement({ snapshot, tasks, disabled, onChangeTask, onRemove, onAddWork }) {
   const [selected, setSelected] = useState(null);
   const days = snapshot?.days || [];
   const entries = snapshot?.calendarEntries || [];
@@ -81,7 +106,7 @@ function CalendarEnhancement({ snapshot, tasks, disabled, onChangeTask, onRemove
           return (
             <article className="module001-calendar-day" key={day.date}>
               <header><div><strong>{day.dayName}</strong><span>{day.date}</span></div><b>{total.toFixed(2)} hrs</b></header>
-              <button type="button" className="module001-add-work" onClick={() => switchToExistingView('My Work Queue')}>+ Add work</button>
+              <button type="button" className="module001-add-work" onClick={onAddWork}>+ Add work</button>
               <div className="module001-calendar-items">
                 {dayItems.map((item) => {
                   const missingDescription = !String(item.entry?.comment || '').trim();
@@ -129,6 +154,23 @@ function CalendarEnhancement({ snapshot, tasks, disabled, onChangeTask, onRemove
         </aside>
       ) : null}
     </section>
+  );
+}
+
+function CurrentTimesheetActivityCard({ row, hours, timerTarget, disabled, onOpen, onStartTimer }) {
+  return (
+    <article className="module001-current-activity-card">
+      <div>
+        <small>{row.type === 'projectTask' || row.rowType === 'projectTask' ? 'Project task' : 'Timesheet activity'}</small>
+        <h4>{row.activity || row.taskName || row.categoryName || 'Activity'}</h4>
+        <p>{row.projectDescription || row.projectName || 'Non-project time'}</p>
+      </div>
+      <strong>{Number(hours || 0).toFixed(2)} hrs</strong>
+      <div className="module001-current-activity-actions">
+        <button type="button" className="secondary" onClick={onOpen}>Open quick entry</button>
+        {timerTarget ? <button type="button" disabled={disabled} onClick={() => onStartTimer(timerTarget)}>Start timer</button> : null}
+      </div>
+    </article>
   );
 }
 
@@ -200,36 +242,73 @@ export default function TimesheetEnhancementPortal() {
 
   const loadEnhancementData = useCallback(async () => {
     if (!snapshot?.selectedWeekStart || !targets.page) return;
-    try {
-      const [queueResult, activeResult, historyResult] = await Promise.all([
-        api(`/api/timesheet/work-queue?weekStart=${snapshot.selectedWeekStart}`),
-        api('/api/timesheet/timers/active'),
-        api(`/api/timesheet/timers/history?weekStart=${snapshot.selectedWeekStart}`)
-      ]);
-      setWorkQueue(queueResult.tasks || []);
-      setActiveTimer(activeResult.activeTimer || null);
-      if (activeResult.activeTimer) {
-        setDescription(activeResult.activeTimer.description || '');
-        setClassification(activeResult.activeTimer.timeClassification || 'normal');
+
+    const [queueResult, activeResult, historyResult] = await Promise.allSettled([
+      api(`/api/timesheet/work-queue?weekStart=${snapshot.selectedWeekStart}`),
+      api('/api/timesheet/timers/active'),
+      api(`/api/timesheet/timers/history?weekStart=${snapshot.selectedWeekStart}`)
+    ]);
+
+    const errors = [];
+    if (queueResult.status === 'fulfilled') setWorkQueue(queueResult.value.tasks || []);
+    else errors.push(queueResult.reason?.message || 'Unable to load assigned work.');
+
+    if (activeResult.status === 'fulfilled') {
+      setActiveTimer(activeResult.value.activeTimer || null);
+      if (activeResult.value.activeTimer) {
+        setDescription(activeResult.value.activeTimer.description || '');
+        setClassification(activeResult.value.activeTimer.timeClassification || 'normal');
       }
-      if (activeResult.autoStoppedTimer) setStatusMessage('A timer was automatically stopped at 12 hours. Review its draft entry before submission.');
-      setTimerHistory(historyResult.timers || []);
-    } catch (error) {
-      setStatusMessage(error.message);
+      if (activeResult.value.autoStoppedTimer) errors.push('A timer was automatically stopped at 12 hours. Review its draft entry before submission.');
+    } else {
+      errors.push(activeResult.reason?.message || 'Unable to load the active timer.');
     }
+
+    if (historyResult.status === 'fulfilled') setTimerHistory(historyResult.value.timers || []);
+    else errors.push(historyResult.reason?.message || 'Unable to load timer history.');
+
+    if (errors.length) setStatusMessage(errors.join(' '));
   }, [snapshot?.selectedWeekStart, targets.page]);
 
   useEffect(() => { void loadEnhancementData(); }, [loadEnhancementData]);
 
+  const normalizedCategories = useMemo(
+    () => (snapshot?.nonProjectCategories || []).map(normalizeNonProjectCategory),
+    [snapshot?.nonProjectCategories]
+  );
+
   const timerTargets = useMemo(() => [
-    ...workQueue.map((task) => ({ ...task, selectionValue: `assignment:${task.assignmentId}` })),
-    ...(snapshot?.nonProjectCategories || []).map((category) => ({
-      nonProjectCategoryId: category.id || category.nonProjectTimeCategoryId,
-      nonProjectCategoryName: category.name,
-      selectionValue: `category:${category.id || category.nonProjectTimeCategoryId}`,
-      selectionLabel: `Non-project · ${category.name}`
-    }))
-  ], [workQueue, snapshot?.nonProjectCategories]);
+    ...workQueue
+      .filter((task) => UUID_PATTERN.test(String(task.assignmentId || '')))
+      .map((task) => ({ ...task, selectionValue: `assignment:${task.assignmentId}` })),
+    ...normalizedCategories
+      .filter((category) => UUID_PATTERN.test(category.id))
+      .map((category) => ({
+        ...category,
+        nonProjectCategoryId: category.id,
+        nonProjectCategoryName: category.name,
+        selectionValue: `category:${category.id}`,
+        selectionLabel: `Non-project · ${category.name}`
+      }))
+  ], [workQueue, normalizedCategories]);
+
+  const currentActivities = useMemo(
+    () => (snapshot?.activeRows || []).map((row) => ({
+      row,
+      hours: getActivityHours(snapshot, row.id)
+    })),
+    [snapshot]
+  );
+
+  const timerTargetForRow = useCallback((row) => {
+    if (row?.projectId && row?.taskId) {
+      const task = workQueue.find((item) => item.projectId === row.projectId && item.taskId === row.taskId);
+      return task && UUID_PATTERN.test(String(task.assignmentId || '')) ? `assignment:${task.assignmentId}` : '';
+    }
+
+    const category = normalizedCategories.find((item) => item.code && item.code === row?.categoryCode);
+    return category && UUID_PATTERN.test(category.id) ? `category:${category.id}` : '';
+  }, [workQueue, normalizedCategories]);
 
   const addTask = async (item) => {
     if (snapshot?.isViewAs) return;
@@ -242,11 +321,39 @@ export default function TimesheetEnhancementPortal() {
     } catch (error) { setStatusMessage(error.message); } finally { setBusy(false); }
   };
 
-  const startFromQueue = (item) => { setSelectedTarget(`assignment:${item.assignmentId}`); setDescription(''); setTimerMode(true); };
+  const startFromQueue = (item) => {
+    if (!UUID_PATTERN.test(String(item.assignmentId || ''))) return;
+    setSelectedTarget(`assignment:${item.assignmentId}`);
+    setDescription('');
+    setTimerMode(true);
+  };
+
+  const startFromCurrentActivity = (timerTarget) => {
+    setSelectedTarget(timerTarget);
+    setDescription('');
+    setTimerMode(true);
+  };
+
+  const focusActivityPicker = () => {
+    setTimerMode(false);
+    switchToExistingView('My Work Queue');
+    setStatusMessage('Choose an activity from the Activities panel, then add it to the current week.');
+    window.setTimeout(() => {
+      const panel = document.querySelector('#timesheet .activities-panel');
+      if (!panel) return;
+      panel.classList.add('module001-activity-picker-attention');
+      panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      panel.querySelector('#activity-source')?.focus();
+      window.setTimeout(() => panel.classList.remove('module001-activity-picker-attention'), 1800);
+    }, 100);
+  };
 
   const startTimer = async () => {
     const [kind, id] = selectedTarget.split(':');
-    if (!id) return;
+    if (!UUID_PATTERN.test(id || '') || !['assignment', 'category'].includes(kind)) {
+      setStatusMessage('Select a valid assigned task or authorized non-project activity before starting the timer.');
+      return;
+    }
     setBusy(true); setStatusMessage('');
     try {
       const result = await api('/api/timesheet/timers/start', {
@@ -320,8 +427,39 @@ export default function TimesheetEnhancementPortal() {
       {targets.toolbar ? createPortal(<><label className="module001-mobile-toggle"><input type="checkbox" checked={mobileMode} onChange={(event) => setMobileMode(event.target.checked)} /><span>Mobile mode</span></label><button type="button" className="primary-action module001-submit-week" disabled={disabled || !snapshot.isAnyDayEditable} onClick={prepareSubmission}>Submit week</button></>, targets.toolbar) : null}
       {targets.workspace ? createPortal(<>
         {timerMode ? <TimesheetTimerView targets={timerTargets} history={timerHistory} activeTimer={activeTimer} selectedTargetValue={selectedTarget} classification={classification} description={description} isViewAs={snapshot.isViewAs} busy={busy} statusMessage={statusMessage} onSelectTarget={setSelectedTarget} onClassificationChange={setClassification} onDescriptionChange={setDescription} onStart={startTimer} onStop={stopTimer} onDiscard={discardTimer} /> : null}
-        {!timerMode && snapshot.timesheetView === 'queue' ? <section className="module001-work-queue-enhancement"><div className="timesheet-view-heading"><div><p className="eyebrow">ASSIGNED WORK</p><h3>My Work Queue</h3><p>Authoritative source: project assignments and project tasks.</p></div><span className="pill">{workQueue.length} items</span></div>{statusMessage ? <div className="module001-status">{statusMessage}</div> : null}<div className="module001-work-grid">{workQueue.map((item) => <TimesheetWorkQueueCard key={item.assignmentId} item={item} disabled={disabled} onAdd={addTask} onStartTimer={startFromQueue} onOpenTask={() => { window.location.hash = 'project-workspace'; }} />)}</div>{workQueue.length === 0 ? <div className="module001-empty">No assigned work is available for this week.</div> : null}</section> : null}
-        {!timerMode && snapshot.timesheetView === 'calendar' ? <CalendarEnhancement snapshot={snapshot} tasks={workQueue} disabled={disabled} onChangeTask={changeCalendarTask} onRemove={removeCalendarEntry} /> : null}
+        {!timerMode && snapshot.timesheetView === 'queue' ? (
+          <section className="module001-work-queue-enhancement">
+            <div className="timesheet-view-heading">
+              <div><p className="eyebrow">ASSIGNED AND SELECTED WORK</p><h3>My Work Queue</h3><p>Current Timesheet activities plus authoritative project assignments and tasks.</p></div>
+              <span className="pill">{currentActivities.length} active · {workQueue.length} assigned</span>
+            </div>
+            {statusMessage ? <div className="module001-status">{statusMessage}</div> : null}
+            {currentActivities.length ? (
+              <section className="module001-current-activities" aria-label="Current Timesheet activities">
+                <h4>Current Timesheet activities</h4>
+                <div className="module001-current-activity-grid">
+                  {currentActivities.map(({ row, hours }) => (
+                    <CurrentTimesheetActivityCard
+                      key={row.id}
+                      row={row}
+                      hours={hours}
+                      timerTarget={timerTargetForRow(row)}
+                      disabled={disabled}
+                      onOpen={() => switchToExistingView('Quick Entry List')}
+                      onStartTimer={startFromCurrentActivity}
+                    />
+                  ))}
+                </div>
+              </section>
+            ) : null}
+            <section className="module001-assigned-work" aria-label="Assigned project work">
+              <h4>Assigned project work</h4>
+              <div className="module001-work-grid">{workQueue.map((item) => <TimesheetWorkQueueCard key={item.assignmentId} item={item} disabled={disabled} onAdd={addTask} onStartTimer={startFromQueue} onOpenTask={() => { window.location.hash = 'project-workspace'; }} />)}</div>
+              {workQueue.length === 0 ? <div className="module001-empty">No assigned project work is available for this week. Selected non-project activities remain visible above.</div> : null}
+            </section>
+          </section>
+        ) : null}
+        {!timerMode && snapshot.timesheetView === 'calendar' ? <CalendarEnhancement snapshot={snapshot} tasks={workQueue} disabled={disabled} onChangeTask={changeCalendarTask} onRemove={removeCalendarEntry} onAddWork={focusActivityPicker} /> : null}
       </>, targets.workspace) : null}
       {review ? createPortal(<div className="module001-review-backdrop" role="presentation"><section className="module001-review-dialog" role="dialog" aria-modal="true" aria-labelledby="module001-review-title"><header><div><p className="eyebrow">WEEKLY SUBMISSION REVIEW</p><h2 id="module001-review-title">Submit Timesheet week</h2></div><button type="button" onClick={() => setReview(null)}>Close</button></header><dl><div><dt>Week</dt><dd>{review.weekStart} through {review.weekEnd}</dd></div><div><dt>Total</dt><dd>{Number(review.totalHours || 0).toFixed(2)} hours</dd></div><div><dt>Entries</dt><dd>{review.entryCount || 0}</dd></div><div><dt>Active timer</dt><dd>{review.runningTimer ? 'Must be stopped' : 'None'}</dd></div></dl>{(review.errors || []).length ? <div className="module001-review-errors"><h3>Corrections required</h3><ul>{review.errors.map((error) => <li key={error}>{error}</li>)}</ul>{(review.incompleteEntries || []).map((entry) => <article key={entry.timeEntryId}><strong>{entry.workDate} · {entry.projectCode || entry.projectName || 'Non-project'}</strong><span>{entry.taskName}</span><small>{(entry.reasons || []).join('; ')}</small></article>)}</div> : <p className="module001-review-ready">All validation checks passed. Confirm to route this week into Module 002 Approval Inbox.</p>}<footer><button type="button" className="secondary" onClick={() => setReview(null)}>Cancel</button><button type="button" className="primary-action" disabled={!review.valid || busy || snapshot.isViewAs} onClick={confirmSubmission}>{busy ? 'Submitting…' : 'Confirm and submit week'}</button></footer></section></div>, document.body) : null}
     </>
