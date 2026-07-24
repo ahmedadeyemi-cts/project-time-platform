@@ -1,10 +1,12 @@
-const TIMER_TARGET_PATTERN = /^(assignment|category):[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
+const TIMER_TARGET_PATTERN = /^(?:(?:assignment|category):[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}|category-code:[A-Z0-9][A-Z0-9_-]{0,99})$/i;
 
 function toTimerOption(target) {
+  const categoryCode = target.categoryCode || target.targetCode || target.nonProjectCategoryCode || '';
   const optionValue = target.selectionValue
     || (target.assignmentId ? `assignment:${target.assignmentId}` : '')
     || (target.nonProjectTimeCategoryId ? `category:${target.nonProjectTimeCategoryId}` : '')
-    || (target.nonProjectCategoryId ? `category:${target.nonProjectCategoryId}` : '');
+    || (target.nonProjectCategoryId ? `category:${target.nonProjectCategoryId}` : '')
+    || (categoryCode ? `category-code:${categoryCode}` : '');
 
   if (!TIMER_TARGET_PATTERN.test(optionValue)) return null;
 
@@ -56,7 +58,7 @@ export default function TimesheetTaskPicker({
       </select>
       <small>
         {hasOptions
-          ? 'Choose directly from your assigned project tasks or the active non-project activity catalog.'
+          ? 'Choose directly from the activities already available on this Timesheet.'
           : 'No active assigned tasks or non-project activities are currently available.'}
       </small>
     </label>
