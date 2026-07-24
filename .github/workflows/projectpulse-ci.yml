@@ -76,6 +76,9 @@ jobs:
       - name: Validate Modules card-number test deployment guard
         run: bash scripts/validate-modules-card-numbers-test-deployment.sh
 
+      - name: Validate scoped RBAC test deployment guard
+        run: bash scripts/validate-scoped-rbac-test-deployment.sh
+
       - name: Validate container definitions and web build context
         run: |
           test -f deployment/containers/api/Dockerfile
