@@ -1,0 +1,520 @@
+.module001-view-tab-host,
+.module001-toolbar-host {
+  display: contents;
+}
+
+.module001-enhancement-view-host {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+#timesheet.module001-enhanced-queue .work-queue-view,
+#timesheet.module001-enhanced-calendar .calendar-timeline-view,
+#timesheet.module001-timer-mode .timesheet-view-panel {
+  display: none !important;
+}
+
+#timesheet.module001-timer-mode .activities-panel {
+  display: none;
+}
+
+.module001-mobile-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 44px;
+  padding: 0 0.8rem;
+  border: 1px solid #d7e0e8;
+  border-radius: 999px;
+  background: #fff;
+  color: #4a607b;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.module001-mobile-toggle input {
+  width: 1rem;
+  height: 1rem;
+  accent-color: #07599b;
+}
+
+.module001-timer-view,
+.module001-work-card,
+.module001-calendar-enhancement,
+.module001-calendar-drawer,
+.module001-review-dialog {
+  border: 1px solid #d9e2ec;
+  border-radius: 18px;
+  background: #fff;
+  color: #172033;
+}
+
+.module001-timer-view,
+.module001-calendar-enhancement {
+  padding: 1.15rem;
+}
+
+.module001-timer-view > header,
+.module001-work-card > header,
+.module001-calendar-drawer > header,
+.module001-review-dialog > header,
+.module001-calendar-day > header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.module001-timer-view > header p,
+.module001-work-queue-enhancement .timesheet-view-heading p {
+  margin-bottom: 0;
+}
+
+.module001-timer-clock {
+  font-size: clamp(1.65rem, 4vw, 2.4rem);
+  color: #07599b;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.module001-field {
+  display: grid;
+  gap: 0.4rem;
+  margin-top: 1rem;
+}
+
+.module001-field > span,
+.module001-classification legend {
+  font-weight: 800;
+}
+
+.module001-field select,
+.module001-field textarea {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  padding: 0.75rem;
+  background: #f8fafc;
+  color: #172033;
+}
+
+.module001-field textarea {
+  min-height: 105px;
+  resize: vertical;
+}
+
+.module001-field small {
+  color: #667b96;
+}
+
+.module001-classification {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem 1.25rem;
+  margin: 1rem 0 0;
+  padding: 0.8rem 1rem;
+  border: 1px solid #d9e2ec;
+  border-radius: 14px;
+}
+
+.module001-classification legend {
+  padding: 0 0.35rem;
+}
+
+.module001-classification label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.module001-timer-meta {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+.module001-timer-meta span,
+.module001-active-target {
+  padding: 0.7rem 0.8rem;
+  border-radius: 12px;
+  background: #f4f7fa;
+}
+
+.module001-active-target {
+  display: grid;
+  gap: 0.2rem;
+  margin-top: 1rem;
+}
+
+.module001-active-target span {
+  color: #667b96;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.module001-timer-actions,
+.module001-work-card footer,
+.module001-calendar-drawer-actions,
+.module001-review-dialog footer {
+  display: flex;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+}
+
+.module001-timer-actions button,
+.module001-work-card button,
+.module001-calendar-drawer button,
+.module001-review-dialog button,
+.module001-add-work {
+  border: 0;
+  border-radius: 999px;
+  background: #07599b;
+  color: #fff;
+  font-weight: 800;
+  padding: 0.7rem 1rem;
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.module001-timer-actions button:disabled,
+.module001-work-card button:disabled,
+.module001-calendar-drawer button:disabled,
+.module001-review-dialog button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.module001-timer-actions .secondary,
+.module001-work-card .secondary,
+.module001-calendar-drawer .secondary,
+.module001-review-dialog .secondary {
+  background: #e2e8f0;
+  color: #172033;
+}
+
+.module001-warning,
+.module001-status,
+.module001-review-ready {
+  margin: 0.8rem 0;
+  padding: 0.8rem 0.9rem;
+  border-radius: 12px;
+  font-weight: 700;
+}
+
+.module001-warning {
+  background: #fff4ce;
+  color: #664d03;
+}
+
+.module001-status,
+.module001-review-ready {
+  background: #e8f5fb;
+  color: #074b73;
+}
+
+.module001-timer-history {
+  margin-top: 1.25rem;
+  border-top: 1px solid #d9e2ec;
+  padding-top: 1rem;
+}
+
+.module001-timer-history ul {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.module001-timer-history li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.7rem 0.8rem;
+  border-radius: 12px;
+  background: #f4f7fa;
+}
+
+.module001-work-queue-enhancement {
+  min-width: 0;
+}
+
+.module001-work-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.module001-work-card {
+  display: grid;
+  gap: 0.8rem;
+  padding: 1rem;
+}
+
+.module001-work-card > p {
+  margin: 0;
+  color: #526987;
+}
+
+.module001-work-card dl,
+.module001-review-dialog dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+  margin: 0;
+}
+
+.module001-work-card dl div,
+.module001-review-dialog dl div {
+  min-width: 0;
+  padding: 0.65rem;
+  border-radius: 12px;
+  background: #f4f7fa;
+}
+
+.module001-work-card dt,
+.module001-review-dialog dt {
+  color: #64748b;
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.module001-work-card dd,
+.module001-review-dialog dd {
+  margin: 0.2rem 0 0;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.module001-empty {
+  margin-top: 1rem;
+  padding: 1.5rem;
+  border: 1px dashed #cbd5e1;
+  border-radius: 16px;
+  text-align: center;
+  color: #64748b;
+}
+
+.module001-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(180px, 1fr));
+  gap: 0.75rem;
+  overflow-x: auto;
+  padding-bottom: 0.4rem;
+}
+
+.module001-calendar-day {
+  min-height: 270px;
+  padding: 0.8rem;
+  border: 1px solid #d9e2ec;
+  border-radius: 16px;
+  background: #fbfcfe;
+}
+
+.module001-calendar-day > header span,
+.module001-calendar-day > header b {
+  display: block;
+  color: #667b96;
+  font-size: 0.82rem;
+}
+
+.module001-add-work {
+  width: 100%;
+  margin: 0.7rem 0;
+  background: #e8f5fb;
+  color: #07599b;
+}
+
+.module001-calendar-items {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.module001-calendar-item {
+  display: grid;
+  gap: 0.18rem;
+  width: 100%;
+  padding: 0.65rem;
+  border: 1px solid #d9e2ec;
+  border-left: 4px solid #07599b;
+  border-radius: 12px;
+  background: #fff;
+  color: #172033;
+  text-align: left;
+  cursor: pointer;
+}
+
+.module001-calendar-item.incomplete {
+  border-left-color: #d97706;
+  background: #fffaf0;
+}
+
+.module001-calendar-item em {
+  color: #a04b00;
+  font-size: 0.72rem;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.module001-calendar-drawer {
+  position: fixed;
+  z-index: 1600;
+  top: 1rem;
+  right: 1rem;
+  bottom: 1rem;
+  width: min(440px, calc(100vw - 2rem));
+  padding: 1rem;
+  box-shadow: 0 24px 60px rgba(12, 39, 69, 0.28);
+  overflow: auto;
+}
+
+.module001-calendar-drawer dl {
+  display: grid;
+  gap: 0.55rem;
+  margin: 1rem 0;
+}
+
+.module001-calendar-drawer dl div {
+  padding: 0.7rem;
+  border-radius: 12px;
+  background: #f4f7fa;
+}
+
+.module001-calendar-drawer dt {
+  color: #64748b;
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.module001-calendar-drawer dd {
+  margin: 0.2rem 0 0;
+  font-weight: 700;
+}
+
+.module001-review-backdrop {
+  position: fixed;
+  z-index: 1900;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(5, 20, 40, 0.58);
+}
+
+.module001-review-dialog {
+  width: min(760px, 100%);
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
+  padding: 1.2rem;
+  box-shadow: 0 28px 80px rgba(4, 24, 48, 0.35);
+}
+
+.module001-review-dialog dl {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 1rem 0;
+}
+
+.module001-review-errors {
+  padding: 0.9rem;
+  border-radius: 14px;
+  background: #fff4ef;
+  color: #812b16;
+}
+
+.module001-review-errors article {
+  display: grid;
+  gap: 0.18rem;
+  margin-top: 0.65rem;
+  padding: 0.7rem;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.module001-review-dialog footer {
+  justify-content: flex-end;
+  margin-top: 1rem;
+}
+
+#timesheet.module001-mobile-mode .timesheet-toolbar,
+#timesheet.module001-mobile-mode .timesheet-status-bar,
+#timesheet.module001-mobile-mode .timesheet-workspace,
+#timesheet.module001-mobile-mode .module001-timer-view > header {
+  display: grid;
+  grid-template-columns: 1fr;
+}
+
+#timesheet.module001-mobile-mode .timesheet-toolbar .toolbar-actions {
+  justify-content: flex-start;
+  overflow-x: auto;
+  padding-bottom: 0.35rem;
+}
+
+#timesheet.module001-mobile-mode .timesheet-view-switcher {
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+}
+
+#timesheet.module001-mobile-mode .timesheet-view-button {
+  min-width: 190px;
+  scroll-snap-align: start;
+}
+
+#timesheet.module001-mobile-mode .activities-panel {
+  max-height: 360px;
+  overflow: auto;
+}
+
+#timesheet.module001-mobile-mode .module001-timer-meta,
+#timesheet.module001-mobile-mode .module001-work-card dl,
+#timesheet.module001-mobile-mode .module001-review-dialog dl {
+  grid-template-columns: 1fr;
+}
+
+#timesheet.module001-mobile-mode .module001-calendar-grid,
+#timesheet.module001-mobile-mode .module001-work-grid {
+  grid-template-columns: 1fr;
+  overflow: visible;
+}
+
+#timesheet.module001-mobile-mode .module001-timer-actions button,
+#timesheet.module001-mobile-mode .module001-work-card footer button {
+  flex: 1 1 100%;
+}
+
+@media (max-width: 760px) {
+  .module001-timer-meta,
+  .module001-work-card dl,
+  .module001-review-dialog dl {
+    grid-template-columns: 1fr;
+  }
+
+  .module001-timer-view > header {
+    display: grid;
+  }
+
+  .module001-calendar-grid,
+  .module001-work-grid {
+    grid-template-columns: 1fr;
+    overflow: visible;
+  }
+
+  .module001-timer-actions button,
+  .module001-work-card footer button {
+    flex: 1 1 100%;
+  }
+
+  .module001-calendar-drawer {
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 100vw;
+    border-radius: 0;
+  }
+}

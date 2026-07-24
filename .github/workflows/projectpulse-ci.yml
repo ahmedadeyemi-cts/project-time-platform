@@ -47,6 +47,23 @@ jobs:
           path: /tmp/scoped-rbac-migration-040.log
           retention-days: 7
 
+      - name: Test Module 001 migration 041 apply and rollback
+        shell: bash
+        run: |
+          set +e
+          bash tests/test-module-001-migration-041.sh > /tmp/module-001-migration-041.log 2>&1
+          status=$?
+          cat /tmp/module-001-migration-041.log
+          exit $status
+
+      - name: Upload Module 001 migration 041 diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: module-001-migration-041-diagnostics
+          path: /tmp/module-001-migration-041.log
+          retention-days: 7
+
       - name: Test Work Register project authorization
         run: dotnet run --project tests/ProjectTime.Api.AuthorizationTests/ProjectTime.Api.AuthorizationTests.csproj --configuration Release
 
