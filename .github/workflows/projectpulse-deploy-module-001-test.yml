@@ -6,7 +6,7 @@ on:
       release_commit:
         description: Exact verified Module 001 release commit
         required: true
-        default: 1e67168a7c8d8ad8c2c6bb0e0007327b53805878
+        default: 8c4afed94bfb949ad158f029ebd498f6d930fcce
         type: string
       confirmation:
         description: Enter DEPLOY-MODULE-001-TO-TEST
@@ -27,7 +27,7 @@ jobs:
     environment: test
     runs-on: ubuntu-latest
     env:
-      EXPECTED_RELEASE_COMMIT: 1e67168a7c8d8ad8c2c6bb0e0007327b53805878
+      EXPECTED_RELEASE_COMMIT: 8c4afed94bfb949ad158f029ebd498f6d930fcce
     steps:
       - name: Check out deployment controls
         uses: actions/checkout@v5
@@ -63,6 +63,7 @@ jobs:
           grep -Fq 'MapPost("/api/timesheet/timers/start"' release/src/backend/ProjectTime.Api/Modules/Module001TimesheetEnhancementModule.cs
           grep -Fq 'Start / Stop Timer' release/src/frontend/project-time-web/src/module001/TimesheetEnhancementPortal.jsx
           grep -Fq 'Submit Timesheet week' release/src/frontend/project-time-web/src/module001/TimesheetEnhancementPortal.jsx
+          grep -Fq "FOREACH role_name IN ARRAY ARRAY['ptp_app', 'projectpulse_app']" release/database/migrations/041_module_001_timesheet_timer_and_task_association.sql
           echo "target_commit=$TARGET_COMMIT" >> "$GITHUB_OUTPUT"
 
       - uses: azure/login@v2
