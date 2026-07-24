@@ -29,8 +29,16 @@ const [main, app, compatibility, approvalCenter, mailbox, backend, packageJson] 
   Object.values(paths).map(text)
 );
 
-requireText(main, [
+const appImport = [
   "import App from './App.jsx';",
+  "import App from './App.Module001.g.jsx';"
+].find((candidate) => main.includes(candidate));
+
+if (!appImport) {
+  throw new Error('Application compatibility integration is missing a supported App import.');
+}
+
+requireText(main, [
   "import './approval-access-navigation-compatibility.js';"
 ], 'Application compatibility integration');
 
@@ -40,7 +48,7 @@ requireText(app, [
   '<ApprovalCenter />'
 ], 'Approval surfaces integration');
 
-if (main.indexOf("import './approval-access-navigation-compatibility.js';") < main.indexOf("import App from './App.jsx';")) {
+if (main.indexOf("import './approval-access-navigation-compatibility.js';") < main.indexOf(appImport)) {
   throw new Error('The compatibility bridge must load after App installs the authenticated fetch pipeline.');
 }
 
