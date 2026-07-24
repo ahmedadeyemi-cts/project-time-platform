@@ -28,7 +28,21 @@ jobs:
           cache-dependency-path: src/frontend/project-time-web/package-lock.json
 
       - name: Restore and build API
-        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+        shell: bash
+        run: |
+          set +e
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release > /tmp/module-001-api-build.log 2>&1
+          status=$?
+          cat /tmp/module-001-api-build.log
+          exit $status
+
+      - name: Upload Module 001 API compiler diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: module-001-api-compiler-diagnostics
+          path: /tmp/module-001-api-build.log
+          retention-days: 7
 
       - name: Test scoped RBAC migration 040 apply and rollback
         shell: bash
