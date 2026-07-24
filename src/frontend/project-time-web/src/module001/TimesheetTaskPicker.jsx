@@ -1,4 +1,7 @@
+import { useMemo, useState } from 'react';
+
 const TIMER_TARGET_PATTERN = /^(?:(?:assignment|category):[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}|category-code:[A-Z0-9][A-Z0-9_-]{0,99})$/i;
+const GROUP_ORDER = ['Non-Project Time', 'Regular Tasks', 'Service Request Tasks'];
 
 function toTimerOption(target) {
   const categoryCode = target.categoryCode || target.targetCode || target.nonProjectCategoryCode || '';
@@ -16,11 +19,14 @@ function toTimerOption(target) {
     || target.categoryName
     || 'Authorized activity';
 
+  const groupLabel = target.groupLabel
+    || (optionValue.startsWith('assignment:') ? 'Regular Tasks' : 'Non-Project Time');
+
   return {
     optionValue,
     label,
-    groupLabel: target.groupLabel
-      || (optionValue.startsWith('assignment:') ? 'Assigned project work' : 'Authorized non-project activities')
+    groupLabel,
+    searchText: `${groupLabel} ${label} ${target.workType || ''}`.toLowerCase()
   };
 }
 
@@ -30,25 +36,51 @@ export default function TimesheetTaskPicker({
   disabled = false,
   onChange = () => {}
 }) {
-  const options = tasks.map(toTimerOption).filter(Boolean);
+  const [search, setSearch] = useState('');
+  const options = useMemo(() => tasks.map(toTimerOption).filter(Boolean), [tasks]);
   const hasOptions = options.length > 0;
-  const groups = options.reduce((result, option) => {
-    const group = result.get(option.groupLabel) || [];
-    group.push(option);
-    result.set(option.groupLabel, group);
-    return result;
-  }, new Map());
+  const normalizedSearch = search.trim().toLowerCase();
+  const filteredOptions = options.filter((option) => (
+    !normalizedSearch
+    || option.searchText.includes(normalizedSearch)
+    || option.optionValue === value
+  ));
+
+  const groups = GROUP_ORDER
+    .map((groupLabel) => ({
+      groupLabel,
+      options: filteredOptions.filter((option) => option.groupLabel === groupLabel)
+    }))
+    .filter((group) => group.options.length > 0);
+
+  const unmatchedGroups = filteredOptions
+    .filter((option) => !GROUP_ORDER.includes(option.groupLabel))
+    .reduce((result, option) => {
+      const existing = result.find((group) => group.groupLabel === option.groupLabel);
+      if (existing) existing.options.push(option);
+      else result.push({ groupLabel: option.groupLabel, options: [option] });
+      return result;
+    }, []);
 
   return (
-    <label className="module001-field">
+    <label className="module001-field module001-task-picker">
       <span>Assigned task or authorized activity</span>
+      <input
+        className="module001-task-search"
+        type="search"
+        value={search}
+        disabled={disabled || !hasOptions}
+        placeholder="Search activity, task, project, customer, or request"
+        aria-label="Search timer activities"
+        onChange={(event) => setSearch(event.target.value)}
+      />
       <select
         value={TIMER_TARGET_PATTERN.test(value) ? value : ''}
         disabled={disabled || !hasOptions}
         onChange={(event) => onChange(event.target.value)}
       >
-        <option value="">{hasOptions ? 'Select assigned work or activity' : 'No authorized timer activity available'}</option>
-        {[...groups.entries()].map(([groupLabel, groupOptions]) => (
+        <option value="">{hasOptions ? 'Select activity or task' : 'No authorized timer activity available'}</option>
+        {[...groups, ...unmatchedGroups].map(({ groupLabel, options: groupOptions }) => (
           <optgroup key={groupLabel} label={groupLabel}>
             {groupOptions.map((option) => (
               <option key={option.optionValue} value={option.optionValue}>{option.label}</option>
@@ -58,7 +90,7 @@ export default function TimesheetTaskPicker({
       </select>
       <small>
         {hasOptions
-          ? 'Choose directly from the activities already available on this Timesheet.'
+          ? `${filteredOptions.length} of ${options.length} timer choices shown across Non-Project Time, Regular Tasks, and Service Request Tasks.`
           : 'No active assigned tasks or non-project activities are currently available.'}
       </small>
     </label>
