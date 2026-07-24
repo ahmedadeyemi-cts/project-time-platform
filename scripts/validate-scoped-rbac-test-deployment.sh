@@ -25,6 +25,9 @@ for value in \
   'SCOPED_RBAC_MIGRATION_IMAGE' \
   'SCOPED_RBAC_MIGRATION_JOB_NAME' \
   'run-scoped-rbac-test-migration-job.sh' \
+  'mapfile -t SQL_FILES' \
+  "sha256sum \"\${SQL_FILES[@]}\" > SHA256SUMS" \
+  'Expected 12 scoped RBAC migration SQL files' \
   'Deploy API' \
   'Deploy web' \
   'Roll back API and web images on failure' \
@@ -36,7 +39,10 @@ do require_workflow "$value"; done
 for value in \
   "EXPECTED_RELEASE_COMMIT=\"$EXPECTED\"" \
   '040_scoped_role_policy_versions.sql' \
-  'Checksum mismatch' \
+  'SHA256SUMS' \
+  'sha256sum --check --strict SHA256SUMS' \
+  'SCOPED_RBAC_MIGRATION_CHECKSUMS=VERIFIED' \
+  'Migration checksum manifest must contain exactly 12 scoped RBAC SQL files.' \
   'Legacy RBAC counts changed during migration 040.' \
   "module_code='003'" \
   "module_code='037'" \
@@ -60,8 +66,9 @@ do require_runner "$value"; done
 
 [[ "$(grep -Fc 'az containerapp update' "$WORKFLOW")" == 4 ]] || fail "Expected API/web deployment plus API/web rollback updates."
 [[ "$(grep -Fc 'sha256:' "$WORKFLOW")" -ge 1 ]] || fail "Immutable image references are not enforced."
-[[ "$(grep -Fc ':sha256:' "$EXECUTOR")" == 0 ]] || fail "Malformed checksum contracts detected."
-[[ "$(grep -Ec '^[[:space:]]+\"040_scoped_role_policy_versions.*:[0-9a-f]{64}\"' "$EXECUTOR")" == 12 ]] || fail "Expected 12 checksum-pinned migration files."
+[[ "$(grep -Fc 'SHA256SUMS' "$WORKFLOW")" -ge 2 ]] || fail "Workflow does not create and verify a migration checksum manifest."
+[[ "$(grep -Fc 'sha256sum --check --strict SHA256SUMS' "$EXECUTOR")" == 1 ]] || fail "Executor must verify the generated checksum manifest exactly once."
+[[ "$(grep -Ec '^[[:space:]]+\"040_scoped_role_policy_versions.*:[0-9a-f]{64}\"' "$EXECUTOR")" == 0 ]] || fail "Stale hardcoded migration checksums must not remain in the executor."
 
 for forbidden in \
   'environment: production' \
