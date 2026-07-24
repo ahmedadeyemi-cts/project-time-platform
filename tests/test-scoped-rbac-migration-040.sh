@@ -50,11 +50,12 @@ docker run --detach --rm \
   postgres:16-alpine >/dev/null
 
 for attempt in $(seq 1 60); do
-  if docker exec "$CONTAINER" pg_isready -U "$DB_USER" -d "$DB_NAME" >/dev/null 2>&1; then
+  if psql_exec -Atqc 'SELECT 1;' >/dev/null 2>&1; then
     break
   fi
   [[ "$attempt" != 60 ]] || {
-    echo "PostgreSQL did not become ready." >&2
+    echo "PostgreSQL test database did not become ready for SQL connections." >&2
+    docker logs "$CONTAINER" >&2 || true
     exit 1
   }
   sleep 1
