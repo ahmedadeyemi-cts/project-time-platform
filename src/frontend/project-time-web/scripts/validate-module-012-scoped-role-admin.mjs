@@ -14,6 +14,8 @@ const requireAll = (source, values, label) => {
 
 const paths = {
   ui: 'src/frontend/project-time-web/src/RoleAdminDirectoryPanel.jsx',
+  compatibility: 'src/frontend/project-time-web/src/scoped-rbac-catalog-compatibility.js',
+  main: 'src/frontend/project-time-web/src/main.jsx',
   backend: 'src/backend/ProjectTime.Api/Modules/ScopedRolePolicyModule.cs',
   writes: 'src/backend/ProjectTime.Api/Modules/ScopedRolePolicyWrites.cs',
   persistence: 'src/backend/ProjectTime.Api/Modules/ScopedRolePolicyPersistence.cs',
@@ -24,8 +26,10 @@ const paths = {
   project: 'src/backend/ProjectTime.Api/ProjectTime.Api.csproj'
 };
 
-const [ui, backend, writes, persistence, support, evaluator, rules, css, project] = await Promise.all([
+const [ui, compatibility, main, backend, writes, persistence, support, evaluator, rules, css, project] = await Promise.all([
   text(paths.ui),
+  text(paths.compatibility),
+  text(paths.main),
   optionalText(paths.backend),
   optionalText(paths.writes),
   optionalText(paths.persistence),
@@ -56,6 +60,24 @@ requireAll(ui, [
   'Restore as new version',
   'Existing authorization remains in effect'
 ], 'Module 012 UI');
+
+requireAll(compatibility, [
+  "SCOPED_RBAC_CATALOG_PATH = '/api/role-policy/catalog'",
+  'projectpulse-scoped-rbac-catalog-normalized',
+  'actions: asArray(source.actions ?? source.Actions)',
+  'scopes: asArray(source.scopes ?? source.Scopes)',
+  "['GRANT', 'DENY']",
+  "method !== 'GET'",
+  'url.origin === window.location.origin',
+  'response.clone().json()',
+  "responseHeaders.delete('content-length')",
+  'return new Response(JSON.stringify(normalized)'
+], 'Scoped RBAC catalog compatibility');
+
+requireAll(main, [
+  "import './scoped-rbac-catalog-compatibility.js';",
+  '<App />'
+], 'Scoped RBAC compatibility root wiring');
 
 requireAll(css, [
   '.role-policy-admin',
@@ -138,6 +160,10 @@ if (fullSourceAvailable) {
 
 if (/fetch\([^)]*\/api\/role-policy\/(publish|validate|versions\/[^)]*restore)[\s\S]{0,200}method:\s*['"]GET['"]/m.test(ui)) {
   throw new Error('Module 012 write endpoints must not be called as GET.');
+}
+
+if (/catalog\.actions\.map|catalog\.scopes\.map/.test(compatibility)) {
+  throw new Error('Compatibility code must normalize arrays rather than render catalog collections.');
 }
 
 console.log('Module 012 authoritative scoped role administration contracts passed.');
