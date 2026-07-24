@@ -3,29 +3,28 @@ set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKFLOW="$ROOT/.github/workflows/projectpulse-deploy-module-001-simplified-timer-test.yml"
-EXPECTED="0a63e25bbde54b3e99ed9e4f413fb0d5c1dc6b7b"
+EXPECTED="8768199458f847892b094b375676df5dd29d70d6"
 
-fail() { echo "MODULE001_SIMPLIFIED_TIMER_DEPLOYMENT_GUARD=FAIL: $*" >&2; exit 1; }
+fail() { echo "MODULE001_STREAMLINED_TIMER_DEPLOYMENT_GUARD=FAIL: $*" >&2; exit 1; }
 [[ -f "$WORKFLOW" ]] || fail "Workflow is missing."
 
 require() { grep -Fq -- "$1" "$WORKFLOW" || fail "Workflow missing: $1"; }
 
 for value in \
-  'name: ProjectPulse Deploy Module 001 Simplified Timer Test' \
+  'name: ProjectPulse Deploy Module 001 Streamlined Timer Test' \
   "default: $EXPECTED" \
   "EXPECTED_RELEASE_COMMIT: $EXPECTED" \
-  'DEPLOY-MODULE-001-SIMPLIFIED-TIMER-TO-TEST' \
+  'DEPLOY-MODULE-001-STREAMLINED-TIMER-TO-TEST' \
   'refs/heads/main' \
   'environment: test' \
-  '/api/timesheet/timers/targets' \
-  'project_assignments' \
-  'non_project_time_categories' \
-  'app.MapModule001TimerTargetEndpoints();' \
-  '<optgroup' \
-  'Assigned project work' \
-  'Authorized non-project activities' \
-  'Deploy simplified API image' \
-  'Deploy simplified web image' \
+  '/api/timesheet/timers/start-by-code' \
+  'UPPER(category_code) = @category_code' \
+  'snapshot?.assignedTasks' \
+  'snapshot?.nonProjectCategories' \
+  'category-code:' \
+  'retiredTabsRemoved=2' \
+  'Deploy streamlined API image' \
+  'Deploy streamlined web image' \
   'migration041":"unchanged' \
   'database":"unchanged' \
   'Roll back API and web images on failure'
@@ -40,6 +39,9 @@ grep -Fq '@$API_DIGEST' "$WORKFLOW" || fail "Immutable API digest construction i
 grep -Fq '@$WEB_DIGEST' "$WORKFLOW" || fail "Immutable web digest construction is missing."
 grep -Fq 'steps.before.outputs.old_api_image' "$WORKFLOW" || fail "API rollback image capture is missing."
 grep -Fq 'steps.before.outputs.old_web_image' "$WORKFLOW" || fail "Web rollback image capture is missing."
+grep -Fq "! grep -Fq \"{ key: 'queue', label: 'My Work Queue'\"" "$WORKFLOW" || fail "Queue tab absence check is missing."
+grep -Fq "! grep -Fq \"{ key: 'calendar', label: 'Calendar / Timeline'\"" "$WORKFLOW" || fail "Calendar tab absence check is missing."
+grep -Fq "! grep -Fq '/api/timesheet/timers/targets?weekStart='" "$WORKFLOW" || fail "Empty target endpoint rejection is missing."
 
 for forbidden in \
   'PROJECTPULSE_TEST_DATABASE_URL' \
@@ -55,4 +57,4 @@ do
 done
 
 bash -n "$0"
-echo 'MODULE001_SIMPLIFIED_TIMER_DEPLOYMENT_GUARD=PASS'
+echo 'MODULE001_STREAMLINED_TIMER_DEPLOYMENT_GUARD=PASS'
