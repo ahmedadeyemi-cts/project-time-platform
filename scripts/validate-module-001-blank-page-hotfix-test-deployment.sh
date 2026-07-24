@@ -19,8 +19,8 @@ for value in \
   'environment: test' \
   'assignedTasks: assignedOpenTasks' \
   'nonProjectCategories: categories' \
-  '! grep -Fq '\''assignedTasks.data' \
-  '! grep -Fq '\''nonProjectCategories.data' \
+  "! grep -Fq 'assignedTasks.data'" \
+  "! grep -Fq 'nonProjectCategories.data'" \
   'generate-module-001-integrated-app.mjs' \
   'validate-module-001-timesheet-timer-mobile.mjs' \
   'Deploy blank-page hotfix web image only' \
