@@ -4,6 +4,12 @@ namespace ProjectTime.Api.Modules;
 
 public static partial class ScopedRolePolicyModule
 {
+    public static WebApplication MapModule001TimerTargetEndpoints(this WebApplication app)
+    {
+        app.MapGet("/api/timesheet/timers/targets", Module001TimerTargetsAsync);
+        return app;
+    }
+
     private static async Task<IResult> Module001TimerTargetsAsync(HttpContext context)
     {
         await using var connection = new NpgsqlConnection(ConnectionString());
