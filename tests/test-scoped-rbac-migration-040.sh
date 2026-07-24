@@ -200,7 +200,7 @@ if psql_exec -c "UPDATE scoped_role_policy_audit_events SET reason='tamper';" >/
 fi
 echo 'ASSERTION_PASSED immutable_policy_audit_update_blocked'
 
-if psql_exec -c "UPDATE scoped_role_policy_grants SET source_notes='tamper' WHERE policy_version_id='04000000-0000-0000-0000-000000000001' LIMIT 1;" >/dev/null 2>&1; then
+if psql_exec -c "UPDATE scoped_role_policy_grants SET source_notes='tamper' WHERE scoped_role_policy_grant_id = (SELECT scoped_role_policy_grant_id FROM scoped_role_policy_grants WHERE policy_version_id='04000000-0000-0000-0000-000000000001' LIMIT 1);" >/dev/null 2>&1; then
   echo 'ASSERTION_FAILED immutable_published_grant_update_was_allowed' >&2
   exit 1
 fi
