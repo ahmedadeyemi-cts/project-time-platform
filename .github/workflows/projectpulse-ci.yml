@@ -30,6 +30,23 @@ jobs:
       - name: Restore and build API
         run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
 
+      - name: Test scoped RBAC migration 040 apply and rollback
+        shell: bash
+        run: |
+          set +e
+          bash tests/test-scoped-rbac-migration-040.sh > /tmp/scoped-rbac-migration-040.log 2>&1
+          status=$?
+          cat /tmp/scoped-rbac-migration-040.log
+          exit $status
+
+      - name: Upload migration 040 diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scoped-rbac-migration-040-diagnostics
+          path: /tmp/scoped-rbac-migration-040.log
+          retention-days: 7
+
       - name: Test Work Register project authorization
         run: dotnet run --project tests/ProjectTime.Api.AuthorizationTests/ProjectTime.Api.AuthorizationTests.csproj --configuration Release
 

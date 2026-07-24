@@ -1,0 +1,12 @@
+\set ON_ERROR_STOP on
+\ir 040_scoped_role_policy_versions/00_schema.sql
+\ir 040_scoped_role_policy_versions/10_workbook_cells.sql
+\ir 040_scoped_role_policy_versions/12_super_administrator_override.sql
+\ir 040_scoped_role_policy_versions/15_workbook_metadata.sql
+\ir 040_scoped_role_policy_versions/20_standard_grants.sql
+\ir 040_scoped_role_policy_versions/30_time_entry.sql
+\ir 040_scoped_role_policy_versions/40_approval_inbox.sql
+\ir 040_scoped_role_policy_versions/50_utilization.sql
+\ir 040_scoped_role_policy_versions/60_role_administration.sql
+\ir 040_scoped_role_policy_versions/70_read_only_matrix.sql
+\ir 040_scoped_role_policy_versions/80_finalize.sql

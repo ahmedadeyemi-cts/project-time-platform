@@ -1,0 +1,268 @@
+.role-policy-admin {
+  display: grid;
+  gap: 1rem;
+  padding: 1.5rem;
+  border: 1px solid var(--border);
+  border-radius: 1.25rem;
+  background: var(--card);
+  box-shadow: var(--shadow-sm);
+}
+
+.role-policy-hero,
+.role-policy-editor > header,
+.role-policy-users > header,
+.role-policy-history > header,
+.role-policy-publish,
+.role-policy-publish-actions,
+.role-policy-grant > .role-policy-flags,
+.role-policy-history article {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.role-policy-hero dl,
+.role-policy-legacy-validation dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(7rem, 1fr));
+  gap: .65rem;
+  margin: 0;
+}
+
+.role-policy-hero dl div,
+.role-policy-legacy-validation dl div,
+.role-policy-context-grid article,
+.role-policy-users,
+.role-policy-editor,
+.role-policy-publish,
+.role-policy-history,
+.role-policy-legacy-validation {
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: var(--panel);
+  padding: 1rem;
+}
+
+.role-policy-hero dt,
+.role-policy-context-grid span,
+.role-policy-selectors span,
+.role-policy-grant label > span,
+.role-policy-notes > span,
+.role-policy-publish label > span {
+  display: block;
+  color: var(--muted);
+  font-size: .75rem;
+  font-weight: 900;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.role-policy-hero dd {
+  margin: .2rem 0 0;
+  font-size: 1.25rem;
+  font-weight: 900;
+}
+
+.role-policy-readonly,
+.role-policy-validation,
+.role-policy-error,
+.role-policy-message {
+  display: grid;
+  gap: .25rem;
+  border-radius: .85rem;
+  padding: .85rem 1rem;
+}
+
+.role-policy-readonly {
+  background: rgba(14, 165, 233, .12);
+  color: #075985;
+}
+
+.role-policy-error,
+.role-policy-validation.invalid {
+  background: rgba(239, 68, 68, .12);
+  color: #991b1b;
+}
+
+.role-policy-message,
+.role-policy-validation.valid {
+  background: rgba(16, 185, 129, .12);
+  color: #047857;
+}
+
+.role-policy-selectors,
+.role-policy-context-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.role-policy-selectors label,
+.role-policy-notes,
+.role-policy-publish label,
+.role-policy-grant label {
+  display: grid;
+  gap: .35rem;
+}
+
+.role-policy-admin select,
+.role-policy-admin input,
+.role-policy-admin textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: .75rem;
+  background: var(--input-background, #fff);
+  color: inherit;
+  padding: .65rem .75rem;
+}
+
+.role-policy-admin textarea {
+  min-height: 5.5rem;
+  resize: vertical;
+}
+
+.role-policy-context-grid h2,
+.role-policy-context-grid p,
+.role-policy-context-grid small {
+  margin: .25rem 0;
+}
+
+.role-policy-users > div {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: .75rem;
+  margin-top: .75rem;
+}
+
+.role-policy-users article,
+.role-policy-history article {
+  border: 1px solid var(--border);
+  border-radius: .85rem;
+  background: var(--card);
+  padding: .75rem;
+}
+
+.role-policy-users article strong,
+.role-policy-users article span,
+.role-policy-users article small,
+.role-policy-history article strong,
+.role-policy-history article span,
+.role-policy-history article small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.role-policy-grant-list,
+.role-policy-history > div {
+  display: grid;
+  gap: .75rem;
+  margin-top: .85rem;
+}
+
+.role-policy-grant {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .75rem;
+  border: 1px solid var(--border);
+  border-radius: .9rem;
+  background: var(--card);
+  padding: .85rem;
+}
+
+.role-policy-conditions {
+  grid-column: 1 / -1;
+}
+
+.role-policy-flags {
+  grid-column: 1 / -1;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+
+.role-policy-flags label {
+  display: inline-flex;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: .4rem;
+}
+
+.role-policy-flags input {
+  width: auto;
+}
+
+.role-policy-grant button.danger {
+  justify-self: start;
+  color: #991b1b;
+}
+
+.role-policy-editor header > div:last-child,
+.role-policy-publish-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .55rem;
+}
+
+.role-policy-editor .pending,
+.role-policy-editor .current {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: .35rem .65rem;
+  font-weight: 900;
+}
+
+.role-policy-editor .pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.role-policy-editor .current {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.role-policy-publish {
+  display: grid;
+}
+
+.role-policy-publish-actions {
+  justify-content: flex-start;
+}
+
+.role-policy-admin button.primary {
+  background: #0f5fa8;
+  color: #fff;
+}
+
+.role-policy-empty {
+  border: 1px dashed var(--border);
+  border-radius: .85rem;
+  padding: 1rem;
+  color: var(--muted);
+}
+
+.role-policy-legacy-validation summary {
+  cursor: pointer;
+  font-weight: 900;
+}
+
+@media (max-width: 900px) {
+  .role-policy-hero,
+  .role-policy-editor > header,
+  .role-policy-publish,
+  .role-policy-history article {
+    flex-direction: column;
+  }
+
+  .role-policy-selectors,
+  .role-policy-context-grid,
+  .role-policy-grant {
+    grid-template-columns: 1fr;
+  }
+
+  .role-policy-conditions,
+  .role-policy-flags {
+    grid-column: auto;
+  }
+}

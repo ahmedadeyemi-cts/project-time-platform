@@ -1,0 +1,38 @@
+.roles-matrix-cell-button {
+  display: grid;
+  gap: .18rem;
+  width: 100%;
+  min-width: 9rem;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.roles-matrix-cell-button strong,
+.roles-matrix-cell-button small {
+  display: block;
+}
+
+.roles-matrix-cell-button small {
+  color: currentColor;
+  opacity: .78;
+}
+
+.roles-permissions-matrix[data-read-only="true"] .roles-matrix-table td.granted,
+.roles-permissions-matrix[data-read-only="true"] .roles-matrix-table td.not-granted {
+  text-align: left;
+}
+
+.roles-permissions-matrix[data-read-only="true"] .roles-matrix-table td.granted .roles-matrix-cell-button:focus-visible,
+.roles-permissions-matrix[data-read-only="true"] .roles-matrix-table td.not-granted .roles-matrix-cell-button:focus-visible {
+  outline: 3px solid rgba(37, 99, 235, .35);
+  outline-offset: 3px;
+  border-radius: .45rem;
+}
+
+.roles-permissions-matrix[data-read-only="true"] .governance-signal-list {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}

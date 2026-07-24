@@ -7,6 +7,8 @@ import DashboardPersonalCalendarPortal from './DashboardPersonalCalendarPortal.j
 import './approval-access-navigation-compatibility.js';
 import './styles.css';
 import './role-welcome-dashboard-visibility.css';
+import './scoped-role-policy-admin.css';
+import './scoped-role-policy-matrix.css';
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>
