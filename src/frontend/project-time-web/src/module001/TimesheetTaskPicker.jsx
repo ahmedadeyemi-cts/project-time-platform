@@ -1,19 +1,25 @@
 const TIMER_TARGET_PATTERN = /^(assignment|category):[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 
-function toTimerOption(task) {
-  const optionValue = task.selectionValue
-    || (task.assignmentId ? `assignment:${task.assignmentId}` : '')
-    || (task.nonProjectCategoryId ? `category:${task.nonProjectCategoryId}` : '');
+function toTimerOption(target) {
+  const optionValue = target.selectionValue
+    || (target.assignmentId ? `assignment:${target.assignmentId}` : '')
+    || (target.nonProjectTimeCategoryId ? `category:${target.nonProjectTimeCategoryId}` : '')
+    || (target.nonProjectCategoryId ? `category:${target.nonProjectCategoryId}` : '');
 
   if (!TIMER_TARGET_PATTERN.test(optionValue)) return null;
 
-  const label = task.selectionLabel
-    || [task.customerName, task.projectCode, task.projectName, task.taskName].filter(Boolean).join(' · ')
-    || task.nonProjectCategoryName
-    || task.categoryName
+  const label = target.selectionLabel
+    || [target.customerName, target.projectCode, target.taskName].filter(Boolean).join(' · ')
+    || target.nonProjectCategoryName
+    || target.categoryName
     || 'Authorized activity';
 
-  return { optionValue, label };
+  return {
+    optionValue,
+    label,
+    groupLabel: target.groupLabel
+      || (optionValue.startsWith('assignment:') ? 'Assigned project work' : 'Authorized non-project activities')
+  };
 }
 
 export default function TimesheetTaskPicker({
@@ -24,6 +30,12 @@ export default function TimesheetTaskPicker({
 }) {
   const options = tasks.map(toTimerOption).filter(Boolean);
   const hasOptions = options.length > 0;
+  const groups = options.reduce((result, option) => {
+    const group = result.get(option.groupLabel) || [];
+    group.push(option);
+    result.set(option.groupLabel, group);
+    return result;
+  }, new Map());
 
   return (
     <label className="module001-field">
@@ -34,14 +46,18 @@ export default function TimesheetTaskPicker({
         onChange={(event) => onChange(event.target.value)}
       >
         <option value="">{hasOptions ? 'Select assigned work or activity' : 'No authorized timer activity available'}</option>
-        {options.map((option) => (
-          <option key={option.optionValue} value={option.optionValue}>{option.label}</option>
+        {[...groups.entries()].map(([groupLabel, groupOptions]) => (
+          <optgroup key={groupLabel} label={groupLabel}>
+            {groupOptions.map((option) => (
+              <option key={option.optionValue} value={option.optionValue}>{option.label}</option>
+            ))}
+          </optgroup>
         ))}
       </select>
       <small>
         {hasOptions
-          ? 'Project work is limited to assignments returned for the authenticated user.'
-          : 'Add an active project assignment or use an authorized non-project category before starting a timer.'}
+          ? 'Choose directly from your assigned project tasks or the active non-project activity catalog.'
+          : 'No active assigned tasks or non-project activities are currently available.'}
       </small>
     </label>
   );

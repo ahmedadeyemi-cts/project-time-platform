@@ -1,11 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import TimesheetTimerView from './TimesheetTimerView.jsx';
-import TimesheetWorkQueueCard from './TimesheetWorkQueueCard.jsx';
 import './timesheet-prep.css';
 
 const MOBILE_KEY = 'projectPulseModule001MobileMode';
-const UUID_PATTERN = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 
 function authHeaders() {
   try {
@@ -54,132 +52,12 @@ function ensureHost(parent, id, className) {
   return host;
 }
 
-function switchToExistingView(label) {
-  const buttons = [...document.querySelectorAll('#timesheet .timesheet-view-switcher .timesheet-view-button')];
-  const button = buttons.find((item) => item.textContent?.includes(label));
-  button?.click();
-}
-
-function dispatchModule001Action(detail) {
-  window.dispatchEvent(new CustomEvent('projectpulse:module001-action', { detail }));
-}
-
-function normalizeNonProjectCategory(category) {
-  const id = category?.nonProjectTimeCategoryId
-    || category?.nonProjectCategoryId
-    || category?.categoryId
-    || category?.id
-    || category?.non_project_time_category_id
-    || '';
-  const code = category?.code || category?.categoryCode || category?.category_code || '';
-  const name = category?.name || category?.categoryName || category?.category_name || code || 'Non-project activity';
-
-  return {
-    ...category,
-    id: String(id || ''),
-    code: String(code || ''),
-    name: String(name || 'Non-project activity')
-  };
-}
-
-function getActivityHours(snapshot, rowId) {
-  return (snapshot?.calendarEntries || [])
-    .filter((item) => item.row?.id === rowId)
-    .reduce((total, item) => total + Number(item.entry?.hours || 0), 0);
-}
-
-function CalendarEnhancement({ snapshot, tasks, disabled, onChangeTask, onRemove, onAddWork }) {
-  const [selected, setSelected] = useState(null);
-  const days = snapshot?.days || [];
-  const entries = snapshot?.calendarEntries || [];
-
-  return (
-    <section className="module001-calendar-enhancement" aria-label="Task-aware Calendar and Timeline">
-      <div className="timesheet-view-heading">
-        <div><p className="eyebrow">TASK-AWARE WEEK</p><h3>Calendar / Timeline</h3></div>
-        <span className="pill">{Number(snapshot?.grandTotal || 0).toFixed(2)} total hours</span>
-      </div>
-      <div className="module001-calendar-grid">
-        {days.map((day) => {
-          const dayItems = entries.filter((item) => item.day?.date === day.date && Number(item.entry?.hours || 0) > 0);
-          const total = dayItems.reduce((sum, item) => sum + Number(item.entry?.hours || 0), 0);
-          return (
-            <article className="module001-calendar-day" key={day.date}>
-              <header><div><strong>{day.dayName}</strong><span>{day.date}</span></div><b>{total.toFixed(2)} hrs</b></header>
-              <button type="button" className="module001-add-work" onClick={onAddWork}>+ Add work</button>
-              <div className="module001-calendar-items">
-                {dayItems.map((item) => {
-                  const missingDescription = !String(item.entry?.comment || '').trim();
-                  const missingTask = item.row?.rowType === 'project' && !item.row?.taskId;
-                  const status = item.entry?.savedStatus || snapshot.submissionStatus || 'draft';
-                  return (
-                    <button
-                      type="button"
-                      className={`module001-calendar-item ${missingDescription || missingTask ? 'incomplete' : ''}`}
-                      key={`${item.row?.id}-${day.date}-${item.timeType?.key}`}
-                      onClick={() => setSelected(item)}
-                    >
-                      <span>{item.row?.activity}</span>
-                      <small>{item.row?.projectDescription}</small>
-                      <small>{item.timeType?.key === 'afterhours' ? 'Afterhours' : 'Normal'} · {status}</small>
-                      <strong>{Number(item.entry?.hours || 0).toFixed(2)} hrs</strong>
-                      {missingDescription ? <em>Description required</em> : null}
-                      {missingTask ? <em>Task association required</em> : null}
-                    </button>
-                  );
-                })}
-                {dayItems.length === 0 ? <span className="muted">No time entered</span> : null}
-              </div>
-            </article>
-          );
-        })}
-      </div>
-
-      {selected ? (
-        <aside className="module001-calendar-drawer" aria-label="Calendar entry task details">
-          <header><div><small>{selected.day?.date}</small><h3>{selected.row?.activity}</h3></div><button type="button" onClick={() => setSelected(null)}>Close</button></header>
-          <dl>
-            <div><dt>Project / category</dt><dd>{selected.row?.projectDescription}</dd></div>
-            <div><dt>Classification</dt><dd>{selected.timeType?.key === 'afterhours' ? 'Afterhours' : 'Normal'}</dd></div>
-            <div><dt>Rounded hours</dt><dd>{Number(selected.entry?.hours || 0).toFixed(2)}</dd></div>
-            <div><dt>Status</dt><dd>{selected.entry?.savedStatus || snapshot.submissionStatus || 'draft'}</dd></div>
-          </dl>
-          {selected.row?.rowType === 'project' ? (
-            <label className="module001-field"><span>Assigned task</span><select defaultValue="" disabled={disabled} onChange={(event) => event.target.value && onChangeTask(selected, event.target.value)}><option value="">Change assigned task</option>{tasks.map((task) => <option key={task.assignmentId} value={task.assignmentId}>{task.projectCode} · {task.taskName}</option>)}</select></label>
-          ) : null}
-          <div className="module001-calendar-drawer-actions">
-            <button type="button" onClick={() => dispatchModule001Action({ type: 'open-entry', rowId: selected.row?.id, workDate: selected.day?.date, timeType: selected.timeType?.key })}>Open full entry editor</button>
-            <button type="button" className="secondary" disabled={disabled || !selected.entry?.timeEntryId} onClick={() => onRemove(selected)}>Remove draft</button>
-          </div>
-        </aside>
-      ) : null}
-    </section>
-  );
-}
-
-function CurrentTimesheetActivityCard({ row, hours, timerTarget, disabled, onOpen, onStartTimer }) {
-  return (
-    <article className="module001-current-activity-card">
-      <div>
-        <small>{row.type === 'projectTask' || row.rowType === 'projectTask' ? 'Project task' : 'Timesheet activity'}</small>
-        <h4>{row.activity || row.taskName || row.categoryName || 'Activity'}</h4>
-        <p>{row.projectDescription || row.projectName || 'Non-project time'}</p>
-      </div>
-      <strong>{Number(hours || 0).toFixed(2)} hrs</strong>
-      <div className="module001-current-activity-actions">
-        <button type="button" className="secondary" onClick={onOpen}>Open quick entry</button>
-        {timerTarget ? <button type="button" disabled={disabled} onClick={() => onStartTimer(timerTarget)}>Start timer</button> : null}
-      </div>
-    </article>
-  );
-}
-
 export default function TimesheetEnhancementPortal() {
-  const [targets, setTargets] = useState({ page: null, switcher: null, toolbar: null, workspace: null });
+  const [hosts, setHosts] = useState({ page: null, switcher: null, toolbar: null, workspace: null });
   const [snapshot, setSnapshot] = useState(() => window.__projectPulseModule001Snapshot || null);
   const [timerMode, setTimerMode] = useState(false);
   const [mobileMode, setMobileMode] = useState(() => localStorage.getItem(MOBILE_KEY) === 'true');
-  const [workQueue, setWorkQueue] = useState([]);
+  const [timerTargets, setTimerTargets] = useState([]);
   const [activeTimer, setActiveTimer] = useState(null);
   const [timerHistory, setTimerHistory] = useState([]);
   const [selectedTarget, setSelectedTarget] = useState('');
@@ -194,9 +72,10 @@ export default function TimesheetEnhancementPortal() {
       const onTimesheet = window.location.hash.replace('#', '') === 'timesheet';
       const page = onTimesheet ? document.querySelector('#timesheet.timesheet-page') : null;
       if (!page) {
-        setTargets((current) => current.page ? { page: null, switcher: null, toolbar: null, workspace: null } : current);
+        setHosts((current) => current.page ? { page: null, switcher: null, toolbar: null, workspace: null } : current);
         return;
       }
+
       const switcher = page.querySelector('.timesheet-view-switcher');
       const toolbar = page.querySelector('.timesheet-toolbar .toolbar-actions');
       const workspace = page.querySelector('.timesheet-workspace');
@@ -206,13 +85,22 @@ export default function TimesheetEnhancementPortal() {
         toolbar: ensureHost(toolbar, 'module001-toolbar-host', 'module001-toolbar-host'),
         workspace: ensureHost(workspace, 'module001-enhancement-view-host', 'module001-enhancement-view-host')
       };
-      setTargets((current) => current.page === next.page && current.switcher === next.switcher && current.toolbar === next.toolbar && current.workspace === next.workspace ? current : next);
+      setHosts((current) => (
+        current.page === next.page
+        && current.switcher === next.switcher
+        && current.toolbar === next.toolbar
+        && current.workspace === next.workspace
+      ) ? current : next);
     };
+
     syncHosts();
     const observer = new MutationObserver(syncHosts);
     observer.observe(document.body, { childList: true, subtree: true });
     window.addEventListener('hashchange', syncHosts);
-    return () => { observer.disconnect(); window.removeEventListener('hashchange', syncHosts); };
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('hashchange', syncHosts);
+    };
   }, []);
 
   useEffect(() => {
@@ -222,36 +110,46 @@ export default function TimesheetEnhancementPortal() {
   }, []);
 
   useEffect(() => {
-    if (!targets.page) return undefined;
-    targets.page.classList.toggle('module001-mobile-mode', mobileMode);
-    targets.page.classList.toggle('module001-timer-mode', timerMode);
-    targets.page.classList.toggle('module001-enhanced-queue', !timerMode && snapshot?.timesheetView === 'queue');
-    targets.page.classList.toggle('module001-enhanced-calendar', !timerMode && snapshot?.timesheetView === 'calendar');
+    if (!hosts.page) return undefined;
+    hosts.page.classList.remove('module001-enhanced-queue', 'module001-enhanced-calendar');
+    hosts.page.classList.toggle('module001-mobile-mode', mobileMode);
+    hosts.page.classList.toggle('module001-timer-mode', timerMode);
     localStorage.setItem(MOBILE_KEY, String(mobileMode));
-    return () => targets.page?.classList.remove('module001-mobile-mode', 'module001-timer-mode', 'module001-enhanced-queue', 'module001-enhanced-calendar');
-  }, [targets.page, mobileMode, timerMode, snapshot?.timesheetView]);
+    return () => hosts.page?.classList.remove(
+      'module001-mobile-mode',
+      'module001-timer-mode',
+      'module001-enhanced-queue',
+      'module001-enhanced-calendar'
+    );
+  }, [hosts.page, mobileMode, timerMode]);
 
   useEffect(() => {
-    if (!targets.switcher) return undefined;
+    if (!hosts.switcher) return undefined;
     const clearTimer = (event) => {
-      if (event.target.closest('.timesheet-view-button') && !event.target.closest('#module001-start-stop-tab')) setTimerMode(false);
+      if (event.target.closest('.timesheet-view-button') && !event.target.closest('#module001-start-stop-tab')) {
+        setTimerMode(false);
+      }
     };
-    targets.switcher.parentElement?.addEventListener('click', clearTimer, true);
-    return () => targets.switcher?.parentElement?.removeEventListener('click', clearTimer, true);
-  }, [targets.switcher]);
+    hosts.switcher.parentElement?.addEventListener('click', clearTimer, true);
+    return () => hosts.switcher?.parentElement?.removeEventListener('click', clearTimer, true);
+  }, [hosts.switcher]);
 
-  const loadEnhancementData = useCallback(async () => {
-    if (!snapshot?.selectedWeekStart || !targets.page) return;
+  const loadTimerData = useCallback(async () => {
+    if (!snapshot?.selectedWeekStart || !hosts.page) return;
 
-    const [queueResult, activeResult, historyResult] = await Promise.allSettled([
-      api(`/api/timesheet/work-queue?weekStart=${snapshot.selectedWeekStart}`),
+    const [targetResult, activeResult, historyResult] = await Promise.allSettled([
+      api(`/api/timesheet/timers/targets?weekStart=${snapshot.selectedWeekStart}`),
       api('/api/timesheet/timers/active'),
       api(`/api/timesheet/timers/history?weekStart=${snapshot.selectedWeekStart}`)
     ]);
 
     const errors = [];
-    if (queueResult.status === 'fulfilled') setWorkQueue(queueResult.value.tasks || []);
-    else errors.push(queueResult.reason?.message || 'Unable to load assigned work.');
+    if (targetResult.status === 'fulfilled') {
+      setTimerTargets(targetResult.value.targets || []);
+    } else {
+      setTimerTargets([]);
+      errors.push(targetResult.reason?.message || 'Unable to load timer activities.');
+    }
 
     if (activeResult.status === 'fulfilled') {
       setActiveTimer(activeResult.value.activeTimer || null);
@@ -259,209 +157,255 @@ export default function TimesheetEnhancementPortal() {
         setDescription(activeResult.value.activeTimer.description || '');
         setClassification(activeResult.value.activeTimer.timeClassification || 'normal');
       }
-      if (activeResult.value.autoStoppedTimer) errors.push('A timer was automatically stopped at 12 hours. Review its draft entry before submission.');
+      if (activeResult.value.autoStoppedTimer) {
+        errors.push('A timer was automatically stopped at 12 hours. Review its draft entry before submission.');
+      }
     } else {
       errors.push(activeResult.reason?.message || 'Unable to load the active timer.');
     }
 
-    if (historyResult.status === 'fulfilled') setTimerHistory(historyResult.value.timers || []);
-    else errors.push(historyResult.reason?.message || 'Unable to load timer history.');
+    if (historyResult.status === 'fulfilled') {
+      setTimerHistory(historyResult.value.timers || []);
+    } else {
+      errors.push(historyResult.reason?.message || 'Unable to load timer history.');
+    }
 
     if (errors.length) setStatusMessage(errors.join(' '));
-  }, [snapshot?.selectedWeekStart, targets.page]);
+  }, [snapshot?.selectedWeekStart, hosts.page]);
 
-  useEffect(() => { void loadEnhancementData(); }, [loadEnhancementData]);
+  useEffect(() => { void loadTimerData(); }, [loadTimerData]);
 
-  const normalizedCategories = useMemo(
-    () => (snapshot?.nonProjectCategories || []).map(normalizeNonProjectCategory),
-    [snapshot?.nonProjectCategories]
-  );
-
-  const timerTargets = useMemo(() => [
-    ...workQueue
-      .filter((task) => UUID_PATTERN.test(String(task.assignmentId || '')))
-      .map((task) => ({ ...task, selectionValue: `assignment:${task.assignmentId}` })),
-    ...normalizedCategories
-      .filter((category) => UUID_PATTERN.test(category.id))
-      .map((category) => ({
-        ...category,
-        nonProjectCategoryId: category.id,
-        nonProjectCategoryName: category.name,
-        selectionValue: `category:${category.id}`,
-        selectionLabel: `Non-project · ${category.name}`
-      }))
-  ], [workQueue, normalizedCategories]);
-
-  const currentActivities = useMemo(
-    () => (snapshot?.activeRows || []).map((row) => ({
-      row,
-      hours: getActivityHours(snapshot, row.id)
-    })),
-    [snapshot]
-  );
-
-  const timerTargetForRow = useCallback((row) => {
-    if (row?.projectId && row?.taskId) {
-      const task = workQueue.find((item) => item.projectId === row.projectId && item.taskId === row.taskId);
-      return task && UUID_PATTERN.test(String(task.assignmentId || '')) ? `assignment:${task.assignmentId}` : '';
+  useEffect(() => {
+    if (selectedTarget && !timerTargets.some((target) => target.selectionValue === selectedTarget)) {
+      setSelectedTarget('');
     }
-
-    const category = normalizedCategories.find((item) => item.code && item.code === row?.categoryCode);
-    return category && UUID_PATTERN.test(category.id) ? `category:${category.id}` : '';
-  }, [workQueue, normalizedCategories]);
-
-  const addTask = async (item) => {
-    if (snapshot?.isViewAs) return;
-    setBusy(true); setStatusMessage('');
-    try {
-      await api(`/api/timesheet/work-queue/${item.assignmentId}/add`, { method: 'POST', body: JSON.stringify({ weekStart: snapshot.selectedWeekStart }) });
-      dispatchModule001Action({ type: 'add-assignment', assignmentId: item.assignmentId, projectId: item.projectId, taskId: item.taskId });
-      setWorkQueue((current) => current.map((task) => task.assignmentId === item.assignmentId ? { ...task, addedThisWeek: true } : task));
-      setStatusMessage('Assigned task added to the current Timesheet week.');
-    } catch (error) { setStatusMessage(error.message); } finally { setBusy(false); }
-  };
-
-  const startFromQueue = (item) => {
-    if (!UUID_PATTERN.test(String(item.assignmentId || ''))) return;
-    setSelectedTarget(`assignment:${item.assignmentId}`);
-    setDescription('');
-    setTimerMode(true);
-  };
-
-  const startFromCurrentActivity = (timerTarget) => {
-    setSelectedTarget(timerTarget);
-    setDescription('');
-    setTimerMode(true);
-  };
-
-  const focusActivityPicker = () => {
-    setTimerMode(false);
-    switchToExistingView('My Work Queue');
-    setStatusMessage('Choose an activity from the Activities panel, then add it to the current week.');
-    window.setTimeout(() => {
-      const panel = document.querySelector('#timesheet .activities-panel');
-      if (!panel) return;
-      panel.classList.add('module001-activity-picker-attention');
-      panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      panel.querySelector('#activity-source')?.focus();
-      window.setTimeout(() => panel.classList.remove('module001-activity-picker-attention'), 1800);
-    }, 100);
-  };
+  }, [selectedTarget, timerTargets]);
 
   const startTimer = async () => {
-    const [kind, id] = selectedTarget.split(':');
-    if (!UUID_PATTERN.test(id || '') || !['assignment', 'category'].includes(kind)) {
-      setStatusMessage('Select a valid assigned task or authorized non-project activity before starting the timer.');
+    const target = timerTargets.find((item) => item.selectionValue === selectedTarget);
+    if (!target || !['assignment', 'category'].includes(target.targetType)) {
+      setStatusMessage('Select an assigned project task or authorized non-project activity before starting the timer.');
       return;
     }
-    setBusy(true); setStatusMessage('');
+
+    setBusy(true);
+    setStatusMessage('');
     try {
+      const targetId = target.targetId;
       const result = await api('/api/timesheet/timers/start', {
         method: 'POST',
-        body: JSON.stringify({ assignmentId: kind === 'assignment' ? id : null, nonProjectTimeCategoryId: kind === 'category' ? id : null, timeClassification: classification, description, timeZoneId: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' })
+        body: JSON.stringify({
+          assignmentId: target.targetType === 'assignment' ? targetId : null,
+          nonProjectTimeCategoryId: target.targetType === 'category' ? targetId : null,
+          timeClassification: classification,
+          description,
+          timeZoneId: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+        })
       });
-      setActiveTimer(result.timer); setDescription(result.timer?.description || description); setStatusMessage('Timer started. It will continue across refreshes and devices.');
-      await loadEnhancementData();
-    } catch (error) { setStatusMessage(error.message); } finally { setBusy(false); }
+      setActiveTimer(result.timer);
+      setDescription(result.timer?.description || description);
+      setStatusMessage('Timer started. It will continue across refreshes and devices.');
+      await loadTimerData();
+    } catch (error) {
+      setStatusMessage(error.message);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const stopTimer = async () => {
     if (!activeTimer) return;
-    setBusy(true); setStatusMessage('');
+    setBusy(true);
+    setStatusMessage('');
     try {
-      const result = await api(`/api/timesheet/timers/${activeTimer.timerSessionId}/stop`, { method: 'POST', body: JSON.stringify({ description, reason: 'Stopped from Module 001 Timesheet.', expectedRowVersion: activeTimer.rowVersion }) });
-      setStatusMessage(result.message); setActiveTimer(null); await loadEnhancementData();
+      const result = await api(`/api/timesheet/timers/${activeTimer.timerSessionId}/stop`, {
+        method: 'POST',
+        body: JSON.stringify({
+          description,
+          reason: 'Stopped from Module 001 Timesheet.',
+          expectedRowVersion: activeTimer.rowVersion
+        })
+      });
+      setStatusMessage(result.message);
+      setActiveTimer(null);
+      await loadTimerData();
       window.setTimeout(() => window.location.reload(), 500);
-    } catch (error) { setStatusMessage(error.message); } finally { setBusy(false); }
+    } catch (error) {
+      setStatusMessage(error.message);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const discardTimer = async () => {
     if (!activeTimer || !window.confirm('Discard this running timer? No Timesheet time will be created.')) return;
-    setBusy(true); setStatusMessage('');
+    setBusy(true);
+    setStatusMessage('');
     try {
-      const result = await api(`/api/timesheet/timers/${activeTimer.timerSessionId}/discard`, { method: 'POST', body: JSON.stringify({ reason: 'Discarded after user confirmation.', expectedRowVersion: activeTimer.rowVersion }) });
-      setStatusMessage(result.message); setActiveTimer(null); setDescription(''); await loadEnhancementData();
-    } catch (error) { setStatusMessage(error.message); } finally { setBusy(false); }
+      const result = await api(`/api/timesheet/timers/${activeTimer.timerSessionId}/discard`, {
+        method: 'POST',
+        body: JSON.stringify({
+          reason: 'Discarded after user confirmation.',
+          expectedRowVersion: activeTimer.rowVersion
+        })
+      });
+      setStatusMessage(result.message);
+      setActiveTimer(null);
+      setDescription('');
+      await loadTimerData();
+    } catch (error) {
+      setStatusMessage(error.message);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const prepareSubmission = async () => {
     if (!snapshot?.draftPayload || snapshot.isViewAs) return;
-    setBusy(true); setStatusMessage('Saving the shared weekly draft…');
+    setBusy(true);
+    setStatusMessage('Saving the shared weekly draft…');
     try {
-      await api('/api/timesheets/week/draft', { method: 'POST', body: JSON.stringify(snapshot.draftPayload) });
-      const validation = await api(`/api/timesheet/weeks/${snapshot.selectedWeekStart}/validate-submission`, { method: 'POST', body: '{}' });
-      setReview(validation); setStatusMessage(validation.valid ? 'Review the summary and confirm submission.' : 'Submission is blocked until the listed items are corrected.');
-    } catch (error) { setStatusMessage(error.message); } finally { setBusy(false); }
+      await api('/api/timesheets/week/draft', {
+        method: 'POST',
+        body: JSON.stringify(snapshot.draftPayload)
+      });
+      const validation = await api(`/api/timesheet/weeks/${snapshot.selectedWeekStart}/validate-submission`, {
+        method: 'POST',
+        body: '{}'
+      });
+      setReview(validation);
+      setStatusMessage(validation.valid
+        ? 'Review the summary and confirm submission.'
+        : 'Submission is blocked until the listed items are corrected.');
+    } catch (error) {
+      setStatusMessage(error.message);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const confirmSubmission = async () => {
     if (!review?.valid || snapshot?.isViewAs) return;
     setBusy(true);
     try {
-      const result = await api(`/api/timesheet/weeks/${snapshot.selectedWeekStart}/submit`, { method: 'POST', body: JSON.stringify({ confirmed: true, reason: 'Confirmed from the Module 001 weekly review.' }) });
-      setStatusMessage(result.message); setReview(null); window.setTimeout(() => window.location.reload(), 500);
-    } catch (error) { setStatusMessage(error.message); } finally { setBusy(false); }
+      const result = await api(`/api/timesheet/weeks/${snapshot.selectedWeekStart}/submit`, {
+        method: 'POST',
+        body: JSON.stringify({ confirmed: true, reason: 'Confirmed from the Module 001 weekly review.' })
+      });
+      setStatusMessage(result.message);
+      setReview(null);
+      window.setTimeout(() => window.location.reload(), 500);
+    } catch (error) {
+      setStatusMessage(error.message);
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const changeCalendarTask = async (item, assignmentId) => {
-    const timeEntryId = item.entry?.timeEntryId || item.entry?.id;
-    if (!timeEntryId) { setStatusMessage('Save the draft entry before changing its persisted task association.'); return; }
-    try {
-      await api(`/api/timesheet/entries/${timeEntryId}/association`, { method: 'POST', body: JSON.stringify({ assignmentId, reason: 'Task changed from Calendar / Timeline.' }) });
-      window.location.reload();
-    } catch (error) { setStatusMessage(error.message); }
-  };
-
-  const removeCalendarEntry = async (item) => {
-    const timeEntryId = item.entry?.timeEntryId || item.entry?.id;
-    if (!timeEntryId || !window.confirm('Remove this unsubmitted draft entry?')) return;
-    try { await api(`/api/timesheet/entries/${timeEntryId}`, { method: 'DELETE' }); window.location.reload(); } catch (error) { setStatusMessage(error.message); }
-  };
-
-  if (!targets.page || !snapshot) return null;
+  if (!hosts.page || !snapshot) return null;
   const disabled = snapshot.isViewAs || busy;
 
   return (
     <>
-      {targets.switcher ? createPortal(<button id="module001-start-stop-tab" type="button" role="tab" aria-selected={timerMode} className={timerMode ? 'timesheet-view-button active' : 'timesheet-view-button'} onClick={() => setTimerMode(true)}><strong>Start / Stop Timer</strong><small>Track active work in real time</small></button>, targets.switcher) : null}
-      {targets.toolbar ? createPortal(<><label className="module001-mobile-toggle"><input type="checkbox" checked={mobileMode} onChange={(event) => setMobileMode(event.target.checked)} /><span>Mobile mode</span></label><button type="button" className="primary-action module001-submit-week" disabled={disabled || !snapshot.isAnyDayEditable} onClick={prepareSubmission}>Submit week</button></>, targets.toolbar) : null}
-      {targets.workspace ? createPortal(<>
-        {timerMode ? <TimesheetTimerView targets={timerTargets} history={timerHistory} activeTimer={activeTimer} selectedTargetValue={selectedTarget} classification={classification} description={description} isViewAs={snapshot.isViewAs} busy={busy} statusMessage={statusMessage} onSelectTarget={setSelectedTarget} onClassificationChange={setClassification} onDescriptionChange={setDescription} onStart={startTimer} onStop={stopTimer} onDiscard={discardTimer} /> : null}
-        {!timerMode && snapshot.timesheetView === 'queue' ? (
-          <section className="module001-work-queue-enhancement">
-            <div className="timesheet-view-heading">
-              <div><p className="eyebrow">ASSIGNED AND SELECTED WORK</p><h3>My Work Queue</h3><p>Current Timesheet activities plus authoritative project assignments and tasks.</p></div>
-              <span className="pill">{currentActivities.length} active · {workQueue.length} assigned</span>
-            </div>
-            {statusMessage ? <div className="module001-status">{statusMessage}</div> : null}
-            {currentActivities.length ? (
-              <section className="module001-current-activities" aria-label="Current Timesheet activities">
-                <h4>Current Timesheet activities</h4>
-                <div className="module001-current-activity-grid">
-                  {currentActivities.map(({ row, hours }) => (
-                    <CurrentTimesheetActivityCard
-                      key={row.id}
-                      row={row}
-                      hours={hours}
-                      timerTarget={timerTargetForRow(row)}
-                      disabled={disabled}
-                      onOpen={() => switchToExistingView('Quick Entry List')}
-                      onStartTimer={startFromCurrentActivity}
-                    />
-                  ))}
-                </div>
-              </section>
-            ) : null}
-            <section className="module001-assigned-work" aria-label="Assigned project work">
-              <h4>Assigned project work</h4>
-              <div className="module001-work-grid">{workQueue.map((item) => <TimesheetWorkQueueCard key={item.assignmentId} item={item} disabled={disabled} onAdd={addTask} onStartTimer={startFromQueue} onOpenTask={() => { window.location.hash = 'project-workspace'; }} />)}</div>
-              {workQueue.length === 0 ? <div className="module001-empty">No assigned project work is available for this week. Selected non-project activities remain visible above.</div> : null}
-            </section>
+      {hosts.switcher ? createPortal(
+        <button
+          id="module001-start-stop-tab"
+          type="button"
+          role="tab"
+          aria-selected={timerMode}
+          className={timerMode ? 'timesheet-view-button active' : 'timesheet-view-button'}
+          onClick={() => setTimerMode(true)}
+        >
+          <strong>Start / Stop Timer</strong>
+          <small>Track active work in real time</small>
+        </button>,
+        hosts.switcher
+      ) : null}
+
+      {hosts.toolbar ? createPortal(
+        <>
+          <label className="module001-mobile-toggle">
+            <input type="checkbox" checked={mobileMode} onChange={(event) => setMobileMode(event.target.checked)} />
+            <span>Mobile mode</span>
+          </label>
+          <button
+            type="button"
+            className="primary-action module001-submit-week"
+            disabled={disabled || !snapshot.isAnyDayEditable}
+            onClick={prepareSubmission}
+          >
+            Submit week
+          </button>
+        </>,
+        hosts.toolbar
+      ) : null}
+
+      {hosts.workspace ? createPortal(
+        timerMode ? (
+          <TimesheetTimerView
+            targets={timerTargets}
+            history={timerHistory}
+            activeTimer={activeTimer}
+            selectedTargetValue={selectedTarget}
+            classification={classification}
+            description={description}
+            isViewAs={snapshot.isViewAs}
+            busy={busy}
+            statusMessage={statusMessage}
+            onSelectTarget={setSelectedTarget}
+            onClassificationChange={setClassification}
+            onDescriptionChange={setDescription}
+            onStart={startTimer}
+            onStop={stopTimer}
+            onDiscard={discardTimer}
+          />
+        ) : null,
+        hosts.workspace
+      ) : null}
+
+      {review ? createPortal(
+        <div className="module001-review-backdrop" role="presentation">
+          <section className="module001-review-dialog" role="dialog" aria-modal="true" aria-labelledby="module001-review-title">
+            <header>
+              <div><p className="eyebrow">WEEKLY SUBMISSION REVIEW</p><h2 id="module001-review-title">Submit Timesheet week</h2></div>
+              <button type="button" onClick={() => setReview(null)}>Close</button>
+            </header>
+            <dl>
+              <div><dt>Week</dt><dd>{review.weekStart} through {review.weekEnd}</dd></div>
+              <div><dt>Total</dt><dd>{Number(review.totalHours || 0).toFixed(2)} hours</dd></div>
+              <div><dt>Entries</dt><dd>{review.entryCount || 0}</dd></div>
+              <div><dt>Active timer</dt><dd>{review.runningTimer ? 'Must be stopped' : 'None'}</dd></div>
+            </dl>
+            {(review.errors || []).length ? (
+              <div className="module001-review-errors">
+                <h3>Corrections required</h3>
+                <ul>{review.errors.map((error) => <li key={error}>{error}</li>)}</ul>
+                {(review.incompleteEntries || []).map((entry) => (
+                  <article key={entry.timeEntryId}>
+                    <strong>{entry.workDate} · {entry.projectCode || entry.projectName || 'Non-project'}</strong>
+                    <span>{entry.taskName}</span>
+                    <small>{(entry.reasons || []).join('; ')}</small>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <p className="module001-review-ready">All validation checks passed. Confirm to route this week into Module 002 Approval Inbox.</p>
+            )}
+            <footer>
+              <button type="button" className="secondary" onClick={() => setReview(null)}>Cancel</button>
+              <button
+                type="button"
+                className="primary-action"
+                disabled={!review.valid || busy || snapshot.isViewAs}
+                onClick={confirmSubmission}
+              >
+                {busy ? 'Submitting…' : 'Confirm and submit week'}
+              </button>
+            </footer>
           </section>
-        ) : null}
-        {!timerMode && snapshot.timesheetView === 'calendar' ? <CalendarEnhancement snapshot={snapshot} tasks={workQueue} disabled={disabled} onChangeTask={changeCalendarTask} onRemove={removeCalendarEntry} onAddWork={focusActivityPicker} /> : null}
-      </>, targets.workspace) : null}
-      {review ? createPortal(<div className="module001-review-backdrop" role="presentation"><section className="module001-review-dialog" role="dialog" aria-modal="true" aria-labelledby="module001-review-title"><header><div><p className="eyebrow">WEEKLY SUBMISSION REVIEW</p><h2 id="module001-review-title">Submit Timesheet week</h2></div><button type="button" onClick={() => setReview(null)}>Close</button></header><dl><div><dt>Week</dt><dd>{review.weekStart} through {review.weekEnd}</dd></div><div><dt>Total</dt><dd>{Number(review.totalHours || 0).toFixed(2)} hours</dd></div><div><dt>Entries</dt><dd>{review.entryCount || 0}</dd></div><div><dt>Active timer</dt><dd>{review.runningTimer ? 'Must be stopped' : 'None'}</dd></div></dl>{(review.errors || []).length ? <div className="module001-review-errors"><h3>Corrections required</h3><ul>{review.errors.map((error) => <li key={error}>{error}</li>)}</ul>{(review.incompleteEntries || []).map((entry) => <article key={entry.timeEntryId}><strong>{entry.workDate} · {entry.projectCode || entry.projectName || 'Non-project'}</strong><span>{entry.taskName}</span><small>{(entry.reasons || []).join('; ')}</small></article>)}</div> : <p className="module001-review-ready">All validation checks passed. Confirm to route this week into Module 002 Approval Inbox.</p>}<footer><button type="button" className="secondary" onClick={() => setReview(null)}>Cancel</button><button type="button" className="primary-action" disabled={!review.valid || busy || snapshot.isViewAs} onClick={confirmSubmission}>{busy ? 'Submitting…' : 'Confirm and submit week'}</button></footer></section></div>, document.body) : null}
+        </div>,
+        document.body
+      ) : null}
     </>
   );
 }
