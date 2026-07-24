@@ -20,28 +20,21 @@ else
 fi
 [[ "$ACTUAL_RELEASE_COMMIT" == "$EXPECTED_RELEASE_COMMIT" ]] || fail "Unexpected release commit: $ACTUAL_RELEASE_COMMIT"
 
-MIGRATION="$RELEASE_ROOT/database/migrations/040_scoped_role_policy_versions.sql"
-FILES=(
-  "040_scoped_role_policy_versions.sql:5ed561de521f448f6f4f3db5179fc7b7dae457d4ed107541d731b0222f77a67c"
-  "040_scoped_role_policy_versions/00_schema.sql:3b496f25334bac0a920cbe6e6e09267751fe6d415b613278331312c2d5e990ac"
-  "040_scoped_role_policy_versions/10_workbook_cells.sql:b51c5f9e2481cb5161b754944e477a0fdcc88cf31d87a51ace527579f0812a74"
-  "040_scoped_role_policy_versions/12_super_administrator_override.sql:5d7dfc8059d0fc94662ee563e6253aa9db9548e158a0653e09ffbc946ee89c76"
-  "040_scoped_role_policy_versions/15_workbook_metadata.sql:f937f9065a4f2300a919690e3c416a8e458fae5328a897da4ee1986c8239c8ed"
-  "040_scoped_role_policy_versions/20_standard_grants.sql:a2a0ecdee56261c7b5db5fb6717596cd8ef2f684b70ca3252f755c11618591cc"
-  "040_scoped_role_policy_versions/30_time_entry.sql:26f260ab66e8062515465f0f955c27b0f67ac97ab250f3f6ff7e2079bb90e72e"
-  "040_scoped_role_policy_versions/40_approval_inbox.sql:87a81fc76c251c043c5f2868881d0cfab234daf57ebb4c5fea5206b2e49db0f7"
-  "040_scoped_role_policy_versions/50_utilization.sql:c8218c04b3c275284d41c9e16815d476a0011cba57c42804e19eb42ed5688209"
-  "040_scoped_role_policy_versions/60_role_administration.sql:93ec7fa061c8595417c95ac8193a94c36f4a8b782cb05f5d1b2b4cfab278919c"
-  "040_scoped_role_policy_versions/70_read_only_matrix.sql:6af8e45994893ead1a2e7c274ff39c6ee263a36c0cbee6f5d5bac5c266bff2d1"
-  "040_scoped_role_policy_versions/80_finalize.sql:88019b66bd376b2840157464d545710691d983dedcc26fa35b4da63ce99dceec"
-)
-for item in "${FILES[@]}"; do
-  path="${item%%:*}"; expected="${item##*:}"
-  full="$RELEASE_ROOT/database/migrations/$path"
-  [[ -f "$full" ]] || fail "Missing migration file: $path"
-  actual="$(sha256sum "$full" | awk '{print $1}')"
-  [[ "$actual" == "$expected" ]] || fail "Checksum mismatch: $path"
-done
+MIGRATION_ROOT="$RELEASE_ROOT/database/migrations"
+MIGRATION="$MIGRATION_ROOT/040_scoped_role_policy_versions.sql"
+CHECKSUM_MANIFEST="$MIGRATION_ROOT/SHA256SUMS"
+
+[[ -f "$MIGRATION" ]] || fail "Migration 040 entry file is missing."
+[[ -f "$CHECKSUM_MANIFEST" ]] || fail "Migration checksum manifest is missing."
+[[ "$(grep -Ec '^[0-9a-f]{64}  040_scoped_role_policy_versions(/[^ ]+)?\.sql$' "$CHECKSUM_MANIFEST")" == "12" ]] ||
+  fail "Migration checksum manifest must contain exactly 12 scoped RBAC SQL files."
+
+(
+  cd "$MIGRATION_ROOT"
+  sha256sum --check --strict SHA256SUMS
+) || fail "Migration checksum manifest validation failed."
+
+echo "SCOPED_RBAC_MIGRATION_CHECKSUMS=VERIFIED"
 
 read -r USERS_BEFORE ROLES_BEFORE ASSIGNMENTS_BEFORE ROLE_PERMISSIONS_BEFORE <<<"$(
   psql "$DATABASE_URL" --no-psqlrc -At --set=ON_ERROR_STOP=1 --command="
