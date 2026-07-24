@@ -32,6 +32,17 @@ const bridge = `
 
   /* MODULE_001_CANONICAL_STATE_BRIDGE_START */
   useEffect(() => {
+    const canonicalCalendarEntries = activeRows.flatMap((row) =>
+      days.flatMap((day) =>
+        timeTypes.map((type) => ({
+          row,
+          day,
+          timeType: type,
+          entry: getEntry(row.id, day.date, type.key)
+        }))
+      )
+    );
+
     const snapshot = {
       selectedWeekStart,
       days,
@@ -40,12 +51,15 @@ const bridge = `
       entries,
       timesheetView,
       focusedDayDate,
+      draftPayload: buildTimesheetPayload(),
+      calendarEntries: canonicalCalendarEntries,
       grandTotal,
       normalTotal,
       afterhoursTotal,
       submissionStatus,
       saveStatus,
       isSaving,
+      isAnyDayEditable,
       assignedTasks: assignedTasks.data?.tasks ?? assignedTasks.data ?? [],
       nonProjectCategories: nonProjectCategories.data?.categories ?? nonProjectCategories.data ?? [],
       isViewAs: Boolean(securityContext.data?.isViewAs)
@@ -67,6 +81,7 @@ const bridge = `
     submissionStatus,
     saveStatus,
     isSaving,
+    isAnyDayEditable,
     assignedTasks.data,
     nonProjectCategories.data,
     securityContext.data?.isViewAs
@@ -103,6 +118,8 @@ for (const required of [
   'MODULE_001_CANONICAL_STATE_BRIDGE_START',
   'projectpulse:module001-state',
   'projectpulse:module001-action',
+  'buildTimesheetPayload()',
+  'canonicalCalendarEntries',
   'timesheetView',
   'async function handleSubmit()'
 ]) {
