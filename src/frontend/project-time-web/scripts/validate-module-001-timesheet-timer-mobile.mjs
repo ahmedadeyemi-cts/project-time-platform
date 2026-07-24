@@ -23,9 +23,11 @@ const generator = read('src/frontend/project-time-web/scripts/generate-module-00
 const main = read('src/frontend/project-time-web/src/main.jsx');
 const portal = read('src/frontend/project-time-web/src/module001/TimesheetEnhancementPortal.jsx');
 const timerView = read('src/frontend/project-time-web/src/module001/TimesheetTimerView.jsx');
+const taskPicker = read('src/frontend/project-time-web/src/module001/TimesheetTaskPicker.jsx');
 const queueCard = read('src/frontend/project-time-web/src/module001/TimesheetWorkQueueCard.jsx');
 const durationSource = read('src/frontend/project-time-web/src/module001/timesheet-duration.js');
 const css = read('src/frontend/project-time-web/src/module001/timesheet-prep.css');
+const timerRecoveryCss = read('src/frontend/project-time-web/src/module001/timesheet-timer-recovery.css');
 const packageJson = read('src/frontend/project-time-web/package.json');
 const module002Validator = read('src/frontend/project-time-web/scripts/validate-module-002-approval-center.mjs');
 const module059Validator = read('src/frontend/project-time-web/scripts/validate-module-059-global.mjs');
@@ -77,6 +79,14 @@ for (const contract of ['Calendar / Timeline', 'Description required', 'Task ass
 for (const contract of ['/api/timesheet/timers/active', '/api/timesheet/timers/start', '/stop', '/discard', 'startedAtUtc', 'autoStopped']) {
   requireText(`${portal}\n${timerView}`, contract, 'timer frontend contract');
 }
+requireText(taskPicker, 'TIMER_TARGET_PATTERN', 'timer target UUID validation');
+requireText(taskPicker, 'No authorized timer activity available', 'empty timer target safeguard');
+requireText(timerView, 'validSelectedTarget', 'timer start eligibility');
+requireText(timerView, "onClick={() => validSelectedTarget && onStart()}", 'guarded timer start');
+requireText(timerView, "./timesheet-timer-recovery.css", 'timer recovery layout import');
+requireText(timerRecoveryCss, '#timesheet.module001-timer-mode .timesheet-workspace', 'timer workspace override');
+requireText(timerRecoveryCss, 'grid-template-columns: minmax(0, 1fr);', 'full-width timer grid');
+requireText(timerRecoveryCss, 'grid-column: 1 / -1;', 'timer host column span');
 requireText(portal, 'projectPulseModule001MobileMode', 'mobile preference');
 requireText(portal, 'Mobile mode', 'mobile selector label');
 requireText(css, '#timesheet.module001-mobile-mode', 'mobile presentation');
@@ -140,6 +150,8 @@ if (backendAvailable) {
   requireText(allBackend, "status = 'submitted'", 'submitted status');
   requireText(allBackend, 'SUBMISSION_VALIDATION_FAILED', 'validation audit');
   requireText(allBackend, 'meaningful work description is required', 'description requirement');
+  requireText(data, 'if (forUpdate) sql += " FOR UPDATE OF t";', 'timer-row-only PostgreSQL lock');
+  rejectText(data, 'if (forUpdate) sql += " FOR UPDATE";', 'outer-join-wide PostgreSQL lock');
   rejectText(endpoints, 'Module001TimerStartRequest(Guid UserId', 'browser-supplied timer identity');
 
   requireText(migration, 'ux_module001_one_running_timer_per_user', 'one running timer constraint');
