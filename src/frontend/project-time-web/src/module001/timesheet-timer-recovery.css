@@ -1,0 +1,35 @@
+#timesheet.module001-timer-mode .timesheet-workspace {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+#timesheet.module001-timer-mode .module001-enhancement-view-host {
+  grid-column: 1 / -1;
+  width: 100%;
+  min-width: 0;
+}
+
+#timesheet.module001-timer-mode .module001-timer-view {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+#timesheet.module001-timer-mode .module001-timer-view > header > div {
+  min-width: 0;
+}
+
+#timesheet.module001-timer-mode .module001-timer-view > header h3,
+#timesheet.module001-timer-mode .module001-timer-view > header p,
+#timesheet.module001-timer-mode .module001-field,
+#timesheet.module001-timer-mode .module001-status,
+#timesheet.module001-timer-mode .module001-warning {
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+@media (max-width: 760px) {
+  #timesheet.module001-timer-mode .module001-timer-view {
+    padding: 1rem;
+  }
+}
