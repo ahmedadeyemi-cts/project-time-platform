@@ -1,0 +1,223 @@
+name: ProjectPulse Deploy Module 001 Timer Hotfix Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_commit:
+        description: Exact verified Module 001 timer hotfix commit
+        required: true
+        default: 79d5d172c8d1e9d21f064f24dbf86c8a6852a28b
+        type: string
+      confirmation:
+        description: Enter DEPLOY-MODULE-001-TIMER-HOTFIX-TO-TEST
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: projectpulse-deploy-module-001-timer-hotfix-test
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Guarded Module 001 timer API and web test deployment
+    environment: test
+    runs-on: ubuntu-latest
+    env:
+      EXPECTED_RELEASE_COMMIT: 79d5d172c8d1e9d21f064f24dbf86c8a6852a28b
+    steps:
+      - name: Check out deployment controls
+        uses: actions/checkout@v5
+        with:
+          path: control
+          fetch-depth: 0
+
+      - name: Check out exact timer hotfix release
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.release_commit }}
+          path: release
+          fetch-depth: 1
+
+      - name: Guard workflow source and timer hotfix release
+        id: release
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ '${{ github.ref }}' == 'refs/heads/main' ]] || { echo 'Dispatch this workflow from main.' >&2; exit 1; }
+          [[ '${{ inputs.confirmation }}' == 'DEPLOY-MODULE-001-TIMER-HOTFIX-TO-TEST' ]] || { echo 'Confirmation text does not match.' >&2; exit 1; }
+          [[ '${{ inputs.release_commit }}' =~ ^[0-9a-f]{40}$ ]] || { echo 'release_commit must be a complete SHA.' >&2; exit 1; }
+          CONTROL_COMMIT="$(git -C control rev-parse HEAD)"
+          TARGET_COMMIT="$(git -C release rev-parse HEAD)"
+          [[ "$CONTROL_COMMIT" == '${{ github.sha }}' ]]
+          [[ "$TARGET_COMMIT" == '${{ inputs.release_commit }}' ]]
+          [[ "$TARGET_COMMIT" == "$EXPECTED_RELEASE_COMMIT" ]] || { echo 'Only the verified Module 001 timer hotfix may deploy.' >&2; exit 1; }
+          git -C control merge-base --is-ancestor "$TARGET_COMMIT" HEAD || { echo 'Timer hotfix is not an ancestor of deployment controls.' >&2; exit 1; }
+
+          DATA='release/src/backend/ProjectTime.Api/Modules/Module001TimesheetData.cs'
+          PICKER='release/src/frontend/project-time-web/src/module001/TimesheetTaskPicker.jsx'
+          TIMER='release/src/frontend/project-time-web/src/module001/TimesheetTimerView.jsx'
+          TIMER_CSS='release/src/frontend/project-time-web/src/module001/timesheet-timer-recovery.css'
+          test -f "$DATA" -a -f "$PICKER" -a -f "$TIMER" -a -f "$TIMER_CSS"
+          grep -Fq 'if (forUpdate) sql += " FOR UPDATE OF t";' "$DATA"
+          ! grep -Fq 'if (forUpdate) sql += " FOR UPDATE";' "$DATA"
+          grep -Fq 'TIMER_TARGET_PATTERN' "$PICKER"
+          grep -Fq 'No authorized timer activity available' "$PICKER"
+          grep -Fq 'validSelectedTarget' "$TIMER"
+          grep -Fq './timesheet-timer-recovery.css' "$TIMER"
+          grep -Fq '#timesheet.module001-timer-mode .timesheet-workspace' "$TIMER_CSS"
+          grep -Fq 'grid-column: 1 / -1;' "$TIMER_CSS"
+          node release/src/frontend/project-time-web/scripts/generate-module-001-integrated-app.mjs
+          node release/src/frontend/project-time-web/scripts/validate-module-001-timesheet-timer-mobile.mjs
+          echo "target_commit=$TARGET_COMMIT" >> "$GITHUB_OUTPUT"
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Capture current API and web images
+        id: before
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          RAW_API="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
+          RAW_WEB="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
+          API_MODE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.configuration.activeRevisionsMode' -o tsv)"
+          WEB_MODE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.configuration.activeRevisionsMode' -o tsv)"
+          [[ -n "$RAW_API" && -n "$RAW_WEB" && "${API_MODE,,}" == single && "${WEB_MODE,,}" == single ]]
+          resolve_digest() {
+            local image="$1" registry='${{ vars.AZURE_ACR_NAME }}.azurecr.io/' relative repository digest
+            case "$image" in "$registry"*@sha256:*) printf '%s\n' "$image"; return;; "$registry"*:*) ;; *) return 1;; esac
+            relative="${image#"$registry"}"; repository="${relative%:*}"
+            digest="$(az acr repository show --name '${{ vars.AZURE_ACR_NAME }}' --image "$relative" --query digest -o tsv)"
+            [[ "$digest" == sha256:* ]]
+            printf '%s%s@%s\n' "$registry" "$repository" "$digest"
+          }
+          OLD_API="$(resolve_digest "$RAW_API")"
+          OLD_WEB="$(resolve_digest "$RAW_WEB")"
+          echo "old_api_image=$OLD_API" >> "$GITHUB_OUTPUT"
+          echo "old_web_image=$OLD_WEB" >> "$GITHUB_OUTPUT"
+
+      - name: Build immutable timer-hotfix API and web images
+        id: build
+        working-directory: release
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          SHA='${{ steps.release.outputs.target_commit }}'
+          API_REPO='project-health-dashboard-api'
+          WEB_REPO='project-health-dashboard-web'
+          API_DIGEST="$(../control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "$API_REPO:module001-timer-hotfix-$SHA" deployment/containers/api/Dockerfile .)"
+          WEB_DIGEST="$(../control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "$WEB_REPO:module001-timer-hotfix-$SHA" deployment/containers/web/Dockerfile .)"
+          echo "api_image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/$API_REPO@$API_DIGEST" >> "$GITHUB_OUTPUT"
+          echo "web_image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/$WEB_REPO@$WEB_DIGEST" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy timer-hotfix API image
+        id: deploy_api
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' \
+            --image '${{ steps.build.outputs.api_image }}' \
+            --set-env-vars PROJECTPULSE_ENVIRONMENT=test PROJECTPULSE_SOURCE_COMMIT='${{ steps.release.outputs.target_commit }}' \
+            --revision-suffix "m001thapi-${GITHUB_RUN_ID}" --output none
+
+      - name: Validate API health and timer routes
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"
+          wait_status() {
+            local url="$1" expected="$2" status=''
+            for attempt in $(seq 1 30); do
+              status="$(curl -sS -o /tmp/response -w '%{http_code}' "$url" || true)"
+              [[ ",$expected," == *",$status,"* ]] && return 0
+              sleep 10
+            done
+            echo "$url returned $status" >&2
+            cat /tmp/response >&2 || true
+            return 1
+          }
+          wait_status "$BASE/health" '200'
+          wait_status "$BASE/api/version" '200'
+          wait_status "$BASE/api/timesheet/timers/active" '401,403'
+          wait_status "$BASE/api/timesheet/timers/history?weekStart=2026-07-19" '401,403'
+
+      - name: Deploy timer-hotfix web image
+        id: deploy_web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' \
+            --image '${{ steps.build.outputs.web_image }}' --revision-suffix "m001thweb-${GITHUB_RUN_ID}" --output none
+
+      - name: Validate served timer hotfix and active images
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"; READY=false
+          for attempt in $(seq 1 30); do
+            BUSTER="m001th-${GITHUB_RUN_ID}-${attempt}"
+            STATUS="$(curl -sSL -H 'Cache-Control: no-cache' -o /tmp/index.html -w '%{http_code}' "$BASE/?release_check=$BUSTER" || true)"
+            JS="$(sed -nE 's/.*src="([^"]+\.js)".*/\1/p' /tmp/index.html | head -1)"
+            if [[ "$STATUS" == 200 && -n "$JS" ]]; then
+              case "$JS" in http*) JS_URL="$JS";; /*) JS_URL="$BASE$JS";; *) JS_URL="$BASE/$JS";; esac
+              curl -sSL -H 'Cache-Control: no-cache' -o /tmp/app.js "$JS_URL?release_check=$BUSTER" || true
+              : > /tmp/app.css
+              while IFS= read -r CSS; do
+                [[ -n "$CSS" ]] || continue
+                case "$CSS" in http*) CSS_URL="$CSS";; /*) CSS_URL="$BASE$CSS";; *) CSS_URL="$BASE/$CSS";; esac
+                curl -sSL -H 'Cache-Control: no-cache' "$CSS_URL?release_check=$BUSTER" >> /tmp/app.css || true
+              done < <(grep -oE 'href="[^"]+\.css"' /tmp/index.html | sed -E 's/^href="|"$//g')
+              if grep -Fq 'No authorized timer activity available' /tmp/app.js \
+                && grep -Fq 'Select a valid assigned task or authorized non-project activity' /tmp/app.js \
+                && grep -Fq 'Start / Stop Timer' /tmp/app.js \
+                && grep -Fq 'module001-timer-mode' /tmp/app.css; then
+                READY=true
+                break
+              fi
+            fi
+            sleep 10
+          done
+          [[ "$READY" == true ]] || { echo 'Corrected Module 001 timer frontend was not served.' >&2; exit 1; }
+          ACTIVE_API="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
+          ACTIVE_WEB="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
+          [[ "$ACTIVE_API" == '${{ steps.build.outputs.api_image }}' && "$ACTIVE_WEB" == '${{ steps.build.outputs.web_image }}' ]]
+
+      - name: Write deployment evidence
+        if: success()
+        shell: bash
+        run: |
+          mkdir -p evidence
+          cat > evidence/module-001-timer-hotfix-test.json <<JSON
+          {"environment":"test","releaseCommit":"${{ steps.release.outputs.target_commit }}","workflowCommit":"${{ github.sha }}","runId":"${{ github.run_id }}","apiImage":"${{ steps.build.outputs.api_image }}","webImage":"${{ steps.build.outputs.web_image }}","previousApiImage":"${{ steps.before.outputs.old_api_image }}","previousWebImage":"${{ steps.before.outputs.old_web_image }}","migration041":"unchanged","database":"unchanged"}
+          JSON
+
+      - name: Upload deployment evidence
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: module-001-timer-hotfix-test-${{ github.run_id }}
+          path: evidence/module-001-timer-hotfix-test.json
+          retention-days: 30
+
+      - name: Roll back API and web images on failure
+        if: ${{ failure() && (steps.deploy_api.outputs.started == 'true' || steps.deploy_web.outputs.started == 'true') }}
+        shell: bash
+        run: |
+          set +e
+          if [[ '${{ steps.deploy_api.outputs.started }}' == 'true' ]]; then
+            az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' \
+              --image '${{ steps.before.outputs.old_api_image }}' --revision-suffix "m001thapirb-${GITHUB_RUN_ID}" --output none
+          fi
+          if [[ '${{ steps.deploy_web.outputs.started }}' == 'true' ]]; then
+            az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' \
+              --image '${{ steps.before.outputs.old_web_image }}' --revision-suffix "m001thwebrb-${GITHUB_RUN_ID}" --output none
+          fi
