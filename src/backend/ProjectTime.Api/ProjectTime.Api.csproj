@@ -9,6 +9,7 @@
     <ScopedRbacGeneratedModule>$(IntermediateOutputPath)ScopedRolePolicyModule.g.cs</ScopedRbacGeneratedModule>
     <ScopedRbacGeneratedPersistence>$(IntermediateOutputPath)ScopedRolePolicyPersistence.g.cs</ScopedRbacGeneratedPersistence>
     <Module001GeneratedContracts>$(IntermediateOutputPath)Module001TimesheetContracts.g.cs</Module001GeneratedContracts>
+    <Module001GeneratedData>$(IntermediateOutputPath)Module001TimesheetData.g.cs</Module001GeneratedData>
     <Module001GeneratedEndpoints>$(IntermediateOutputPath)Module001TimesheetEnhancementModule.g.cs</Module001GeneratedEndpoints>
   </PropertyGroup>
 
@@ -23,13 +24,13 @@
   </ItemGroup>
 
   <!-- Canonical oversized sources remain reviewable. Generated compile copies
-       insert endpoint registrations and normalize nullable conditional expressions
-       that require explicit target types under the current compiler. -->
+       insert endpoint registrations and normalize compiler-sensitive expressions. -->
   <ItemGroup>
     <Compile Remove="Program.cs" />
     <Compile Remove="Modules/ScopedRolePolicyModule.cs" />
     <Compile Remove="Modules/ScopedRolePolicyPersistence.cs" />
     <Compile Remove="Modules/Module001TimesheetContracts.cs" />
+    <Compile Remove="Modules/Module001TimesheetData.cs" />
     <Compile Remove="Modules/Module001TimesheetEnhancementModule.cs" />
   </ItemGroup>
 
@@ -39,12 +40,14 @@
     <Exec Command="sed -e 's/reader.IsDBNull(7) ? null : reader.GetGuid(7)/reader.IsDBNull(7) ? (Guid?)null : reader.GetGuid(7)/' -e 's/reader.IsDBNull(9) ? null : reader.GetFieldValue&lt;DateTimeOffset&gt;(9)/reader.IsDBNull(9) ? (DateTimeOffset?)null : reader.GetFieldValue&lt;DateTimeOffset&gt;(9)/' -e 's/reader.IsDBNull(10) ? null : reader.GetFieldValue&lt;DateTimeOffset&gt;(10)/reader.IsDBNull(10) ? (DateTimeOffset?)null : reader.GetFieldValue&lt;DateTimeOffset&gt;(10)/' &quot;$(MSBuildProjectDirectory)/Modules/ScopedRolePolicyModule.cs&quot; &gt; &quot;$(ScopedRbacGeneratedModule)&quot;" />
     <Exec Command="sed -e 's/reader.IsDBNull(3) ? null : reader.GetGuid(3)/reader.IsDBNull(3) ? (Guid?)null : reader.GetGuid(3)/' -e 's/reader.IsDBNull(5) ? null : reader.GetDecimal(5)/reader.IsDBNull(5) ? (decimal?)null : reader.GetDecimal(5)/' &quot;$(MSBuildProjectDirectory)/Modules/ScopedRolePolicyPersistence.cs&quot; &gt; &quot;$(ScopedRbacGeneratedPersistence)&quot;" />
     <Exec Command="sed -e 's/value.HasValue ? value.Value : DBNull.Value/value.HasValue ? (object)value.Value : DBNull.Value/' &quot;$(MSBuildProjectDirectory)/Modules/Module001TimesheetContracts.cs&quot; &gt; &quot;$(Module001GeneratedContracts)&quot;" />
+    <Exec Command="sed -e 's/if (value is Guid id) existingId = id;/if (value is Guid foundEntryId) existingId = foundEntryId;/' &quot;$(MSBuildProjectDirectory)/Modules/Module001TimesheetData.cs&quot; &gt; &quot;$(Module001GeneratedData)&quot;" />
     <Exec Command="sed -e 's/reader.IsDBNull(1) ? null : reader.GetGuid(1)/reader.IsDBNull(1) ? (Guid?)null : reader.GetGuid(1)/' -e 's/reader.IsDBNull(3) ? null : reader.GetGuid(3)/reader.IsDBNull(3) ? (Guid?)null : reader.GetGuid(3)/' -e 's/reader.IsDBNull(4) ? null : reader.GetGuid(4)/reader.IsDBNull(4) ? (Guid?)null : reader.GetGuid(4)/' &quot;$(MSBuildProjectDirectory)/Modules/Module001TimesheetEnhancementModule.cs&quot; &gt; &quot;$(Module001GeneratedEndpoints)&quot;" />
     <ItemGroup>
       <Compile Include="$(ScopedRbacGeneratedProgram)" />
       <Compile Include="$(ScopedRbacGeneratedModule)" />
       <Compile Include="$(ScopedRbacGeneratedPersistence)" />
       <Compile Include="$(Module001GeneratedContracts)" />
+      <Compile Include="$(Module001GeneratedData)" />
       <Compile Include="$(Module001GeneratedEndpoints)" />
     </ItemGroup>
   </Target>
