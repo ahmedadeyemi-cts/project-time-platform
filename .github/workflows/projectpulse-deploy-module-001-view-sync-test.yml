@@ -1,15 +1,15 @@
-name: ProjectPulse Deploy Module 001 Timer Search Test
+name: ProjectPulse Deploy Module 001 Shared Task Source Test
 
 on:
   workflow_dispatch:
     inputs:
       release_commit:
-        description: Exact verified Module 001 timer-search commit
+        description: Exact verified Module 001 shared-task-source commit
         required: true
-        default: 191a6a22b2235fa53282684bf2e084d99bac87b4
+        default: f2022074e538ea761d18ad43de1c351e1537c3b5
         type: string
       confirmation:
-        description: Enter DEPLOY-MODULE-001-TIMER-SEARCH-TO-TEST
+        description: Enter DEPLOY-MODULE-001-SHARED-TASK-SOURCE-TO-TEST
         required: true
         type: string
 
@@ -18,16 +18,16 @@ permissions:
   contents: read
 
 concurrency:
-  group: projectpulse-deploy-module-001-timer-search-test
+  group: projectpulse-deploy-module-001-shared-task-source-test
   cancel-in-progress: false
 
 jobs:
   deploy-web:
-    name: Guarded Module 001 timer-search web-only test deployment
+    name: Guarded Module 001 shared task source web-only test deployment
     environment: test
     runs-on: ubuntu-latest
     env:
-      EXPECTED_RELEASE_COMMIT: 191a6a22b2235fa53282684bf2e084d99bac87b4
+      EXPECTED_RELEASE_COMMIT: f2022074e538ea761d18ad43de1c351e1537c3b5
     steps:
       - name: Check out deployment controls
         uses: actions/checkout@v5
@@ -35,27 +35,27 @@ jobs:
           path: control
           fetch-depth: 0
 
-      - name: Check out exact timer-search release
+      - name: Check out exact shared-task-source release
         uses: actions/checkout@v5
         with:
           ref: ${{ inputs.release_commit }}
           path: release
           fetch-depth: 1
 
-      - name: Guard workflow source and timer-search release
+      - name: Guard workflow source and shared-task-source release
         id: release
         shell: bash
         run: |
           set -Eeuo pipefail
           [[ '${{ github.ref }}' == 'refs/heads/main' ]] || { echo 'Dispatch this workflow from main.' >&2; exit 1; }
-          [[ '${{ inputs.confirmation }}' == 'DEPLOY-MODULE-001-TIMER-SEARCH-TO-TEST' ]] || { echo 'Confirmation text does not match.' >&2; exit 1; }
+          [[ '${{ inputs.confirmation }}' == 'DEPLOY-MODULE-001-SHARED-TASK-SOURCE-TO-TEST' ]] || { echo 'Confirmation text does not match.' >&2; exit 1; }
           [[ '${{ inputs.release_commit }}' =~ ^[0-9a-f]{40}$ ]] || { echo 'release_commit must be a complete SHA.' >&2; exit 1; }
           CONTROL_COMMIT="$(git -C control rev-parse HEAD)"
           TARGET_COMMIT="$(git -C release rev-parse HEAD)"
           [[ "$CONTROL_COMMIT" == '${{ github.sha }}' ]]
           [[ "$TARGET_COMMIT" == '${{ inputs.release_commit }}' ]]
-          [[ "$TARGET_COMMIT" == "$EXPECTED_RELEASE_COMMIT" ]] || { echo 'Only the verified Module 001 timer-search release may deploy.' >&2; exit 1; }
-          git -C control merge-base --is-ancestor "$TARGET_COMMIT" HEAD || { echo 'Timer-search release is not an ancestor of deployment controls.' >&2; exit 1; }
+          [[ "$TARGET_COMMIT" == "$EXPECTED_RELEASE_COMMIT" ]] || { echo 'Only the verified Module 001 shared-task-source release may deploy.' >&2; exit 1; }
+          git -C control merge-base --is-ancestor "$TARGET_COMMIT" HEAD || { echo 'Shared-task-source release is not an ancestor of deployment controls.' >&2; exit 1; }
 
           PORTAL_ENTRY='release/src/frontend/project-time-web/src/module001/TimesheetEnhancementPortal.jsx'
           PORTAL='release/src/frontend/project-time-web/src/module001/TimesheetEnhancementPortalV2.jsx'
@@ -64,7 +64,13 @@ jobs:
           TIMER_CSS='release/src/frontend/project-time-web/src/module001/timesheet-timer-recovery.css'
           test -f "$PORTAL_ENTRY" -a -f "$PORTAL" -a -f "$PICKER" -a -f "$TIMER" -a -f "$TIMER_CSS"
           grep -Fq './TimesheetEnhancementPortalV2.jsx' "$PORTAL_ENTRY"
-          grep -Fq 'type="search"' "$PICKER"
+          grep -Fq '/api/assignments/available-tasks?weekStart=' "$PORTAL_ENTRY"
+          ! grep -Fq '/api/timesheet/timers/targets?weekStart=' "$PORTAL_ENTRY"
+          grep -Fq 'canonicalWorkTypeGroup' "$PORTAL_ENTRY"
+          grep -Fq "workType === 'project' || workType === 'iqs'" "$PORTAL_ENTRY"
+          grep -Fq 'regularAssignedTasks:' "$PORTAL_ENTRY"
+          grep -Fq 'requestAssignedTasks:' "$PORTAL_ENTRY"
+          grep -Fq 'role="combobox"' "$PICKER"
           grep -Fq 'Search activity, task, project, customer, or request' "$PICKER"
           grep -Fq 'Non-Project Time' "$PICKER"
           grep -Fq 'Regular Tasks' "$PICKER"
@@ -72,9 +78,8 @@ jobs:
           grep -Fq 'window.setInterval(refresh, 5000)' "$PORTAL"
           grep -Fq 'error?.status === 409' "$PORTAL"
           grep -Fq 'error?.payload?.activeTimer' "$PORTAL"
-          grep -Fq 'A timer was already running. It is now displayed' "$PORTAL"
           grep -Fq 'category-code:' "$TIMER"
-          grep -Fq '.module001-task-search' "$TIMER_CSS"
+          grep -Fq '.module001-task-results' "$TIMER_CSS"
           node release/src/frontend/project-time-web/scripts/generate-module-001-integrated-app.mjs
           node release/src/frontend/project-time-web/scripts/validate-module-001-timesheet-timer-mobile.mjs
           echo "target_commit=$TARGET_COMMIT" >> "$GITHUB_OUTPUT"
@@ -104,7 +109,7 @@ jobs:
           OLD="$(resolve_digest "$RAW")"
           echo "old_web_image=$OLD" >> "$GITHUB_OUTPUT"
 
-      - name: Build exact timer-search web image
+      - name: Build exact shared-task-source web image
         id: build
         working-directory: release
         shell: bash
@@ -112,25 +117,25 @@ jobs:
           set -Eeuo pipefail
           SHA='${{ steps.release.outputs.target_commit }}'
           REPOSITORY='project-health-dashboard-web'
-          DIGEST="$(../control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "$REPOSITORY:module001-timer-search-$SHA" deployment/containers/web/Dockerfile .)"
+          DIGEST="$(../control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "$REPOSITORY:module001-shared-tasks-$SHA" deployment/containers/web/Dockerfile .)"
           echo "web_image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/$REPOSITORY@$DIGEST" >> "$GITHUB_OUTPUT"
 
-      - name: Deploy timer-search web image only
+      - name: Deploy shared-task-source web image only
         id: deploy_web
         shell: bash
         run: |
           set -Eeuo pipefail
           echo 'started=true' >> "$GITHUB_OUTPUT"
           az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' \
-            --image '${{ steps.build.outputs.web_image }}' --revision-suffix "m001ts-${GITHUB_RUN_ID}" --output none
+            --image '${{ steps.build.outputs.web_image }}' --revision-suffix "m001sts-${GITHUB_RUN_ID}" --output none
 
-      - name: Validate served timer search and active image
+      - name: Validate served shared task source and active image
         shell: bash
         run: |
           set -Eeuo pipefail
           BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"; READY=false
           for attempt in $(seq 1 30); do
-            BUSTER="m001ts-${GITHUB_RUN_ID}-${attempt}"
+            BUSTER="m001sts-${GITHUB_RUN_ID}-${attempt}"
             STATUS="$(curl -sSL -H 'Cache-Control: no-cache' -o /tmp/index.html -w '%{http_code}' "$BASE/?release_check=$BUSTER" || true)"
             JS="$(sed -nE 's/.*src="([^"]+\.js)".*/\1/p' /tmp/index.html | head -1)"
             if [[ "$STATUS" == 200 && -n "$JS" ]]; then
@@ -142,13 +147,14 @@ jobs:
                 case "$CSS" in http*) CSS_URL="$CSS";; /*) CSS_URL="$BASE$CSS";; *) CSS_URL="$BASE/$CSS";; esac
                 curl -sSL -H 'Cache-Control: no-cache' "$CSS_URL?release_check=$BUSTER" >> /tmp/app.css || true
               done < <(grep -oE 'href="[^"]+\.css"' /tmp/index.html | sed -E 's/^href="|"$//g')
-              if grep -Fq 'Search activity, task, project, customer, or request' /tmp/app.js \
+              if grep -Fq '/api/assignments/available-tasks?weekStart=' /tmp/app.js \
+                && grep -Fq '__module001AvailableTasksTimerTargets' /tmp/app.js \
+                && grep -Fq 'Search activity, task, project, customer, or request' /tmp/app.js \
                 && grep -Fq 'Non-Project Time' /tmp/app.js \
                 && grep -Fq 'Regular Tasks' /tmp/app.js \
                 && grep -Fq 'Service Request Tasks' /tmp/app.js \
-                && grep -Fq 'A timer was already running. It is now displayed' /tmp/app.js \
                 && grep -Fq 'Start / Stop Timer' /tmp/app.js \
-                && grep -Fq 'module001-task-search' /tmp/app.css \
+                && grep -Fq 'module001-task-results' /tmp/app.css \
                 && grep -Fq 'module001-enhancement-view-host' /tmp/app.css; then
                 READY=true
                 break
@@ -156,7 +162,7 @@ jobs:
             fi
             sleep 10
           done
-          [[ "$READY" == true ]] || { echo 'Corrected Module 001 timer search was not served.' >&2; exit 1; }
+          [[ "$READY" == true ]] || { echo 'Corrected Module 001 shared task source was not served.' >&2; exit 1; }
           ACTIVE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
           [[ "$ACTIVE" == '${{ steps.build.outputs.web_image }}' ]]
 
@@ -165,7 +171,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p evidence
-          cat > evidence/module-001-timer-search-test.json <<JSON
+          cat > evidence/module-001-shared-task-source-test.json <<JSON
           {"environment":"test","releaseCommit":"${{ steps.release.outputs.target_commit }}","workflowCommit":"${{ github.sha }}","runId":"${{ github.run_id }}","webImage":"${{ steps.build.outputs.web_image }}","previousWebImage":"${{ steps.before.outputs.old_web_image }}","apiDeployment":"unchanged","migration041":"unchanged","database":"unchanged"}
           JSON
 
@@ -173,8 +179,8 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: module-001-timer-search-test-${{ github.run_id }}
-          path: evidence/module-001-timer-search-test.json
+          name: module-001-shared-task-source-test-${{ github.run_id }}
+          path: evidence/module-001-shared-task-source-test.json
           retention-days: 30
 
       - name: Roll back web image on failure
@@ -183,4 +189,4 @@ jobs:
         run: |
           set +e
           az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' \
-            --image '${{ steps.before.outputs.old_web_image }}' --revision-suffix "m001tsrb-${GITHUB_RUN_ID}" --output none
+            --image '${{ steps.before.outputs.old_web_image }}' --revision-suffix "m001stsrb-${GITHUB_RUN_ID}" --output none
