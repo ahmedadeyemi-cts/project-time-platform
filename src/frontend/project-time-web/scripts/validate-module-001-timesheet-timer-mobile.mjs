@@ -21,7 +21,8 @@ const generated = read('src/frontend/project-time-web/src/App.Module001.g.jsx');
 const generatedGuide = read('src/frontend/project-time-web/src/SystemUserGuide.Module001.g.jsx');
 const generator = read('src/frontend/project-time-web/scripts/generate-module-001-integrated-app.mjs');
 const main = read('src/frontend/project-time-web/src/main.jsx');
-const portal = read('src/frontend/project-time-web/src/module001/TimesheetEnhancementPortal.jsx');
+const portalEntry = read('src/frontend/project-time-web/src/module001/TimesheetEnhancementPortal.jsx');
+const portal = read('src/frontend/project-time-web/src/module001/TimesheetEnhancementPortalV2.jsx');
 const timerView = read('src/frontend/project-time-web/src/module001/TimesheetTimerView.jsx');
 const taskPicker = read('src/frontend/project-time-web/src/module001/TimesheetTaskPicker.jsx');
 const durationSource = read('src/frontend/project-time-web/src/module001/timesheet-duration.js');
@@ -34,6 +35,7 @@ const module059Validator = read('src/frontend/project-time-web/scripts/validate-
 for (const view of ['Weekly Grid', 'Daily Focus', 'Quick Entry List']) {
   requireText(generated, view, 'streamlined Timesheet view');
 }
+requireText(portalEntry, "./TimesheetEnhancementPortalV2.jsx", 'timer portal entrypoint');
 requireText(portal, 'Start / Stop Timer', 'timer Timesheet view');
 rejectText(generated, "{ key: 'queue', label: 'My Work Queue'", 'retired My Work Queue tab');
 rejectText(generated, "{ key: 'calendar', label: 'Calendar / Timeline'", 'retired Calendar tab');
@@ -68,15 +70,22 @@ requireText(portal, "targetType: 'categoryCode'", 'category-code target construc
 requireText(portal, "category-code:${code}", 'category-code selector value');
 requireText(portal, 'nonProjectCategoryCode: target.targetCode', 'category-code start payload');
 requireText(portal, 'Promise.allSettled', 'independent timer runtime loading');
+requireText(portal, 'window.setInterval(refresh, 5000)', 'active-timer polling');
+requireText(portal, "error?.status === 409", 'running-timer conflict recovery');
+requireText(portal, 'error?.payload?.activeTimer', 'running-timer response adoption');
+requireText(portal, "groupLabel: isServiceRequestTask(task) ? 'Service Request Tasks' : 'Regular Tasks'", 'assigned task grouping');
+requireText(portal, "groupLabel: 'Non-Project Time'", 'non-project grouping');
 rejectText(portal, '/api/timesheet/timers/targets?weekStart=', 'empty target endpoint dependency');
 rejectText(portal, 'TimesheetWorkQueueCard', 'duplicate enhanced Queue implementation');
 rejectText(portal, 'CalendarEnhancement', 'duplicate enhanced Calendar implementation');
 rejectText(portal, 'CurrentTimesheetActivityCard', 'duplicate active-row Queue implementation');
 
-requireText(taskPicker, 'category-code:', 'category-code picker support');
+requireText(taskPicker, 'type="search"', 'timer search input');
+requireText(taskPicker, 'Search activity, task, project, customer, or request', 'timer search prompt');
+requireText(taskPicker, 'Non-Project Time', 'non-project target group');
+requireText(taskPicker, 'Regular Tasks', 'regular task group');
+requireText(taskPicker, 'Service Request Tasks', 'service request group');
 requireText(taskPicker, '<optgroup', 'grouped timer selector');
-requireText(taskPicker, 'Assigned project work', 'assigned target group');
-requireText(taskPicker, 'Authorized non-project activities', 'non-project target group');
 requireText(taskPicker, 'No authorized timer activity available', 'empty timer safeguard');
 requireText(timerView, 'category-code:', 'category-code start eligibility');
 requireText(timerView, 'validSelectedTarget', 'timer start eligibility');
@@ -86,6 +95,7 @@ requireText(timerRecoveryCss, '#timesheet .timesheet-workspace > .module001-enha
 requireText(timerRecoveryCss, 'display: none;', 'inactive host hidden');
 requireText(timerRecoveryCss, '#timesheet.module001-timer-mode .module001-enhancement-view-host', 'timer host visibility');
 requireText(timerRecoveryCss, 'grid-column: 1 / -1;', 'full-width timer host');
+requireText(timerRecoveryCss, '.module001-task-search', 'timer search styling');
 requireText(portal, 'projectPulseModule001MobileMode', 'mobile preference');
 requireText(portal, 'Mobile mode', 'mobile selector label');
 requireText(css, '#timesheet.module001-mobile-mode', 'mobile presentation');
@@ -166,4 +176,4 @@ if (backendAvailable) {
   requireText(rollback, 'DROP TABLE IF EXISTS module001_timer_sessions', 'reviewed rollback');
 }
 
-console.log(`MODULE_001_TIMESHEET_TIMER_MOBILE_VALIDATION=PASS roundingCases=${roundingCases.length} backend=${backendAvailable ? 'full' : 'frontend-container'} architecture=streamlined timerSource=visibleActivities`);
+console.log(`MODULE_001_TIMESHEET_TIMER_MOBILE_VALIDATION=PASS roundingCases=${roundingCases.length} backend=${backendAvailable ? 'full' : 'frontend-container'} architecture=streamlined timerSource=visibleActivities searchableGroups=3 activeConflictRecovery=true`);
