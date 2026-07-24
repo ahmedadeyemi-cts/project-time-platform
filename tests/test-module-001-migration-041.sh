@@ -206,7 +206,7 @@ psql_exec -c "DELETE FROM module001_timer_sessions;" >/dev/null
 psql_exec -f "$ROLLBACK" >/dev/null
 assert_eq '' "$(value "SELECT COALESCE(to_regclass('public.module001_timer_sessions')::text,'');")" rollback_removed_timer_table
 assert_eq 0 "$(value "SELECT COUNT(*) FROM schema_migrations WHERE migration_id='041_module_001_timesheet_timer_and_task_association';")" rollback_unregistered_migration
-assert_eq Time Entry "$(value "SELECT module_name FROM scoped_role_policy_modules WHERE module_code='001';")" rollback_restored_module_name
+assert_eq "Time Entry" "$(value "SELECT module_name FROM scoped_role_policy_modules WHERE module_code='001';")" rollback_restored_module_name
 assert_eq "$legacy_assignments" "$(value 'SELECT COUNT(*) FROM project_assignments;')" rollback_preserved_assignments
 
 psql_exec -f "$MIGRATION" >/dev/null
