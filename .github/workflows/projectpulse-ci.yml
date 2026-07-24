@@ -28,26 +28,10 @@ jobs:
           cache-dependency-path: src/frontend/project-time-web/package-lock.json
 
       - name: Restore and build API
-        shell: bash
-        run: |
-          set +e
-          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release > /tmp/projectpulse-api-build.log 2>&1
-          status=$?
-          if [[ $status -ne 0 ]]; then
-            echo 'SCOPED_RBAC_API_BUILD_ERRORS_BEGIN'
-            grep -E 'error (CS|MSB|NU)|Build FAILED|error:' /tmp/projectpulse-api-build.log | tail -n 120 || tail -n 120 /tmp/projectpulse-api-build.log
-            echo 'SCOPED_RBAC_API_BUILD_ERRORS_END'
-            exit $status
-          fi
-          cat /tmp/projectpulse-api-build.log
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
 
-      - name: Upload API compiler diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: scoped-rbac-api-build-diagnostics
-          path: /tmp/projectpulse-api-build.log
-          retention-days: 7
+      - name: Test scoped RBAC migration 040 apply and rollback
+        run: bash tests/test-scoped-rbac-migration-040.sh
 
       - name: Test Work Register project authorization
         run: dotnet run --project tests/ProjectTime.Api.AuthorizationTests/ProjectTime.Api.AuthorizationTests.csproj --configuration Release
@@ -58,26 +42,7 @@ jobs:
 
       - name: Build frontend
         working-directory: src/frontend/project-time-web
-        shell: bash
-        run: |
-          set +e
-          npm run build > /tmp/projectpulse-frontend-build.log 2>&1
-          status=$?
-          if [[ $status -ne 0 ]]; then
-            echo 'SCOPED_RBAC_FRONTEND_BUILD_ERRORS_BEGIN'
-            tail -n 120 /tmp/projectpulse-frontend-build.log
-            echo 'SCOPED_RBAC_FRONTEND_BUILD_ERRORS_END'
-            exit $status
-          fi
-          cat /tmp/projectpulse-frontend-build.log
-
-      - name: Upload frontend diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: scoped-rbac-frontend-build-diagnostics
-          path: /tmp/projectpulse-frontend-build.log
-          retention-days: 7
+        run: npm run build
 
       - name: Validate PR55 test deployment guard
         run: scripts/validate-pr55-test-deployment.sh
