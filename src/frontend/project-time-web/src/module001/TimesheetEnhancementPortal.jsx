@@ -2,54 +2,86 @@ import { useEffect, useRef } from 'react';
 import TimesheetEnhancementPortalV2 from './TimesheetEnhancementPortalV2.jsx';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
-const AUGMENTED_MARKER = '__module001AuthoritativeTimerTargets';
+const AUGMENTED_MARKER = '__module001AvailableTasksTimerTargets';
 
-function normalizeAssignmentTarget(target) {
-  const assignmentId = String(target?.assignmentId || target?.targetId || '');
-  if (target?.targetType !== 'assignment' || !UUID_PATTERN.test(assignmentId)) return null;
+function canonicalWorkTypeGroup(task) {
+  const workType = String(
+    task?.workType
+      || task?.canonicalWorkType
+      || task?.projectWorkType
+      || task?.assignmentWorkType
+      || ''
+  ).trim().toLowerCase();
 
-  const workTaskCategory = String(target?.workTaskCategory || target?.workType || 'project_task')
-    .trim()
-    .toLowerCase();
-  const serviceRequestNumber = String(target?.serviceRequestNumber || '').trim();
+  return workType === 'project' || workType === 'iqs'
+    ? 'Regular Tasks'
+    : 'Service Request Tasks';
+}
+
+function taskKey(task) {
+  const assignmentId = String(task?.assignmentId || task?.projectAssignmentId || '');
+  if (UUID_PATTERN.test(assignmentId)) return `assignment:${assignmentId}`;
+
+  const projectId = String(task?.projectId || '');
+  const taskId = String(task?.taskId || '');
+  return projectId && taskId ? `project-task:${projectId}:${taskId}` : '';
+}
+
+function normalizeAvailableTask(task) {
+  const assignmentId = String(task?.assignmentId || task?.projectAssignmentId || '');
+  if (!UUID_PATTERN.test(assignmentId)) return null;
+
+  const workType = String(
+    task?.workType
+      || task?.canonicalWorkType
+      || task?.projectWorkType
+      || task?.assignmentWorkType
+      || ''
+  ).trim();
+  const serviceRequestNumber = String(
+    task?.serviceRequestNumber
+      || task?.requestNumber
+      || task?.ticketNumber
+      || ''
+  ).trim();
+  const groupLabel = canonicalWorkTypeGroup(task);
+  const customerName = task?.customerName || task?.clientName || '';
+  const selectionLabel = [
+    serviceRequestNumber,
+    customerName,
+    task?.projectCode || task?.projectName,
+    task?.taskName || task?.workItemName
+  ].filter(Boolean).join(' · ') || 'Assigned task';
 
   return {
+    ...task,
     assignmentId,
     projectAssignmentId: assignmentId,
-    customerName: target?.customerName || '',
-    clientName: target?.customerName || '',
-    projectId: target?.projectId || null,
-    projectCode: target?.projectCode || '',
-    projectName: target?.projectName || '',
-    taskId: target?.taskId || null,
-    taskCode: target?.taskCode || '',
-    taskName: target?.taskName || target?.selectionLabel || 'Assigned task',
-    workTaskCategory,
-    taskType: workTaskCategory,
-    workType: [workTaskCategory, serviceRequestNumber].filter(Boolean).join(' '),
+    customerName,
+    clientName: customerName,
+    workType,
+    canonicalWorkType: workType,
     serviceRequestNumber,
-    serviceRequestId: serviceRequestNumber || null,
-    requestType: workTaskCategory === 'service_request_task' ? 'service request' : '',
-    selectionLabel: target?.selectionLabel || '',
-    groupLabel: target?.groupLabel || (workTaskCategory === 'service_request_task'
-      ? 'Service Request Tasks'
-      : 'Regular Tasks')
+    serviceRequestId: serviceRequestNumber || task?.serviceRequestId || null,
+    requestType: groupLabel === 'Service Request Tasks' ? 'service request' : '',
+    selectionLabel,
+    groupLabel
   };
 }
 
-function mergeAssignedTasks(existingTasks, authoritativeTasks) {
+function mergeAssignedTasks(existingTasks, availableTasks) {
   const merged = new Map();
 
   for (const task of existingTasks || []) {
-    const assignmentId = String(task?.assignmentId || task?.projectAssignmentId || '');
-    if (assignmentId) merged.set(assignmentId, task);
+    const key = taskKey(task);
+    if (key) merged.set(key, task);
   }
 
-  for (const task of authoritativeTasks || []) {
-    const assignmentId = String(task?.assignmentId || task?.projectAssignmentId || '');
-    if (!assignmentId) continue;
-    merged.set(assignmentId, {
-      ...(merged.get(assignmentId) || {}),
+  for (const task of availableTasks || []) {
+    const key = taskKey(task);
+    if (!key) continue;
+    merged.set(key, {
+      ...(merged.get(key) || {}),
       ...task
     });
   }
@@ -65,12 +97,15 @@ export default function TimesheetEnhancementPortal() {
   useEffect(() => {
     let disposed = false;
 
-    const publish = (snapshot, authoritativeTasks) => {
+    const publish = (snapshot, availableTasks) => {
       if (disposed || !snapshot?.selectedWeekStart) return;
 
+      const assignedTasks = mergeAssignedTasks(snapshot.assignedTasks, availableTasks);
       const enrichedSnapshot = {
         ...snapshot,
-        assignedTasks: mergeAssignedTasks(snapshot.assignedTasks, authoritativeTasks),
+        assignedTasks,
+        regularAssignedTasks: assignedTasks.filter((task) => canonicalWorkTypeGroup(task) === 'Regular Tasks'),
+        requestAssignedTasks: assignedTasks.filter((task) => canonicalWorkTypeGroup(task) === 'Service Request Tasks'),
         [AUGMENTED_MARKER]: true
       };
 
@@ -96,7 +131,7 @@ export default function TimesheetEnhancementPortal() {
 
       try {
         const response = await fetch(
-          `/api/timesheet/timers/targets?weekStart=${encodeURIComponent(weekStart)}`,
+          `/api/assignments/available-tasks?weekStart=${encodeURIComponent(weekStart)}`,
           {
             credentials: 'include',
             cache: 'no-store'
@@ -106,14 +141,14 @@ export default function TimesheetEnhancementPortal() {
         if (!response.ok) return;
 
         const result = await response.json();
-        const authoritativeTasks = (Array.isArray(result?.targets) ? result.targets : [])
-          .map(normalizeAssignmentTarget)
+        const availableTasks = (Array.isArray(result?.tasks) ? result.tasks : [])
+          .map(normalizeAvailableTask)
           .filter(Boolean);
 
-        cacheRef.current.set(weekStart, authoritativeTasks);
-        publish(latestSnapshotRef.current.get(weekStart) || snapshot, authoritativeTasks);
+        cacheRef.current.set(weekStart, availableTasks);
+        publish(latestSnapshotRef.current.get(weekStart) || snapshot, availableTasks);
       } catch {
-        // The canonical Timesheet snapshot remains usable if the authoritative target refresh fails.
+        // The canonical Timesheet snapshot remains usable if the shared available-task refresh fails.
       } finally {
         pendingRef.current.delete(weekStart);
       }
