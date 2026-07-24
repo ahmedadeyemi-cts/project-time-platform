@@ -1,0 +1,164 @@
+name: ProjectPulse Deploy Module 001 Blank Page Hotfix Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_commit:
+        description: Exact verified Module 001 blank-page hotfix commit
+        required: true
+        default: 821b346ce6fe2475c10717d1c2a46db234a63b32
+        type: string
+      confirmation:
+        description: Enter DEPLOY-MODULE-001-BLANK-PAGE-HOTFIX-TO-TEST
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: projectpulse-deploy-module-001-blank-page-hotfix-test
+  cancel-in-progress: false
+
+jobs:
+  deploy-web:
+    name: Guarded Module 001 blank-page web-only recovery
+    environment: test
+    runs-on: ubuntu-latest
+    env:
+      EXPECTED_RELEASE_COMMIT: 821b346ce6fe2475c10717d1c2a46db234a63b32
+    steps:
+      - name: Check out deployment controls
+        uses: actions/checkout@v5
+        with:
+          path: control
+          fetch-depth: 0
+
+      - name: Check out exact blank-page hotfix source
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.release_commit }}
+          path: release
+          fetch-depth: 1
+
+      - name: Guard workflow source and blank-page hotfix
+        id: release
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ '${{ github.ref }}' == 'refs/heads/main' ]] || { echo 'Dispatch this workflow from main.' >&2; exit 1; }
+          [[ '${{ inputs.confirmation }}' == 'DEPLOY-MODULE-001-BLANK-PAGE-HOTFIX-TO-TEST' ]] || { echo 'Confirmation text does not match.' >&2; exit 1; }
+          [[ '${{ inputs.release_commit }}' =~ ^[0-9a-f]{40}$ ]] || { echo 'release_commit must be a complete SHA.' >&2; exit 1; }
+          CONTROL_COMMIT="$(git -C control rev-parse HEAD)"
+          TARGET_COMMIT="$(git -C release rev-parse HEAD)"
+          [[ "$CONTROL_COMMIT" == '${{ github.sha }}' ]]
+          [[ "$TARGET_COMMIT" == '${{ inputs.release_commit }}' ]]
+          [[ "$TARGET_COMMIT" == "$EXPECTED_RELEASE_COMMIT" ]] || { echo 'Only the verified Module 001 blank-page hotfix may deploy.' >&2; exit 1; }
+          git -C control merge-base --is-ancestor "$TARGET_COMMIT" HEAD || { echo 'Hotfix is not an ancestor of deployment controls.' >&2; exit 1; }
+          test -f release/src/frontend/project-time-web/scripts/generate-module-001-integrated-app.mjs
+          test -f release/src/frontend/project-time-web/scripts/validate-module-001-timesheet-timer-mobile.mjs
+          grep -Fq 'assignedTasks: assignedOpenTasks' release/src/frontend/project-time-web/scripts/generate-module-001-integrated-app.mjs
+          grep -Fq 'nonProjectCategories: categories' release/src/frontend/project-time-web/scripts/generate-module-001-integrated-app.mjs
+          ! grep -Fq 'assignedTasks.data' release/src/frontend/project-time-web/scripts/generate-module-001-integrated-app.mjs
+          ! grep -Fq 'nonProjectCategories.data' release/src/frontend/project-time-web/scripts/generate-module-001-integrated-app.mjs
+          node release/src/frontend/project-time-web/scripts/generate-module-001-integrated-app.mjs
+          node release/src/frontend/project-time-web/scripts/validate-module-001-timesheet-timer-mobile.mjs
+          grep -Fq 'assignedTasks: assignedOpenTasks' release/src/frontend/project-time-web/src/App.Module001.g.jsx
+          grep -Fq 'nonProjectCategories: categories' release/src/frontend/project-time-web/src/App.Module001.g.jsx
+          ! grep -Fq 'assignedTasks.data' release/src/frontend/project-time-web/src/App.Module001.g.jsx
+          ! grep -Fq 'nonProjectCategories.data' release/src/frontend/project-time-web/src/App.Module001.g.jsx
+          echo "target_commit=$TARGET_COMMIT" >> "$GITHUB_OUTPUT"
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Capture current web image
+        id: before
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          RAW="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
+          MODE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.configuration.activeRevisionsMode' -o tsv)"
+          [[ -n "$RAW" && "${MODE,,}" == single ]]
+          resolve_digest() {
+            local image="$1" registry='${{ vars.AZURE_ACR_NAME }}.azurecr.io/' relative repository digest
+            case "$image" in "$registry"*@sha256:*) printf '%s\n' "$image"; return;; "$registry"*:*) ;; *) return 1;; esac
+            relative="${image#"$registry"}"; repository="${relative%:*}"
+            digest="$(az acr repository show --name '${{ vars.AZURE_ACR_NAME }}' --image "$relative" --query digest -o tsv)"
+            [[ "$digest" == sha256:* ]]
+            printf '%s%s@%s\n' "$registry" "$repository" "$digest"
+          }
+          OLD="$(resolve_digest "$RAW")"
+          echo "old_web_image=$OLD" >> "$GITHUB_OUTPUT"
+
+      - name: Build exact blank-page hotfix web image
+        id: build
+        working-directory: release
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          SHA='${{ steps.release.outputs.target_commit }}'
+          REPOSITORY='project-health-dashboard-web'
+          DIGEST="$(../control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "$REPOSITORY:module001-blank-page-$SHA" deployment/containers/web/Dockerfile .)"
+          echo "web_image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/$REPOSITORY@$DIGEST" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy blank-page hotfix web image only
+        id: deploy_web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' \
+            --image '${{ steps.build.outputs.web_image }}' --revision-suffix "m001bp-${GITHUB_RUN_ID}" --output none
+
+      - name: Validate served Module 001 recovery and active image
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"; READY=false
+          for attempt in $(seq 1 30); do
+            BUSTER="m001bp-${GITHUB_RUN_ID}-${attempt}"
+            STATUS="$(curl -sSL -H 'Cache-Control: no-cache' -o /tmp/index.html -w '%{http_code}' "$BASE/?release_check=$BUSTER" || true)"
+            JS="$(sed -nE 's/.*src="([^"]+\.js)".*/\1/p' /tmp/index.html | head -1)"
+            if [[ "$STATUS" == 200 && -n "$JS" ]]; then
+              case "$JS" in http*) URL="$JS";; /*) URL="$BASE$JS";; *) URL="$BASE/$JS";; esac
+              curl -sSL -H 'Cache-Control: no-cache' -o /tmp/app.js "$URL?release_check=$BUSTER" || true
+              if grep -Fq 'projectpulse:module001-state' /tmp/app.js \
+                && grep -Fq 'projectpulse:module001-action' /tmp/app.js \
+                && grep -Fq 'Start / Stop Timer' /tmp/app.js \
+                && grep -Fq 'Submit Timesheet week' /tmp/app.js; then READY=true; break; fi
+            fi
+            sleep 10
+          done
+          [[ "$READY" == true ]] || { echo 'Corrected Module 001 frontend markers were not served.' >&2; exit 1; }
+          ACTIVE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
+          [[ "$ACTIVE" == '${{ steps.build.outputs.web_image }}' ]]
+
+      - name: Write deployment evidence
+        if: success()
+        shell: bash
+        run: |
+          mkdir -p evidence
+          cat > evidence/module-001-blank-page-hotfix-test.json <<JSON
+          {"environment":"test","releaseCommit":"${{ steps.release.outputs.target_commit }}","workflowCommit":"${{ github.sha }}","runId":"${{ github.run_id }}","webImage":"${{ steps.build.outputs.web_image }}","previousWebImage":"${{ steps.before.outputs.old_web_image }}","apiDeployment":"unchanged","migration041":"unchanged","database":"unchanged"}
+          JSON
+
+      - name: Upload deployment evidence
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: module-001-blank-page-hotfix-test-${{ github.run_id }}
+          path: evidence/module-001-blank-page-hotfix-test.json
+          retention-days: 30
+
+      - name: Roll back web image on failure
+        if: ${{ failure() && steps.deploy_web.outputs.started == 'true' }}
+        shell: bash
+        run: |
+          set +e
+          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' \
+            --image '${{ steps.before.outputs.old_web_image }}' --revision-suffix "m001bprb-${GITHUB_RUN_ID}" --output none
