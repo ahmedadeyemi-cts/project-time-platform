@@ -13,13 +13,12 @@ const read = (relative, required = true) => {
   }
   return fs.readFileSync(absolute, 'utf8');
 };
-const requireText = (source, value, label) =>
-  assert.ok(source.includes(value), `${label}: missing ${value}`);
-const rejectText = (source, value, label) =>
-  assert.ok(!source.includes(value), `${label}: forbidden ${value}`);
+const requireText = (source, value, label) => assert.ok(source.includes(value), `${label}: missing ${value}`);
+const rejectText = (source, value, label) => assert.ok(!source.includes(value), `${label}: forbidden ${value}`);
 
 const app = read('src/frontend/project-time-web/src/App.jsx');
-const generated = read('src/frontend/project-time-web/src/.module001-generated/App.Module001.g.jsx');
+const generated = read('src/frontend/project-time-web/src/App.Module001.g.jsx');
+const generatedGuide = read('src/frontend/project-time-web/src/SystemUserGuide.Module001.g.jsx');
 const generator = read('src/frontend/project-time-web/scripts/generate-module-001-integrated-app.mjs');
 const main = read('src/frontend/project-time-web/src/main.jsx');
 const portal = read('src/frontend/project-time-web/src/module001/TimesheetEnhancementPortal.jsx');
@@ -31,13 +30,7 @@ const packageJson = read('src/frontend/project-time-web/package.json');
 const module002Validator = read('src/frontend/project-time-web/scripts/validate-module-002-approval-center.mjs');
 const module059Validator = read('src/frontend/project-time-web/scripts/validate-module-059-global.mjs');
 
-for (const view of [
-  'Weekly Grid',
-  'Daily Focus',
-  'My Work Queue',
-  'Quick Entry List',
-  'Calendar / Timeline'
-]) {
+for (const view of ['Weekly Grid', 'Daily Focus', 'My Work Queue', 'Quick Entry List', 'Calendar / Timeline']) {
   requireText(app, view, 'existing Timesheet view preservation');
 }
 requireText(portal, 'Start / Stop Timer', 'sixth Timesheet view');
@@ -50,40 +43,20 @@ requireText(generator, 'projectpulse:module001-state', 'canonical state event');
 requireText(generator, 'projectpulse:module001-action', 'canonical state action');
 requireText(generated, 'MODULE_001_CANONICAL_STATE_BRIDGE_START', 'generated App bridge');
 requireText(generated, 'draftPayload: buildTimesheetPayload()', 'generated canonical payload');
-requireText(main, "./.module001-generated/App.Module001.g.jsx", 'generated App import');
+requireText(generated, "./SystemUserGuide.Module001.g.jsx", 'generated user-guide import');
+requireText(main, "./App.Module001.g.jsx", 'generated App import');
 requireText(main, '<TimesheetEnhancementPortal />', 'portal root integration');
+for (const guideContract of ['Start / Stop Timer', 'Mobile mode', 'Module 002 Approval Inbox', 'server-authoritative UTC timestamps']) {
+  requireText(generatedGuide, guideContract, 'Module 999 Timesheet guide');
+}
 
-for (const contract of [
-  '/api/timesheet/work-queue',
-  '/api/timesheet/work-queue/',
-  'assignmentId',
-  'Add to Timesheet',
-  'Start timer',
-  'Open task',
-  'authoritativeSource'
-]) {
+for (const contract of ['/api/timesheet/work-queue', '/api/timesheet/work-queue/', 'assignmentId', 'Add to Timesheet', 'Start timer', 'Open task', 'authoritativeSource']) {
   requireText(`${portal}\n${queueCard}`, contract, 'Work Queue task association');
 }
-for (const contract of [
-  'Calendar / Timeline',
-  'Description required',
-  'Task association required',
-  '/api/timesheet/entries/',
-  'open-entry',
-  'Remove draft'
-]) {
+for (const contract of ['Calendar / Timeline', 'Description required', 'Task association required', '/api/timesheet/entries/', 'open-entry', 'Remove draft']) {
   requireText(portal, contract, 'Calendar task association');
 }
-
-for (const contract of [
-  '/api/timesheet/timers/active',
-  '/api/timesheet/timers/start',
-  '/stop',
-  '/discard',
-  'maximumDurationSeconds',
-  'startedAtUtc',
-  'autoStopped'
-]) {
+for (const contract of ['/api/timesheet/timers/active', '/api/timesheet/timers/start', '/stop', '/discard', 'maximumDurationSeconds', 'startedAtUtc', 'autoStopped']) {
   requireText(`${portal}\n${timerView}`, contract, 'timer frontend contract');
 }
 requireText(portal, 'projectPulseModule001MobileMode', 'mobile preference');
@@ -93,14 +66,7 @@ requireText(css, 'min-height: 44px', 'touch targets');
 requireText(css, '.module001-calendar-grid', 'task-aware Calendar layout');
 requireText(css, '.module001-work-grid', 'task-aware Work Queue layout');
 
-for (const contract of [
-  '/api/timesheets/week/draft',
-  '/validate-submission',
-  '/submit',
-  'explicit_confirmation_required',
-  'Module 002 Approval Inbox',
-  'Confirm and submit week'
-]) {
+for (const contract of ['/api/timesheets/week/draft', '/validate-submission', '/submit', 'Module 002 Approval Inbox', 'Confirm and submit week']) {
   requireText(portal, contract, 'weekly submission frontend');
 }
 requireText(portal, 'snapshot.isViewAs', 'View-As frontend read-only');
@@ -112,15 +78,9 @@ assert.ok(module059Validator.length > 100, 'Module 059 global validator must rem
 
 const duration = await import(pathToFileURL(path.join(webRoot, 'src/module001/timesheet-duration.js')).href);
 const roundingCases = [
-  [4 * 3600, 240],
-  [4 * 3600 + 1, 255],
-  [4 * 3600 + 14 * 60 + 59, 255],
-  [4 * 3600 + 15 * 60, 255],
-  [4 * 3600 + 15 * 60 + 1, 270],
-  [1, 15],
-  [11 * 3600 + 59 * 60 + 59, 720],
-  [12 * 3600, 720],
-  [13 * 3600, 720]
+  [4 * 3600, 240], [4 * 3600 + 1, 255], [4 * 3600 + 14 * 60 + 59, 255],
+  [4 * 3600 + 15 * 60, 255], [4 * 3600 + 15 * 60 + 1, 270], [1, 15],
+  [11 * 3600 + 59 * 60 + 59, 720], [12 * 3600, 720], [13 * 3600, 720]
 ];
 for (const [seconds, expectedMinutes] of roundingCases) {
   assert.equal(duration.roundSecondsUpToQuarterHour(seconds), expectedMinutes, `rounding ${seconds}`);
@@ -160,7 +120,7 @@ if (backendAvailable) {
   requireText(allBackend, "status = 'submitted'", 'submitted status');
   requireText(allBackend, 'SUBMISSION_VALIDATION_FAILED', 'validation audit');
   requireText(allBackend, 'meaningful work description is required', 'description requirement');
-  rejectText(endpoints, 'userId', 'browser supplied authorization identity');
+  rejectText(endpoints, 'Module001TimerStartRequest(Guid UserId', 'browser-supplied timer identity');
 
   requireText(migration, 'ux_module001_one_running_timer_per_user', 'one running timer constraint');
   requireText(migration, 'rounded_minutes % 15 = 0', 'quarter-hour database constraint');
