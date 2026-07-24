@@ -6,16 +6,22 @@ export default function TimesheetTaskPicker({
 }) {
   return (
     <label className="module001-field">
-      <span>Assigned task or activity</span>
+      <span>Assigned task or authorized activity</span>
       <select value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)}>
         <option value="">Select assigned work</option>
-        {tasks.map((task) => (
-          <option key={task.assignmentId || task.taskId} value={task.assignmentId || task.taskId}>
-            {[task.projectCode, task.projectName, task.taskName].filter(Boolean).join(' · ')}
-          </option>
-        ))}
+        {tasks.map((task) => {
+          const optionValue = task.selectionValue
+            || (task.assignmentId ? `assignment:${task.assignmentId}` : '')
+            || (task.nonProjectCategoryId ? `category:${task.nonProjectCategoryId}` : '');
+          const label = task.selectionLabel
+            || [task.customerName, task.projectCode, task.projectName, task.taskName].filter(Boolean).join(' · ')
+            || task.nonProjectCategoryName
+            || task.categoryName
+            || 'Authorized activity';
+          return <option key={optionValue} value={optionValue}>{label}</option>;
+        })}
       </select>
-      <small>Runtime integration must resolve only work assigned to the authenticated user.</small>
+      <small>Project work is limited to assignments returned for the authenticated user.</small>
     </label>
   );
 }
