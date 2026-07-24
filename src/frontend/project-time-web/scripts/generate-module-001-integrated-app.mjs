@@ -125,8 +125,8 @@ const bridge = `
       saveStatus,
       isSaving,
       isAnyDayEditable,
-      assignedTasks: assignedTasks.data?.tasks ?? assignedTasks.data ?? [],
-      nonProjectCategories: nonProjectCategories.data?.categories ?? nonProjectCategories.data ?? [],
+      assignedTasks: assignedOpenTasks,
+      nonProjectCategories: categories,
       isViewAs: Boolean(securityContext.data?.isViewAs)
     };
 
@@ -147,8 +147,8 @@ const bridge = `
     saveStatus,
     isSaving,
     isAnyDayEditable,
-    assignedTasks.data,
-    nonProjectCategories.data,
+    openTasks.data?.tasks,
+    timesheet.data?.nonProjectCategories,
     securityContext.data?.isViewAs
   ]);
 
@@ -156,8 +156,7 @@ const bridge = `
     const handleModule001Action = (event) => {
       const detail = event?.detail ?? {};
       if (detail.type === 'add-assignment') {
-        const tasks = assignedTasks.data?.tasks ?? assignedTasks.data ?? [];
-        const task = tasks.find((item) =>
+        const task = assignedOpenTasks.find((item) =>
           String(item.assignmentId ?? item.projectAssignmentId ?? '') === String(detail.assignmentId ?? '')
           || (
             String(item.projectId ?? '') === String(detail.projectId ?? '')
@@ -174,7 +173,7 @@ const bridge = `
 
     window.addEventListener('projectpulse:module001-action', handleModule001Action);
     return () => window.removeEventListener('projectpulse:module001-action', handleModule001Action);
-  }, [assignedTasks.data, activeRows, entries, selectedWeekStart]);
+  }, [openTasks.data?.tasks, activeRows, entries, selectedWeekStart]);
   /* MODULE_001_CANONICAL_STATE_BRIDGE_END */`;
 
 generated = `${generated.slice(0, authIndex)}${bridge}${generated.slice(authIndex)}`;
