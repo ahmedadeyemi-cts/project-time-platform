@@ -1,4 +1,4 @@
-const TIMER_TARGET_PATTERN = /^(assignment|category):[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const TIMER_TARGET_PATTERN = /^(assignment|category):[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 
 function toTimerOption(task) {
   const optionValue = task.selectionValue
