@@ -56,7 +56,7 @@ for (const contract of ['/api/timesheet/work-queue', '/api/timesheet/work-queue/
 for (const contract of ['Calendar / Timeline', 'Description required', 'Task association required', '/api/timesheet/entries/', 'open-entry', 'Remove draft']) {
   requireText(portal, contract, 'Calendar task association');
 }
-for (const contract of ['/api/timesheet/timers/active', '/api/timesheet/timers/start', '/stop', '/discard', 'maximumDurationSeconds', 'startedAtUtc', 'autoStopped']) {
+for (const contract of ['/api/timesheet/timers/active', '/api/timesheet/timers/start', '/stop', '/discard', 'startedAtUtc', 'autoStopped']) {
   requireText(`${portal}\n${timerView}`, contract, 'timer frontend contract');
 }
 requireText(portal, 'projectPulseModule001MobileMode', 'mobile preference');
@@ -115,6 +115,7 @@ if (backendAvailable) {
   requireText(allBackend, 'AutoStopModule001TimerAsync', 'server auto-stop');
   requireText(allBackend, 'Module001BuildSegments', 'midnight and week segmentation');
   requireText(allBackend, 'Module001RoundedMinutes', 'single authoritative rounding');
+  requireText(allBackend, 'maximumDurationSeconds', 'server timer maximum response');
   requireText(allBackend, 'project_assignments', 'authoritative task source');
   requireText(allBackend, 'authoritativeSource', 'authoritative Work Queue response marker');
   requireText(allBackend, 'timesheet_day_statuses', 'Module 002 daily-status handoff');
