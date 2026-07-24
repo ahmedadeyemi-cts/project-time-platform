@@ -173,6 +173,22 @@ assert_eq 0 "$(value "SELECT COUNT(*) FROM pg_roles WHERE rolname IN ('ptp_app',
 psql_exec -f "$MIGRATION" >/dev/null
 assert_eq 1 "$(value "SELECT COUNT(*) FROM schema_migrations WHERE migration_id='041_module_001_timesheet_timer_and_task_association';")" migration_succeeds_without_known_runtime_role
 
+psql_exec <<'SQL' >/dev/null
+BEGIN;
+SELECT t.timer_session_id
+FROM module001_timer_sessions t
+LEFT JOIN clients c ON c.client_id = t.customer_id
+LEFT JOIN projects p ON p.project_id = t.project_id
+LEFT JOIN project_tasks pt ON pt.task_id = t.task_id
+LEFT JOIN non_project_time_categories npc
+  ON npc.non_project_time_category_id = t.non_project_time_category_id
+ORDER BY t.started_at_utc DESC
+LIMIT 1
+FOR UPDATE OF t;
+ROLLBACK;
+SQL
+echo 'ASSERTION_PASSED timer_query_locks_only_base_table'
+
 psql_exec -c 'CREATE ROLE ptp_app;' >/dev/null
 psql_exec -f "$MIGRATION" >/dev/null
 assert_eq true "$(value "SELECT has_table_privilege('ptp_app','module001_timer_sessions','SELECT,INSERT,UPDATE')::text;")" ptp_app_timer_grants_added_on_idempotent_apply

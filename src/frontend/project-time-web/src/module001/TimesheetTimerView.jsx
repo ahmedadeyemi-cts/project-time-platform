@@ -2,6 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import TimesheetTaskPicker from './TimesheetTaskPicker.jsx';
 import { calculateTimerDuration, formatElapsedSeconds } from './timesheet-duration.js';
 import './timesheet-prep.css';
+import './timesheet-timer-recovery.css';
+
+const TIMER_TARGET_PATTERN = /^(assignment|category):[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export default function TimesheetTimerView({
   targets = [], history = [], activeTimer = null, selectedTargetValue = '',
@@ -25,6 +28,7 @@ export default function TimesheetTimerView({
     ? [activeTimer.customerName, activeTimer.projectCode, activeTimer.taskName || activeTimer.nonProjectCategoryName].filter(Boolean).join(' · ')
     : '';
   const mutationDisabled = isViewAs || busy;
+  const validSelectedTarget = TIMER_TARGET_PATTERN.test(selectedTargetValue);
 
   return (
     <section className="module001-timer-view" aria-labelledby="module001-timer-title">
@@ -34,6 +38,7 @@ export default function TimesheetTimerView({
       </header>
       {statusMessage ? <div className="module001-status" role="status">{statusMessage}</div> : null}
       {isViewAs ? <div className="module001-warning">Timer actions are disabled during View-As.</div> : null}
+      {!activeTimer && selectedTargetValue && !validSelectedTarget ? <div className="module001-warning">Select a valid assigned task or authorized non-project activity before starting the timer.</div> : null}
       {activeTimer?.autoStopped || duration.isExpired ? <div className="module001-warning">This timer reached the 12-hour maximum. Its draft entry must be reviewed before submission.</div> : null}
       {activeTimer ? <div className="module001-active-target"><span>Active task</span><strong>{selectedLabel || 'Authorized non-project activity'}</strong></div> : (
         <TimesheetTaskPicker tasks={targets} value={selectedTargetValue} disabled={mutationDisabled} onChange={onSelectTarget} />
@@ -49,7 +54,7 @@ export default function TimesheetTimerView({
       </div>
       <label className="module001-field"><span>Work description</span><textarea value={description} disabled={mutationDisabled} placeholder="Describe the work before submitting the week." onChange={(event) => onDescriptionChange(event.target.value)} /><small>A description may be added before, during, or after timing, but is required before submission.</small></label>
       <div className="module001-timer-actions">
-        {!activeTimer ? <button type="button" disabled={!selectedTargetValue || mutationDisabled} onClick={onStart}>{busy ? 'Starting…' : 'Start timer'}</button> : <><button type="button" disabled={mutationDisabled} onClick={onStop}>{busy ? 'Stopping…' : 'Stop timer'}</button><button type="button" className="secondary" disabled={mutationDisabled} onClick={onDiscard}>Discard</button></>}
+        {!activeTimer ? <button type="button" disabled={!validSelectedTarget || mutationDisabled} onClick={() => validSelectedTarget && onStart()}>{busy ? 'Starting…' : 'Start timer'}</button> : <><button type="button" disabled={mutationDisabled} onClick={onStop}>{busy ? 'Stopping…' : 'Stop timer'}</button><button type="button" className="secondary" disabled={mutationDisabled} onClick={onDiscard}>Discard</button></>}
       </div>
       <div className="module001-timer-history" aria-label="Current week timer history"><h4>Timer history</h4>{history.length === 0 ? <p>No timer sessions for this week.</p> : <ul>{history.map((timer) => <li key={timer.timerSessionId}><span>{timer.taskName || timer.nonProjectCategoryName || 'Activity'}</span><strong>{(Number(timer.roundedMinutes || 0) / 60).toFixed(2)} hrs</strong><small>{timer.timerStatus}</small></li>)}</ul>}</div>
     </section>
