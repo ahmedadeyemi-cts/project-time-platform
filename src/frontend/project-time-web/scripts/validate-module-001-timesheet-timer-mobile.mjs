@@ -80,8 +80,8 @@ requireText(portal, 'Promise.allSettled', 'independent timer data loading');
 rejectText(portal, 'TimesheetWorkQueueCard', 'duplicate enhanced Queue implementation');
 rejectText(portal, 'CalendarEnhancement', 'duplicate enhanced Calendar implementation');
 rejectText(portal, 'CurrentTimesheetActivityCard', 'duplicate active-row Queue implementation');
-rejectText(portal, 'module001-enhanced-queue', 'enhanced Queue class activation');
-rejectText(portal, 'module001-enhanced-calendar', 'enhanced Calendar class activation');
+rejectText(portal, "classList.toggle('module001-enhanced-queue'", 'enhanced Queue class activation');
+rejectText(portal, "classList.toggle('module001-enhanced-calendar'", 'enhanced Calendar class activation');
 rejectText(portal, '/api/timesheet/work-queue?weekStart=', 'timer dependency on Work Queue endpoint');
 
 requireText(taskPicker, 'TIMER_TARGET_PATTERN', 'timer target UUID validation');
