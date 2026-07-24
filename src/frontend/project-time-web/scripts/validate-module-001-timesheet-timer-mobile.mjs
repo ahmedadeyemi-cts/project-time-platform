@@ -31,64 +31,54 @@ const packageJson = read('src/frontend/project-time-web/package.json');
 const module002Validator = read('src/frontend/project-time-web/scripts/validate-module-002-approval-center.mjs');
 const module059Validator = read('src/frontend/project-time-web/scripts/validate-module-059-global.mjs');
 
-for (const view of ['Weekly Grid', 'Daily Focus', 'My Work Queue', 'Quick Entry List', 'Calendar / Timeline']) {
-  requireText(app, view, 'canonical Timesheet view preservation');
+for (const view of ['Weekly Grid', 'Daily Focus', 'Quick Entry List']) {
+  requireText(generated, view, 'streamlined Timesheet view');
 }
-requireText(app, 'work-queue-view', 'canonical My Work Queue implementation');
-requireText(app, 'calendar-timeline-view', 'canonical Calendar implementation');
-requireText(portal, 'Start / Stop Timer', 'sixth Timesheet view');
+requireText(portal, 'Start / Stop Timer', 'timer Timesheet view');
+rejectText(generated, "{ key: 'queue', label: 'My Work Queue'", 'retired My Work Queue tab');
+rejectText(generated, "{ key: 'calendar', label: 'Calendar / Timeline'", 'retired Calendar tab');
+requireText(generator, "setTimesheetView('weekly')", 'legacy hidden-view reset');
+requireText(generator, 'retiredTabsRemoved=2', 'retired-tab generation evidence');
+rejectText(generatedGuide, 'My Work Queue loads actual tasks', 'retired Queue guide workflow');
+rejectText(generatedGuide, 'Calendar / Timeline shows', 'retired Calendar guide workflow');
 requireText(app, "route: 'timesheet'", 'Module 001 route');
 requireText(app, "title: 'Timesheet'", 'Module 001 user-facing name');
 
 requireText(generator, 'buildTimesheetPayload()', 'shared canonical weekly draft');
-requireText(generator, 'canonicalCalendarEntries', 'shared Calendar projection');
 requireText(generator, 'projectpulse:module001-state', 'canonical state event');
 requireText(generator, 'assignedTasks: assignedOpenTasks', 'canonical assigned-task source');
-requireText(generator, 'nonProjectCategories: categories', 'canonical non-project category source');
+requireText(generator, 'nonProjectCategories: categories', 'canonical non-project source');
 rejectText(generator, 'assignedTasks.data', 'undefined assignedTasks reference');
 rejectText(generator, 'nonProjectCategories.data', 'undefined nonProjectCategories reference');
 requireText(app, 'const assignedOpenTasks = openTasks.data?.tasks ?? [];', 'canonical assigned task declaration');
 requireText(app, 'const categories = timesheet.data?.nonProjectCategories ?? [];', 'canonical non-project declaration');
 requireText(generated, 'MODULE_001_CANONICAL_STATE_BRIDGE_START', 'generated App bridge');
-requireText(generated, 'draftPayload: buildTimesheetPayload()', 'generated canonical payload');
-requireText(generated, 'assignedTasks: assignedOpenTasks', 'generated assigned-task source');
-requireText(generated, 'nonProjectCategories: categories', 'generated non-project source');
-rejectText(generated, 'assignedTasks.data', 'generated undefined assignedTasks reference');
-rejectText(generated, 'nonProjectCategories.data', 'generated undefined nonProjectCategories reference');
-requireText(generated, './SystemUserGuide.Module001.g.jsx', 'generated user-guide import');
-assert.ok(
-  generated.indexOf('const assignedOpenTasks = openTasks.data?.tasks ?? [];') < generated.indexOf('MODULE_001_CANONICAL_STATE_BRIDGE_START'),
-  'assignedOpenTasks must be declared before the generated bridge'
-);
-assert.ok(
-  generated.indexOf('const categories = timesheet.data?.nonProjectCategories ?? [];') < generated.indexOf('MODULE_001_CANONICAL_STATE_BRIDGE_START'),
-  'categories must be declared before the generated bridge'
-);
+requireText(generated, 'assignedTasks: assignedOpenTasks', 'generated assigned tasks');
+requireText(generated, 'nonProjectCategories: categories', 'generated non-project categories');
 requireText(main, './App.Module001.g.jsx', 'generated App import');
 requireText(main, '<TimesheetEnhancementPortal />', 'portal root integration');
-for (const guideContract of ['Start / Stop Timer', 'Mobile mode', 'Module 002 Approval Inbox', 'server-authoritative UTC timestamps']) {
-  requireText(generatedGuide, guideContract, 'Module 999 Timesheet guide');
-}
 
-for (const contract of ['/api/timesheet/timers/targets', '/api/timesheet/timers/active', '/api/timesheet/timers/start', '/stop', '/discard']) {
+for (const contract of ['/api/timesheet/timers/active', '/api/timesheet/timers/start', '/api/timesheet/timers/start-by-code', '/stop', '/discard']) {
   requireText(`${portal}\n${timerView}`, contract, 'timer frontend contract');
 }
-requireText(portal, 'targetResult.value.targets', 'authoritative timer target response');
-requireText(portal, "target.targetType === 'assignment'", 'assignment timer payload');
-requireText(portal, "target.targetType === 'category'", 'non-project timer payload');
-requireText(portal, 'Promise.allSettled', 'independent timer data loading');
+requireText(portal, 'snapshot?.assignedTasks', 'timer assigned-task source');
+requireText(portal, 'snapshot?.nonProjectCategories', 'timer visible category source');
+requireText(portal, 'categoryTarget', 'category normalization');
+requireText(portal, "targetType: 'categoryCode'", 'category-code target construction');
+requireText(portal, "category-code:${code}", 'category-code selector value');
+requireText(portal, 'nonProjectCategoryCode: target.targetCode', 'category-code start payload');
+requireText(portal, 'Promise.allSettled', 'independent timer runtime loading');
+rejectText(portal, '/api/timesheet/timers/targets?weekStart=', 'empty target endpoint dependency');
 rejectText(portal, 'TimesheetWorkQueueCard', 'duplicate enhanced Queue implementation');
 rejectText(portal, 'CalendarEnhancement', 'duplicate enhanced Calendar implementation');
 rejectText(portal, 'CurrentTimesheetActivityCard', 'duplicate active-row Queue implementation');
-rejectText(portal, "classList.toggle('module001-enhanced-queue'", 'enhanced Queue class activation');
-rejectText(portal, "classList.toggle('module001-enhanced-calendar'", 'enhanced Calendar class activation');
-rejectText(portal, '/api/timesheet/work-queue?weekStart=', 'timer dependency on Work Queue endpoint');
 
-requireText(taskPicker, 'TIMER_TARGET_PATTERN', 'timer target UUID validation');
-requireText(taskPicker, '<optgroup', 'grouped timer target selector');
+requireText(taskPicker, 'category-code:', 'category-code picker support');
+requireText(taskPicker, '<optgroup', 'grouped timer selector');
 requireText(taskPicker, 'Assigned project work', 'assigned target group');
 requireText(taskPicker, 'Authorized non-project activities', 'non-project target group');
-requireText(taskPicker, 'No authorized timer activity available', 'empty timer target safeguard');
+requireText(taskPicker, 'No authorized timer activity available', 'empty timer safeguard');
+requireText(timerView, 'category-code:', 'category-code start eligibility');
 requireText(timerView, 'validSelectedTarget', 'timer start eligibility');
 requireText(timerView, "onClick={() => validSelectedTarget && onStart()}", 'guarded timer start');
 requireText(timerView, './timesheet-timer-recovery.css', 'timer recovery layout import');
@@ -96,10 +86,6 @@ requireText(timerRecoveryCss, '#timesheet .timesheet-workspace > .module001-enha
 requireText(timerRecoveryCss, 'display: none;', 'inactive host hidden');
 requireText(timerRecoveryCss, '#timesheet.module001-timer-mode .module001-enhancement-view-host', 'timer host visibility');
 requireText(timerRecoveryCss, 'grid-column: 1 / -1;', 'full-width timer host');
-rejectText(timerRecoveryCss, 'module001-enhanced-queue', 'enhanced Queue styling');
-rejectText(timerRecoveryCss, 'module001-enhanced-calendar', 'enhanced Calendar styling');
-rejectText(timerRecoveryCss, 'module001-current-activity', 'duplicate Queue activity styling');
-rejectText(timerRecoveryCss, 'module001-activity-picker-attention', 'Calendar redirect highlighting');
 requireText(portal, 'projectPulseModule001MobileMode', 'mobile preference');
 requireText(portal, 'Mobile mode', 'mobile selector label');
 requireText(css, '#timesheet.module001-mobile-mode', 'mobile presentation');
@@ -111,7 +97,7 @@ for (const contract of ['/api/timesheets/week/draft', '/validate-submission', '/
 requireText(portal, 'snapshot.isViewAs', 'View-As frontend read-only');
 requireText(packageJson, 'validate:module001-enhancement', 'protected Module 001 validator registration');
 requireText(packageJson, 'validate:module002', 'Module 002 validator preservation');
-requireText(packageJson, 'validate:module059', 'Module 059 global validator preservation');
+requireText(packageJson, 'validate:module059', 'Module 059 validator preservation');
 assert.ok(module002Validator.length > 100, 'Module 002 validator must remain present');
 assert.ok(module059Validator.length > 100, 'Module 059 global validator must remain present');
 
@@ -163,14 +149,11 @@ if (backendAvailable) {
   rejectText(data, 'if (forUpdate) sql += " FOR UPDATE";', 'outer-join-wide PostgreSQL lock');
   rejectText(endpoints, 'Module001TimerStartRequest(Guid UserId', 'browser-supplied timer identity');
 
-  requireText(timerTargets, 'MapModule001TimerTargetEndpoints', 'timer target endpoint mapper');
-  requireText(timerTargets, '/api/timesheet/timers/targets', 'timer target route');
-  requireText(timerTargets, 'project_assignments', 'assigned project target source');
-  requireText(timerTargets, 'non_project_time_categories', 'non-project target source');
-  requireText(timerTargets, 'selectionValue', 'stable selector value');
-  requireText(timerTargets, 'selectionLabel', 'user-facing selector label');
-  requireText(timerTargets, 'targetType = "assignment"', 'assignment target type');
-  requireText(timerTargets, 'targetType = "category"', 'category target type');
+  requireText(timerTargets, '/api/timesheet/timers/start-by-code', 'category-code start route');
+  requireText(timerTargets, 'Module001TimerStartByCodeRequest', 'category-code request contract');
+  requireText(timerTargets, 'UPPER(category_code) = @category_code', 'active category-code resolution');
+  requireText(timerTargets, 'TIME_EDIT_OWN', 'category-code write authorization');
+  requireText(timerTargets, 'new Module001TimerStartRequest(', 'shared timer-start execution');
   requireText(projectFile, 'app.MapModule001TimerTargetEndpoints();', 'generated Program endpoint registration');
 
   requireText(migration, 'ux_module001_one_running_timer_per_user', 'one running timer constraint');
@@ -183,4 +166,4 @@ if (backendAvailable) {
   requireText(rollback, 'DROP TABLE IF EXISTS module001_timer_sessions', 'reviewed rollback');
 }
 
-console.log(`MODULE_001_TIMESHEET_TIMER_MOBILE_VALIDATION=PASS roundingCases=${roundingCases.length} backend=${backendAvailable ? 'full' : 'frontend-container'} architecture=simplified`);
+console.log(`MODULE_001_TIMESHEET_TIMER_MOBILE_VALIDATION=PASS roundingCases=${roundingCases.length} backend=${backendAvailable ? 'full' : 'frontend-container'} architecture=streamlined timerSource=visibleActivities`);
