@@ -50,7 +50,7 @@ for (const guideContract of ['Start / Stop Timer', 'Mobile mode', 'Module 002 Ap
   requireText(generatedGuide, guideContract, 'Module 999 Timesheet guide');
 }
 
-for (const contract of ['/api/timesheet/work-queue', '/api/timesheet/work-queue/', 'assignmentId', 'Add to Timesheet', 'Start timer', 'Open task', 'authoritativeSource']) {
+for (const contract of ['/api/timesheet/work-queue', '/api/timesheet/work-queue/', 'assignmentId', 'Add to Timesheet', 'Start timer', 'Open task']) {
   requireText(`${portal}\n${queueCard}`, contract, 'Work Queue task association');
 }
 for (const contract of ['Calendar / Timeline', 'Description required', 'Task association required', '/api/timesheet/entries/', 'open-entry', 'Remove draft']) {
@@ -116,6 +116,7 @@ if (backendAvailable) {
   requireText(allBackend, 'Module001BuildSegments', 'midnight and week segmentation');
   requireText(allBackend, 'Module001RoundedMinutes', 'single authoritative rounding');
   requireText(allBackend, 'project_assignments', 'authoritative task source');
+  requireText(allBackend, 'authoritativeSource', 'authoritative Work Queue response marker');
   requireText(allBackend, 'timesheet_day_statuses', 'Module 002 daily-status handoff');
   requireText(allBackend, "status = 'submitted'", 'submitted status');
   requireText(allBackend, 'SUBMISSION_VALIDATION_FAILED', 'validation audit');
