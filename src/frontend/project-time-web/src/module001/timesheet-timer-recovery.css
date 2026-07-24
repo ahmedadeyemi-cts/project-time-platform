@@ -38,6 +38,15 @@
   word-break: normal;
 }
 
+#timesheet.module001-timer-mode .module001-task-picker {
+  position: relative;
+}
+
+#timesheet.module001-timer-mode .module001-task-combobox {
+  position: relative;
+  width: 100%;
+}
+
 #timesheet.module001-timer-mode .module001-task-search {
   width: 100%;
   min-height: 44px;
@@ -49,14 +58,89 @@
   color: #172033;
 }
 
-#timesheet.module001-timer-mode .module001-task-search:focus,
-#timesheet.module001-timer-mode .module001-task-picker select:focus {
+#timesheet.module001-timer-mode .module001-task-search:focus {
   outline: 3px solid rgba(7, 89, 155, 0.18);
   border-color: #07599b;
+}
+
+#timesheet.module001-timer-mode .module001-task-results {
+  position: absolute;
+  z-index: 80;
+  top: calc(100% + 0.35rem);
+  left: 0;
+  right: 0;
+  max-height: min(420px, 55vh);
+  overflow-y: auto;
+  border: 1px solid #b9c9da;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 18px 45px rgba(15, 41, 69, 0.22);
+}
+
+#timesheet.module001-timer-mode .module001-task-result-group {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.65rem;
+}
+
+#timesheet.module001-timer-mode .module001-task-result-group + .module001-task-result-group {
+  border-top: 1px solid #e2e8f0;
+}
+
+#timesheet.module001-timer-mode .module001-task-result-group > strong {
+  padding: 0.25rem 0.45rem;
+  color: #526987;
+  font-size: 0.74rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+#timesheet.module001-timer-mode .module001-task-result-group button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: 44px;
+  border: 0;
+  border-radius: 10px;
+  padding: 0.65rem 0.75rem;
+  background: transparent;
+  color: #172033;
+  text-align: left;
+  cursor: pointer;
+}
+
+#timesheet.module001-timer-mode .module001-task-result-group button:hover,
+#timesheet.module001-timer-mode .module001-task-result-group button.active {
+  background: #e8f5fb;
+  color: #07599b;
+}
+
+#timesheet.module001-timer-mode .module001-task-result-group button[aria-selected='true'] {
+  box-shadow: inset 3px 0 0 #07599b;
+  font-weight: 800;
+}
+
+#timesheet.module001-timer-mode .module001-task-result-group button small {
+  flex: 0 0 auto;
+  color: #07599b;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+#timesheet.module001-timer-mode .module001-task-no-results {
+  padding: 1rem;
+  color: #667b96;
+  text-align: center;
 }
 
 @media (max-width: 760px) {
   #timesheet.module001-timer-mode .module001-timer-view {
     padding: 1rem;
+  }
+
+  #timesheet.module001-timer-mode .module001-task-results {
+    max-height: 48vh;
   }
 }
