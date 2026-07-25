@@ -1,5 +1,7 @@
 const RAW_HTTP_ERROR_PATTERN = /(?:(\/api\/[\w\-./?=&%]+)\s+)?returned\s+HTTP\s+(\d{3})(?:\s*:\s*([\s\S]+))?/i;
-const RAW_PERMISSION_PATTERN = /\b(?:explicit\s+denial|access\s+denied|forbidden|not\s+authorized|permission\s+denied)\b/i;
+const RAW_STATUS_ERROR_PATTERN = /\b(?:http|status|response|error)(?:\s+code)?\s*[:=]?\s*(\d{3})\b/i;
+const RAW_PERMISSION_PATTERN = /\b(?:explicit\s+denial|access\s+denied|forbidden|not\s+authorized|permission\s+denied|not\s+available\s+for\s+this\s+role)\b/i;
+const RAW_API_FAILURE_PATTERN = /\/api\/[\w\-./?=&%]+[\s\S]*\b(?:failed|failure|unavailable|could\s+not\s+be\s+verified|not\s+available|denied|timed\s+out)\b/i;
 const DIAGNOSTIC_ENDPOINT = '/api/client-diagnostics';
 const MAX_AUDIT_EVENTS_PER_SESSION = 20;
 
@@ -37,8 +39,16 @@ function cleanTechnicalDetail(value) {
 }
 
 function parseStatusFromText(text) {
-  const match = String(text || '').match(/\bHTTP\s+(\d{3})\b/i);
-  return match ? Number(match[1]) : null;
+  const source = String(text || '');
+  const httpMatch = source.match(/\bHTTP\s+(\d{3})\b/i);
+  if (httpMatch) return Number(httpMatch[1]);
+
+  const genericMatch = source.match(RAW_STATUS_ERROR_PATTERN);
+  if (genericMatch) return Number(genericMatch[1]);
+
+  if (RAW_PERMISSION_PATTERN.test(source)) return 403;
+  if (/module\s+availability\s+could\s+not\s+be\s+verified/i.test(source)) return 503;
+  return null;
 }
 
 function extractTechnicalCode(detail) {
@@ -163,8 +173,13 @@ function friendlyMessageFor(diagnostic) {
     return 'This feature is not available yet.';
   }
 
+  if ([502, 503, 504].includes(status)
+      && /module availability could not be verified|access.*could not be verified/.test(normalizedDetail)) {
+    return 'This information is temporarily unavailable while access is being verified. The rest of the page is still available.';
+  }
+
   if ([502, 503, 504].includes(status)) {
-    return 'This service is temporarily unavailable. Try again shortly.';
+    return 'A supporting service is temporarily unavailable. The rest of the page may still be available. Try again shortly.';
   }
 
   if (status >= 500) {
@@ -172,6 +187,19 @@ function friendlyMessageFor(diagnostic) {
   }
 
   return 'We could not complete the request. Check your connection and try again.';
+}
+
+function friendlyTitleFor(diagnostic) {
+  if (diagnostic.status === 401) return 'Sign-in unsuccessful';
+  if (diagnostic.status === 403) return 'Access is limited';
+  if (diagnostic.status === 404) return 'Information not found';
+  if (diagnostic.status === 409) return 'Refresh needed';
+  if (diagnostic.status === 429) return 'Please wait';
+  if (diagnostic.status === 501) return 'Feature unavailable';
+  if ([502, 503, 504].includes(diagnostic.status)) return 'Service temporarily unavailable';
+  if (diagnostic.status >= 500) return 'Something went wrong';
+  if (diagnostic.status === 400 || diagnostic.status === 422) return 'Review required';
+  return 'Request could not be completed';
 }
 
 function shouldShowReference(diagnostic) {
@@ -253,44 +281,72 @@ function capture(value, context = {}) {
   return { diagnostic, userMessage };
 }
 
+function friendlyErrorItem(value, context = {}) {
+  const { diagnostic, userMessage } = capture(value, context);
+  return {
+    message: userMessage,
+    referenceId: shouldShowReference(diagnostic) ? diagnostic.referenceId : null,
+    status: diagnostic.status,
+    title: friendlyTitleFor(diagnostic)
+  };
+}
+
 function isTechnicalErrorText(text) {
   const value = cleanTechnicalDetail(text);
   return RAW_HTTP_ERROR_PATTERN.test(value)
-    || (/\/api\//i.test(value) && /\b(?:401|403|409|429|5\d\d)\b/.test(value))
+    || RAW_STATUS_ERROR_PATTERN.test(value)
+    || RAW_API_FAILURE_PATTERN.test(value)
+    || (/\/api\//i.test(value) && /\b(?:401|403|404|409|422|429|5\d\d)\b/.test(value))
     || RAW_PERMISSION_PATTERN.test(value);
 }
 
 function shouldSkipElement(element) {
   if (!(element instanceof HTMLElement)) return true;
-  if (element.closest('.audit-history-panel, pre, code, script, style, textarea, select, option, [data-projectpulse-technical-diagnostic]')) return true;
-  if (element.matches('input, textarea, select, option, button')) return true;
-  return false;
+  return Boolean(element.closest([
+    '.audit-history-panel',
+    'pre',
+    'code',
+    'script',
+    'style',
+    'textarea',
+    'select',
+    'option',
+    'input',
+    'button',
+    '[contenteditable="true"]',
+    '[data-projectpulse-technical-diagnostic]',
+    '[data-projectpulse-error-policy-exempt]'
+  ].join(', ')));
 }
 
-function presentElement(element) {
-  if (shouldSkipElement(element)) return;
-  const rawText = cleanTechnicalDetail(element.textContent);
-  if (!isTechnicalErrorText(rawText)) return;
+function isCompactErrorContainer(element) {
+  return ['LI', 'TD', 'TH', 'DD', 'DT'].includes(element.tagName)
+    || Boolean(element.closest('ul, ol, table, dl'));
+}
 
-  const { diagnostic, userMessage } = capture(rawText, { contextLabel: 'visible user interface' });
+function renderFriendlyError(element, diagnostic, userMessage) {
   const fingerprint = diagnostic.fingerprint;
   if (element.dataset.projectpulseFriendlyError === fingerprint) return;
 
+  const compact = isCompactErrorContainer(element);
   element.dataset.projectpulseFriendlyError = fingerprint;
   element.classList.add('projectpulse-friendly-error');
+  if (compact) element.classList.add('compact');
   element.setAttribute('role', 'alert');
   element.setAttribute('aria-live', 'polite');
   element.textContent = '';
 
-  const title = document.createElement('strong');
-  title.className = 'projectpulse-friendly-error-title';
-  title.textContent = diagnostic.status === 403 ? 'Access is limited' : 'Request could not be completed';
+  if (!compact) {
+    const title = document.createElement('strong');
+    title.className = 'projectpulse-friendly-error-title';
+    title.textContent = friendlyTitleFor(diagnostic);
+    element.append(title);
+  }
 
   const message = document.createElement('span');
   message.className = 'projectpulse-friendly-error-message';
   message.textContent = userMessage;
-
-  element.append(title, message);
+  element.append(message);
 
   if (shouldShowReference(diagnostic)) {
     const reference = document.createElement('small');
@@ -300,19 +356,41 @@ function presentElement(element) {
   }
 }
 
+function presentTextNode(textNode) {
+  if (!textNode || textNode.nodeType !== Node.TEXT_NODE) return;
+  const element = textNode.parentElement;
+  if (!element || shouldSkipElement(element)) return;
+
+  const rawText = cleanTechnicalDetail(textNode.nodeValue);
+  if (!isTechnicalErrorText(rawText)) return;
+
+  const { diagnostic, userMessage } = capture(rawText, {
+    contextLabel: isCompactErrorContainer(element)
+      ? 'nested user-interface error detail'
+      : 'visible user interface'
+  });
+  renderFriendlyError(element, diagnostic, userMessage);
+}
+
+function collectTechnicalTextNodes(root) {
+  const start = root instanceof HTMLElement ? root : root?.parentElement || document.body;
+  if (!start || shouldSkipElement(start)) return [];
+
+  const nodes = [];
+  const walker = document.createTreeWalker(start, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      if (!node?.parentElement || shouldSkipElement(node.parentElement)) return NodeFilter.FILTER_REJECT;
+      return isTechnicalErrorText(node.nodeValue) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+    }
+  });
+
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  return nodes;
+}
+
 function scan(root = document.body) {
   if (!root) return;
-
-  const elements = [];
-  if (root instanceof HTMLElement) elements.push(root);
-  if (root.querySelectorAll) {
-    root.querySelectorAll('.error-text, .auth-status, .manager-empty-state.error, [role="alert"], [aria-live="assertive"], [aria-live="polite"], p, span, div, small').forEach((element) => elements.push(element));
-  }
-
-  elements.forEach((element) => {
-    if (element.children.length > 0 && !element.classList.contains('error-text') && !element.classList.contains('auth-status')) return;
-    presentElement(element);
-  });
+  collectTechnicalTextNodes(root).forEach(presentTextNode);
 }
 
 function install() {
@@ -361,11 +439,19 @@ function install() {
 
 window.ProjectPulseErrorPresentation = Object.freeze({
   capture,
+  friendlyErrorItem,
   friendlyMessageFor,
+  friendlyTitleFor,
   diagnosticFrom,
   scan
 });
 
 install();
 
-export { capture, diagnosticFrom, friendlyMessageFor };
+export {
+  capture,
+  diagnosticFrom,
+  friendlyErrorItem,
+  friendlyMessageFor,
+  friendlyTitleFor
+};
