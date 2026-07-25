@@ -86,9 +86,15 @@ if (fullBackendAvailable) {
   ]) {
     requireText(backend, contract, 'sanitized client diagnostic endpoint');
   }
-  rejectText(backend, 'RawMessage', 'backend diagnostic payload');
-  rejectText(backend, 'StackTrace', 'backend diagnostic payload');
-  rejectText(backend, 'Password', 'backend diagnostic payload');
+
+  const backendPayloadStart = backend.indexOf('var diagnostic = new');
+  const backendPayloadEnd = backend.indexOf('try\n        {', backendPayloadStart);
+  assert.ok(backendPayloadStart >= 0 && backendPayloadEnd > backendPayloadStart, 'backend diagnostic payload boundary missing');
+  const backendPayload = backend.slice(backendPayloadStart, backendPayloadEnd);
+  for (const forbidden of ['RawMessage', 'StackTrace', 'Password', 'Token', 'RequestBody', 'ResponseBody']) {
+    rejectText(backendPayload, forbidden, 'backend diagnostic payload');
+  }
+
   requireText(project, 'app.MapClientDiagnosticEndpoints();', 'backend endpoint registration');
 }
 
