@@ -64,8 +64,13 @@ requireText(main, './App.Module001.g.jsx', 'generated App import');
 requireText(main, '<TimesheetEnhancementPortal />', 'portal root integration');
 
 requireText(portalEntry, '/api/assignments/available-tasks?weekStart=', 'shared available-task timer refresh');
+requireText(portalEntry, '/api/timesheet/work-queue?weekStart=', 'authoritative timer assignment refresh');
 rejectText(portalEntry, '/api/timesheet/timers/targets?weekStart=', 'divergent timer-only task source');
-requireText(portalEntry, 'normalizeAvailableTask', 'available-task normalization');
+requireText(portalEntry, 'Promise.allSettled', 'independent task and assignment refresh');
+requireText(portalEntry, 'projectTaskKey', 'project and task join key');
+requireText(portalEntry, 'buildWorkQueueAssignmentIndex', 'authoritative assignment index');
+requireText(portalEntry, 'assignmentIndex.get(projectTaskKey(task))', 'available-task assignment join');
+requireText(portalEntry, 'normalizeAvailableTask(task, assignmentIndex)', 'joined available-task normalization');
 requireText(portalEntry, 'canonicalWorkTypeGroup', 'shared Work Type classification');
 requireText(portalEntry, "workType === 'project' || workType === 'iqs'", 'Project and IQS regular-task routing');
 requireText(portalEntry, "? 'Regular Tasks'", 'regular task group');
@@ -181,6 +186,8 @@ if (backendAvailable) {
   requireText(data, 'if (forUpdate) sql += " FOR UPDATE OF t";', 'timer-row-only PostgreSQL lock');
   rejectText(data, 'if (forUpdate) sql += " FOR UPDATE";', 'outer-join-wide PostgreSQL lock');
   rejectText(endpoints, 'Module001TimerStartRequest(Guid UserId', 'browser-supplied timer identity');
+  requireText(endpoints, 'app.MapGet("/api/timesheet/work-queue"', 'authoritative timer assignment endpoint');
+  requireText(endpoints, 'assignmentId = reader.GetGuid(0)', 'work-queue assignment identifier');
 
   requireText(timerTargets, '/api/timesheet/timers/start-by-code', 'category-code start route');
   requireText(timerTargets, 'Module001TimerStartByCodeRequest', 'category-code request contract');
@@ -205,4 +212,4 @@ if (backendAvailable) {
   requireText(rollback, 'DROP TABLE IF EXISTS module001_timer_sessions', 'reviewed rollback');
 }
 
-console.log(`MODULE_001_TIMESHEET_TIMER_MOBILE_VALIDATION=PASS roundingCases=${roundingCases.length} backend=${backendAvailable ? 'full' : 'frontend-container'} architecture=streamlined sharedAvailableTasks=true autocompleteCombobox=true`);
+console.log(`MODULE_001_TIMESHEET_TIMER_MOBILE_VALIDATION=PASS roundingCases=${roundingCases.length} backend=${backendAvailable ? 'full' : 'frontend-container'} architecture=streamlined sharedAvailableTasks=true assignmentJoin=true autocompleteCombobox=true`);
