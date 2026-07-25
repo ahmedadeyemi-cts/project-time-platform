@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       release_commit:
-        description: Exact verified runtime data hotfix commit
+        description: Exact verified direct runtime data commit
         required: true
-        default: 62bf874ae3a184554bc52960ef878a2f39ab67ef
+        default: 34d66764d8e84d683abd677981c79e6dbd20d94f
         type: string
       confirmation:
         description: Enter DEPLOY-RUNTIME-DATA-HOTFIX-TO-TEST
@@ -23,11 +23,11 @@ concurrency:
 
 jobs:
   deploy:
-    name: Guarded runtime data API and web test deployment
+    name: Guarded direct runtime data API and web test deployment
     environment: test
     runs-on: ubuntu-latest
     env:
-      EXPECTED_RELEASE_COMMIT: 62bf874ae3a184554bc52960ef878a2f39ab67ef
+      EXPECTED_RELEASE_COMMIT: 34d66764d8e84d683abd677981c79e6dbd20d94f
     steps:
       - name: Check out deployment controls
         uses: actions/checkout@v5
@@ -35,14 +35,14 @@ jobs:
           path: control
           fetch-depth: 0
 
-      - name: Check out exact runtime data hotfix
+      - name: Check out exact direct runtime data release
         uses: actions/checkout@v5
         with:
           ref: ${{ inputs.release_commit }}
           path: release
           fetch-depth: 1
 
-      - name: Guard workflow source and hotfix release
+      - name: Guard workflow source and release
         id: release
         shell: bash
         run: |
@@ -55,25 +55,27 @@ jobs:
           TARGET_COMMIT="$(git -C release rev-parse HEAD)"
           [[ "$CONTROL_COMMIT" == '${{ github.sha }}' ]]
           [[ "$TARGET_COMMIT" == '${{ inputs.release_commit }}' ]]
-          [[ "$TARGET_COMMIT" == "$EXPECTED_RELEASE_COMMIT" ]] || { echo 'Only the verified runtime data hotfix may deploy.' >&2; exit 1; }
-          git -C control merge-base --is-ancestor "$TARGET_COMMIT" HEAD || { echo 'The hotfix is not an ancestor of the deployment-control commit.' >&2; exit 1; }
+          [[ "$TARGET_COMMIT" == "$EXPECTED_RELEASE_COMMIT" ]] || { echo 'Only the verified direct runtime data release may deploy.' >&2; exit 1; }
+          git -C control merge-base --is-ancestor "$TARGET_COMMIT" HEAD || { echo 'The release is not an ancestor of the deployment-control commit.' >&2; exit 1; }
 
           test -f release/src/backend/ProjectTime.Api/Modules/RuntimeDataCompatibilityModule.cs
-          test -f release/src/frontend/project-time-web/src/api-json-response.js
+          test -f release/src/frontend/project-time-web/src/role-permission-model.js
+          test -f release/src/frontend/project-time-web/src/role-permission-matrix-model.js
+          test -f release/src/frontend/project-time-web/src/module001/PtcTimesheetManagementPortal.jsx
           test -f release/src/frontend/project-time-web/src/runtime-data-compatibility.js
-          test -f release/src/frontend/project-time-web/src/module001/PtcRuntimeTaskCatalog.jsx
           test -f release/src/frontend/project-time-web/scripts/validate-runtime-role-policy-ptc-data.mjs
+          test -f release/deployment/containers/runtime-data-validator/Dockerfile
+          test -f release/scripts/verify-direct-runtime-data-test.sh
 
-          grep -Fq '/api/runtime/role-policy/summary' release/src/backend/ProjectTime.Api/Modules/RuntimeDataCompatibilityModule.cs
-          grep -Fq '/api/runtime/role-policy/matrix' release/src/backend/ProjectTime.Api/Modules/RuntimeDataCompatibilityModule.cs
-          grep -Fq '/api/runtime/timesheet/steward/users' release/src/backend/ProjectTime.Api/Modules/RuntimeDataCompatibilityModule.cs
-          grep -Fq 'PtcManagedRoleAliases' release/src/backend/ProjectTime.Api/Modules/RuntimeDataCompatibilityModule.cs
-          grep -Fq 'Requests / Service Requests' release/src/backend/ProjectTime.Api/Modules/RuntimeDataCompatibilityModule.cs
-          grep -Fq 'Project Tasks' release/src/backend/ProjectTime.Api/Modules/RuntimeDataCompatibilityModule.cs
-          grep -Fq 'Non-Project Time' release/src/backend/ProjectTime.Api/Modules/RuntimeDataCompatibilityModule.cs
-          grep -Fq 'runtime_api_non_json_response' release/src/frontend/project-time-web/src/runtime-data-compatibility.js
-          grep -Fq 'unwrapApiPayload' release/src/frontend/project-time-web/src/api-json-response.js
-          grep -Fq '<PtcRuntimeTaskCatalog />' release/src/frontend/project-time-web/src/main.jsx
+          grep -Fq "'/api/role-policy/summary': '/api/runtime/role-policy/summary'" release/src/frontend/project-time-web/src/role-permission-model.js
+          grep -Fq "'/api/role-policy/matrix': '/api/runtime/role-policy/matrix'" release/src/frontend/project-time-web/src/role-permission-matrix-model.js
+          grep -Fq '/api/runtime/timesheet/steward/users?weekStart=' release/src/frontend/project-time-web/src/module001/PtcTimesheetManagementPortal.jsx
+          grep -Fq '/workspace?weekStart=' release/src/frontend/project-time-web/src/module001/PtcTimesheetManagementPortal.jsx
+          grep -Fq "'X-Project-Pulse-Session'" release/src/frontend/project-time-web/src/role-permission-model.js
+          grep -Fq "'X-Session-Token'" release/src/frontend/project-time-web/src/module001/PtcTimesheetManagementPortal.jsx
+          grep -Fq 'The server returned 0 eligible users.' release/src/frontend/project-time-web/src/module001/PtcTimesheetManagementPortal.jsx
+          grep -Fq 'runtime_api_contract_incomplete' release/src/frontend/project-time-web/src/runtime-data-compatibility.js
+          grep -Fq 'DIRECT_RUNTIME_DATA_VALIDATION=PASS' release/scripts/verify-direct-runtime-data-test.sh
 
           echo "target_commit=$TARGET_COMMIT" >> "$GITHUB_OUTPUT"
 
@@ -82,6 +84,12 @@ jobs:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Load test database connection
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_API_APP: ${{ vars.AZURE_API_APP }}
+        run: bash control/scripts/export-pr55-test-database-url.sh
 
       - name: Capture current immutable API and web images
         id: before
@@ -111,7 +119,7 @@ jobs:
           echo "old_api_image=$(resolve_digest "$RAW_API")" >> "$GITHUB_OUTPUT"
           echo "old_web_image=$(resolve_digest "$RAW_WEB")" >> "$GITHUB_OUTPUT"
 
-      - name: Build immutable runtime data API and web images
+      - name: Build immutable API, web, and validation images
         id: build
         working-directory: release
         shell: bash
@@ -120,12 +128,25 @@ jobs:
           SHA='${{ steps.release.outputs.target_commit }}'
           API_REPO='project-health-dashboard-api'
           WEB_REPO='project-health-dashboard-web'
-          API_DIGEST="$(../control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "$API_REPO:runtime-data-$SHA" deployment/containers/api/Dockerfile .)"
-          WEB_DIGEST="$(../control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "$WEB_REPO:runtime-data-$SHA" deployment/containers/web/Dockerfile .)"
+          VALIDATOR_REPO='project-health-dashboard-runtime-validator'
+          API_DIGEST="$(../control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "$API_REPO:direct-runtime-$SHA" deployment/containers/api/Dockerfile .)"
+          WEB_DIGEST="$(../control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "$WEB_REPO:direct-runtime-$SHA" deployment/containers/web/Dockerfile .)"
+          VALIDATOR_DIGEST="$(../control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "$VALIDATOR_REPO:direct-runtime-$SHA" deployment/containers/runtime-data-validator/Dockerfile .)"
           echo "api_image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/$API_REPO@$API_DIGEST" >> "$GITHUB_OUTPUT"
           echo "web_image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/$WEB_REPO@$WEB_DIGEST" >> "$GITHUB_OUTPUT"
+          echo "validator_image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/$VALIDATOR_REPO@$VALIDATOR_DIGEST" >> "$GITHUB_OUTPUT"
 
-      - name: Deploy runtime data API
+      - name: Verify live role, module, policy, and eligible-user data privately
+        shell: bash
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_API_APP: ${{ vars.AZURE_API_APP }}
+          AZURE_ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
+          RUNTIME_DATA_VALIDATION_IMAGE: ${{ steps.build.outputs.validator_image }}
+          RUNTIME_DATA_VALIDATION_JOB_NAME: rtdv-${{ github.run_id }}-${{ github.run_attempt }}
+        run: bash control/scripts/run-direct-runtime-data-validation-job.sh
+
+      - name: Deploy direct runtime data API
         id: deploy_api
         shell: bash
         run: |
@@ -134,7 +155,7 @@ jobs:
           az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' \
             --image '${{ steps.build.outputs.api_image }}' \
             --set-env-vars PROJECTPULSE_ENVIRONMENT=test PROJECTPULSE_SOURCE_COMMIT='${{ steps.release.outputs.target_commit }}' \
-            --revision-suffix "rtdataapi-${GITHUB_RUN_ID}" --output none
+            --revision-suffix "drtapi-${GITHUB_RUN_ID}" --output none
 
       - name: Validate runtime API routes and JSON protection
         shell: bash
@@ -146,18 +167,16 @@ jobs:
           wait_status() {
             local url="$1" expected="$2" status='' content_type=''
             for attempt in $(seq 1 30); do
-              status="$(curl -sS -D /tmp/runtime-headers -o /tmp/runtime-body -w '%{http_code}' -H 'Cache-Control: no-cache' "$url" || true)"
-              content_type="$(awk 'BEGIN{IGNORECASE=1} /^content-type:/ {gsub(/\r/, ""); print $2}' /tmp/runtime-headers | tail -1)"
+              status="$(curl -sS -D /tmp/direct-runtime-headers -o /tmp/direct-runtime-body -w '%{http_code}' -H 'Cache-Control: no-cache' "$url" || true)"
+              content_type="$(awk 'BEGIN{IGNORECASE=1} /^content-type:/ {gsub(/\r/, ""); print $2}' /tmp/direct-runtime-headers | tail -1)"
               if [[ ",$expected," == *",$status,"* ]]; then
-                if [[ "$status" == 200 || "$status" == 401 || "$status" == 403 ]]; then
-                  [[ "$content_type" == application/json* ]] || { echo "$url returned non-JSON content type: $content_type" >&2; return 1; }
-                fi
+                [[ "$content_type" == application/json* ]] || { echo "$url returned non-JSON content type: $content_type" >&2; cat /tmp/direct-runtime-body >&2 || true; return 1; }
                 return 0
               fi
               sleep 10
             done
             echo "$url returned $status" >&2
-            cat /tmp/runtime-body >&2 || true
+            cat /tmp/direct-runtime-body >&2 || true
             return 1
           }
 
@@ -167,7 +186,7 @@ jobs:
           wait_status "$BASE/api/runtime/role-policy/matrix" '401,403'
           wait_status "$BASE/api/runtime/timesheet/steward/users?weekStart=2026-07-19" '401,403'
 
-      - name: Deploy runtime data web
+      - name: Deploy direct runtime data web
         id: deploy_web
         shell: bash
         run: |
@@ -175,9 +194,9 @@ jobs:
           echo 'started=true' >> "$GITHUB_OUTPUT"
           az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' \
             --image '${{ steps.build.outputs.web_image }}' \
-            --revision-suffix "rtdataweb-${GITHUB_RUN_ID}" --output none
+            --revision-suffix "drtweb-${GITHUB_RUN_ID}" --output none
 
-      - name: Validate served runtime data assets and exact images
+      - name: Validate served direct runtime assets and exact images
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -186,23 +205,28 @@ jobs:
           READY=false
 
           for attempt in $(seq 1 30); do
-            BUSTER="runtime-data-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-$attempt"
-            STATUS="$(curl -sSL -H 'Cache-Control: no-cache' -o /tmp/runtime-index.html -w '%{http_code}' "$BASE/?release_check=$BUSTER" || true)"
-            JS="$(sed -nE 's/.*src="([^"]+\.js)".*/\1/p' /tmp/runtime-index.html | head -1)"
+            BUSTER="direct-runtime-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-$attempt"
+            STATUS="$(curl -sSL -H 'Cache-Control: no-cache' -o /tmp/direct-runtime-index.html -w '%{http_code}' "$BASE/?release_check=$BUSTER" || true)"
+            JS="$(sed -nE 's/.*src="([^"]+\.js)".*/\1/p' /tmp/direct-runtime-index.html | head -1)"
             if [[ "$STATUS" == 200 && -n "$JS" ]]; then
               case "$JS" in
                 http*) URL="$JS" ;;
                 /*) URL="$BASE$JS" ;;
                 *) URL="$BASE/$JS" ;;
               esac
-              curl -sSL -H 'Cache-Control: no-cache' -o /tmp/runtime-app.js "$URL?release_check=$BUSTER" || true
-              if grep -Fq 'projectpulse-runtime-data-2026-07-25' /tmp/runtime-app.js \
-                && grep -Fq '/api/runtime/role-policy/summary' /tmp/runtime-app.js \
-                && grep -Fq '/api/runtime/timesheet/steward/users' /tmp/runtime-app.js \
-                && grep -Fq 'Requests / Service Requests' /tmp/runtime-app.js \
-                && grep -Fq 'Project Tasks' /tmp/runtime-app.js \
-                && grep -Fq 'Non-Project Time' /tmp/runtime-app.js \
-                && grep -Fq 'runtime_api_non_json_response' /tmp/runtime-app.js; then
+              curl -sSL -H 'Cache-Control: no-cache' -o /tmp/direct-runtime-app.js "$URL?release_check=$BUSTER" || true
+              if grep -Fq 'projectpulse-runtime-data-direct-auth-2026-07-25' /tmp/direct-runtime-app.js \
+                && grep -Fq '/api/runtime/role-policy/summary' /tmp/direct-runtime-app.js \
+                && grep -Fq '/api/runtime/role-policy/matrix' /tmp/direct-runtime-app.js \
+                && grep -Fq '/api/runtime/timesheet/steward/users' /tmp/direct-runtime-app.js \
+                && grep -Fq 'X-Project-Pulse-Session' /tmp/direct-runtime-app.js \
+                && grep -Fq 'X-Session-Token' /tmp/direct-runtime-app.js \
+                && grep -Fq 'runtime_api_contract_incomplete' /tmp/direct-runtime-app.js \
+                && grep -Fq 'The server returned 0 eligible users.' /tmp/direct-runtime-app.js \
+                && grep -Fq 'Select an eligible user' /tmp/direct-runtime-app.js \
+                && grep -Fq 'Requests / Service Requests' /tmp/direct-runtime-app.js \
+                && grep -Fq 'Project Tasks' /tmp/direct-runtime-app.js \
+                && grep -Fq 'Non-Project Time' /tmp/direct-runtime-app.js; then
                 READY=true
                 break
               fi
@@ -210,27 +234,27 @@ jobs:
             sleep 10
           done
 
-          [[ "$READY" == true ]] || { echo 'Runtime data hotfix markers were not served.' >&2; exit 1; }
+          [[ "$READY" == true ]] || { echo 'Direct runtime data markers were not served.' >&2; exit 1; }
           ACTIVE_API="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
           ACTIVE_WEB="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
           [[ "$ACTIVE_API" == '${{ steps.build.outputs.api_image }}' ]]
           [[ "$ACTIVE_WEB" == '${{ steps.build.outputs.web_image }}' ]]
 
-      - name: Write runtime data hotfix deployment evidence
+      - name: Write direct runtime data deployment evidence
         if: success()
         shell: bash
         run: |
           mkdir -p evidence
-          cat > evidence/runtime-data-hotfix-test-deployment.json <<JSON
-          {"environment":"test","releaseCommit":"${{ steps.release.outputs.target_commit }}","workflowCommit":"${{ github.sha }}","runId":"${{ github.run_id }}","apiImage":"${{ steps.build.outputs.api_image }}","webImage":"${{ steps.build.outputs.web_image }}","previousApiImage":"${{ steps.before.outputs.old_api_image }}","previousWebImage":"${{ steps.before.outputs.old_web_image }}","databaseChanges":"none","runtimeAliases":"validated","servedAssets":"validated"}
+          cat > evidence/direct-runtime-data-test-deployment.json <<JSON
+          {"environment":"test","releaseCommit":"${{ steps.release.outputs.target_commit }}","workflowCommit":"${{ github.sha }}","runId":"${{ github.run_id }}","apiImage":"${{ steps.build.outputs.api_image }}","webImage":"${{ steps.build.outputs.web_image }}","validatorImage":"${{ steps.build.outputs.validator_image }}","previousApiImage":"${{ steps.before.outputs.old_api_image }}","previousWebImage":"${{ steps.before.outputs.old_web_image }}","databaseChanges":"none","readOnlyDatabaseValidation":"passed","runtimeAliases":"validated","servedAssets":"validated"}
           JSON
 
-      - name: Upload runtime data hotfix deployment evidence
+      - name: Upload direct runtime data deployment evidence
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: runtime-data-hotfix-test-deployment-${{ github.run_id }}
-          path: evidence/runtime-data-hotfix-test-deployment.json
+          name: direct-runtime-data-test-deployment-${{ github.run_id }}
+          path: evidence/direct-runtime-data-test-deployment.json
           retention-days: 30
 
       - name: Roll back API and web images on failure
@@ -240,7 +264,7 @@ jobs:
           set +e
           az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' \
             --image '${{ steps.before.outputs.old_api_image }}' \
-            --revision-suffix "rtapirb-${GITHUB_RUN_ID}" --output none
+            --revision-suffix "drtapirb-${GITHUB_RUN_ID}" --output none
           az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' \
             --image '${{ steps.before.outputs.old_web_image }}' \
-            --revision-suffix "rtwebrb-${GITHUB_RUN_ID}" --output none
+            --revision-suffix "drtwebrb-${GITHUB_RUN_ID}" --output none
