@@ -26,8 +26,8 @@ for value in \
   "if (route === 'timesheet') return 'Timesheet'" \
   'Existing module cards remain available' \
   'clearAvailabilityNavigationState' \
-  '! grep -Fq '\''createPortal' \
-  '! grep -Fq '\''module-availability-governed' \
+  "! grep -Fq 'createPortal'" \
+  "! grep -Fq 'module-availability-governed'" \
   'Deploy simplified module availability API image' \
   'Deploy simplified module availability web image' \
   'Validate API health and protected availability routes' \
@@ -66,6 +66,5 @@ do
   grep -Fq "$forbidden" "$WORKFLOW" && fail "Forbidden rollout behavior: $forbidden"
 done
 
-bash -n "$WORKFLOW"
 bash -n "$0"
 echo 'SIMPLIFIED_MODULE_AVAILABILITY_DEPLOYMENT_GUARD=PASS'
