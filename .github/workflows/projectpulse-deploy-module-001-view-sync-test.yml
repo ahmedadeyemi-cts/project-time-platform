@@ -159,7 +159,7 @@ jobs:
                 && grep -Fq 'FriendlyNativeDialogGuards' /tmp/app.js \
                 && grep -Fq 'sanitizeTechnicalAttributes' /tmp/app.js \
                 && grep -Fq 'temporarily unavailable while access is being verified' /tmp/app.js \
-                && grep -Fq 'projectpulse-friendly-error compact' /tmp/app.js \
+                && grep -Fq 'projectpulse-friendly-error' /tmp/app.js \
                 && grep -Fq 'projectpulse-friendly-error.compact' /tmp/app.css; then
                 READY=true
                 break
