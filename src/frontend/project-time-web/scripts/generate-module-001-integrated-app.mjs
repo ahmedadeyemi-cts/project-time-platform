@@ -71,6 +71,27 @@ generated = generated.replace(
   "import SystemUserGuide from './SystemUserGuide.Module001.g.jsx';"
 );
 
+const yearlyUtilizationImport = "import YearlyUtilizationPanel from './YearlyUtilizationPanel.jsx';";
+if (!generated.includes(yearlyUtilizationImport)) {
+  throw new Error('Generated app could not locate the Module 003 utilization import.');
+}
+generated = generated.replace(
+  yearlyUtilizationImport,
+  `${yearlyUtilizationImport}\nimport { getRollingYearOptions } from './rolling-year-window.js';`
+);
+
+const holidayYearOptionsBlock = `  const holidayYearOptions = useMemo(() => {
+    const currentYear = new Date().getFullYear();
+    return Array.from({ length: 11 }, (_, index) => String(currentYear + index));
+  }, []);`;
+if (!generated.includes(holidayYearOptionsBlock)) {
+  throw new Error('Generated app could not locate the Module 004 hard-coded holiday year window.');
+}
+generated = generated.replace(
+  holidayYearOptionsBlock,
+  '  const holidayYearOptions = getRollingYearOptions().map(String);'
+);
+
 const removedViewDefinitions = [
   "            { key: 'queue', label: 'My Work Queue', description: 'Assigned tasks and requests' },\n",
   "            { key: 'calendar', label: 'Calendar / Timeline', description: 'Week-at-a-glance totals' }\n"
@@ -206,6 +227,8 @@ for (const required of [
   'canonicalCalendarEntries',
   "setTimesheetView('weekly')",
   "./SystemUserGuide.Module001.g.jsx",
+  "import { getRollingYearOptions } from './rolling-year-window.js';",
+  'const holidayYearOptions = getRollingYearOptions().map(String);',
   'timesheetView',
   'async function handleSubmit()'
 ]) {
@@ -214,9 +237,10 @@ for (const required of [
 
 for (const retired of [
   "{ key: 'queue', label: 'My Work Queue'",
-  "{ key: 'calendar', label: 'Calendar / Timeline'"
+  "{ key: 'calendar', label: 'Calendar / Timeline'",
+  'Array.from({ length: 11 }, (_, index) => String(currentYear + index))'
 ]) {
-  if (generated.includes(retired)) throw new Error(`Generated App still exposes retired view: ${retired}`);
+  if (generated.includes(retired)) throw new Error(`Generated App still exposes retired contract: ${retired}`);
 }
 
 if (generated.includes('MODULE_001_GENERATOR_ALREADY_APPLIED')) {
@@ -234,4 +258,4 @@ fs.writeFileSync(
   'utf8'
 );
 
-console.log(`MODULE_001_APP_GENERATION=PASS app=${path.relative(webRoot, appOutputPath)} guide=${path.relative(webRoot, guideOutputPath)} draftGuardsRemoved=2 retiredTabsRemoved=2`);
+console.log(`MODULE_001_APP_GENERATION=PASS app=${path.relative(webRoot, appOutputPath)} guide=${path.relative(webRoot, guideOutputPath)} draftGuardsRemoved=2 retiredTabsRemoved=2 rollingYears=modules003004`);

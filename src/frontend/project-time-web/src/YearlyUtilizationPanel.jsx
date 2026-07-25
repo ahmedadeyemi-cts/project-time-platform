@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { getRollingYearOptions } from './rolling-year-window.js';
 
 function getProjectPulseAuthHeaders() {
   try {
@@ -27,10 +28,10 @@ async function fetchJson(path) {
 
 export default function YearlyUtilizationPanel() {
   const currentYear = new Date().getFullYear();
-  const [selectedYear, setSelectedYear] = useState(currentYear >= 2026 && currentYear <= 2036 ? currentYear : 2026);
+  const [selectedYear, setSelectedYear] = useState(currentYear);
   const [data, setData] = useState({ loading: true, error: null, payload: null });
 
-  const availableYears = useMemo(() => Array.from({ length: 11 }, (_, index) => 2026 + index), []);
+  const availableYears = useMemo(() => getRollingYearOptions(currentYear), [currentYear]);
 
   async function loadYearlyUtilization(year) {
     setData({ loading: true, error: null, payload: null });
