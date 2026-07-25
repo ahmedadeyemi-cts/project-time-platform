@@ -65,7 +65,7 @@ grep -Fq 'git -C control merge-base --is-ancestor' "$WORKFLOW" || fail "Release 
 grep -Fq '@$DIGEST' "$WORKFLOW" || fail "Immutable web digest construction is missing."
 grep -Fq 'steps.before.outputs.old_web_image' "$WORKFLOW" || fail "Web rollback image capture is missing."
 grep -Fq '[[ "$ACTIVE_WEB" == ' "$WORKFLOW" || fail "Exact active web image validation is missing."
-grep -Fq '[[ -s /tmp/app.js' "$WORKFLOW" || fail "Served JavaScript non-empty validation is missing."
+grep -Fq '&& -s /tmp/app.js' "$WORKFLOW" || fail "Served JavaScript non-empty validation is missing."
 grep -Fq '&& -s /tmp/app.css' "$WORKFLOW" || fail "Served CSS non-empty validation is missing."
 
 for brittle in \
