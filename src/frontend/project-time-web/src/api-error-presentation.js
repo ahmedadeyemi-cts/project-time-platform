@@ -4,6 +4,13 @@ const RAW_PERMISSION_PATTERN = /\b(?:explicit\s+denial|access\s+denied|forbidden
 const RAW_API_FAILURE_PATTERN = /\/api\/[\w\-./?=&%]+[\s\S]*\b(?:failed|failure|unavailable|could\s+not\s+be\s+verified|not\s+available|denied|timed\s+out)\b/i;
 const DIAGNOSTIC_ENDPOINT = '/api/client-diagnostics';
 const MAX_AUDIT_EVENTS_PER_SESSION = 20;
+const ERROR_ATTRIBUTE_NAMES = Object.freeze([
+  'title',
+  'aria-label',
+  'data-tooltip',
+  'data-error',
+  'data-message'
+]);
 
 const referenceByFingerprint = new Map();
 const loggedFingerprints = new Set();
@@ -388,14 +395,70 @@ function collectTechnicalTextNodes(root) {
   return nodes;
 }
 
+function formatDialogMessage(diagnostic, userMessage) {
+  const reference = shouldShowReference(diagnostic)
+    ? `\n\nReference: ${diagnostic.referenceId}`
+    : '';
+  return `${friendlyTitleFor(diagnostic)}\n\n${userMessage}${reference}`;
+}
+
+function installNativeDialogGuards() {
+  if (window.__projectPulseFriendlyNativeDialogGuardsInstalled) return;
+  window.__projectPulseFriendlyNativeDialogGuardsInstalled = true;
+
+  const nativeAlert = window.alert.bind(window);
+  const nativeConfirm = window.confirm.bind(window);
+
+  window.alert = (message) => {
+    if (!isTechnicalErrorText(message)) return nativeAlert(message);
+    const { diagnostic, userMessage } = capture(message, { contextLabel: 'browser alert' });
+    return nativeAlert(formatDialogMessage(diagnostic, userMessage));
+  };
+
+  window.confirm = (message) => {
+    if (!isTechnicalErrorText(message)) return nativeConfirm(message);
+    const { diagnostic, userMessage } = capture(message, { contextLabel: 'browser confirmation' });
+    return nativeConfirm(formatDialogMessage(diagnostic, userMessage));
+  };
+}
+
+function sanitizeTechnicalAttributes(root) {
+  const start = root instanceof HTMLElement ? root : root?.parentElement || document.body;
+  if (!start || shouldSkipElement(start)) return;
+
+  const selector = ERROR_ATTRIBUTE_NAMES.map((name) => `[${name}]`).join(', ');
+  const elements = [];
+  if (start.matches?.(selector)) elements.push(start);
+  start.querySelectorAll?.(selector).forEach((element) => elements.push(element));
+
+  elements.forEach((element) => {
+    if (shouldSkipElement(element)) return;
+
+    ERROR_ATTRIBUTE_NAMES.forEach((attributeName) => {
+      const rawValue = element.getAttribute(attributeName);
+      if (!isTechnicalErrorText(rawValue)) return;
+
+      const { diagnostic, userMessage } = capture(rawValue, {
+        contextLabel: `user-interface ${attributeName} attribute`
+      });
+      const reference = shouldShowReference(diagnostic)
+        ? ` Reference: ${diagnostic.referenceId}`
+        : '';
+      element.setAttribute(attributeName, `${userMessage}${reference}`);
+    });
+  });
+}
+
 function scan(root = document.body) {
   if (!root) return;
+  sanitizeTechnicalAttributes(root);
   collectTechnicalTextNodes(root).forEach(presentTextNode);
 }
 
 function install() {
   if (window.__projectPulseFriendlyErrorPresentationInstalled) return;
   window.__projectPulseFriendlyErrorPresentationInstalled = true;
+  installNativeDialogGuards();
 
   const queuedRoots = new Set();
   let scheduled = false;
@@ -421,13 +484,20 @@ function install() {
   const observer = new MutationObserver((mutations) => {
     mutations.forEach((mutation) => {
       if (mutation.type === 'characterData') queue(mutation.target.parentElement);
+      if (mutation.type === 'attributes') queue(mutation.target);
       mutation.addedNodes.forEach((node) => queue(node instanceof HTMLElement ? node : node.parentElement));
     });
   });
 
   const startObserver = () => {
     if (!document.body) return;
-    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+      attributes: true,
+      attributeFilter: ERROR_ATTRIBUTE_NAMES
+    });
   };
 
   if (document.body) startObserver();
@@ -443,6 +513,7 @@ window.ProjectPulseErrorPresentation = Object.freeze({
   friendlyMessageFor,
   friendlyTitleFor,
   diagnosticFrom,
+  isTechnicalErrorText,
   scan
 });
 
@@ -453,5 +524,6 @@ export {
   diagnosticFrom,
   friendlyErrorItem,
   friendlyMessageFor,
-  friendlyTitleFor
+  friendlyTitleFor,
+  isTechnicalErrorText
 };
