@@ -2,6 +2,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import './module-availability-bridge.js';
 import './api-error-presentation.js';
+import './runtime-data-compatibility.js';
 import App from './App.Module001.g.jsx';
 import HelpAssistant from './HelpAssistant.jsx';
 import ModulesDirectoryPortal from './ModulesDirectoryPortal.jsx';
