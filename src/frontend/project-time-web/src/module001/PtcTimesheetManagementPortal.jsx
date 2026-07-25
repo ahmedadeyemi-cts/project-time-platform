@@ -11,42 +11,97 @@ function token() {
   }
 }
 
+function viewAsUserId() {
+  try {
+    const selected = JSON.parse(localStorage.getItem('projectPulseViewAsUser') || 'null');
+    return selected?.userId || localStorage.getItem('projectPulseViewAsUserId') || '';
+  } catch {
+    return localStorage.getItem('projectPulseViewAsUserId') || '';
+  }
+}
+
 function headers(hasBody = false) {
   const sessionToken = token();
-  const result = {
+  const viewAs = viewAsUserId();
+  return {
     ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
     ...(sessionToken ? {
       Authorization: `Bearer ${sessionToken}`,
-      'X-ProjectPulse-Session': sessionToken
+      'X-ProjectPulse-Session': sessionToken,
+      'X-Project-Pulse-Session': sessionToken,
+      'X-Session-Token': sessionToken
     } : {}),
+    ...(viewAs ? { 'X-ProjectPulse-View-As-User': viewAs } : {}),
     'Cache-Control': 'no-cache',
     Pragma: 'no-cache'
   };
-  const viewAs = localStorage.getItem('projectPulseViewAsUserId');
-  if (viewAs) result['X-ProjectPulse-View-As-User'] = viewAs;
-  return result;
+}
+
+function requestPath(path, method) {
+  if (method !== 'GET') return path;
+  const url = new URL(path, window.location.origin);
+  if (url.pathname === '/api/timesheet/ptc/users') {
+    url.pathname = '/api/runtime/timesheet/steward/users';
+  } else if (/^\/api\/timesheet\/ptc\/users\/[0-9a-f-]+\/entries$/i.test(url.pathname)) {
+    url.pathname = url.pathname
+      .replace('/api/timesheet/ptc/users/', '/api/runtime/timesheet/steward/users/')
+      .replace(/\/entries$/, '/workspace');
+  }
+  return `${url.pathname}${url.search}`;
+}
+
+function unwrap(payload) {
+  let current = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : {};
+  for (let depth = 0; depth < 3; depth += 1) {
+    const key = ['data', 'Data', 'result', 'Result', 'value', 'Value', 'payload', 'Payload']
+      .find((candidate) => current?.[candidate] && typeof current[candidate] === 'object' && !Array.isArray(current[candidate]));
+    if (!key) break;
+    current = current[key];
+  }
+  return current;
 }
 
 async function api(path, options = {}) {
-  const response = await fetch(path, {
+  const method = String(options.method || 'GET').toUpperCase();
+  const resolvedPath = requestPath(path, method);
+  const response = await fetch(resolvedPath, {
     credentials: 'include',
     cache: 'no-store',
     ...options,
+    method,
     headers: {
       ...headers(Boolean(options.body)),
       ...(options.headers || {})
     }
   });
   const raw = await response.text();
-  let payload = {};
-  try { payload = raw ? JSON.parse(raw) : {}; } catch { payload = { message: raw }; }
+  let payload;
+  try {
+    payload = raw ? JSON.parse(raw) : {};
+  } catch {
+    const error = new Error(`${resolvedPath} returned non-JSON content instead of ProjectPulse API data.`);
+    error.status = response.status;
+    error.responsePreview = raw.slice(0, 160);
+    throw error;
+  }
+  payload = unwrap(payload);
   if (!response.ok) {
-    const error = new Error(payload.message || payload.detail || `The time-steward request failed (${response.status}).`);
+    const error = new Error(payload.message || payload.Message || payload.detail || payload.Detail || `The time-steward request failed (${response.status}).`);
     error.status = response.status;
     error.payload = payload;
     throw error;
   }
   return payload;
+}
+
+function publishUsers(payload) {
+  window.__projectPulsePtcRuntimeUsers = payload;
+  window.dispatchEvent(new CustomEvent('projectpulse:ptc-runtime-users', { detail: payload }));
+}
+
+function publishWorkspace(payload) {
+  window.__projectPulsePtcRuntimeWorkspace = payload;
+  window.dispatchEvent(new CustomEvent('projectpulse:ptc-runtime-workspace', { detail: payload }));
 }
 
 function sundayFor(date) {
@@ -70,6 +125,11 @@ function displayDate(value) {
 
 function statusLabel(value) {
   return String(value || 'not_started').replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function roleLabel(user) {
+  const names = Array.isArray(user?.roleNames) ? user.roleNames : [];
+  return names.length ? names.join(' / ') : 'Eligible delivery role';
 }
 
 function ensureHost(page) {
@@ -175,36 +235,47 @@ export default function PtcTimesheetManagementPortal() {
   const loadUsers = useCallback(async () => {
     if (!host) return;
     try {
-      const payload = await api(`/api/timesheet/ptc/users?weekStart=${encodeURIComponent(weekStart)}&search=${encodeURIComponent(search)}`);
+      const payload = await api(`/api/runtime/timesheet/steward/users?weekStart=${encodeURIComponent(weekStart)}&search=${encodeURIComponent(search)}`);
       const nextUsers = Array.isArray(payload?.users) ? payload.users : [];
+      publishUsers(payload);
       setAuthorized(true);
       setUsers(nextUsers);
       setSelectedUserId((current) => nextUsers.some((user) => user.userId === current) ? current : nextUsers[0]?.userId || '');
-      setError('');
+      setError(nextUsers.length === 0
+        ? 'The server returned 0 eligible users. Confirm active Engineer, Engineering Lead, Project Management, or Project Management Lead role assignments in User Administration.'
+        : '');
     } catch (requestError) {
+      publishUsers(null);
       if ([401, 403, 503].includes(requestError.status)) {
         setAuthorized(false);
-        if (requestError.status === 503) setError(requestError.message);
+        setError(requestError.message || 'The time-steward user list is unavailable.');
         return;
       }
-      setError(requestError.message);
+      setAuthorized(true);
+      setUsers([]);
+      setSelectedUserId('');
+      setError(requestError.message || 'The time-steward user list could not be loaded.');
     }
   }, [host, search, weekStart]);
 
   const loadDetail = useCallback(async () => {
     if (!authorized || !selectedUserId) {
       setDetail(null);
+      publishWorkspace(null);
       return;
     }
     try {
-      const payload = await api(`/api/timesheet/ptc/users/${encodeURIComponent(selectedUserId)}/entries?weekStart=${encodeURIComponent(weekStart)}`);
+      const payload = await api(`/api/runtime/timesheet/steward/users/${encodeURIComponent(selectedUserId)}/workspace?weekStart=${encodeURIComponent(weekStart)}`);
       setDetail(payload);
+      publishWorkspace(payload);
       const defaults = {};
       for (const entry of payload?.entries || []) defaults[entry.timeEntryId] = payload?.assignments?.[0]?.assignmentId || '';
       setMoveSelections(defaults);
       setError('');
     } catch (requestError) {
-      setError(requestError.message);
+      setDetail(null);
+      publishWorkspace(null);
+      setError(requestError.message || 'The selected user’s time and assignments could not be loaded.');
     }
   }, [authorized, selectedUserId, weekStart]);
 
@@ -235,7 +306,7 @@ export default function PtcTimesheetManagementPortal() {
   const projects = useMemo(() => {
     const map = new Map();
     for (const assignment of assignments) map.set(assignment.projectId, { projectId: assignment.projectId, projectCode: assignment.projectCode, projectName: assignment.projectName });
-    for (const entry of entries) map.set(entry.projectId, { projectId: entry.projectId, projectCode: entry.projectCode, projectName: entry.projectName });
+    for (const entry of entries) if (entry.projectId) map.set(entry.projectId, { projectId: entry.projectId, projectCode: entry.projectCode, projectName: entry.projectName });
     return [...map.values()];
   }, [assignments, entries]);
 
@@ -319,13 +390,13 @@ export default function PtcTimesheetManagementPortal() {
       <section className="ptc-toolbar">
         <div className="ptc-week-nav"><button type="button" onClick={() => setWeekStart(moveWeek(weekStart, -1))}>Previous week</button><strong>Week of {displayDate(weekStart)}</strong><button type="button" onClick={() => setWeekStart(sundayFor(new Date()))}>Current week</button><button type="button" onClick={() => setWeekStart(moveWeek(weekStart, 1))}>Next week</button></div>
         <label><span>Find user</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Name or email" /></label>
-        <label><span>Select user</span><select value={selectedUserId} onChange={(event) => setSelectedUserId(event.target.value)}>{users.map((user) => <option key={user.userId} value={user.userId}>{user.displayName} · {user.email} · {statusLabel(user.status)}</option>)}</select></label>
+        <label><span>Select user</span><select value={selectedUserId} onChange={(event) => setSelectedUserId(event.target.value)}><option value="">Select an eligible user</option>{users.map((user) => <option key={user.userId} value={user.userId}>{user.displayName} · {roleLabel(user)} · {user.email} · {statusLabel(user.status)}</option>)}</select></label>
       </section>
 
-      {selectedUser ? <section className="ptc-user-summary"><article><span>Selected user</span><strong>{selectedUser.displayName}</strong><small>{selectedUser.email}</small></article><article><span>Week status</span><strong>{statusLabel(detail?.timesheet?.status || selectedUser.status)}</strong><small>{selectedUser.entryCount} entry or entries</small></article><article><span>Total hours</span><strong>{Number(selectedUser.totalHours || 0).toFixed(2)}</strong><small>Current selected week</small></article><article className="ptc-user-action"><span>Correction workflow</span><button type="button" disabled={busy || !detail?.timesheet || detail?.timesheet?.status === 'draft'} onClick={unsubmitWeek}>Return week to draft</button><small>Required before changing submitted or approved time</small></article></section> : null}
+      {selectedUser ? <section className="ptc-user-summary"><article><span>Selected user</span><strong>{selectedUser.displayName}</strong><small>{roleLabel(selectedUser)} · {selectedUser.email}</small></article><article><span>Week status</span><strong>{statusLabel(detail?.timesheet?.status || selectedUser.status)}</strong><small>{selectedUser.entryCount} entry or entries</small></article><article><span>Total hours</span><strong>{Number(selectedUser.totalHours || 0).toFixed(2)}</strong><small>Current selected week</small></article><article className="ptc-user-action"><span>Correction workflow</span><button type="button" disabled={busy || !detail?.timesheet || detail?.timesheet?.status === 'draft'} onClick={unsubmitWeek}>Return week to draft</button><small>Required before changing submitted or approved time</small></article></section> : null}
 
       <section className="ptc-entry-section"><header><div><p className="eyebrow">Selected user’s time entries</p><h3>{entries.length} entry or entries</h3><p>Edit and removal are available only after the week is draft. Moving time requires an active assignment to the destination task.</p></div><button type="button" disabled={busy || !selectedUserId || projects.length === 0} onClick={() => setCreatingTask(true)}>Create replacement task</button></header>
-        <div className="ptc-entry-table-wrap"><table className="ptc-entry-table"><thead><tr><th>Date</th><th>Current project and task</th><th>Hours and description</th><th>Correct</th><th>Move to task</th><th>Remove</th></tr></thead><tbody>{entries.map((entry) => <tr key={entry.timeEntryId}><td><strong>{displayDate(entry.workDate)}</strong><small>{statusLabel(entry.status)}</small></td><td><strong>{entry.projectCode} · {entry.projectName}</strong><span>{entry.taskCode || 'No task'} · {entry.taskName || 'Unassigned'}</span></td><td><strong>{Number(entry.hours).toFixed(2)} hours · {entry.billable ? 'Billable' : 'Non-billable'}</strong><span>{entry.description || 'No description'}</span></td><td><button type="button" disabled={busy || !['draft', 'manager_declined', 'pm_declined'].includes(entry.status)} onClick={() => setEditingEntry(entry)}>Edit entry</button></td><td><select value={moveSelections[entry.timeEntryId] || ''} disabled={busy || !['draft', 'manager_declined', 'pm_declined'].includes(entry.status)} onChange={(event) => setMoveSelections((current) => ({ ...current, [entry.timeEntryId]: event.target.value }))}><option value="">Select destination</option>{assignments.map((assignment) => <option key={assignment.assignmentId} value={assignment.assignmentId}>{assignment.projectCode} · {assignment.taskCode} · {assignment.taskName}</option>)}</select><button type="button" disabled={busy || !moveSelections[entry.timeEntryId] || !['draft', 'manager_declined', 'pm_declined'].includes(entry.status)} onClick={() => moveEntry(entry)}>Move time</button></td><td><button type="button" className="danger" disabled={busy || !['draft', 'manager_declined', 'pm_declined'].includes(entry.status)} onClick={() => removeEntry(entry)}>Remove draft entry</button></td></tr>)}{entries.length === 0 ? <tr><td colSpan="6"><div className="ptc-empty"><strong>No time entries for this user and week</strong><span>Select another week or user, or confirm that the user has started their timesheet.</span></div></td></tr> : null}</tbody></table></div>
+        <div className="ptc-entry-table-wrap"><table className="ptc-entry-table"><thead><tr><th>Date</th><th>Current project and task</th><th>Hours and description</th><th>Correct</th><th>Move to task</th><th>Remove</th></tr></thead><tbody>{entries.map((entry) => <tr key={entry.timeEntryId}><td><strong>{displayDate(entry.workDate)}</strong><small>{statusLabel(entry.status)}</small></td><td><strong>{entry.projectCode || entry.nonProjectCategoryName || 'Non-Project'} · {entry.projectName || ''}</strong><span>{entry.taskCode || entry.nonProjectCategoryCode || 'No task'} · {entry.taskName || entry.nonProjectCategoryName || 'Unassigned'}</span></td><td><strong>{Number(entry.hours).toFixed(2)} hours · {entry.billable ? 'Billable' : 'Non-billable'}</strong><span>{entry.description || 'No description'}</span></td><td><button type="button" disabled={busy || !['draft', 'manager_declined', 'pm_declined'].includes(entry.status)} onClick={() => setEditingEntry(entry)}>Edit entry</button></td><td><select value={moveSelections[entry.timeEntryId] || ''} disabled={busy || !['draft', 'manager_declined', 'pm_declined'].includes(entry.status)} onChange={(event) => setMoveSelections((current) => ({ ...current, [entry.timeEntryId]: event.target.value }))}><option value="">Select destination</option>{assignments.map((assignment) => <option key={assignment.assignmentId} value={assignment.assignmentId}>[{assignment.groupLabel || 'Project Tasks'}] {assignment.selectionLabel || `${assignment.projectCode} · ${assignment.taskCode} · ${assignment.taskName}`}</option>)}</select><button type="button" disabled={busy || !moveSelections[entry.timeEntryId] || !['draft', 'manager_declined', 'pm_declined'].includes(entry.status)} onClick={() => moveEntry(entry)}>Move time</button></td><td><button type="button" className="danger" disabled={busy || !['draft', 'manager_declined', 'pm_declined'].includes(entry.status)} onClick={() => removeEntry(entry)}>Remove draft entry</button></td></tr>)}{entries.length === 0 ? <tr><td colSpan="6"><div className="ptc-empty"><strong>No time entries for this user and week</strong><span>Select another week or user, or confirm that the user has started their timesheet.</span></div></td></tr> : null}</tbody></table></div>
       </section>
     </> : null}
 
