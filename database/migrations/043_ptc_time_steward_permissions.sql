@@ -69,6 +69,15 @@ CREATE TRIGGER trg_projectpulse043_time_management_audit_immutable
 BEFORE UPDATE OR DELETE ON scoped_time_management_events
 FOR EACH ROW EXECUTE FUNCTION projectpulse040_block_immutable_audit_mutation();
 
+ALTER TABLE module001_timesheet_entry_associations
+    DROP CONSTRAINT IF EXISTS chk_module001_association_source;
+ALTER TABLE module001_timesheet_entry_associations
+    ADD CONSTRAINT chk_module001_association_source CHECK (
+        association_source IN (
+            'EXISTING_ENTRY','WORK_QUEUE','TIMER','CALENDAR','PTC_TIME_STEWARD'
+        )
+    );
+
 WITH published_policy AS (
     SELECT policy_version_id
     FROM scoped_role_policy_versions
