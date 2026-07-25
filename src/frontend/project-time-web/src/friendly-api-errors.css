@@ -1,0 +1,56 @@
+.projectpulse-friendly-error {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  gap: 0.28rem !important;
+  width: 100% !important;
+  margin: 0.6rem 0 !important;
+  padding: 0.85rem 1rem !important;
+  border: 1px solid rgba(180, 83, 9, 0.28) !important;
+  border-left: 4px solid #b45309 !important;
+  border-radius: 0.85rem !important;
+  background: linear-gradient(135deg, rgba(255, 251, 235, 0.98), rgba(255, 247, 237, 0.96)) !important;
+  color: #7c2d12 !important;
+  box-shadow: 0 10px 24px rgba(120, 53, 15, 0.08) !important;
+  font-size: 0.95rem !important;
+  line-height: 1.45 !important;
+  white-space: normal !important;
+}
+
+.projectpulse-friendly-error-title {
+  display: block;
+  color: #7c2d12;
+  font-size: 0.9rem;
+  font-weight: 900;
+  letter-spacing: 0.01em;
+}
+
+.projectpulse-friendly-error-message {
+  display: block;
+  color: #78350f;
+  font-weight: 650;
+}
+
+.projectpulse-friendly-error-reference {
+  display: block;
+  color: #92400e;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+[data-theme='dark'] .projectpulse-friendly-error,
+html[data-theme='dark'] .projectpulse-friendly-error {
+  border-color: rgba(251, 191, 36, 0.34) !important;
+  border-left-color: #f59e0b !important;
+  background: linear-gradient(135deg, rgba(69, 26, 3, 0.94), rgba(67, 20, 7, 0.94)) !important;
+  color: #fef3c7 !important;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28) !important;
+}
+
+[data-theme='dark'] .projectpulse-friendly-error-title,
+[data-theme='dark'] .projectpulse-friendly-error-message,
+[data-theme='dark'] .projectpulse-friendly-error-reference,
+html[data-theme='dark'] .projectpulse-friendly-error-title,
+html[data-theme='dark'] .projectpulse-friendly-error-message,
+html[data-theme='dark'] .projectpulse-friendly-error-reference {
+  color: #fef3c7 !important;
+}
