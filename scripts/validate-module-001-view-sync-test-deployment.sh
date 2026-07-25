@@ -35,6 +35,13 @@ for value in \
   'Build immutable complete friendly error coverage web image' \
   'Deploy complete friendly error coverage web image only' \
   'Validate served complete friendly error coverage and active image' \
+  'marker_state()' \
+  'STABLE_MARKER_REPORT' \
+  "JS_NATIVE_DIALOG=\"\$(marker_state /tmp/app.js 'browser alert')\"" \
+  "JS_ATTRIBUTE_POLICY=\"\$(marker_state /tmp/app.js 'data-projectpulse-error-policy-exempt')\"" \
+  "JS_DIAGNOSTIC=\"\$(marker_state /tmp/app.js '/api/client-diagnostics')\"" \
+  "CSS_COMPACT=\"\$(marker_state /tmp/app.css '.projectpulse-friendly-error.compact')\"" \
+  'servedValidation":"stable-markers' \
   'nestedErrors":"covered' \
   'nativeDialogs":"covered' \
   'technicalAttributes":"covered' \
@@ -57,8 +64,16 @@ done
 grep -Fq 'git -C control merge-base --is-ancestor' "$WORKFLOW" || fail "Release ancestry guard is missing."
 grep -Fq '@$DIGEST' "$WORKFLOW" || fail "Immutable web digest construction is missing."
 grep -Fq 'steps.before.outputs.old_web_image' "$WORKFLOW" || fail "Web rollback image capture is missing."
-grep -Fq "grep -Fq 'projectpulse-friendly-error' /tmp/app.js" "$WORKFLOW" || fail "Served JS friendly-error marker validation is missing."
-grep -Fq "grep -Fq 'projectpulse-friendly-error.compact' /tmp/app.css" "$WORKFLOW" || fail "Served CSS compact marker validation is missing."
+grep -Fq '[[ "$ACTIVE_WEB" == ' "$WORKFLOW" || fail "Exact active web image validation is missing."
+grep -Fq '&& -s /tmp/app.js' "$WORKFLOW" || fail "Served JavaScript non-empty validation is missing."
+grep -Fq '&& -s /tmp/app.css' "$WORKFLOW" || fail "Served CSS non-empty validation is missing."
+
+for brittle in \
+  "grep -Fq 'FriendlyNativeDialogGuards' /tmp/app.js" \
+  "grep -Fq 'sanitizeTechnicalAttributes' /tmp/app.js"
+do
+  grep -Fq "$brittle" "$WORKFLOW" && fail "Minified internal identifier must not be used as a served-bundle gate: $brittle"
+done
 
 for forbidden in \
   'AZURE_API_APP' \
@@ -81,4 +96,4 @@ do
 done
 
 bash -n "$0"
-echo 'COMPLETE_FRIENDLY_ERROR_COVERAGE_DEPLOYMENT_GUARD=PASS'
+echo 'COMPLETE_FRIENDLY_ERROR_COVERAGE_DEPLOYMENT_GUARD=PASS served_validation=stable_markers'
