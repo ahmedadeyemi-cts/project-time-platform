@@ -29,8 +29,8 @@ for value in \
   'Permission Levels' \
   'projectpulse:permissions-changed' \
   'permanent organization-wide Full Control' \
-  'EXPECTED_MODULES = 70' \
-  'EXPECTED_DECISIONS = 840' \
+  'expectedRows.length !== 70' \
+  'decisionCount !== 840' \
   'Apply or verify migration 040 inside private network' \
   'Build immutable permission API and web images' \
   'Deploy permission API' \

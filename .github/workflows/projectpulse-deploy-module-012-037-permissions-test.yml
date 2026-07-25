@@ -70,8 +70,8 @@ jobs:
           grep -Fq 'Permission Levels' release/src/frontend/project-time-web/src/RolesPermissionsMatrix.jsx
           grep -Fq 'projectpulse:permissions-changed' release/src/frontend/project-time-web/src/module-availability-bridge.js
           grep -Fq 'permanent organization-wide Full Control' release/src/backend/ProjectTime.Api/Modules/ScopedAuthorizationEvaluator.cs
-          grep -Fq 'EXPECTED_MODULES = 70' release/src/frontend/project-time-web/scripts/validate-permissions-matrix-3-baseline.mjs
-          grep -Fq 'EXPECTED_DECISIONS = 840' release/src/frontend/project-time-web/scripts/validate-permissions-matrix-3-baseline.mjs
+          grep -Fq 'expectedRows.length !== 70' release/src/frontend/project-time-web/scripts/validate-permissions-matrix-3-baseline.mjs
+          grep -Fq 'decisionCount !== 840' release/src/frontend/project-time-web/scripts/validate-permissions-matrix-3-baseline.mjs
 
           echo "target_commit=$TARGET_COMMIT" >> "$GITHUB_OUTPUT"
 
