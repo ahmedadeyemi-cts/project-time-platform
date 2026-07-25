@@ -65,7 +65,7 @@ requireAll(model, [
   "'TIME_SUBMIT'",
   "'TIME_DELETE_PERMANENT'",
   'operationalTimeSteward',
-  'submit a timesheet on another user’s behalf'
+  'does not submit a timesheet for another user'
 ], 'PTC permission model');
 
 requireAll(backend, [
