@@ -1,6 +1,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import './module-availability-bridge.js';
+import './api-error-presentation.js';
 import App from './App.Module001.g.jsx';
 import HelpAssistant from './HelpAssistant.jsx';
 import ModulesDirectoryPortal from './ModulesDirectoryPortal.jsx';
@@ -10,6 +11,7 @@ import TimesheetEnhancementPortal from './module001/TimesheetEnhancementPortal.j
 import './approval-access-navigation-compatibility.js';
 import './scoped-rbac-catalog-compatibility.js';
 import './styles.css';
+import './friendly-api-errors.css';
 import './role-welcome-dashboard-visibility.css';
 import './scoped-role-policy-admin.css';
 import './scoped-role-policy-matrix.css';
