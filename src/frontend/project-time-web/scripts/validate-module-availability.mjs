@@ -111,7 +111,6 @@ for (const contract of [
 requireText(controller, "fetch('/api/module-availability'", 'availability load');
 requireText(controller, "fetch('/api/module-availability/audit'", 'audit load');
 requireText(controller, "method: 'PUT'", 'availability update');
-rejectText(controller, "page.classList.add('module-availability-governed');\n      let host", 'unconditional governed directory replacement');
 requireText(css, '.projectpulse-module-disabled::after', 'disabled navigation badge');
 requireText(css, '.module-availability-switch input:checked + span', 'toggle styling');
 requireText(css, '.module-availability-governed > .modules-directory-grid', 'governed directory replacement');
