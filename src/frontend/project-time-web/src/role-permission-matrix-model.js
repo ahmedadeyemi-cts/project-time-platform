@@ -40,22 +40,73 @@ function sessionToken() {
   }
 }
 
+function viewAsUserId() {
+  try {
+    const selected = JSON.parse(localStorage.getItem('projectPulseViewAsUser') || 'null');
+    return selected?.userId || localStorage.getItem('projectPulseViewAsUserId') || '';
+  } catch {
+    return localStorage.getItem('projectPulseViewAsUserId') || '';
+  }
+}
+
+function runtimePath(path) {
+  const url = new URL(path, window.location.origin);
+  const exact = {
+    '/api/role-policy/catalog': '/api/runtime/role-policy/catalog',
+    '/api/role-policy/matrix': '/api/runtime/role-policy/matrix'
+  };
+  if (exact[url.pathname]) url.pathname = exact[url.pathname];
+  return `${url.pathname}${url.search}`;
+}
+
+function unwrap(payload) {
+  let current = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : {};
+  for (let depth = 0; depth < 3; depth += 1) {
+    const key = ['data', 'Data', 'result', 'Result', 'value', 'Value', 'payload', 'Payload']
+      .find((candidate) => current?.[candidate] && typeof current[candidate] === 'object' && !Array.isArray(current[candidate]));
+    if (!key) break;
+    current = current[key];
+  }
+  return current;
+}
+
 export async function api(path) {
   const token = sessionToken();
-  const response = await fetch(path, {
+  const viewAs = viewAsUserId();
+  const requestPath = runtimePath(path);
+  const response = await fetch(requestPath, {
     method: 'GET',
     credentials: 'include',
     cache: 'no-store',
     headers: {
-      ...(token ? { 'X-ProjectPulse-Session': token } : {}),
+      ...(token ? {
+        Authorization: `Bearer ${token}`,
+        'X-ProjectPulse-Session': token,
+        'X-Project-Pulse-Session': token,
+        'X-Session-Token': token
+      } : {}),
+      ...(viewAs ? { 'X-ProjectPulse-View-As-User': viewAs } : {}),
       'Cache-Control': 'no-cache',
       Pragma: 'no-cache'
     }
   });
   const raw = await response.text();
-  let payload = {};
-  try { payload = raw ? JSON.parse(raw) : {}; } catch { payload = { message: raw }; }
-  if (!response.ok) throw new Error(payload.message || payload.detail || `${path} returned HTTP ${response.status}`);
+  let payload;
+  try {
+    payload = raw ? JSON.parse(raw) : {};
+  } catch {
+    const error = new Error(`${requestPath} returned non-JSON content instead of ProjectPulse API data.`);
+    error.status = response.status;
+    error.responsePreview = raw.slice(0, 160);
+    throw error;
+  }
+  payload = unwrap(payload);
+  if (!response.ok) {
+    const error = new Error(payload.message || payload.Message || payload.detail || payload.Detail || `${requestPath} returned HTTP ${response.status}`);
+    error.status = response.status;
+    error.payload = payload;
+    throw error;
+  }
   return payload;
 }
 

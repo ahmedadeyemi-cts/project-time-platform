@@ -1,10 +1,46 @@
 import { unwrapApiPayload } from './api-json-response.js';
 
 const MARKER = '__projectPulseRuntimeDataCompatibilityInstalled';
-const RESPONSE_MARKER = 'projectpulse-runtime-data-2026-07-25';
+const RESPONSE_MARKER = 'projectpulse-runtime-data-direct-auth-2026-07-25';
 
 function requestMethod(input, init) {
   return String(init?.method || (input instanceof Request ? input.method : 'GET')).toUpperCase();
+}
+
+function sessionToken() {
+  try {
+    const session = JSON.parse(window.localStorage.getItem('projectPulseAuthSession') || 'null');
+    return session?.sessionToken || session?.token || session?.accessToken || '';
+  } catch {
+    return '';
+  }
+}
+
+function viewAsUserId() {
+  try {
+    const selected = JSON.parse(window.localStorage.getItem('projectPulseViewAsUser') || 'null');
+    return selected?.userId || window.localStorage.getItem('projectPulseViewAsUserId') || '';
+  } catch {
+    return window.localStorage.getItem('projectPulseViewAsUserId') || '';
+  }
+}
+
+function authenticatedInit(input, init = {}) {
+  const token = sessionToken();
+  const viewAs = viewAsUserId();
+  const headers = new Headers(init?.headers || (input instanceof Request ? input.headers : undefined));
+  if (token) {
+    if (!headers.has('Authorization')) headers.set('Authorization', `Bearer ${token}`);
+    if (!headers.has('X-ProjectPulse-Session')) headers.set('X-ProjectPulse-Session', token);
+    if (!headers.has('X-Project-Pulse-Session')) headers.set('X-Project-Pulse-Session', token);
+    if (!headers.has('X-Session-Token')) headers.set('X-Session-Token', token);
+  }
+  if (viewAs && !headers.has('X-ProjectPulse-View-As-User')) {
+    headers.set('X-ProjectPulse-View-As-User', viewAs);
+  }
+  headers.set('Cache-Control', 'no-cache');
+  headers.set('Pragma', 'no-cache');
+  return { ...init, credentials: 'include', cache: 'no-store', headers };
 }
 
 function rewritePath(pathname) {
@@ -33,6 +69,11 @@ function expectedKeys(pathname) {
   if (pathname.endsWith('/users')) return ['users', 'Users'];
   if (pathname.endsWith('/workspace')) return ['user', 'User', 'assignments', 'Assignments'];
   return [];
+}
+
+function hasExpected(payload, keys) {
+  if (!keys.length) return true;
+  return keys.some((key) => Object.prototype.hasOwnProperty.call(payload || {}, key));
 }
 
 function publishRuntimeData(pathname, payload) {
@@ -65,7 +106,10 @@ if (typeof window !== 'undefined' && typeof window.fetch === 'function' && !wind
 
     const rewrittenUrl = new URL(originalUrl.toString());
     rewrittenUrl.pathname = rewrittenPath;
-    const response = await previousFetch(`${rewrittenUrl.pathname}${rewrittenUrl.search}`, init);
+    const response = await previousFetch(
+      `${rewrittenUrl.pathname}${rewrittenUrl.search}`,
+      authenticatedInit(input, init)
+    );
     const raw = await response.text();
     const headers = new Headers(response.headers);
     headers.delete('content-length');
@@ -79,13 +123,24 @@ if (typeof window !== 'undefined' && typeof window.fetch === 'function' && !wind
     } catch {
       return new Response(JSON.stringify({
         status: 'runtime_api_non_json_response',
-        message: 'The ProjectPulse API returned web content instead of JSON. Refresh after the API deployment completes.',
+        message: 'The ProjectPulse API returned web content instead of JSON.',
         requestedPath: originalUrl.pathname,
-        runtimePath: rewrittenPath
+        runtimePath: rewrittenPath,
+        responsePreview: raw.slice(0, 160)
       }), { status: 502, headers });
     }
 
-    const normalized = unwrapApiPayload(parsed, expectedKeys(rewrittenPath));
+    const keys = expectedKeys(rewrittenPath);
+    const normalized = unwrapApiPayload(parsed, keys);
+    if (response.ok && !hasExpected(normalized, keys)) {
+      return new Response(JSON.stringify({
+        status: 'runtime_api_contract_incomplete',
+        message: `The runtime API response for ${rewrittenPath} did not contain ${keys.join(', ')}.`,
+        runtimePath: rewrittenPath,
+        responseKeys: Object.keys(normalized || {})
+      }), { status: 502, headers });
+    }
+
     if (response.ok) publishRuntimeData(rewrittenPath, normalized);
     return new Response(JSON.stringify(normalized), {
       status: response.status,
