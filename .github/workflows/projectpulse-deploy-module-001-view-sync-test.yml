@@ -1,15 +1,15 @@
-name: ProjectPulse Deploy Module Availability Fail-Open Test
+name: ProjectPulse Deploy Modules 003 004 Rolling Years Test
 
 on:
   workflow_dispatch:
     inputs:
       release_commit:
-        description: Exact verified module availability fail-open commit
+        description: Exact verified Modules 003 and 004 rolling-years commit
         required: true
-        default: cbee20a671dd34365f93112645b9284f825d6212
+        default: 75f2f7be9f3f3d8f49b64d5413e3b20dea21fb02
         type: string
       confirmation:
-        description: Enter DEPLOY-MODULE-AVAILABILITY-FAIL-OPEN-TO-TEST
+        description: Enter DEPLOY-MODULES-003-004-ROLLING-YEARS-TO-TEST
         required: true
         type: string
 
@@ -18,16 +18,16 @@ permissions:
   contents: read
 
 concurrency:
-  group: projectpulse-deploy-module-availability-fail-open-test
+  group: projectpulse-deploy-modules-003-004-rolling-years-test
   cancel-in-progress: false
 
 jobs:
   deploy-web:
-    name: Guarded module availability fail-open web-only test deployment
+    name: Guarded Modules 003 and 004 rolling-years web-only test deployment
     environment: test
     runs-on: ubuntu-latest
     env:
-      EXPECTED_RELEASE_COMMIT: cbee20a671dd34365f93112645b9284f825d6212
+      EXPECTED_RELEASE_COMMIT: 75f2f7be9f3f3d8f49b64d5413e3b20dea21fb02
     steps:
       - name: Check out deployment controls
         uses: actions/checkout@v5
@@ -35,42 +35,53 @@ jobs:
           path: control
           fetch-depth: 0
 
-      - name: Check out exact module availability fail-open release
+      - name: Check out exact rolling-years release
         uses: actions/checkout@v5
         with:
           ref: ${{ inputs.release_commit }}
           path: release
           fetch-depth: 1
 
-      - name: Guard workflow source and fail-open release
+      - name: Guard workflow source and rolling-years release
         id: release
         shell: bash
         run: |
           set -Eeuo pipefail
           [[ '${{ github.ref }}' == 'refs/heads/main' ]] || { echo 'Dispatch this workflow from main.' >&2; exit 1; }
-          [[ '${{ inputs.confirmation }}' == 'DEPLOY-MODULE-AVAILABILITY-FAIL-OPEN-TO-TEST' ]] || { echo 'Confirmation text does not match.' >&2; exit 1; }
+          [[ '${{ inputs.confirmation }}' == 'DEPLOY-MODULES-003-004-ROLLING-YEARS-TO-TEST' ]] || { echo 'Confirmation text does not match.' >&2; exit 1; }
           [[ '${{ inputs.release_commit }}' =~ ^[0-9a-f]{40}$ ]] || { echo 'release_commit must be a complete SHA.' >&2; exit 1; }
           CONTROL_COMMIT="$(git -C control rev-parse HEAD)"
           TARGET_COMMIT="$(git -C release rev-parse HEAD)"
           [[ "$CONTROL_COMMIT" == '${{ github.sha }}' ]]
           [[ "$TARGET_COMMIT" == '${{ inputs.release_commit }}' ]]
-          [[ "$TARGET_COMMIT" == "$EXPECTED_RELEASE_COMMIT" ]] || { echo 'Only the verified module availability fail-open release may deploy.' >&2; exit 1; }
-          git -C control merge-base --is-ancestor "$TARGET_COMMIT" HEAD || { echo 'Fail-open release is not an ancestor of deployment controls.' >&2; exit 1; }
+          [[ "$TARGET_COMMIT" == "$EXPECTED_RELEASE_COMMIT" ]] || { echo 'Only the verified Modules 003 and 004 rolling-years release may deploy.' >&2; exit 1; }
+          git -C control merge-base --is-ancestor "$TARGET_COMMIT" HEAD || { echo 'Rolling-years release is not an ancestor of deployment controls.' >&2; exit 1; }
 
-          CONTROLLER='release/src/frontend/project-time-web/src/ModuleAvailabilityController.jsx'
-          REGISTRY='release/src/frontend/project-time-web/src/module-availability-registry.js'
-          VALIDATOR='release/src/frontend/project-time-web/scripts/validate-module-availability.mjs'
-          test -f "$CONTROLLER" -a -f "$REGISTRY" -a -f "$VALIDATOR"
-          grep -Fq 'PROJECTPULSE_MODULES' "$CONTROLLER"
-          grep -Fq 'normalizeAvailabilityResponse' "$CONTROLLER"
-          grep -Fq 'inventoryComplete' "$CONTROLLER"
-          grep -Fq 'removeGovernedDirectory' "$CONTROLLER"
-          grep -Fq 'The existing Modules directory remains available' "$CONTROLLER"
-          grep -Fq 'Toggle controls require the SUPER_ADMINISTRATOR role' "$CONTROLLER"
-          grep -Fq '.enterprise-sidebar-section a[href^="#"]' "$CONTROLLER"
-          grep -Fq 'const canReplaceDirectory = inventoryReady && (isSuperAdministrator || routes.size > 0)' "$CONTROLLER"
-          grep -Fq "moduleNumber: '001', route: 'timesheet', displayName: 'Timesheet'" "$REGISTRY"
+          YEARS='release/src/frontend/project-time-web/src/rolling-year-window.js'
+          UTILIZATION='release/src/frontend/project-time-web/src/YearlyUtilizationPanel.jsx'
+          GENERATOR='release/src/frontend/project-time-web/scripts/generate-module-001-integrated-app.mjs'
+          VALIDATOR='release/src/frontend/project-time-web/scripts/validate-modules-003-004-rolling-years.mjs'
+          PACKAGE='release/src/frontend/project-time-web/package.json'
+          test -f "$YEARS" -a -f "$UTILIZATION" -a -f "$GENERATOR" -a -f "$VALIDATOR" -a -f "$PACKAGE"
+          grep -Fq 'previousYears: 3' "$YEARS"
+          grep -Fq 'futureYears: 6' "$YEARS"
+          grep -Fq 'totalYears: 10' "$YEARS"
+          grep -Fq 'getRollingYearOptions(currentYear)' "$UTILIZATION"
+          grep -Fq 'const [selectedYear, setSelectedYear] = useState(currentYear);' "$UTILIZATION"
+          ! grep -Fq '2026 + index' "$UTILIZATION"
+          ! grep -Fq 'currentYear >= 2026' "$UTILIZATION"
+          grep -Fq "import { getRollingYearOptions } from './rolling-year-window.js';" "$GENERATOR"
+          grep -Fq 'const holidayYearOptions = getRollingYearOptions().map(String);' "$GENERATOR"
+          grep -Fq 'reference2026=2023-2032' "$VALIDATOR"
+          grep -Fq 'reference2030=2027-2036' "$VALIDATOR"
+          grep -Fq 'validate:modules003004-rolling-years' "$PACKAGE"
           node "$VALIDATOR"
+          node "$GENERATOR"
+          GENERATED='release/src/frontend/project-time-web/src/App.Module001.g.jsx'
+          test -f "$GENERATED"
+          grep -Fq "import { getRollingYearOptions } from './rolling-year-window.js';" "$GENERATED"
+          grep -Fq 'const holidayYearOptions = getRollingYearOptions().map(String);' "$GENERATED"
+          ! grep -Fq 'Array.from({ length: 11 }, (_, index) => String(currentYear + index))' "$GENERATED"
           echo "target_commit=$TARGET_COMMIT" >> "$GITHUB_OUTPUT"
 
       - uses: azure/login@v2
@@ -98,7 +109,7 @@ jobs:
           OLD="$(resolve_digest "$RAW")"
           echo "old_web_image=$OLD" >> "$GITHUB_OUTPUT"
 
-      - name: Build exact module availability fail-open web image
+      - name: Build exact rolling-years web image
         id: build
         working-directory: release
         shell: bash
@@ -106,48 +117,41 @@ jobs:
           set -Eeuo pipefail
           SHA='${{ steps.release.outputs.target_commit }}'
           REPOSITORY='project-health-dashboard-web'
-          DIGEST="$(../control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "$REPOSITORY:module-availability-fail-open-$SHA" deployment/containers/web/Dockerfile .)"
+          DIGEST="$(../control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "$REPOSITORY:modules-003-004-rolling-years-$SHA" deployment/containers/web/Dockerfile .)"
           echo "web_image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/$REPOSITORY@$DIGEST" >> "$GITHUB_OUTPUT"
 
-      - name: Deploy module availability fail-open web image only
+      - name: Deploy Modules 003 and 004 rolling-years web image only
         id: deploy_web
         shell: bash
         run: |
           set -Eeuo pipefail
           echo 'started=true' >> "$GITHUB_OUTPUT"
           az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' \
-            --image '${{ steps.build.outputs.web_image }}' --revision-suffix "mavfo-${GITHUB_RUN_ID}" --output none
+            --image '${{ steps.build.outputs.web_image }}' --revision-suffix "m003004yr-${GITHUB_RUN_ID}" --output none
 
-      - name: Validate served fail-open directory and active image
+      - name: Validate served rolling-year controls and active image
         shell: bash
         run: |
           set -Eeuo pipefail
           BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"; READY=false
           for attempt in $(seq 1 30); do
-            BUSTER="mavfo-${GITHUB_RUN_ID}-${attempt}"
+            BUSTER="m003004yr-${GITHUB_RUN_ID}-${attempt}"
             STATUS="$(curl -sSL -H 'Cache-Control: no-cache' -o /tmp/index.html -w '%{http_code}' "$BASE/?release_check=$BUSTER" || true)"
             JS="$(sed -nE 's/.*src="([^"]+\.js)".*/\1/p' /tmp/index.html | head -1)"
             if [[ "$STATUS" == 200 && -n "$JS" ]]; then
               case "$JS" in http*) JS_URL="$JS";; /*) JS_URL="$BASE$JS";; *) JS_URL="$BASE/$JS";; esac
               curl -sSL -H 'Cache-Control: no-cache' -o /tmp/app.js "$JS_URL?release_check=$BUSTER" || true
-              : > /tmp/app.css
-              while IFS= read -r CSS; do
-                [[ -n "$CSS" ]] || continue
-                case "$CSS" in http*) CSS_URL="$CSS";; /*) CSS_URL="$BASE$CSS";; *) CSS_URL="$BASE/$CSS";; esac
-                curl -sSL -H 'Cache-Control: no-cache' "$CSS_URL?release_check=$BUSTER" >> /tmp/app.css || true
-              done < <(grep -oE 'href="[^"]+\.css"' /tmp/index.html | sed -E 's/^href="|"$//g')
-              if grep -Fq '/api/module-availability' /tmp/app.js \
-                && grep -Fq 'The existing Modules directory remains available' /tmp/app.js \
-                && grep -Fq 'Toggle controls require the SUPER_ADMINISTRATOR role' /tmp/app.js \
-                && grep -Fq 'module-availability-governed' /tmp/app.css \
-                && grep -Fq 'module-availability-switch' /tmp/app.css; then
+              if grep -Fq 'referenceYear must be a positive integer year.' /tmp/app.js \
+                && grep -Fq 'Quarterly progress by year' /tmp/app.js \
+                && grep -Fq 'Holiday calendar' /tmp/app.js \
+                && grep -Fq '/api/utilization/yearly-status?year=' /tmp/app.js; then
                 READY=true
                 break
               fi
             fi
             sleep 10
           done
-          [[ "$READY" == true ]] || { echo 'Corrected fail-open Modules directory was not served.' >&2; exit 1; }
+          [[ "$READY" == true ]] || { echo 'Modules 003 and 004 rolling-year interface was not served.' >&2; exit 1; }
           ACTIVE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
           [[ "$ACTIVE" == '${{ steps.build.outputs.web_image }}' ]]
 
@@ -156,16 +160,16 @@ jobs:
         shell: bash
         run: |
           mkdir -p evidence
-          cat > evidence/module-availability-fail-open-test.json <<JSON
-          {"environment":"test","releaseCommit":"${{ steps.release.outputs.target_commit }}","workflowCommit":"${{ github.sha }}","runId":"${{ github.run_id }}","webImage":"${{ steps.build.outputs.web_image }}","previousWebImage":"${{ steps.before.outputs.old_web_image }}","apiDeployment":"unchanged","migration042":"unchanged","database":"unchanged"}
+          cat > evidence/modules-003-004-rolling-years-test.json <<JSON
+          {"environment":"test","releaseCommit":"${{ steps.release.outputs.target_commit }}","workflowCommit":"${{ github.sha }}","runId":"${{ github.run_id }}","webImage":"${{ steps.build.outputs.web_image }}","previousWebImage":"${{ steps.before.outputs.old_web_image }}","yearWindow":{"previous":3,"current":1,"future":6,"total":10},"apiDeployment":"unchanged","migration":"unchanged","database":"unchanged","moduleStates":"unchanged"}
           JSON
 
       - name: Upload deployment evidence
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: module-availability-fail-open-test-${{ github.run_id }}
-          path: evidence/module-availability-fail-open-test.json
+          name: modules-003-004-rolling-years-test-${{ github.run_id }}
+          path: evidence/modules-003-004-rolling-years-test.json
           retention-days: 30
 
       - name: Roll back web image on failure
@@ -174,4 +178,4 @@ jobs:
         run: |
           set +e
           az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' \
-            --image '${{ steps.before.outputs.old_web_image }}' --revision-suffix "mavforb-${GITHUB_RUN_ID}" --output none
+            --image '${{ steps.before.outputs.old_web_image }}' --revision-suffix "m003004yrrb-${GITHUB_RUN_ID}" --output none
