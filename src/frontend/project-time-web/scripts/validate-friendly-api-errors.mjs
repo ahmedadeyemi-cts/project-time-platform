@@ -43,7 +43,7 @@ for (const contract of [
   'Something went wrong while processing your request. Try again shortly.',
   '[ProjectPulse API diagnostic]',
   'console.table({',
-  "element.closest('.audit-history-panel",
+  "'.audit-history-panel'",
   "const DIAGNOSTIC_ENDPOINT = '/api/client-diagnostics'",
   'MAX_AUDIT_EVENTS_PER_SESSION = 20',
   'diagnostic.status === 403',
