@@ -60,7 +60,7 @@ requireAll(ui, [
   'Can reopen and unsubmit time for correction',
   'Cannot submit a timesheet on another user’s behalf',
   "actionCode === 'TIME_SUBMIT'",
-  "actionCode === 'TIME_DELETE_PERMANENT'",
+  "PTC_DENIED_ACTIONS.has(action.actionCode)",
   "effect: 'DENY'"
 ], 'Module 012 role-first UI');
 
