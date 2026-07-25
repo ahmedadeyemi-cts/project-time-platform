@@ -14,7 +14,9 @@ const requireAll = (source, values, label) => {
 
 const paths = {
   ui: 'src/frontend/project-time-web/src/RoleAdminDirectoryPanel.jsx',
+  model: 'src/frontend/project-time-web/src/role-permission-model.js',
   compatibility: 'src/frontend/project-time-web/src/scoped-rbac-catalog-compatibility.js',
+  navigation: 'src/frontend/project-time-web/src/module-availability-bridge.js',
   main: 'src/frontend/project-time-web/src/main.jsx',
   backend: 'src/backend/ProjectTime.Api/Modules/ScopedRolePolicyModule.cs',
   writes: 'src/backend/ProjectTime.Api/Modules/ScopedRolePolicyWrites.cs',
@@ -22,13 +24,15 @@ const paths = {
   support: 'src/backend/ProjectTime.Api/Modules/ScopedRolePolicySupport.cs',
   evaluator: 'src/backend/ProjectTime.Api/Modules/ScopedAuthorizationEvaluator.cs',
   rules: 'src/backend/ProjectTime.Api/Modules/ScopedRolePolicyRules.cs',
-  css: 'src/frontend/project-time-web/src/scoped-role-policy-admin.css',
+  css: 'src/frontend/project-time-web/src/role-permission-workbench.css',
   project: 'src/backend/ProjectTime.Api/ProjectTime.Api.csproj'
 };
 
-const [ui, compatibility, main, backend, writes, persistence, support, evaluator, rules, css, project] = await Promise.all([
+const [ui, model, compatibility, navigation, main, backend, writes, persistence, support, evaluator, rules, css, project] = await Promise.all([
   text(paths.ui),
+  text(paths.model),
   text(paths.compatibility),
+  text(paths.navigation),
   text(paths.main),
   optionalText(paths.backend),
   optionalText(paths.writes),
@@ -42,7 +46,8 @@ const [ui, compatibility, main, backend, writes, persistence, support, evaluator
 
 requireAll(ui, [
   'Module 012',
-  'Authoritative, versioned administration',
+  'Role Administration',
+  'database-backed module',
   "api('/api/role-policy/summary')",
   "api('/api/role-policy/catalog')",
   "api('/api/role-policy/versions')",
@@ -50,16 +55,43 @@ requireAll(ui, [
   "api('/api/role-policy/publish'",
   '/restore',
   'Boolean(summary?.canWritePolicy) && !summary?.isViewAs',
-  'Policy writes require an authenticated Super Administrator in their own session.',
+  'Publishing requires a Super Administrator in their own session.',
   'Assigned users',
-  'Granular actions and scopes',
-  'Delegated authority',
-  'Reason required',
-  'Audit required',
-  'Publish new policy version',
+  'Permission level',
+  'Data scope',
+  'Effective preview',
+  'Required reason',
+  'Publish permission',
   'Restore as new version',
-  'Existing authorization remains in effect'
-], 'Module 012 UI');
+  'Not Set · preserve existing authorization'
+], 'Module 012 intuitive UI');
+
+requireAll(model, [
+  "['Not Set'",
+  "['No Access'",
+  "['View'",
+  "['Create/Edit'",
+  "['Approve'",
+  "['Manage'",
+  "['Administer'",
+  "['Full Control'",
+  "['Custom'",
+  "PROJECT_MANAGEMENT_LEAD: 'MANAGED_TEAM'",
+  "role === 'PROJECT_TEAM_COORDINATOR'",
+  "'MODULE_CONFIGURE', 'POLICY_DELEGATE'",
+  "actionCode: 'MODULE_ACCESS'",
+  "effect: 'DENY'",
+  "role === 'SUPER_ADMINISTRATOR'",
+  "level = 'Full Control'"
+], 'Permission-level model');
+
+requireAll(navigation, [
+  'installPermissionNavigationGuard',
+  "actionCode || '').toUpperCase() === 'MODULE_ACCESS'",
+  "grantEffect || '').toUpperCase() === 'DENY'",
+  "window.location.hash = '#dashboard'",
+  "actorRoles.has('SUPER_ADMINISTRATOR')"
+], 'No Access navigation enforcement');
 
 requireAll(compatibility, [
   "SCOPED_RBAC_CATALOG_PATH = '/api/role-policy/catalog'",
@@ -80,10 +112,12 @@ requireAll(main, [
 ], 'Scoped RBAC compatibility root wiring');
 
 requireAll(css, [
-  '.role-policy-admin',
-  '.role-policy-grant',
-  '.role-policy-publish',
-  '.role-policy-history'
+  '.role-permission-workbench',
+  '.rpw-level-grid',
+  '.rpw-scope-section',
+  '.rpw-preview-section',
+  '.rpw-publish',
+  '.rpw-history'
 ], 'Module 012 styling');
 
 requireAll(project, [
@@ -104,8 +138,7 @@ if (fullSourceAvailable) {
     'app.MapPost("/api/role-policy/publish"',
     'app.MapPost("/api/role-policy/versions/{policyVersionId:guid}/restore"',
     'actor.IsSuperAdministrator && !actor.IsViewAs',
-    'notSetBehavior = "legacy_fallback"',
-    'nonBypassableSafetyControlsRemainSeparate = true'
+    'notSetBehavior = "legacy_fallback"'
   ], 'Module 012 backend');
 
   requireAll(writes, [
@@ -138,12 +171,13 @@ if (fullSourceAvailable) {
   ], 'Actor and validation contracts');
 
   requireAll(evaluator, [
+    'if (actor.IsSuperAdministrator)',
+    'permanent organization-wide Full Control',
     'var explicitDeny',
-    'grant_effect = \'DENY\'',
+    "grant_effect = 'DENY'",
     'LEGACY_FALLBACK',
     'case "CUSTOM_RULE"',
     'actor.IsViewAs && isWrite',
-    'non-bypassable safety control',
     'ScopedAuthorizationDecision.Denied'
   ], 'Central scoped evaluator');
 
@@ -166,4 +200,4 @@ if (/catalog\.actions\.map|catalog\.scopes\.map/.test(compatibility)) {
   throw new Error('Compatibility code must normalize arrays rather than render catalog collections.');
 }
 
-console.log('Module 012 authoritative scoped role administration contracts passed.');
+console.log('Module 012 intuitive scoped role administration contracts passed.');

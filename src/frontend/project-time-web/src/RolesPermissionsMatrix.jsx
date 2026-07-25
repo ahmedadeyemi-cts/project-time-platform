@@ -1,94 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import './roles-permissions-matrix.css';
-
-function headers() {
-  try {
-    const session = JSON.parse(localStorage.getItem('projectPulseAuthSession') || 'null');
-    return session?.sessionToken ? { 'X-ProjectPulse-Session': session.sessionToken } : {};
-  } catch {
-    return {};
-  }
-}
-
-async function api(path) {
-  const response = await fetch(path, {
-    method: 'GET',
-    cache: 'no-store',
-    headers: {
-      ...headers(),
-      'Cache-Control': 'no-cache',
-      Pragma: 'no-cache'
-    }
-  });
-  const raw = await response.text();
-  let payload = {};
-  try { payload = raw ? JSON.parse(raw) : {}; } catch { payload = { message: raw }; }
-  if (!response.ok) {
-    throw new Error(payload.message || payload.detail || `${path} returned HTTP ${response.status}`);
-  }
-  return payload;
-}
-
-function csvEscape(value) {
-  const text = String(value ?? '');
-  return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
-}
-
-function downloadCsv(filename, rows) {
-  const content = rows.map((row) => row.map(csvEscape).join(',')).join('\n');
-  const blob = new Blob([content], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-}
-
-function formatDate(value) {
-  if (!value) return 'Not recorded';
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString();
-}
-
-function roleCell(entry) {
-  if (!entry) {
-    return {
-      granted: false,
-      explicitDeny: false,
-      inherited: true,
-      delegatedAuthority: false,
-      reasonRequired: false,
-      auditRequired: true,
-      conditions: { legacyAuthorizationPreserved: true },
-      explanation: 'No scoped decision exists. Existing ProjectPulse authorization remains in effect.'
-    };
-  }
-  return entry;
-}
-
-function cellLabel(cell) {
-  if (cell.explicitDeny || cell.grantEffect === 'DENY') return 'Denied';
-  if (cell.granted || cell.grantEffect === 'GRANT') return 'Granted';
-  if (cell.inherited) return 'Legacy';
-  return 'Not granted';
-}
-
-function cellClass(cell) {
-  if (cell.explicitDeny || cell.grantEffect === 'DENY') return 'not-granted';
-  if (cell.granted || cell.grantEffect === 'GRANT') return 'granted';
-  return 'not-granted';
-}
+import './role-permission-matrix-v2.css';
+import { PERMISSION_LEVELS, ROLE_REFERENCE, api, downloadCsv, formatDate, inferLevel, inferScope, levelClass } from './role-permission-matrix-model.js';
 
 export default function RolesPermissionsMatrix() {
   const [payload, setPayload] = useState({ loading: true, data: null, error: '' });
+  const [tab, setTab] = useState('matrix');
   const [moduleCode, setModuleCode] = useState('all');
   const [roleCode, setRoleCode] = useState('all');
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState(null);
-  const [explanation, setExplanation] = useState(null);
   const [message, setMessage] = useState('');
 
   async function loadMatrix() {
@@ -97,7 +18,7 @@ export default function RolesPermissionsMatrix() {
       const data = await api('/api/role-policy/matrix');
       setPayload({ loading: false, data, error: '' });
     } catch (error) {
-      setPayload({ loading: false, data: null, error: error.message || 'Unable to load the effective matrix.' });
+      setPayload({ loading: false, data: null, error: error.message || 'Unable to load the effective permission matrix.' });
     }
   }
 
@@ -105,254 +26,151 @@ export default function RolesPermissionsMatrix() {
 
   const roles = payload.data?.roles || [];
   const modules = payload.data?.modules || [];
-  const effectiveEntries = useMemo(
-    () => [...(payload.data?.grants || []), ...(payload.data?.legacyFallback || [])],
-    [payload.data]
-  );
+  const grants = useMemo(() => [...(payload.data?.grants || []), ...(payload.data?.legacyFallback || [])], [payload.data]);
 
-  const rows = useMemo(() => {
-    const byKey = new Map();
-    effectiveEntries.forEach((entry) => {
-      const key = `${entry.moduleCode}|${entry.actionCode}|${entry.scopeCode}`;
-      const row = byKey.get(key) || {
-        key,
-        moduleCode: entry.moduleCode,
-        moduleName: entry.moduleName || modules.find((item) => item.moduleCode === entry.moduleCode)?.moduleName || '',
-        routeScope: entry.routeScope || modules.find((item) => item.moduleCode === entry.moduleCode)?.routeScope || '',
-        actionCode: entry.actionCode,
-        scopeCode: entry.scopeCode,
-        cells: new Map()
-      };
-      row.cells.set(entry.roleCode, entry);
-      byKey.set(key, row);
+  const grouped = useMemo(() => {
+    const map = new Map();
+    grants.forEach((grant) => {
+      const key = `${grant.moduleCode}|${grant.roleCode}`;
+      const list = map.get(key) || [];
+      list.push(grant);
+      map.set(key, list);
     });
-    return [...byKey.values()].sort((left, right) => (
-      String(left.moduleCode).localeCompare(String(right.moduleCode), undefined, { numeric: true })
-      || String(left.actionCode).localeCompare(String(right.actionCode))
-      || String(left.scopeCode).localeCompare(String(right.scopeCode))
-    ));
-  }, [effectiveEntries, modules]);
+    return map;
+  }, [grants]);
 
-  const visibleRoles = useMemo(
-    () => roleCode === 'all' ? roles : roles.filter((role) => role.roleCode === roleCode),
-    [roleCode, roles]
-  );
-
-  const visibleRows = useMemo(() => {
+  const visibleRoles = useMemo(() => roleCode === 'all' ? roles : roles.filter((role) => role.roleCode === roleCode), [roleCode, roles]);
+  const visibleModules = useMemo(() => {
     const term = search.trim().toLowerCase();
-    return rows.filter((row) => {
-      if (moduleCode !== 'all' && row.moduleCode !== moduleCode) return false;
+    return modules.filter((module) => {
+      if (moduleCode !== 'all' && module.moduleCode !== moduleCode) return false;
       if (!term) return true;
-      return [row.moduleCode, row.moduleName, row.routeScope, row.actionCode, row.scopeCode]
-        .join(' ')
-        .toLowerCase()
-        .includes(term);
+      return [module.moduleCode, module.moduleName, module.routeScope, module.permissionNotes].join(' ').toLowerCase().includes(term);
     });
-  }, [moduleCode, rows, search]);
+  }, [moduleCode, modules, search]);
 
   const totals = useMemo(() => {
-    let grants = 0;
-    let denials = 0;
-    let legacy = 0;
-    let delegated = 0;
-    effectiveEntries.forEach((entry) => {
-      if (entry.grantEffect === 'GRANT' || entry.granted) grants += 1;
-      if (entry.grantEffect === 'DENY' || entry.explicitDeny) denials += 1;
-      if (entry.inherited) legacy += 1;
-      if (entry.delegatedAuthority) delegated += 1;
-    });
-    return { grants, denials, legacy, delegated };
-  }, [effectiveEntries]);
-
-  async function selectCell(row, role, cell) {
-    const next = { row, role, cell: roleCell(cell) };
-    setSelected(next);
-    setExplanation({ loading: true });
-    try {
-      const params = new URLSearchParams({
-        roleCode: role.roleCode,
-        moduleCode: row.moduleCode,
-        actionCode: row.actionCode,
-        scopeCode: row.scopeCode
-      });
-      setExplanation(await api(`/api/role-policy/explain?${params.toString()}`));
-    } catch (error) {
-      setExplanation({ error: error.message || 'Unable to explain this effective access decision.' });
-    }
-  }
+    const counts = Object.fromEntries(PERMISSION_LEVELS.map((level) => [level.code, 0]));
+    modules.forEach((module) => roles.forEach((role) => {
+      counts[inferLevel(grouped.get(`${module.moduleCode}|${role.roleCode}`) || [], role.roleCode)] += 1;
+    }));
+    return counts;
+  }, [grouped, modules, roles]);
 
   function exportCsv() {
-    const header = [
-      'Module', 'Module Name', 'Route / Scope', 'Permission Action', 'Scope',
-      'Role', 'Status', 'Inherited', 'Explicit Denial', 'Delegated Authority',
-      'Reason Required', 'Audit Required', 'Conditions', 'Policy Version',
-      'Last Modified By', 'Last Modified Date'
-    ];
-    const data = [];
-    visibleRows.forEach((row) => {
-      visibleRoles.forEach((role) => {
-        const cell = roleCell(row.cells.get(role.roleCode));
-        data.push([
-          row.moduleCode,
-          row.moduleName,
-          row.routeScope,
-          row.actionCode,
-          row.scopeCode,
-          role.roleName || role.roleCode,
-          cellLabel(cell),
-          Boolean(cell.inherited),
-          Boolean(cell.explicitDeny || cell.grantEffect === 'DENY'),
-          Boolean(cell.delegatedAuthority),
-          Boolean(cell.reasonRequired),
-          cell.auditRequired !== false,
-          JSON.stringify(cell.conditions || {}),
-          cell.versionNumber || payload.data?.policyVersion?.versionNumber || '',
-          cell.lastModifiedBy || '',
-          cell.lastModifiedAt || ''
-        ]);
-      });
-    });
-    downloadCsv('projectpulse-effective-scoped-role-matrix.csv', [header, ...data]);
-    setMessage('Effective scoped permissions exported as CSV.');
+    const header = ['Module', 'Module Name', 'Route / Scope', ...roles.map((role) => role.roleName), 'Permission Notes'];
+    const rows = modules.map((module) => [
+      module.moduleCode,
+      module.moduleName,
+      module.routeScope,
+      ...roles.map((role) => {
+        const pair = grouped.get(`${module.moduleCode}|${role.roleCode}`) || [];
+        return `${inferLevel(pair, role.roleCode)} (${inferScope(pair, role.roleCode)})`;
+      }),
+      module.permissionNotes || ''
+    ]);
+    downloadCsv('projectpulse-module-role-permissions-matrix.csv', [header, ...rows]);
+    setMessage('The visual permission matrix was exported as CSV.');
   }
 
-  if (payload.loading) {
-    return <section className="roles-permissions-matrix">Loading effective scoped permissions…</section>;
-  }
-
+  if (payload.loading) return <section className="roles-permissions-matrix">Loading module permissions…</section>;
   if (payload.error || !payload.data) {
-    return (
-      <section className="roles-permissions-matrix">
-        <p className="eyebrow">Module 037</p>
-        <h2>Roles and Permissions Matrix</h2>
-        <p className="roles-matrix-error">{payload.error || 'The effective matrix is unavailable.'}</p>
-        <button type="button" onClick={loadMatrix}>Retry</button>
-      </section>
-    );
+    return <section className="roles-permissions-matrix"><p className="eyebrow">Module 037</p><h2>Roles and Permissions Matrix</h2><p className="roles-matrix-error">{payload.error || 'The permission matrix is unavailable.'}</p><button type="button" onClick={loadMatrix}>Retry</button></section>;
   }
 
   return (
-    <section className="roles-permissions-matrix" data-projectpulse-module="037" data-read-only="true">
-      <header className="roles-matrix-header">
+    <section className="role-permission-matrix-v2" data-projectpulse-module="037" data-read-only="true">
+      <header className="rpm-hero">
         <div>
           <p className="eyebrow">Module 037</p>
           <h1>Roles and Permissions Matrix</h1>
-          <p className="muted">
-            Strictly read-only representation of the effective, versioned permissions configured through Module 012.
-          </p>
+          <p>Read-only confirmation of the permissions published in Module 012. Modules and roles are loaded from the database.</p>
         </div>
-        <div className="roles-matrix-actions">
-          <button type="button" onClick={loadMatrix}>Refresh</button>
-          <button type="button" onClick={exportCsv}>Export CSV</button>
-        </div>
+        <div className="rpm-actions"><button type="button" onClick={loadMatrix}>Refresh</button><button type="button" onClick={exportCsv}>Export matrix</button></div>
       </header>
 
-      <div className="roles-matrix-alert">
-        <strong>Read-only policy view.</strong> This module has no permission-editing controls or write endpoint.
-        Policy changes and controlled restoration are available only through Module 012.
-      </div>
+      <div className="rpm-readonly-banner"><strong>Confirmation view only</strong><span>Change permissions in Module 012. Refresh this page to confirm the newly published value.</span></div>
 
-      <div className="roles-matrix-summary-grid">
-        <article><span>Policy version</span><strong>v{payload.data.policyVersion?.versionNumber || '—'}</strong><small>{payload.data.policyVersion?.policyStatus || 'Unknown'}</small></article>
-        <article><span>Granular grants</span><strong>{totals.grants}</strong><small>Effective scoped grants</small></article>
-        <article><span>Explicit denials</span><strong>{totals.denials}</strong><small>Override grants for matching actions</small></article>
-        <article><span>Legacy fallbacks</span><strong>{totals.legacy}</strong><small>Workbook Not Set preserves current behavior</small></article>
-        <article><span>Delegated grants</span><strong>{totals.delegated}</strong><small>Delegation remains reasoned and audited</small></article>
-      </div>
+      <nav className="rpm-tabs" aria-label="Module 037 views">
+        <button type="button" className={tab === 'matrix' ? 'active' : ''} onClick={() => setTab('matrix')}>Permission Matrix</button>
+        <button type="button" className={tab === 'roles' ? 'active' : ''} onClick={() => setTab('roles')}>Role Reference</button>
+        <button type="button" className={tab === 'levels' ? 'active' : ''} onClick={() => setTab('levels')}>Permission Levels</button>
+      </nav>
 
-      <div className="roles-matrix-toolbar">
-        <label>
-          <span>Module</span>
-          <select value={moduleCode} onChange={(event) => setModuleCode(event.target.value)}>
-            <option value="all">All modules</option>
-            {modules.map((module) => (
-              <option value={module.moduleCode} key={module.moduleCode}>
-                Module {module.moduleCode} · {module.moduleName}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>Role</span>
-          <select value={roleCode} onChange={(event) => setRoleCode(event.target.value)}>
-            <option value="all">All canonical roles</option>
-            {roles.map((role) => <option value={role.roleCode} key={role.roleCode}>{role.roleName}</option>)}
-          </select>
-        </label>
-        <label>
-          <span>Search</span>
-          <input
-            type="search"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search module, action, scope, or route"
-          />
-        </label>
-      </div>
+      {tab === 'matrix' ? (
+        <>
+          <section className="rpm-summary-grid">
+            <article><span>Policy version</span><strong>v{payload.data.policyVersion?.versionNumber || '—'}</strong><small>{payload.data.policyVersion?.policyStatus || 'Unknown'}</small></article>
+            <article><span>Database modules</span><strong>{modules.length}</strong><small>Rows populate from the module table</small></article>
+            <article><span>No Access</span><strong>{totals['No Access']}</strong><small>Hidden from those roles</small></article>
+            <article><span>Full Control</span><strong>{totals['Full Control']}</strong><small>Includes the Super Administrator invariant</small></article>
+          </section>
 
-      {message ? <p className="roles-matrix-alert">{message}</p> : null}
-      <p className="roles-matrix-count">{visibleRows.length} action/scope row(s)</p>
+          <section className="rpm-toolbar">
+            <label><span>Module</span><select value={moduleCode} onChange={(event) => setModuleCode(event.target.value)}><option value="all">All modules</option>{modules.map((module) => <option value={module.moduleCode} key={module.moduleCode}>Module {module.moduleCode} · {module.moduleName}</option>)}</select></label>
+            <label><span>Role</span><select value={roleCode} onChange={(event) => setRoleCode(event.target.value)}><option value="all">All canonical roles</option>{roles.map((role) => <option value={role.roleCode} key={role.roleCode}>{role.roleName}</option>)}</select></label>
+            <label><span>Search modules</span><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Number, name, route, or note" /></label>
+          </section>
 
-      <div className="roles-matrix-table-wrap">
-        <table className="roles-matrix-table">
-          <thead>
-            <tr>
-              <th>Module</th>
-              <th>Permission / action</th>
-              <th>Scope</th>
-              {visibleRoles.map((role) => <th key={role.roleCode}>{role.roleName}</th>)}
-            </tr>
-          </thead>
-          <tbody>
-            {visibleRows.map((row) => (
-              <tr key={row.key}>
-                <td>
-                  <strong>Module {row.moduleCode}</strong>
-                  <small>{row.moduleName}</small>
-                  <small>{row.routeScope}</small>
-                </td>
-                <td><strong>{row.actionCode}</strong></td>
-                <td><strong>{row.scopeCode}</strong></td>
-                {visibleRoles.map((role) => {
-                  const cell = roleCell(row.cells.get(role.roleCode));
-                  return (
-                    <td className={cellClass(cell)} key={role.roleCode}>
-                      <button
-                        type="button"
-                        className="roles-matrix-cell-button"
-                        onClick={() => selectCell(row, role, cell)}
-                        title="Open effective access explanation"
-                      >
-                        <strong>{cellLabel(cell)}</strong>
-                        <small>{cell.inherited ? 'Inherited legacy behavior' : `Policy v${cell.versionNumber || payload.data.policyVersion?.versionNumber || '—'}`}</small>
-                        {cell.delegatedAuthority ? <small>Delegated</small> : null}
-                        {cell.reasonRequired ? <small>Reason required</small> : null}
-                      </button>
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+          {message ? <p className="roles-matrix-alert">{message}</p> : null}
+          <p className="rpm-count">{visibleModules.length} module row(s) · {visibleRoles.length} role column(s)</p>
 
-      {!visibleRows.length ? <p className="roles-matrix-empty">No effective permissions match the current filters.</p> : null}
+          <div className="rpm-table-wrap">
+            <table className="rpm-table">
+              <thead><tr><th>Module</th>{visibleRoles.map((role) => <th key={role.roleCode}>{role.roleName}</th>)}</tr></thead>
+              <tbody>
+                {visibleModules.map((module) => (
+                  <tr key={module.moduleCode}>
+                    <td><strong>Module {module.moduleCode}</strong><span>{module.moduleName}</span><small>{module.routeScope} · {module.currentState}</small></td>
+                    {visibleRoles.map((role) => {
+                      const pair = grouped.get(`${module.moduleCode}|${role.roleCode}`) || [];
+                      const level = inferLevel(pair, role.roleCode);
+                      const scope = inferScope(pair, role.roleCode);
+                      return (
+                        <td key={role.roleCode}>
+                          <button type="button" className={levelClass(level)} onClick={() => setSelected({ module, role, level, scope, grants: pair })} title="View permission details">
+                            <strong>{level}</strong><small>{scope}</small>
+                          </button>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {!visibleModules.length ? <p className="roles-matrix-empty">No modules match the current filters.</p> : null}
 
-      {selected ? (
-        <section className="roles-matrix-panel" aria-live="polite">
-          <p className="eyebrow">Effective access explanation</p>
-          <h2>{selected.role.roleName} · Module {selected.row.moduleCode} · {selected.row.actionCode}</h2>
-          {explanation?.loading ? <p>Loading explanation…</p> : null}
-          {explanation?.error ? <p className="roles-matrix-error">{explanation.error}</p> : null}
-          {explanation && !explanation.loading && !explanation.error ? (
-            <div className="governance-signal-list">
-              <article><span>Decision</span><strong>{explanation.explicitDeny ? 'Explicitly denied' : explanation.granted ? 'Granted' : 'Legacy fallback'}</strong><p>{explanation.explanation}</p></article>
-              <article><span>Scope</span><strong>{explanation.scopeCode}</strong><p>Inherited: {String(Boolean(explanation.inherited))}</p></article>
-              <article><span>Controls</span><strong>{explanation.delegatedAuthority ? 'Delegation allowed' : 'No delegated authority'}</strong><p>Reason required: {String(Boolean(explanation.reasonRequired))} · Audit required: {String(explanation.auditRequired !== false)}</p></article>
-              <article><span>Policy evidence</span><strong>Version {explanation.policyVersion || payload.data.policyVersion?.versionNumber || '—'}</strong><p>Last modified by {explanation.lastModifiedBy || 'System'} · {formatDate(explanation.lastModifiedAt)}</p></article>
-            </div>
+          {selected ? (
+            <section className="rpm-detail-panel">
+              <header><div><p className="eyebrow">Permission details</p><h2>{selected.role.roleName} · Module {selected.module.moduleCode}</h2></div><button type="button" onClick={() => setSelected(null)}>Close</button></header>
+              <div className="rpm-detail-grid">
+                <article><span>Permission</span><strong>{selected.level}</strong><p>{PERMISSION_LEVELS.find((item) => item.code === selected.level)?.meaning}</p></article>
+                <article><span>Scope</span><strong>{selected.scope}</strong><p>{ROLE_REFERENCE[selected.role.roleCode]?.visibility || 'The published action scopes determine visibility.'}</p></article>
+                <article><span>Module note</span><strong>{selected.module.moduleName}</strong><p>{selected.module.permissionNotes || 'No exception note is stored.'}</p></article>
+                <article><span>Policy evidence</span><strong>v{payload.data.policyVersion?.versionNumber || '—'}</strong><p>{selected.grants[0]?.lastModifiedBy ? `Published by ${selected.grants[0].lastModifiedBy} · ${formatDate(selected.grants[0].lastModifiedAt)}` : 'Super Administrator invariant or legacy fallback.'}</p></article>
+              </div>
+              <div className="rpm-action-list">
+                {selected.grants.map((grant, index) => <span key={`${grant.actionCode}-${grant.scopeCode}-${index}`}>{grant.grantEffect === 'DENY' || grant.explicitDeny ? 'Deny' : grant.inherited ? 'Legacy' : 'Allow'} {grant.actionCode} · {grant.scopeCode}</span>)}
+                {!selected.grants.length && selected.role.roleCode === 'SUPER_ADMINISTRATOR' ? <span>Permanent Full Control · ORGANIZATION</span> : null}
+              </div>
+            </section>
           ) : null}
+        </>
+      ) : null}
+
+      {tab === 'roles' ? (
+        <section className="rpm-reference-grid">
+          {roles.map((role) => {
+            const reference = ROLE_REFERENCE[role.roleCode] || { purpose: role.description, visibility: 'Defined by published module permissions.', defaultScope: 'CUSTOM_RULE' };
+            return <article key={role.roleCode}><header><div><p className="eyebrow">{role.roleCode}</p><h2>{role.roleName}</h2></div><span>{role.activeUserCount || 0} user(s)</span></header><p>{reference.purpose || role.description}</p><dl><div><dt>Default visibility</dt><dd>{reference.visibility}</dd></div><div><dt>Recommended scope</dt><dd>{reference.defaultScope}</dd></div></dl>{role.roleCode === 'SUPER_ADMINISTRATOR' ? <strong className="rpm-invariant">Permanent Full Control</strong> : null}</article>;
+          })}
+        </section>
+      ) : null}
+
+      {tab === 'levels' ? (
+        <section className="rpm-level-reference">
+          {PERMISSION_LEVELS.map((level) => <article key={level.code}><span className={levelClass(level.code)}><strong>{level.code}</strong></span><div><h2>{level.code}</h2><p>{level.meaning}</p>{level.code === 'No Access' ? <small>The role should not see the module in navigation, dashboards, search, or direct route access.</small> : null}{level.code === 'View' ? <small>“View” is always limited by the role’s configured scope, such as SELF, MANAGED_TEAM, or ASSIGNED_PROJECTS.</small> : null}</div></article>)}
         </section>
       ) : null}
     </section>

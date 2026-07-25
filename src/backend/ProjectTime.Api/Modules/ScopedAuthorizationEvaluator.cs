@@ -27,6 +27,23 @@ public static class ScopedAuthorizationEvaluator
                 "Write actions are disabled while using Administrator View-As preview.");
         }
 
+        if (actor.IsSuperAdministrator)
+        {
+            return new ScopedAuthorizationDecision(
+                true,
+                false,
+                false,
+                actor.IsViewAs,
+                normalizedModule,
+                normalizedAction,
+                "ORGANIZATION",
+                null,
+                false,
+                true,
+                true,
+                "Super Administrator has permanent organization-wide Full Control.");
+        }
+
         if (ScopedRolePolicyRules.NonBypassableActions.Contains(normalizedAction))
         {
             return ScopedAuthorizationDecision.Denied(
