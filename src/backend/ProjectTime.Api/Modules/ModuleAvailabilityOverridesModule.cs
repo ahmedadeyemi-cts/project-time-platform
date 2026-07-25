@@ -13,7 +13,12 @@ public static class ModuleAvailabilityOverridesModule
 
     public static WebApplication MapModuleAvailabilityOverrideEndpoints(this WebApplication app)
     {
-        app.MapGet("/api/module-availability/overrides", GetOverridesAsync);
+        // Force the Minimal API Delegate overload. A direct method-group binding can
+        // select RequestDelegate and discard the returned IResult, producing HTTP 200
+        // with an empty body.
+        app.MapGet(
+            "/api/module-availability/overrides",
+            (Func<HttpContext, Task<IResult>>)GetOverridesAsync);
         return app;
     }
 
