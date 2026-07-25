@@ -1,15 +1,15 @@
-name: ProjectPulse Deploy Module 001 Shared Task Source Test
+name: ProjectPulse Deploy Module 001 Timer Assignment Join Test
 
 on:
   workflow_dispatch:
     inputs:
       release_commit:
-        description: Exact verified Module 001 shared-task-source commit
+        description: Exact verified Module 001 timer assignment-join commit
         required: true
-        default: f2022074e538ea761d18ad43de1c351e1537c3b5
+        default: c26dd765aa9e61602a888384573e4ea66ed1360c
         type: string
       confirmation:
-        description: Enter DEPLOY-MODULE-001-SHARED-TASK-SOURCE-TO-TEST
+        description: Enter DEPLOY-MODULE-001-TIMER-ASSIGNMENT-JOIN-TO-TEST
         required: true
         type: string
 
@@ -18,16 +18,16 @@ permissions:
   contents: read
 
 concurrency:
-  group: projectpulse-deploy-module-001-shared-task-source-test
+  group: projectpulse-deploy-module-001-timer-assignment-join-test
   cancel-in-progress: false
 
 jobs:
   deploy-web:
-    name: Guarded Module 001 shared task source web-only test deployment
+    name: Guarded Module 001 timer assignment-join web-only test deployment
     environment: test
     runs-on: ubuntu-latest
     env:
-      EXPECTED_RELEASE_COMMIT: f2022074e538ea761d18ad43de1c351e1537c3b5
+      EXPECTED_RELEASE_COMMIT: c26dd765aa9e61602a888384573e4ea66ed1360c
     steps:
       - name: Check out deployment controls
         uses: actions/checkout@v5
@@ -35,27 +35,27 @@ jobs:
           path: control
           fetch-depth: 0
 
-      - name: Check out exact shared-task-source release
+      - name: Check out exact timer assignment-join release
         uses: actions/checkout@v5
         with:
           ref: ${{ inputs.release_commit }}
           path: release
           fetch-depth: 1
 
-      - name: Guard workflow source and shared-task-source release
+      - name: Guard workflow source and timer assignment-join release
         id: release
         shell: bash
         run: |
           set -Eeuo pipefail
           [[ '${{ github.ref }}' == 'refs/heads/main' ]] || { echo 'Dispatch this workflow from main.' >&2; exit 1; }
-          [[ '${{ inputs.confirmation }}' == 'DEPLOY-MODULE-001-SHARED-TASK-SOURCE-TO-TEST' ]] || { echo 'Confirmation text does not match.' >&2; exit 1; }
+          [[ '${{ inputs.confirmation }}' == 'DEPLOY-MODULE-001-TIMER-ASSIGNMENT-JOIN-TO-TEST' ]] || { echo 'Confirmation text does not match.' >&2; exit 1; }
           [[ '${{ inputs.release_commit }}' =~ ^[0-9a-f]{40}$ ]] || { echo 'release_commit must be a complete SHA.' >&2; exit 1; }
           CONTROL_COMMIT="$(git -C control rev-parse HEAD)"
           TARGET_COMMIT="$(git -C release rev-parse HEAD)"
           [[ "$CONTROL_COMMIT" == '${{ github.sha }}' ]]
           [[ "$TARGET_COMMIT" == '${{ inputs.release_commit }}' ]]
-          [[ "$TARGET_COMMIT" == "$EXPECTED_RELEASE_COMMIT" ]] || { echo 'Only the verified Module 001 shared-task-source release may deploy.' >&2; exit 1; }
-          git -C control merge-base --is-ancestor "$TARGET_COMMIT" HEAD || { echo 'Shared-task-source release is not an ancestor of deployment controls.' >&2; exit 1; }
+          [[ "$TARGET_COMMIT" == "$EXPECTED_RELEASE_COMMIT" ]] || { echo 'Only the verified Module 001 timer assignment-join release may deploy.' >&2; exit 1; }
+          git -C control merge-base --is-ancestor "$TARGET_COMMIT" HEAD || { echo 'Timer assignment-join release is not an ancestor of deployment controls.' >&2; exit 1; }
 
           PORTAL_ENTRY='release/src/frontend/project-time-web/src/module001/TimesheetEnhancementPortal.jsx'
           PORTAL='release/src/frontend/project-time-web/src/module001/TimesheetEnhancementPortalV2.jsx'
@@ -65,7 +65,12 @@ jobs:
           test -f "$PORTAL_ENTRY" -a -f "$PORTAL" -a -f "$PICKER" -a -f "$TIMER" -a -f "$TIMER_CSS"
           grep -Fq './TimesheetEnhancementPortalV2.jsx' "$PORTAL_ENTRY"
           grep -Fq '/api/assignments/available-tasks?weekStart=' "$PORTAL_ENTRY"
+          grep -Fq '/api/timesheet/work-queue?weekStart=' "$PORTAL_ENTRY"
           ! grep -Fq '/api/timesheet/timers/targets?weekStart=' "$PORTAL_ENTRY"
+          grep -Fq 'Promise.allSettled' "$PORTAL_ENTRY"
+          grep -Fq 'buildWorkQueueAssignmentIndex' "$PORTAL_ENTRY"
+          grep -Fq 'assignmentIndex.get(projectTaskKey(task))' "$PORTAL_ENTRY"
+          grep -Fq 'normalizeAvailableTask(task, assignmentIndex)' "$PORTAL_ENTRY"
           grep -Fq 'canonicalWorkTypeGroup' "$PORTAL_ENTRY"
           grep -Fq "workType === 'project' || workType === 'iqs'" "$PORTAL_ENTRY"
           grep -Fq 'regularAssignedTasks:' "$PORTAL_ENTRY"
@@ -109,7 +114,7 @@ jobs:
           OLD="$(resolve_digest "$RAW")"
           echo "old_web_image=$OLD" >> "$GITHUB_OUTPUT"
 
-      - name: Build exact shared-task-source web image
+      - name: Build exact timer assignment-join web image
         id: build
         working-directory: release
         shell: bash
@@ -117,25 +122,25 @@ jobs:
           set -Eeuo pipefail
           SHA='${{ steps.release.outputs.target_commit }}'
           REPOSITORY='project-health-dashboard-web'
-          DIGEST="$(../control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "$REPOSITORY:module001-shared-tasks-$SHA" deployment/containers/web/Dockerfile .)"
+          DIGEST="$(../control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "$REPOSITORY:module001-timer-assignment-join-$SHA" deployment/containers/web/Dockerfile .)"
           echo "web_image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/$REPOSITORY@$DIGEST" >> "$GITHUB_OUTPUT"
 
-      - name: Deploy shared-task-source web image only
+      - name: Deploy timer assignment-join web image only
         id: deploy_web
         shell: bash
         run: |
           set -Eeuo pipefail
           echo 'started=true' >> "$GITHUB_OUTPUT"
           az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' \
-            --image '${{ steps.build.outputs.web_image }}' --revision-suffix "m001sts-${GITHUB_RUN_ID}" --output none
+            --image '${{ steps.build.outputs.web_image }}' --revision-suffix "m001taj-${GITHUB_RUN_ID}" --output none
 
-      - name: Validate served shared task source and active image
+      - name: Validate served timer assignment join and active image
         shell: bash
         run: |
           set -Eeuo pipefail
           BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"; READY=false
           for attempt in $(seq 1 30); do
-            BUSTER="m001sts-${GITHUB_RUN_ID}-${attempt}"
+            BUSTER="m001taj-${GITHUB_RUN_ID}-${attempt}"
             STATUS="$(curl -sSL -H 'Cache-Control: no-cache' -o /tmp/index.html -w '%{http_code}' "$BASE/?release_check=$BUSTER" || true)"
             JS="$(sed -nE 's/.*src="([^"]+\.js)".*/\1/p' /tmp/index.html | head -1)"
             if [[ "$STATUS" == 200 && -n "$JS" ]]; then
@@ -148,6 +153,7 @@ jobs:
                 curl -sSL -H 'Cache-Control: no-cache' "$CSS_URL?release_check=$BUSTER" >> /tmp/app.css || true
               done < <(grep -oE 'href="[^"]+\.css"' /tmp/index.html | sed -E 's/^href="|"$//g')
               if grep -Fq '/api/assignments/available-tasks?weekStart=' /tmp/app.js \
+                && grep -Fq '/api/timesheet/work-queue?weekStart=' /tmp/app.js \
                 && grep -Fq '__module001AvailableTasksTimerTargets' /tmp/app.js \
                 && grep -Fq 'Search activity, task, project, customer, or request' /tmp/app.js \
                 && grep -Fq 'Non-Project Time' /tmp/app.js \
@@ -162,7 +168,7 @@ jobs:
             fi
             sleep 10
           done
-          [[ "$READY" == true ]] || { echo 'Corrected Module 001 shared task source was not served.' >&2; exit 1; }
+          [[ "$READY" == true ]] || { echo 'Corrected Module 001 timer assignment join was not served.' >&2; exit 1; }
           ACTIVE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
           [[ "$ACTIVE" == '${{ steps.build.outputs.web_image }}' ]]
 
@@ -171,7 +177,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p evidence
-          cat > evidence/module-001-shared-task-source-test.json <<JSON
+          cat > evidence/module-001-timer-assignment-join-test.json <<JSON
           {"environment":"test","releaseCommit":"${{ steps.release.outputs.target_commit }}","workflowCommit":"${{ github.sha }}","runId":"${{ github.run_id }}","webImage":"${{ steps.build.outputs.web_image }}","previousWebImage":"${{ steps.before.outputs.old_web_image }}","apiDeployment":"unchanged","migration041":"unchanged","database":"unchanged"}
           JSON
 
@@ -179,8 +185,8 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: module-001-shared-task-source-test-${{ github.run_id }}
-          path: evidence/module-001-shared-task-source-test.json
+          name: module-001-timer-assignment-join-test-${{ github.run_id }}
+          path: evidence/module-001-timer-assignment-join-test.json
           retention-days: 30
 
       - name: Roll back web image on failure
@@ -189,4 +195,4 @@ jobs:
         run: |
           set +e
           az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' \
-            --image '${{ steps.before.outputs.old_web_image }}' --revision-suffix "m001stsrb-${GITHUB_RUN_ID}" --output none
+            --image '${{ steps.before.outputs.old_web_image }}' --revision-suffix "m001tajrb-${GITHUB_RUN_ID}" --output none

@@ -3,22 +3,27 @@ set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKFLOW="$ROOT/.github/workflows/projectpulse-deploy-module-001-view-sync-test.yml"
-EXPECTED="f2022074e538ea761d18ad43de1c351e1537c3b5"
+EXPECTED="c26dd765aa9e61602a888384573e4ea66ed1360c"
 
-fail() { echo "MODULE001_SHARED_TASK_SOURCE_DEPLOYMENT_GUARD=FAIL: $*" >&2; exit 1; }
+fail() { echo "MODULE001_TIMER_ASSIGNMENT_JOIN_DEPLOYMENT_GUARD=FAIL: $*" >&2; exit 1; }
 [[ -f "$WORKFLOW" ]] || fail "Workflow is missing."
 
 require() { grep -Fq -- "$1" "$WORKFLOW" || fail "Workflow missing: $1"; }
 
 for value in \
-  'name: ProjectPulse Deploy Module 001 Shared Task Source Test' \
+  'name: ProjectPulse Deploy Module 001 Timer Assignment Join Test' \
   "default: $EXPECTED" \
   "EXPECTED_RELEASE_COMMIT: $EXPECTED" \
-  'DEPLOY-MODULE-001-SHARED-TASK-SOURCE-TO-TEST' \
+  'DEPLOY-MODULE-001-TIMER-ASSIGNMENT-JOIN-TO-TEST' \
   'refs/heads/main' \
   'environment: test' \
   '/api/assignments/available-tasks?weekStart=' \
+  '/api/timesheet/work-queue?weekStart=' \
   '! grep -Fq '\''/api/timesheet/timers/targets?weekStart=' \
+  'Promise.allSettled' \
+  'buildWorkQueueAssignmentIndex' \
+  'assignmentIndex.get(projectTaskKey(task))' \
+  'normalizeAvailableTask(task, assignmentIndex)' \
   'canonicalWorkTypeGroup' \
   "workType === 'project' || workType === 'iqs'" \
   'regularAssignedTasks:' \
@@ -32,7 +37,7 @@ for value in \
   'error?.status === 409' \
   'error?.payload?.activeTimer' \
   '.module001-task-results' \
-  'Deploy shared-task-source web image only' \
+  'Deploy timer assignment-join web image only' \
   'apiDeployment":"unchanged' \
   'migration041":"unchanged' \
   'database":"unchanged' \
@@ -62,4 +67,4 @@ do
 done
 
 bash -n "$0"
-echo 'MODULE001_SHARED_TASK_SOURCE_DEPLOYMENT_GUARD=PASS'
+echo 'MODULE001_TIMER_ASSIGNMENT_JOIN_DEPLOYMENT_GUARD=PASS'
