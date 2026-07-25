@@ -12,9 +12,12 @@ const requireAll = (source, values, label) => {
   }
 };
 
-const [jsonResponse, bridge, catalog, css, main, backend, project] = await Promise.all([
+const [jsonResponse, bridge, roleModel, matrixModel, portal, catalog, css, main, backend, project] = await Promise.all([
   text('src/frontend/project-time-web/src/api-json-response.js'),
   text('src/frontend/project-time-web/src/runtime-data-compatibility.js'),
+  text('src/frontend/project-time-web/src/role-permission-model.js'),
+  text('src/frontend/project-time-web/src/role-permission-matrix-model.js'),
+  text('src/frontend/project-time-web/src/module001/PtcTimesheetManagementPortal.jsx'),
   text('src/frontend/project-time-web/src/module001/PtcRuntimeTaskCatalog.jsx'),
   text('src/frontend/project-time-web/src/module001/ptc-runtime-task-catalog.css'),
   text('src/frontend/project-time-web/src/main.jsx'),
@@ -39,11 +42,65 @@ requireAll(bridge, [
   '/api/runtime/timesheet/steward/users',
   '/workspace',
   'runtime_api_non_json_response',
+  'runtime_api_contract_incomplete',
   'projectpulse:ptc-runtime-users',
   'projectpulse:ptc-runtime-workspace',
   'unwrapApiPayload',
-  "requestMethod(input, init) !== 'GET'"
+  "requestMethod(input, init) !== 'GET'",
+  "'X-Project-Pulse-Session'",
+  "'X-Session-Token'",
+  "'X-ProjectPulse-View-As-User'",
+  'responseKeys: Object.keys(normalized || {})'
 ], 'Runtime data compatibility bridge');
+
+requireAll(roleModel, [
+  "'/api/role-policy/summary': '/api/runtime/role-policy/summary'",
+  "'/api/role-policy/catalog': '/api/runtime/role-policy/catalog'",
+  "'/api/role-policy/versions': '/api/runtime/role-policy/versions'",
+  "'/api/role-policy/matrix': '/api/runtime/role-policy/matrix'",
+  "'/api/runtime/role-policy/roles/'",
+  'function viewAsUserId()',
+  "localStorage.getItem('projectPulseViewAsUser')",
+  "'X-ProjectPulse-Session'",
+  "'X-Project-Pulse-Session'",
+  "'X-Session-Token'",
+  'Authorization: `Bearer ${token}`',
+  'returned non-JSON content instead of ProjectPulse API data',
+  'const requestPath = readPath(path, method)',
+  "if (method !== 'GET') return path"
+], 'Module 012 direct runtime API helper');
+
+requireAll(matrixModel, [
+  "'/api/role-policy/catalog': '/api/runtime/role-policy/catalog'",
+  "'/api/role-policy/matrix': '/api/runtime/role-policy/matrix'",
+  'function viewAsUserId()',
+  "localStorage.getItem('projectPulseViewAsUser')",
+  "'X-ProjectPulse-Session'",
+  "'X-Project-Pulse-Session'",
+  "'X-Session-Token'",
+  'Authorization: `Bearer ${token}`',
+  'returned non-JSON content instead of ProjectPulse API data',
+  'const requestPath = runtimePath(path)'
+], 'Module 037 direct runtime API helper');
+
+requireAll(portal, [
+  '/api/runtime/timesheet/steward/users?weekStart=',
+  '/api/runtime/timesheet/steward/users/${encodeURIComponent(selectedUserId)}/workspace?weekStart=',
+  'function viewAsUserId()',
+  "localStorage.getItem('projectPulseViewAsUser')",
+  "'X-ProjectPulse-Session'",
+  "'X-Project-Pulse-Session'",
+  "'X-Session-Token'",
+  'Authorization: `Bearer ${sessionToken}`',
+  'publishUsers(payload)',
+  'publishWorkspace(payload)',
+  'projectpulse:ptc-runtime-users',
+  'projectpulse:ptc-runtime-workspace',
+  'The server returned 0 eligible users.',
+  'Select an eligible user',
+  'roleLabel(user)',
+  'returned non-JSON content instead of ProjectPulse API data'
+], 'PTC direct runtime user and workspace calls');
 
 requireAll(catalog, [
   'Available work for selected user',
@@ -114,4 +171,4 @@ for (const forbidden of [
   if (backend.includes(forbidden)) throw new Error(`Runtime role-policy aliases must remain read-only: ${forbidden}`);
 }
 
-console.log('Runtime role-policy and PTC data contracts passed.');
+console.log('Direct authenticated runtime role-policy and PTC data contracts passed.');
