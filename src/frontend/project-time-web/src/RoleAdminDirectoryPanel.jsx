@@ -73,7 +73,32 @@ export default function RoleAdminDirectoryPanel() {
   async function publish() {
     if (!window.confirm('Publish this permission as a new immutable policy version?')) return;
     setState((s) => ({ ...s, busy: true, error: '', message: 'Publishing permission…' }));
-    try { const result = await api('/api/role-policy/publish', { method: 'POST', body: JSON.stringify(requestBody()) }); setState((s) => ({ ...s, busy: false, message: `Published policy version ${pick(result, 'versionNumber', 'VersionNumber', '—')}. Refresh Module 037 to confirm.` })); await loadFoundation(); } catch (error) { setState((s) => ({ ...s, busy: false, error: error.message })); }
+    try { const result = await api('/api/role-policy/publish', { method: 'POST', body: JSON.stringify(requestBody()) }); setState((s) => ({ ...s, busy: false, message: `Published policy version ${pick(result, 'versionNumber', 'VersionNumber', '—')}. Refresh Module 037 to confirm.` })); window.dispatchEvent(new CustomEvent('projectpulse:permissions-changed')); await loadFoundation(); } catch (error) { setState((s) => ({ ...s, busy: false, error: error.message })); }
+  }
+
+  async function restore(version) {
+    const versionNumber = pick(version, 'versionNumber', 'VersionNumber', '—');
+    const policyVersionId = pick(version, 'policyVersionId', 'PolicyVersionId', '');
+    if (!policyVersionId) {
+      setState((s) => ({ ...s, error: 'The selected policy version does not have a restorable identifier.' }));
+      return;
+    }
+    const restoreReason = window.prompt(`Restore version ${versionNumber} as a new immutable version. Enter the required reason:`);
+    if (!restoreReason?.trim()) return;
+    setState((s) => ({ ...s, busy: true, error: '', message: 'Restoring policy version…' }));
+    try {
+      const result = await api(`/api/role-policy/versions/${encodeURIComponent(policyVersionId)}/restore`, {
+        method: 'POST',
+        body: JSON.stringify({ reason: restoreReason.trim() })
+      });
+      const sourceVersion = pick(result, 'sourceVersionNumber', 'SourceVersionNumber', versionNumber);
+      const nextVersion = pick(result, 'versionNumber', 'VersionNumber', '—');
+      setState((s) => ({ ...s, busy: false, message: `Restored version ${sourceVersion} as version ${nextVersion}. Refresh Module 037 to confirm.` }));
+      window.dispatchEvent(new CustomEvent('projectpulse:permissions-changed'));
+      await loadFoundation();
+    } catch (error) {
+      setState((s) => ({ ...s, busy: false, error: error.message || 'Policy restore failed.' }));
+    }
   }
 
   if (state.loading) return <section className="role-permission-workbench">Loading role permissions…</section>;
@@ -95,7 +120,10 @@ export default function RoleAdminDirectoryPanel() {
     {effectiveLevel === 'Custom' ? <details className="rpw-advanced" open><summary>Advanced custom actions</summary><div className="rpw-custom-actions">{custom.map((g, index) => <article key={`${g.actionCode}-${index}`}><label><span>Action</span><select value={g.actionCode} onChange={(e) => setCustom((rows) => rows.map((row, i) => i === index ? { ...row, actionCode: e.target.value } : row))}>{catalog.actions.map((a) => <option key={a.actionCode} value={a.actionCode}>{a.actionCode}{a.isNonBypassable ? ' · protected' : ''}</option>)}</select></label><label><span>Scope</span><select value={g.scopeCode} onChange={(e) => setCustom((rows) => rows.map((row, i) => i === index ? { ...row, scopeCode: e.target.value } : row))}>{catalog.scopes.map((s) => <option key={s.scopeCode}>{s.scopeCode}</option>)}</select></label><label><span>Effect</span><select value={g.effect} onChange={(e) => setCustom((rows) => rows.map((row, i) => i === index ? { ...row, effect: e.target.value } : row))}>{catalog.effects.map((effect) => <option key={effect}>{effect}</option>)}</select></label><button className="danger" onClick={() => setCustom((rows) => rows.filter((_, i) => i !== index))}>Remove</button></article>)}<button onClick={() => setCustom((rows) => [...rows, normalizeGrant({ actionCode: catalog.actions[0]?.actionCode || 'MODULE_VIEW', scopeCode: effectiveScope })])}>Add custom action</button></div></details> : null}
     <section className="rpw-users"><header><h2>Assigned users</h2><span>{arr(detail?.assignedUsers).length}</span></header><div>{arr(detail?.assignedUsers).slice(0, 12).map((u) => <article key={u.userId || u.UserId || u.email}><strong>{u.displayName || u.DisplayName || u.email}</strong><span>{u.email || u.Email}</span></article>)}{!arr(detail?.assignedUsers).length ? <p>No active users are assigned to this role.</p> : null}</div></section>
     <section className="rpw-publish"><div><p className="eyebrow">Review and publish</p><h2>{pending ? 'Pending permission change' : 'Matches the published policy'}</h2><p>Module 037 reads the same database and displays the published value after refresh.</p></div><label><span>Change notes</span><textarea value={notes} disabled={!canWrite || superAdmin} onChange={(e) => setNotes(e.target.value)} /></label><label><span>Required reason</span><textarea value={reason} disabled={!canWrite || superAdmin} onChange={(e) => setReason(e.target.value)} /></label><div className="rpw-publish-actions"><button disabled={!canWrite || superAdmin || state.busy || !pending} onClick={validate}>Validate</button><button className="primary" disabled={!canWrite || superAdmin || state.busy || !pending || !validation?.valid} onClick={publish}>Publish permission</button><button disabled={!pending} onClick={loadDetail}>Discard</button></div>{validation ? <div className={validation.valid ? 'rpw-validation valid' : 'rpw-validation invalid'}><strong>{validation.valid ? 'Validation passed' : 'Validation blocked'}</strong>{validation.errors.map((x) => <span key={x}>{x}</span>)}{validation.warnings.map((x) => <span key={x}>Warning: {x}</span>)}</div> : null}</section>
-    <details className="rpw-history"><summary>Policy version history</summary><div>{versions.map((v) => <article key={v.policyVersionId || v.PolicyVersionId || v.versionNumber}><strong>Version {v.versionNumber || v.VersionNumber} · {v.policyStatus || v.PolicyStatus}</strong><span>{v.policyName || v.PolicyName}</span></article>)}</div></details>
+    <details className="rpw-history"><summary>Policy version history</summary><div>{versions.map((v) => {
+      const status = pick(v, 'policyStatus', 'PolicyStatus', '');
+      return <article key={pick(v, 'policyVersionId', 'PolicyVersionId', pick(v, 'versionNumber', 'VersionNumber', 'unknown'))}><strong>Version {pick(v, 'versionNumber', 'VersionNumber', '—')} · {status}</strong><span>{pick(v, 'policyName', 'PolicyName', '')}</span><button type="button" disabled={!canWrite || state.busy || status === 'PUBLISHED'} onClick={() => restore(v)}>Restore as new version</button></article>;
+    })}</div></details>
     {state.error ? <p className="role-policy-error">{state.error}</p> : null}{state.message ? <p className="role-policy-message">{state.message}</p> : null}
   </section>;
 }
