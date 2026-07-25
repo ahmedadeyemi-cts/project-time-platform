@@ -54,6 +54,7 @@ function installPermissionNavigationGuard(nativeFetch) {
     document.querySelectorAll(`[${HIDDEN_ATTRIBUTE}="true"]`).forEach((element) => {
       element.hidden = false;
       element.removeAttribute(HIDDEN_ATTRIBUTE);
+      element.removeAttribute('aria-hidden');
     });
 
     document.querySelectorAll('a[href], button[data-route], [data-module-number]').forEach((element) => {
@@ -93,7 +94,7 @@ function installPermissionNavigationGuard(nativeFetch) {
 
       const [summary, matrix] = await Promise.all([summaryResponse.json(), matrixResponse.json()]);
       const actorRoles = new Set((summary?.actor?.roleCodes || []).map((value) => String(value).toUpperCase()));
-      if (actorRoles.has('SUPER_ADMINISTRATOR') || actorRoles.has('ADMINISTRATOR')) {
+      if (actorRoles.has('SUPER_ADMINISTRATOR')) {
         deniedModuleNumbers = new Set();
       } else {
         deniedModuleNumbers = new Set((matrix?.grants || [])
