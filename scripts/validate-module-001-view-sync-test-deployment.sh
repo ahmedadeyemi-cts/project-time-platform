@@ -3,61 +3,67 @@ set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKFLOW="$ROOT/.github/workflows/projectpulse-deploy-module-001-view-sync-test.yml"
-EXPECTED="b2a05508bad2d92ef1fb1bc4cb966ab86406dd07"
+EXPECTED="320f6489be8ce900d4fba29d9d7728a258b638d3"
 
-fail() { echo "FRIENDLY_API_ERRORS_DEPLOYMENT_GUARD=FAIL: $*" >&2; exit 1; }
+fail() { echo "COMPLETE_FRIENDLY_ERROR_COVERAGE_DEPLOYMENT_GUARD=FAIL: $*" >&2; exit 1; }
 [[ -f "$WORKFLOW" ]] || fail "Workflow is missing."
 
 require() { grep -Fq -- "$1" "$WORKFLOW" || fail "Workflow missing: $1"; }
 
 for value in \
-  'name: ProjectPulse Deploy Friendly API Errors Test' \
+  'name: ProjectPulse Deploy Complete Friendly Error Coverage Test' \
   "default: $EXPECTED" \
   "EXPECTED_RELEASE_COMMIT: $EXPECTED" \
-  'DEPLOY-FRIENDLY-API-ERRORS-TO-TEST' \
+  'DEPLOY-COMPLETE-FRIENDLY-ERROR-COVERAGE-TO-TEST' \
   'refs/heads/main' \
   'environment: test' \
-  'api-error-presentation.js' \
-  'friendly-api-errors.css' \
-  'validate-friendly-api-errors.mjs' \
-  'ClientDiagnosticModule.cs' \
-  'app.MapClientDiagnosticEndpoints();' \
-  '/api/client-diagnostics' \
-  "We couldn't verify those sign-in details" \
-  "You don't have access to utilization information" \
-  'ProjectPulse API diagnostic' \
-  'Module 003 utilization policies' \
-  'Module 003 utilization targets' \
-  'Build immutable friendly API error API and web images' \
-  'Deploy friendly API error API image' \
-  'Validate API health and protected diagnostic endpoint' \
-  'Deploy friendly API error web image' \
-  'Validate served friendly error interface and active images' \
-  'errorPresentation":"standardized' \
-  'consoleDiagnostics":"enabled' \
-  'auditDiagnostics":"sanitized' \
+  'RAW_API_FAILURE_PATTERN' \
+  'document.createTreeWalker' \
+  'NodeFilter.SHOW_TEXT' \
+  'nested user-interface error detail' \
+  'installNativeDialogGuards' \
+  'window.alert = (message)' \
+  'window.confirm = (message)' \
+  'ERROR_ATTRIBUTE_NAMES' \
+  'sanitizeTechnicalAttributes' \
+  'attributeFilter: ERROR_ATTRIBUTE_NAMES' \
+  'temporarily unavailable while access is being verified' \
+  '.projectpulse-friendly-error.compact' \
+  '.projectpulse-friendly-error.compact::marker' \
+  'Some closeout data sources were unavailable.' \
+  '<li key={warning}>{warning}</li>' \
+  'Build immutable complete friendly error coverage web image' \
+  'Deploy complete friendly error coverage web image only' \
+  'Validate served complete friendly error coverage and active image' \
+  'nestedErrors":"covered' \
+  'nativeDialogs":"covered' \
+  'technicalAttributes":"covered' \
+  'legacySurfaceInventory":"enforced' \
+  'apiDeployment":"unchanged' \
+  'diagnosticEndpoint":"unchanged' \
   'migration":"unchanged' \
-  'databaseSchema":"unchanged' \
+  'database":"unchanged' \
   'permissions":"unchanged' \
   'moduleStates":"unchanged' \
-  'Roll back API and web images on failure'
+  'Roll back web image on failure'
 do
   require "$value"
 done
 
-[[ "$(grep -Fc 'az containerapp update' "$WORKFLOW")" == 4 ]] ||
-  fail "Expected API/web deployment plus API/web rollback updates."
-[[ "$(grep -Fc 'scripts/build-pr55-acr-image.sh' "$WORKFLOW")" == 2 ]] ||
-  fail "Expected exactly one immutable API build and one immutable web build."
+[[ "$(grep -Fc 'az containerapp update' "$WORKFLOW")" == 2 ]] ||
+  fail "Expected one web deployment and one web rollback."
+[[ "$(grep -Fc 'scripts/build-pr55-acr-image.sh' "$WORKFLOW")" == 1 ]] ||
+  fail "Expected exactly one immutable web image build."
 grep -Fq 'git -C control merge-base --is-ancestor' "$WORKFLOW" || fail "Release ancestry guard is missing."
-grep -Fq '@$API_DIGEST' "$WORKFLOW" || fail "Immutable API digest construction is missing."
-grep -Fq '@$WEB_DIGEST' "$WORKFLOW" || fail "Immutable web digest construction is missing."
-grep -Fq 'steps.before.outputs.old_api_image' "$WORKFLOW" || fail "API rollback image capture is missing."
+grep -Fq '@$DIGEST' "$WORKFLOW" || fail "Immutable web digest construction is missing."
 grep -Fq 'steps.before.outputs.old_web_image' "$WORKFLOW" || fail "Web rollback image capture is missing."
-grep -Fq '[[ -s /tmp/diagnostic-response ]]' "$WORKFLOW" || fail "Non-empty diagnostic response validation is missing."
-grep -Fq "grep -Fq 'session_required' /tmp/diagnostic-response" "$WORKFLOW" || fail "Protected diagnostic response validation is missing."
+grep -Fq "grep -Fq 'projectpulse-friendly-error' /tmp/app.js" "$WORKFLOW" || fail "Served JS friendly-error marker validation is missing."
+grep -Fq "grep -Fq 'projectpulse-friendly-error.compact' /tmp/app.css" "$WORKFLOW" || fail "Served CSS compact marker validation is missing."
 
 for forbidden in \
+  'AZURE_API_APP' \
+  'project-health-dashboard-api' \
+  'Deploy friendly API error API image' \
   'PROJECTPULSE_TEST_DATABASE_URL' \
   'export-pr55-test-database-url.sh' \
   'database/migrations/' \
@@ -75,4 +81,4 @@ do
 done
 
 bash -n "$0"
-echo 'FRIENDLY_API_ERRORS_DEPLOYMENT_GUARD=PASS'
+echo 'COMPLETE_FRIENDLY_ERROR_COVERAGE_DEPLOYMENT_GUARD=PASS'
