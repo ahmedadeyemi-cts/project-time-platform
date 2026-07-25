@@ -1,4 +1,18 @@
+-- ProjectPulse governed module availability foundation.
+-- Additive after migration 041. No module is disabled and no module data is changed.
 BEGIN;
+
+DO $module_availability_042_prerequisite$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM schema_migrations
+        WHERE migration_id = '041_module_001_timesheet_timer_and_task_association'
+    ) THEN
+        RAISE EXCEPTION 'Migration 042 requires 041_module_001_timesheet_timer_and_task_association first.';
+    END IF;
+END;
+$module_availability_042_prerequisite$;
 
 CREATE TABLE IF NOT EXISTS projectpulse_module_availability (
     module_number text PRIMARY KEY,
@@ -39,13 +53,35 @@ COMMENT ON TABLE projectpulse_module_availability IS
 COMMENT ON TABLE projectpulse_module_availability_audit IS
     'Immutable audit history for Super Administrator module availability changes.';
 
-DO $$
+DO $module_availability_042_runtime_grants$
+DECLARE
+    role_name text;
 BEGIN
-    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ptp_app') THEN
-        GRANT SELECT, INSERT, UPDATE ON projectpulse_module_availability TO ptp_app;
-        GRANT SELECT, INSERT ON projectpulse_module_availability_audit TO ptp_app;
-    END IF;
-END
-$$;
+    FOREACH role_name IN ARRAY ARRAY['ptp_app', 'projectpulse_app']
+    LOOP
+        IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = role_name) THEN
+            EXECUTE format('GRANT USAGE ON SCHEMA public TO %I', role_name);
+            EXECUTE format(
+                'GRANT SELECT, INSERT, UPDATE ON TABLE projectpulse_module_availability TO %I',
+                role_name
+            );
+            EXECUTE format(
+                'GRANT SELECT, INSERT ON TABLE projectpulse_module_availability_audit TO %I',
+                role_name
+            );
+        END IF;
+    END LOOP;
+END;
+$module_availability_042_runtime_grants$;
+
+INSERT INTO schema_migrations (migration_id, description, applied_at)
+VALUES (
+    '042_module_availability_controls',
+    'Add persistent and audited module availability controls with default-enabled behavior',
+    NOW()
+)
+ON CONFLICT (migration_id) DO UPDATE
+SET description = EXCLUDED.description,
+    applied_at = EXCLUDED.applied_at;
 
 COMMIT;
