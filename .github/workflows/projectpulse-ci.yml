@@ -64,6 +64,23 @@ jobs:
           path: /tmp/module-001-migration-041.log
           retention-days: 7
 
+      - name: Test PTC time steward migration 043 apply and rollback
+        shell: bash
+        run: |
+          set +e
+          bash tests/test-ptc-time-steward-migration-043.sh > /tmp/ptc-time-steward-migration-043.log 2>&1
+          status=$?
+          cat /tmp/ptc-time-steward-migration-043.log
+          exit $status
+
+      - name: Upload PTC migration 043 diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ptc-time-steward-migration-043-diagnostics
+          path: /tmp/ptc-time-steward-migration-043.log
+          retention-days: 7
+
       - name: Test Work Register project authorization
         run: dotnet run --project tests/ProjectTime.Api.AuthorizationTests/ProjectTime.Api.AuthorizationTests.csproj --configuration Release
 
@@ -73,7 +90,21 @@ jobs:
 
       - name: Build frontend
         working-directory: src/frontend/project-time-web
-        run: npm run build
+        shell: bash
+        run: |
+          set +e
+          npm run build > /tmp/projectpulse-frontend-build.log 2>&1
+          status=$?
+          cat /tmp/projectpulse-frontend-build.log
+          exit $status
+
+      - name: Upload frontend build diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: projectpulse-frontend-build-diagnostics
+          path: /tmp/projectpulse-frontend-build.log
+          retention-days: 7
 
       - name: Validate PR55 test deployment guard
         run: scripts/validate-pr55-test-deployment.sh
