@@ -97,7 +97,6 @@ for (const contract of [
   "fetch('/api/module-availability/overrides'",
   'clearAvailabilityNavigationState',
   'applyModuleNavigationState',
-  'Missing overrides',
   'window.__projectPulseModuleAvailabilityOverrides',
   "window.location.hash = 'modules'",
   'normalizeTimesheetLabels',
