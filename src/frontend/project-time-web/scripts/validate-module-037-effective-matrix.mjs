@@ -14,34 +14,62 @@ const requireAll = (source, values, label) => {
 
 const paths = {
   ui: 'src/frontend/project-time-web/src/RolesPermissionsMatrix.jsx',
-  css: 'src/frontend/project-time-web/src/scoped-role-policy-matrix.css',
+  model: 'src/frontend/project-time-web/src/role-permission-matrix-model.js',
+  css: 'src/frontend/project-time-web/src/role-permission-matrix-v2.css',
   backend: 'src/backend/ProjectTime.Api/Modules/ScopedRolePolicyModule.cs'
 };
 
-const [ui, css, backend] = await Promise.all([
+const [ui, model, css, backend] = await Promise.all([
   text(paths.ui),
+  text(paths.model),
   text(paths.css),
   optionalText(paths.backend)
 ]);
 
 requireAll(ui, [
   'Module 037',
-  'Strictly read-only representation',
+  'Roles and Permissions Matrix',
+  'Read-only confirmation',
   "api('/api/role-policy/matrix')",
-  '/api/role-policy/explain?',
-  "method: 'GET'",
   'data-read-only="true"',
-  'This module has no permission-editing controls or write endpoint.',
-  'Export CSV',
-  'Permission / action',
-  'Explicit denials',
-  'Legacy fallbacks',
-  'Delegated grants',
-  'Reason required',
-  'Audit required',
+  'Permission Matrix',
+  'Role Reference',
+  'Permission Levels',
+  'Database modules',
+  'Export matrix',
   'Policy evidence',
-  'Last modified by'
+  'Refresh this page'
 ], 'Module 037 UI');
+
+requireAll(model, [
+  'PERMISSION_LEVELS',
+  'ROLE_REFERENCE',
+  "code: 'Not Set'",
+  "code: 'No Access'",
+  "code: 'View'",
+  "code: 'Create/Edit'",
+  "code: 'Approve'",
+  "code: 'Manage'",
+  "code: 'Administer'",
+  "code: 'Full Control'",
+  "code: 'Custom'",
+  "roleCode === 'SUPER_ADMINISTRATOR'",
+  "return 'Full Control'",
+  "grant.inherited || grant.actionCode === 'LEGACY_FALLBACK'",
+  "return 'Not Set'",
+  "defaultScope: 'MANAGED_TEAM'",
+  "defaultScope: 'ORGANIZATION'"
+], 'Module 037 permission and role reference model');
+
+requireAll(css, [
+  '.role-permission-matrix-v2',
+  '.rpm-table',
+  '.rpm-level-no-access',
+  '.rpm-level-view',
+  '.rpm-level-full-control',
+  '.rpm-reference-grid',
+  '.rpm-level-reference'
+], 'Module 037 styling');
 
 if (backend) {
   requireAll(backend, [
@@ -55,11 +83,6 @@ if (backend) {
 } else {
   console.log('MODULE_037_BACKEND_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
 }
-
-requireAll(css, [
-  '.roles-matrix-cell-button',
-  '[data-read-only="true"]'
-], 'Module 037 styling');
 
 for (const forbidden of [
   "method: 'POST'",
@@ -83,4 +106,4 @@ if (/<input[^>]+type=["']checkbox["']|<textarea|contentEditable|onSubmit=/i.test
   throw new Error('Module 037 contains an editing control or submission handler.');
 }
 
-console.log('Module 037 read-only effective scoped matrix contracts passed.');
+console.log('Module 037 read-only visual permission matrix contracts passed.');
