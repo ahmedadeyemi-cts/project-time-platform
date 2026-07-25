@@ -8,6 +8,7 @@ import ModulesDirectoryPortal from './ModulesDirectoryPortal.jsx';
 import ModuleAvailabilityController from './ModuleAvailabilityController.jsx';
 import DashboardPersonalCalendarPortal from './DashboardPersonalCalendarPortal.jsx';
 import TimesheetEnhancementPortal from './module001/TimesheetEnhancementPortal.jsx';
+import PtcTimesheetManagementPortal from './module001/PtcTimesheetManagementPortal.jsx';
 import './approval-access-navigation-compatibility.js';
 import './scoped-rbac-catalog-compatibility.js';
 import './styles.css';
@@ -23,6 +24,7 @@ createRoot(document.getElementById('root')).render(
     <ModuleAvailabilityController />
     <DashboardPersonalCalendarPortal />
     <TimesheetEnhancementPortal />
+    <PtcTimesheetManagementPortal />
     <HelpAssistant />
   </React.StrictMode>
 );
