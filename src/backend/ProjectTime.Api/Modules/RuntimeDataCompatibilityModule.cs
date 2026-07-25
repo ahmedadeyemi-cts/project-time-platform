@@ -14,14 +14,11 @@ public static partial class ScopedRolePolicyModule
 
     public static WebApplication MapRuntimeDataCompatibilityEndpoints(this WebApplication app)
     {
-        // These aliases intentionally bypass the route-contract middleware while
-        // retaining the endpoint handlers' own session and database validation.
         app.MapGet("/api/runtime/role-policy/summary", SummaryAsync);
         app.MapGet("/api/runtime/role-policy/catalog", CatalogAsync);
         app.MapGet("/api/runtime/role-policy/versions", VersionsAsync);
         app.MapGet("/api/runtime/role-policy/matrix", MatrixAsync);
         app.MapGet("/api/runtime/role-policy/roles/{roleCode}", RoleDetailAsync);
-
         app.MapGet("/api/runtime/timesheet/steward/users", RuntimePtcUsersAsync);
         app.MapGet("/api/runtime/timesheet/steward/users/{targetUserId:guid}/workspace", RuntimePtcWorkspaceAsync);
         return app;
@@ -35,6 +32,12 @@ public static partial class ScopedRolePolicyModule
         "PROJECT_MANAGEMENT_TEAM_LEAD" or "PM_TEAM_LEAD" or "PROJECT_MANAGEMENT_LEAD" => "PROJECT_MANAGEMENT_LEAD",
         _ => roleCode.Trim().ToUpperInvariant()
     };
+
+    private static string[] CanonicalPtcManagedRoles(string[] roleCodes) => roleCodes
+        .Select(CanonicalPtcManagedRole)
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .OrderBy(value => value)
+        .ToArray();
 
     private static async Task<bool> RuntimePtcManagedUserExistsAsync(NpgsqlConnection connection, Guid userId)
     {
@@ -121,11 +124,7 @@ public static partial class ScopedRolePolicyModule
         await using var reader = await command.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
-            var roleCodes = reader.GetFieldValue<string[]>(3)
-                .Select(CanonicalPtcManagedRole)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .OrderBy(value => value)
-                .ToArray();
+            var roleCodes = CanonicalPtcManagedRoles(reader.GetFieldValue<string[]>(3));
             users.Add(new
             {
                 userId = reader.GetGuid(0),
@@ -198,19 +197,15 @@ public static partial class ScopedRolePolicyModule
         {
             userCommand.Parameters.AddWithValue("user_id", targetUserId);
             userCommand.Parameters.AddWithValue("role_codes", PtcManagedRoleAliases);
-            await using var userReader = await userCommand.ExecuteReaderAsync();
-            if (await userReader.ReadAsync())
+            await using var reader = await userCommand.ExecuteReaderAsync();
+            if (await reader.ReadAsync())
             {
-                var roleCodes = userReader.GetFieldValue<string[]>(3)
-                    .Select(CanonicalPtcManagedRole)
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .OrderBy(value => value)
-                    .ToArray();
+                var roleCodes = CanonicalPtcManagedRoles(reader.GetFieldValue<string[]>(3));
                 user = new
                 {
-                    userId = userReader.GetGuid(0),
-                    email = userReader.GetString(1),
-                    displayName = userReader.GetString(2),
+                    userId = reader.GetGuid(0),
+                    email = reader.GetString(1),
+                    displayName = reader.GetString(2),
                     roleCodes,
                     roleNames = roleCodes.Select(RoleDisplayName).ToArray()
                 };
@@ -374,12 +369,6 @@ public static partial class ScopedRolePolicyModule
             entries,
             assignments,
             nonProjectCategories,
-            targetGroups = new[]
-            {
-                new { code = "REQUESTS", label = "Requests / Service Requests", count = assignments.Count(item => item.ToString()!.Contains("Requests / Service Requests")) },
-                new { code = "PROJECT_TASKS", label = "Project Tasks" },
-                new { code = "NON_PROJECT_TIME", label = "Non-Project Time", count = nonProjectCategories.Count }
-            },
             canSubmitOnBehalf = false,
             requiredCorrectionFlow = "UNSUBMIT_OR_REOPEN_THEN_EDIT_MOVE_REMOVE_THEN_USER_RESUBMITS"
         });
