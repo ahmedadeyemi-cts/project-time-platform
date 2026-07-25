@@ -72,7 +72,7 @@ if (main.includes("import PtcTimesheetManagementPortal from './module001/PtcTime
 
 requireAll(timerPortal, [
   '/api/timesheet/timers/targets?weekStart=',
-  'assignedTasks: assignedTasks',
+  'assignedTasks,',
   "target.groupLabel === 'Regular Tasks'",
   "target.groupLabel === 'Service Request Tasks'",
   'timerTargetLoadError',
