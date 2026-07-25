@@ -61,11 +61,18 @@ if (fullBackendAvailable) {
     'missingOverrideBehavior = "ENABLED"',
     'actualRoles.Contains("SUPER_ADMINISTRATOR") && !isViewAs',
     'effectiveRoles.Contains("SUPER_ADMINISTRATOR")',
-    'SELECT module_number, is_enabled, revision_number, reason, updated_at'
+    'SELECT module_number, is_enabled, revision_number, reason, updated_at',
+    '(Func<HttpContext, Task<IResult>>)GetOverridesAsync',
+    'discard the returned IResult'
   ]) {
     requireText(overrides, contract, 'lightweight override endpoint');
   }
   rejectText(overrides, 'Definitions.Values', 'override endpoint must not return a second module inventory');
+  rejectText(
+    overrides,
+    'app.MapGet("/api/module-availability/overrides", GetOverridesAsync);',
+    'direct method-group binding can return an empty HTTP 200 response'
+  );
 
   for (const contract of [
     'CREATE TABLE IF NOT EXISTS projectpulse_module_availability',
@@ -148,4 +155,4 @@ requireText(packageJson, 'validate:module-availability', 'validator registration
 requireText(packageJson, 'npm run validate:module-availability', 'build-chain registration');
 requireText(app, "title: 'Timesheet'", 'canonical Module 001 page title');
 
-console.log(`MODULE_AVAILABILITY_VALIDATION=PASS design=existing-directory overrides-only default=enabled module001=Timesheet backend=${fullBackendAvailable ? 'full' : 'frontend-container'}`);
+console.log(`MODULE_AVAILABILITY_VALIDATION=PASS design=existing-directory overrides-only resultExecution=typed-delegate default=enabled module001=Timesheet backend=${fullBackendAvailable ? 'full' : 'frontend-container'}`);
