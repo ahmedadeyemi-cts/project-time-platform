@@ -3,33 +3,36 @@ set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKFLOW="$ROOT/.github/workflows/projectpulse-deploy-module-001-view-sync-test.yml"
-EXPECTED="cbee20a671dd34365f93112645b9284f825d6212"
+EXPECTED="75f2f7be9f3f3d8f49b64d5413e3b20dea21fb02"
 
-fail() { echo "MODULE_AVAILABILITY_FAIL_OPEN_DEPLOYMENT_GUARD=FAIL: $*" >&2; exit 1; }
+fail() { echo "MODULES_003_004_ROLLING_YEARS_DEPLOYMENT_GUARD=FAIL: $*" >&2; exit 1; }
 [[ -f "$WORKFLOW" ]] || fail "Workflow is missing."
 
 require() { grep -Fq -- "$1" "$WORKFLOW" || fail "Workflow missing: $1"; }
 
 for value in \
-  'name: ProjectPulse Deploy Module Availability Fail-Open Test' \
+  'name: ProjectPulse Deploy Modules 003 004 Rolling Years Test' \
   "default: $EXPECTED" \
   "EXPECTED_RELEASE_COMMIT: $EXPECTED" \
-  'DEPLOY-MODULE-AVAILABILITY-FAIL-OPEN-TO-TEST' \
+  'DEPLOY-MODULES-003-004-ROLLING-YEARS-TO-TEST' \
   'refs/heads/main' \
   'environment: test' \
-  'PROJECTPULSE_MODULES' \
-  'normalizeAvailabilityResponse' \
-  'inventoryComplete' \
-  'removeGovernedDirectory' \
-  'The existing Modules directory remains available' \
-  'Toggle controls require the SUPER_ADMINISTRATOR role' \
-  '.enterprise-sidebar-section a[href^="#"]' \
-  'const canReplaceDirectory = inventoryReady && (isSuperAdministrator || routes.size > 0)' \
-  "moduleNumber: '001', route: 'timesheet', displayName: 'Timesheet'" \
-  'Deploy module availability fail-open web image only' \
+  'previousYears: 3' \
+  'futureYears: 6' \
+  'totalYears: 10' \
+  'getRollingYearOptions(currentYear)' \
+  'const [selectedYear, setSelectedYear] = useState(currentYear);' \
+  "import { getRollingYearOptions } from './rolling-year-window.js';" \
+  'const holidayYearOptions = getRollingYearOptions().map(String);' \
+  'reference2026=2023-2032' \
+  'reference2030=2027-2036' \
+  'validate:modules003004-rolling-years' \
+  'Deploy Modules 003 and 004 rolling-years web image only' \
+  'yearWindow":{"previous":3,"current":1,"future":6,"total":10}' \
   'apiDeployment":"unchanged' \
-  'migration042":"unchanged' \
+  'migration":"unchanged' \
   'database":"unchanged' \
+  'moduleStates":"unchanged' \
   'Roll back web image on failure'
 do require "$value"; done
 
@@ -40,15 +43,19 @@ do require "$value"; done
 grep -Fq 'git -C control merge-base --is-ancestor' "$WORKFLOW" || fail "Release ancestry guard is missing."
 grep -Fq '@$DIGEST' "$WORKFLOW" || fail "Immutable web digest construction is missing."
 grep -Fq 'steps.before.outputs.old_web_image' "$WORKFLOW" || fail "Web rollback image capture is missing."
+grep -Fq "! grep -Fq '2026 + index'" "$WORKFLOW" || fail "Module 003 fixed-year rejection is missing."
+grep -Fq "! grep -Fq 'currentYear >= 2026'" "$WORKFLOW" || fail "Module 003 year clamp rejection is missing."
+grep -Fq "! grep -Fq 'Array.from({ length: 11 }, (_, index) => String(currentYear + index))'" "$WORKFLOW" || fail "Module 004 legacy year-window rejection is missing."
 
 for forbidden in \
   'AZURE_API_APP' \
   'PROJECTPULSE_TEST_DATABASE_URL' \
   'database/migrations' \
   'MODULE001_MIGRATION_IMAGE' \
+  'MODULE_AVAILABILITY_MIGRATION_IMAGE' \
   'run-module-001-test-migration-job.sh' \
-  'Apply and verify migration 041' \
-  'Apply and verify migration 042' \
+  'run-module-availability-test-migration-job.sh' \
+  'Apply and verify migration' \
   'environment: production' \
   'AZURE_PRODUCTION' \
   'DEPLOY-PRODUCTION'
@@ -57,4 +64,4 @@ do
 done
 
 bash -n "$0"
-echo 'MODULE_AVAILABILITY_FAIL_OPEN_DEPLOYMENT_GUARD=PASS'
+echo 'MODULES_003_004_ROLLING_YEARS_DEPLOYMENT_GUARD=PASS'
