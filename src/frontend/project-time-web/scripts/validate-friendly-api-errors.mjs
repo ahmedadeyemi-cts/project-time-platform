@@ -4,7 +4,8 @@ import path from 'node:path';
 
 const webRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const repoRoot = path.resolve(webRoot, '..', '..', '..');
-const read = (relative) => fs.readFileSync(path.join(repoRoot, relative), 'utf8');
+const absolute = (relative) => path.join(repoRoot, relative);
+const read = (relative) => fs.readFileSync(absolute(relative), 'utf8');
 const requireText = (source, value, label) => assert.ok(source.includes(value), `${label}: missing ${value}`);
 const rejectText = (source, value, label) => assert.ok(!source.includes(value), `${label}: forbidden ${value}`);
 
@@ -12,9 +13,10 @@ const presentation = read('src/frontend/project-time-web/src/api-error-presentat
 const css = read('src/frontend/project-time-web/src/friendly-api-errors.css');
 const main = read('src/frontend/project-time-web/src/main.jsx');
 const generator = read('src/frontend/project-time-web/scripts/generate-module-001-integrated-app.mjs');
-const backend = read('src/backend/ProjectTime.Api/Modules/ClientDiagnosticModule.cs');
-const project = read('src/backend/ProjectTime.Api/ProjectTime.Api.csproj');
 const packageJson = JSON.parse(read('src/frontend/project-time-web/package.json'));
+const backendPath = 'src/backend/ProjectTime.Api/Modules/ClientDiagnosticModule.cs';
+const projectPath = 'src/backend/ProjectTime.Api/ProjectTime.Api.csproj';
+const fullBackendAvailable = fs.existsSync(absolute(backendPath)) && fs.existsSync(absolute(projectPath));
 
 for (const contract of [
   "We couldn't verify those sign-in details. Check the account and password, then try again.",
@@ -29,9 +31,9 @@ for (const contract of [
   "element.closest('.audit-history-panel",
   "const DIAGNOSTIC_ENDPOINT = '/api/client-diagnostics'",
   'MAX_AUDIT_EVENTS_PER_SESSION = 20',
-  "diagnostic.status === 403",
-  "diagnostic.status === 409",
-  "diagnostic.status >= 500",
+  'diagnostic.status === 403',
+  'diagnostic.status === 409',
+  'diagnostic.status >= 500',
   'Reference:'
 ]) {
   requireText(presentation, contract, 'friendly API presentation');
@@ -68,24 +70,27 @@ for (const contract of [
 requireText(main, "import './api-error-presentation.js';", 'global friendly error import');
 requireText(main, "import './friendly-api-errors.css';", 'global friendly error styling import');
 
-for (const contract of [
-  'MapClientDiagnosticEndpoints',
-  '/api/client-diagnostics',
-  'client_api_error',
-  'client_diagnostic',
-  'NpgsqlDbType.Jsonb',
-  'sanitized = true',
-  'MAX',
-  'SessionUserId',
-  'diagnostic_storage_unavailable'
-]) {
-  if (contract === 'MAX') continue;
-  requireText(backend, contract, 'sanitized client diagnostic endpoint');
+if (fullBackendAvailable) {
+  const backend = read(backendPath);
+  const project = read(projectPath);
+
+  for (const contract of [
+    'MapClientDiagnosticEndpoints',
+    '/api/client-diagnostics',
+    'client_api_error',
+    'client_diagnostic',
+    'NpgsqlDbType.Jsonb',
+    'sanitized = true',
+    'SessionUserId',
+    'diagnostic_storage_unavailable'
+  ]) {
+    requireText(backend, contract, 'sanitized client diagnostic endpoint');
+  }
+  rejectText(backend, 'RawMessage', 'backend diagnostic payload');
+  rejectText(backend, 'StackTrace', 'backend diagnostic payload');
+  rejectText(backend, 'Password', 'backend diagnostic payload');
+  requireText(project, 'app.MapClientDiagnosticEndpoints();', 'backend endpoint registration');
 }
-rejectText(backend, 'RawMessage', 'backend diagnostic payload');
-rejectText(backend, 'StackTrace', 'backend diagnostic payload');
-rejectText(backend, 'Password', 'backend diagnostic payload');
-requireText(project, 'app.MapClientDiagnosticEndpoints();', 'backend endpoint registration');
 
 for (const contract of [
   'async function projectPulseOptionalModuleFetch',
@@ -107,4 +112,4 @@ assert.ok(
   'production build must run friendly API error validation'
 );
 
-console.log('FRIENDLY_API_ERROR_VALIDATION=PASS ui=standardized console=technical audit=sanitized optionalUtilization=isolated');
+console.log(`FRIENDLY_API_ERROR_VALIDATION=PASS ui=standardized console=technical audit=sanitized optionalUtilization=isolated backend=${fullBackendAvailable ? 'full' : 'frontend-container'}`);
