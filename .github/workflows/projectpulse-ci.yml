@@ -130,6 +130,9 @@ jobs:
       - name: Validate Module 012/037 permission test deployment guard
         run: bash scripts/validate-module-012-037-permissions-test-deployment.sh
 
+      - name: Validate combined permissions and PTC test deployment guard
+        run: bash scripts/validate-intuitive-permissions-ptc-test-deployment.sh
+
       - name: Validate scoped RBAC catalog hotfix deployment guard
         run: bash scripts/validate-scoped-rbac-catalog-hotfix-test-deployment.sh
 
