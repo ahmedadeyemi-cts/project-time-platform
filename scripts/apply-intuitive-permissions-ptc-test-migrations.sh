@@ -29,6 +29,12 @@ MIGRATIONS=(
   "042_module_availability_controls.sql"
   "043_ptc_time_steward_permissions.sql"
 )
+MIGRATION_IDS=(
+  "040_scoped_role_policy_versions"
+  "041_module_001_timesheet_timer_and_task_association"
+  "042_module_availability_controls"
+  "043_ptc_time_steward_permissions"
+)
 
 for migration in "${MIGRATIONS[@]}"; do
   [[ -f "$MIGRATION_ROOT/$migration" ]] || fail "Required migration is missing: $migration"
@@ -53,8 +59,15 @@ read -r USERS_BEFORE TIMESHEETS_BEFORE ENTRIES_BEFORE TASKS_BEFORE <<<"$(
 )"
 [[ -n "${USERS_BEFORE:-}" ]] || fail "Required ProjectPulse tables are unavailable."
 
-for migration in "${MIGRATIONS[@]}"; do
-  echo "APPLY_OR_VERIFY=$migration"
+for index in "${!MIGRATIONS[@]}"; do
+  migration="${MIGRATIONS[$index]}"
+  migration_id="${MIGRATION_IDS[$index]}"
+  registered="$(psql "$DATABASE_URL" --no-psqlrc -At --set=ON_ERROR_STOP=1 --command="SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE migration_id='$migration_id');")"
+  if [[ "$registered" == "t" ]]; then
+    echo "VERIFY_ALREADY_REGISTERED=$migration_id"
+    continue
+  fi
+  echo "APPLY=$migration"
   psql "$DATABASE_URL" --no-psqlrc --set=ON_ERROR_STOP=1 --file="$MIGRATION_ROOT/$migration"
 done
 
