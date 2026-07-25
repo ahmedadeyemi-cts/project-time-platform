@@ -24,10 +24,7 @@ END;
 $projectpulse043_prerequisite$;
 
 INSERT INTO scoped_role_policy_actions (
-    action_code,
-    action_description,
-    is_non_bypassable,
-    is_active
+    action_code, action_description, is_non_bypassable, is_active
 )
 VALUES
     ('TIME_VIEW_ON_BEHALF', 'Select users and view their time-management workspace without impersonating them.', FALSE, TRUE),
@@ -78,118 +75,175 @@ ALTER TABLE module001_timesheet_entry_associations
         )
     );
 
-WITH published_policy AS (
-    SELECT policy_version_id
-    FROM scoped_role_policy_versions
-    WHERE policy_status = 'PUBLISHED'
-    ORDER BY version_number DESC
-    LIMIT 1
-),
-ptc_actions(action_code, reason_required) AS (
-    VALUES
-        ('MODULE_VIEW', FALSE),
-        ('TIME_VIEW', FALSE),
-        ('TIME_VIEW_ON_BEHALF', FALSE),
-        ('TIME_UNSUBMIT', TRUE),
-        ('TIME_REOPEN', TRUE),
-        ('TIME_CORRECT_ON_BEHALF', TRUE),
-        ('TIME_REASSIGN', TRUE),
-        ('TIME_DELETE_ON_BEHALF', TRUE),
-        ('TIME_TASK_CREATE', TRUE),
-        ('TIME_TASK_ASSIGN', TRUE),
-        ('AUDIT_VIEW', FALSE),
-        ('AUDIT_RECORD', TRUE)
-)
-INSERT INTO scoped_role_policy_grants (
-    policy_version_id,
-    role_code,
-    module_code,
-    action_code,
-    scope_code,
-    grant_effect,
-    conditions,
-    delegated_authority,
-    reason_required,
-    audit_required,
-    source_designation,
-    source_notes,
-    is_active
-)
-SELECT
-    published_policy.policy_version_id,
-    'PROJECT_TEAM_COORDINATOR',
-    '001',
-    ptc_actions.action_code,
-    'ORGANIZATION',
-    'GRANT',
-    jsonb_build_object(
-        'source', '043_ptc_time_steward_permissions',
-        'designation', 'Manage',
-        'permissionLevel', 'Manage',
-        'operationalTimeSteward', TRUE,
-        'submitOnBehalfAllowed', FALSE,
-        'immutableAuditRequired', TRUE
-    ),
-    TRUE,
-    ptc_actions.reason_required,
-    ptc_actions.action_code <> 'MODULE_VIEW',
-    'Manage',
-    'PTC_TIME_STEWARD_043',
-    TRUE
-FROM published_policy
-CROSS JOIN ptc_actions
-ON CONFLICT DO NOTHING;
+DO $projectpulse043_publish_policy$
+DECLARE
+    v_current_policy UUID;
+    v_new_policy UUID;
+    v_next_version INTEGER;
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM scoped_role_policy_versions
+        WHERE source_name = '043_ptc_time_steward_permissions'
+    ) THEN
+        RETURN;
+    END IF;
 
-WITH published_policy AS (
     SELECT policy_version_id
+    INTO v_current_policy
     FROM scoped_role_policy_versions
     WHERE policy_status = 'PUBLISHED'
     ORDER BY version_number DESC
     LIMIT 1
-),
-protected_denials(action_code, explanation) AS (
-    VALUES
-        ('TIME_SUBMIT', 'The PTC manages time for others but never submits another user''s timesheet.'),
-        ('TIME_DELETE_PERMANENT', 'Time may be removed only through governed deletion with immutable audit evidence.'),
-        ('USER_IMPERSONATE', 'PTC time management uses explicit target-user operations and does not impersonate the user.'),
-        ('SYSTEM_CONFIGURE', 'Operational time stewardship does not include platform configuration.')
-)
-INSERT INTO scoped_role_policy_grants (
-    policy_version_id,
-    role_code,
-    module_code,
-    action_code,
-    scope_code,
-    grant_effect,
-    conditions,
-    delegated_authority,
-    reason_required,
-    audit_required,
-    source_designation,
-    source_notes,
-    is_active
-)
-SELECT
-    published_policy.policy_version_id,
-    'PROJECT_TEAM_COORDINATOR',
-    '001',
-    protected_denials.action_code,
-    'ORGANIZATION',
-    'DENY',
-    jsonb_build_object(
-        'source', '043_ptc_time_steward_permissions',
-        'operationalTimeStewardBoundary', TRUE,
-        'explanation', protected_denials.explanation
-    ),
-    FALSE,
-    FALSE,
-    TRUE,
-    'Manage',
-    'PTC_TIME_STEWARD_043',
-    TRUE
-FROM published_policy
-CROSS JOIN protected_denials
-ON CONFLICT DO NOTHING;
+    FOR UPDATE;
+
+    IF v_current_policy IS NULL THEN
+        RAISE EXCEPTION 'Migration 043 requires one currently published scoped role policy.';
+    END IF;
+
+    SELECT COALESCE(MAX(version_number), 0) + 1
+    INTO v_next_version
+    FROM scoped_role_policy_versions;
+
+    v_new_policy := gen_random_uuid();
+
+    INSERT INTO scoped_role_policy_versions (
+        policy_version_id,
+        version_number,
+        policy_name,
+        policy_status,
+        source_name,
+        source_sha256,
+        policy_notes,
+        created_by_user_id
+    )
+    VALUES (
+        v_new_policy,
+        v_next_version,
+        'ProjectPulse PTC Time Steward Policy',
+        'DRAFT',
+        '043_ptc_time_steward_permissions',
+        'migration-043-ptc-time-steward',
+        'Clones the previously published policy and adds audited Project Team Coordinator time stewardship without submission-on-behalf.',
+        NULL
+    );
+
+    INSERT INTO scoped_role_policy_grants (
+        policy_version_id, role_code, module_code, action_code, scope_code,
+        grant_effect, conditions, delegated_authority, reason_required,
+        audit_required, source_designation, source_notes, is_active
+    )
+    SELECT
+        v_new_policy, role_code, module_code, action_code, scope_code,
+        grant_effect, conditions, delegated_authority, reason_required,
+        audit_required, source_designation, source_notes, is_active
+    FROM scoped_role_policy_grants
+    WHERE policy_version_id = v_current_policy;
+
+    INSERT INTO scoped_role_policy_grants (
+        policy_version_id, role_code, module_code, action_code, scope_code,
+        grant_effect, conditions, delegated_authority, reason_required,
+        audit_required, source_designation, source_notes, is_active
+    )
+    SELECT
+        v_new_policy,
+        'PROJECT_TEAM_COORDINATOR',
+        '001',
+        action_row.action_code,
+        'ORGANIZATION',
+        'GRANT',
+        jsonb_build_object(
+            'source', '043_ptc_time_steward_permissions',
+            'designation', 'Manage',
+            'permissionLevel', 'Manage',
+            'operationalTimeSteward', TRUE,
+            'submitOnBehalfAllowed', FALSE,
+            'immutableAuditRequired', TRUE
+        ),
+        TRUE,
+        action_row.reason_required,
+        action_row.action_code <> 'MODULE_VIEW',
+        'Manage',
+        'PTC_TIME_STEWARD_043',
+        TRUE
+    FROM (
+        VALUES
+            ('MODULE_VIEW', FALSE),
+            ('TIME_VIEW', FALSE),
+            ('TIME_VIEW_ON_BEHALF', FALSE),
+            ('TIME_UNSUBMIT', TRUE),
+            ('TIME_REOPEN', TRUE),
+            ('TIME_CORRECT_ON_BEHALF', TRUE),
+            ('TIME_REASSIGN', TRUE),
+            ('TIME_DELETE_ON_BEHALF', TRUE),
+            ('TIME_TASK_CREATE', TRUE),
+            ('TIME_TASK_ASSIGN', TRUE),
+            ('AUDIT_VIEW', FALSE),
+            ('AUDIT_RECORD', TRUE)
+    ) AS action_row(action_code, reason_required)
+    ON CONFLICT (
+        policy_version_id, role_code, module_code,
+        action_code, scope_code, grant_effect
+    ) DO UPDATE
+    SET conditions = EXCLUDED.conditions,
+        delegated_authority = EXCLUDED.delegated_authority,
+        reason_required = EXCLUDED.reason_required,
+        audit_required = EXCLUDED.audit_required,
+        source_designation = EXCLUDED.source_designation,
+        source_notes = EXCLUDED.source_notes,
+        is_active = TRUE;
+
+    INSERT INTO scoped_role_policy_grants (
+        policy_version_id, role_code, module_code, action_code, scope_code,
+        grant_effect, conditions, delegated_authority, reason_required,
+        audit_required, source_designation, source_notes, is_active
+    )
+    SELECT
+        v_new_policy,
+        'PROJECT_TEAM_COORDINATOR',
+        '001',
+        denial.action_code,
+        'ORGANIZATION',
+        'DENY',
+        jsonb_build_object(
+            'source', '043_ptc_time_steward_permissions',
+            'operationalTimeStewardBoundary', TRUE,
+            'explanation', denial.explanation
+        ),
+        FALSE,
+        FALSE,
+        TRUE,
+        'Manage',
+        'PTC_TIME_STEWARD_043',
+        TRUE
+    FROM (
+        VALUES
+            ('TIME_SUBMIT', 'The PTC manages time for others but never submits another user''s timesheet.'),
+            ('TIME_DELETE_PERMANENT', 'Time may be removed only through governed deletion with immutable audit evidence.'),
+            ('USER_IMPERSONATE', 'PTC time management uses explicit target-user operations and does not impersonate the user.'),
+            ('SYSTEM_CONFIGURE', 'Operational time stewardship does not include platform configuration.')
+    ) AS denial(action_code, explanation)
+    ON CONFLICT (
+        policy_version_id, role_code, module_code,
+        action_code, scope_code, grant_effect
+    ) DO UPDATE
+    SET conditions = EXCLUDED.conditions,
+        delegated_authority = FALSE,
+        reason_required = FALSE,
+        audit_required = TRUE,
+        source_designation = EXCLUDED.source_designation,
+        source_notes = EXCLUDED.source_notes,
+        is_active = TRUE;
+
+    UPDATE scoped_role_policy_versions
+    SET policy_status = 'RETIRED', retired_at = NOW()
+    WHERE policy_version_id = v_current_policy;
+
+    UPDATE scoped_role_policy_versions
+    SET policy_status = 'PUBLISHED', published_at = NOW()
+    WHERE policy_version_id = v_new_policy;
+END;
+$projectpulse043_publish_policy$;
 
 DO $projectpulse043_runtime_grants$
 DECLARE
