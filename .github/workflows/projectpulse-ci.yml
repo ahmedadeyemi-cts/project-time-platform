@@ -96,6 +96,9 @@ jobs:
       - name: Validate scoped RBAC test deployment guard
         run: bash scripts/validate-scoped-rbac-test-deployment.sh
 
+      - name: Validate Module 012/037 permission test deployment guard
+        run: bash scripts/validate-module-012-037-permissions-test-deployment.sh
+
       - name: Validate scoped RBAC catalog hotfix deployment guard
         run: bash scripts/validate-scoped-rbac-catalog-hotfix-test-deployment.sh
 
