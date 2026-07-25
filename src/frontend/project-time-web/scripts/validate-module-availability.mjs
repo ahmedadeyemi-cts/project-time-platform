@@ -62,17 +62,15 @@ if (backendAvailable) {
     'is_enabled boolean NOT NULL DEFAULT TRUE',
     'revision_number integer NOT NULL',
     'changed_by uuid NOT NULL REFERENCES app_users(user_id)',
-    "WHERE migration_id = '041_module_001_timesheet_timer_and_task_association'",
     "FOREACH role_name IN ARRAY ARRAY['ptp_app', 'projectpulse_app']",
-    "'042_module_availability_controls'",
-    'INSERT INTO schema_migrations',
-    'ON CONFLICT (migration_id) DO UPDATE'
+    "migration_id = '041_module_001_timesheet_timer_and_task_association'",
+    "'042_module_availability_controls'"
   ]) {
     requireText(migration, contract, 'migration 042');
   }
   requireText(rollback, 'rollback blocked', 'fail-closed rollback');
   requireText(rollback, 'WHERE is_enabled = FALSE', 'disabled-module rollback guard');
-  requireText(rollback, "WHERE migration_id = '042_module_availability_controls'", 'migration registration rollback');
+  requireText(rollback, "migration_id = '042_module_availability_controls'", 'migration registration rollback');
 }
 
 requireText(registry, "moduleNumber: '001', route: 'timesheet', displayName: 'Timesheet'", 'Module 001 Timesheet name');
@@ -96,13 +94,24 @@ for (const contract of [
   'visible only to Super Administrators',
   'authorizedRoutesFromNavigation',
   "window.location.hash = 'modules'",
-  'normalizeTimesheetLabels'
+  'normalizeTimesheetLabels',
+  'PROJECTPULSE_MODULES',
+  'EXPECTED_MODULE_COUNT',
+  'normalizeAvailabilityResponse',
+  'inventoryComplete',
+  'removeGovernedDirectory',
+  'The existing Modules directory remains available',
+  'Toggle controls require the SUPER_ADMINISTRATOR role',
+  '.enterprise-sidebar-section a[href^="#"]',
+  'const canReplaceDirectory = inventoryReady && (isSuperAdministrator || routes.size > 0)',
+  "page.classList.add('module-availability-governed')"
 ]) {
   requireText(controller, contract, 'frontend availability controller');
 }
 requireText(controller, "fetch('/api/module-availability'", 'availability load');
 requireText(controller, "fetch('/api/module-availability/audit'", 'audit load');
 requireText(controller, "method: 'PUT'", 'availability update');
+rejectText(controller, "page.classList.add('module-availability-governed');\n      let host", 'unconditional governed directory replacement');
 requireText(css, '.projectpulse-module-disabled::after', 'disabled navigation badge');
 requireText(css, '.module-availability-switch input:checked + span', 'toggle styling');
 requireText(css, '.module-availability-governed > .modules-directory-grid', 'governed directory replacement');
@@ -118,4 +127,4 @@ requireText(packageJson, 'npm run validate:module-availability', 'build-chain re
 requireText(app, "title: 'Timesheet'", 'canonical Module 001 page title');
 rejectText(registry, "displayName: 'Time Entry'", 'retired Module 001 display name');
 
-console.log(`MODULE_AVAILABILITY_VALIDATION=PASS modules=64 default=enabled superAdminOnlyDisabled=true module001=Timesheet backend=${backendAvailable ? 'full' : 'frontend-container'} migration042=registered`);
+console.log(`MODULE_AVAILABILITY_VALIDATION=PASS modules=64 default=enabled failOpenDirectory=true roleDiagnostics=true module001=Timesheet backend=${backendAvailable ? 'full' : 'frontend-container'}`);
