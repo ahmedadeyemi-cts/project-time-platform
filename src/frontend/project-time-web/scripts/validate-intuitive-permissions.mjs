@@ -10,6 +10,8 @@ const matrix = read('src/RolesPermissionsMatrix.jsx');
 const matrixModel = read('src/role-permission-matrix-model.js');
 const workbenchCss = read('src/role-permission-workbench.css');
 const matrixCss = read('src/role-permission-matrix-v2.css');
+const navigationBridge = read('src/module-availability-bridge.js');
+const evaluator = read('../../backend/ProjectTime.Api/Modules/ScopedAuthorizationEvaluator.cs');
 const combinedRole = `${roleAdmin}\n${roleModel}`;
 const combinedMatrix = `${matrix}\n${matrixModel}`;
 
@@ -22,6 +24,10 @@ const checks = [
   ['Module 037 is read-only and spreadsheet shaped', matrix.includes('Permission Matrix') && matrix.includes('data-read-only="true"') && matrix.includes('Role Reference')],
   ['Module 037 includes permission reference', combinedMatrix.includes('Permission Levels') && matrixModel.includes('PERMISSION_LEVELS')],
   ['Legacy fallback renders Not Set', matrixModel.includes("grant.inherited || grant.actionCode === 'LEGACY_FALLBACK'")],
+  ['PM lead defaults to managed team', roleModel.includes("PROJECT_MANAGEMENT_LEAD: 'MANAGED_TEAM'") && matrixModel.includes("defaultScope: 'MANAGED_TEAM'")],
+  ['PTC cannot receive system configuration', roleModel.includes("role === 'PROJECT_TEAM_COORDINATOR'") && roleModel.includes("'MODULE_CONFIGURE', 'POLICY_DELEGATE'")],
+  ['No Access hides module navigation', navigationBridge.includes('installPermissionNavigationGuard') && navigationBridge.includes("actionCode || '').toUpperCase() === 'MODULE_ACCESS'")],
+  ['Super Administrator backend bypass is permanent', evaluator.includes('if (actor.IsSuperAdministrator)') && evaluator.includes('permanent organization-wide Full Control')],
   ['New styling is present', workbenchCss.includes('.role-permission-workbench') && matrixCss.includes('.role-permission-matrix-v2')]
 ];
 

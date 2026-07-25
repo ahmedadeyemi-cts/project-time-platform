@@ -31,7 +31,7 @@ export const ROLE_REFERENCE = Object.freeze({
   PROJECT_MANAGEMENT_LEAD: {
     purpose: 'Manage projects and coordinate the project managers on the lead’s team.',
     visibility: 'The lead, the lead’s projects, and authorized project managers on the team.',
-    defaultScope: 'MANAGED_PROJECTS'
+    defaultScope: 'MANAGED_TEAM'
   },
   MANAGER: {
     purpose: 'Manage people, approve time, review workload, and oversee the manager’s organization.',
@@ -157,3 +157,4 @@ export function inferScope(grants, roleCode) {
 export function levelClass(level) {
   return `rpm-level rpm-level-${level.toLowerCase().replaceAll(/[^a-z0-9]+/g, '-')}`;
 }
+

@@ -12,7 +12,7 @@ export const LEVELS = [
 const LEVEL_NAMES = new Set(LEVELS.map(([name]) => name));
 export const ROLE_SCOPES = {
   ENGINEERING: 'SELF', ENGINEERING_LEAD: 'FUNCTIONAL_TEAM',
-  PROJECT_MANAGEMENT: 'ASSIGNED_PROJECTS', PROJECT_MANAGEMENT_LEAD: 'MANAGED_PROJECTS',
+  PROJECT_MANAGEMENT: 'ASSIGNED_PROJECTS', PROJECT_MANAGEMENT_LEAD: 'MANAGED_TEAM',
   MANAGER: 'DIRECT_AND_INDIRECT_REPORTS', SALES: 'ASSIGNED_CUSTOMERS',
   INSIDE_SALES: 'ASSIGNED_CUSTOMERS', SOLUTION_ARCHITECT: 'ASSIGNED_PROJECTS',
   EXECUTIVE: 'ORGANIZATION', PROJECT_TEAM_COORDINATOR: 'ORGANIZATION',
@@ -106,7 +106,12 @@ export function grantsFor(moduleCode, role, level, scope) {
   if (level === 'Not Set') return [];
   const conditions = { source: 'Module 012 intuitive permission editor', designation: level, permissionLevel: level, scopeCode: scope, moduleScopedOnly: level === 'No Access', superAdministratorInvariant: role === 'SUPER_ADMINISTRATOR' };
   if (level === 'No Access') return [{ actionCode: 'MODULE_ACCESS', scopeCode: 'ORGANIZATION', effect: 'DENY', conditions, delegatedAuthority: false, reasonRequired: false, auditRequired: true, isActive: true }];
-  return (SPECIAL[moduleCode]?.[level] || GENERIC[level] || []).map((actionCode) => ({ actionCode, scopeCode: scope, effect: 'GRANT', conditions, ...flags(actionCode, role) }));
+  let actions = SPECIAL[moduleCode]?.[level] || GENERIC[level] || [];
+  if (role === 'PROJECT_TEAM_COORDINATOR') {
+    const systemActions = new Set(['MODULE_CONFIGURE', 'POLICY_DELEGATE', 'POLICY_PUBLISH', 'POLICY_RESTORE', 'SYSTEM_CONFIGURE']);
+    actions = actions.filter((actionCode) => !systemActions.has(actionCode));
+  }
+  return actions.map((actionCode) => ({ actionCode, scopeCode: scope, effect: 'GRANT', conditions, ...flags(actionCode, role) }));
 }
 export function stable(grants) {
   return JSON.stringify(arr(grants).map((g) => ({ actionCode: g.actionCode, scopeCode: g.scopeCode, effect: g.effect, conditions: g.conditions || {}, delegatedAuthority: !!g.delegatedAuthority, reasonRequired: !!g.reasonRequired, auditRequired: g.auditRequired !== false, isActive: g.isActive !== false })).sort((a, b) => `${a.actionCode}|${a.scopeCode}|${a.effect}`.localeCompare(`${b.actionCode}|${b.scopeCode}|${b.effect}`)));
