@@ -9,10 +9,24 @@ const read = (relative) => fs.readFileSync(absolute(relative), 'utf8');
 const requireText = (source, value, label) => assert.ok(source.includes(value), `${label}: missing ${value}`);
 const rejectText = (source, value, label) => assert.ok(!source.includes(value), `${label}: forbidden ${value}`);
 
+function collectSourceFiles(directory, collector = []) {
+  fs.readdirSync(directory, { withFileTypes: true }).forEach((entry) => {
+    const fullPath = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      collectSourceFiles(fullPath, collector);
+      return;
+    }
+    if (/\.(?:js|jsx|mjs)$/.test(entry.name)) collector.push(fullPath);
+  });
+  return collector;
+}
+
 const presentation = read('src/frontend/project-time-web/src/api-error-presentation.js');
 const css = read('src/frontend/project-time-web/src/friendly-api-errors.css');
 const main = read('src/frontend/project-time-web/src/main.jsx');
 const generator = read('src/frontend/project-time-web/scripts/generate-module-001-integrated-app.mjs');
+const projectCloseout = read('src/frontend/project-time-web/src/ProjectCloseoutCenter.jsx');
+const closeoutEmail = read('src/frontend/project-time-web/src/CloseoutEmailAutomationCenter.jsx');
 const packageJson = JSON.parse(read('src/frontend/project-time-web/package.json'));
 const backendPath = 'src/backend/ProjectTime.Api/Modules/ClientDiagnosticModule.cs';
 const projectPath = 'src/backend/ProjectTime.Api/ProjectTime.Api.csproj';
@@ -24,7 +38,8 @@ for (const contract of [
   "You don't have permission to complete this action with your current role.",
   'This information changed while you were working. Refresh the page and try again.',
   'This feature is not available yet.',
-  'This service is temporarily unavailable. Try again shortly.',
+  'This information is temporarily unavailable while access is being verified. The rest of the page is still available.',
+  'A supporting service is temporarily unavailable. The rest of the page may still be available. Try again shortly.',
   'Something went wrong while processing your request. Try again shortly.',
   '[ProjectPulse API diagnostic]',
   'console.table({',
@@ -34,7 +49,18 @@ for (const contract of [
   'diagnostic.status === 403',
   'diagnostic.status === 409',
   'diagnostic.status >= 500',
-  'Reference:'
+  'Reference:',
+  'RAW_API_FAILURE_PATTERN',
+  'document.createTreeWalker',
+  'NodeFilter.SHOW_TEXT',
+  'nested user-interface error detail',
+  'ERROR_ATTRIBUTE_NAMES',
+  'sanitizeTechnicalAttributes',
+  'installNativeDialogGuards',
+  'window.alert = (message)',
+  'window.confirm = (message)',
+  'attributeFilter: ERROR_ATTRIBUTE_NAMES',
+  "'[data-projectpulse-error-policy-exempt]'"
 ]) {
   requireText(presentation, contract, 'friendly API presentation');
 }
@@ -59,6 +85,8 @@ for (const forbidden of ['rawMessage', 'detail:', 'stack', 'password', 'token'])
 
 for (const contract of [
   '.projectpulse-friendly-error',
+  '.projectpulse-friendly-error.compact',
+  '.projectpulse-friendly-error.compact::marker',
   '.projectpulse-friendly-error-title',
   '.projectpulse-friendly-error-message',
   '.projectpulse-friendly-error-reference',
@@ -69,6 +97,34 @@ for (const contract of [
 
 requireText(main, "import './api-error-presentation.js';", 'global friendly error import');
 requireText(main, "import './friendly-api-errors.css';", 'global friendly error styling import');
+
+for (const [source, label] of [
+  [projectCloseout, 'Module 040 compound closeout warnings'],
+  [closeoutEmail, 'Module 041 compound closeout warnings']
+]) {
+  requireText(source, 'Promise.allSettled([', label);
+  requireText(source, 'loadWarnings:', label);
+  requireText(source, 'returned HTTP', label);
+}
+requireText(projectCloseout, '<li key={warning}>{warning}</li>', 'Module 040 nested warning fixture');
+
+const sourceRoot = absolute('src/frontend/project-time-web/src');
+const legacyPattern = /returned\s+HTTP|not\s+available\s+for\s+this\s+role|explicit\s+denial|\/api\/[\w\-./?=&%]+[\s\S]{0,160}(?:failed|unavailable|could\s+not\s+be\s+verified)/i;
+const legacySurfaceFiles = collectSourceFiles(sourceRoot)
+  .filter((filePath) => path.basename(filePath) !== 'api-error-presentation.js')
+  .map((filePath) => ({
+    filePath,
+    source: fs.readFileSync(filePath, 'utf8')
+  }))
+  .filter((entry) => legacyPattern.test(entry.source));
+
+assert.ok(legacySurfaceFiles.length >= 10, 'repository-wide legacy technical-error inventory unexpectedly found too few surfaces');
+legacySurfaceFiles.forEach(({ filePath, source }) => {
+  assert.ok(
+    !source.includes('data-projectpulse-error-policy-exempt'),
+    `legacy technical-error surface may not opt out of global presentation: ${path.relative(repoRoot, filePath)}`
+  );
+});
 
 if (fullBackendAvailable) {
   const backend = read(backendPath);
@@ -118,4 +174,4 @@ assert.ok(
   'production build must run friendly API error validation'
 );
 
-console.log(`FRIENDLY_API_ERROR_VALIDATION=PASS ui=standardized console=technical audit=sanitized optionalUtilization=isolated backend=${fullBackendAvailable ? 'full' : 'frontend-container'}`);
+console.log(`FRIENDLY_API_ERROR_VALIDATION=PASS ui=standardized nested=covered dialogs=covered attributes=covered console=technical audit=sanitized optionalUtilization=isolated legacySurfaces=${legacySurfaceFiles.length} backend=${fullBackendAvailable ? 'full' : 'frontend-container'}`);
