@@ -119,12 +119,18 @@ requireAll(migration, [
   "'DENY'",
   'submitOnBehalfAllowed',
   'immutableAuditRequired',
-  'projectpulse040_block_immutable_audit_mutation'
+  'projectpulse040_block_immutable_audit_mutation',
+  "source_name = '043_ptc_time_steward_permissions'",
+  "policy_status = 'RETIRED'",
+  "policy_status = 'PUBLISHED'"
 ], 'Migration 043');
 
 requireAll(rollback, [
   'Rollback 043 is blocked because PTC time-management audit evidence exists.',
-  "source_notes = 'PTC_TIME_STEWARD_043'",
+  'Rollback 043 is blocked because later policy versions exist.',
+  "source_name = '043_ptc_time_steward_permissions'",
+  'DROP TRIGGER IF EXISTS trg_projectpulse040_published_grants_immutable',
+  'DELETE FROM scoped_role_policy_versions',
   'DROP TABLE IF EXISTS scoped_time_management_events',
   "migration_id = '043_ptc_time_steward_permissions'"
 ], 'Migration 043 rollback');
