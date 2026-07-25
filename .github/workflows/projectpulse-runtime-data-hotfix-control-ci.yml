@@ -5,6 +5,9 @@ on:
     paths:
       - '.github/workflows/projectpulse-deploy-runtime-data-hotfix-test.yml'
       - '.github/workflows/projectpulse-runtime-data-hotfix-control-ci.yml'
+      - 'deployment/containers/runtime-data-validator/Dockerfile'
+      - 'scripts/verify-direct-runtime-data-test.sh'
+      - 'scripts/run-direct-runtime-data-validation-job.sh'
       - 'scripts/validate-runtime-data-hotfix-test-deployment.sh'
   workflow_dispatch:
 
@@ -20,5 +23,5 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Validate guarded runtime data hotfix deployment
+      - name: Validate guarded direct runtime data deployment
         run: bash scripts/validate-runtime-data-hotfix-test-deployment.sh
