@@ -1,0 +1,24 @@
+name: Validate Runtime Data Hotfix Deployment Control
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/projectpulse-deploy-runtime-data-hotfix-test.yml'
+      - '.github/workflows/projectpulse-runtime-data-hotfix-control-ci.yml'
+      - 'scripts/validate-runtime-data-hotfix-test-deployment.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runtime-data-hotfix-control-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate guarded runtime data hotfix deployment
+        run: bash scripts/validate-runtime-data-hotfix-test-deployment.sh
