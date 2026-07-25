@@ -1,0 +1,101 @@
+export const PROJECTPULSE_MODULES = Object.freeze([
+  Object.freeze({ moduleNumber: '001', route: 'timesheet', displayName: 'Timesheet', group: 'Time Management' }),
+  Object.freeze({ moduleNumber: '002', route: 'manager-approval', displayName: 'Approval Inbox', group: 'Approvals' }),
+  Object.freeze({ moduleNumber: '003', route: 'utilization', displayName: 'Utilization', group: 'Resource Management' }),
+  Object.freeze({ moduleNumber: '004', route: 'holiday-admin', displayName: 'Holiday Administration', group: 'Time Management' }),
+  Object.freeze({ moduleNumber: '005', route: 'project-allocation-info', displayName: 'Project Allocation Information', group: 'Project Management' }),
+  Object.freeze({ moduleNumber: '006', route: 'psa-modules', displayName: 'PSA Modules', group: 'Platform Operations' }),
+  Object.freeze({ moduleNumber: '007', route: 'workflow', displayName: 'Approval / Export / Audit Workflow', group: 'Approvals' }),
+  Object.freeze({ moduleNumber: '008', route: 'audit-history', displayName: 'Audit History', group: 'Security & Audit' }),
+  Object.freeze({ moduleNumber: '009', route: 'user-admin', displayName: 'User Administration', group: 'Administration' }),
+  Object.freeze({ moduleNumber: '010', route: 'azure-admin', displayName: 'Azure / Entra Administration', group: 'Administration' }),
+  Object.freeze({ moduleNumber: '011', route: 'work-task-builder', displayName: 'Work Task Builder', group: 'Project Delivery' }),
+  Object.freeze({ moduleNumber: '012', route: 'role-admin', displayName: 'Role Administration', group: 'Administration' }),
+  Object.freeze({ moduleNumber: '013', route: 'service-control', displayName: 'Service Control', group: 'Platform Operations' }),
+  Object.freeze({ moduleNumber: '014', route: 'backup-dr', displayName: 'Backup & Disaster Recovery', group: 'Platform Operations' }),
+  Object.freeze({ moduleNumber: '015', route: 'restore-validation', displayName: 'Restore Validation', group: 'Platform Operations' }),
+  Object.freeze({ moduleNumber: '016', route: 'backup-retention', displayName: 'Backup Retention', group: 'Platform Operations' }),
+  Object.freeze({ moduleNumber: '017', route: 'replication-sync', displayName: 'Replication & Sync', group: 'Platform Operations' }),
+  Object.freeze({ moduleNumber: '018', route: 'project-workload', displayName: 'Project Workload', group: 'Project Management' }),
+  Object.freeze({ moduleNumber: '019', route: 'project-workspace', displayName: 'Project Workspace', group: 'Project Delivery' }),
+  Object.freeze({ moduleNumber: '020', route: 'project-intake', displayName: 'Project Intake', group: 'Project Delivery' }),
+  Object.freeze({ moduleNumber: '021', route: 'customer-directory', displayName: 'Customer Directory', group: 'Customers' }),
+  Object.freeze({ moduleNumber: '022', route: 'cost-alerts', displayName: 'Cost Alerts', group: 'Reports & Workflow' }),
+  Object.freeze({ moduleNumber: '023', route: 'time-compliance', displayName: 'Time Compliance', group: 'Time Management' }),
+  Object.freeze({ moduleNumber: '024', route: 'sales-intake', displayName: 'Sales Intake', group: 'Sales & Opportunities' }),
+  Object.freeze({ moduleNumber: '025', route: 'sow-generator', displayName: 'SOW Generator', group: 'Sales & Opportunities' }),
+  Object.freeze({ moduleNumber: '026', route: 'crm-integration', displayName: 'CRM / ERP Integration Center', group: 'Integrations' }),
+  Object.freeze({ moduleNumber: '027', route: 'signed-handoff', displayName: 'Signed Handoff', group: 'Project Delivery' }),
+  Object.freeze({ moduleNumber: '028', route: 'ai-time-entry', displayName: 'AI Time Entry', group: 'Time Management' }),
+  Object.freeze({ moduleNumber: '029', route: 'uat-validation', displayName: 'UAT Validation', group: 'Platform Operations' }),
+  Object.freeze({ moduleNumber: '030', route: 'reporting', displayName: 'Reporting', group: 'Reports & Workflow' }),
+  Object.freeze({ moduleNumber: '036', route: 'sales-insights', displayName: 'Sales Insights Dashboard', group: 'Sales & Opportunities' }),
+  Object.freeze({ moduleNumber: '037', route: 'roles-permissions-matrix', displayName: 'Roles & Permissions Matrix', group: 'Administration' }),
+  Object.freeze({ moduleNumber: '038', route: 'certify-integration', displayName: 'Certinia Integration', group: 'Integrations' }),
+  Object.freeze({ moduleNumber: '039', route: 'billing-readiness', displayName: 'Billing Readiness', group: 'Reports & Workflow' }),
+  Object.freeze({ moduleNumber: '040', route: 'project-closeout', displayName: 'Project Closeout', group: 'Reports & Workflow' }),
+  Object.freeze({ moduleNumber: '041', route: 'closeout-email', displayName: 'Closeout Email Automation', group: 'Reports & Workflow' }),
+  Object.freeze({ moduleNumber: '042', route: 'invoice-billing-center', displayName: 'Invoice & Billing Center', group: 'Reports & Workflow' }),
+  Object.freeze({ moduleNumber: '055B', route: 'rate-card-administration', displayName: 'Rate Card Administration', group: 'Project Operations' }),
+  Object.freeze({ moduleNumber: '055C', route: 'work-register', displayName: 'Manage Existing Projects', group: 'Project Operations' }),
+  Object.freeze({ moduleNumber: '055D', route: 'create-work-register', displayName: 'Create New Project', group: 'Project Operations' }),
+  Object.freeze({ moduleNumber: '057', route: 'calendar-capacity', displayName: 'Calendar & Capacity', group: 'Resource Management' }),
+  Object.freeze({ moduleNumber: '058', route: 'cicd-pipeline', displayName: 'CI/CD Pipeline', group: 'Platform Operations' }),
+  Object.freeze({ moduleNumber: '060', route: 'contracts', displayName: 'Contracts', group: 'Project Operations' }),
+  Object.freeze({ moduleNumber: '063', route: 'opportunities', displayName: 'Opportunities', group: 'Sales & Opportunities' }),
+  Object.freeze({ moduleNumber: '064', route: 'ai-provider-configuration', displayName: 'AI Provider Configuration Center', group: 'Security' }),
+  Object.freeze({ moduleNumber: '065', route: 'entra-secret-administration', displayName: 'Entra Secret Administration', group: 'Security' }),
+  Object.freeze({ moduleNumber: '066', route: 'project-flowhive', displayName: 'Project FlowHive', group: 'Project Delivery' }),
+  Object.freeze({ moduleNumber: '067', route: 'global-mail-configuration', displayName: 'Global Mail Configuration Center', group: 'Platform Operations' }),
+  Object.freeze({ moduleNumber: '068', route: 'system-architecture', displayName: 'System Architecture & Dependency Map', group: 'Platform Operations' }),
+  Object.freeze({ moduleNumber: '069', route: 'qualifications-certifications', displayName: 'Qualifications & Certification Matrix', group: 'Resources' }),
+  Object.freeze({ moduleNumber: '070', route: 'capacity-pipeline-forecast', displayName: 'Capacity & Pipeline Forecasting', group: 'Resource Management' }),
+  Object.freeze({ moduleNumber: '071', route: 'oncall-scheduling', displayName: 'On-Call Scheduling', group: 'Platform Operations' }),
+  Object.freeze({ moduleNumber: '072', route: 'oneassist-routing-directory', displayName: 'OneAssist Routing Directory', group: 'Platform Operations' }),
+  Object.freeze({ moduleNumber: '073', route: 'sales-coverage-alignment', displayName: 'Sales Coverage Alignment', group: 'Sales & Opportunities' }),
+  Object.freeze({ moduleNumber: '074', route: 'oem-vendor-directory', displayName: 'OEM & Vendor Directory', group: 'Sales & Opportunities' }),
+  Object.freeze({ moduleNumber: '075', route: 'integration-event-gateway', displayName: 'Integration Automation & Event Gateway', group: 'Platform Operations' }),
+  Object.freeze({ moduleNumber: '076', route: 'defect-tracker', displayName: 'Defect Intake & Resolution Tracker', group: 'Help & Documentation' }),
+  Object.freeze({ moduleNumber: '077', route: 'release-deployment-control', displayName: 'Release, Deployment & Rollback Control Center', group: 'Platform Operations' }),
+  Object.freeze({ moduleNumber: '078', route: 'observability-slo-health', displayName: 'Observability, SLO & Application Health Center', group: 'Platform Operations' }),
+  Object.freeze({ moduleNumber: '079', route: 'data-governance-retention', displayName: 'Data Governance, Retention & Privacy Center', group: 'Security & Audit' }),
+  Object.freeze({ moduleNumber: '080', route: 'customer-delivery-acceptance', displayName: 'Customer Delivery & Acceptance Portal', group: 'Project Operations' }),
+  Object.freeze({ moduleNumber: '997', route: 'security-operations', displayName: 'Security Operations, Threat Intelligence & Response Center', group: 'Security & Audit' }),
+  Object.freeze({ moduleNumber: '998', route: 'system-diagnostics', displayName: 'System Diagnostic & Controlled Remediation Center', group: 'Platform Operations' }),
+  Object.freeze({ moduleNumber: '999', route: 'user-guide', displayName: 'ProjectPulse Complete User Guide', group: 'Help & Documentation' }),
+]);
+
+const ROUTE_ALIASES = Object.freeze({
+  'project-manager-workload': 'project-workload',
+  'project-management-workload': 'project-workload',
+  'resource-assignment-handoff': 'signed-handoff'
+});
+
+export const MODULE_BY_NUMBER = new Map(
+  PROJECTPULSE_MODULES.map((module) => [module.moduleNumber.toUpperCase(), module])
+);
+
+export const MODULE_BY_ROUTE = new Map(
+  PROJECTPULSE_MODULES.map((module) => [module.route, module])
+);
+
+export function canonicalModuleRoute(route) {
+  const normalized = String(route || '').replace(/^#/, '').trim();
+  return ROUTE_ALIASES[normalized] || normalized;
+}
+
+export function moduleForRoute(route) {
+  return MODULE_BY_ROUTE.get(canonicalModuleRoute(route)) || null;
+}
+
+export function moduleForNumber(moduleNumber) {
+  return MODULE_BY_NUMBER.get(String(moduleNumber || '').trim().toUpperCase()) || null;
+}
+
+export function currentProjectPulseRoute() {
+  return canonicalModuleRoute(window.location.hash || '#dashboard') || 'dashboard';
+}
+
+export function replaceTimesheetLabel(value) {
+  return String(value ?? '').replace(/\bTime Entry\b/g, 'Timesheet');
+}
