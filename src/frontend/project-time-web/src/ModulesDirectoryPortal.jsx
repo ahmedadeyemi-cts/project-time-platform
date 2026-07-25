@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { replaceTimesheetLabel } from './module-availability-registry.js';
 import './modules-directory-page.css';
+import './module-availability.css';
 
 const MODULES_ROUTE = 'modules';
 const MODULES_HASH = '#modules';
+const AVAILABILITY_REFRESH_MS = 30000;
 
 const CANONICAL_MODULE_NUMBER_BY_ROUTE = Object.freeze({
   timesheet: '001',
@@ -94,6 +97,51 @@ function moduleNumberForRoute(route, source) {
     || '';
 }
 
+function canonicalDisplayLabel(route, label) {
+  if (route === 'timesheet') return 'Timesheet';
+  return replaceTimesheetLabel(label);
+}
+
+async function readJson(response) {
+  const raw = await response.text();
+  if (!raw.trim()) return {};
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return { message: raw };
+  }
+}
+
+function responseMessage(payload, fallback) {
+  return payload?.message || payload?.status || fallback;
+}
+
+function normalizeOverrideResponse(body) {
+  if (!Array.isArray(body?.states)) {
+    throw new Error('Module availability returned an invalid override response. Existing modules remain available.');
+  }
+
+  const states = new Map();
+  for (const state of body.states) {
+    const moduleNumber = cleanText(state?.moduleNumber).toUpperCase();
+    if (!moduleNumber) continue;
+    states.set(moduleNumber, {
+      isEnabled: state?.isEnabled !== false,
+      revision: Number(state?.revision || 0),
+      reason: cleanText(state?.reason),
+      updatedAt: state?.updatedAt || null
+    });
+  }
+
+  return {
+    loaded: true,
+    states,
+    access: body?.access || {},
+    registeredModuleCount: Number(body?.registeredModuleCount || 0),
+    error: ''
+  };
+}
+
 function ensurePersistentModulesLink(active) {
   const navigation = document.querySelector('.enterprise-top-navigation');
   if (!navigation) return null;
@@ -148,7 +196,8 @@ function addAuthorizedModule(modules, seenRoutes, anchor, groupName) {
   const route = href.replace(/^#/, '').trim();
   if (!route || route === 'dashboard' || route === MODULES_ROUTE || seenRoutes.has(route)) return;
 
-  const label = cleanText(anchor.querySelector('.enterprise-nav-label')?.textContent || anchor.textContent);
+  const rawLabel = cleanText(anchor.querySelector('.enterprise-nav-label')?.textContent || anchor.textContent);
+  const label = canonicalDisplayLabel(route, rawLabel);
   if (!label) return;
 
   const moduleNumberSource = [
@@ -216,15 +265,52 @@ function mutationOriginatesInsidePortal(mutation) {
   return Boolean(target?.closest('#modules-directory-portal-host'));
 }
 
+function effectiveModuleState(module, availability) {
+  const stored = availability.states.get(module.moduleNumber);
+  return {
+    ...module,
+    isEnabled: stored?.isEnabled !== false,
+    revision: Number(stored?.revision || 0),
+    reason: stored?.reason || '',
+    updatedAt: stored?.updatedAt || null
+  };
+}
+
 export default function ModulesDirectoryPortal() {
   const [route, setRoute] = useState(currentRoute);
   const [portalHost, setPortalHost] = useState(null);
   const [modules, setModules] = useState([]);
   const [search, setSearch] = useState('');
   const [group, setGroup] = useState('all');
+  const [availability, setAvailability] = useState({
+    loaded: false,
+    states: new Map(),
+    access: {},
+    registeredModuleCount: 0,
+    error: ''
+  });
+  const [busyModule, setBusyModule] = useState('');
+  const [statusMessage, setStatusMessage] = useState('');
   const refreshTimer = useRef(null);
   const expandedForDirectory = useRef(new Set());
   const active = route === MODULES_ROUTE;
+
+  const loadAvailability = useCallback(async ({ preserveMessage = false } = {}) => {
+    try {
+      const response = await fetch('/api/module-availability/overrides', { cache: 'no-store' });
+      const body = await readJson(response);
+      if (!response.ok) throw new Error(responseMessage(body, 'Module availability controls could not be loaded.'));
+      setAvailability(normalizeOverrideResponse(body));
+      if (!preserveMessage) setStatusMessage('');
+    } catch (error) {
+      setAvailability((current) => ({
+        ...current,
+        loaded: false,
+        states: new Map(),
+        error: error?.message || 'Module availability controls could not be loaded.'
+      }));
+    }
+  }, []);
 
   useEffect(() => {
     const handleHashChange = () => setRoute(currentRoute());
@@ -296,14 +382,16 @@ export default function ModulesDirectoryPortal() {
       subtree: true,
       characterData: true,
       attributes: true,
-      attributeFilter: ['aria-expanded', 'class']
+      attributeFilter: ['aria-expanded', 'class', 'hidden']
     });
 
     window.addEventListener('projectpulse:view-as-changed', refresh);
+    window.addEventListener('projectpulse:module-availability-changed', refresh);
 
     return () => {
       observer?.disconnect();
       window.removeEventListener('projectpulse:view-as-changed', refresh);
+      window.removeEventListener('projectpulse:module-availability-changed', refresh);
       window.clearTimeout(refreshTimer.current);
       if (active) restoreNavigationGroups(expandedForDirectory.current);
     };
@@ -313,23 +401,93 @@ export default function ModulesDirectoryPortal() {
     if (!active) {
       setSearch('');
       setGroup('all');
+      return undefined;
     }
-  }, [active]);
 
-  const groups = useMemo(
-    () => Array.from(new Set(modules.map((module) => module.group))).sort((left, right) => left.localeCompare(right)),
-    [modules]
+    void loadAvailability();
+    const interval = window.setInterval(() => void loadAvailability({ preserveMessage: true }), AVAILABILITY_REFRESH_MS);
+    const refresh = () => void loadAvailability({ preserveMessage: true });
+    window.addEventListener('projectpulse:view-as-changed', refresh);
+    window.addEventListener('projectpulse:module-availability-changed', refresh);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('projectpulse:view-as-changed', refresh);
+      window.removeEventListener('projectpulse:module-availability-changed', refresh);
+    };
+  }, [active, loadAvailability]);
+
+  async function toggleModule(module) {
+    if (!availability.access?.canManage || busyModule) return;
+    const nextEnabled = !module.isEnabled;
+    const action = nextEnabled ? 'enable' : 'disable';
+    const warning = nextEnabled
+      ? `Enable Module ${module.moduleNumber} — ${module.label}? Normal role and permission rules will apply.`
+      : `Disable Module ${module.moduleNumber} — ${module.label}? Regular users will lose access, but no source code or data will be deleted.`;
+
+    if (!window.confirm(warning)) return;
+    const reason = window.prompt(`Optional reason to ${action} this module:`, '') ?? '';
+    setBusyModule(module.moduleNumber);
+    setStatusMessage('');
+
+    try {
+      const response = await fetch(`/api/module-availability/${encodeURIComponent(module.moduleNumber)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          isEnabled: nextEnabled,
+          expectedRevision: module.revision,
+          reason
+        })
+      });
+      const body = await readJson(response);
+      if (!response.ok) throw new Error(responseMessage(body, `Module ${module.moduleNumber} could not be updated.`));
+      setStatusMessage(body.message || `Module ${module.moduleNumber} updated.`);
+      await loadAvailability({ preserveMessage: true });
+      window.dispatchEvent(new CustomEvent('projectpulse:module-availability-changed', { detail: body }));
+    } catch (error) {
+      setAvailability((current) => ({
+        ...current,
+        error: error?.message || `Module ${module.moduleNumber} could not be updated.`
+      }));
+    } finally {
+      setBusyModule('');
+    }
+  }
+
+  const isSuperAdministrator = Boolean(availability.access?.isSuperAdministrator);
+  const canManage = Boolean(availability.access?.canManage);
+  const effectiveRoles = Array.isArray(availability.access?.effectiveRoles)
+    ? availability.access.effectiveRoles
+    : [];
+
+  const enrichedModules = useMemo(
+    () => modules.map((module) => effectiveModuleState(module, availability)),
+    [modules, availability]
   );
 
-  const filteredModules = useMemo(() => {
+  const visibleModules = useMemo(() => {
     const term = cleanText(search).toLowerCase();
-    return modules.filter((module) => {
+    return enrichedModules.filter((module) => {
+      if (availability.loaded && !isSuperAdministrator && !module.isEnabled) return false;
       if (group !== 'all' && module.group !== group) return false;
       if (!term) return true;
       return [module.moduleNumber, module.label, module.route, module.group]
         .some((value) => cleanText(value).toLowerCase().includes(term));
     });
-  }, [modules, search, group]);
+  }, [enrichedModules, availability.loaded, isSuperAdministrator, search, group]);
+
+  const groups = useMemo(
+    () => Array.from(new Set(
+      enrichedModules
+        .filter((module) => !availability.loaded || isSuperAdministrator || module.isEnabled)
+        .map((module) => module.group)
+    )).sort((left, right) => left.localeCompare(right)),
+    [enrichedModules, availability.loaded, isSuperAdministrator]
+  );
+
+  const disabledCount = availability.loaded
+    ? enrichedModules.filter((module) => !module.isEnabled).length
+    : 0;
 
   if (!portalHost || !active) return null;
 
@@ -342,10 +500,38 @@ export default function ModulesDirectoryPortal() {
           <p>Open the modules authorized for your current role or View-As identity.</p>
         </div>
         <div className="modules-directory-count">
-          <strong>{filteredModules.length}</strong>
-          <span>{filteredModules.length === 1 ? 'module available' : 'modules available'}</span>
+          <strong>{visibleModules.length}</strong>
+          <span>{visibleModules.length === 1 ? 'module available' : 'modules available'}</span>
         </div>
       </header>
+
+      <div className={availability.error ? 'modules-directory-availability-bar warning' : 'modules-directory-availability-bar'}>
+        <div>
+          <strong>{canManage ? 'Module availability controls' : 'Module availability'}</strong>
+          {availability.error ? (
+            <span>{availability.error} Existing module cards remain available and no module is treated as disabled.</span>
+          ) : availability.loaded ? (
+            <span>
+              Missing overrides default to Enabled. {canManage
+                ? 'Use the switches on each card to enable or disable a module safely.'
+                : `Toggle controls require SUPER_ADMINISTRATOR. Effective roles: ${effectiveRoles.join(', ') || 'none reported'}.`}
+            </span>
+          ) : (
+            <span>Loading availability overrides. Existing module cards remain available.</span>
+          )}
+        </div>
+        {availability.loaded ? (
+          <div className="modules-directory-availability-counts">
+            <span><strong>{Math.max(enrichedModules.length - disabledCount, 0)}</strong> enabled</span>
+            <span><strong>{disabledCount}</strong> disabled</span>
+          </div>
+        ) : null}
+      </div>
+
+      {availability.access?.isViewAs ? (
+        <div className="module-availability-notice warning">View-As is read-only. Exit preview to change module availability.</div>
+      ) : null}
+      {statusMessage ? <div className="module-availability-notice success">{statusMessage}</div> : null}
 
       <div className="modules-directory-controls">
         <label>
@@ -373,18 +559,43 @@ export default function ModulesDirectoryPortal() {
         ) : null}
       </div>
 
-      {filteredModules.length ? (
+      {visibleModules.length ? (
         <div className="modules-directory-grid">
-          {filteredModules.map((module) => (
-            <a className="modules-directory-card" href={module.href} key={module.route}>
+          {visibleModules.map((module) => (
+            <article
+              className={module.isEnabled ? 'modules-directory-card' : 'modules-directory-card disabled'}
+              data-module-number={module.moduleNumber}
+              data-module-route={module.route}
+              key={module.route}
+            >
               <div className="modules-directory-card-heading">
                 <span>{module.moduleNumber ? `Module ${module.moduleNumber}` : 'Module number unavailable'}</span>
-                <small>{module.group}</small>
+                {availability.loaded ? (
+                  <small className={module.isEnabled ? 'module-state enabled' : 'module-state disabled'}>
+                    {module.isEnabled ? 'Enabled' : 'Disabled'}
+                  </small>
+                ) : <small>{module.group}</small>}
               </div>
               <h2>{module.label}</h2>
               <p>Open the {module.label} workspace available to your current access scope.</p>
-              <strong>Open module →</strong>
-            </a>
+              <div className="modules-directory-card-actions">
+                <a href={module.href}>Open module →</a>
+                {canManage ? (
+                  <label className="module-availability-switch">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(module.isEnabled)}
+                      disabled={Boolean(busyModule)}
+                      onChange={() => void toggleModule(module)}
+                      aria-label={`${module.isEnabled ? 'Disable' : 'Enable'} Module ${module.moduleNumber} ${module.label}`}
+                    />
+                    <span aria-hidden="true" />
+                    <strong>{busyModule === module.moduleNumber ? 'Saving…' : module.isEnabled ? 'On' : 'Off'}</strong>
+                  </label>
+                ) : null}
+              </div>
+              {module.reason ? <div className="module-availability-reason">Reason: {module.reason}</div> : null}
+            </article>
           ))}
         </div>
       ) : (
