@@ -1,15 +1,15 @@
-name: ProjectPulse Deploy Module 001 Authoritative Combobox Test
+name: ProjectPulse Deploy Simplified Module Availability Test
 
 on:
   workflow_dispatch:
     inputs:
       release_commit:
-        description: Exact verified Module 001 authoritative timer combobox commit
+        description: Exact verified simplified module availability commit
         required: true
-        default: 48c796f22e1651ef35a5839f4a521f545a417c56
+        default: f4c76842f6803582895544f9eede473a70c13927
         type: string
       confirmation:
-        description: Enter DEPLOY-MODULE-001-AUTHORITATIVE-COMBOBOX-TO-TEST
+        description: Enter DEPLOY-SIMPLIFIED-MODULE-AVAILABILITY-TO-TEST
         required: true
         type: string
 
@@ -18,16 +18,16 @@ permissions:
   contents: read
 
 concurrency:
-  group: projectpulse-deploy-module-001-authoritative-combobox-test
+  group: projectpulse-deploy-simplified-module-availability-test
   cancel-in-progress: false
 
 jobs:
   deploy:
-    name: Guarded Module 001 authoritative timer API and web test deployment
+    name: Guarded simplified module availability API and web test deployment
     environment: test
     runs-on: ubuntu-latest
     env:
-      EXPECTED_RELEASE_COMMIT: 48c796f22e1651ef35a5839f4a521f545a417c56
+      EXPECTED_RELEASE_COMMIT: f4c76842f6803582895544f9eede473a70c13927
     steps:
       - name: Check out deployment controls
         uses: actions/checkout@v5
@@ -35,7 +35,7 @@ jobs:
           path: control
           fetch-depth: 0
 
-      - name: Check out exact authoritative timer release
+      - name: Check out exact simplified module availability release
         uses: actions/checkout@v5
         with:
           ref: ${{ inputs.release_commit }}
@@ -48,47 +48,38 @@ jobs:
         run: |
           set -Eeuo pipefail
           [[ '${{ github.ref }}' == 'refs/heads/main' ]] || { echo 'Dispatch this workflow from main.' >&2; exit 1; }
-          [[ '${{ inputs.confirmation }}' == 'DEPLOY-MODULE-001-AUTHORITATIVE-COMBOBOX-TO-TEST' ]] || { echo 'Confirmation text does not match.' >&2; exit 1; }
+          [[ '${{ inputs.confirmation }}' == 'DEPLOY-SIMPLIFIED-MODULE-AVAILABILITY-TO-TEST' ]] || { echo 'Confirmation text does not match.' >&2; exit 1; }
           [[ '${{ inputs.release_commit }}' =~ ^[0-9a-f]{40}$ ]] || { echo 'release_commit must be a complete SHA.' >&2; exit 1; }
           CONTROL_COMMIT="$(git -C control rev-parse HEAD)"
           TARGET_COMMIT="$(git -C release rev-parse HEAD)"
           [[ "$CONTROL_COMMIT" == '${{ github.sha }}' ]]
           [[ "$TARGET_COMMIT" == '${{ inputs.release_commit }}' ]]
-          [[ "$TARGET_COMMIT" == "$EXPECTED_RELEASE_COMMIT" ]] || { echo 'Only the verified authoritative timer combobox release may deploy.' >&2; exit 1; }
+          [[ "$TARGET_COMMIT" == "$EXPECTED_RELEASE_COMMIT" ]] || { echo 'Only the verified simplified module availability release may deploy.' >&2; exit 1; }
           git -C control merge-base --is-ancestor "$TARGET_COMMIT" HEAD || { echo 'Release is not an ancestor of deployment controls.' >&2; exit 1; }
 
-          TARGETS='release/src/backend/ProjectTime.Api/Modules/Module001TimerTargets.cs'
-          PORTAL_ENTRY='release/src/frontend/project-time-web/src/module001/TimesheetEnhancementPortal.jsx'
-          PORTAL='release/src/frontend/project-time-web/src/module001/TimesheetEnhancementPortalV2.jsx'
-          PICKER='release/src/frontend/project-time-web/src/module001/TimesheetTaskPicker.jsx'
-          TIMER='release/src/frontend/project-time-web/src/module001/TimesheetTimerView.jsx'
-          GENERATOR='release/src/frontend/project-time-web/scripts/generate-module-001-integrated-app.mjs'
-          TIMER_CSS='release/src/frontend/project-time-web/src/module001/timesheet-timer-recovery.css'
-          test -f "$TARGETS" -a -f "$PORTAL_ENTRY" -a -f "$PORTAL" -a -f "$PICKER" -a -f "$TIMER" -a -f "$GENERATOR" -a -f "$TIMER_CSS"
-          grep -Fq "to_jsonb(pt)->>'work_task_category'" "$TARGETS"
-          grep -Fq "to_jsonb(pt)->>'service_request_number'" "$TARGETS"
-          grep -Fq 'regularTaskCount' "$TARGETS"
-          grep -Fq 'serviceRequestTaskCount' "$TARGETS"
-          grep -Fq 'Service Request Tasks' "$TARGETS"
-          grep -Fq 'Regular Tasks' "$TARGETS"
-          grep -Fq '/api/timesheet/timers/targets?weekStart=' "$PORTAL_ENTRY"
-          grep -Fq 'normalizeAssignmentTarget' "$PORTAL_ENTRY"
-          grep -Fq 'AUGMENTED_MARKER' "$PORTAL_ENTRY"
-          grep -Fq 'role="combobox"' "$PICKER"
-          grep -Fq 'aria-autocomplete="list"' "$PICKER"
-          grep -Fq 'role="listbox"' "$PICKER"
-          grep -Fq 'Non-Project Time' "$PICKER"
-          grep -Fq 'Regular Tasks' "$PICKER"
-          grep -Fq 'Service Request Tasks' "$PICKER"
-          grep -Fq 'No matching activity or task.' "$PICKER"
-          grep -Fq 'category-code:' "$TIMER"
-          grep -Fq 'retiredTabsRemoved=2' "$GENERATOR"
-          grep -Fq '.module001-task-results' "$TIMER_CSS"
-          grep -Fq '.module001-task-combobox' "$TIMER_CSS"
-          node release/src/frontend/project-time-web/scripts/generate-module-001-integrated-app.mjs
-          node release/src/frontend/project-time-web/scripts/validate-module-001-timesheet-timer-mobile.mjs
-          ! grep -Fq "{ key: 'queue', label: 'My Work Queue'" release/src/frontend/project-time-web/src/App.Module001.g.jsx
-          ! grep -Fq "{ key: 'calendar', label: 'Calendar / Timeline'" release/src/frontend/project-time-web/src/App.Module001.g.jsx
+          OVERRIDES='release/src/backend/ProjectTime.Api/Modules/ModuleAvailabilityOverridesModule.cs'
+          PROJECT='release/src/backend/ProjectTime.Api/ProjectTime.Api.csproj'
+          DIRECTORY='release/src/frontend/project-time-web/src/ModulesDirectoryPortal.jsx'
+          CONTROLLER='release/src/frontend/project-time-web/src/ModuleAvailabilityController.jsx'
+          CSS='release/src/frontend/project-time-web/src/module-availability.css'
+          VALIDATOR='release/src/frontend/project-time-web/scripts/validate-module-availability.mjs'
+          test -f "$OVERRIDES" -a -f "$PROJECT" -a -f "$DIRECTORY" -a -f "$CONTROLLER" -a -f "$CSS" -a -f "$VALIDATOR"
+          grep -Fq '/api/module-availability/overrides' "$OVERRIDES"
+          grep -Fq 'Only persisted overrides are returned; missing rows mean Enabled.' "$OVERRIDES"
+          grep -Fq 'missingOverrideBehavior = "ENABLED"' "$OVERRIDES"
+          grep -Fq 'app.MapModuleAvailabilityOverrideEndpoints();' "$PROJECT"
+          grep -Fq "fetch('/api/module-availability/overrides'" "$DIRECTORY"
+          grep -Fq "method: 'PUT'" "$DIRECTORY"
+          grep -Fq 'Missing overrides default to Enabled' "$DIRECTORY"
+          grep -Fq 'Toggle controls require SUPER_ADMINISTRATOR' "$DIRECTORY"
+          grep -Fq "if (route === 'timesheet') return 'Timesheet'" "$DIRECTORY"
+          grep -Fq 'Existing module cards remain available' "$DIRECTORY"
+          grep -Fq "fetch('/api/module-availability/overrides'" "$CONTROLLER"
+          grep -Fq 'clearAvailabilityNavigationState' "$CONTROLLER"
+          ! grep -Fq 'createPortal' "$CONTROLLER"
+          ! grep -Fq 'module-availability-governed' "$CONTROLLER"
+          ! grep -Fq '.module-availability-governed > .modules-directory-grid' "$CSS"
+          node "$VALIDATOR"
           echo "target_commit=$TARGET_COMMIT" >> "$GITHUB_OUTPUT"
 
       - uses: azure/login@v2
@@ -118,7 +109,7 @@ jobs:
           echo "old_api_image=$(resolve_digest "$RAW_API")" >> "$GITHUB_OUTPUT"
           echo "old_web_image=$(resolve_digest "$RAW_WEB")" >> "$GITHUB_OUTPUT"
 
-      - name: Build immutable authoritative timer API and web images
+      - name: Build immutable simplified module availability API and web images
         id: build
         working-directory: release
         shell: bash
@@ -127,12 +118,12 @@ jobs:
           SHA='${{ steps.release.outputs.target_commit }}'
           API_REPO='project-health-dashboard-api'
           WEB_REPO='project-health-dashboard-web'
-          API_DIGEST="$(../control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "$API_REPO:module001-authoritative-$SHA" deployment/containers/api/Dockerfile .)"
-          WEB_DIGEST="$(../control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "$WEB_REPO:module001-authoritative-$SHA" deployment/containers/web/Dockerfile .)"
+          API_DIGEST="$(../control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "$API_REPO:module-availability-simple-$SHA" deployment/containers/api/Dockerfile .)"
+          WEB_DIGEST="$(../control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "$WEB_REPO:module-availability-simple-$SHA" deployment/containers/web/Dockerfile .)"
           echo "api_image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/$API_REPO@$API_DIGEST" >> "$GITHUB_OUTPUT"
           echo "web_image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/$WEB_REPO@$WEB_DIGEST" >> "$GITHUB_OUTPUT"
 
-      - name: Deploy authoritative timer API image
+      - name: Deploy simplified module availability API image
         id: deploy_api
         shell: bash
         run: |
@@ -141,58 +132,50 @@ jobs:
           az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' \
             --image '${{ steps.build.outputs.api_image }}' \
             --set-env-vars PROJECTPULSE_ENVIRONMENT=test PROJECTPULSE_SOURCE_COMMIT='${{ steps.release.outputs.target_commit }}' \
-            --revision-suffix "m001authapi-${GITHUB_RUN_ID}" --output none
+            --revision-suffix "mavsapi-${GITHUB_RUN_ID}" --output none
 
-      - name: Validate API health and protected timer routes
+      - name: Validate API health and protected availability routes
         shell: bash
         run: |
           set -Eeuo pipefail
           BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"
           wait_status() {
-            local url="$1" expected="$2" status=''
+            local method="$1" url="$2" payload="$3" expected="$4" status=''
             for attempt in $(seq 1 30); do
-              status="$(curl -sS -o /tmp/response -w '%{http_code}' "$url" || true)"
+              if [[ "$method" == GET ]]; then
+                status="$(curl -sS -o /tmp/response -w '%{http_code}' "$url" || true)"
+              else
+                status="$(curl -sS -X "$method" -H 'Content-Type: application/json' -d "$payload" -o /tmp/response -w '%{http_code}' "$url" || true)"
+              fi
               [[ ",$expected," == *",$status,"* ]] && return 0
               sleep 10
             done
-            echo "$url returned $status" >&2
+            echo "$method $url returned $status" >&2
             cat /tmp/response >&2 || true
             return 1
           }
-          wait_post_status() {
-            local url="$1" payload="$2" expected="$3" status=''
-            for attempt in $(seq 1 30); do
-              status="$(curl -sS -X POST -H 'Content-Type: application/json' -d "$payload" -o /tmp/response -w '%{http_code}' "$url" || true)"
-              [[ ",$expected," == *",$status,"* ]] && return 0
-              sleep 10
-            done
-            echo "$url returned $status" >&2
-            cat /tmp/response >&2 || true
-            return 1
-          }
-          wait_status "$BASE/health" '200'
-          wait_status "$BASE/api/version" '200'
-          wait_status "$BASE/api/timesheet/timers/targets?weekStart=2026-07-19" '401,403'
-          wait_status "$BASE/api/timesheet/timers/active" '401,403'
-          wait_status "$BASE/api/timesheet/timers/history?weekStart=2026-07-19" '401,403'
-          wait_post_status "$BASE/api/timesheet/timers/start-by-code" '{"nonProjectCategoryCode":"ADMINISTRATIVE","timeClassification":"normal"}' '401,403'
+          wait_status GET "$BASE/health" '' '200'
+          wait_status GET "$BASE/api/version" '' '200'
+          wait_status GET "$BASE/api/module-availability/overrides" '' '401,403'
+          wait_status GET "$BASE/api/module-availability" '' '401,403'
+          wait_status PUT "$BASE/api/module-availability/001" '{"isEnabled":true,"expectedRevision":0,"reason":"unauthenticated rollout probe"}' '401,403'
 
-      - name: Deploy authoritative timer web image
+      - name: Deploy simplified module availability web image
         id: deploy_web
         shell: bash
         run: |
           set -Eeuo pipefail
           echo 'started=true' >> "$GITHUB_OUTPUT"
           az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' \
-            --image '${{ steps.build.outputs.web_image }}' --revision-suffix "m001authweb-${GITHUB_RUN_ID}" --output none
+            --image '${{ steps.build.outputs.web_image }}' --revision-suffix "mavsweb-${GITHUB_RUN_ID}" --output none
 
-      - name: Validate served authoritative timer interface and active images
+      - name: Validate served existing-directory controls and active images
         shell: bash
         run: |
           set -Eeuo pipefail
           BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"; READY=false
           for attempt in $(seq 1 30); do
-            BUSTER="m001auth-${GITHUB_RUN_ID}-${attempt}"
+            BUSTER="mavs-${GITHUB_RUN_ID}-${attempt}"
             STATUS="$(curl -sSL -H 'Cache-Control: no-cache' -o /tmp/index.html -w '%{http_code}' "$BASE/?release_check=$BUSTER" || true)"
             JS="$(sed -nE 's/.*src="([^"]+\.js)".*/\1/p' /tmp/index.html | head -1)"
             if [[ "$STATUS" == 200 && -n "$JS" ]]; then
@@ -204,22 +187,23 @@ jobs:
                 case "$CSS" in http*) CSS_URL="$CSS";; /*) CSS_URL="$BASE$CSS";; *) CSS_URL="$BASE/$CSS";; esac
                 curl -sSL -H 'Cache-Control: no-cache' "$CSS_URL?release_check=$BUSTER" >> /tmp/app.css || true
               done < <(grep -oE 'href="[^"]+\.css"' /tmp/index.html | sed -E 's/^href="|"$//g')
-              if grep -Fq 'Search activity, task, project, customer, or request' /tmp/app.js \
-                && grep -Fq 'Non-Project Time' /tmp/app.js \
-                && grep -Fq 'Regular Tasks' /tmp/app.js \
-                && grep -Fq 'Service Request Tasks' /tmp/app.js \
-                && grep -Fq 'No matching activity or task.' /tmp/app.js \
-                && grep -Fq 'Matching timer activities' /tmp/app.js \
-                && grep -Fq 'Start / Stop Timer' /tmp/app.js \
-                && grep -Fq 'module001-task-results' /tmp/app.css \
-                && grep -Fq 'module001-task-combobox' /tmp/app.css; then
+              if grep -Fq '/api/module-availability/overrides' /tmp/app.js \
+                && grep -Fq 'Missing overrides default to Enabled' /tmp/app.js \
+                && grep -Fq 'Toggle controls require SUPER_ADMINISTRATOR' /tmp/app.js \
+                && grep -Fq 'Module availability controls' /tmp/app.js \
+                && grep -Fq 'Existing module cards remain available' /tmp/app.js \
+                && grep -Fq 'Timesheet' /tmp/app.js \
+                && ! grep -Fq 'Module availability returned no module inventory' /tmp/app.js \
+                && grep -Fq 'modules-directory-availability-bar' /tmp/app.css \
+                && grep -Fq 'module-availability-switch' /tmp/app.css \
+                && ! grep -Fq 'module-availability-governed' /tmp/app.css; then
                 READY=true
                 break
               fi
             fi
             sleep 10
           done
-          [[ "$READY" == true ]] || { echo 'Authoritative Module 001 timer interface was not served.' >&2; exit 1; }
+          [[ "$READY" == true ]] || { echo 'Simplified module availability interface was not served.' >&2; exit 1; }
           ACTIVE_API="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
           ACTIVE_WEB="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
           [[ "$ACTIVE_API" == '${{ steps.build.outputs.api_image }}' && "$ACTIVE_WEB" == '${{ steps.build.outputs.web_image }}' ]]
@@ -229,16 +213,16 @@ jobs:
         shell: bash
         run: |
           mkdir -p evidence
-          cat > evidence/module-001-authoritative-combobox-test.json <<JSON
-          {"environment":"test","releaseCommit":"${{ steps.release.outputs.target_commit }}","workflowCommit":"${{ github.sha }}","runId":"${{ github.run_id }}","apiImage":"${{ steps.build.outputs.api_image }}","webImage":"${{ steps.build.outputs.web_image }}","previousApiImage":"${{ steps.before.outputs.old_api_image }}","previousWebImage":"${{ steps.before.outputs.old_web_image }}","migration041":"unchanged","database":"unchanged"}
+          cat > evidence/simplified-module-availability-test.json <<JSON
+          {"environment":"test","releaseCommit":"${{ steps.release.outputs.target_commit }}","workflowCommit":"${{ github.sha }}","runId":"${{ github.run_id }}","apiImage":"${{ steps.build.outputs.api_image }}","webImage":"${{ steps.build.outputs.web_image }}","previousApiImage":"${{ steps.before.outputs.old_api_image }}","previousWebImage":"${{ steps.before.outputs.old_web_image }}","migration042":"unchanged","database":"unchanged","moduleStates":"unchanged"}
           JSON
 
       - name: Upload deployment evidence
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: module-001-authoritative-combobox-test-${{ github.run_id }}
-          path: evidence/module-001-authoritative-combobox-test.json
+          name: simplified-module-availability-test-${{ github.run_id }}
+          path: evidence/simplified-module-availability-test.json
           retention-days: 30
 
       - name: Roll back API and web images on failure
@@ -248,9 +232,9 @@ jobs:
           set +e
           if [[ '${{ steps.deploy_api.outputs.started }}' == 'true' ]]; then
             az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' \
-              --image '${{ steps.before.outputs.old_api_image }}' --revision-suffix "m001authapirb-${GITHUB_RUN_ID}" --output none
+              --image '${{ steps.before.outputs.old_api_image }}' --revision-suffix "mavsapi-rb-${GITHUB_RUN_ID}" --output none
           fi
           if [[ '${{ steps.deploy_web.outputs.started }}' == 'true' ]]; then
             az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' \
-              --image '${{ steps.before.outputs.old_web_image }}' --revision-suffix "m001authwebrb-${GITHUB_RUN_ID}" --output none
+              --image '${{ steps.before.outputs.old_web_image }}' --revision-suffix "mavsweb-rb-${GITHUB_RUN_ID}" --output none
           fi
