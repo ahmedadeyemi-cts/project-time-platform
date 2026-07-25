@@ -1,0 +1,24 @@
+name: Validate Direct Runtime Verified Deployment Control
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/projectpulse-deploy-direct-runtime-verified-test.yml'
+      - '.github/workflows/projectpulse-direct-runtime-verified-control-ci.yml'
+      - 'scripts/validate-direct-runtime-verified-test-deployment.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: direct-runtime-verified-control-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate corrected checkout boundaries and deployment guard
+        run: bash scripts/validate-direct-runtime-verified-test-deployment.sh
