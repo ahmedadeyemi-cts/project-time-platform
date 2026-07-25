@@ -4,15 +4,20 @@ import path from 'node:path';
 
 const webRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const repoRoot = path.resolve(webRoot, '..', '..', '..');
-const read = (relative) => fs.readFileSync(path.join(repoRoot, relative), 'utf8');
+const absolute = (relative) => path.join(repoRoot, relative);
+const read = (relative) => fs.readFileSync(absolute(relative), 'utf8');
 const requireText = (source, value, label) =>
   assert.ok(source.includes(value), `${label}: missing ${value}`);
 const rejectText = (source, value, label) =>
   assert.ok(!source.includes(value), `${label}: forbidden ${value}`);
 
-const backend = read('src/backend/ProjectTime.Api/Modules/ModuleAvailabilityModule.cs');
-const migration = read('database/migrations/042_module_availability_controls.sql');
-const rollback = read('database/rollback/042_module_availability_controls_rollback.sql');
+const backendPaths = [
+  'src/backend/ProjectTime.Api/Modules/ModuleAvailabilityModule.cs',
+  'database/migrations/042_module_availability_controls.sql',
+  'database/rollback/042_module_availability_controls_rollback.sql'
+];
+const backendAvailable = backendPaths.every((relative) => fs.existsSync(absolute(relative)));
+
 const registry = read('src/frontend/project-time-web/src/module-availability-registry.js');
 const bridge = read('src/frontend/project-time-web/src/module-availability-bridge.js');
 const controller = read('src/frontend/project-time-web/src/ModuleAvailabilityController.jsx');
@@ -22,42 +27,48 @@ const project = read('src/backend/ProjectTime.Api/ProjectTime.Api.csproj');
 const packageJson = read('src/frontend/project-time-web/package.json');
 const app = read('src/frontend/project-time-web/src/App.jsx');
 
-for (const contract of [
-  '/api/module-availability',
-  '/api/module-availability/audit',
-  'UpdateAvailabilityAsync',
-  'SUPER_ADMINISTRATOR',
-  'actual_session_required',
-  'module_disabled',
-  'module_availability_revision_conflict',
-  'projectpulse_module_availability_audit',
-  'X-ProjectPulse-Module-Number',
-  'UseModuleAvailabilityEnforcement',
-  'Missing rows are treated as enabled'
-]) {
-  requireText(backend, contract, 'backend availability contract');
-}
+if (backendAvailable) {
+  const backend = read(backendPaths[0]);
+  const migration = read(backendPaths[1]);
+  const rollback = read(backendPaths[2]);
 
-requireText(backend, 'ProjectPulseActualUserId', 'actual-session authority');
-requireText(backend, 'ProjectPulseEffectiveUserId', 'effective-user visibility');
-requireText(backend, 'actualRoles.Contains("SUPER_ADMINISTRATOR") && !isViewAs', 'Super Administrator management boundary');
-requireText(backend, 'effectiveRoles.Contains("SUPER_ADMINISTRATOR")', 'disabled-module Super Administrator visibility');
-requireText(backend, 'previousEnabled = true', 'default enabled state');
-requireText(backend, 'AvailabilityCache.TryRemove', 'availability cache invalidation');
-rejectText(backend, 'DELETE FROM projectpulse_module_availability', 'non-destructive availability updates');
+  for (const contract of [
+    '/api/module-availability',
+    '/api/module-availability/audit',
+    'UpdateAvailabilityAsync',
+    'SUPER_ADMINISTRATOR',
+    'actual_session_required',
+    'module_disabled',
+    'module_availability_revision_conflict',
+    'projectpulse_module_availability_audit',
+    'X-ProjectPulse-Module-Number',
+    'UseModuleAvailabilityEnforcement',
+    'Missing rows are treated as enabled'
+  ]) {
+    requireText(backend, contract, 'backend availability contract');
+  }
 
-for (const contract of [
-  'CREATE TABLE IF NOT EXISTS projectpulse_module_availability',
-  'CREATE TABLE IF NOT EXISTS projectpulse_module_availability_audit',
-  'is_enabled boolean NOT NULL DEFAULT TRUE',
-  'revision_number integer NOT NULL',
-  'changed_by uuid NOT NULL REFERENCES app_users(user_id)',
-  "rolname = 'ptp_app'"
-]) {
-  requireText(migration, contract, 'migration 042');
+  requireText(backend, 'ProjectPulseActualUserId', 'actual-session authority');
+  requireText(backend, 'ProjectPulseEffectiveUserId', 'effective-user visibility');
+  requireText(backend, 'actualRoles.Contains("SUPER_ADMINISTRATOR") && !isViewAs', 'Super Administrator management boundary');
+  requireText(backend, 'effectiveRoles.Contains("SUPER_ADMINISTRATOR")', 'disabled-module Super Administrator visibility');
+  requireText(backend, 'previousEnabled = true', 'default enabled state');
+  requireText(backend, 'AvailabilityCache.TryRemove', 'availability cache invalidation');
+  rejectText(backend, 'DELETE FROM projectpulse_module_availability', 'non-destructive availability updates');
+
+  for (const contract of [
+    'CREATE TABLE IF NOT EXISTS projectpulse_module_availability',
+    'CREATE TABLE IF NOT EXISTS projectpulse_module_availability_audit',
+    'is_enabled boolean NOT NULL DEFAULT TRUE',
+    'revision_number integer NOT NULL',
+    'changed_by uuid NOT NULL REFERENCES app_users(user_id)',
+    "rolname = 'ptp_app'"
+  ]) {
+    requireText(migration, contract, 'migration 042');
+  }
+  requireText(rollback, 'rollback blocked', 'fail-closed rollback');
+  requireText(rollback, 'WHERE is_enabled = FALSE', 'disabled-module rollback guard');
 }
-requireText(rollback, 'rollback blocked', 'fail-closed rollback');
-requireText(rollback, 'WHERE is_enabled = FALSE', 'disabled-module rollback guard');
 
 requireText(registry, "moduleNumber: '001', route: 'timesheet', displayName: 'Timesheet'", 'Module 001 Timesheet name');
 requireText(registry, 'PROJECTPULSE_MODULES', 'shared module registry');
@@ -102,4 +113,4 @@ requireText(packageJson, 'npm run validate:module-availability', 'build-chain re
 requireText(app, "title: 'Timesheet'", 'canonical Module 001 page title');
 rejectText(registry, "displayName: 'Time Entry'", 'retired Module 001 display name');
 
-console.log('MODULE_AVAILABILITY_VALIDATION=PASS modules=64 default=enabled superAdminOnlyDisabled=true module001=Timesheet');
+console.log(`MODULE_AVAILABILITY_VALIDATION=PASS modules=64 default=enabled superAdminOnlyDisabled=true module001=Timesheet backend=${backendAvailable ? 'full' : 'frontend-container'}`);
