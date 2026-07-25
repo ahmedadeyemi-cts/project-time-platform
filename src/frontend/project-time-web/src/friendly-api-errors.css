@@ -16,6 +16,22 @@
   white-space: normal !important;
 }
 
+.projectpulse-friendly-error.compact {
+  display: grid !important;
+  gap: 0.18rem !important;
+  width: auto !important;
+  margin: 0.35rem 0 !important;
+  padding: 0.62rem 0.78rem !important;
+  border-left-width: 3px !important;
+  border-radius: 0.65rem !important;
+  box-shadow: none !important;
+  list-style: none !important;
+}
+
+.projectpulse-friendly-error.compact::marker {
+  content: '';
+}
+
 .projectpulse-friendly-error-title {
   display: block;
   color: #7c2d12;
@@ -44,6 +60,11 @@ html[data-theme='dark'] .projectpulse-friendly-error {
   background: linear-gradient(135deg, rgba(69, 26, 3, 0.94), rgba(67, 20, 7, 0.94)) !important;
   color: #fef3c7 !important;
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28) !important;
+}
+
+[data-theme='dark'] .projectpulse-friendly-error.compact,
+html[data-theme='dark'] .projectpulse-friendly-error.compact {
+  box-shadow: none !important;
 }
 
 [data-theme='dark'] .projectpulse-friendly-error-title,
