@@ -21,6 +21,13 @@ DROP TRIGGER IF EXISTS trg_projectpulse043_time_management_audit_immutable
 ON scoped_time_management_events;
 DROP TABLE IF EXISTS scoped_time_management_events;
 
+ALTER TABLE module001_timesheet_entry_associations
+    DROP CONSTRAINT IF EXISTS chk_module001_association_source;
+ALTER TABLE module001_timesheet_entry_associations
+    ADD CONSTRAINT chk_module001_association_source CHECK (
+        association_source IN ('EXISTING_ENTRY','WORK_QUEUE','TIMER','CALENDAR')
+    );
+
 DELETE FROM scoped_role_policy_actions action_row
 WHERE action_row.action_code IN (
     'TIME_VIEW_ON_BEHALF',
