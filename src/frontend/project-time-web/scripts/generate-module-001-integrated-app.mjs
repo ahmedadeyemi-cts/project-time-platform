@@ -92,6 +92,43 @@ generated = generated.replace(
   '  const holidayYearOptions = getRollingYearOptions().map(String);'
 );
 
+const optionalHelperMarker = 'function getStoredAuthSession() {';
+if (!generated.includes(optionalHelperMarker)) {
+  throw new Error('Generated app could not locate the shared session helper marker.');
+}
+const optionalHelper = `async function projectPulseOptionalModuleFetch(loader, fallback, contextLabel) {
+  try {
+    return await loader();
+  } catch (error) {
+    if (window.ProjectPulseErrorPresentation?.capture) {
+      window.ProjectPulseErrorPresentation.capture(error, {
+        optional: true,
+        contextLabel
+      });
+    } else {
+      console.error('[ProjectPulse optional module request]', contextLabel, error);
+    }
+    return fallback;
+  }
+}
+
+`;
+generated = generated.replace(optionalHelperMarker, `${optionalHelper}${optionalHelperMarker}`);
+
+const utilizationPolicyFetch = "          fetchJson('/api/utilization/policies', authSession),";
+const utilizationTargetFetch = "          fetchJson('/api/utilization/targets', authSession),";
+if (!generated.includes(utilizationPolicyFetch) || !generated.includes(utilizationTargetFetch)) {
+  throw new Error('Generated app could not locate the optional Module 003 utilization requests.');
+}
+generated = generated.replace(
+  utilizationPolicyFetch,
+  "          projectPulseOptionalModuleFetch(() => fetchJson('/api/utilization/policies', authSession), { policies: [] }, 'Module 003 utilization policies'),"
+);
+generated = generated.replace(
+  utilizationTargetFetch,
+  "          projectPulseOptionalModuleFetch(() => fetchJson('/api/utilization/targets', authSession), { targets: [] }, 'Module 003 utilization targets'),"
+);
+
 const removedViewDefinitions = [
   "            { key: 'queue', label: 'My Work Queue', description: 'Assigned tasks and requests' },\n",
   "            { key: 'calendar', label: 'Calendar / Timeline', description: 'Week-at-a-glance totals' }\n"
@@ -229,6 +266,10 @@ for (const required of [
   "./SystemUserGuide.Module001.g.jsx",
   "import { getRollingYearOptions } from './rolling-year-window.js';",
   'const holidayYearOptions = getRollingYearOptions().map(String);',
+  'async function projectPulseOptionalModuleFetch',
+  "projectPulseOptionalModuleFetch(() => fetchJson('/api/utilization/policies'",
+  "projectPulseOptionalModuleFetch(() => fetchJson('/api/utilization/targets'",
+  'window.ProjectPulseErrorPresentation.capture',
   'timesheetView',
   'async function handleSubmit()'
 ]) {
@@ -238,7 +279,9 @@ for (const required of [
 for (const retired of [
   "{ key: 'queue', label: 'My Work Queue'",
   "{ key: 'calendar', label: 'Calendar / Timeline'",
-  'Array.from({ length: 11 }, (_, index) => String(currentYear + index))'
+  'Array.from({ length: 11 }, (_, index) => String(currentYear + index))',
+  utilizationPolicyFetch,
+  utilizationTargetFetch
 ]) {
   if (generated.includes(retired)) throw new Error(`Generated App still exposes retired contract: ${retired}`);
 }
@@ -258,4 +301,4 @@ fs.writeFileSync(
   'utf8'
 );
 
-console.log(`MODULE_001_APP_GENERATION=PASS app=${path.relative(webRoot, appOutputPath)} guide=${path.relative(webRoot, guideOutputPath)} draftGuardsRemoved=2 retiredTabsRemoved=2 rollingYears=modules003004`);
+console.log(`MODULE_001_APP_GENERATION=PASS app=${path.relative(webRoot, appOutputPath)} guide=${path.relative(webRoot, guideOutputPath)} draftGuardsRemoved=2 retiredTabsRemoved=2 rollingYears=modules003004 optionalModuleFailures=isolated`);
