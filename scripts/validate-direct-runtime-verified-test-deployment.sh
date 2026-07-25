@@ -52,7 +52,7 @@ do
 done
 
 [[ "$(grep -Fc 'az containerapp update' "$WORKFLOW")" == 4 ]] || fail "Expected API/web deployment plus API/web rollback."
-[[ "$(grep -Fc 'build-pr55-acr-image.sh' "$WORKFLOW")" == 3 ]] || fail "Expected API, web, and validator image builds."
+[[ "$(grep -Ec '^[[:space:]]+(API|WEB|VALIDATOR)_DIGEST=.*build-pr55-acr-image\.sh' "$WORKFLOW")" == 3 ]] || fail "Expected exactly three API, web, and validator image build assignments."
 [[ "$(grep -Fc 'application/json' "$WORKFLOW")" -ge 1 ]] || fail "JSON content-type validation is missing."
 
 bash -n "$0"
