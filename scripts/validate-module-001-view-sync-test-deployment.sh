@@ -3,43 +3,32 @@ set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKFLOW="$ROOT/.github/workflows/projectpulse-deploy-module-001-view-sync-test.yml"
-EXPECTED="c26dd765aa9e61602a888384573e4ea66ed1360c"
+EXPECTED="cbee20a671dd34365f93112645b9284f825d6212"
 
-fail() { echo "MODULE001_TIMER_ASSIGNMENT_JOIN_DEPLOYMENT_GUARD=FAIL: $*" >&2; exit 1; }
+fail() { echo "MODULE_AVAILABILITY_FAIL_OPEN_DEPLOYMENT_GUARD=FAIL: $*" >&2; exit 1; }
 [[ -f "$WORKFLOW" ]] || fail "Workflow is missing."
 
 require() { grep -Fq -- "$1" "$WORKFLOW" || fail "Workflow missing: $1"; }
 
 for value in \
-  'name: ProjectPulse Deploy Module 001 Timer Assignment Join Test' \
+  'name: ProjectPulse Deploy Module Availability Fail-Open Test' \
   "default: $EXPECTED" \
   "EXPECTED_RELEASE_COMMIT: $EXPECTED" \
-  'DEPLOY-MODULE-001-TIMER-ASSIGNMENT-JOIN-TO-TEST' \
+  'DEPLOY-MODULE-AVAILABILITY-FAIL-OPEN-TO-TEST' \
   'refs/heads/main' \
   'environment: test' \
-  '/api/assignments/available-tasks?weekStart=' \
-  '/api/timesheet/work-queue?weekStart=' \
-  '! grep -Fq '\''/api/timesheet/timers/targets?weekStart=' \
-  'Promise.allSettled' \
-  'buildWorkQueueAssignmentIndex' \
-  'assignmentIndex.get(projectTaskKey(task))' \
-  'normalizeAvailableTask(task, assignmentIndex)' \
-  'canonicalWorkTypeGroup' \
-  "workType === 'project' || workType === 'iqs'" \
-  'regularAssignedTasks:' \
-  'requestAssignedTasks:' \
-  'role="combobox"' \
-  'Search activity, task, project, customer, or request' \
-  'Non-Project Time' \
-  'Regular Tasks' \
-  'Service Request Tasks' \
-  'window.setInterval(refresh, 5000)' \
-  'error?.status === 409' \
-  'error?.payload?.activeTimer' \
-  '.module001-task-results' \
-  'Deploy timer assignment-join web image only' \
+  'PROJECTPULSE_MODULES' \
+  'normalizeAvailabilityResponse' \
+  'inventoryComplete' \
+  'removeGovernedDirectory' \
+  'The existing Modules directory remains available' \
+  'Toggle controls require the SUPER_ADMINISTRATOR role' \
+  '.enterprise-sidebar-section a[href^="#"]' \
+  'const canReplaceDirectory = inventoryReady && (isSuperAdministrator || routes.size > 0)' \
+  "moduleNumber: '001', route: 'timesheet', displayName: 'Timesheet'" \
+  'Deploy module availability fail-open web image only' \
   'apiDeployment":"unchanged' \
-  'migration041":"unchanged' \
+  'migration042":"unchanged' \
   'database":"unchanged' \
   'Roll back web image on failure'
 do require "$value"; done
@@ -59,6 +48,7 @@ for forbidden in \
   'MODULE001_MIGRATION_IMAGE' \
   'run-module-001-test-migration-job.sh' \
   'Apply and verify migration 041' \
+  'Apply and verify migration 042' \
   'environment: production' \
   'AZURE_PRODUCTION' \
   'DEPLOY-PRODUCTION'
@@ -67,4 +57,4 @@ do
 done
 
 bash -n "$0"
-echo 'MODULE001_TIMER_ASSIGNMENT_JOIN_DEPLOYMENT_GUARD=PASS'
+echo 'MODULE_AVAILABILITY_FAIL_OPEN_DEPLOYMENT_GUARD=PASS'
