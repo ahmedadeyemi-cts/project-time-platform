@@ -61,7 +61,7 @@ requireAll(model, [
   "grant.inherited || grant.actionCode === 'LEGACY_FALLBACK'",
   "defaultScope: 'MANAGED_TEAM'",
   "defaultScope: 'ORGANIZATION'",
-  'serve as the operational time steward',
+  'Serve as the operational time steward',
   'does not submit another user’s timesheet',
   'session?.sessionToken || session?.token || session?.accessToken'
 ], 'Module 037 role reference model');
