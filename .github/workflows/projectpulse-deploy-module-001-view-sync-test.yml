@@ -1,15 +1,15 @@
-name: ProjectPulse Deploy Modules 003 004 Rolling Years Test
+name: ProjectPulse Deploy Friendly API Errors Test
 
 on:
   workflow_dispatch:
     inputs:
       release_commit:
-        description: Exact verified Modules 003 and 004 rolling-years commit
+        description: Exact verified friendly API error release commit
         required: true
-        default: 75f2f7be9f3f3d8f49b64d5413e3b20dea21fb02
+        default: b2a05508bad2d92ef1fb1bc4cb966ab86406dd07
         type: string
       confirmation:
-        description: Enter DEPLOY-MODULES-003-004-ROLLING-YEARS-TO-TEST
+        description: Enter DEPLOY-FRIENDLY-API-ERRORS-TO-TEST
         required: true
         type: string
 
@@ -18,16 +18,16 @@ permissions:
   contents: read
 
 concurrency:
-  group: projectpulse-deploy-modules-003-004-rolling-years-test
+  group: projectpulse-deploy-friendly-api-errors-test
   cancel-in-progress: false
 
 jobs:
-  deploy-web:
-    name: Guarded Modules 003 and 004 rolling-years web-only test deployment
+  deploy:
+    name: Guarded friendly API errors API and web test deployment
     environment: test
     runs-on: ubuntu-latest
     env:
-      EXPECTED_RELEASE_COMMIT: 75f2f7be9f3f3d8f49b64d5413e3b20dea21fb02
+      EXPECTED_RELEASE_COMMIT: b2a05508bad2d92ef1fb1bc4cb966ab86406dd07
     steps:
       - name: Check out deployment controls
         uses: actions/checkout@v5
@@ -35,53 +35,63 @@ jobs:
           path: control
           fetch-depth: 0
 
-      - name: Check out exact rolling-years release
+      - name: Check out exact friendly API error release
         uses: actions/checkout@v5
         with:
           ref: ${{ inputs.release_commit }}
           path: release
           fetch-depth: 1
 
-      - name: Guard workflow source and rolling-years release
+      - name: Guard workflow source and friendly API error release
         id: release
         shell: bash
         run: |
           set -Eeuo pipefail
           [[ '${{ github.ref }}' == 'refs/heads/main' ]] || { echo 'Dispatch this workflow from main.' >&2; exit 1; }
-          [[ '${{ inputs.confirmation }}' == 'DEPLOY-MODULES-003-004-ROLLING-YEARS-TO-TEST' ]] || { echo 'Confirmation text does not match.' >&2; exit 1; }
+          [[ '${{ inputs.confirmation }}' == 'DEPLOY-FRIENDLY-API-ERRORS-TO-TEST' ]] || { echo 'Confirmation text does not match.' >&2; exit 1; }
           [[ '${{ inputs.release_commit }}' =~ ^[0-9a-f]{40}$ ]] || { echo 'release_commit must be a complete SHA.' >&2; exit 1; }
+
           CONTROL_COMMIT="$(git -C control rev-parse HEAD)"
           TARGET_COMMIT="$(git -C release rev-parse HEAD)"
           [[ "$CONTROL_COMMIT" == '${{ github.sha }}' ]]
           [[ "$TARGET_COMMIT" == '${{ inputs.release_commit }}' ]]
-          [[ "$TARGET_COMMIT" == "$EXPECTED_RELEASE_COMMIT" ]] || { echo 'Only the verified Modules 003 and 004 rolling-years release may deploy.' >&2; exit 1; }
-          git -C control merge-base --is-ancestor "$TARGET_COMMIT" HEAD || { echo 'Rolling-years release is not an ancestor of deployment controls.' >&2; exit 1; }
+          [[ "$TARGET_COMMIT" == "$EXPECTED_RELEASE_COMMIT" ]] || { echo 'Only the verified friendly API error release may deploy.' >&2; exit 1; }
+          git -C control merge-base --is-ancestor "$TARGET_COMMIT" HEAD || { echo 'Friendly API error release is not an ancestor of deployment controls.' >&2; exit 1; }
 
-          YEARS='release/src/frontend/project-time-web/src/rolling-year-window.js'
-          UTILIZATION='release/src/frontend/project-time-web/src/YearlyUtilizationPanel.jsx'
+          PRESENTATION='release/src/frontend/project-time-web/src/api-error-presentation.js'
+          STYLES='release/src/frontend/project-time-web/src/friendly-api-errors.css'
+          MAIN='release/src/frontend/project-time-web/src/main.jsx'
           GENERATOR='release/src/frontend/project-time-web/scripts/generate-module-001-integrated-app.mjs'
-          VALIDATOR='release/src/frontend/project-time-web/scripts/validate-modules-003-004-rolling-years.mjs'
-          PACKAGE='release/src/frontend/project-time-web/package.json'
-          test -f "$YEARS" -a -f "$UTILIZATION" -a -f "$GENERATOR" -a -f "$VALIDATOR" -a -f "$PACKAGE"
-          grep -Fq 'previousYears: 3' "$YEARS"
-          grep -Fq 'futureYears: 6' "$YEARS"
-          grep -Fq 'totalYears: 10' "$YEARS"
-          grep -Fq 'getRollingYearOptions(currentYear)' "$UTILIZATION"
-          grep -Fq 'const [selectedYear, setSelectedYear] = useState(currentYear);' "$UTILIZATION"
-          ! grep -Fq '2026 + index' "$UTILIZATION"
-          ! grep -Fq 'currentYear >= 2026' "$UTILIZATION"
-          grep -Fq "import { getRollingYearOptions } from './rolling-year-window.js';" "$GENERATOR"
-          grep -Fq 'const holidayYearOptions = getRollingYearOptions().map(String);' "$GENERATOR"
-          grep -Fq 'reference2026=2023-2032' "$VALIDATOR"
-          grep -Fq 'reference2030=2027-2036' "$VALIDATOR"
-          grep -Fq 'validate:modules003004-rolling-years' "$PACKAGE"
+          VALIDATOR='release/src/frontend/project-time-web/scripts/validate-friendly-api-errors.mjs'
+          BACKEND='release/src/backend/ProjectTime.Api/Modules/ClientDiagnosticModule.cs'
+          PROJECT='release/src/backend/ProjectTime.Api/ProjectTime.Api.csproj'
+          test -f "$PRESENTATION" -a -f "$STYLES" -a -f "$MAIN" -a -f "$GENERATOR" -a -f "$VALIDATOR" -a -f "$BACKEND" -a -f "$PROJECT"
+
+          grep -Fq "We couldn't verify those sign-in details. Check the account and password, then try again." "$PRESENTATION"
+          grep -Fq "You don't have access to utilization information with your current role." "$PRESENTATION"
+          grep -Fq "You don't have permission to complete this action with your current role." "$PRESENTATION"
+          grep -Fq 'Something went wrong while processing your request. Try again shortly.' "$PRESENTATION"
+          grep -Fq '[ProjectPulse API diagnostic]' "$PRESENTATION"
+          grep -Fq "const DIAGNOSTIC_ENDPOINT = '/api/client-diagnostics'" "$PRESENTATION"
+          grep -Fq '.projectpulse-friendly-error' "$STYLES"
+          grep -Fq "import './api-error-presentation.js';" "$MAIN"
+          grep -Fq "import './friendly-api-errors.css';" "$MAIN"
+          grep -Fq '/api/client-diagnostics' "$BACKEND"
+          grep -Fq "'client_api_error'" "$BACKEND"
+          grep -Fq "'client_diagnostic'" "$BACKEND"
+          grep -Fq 'sanitized = true' "$BACKEND"
+          grep -Fq 'app.MapClientDiagnosticEndpoints();' "$PROJECT"
+          grep -Fq 'async function projectPulseOptionalModuleFetch' "$GENERATOR"
+          grep -Fq "Module 003 utilization policies" "$GENERATOR"
+          grep -Fq "Module 003 utilization targets" "$GENERATOR"
+
           node "$VALIDATOR"
           node "$GENERATOR"
           GENERATED='release/src/frontend/project-time-web/src/App.Module001.g.jsx'
           test -f "$GENERATED"
-          grep -Fq "import { getRollingYearOptions } from './rolling-year-window.js';" "$GENERATED"
-          grep -Fq 'const holidayYearOptions = getRollingYearOptions().map(String);' "$GENERATED"
-          ! grep -Fq 'Array.from({ length: 11 }, (_, index) => String(currentYear + index))' "$GENERATED"
+          grep -Fq 'async function projectPulseOptionalModuleFetch' "$GENERATED"
+          grep -Fq 'Module 003 utilization policies' "$GENERATED"
+          grep -Fq 'Module 003 utilization targets' "$GENERATED"
           echo "target_commit=$TARGET_COMMIT" >> "$GITHUB_OUTPUT"
 
       - uses: azure/login@v2
@@ -90,92 +100,159 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Capture current web image
+      - name: Capture current API and web images
         id: before
         shell: bash
         run: |
           set -Eeuo pipefail
-          RAW="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
-          MODE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.configuration.activeRevisionsMode' -o tsv)"
-          [[ -n "$RAW" && "${MODE,,}" == single ]]
+          RAW_API="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
+          RAW_WEB="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
+          API_MODE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.configuration.activeRevisionsMode' -o tsv)"
+          WEB_MODE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.configuration.activeRevisionsMode' -o tsv)"
+          [[ -n "$RAW_API" && -n "$RAW_WEB" && "${API_MODE,,}" == single && "${WEB_MODE,,}" == single ]]
+
           resolve_digest() {
             local image="$1" registry='${{ vars.AZURE_ACR_NAME }}.azurecr.io/' relative repository digest
-            case "$image" in "$registry"*@sha256:*) printf '%s\n' "$image"; return;; "$registry"*:*) ;; *) return 1;; esac
-            relative="${image#"$registry"}"; repository="${relative%:*}"
+            case "$image" in
+              "$registry"*@sha256:*) printf '%s\n' "$image"; return ;;
+              "$registry"*:*) ;;
+              *) return 1 ;;
+            esac
+            relative="${image#"$registry"}"
+            repository="${relative%:*}"
             digest="$(az acr repository show --name '${{ vars.AZURE_ACR_NAME }}' --image "$relative" --query digest -o tsv)"
             [[ "$digest" == sha256:* ]]
             printf '%s%s@%s\n' "$registry" "$repository" "$digest"
           }
-          OLD="$(resolve_digest "$RAW")"
-          echo "old_web_image=$OLD" >> "$GITHUB_OUTPUT"
 
-      - name: Build exact rolling-years web image
+          echo "old_api_image=$(resolve_digest "$RAW_API")" >> "$GITHUB_OUTPUT"
+          echo "old_web_image=$(resolve_digest "$RAW_WEB")" >> "$GITHUB_OUTPUT"
+
+      - name: Build immutable friendly API error API and web images
         id: build
         working-directory: release
         shell: bash
         run: |
           set -Eeuo pipefail
           SHA='${{ steps.release.outputs.target_commit }}'
-          REPOSITORY='project-health-dashboard-web'
-          DIGEST="$(../control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "$REPOSITORY:modules-003-004-rolling-years-$SHA" deployment/containers/web/Dockerfile .)"
-          echo "web_image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/$REPOSITORY@$DIGEST" >> "$GITHUB_OUTPUT"
+          API_REPOSITORY='project-health-dashboard-api'
+          WEB_REPOSITORY='project-health-dashboard-web'
+          API_DIGEST="$(../control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "$API_REPOSITORY:friendly-api-errors-$SHA" deployment/containers/api/Dockerfile .)"
+          WEB_DIGEST="$(../control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "$WEB_REPOSITORY:friendly-api-errors-$SHA" deployment/containers/web/Dockerfile .)"
+          echo "api_image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/$API_REPOSITORY@$API_DIGEST" >> "$GITHUB_OUTPUT"
+          echo "web_image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/$WEB_REPOSITORY@$WEB_DIGEST" >> "$GITHUB_OUTPUT"
 
-      - name: Deploy Modules 003 and 004 rolling-years web image only
+      - name: Deploy friendly API error API image
+        id: deploy_api
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' \
+            --image '${{ steps.build.outputs.api_image }}' \
+            --set-env-vars PROJECTPULSE_ENVIRONMENT=test PROJECTPULSE_SOURCE_COMMIT='${{ steps.release.outputs.target_commit }}' \
+            --revision-suffix "faeapi-${GITHUB_RUN_ID}" --output none
+
+      - name: Validate API health and protected diagnostic endpoint
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"; READY=false
+          for attempt in $(seq 1 30); do
+            HEALTH="$(curl -sS -o /tmp/health -w '%{http_code}' "$BASE/health" || true)"
+            VERSION="$(curl -sS -o /tmp/version -w '%{http_code}' "$BASE/api/version" || true)"
+            STATUS="$(curl -sS -X POST -H 'Content-Type: application/json' -d '{}' -D /tmp/diagnostic-headers -o /tmp/diagnostic-response -w '%{http_code}' "$BASE/api/client-diagnostics" || true)"
+            if [[ "$HEALTH" == 200 && "$VERSION" == 200 && "$STATUS" == 401 ]] \
+              && grep -Eqi '^content-type:[[:space:]]*application/json' /tmp/diagnostic-headers \
+              && [[ -s /tmp/diagnostic-response ]] \
+              && grep -Fq 'session_required' /tmp/diagnostic-response; then
+              READY=true
+              break
+            fi
+            sleep 10
+          done
+          if [[ "$READY" != true ]]; then
+            echo 'Friendly diagnostic API validation failed.' >&2
+            echo "health=$HEALTH version=$VERSION diagnostic=$STATUS" >&2
+            cat /tmp/diagnostic-headers >&2 || true
+            cat /tmp/diagnostic-response >&2 || true
+            exit 1
+          fi
+
+      - name: Deploy friendly API error web image
         id: deploy_web
         shell: bash
         run: |
           set -Eeuo pipefail
           echo 'started=true' >> "$GITHUB_OUTPUT"
           az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' \
-            --image '${{ steps.build.outputs.web_image }}' --revision-suffix "m003004yr-${GITHUB_RUN_ID}" --output none
+            --image '${{ steps.build.outputs.web_image }}' --revision-suffix "faeweb-${GITHUB_RUN_ID}" --output none
 
-      - name: Validate served rolling-year controls and active image
+      - name: Validate served friendly error interface and active images
         shell: bash
         run: |
           set -Eeuo pipefail
           BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"; READY=false
           for attempt in $(seq 1 30); do
-            BUSTER="m003004yr-${GITHUB_RUN_ID}-${attempt}"
+            BUSTER="fae-${GITHUB_RUN_ID}-${attempt}"
             STATUS="$(curl -sSL -H 'Cache-Control: no-cache' -o /tmp/index.html -w '%{http_code}' "$BASE/?release_check=$BUSTER" || true)"
             JS="$(sed -nE 's/.*src="([^"]+\.js)".*/\1/p' /tmp/index.html | head -1)"
             if [[ "$STATUS" == 200 && -n "$JS" ]]; then
               case "$JS" in http*) JS_URL="$JS";; /*) JS_URL="$BASE$JS";; *) JS_URL="$BASE/$JS";; esac
               curl -sSL -H 'Cache-Control: no-cache' -o /tmp/app.js "$JS_URL?release_check=$BUSTER" || true
-              if grep -Fq 'referenceYear must be a positive integer year.' /tmp/app.js \
-                && grep -Fq 'Quarterly progress by year' /tmp/app.js \
-                && grep -Fq 'Holiday calendar' /tmp/app.js \
-                && grep -Fq '/api/utilization/yearly-status?year=' /tmp/app.js; then
+              : > /tmp/app.css
+              while IFS= read -r CSS; do
+                [[ -n "$CSS" ]] || continue
+                case "$CSS" in http*) CSS_URL="$CSS";; /*) CSS_URL="$BASE$CSS";; *) CSS_URL="$BASE/$CSS";; esac
+                curl -sSL -H 'Cache-Control: no-cache' "$CSS_URL?release_check=$BUSTER" >> /tmp/app.css || true
+              done < <(grep -oE 'href="[^"]+\.css"' /tmp/index.html | sed -E 's/^href="|"$//g')
+
+              if grep -Fq '/api/client-diagnostics' /tmp/app.js \
+                && grep -Fq "We couldn't verify those sign-in details" /tmp/app.js \
+                && grep -Fq "You don't have access to utilization information" /tmp/app.js \
+                && grep -Fq 'ProjectPulse API diagnostic' /tmp/app.js \
+                && grep -Fq 'Module 003 utilization policies' /tmp/app.js \
+                && grep -Fq 'Module 003 utilization targets' /tmp/app.js \
+                && grep -Fq 'projectpulse-friendly-error' /tmp/app.css; then
                 READY=true
                 break
               fi
             fi
             sleep 10
           done
-          [[ "$READY" == true ]] || { echo 'Modules 003 and 004 rolling-year interface was not served.' >&2; exit 1; }
-          ACTIVE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
-          [[ "$ACTIVE" == '${{ steps.build.outputs.web_image }}' ]]
+          [[ "$READY" == true ]] || { echo 'Friendly API error interface was not served.' >&2; exit 1; }
+
+          ACTIVE_API="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
+          ACTIVE_WEB="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
+          [[ "$ACTIVE_API" == '${{ steps.build.outputs.api_image }}' && "$ACTIVE_WEB" == '${{ steps.build.outputs.web_image }}' ]]
 
       - name: Write deployment evidence
         if: success()
         shell: bash
         run: |
           mkdir -p evidence
-          cat > evidence/modules-003-004-rolling-years-test.json <<JSON
-          {"environment":"test","releaseCommit":"${{ steps.release.outputs.target_commit }}","workflowCommit":"${{ github.sha }}","runId":"${{ github.run_id }}","webImage":"${{ steps.build.outputs.web_image }}","previousWebImage":"${{ steps.before.outputs.old_web_image }}","yearWindow":{"previous":3,"current":1,"future":6,"total":10},"apiDeployment":"unchanged","migration":"unchanged","database":"unchanged","moduleStates":"unchanged"}
+          cat > evidence/friendly-api-errors-test.json <<JSON
+          {"environment":"test","releaseCommit":"${{ steps.release.outputs.target_commit }}","workflowCommit":"${{ github.sha }}","runId":"${{ github.run_id }}","apiImage":"${{ steps.build.outputs.api_image }}","webImage":"${{ steps.build.outputs.web_image }}","previousApiImage":"${{ steps.before.outputs.old_api_image }}","previousWebImage":"${{ steps.before.outputs.old_web_image }}","errorPresentation":"standardized","consoleDiagnostics":"enabled","auditDiagnostics":"sanitized","migration":"unchanged","databaseSchema":"unchanged","permissions":"unchanged","moduleStates":"unchanged"}
           JSON
 
       - name: Upload deployment evidence
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: modules-003-004-rolling-years-test-${{ github.run_id }}
-          path: evidence/modules-003-004-rolling-years-test.json
+          name: friendly-api-errors-test-${{ github.run_id }}
+          path: evidence/friendly-api-errors-test.json
           retention-days: 30
 
-      - name: Roll back web image on failure
-        if: ${{ failure() && steps.deploy_web.outputs.started == 'true' }}
+      - name: Roll back API and web images on failure
+        if: ${{ failure() && (steps.deploy_api.outputs.started == 'true' || steps.deploy_web.outputs.started == 'true') }}
         shell: bash
         run: |
           set +e
-          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' \
-            --image '${{ steps.before.outputs.old_web_image }}' --revision-suffix "m003004yrrb-${GITHUB_RUN_ID}" --output none
+          if [[ '${{ steps.deploy_api.outputs.started }}' == 'true' ]]; then
+            az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' \
+              --image '${{ steps.before.outputs.old_api_image }}' --revision-suffix "faeapi-rb-${GITHUB_RUN_ID}" --output none
+          fi
+          if [[ '${{ steps.deploy_web.outputs.started }}' == 'true' ]]; then
+            az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' \
+              --image '${{ steps.before.outputs.old_web_image }}' --revision-suffix "faeweb-rb-${GITHUB_RUN_ID}" --output none
+          fi
