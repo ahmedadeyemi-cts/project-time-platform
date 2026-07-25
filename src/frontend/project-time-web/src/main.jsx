@@ -1,8 +1,10 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
+import './module-availability-bridge.js';
 import App from './App.Module001.g.jsx';
 import HelpAssistant from './HelpAssistant.jsx';
 import ModulesDirectoryPortal from './ModulesDirectoryPortal.jsx';
+import ModuleAvailabilityController from './ModuleAvailabilityController.jsx';
 import DashboardPersonalCalendarPortal from './DashboardPersonalCalendarPortal.jsx';
 import TimesheetEnhancementPortal from './module001/TimesheetEnhancementPortal.jsx';
 import './approval-access-navigation-compatibility.js';
@@ -16,6 +18,7 @@ createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <App />
     <ModulesDirectoryPortal />
+    <ModuleAvailabilityController />
     <DashboardPersonalCalendarPortal />
     <TimesheetEnhancementPortal />
     <HelpAssistant />
