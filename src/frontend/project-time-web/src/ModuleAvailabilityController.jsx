@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
+  PROJECTPULSE_MODULES,
   canonicalModuleRoute,
   currentProjectPulseRoute,
   moduleForRoute,
@@ -9,6 +10,7 @@ import {
 import './module-availability.css';
 
 const REFRESH_INTERVAL_MS = 30000;
+const EXPECTED_MODULE_COUNT = PROJECTPULSE_MODULES.length;
 
 async function readJson(response) {
   const raw = await response.text();
@@ -22,6 +24,41 @@ async function readJson(response) {
 
 function messageFrom(payload, fallback) {
   return payload?.message || payload?.status || fallback;
+}
+
+function normalizeAvailabilityResponse(body) {
+  if (!Array.isArray(body?.modules)) {
+    throw new Error('Module availability returned no module inventory. The existing Modules directory remains available.');
+  }
+
+  const states = new Map(
+    body.modules
+      .filter((module) => module?.moduleNumber)
+      .map((module) => [String(module.moduleNumber).toUpperCase(), module])
+  );
+  const missing = PROJECTPULSE_MODULES.filter((module) => !states.has(module.moduleNumber));
+  if (missing.length) {
+    throw new Error(
+      `Module availability returned an incomplete inventory (${body.modules.length}/${EXPECTED_MODULE_COUNT}). The existing Modules directory remains available.`
+    );
+  }
+
+  const modules = PROJECTPULSE_MODULES.map((registered) => ({
+    ...registered,
+    ...states.get(registered.moduleNumber),
+    moduleNumber: registered.moduleNumber,
+    route: registered.route,
+    displayName: registered.displayName,
+    group: registered.group,
+    isEnabled: states.get(registered.moduleNumber)?.isEnabled !== false
+  }));
+
+  return {
+    ...body,
+    modules,
+    inventoryCount: modules.length,
+    inventoryComplete: modules.length === EXPECTED_MODULE_COUNT
+  };
 }
 
 function normalizeTimesheetLabels(root = document) {
@@ -40,10 +77,18 @@ function normalizeTimesheetLabels(root = document) {
 }
 
 function authorizedRoutesFromNavigation() {
+  const selectors = [
+    '.enterprise-sidebar-section a[href^="#"]',
+    '.enterprise-sidebar-group a[href^="#"]',
+    '.enterprise-sidebar-links a[href^="#"]',
+    '.enterprise-top-navigation a[href^="#"]',
+    'nav a[href^="#"]'
+  ].join(',');
+
   return new Set(
-    Array.from(document.querySelectorAll('.enterprise-sidebar a[href^="#"], .enterprise-top-navigation a[href^="#"]'))
+    Array.from(document.querySelectorAll(selectors))
       .map((anchor) => canonicalModuleRoute(anchor.getAttribute('href')))
-      .filter(Boolean)
+      .filter((route) => Boolean(moduleForRoute(route)))
   );
 }
 
@@ -87,6 +132,11 @@ function currentDisabledModule(modules, isSuperAdministrator) {
   return modules.find((module) => module.moduleNumber === current.moduleNumber && !module.isEnabled) || null;
 }
 
+function removeGovernedDirectory() {
+  document.querySelector('#modules-directory-page')?.classList.remove('module-availability-governed');
+  document.getElementById('module-availability-directory-host')?.remove();
+}
+
 export default function ModuleAvailabilityController() {
   const [availability, setAvailability] = useState(null);
   const [auditEvents, setAuditEvents] = useState([]);
@@ -104,11 +154,12 @@ export default function ModuleAvailabilityController() {
       const response = await fetch('/api/module-availability', { cache: 'no-store' });
       const body = await readJson(response);
       if (!response.ok) throw new Error(messageFrom(body, 'Module availability could not be loaded.'));
-      setAvailability(body);
+      const normalized = normalizeAvailabilityResponse(body);
+      setAvailability(normalized);
       setError('');
       if (!preserveMessage) setStatusMessage('');
 
-      if (body?.access?.canManage) {
+      if (normalized?.access?.canManage) {
         const auditResponse = await fetch('/api/module-availability/audit', { cache: 'no-store' });
         const auditBody = await readJson(auditResponse);
         if (auditResponse.ok) setAuditEvents(Array.isArray(auditBody.events) ? auditBody.events : []);
@@ -116,7 +167,7 @@ export default function ModuleAvailabilityController() {
         setAuditEvents([]);
       }
     } catch (loadError) {
-      setError(loadError?.message || 'Module availability could not be loaded.');
+      setError(loadError?.message || 'Module availability could not be loaded. The existing Modules directory remains available.');
     }
   }, []);
 
@@ -133,15 +184,22 @@ export default function ModuleAvailabilityController() {
     };
   }, [load]);
 
+  const modules = Array.isArray(availability?.modules) ? availability.modules : [];
+  const inventoryReady = Boolean(availability?.inventoryComplete) && modules.length === EXPECTED_MODULE_COUNT;
+  const isSuperAdministrator = Boolean(availability?.access?.isSuperAdministrator);
+  const canManage = Boolean(availability?.access?.canManage) && inventoryReady;
+
   useEffect(() => {
     const ensureHost = () => {
       const page = document.querySelector('#modules-directory-page');
       const active = currentProjectPulseRoute() === 'modules';
-      if (!page || !active) {
-        setPortalHost((current) => {
-          if (current?.isConnected) current.remove();
-          return null;
-        });
+      const routes = authorizedRoutesFromNavigation();
+      setAuthorizedRoutes(routes);
+      const canReplaceDirectory = inventoryReady && (isSuperAdministrator || routes.size > 0);
+
+      if (!page || !active || !canReplaceDirectory) {
+        setPortalHost(null);
+        removeGovernedDirectory();
         return;
       }
 
@@ -155,7 +213,6 @@ export default function ModuleAvailabilityController() {
         else page.prepend(host);
       }
       setPortalHost((current) => current === host ? current : host);
-      setAuthorizedRoutes(authorizedRoutesFromNavigation());
     };
 
     ensureHost();
@@ -169,23 +226,21 @@ export default function ModuleAvailabilityController() {
       observer.disconnect();
       window.removeEventListener('hashchange', ensureHost);
       window.clearTimeout(refreshTimer.current);
-      document.querySelector('#modules-directory-page')?.classList.remove('module-availability-governed');
-      document.getElementById('module-availability-directory-host')?.remove();
+      removeGovernedDirectory();
     };
-  }, []);
+  }, [inventoryReady, isSuperAdministrator]);
 
   useEffect(() => {
-    const modules = Array.isArray(availability?.modules) ? availability.modules : [];
-    if (!modules.length) return undefined;
+    if (!inventoryReady) return undefined;
 
     const apply = () => {
-      applyModuleNavigationState(modules, Boolean(availability?.access?.isSuperAdministrator));
+      applyModuleNavigationState(modules, isSuperAdministrator);
       setAuthorizedRoutes(authorizedRoutesFromNavigation());
 
       const current = moduleForRoute(currentProjectPulseRoute());
       if (!current) return;
       const state = modules.find((module) => module.moduleNumber === current.moduleNumber);
-      if (state && !state.isEnabled && !availability?.access?.isSuperAdministrator) {
+      if (state && !state.isEnabled && !isSuperAdministrator) {
         setStatusMessage(`${state.displayName} is disabled. You were returned to the Modules directory.`);
         window.location.hash = 'modules';
       }
@@ -203,10 +258,10 @@ export default function ModuleAvailabilityController() {
       window.removeEventListener('hashchange', apply);
       window.clearTimeout(refreshTimer.current);
     };
-  }, [availability]);
+  }, [inventoryReady, isSuperAdministrator, modules]);
 
   async function toggleModule(module) {
-    if (!availability?.access?.canManage || busyModule) return;
+    if (!canManage || busyModule) return;
     const nextEnabled = !module.isEnabled;
     const action = nextEnabled ? 'enable' : 'disable';
     const warning = nextEnabled
@@ -241,9 +296,6 @@ export default function ModuleAvailabilityController() {
     }
   }
 
-  const modules = Array.isArray(availability?.modules) ? availability.modules : [];
-  const isSuperAdministrator = Boolean(availability?.access?.isSuperAdministrator);
-  const canManage = Boolean(availability?.access?.canManage);
   const visibleModules = useMemo(() => {
     const term = String(search || '').trim().toLowerCase();
     return modules.filter((module) => {
@@ -265,8 +317,11 @@ export default function ModuleAvailabilityController() {
   );
 
   const disabledCurrent = currentDisabledModule(modules, isSuperAdministrator);
+  const effectiveRoles = Array.isArray(availability?.access?.effectiveRoles)
+    ? availability.access.effectiveRoles
+    : [];
 
-  const directory = portalHost ? createPortal(
+  const directory = portalHost && inventoryReady ? createPortal(
     <div className="module-availability-directory">
       <div className="module-availability-summary">
         <div>
@@ -286,6 +341,12 @@ export default function ModuleAvailabilityController() {
       {availability?.access?.isViewAs ? (
         <div className="module-availability-notice warning">
           View-As is read-only. Exit preview to change module availability.
+        </div>
+      ) : null}
+
+      {!isSuperAdministrator ? (
+        <div className="module-availability-notice warning">
+          Toggle controls require the SUPER_ADMINISTRATOR role. Current effective roles: {effectiveRoles.join(', ') || 'none reported'}.
         </div>
       ) : null}
 
@@ -311,45 +372,51 @@ export default function ModuleAvailabilityController() {
         ) : null}
       </div>
 
-      <div className="module-availability-grid">
-        {visibleModules.map((module) => (
-          <article
-            className={module.isEnabled ? 'module-availability-card' : 'module-availability-card disabled'}
-            key={module.moduleNumber}
-          >
-            <div className="module-availability-card-heading">
-              <span>Module {module.moduleNumber}</span>
-              <span className={module.isEnabled ? 'module-state enabled' : 'module-state disabled'}>
-                {module.isEnabled ? 'Enabled' : 'Disabled'}
-              </span>
-            </div>
-            <h3>{module.displayName}</h3>
-            <p>{module.group} · <code>{module.route}</code></p>
-            {!module.isEnabled ? (
-              <small>Preserved and visible only to Super Administrators.</small>
-            ) : (
-              <small>Visible when the user also passes role and permission checks.</small>
-            )}
-            <div className="module-availability-card-actions">
-              <a href={`#${module.route}`}>Open module</a>
-              {canManage ? (
-                <label className="module-availability-switch">
-                  <input
-                    type="checkbox"
-                    checked={Boolean(module.isEnabled)}
-                    disabled={Boolean(busyModule)}
-                    onChange={() => void toggleModule(module)}
-                    aria-label={`${module.isEnabled ? 'Disable' : 'Enable'} Module ${module.moduleNumber} ${module.displayName}`}
-                  />
-                  <span aria-hidden="true" />
-                  <strong>{busyModule === module.moduleNumber ? 'Saving…' : module.isEnabled ? 'On' : 'Off'}</strong>
-                </label>
-              ) : null}
-            </div>
-            {module.reason ? <div className="module-availability-reason">Reason: {module.reason}</div> : null}
-          </article>
-        ))}
-      </div>
+      {visibleModules.length ? (
+        <div className="module-availability-grid">
+          {visibleModules.map((module) => (
+            <article
+              className={module.isEnabled ? 'module-availability-card' : 'module-availability-card disabled'}
+              key={module.moduleNumber}
+            >
+              <div className="module-availability-card-heading">
+                <span>Module {module.moduleNumber}</span>
+                <span className={module.isEnabled ? 'module-state enabled' : 'module-state disabled'}>
+                  {module.isEnabled ? 'Enabled' : 'Disabled'}
+                </span>
+              </div>
+              <h3>{module.displayName}</h3>
+              <p>{module.group} · <code>{module.route}</code></p>
+              {!module.isEnabled ? (
+                <small>Preserved and visible only to Super Administrators.</small>
+              ) : (
+                <small>Visible when the user also passes role and permission checks.</small>
+              )}
+              <div className="module-availability-card-actions">
+                <a href={`#${module.route}`}>Open module</a>
+                {canManage ? (
+                  <label className="module-availability-switch">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(module.isEnabled)}
+                      disabled={Boolean(busyModule)}
+                      onChange={() => void toggleModule(module)}
+                      aria-label={`${module.isEnabled ? 'Disable' : 'Enable'} Module ${module.moduleNumber} ${module.displayName}`}
+                    />
+                    <span aria-hidden="true" />
+                    <strong>{busyModule === module.moduleNumber ? 'Saving…' : module.isEnabled ? 'On' : 'Off'}</strong>
+                  </label>
+                ) : null}
+              </div>
+              {module.reason ? <div className="module-availability-reason">Reason: {module.reason}</div> : null}
+            </article>
+          ))}
+        </div>
+      ) : (
+        <div className="module-availability-notice warning">
+          No governed modules match the current filters. The original Modules directory remains the fail-open fallback whenever inventory or navigation authorization cannot be confirmed.
+        </div>
+      )}
 
       {canManage && auditEvents.length ? (
         <section className="module-availability-audit">
