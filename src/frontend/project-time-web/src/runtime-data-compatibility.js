@@ -35,6 +35,17 @@ function expectedKeys(pathname) {
   return [];
 }
 
+function publishRuntimeData(pathname, payload) {
+  if (pathname.endsWith('/users')) {
+    window.__projectPulsePtcRuntimeUsers = payload;
+    window.dispatchEvent(new CustomEvent('projectpulse:ptc-runtime-users', { detail: payload }));
+  }
+  if (pathname.endsWith('/workspace')) {
+    window.__projectPulsePtcRuntimeWorkspace = payload;
+    window.dispatchEvent(new CustomEvent('projectpulse:ptc-runtime-workspace', { detail: payload }));
+  }
+}
+
 if (typeof window !== 'undefined' && typeof window.fetch === 'function' && !window[MARKER]) {
   const previousFetch = window.fetch.bind(window);
 
@@ -75,6 +86,7 @@ if (typeof window !== 'undefined' && typeof window.fetch === 'function' && !wind
     }
 
     const normalized = unwrapApiPayload(parsed, expectedKeys(rewrittenPath));
+    if (response.ok) publishRuntimeData(rewrittenPath, normalized);
     return new Response(JSON.stringify(normalized), {
       status: response.status,
       statusText: response.statusText,
