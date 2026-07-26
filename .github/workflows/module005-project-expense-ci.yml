@@ -1,0 +1,123 @@
+name: Validate Module 005 Project Expense Upload
+
+on:
+  pull_request:
+    paths:
+      - 'database/migrations/044*'
+      - 'database/rollback/044*'
+      - 'src/backend/ProjectTime.Api/Modules/Module005*'
+      - 'src/backend/ProjectTime.Api/Modules/Module038CertifyConnectionModule.cs'
+      - 'src/backend/ProjectTime.Api/ProjectTime.Api.csproj'
+      - 'src/frontend/project-time-web/src/ProjectAllocationInfoPanel.jsx'
+      - 'src/frontend/project-time-web/src/CertifyIntegrationCenter.jsx'
+      - 'src/frontend/project-time-web/src/ProjectExpenseCrossModulePortal.jsx'
+      - 'src/frontend/project-time-web/src/project-expense-*.css'
+      - 'src/frontend/project-time-web/src/certify-integration-center.css'
+      - 'src/frontend/project-time-web/src/main.jsx'
+      - 'src/frontend/project-time-web/src/module-availability-registry.js'
+      - 'src/frontend/project-time-web/scripts/validate-module-005-project-expense-upload.mjs'
+      - 'src/frontend/project-time-web/package.json'
+      - 'tests/Module005ExpenseParserTests/**'
+      - 'tests/test-project-expense-migration-044.sh'
+      - '.github/workflows/module005-project-expense-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: module005-project-expense-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Compile Module 005 and 038 API
+        shell: bash
+        run: |
+          set +e
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj \
+            --configuration Release --nologo --verbosity:quiet \
+            > /tmp/module005-api-build.log 2>&1
+          STATUS=$?
+          if (( STATUS != 0 )); then
+            echo 'MODULE_005_API_BUILD_ERRORS_BEGIN'
+            grep -E 'error (CS|MSB|NU)[0-9]+|Build FAILED|[0-9]+ Error\(s\)' /tmp/module005-api-build.log || tail -80 /tmp/module005-api-build.log
+            echo 'MODULE_005_API_BUILD_ERRORS_END'
+          fi
+          exit "$STATUS"
+      - name: Upload Module 005 API build diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: module005-api-build-diagnostics
+          path: /tmp/module005-api-build.log
+          retention-days: 7
+      - name: Test both Certify spreadsheet and CSV formats
+        shell: bash
+        run: |
+          set +e
+          dotnet run --project tests/Module005ExpenseParserTests/Module005ExpenseParserTests.csproj \
+            --configuration Release > /tmp/module005-parser-tests.log 2>&1
+          STATUS=$?
+          cat /tmp/module005-parser-tests.log
+          grep -Fq 'MODULE_005_EXPENSE_PARSER_TEST=PASS formats=4 total=2377.26 normalizedCategories=7' /tmp/module005-parser-tests.log || STATUS=1
+          exit "$STATUS"
+      - name: Upload Module 005 parser diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: module005-parser-test-diagnostics
+          path: /tmp/module005-parser-tests.log
+          retention-days: 7
+      - name: Test migrations 044 and 044a apply idempotence and rollback
+        shell: bash
+        run: |
+          set +e
+          bash tests/test-project-expense-migration-044.sh \
+            > /tmp/project-expense-migration-044.log 2>&1
+          STATUS=$?
+          cat /tmp/project-expense-migration-044.log
+          grep -Fq 'PROJECT_EXPENSE_MIGRATION_044_TEST=PASS apply=true idempotent=true safeRollback=true guardedRollback=true immutableAudit=true' /tmp/project-expense-migration-044.log || STATUS=1
+          exit "$STATUS"
+      - name: Upload Module 005 migration diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: project-expense-migration-044-diagnostics
+          path: /tmp/project-expense-migration-044.log
+          retention-days: 7
+      - name: Validate Module 005 and 038 frontend contracts
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set +e
+          node ./scripts/validate-module-005-project-expense-upload.mjs \
+            > /tmp/module005-frontend-contract.log 2>&1
+          STATUS=$?
+          if (( STATUS != 0 )); then
+            echo 'MODULE_005_FRONTEND_CONTRACT_ERRORS_BEGIN'
+            cat /tmp/module005-frontend-contract.log
+            echo 'MODULE_005_FRONTEND_CONTRACT_ERRORS_END'
+          fi
+          exit "$STATUS"
+      - name: Upload Module 005 frontend contract diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: module005-frontend-contract-diagnostics
+          path: /tmp/module005-frontend-contract.log
+          retention-days: 7
+      - name: Build frontend production bundle
+        working-directory: src/frontend/project-time-web
+        run: |
+          npm ci
+          npm run build

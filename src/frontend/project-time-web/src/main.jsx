@@ -10,6 +10,7 @@ import ModuleAvailabilityController from './ModuleAvailabilityController.jsx';
 import DashboardPersonalCalendarPortal from './DashboardPersonalCalendarPortal.jsx';
 import TimesheetEnhancementPortal from './module001/TimesheetEnhancementPortal.jsx';
 import PtcTimeStewardGate from './module001/PtcTimeStewardGate.jsx';
+import ProjectExpenseCrossModulePortal from './ProjectExpenseCrossModulePortal.jsx';
 import './approval-access-navigation-compatibility.js';
 import './scoped-rbac-catalog-compatibility.js';
 import './styles.css';
@@ -26,6 +27,7 @@ createRoot(document.getElementById('root')).render(
     <DashboardPersonalCalendarPortal />
     <TimesheetEnhancementPortal />
     <PtcTimeStewardGate />
+    <ProjectExpenseCrossModulePortal />
     <HelpAssistant />
   </React.StrictMode>
 );
