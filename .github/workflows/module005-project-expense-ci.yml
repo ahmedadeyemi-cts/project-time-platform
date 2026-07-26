@@ -39,7 +39,19 @@ jobs:
         with:
           node-version: '22'
       - name: Compile Module 005 and 038 API
-        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release --nologo
+        shell: bash
+        run: |
+          set +e
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj \
+            --configuration Release --nologo --verbosity:quiet \
+            > /tmp/module005-api-build.log 2>&1
+          STATUS=$?
+          if (( STATUS != 0 )); then
+            echo 'MODULE_005_API_BUILD_ERRORS_BEGIN'
+            grep -E 'error (CS|MSB|NU)[0-9]+|Build FAILED|[0-9]+ Error\(s\)' /tmp/module005-api-build.log || tail -80 /tmp/module005-api-build.log
+            echo 'MODULE_005_API_BUILD_ERRORS_END'
+          fi
+          exit "$STATUS"
       - name: Validate Module 005 and 038 frontend contracts
         working-directory: src/frontend/project-time-web
         run: node ./scripts/validate-module-005-project-expense-upload.mjs
