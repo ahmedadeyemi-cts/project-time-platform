@@ -19,6 +19,7 @@ import './friendly-api-errors.css';
 import './role-welcome-dashboard-visibility.css';
 import './scoped-role-policy-admin.css';
 import './scoped-role-policy-matrix.css';
+import './module001/module001-uat-fixes.css';
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>
