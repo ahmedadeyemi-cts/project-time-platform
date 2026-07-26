@@ -1,0 +1,75 @@
+.microsoft-environment-switcher {
+  display: inline-flex;
+  gap: 0.5rem;
+  padding: 0.4rem;
+  margin: 0 0 1rem;
+  border: 1px solid var(--border-color, #d7e3ef);
+  border-radius: 999px;
+  background: var(--surface-subtle, #f5f9fc);
+}
+
+.microsoft-environment-switcher button {
+  border: 0;
+  border-radius: 999px;
+  padding: 0.7rem 1.15rem;
+  background: transparent;
+  font-weight: 800;
+  color: var(--text-secondary, #49637d);
+  cursor: pointer;
+}
+
+.microsoft-environment-switcher button.active {
+  background: var(--primary, #075b9b);
+  color: #fff;
+}
+
+.microsoft-connection-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.microsoft-connection-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.45rem 0.8rem;
+  border-radius: 999px;
+  background: #e7f5f1;
+  color: #087b68;
+  font-size: 0.85rem;
+  font-weight: 800;
+}
+
+.microsoft-compatibility-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.microsoft-compatibility-grid > div {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.9rem;
+  border: 1px solid var(--border-color, #d7e3ef);
+  border-radius: 0.85rem;
+  background: var(--surface-subtle, #f7fafc);
+}
+
+.microsoft-compatibility-grid span {
+  color: var(--text-secondary, #5d7288);
+}
+
+@media (max-width: 800px) {
+  .microsoft-environment-switcher {
+    display: flex;
+    width: 100%;
+  }
+
+  .microsoft-environment-switcher button {
+    flex: 1;
+  }
+
+  .microsoft-compatibility-grid {
+    grid-template-columns: 1fr;
+  }
+}
