@@ -16,7 +16,7 @@ import Module001ActiveTimerRecoveryPortal from './module001/Module001ActiveTimer
 import PtcTimeStewardGate from './module001/PtcTimeStewardGate.jsx';
 import ProjectExpenseCrossModulePortal from './ProjectExpenseCrossModulePortal.jsx';
 import Module005ExperienceCompatibility from './Module005ExperienceCompatibility.jsx';
-import MicrosoftIntegrationPortal from './MicrosoftIntegrationPortal.jsx';
+import MicrosoftIntegrationDualConnectionPortal from './MicrosoftIntegrationDualConnectionPortal.jsx';
 import './approval-access-navigation-compatibility.js';
 import './scoped-rbac-catalog-compatibility.js';
 import './styles.css';
@@ -38,7 +38,7 @@ createRoot(document.getElementById('root')).render(
     <PtcTimeStewardGate />
     <ProjectExpenseCrossModulePortal />
     <Module005ExperienceCompatibility />
-    <MicrosoftIntegrationPortal />
+    <MicrosoftIntegrationDualConnectionPortal />
     <HelpAssistant />
   </React.StrictMode>
 );
