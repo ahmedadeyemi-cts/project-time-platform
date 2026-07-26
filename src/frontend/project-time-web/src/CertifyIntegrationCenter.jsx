@@ -48,6 +48,7 @@ export default function CertifyIntegrationCenter() {
   });
   const [status, setStatus] = useState('Loading Certify connection…');
   const [error, setError] = useState('');
+  const [busy, setBusy] = useState('');
 
   async function load() {
     setError('');
@@ -72,33 +73,48 @@ export default function CertifyIntegrationCenter() {
 
   useEffect(() => { void load(); }, []);
 
-  async function save() {
+  async function save(message = 'Certify connection saved.') {
+    setBusy('save');
     setStatus('Saving connection metadata…');
     setError('');
     try {
       const result = await api('/api/certify/connection', { method: 'PUT', body: JSON.stringify(form) });
-      setStatus(result.message || 'Certify connection saved.');
+      setStatus(result.message || message);
       await load();
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : 'Unable to save Certify connection.');
+    } finally {
+      setBusy('');
     }
   }
 
   async function test() {
+    setBusy('test');
     setStatus('Testing the Certify API connection…');
     setError('');
     try {
       const result = await api('/api/certify/connection/test', { method: 'POST' });
-      setStatus(result.message || 'Certify connection test completed.');
+      setStatus(`${result.message || 'Certify connection test completed.'} Automatic sync is now available.`);
       await load();
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : 'Certify connection test failed.');
+    } finally {
+      setBusy('');
     }
   }
 
   const connection = data?.connection || {};
   const connected = connection.status === 'connected';
   const canManage = Boolean(data?.canManage);
+  const automationAllowed = Boolean(data?.automation?.allowed) || connected;
+  const credentialsReady = Boolean(connection.apiKeyConfigured && connection.apiSecretConfigured);
+  const syncLockedReason = !canManage
+    ? 'Accounting or Super Administrator access is required.'
+    : !credentialsReady
+      ? 'Configure both server-side Certify credential environment values first.'
+      : !automationAllowed
+        ? 'Run a successful connection test to unlock automatic sync.'
+        : '';
 
   return (
     <div className="certify-integration-center certify-connection-v2">
@@ -114,42 +130,62 @@ export default function CertifyIntegrationCenter() {
       {error ? <div className="certify-error"><strong>Connection action failed</strong><span>{error}</span></div> : null}
       <div className="certify-status-line">{status}</div>
 
+      <section className="certify-sync-control-card" aria-labelledby="certify-sync-heading">
+        <div>
+          <p className="eyebrow">Synchronization</p>
+          <h2 id="certify-sync-heading">Automatic sync</h2>
+          <p>The control stays visible at the top of the page. A successful connection test is required before ProjectPulse can enable scheduled synchronization.</p>
+          {syncLockedReason ? <div className="certify-sync-lock"><strong>Locked</strong><span>{syncLockedReason}</span></div> : <div className="certify-sync-ready"><strong>Ready</strong><span>Choose automatic sync and save the selected cadence.</span></div>}
+        </div>
+        <div className="certify-sync-controls">
+          <label className="certify-switch">
+            <input
+              type="checkbox"
+              disabled={!canManage || !automationAllowed || busy !== ''}
+              checked={form.automaticSyncEnabled}
+              onChange={(event) => setForm((current) => ({
+                ...current,
+                automaticSyncEnabled: event.target.checked,
+                syncCadence: event.target.checked ? (current.syncCadence === 'manual' ? 'nightly' : current.syncCadence) : 'manual'
+              }))}
+            />
+            <span>Enable automatic sync</span>
+          </label>
+          <label>Cadence
+            <select disabled={!canManage || !automationAllowed || !form.automaticSyncEnabled || busy !== ''} value={form.syncCadence} onChange={(event) => setForm((current) => ({ ...current, syncCadence: event.target.value }))}>
+              <option value="hourly">Hourly</option>
+              <option value="nightly">Nightly</option>
+            </select>
+          </label>
+          <div className="certify-sync-actions">
+            {!automationAllowed ? <button type="button" className="primary-action" disabled={!canManage || !credentialsReady || busy !== ''} onClick={() => void test()}>{busy === 'test' ? 'Testing…' : 'Test connection to unlock'}</button> : null}
+            <button type="button" className="secondary-action" disabled={!canManage || !automationAllowed || busy !== ''} onClick={() => void save('Automatic sync settings saved.')}>{busy === 'save' ? 'Saving…' : 'Save sync settings'}</button>
+          </div>
+        </div>
+      </section>
+
       <section className="certify-connection-grid">
         <div className="certify-card">
           <p className="eyebrow">Connection profile</p>
           <h2>Certify API</h2>
           <label>Environment
-            <select disabled={!canManage} value={form.environmentName} onChange={(event) => setForm((current) => ({ ...current, environmentName: event.target.value }))}>
+            <select disabled={!canManage || busy !== ''} value={form.environmentName} onChange={(event) => setForm((current) => ({ ...current, environmentName: event.target.value }))}>
               <option value="test">Test / sandbox</option>
               <option value="production">Production</option>
             </select>
           </label>
-          <label>API base URL<input disabled={!canManage} value={form.baseUrl} onChange={(event) => setForm((current) => ({ ...current, baseUrl: event.target.value }))} /></label>
-          <label>Company ID (optional)<input disabled={!canManage} value={form.companyId} onChange={(event) => setForm((current) => ({ ...current, companyId: event.target.value }))} /></label>
+          <label>API base URL<input disabled={!canManage || busy !== ''} value={form.baseUrl} onChange={(event) => setForm((current) => ({ ...current, baseUrl: event.target.value }))} /></label>
+          <label>Company ID (optional)<input disabled={!canManage || busy !== ''} value={form.companyId} onChange={(event) => setForm((current) => ({ ...current, companyId: event.target.value }))} /></label>
         </div>
 
         <div className="certify-card">
           <p className="eyebrow">Secret references</p>
           <h2>Server-side credentials</h2>
-          <label>API key environment name<input disabled={!canManage} value={form.apiKeyEnvironmentName} onChange={(event) => setForm((current) => ({ ...current, apiKeyEnvironmentName: event.target.value }))} /></label>
+          <label>API key environment name<input disabled={!canManage || busy !== ''} value={form.apiKeyEnvironmentName} onChange={(event) => setForm((current) => ({ ...current, apiKeyEnvironmentName: event.target.value }))} /></label>
           <div className={`certify-secret-state ${connection.apiKeyConfigured ? 'ready' : 'missing'}`}>API key: {connection.apiKeyConfigured ? 'configured' : 'missing'}</div>
-          <label>API secret environment name<input disabled={!canManage} value={form.apiSecretEnvironmentName} onChange={(event) => setForm((current) => ({ ...current, apiSecretEnvironmentName: event.target.value }))} /></label>
+          <label>API secret environment name<input disabled={!canManage || busy !== ''} value={form.apiSecretEnvironmentName} onChange={(event) => setForm((current) => ({ ...current, apiSecretEnvironmentName: event.target.value }))} /></label>
           <div className={`certify-secret-state ${connection.apiSecretConfigured ? 'ready' : 'missing'}`}>API secret: {connection.apiSecretConfigured ? 'configured' : 'missing'}</div>
           <small>No credential value is stored in the ProjectPulse database or returned to the browser.</small>
-        </div>
-
-        <div className="certify-card">
-          <p className="eyebrow">Synchronization</p>
-          <h2>Manual first, automate later</h2>
-          <label className="certify-switch"><input type="checkbox" disabled={!canManage || !connected} checked={form.automaticSyncEnabled} onChange={(event) => setForm((current) => ({ ...current, automaticSyncEnabled: event.target.checked, syncCadence: event.target.checked ? 'nightly' : 'manual' }))} />Enable automatic sync</label>
-          <label>Cadence
-            <select disabled={!canManage || !connected || !form.automaticSyncEnabled} value={form.syncCadence} onChange={(event) => setForm((current) => ({ ...current, syncCadence: event.target.value }))}>
-              <option value="manual">Manual only</option>
-              <option value="hourly">Hourly</option>
-              <option value="nightly">Nightly</option>
-            </select>
-          </label>
-          <p>Automatic sync is locked until a connection test succeeds. Module 005 can still accept CSV/Excel files while Certify is not connected.</p>
         </div>
       </section>
 
@@ -161,9 +197,9 @@ export default function CertifyIntegrationCenter() {
           <p><strong>Last successful sync/import:</strong> {dateTime(connection.lastSuccessfulSyncAt)}</p>
         </div>
         <div className="certify-actions">
-          <button type="button" className="secondary-action" onClick={() => void load()}>Refresh</button>
-          <button type="button" className="secondary-action" disabled={!canManage} onClick={() => void save()}>Save configuration</button>
-          <button type="button" className="primary-action" disabled={!canManage || !connection.apiKeyConfigured || !connection.apiSecretConfigured} onClick={() => void test()}>Test connection</button>
+          <button type="button" className="secondary-action" disabled={busy !== ''} onClick={() => void load()}>Refresh</button>
+          <button type="button" className="secondary-action" disabled={!canManage || busy !== ''} onClick={() => void save()}>{busy === 'save' ? 'Saving…' : 'Save configuration'}</button>
+          <button type="button" className="primary-action" disabled={!canManage || !credentialsReady || busy !== ''} onClick={() => void test()}>{busy === 'test' ? 'Testing…' : connected ? 'Test again' : 'Test connection'}</button>
         </div>
       </section>
 
