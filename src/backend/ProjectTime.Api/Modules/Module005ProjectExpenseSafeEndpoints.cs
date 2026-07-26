@@ -8,6 +8,7 @@ public static partial class Module005ProjectExpenseUploadModule
     public static WebApplication MapModule005ProjectExpenseUploadEndpointsSafe(this WebApplication app)
     {
         app.MapGet("/api/project-expenses/readiness", (Func<Task<IResult>>)GetProjectExpenseReadinessAsync);
+        app.MapGet("/api/public/project-expenses/readiness", (Func<Task<IResult>>)GetProjectExpenseReadinessAsync);
         app.MapGet("/api/project-expenses/context", (Func<HttpContext, Task<IResult>>)GetContextAsync);
         app.MapGet("/api/project-expenses/uploads", (Func<HttpContext, Task<IResult>>)GetUploadsAsync);
         app.MapGet("/api/project-expenses/projects/{projectId:guid}/summary", (Func<Guid, HttpContext, Task<IResult>>)GetProjectSummaryAsync);
