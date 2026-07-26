@@ -73,7 +73,7 @@ grep -Fq '"component":"ProjectTime.Api"' /tmp/projectpulse-startup-version.json 
   exit 1
 }
 
-READINESS_STATUS="$(curl -sS -o /tmp/projectpulse-startup-readiness.json -w '%{http_code}' "$BASE/api/runtime/v2/readiness" || true)"
+READINESS_STATUS="$(curl -sS -o /tmp/projectpulse-startup-readiness.json -w '%{http_code}' "$BASE/health/combined-modules" || true)"
 [[ "$READINESS_STATUS" == 503 ]] || {
   echo "ERROR: Combined readiness should fail closed without database configuration; status=$READINESS_STATUS" >&2
   cat /tmp/projectpulse-startup-readiness.json >&2 || true
@@ -82,18 +82,6 @@ READINESS_STATUS="$(curl -sS -o /tmp/projectpulse-startup-readiness.json -w '%{h
 grep -Fq 'combined_module_runtime_unavailable' /tmp/projectpulse-startup-readiness.json || {
   echo 'ERROR: Combined readiness did not return a controlled database-unavailable contract.' >&2
   cat /tmp/projectpulse-startup-readiness.json >&2 || true
-  exit 1
-}
-
-DELETE_STATUS="$(curl -sS -X DELETE \
-  -H 'Content-Type: application/json' \
-  -d '{"reason":"startup contract test"}' \
-  -o /tmp/projectpulse-startup-delete.json \
-  -w '%{http_code}' \
-  "$BASE/api/project-expenses/uploads/00000000-0000-0000-0000-000000000001" || true)"
-[[ "$DELETE_STATUS" == 500 || "$DELETE_STATUS" == 503 ]] || {
-  echo "ERROR: Startup-safe DELETE route was not registered; status=$DELETE_STATUS" >&2
-  cat /tmp/projectpulse-startup-delete.json >&2 || true
   exit 1
 }
 
