@@ -63,7 +63,7 @@ do
 done
 
 [[ "$(grep -Fc 'az containerapp update' "$WORKFLOW")" == 4 ]] || fail 'Expected API/web deployment plus API/web rollback.'
-[[ "$(grep -Ec '^(API|WEB|VALIDATOR)_DIGEST=.*build-pr55-acr-image.sh' "$WORKFLOW")" == 3 ]] || fail 'Expected exactly three immutable image builds.'
+[[ "$(grep -Ec '^[[:space:]]*(API|WEB|VALIDATOR)_DIGEST=.*build-pr55-acr-image.sh' "$WORKFLOW")" == 3 ]] || fail 'Expected exactly three immutable image builds.'
 [[ "$(grep -Fc 'application/json' "$WORKFLOW")" -ge 1 ]] || fail 'JSON endpoint validation is missing.'
 
 for unreliable in "grep -Fq 'PtcTimeStewardGate'" "grep -Fq 'time_steward_role_required'"; do
