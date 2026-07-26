@@ -10,6 +10,7 @@ const files = {
   portal: 'src/frontend/project-time-web/src/MicrosoftIntegrationPortal.jsx',
   compatibility: 'src/frontend/project-time-web/src/microsoft-integration-compatibility.js',
   stylesheet: 'src/frontend/project-time-web/src/microsoft-integration-portal.css',
+  registry: 'src/frontend/project-time-web/src/module-availability-registry.js',
   main: 'src/frontend/project-time-web/src/main.jsx',
   identity: 'src/backend/ProjectTime.Api/Modules/IdentityProfileModule.cs',
   migration: 'database/migrations/045_microsoft_integration_consolidation.sql',
@@ -27,7 +28,7 @@ function assert(name, condition, evidence) {
   console.log(`MICROSOFT_INTEGRATION_${name}=${condition ? 'PASSED' : 'FAILED'} — ${evidence}`);
 }
 
-for (const name of ['registrar', 'portal', 'compatibility', 'stylesheet', 'main', 'identity', 'package']) {
+for (const name of ['registrar', 'portal', 'compatibility', 'stylesheet', 'registry', 'main', 'identity', 'package']) {
   assert(`${name.toUpperCase()}_EXISTS`, exists(files[name]), files[name]);
 }
 
@@ -35,6 +36,7 @@ const registrar = read(files.registrar);
 const portal = read(files.portal);
 const compatibility = read(files.compatibility);
 const stylesheet = read(files.stylesheet);
+const registry = read(files.registry);
 const main = read(files.main);
 const identity = read(files.identity);
 const packageJson = JSON.parse(read(files.package));
@@ -72,7 +74,9 @@ assert('MULTI_TENANT_UI', portal.includes('Add tenant') && portal.includes('conf
 assert('DIRECTORY_SYNC_MOVED', portal.includes('Directory synchronization') && portal.includes('/api/admin/azure/config') && portal.includes('/api/admin/azure/import-settings'), 'sync configuration moved to Module 065 while APIs remain compatible');
 assert('MAIL_CONSOLIDATED', portal.includes('Microsoft 365 / SMTP') && portal.includes('Sender mailbox') && portal.includes('smtp.office365.com'), 'Module 067 mail capabilities consolidated');
 assert('MODULE_010_IMPORT_ONLY', compatibility.includes('.azure-config-card, .azure-sync-summary-card') && compatibility.includes('Preview and import Entra users'), 'tenant and sync cards removed from Module 010');
-assert('MODULE_067_HIDDEN', compatibility.includes('data-module-067-retired') && compatibility.includes('surface.hidden = true'), 'retired module hidden from active navigation/cards');
+assert('ACTIVE_REGISTRY_TITLES', registry.includes("moduleNumber: '010', route: 'azure-admin', displayName: 'Azure / Entra Directory Users'") && registry.includes("moduleNumber: '065', route: 'entra-secret-administration', displayName: 'Microsoft Integration'"), 'active Module 010 and Module 065 names are authoritative');
+assert('MODULE_067_RETIRED_FROM_REGISTRY', !registry.includes("moduleNumber: '067'") && registry.includes("'global-mail-configuration': 'entra-secret-administration'"), 'Module 067 removed from active registry with compatibility alias');
+assert('MODULE_067_HIDDEN', compatibility.includes('data-module-067-retired') && compatibility.includes('surface.hidden = true'), 'legacy App.jsx navigation/cards hidden without broad App rewrite');
 assert('ROUTE_REDIRECT', compatibility.includes('window.location.replace(`#${ACTIVE_ROUTE}`)'), 'old route redirects to Module 065');
 assert('PORTAL_MOUNT', main.includes("import MicrosoftIntegrationPortal from './MicrosoftIntegrationPortal.jsx';") && main.includes('<MicrosoftIntegrationPortal />'), 'portal mounted once');
 assert('SCOPED_STYLES', stylesheet.includes('projectpulse-microsoft-integration-active') && !/(^|\n)\s*(?:html|\.panel|\.sidebar)\s*\{/m.test(stylesheet), 'styles are scoped to the integration route');
@@ -82,6 +86,7 @@ if (exists(files.migration)) {
   const migration = read(files.migration);
   const rollback = read(files.rollback);
   assert('MIGRATION_045', migration.includes('045_microsoft_integration_consolidation') && migration.includes('microsoft_integration_client_secrets'), 'additive migration 045');
+  assert('MIGRATION_REGISTRATION', migration.includes('schema_migrations (migration_id, description, applied_at)') && migration.includes('ON CONFLICT (migration_id) DO UPDATE'), 'repository migration registration contract');
   assert('IMMUTABLE_AUDIT', migration.includes('microsoft_integration_audit_events') && migration.includes('BEFORE UPDATE OR DELETE'), 'immutable audit metadata');
   assert('PERMISSION_ALIAS_TABLE', migration.includes('microsoft_integration_permission_aliases') && migration.includes("('067', 'VIEW_GLOBAL_MAIL_CONFIGURATION', '065'"), 'legacy permission aliases stored');
   assert('NON_DESTRUCTIVE_RETIREMENT', migration.includes("module_code = '067'") && migration.includes('is_active = FALSE') && !/DELETE\s+FROM\s+projectpulse_native_admin_documents/i.test(migration), '067 deactivated without deleting configuration');
