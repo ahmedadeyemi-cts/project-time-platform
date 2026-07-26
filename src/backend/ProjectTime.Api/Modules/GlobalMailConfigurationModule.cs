@@ -11,6 +11,7 @@ public static class GlobalMailConfigurationModule
     {
         app.UseMicrosoftIntegrationSecurityCompatibility();
         MicrosoftIntegrationModule.MapEndpoints(app);
+        app.MapMicrosoftSsoConnectionProfileEndpoints();
         AzureDirectoryImportModule.MapEndpoints(app);
         return app;
     }
