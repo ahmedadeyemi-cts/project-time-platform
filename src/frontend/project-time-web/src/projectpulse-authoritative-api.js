@@ -1,3 +1,5 @@
+import { currentProjectPulseRoute, moduleForRoute } from './module-availability-registry.js';
+
 const DIAGNOSTIC_EVENT = 'projectpulse:authoritative-api-diagnostic';
 const DIAGNOSTIC_MARKER = 'projectpulse-authoritative-xhr-v1';
 
@@ -11,6 +13,16 @@ function sessionContext() {
     };
   } catch {
     return { token: '', viewAsUserId: '' };
+  }
+}
+
+function activeModuleNumber(explicitModuleNumber = '') {
+  const explicit = String(explicitModuleNumber || '').trim();
+  if (explicit) return explicit;
+  try {
+    return moduleForRoute(currentProjectPulseRoute())?.moduleNumber || '';
+  } catch {
+    return '';
   }
 }
 
@@ -47,6 +59,7 @@ export async function authoritativeApi(path, options = {}) {
   const method = String(options.method || 'GET').toUpperCase();
   const requiredCollections = Array.isArray(options.requiredCollections) ? options.requiredCollections : [];
   const { token, viewAsUserId } = sessionContext();
+  const moduleNumber = activeModuleNumber(options.moduleNumber);
   const startedAt = Date.now();
 
   return await new Promise((resolve, reject) => {
@@ -58,6 +71,7 @@ export async function authoritativeApi(path, options = {}) {
     request.setRequestHeader('Cache-Control', 'no-cache, no-store, max-age=0');
     request.setRequestHeader('Pragma', 'no-cache');
     request.setRequestHeader('X-ProjectPulse-Authoritative-Client', DIAGNOSTIC_MARKER);
+    if (moduleNumber) request.setRequestHeader('X-ProjectPulse-Module-Number', moduleNumber);
     if (options.body != null) request.setRequestHeader('Content-Type', 'application/json');
     if (token) {
       request.setRequestHeader('Authorization', `Bearer ${token}`);
@@ -77,6 +91,7 @@ export async function authoritativeApi(path, options = {}) {
         ok: false,
         method,
         path,
+        moduleNumber,
         status,
         durationMs: Date.now() - startedAt,
         responseKeys: Object.keys(normalized),
@@ -127,6 +142,7 @@ export async function authoritativeApi(path, options = {}) {
         ok: true,
         method,
         path,
+        moduleNumber,
         status: request.status,
         durationMs: Date.now() - startedAt,
         responseKeys: Object.keys(payload || {}),
