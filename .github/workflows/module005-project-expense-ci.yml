@@ -1,0 +1,50 @@
+name: Validate Module 005 Project Expense Upload
+
+on:
+  pull_request:
+    paths:
+      - 'database/migrations/044*'
+      - 'database/rollback/044*'
+      - 'src/backend/ProjectTime.Api/Modules/Module005*'
+      - 'src/backend/ProjectTime.Api/Modules/Module038CertifyConnectionModule.cs'
+      - 'src/backend/ProjectTime.Api/ProjectTime.Api.csproj'
+      - 'src/frontend/project-time-web/src/ProjectAllocationInfoPanel.jsx'
+      - 'src/frontend/project-time-web/src/CertifyIntegrationCenter.jsx'
+      - 'src/frontend/project-time-web/src/ProjectExpenseCrossModulePortal.jsx'
+      - 'src/frontend/project-time-web/src/project-expense-*.css'
+      - 'src/frontend/project-time-web/src/certify-integration-center.css'
+      - 'src/frontend/project-time-web/src/main.jsx'
+      - 'src/frontend/project-time-web/src/module-availability-registry.js'
+      - 'src/frontend/project-time-web/scripts/validate-module-005-project-expense-upload.mjs'
+      - 'src/frontend/project-time-web/package.json'
+      - '.github/workflows/module005-project-expense-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: module005-project-expense-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Compile Module 005 and 038 API
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release --nologo
+      - name: Validate Module 005 and 038 frontend contracts
+        working-directory: src/frontend/project-time-web
+        run: node ./scripts/validate-module-005-project-expense-upload.mjs
+      - name: Build frontend production bundle
+        working-directory: src/frontend/project-time-web
+        run: |
+          npm ci
+          npm run build
