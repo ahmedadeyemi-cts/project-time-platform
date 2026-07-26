@@ -70,13 +70,33 @@ requireAll(publicReadiness, [
   'MapCombinedModulePublicReadinessEndpoint',
   '/health/combined-modules',
   '/api/public/combined-modules/readiness',
-  'CombinedRuntimeReadinessAsync'
+  'CombinedPublicReadinessAsync',
+  'combined-modules-001-005-012-037-038-public-v1',
+  'roleContractReady',
+  'moduleContractReady',
+  'eligibleUserContractReady',
+  'operatorContractReady',
+  'foundationalMigrationsReady',
+  'expenseMigrationsReady',
+  'expenseTablesReady',
+  'operationalCountsReturned = false'
+], 'Public combined readiness');
+rejectAll(publicReadiness, [
+  'app.MapGet("/api/public/combined-modules/readiness", CombinedRuntimeReadinessAsync);',
+  'app.MapGet("/health/combined-modules", CombinedRuntimeReadinessAsync);'
 ], 'Public combined readiness');
 
 requireAll(safeExpense, [
   'MapModule005ProjectExpenseUploadEndpointsSafe',
   '/api/project-expenses/readiness',
   '/api/public/project-expenses/readiness',
+  'GetPublicProjectExpenseReadinessAsync',
+  'project-expense-certify-public-v1',
+  'migrationContractReady',
+  'tableContractReady',
+  'safeProfileReady',
+  'permissionContractReady',
+  'operationalCountsReturned = false',
   'DeleteUploadFromRequestAsync',
   'JsonSerializer.DeserializeAsync<ExpenseDeleteRequest>',
   'project_expense_runtime_ready',
@@ -84,7 +104,8 @@ requireAll(safeExpense, [
   'secretsReturned = false'
 ], 'Module 005 startup-safe endpoints');
 rejectAll(safeExpense, [
-  'MapDelete("/api/project-expenses/uploads/{uploadId:guid}", (Func<Guid, ExpenseDeleteRequest'
+  'MapDelete("/api/project-expenses/uploads/{uploadId:guid}", (Func<Guid, ExpenseDeleteRequest',
+  'app.MapGet("/api/public/project-expenses/readiness", (Func<Task<IResult>>)GetProjectExpenseReadinessAsync);'
 ], 'Module 005 startup-safe endpoints');
 
 requireAll(compatibility, [
@@ -140,8 +161,10 @@ requireAll(startupTest, [
   '/api/public/combined-modules/readiness',
   '/api/public/project-expenses/readiness',
   '/api/runtime/v2/readiness',
+  '"operationalCountsReturned":false',
   'publicReadinessContracts=ready',
-  'protectedAuthBoundary=ready'
+  'protectedAuthBoundary=ready',
+  'operationalCountsSuppressed=true'
 ], 'API startup smoke test');
 
 console.log('COMBINED_MODULES_001_005_012_037_038_CONTRACTS=PASS');
