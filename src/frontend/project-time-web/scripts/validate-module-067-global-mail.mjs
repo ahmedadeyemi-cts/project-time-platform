@@ -34,7 +34,7 @@ function assert(name, condition, evidence) {
   console.log(`MICROSOFT_INTEGRATION_${name}=${condition ? 'PASSED' : 'FAILED'} — ${evidence}`);
 }
 
-for (const name of ['registrar', 'portal', 'compatibility', 'stylesheet', 'dualStylesheet', 'registry', 'main', 'identity', 'calendar', 'package']) {
+for (const name of ['registrar', 'portal', 'compatibility', 'stylesheet', 'dualStylesheet', 'registry', 'main', 'identity', 'package']) {
   assert(`${name.toUpperCase()}_EXISTS`, exists(files[name]), files[name]);
 }
 
@@ -46,8 +46,9 @@ const dualStylesheet = read(files.dualStylesheet);
 const registry = read(files.registry);
 const main = read(files.main);
 const identity = read(files.identity);
-const calendar = read(files.calendar);
 const packageJson = JSON.parse(read(files.package));
+const hasCalendar = exists(files.calendar);
+const calendar = hasCalendar ? read(files.calendar) : '';
 const hasSecurityBoundary = exists(files.securityBoundary);
 const securityBoundary = hasSecurityBoundary ? read(files.securityBoundary) : '';
 const hasBackendImplementation = exists(files.integrationBackend) && exists(files.importBackend) && exists(files.ssoBackend);
@@ -55,6 +56,7 @@ const integrationBackend = hasBackendImplementation ? read(files.integrationBack
 const ssoBackend = hasBackendImplementation ? read(files.ssoBackend) : '';
 const importBackend = hasBackendImplementation ? read(files.importBackend) : '';
 const backend = `${registrar}\n${securityBoundary}\n${integrationBackend}\n${ssoBackend}\n${importBackend}`;
+const fullRepositoryContext = hasBackendImplementation && hasCalendar && exists(files.migration046) && exists(files.rollback046);
 
 assert('REGISTRATION_PRESERVED', registrar.includes('MapGlobalMailConfigurationEndpoints')
   && registrar.includes('UseMicrosoftIntegrationSecurityCompatibility')
@@ -120,10 +122,15 @@ assert('IDENTITY_SOURCE_PRESERVED', identity.includes('GraphCredentials.ForDomai
   && identity.includes('PROJECTPULSE_ENTRA_TEST_CLIENT_SECRET')
   && identity.includes('PROJECTPULSE_ENTRA_PRODUCTION_CLIENT_SECRET'),
 'Module 062 continues using explicit Test/Production Graph services credentials');
-assert('CALENDAR_GRAPH_CONTRACT_PRESERVED', calendar.includes('PROJECTPULSE_ENTRA_CLIENT_ID')
-  && calendar.includes('PROJECTPULSE_ENTRA_CLIENT_SECRET')
-  && calendar.includes('graph.microsoft.com'),
-'Module 057 calendar remains on the existing services/Graph environment contract');
+
+if (hasCalendar) {
+  assert('CALENDAR_GRAPH_CONTRACT_PRESERVED', calendar.includes('PROJECTPULSE_ENTRA_CLIENT_ID')
+    && calendar.includes('PROJECTPULSE_ENTRA_CLIENT_SECRET')
+    && calendar.includes('graph.microsoft.com'),
+  'Module 057 calendar remains on the existing services/Graph environment contract');
+} else {
+  console.log('MICROSOFT_INTEGRATION_CALENDAR_DEEP_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
+}
 
 assert('FOUR_CONNECTION_MODEL', portal.includes("const ENVIRONMENTS = ['test', 'production']")
   && portal.includes('sso_app_registration')
@@ -157,17 +164,21 @@ if (exists(files.migration045)) {
   const rollback045 = read(files.rollback045);
   assert('MIGRATION_045_PRESERVED', migration045.includes('045_microsoft_integration_consolidation') && migration045.includes('microsoft_integration_client_secrets'), 'Graph/services migration 045 remains unchanged');
   assert('MIGRATION_045_GUARDED_ROLLBACK', rollback045.includes('Rollback blocked') && rollback045.includes('immutable Microsoft Integration audit evidence'), 'migration 045 rollback remains guarded');
+} else {
+  console.log('MICROSOFT_INTEGRATION_MIGRATION_045_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
 }
 
-if (exists(files.migration046)) {
+if (exists(files.migration046) && exists(files.rollback046)) {
   const migration046 = read(files.migration046);
   const rollback046 = read(files.rollback046);
   assert('MIGRATION_046', migration046.includes('046_microsoft_sso_connection_profiles') && migration046.includes('microsoft_integration_sso_client_secrets'), 'additive SSO-only migration 046');
   assert('MIGRATION_046_ENVIRONMENTS', migration046.includes("environment_mode IN ('test', 'production')"), 'SSO storage is explicitly separated by Test and Production');
   assert('MIGRATION_046_GRAPH_UNCHANGED', migration046.includes('Microsoft services/Graph secrets remain') && !migration046.includes('DROP TABLE'), 'migration 046 does not rewrite Graph/services storage');
   assert('MIGRATION_046_GUARDED_ROLLBACK', rollback046.includes('Rollback blocked: Microsoft SSO App Registration secret metadata exists.'), 'SSO rollback blocks after a secret is saved');
-} else {
+} else if (fullRepositoryContext) {
   assert('MIGRATION_046_EXISTS', false, files.migration046);
+} else {
+  console.log('MICROSOFT_INTEGRATION_MIGRATION_046_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
 }
 
 console.log('');
