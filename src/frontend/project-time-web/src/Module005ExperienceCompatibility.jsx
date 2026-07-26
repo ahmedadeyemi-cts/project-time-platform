@@ -7,17 +7,23 @@ function currentRoute() {
   return String(window.location.hash || '').replace(/^#/, '').trim();
 }
 
+function setAttributeWhenChanged(element, name, value) {
+  if (element.getAttribute(name) !== value) element.setAttribute(name, value);
+}
+
+function setTextWhenChanged(element, value) {
+  if (element && String(element.textContent || '') !== value) element.textContent = value;
+}
+
 function renameModule005Navigation() {
   document.querySelectorAll('a[href="#project-allocation-info"]').forEach((link) => {
-    const label = link.querySelector('.enterprise-nav-label');
-    if (label) label.textContent = MODULE005_NAME;
-    link.setAttribute('aria-label', `Open Module 005 ${MODULE005_NAME}`);
-    link.setAttribute('title', MODULE005_NAME);
+    setTextWhenChanged(link.querySelector('.enterprise-nav-label'), MODULE005_NAME);
+    setAttributeWhenChanged(link, 'aria-label', `Open Module 005 ${MODULE005_NAME}`);
+    setAttributeWhenChanged(link, 'title', MODULE005_NAME);
   });
 
   document.querySelectorAll('[data-route="project-allocation-info"], [data-module-route="project-allocation-info"]').forEach((item) => {
-    const label = item.querySelector('[data-module-label], .module-title, .module-name');
-    if (label) label.textContent = MODULE005_NAME;
+    setTextWhenChanged(item.querySelector('[data-module-label], .module-title, .module-name'), MODULE005_NAME);
   });
 }
 
@@ -29,21 +35,21 @@ function prepareReupload() {
   const panel = document.querySelector('.expense-selection-card');
   const input = panel?.querySelector('input[type="file"]');
   const status = document.querySelector('.expense-status');
-  if (status) {
-    status.textContent = 'Re-upload ready. Choose the replacement CSV or Excel file; the new upload will become the current version.';
-  }
+  setTextWhenChanged(status, 'Re-upload ready. Choose the replacement CSV or Excel file; the new upload will become the current version.');
   panel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   window.setTimeout(() => input?.focus(), 350);
 }
 
 function convertDeleteActionsToReupload() {
   document.querySelectorAll('.expense-history-card .expense-actions button').forEach((button) => {
-    if (String(button.textContent || '').trim() !== 'Delete') return;
-    if (button.dataset.projectpulseReupload === 'true') return;
+    const text = String(button.textContent || '').trim();
+    if (text !== 'Delete' && button.dataset.projectpulseReupload !== 'true') return;
 
+    setTextWhenChanged(button, 'Re-upload');
+    setAttributeWhenChanged(button, 'aria-label', 'Re-upload a replacement expense file for this version');
+
+    if (button.dataset.projectpulseReupload === 'true') return;
     button.dataset.projectpulseReupload = 'true';
-    button.textContent = 'Re-upload';
-    button.setAttribute('aria-label', 'Re-upload a replacement expense file for this version');
     button.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
