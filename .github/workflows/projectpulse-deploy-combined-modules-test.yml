@@ -6,7 +6,7 @@ on:
       release_commit:
         description: Exact verified combined application commit
         required: true
-        default: b30fa97b06e700f2256b20690d650aafa1c28886
+        default: 68deed805d99088f6432eb5cea28663a003e4953
         type: string
       confirmation:
         description: Enter DEPLOY-COMBINED-MODULES-001-005-012-037-038-TO-TEST
@@ -27,7 +27,7 @@ jobs:
     environment: test
     runs-on: ubuntu-latest
     env:
-      EXPECTED_RELEASE_COMMIT: b30fa97b06e700f2256b20690d650aafa1c28886
+      EXPECTED_RELEASE_COMMIT: 68deed805d99088f6432eb5cea28663a003e4953
     steps:
       - name: Check out deployment controls
         uses: actions/checkout@v5
@@ -70,6 +70,12 @@ jobs:
           test -f release/src/backend/ProjectTime.Api/Modules/CombinedModulePublicReadiness.cs
           test -f release/src/backend/ProjectTime.Api/Modules/Module005ProjectExpenseSafeEndpoints.cs
           test -f release/src/frontend/project-time-web/scripts/validate-combined-modules-001-005-012-037-038.mjs
+          test -f release/src/frontend/project-time-web/src/runtime-data-compatibility.js
+          test -f release/src/frontend/project-time-web/src/module001/TimesheetEnhancementPortal.jsx
+          test -f release/src/frontend/project-time-web/src/module001/TimesheetTimerView.jsx
+          test -f release/src/frontend/project-time-web/src/module001/PtcRuntimeTaskCatalog.jsx
+          test -f release/src/frontend/project-time-web/src/Module005ExperienceCompatibility.jsx
+          test -f release/src/frontend/project-time-web/src/CertifyIntegrationCenter.jsx
           test -f release/tests/test-projectpulse-api-startup.sh
           test -f control/scripts/apply-combined-modules-test-migrations.sh
           test -f control/scripts/run-combined-modules-test-migration-job.sh
@@ -84,6 +90,19 @@ jobs:
           grep -Fq '/api/public/project-expenses/readiness' release/src/backend/ProjectTime.Api/Modules/Module005ProjectExpenseSafeEndpoints.cs
           grep -Fq 'project-expense-certify-public-v1' release/src/backend/ProjectTime.Api/Modules/Module005ProjectExpenseSafeEndpoints.cs
           grep -Fq 'DeleteUploadFromRequestAsync' release/src/backend/ProjectTime.Api/Modules/Module005ProjectExpenseSafeEndpoints.cs
+          grep -Fq "'/api/runtime/v2/timesheet/steward/users': '/api/timesheet/ptc/users'" release/src/frontend/project-time-web/src/runtime-data-compatibility.js
+          grep -Fq "replace(/\/workspace$/, '/entries')" release/src/frontend/project-time-web/src/runtime-data-compatibility.js
+          grep -Fq 'allActiveUsersAllowed: true' release/src/frontend/project-time-web/src/runtime-data-compatibility.js
+          grep -Fq 'function synchronizeViewButtons()' release/src/frontend/project-time-web/src/module001/TimesheetEnhancementPortal.jsx
+          grep -Fq 'const assignedTasks = mergeByKey(snapshot.assignedTasks, authoritativeAssignments);' release/src/frontend/project-time-web/src/module001/TimesheetEnhancementPortal.jsx
+          grep -Fq 'const nonProjectCategories = mergeByKey(' release/src/frontend/project-time-web/src/module001/TimesheetEnhancementPortal.jsx
+          grep -Fq 'Ready to start. Select Start timer to begin counting.' release/src/frontend/project-time-web/src/module001/TimesheetTimerView.jsx
+          grep -Fq 'All active users' release/src/frontend/project-time-web/src/module001/PtcRuntimeTaskCatalog.jsx
+          grep -Fq "button.textContent = 'Re-upload'" release/src/frontend/project-time-web/src/Module005ExperienceCompatibility.jsx
+          grep -Fq 'Re-upload ready. Choose the replacement CSV or Excel file' release/src/frontend/project-time-web/src/Module005ExperienceCompatibility.jsx
+          grep -Fq "const MODULE005_NAME = 'Project Expense Upload'" release/src/frontend/project-time-web/src/Module005ExperienceCompatibility.jsx
+          grep -Fq 'certify-sync-control-card' release/src/frontend/project-time-web/src/CertifyIntegrationCenter.jsx
+          grep -Fq 'Test connection to unlock' release/src/frontend/project-time-web/src/CertifyIntegrationCenter.jsx
           grep -Fq 'PROJECTPULSE_API_STARTUP_SMOKE=PASS' release/tests/test-projectpulse-api-startup.sh
           grep -Fq 'publicReadinessContracts=ready' release/tests/test-projectpulse-api-startup.sh
           grep -Fq 'protectedAuthBoundary=ready' release/tests/test-projectpulse-api-startup.sh
@@ -336,15 +355,18 @@ jobs:
                 && grep -Fq '/api/certify/connection' /tmp/cmb-app.js \
                 && grep -Fq '/api/runtime/v2/role-policy/summary' /tmp/cmb-app.js \
                 && grep -Fq '/api/runtime/v2/role-policy/matrix' /tmp/cmb-app.js \
-                && grep -Fq '/api/runtime/v2/timesheet/steward/users' /tmp/cmb-app.js \
-                && grep -Fq 'The server returned 0 eligible users.' /tmp/cmb-app.js; then
+                && grep -Fq '/api/timesheet/ptc/users' /tmp/cmb-app.js \
+                && grep -Fq 'All active users' /tmp/cmb-app.js \
+                && grep -Fq 'Ready to start' /tmp/cmb-app.js \
+                && grep -Fq 'Re-upload' /tmp/cmb-app.js \
+                && grep -Fq 'Test connection to unlock' /tmp/cmb-app.js; then
                 READY=true
                 break
               fi
             fi
             sleep 10
           done
-          [[ "$READY" == true ]] || { echo 'Combined release markers were not served.' >&2; exit 1; }
+          [[ "$READY" == true ]] || { echo 'Combined UAT repair release markers were not served.' >&2; exit 1; }
           ACTIVE_API="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
           ACTIVE_WEB="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
           [[ "$ACTIVE_API" == '${{ steps.build.outputs.api_image }}' ]]
@@ -356,7 +378,7 @@ jobs:
         run: |
           mkdir -p evidence
           cat > evidence/combined-modules-001-005-012-037-038-test-deployment.json <<JSON
-          {"environment":"test","releaseCommit":"${{ steps.release.outputs.target_commit }}","workflowCommit":"${{ github.sha }}","runId":"${{ github.run_id }}","runAttempt":"${{ github.run_attempt }}","modules":["001","005","012","037","038"],"requiredSourceMigrations":["040","041","042","043","044","044a"],"verifiedDatabaseFoundationMigrations":["040","043"],"appliedOrVerifiedMigrations":["044","044a"],"publicReadinessContracts":["/api/public/combined-modules/readiness","/api/public/project-expenses/readiness"],"migrationImage":"${{ steps.migration.outputs.image }}","apiImage":"${{ steps.build.outputs.api_image }}","webImage":"${{ steps.build.outputs.web_image }}","previousApiImage":"${{ steps.before.outputs.old_api_image }}","previousWebImage":"${{ steps.before.outputs.old_web_image }}"}
+          {"environment":"test","releaseCommit":"${{ steps.release.outputs.target_commit }}","workflowCommit":"${{ github.sha }}","runId":"${{ github.run_id }}","runAttempt":"${{ github.run_attempt }}","modules":["001","005","012","037","038"],"uatRepairModules":["001","005","038"],"requiredSourceMigrations":["040","041","042","043","044","044a"],"verifiedDatabaseFoundationMigrations":["040","043"],"appliedOrVerifiedMigrations":["044","044a"],"publicReadinessContracts":["/api/public/combined-modules/readiness","/api/public/project-expenses/readiness"],"migrationImage":"${{ steps.migration.outputs.image }}","apiImage":"${{ steps.build.outputs.api_image }}","webImage":"${{ steps.build.outputs.web_image }}","previousApiImage":"${{ steps.before.outputs.old_api_image }}","previousWebImage":"${{ steps.before.outputs.old_web_image }}"}
           JSON
 
       - name: Upload combined deployment evidence
