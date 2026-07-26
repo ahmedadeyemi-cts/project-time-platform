@@ -66,7 +66,11 @@ const externalAvailable = [parser, data, commands, mail, certify, migration, rol
 if (externalAvailable) {
   requireAll(parser, [
     'Department Name', 'Department Code', 'GL Code', 'Reimb Amount',
-    'Airfare', 'Car Rental', 'Hotel', 'Meals', 'Parking/Tolls', 'Mileage', 'Miscellaneous',
+    'FindCategoryHeader', 'NormalizeExpenseCategory',
+    'SP-Cust Pass Through - Airfare', 'SP-Cust Pass Through - Rental',
+    'SP-Cust Pass Through-Hotel', 'SP-Cust Pass Through-Meals',
+    'SP-Cust Pass Through-Mileage', 'SP-Meals (All Employees,Cust)',
+    'SP-Travel, Lodging, Parking', 'Miscellaneous',
     'gl_dimension', 'category_summary', 'csv_gl_dimension', 'csv_category_summary',
     'ParseCertifyResponse'
   ], 'Expense format normalization');
