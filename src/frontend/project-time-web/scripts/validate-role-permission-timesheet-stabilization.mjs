@@ -72,13 +72,16 @@ if (main.includes("import PtcTimesheetManagementPortal from './module001/PtcTime
 
 requireAll(timerPortal, [
   '/api/timesheet/timers/targets?weekStart=',
-  'assignedTasks,',
-  "target.groupLabel === 'Regular Tasks'",
-  "target.groupLabel === 'Service Request Tasks'",
+  'mergeByKey(snapshot.assignedTasks, authoritativeAssignments)',
+  'snapshot.nonProjectCategories',
+  "target.groupLabel !== 'Service Request Tasks' && target.groupLabel !== 'Requests / Service Requests'",
+  "target.groupLabel === 'Service Request Tasks' || target.groupLabel === 'Requests / Service Requests'",
   'timerTargetLoadError',
   'projectpulse:module001-timer-targets',
-  'returned an incomplete timer-target payload'
-], 'Authoritative Module 001 timer target integration');
+  'returned an incomplete timer-target payload',
+  'Existing Timesheet activities remain available',
+  'synchronizeViewButtons'
+], 'Authoritative Module 001 timer target integration with preserved fallback catalogs');
 for (const forbidden of [
   '/api/assignments/available-tasks',
   '/api/timesheet/work-queue',
@@ -108,4 +111,4 @@ if (queries) {
   ], 'Role and module query foundation');
 }
 
-console.log('Role permission and timesheet stabilization contracts passed.');
+console.log('Role permission and timesheet stabilization contracts passed with preserved Module 001 activity catalogs.');
