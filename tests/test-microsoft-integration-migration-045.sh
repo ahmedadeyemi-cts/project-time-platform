@@ -26,7 +26,9 @@ assert_eq() {
   echo "ASSERTION_PASSED $label=$actual"
 }
 expect_file_failure() {
-  local expected="$1" label="$2" log="/tmp/microsoft-integration-045-${label}.log"
+  local expected="$1"
+  local label="$2"
+  local log="/tmp/microsoft-integration-045-${label}.log"
   if psql_exec -f "$ROLLBACK" >"$log" 2>&1; then
     echo "ASSERTION_FAILED $label unexpectedly_succeeded" >&2
     exit 1
