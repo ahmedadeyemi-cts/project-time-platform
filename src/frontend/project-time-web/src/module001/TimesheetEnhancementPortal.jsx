@@ -130,13 +130,15 @@ export default function TimesheetEnhancementPortal() {
       }));
     };
 
-    const enrichSnapshot = async (snapshot) => {
-      if (!snapshot?.selectedWeekStart || snapshot?.[AUGMENTED_MARKER]) return;
+    const enrichSnapshot = async (snapshot, force = false) => {
+      if (!snapshot?.selectedWeekStart) return;
       const weekStart = String(snapshot.selectedWeekStart);
-      latestSnapshotRef.current.set(weekStart, snapshot);
+      const baseSnapshot = force ? { ...snapshot, [AUGMENTED_MARKER]: false } : snapshot;
+      if (baseSnapshot?.[AUGMENTED_MARKER]) return;
+      latestSnapshotRef.current.set(weekStart, baseSnapshot);
 
-      if (cacheRef.current.has(weekStart)) {
-        publish(snapshot, cacheRef.current.get(weekStart));
+      if (!force && cacheRef.current.has(weekStart)) {
+        publish(baseSnapshot, cacheRef.current.get(weekStart));
         return;
       }
       if (pendingRef.current.has(weekStart)) return;
@@ -146,10 +148,10 @@ export default function TimesheetEnhancementPortal() {
         const path = `/api/timesheet/timers/targets?weekStart=${encodeURIComponent(weekStart)}`;
         const payload = await authoritativeApi(path, { requiredCollections: ['targets'] });
         cacheRef.current.set(weekStart, payload);
-        publish(latestSnapshotRef.current.get(weekStart) || snapshot, payload);
+        publish(latestSnapshotRef.current.get(weekStart) || baseSnapshot, payload);
       } catch (error) {
         publish(
-          latestSnapshotRef.current.get(weekStart) || snapshot,
+          latestSnapshotRef.current.get(weekStart) || baseSnapshot,
           { targets: [] },
           error?.message || 'Unable to load assigned timer targets. Existing Timesheet activities remain available.'
         );
@@ -161,15 +163,19 @@ export default function TimesheetEnhancementPortal() {
     const handleSnapshot = (event) => {
       void enrichSnapshot(event?.detail || window.__projectPulseModule001Snapshot || null);
     };
+    const handleAuthSession = () => {
+      cacheRef.current.clear();
+      void enrichSnapshot(window.__projectPulseModule001Snapshot || null, true);
+    };
 
     window.addEventListener('projectpulse:module001-state', handleSnapshot);
-    window.addEventListener('projectpulse:auth-session-ready', handleSnapshot);
+    window.addEventListener('projectpulse:auth-session-ready', handleAuthSession);
     queueMicrotask(() => void enrichSnapshot(window.__projectPulseModule001Snapshot || null));
 
     return () => {
       disposed = true;
       window.removeEventListener('projectpulse:module001-state', handleSnapshot);
-      window.removeEventListener('projectpulse:auth-session-ready', handleSnapshot);
+      window.removeEventListener('projectpulse:auth-session-ready', handleAuthSession);
     };
   }, []);
 
