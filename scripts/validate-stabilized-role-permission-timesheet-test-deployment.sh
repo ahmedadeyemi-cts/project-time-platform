@@ -27,6 +27,9 @@ for value in \
   '/api/runtime/role-policy/matrix' \
   '/api/runtime/timesheet/steward/users' \
   '/api/timesheet/timers/targets' \
+  'projectPulseViewAsUser' \
+  'PROJECT_TEAM_COORDINATOR' \
+  'SUPER_ADMINISTRATOR' \
   'Roll back API and web images on failure'
 do
   require "$value"
@@ -60,8 +63,12 @@ do
 done
 
 [[ "$(grep -Fc 'az containerapp update' "$WORKFLOW")" == 4 ]] || fail 'Expected API/web deployment plus API/web rollback.'
-[[ "$(grep -Ec '_(API|WEB|VALIDATOR)_DIGEST=.*build-pr55-acr-image.sh' "$WORKFLOW")" == 3 ]] || fail 'Expected exactly three immutable image builds.'
+[[ "$(grep -Ec '^(API|WEB|VALIDATOR)_DIGEST=.*build-pr55-acr-image.sh' "$WORKFLOW")" == 3 ]] || fail 'Expected exactly three immutable image builds.'
 [[ "$(grep -Fc 'application/json' "$WORKFLOW")" -ge 1 ]] || fail 'JSON endpoint validation is missing.'
+
+for unreliable in "grep -Fq 'PtcTimeStewardGate'" "grep -Fq 'time_steward_role_required'"; do
+  grep -Fq -- "$unreliable" "$WORKFLOW" && fail "Workflow relies on unstable or backend-only bundle marker: $unreliable"
+done
 
 grep -Fq 'EXPECTED_RELEASE_COMMIT="2216bfadaca76858fe07e8d1228df888688fd786"' "$RUNNER" || fail 'Runner release pin is wrong.'
 grep -Fq 'STABILIZED_VALIDATION_JOB_CLEANUP=COMPLETE' "$RUNNER" || fail 'Private validation job cleanup is missing.'
