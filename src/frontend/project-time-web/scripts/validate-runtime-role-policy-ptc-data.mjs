@@ -12,7 +12,7 @@ const requireAll = (source, values, label) => {
   }
 };
 
-const [jsonResponse, bridge, roleModel, matrixModel, portal, catalog, gate, css, main, backend, project] = await Promise.all([
+const [jsonResponse, bridge, roleModel, matrixModel, portal, catalog, gate, css, main, backend, ptcBackend, project] = await Promise.all([
   text('src/frontend/project-time-web/src/api-json-response.js'),
   text('src/frontend/project-time-web/src/runtime-data-compatibility.js'),
   text('src/frontend/project-time-web/src/role-permission-model.js'),
@@ -23,6 +23,7 @@ const [jsonResponse, bridge, roleModel, matrixModel, portal, catalog, gate, css,
   text('src/frontend/project-time-web/src/module001/ptc-runtime-task-catalog.css'),
   text('src/frontend/project-time-web/src/main.jsx'),
   optionalText('src/backend/ProjectTime.Api/Modules/RuntimeDataCompatibilityModule.cs'),
+  optionalText('src/backend/ProjectTime.Api/Modules/Module001PtcTimesheetManagement.cs'),
   optionalText('src/backend/ProjectTime.Api/ProjectTime.Api.csproj')
 ]);
 
@@ -41,7 +42,11 @@ requireAll(bridge, [
   '/api/runtime/role-policy/matrix',
   '/api/runtime/role-policy/roles/',
   '/api/runtime/timesheet/steward/users',
-  '/workspace',
+  '/api/runtime/v2/timesheet/steward/users',
+  '/api/timesheet/ptc/users',
+  '/entries',
+  'normalizePtcWorkspace',
+  'allActiveUsersAllowed: true',
   'runtime_api_non_json_response',
   'runtime_api_contract_incomplete',
   'projectpulse:ptc-runtime-users',
@@ -97,26 +102,27 @@ requireAll(portal, [
   'publishWorkspace(payload)',
   'projectpulse:ptc-runtime-users',
   'projectpulse:ptc-runtime-workspace',
-  'The server returned 0 eligible users.',
-  'Select an eligible user',
-  'roleLabel(user)',
   'returned non-JSON content instead of ProjectPulse API data'
 ], 'PTC direct runtime user and workspace calls');
 
 requireAll(catalog, [
   'Available work for selected user',
-  'Eligible roles',
-  'Engineer · Engineering Lead · Project Management · Project Management Lead',
+  'User scope',
+  'All active users',
+  'Active user',
+  'Choose any active ProjectPulse user',
   'Requests / Service Requests',
   'Project Tasks',
   'Non-Project Time',
+  'snapshotCategories',
+  'requestTask',
   'roleNames',
   'groupLabel',
   'selectionLabel',
   'projectpulse:ptc-runtime-users',
   'projectpulse:ptc-runtime-workspace',
   'PtcRuntimeTaskCatalog'
-], 'PTC grouped runtime task catalog');
+], 'PTC grouped all-active-user task catalog');
 
 requireAll(gate, [
   'PtcTimeStewardGate',
@@ -148,7 +154,7 @@ for (const forbidden of [
   if (main.includes(forbidden)) throw new Error(`Main must not bypass the PTC effective-role gate: ${forbidden}`);
 }
 
-const externalAvailable = backend.length > 0 && project.length > 0;
+const externalAvailable = backend.length > 0 && ptcBackend.length > 0 && project.length > 0;
 if (externalAvailable) {
   requireAll(backend, [
     'MapRuntimeDataCompatibilityEndpoints',
@@ -157,10 +163,6 @@ if (externalAvailable) {
     '/api/runtime/timesheet/steward/users',
     '/api/runtime/timesheet/steward/users/{targetUserId:guid}/workspace',
     'PtcManagedRoleAliases',
-    '"ENGINEERING", "ENGINEER"',
-    '"ENGINEERING_LEAD", "ENGINEERING_TEAM_LEAD"',
-    '"PROJECT_MANAGEMENT", "PROJECT_MANAGER"',
-    '"PROJECT_MANAGEMENT_LEAD", "PROJECT_MANAGEMENT_TEAM_LEAD", "PM_TEAM_LEAD"',
     'eligibleRoleCodes',
     'roleNames',
     'Requests / Service Requests',
@@ -172,7 +174,18 @@ if (externalAvailable) {
     'canSubmitOnBehalf = false'
   ], 'Runtime role-policy and PTC backend');
 
-  requireAll(project, ['app.MapRuntimeDataCompatibilityEndpoints();'], 'Runtime endpoint registration');
+  requireAll(ptcBackend, [
+    'app.MapGet("/api/timesheet/ptc/users"',
+    'app.MapGet("/api/timesheet/ptc/users/{targetUserId:guid}/entries"',
+    'WHERE u.is_active = TRUE',
+    'ActiveUserExistsAsync',
+    'canSubmitOnBehalf = false'
+  ], 'All-active-user Module 001 PTC backend');
+
+  requireAll(project, [
+    'app.MapRuntimeDataCompatibilityEndpoints();',
+    'app.MapModule001PtcTimesheetManagementEndpoints();'
+  ], 'Runtime endpoint registration');
 } else {
   console.log('RUNTIME_ROLE_POLICY_PTC_EXTERNAL_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
 }
@@ -186,4 +199,4 @@ for (const forbidden of [
   if (backend.includes(forbidden)) throw new Error(`Runtime role-policy aliases must remain read-only: ${forbidden}`);
 }
 
-console.log('Direct authenticated runtime role-policy and gated PTC data contracts passed.');
+console.log('Direct authenticated runtime role-policy and all-active-user PTC data contracts passed.');
