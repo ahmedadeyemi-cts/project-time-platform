@@ -23,10 +23,12 @@ const main = read('src/frontend/project-time-web/src/main.jsx');
 const portalEntry = read('src/frontend/project-time-web/src/module001/TimesheetEnhancementPortal.jsx');
 const portal = read('src/frontend/project-time-web/src/module001/TimesheetEnhancementPortalV2.jsx');
 const timerView = read('src/frontend/project-time-web/src/module001/TimesheetTimerView.jsx');
+const timerRecovery = read('src/frontend/project-time-web/src/module001/Module001ActiveTimerRecoveryPortal.jsx');
 const taskPicker = read('src/frontend/project-time-web/src/module001/TimesheetTaskPicker.jsx');
 const durationSource = read('src/frontend/project-time-web/src/module001/timesheet-duration.js');
 const css = read('src/frontend/project-time-web/src/module001/timesheet-prep.css');
 const timerRecoveryCss = read('src/frontend/project-time-web/src/module001/timesheet-timer-recovery.css');
+const persistentRecoveryCss = read('src/frontend/project-time-web/src/module001/module001-active-timer-recovery.css');
 const uatCss = read('src/frontend/project-time-web/src/module001/module001-uat-fixes.css');
 const packageJson = read('src/frontend/project-time-web/package.json');
 
@@ -41,6 +43,8 @@ requireText(generator, 'assignedTasks: assignedOpenTasks', 'canonical assigned-t
 requireText(generator, 'nonProjectCategories: categories', 'canonical non-project source');
 requireText(main, './App.Module001.g.jsx', 'generated App import');
 requireText(main, '<TimesheetEnhancementPortal />', 'portal root integration');
+requireText(main, "import Module001ActiveTimerRecoveryPortal from './module001/Module001ActiveTimerRecoveryPortal.jsx';", 'persistent timer recovery import');
+requireText(main, '<Module001ActiveTimerRecoveryPortal />', 'persistent timer recovery mount');
 requireText(main, './module001/module001-uat-fixes.css', 'Module 001 UAT repair styling');
 
 requireText(portalEntry, '/api/timesheet/timers/targets?weekStart=', 'authoritative timer target request');
@@ -61,7 +65,7 @@ rejectText(portalEntry, '/api/assignments/available-tasks', 'retired available-t
 rejectText(portalEntry, '/api/timesheet/work-queue', 'retired work-queue enrichment');
 
 for (const contract of ['/api/timesheet/timers/active', '/api/timesheet/timers/start', '/api/timesheet/timers/start-by-code', '/stop', '/discard']) {
-  requireText(`${portal}\n${timerView}`, contract, 'timer frontend contract');
+  requireText(`${portal}\n${timerView}\n${timerRecovery}`, contract, 'timer frontend contract');
 }
 requireText(portal, 'snapshot?.assignedTasks', 'timer assigned-task source');
 requireText(portal, 'snapshot?.nonProjectCategories', 'timer non-project source');
@@ -75,6 +79,17 @@ requireText(portal, "groupLabel: isServiceRequestTask(task) ? 'Service Request T
 requireText(portal, "groupLabel: 'Non-Project Time'", 'non-project grouping');
 requireText(portal, 'projectPulseModule001MobileMode', 'mobile preference');
 requireText(portal, 'Mobile mode', 'mobile selector');
+
+requireText(timerRecovery, '/api/timesheet/timers/active', 'snapshot-independent active timer recovery');
+requireText(timerRecovery, 'window.setInterval(load, 5000)', 'recovery polling');
+requireText(timerRecovery, 'window.setInterval(() => setClock(new Date()), 1000)', 'recovery live clock');
+requireText(timerRecovery, 'Running timer recovered', 'recovery banner');
+requireText(timerRecovery, 'Stop timer', 'recovery stop action');
+requireText(timerRecovery, 'Discard', 'recovery discard action');
+requireText(timerRecovery, "'X-ProjectPulse-Session'", 'recovery session authentication');
+requireText(timerRecovery, "'X-ProjectPulse-View-As-User'", 'recovery View-As boundary');
+requireText(persistentRecoveryCss, '.module001-active-timer-recovery', 'recovery surface styling');
+requireText(persistentRecoveryCss, '.module001-active-timer-recovery-clock', 'recovery clock styling');
 
 requireText(timerView, 'Ready to start', 'explicit timer pre-start state');
 requireText(timerView, 'Select Start timer to begin the live clock.', 'timer action guidance');
@@ -152,4 +167,4 @@ if (backendAvailable) {
   requireText(rollback, 'rollback blocked', 'fail-closed rollback');
 }
 
-console.log(`MODULE_001_TIMESHEET_TIMER_MOBILE_VALIDATION=PASS roundingCases=${roundingCases.length} backend=${backendAvailable ? 'full' : 'frontend-container'} targetSource=authoritative preservedFallbacks=true singleActiveView=true`);
+console.log(`MODULE_001_TIMESHEET_TIMER_MOBILE_VALIDATION=PASS roundingCases=${roundingCases.length} backend=${backendAvailable ? 'full' : 'frontend-container'} targetSource=authoritative preservedFallbacks=true singleActiveView=true persistentTimerRecovery=true`);
