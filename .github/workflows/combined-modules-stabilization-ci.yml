@@ -63,7 +63,24 @@ jobs:
 
       - name: Start API and verify endpoint registration
         shell: bash
-        run: bash tests/test-projectpulse-api-startup.sh
+        run: |
+          set +e
+          bash tests/test-projectpulse-api-startup.sh \
+            > /tmp/combined-api-startup-test.log 2>&1
+          STATUS=$?
+          cat /tmp/combined-api-startup-test.log
+          exit "$STATUS"
+
+      - name: Upload combined API startup diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: combined-modules-api-startup-diagnostics
+          path: |
+            /tmp/combined-api-startup-test.log
+            /tmp/projectpulse-api-startup-*.log
+            /tmp/projectpulse-startup-*.json
+          retention-days: 7
 
       - name: Test both Certify spreadsheet and CSV formats
         shell: bash
