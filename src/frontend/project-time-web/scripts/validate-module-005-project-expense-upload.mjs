@@ -10,12 +10,13 @@ const requireAll = (source, values, label) => {
   for (const value of values) if (!source.includes(value)) throw new Error(`${label} missing contract: ${value}`);
 };
 
-const [module005, module038, portal, main, registry, parser, data, commands, mail, certify, migration, rollback, project] = await Promise.all([
+const [module005, module038, portal, main, registry, foundation, parser, data, commands, mail, certify, migration, rollback, project] = await Promise.all([
   text('src/frontend/project-time-web/src/ProjectAllocationInfoPanel.jsx'),
   text('src/frontend/project-time-web/src/CertifyIntegrationCenter.jsx'),
   text('src/frontend/project-time-web/src/ProjectExpenseCrossModulePortal.jsx'),
   text('src/frontend/project-time-web/src/main.jsx'),
   text('src/frontend/project-time-web/src/module-availability-registry.js'),
+  optional('src/backend/ProjectTime.Api/Modules/Module005ProjectExpenseUploadModule.cs'),
   optional('src/backend/ProjectTime.Api/Modules/Module005ProjectExpenseParsing.cs'),
   optional('src/backend/ProjectTime.Api/Modules/Module005ProjectExpenseData.cs'),
   optional('src/backend/ProjectTime.Api/Modules/Module005ProjectExpenseCommands.cs'),
@@ -62,8 +63,13 @@ requireAll(registry, [
   "moduleNumber: '038', route: 'certify-integration', displayName: 'Certify Connection & Sync Center'"
 ], 'Module registry');
 
-const externalAvailable = [parser, data, commands, mail, certify, migration, rollback, project].every(Boolean);
+const externalAvailable = [foundation, parser, data, commands, mail, certify, migration, rollback, project].every(Boolean);
 if (externalAvailable) {
+  requireAll(foundation, [
+    'DefaultCertifyBaseUrl', 'https://api.certify.com/v1/',
+    'MapModule005ProjectExpenseUploadEndpoints', 'MapModule038CertifyConnectionEndpoints'
+  ], 'Shared Module 005 and 038 foundation');
+
   requireAll(parser, [
     'Department Name', 'Department Code', 'GL Code', 'Reimb Amount',
     'FindCategoryHeader', 'NormalizeExpenseCategory',
@@ -98,7 +104,7 @@ if (externalAvailable) {
   ], 'Global mail delivery');
 
   requireAll(certify, [
-    'https://api.certify.com/v1/',
+    'DefaultCertifyBaseUrl',
     'X-Certify-API-Key', 'X-Certify-API-Secret',
     'expensereports/${Uri.EscapeDataString(request.CertifyReportId.Trim())}/expenses',
     'automatic_sync_enabled', 'connection_status',
