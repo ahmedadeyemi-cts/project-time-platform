@@ -5,12 +5,17 @@ on:
     paths:
       - 'database/migrations/046_microsoft_sso_connection_profiles.sql'
       - 'database/rollback/046_microsoft_sso_connection_profiles_rollback.sql'
+      - 'src/backend/ProjectTime.Api/ProjectTime.Api.csproj'
       - 'src/backend/ProjectTime.Api/Modules/MicrosoftSsoConnectionProfilesModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/MicrosoftSsoRuntimeCompatibility.cs'
       - 'src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs'
       - 'src/frontend/project-time-web/src/MicrosoftIntegrationDualConnectionPortal.jsx'
       - 'src/frontend/project-time-web/src/microsoft-integration-dual-connections.css'
+      - 'src/frontend/project-time-web/src/microsoft-sso-runtime-activation.js'
       - 'src/frontend/project-time-web/src/main.jsx'
       - 'src/frontend/project-time-web/scripts/validate-module-067-global-mail.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-microsoft-sso-runtime-wiring.mjs'
+      - 'src/frontend/project-time-web/package.json'
       - 'tests/test-microsoft-sso-connection-migration-046.sh'
   workflow_dispatch:
 
@@ -28,7 +33,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Build ProjectTime API
+      - name: Build ProjectTime API and generated SSO handlers
         run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
       - name: Test migration 046 lifecycle and Graph carryover
         run: bash tests/test-microsoft-sso-connection-migration-046.sh
@@ -38,6 +43,9 @@ jobs:
       - name: Validate Microsoft Integration dual connection contracts
         working-directory: src/frontend/project-time-web
         run: npm run validate:module067
+      - name: Validate SSO runtime wiring and authority boundary
+        working-directory: src/frontend/project-time-web
+        run: npm run validate:microsoft-sso-runtime
       - name: Build frontend production bundle
         working-directory: src/frontend/project-time-web
         run: npm run build
