@@ -63,6 +63,7 @@ require "$WORKFLOW" 'body.projectpulse-route-certify-integration .module-grid'
 require "$WORKFLOW" 'max-height:calc(100dvh - 13.5rem)'
 require "$WORKFLOW" 'overscroll-behavior:contain'
 require "$WORKFLOW" '<CriticalRoutePresentationBoundary />'
+require "$WORKFLOW" "grep -Fq 'projectpulse-route-certify-integration' /tmp/functional-runtime-uat-validation/app.css"
 
 require "$WORKFLOW" 'Capture current immutable web image'
 require "$WORKFLOW" 'Build immutable functional runtime UAT web image'
@@ -91,6 +92,7 @@ reject "$WORKFLOW" 'az[[:space:]]+role[[:space:]]+assignment'
 reject "$WORKFLOW" 'automatic_sync_enabled[[:space:]]*=[[:space:]]*TRUE'
 reject "$WORKFLOW" '\[\[[^\n]*\$\{\{[[:space:]]*inputs\.'
 reject "$WORKFLOW" 'TARGET_COMMIT[^\n]*\$\{\{[[:space:]]*inputs\.'
+reject "$WORKFLOW" "grep -Fq 'projectpulse-route-certify-integration' /tmp/functional-runtime-uat-validation/app.js"
 reject "$WORKFLOW" 'AUTHENTICATED_FUNCTIONAL_UAT=PASS'
 reject "$WORKFLOW" 'FUNCTIONAL_RUNTIME_UAT=READY'
 reject "$WORKFLOW" 'functionalUatStatus":"passed"'
