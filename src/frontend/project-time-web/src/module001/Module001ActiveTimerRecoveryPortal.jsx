@@ -1,57 +1,16 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { authoritativeApi } from '../projectpulse-authoritative-api.js';
 import { calculateTimerDuration, formatElapsedSeconds } from './timesheet-duration.js';
 import './module001-active-timer-recovery.css';
 
-function sessionContext() {
+function viewAsUserId() {
   try {
-    const session = JSON.parse(window.localStorage.getItem('projectPulseAuthSession') || 'null');
     const selected = JSON.parse(window.localStorage.getItem('projectPulseViewAsUser') || 'null');
-    return {
-      token: session?.sessionToken || session?.token || session?.accessToken || '',
-      viewAsUserId: selected?.userId || window.localStorage.getItem('projectPulseViewAsUserId') || ''
-    };
+    return selected?.userId || window.localStorage.getItem('projectPulseViewAsUserId') || '';
   } catch {
-    return { token: '', viewAsUserId: '' };
+    return window.localStorage.getItem('projectPulseViewAsUserId') || '';
   }
-}
-
-function requestHeaders(hasBody = false) {
-  const { token, viewAsUserId } = sessionContext();
-  return {
-    ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
-    ...(token ? {
-      Authorization: `Bearer ${token}`,
-      'X-ProjectPulse-Session': token,
-      'X-Project-Pulse-Session': token,
-      'X-Session-Token': token
-    } : {}),
-    ...(viewAsUserId ? { 'X-ProjectPulse-View-As-User': viewAsUserId } : {}),
-    'Cache-Control': 'no-cache',
-    Pragma: 'no-cache'
-  };
-}
-
-async function api(path, options = {}) {
-  const response = await fetch(path, {
-    credentials: 'include',
-    cache: 'no-store',
-    ...options,
-    headers: {
-      ...requestHeaders(Boolean(options.body)),
-      ...(options.headers || {})
-    }
-  });
-  const raw = await response.text();
-  let payload = {};
-  try { payload = raw ? JSON.parse(raw) : {}; } catch { payload = { message: raw }; }
-  if (!response.ok) {
-    const error = new Error(payload.message || payload.detail || `${path} returned HTTP ${response.status}`);
-    error.status = response.status;
-    error.payload = payload;
-    throw error;
-  }
-  return payload;
 }
 
 function ensureHost(page) {
@@ -65,7 +24,7 @@ function ensureHost(page) {
     const workspace = page.querySelector('.timesheet-workspace');
     if (ptcHost) page.insertBefore(host, ptcHost);
     else if (workspace) page.insertBefore(host, workspace);
-    else page.appendChild(host);
+    else page.prepend(host);
   }
   return host;
 }
@@ -81,14 +40,16 @@ function activeLabel(timer) {
 export default function Module001ActiveTimerRecoveryPortal() {
   const [host, setHost] = useState(null);
   const [timer, setTimer] = useState(null);
+  const [autoStoppedTimer, setAutoStoppedTimer] = useState(null);
   const [clock, setClock] = useState(() => new Date());
   const [busy, setBusy] = useState('');
   const [message, setMessage] = useState('');
+  const [checkError, setCheckError] = useState('');
 
   useEffect(() => {
     const sync = () => {
       const onTimesheet = window.location.hash.replace(/^#/, '') === 'timesheet';
-      const page = onTimesheet ? document.querySelector('#timesheet.timesheet-page') : null;
+      const page = onTimesheet ? document.querySelector('#timesheet') : null;
       setHost(page ? ensureHost(page) : null);
     };
     sync();
@@ -101,30 +62,38 @@ export default function Module001ActiveTimerRecoveryPortal() {
     };
   }, []);
 
+  const load = useCallback(async () => {
+    if (!host) return;
+    try {
+      const payload = await authoritativeApi('/api/timesheet/timers/active');
+      const activeTimer = payload?.activeTimer || payload?.ActiveTimer || null;
+      const stoppedTimer = payload?.autoStoppedTimer || payload?.AutoStoppedTimer || null;
+      setTimer(activeTimer);
+      setAutoStoppedTimer(stoppedTimer);
+      setCheckError('');
+      if (activeTimer) setMessage('A running timer was recovered from the server.');
+      else if (stoppedTimer) setMessage('The server automatically stopped a timer at the 12-hour safety limit. Review the resulting draft entry.');
+      else setMessage('');
+    } catch (error) {
+      setTimer(null);
+      setAutoStoppedTimer(null);
+      setCheckError(error.message || 'The active timer could not be checked.');
+    }
+  }, [host]);
+
   useEffect(() => {
     if (!host) return undefined;
-    let disposed = false;
-    const load = async () => {
-      try {
-        const payload = await api('/api/timesheet/timers/active');
-        if (disposed) return;
-        const activeTimer = payload?.activeTimer || null;
-        setTimer(activeTimer);
-        if (activeTimer) setMessage('A running timer was recovered from the server.');
-      } catch (error) {
-        if (!disposed) setMessage(error.message || 'The active timer could not be checked.');
-      }
-    };
     void load();
-    const interval = window.setInterval(load, 5000);
+    const interval = window.setInterval(() => void load(), 5000);
     const focus = () => void load();
     window.addEventListener('focus', focus);
+    window.addEventListener('projectpulse:auth-session-ready', focus);
     return () => {
-      disposed = true;
       window.clearInterval(interval);
       window.removeEventListener('focus', focus);
+      window.removeEventListener('projectpulse:auth-session-ready', focus);
     };
-  }, [host]);
+  }, [host, load]);
 
   useEffect(() => {
     setClock(new Date());
@@ -145,7 +114,7 @@ export default function Module001ActiveTimerRecoveryPortal() {
     setBusy('stop');
     setMessage('Stopping the recovered timer…');
     try {
-      const result = await api(`/api/timesheet/timers/${timer.timerSessionId}/stop`, {
+      const result = await authoritativeApi(`/api/timesheet/timers/${timer.timerSessionId}/stop`, {
         method: 'POST',
         body: JSON.stringify({
           description: timer.description || '',
@@ -160,6 +129,7 @@ export default function Module001ActiveTimerRecoveryPortal() {
       setMessage(error.message || 'The timer could not be stopped.');
     } finally {
       setBusy('');
+      void load();
     }
   }
 
@@ -170,7 +140,7 @@ export default function Module001ActiveTimerRecoveryPortal() {
     setBusy('discard');
     setMessage('Discarding the recovered timer…');
     try {
-      const result = await api(`/api/timesheet/timers/${timer.timerSessionId}/discard`, {
+      const result = await authoritativeApi(`/api/timesheet/timers/${timer.timerSessionId}/discard`, {
         method: 'POST',
         body: JSON.stringify({
           reason: 'Discarded from Module 001 active timer recovery.',
@@ -184,12 +154,47 @@ export default function Module001ActiveTimerRecoveryPortal() {
       setMessage(error.message || 'The timer could not be discarded.');
     } finally {
       setBusy('');
+      void load();
     }
   }
 
-  if (!host || !timer) return null;
-  const viewAsActive = Boolean(sessionContext().viewAsUserId);
-  const missingDescription = !String(timer.description || '').trim();
+  if (!host) return null;
+  if (!timer && !autoStoppedTimer && !checkError) return null;
+
+  const viewAsActive = Boolean(viewAsUserId());
+  const missingDescription = !String(timer?.description || '').trim();
+
+  if (checkError) {
+    return createPortal(
+      <section className="module001-active-timer-recovery module001-active-timer-recovery-error" aria-label="Timer status unavailable">
+        <div>
+          <p className="eyebrow">Timer status check failed</p>
+          <h3>The server timer could not be verified</h3>
+          <p>{checkError}</p>
+        </div>
+        <div className="module001-active-timer-recovery-actions">
+          <button type="button" onClick={() => void load()}>Try timer check again</button>
+        </div>
+      </section>,
+      host
+    );
+  }
+
+  if (!timer && autoStoppedTimer) {
+    return createPortal(
+      <section className="module001-active-timer-recovery" aria-label="Automatically stopped timer">
+        <div>
+          <p className="eyebrow">Timer automatically stopped</p>
+          <h3>{activeLabel(autoStoppedTimer)}</h3>
+          <p>{message}</p>
+        </div>
+        <div className="module001-active-timer-recovery-actions">
+          <button type="button" onClick={() => setAutoStoppedTimer(null)}>Dismiss</button>
+        </div>
+      </section>,
+      host
+    );
+  }
 
   return createPortal(
     <section className="module001-active-timer-recovery" aria-label="Recovered running timer">
