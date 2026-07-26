@@ -6,7 +6,7 @@ on:
       release_commit:
         description: Exact verified combined application commit
         required: true
-        default: 0979c2bbd877b93fa112d22a43a748e105d958bb
+        default: b30fa97b06e700f2256b20690d650aafa1c28886
         type: string
       confirmation:
         description: Enter DEPLOY-COMBINED-MODULES-001-005-012-037-038-TO-TEST
@@ -27,7 +27,7 @@ jobs:
     environment: test
     runs-on: ubuntu-latest
     env:
-      EXPECTED_RELEASE_COMMIT: 0979c2bbd877b93fa112d22a43a748e105d958bb
+      EXPECTED_RELEASE_COMMIT: b30fa97b06e700f2256b20690d650aafa1c28886
     steps:
       - name: Check out deployment controls
         uses: actions/checkout@v5
@@ -77,10 +77,17 @@ jobs:
           grep -Fq 'MapCombinedModuleRuntimeEndpoints' release/src/backend/ProjectTime.Api/Modules/CombinedModuleRuntimeModule.cs
           grep -Fq '/api/runtime/v2/readiness' release/src/backend/ProjectTime.Api/Modules/CombinedModuleRuntimeModule.cs
           grep -Fq 'combined-modules-001-005-012-037-038-v2' release/src/backend/ProjectTime.Api/Modules/CombinedModuleRuntimeModule.cs
-          grep -Fq '/health/combined-modules' release/src/backend/ProjectTime.Api/Modules/CombinedModulePublicReadiness.cs
+          grep -Fq '/api/public/combined-modules/readiness' release/src/backend/ProjectTime.Api/Modules/CombinedModulePublicReadiness.cs
+          grep -Fq 'combined-modules-001-005-012-037-038-public-v1' release/src/backend/ProjectTime.Api/Modules/CombinedModulePublicReadiness.cs
+          grep -Fq 'operationalCountsReturned = false' release/src/backend/ProjectTime.Api/Modules/CombinedModulePublicReadiness.cs
           grep -Fq 'MapModule005ProjectExpenseUploadEndpointsSafe' release/src/backend/ProjectTime.Api/Modules/Module005ProjectExpenseSafeEndpoints.cs
+          grep -Fq '/api/public/project-expenses/readiness' release/src/backend/ProjectTime.Api/Modules/Module005ProjectExpenseSafeEndpoints.cs
+          grep -Fq 'project-expense-certify-public-v1' release/src/backend/ProjectTime.Api/Modules/Module005ProjectExpenseSafeEndpoints.cs
           grep -Fq 'DeleteUploadFromRequestAsync' release/src/backend/ProjectTime.Api/Modules/Module005ProjectExpenseSafeEndpoints.cs
           grep -Fq 'PROJECTPULSE_API_STARTUP_SMOKE=PASS' release/tests/test-projectpulse-api-startup.sh
+          grep -Fq 'publicReadinessContracts=ready' release/tests/test-projectpulse-api-startup.sh
+          grep -Fq 'protectedAuthBoundary=ready' release/tests/test-projectpulse-api-startup.sh
+          grep -Fq 'operationalCountsSuppressed=true' release/tests/test-projectpulse-api-startup.sh
           grep -Fq 'COMBINED_MODULES_001_005_012_037_038_DATABASE=APPLIED_OR_VERIFIED' control/scripts/apply-combined-modules-test-migrations.sh
           echo "target_commit=$TARGET_COMMIT" >> "$GITHUB_OUTPUT"
 
@@ -249,6 +256,11 @@ jobs:
                 jq . "$DIAGNOSTICS/${name}.body" > "$DIAGNOSTICS/${name}.verified.json"
                 return 0
               fi
+              if [[ "$status" == 401 || "$status" == 403 ]]; then
+                echo "$url unexpectedly required authentication; public readiness validation cannot continue." >&2
+                cat "$DIAGNOSTICS/${name}.body" >&2 || true
+                return 1
+              fi
               sleep 10
             done
             echo "$url did not expose the required JSON contract." >&2
@@ -258,10 +270,10 @@ jobs:
 
           wait_status health "$BASE/health" '200' false
           wait_status version "$BASE/api/version" '200' true
-          wait_json_contract combined-readiness "$BASE/api/runtime/v2/readiness" \
-            '.status == "combined_module_runtime_ready" and .roleCount == 12 and .moduleCount == 70 and .foundationalMigrationCount == 2 and .expenseMigrationCount == 2 and .expenseTableCount == 6'
-          wait_json_contract project-expense-readiness "$BASE/api/project-expenses/readiness" \
-            '.status == "project_expense_runtime_ready" and .migrationCount == 2 and .tableCount == 6 and .safeProfileCount == 1 and .permissionCount == 7 and .automaticSyncEnabled == false'
+          wait_json_contract combined-readiness "$BASE/api/public/combined-modules/readiness" \
+            '.status == "combined_module_runtime_ready" and .contractVersion == "combined-modules-001-005-012-037-038-public-v1" and .roleContractReady == true and .moduleContractReady == true and .publishedPolicyReady == true and .grantContractReady == true and .eligibleUserContractReady == true and .operatorContractReady == true and .foundationalMigrationsReady == true and .expenseMigrationsReady == true and .expenseTablesReady == true and .nonProjectCategoriesReady == true and .operationalCountsReturned == false'
+          wait_json_contract project-expense-readiness "$BASE/api/public/project-expenses/readiness" \
+            '.status == "project_expense_runtime_ready" and .contractVersion == "project-expense-certify-public-v1" and .migrationContractReady == true and .tableContractReady == true and .safeProfileReady == true and .permissionContractReady == true and .automaticSyncEnabled == false and .secretsReturned == false and .operationalCountsReturned == false'
           wait_status role-policy-summary "$BASE/api/runtime/v2/role-policy/summary" '401,403' true
           wait_status role-policy-matrix "$BASE/api/runtime/v2/role-policy/matrix" '401,403' true
           wait_status time-steward-users "$BASE/api/runtime/v2/timesheet/steward/users" '401,403' true
@@ -344,7 +356,7 @@ jobs:
         run: |
           mkdir -p evidence
           cat > evidence/combined-modules-001-005-012-037-038-test-deployment.json <<JSON
-          {"environment":"test","releaseCommit":"${{ steps.release.outputs.target_commit }}","workflowCommit":"${{ github.sha }}","runId":"${{ github.run_id }}","runAttempt":"${{ github.run_attempt }}","modules":["001","005","012","037","038"],"requiredSourceMigrations":["040","041","042","043","044","044a"],"verifiedDatabaseFoundationMigrations":["040","043"],"appliedOrVerifiedMigrations":["044","044a"],"migrationImage":"${{ steps.migration.outputs.image }}","apiImage":"${{ steps.build.outputs.api_image }}","webImage":"${{ steps.build.outputs.web_image }}","previousApiImage":"${{ steps.before.outputs.old_api_image }}","previousWebImage":"${{ steps.before.outputs.old_web_image }}"}
+          {"environment":"test","releaseCommit":"${{ steps.release.outputs.target_commit }}","workflowCommit":"${{ github.sha }}","runId":"${{ github.run_id }}","runAttempt":"${{ github.run_attempt }}","modules":["001","005","012","037","038"],"requiredSourceMigrations":["040","041","042","043","044","044a"],"verifiedDatabaseFoundationMigrations":["040","043"],"appliedOrVerifiedMigrations":["044","044a"],"publicReadinessContracts":["/api/public/combined-modules/readiness","/api/public/project-expenses/readiness"],"migrationImage":"${{ steps.migration.outputs.image }}","apiImage":"${{ steps.build.outputs.api_image }}","webImage":"${{ steps.build.outputs.web_image }}","previousApiImage":"${{ steps.before.outputs.old_api_image }}","previousWebImage":"${{ steps.before.outputs.old_web_image }}"}
           JSON
 
       - name: Upload combined deployment evidence
@@ -360,9 +372,13 @@ jobs:
         shell: bash
         run: |
           set +e
-          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' \
-            --image '${{ steps.before.outputs.old_api_image }}' \
-            --revision-suffix "cmbapirb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" --output none
-          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' \
-            --image '${{ steps.before.outputs.old_web_image }}' \
-            --revision-suffix "cmbwebrb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" --output none
+          if [[ '${{ steps.deploy_api.outputs.started }}' == 'true' ]]; then
+            az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' \
+              --image '${{ steps.before.outputs.old_api_image }}' \
+              --revision-suffix "cmbapirb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" --output none
+          fi
+          if [[ '${{ steps.deploy_web.outputs.started }}' == 'true' ]]; then
+            az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' \
+              --image '${{ steps.before.outputs.old_web_image }}' \
+              --revision-suffix "cmbwebrb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" --output none
+          fi
