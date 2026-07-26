@@ -106,7 +106,7 @@ if (externalAvailable) {
   requireAll(certify, [
     'DefaultCertifyBaseUrl',
     'X-Certify-API-Key', 'X-Certify-API-Secret',
-    'expensereports/${Uri.EscapeDataString(request.CertifyReportId.Trim())}/expenses',
+    'expensereports/{Uri.EscapeDataString(request.CertifyReportId.Trim())}/expenses',
     'automatic_sync_enabled', 'connection_status',
     'secretsReturned = false'
   ], 'Certify connection and import');
