@@ -41,6 +41,17 @@ read -r USERS_BEFORE ROLES_BEFORE DOCUMENTS_BEFORE <<<"$(
 )"
 [[ -n "${USERS_BEFORE:-}" ]] || fail "Required ProjectPulse operational tables are unavailable."
 
+SECRET_ROWS_BEFORE=0
+AUDIT_ROWS_BEFORE=0
+if [[ "$(psql "$DATABASE_URL" --no-psqlrc -At --set=ON_ERROR_STOP=1 --command="SELECT to_regclass('public.microsoft_integration_client_secrets') IS NOT NULL;")" == "t" ]]; then
+  SECRET_ROWS_BEFORE="$(psql "$DATABASE_URL" --no-psqlrc -At --set=ON_ERROR_STOP=1 --command="SELECT COUNT(*) FROM microsoft_integration_client_secrets;")"
+fi
+if [[ "$(psql "$DATABASE_URL" --no-psqlrc -At --set=ON_ERROR_STOP=1 --command="SELECT to_regclass('public.microsoft_integration_audit_events') IS NOT NULL;")" == "t" ]]; then
+  AUDIT_ROWS_BEFORE="$(psql "$DATABASE_URL" --no-psqlrc -At --set=ON_ERROR_STOP=1 --command="SELECT COUNT(*) FROM microsoft_integration_audit_events;")"
+fi
+[[ "$SECRET_ROWS_BEFORE" =~ ^[0-9]+$ && "$AUDIT_ROWS_BEFORE" =~ ^[0-9]+$ ]] || fail "Existing Microsoft Integration evidence counts are invalid."
+echo "MICROSOFT_INTEGRATION_EVIDENCE_BASELINE secrets=$SECRET_ROWS_BEFORE audit=$AUDIT_ROWS_BEFORE"
+
 REGISTERED="$(psql "$DATABASE_URL" --no-psqlrc -At --set=ON_ERROR_STOP=1 --command="SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE migration_id='045_microsoft_integration_consolidation');")"
 if [[ "$REGISTERED" == "t" ]]; then
   echo "VERIFY_ALREADY_REGISTERED=045_microsoft_integration_consolidation"
@@ -55,6 +66,8 @@ DECLARE
   users_after bigint;
   roles_after bigint;
   documents_after bigint;
+  secret_rows_after bigint;
+  audit_rows_after bigint;
   aliases_count bigint;
 BEGIN
   SELECT COUNT(*) INTO users_after FROM app_users;
@@ -112,9 +125,11 @@ BEGIN
     RAISE EXCEPTION 'Module 067 was not retired non-destructively.';
   END IF;
 
-  IF (SELECT COUNT(*) FROM microsoft_integration_client_secrets) <> 0
-     OR (SELECT COUNT(*) FROM microsoft_integration_audit_events) <> 0 THEN
-    RAISE EXCEPTION 'Migration 045 unexpectedly created secret or audit records.';
+  SELECT COUNT(*) INTO secret_rows_after FROM microsoft_integration_client_secrets;
+  SELECT COUNT(*) INTO audit_rows_after FROM microsoft_integration_audit_events;
+  IF secret_rows_after <> ${SECRET_ROWS_BEFORE}
+     OR audit_rows_after <> ${AUDIT_ROWS_BEFORE} THEN
+    RAISE EXCEPTION 'Migration 045 changed existing Microsoft Integration secret or audit evidence counts.';
   END IF;
 END
 \$verify_microsoft_integration\$;
