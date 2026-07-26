@@ -10,8 +10,10 @@ public static class GlobalMailConfigurationModule
     public static WebApplication MapGlobalMailConfigurationEndpoints(this WebApplication app)
     {
         app.UseMicrosoftIntegrationSecurityCompatibility();
+        app.UseMicrosoftSsoRuntimeCompatibility();
         MicrosoftIntegrationModule.MapEndpoints(app);
         app.MapMicrosoftSsoConnectionProfileEndpoints();
+        app.MapMicrosoftSsoRuntimeProfileEndpoints();
         AzureDirectoryImportModule.MapEndpoints(app);
         return app;
     }
