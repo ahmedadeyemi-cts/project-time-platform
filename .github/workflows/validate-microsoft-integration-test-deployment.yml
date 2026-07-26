@@ -7,8 +7,10 @@ on:
       - '.github/workflows/validate-microsoft-integration-test-deployment.yml'
       - 'scripts/apply-microsoft-integration-test-migration.sh'
       - 'scripts/run-microsoft-integration-test-migration-job.sh'
+      - 'scripts/wait-containerapp-ready-revision.sh'
       - 'scripts/validate-microsoft-integration-test-deployment.sh'
       - 'tests/test-microsoft-integration-migration-045.sh'
+      - 'tests/test-microsoft-sso-connection-migration-046.sh'
   workflow_dispatch:
 
 permissions:
@@ -16,7 +18,7 @@ permissions:
 
 jobs:
   validate:
-    name: Validate Microsoft Integration deployment and migration controls
+    name: Validate Microsoft dual-connection deployment and migration controls
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,19 +27,24 @@ jobs:
         shell: bash
         run: bash scripts/validate-microsoft-integration-test-deployment.sh
 
-      - name: Test migration 045 apply, idempotence, safe rollback, and rollback guards
+      - name: Test migrations 045 and 046 independently
         shell: bash
         run: |
           set +e
           bash tests/test-microsoft-integration-migration-045.sh > /tmp/microsoft-integration-migration-045.log 2>&1
-          status=$?
+          status_045=$?
           cat /tmp/microsoft-integration-migration-045.log
-          exit $status
+          bash tests/test-microsoft-sso-connection-migration-046.sh > /tmp/microsoft-integration-migration-046.log 2>&1
+          status_046=$?
+          cat /tmp/microsoft-integration-migration-046.log
+          if (( status_045 != 0 || status_046 != 0 )); then exit 1; fi
 
-      - name: Upload migration 045 diagnostics
+      - name: Upload migration diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: microsoft-integration-migration-045-diagnostics
-          path: /tmp/microsoft-integration-migration-045.log
+          name: microsoft-dual-connections-migration-diagnostics
+          path: |
+            /tmp/microsoft-integration-migration-045.log
+            /tmp/microsoft-integration-migration-046.log
           retention-days: 7
