@@ -28,7 +28,10 @@ assert_eq() {
   echo "ASSERTION_PASSED $label=$actual"
 }
 expect_file_failure() {
-  local file="$1" expected="$2" label="$3" log="/tmp/project-expense-044-${label}.log"
+  local file="$1"
+  local expected="$2"
+  local label="$3"
+  local log="/tmp/project-expense-044-${label}.log"
   if psql_exec -f "$file" >"$log" 2>&1; then
     echo "ASSERTION_FAILED $label unexpectedly_succeeded" >&2
     exit 1
@@ -41,7 +44,10 @@ expect_file_failure() {
   echo "ASSERTION_PASSED $label"
 }
 expect_sql_failure() {
-  local sql="$1" expected="$2" label="$3" log="/tmp/project-expense-044-${label}.log"
+  local sql="$1"
+  local expected="$2"
+  local label="$3"
+  local log="/tmp/project-expense-044-${label}.log"
   if psql_exec -c "$sql" >"$log" 2>&1; then
     echo "ASSERTION_FAILED $label unexpectedly_succeeded" >&2
     exit 1
