@@ -14,7 +14,8 @@ const rejectAll = (source, values, label) => {
 };
 
 const [
-  module005, module005Experience, module038, module038Css, pageContext, portal, main, registry,
+  module005, module005Experience, module038, module038Css, routeBoundary, routeCss,
+  pageContext, portal, main, registry,
   foundation, safeEndpoints, parser, data, commands, notificationAuth, mail, certify,
   migration, rollback, project, parserTest, migrationTest
 ] = await Promise.all([
@@ -22,6 +23,8 @@ const [
   text('src/frontend/project-time-web/src/Module005ExperienceCompatibility.jsx'),
   text('src/frontend/project-time-web/src/CertifyIntegrationCenter.jsx'),
   text('src/frontend/project-time-web/src/certify-integration-center.css'),
+  text('src/frontend/project-time-web/src/CriticalRoutePresentationBoundary.jsx'),
+  text('src/frontend/project-time-web/src/critical-route-presentation.css'),
   text('src/frontend/project-time-web/src/PageContextGuide.jsx'),
   text('src/frontend/project-time-web/src/ProjectExpenseCrossModulePortal.jsx'),
   text('src/frontend/project-time-web/src/main.jsx'),
@@ -76,15 +79,28 @@ requireAll(module038Css, [
   '.certify-sync-control-card',
   'align-content:start',
   'min-height:0',
-  'main.app-shell.route-certify-integration .certify-integration-center',
-  'max-height:calc(100dvh - 15rem)',
-  'overflow-y:auto',
-  'overflow-x:hidden',
-  'overscroll-behavior:contain',
   'grid-template-columns:repeat(2,minmax(0,1fr))',
   '.certify-sync-lock',
   '.certify-sync-ready'
-], 'Module 038 bounded compact layout');
+], 'Module 038 compact component layout');
+
+requireAll(routeBoundary, [
+  "const PREFIX = 'projectpulse-route-'",
+  "window.location.hash.replace(/^#/, '').split('?')[0]",
+  'document.body.classList.add',
+  "window.addEventListener('hashchange', apply)"
+], 'Explicit Module 038 route boundary');
+requireAll(routeCss, [
+  'body.projectpulse-route-certify-integration .module-grid[aria-label="Core workflow modules"]',
+  'display:none!important',
+  'body.projectpulse-route-certify-integration .certify-integration-center',
+  'max-height:calc(100dvh - 13.5rem)',
+  'overflow-y:auto',
+  'overscroll-behavior:contain',
+  'scrollbar-gutter:stable',
+  'body.projectpulse-route-certify-integration .certify-sync-control-card',
+  'position:sticky'
+], 'Module 038 route-scoped bounded scrolling');
 
 requireAll(pageContext, [
   "'project-allocation-info': {",
@@ -101,11 +117,13 @@ requireAll(portal, [
 ], 'Module 042 and 055C expense visibility');
 
 requireAll(main, [
+  "import CriticalRoutePresentationBoundary from './CriticalRoutePresentationBoundary.jsx';",
+  '<CriticalRoutePresentationBoundary />',
   "import ProjectExpenseCrossModulePortal from './ProjectExpenseCrossModulePortal.jsx';",
   '<ProjectExpenseCrossModulePortal />',
   "import Module005ExperienceCompatibility from './Module005ExperienceCompatibility.jsx';",
   '<Module005ExperienceCompatibility />'
-], 'Module 005 and cross-module mounts');
+], 'Module 005 and route-scoped mounts');
 
 requireAll(registry, [
   "moduleNumber: '005', route: 'project-allocation-info', displayName: 'Project Expense Upload'",
@@ -233,5 +251,5 @@ if (externalAvailable) {
   console.log('MODULE_005_EXTERNAL_SOURCE_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
 }
 
-console.log('MODULE_005_038_MERGE_CANDIDATE=PASS reupload=true compactSync=true boundedScroll=true');
+console.log('MODULE_005_038_MERGE_CANDIDATE=PASS reupload=true compactSync=true explicitRouteBoundary=true');
 console.log('Module 005 Project Expense Upload and Module 038 Certify contracts passed.');

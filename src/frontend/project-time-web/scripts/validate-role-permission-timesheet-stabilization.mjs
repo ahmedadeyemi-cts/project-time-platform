@@ -12,12 +12,13 @@ const requireAll = (source, values, label) => {
   }
 };
 
-const [support, boundary, project, gate, main, timerPortal, timerBackend, queries] = await Promise.all([
+const [support, boundary, project, gate, main, authoritative, timerPortal, timerBackend, queries] = await Promise.all([
   optional('src/backend/ProjectTime.Api/Modules/ScopedRolePolicySupport.cs'),
   optional('src/backend/ProjectTime.Api/Modules/PtcTimeStewardRoleBoundary.cs'),
   optional('src/backend/ProjectTime.Api/ProjectTime.Api.csproj'),
   read('src/frontend/project-time-web/src/module001/PtcTimeStewardGate.jsx'),
   read('src/frontend/project-time-web/src/main.jsx'),
+  read('src/frontend/project-time-web/src/projectpulse-authoritative-api.js'),
   read('src/frontend/project-time-web/src/module001/TimesheetEnhancementPortal.jsx'),
   optional('src/backend/ProjectTime.Api/Modules/Module001TimerTargets.cs'),
   optional('src/backend/ProjectTime.Api/Modules/ScopedRolePolicyQueries.cs')
@@ -63,6 +64,7 @@ requireAll(gate, [
   'if (state.active && !state.allowed) return null'
 ], 'Effective-role PTC UI gate');
 requireAll(main, [
+  "import './projectpulse-authoritative-api.js';",
   "import PtcTimeStewardGate from './module001/PtcTimeStewardGate.jsx';",
   '<PtcTimeStewardGate />'
 ], 'Gated PTC application mount');
@@ -70,21 +72,35 @@ if (main.includes("import PtcTimesheetManagementPortal from './module001/PtcTime
   throw new Error('Main still bypasses the PTC effective-role gate.');
 }
 
+requireAll(authoritative, [
+  'new XMLHttpRequest()',
+  'requiredCollections',
+  'collectionCounts',
+  'projectpulse:authoritative-api-diagnostic'
+], 'Wrapper-independent authoritative API');
+
 requireAll(timerPortal, [
+  "import { authoritativeApi } from '../projectpulse-authoritative-api.js';",
   '/api/timesheet/timers/targets?weekStart=',
+  "requiredCollections: ['targets']",
   'mergeByKey(snapshot.assignedTasks, authoritativeAssignments)',
   'snapshot.nonProjectCategories',
   "target.groupLabel !== 'Service Request Tasks' && target.groupLabel !== 'Requests / Service Requests'",
   "target.groupLabel === 'Service Request Tasks' || target.groupLabel === 'Requests / Service Requests'",
+  'regularAssignedTasks',
+  'requestAssignedTasks',
+  'timerTargetCounts',
+  'timerTargetAuthoritativeSources',
   'timerTargetLoadError',
   'projectpulse:module001-timer-targets',
-  'returned an incomplete timer-target payload',
   'Existing Timesheet activities remain available',
   'synchronizeViewButtons'
 ], 'Authoritative Module 001 timer target integration with preserved fallback catalogs');
 for (const forbidden of [
   '/api/assignments/available-tasks',
   '/api/timesheet/work-queue',
+  'const response = await fetch(path',
+  'returned an incomplete timer-target payload',
   'The canonical Timesheet snapshot remains usable if the assignment join refresh fails.'
 ]) {
   if (timerPortal.includes(forbidden)) throw new Error(`Legacy silent timer target path remains: ${forbidden}`);
@@ -97,6 +113,9 @@ if (timerBackend) {
     'project_tasks',
     "to_jsonb(pt)->>'work_task_category'",
     "to_jsonb(pt)->>'service_request_number'",
+    'regularTaskCount',
+    'serviceRequestTaskCount',
+    'nonProjectCount',
     'Regular Tasks',
     'Service Request Tasks',
     'Non-Project Time'
@@ -111,4 +130,4 @@ if (queries) {
   ], 'Role and module query foundation');
 }
 
-console.log('Role permission and timesheet stabilization contracts passed with preserved Module 001 activity catalogs.');
+console.log('Role permission and timesheet stabilization contracts passed with wrapper-independent Module 001 target transport.');

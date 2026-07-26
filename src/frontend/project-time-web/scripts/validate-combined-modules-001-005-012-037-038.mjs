@@ -19,30 +19,36 @@ const [
   combined,
   publicReadiness,
   safeExpense,
+  authoritative,
   compatibility,
   roleAdmin,
   matrix,
   ptcPortal,
+  timerTargetsPortal,
   timerRecovery,
   main,
+  routeBoundary,
+  routeCss,
   expensePanel,
   certifyCenter,
-  certifyCss,
   startupTest
 ] = await Promise.all([
   read('src/backend/ProjectTime.Api/ProjectTime.Api.csproj'),
   read('src/backend/ProjectTime.Api/Modules/CombinedModuleRuntimeModule.cs'),
   read('src/backend/ProjectTime.Api/Modules/CombinedModulePublicReadiness.cs'),
   read('src/backend/ProjectTime.Api/Modules/Module005ProjectExpenseSafeEndpoints.cs'),
+  read('src/frontend/project-time-web/src/projectpulse-authoritative-api.js'),
   read('src/frontend/project-time-web/src/runtime-data-compatibility.js'),
   read('src/frontend/project-time-web/src/RoleAdminDirectoryPanel.jsx'),
   read('src/frontend/project-time-web/src/RolesPermissionsMatrix.jsx'),
   read('src/frontend/project-time-web/src/module001/PtcTimesheetManagementPortal.jsx'),
+  read('src/frontend/project-time-web/src/module001/TimesheetEnhancementPortal.jsx'),
   read('src/frontend/project-time-web/src/module001/Module001ActiveTimerRecoveryPortal.jsx'),
   read('src/frontend/project-time-web/src/main.jsx'),
+  read('src/frontend/project-time-web/src/CriticalRoutePresentationBoundary.jsx'),
+  read('src/frontend/project-time-web/src/critical-route-presentation.css'),
   read('src/frontend/project-time-web/src/ProjectAllocationInfoPanel.jsx'),
   read('src/frontend/project-time-web/src/CertifyIntegrationCenter.jsx'),
-  read('src/frontend/project-time-web/src/certify-integration-center.css'),
   read('tests/test-projectpulse-api-startup.sh')
 ]);
 
@@ -59,6 +65,8 @@ rejectAll(csproj, [
 requireAll(combined, [
   '/api/runtime/v2/readiness',
   '/api/runtime/v2/role-policy/summary',
+  '/api/runtime/v2/role-policy/catalog',
+  '/api/runtime/v2/role-policy/versions',
   '/api/runtime/v2/role-policy/matrix',
   '/api/runtime/v2/timesheet/steward/users',
   'combined-modules-001-005-012-037-038-v2',
@@ -114,50 +122,124 @@ rejectAll(safeExpense, [
   'app.MapGet("/api/public/project-expenses/readiness", (Func<Task<IResult>>)GetProjectExpenseReadinessAsync);'
 ], 'Module 005 startup-safe endpoints');
 
+requireAll(authoritative, [
+  "const DIAGNOSTIC_MARKER = 'projectpulse-authoritative-xhr-v1'",
+  'new XMLHttpRequest()',
+  'request.open(method, path, true)',
+  'request.withCredentials = true',
+  "request.setRequestHeader('Authorization', `Bearer ${token}`)",
+  "request.setRequestHeader('X-ProjectPulse-Session', token)",
+  "request.setRequestHeader('X-Project-Pulse-Session', token)",
+  "request.setRequestHeader('X-Session-Token', token)",
+  "request.setRequestHeader('X-ProjectPulse-View-As-User', viewAsUserId)",
+  'requiredCollections',
+  'collectionCounts',
+  'projectpulse:authoritative-api-diagnostic',
+  '__projectPulseAuthoritativeApiDiagnostics'
+], 'Wrapper-independent authoritative API client');
+rejectAll(authoritative, ['window.fetch(', 'fetch(path'], 'Wrapper-independent authoritative API client');
+
 requireAll(compatibility, [
-  'projectpulse-critical-runtime-direct-2026-07-26',
-  "'/api/runtime/role-policy/summary': '/api/runtime/v2/role-policy/summary'",
-  "'/api/runtime/role-policy/matrix': '/api/runtime/v2/role-policy/matrix'",
+  "import { authoritativeApi } from './projectpulse-authoritative-api.js';",
+  "'/api/role-policy/summary': '/api/runtime/v2/role-policy/summary'",
+  "'/api/role-policy/matrix': '/api/runtime/v2/role-policy/matrix'",
   "'/api/runtime/timesheet/steward/users': '/api/timesheet/ptc/users'",
   "'/api/runtime/v2/timesheet/steward/users': '/api/timesheet/ptc/users'",
   '/api/timesheet/ptc/users/',
+  'expectedCollections',
   'normalizePtcWorkspace',
   'allActiveUsersAllowed: true',
+  'projectpulse-authoritative-xhr-compatibility-v2',
+  'responseKeys: error?.diagnostic?.responseKeys'
+], 'Frontend wrapper-independent runtime bridge');
+rejectAll(compatibility, [
+  'projectpulse-critical-runtime-direct-2026-07-26',
   'window.__projectPulseOriginalFetch',
-  'x-projectpulse-authoritative-path',
-  'direct authoritative response'
-], 'Frontend direct authoritative runtime bridge');
+  'directTransport(previousFetch)',
+  'const raw = await response.text()'
+], 'Frontend wrapper-independent runtime bridge');
 
 requireAll(roleAdmin, [
   'REQUIRED_ROLE_COUNT = 12',
   'REQUIRED_MODULE_COUNT = 70',
   '/api/role-policy/summary',
+  '/api/role-policy/catalog',
+  '/api/role-policy/versions',
   'Role-policy data did not load'
 ], 'Module 012 UI');
 requireAll(matrix, [
   'REQUIRED_ROLE_COUNT = 12',
   'REQUIRED_MODULE_COUNT = 70',
   '/api/role-policy/matrix',
+  '/api/role-policy/catalog',
   'Permission matrix did not load'
 ], 'Module 037 UI');
 requireAll(ptcPortal, [
   '/api/runtime/timesheet/steward/users?weekStart=',
+  '/api/runtime/timesheet/steward/users/${encodeURIComponent(selectedUserId)}/workspace?weekStart=',
   'Project Team Coordinator · Time Steward',
   'No submission on behalf'
 ], 'Module 001 time-steward UI');
+
+requireAll(timerTargetsPortal, [
+  "import { authoritativeApi } from '../projectpulse-authoritative-api.js';",
+  '/api/timesheet/timers/targets?weekStart=',
+  "requiredCollections: ['targets']",
+  'regularAssignedTasks',
+  'requestAssignedTasks',
+  'timerTargetCounts',
+  'timerTargetAuthoritativeSources',
+  'timerTargetLoadError',
+  'Existing Timesheet activities remain available'
+], 'Module 001 authoritative timer target collection');
+rejectAll(timerTargetsPortal, [
+  'const response = await fetch(path',
+  'const raw = await response.text()'
+], 'Module 001 authoritative timer target collection');
+
 requireAll(timerRecovery, [
-  'Module001ActiveTimerRecoveryPortal',
+  "import { authoritativeApi } from '../projectpulse-authoritative-api.js';",
+  "document.querySelector('#timesheet')",
   '/api/timesheet/timers/active',
-  'window.setInterval(load, 5000)',
+  'window.setInterval(() => void load(), 5000)',
   'window.setInterval(() => setClock(new Date()), 1000)',
+  'Timer status check failed',
+  'Try timer check again',
   'Running timer recovered',
+  'Timer automatically stopped',
   'Stop timer',
   'Discard'
 ], 'Module 001 persistent active timer recovery');
+rejectAll(timerRecovery, [
+  "document.querySelector('#timesheet.timesheet-page')",
+  'const response = await fetch(path'
+], 'Module 001 persistent active timer recovery');
+
 requireAll(main, [
+  "import './projectpulse-authoritative-api.js';",
+  "import CriticalRoutePresentationBoundary from './CriticalRoutePresentationBoundary.jsx';",
   "import Module001ActiveTimerRecoveryPortal from './module001/Module001ActiveTimerRecoveryPortal.jsx';",
+  '<CriticalRoutePresentationBoundary />',
   '<Module001ActiveTimerRecoveryPortal />'
-], 'Module 001 recovery mount');
+], 'Functional runtime application mounts');
+requireAll(routeBoundary, [
+  "const PREFIX = 'projectpulse-route-'",
+  "window.location.hash.replace(/^#/, '').split('?')[0]",
+  'document.body.classList.add',
+  "window.addEventListener('hashchange', apply)"
+], 'Explicit route presentation boundary');
+requireAll(routeCss, [
+  'body.projectpulse-route-certify-integration .module-grid[aria-label="Core workflow modules"]',
+  'display:none!important',
+  'body.projectpulse-route-certify-integration .certify-integration-center',
+  'max-height:calc(100dvh - 13.5rem)',
+  'overflow-y:auto',
+  'overscroll-behavior:contain',
+  'scrollbar-gutter:stable',
+  'body.projectpulse-route-certify-integration .certify-sync-control-card',
+  'position:sticky'
+], 'Module 038 explicit bounded route presentation');
+
 requireAll(expensePanel, [
   'Project Expense Upload',
   'Select customer',
@@ -178,12 +260,6 @@ requireAll(certifyCenter, [
   'automationAllowed',
   'Secret values remain in environment configuration'
 ], 'Module 038 UI');
-requireAll(certifyCss, [
-  'main.app-shell.route-certify-integration .certify-integration-center',
-  'max-height:calc(100dvh - 15rem)',
-  'overflow-y:auto',
-  'overscroll-behavior:contain'
-], 'Module 038 bounded scrolling');
 requireAll(startupTest, [
   'PROJECTPULSE_API_STARTUP_SMOKE=PASS',
   '/health',
@@ -198,4 +274,4 @@ requireAll(startupTest, [
   'operationalCountsSuppressed=true'
 ], 'API startup smoke test');
 
-console.log('COMBINED_MODULES_001_005_012_037_038_CONTRACTS=PASS');
+console.log('FUNCTIONAL_RUNTIME_UAT_001_012_037_038_CONTRACTS=PASS');

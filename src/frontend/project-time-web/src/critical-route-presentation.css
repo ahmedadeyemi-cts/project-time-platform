@@ -1,0 +1,27 @@
+body.projectpulse-route-certify-integration .module-grid[aria-label="Core workflow modules"]{
+  display:none!important;
+}
+body.projectpulse-route-certify-integration .certify-integration-center{
+  width:min(1480px,100%);
+  max-height:calc(100dvh - 13.5rem);
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  scrollbar-gutter:stable;
+  padding-right:.35rem;
+}
+body.projectpulse-route-certify-integration .certify-sync-control-card{
+  position:sticky;
+  top:0;
+  z-index:5;
+}
+@media(max-width:900px){
+  body.projectpulse-route-certify-integration .certify-integration-center{
+    max-height:none;
+    overflow:visible;
+    scrollbar-gutter:auto;
+    padding-right:0;
+  }
+  body.projectpulse-route-certify-integration .certify-sync-control-card{
+    position:static;
+  }
+}

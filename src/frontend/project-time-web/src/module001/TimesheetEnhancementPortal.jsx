@@ -1,25 +1,8 @@
 import { useEffect, useRef } from 'react';
+import { authoritativeApi } from '../projectpulse-authoritative-api.js';
 import TimesheetEnhancementPortalV2 from './TimesheetEnhancementPortalV2.jsx';
 
 const AUGMENTED_MARKER = '__module001AuthoritativeTimerTargets';
-
-function sessionHeaders() {
-  try {
-    const session = JSON.parse(window.localStorage.getItem('projectPulseAuthSession') || 'null');
-    const token = session?.sessionToken || session?.token || session?.accessToken || '';
-    const headers = token ? {
-      Authorization: `Bearer ${token}`,
-      'X-ProjectPulse-Session': token,
-      'X-Project-Pulse-Session': token,
-      'X-Session-Token': token
-    } : {};
-    const viewAs = JSON.parse(window.localStorage.getItem('projectPulseViewAsUser') || 'null');
-    if (viewAs?.userId) headers['X-ProjectPulse-View-As-User'] = viewAs.userId;
-    return headers;
-  } catch {
-    return {};
-  }
-}
 
 function targetKey(target = {}) {
   const selectionValue = String(target.selectionValue || '').trim();
@@ -63,7 +46,7 @@ function mergeByKey(existing, incoming) {
 }
 
 function synchronizeViewButtons() {
-  const page = document.querySelector('#timesheet.timesheet-page');
+  const page = document.querySelector('#timesheet');
   if (!page?.classList.contains('module001-timer-mode')) return;
 
   const timerButton = page.querySelector('#module001-start-stop-tab');
@@ -135,6 +118,7 @@ export default function TimesheetEnhancementPortal() {
           serviceRequestTasks: Number(payload?.serviceRequestTaskCount ?? assignedTasks.filter((target) => target.groupLabel === 'Service Request Tasks' || target.groupLabel === 'Requests / Service Requests').length),
           nonProject: Number(payload?.nonProjectCount ?? nonProjectCategories.length)
         },
+        timerTargetAuthoritativeSources: Array.isArray(payload?.authoritativeSources) ? payload.authoritativeSources : [],
         timerTargetLoadError: error,
         [AUGMENTED_MARKER]: true
       };
@@ -146,13 +130,15 @@ export default function TimesheetEnhancementPortal() {
       }));
     };
 
-    const enrichSnapshot = async (snapshot) => {
-      if (!snapshot?.selectedWeekStart || snapshot?.[AUGMENTED_MARKER]) return;
+    const enrichSnapshot = async (snapshot, force = false) => {
+      if (!snapshot?.selectedWeekStart) return;
       const weekStart = String(snapshot.selectedWeekStart);
-      latestSnapshotRef.current.set(weekStart, snapshot);
+      const baseSnapshot = force ? { ...snapshot, [AUGMENTED_MARKER]: false } : snapshot;
+      if (baseSnapshot?.[AUGMENTED_MARKER]) return;
+      latestSnapshotRef.current.set(weekStart, baseSnapshot);
 
-      if (cacheRef.current.has(weekStart)) {
-        publish(snapshot, cacheRef.current.get(weekStart));
+      if (!force && cacheRef.current.has(weekStart)) {
+        publish(baseSnapshot, cacheRef.current.get(weekStart));
         return;
       }
       if (pendingRef.current.has(weekStart)) return;
@@ -160,34 +146,15 @@ export default function TimesheetEnhancementPortal() {
 
       try {
         const path = `/api/timesheet/timers/targets?weekStart=${encodeURIComponent(weekStart)}`;
-        const response = await fetch(path, {
-          method: 'GET',
-          credentials: 'include',
-          cache: 'no-store',
-          headers: {
-            ...sessionHeaders(),
-            'Cache-Control': 'no-cache',
-            Pragma: 'no-cache'
-          }
-        });
-        const raw = await response.text();
-        let payload;
-        try {
-          payload = raw ? JSON.parse(raw) : {};
-        } catch {
-          throw new Error(`${path} returned non-JSON content.`);
-        }
-        if (!response.ok) {
-          throw new Error(payload?.message || payload?.detail || `${path} returned HTTP ${response.status}`);
-        }
-        if (!Array.isArray(payload?.targets)) {
-          throw new Error(`${path} returned an incomplete timer-target payload.`);
-        }
-
+        const payload = await authoritativeApi(path, { requiredCollections: ['targets'] });
         cacheRef.current.set(weekStart, payload);
-        publish(latestSnapshotRef.current.get(weekStart) || snapshot, payload);
+        publish(latestSnapshotRef.current.get(weekStart) || baseSnapshot, payload);
       } catch (error) {
-        publish(latestSnapshotRef.current.get(weekStart) || snapshot, { targets: [] }, error?.message || 'Unable to load assigned timer targets. Existing Timesheet activities remain available.');
+        publish(
+          latestSnapshotRef.current.get(weekStart) || baseSnapshot,
+          { targets: [] },
+          error?.message || 'Unable to load assigned timer targets. Existing Timesheet activities remain available.'
+        );
       } finally {
         pendingRef.current.delete(weekStart);
       }
@@ -196,13 +163,19 @@ export default function TimesheetEnhancementPortal() {
     const handleSnapshot = (event) => {
       void enrichSnapshot(event?.detail || window.__projectPulseModule001Snapshot || null);
     };
+    const handleAuthSession = () => {
+      cacheRef.current.clear();
+      void enrichSnapshot(window.__projectPulseModule001Snapshot || null, true);
+    };
 
     window.addEventListener('projectpulse:module001-state', handleSnapshot);
+    window.addEventListener('projectpulse:auth-session-ready', handleAuthSession);
     queueMicrotask(() => void enrichSnapshot(window.__projectPulseModule001Snapshot || null));
 
     return () => {
       disposed = true;
       window.removeEventListener('projectpulse:module001-state', handleSnapshot);
+      window.removeEventListener('projectpulse:auth-session-ready', handleAuthSession);
     };
   }, []);
 
