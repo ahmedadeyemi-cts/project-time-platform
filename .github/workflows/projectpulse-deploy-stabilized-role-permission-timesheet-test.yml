@@ -210,10 +210,12 @@ jobs:
             if [[ "$STATUS" == 200 && -n "$JS" ]]; then
               case "$JS" in http*) URL="$JS" ;; /*) URL="$BASE$JS" ;; *) URL="$BASE/$JS" ;; esac
               curl -sSL -H 'Cache-Control: no-cache' -o /tmp/srpt-app.js "$URL?release_check=$BUSTER" || true
-              if grep -Fq 'PtcTimeStewardGate' /tmp/srpt-app.js \
+              if grep -Fq 'projectPulseViewAsUser' /tmp/srpt-app.js \
+                && grep -Fq 'PROJECT_TEAM_COORDINATOR' /tmp/srpt-app.js \
+                && grep -Fq 'SUPER_ADMINISTRATOR' /tmp/srpt-app.js \
                 && grep -Fq '/api/timesheet/timers/targets' /tmp/srpt-app.js \
-                && grep -Fq 'time_steward_role_required' /tmp/srpt-app.js \
                 && grep -Fq '/api/runtime/role-policy/summary' /tmp/srpt-app.js \
+                && grep -Fq 'The server returned 0 eligible users.' /tmp/srpt-app.js \
                 && grep -Fq 'Regular Tasks' /tmp/srpt-app.js \
                 && grep -Fq 'Service Request Tasks' /tmp/srpt-app.js \
                 && grep -Fq 'Non-Project Time' /tmp/srpt-app.js; then READY=true; break; fi
