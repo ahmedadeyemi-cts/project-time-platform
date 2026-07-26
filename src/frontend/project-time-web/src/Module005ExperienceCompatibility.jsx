@@ -45,7 +45,7 @@ function convertDeleteActionsToReupload() {
     const text = String(button.textContent || '').trim();
     if (text !== 'Delete' && button.dataset.projectpulseReupload !== 'true') return;
 
-    setTextWhenChanged(button, 'Re-upload');
+    if (button.textContent !== 'Re-upload') button.textContent = 'Re-upload';
     setAttributeWhenChanged(button, 'aria-label', 'Re-upload a replacement expense file for this version');
 
     if (button.dataset.projectpulseReupload === 'true') return;
