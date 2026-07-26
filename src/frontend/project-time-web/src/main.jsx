@@ -1,5 +1,6 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
+import './projectpulse-authoritative-api.js';
 import './module-availability-bridge.js';
 import './api-error-presentation.js';
 import './runtime-data-compatibility.js';
@@ -8,6 +9,7 @@ import HelpAssistant from './HelpAssistant.jsx';
 import ModulesDirectoryPortal from './ModulesDirectoryPortal.jsx';
 import ModuleAvailabilityController from './ModuleAvailabilityController.jsx';
 import DashboardPersonalCalendarPortal from './DashboardPersonalCalendarPortal.jsx';
+import CriticalRoutePresentationBoundary from './CriticalRoutePresentationBoundary.jsx';
 import TimesheetEnhancementPortal from './module001/TimesheetEnhancementPortal.jsx';
 import Module001ActiveTimerRecoveryPortal from './module001/Module001ActiveTimerRecoveryPortal.jsx';
 import PtcTimeStewardGate from './module001/PtcTimeStewardGate.jsx';
@@ -25,6 +27,7 @@ import './module001/module001-uat-fixes.css';
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <App />
+    <CriticalRoutePresentationBoundary />
     <ModulesDirectoryPortal />
     <ModuleAvailabilityController />
     <DashboardPersonalCalendarPortal />
