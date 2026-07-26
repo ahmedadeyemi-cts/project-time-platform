@@ -258,7 +258,7 @@ jobs:
 
           wait_status health "$BASE/health" '200' false
           wait_status version "$BASE/api/version" '200' true
-          wait_json_contract combined-readiness "$BASE/health/combined-modules" \
+          wait_json_contract combined-readiness "$BASE/api/runtime/v2/readiness" \
             '.status == "combined_module_runtime_ready" and .roleCount == 12 and .moduleCount == 70 and .foundationalMigrationCount == 2 and .expenseMigrationCount == 2 and .expenseTableCount == 6'
           wait_json_contract project-expense-readiness "$BASE/api/project-expenses/readiness" \
             '.status == "project_expense_runtime_ready" and .migrationCount == 2 and .tableCount == 6 and .safeProfileCount == 1 and .permissionCount == 7 and .automaticSyncEnabled == false'
