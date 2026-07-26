@@ -195,39 +195,106 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          command -v jq >/dev/null
           BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"
+          DIAGNOSTICS=/tmp/cmb-api-validation
+          mkdir -p "$DIAGNOSTICS"
+
+          request_probe() {
+            local name="$1" url="$2" attempt="$3" separator='?'
+            [[ "$url" == *\?* ]] && separator='&'
+            local probe_url="${url}${separator}release_check=cmb-api-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${attempt}"
+            curl -sS \
+              -D "$DIAGNOSTICS/${name}.headers" \
+              -o "$DIAGNOSTICS/${name}.body" \
+              -w '%{http_code}' \
+              -H 'Cache-Control: no-cache, no-store, max-age=0' \
+              -H 'Pragma: no-cache' \
+              "$probe_url" || true
+          }
+
+          content_type() {
+            local name="$1"
+            awk 'BEGIN{IGNORECASE=1} /^content-type:/ {gsub(/\r/, ""); print $2}' \
+              "$DIAGNOSTICS/${name}.headers" 2>/dev/null | tail -1
+          }
+
           wait_status() {
-            local url="$1" expected="$2" require_json="$3" status='' type=''
+            local name="$1" url="$2" expected="$3" require_json="$4" status='' type=''
             for attempt in $(seq 1 36); do
-              status="$(curl -sS -D /tmp/cmb-headers -o /tmp/cmb-body -w '%{http_code}' -H 'Cache-Control: no-cache' "$url" || true)"
-              type="$(awk 'BEGIN{IGNORECASE=1} /^content-type:/ {gsub(/\r/, ""); print $2}' /tmp/cmb-headers | tail -1)"
-              if [[ ",$expected," == *",$status,"* ]]; then
-                [[ "$require_json" != true || "$type" == application/json* ]] || { cat /tmp/cmb-body >&2 || true; return 1; }
+              status="$(request_probe "$name" "$url" "$attempt")"
+              type="$(content_type "$name")"
+              printf 'PROBE name=%s attempt=%s status=%s type=%s\n' "$name" "$attempt" "$status" "$type" \
+                | tee "$DIAGNOSTICS/${name}.last-status"
+              if [[ ",$expected," == *",$status,"* ]] \
+                 && [[ "$require_json" != true || "$type" == application/json* ]]; then
                 return 0
               fi
               sleep 10
             done
-            echo "$url returned $status" >&2
-            cat /tmp/cmb-body >&2 || true
+            echo "$url did not reach expected status $expected with the required content type." >&2
+            cat "$DIAGNOSTICS/${name}.body" >&2 || true
             return 1
           }
-          wait_status "$BASE/health" '200' false
-          wait_status "$BASE/api/version" '200' true
-          wait_status "$BASE/health/combined-modules" '200' true
-          grep -Fq '"status":"combined_module_runtime_ready"' /tmp/cmb-body
-          grep -Fq '"roleCount":12' /tmp/cmb-body
-          grep -Fq '"moduleCount":70' /tmp/cmb-body
-          grep -Fq '"foundationalMigrationCount":2' /tmp/cmb-body
-          grep -Fq '"expenseMigrationCount":2' /tmp/cmb-body
-          grep -Fq '"expenseTableCount":6' /tmp/cmb-body
-          wait_status "$BASE/api/project-expenses/readiness" '200' true
-          grep -Fq '"status":"project_expense_runtime_ready"' /tmp/cmb-body
-          wait_status "$BASE/api/runtime/v2/role-policy/summary" '401,403' true
-          wait_status "$BASE/api/runtime/v2/role-policy/matrix" '401,403' true
-          wait_status "$BASE/api/runtime/v2/timesheet/steward/users" '401,403' true
-          wait_status "$BASE/api/project-expenses/context" '401,403' true
-          wait_status "$BASE/api/project-expenses/uploads" '401,403' true
-          wait_status "$BASE/api/certify/connection" '401,403' true
+
+          wait_json_contract() {
+            local name="$1" url="$2" filter="$3" status='' type=''
+            for attempt in $(seq 1 36); do
+              status="$(request_probe "$name" "$url" "$attempt")"
+              type="$(content_type "$name")"
+              printf 'CONTRACT_PROBE name=%s attempt=%s status=%s type=%s\n' "$name" "$attempt" "$status" "$type" \
+                | tee "$DIAGNOSTICS/${name}.last-status"
+              if [[ "$status" == 200 && "$type" == application/json* ]] \
+                 && jq -e "$filter" "$DIAGNOSTICS/${name}.body" >/dev/null 2>&1; then
+                jq . "$DIAGNOSTICS/${name}.body" > "$DIAGNOSTICS/${name}.verified.json"
+                return 0
+              fi
+              sleep 10
+            done
+            echo "$url did not expose the required JSON contract." >&2
+            cat "$DIAGNOSTICS/${name}.body" >&2 || true
+            return 1
+          }
+
+          wait_status health "$BASE/health" '200' false
+          wait_status version "$BASE/api/version" '200' true
+          wait_json_contract combined-readiness "$BASE/health/combined-modules" \
+            '.status == "combined_module_runtime_ready" and .roleCount == 12 and .moduleCount == 70 and .foundationalMigrationCount == 2 and .expenseMigrationCount == 2 and .expenseTableCount == 6'
+          wait_json_contract project-expense-readiness "$BASE/api/project-expenses/readiness" \
+            '.status == "project_expense_runtime_ready" and .migrationCount == 2 and .tableCount == 6 and .safeProfileCount == 1 and .permissionCount == 7 and .automaticSyncEnabled == false'
+          wait_status role-policy-summary "$BASE/api/runtime/v2/role-policy/summary" '401,403' true
+          wait_status role-policy-matrix "$BASE/api/runtime/v2/role-policy/matrix" '401,403' true
+          wait_status time-steward-users "$BASE/api/runtime/v2/timesheet/steward/users" '401,403' true
+          wait_status project-expense-context "$BASE/api/project-expenses/context" '401,403' true
+          wait_status project-expense-uploads "$BASE/api/project-expenses/uploads" '401,403' true
+          wait_status certify-connection "$BASE/api/certify/connection" '401,403' true
+          echo 'COMBINED_MODULES_LIVE_API_CONTRACT=READY'
+
+      - name: Capture combined API validation diagnostics
+        if: ${{ failure() && steps.deploy_api.outputs.started == 'true' }}
+        shell: bash
+        run: |
+          set +e
+          mkdir -p evidence/combined-api-validation
+          cp -R /tmp/cmb-api-validation/. evidence/combined-api-validation/ 2>/dev/null || true
+          az containerapp show \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' \
+            --query '{latestRevisionName:properties.latestRevisionName,latestReadyRevisionName:properties.latestReadyRevisionName,provisioningState:properties.provisioningState,activeRevisionsMode:properties.configuration.activeRevisionsMode,configuredImage:properties.template.containers[0].image}' \
+            -o json > evidence/combined-api-validation/containerapp.json 2>&1 || true
+          az containerapp revision list \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' \
+            --query '[].{name:name,active:properties.active,trafficWeight:properties.trafficWeight,provisioningState:properties.provisioningState,healthState:properties.healthState,image:properties.template.containers[0].image}' \
+            -o json > evidence/combined-api-validation/revisions.json 2>&1 || true
+
+      - name: Upload combined API validation diagnostics
+        if: ${{ failure() && steps.deploy_api.outputs.started == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: combined-api-validation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: evidence/combined-api-validation
+          retention-days: 7
 
       - name: Deploy combined web
         id: deploy_web
