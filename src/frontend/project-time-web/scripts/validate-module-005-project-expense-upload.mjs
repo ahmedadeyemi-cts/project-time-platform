@@ -79,14 +79,13 @@ if (externalAvailable) {
     'LoadAccessibleProjectsAsync', 'LoadEligibleOwnersAsync',
     'Only Project Management, PM Leads, and Super Administrators may upload on behalf',
     'ENGINEERING', 'ENGINEERING_LEAD',
-    'project_expense_summary_loaded'
+    'uploadedAt', 'project_expense_summary_loaded'
   ], 'Project and role scope');
 
   requireAll(commands, [
     'project_expense_uploads', 'project_expense_lines',
     'UPLOAD_SUPERSEDED', 'UPLOAD_DELETED', 'PRIOR_VERSION_RESTORED',
-    'source_file_bytes', 'uploaded_at',
-    'QueueExpenseNotificationAsync'
+    'source_file_bytes', 'QueueExpenseNotificationAsync'
   ], 'Upload version workflow');
 
   requireAll(mail, [
@@ -110,6 +109,7 @@ if (externalAvailable) {
     '044_project_expense_upload_certify_connection',
     'project_expense_uploads', 'project_expense_lines', 'project_expense_events',
     'project_expense_mail_outbox', 'certify_connection_profiles', 'certify_expense_import_runs',
+    'uploaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()',
     'VIEW_PROJECT_EXPENSE_UPLOAD', 'UPLOAD_PROJECT_EXPENSE_SELF',
     'UPLOAD_PROJECT_EXPENSE_ON_BEHALF', 'IMPORT_PROJECT_EXPENSE_CERTIFY',
     'VIEW_PROJECT_EXPENSE_INVOICE_CONTEXT', 'MANAGE_CERTIFY_CONNECTION',
