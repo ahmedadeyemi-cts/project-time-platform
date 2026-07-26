@@ -27,4 +27,17 @@ jobs:
 
       - name: Test migration 045 apply, idempotence, safe rollback, and rollback guards
         shell: bash
-        run: bash tests/test-microsoft-integration-migration-045.sh
+        run: |
+          set +e
+          bash tests/test-microsoft-integration-migration-045.sh > /tmp/microsoft-integration-migration-045.log 2>&1
+          status=$?
+          cat /tmp/microsoft-integration-migration-045.log
+          exit $status
+
+      - name: Upload migration 045 diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: microsoft-integration-migration-045-diagnostics
+          path: /tmp/microsoft-integration-migration-045.log
+          retention-days: 7
