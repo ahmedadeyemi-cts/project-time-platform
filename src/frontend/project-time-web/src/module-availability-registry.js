@@ -77,4 +77,8 @@ export function canonicalModuleRoute(route) { const normalized = String(route ||
 export function moduleForRoute(route) { return MODULE_BY_ROUTE.get(canonicalModuleRoute(route)) || null; }
 export function moduleForNumber(moduleNumber) { return MODULE_BY_NUMBER.get(String(moduleNumber || '').trim().toUpperCase()) || null; }
 export function currentProjectPulseRoute() { return canonicalModuleRoute(window.location.hash || '#dashboard') || 'dashboard'; }
-export function replaceTimesheetLabel(value) { return String(value ?? '').replace(/\bTime Entry\b/g, 'Timesheet'); }
+export function replaceTimesheetLabel(value) {
+  return String(value ?? '')
+    .replace(/\bTime Entry\b/g, 'Timesheet')
+    .replace(/\bProject Allocation(?:\s*(?:\/|&|and)\s*)Info\b/gi, 'Project Expense Upload');
+}
