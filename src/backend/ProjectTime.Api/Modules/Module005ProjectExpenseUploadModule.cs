@@ -186,7 +186,10 @@ public static partial class Module005ProjectExpenseUploadModule
     private sealed record ExpenseUploadRecord(Guid UploadId, Guid ProjectId, Guid OwnerUserId, Guid UploadedByUserId, DateOnly? PeriodStart, DateOnly? PeriodEnd);
     private sealed record CertifyProfile(Guid Id, string EnvironmentName, string BaseUrl, string ApiKeyEnvironmentName, string ApiSecretEnvironmentName, string CompanyId, string ConnectionStatus, bool AutomaticSyncEnabled, string SyncCadence, DateTimeOffset? LastTestedAt, string LastTestResult, DateTimeOffset? LastSuccessfulSyncAt);
     private sealed record ParsedExpenseLine(int LineNumber, string EmployeeName, string EmployeeEmail, string DepartmentName, string DepartmentCode, DateOnly? ExpenseDate, string Category, string GlCode, decimal Amount, bool Reimbursable, decimal ReimbursableAmount, string Currency, string Reason, bool IsSummaryLine, string SourceJson);
-    private sealed record ParsedExpenseFile(string FormatCode, List<ParsedExpenseLine> Lines, DateOnly? PeriodStart, DateOnly? PeriodEnd, string Currency, decimal TotalAmount, decimal ReimbursableAmount, string? SourceReportId);
+    private sealed record ParsedExpenseFile(string FormatCode, List<ParsedExpenseLine> Lines, DateOnly? PeriodStart, DateOnly? PeriodEnd, string Currency, decimal TotalAmount, decimal ReimbursableAmount, string? SourceReportId)
+    {
+        public int LineCount => Lines.Count;
+    }
     private sealed record CertifyCall(bool Success, int StatusCode, string Message, JsonElement? Json);
     private sealed record MailOutboxRow(Guid OutboxId, string[] To, string[] Cc, string Subject, string TextBody, string HtmlBody);
     private sealed record MailDelivery(bool Success, string Status, string Provider, string ProviderMessageId, string Message);
