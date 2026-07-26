@@ -30,6 +30,12 @@ for value in \
   'projectPulseViewAsUser' \
   'PROJECT_TEAM_COORDINATOR' \
   'SUPER_ADMINISTRATOR' \
+  '--revision-suffix "srptapi-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"' \
+  '--revision-suffix "srptweb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"' \
+  '--revision-suffix "srptapirb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"' \
+  '--revision-suffix "srptwebrb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"' \
+  'stabilized-role-permission-timesheet-test-${{ github.run_id }}-${{ github.run_attempt }}' \
+  '"runAttempt":"${{ github.run_attempt }}"' \
   'Roll back API and web images on failure'
 do
   require "$value"
@@ -65,6 +71,15 @@ for forbidden in \
   'az role assignment create' 'database/migrations/' 'psql '
 do
   grep -Fq -- "$forbidden" "$WORKFLOW" && fail "Forbidden workflow behavior: $forbidden"
+done
+
+for stale_suffix in \
+  '--revision-suffix "srptapi-${GITHUB_RUN_ID}"' \
+  '--revision-suffix "srptweb-${GITHUB_RUN_ID}"' \
+  '--revision-suffix "srptapirb-${GITHUB_RUN_ID}"' \
+  '--revision-suffix "srptwebrb-${GITHUB_RUN_ID}"'
+do
+  grep -Fq -- "$stale_suffix" "$WORKFLOW" && fail "Run-ID-only revision suffix remains: $stale_suffix"
 done
 
 [[ "$(grep -Fc 'az containerapp update' "$WORKFLOW")" == 4 ]] || fail 'Expected API/web deployment plus API/web rollback.'
