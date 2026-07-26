@@ -77,6 +77,8 @@ printf 'STABILIZED_MIGRATION_043_COUNT=%s\n' "$MIGRATION_043_COUNT"
 (( SUPER_ADMIN_COUNT > 0 )) || { echo 'ERROR: No active Super Administrator assignment was found.' >&2; exit 1; }
 (( ELIGIBLE_USER_COUNT > 0 )) || { echo 'ERROR: No active Engineer, Engineering Lead, Project Management, or Project Management Lead assignments were found.' >&2; exit 1; }
 (( ASSIGNMENT_TARGET_COUNT > 0 )) || { echo 'ERROR: No active user-to-project-task assignments were found for timer targets.' >&2; exit 1; }
+(( REGULAR_TASK_COUNT > 0 )) || { echo 'ERROR: No active Regular Task timer targets were found.' >&2; exit 1; }
+(( SERVICE_REQUEST_COUNT > 0 )) || { echo 'ERROR: No active Request or Service Request timer targets were found.' >&2; exit 1; }
 (( REGULAR_TASK_COUNT + SERVICE_REQUEST_COUNT == ASSIGNMENT_TARGET_COUNT )) || { echo 'ERROR: Timer assignment classification counts do not reconcile.' >&2; exit 1; }
 (( NON_PROJECT_COUNT > 0 )) || { echo 'ERROR: No active non-project time categories were found.' >&2; exit 1; }
 [[ "$MIGRATION_043_COUNT" == 1 ]] || { echo 'ERROR: Migration 043 is not registered.' >&2; exit 1; }
