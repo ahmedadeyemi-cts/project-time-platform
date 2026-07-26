@@ -53,8 +53,7 @@ function rewritePath(pathname) {
     '/api/runtime/role-policy/versions': '/api/runtime/v2/role-policy/versions',
     '/api/role-policy/matrix': '/api/runtime/v2/role-policy/matrix',
     '/api/runtime/role-policy/matrix': '/api/runtime/v2/role-policy/matrix',
-    '/api/timesheet/ptc/users': '/api/runtime/v2/timesheet/steward/users',
-    '/api/runtime/timesheet/steward/users': '/api/runtime/v2/timesheet/steward/users',
+    '/api/runtime/timesheet/steward/users': '/api/timesheet/ptc/users',
     '/api/runtime/v2/timesheet/steward/users': '/api/timesheet/ptc/users'
   };
   if (exact[pathname]) return exact[pathname];
@@ -63,18 +62,11 @@ function rewritePath(pathname) {
       .replace('/api/runtime/role-policy/roles/', '/api/runtime/v2/role-policy/roles/')
       .replace('/api/role-policy/roles/', '/api/runtime/v2/role-policy/roles/');
   }
-  if (/^\/api\/runtime\/v2\/timesheet\/steward\/users\/[0-9a-f-]+\/workspace$/i.test(pathname)) {
+  if (/^\/api\/runtime\/(?:v2\/)?timesheet\/steward\/users\/[0-9a-f-]+\/workspace$/i.test(pathname)) {
     return pathname
       .replace('/api/runtime/v2/timesheet/steward/users/', '/api/timesheet/ptc/users/')
+      .replace('/api/runtime/timesheet/steward/users/', '/api/timesheet/ptc/users/')
       .replace(/\/workspace$/, '/entries');
-  }
-  if (/^\/api\/timesheet\/ptc\/users\/[0-9a-f-]+\/entries$/i.test(pathname)) {
-    return pathname
-      .replace('/api/timesheet/ptc/users/', '/api/runtime/v2/timesheet/steward/users/')
-      .replace(/\/entries$/, '/workspace');
-  }
-  if (/^\/api\/runtime\/timesheet\/steward\/users\/[0-9a-f-]+\/workspace$/i.test(pathname)) {
-    return pathname.replace('/api/runtime/timesheet/steward/users/', '/api/runtime/v2/timesheet/steward/users/');
   }
   return '';
 }
