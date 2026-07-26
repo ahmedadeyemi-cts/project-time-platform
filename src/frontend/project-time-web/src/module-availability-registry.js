@@ -8,7 +8,7 @@ export const PROJECTPULSE_MODULES = Object.freeze([
   Object.freeze({ moduleNumber: '007', route: 'workflow', displayName: 'Approval / Export / Audit Workflow', group: 'Approvals' }),
   Object.freeze({ moduleNumber: '008', route: 'audit-history', displayName: 'Audit History', group: 'Security & Audit' }),
   Object.freeze({ moduleNumber: '009', route: 'user-admin', displayName: 'User Administration', group: 'Administration' }),
-  Object.freeze({ moduleNumber: '010', route: 'azure-admin', displayName: 'Azure / Entra Administration', group: 'Administration' }),
+  Object.freeze({ moduleNumber: '010', route: 'azure-admin', displayName: 'Azure / Entra Directory Users', group: 'Administration' }),
   Object.freeze({ moduleNumber: '011', route: 'work-task-builder', displayName: 'Work Task Builder', group: 'Project Delivery' }),
   Object.freeze({ moduleNumber: '012', route: 'role-admin', displayName: 'Role Administration', group: 'Administration' }),
   Object.freeze({ moduleNumber: '013', route: 'service-control', displayName: 'Service Control', group: 'Platform Operations' }),
@@ -44,9 +44,8 @@ export const PROJECTPULSE_MODULES = Object.freeze([
   Object.freeze({ moduleNumber: '060', route: 'contracts', displayName: 'Contracts', group: 'Project Operations' }),
   Object.freeze({ moduleNumber: '063', route: 'opportunities', displayName: 'Opportunities', group: 'Sales & Opportunities' }),
   Object.freeze({ moduleNumber: '064', route: 'ai-provider-configuration', displayName: 'AI Provider Configuration Center', group: 'Security' }),
-  Object.freeze({ moduleNumber: '065', route: 'entra-secret-administration', displayName: 'Entra Secret Administration', group: 'Security' }),
+  Object.freeze({ moduleNumber: '065', route: 'entra-secret-administration', displayName: 'Microsoft Integration', group: 'Integrations' }),
   Object.freeze({ moduleNumber: '066', route: 'project-flowhive', displayName: 'Project FlowHive', group: 'Project Delivery' }),
-  Object.freeze({ moduleNumber: '067', route: 'global-mail-configuration', displayName: 'Global Mail Configuration Center', group: 'Platform Operations' }),
   Object.freeze({ moduleNumber: '068', route: 'system-architecture', displayName: 'System Architecture & Dependency Map', group: 'Platform Operations' }),
   Object.freeze({ moduleNumber: '069', route: 'qualifications-certifications', displayName: 'Qualifications & Certification Matrix', group: 'Resources' }),
   Object.freeze({ moduleNumber: '070', route: 'capacity-pipeline-forecast', displayName: 'Capacity & Pipeline Forecasting', group: 'Resource Management' }),
@@ -68,7 +67,8 @@ export const PROJECTPULSE_MODULES = Object.freeze([
 const ROUTE_ALIASES = Object.freeze({
   'project-manager-workload': 'project-workload',
   'project-management-workload': 'project-workload',
-  'resource-assignment-handoff': 'signed-handoff'
+  'resource-assignment-handoff': 'signed-handoff',
+  'global-mail-configuration': 'entra-secret-administration'
 });
 
 export const MODULE_BY_NUMBER = new Map(PROJECTPULSE_MODULES.map((module) => [module.moduleNumber.toUpperCase(), module]));
