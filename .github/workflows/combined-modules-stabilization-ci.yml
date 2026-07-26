@@ -1,0 +1,106 @@
+name: Validate Combined Modules 001 005 012 037 038
+
+on:
+  pull_request:
+    paths:
+      - 'src/backend/ProjectTime.Api/Modules/CombinedModuleRuntimeModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/Module005ProjectExpenseSafeEndpoints.cs'
+      - 'src/backend/ProjectTime.Api/Modules/Module005*'
+      - 'src/backend/ProjectTime.Api/Modules/Module038*'
+      - 'src/backend/ProjectTime.Api/ProjectTime.Api.csproj'
+      - 'src/frontend/project-time-web/src/runtime-data-compatibility.js'
+      - 'src/frontend/project-time-web/src/RoleAdminDirectoryPanel.jsx'
+      - 'src/frontend/project-time-web/src/RolesPermissionsMatrix.jsx'
+      - 'src/frontend/project-time-web/src/module001/**'
+      - 'src/frontend/project-time-web/src/ProjectAllocationInfoPanel.jsx'
+      - 'src/frontend/project-time-web/src/CertifyIntegrationCenter.jsx'
+      - 'src/frontend/project-time-web/scripts/validate-combined-modules-001-005-012-037-038.mjs'
+      - 'tests/test-projectpulse-api-startup.sh'
+      - 'tests/Module005ExpenseParserTests/**'
+      - 'tests/test-project-expense-migration-044.sh'
+      - '.github/workflows/combined-modules-stabilization-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: combined-modules-001-005-012-037-038-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Build combined API release
+        shell: bash
+        run: |
+          set +e
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj \
+            --configuration Release --nologo --verbosity:quiet \
+            > /tmp/combined-api-build.log 2>&1
+          STATUS=$?
+          cat /tmp/combined-api-build.log
+          exit "$STATUS"
+
+      - name: Upload combined API diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: combined-modules-api-build-diagnostics
+          path: /tmp/combined-api-build.log
+          retention-days: 7
+
+      - name: Start API and verify endpoint registration
+        shell: bash
+        run: |
+          set +e
+          bash tests/test-projectpulse-api-startup.sh \
+            > /tmp/combined-api-startup-test.log 2>&1
+          STATUS=$?
+          cat /tmp/combined-api-startup-test.log
+          exit "$STATUS"
+
+      - name: Upload combined API startup diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: combined-modules-api-startup-diagnostics
+          path: |
+            /tmp/combined-api-startup-test.log
+            /tmp/projectpulse-api-startup-*.log
+            /tmp/projectpulse-startup-*.json
+          retention-days: 7
+
+      - name: Test both Certify spreadsheet and CSV formats
+        shell: bash
+        run: |
+          dotnet run --project tests/Module005ExpenseParserTests/Module005ExpenseParserTests.csproj \
+            --configuration Release | tee /tmp/combined-module005-parser.log
+          grep -Fq 'MODULE_005_EXPENSE_PARSER_TEST=PASS formats=4 total=2377.26 normalizedCategories=7' /tmp/combined-module005-parser.log
+
+      - name: Test migrations 044 and 044a
+        shell: bash
+        run: |
+          bash tests/test-project-expense-migration-044.sh | tee /tmp/combined-module005-migration.log
+          grep -Fq 'PROJECT_EXPENSE_MIGRATION_044_TEST=PASS apply=true idempotent=true safeRollback=true guardedRollback=true immutableAudit=true' /tmp/combined-module005-migration.log
+
+      - name: Validate combined module source contracts
+        working-directory: src/frontend/project-time-web
+        run: node ./scripts/validate-combined-modules-001-005-012-037-038.mjs
+
+      - name: Build combined frontend production bundle
+        working-directory: src/frontend/project-time-web
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build

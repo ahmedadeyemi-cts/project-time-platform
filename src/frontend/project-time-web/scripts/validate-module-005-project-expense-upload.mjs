@@ -9,10 +9,13 @@ const optional = async (value) => existsSync(path(value)) ? text(value) : '';
 const requireAll = (source, values, label) => {
   for (const value of values) if (!source.includes(value)) throw new Error(`${label} missing contract: ${value}`);
 };
+const rejectAll = (source, values, label) => {
+  for (const value of values) if (source.includes(value)) throw new Error(`${label} contains forbidden contract: ${value}`);
+};
 
 const [
   module005, module038, portal, main, registry,
-  foundation, parser, data, commands, notificationAuth, mail, certify,
+  foundation, safeEndpoints, parser, data, commands, notificationAuth, mail, certify,
   migration, rollback, project, parserTest, migrationTest
 ] = await Promise.all([
   text('src/frontend/project-time-web/src/ProjectAllocationInfoPanel.jsx'),
@@ -21,6 +24,7 @@ const [
   text('src/frontend/project-time-web/src/main.jsx'),
   text('src/frontend/project-time-web/src/module-availability-registry.js'),
   optional('src/backend/ProjectTime.Api/Modules/Module005ProjectExpenseUploadModule.cs'),
+  optional('src/backend/ProjectTime.Api/Modules/Module005ProjectExpenseSafeEndpoints.cs'),
   optional('src/backend/ProjectTime.Api/Modules/Module005ProjectExpenseParsing.cs'),
   optional('src/backend/ProjectTime.Api/Modules/Module005ProjectExpenseData.cs'),
   optional('src/backend/ProjectTime.Api/Modules/Module005ProjectExpenseCommands.cs'),
@@ -71,16 +75,27 @@ requireAll(registry, [
 ], 'Module registry');
 
 const externalAvailable = [
-  foundation, parser, data, commands, notificationAuth, mail, certify,
+  foundation, safeEndpoints, parser, data, commands, notificationAuth, mail, certify,
   migration, rollback, project, parserTest, migrationTest
 ].every(Boolean);
 
 if (externalAvailable) {
   requireAll(foundation, [
     'DefaultCertifyBaseUrl', 'https://api.certify.com/v1/',
-    'MapModule005ProjectExpenseUploadEndpoints', 'MapModule038CertifyConnectionEndpoints',
+    'MapModule038CertifyConnectionEndpoints',
     'RetryAuthorizedNotificationAsync'
   ], 'Shared Module 005 and 038 foundation');
+
+  requireAll(safeEndpoints, [
+    'MapModule005ProjectExpenseUploadEndpointsSafe',
+    'DeleteUploadFromRequestAsync',
+    'JsonSerializer.DeserializeAsync<ExpenseDeleteRequest>',
+    '/api/project-expenses/readiness',
+    'project_expense_runtime_ready'
+  ], 'Startup-safe Module 005 endpoint registration');
+  rejectAll(safeEndpoints, [
+    '(Func<Guid, ExpenseDeleteRequest, HttpContext, Task<IResult>>)DeleteUploadAsync'
+  ], 'Startup-safe Module 005 endpoint registration');
 
   requireAll(parser, [
     'Department Name', 'Department Code', 'GL Code', 'Reimb Amount',
@@ -154,8 +169,11 @@ if (externalAvailable) {
   ], 'Migration 044 rollback');
 
   requireAll(project, [
-    'app.MapModule005ProjectExpenseUploadEndpoints();',
+    'app.MapModule005ProjectExpenseUploadEndpointsSafe();',
     'app.MapModule038CertifyConnectionEndpoints();'
+  ], 'API registration');
+  rejectAll(project, [
+    'app.MapModule005ProjectExpenseUploadEndpoints();'
   ], 'API registration');
 
   requireAll(parserTest, [

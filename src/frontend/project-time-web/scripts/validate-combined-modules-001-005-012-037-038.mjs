@@ -1,0 +1,141 @@
+import { readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
+
+const root = resolve(process.cwd(), '../../..');
+const read = (value) => readFile(resolve(root, value), 'utf8');
+const requireAll = (source, values, label) => {
+  for (const value of values) {
+    if (!source.includes(value)) throw new Error(`${label} missing contract: ${value}`);
+  }
+};
+const rejectAll = (source, values, label) => {
+  for (const value of values) {
+    if (source.includes(value)) throw new Error(`${label} contains forbidden contract: ${value}`);
+  }
+};
+
+const [
+  csproj,
+  combined,
+  publicReadiness,
+  safeExpense,
+  compatibility,
+  roleAdmin,
+  matrix,
+  ptcPortal,
+  expensePanel,
+  certifyCenter,
+  startupTest
+] = await Promise.all([
+  read('src/backend/ProjectTime.Api/ProjectTime.Api.csproj'),
+  read('src/backend/ProjectTime.Api/Modules/CombinedModuleRuntimeModule.cs'),
+  read('src/backend/ProjectTime.Api/Modules/CombinedModulePublicReadiness.cs'),
+  read('src/backend/ProjectTime.Api/Modules/Module005ProjectExpenseSafeEndpoints.cs'),
+  read('src/frontend/project-time-web/src/runtime-data-compatibility.js'),
+  read('src/frontend/project-time-web/src/RoleAdminDirectoryPanel.jsx'),
+  read('src/frontend/project-time-web/src/RolesPermissionsMatrix.jsx'),
+  read('src/frontend/project-time-web/src/module001/PtcTimesheetManagementPortal.jsx'),
+  read('src/frontend/project-time-web/src/ProjectAllocationInfoPanel.jsx'),
+  read('src/frontend/project-time-web/src/CertifyIntegrationCenter.jsx'),
+  read('tests/test-projectpulse-api-startup.sh')
+]);
+
+requireAll(csproj, [
+  'app.MapCombinedModuleRuntimeEndpoints();',
+  'app.MapCombinedModulePublicReadinessEndpoint();',
+  'app.MapModule005ProjectExpenseUploadEndpointsSafe();',
+  'app.MapModule038CertifyConnectionEndpoints();'
+], 'API generated registration');
+rejectAll(csproj, [
+  'app.MapModule005ProjectExpenseUploadEndpoints();'
+], 'API generated registration');
+
+requireAll(combined, [
+  '/api/runtime/v2/readiness',
+  '/api/runtime/v2/role-policy/summary',
+  '/api/runtime/v2/role-policy/matrix',
+  '/api/runtime/v2/timesheet/steward/users',
+  'combined-modules-001-005-012-037-038-v2',
+  'roleCount == 12',
+  'moduleCount == 70',
+  'eligibleUserCount > 0',
+  'PROJECT_TEAM_COORDINATOR',
+  'SUPER_ADMINISTRATOR',
+  'authoritative_role_policy_summary_loaded',
+  'authoritative_permission_matrix_loaded',
+  'eligible_time_steward_users_missing',
+  'emptyCollectionsAllowed = false'
+], 'Combined backend runtime');
+requireAll(publicReadiness, [
+  'MapCombinedModulePublicReadinessEndpoint',
+  '/health/combined-modules',
+  'CombinedRuntimeReadinessAsync'
+], 'Public combined readiness');
+
+requireAll(safeExpense, [
+  'MapModule005ProjectExpenseUploadEndpointsSafe',
+  '/api/project-expenses/readiness',
+  'DeleteUploadFromRequestAsync',
+  'JsonSerializer.DeserializeAsync<ExpenseDeleteRequest>',
+  'project_expense_runtime_ready',
+  'automaticSyncEnabled = false',
+  'secretsReturned = false'
+], 'Module 005 startup-safe endpoints');
+rejectAll(safeExpense, [
+  'MapDelete("/api/project-expenses/uploads/{uploadId:guid}", (Func<Guid, ExpenseDeleteRequest'
+], 'Module 005 startup-safe endpoints');
+
+requireAll(compatibility, [
+  'projectpulse-combined-runtime-v2-2026-07-26',
+  "'/api/runtime/role-policy/summary': '/api/runtime/v2/role-policy/summary'",
+  "'/api/runtime/role-policy/matrix': '/api/runtime/v2/role-policy/matrix'",
+  "'/api/runtime/timesheet/steward/users': '/api/runtime/v2/timesheet/steward/users'",
+  '/api/runtime/v2/timesheet/steward/users/',
+  'authoritative runtime response'
+], 'Frontend authoritative runtime bridge');
+
+requireAll(roleAdmin, [
+  'REQUIRED_ROLE_COUNT = 12',
+  'REQUIRED_MODULE_COUNT = 70',
+  '/api/role-policy/summary',
+  'Role-policy data did not load'
+], 'Module 012 UI');
+requireAll(matrix, [
+  'REQUIRED_ROLE_COUNT = 12',
+  'REQUIRED_MODULE_COUNT = 70',
+  '/api/role-policy/matrix',
+  'Permission matrix did not load'
+], 'Module 037 UI');
+requireAll(ptcPortal, [
+  '/api/runtime/timesheet/steward/users?weekStart=',
+  'The server returned 0 eligible users',
+  'Project Team Coordinator · Time Steward',
+  'No submission on behalf'
+], 'Module 001 time-steward UI');
+requireAll(expensePanel, [
+  'Project Expense Upload',
+  'Select customer',
+  'Select project',
+  'Select expense owner',
+  'Upload CSV / Excel',
+  'Import from Certify',
+  '/api/project-expenses/upload',
+  '/api/project-expenses/import/certify',
+  'Module 067 Global Mail Configuration'
+], 'Module 005 UI');
+requireAll(certifyCenter, [
+  'Certify Connection &amp; Sync Center',
+  '/api/certify/connection',
+  '/api/certify/connection/test',
+  'Automatic sync is locked',
+  'Secret values remain in environment configuration'
+], 'Module 038 UI');
+requireAll(startupTest, [
+  'PROJECTPULSE_API_STARTUP_SMOKE=PASS',
+  '/health',
+  '/api/version',
+  '/health/combined-modules',
+  'endpointRegistration=ready'
+], 'API startup smoke test');
+
+console.log('COMBINED_MODULES_001_005_012_037_038_CONTRACTS=PASS');
