@@ -69,6 +69,7 @@ jobs:
             --configuration Release > /tmp/module005-parser-tests.log 2>&1
           STATUS=$?
           cat /tmp/module005-parser-tests.log
+          grep -Fq 'MODULE_005_EXPENSE_PARSER_TEST=PASS formats=4 total=2377.26 normalizedCategories=7' /tmp/module005-parser-tests.log || STATUS=1
           exit "$STATUS"
       - name: Upload Module 005 parser diagnostics
         if: failure()
@@ -85,6 +86,7 @@ jobs:
             > /tmp/project-expense-migration-044.log 2>&1
           STATUS=$?
           cat /tmp/project-expense-migration-044.log
+          grep -Fq 'PROJECT_EXPENSE_MIGRATION_044_TEST=PASS apply=true idempotent=true safeRollback=true guardedRollback=true immutableAudit=true' /tmp/project-expense-migration-044.log || STATUS=1
           exit "$STATUS"
       - name: Upload Module 005 migration diagnostics
         if: failure()
