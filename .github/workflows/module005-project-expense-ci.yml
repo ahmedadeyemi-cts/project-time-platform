@@ -52,6 +52,13 @@ jobs:
             echo 'MODULE_005_API_BUILD_ERRORS_END'
           fi
           exit "$STATUS"
+      - name: Upload Module 005 API build diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: module005-api-build-diagnostics
+          path: /tmp/module005-api-build.log
+          retention-days: 7
       - name: Validate Module 005 and 038 frontend contracts
         working-directory: src/frontend/project-time-web
         run: node ./scripts/validate-module-005-project-expense-upload.mjs
