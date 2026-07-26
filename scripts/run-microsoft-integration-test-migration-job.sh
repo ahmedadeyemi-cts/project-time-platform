@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-EXPECTED_RELEASE_COMMIT="13a7b2bddd76026421f833841daf79340c973e18"
+EXPECTED_RELEASE_COMMIT="1ac741b4c50ce10d73a3b1fb061bfa6fa4eb0d3d"
 RESOURCE_GROUP="${AZURE_RESOURCE_GROUP:-}"
 API_APP="${AZURE_API_APP:-}"
 ACR_NAME="${AZURE_ACR_NAME:-}"
@@ -68,7 +68,7 @@ az containerapp job create \
   --registry-password "$REGISTRY_PASSWORD" \
   --secrets "projectpulse-db-url=$DATABASE_URL" \
   --env-vars PROJECTPULSE_TEST_DATABASE_URL=secretref:projectpulse-db-url \
-  --tags projectpulse-scope=microsoft-integration-test projectpulse-release="$EXPECTED_RELEASE_COMMIT" \
+  --tags projectpulse-scope=microsoft-dual-connections-test projectpulse-release="$EXPECTED_RELEASE_COMMIT" \
   --output none --only-show-errors
 JOB_CREATED=1
 unset REGISTRY_PASSWORD DATABASE_URL
@@ -95,4 +95,4 @@ for attempt in $(seq 1 120); do
 done
 
 az containerapp job logs show --resource-group "$RESOURCE_GROUP" --name "$JOB_NAME" --execution "$EXECUTION_NAME" --container "$JOB_NAME" --tail 250 --only-show-errors >&2 || true
-fail "The private-network Microsoft Integration migration job did not succeed."
+fail "The private-network Microsoft dual-connections migration job did not succeed."
