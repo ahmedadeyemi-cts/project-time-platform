@@ -18,10 +18,10 @@ var expectedCategories = new Dictionary<string, decimal>(StringComparer.OrdinalI
 
 var cases = new[]
 {
-    ParseCase("ExpensesByGLDim.xlsx", BuildGlWorkbook(), "gl_dimension", "2026-06-02", "2026-07-20"),
-    ParseCase("ExpensesByCategory.xlsx", BuildCategoryWorkbook(), "category_summary", "2026-06-01", "2026-07-29"),
-    ParseCase("ExpensesByGLDim.csv", BuildGlCsv(), "csv_gl_dimension", "2026-06-02", "2026-07-20"),
-    ParseCase("ExpensesByCategory.csv", BuildCategoryCsv(), "csv_category_summary", "2026-06-01", "2026-07-29")
+    ParseCase("ExpensesByGLDim.xlsx", BuildGlWorkbook(), "gl_dimension", new DateOnly(2026, 6, 2), new DateOnly(2026, 7, 20)),
+    ParseCase("ExpensesByCategory.xlsx", BuildCategoryWorkbook(), "category_summary", new DateOnly(2026, 6, 1), new DateOnly(2026, 7, 29)),
+    ParseCase("ExpensesByGLDim.csv", BuildGlCsv(), "csv_gl_dimension", new DateOnly(2026, 6, 2), new DateOnly(2026, 7, 20)),
+    ParseCase("ExpensesByCategory.csv", BuildCategoryCsv(), "csv_category_summary", new DateOnly(2026, 6, 1), new DateOnly(2026, 7, 29))
 };
 
 foreach (var parsed in cases)
@@ -45,7 +45,7 @@ AssertCategoryTotalsEqual(cases[1], cases[3], "Category Excel and CSV");
 Console.WriteLine("MODULE_005_EXPENSE_PARSER_TEST=PASS formats=4 total=2377.26 normalizedCategories=7");
 return;
 
-static ParsedCase ParseCase(string fileName, byte[] bytes, string expectedFormat, string expectedStart, string expectedEnd)
+static ParsedCase ParseCase(string fileName, byte[] bytes, string expectedFormat, DateOnly expectedStart, DateOnly expectedEnd)
 {
     var type = typeof(Module005ProjectExpenseUploadModule);
     var method = type.GetMethod("ParseExpenseFile", BindingFlags.Static | BindingFlags.NonPublic)
@@ -63,10 +63,8 @@ static ParsedCase ParseCase(string fileName, byte[] bytes, string expectedFormat
 
     var format = Property<string>(parsed, "FormatCode");
     AssertEqual(expectedFormat, format, $"{fileName} format");
-    var start = Property<object?>(parsed, "PeriodStart")?.ToString();
-    var end = Property<object?>(parsed, "PeriodEnd")?.ToString();
-    AssertEqual(expectedStart, start, $"{fileName} period start");
-    AssertEqual(expectedEnd, end, $"{fileName} period end");
+    AssertEqual(expectedStart, DateProperty(parsed, "PeriodStart"), $"{fileName} period start");
+    AssertEqual(expectedEnd, DateProperty(parsed, "PeriodEnd"), $"{fileName} period end");
 
     var categories = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
     var lines = Property<IEnumerable>(parsed, "Lines");
@@ -86,6 +84,15 @@ static ParsedCase ParseCase(string fileName, byte[] bytes, string expectedFormat
         Property<decimal>(parsed, "TotalAmount"),
         Property<decimal>(parsed, "ReimbursableAmount"),
         categories);
+}
+
+static DateOnly DateProperty(object instance, string name)
+{
+    var property = instance.GetType().GetProperty(name, BindingFlags.Instance | BindingFlags.Public)
+        ?? throw new InvalidOperationException($"Property {name} was not found on {instance.GetType().FullName}.");
+    return property.GetValue(instance) is DateOnly date
+        ? date
+        : throw new InvalidOperationException($"Property {name} was null or not a DateOnly.");
 }
 
 static T Property<T>(object instance, string name)
