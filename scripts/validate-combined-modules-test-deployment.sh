@@ -60,6 +60,9 @@ require "$APPLY" 'Expected 70 active scoped modules; found %.'
 require "$APPLY" 'Expected 12 active canonical roles; found %.'
 require "$APPLY" 'No active eligible Engineering or Project Management users were found.'
 require "$APPLY" 'No active Project Team Coordinator or Super Administrator operator exists.'
+require "$APPLY" "to_jsonb(task)->>'work_task_category'"
+require "$APPLY" "to_jsonb(task)->>'work_type'"
+require "$APPLY" "to_jsonb(task)->>'service_request_number'"
 require "$APPLY" 'The governed default Certify profile is missing or automatic sync is unsafe.'
 require "$APPLY" 'COMBINED_MODULES_001_005_012_037_038_DATABASE=APPLIED_OR_VERIFIED'
 
@@ -75,6 +78,7 @@ reject "$WORKFLOW" 'schedule:'
 reject "$WORKFLOW" 'environment:[[:space:]]*production'
 reject "$WORKFLOW" 'PROJECTPULSE_ENVIRONMENT=production'
 reject "$WORKFLOW" 'az[[:space:]]+role[[:space:]]+assignment'
+reject "$APPLY" 'task[.]task_classification'
 reject "$APPLY" 'DROP[[:space:]]+TABLE|TRUNCATE[[:space:]]+TABLE|DELETE[[:space:]]+FROM[[:space:]]+(app_users|projects|project_assignments|timesheets|time_entries|project_tasks)'
 reject "$RUNNER" 'registry-password[[:space:]]+[^"$]'
 
