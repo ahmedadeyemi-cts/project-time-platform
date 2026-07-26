@@ -4,6 +4,7 @@ import './projectpulse-authoritative-api.js';
 import './module-availability-bridge.js';
 import './api-error-presentation.js';
 import './runtime-data-compatibility.js';
+import './microsoft-integration-compatibility.js';
 import App from './App.Module001.g.jsx';
 import HelpAssistant from './HelpAssistant.jsx';
 import ModulesDirectoryPortal from './ModulesDirectoryPortal.jsx';
@@ -15,6 +16,7 @@ import Module001ActiveTimerRecoveryPortal from './module001/Module001ActiveTimer
 import PtcTimeStewardGate from './module001/PtcTimeStewardGate.jsx';
 import ProjectExpenseCrossModulePortal from './ProjectExpenseCrossModulePortal.jsx';
 import Module005ExperienceCompatibility from './Module005ExperienceCompatibility.jsx';
+import MicrosoftIntegrationPortal from './MicrosoftIntegrationPortal.jsx';
 import './approval-access-navigation-compatibility.js';
 import './scoped-rbac-catalog-compatibility.js';
 import './styles.css';
@@ -36,6 +38,7 @@ createRoot(document.getElementById('root')).render(
     <PtcTimeStewardGate />
     <ProjectExpenseCrossModulePortal />
     <Module005ExperienceCompatibility />
+    <MicrosoftIntegrationPortal />
     <HelpAssistant />
   </React.StrictMode>
 );
