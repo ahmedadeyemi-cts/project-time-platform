@@ -27,6 +27,7 @@ const taskPicker = read('src/frontend/project-time-web/src/module001/TimesheetTa
 const durationSource = read('src/frontend/project-time-web/src/module001/timesheet-duration.js');
 const css = read('src/frontend/project-time-web/src/module001/timesheet-prep.css');
 const timerRecoveryCss = read('src/frontend/project-time-web/src/module001/timesheet-timer-recovery.css');
+const uatCss = read('src/frontend/project-time-web/src/module001/module001-uat-fixes.css');
 const packageJson = read('src/frontend/project-time-web/package.json');
 
 for (const view of ['Weekly Grid', 'Daily Focus', 'Quick Entry List']) requireText(generated, view, 'streamlined Timesheet view');
@@ -40,17 +41,22 @@ requireText(generator, 'assignedTasks: assignedOpenTasks', 'canonical assigned-t
 requireText(generator, 'nonProjectCategories: categories', 'canonical non-project source');
 requireText(main, './App.Module001.g.jsx', 'generated App import');
 requireText(main, '<TimesheetEnhancementPortal />', 'portal root integration');
+requireText(main, './module001/module001-uat-fixes.css', 'Module 001 UAT repair styling');
 
 requireText(portalEntry, '/api/timesheet/timers/targets?weekStart=', 'authoritative timer target request');
 requireText(portalEntry, "target.targetType === 'assignment'", 'assigned target extraction');
-requireText(portalEntry, "target.groupLabel === 'Regular Tasks'", 'regular task collection');
-requireText(portalEntry, "target.groupLabel === 'Service Request Tasks'", 'service-request collection');
-requireText(portalEntry, "target.targetType === 'category'", 'non-project target extraction');
+requireText(portalEntry, 'mergeByKey(snapshot.assignedTasks, authoritativeAssignments)', 'assigned task preservation');
+requireText(portalEntry, 'snapshot.nonProjectCategories', 'non-project preservation');
+requireText(portalEntry, "target.targetType === 'category' || target.targetType === 'categoryCode'", 'non-project target extraction');
+requireText(portalEntry, "target.groupLabel === 'Service Request Tasks' || target.groupLabel === 'Requests / Service Requests'", 'service-request collection');
 requireText(portalEntry, 'timerTargetLoadError', 'visible timer target failure evidence');
+requireText(portalEntry, 'Existing Timesheet activities remain available', 'fail-safe target preservation');
 requireText(portalEntry, 'projectpulse:module001-timer-targets', 'timer target state evidence');
 requireText(portalEntry, 'returned an incomplete timer-target payload', 'fail-closed target response');
 requireText(portalEntry, 'X-ProjectPulse-Session', 'timer target session header');
 requireText(portalEntry, 'X-ProjectPulse-View-As-User', 'timer target View-As header');
+requireText(portalEntry, 'synchronizeViewButtons', 'single active Timesheet view');
+requireText(portalEntry, "button.setAttribute('aria-selected', active ? 'true' : 'false')", 'active view accessibility state');
 rejectText(portalEntry, '/api/assignments/available-tasks', 'retired available-task enrichment');
 rejectText(portalEntry, '/api/timesheet/work-queue', 'retired work-queue enrichment');
 
@@ -69,6 +75,14 @@ requireText(portal, "groupLabel: isServiceRequestTask(task) ? 'Service Request T
 requireText(portal, "groupLabel: 'Non-Project Time'", 'non-project grouping');
 requireText(portal, 'projectPulseModule001MobileMode', 'mobile preference');
 requireText(portal, 'Mobile mode', 'mobile selector');
+
+requireText(timerView, 'Ready to start', 'explicit timer pre-start state');
+requireText(timerView, 'Select Start timer to begin the live clock.', 'timer action guidance');
+requireText(timerView, 'setClock(new Date())', 'immediate live clock reset');
+requireText(timerView, 'window.setInterval(() => setClock(new Date()), 1000)', 'one-second live clock');
+requireText(uatCss, '#timesheet.module001-timer-mode .timesheet-view-button:not(#module001-start-stop-tab)', 'inactive view override');
+requireText(uatCss, '#timesheet.module001-timer-mode #module001-start-stop-tab', 'active timer view styling');
+requireText(uatCss, '.module001-ready-to-start', 'timer ready-state styling');
 
 requireText(taskPicker, 'role="combobox"', 'autocomplete combobox');
 requireText(taskPicker, 'aria-autocomplete="list"', 'autocomplete mode');
@@ -138,4 +152,4 @@ if (backendAvailable) {
   requireText(rollback, 'rollback blocked', 'fail-closed rollback');
 }
 
-console.log(`MODULE_001_TIMESHEET_TIMER_MOBILE_VALIDATION=PASS roundingCases=${roundingCases.length} backend=${backendAvailable ? 'full' : 'frontend-container'} targetSource=authoritative`);
+console.log(`MODULE_001_TIMESHEET_TIMER_MOBILE_VALIDATION=PASS roundingCases=${roundingCases.length} backend=${backendAvailable ? 'full' : 'frontend-container'} targetSource=authoritative preservedFallbacks=true singleActiveView=true`);

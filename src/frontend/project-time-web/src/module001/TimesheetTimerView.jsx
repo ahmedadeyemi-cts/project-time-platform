@@ -14,6 +14,7 @@ export default function TimesheetTimerView({
 }) {
   const [clock, setClock] = useState(() => new Date());
   useEffect(() => {
+    setClock(new Date());
     if (!activeTimer?.startedAtUtc) return undefined;
     const handle = window.setInterval(() => setClock(new Date()), 1000);
     return () => window.clearInterval(handle);
@@ -27,6 +28,8 @@ export default function TimesheetTimerView({
   const selectedLabel = activeTimer
     ? [activeTimer.customerName, activeTimer.projectCode, activeTimer.taskName || activeTimer.nonProjectCategoryName].filter(Boolean).join(' · ')
     : '';
+  const pendingTarget = targets.find((target) => target.selectionValue === selectedTargetValue) || null;
+  const pendingTargetLabel = pendingTarget?.selectionLabel || pendingTarget?.categoryName || pendingTarget?.taskName || '';
   const mutationDisabled = isViewAs || busy;
   const validSelectedTarget = TIMER_TARGET_PATTERN.test(selectedTargetValue);
 
@@ -39,6 +42,7 @@ export default function TimesheetTimerView({
       {statusMessage ? <div className="module001-status" role="status">{statusMessage}</div> : null}
       {isViewAs ? <div className="module001-warning">Timer actions are disabled during View-As.</div> : null}
       {!activeTimer && selectedTargetValue && !validSelectedTarget ? <div className="module001-warning">Select a valid assigned task or authorized non-project activity before starting the timer.</div> : null}
+      {!activeTimer && validSelectedTarget ? <div className="module001-ready-to-start" role="status"><strong>Ready to start</strong><span>{pendingTargetLabel || 'Selected authorized activity'}. Select Start timer to begin the live clock.</span></div> : null}
       {activeTimer?.autoStopped || duration.isExpired ? <div className="module001-warning">This timer reached the 12-hour maximum. Its draft entry must be reviewed before submission.</div> : null}
       {activeTimer ? <div className="module001-active-target"><span>Active task</span><strong>{selectedLabel || 'Authorized non-project activity'}</strong></div> : (
         <TimesheetTaskPicker tasks={targets} value={selectedTargetValue} disabled={mutationDisabled} onChange={onSelectTarget} />

@@ -14,12 +14,15 @@ const rejectAll = (source, values, label) => {
 };
 
 const [
-  module005, module038, portal, main, registry,
+  module005, module005Experience, module038, module038Css, pageContext, portal, main, registry,
   foundation, safeEndpoints, parser, data, commands, notificationAuth, mail, certify,
   migration, rollback, project, parserTest, migrationTest
 ] = await Promise.all([
   text('src/frontend/project-time-web/src/ProjectAllocationInfoPanel.jsx'),
+  text('src/frontend/project-time-web/src/Module005ExperienceCompatibility.jsx'),
   text('src/frontend/project-time-web/src/CertifyIntegrationCenter.jsx'),
+  text('src/frontend/project-time-web/src/certify-integration-center.css'),
+  text('src/frontend/project-time-web/src/PageContextGuide.jsx'),
   text('src/frontend/project-time-web/src/ProjectExpenseCrossModulePortal.jsx'),
   text('src/frontend/project-time-web/src/main.jsx'),
   text('src/frontend/project-time-web/src/module-availability-registry.js'),
@@ -44,18 +47,46 @@ requireAll(module005, [
   'Upload CSV / Excel', 'Import from Certify',
   '.xlsx,.xlsm,.csv', '/api/project-expenses/upload',
   '/api/project-expenses/import/certify',
-  'Delete', 'Retry email', 'Module 067 Global Mail Configuration',
+  'Retry email', 'Module 067 Global Mail Configuration',
   'pass_through_invoice', 'included_fixed_price'
 ], 'Module 005 UI');
+
+requireAll(module005Experience, [
+  'Module005ExperienceCompatibility',
+  "const MODULE005_NAME = 'Project Expense Upload'",
+  'convertDeleteActionsToReupload',
+  "button.textContent = 'Re-upload'",
+  'event.stopImmediatePropagation()',
+  'Re-upload ready. Choose the replacement CSV or Excel file',
+  "document.querySelectorAll('a[href=\"#project-allocation-info\"]')"
+], 'Module 005 re-upload and naming compatibility');
 
 requireAll(module038, [
   'MODULE 038', 'Certify Connection &amp; Sync Center',
   '/api/certify/connection', '/api/certify/connection/test',
   'PROJECTPULSE_CERTIFY_API_KEY', 'PROJECTPULSE_CERTIFY_API_SECRET',
-  'automaticSyncEnabled', 'Automatic sync is locked',
+  'automaticSyncEnabled', 'automationAllowed', 'syncLockedReason',
+  'Test connection to unlock', 'Save sync settings',
+  'Enable automatic sync',
   'Secret values remain in environment configuration',
   '#project-allocation-info'
 ], 'Module 038 UI');
+
+requireAll(module038Css, [
+  '.certify-sync-control-card',
+  'align-content:start',
+  'min-height:0',
+  'grid-template-columns:repeat(2,minmax(0,1fr))',
+  '.certify-sync-lock',
+  '.certify-sync-ready'
+], 'Module 038 compact no-endless-scroll layout');
+
+requireAll(pageContext, [
+  "'project-allocation-info': {",
+  "page: 'Project Expense Upload — Module 005'",
+  "'certify-integration': {",
+  "page: 'Certify Connection & Sync Center — Module 038'"
+], 'Module 005 and 038 canonical page context');
 
 requireAll(portal, [
   "['invoice-billing-center', 'work-register']",
@@ -66,13 +97,16 @@ requireAll(portal, [
 
 requireAll(main, [
   "import ProjectExpenseCrossModulePortal from './ProjectExpenseCrossModulePortal.jsx';",
-  '<ProjectExpenseCrossModulePortal />'
-], 'Cross-module mount');
+  '<ProjectExpenseCrossModulePortal />',
+  "import Module005ExperienceCompatibility from './Module005ExperienceCompatibility.jsx';",
+  '<Module005ExperienceCompatibility />'
+], 'Module 005 and cross-module mounts');
 
 requireAll(registry, [
   "moduleNumber: '005', route: 'project-allocation-info', displayName: 'Project Expense Upload'",
-  "moduleNumber: '038', route: 'certify-integration', displayName: 'Certify Connection & Sync Center'"
-], 'Module registry');
+  "moduleNumber: '038', route: 'certify-integration', displayName: 'Certify Connection & Sync Center'",
+  "replace(/\\bProject Allocation(?:\\s*(?:\\/|&|and)\\s*)Info\\b/gi, 'Project Expense Upload')"
+], 'Module registry and legacy-name replacement');
 
 const externalAvailable = [
   foundation, safeEndpoints, parser, data, commands, notificationAuth, mail, certify,
@@ -146,8 +180,9 @@ if (externalAvailable) {
     'X-Certify-API-Key', 'X-Certify-API-Secret',
     'expensereports/{Uri.EscapeDataString(request.CertifyReportId.Trim())}/expenses',
     'automatic_sync_enabled', 'connection_status',
+    "automatic_sync_enabled=CASE WHEN connection_status='connected' THEN @automatic ELSE FALSE END",
     'secretsReturned = false'
-  ], 'Certify connection and import');
+  ], 'Certify connection and safe automation gate');
 
   requireAll(migration, [
     '044_project_expense_upload_certify_connection',
@@ -193,5 +228,5 @@ if (externalAvailable) {
   console.log('MODULE_005_EXTERNAL_SOURCE_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
 }
 
-console.log('MODULE_005_038_MERGE_CANDIDATE=PASS');
+console.log('MODULE_005_038_MERGE_CANDIDATE=PASS reupload=true compactSync=true');
 console.log('Module 005 Project Expense Upload and Module 038 Certify contracts passed.');

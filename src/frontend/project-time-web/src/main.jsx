@@ -11,6 +11,7 @@ import DashboardPersonalCalendarPortal from './DashboardPersonalCalendarPortal.j
 import TimesheetEnhancementPortal from './module001/TimesheetEnhancementPortal.jsx';
 import PtcTimeStewardGate from './module001/PtcTimeStewardGate.jsx';
 import ProjectExpenseCrossModulePortal from './ProjectExpenseCrossModulePortal.jsx';
+import Module005ExperienceCompatibility from './Module005ExperienceCompatibility.jsx';
 import './approval-access-navigation-compatibility.js';
 import './scoped-rbac-catalog-compatibility.js';
 import './styles.css';
@@ -18,6 +19,7 @@ import './friendly-api-errors.css';
 import './role-welcome-dashboard-visibility.css';
 import './scoped-role-policy-admin.css';
 import './scoped-role-policy-matrix.css';
+import './module001/module001-uat-fixes.css';
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>
@@ -28,6 +30,7 @@ createRoot(document.getElementById('root')).render(
     <TimesheetEnhancementPortal />
     <PtcTimeStewardGate />
     <ProjectExpenseCrossModulePortal />
+    <Module005ExperienceCompatibility />
     <HelpAssistant />
   </React.StrictMode>
 );

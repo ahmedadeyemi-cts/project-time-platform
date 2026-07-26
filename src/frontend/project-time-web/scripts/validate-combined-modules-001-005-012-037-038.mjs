@@ -112,8 +112,11 @@ requireAll(compatibility, [
   'projectpulse-combined-runtime-v2-2026-07-26',
   "'/api/runtime/role-policy/summary': '/api/runtime/v2/role-policy/summary'",
   "'/api/runtime/role-policy/matrix': '/api/runtime/v2/role-policy/matrix'",
-  "'/api/runtime/timesheet/steward/users': '/api/runtime/v2/timesheet/steward/users'",
-  '/api/runtime/v2/timesheet/steward/users/',
+  "'/api/runtime/timesheet/steward/users': '/api/timesheet/ptc/users'",
+  "'/api/runtime/v2/timesheet/steward/users': '/api/timesheet/ptc/users'",
+  '/api/timesheet/ptc/users/',
+  'normalizePtcWorkspace',
+  'allActiveUsersAllowed: true',
   'authoritative runtime response'
 ], 'Frontend authoritative runtime bridge');
 
@@ -150,7 +153,9 @@ requireAll(certifyCenter, [
   'Certify Connection &amp; Sync Center',
   '/api/certify/connection',
   '/api/certify/connection/test',
-  'Automatic sync is locked',
+  'Enable automatic sync',
+  'Test connection to unlock',
+  'automationAllowed',
   'Secret values remain in environment configuration'
 ], 'Module 038 UI');
 requireAll(startupTest, [

@@ -35,6 +35,18 @@ const routeContext = {
     backend: '/api/production/readiness-command-center',
     check: 'Click Refresh readiness, confirm cards and check rows appear, then use the validation checklist.'
   },
+  'project-allocation-info': {
+    page: 'Project Expense Upload — Module 005',
+    purpose: 'Uploads and versions project expense files, associates expenses to the correct customer, project, and owner, and tracks invoice treatment.',
+    backend: '/api/project-expenses/context, /api/project-expenses/uploads, /api/project-expenses/upload, and /api/project-expenses/import/certify',
+    check: 'Confirm the page title is Project Expense Upload, select a customer/project/owner, upload or re-upload a file, and verify the version history and billing treatment.'
+  },
+  'certify-integration': {
+    page: 'Certify Connection & Sync Center — Module 038',
+    purpose: 'Configures the governed Certify API connection used by Module 005 and controls when tested connections may use automatic synchronization.',
+    backend: '/api/certify/connection and /api/certify/connection/test',
+    check: 'Save the non-secret connection metadata, confirm server-side key and secret readiness, run a successful connection test, then enable automatic sync and choose its cadence.'
+  },
   'project-intake': {
     page: 'Project Intake',
     purpose: 'Captures intake requests, triage state, documents, post-intake movement, project linking, and work-task handoff.',
