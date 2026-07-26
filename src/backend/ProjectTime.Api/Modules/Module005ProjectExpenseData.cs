@@ -50,7 +50,8 @@ public static partial class Module005ProjectExpenseUploadModule
                 actor.IsViewAs,
                 canUploadSelf = !actor.IsViewAs,
                 canUploadOnBehalf = !actor.IsViewAs && HasRole(actor, OnBehalfRoles),
-                canDelete = !actor.IsViewAs
+                canDelete = !actor.IsViewAs,
+                projectWideVisibility = HasRole(actor, BillingRoles)
             },
             customers = projects.Select(project => project.CustomerName)
                 .Where(value => !string.IsNullOrWhiteSpace(value))
@@ -80,6 +81,14 @@ public static partial class Module005ProjectExpenseUploadModule
 
         Guid? projectFilter = Guid.TryParse(context.Request.Query["projectId"], out var projectId) ? projectId : null;
         Guid? ownerFilter = Guid.TryParse(context.Request.Query["ownerUserId"], out var ownerId) ? ownerId : null;
+        var projectWideVisibility = HasRole(actor, BillingRoles);
+        if (!projectWideVisibility)
+        {
+            if (ownerFilter is not null && ownerFilter.Value != actor.EffectiveUserId)
+                return AccessDenied("Engineering roles may view only their own project expense uploads.");
+            ownerFilter = actor.EffectiveUserId;
+        }
+
         var projects = await LoadAccessibleProjectsAsync(connection, actor, true);
         var allowed = projects.Select(project => project.ProjectId).ToHashSet();
         if (projectFilter is not null && !allowed.Contains(projectFilter.Value)) return AccessDenied("The selected project is outside the current role scope.");
@@ -150,6 +159,7 @@ public static partial class Module005ProjectExpenseUploadModule
         var project = projects.FirstOrDefault(item => item.ProjectId == projectId);
         if (project is null) return AccessDenied("The selected project is outside the current role scope.");
 
+        var ownerScope = HasRole(actor, BillingRoles) ? (Guid?)null : actor.EffectiveUserId;
         var uploads = new List<object>();
         decimal tracked = 0m, invoiceEligible = 0m;
         const string sql = """
@@ -161,10 +171,12 @@ public static partial class Module005ProjectExpenseUploadModule
             FROM project_expense_uploads upload
             JOIN app_users owner_user ON owner_user.user_id=upload.expense_owner_user_id
             WHERE upload.project_id=@project_id AND upload.is_current=TRUE AND upload.deleted_at IS NULL
+              AND (@owner_id::uuid IS NULL OR upload.expense_owner_user_id=@owner_id)
             ORDER BY upload.period_end DESC NULLS LAST, upload.uploaded_at DESC;
             """;
         await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("project_id", projectId);
+        command.Parameters.Add(new NpgsqlParameter("owner_id", NpgsqlDbType.Uuid) { Value = ownerScope is null ? DBNull.Value : ownerScope.Value });
         await using var reader = await command.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
@@ -195,7 +207,7 @@ public static partial class Module005ProjectExpenseUploadModule
         });
     }
 
-    private static async Task<List<ExpenseProject>> LoadAccessibleProjectsAsync(NpgsqlConnection connection, ExpenseActor actor, bool includeBillingRoles)
+    private static async Task<List<ExpenseProject>> LoadAccessibleProjectsAsync(NpgsqlConnection connection, ExpenseActor actor, bool includeBillingRoles, NpgsqlTransaction? transaction = null)
     {
         var allProjects = actor.RoleCodes.Contains("SUPER_ADMINISTRATOR", StringComparer.OrdinalIgnoreCase)
             || actor.RoleCodes.Contains("PROJECT_MANAGEMENT_LEAD", StringComparer.OrdinalIgnoreCase)
@@ -215,7 +227,7 @@ public static partial class Module005ProjectExpenseUploadModule
             ORDER BY c.client_name, p.project_name;
             """;
         var rows = new List<ExpenseProject>();
-        await using var command = new NpgsqlCommand(sql, connection);
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("all_projects", allProjects);
         command.Parameters.AddWithValue("user_id", actor.EffectiveUserId);
         await using var reader = await command.ExecuteReaderAsync();
@@ -224,7 +236,7 @@ public static partial class Module005ProjectExpenseUploadModule
         return rows;
     }
 
-    private static async Task<List<ExpenseOwner>> LoadEligibleOwnersAsync(NpgsqlConnection connection, ExpenseActor actor, ExpenseProject project)
+    private static async Task<List<ExpenseOwner>> LoadEligibleOwnersAsync(NpgsqlConnection connection, ExpenseActor actor, ExpenseProject project, NpgsqlTransaction? transaction = null)
     {
         var allowOnBehalf = HasRole(actor, OnBehalfRoles);
         const string sql = """
@@ -243,7 +255,7 @@ public static partial class Module005ProjectExpenseUploadModule
             ORDER BY COALESCE(u.display_name, u.email);
             """;
         var owners = new List<ExpenseOwner>();
-        await using var command = new NpgsqlCommand(sql, connection);
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("current_user", actor.EffectiveUserId);
         command.Parameters.AddWithValue("allow_on_behalf", allowOnBehalf);
         command.Parameters.AddWithValue("project_id", project.ProjectId);
@@ -274,16 +286,42 @@ public static partial class Module005ProjectExpenseUploadModule
         return new ExpenseProject(reader.GetGuid(0), reader.IsDBNull(1) ? null : reader.GetGuid(1), reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetString(5), reader.GetString(6), reader.IsDBNull(7) ? null : reader.GetGuid(7), reader.GetString(8));
     }
 
+    private static async Task<ExpenseUploadRecord?> LoadUploadAsync(NpgsqlConnection connection, Guid uploadId, NpgsqlTransaction? transaction = null)
+    {
+        const string sql = """
+            SELECT project_expense_upload_id, project_id, expense_owner_user_id,
+                   uploaded_by_user_id, period_start, period_end
+            FROM project_expense_uploads WHERE project_expense_upload_id=@upload_id;
+            """;
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("upload_id", uploadId);
+        await using var reader = await command.ExecuteReaderAsync();
+        if (!await reader.ReadAsync()) return null;
+        return new ExpenseUploadRecord(reader.GetGuid(0), reader.GetGuid(1), reader.GetGuid(2), reader.GetGuid(3), ReadDate(reader, 4), ReadDate(reader, 5));
+    }
+
     private static async Task<IResult?> AuthorizeUploadAsync(NpgsqlConnection connection, NpgsqlTransaction? transaction, ExpenseActor actor, ExpenseProject project, Guid ownerId)
     {
         if (actor.IsViewAs) return ViewAsReadOnly();
-        var accessible = await LoadAccessibleProjectsAsync(connection, actor, false);
+        var accessible = await LoadAccessibleProjectsAsync(connection, actor, false, transaction);
         if (!accessible.Any(item => item.ProjectId == project.ProjectId)) return AccessDenied("The selected project is outside the current role scope.");
         if (ownerId == actor.EffectiveUserId) return null;
         if (!HasRole(actor, OnBehalfRoles)) return AccessDenied("Only Project Management, PM Leads, and Super Administrators may upload on behalf of another user.");
-        var owners = await LoadEligibleOwnersAsync(connection, actor, project);
+        var owners = await LoadEligibleOwnersAsync(connection, actor, project, transaction);
         return owners.Any(owner => owner.UserId == ownerId)
             ? null
             : AccessDenied("The selected expense owner is not an Engineer or Engineering Lead assigned to this project.");
+    }
+
+    private static async Task<IResult?> AuthorizeExistingUploadActionAsync(NpgsqlConnection connection, NpgsqlTransaction? transaction, ExpenseActor actor, ExpenseUploadRecord upload)
+    {
+        if (actor.IsViewAs) return ViewAsReadOnly();
+        var accessible = await LoadAccessibleProjectsAsync(connection, actor, false, transaction);
+        if (!accessible.Any(project => project.ProjectId == upload.ProjectId))
+            return AccessDenied("The related project is outside the current role scope.");
+        if (upload.OwnerUserId == actor.EffectiveUserId) return null;
+        return HasRole(actor, OnBehalfRoles)
+            ? null
+            : AccessDenied("Only the expense owner, Project Management, PM Leads, or Super Administrators may manage this upload.");
     }
 }
