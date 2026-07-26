@@ -21,6 +21,16 @@ require "$WORKFLOW" 'Check out exact verified release'
 require "$WORKFLOW" 'Only the verified runtime-direct release may deploy.'
 require "$WORKFLOW" 'git -C control merge-base --is-ancestor'
 
+require "$WORKFLOW" 'DISPATCH_RELEASE_COMMIT: ${{ inputs.release_commit }}'
+require "$WORKFLOW" 'DISPATCH_CONFIRMATION: ${{ inputs.confirmation }}'
+require "$WORKFLOW" 'WORKFLOW_SOURCE_REF: ${{ github.ref }}'
+require "$WORKFLOW" 'WORKFLOW_SOURCE_SHA: ${{ github.sha }}'
+require "$WORKFLOW" '[[ "$WORKFLOW_SOURCE_REF" == '\''refs/heads/main'\'' ]]'
+require "$WORKFLOW" '[[ "$DISPATCH_CONFIRMATION" == '\''DEPLOY-RUNTIME-DIRECT-TIMER-RECOVERY-TO-TEST'\'' ]]'
+require "$WORKFLOW" '[[ "$DISPATCH_RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]]'
+require "$WORKFLOW" '[[ "$CONTROL_COMMIT" == "$WORKFLOW_SOURCE_SHA" ]]'
+require "$WORKFLOW" '[[ "$TARGET_COMMIT" == "$DISPATCH_RELEASE_COMMIT" ]]'
+
 require "$WORKFLOW" 'projectpulse-critical-runtime-direct-2026-07-26'
 require "$WORKFLOW" 'window.__projectPulseOriginalFetch'
 require "$WORKFLOW" 'x-projectpulse-authoritative-path'
@@ -66,5 +76,10 @@ reject "$WORKFLOW" 'database/migrations'
 reject "$WORKFLOW" 'psql[[:space:]]'
 reject "$WORKFLOW" 'az[[:space:]]+role[[:space:]]+assignment'
 reject "$WORKFLOW" 'automatic_sync_enabled[[:space:]]*=[[:space:]]*TRUE'
+reject "$WORKFLOW" '\[\[[^\n]*\$\{\{[[:space:]]*inputs\.'
+reject "$WORKFLOW" 'TARGET_COMMIT[^\n]*\$\{\{[[:space:]]*inputs\.'
+
+INPUT_REFERENCE_COUNT="$(grep -Fc '${{ inputs.' "$WORKFLOW")"
+[[ "$INPUT_REFERENCE_COUNT" == "3" ]] || fail "Expected exactly three non-shell input references (checkout ref and two environment mappings); found $INPUT_REFERENCE_COUNT."
 
 echo 'RUNTIME_DIRECT_TIMER_RECOVERY_TEST_DEPLOYMENT_GUARD=PASS'
