@@ -169,7 +169,13 @@ BEGIN
   SELECT COUNT(*) INTO regular_task_count
   FROM project_tasks task
   WHERE task.is_active=TRUE
-    AND COALESCE(task.task_classification,'regular_task') NOT IN ('service_request','request');
+    AND NOT (
+      LOWER(COALESCE(
+        NULLIF(to_jsonb(task)->>'work_task_category',''),
+        NULLIF(to_jsonb(task)->>'work_type',''),
+        'project_task')) = 'service_request_task'
+      OR COALESCE(NULLIF(to_jsonb(task)->>'service_request_number',''),'') <> ''
+    );
   IF regular_task_count <= 0 THEN
     RAISE EXCEPTION 'No active regular project tasks exist for Module 001.';
   END IF;
@@ -177,7 +183,13 @@ BEGIN
   SELECT COUNT(*) INTO service_request_count
   FROM project_tasks task
   WHERE task.is_active=TRUE
-    AND COALESCE(task.task_classification,'') IN ('service_request','request');
+    AND (
+      LOWER(COALESCE(
+        NULLIF(to_jsonb(task)->>'work_task_category',''),
+        NULLIF(to_jsonb(task)->>'work_type',''),
+        'project_task')) = 'service_request_task'
+      OR COALESCE(NULLIF(to_jsonb(task)->>'service_request_number',''),'') <> ''
+    );
   IF service_request_count <= 0 THEN
     RAISE EXCEPTION 'No active request or service-request tasks exist for Module 001.';
   END IF;
