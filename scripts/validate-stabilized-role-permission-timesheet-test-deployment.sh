@@ -36,7 +36,11 @@ do
 done
 
 for value in \
-  'BEGIN READ ONLY;' \
+  'default_transaction_read_only=on' \
+  "current_setting('transaction_read_only')" \
+  'RESULT_ROWS' \
+  'Expected exactly one PostgreSQL count row' \
+  'STABILIZED_DATABASE_READ_ONLY=' \
   'STABILIZED_ROLE_COUNT=' \
   'STABILIZED_MODULE_COUNT=' \
   'STABILIZED_ELIGIBLE_USER_COUNT=' \
@@ -50,9 +54,10 @@ do
 done
 
 for forbidden in \
-  'INSERT ' 'UPDATE ' 'DELETE ' 'ALTER ' 'DROP ' 'TRUNCATE ' 'CREATE TABLE' 'COMMIT;'
+  'INSERT ' 'UPDATE ' 'DELETE ' 'ALTER ' 'DROP ' 'TRUNCATE ' 'CREATE TABLE' \
+  'BEGIN READ ONLY;' 'ROLLBACK;' 'COMMIT;'
 do
-  grep -Eq "(^|[[:space:]])${forbidden}" "$VERIFY" && fail "Verifier contains mutation token: $forbidden"
+  grep -Eq "(^|[[:space:]])${forbidden}" "$VERIFY" && fail "Verifier contains mutation or command-tag-producing token: $forbidden"
 done
 
 for forbidden in \

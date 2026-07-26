@@ -5,59 +5,84 @@ DATABASE_URL="${PROJECTPULSE_TEST_DATABASE_URL:-}"
 [[ -n "$DATABASE_URL" ]] || { echo 'ERROR: PROJECTPULSE_TEST_DATABASE_URL is not configured.' >&2; exit 1; }
 command -v psql >/dev/null || { echo 'ERROR: psql is required.' >&2; exit 1; }
 
-IFS='|' read -r ROLE_COUNT MODULE_COUNT PUBLISHED_COUNT GRANT_COUNT SUPER_ADMIN_COUNT ELIGIBLE_USER_COUNT ASSIGNMENT_TARGET_COUNT REGULAR_TASK_COUNT SERVICE_REQUEST_COUNT NON_PROJECT_COUNT MIGRATION_043_COUNT <<<"$(
-  psql "$DATABASE_URL" --no-psqlrc -At -F '|' --set=ON_ERROR_STOP=1 --command="
-    BEGIN READ ONLY;
-    WITH canonical_roles(role_code) AS (
-      VALUES
-        ('ENGINEERING'),('PROJECT_MANAGEMENT'),('ENGINEERING_LEAD'),('PROJECT_MANAGEMENT_LEAD'),
-        ('MANAGER'),('SALES'),('INSIDE_SALES'),('SOLUTION_ARCHITECT'),('EXECUTIVE'),
-        ('PROJECT_TEAM_COORDINATOR'),('ACCOUNTING'),('SUPER_ADMINISTRATOR')
-    ), eligible_aliases(role_code) AS (
-      VALUES
-        ('ENGINEERING'),('ENGINEER'),
-        ('ENGINEERING_LEAD'),('ENGINEERING_TEAM_LEAD'),
-        ('PROJECT_MANAGEMENT'),('PROJECT_MANAGER'),
-        ('PROJECT_MANAGEMENT_LEAD'),('PROJECT_MANAGEMENT_TEAM_LEAD'),('PM_TEAM_LEAD')
-    ), assignment_targets AS (
-      SELECT pa.project_assignment_id,
-             COALESCE(NULLIF(to_jsonb(pt)->>'work_task_category',''),
-                      NULLIF(to_jsonb(pt)->>'work_type',''), 'project_task') AS work_category,
-             COALESCE(NULLIF(to_jsonb(pt)->>'service_request_number',''),'') AS service_request_number
-      FROM project_assignments pa
-      JOIN projects p ON p.project_id=pa.project_id
-      JOIN project_tasks pt ON pt.task_id=pa.task_id AND pt.project_id=pa.project_id
-      JOIN app_users u ON u.user_id=pa.user_id AND u.is_active=TRUE
-      WHERE p.status IN ('active','on_hold')
-        AND pt.is_active=TRUE
-        AND (pa.effective_end_date IS NULL OR pa.effective_end_date >= CURRENT_DATE - 14)
-    )
-    SELECT
-      (SELECT COUNT(*) FROM app_roles r JOIN canonical_roles c ON c.role_code=UPPER(r.role_code) WHERE r.is_active=TRUE),
-      (SELECT COUNT(*) FROM scoped_role_policy_modules WHERE is_active=TRUE),
-      (SELECT COUNT(*) FROM scoped_role_policy_versions WHERE policy_status='PUBLISHED'),
-      (SELECT COUNT(*) FROM scoped_role_policy_effective_grants),
-      (SELECT COUNT(DISTINCT u.user_id)
-         FROM app_users u
-         JOIN app_user_role_assignments ura ON ura.user_id=u.user_id AND ura.is_active=TRUE
-         JOIN app_roles r ON r.app_role_id=ura.app_role_id AND r.is_active=TRUE
-        WHERE u.is_active=TRUE AND UPPER(r.role_code) IN ('SUPER_ADMINISTRATOR','ADMINISTRATOR')),
-      (SELECT COUNT(DISTINCT u.user_id)
-         FROM app_users u
-         JOIN app_user_role_assignments ura ON ura.user_id=u.user_id AND ura.is_active=TRUE
-         JOIN app_roles r ON r.app_role_id=ura.app_role_id AND r.is_active=TRUE
-         JOIN eligible_aliases e ON e.role_code=UPPER(r.role_code)
-        WHERE u.is_active=TRUE),
-      (SELECT COUNT(*) FROM assignment_targets),
-      (SELECT COUNT(*) FROM assignment_targets
-        WHERE lower(work_category) <> 'service_request_task' AND service_request_number=''),
-      (SELECT COUNT(*) FROM assignment_targets
-        WHERE lower(work_category) = 'service_request_task' OR service_request_number<>''),
-      (SELECT COUNT(*) FROM non_project_time_categories WHERE is_active=TRUE),
-      (SELECT COUNT(*) FROM schema_migrations WHERE migration_id='043_ptc_time_steward_permissions');
-    ROLLBACK;"
+READ_ONLY_PGOPTIONS="${PGOPTIONS:+$PGOPTIONS }-c default_transaction_read_only=on"
+QUERY_OUTPUT="$(
+  PGOPTIONS="$READ_ONLY_PGOPTIONS" \
+  psql "$DATABASE_URL" \
+    --no-psqlrc \
+    --tuples-only \
+    --no-align \
+    --quiet \
+    --field-separator '|' \
+    --set=ON_ERROR_STOP=1 \
+    --command="
+      WITH canonical_roles(role_code) AS (
+        VALUES
+          ('ENGINEERING'),('PROJECT_MANAGEMENT'),('ENGINEERING_LEAD'),('PROJECT_MANAGEMENT_LEAD'),
+          ('MANAGER'),('SALES'),('INSIDE_SALES'),('SOLUTION_ARCHITECT'),('EXECUTIVE'),
+          ('PROJECT_TEAM_COORDINATOR'),('ACCOUNTING'),('SUPER_ADMINISTRATOR')
+      ), eligible_aliases(role_code) AS (
+        VALUES
+          ('ENGINEERING'),('ENGINEER'),
+          ('ENGINEERING_LEAD'),('ENGINEERING_TEAM_LEAD'),
+          ('PROJECT_MANAGEMENT'),('PROJECT_MANAGER'),
+          ('PROJECT_MANAGEMENT_LEAD'),('PROJECT_MANAGEMENT_TEAM_LEAD'),('PM_TEAM_LEAD')
+      ), assignment_targets AS (
+        SELECT pa.project_assignment_id,
+               COALESCE(NULLIF(to_jsonb(pt)->>'work_task_category',''),
+                        NULLIF(to_jsonb(pt)->>'work_type',''), 'project_task') AS work_category,
+               COALESCE(NULLIF(to_jsonb(pt)->>'service_request_number',''),'') AS service_request_number
+        FROM project_assignments pa
+        JOIN projects p ON p.project_id=pa.project_id
+        JOIN project_tasks pt ON pt.task_id=pa.task_id AND pt.project_id=pa.project_id
+        JOIN app_users u ON u.user_id=pa.user_id AND u.is_active=TRUE
+        WHERE p.status IN ('active','on_hold')
+          AND pt.is_active=TRUE
+          AND (pa.effective_end_date IS NULL OR pa.effective_end_date >= CURRENT_DATE - 14)
+      )
+      SELECT
+        current_setting('transaction_read_only'),
+        (SELECT COUNT(*) FROM app_roles r JOIN canonical_roles c ON c.role_code=UPPER(r.role_code) WHERE r.is_active=TRUE),
+        (SELECT COUNT(*) FROM scoped_role_policy_modules WHERE is_active=TRUE),
+        (SELECT COUNT(*) FROM scoped_role_policy_versions WHERE policy_status='PUBLISHED'),
+        (SELECT COUNT(*) FROM scoped_role_policy_effective_grants),
+        (SELECT COUNT(DISTINCT u.user_id)
+           FROM app_users u
+           JOIN app_user_role_assignments ura ON ura.user_id=u.user_id AND ura.is_active=TRUE
+           JOIN app_roles r ON r.app_role_id=ura.app_role_id AND r.is_active=TRUE
+          WHERE u.is_active=TRUE AND UPPER(r.role_code) IN ('SUPER_ADMINISTRATOR','ADMINISTRATOR')),
+        (SELECT COUNT(DISTINCT u.user_id)
+           FROM app_users u
+           JOIN app_user_role_assignments ura ON ura.user_id=u.user_id AND ura.is_active=TRUE
+           JOIN app_roles r ON r.app_role_id=ura.app_role_id AND r.is_active=TRUE
+           JOIN eligible_aliases e ON e.role_code=UPPER(r.role_code)
+          WHERE u.is_active=TRUE),
+        (SELECT COUNT(*) FROM assignment_targets),
+        (SELECT COUNT(*) FROM assignment_targets
+          WHERE lower(work_category) <> 'service_request_task' AND service_request_number=''),
+        (SELECT COUNT(*) FROM assignment_targets
+          WHERE lower(work_category) = 'service_request_task' OR service_request_number<>''),
+        (SELECT COUNT(*) FROM non_project_time_categories WHERE is_active=TRUE),
+        (SELECT COUNT(*) FROM schema_migrations WHERE migration_id='043_ptc_time_steward_permissions');"
 )"
 
+mapfile -t RESULT_ROWS < <(printf '%s\n' "$QUERY_OUTPUT" | sed '/^[[:space:]]*$/d')
+if (( ${#RESULT_ROWS[@]} != 1 )); then
+  echo "ERROR: Expected exactly one PostgreSQL count row; received ${#RESULT_ROWS[@]}." >&2
+  printf 'PREFLIGHT_RAW_OUTPUT_BEGIN\n%s\nPREFLIGHT_RAW_OUTPUT_END\n' "$QUERY_OUTPUT" >&2
+  exit 1
+fi
+
+IFS='|' read -r READ_ONLY ROLE_COUNT MODULE_COUNT PUBLISHED_COUNT GRANT_COUNT SUPER_ADMIN_COUNT ELIGIBLE_USER_COUNT ASSIGNMENT_TARGET_COUNT REGULAR_TASK_COUNT SERVICE_REQUEST_COUNT NON_PROJECT_COUNT MIGRATION_043_COUNT EXTRA_FIELD <<<"${RESULT_ROWS[0]}"
+[[ -z "${EXTRA_FIELD:-}" ]] || { echo 'ERROR: PostgreSQL count row contains unexpected extra fields.' >&2; exit 1; }
+[[ "$READ_ONLY" == on ]] || { echo "ERROR: Database validation session is not read-only; transaction_read_only=$READ_ONLY." >&2; exit 1; }
+
+for value_name in ROLE_COUNT MODULE_COUNT PUBLISHED_COUNT GRANT_COUNT SUPER_ADMIN_COUNT ELIGIBLE_USER_COUNT ASSIGNMENT_TARGET_COUNT REGULAR_TASK_COUNT SERVICE_REQUEST_COUNT NON_PROJECT_COUNT MIGRATION_043_COUNT; do
+  value="${!value_name:-}"
+  [[ "$value" =~ ^[0-9]+$ ]] || { echo "ERROR: $value_name is not a numeric count: ${value:-<empty>}." >&2; exit 1; }
+done
+
+printf 'STABILIZED_DATABASE_READ_ONLY=%s\n' "$READ_ONLY"
 printf 'STABILIZED_ROLE_COUNT=%s\n' "$ROLE_COUNT"
 printf 'STABILIZED_MODULE_COUNT=%s\n' "$MODULE_COUNT"
 printf 'STABILIZED_PUBLISHED_POLICY_COUNT=%s\n' "$PUBLISHED_COUNT"
