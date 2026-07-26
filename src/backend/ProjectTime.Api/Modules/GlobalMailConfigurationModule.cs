@@ -9,6 +9,7 @@ public static class GlobalMailConfigurationModule
 {
     public static WebApplication MapGlobalMailConfigurationEndpoints(this WebApplication app)
     {
+        app.UseMicrosoftIntegrationSecurityCompatibility();
         MicrosoftIntegrationModule.MapEndpoints(app);
         AzureDirectoryImportModule.MapEndpoints(app);
         return app;
