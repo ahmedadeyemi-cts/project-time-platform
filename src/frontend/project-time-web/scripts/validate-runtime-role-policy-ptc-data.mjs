@@ -12,7 +12,7 @@ const requireAll = (source, values, label) => {
   }
 };
 
-const [jsonResponse, bridge, roleModel, matrixModel, portal, catalog, gate, css, main, backend, ptcBackend, project] = await Promise.all([
+const [jsonResponse, bridge, roleModel, matrixModel, portal, catalog, gate, recovery, css, main, backend, ptcBackend, project] = await Promise.all([
   text('src/frontend/project-time-web/src/api-json-response.js'),
   text('src/frontend/project-time-web/src/runtime-data-compatibility.js'),
   text('src/frontend/project-time-web/src/role-permission-model.js'),
@@ -20,6 +20,7 @@ const [jsonResponse, bridge, roleModel, matrixModel, portal, catalog, gate, css,
   text('src/frontend/project-time-web/src/module001/PtcTimesheetManagementPortal.jsx'),
   text('src/frontend/project-time-web/src/module001/PtcRuntimeTaskCatalog.jsx'),
   text('src/frontend/project-time-web/src/module001/PtcTimeStewardGate.jsx'),
+  text('src/frontend/project-time-web/src/module001/Module001ActiveTimerRecoveryPortal.jsx'),
   text('src/frontend/project-time-web/src/module001/ptc-runtime-task-catalog.css'),
   text('src/frontend/project-time-web/src/main.jsx'),
   optionalText('src/backend/ProjectTime.Api/Modules/RuntimeDataCompatibilityModule.cs'),
@@ -37,10 +38,9 @@ requireAll(jsonResponse, [
 
 requireAll(bridge, [
   '/api/runtime/role-policy/summary',
-  '/api/runtime/role-policy/catalog',
-  '/api/runtime/role-policy/versions',
+  '/api/runtime/v2/role-policy/summary',
   '/api/runtime/role-policy/matrix',
-  '/api/runtime/role-policy/roles/',
+  '/api/runtime/v2/role-policy/matrix',
   '/api/runtime/timesheet/steward/users',
   '/api/runtime/v2/timesheet/steward/users',
   '/api/timesheet/ptc/users',
@@ -56,8 +56,10 @@ requireAll(bridge, [
   "'X-Project-Pulse-Session'",
   "'X-Session-Token'",
   "'X-ProjectPulse-View-As-User'",
-  'responseKeys: Object.keys(normalized || {})'
-], 'Runtime data compatibility bridge');
+  'window.__projectPulseOriginalFetch',
+  'x-projectpulse-authoritative-path',
+  'direct authoritative response'
+], 'Direct critical runtime transport');
 
 requireAll(roleModel, [
   "'/api/role-policy/summary': '/api/runtime/role-policy/summary'",
@@ -74,7 +76,7 @@ requireAll(roleModel, [
   'returned non-JSON content instead of ProjectPulse API data',
   'const requestPath = readPath(path, method)',
   "if (method !== 'GET') return path"
-], 'Module 012 direct runtime API helper');
+], 'Module 012 authenticated runtime API helper');
 
 requireAll(matrixModel, [
   "'/api/role-policy/catalog': '/api/runtime/role-policy/catalog'",
@@ -87,7 +89,7 @@ requireAll(matrixModel, [
   'Authorization: `Bearer ${token}`',
   'returned non-JSON content instead of ProjectPulse API data',
   'const requestPath = runtimePath(path)'
-], 'Module 037 direct runtime API helper');
+], 'Module 037 authenticated runtime API helper');
 
 requireAll(portal, [
   '/api/runtime/timesheet/steward/users?weekStart=',
@@ -103,7 +105,7 @@ requireAll(portal, [
   'projectpulse:ptc-runtime-users',
   'projectpulse:ptc-runtime-workspace',
   'returned non-JSON content instead of ProjectPulse API data'
-], 'PTC direct runtime user and workspace calls');
+], 'PTC authenticated user and workspace calls');
 
 requireAll(catalog, [
   'Available work for selected user',
@@ -134,6 +136,15 @@ requireAll(gate, [
   '<PtcRuntimeTaskCatalog />'
 ], 'Effective-role runtime PTC gate');
 
+requireAll(recovery, [
+  'Module001ActiveTimerRecoveryPortal',
+  '/api/timesheet/timers/active',
+  'window.setInterval(load, 5000)',
+  'Running timer recovered',
+  'Stop timer',
+  'Discard'
+], 'Persistent active timer recovery');
+
 requireAll(css, [
   '.ptc-runtime-task-catalog',
   '.ptc-runtime-groups',
@@ -144,9 +155,11 @@ requireAll(css, [
 
 requireAll(main, [
   "import './runtime-data-compatibility.js';",
+  "import Module001ActiveTimerRecoveryPortal from './module001/Module001ActiveTimerRecoveryPortal.jsx';",
   "import PtcTimeStewardGate from './module001/PtcTimeStewardGate.jsx';",
+  '<Module001ActiveTimerRecoveryPortal />',
   '<PtcTimeStewardGate />'
-], 'Gated runtime data application mount');
+], 'Gated runtime data and recovery application mount');
 for (const forbidden of [
   "import PtcRuntimeTaskCatalog from './module001/PtcRuntimeTaskCatalog.jsx';",
   '<PtcRuntimeTaskCatalog />'
@@ -199,4 +212,4 @@ for (const forbidden of [
   if (backend.includes(forbidden)) throw new Error(`Runtime role-policy aliases must remain read-only: ${forbidden}`);
 }
 
-console.log('Direct authenticated runtime role-policy and all-active-user PTC data contracts passed.');
+console.log('Direct authenticated runtime role-policy, all-active-user PTC, and active-timer recovery contracts passed.');

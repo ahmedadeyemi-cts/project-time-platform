@@ -1,7 +1,7 @@
 import { unwrapApiPayload } from './api-json-response.js';
 
 const MARKER = '__projectPulseRuntimeDataCompatibilityInstalled';
-const RESPONSE_MARKER = 'projectpulse-combined-runtime-v2-2026-07-26';
+const RESPONSE_MARKER = 'projectpulse-critical-runtime-direct-2026-07-26';
 
 function requestMethod(input, init) {
   return String(init?.method || (input instanceof Request ? input.method : 'GET')).toUpperCase();
@@ -161,6 +161,12 @@ function publishRuntimeData(pathname, payload) {
   }
 }
 
+function directTransport(previousFetch) {
+  return typeof window.__projectPulseOriginalFetch === 'function'
+    ? window.__projectPulseOriginalFetch.bind(window)
+    : previousFetch;
+}
+
 if (typeof window !== 'undefined' && typeof window.fetch === 'function' && !window[MARKER]) {
   const previousFetch = window.fetch.bind(window);
 
@@ -180,7 +186,7 @@ if (typeof window !== 'undefined' && typeof window.fetch === 'function' && !wind
 
     const rewrittenUrl = new URL(originalUrl.toString());
     rewrittenUrl.pathname = rewrittenPath;
-    const response = await previousFetch(
+    const response = await directTransport(previousFetch)(
       `${rewrittenUrl.pathname}${rewrittenUrl.search}`,
       authenticatedInit(input, init)
     );
@@ -190,6 +196,7 @@ if (typeof window !== 'undefined' && typeof window.fetch === 'function' && !wind
     headers.delete('content-encoding');
     headers.set('content-type', 'application/json; charset=utf-8');
     headers.set('x-projectpulse-runtime-data', RESPONSE_MARKER);
+    headers.set('x-projectpulse-authoritative-path', rewrittenPath);
 
     let parsed;
     try {
@@ -210,7 +217,8 @@ if (typeof window !== 'undefined' && typeof window.fetch === 'function' && !wind
     if (response.ok && !hasExpected(normalized, keys)) {
       return new Response(JSON.stringify({
         status: 'runtime_api_contract_incomplete',
-        message: `The authoritative runtime response for ${rewrittenPath} did not contain ${keys.join(', ')}.`,
+        message: `The direct authoritative response for ${rewrittenPath} did not contain ${keys.join(', ')}.`,
+        requestedPath: originalUrl.pathname,
         runtimePath: rewrittenPath,
         responseKeys: Object.keys(normalized || {})
       }), { status: 502, headers });
