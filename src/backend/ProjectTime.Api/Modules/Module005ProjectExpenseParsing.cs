@@ -63,7 +63,7 @@ public static partial class Module005ProjectExpenseUploadModule
             var employee = Cell(row, headers, "Employee");
             var category = NormalizeExpenseCategory(Cell(row, headers, "Category"));
             var amountText = Cell(row, headers, "Amount");
-            if (employee.Equals("Total", StringComparison.OrdinalIgnoreCase)) break;
+            if (employee.Equals("Total", StringComparison.OrdinalIgnoreCase) || IsGlCountFooter(row, headers)) break;
             if (string.IsNullOrWhiteSpace(employee) && category == "Uncategorized" && string.IsNullOrWhiteSpace(amountText)) continue;
             if (!TryDecimal(amountText, out var amount)) continue;
 
@@ -193,6 +193,17 @@ public static partial class Module005ProjectExpenseUploadModule
             if (hasEmployee && hasTotal && categoryCount > 0) return index;
         }
         return -1;
+    }
+
+    private static bool IsGlCountFooter(IReadOnlyList<string> row, IReadOnlyDictionary<string, int> headers)
+    {
+        var employee = Cell(row, headers, "Employee");
+        var category = Cell(row, headers, "Category");
+        var date = Cell(row, headers, "Date");
+        return int.TryParse(employee, NumberStyles.Integer, CultureInfo.InvariantCulture, out _)
+            && int.TryParse(category, NumberStyles.Integer, CultureInfo.InvariantCulture, out _)
+            && int.TryParse(date, NumberStyles.Integer, CultureInfo.InvariantCulture, out _)
+            && TryDecimal(Cell(row, headers, "Amount"), out _);
     }
 
     private static string NormalizeExpenseCategory(string? text)
