@@ -84,5 +84,56 @@ grep -Fq 'combined_module_runtime_unavailable' /tmp/projectpulse-startup-readine
   cat /tmp/projectpulse-startup-readiness.json >&2 || true
   exit 1
 }
+grep -Fq '"operationalCountsReturned":false' /tmp/projectpulse-startup-readiness.json || {
+  echo 'ERROR: Public health readiness did not explicitly suppress operational counts.' >&2
+  cat /tmp/projectpulse-startup-readiness.json >&2 || true
+  exit 1
+}
 
-echo 'PROJECTPULSE_API_STARTUP_SMOKE=PASS health=200 version=200 endpointRegistration=ready'
+PUBLIC_COMBINED_STATUS="$(curl -sS -o /tmp/projectpulse-startup-public-combined-readiness.json -w '%{http_code}' "$BASE/api/public/combined-modules/readiness" || true)"
+[[ "$PUBLIC_COMBINED_STATUS" == 503 ]] || {
+  echo "ERROR: Public combined readiness must bypass session authentication and fail closed only because the database is unavailable; status=$PUBLIC_COMBINED_STATUS" >&2
+  cat /tmp/projectpulse-startup-public-combined-readiness.json >&2 || true
+  exit 1
+}
+grep -Fq 'combined_module_runtime_unavailable' /tmp/projectpulse-startup-public-combined-readiness.json || {
+  echo 'ERROR: Public combined readiness did not return the controlled database-unavailable contract.' >&2
+  cat /tmp/projectpulse-startup-public-combined-readiness.json >&2 || true
+  exit 1
+}
+grep -Fq '"operationalCountsReturned":false' /tmp/projectpulse-startup-public-combined-readiness.json || {
+  echo 'ERROR: Public combined readiness did not explicitly suppress operational counts.' >&2
+  cat /tmp/projectpulse-startup-public-combined-readiness.json >&2 || true
+  exit 1
+}
+
+PUBLIC_EXPENSE_STATUS="$(curl -sS -o /tmp/projectpulse-startup-public-expense-readiness.json -w '%{http_code}' "$BASE/api/public/project-expenses/readiness" || true)"
+[[ "$PUBLIC_EXPENSE_STATUS" == 503 ]] || {
+  echo "ERROR: Public project-expense readiness must bypass session authentication and fail closed only because the database is unavailable; status=$PUBLIC_EXPENSE_STATUS" >&2
+  cat /tmp/projectpulse-startup-public-expense-readiness.json >&2 || true
+  exit 1
+}
+grep -Fq 'project_expense_runtime_unavailable' /tmp/projectpulse-startup-public-expense-readiness.json || {
+  echo 'ERROR: Public project-expense readiness did not return the controlled database-unavailable contract.' >&2
+  cat /tmp/projectpulse-startup-public-expense-readiness.json >&2 || true
+  exit 1
+}
+grep -Fq '"operationalCountsReturned":false' /tmp/projectpulse-startup-public-expense-readiness.json || {
+  echo 'ERROR: Public project-expense readiness did not explicitly suppress operational counts.' >&2
+  cat /tmp/projectpulse-startup-public-expense-readiness.json >&2 || true
+  exit 1
+}
+
+PROTECTED_COMBINED_STATUS="$(curl -sS -o /tmp/projectpulse-startup-protected-combined-readiness.json -w '%{http_code}' "$BASE/api/runtime/v2/readiness" || true)"
+[[ "$PROTECTED_COMBINED_STATUS" == 401 ]] || {
+  echo "ERROR: Protected combined runtime readiness must continue requiring a valid session; status=$PROTECTED_COMBINED_STATUS" >&2
+  cat /tmp/projectpulse-startup-protected-combined-readiness.json >&2 || true
+  exit 1
+}
+grep -Fq 'session_required' /tmp/projectpulse-startup-protected-combined-readiness.json || {
+  echo 'ERROR: Protected combined runtime readiness did not preserve the session-required boundary.' >&2
+  cat /tmp/projectpulse-startup-protected-combined-readiness.json >&2 || true
+  exit 1
+}
+
+echo 'PROJECTPULSE_API_STARTUP_SMOKE=PASS health=200 version=200 publicReadinessContracts=ready protectedAuthBoundary=ready operationalCountsSuppressed=true'

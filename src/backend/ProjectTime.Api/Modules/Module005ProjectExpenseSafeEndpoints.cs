@@ -8,6 +8,7 @@ public static partial class Module005ProjectExpenseUploadModule
     public static WebApplication MapModule005ProjectExpenseUploadEndpointsSafe(this WebApplication app)
     {
         app.MapGet("/api/project-expenses/readiness", (Func<Task<IResult>>)GetProjectExpenseReadinessAsync);
+        app.MapGet("/api/public/project-expenses/readiness", (Func<Task<IResult>>)GetPublicProjectExpenseReadinessAsync);
         app.MapGet("/api/project-expenses/context", (Func<HttpContext, Task<IResult>>)GetContextAsync);
         app.MapGet("/api/project-expenses/uploads", (Func<HttpContext, Task<IResult>>)GetUploadsAsync);
         app.MapGet("/api/project-expenses/projects/{projectId:guid}/summary", (Func<Guid, HttpContext, Task<IResult>>)GetProjectSummaryAsync);
@@ -48,34 +49,7 @@ public static partial class Module005ProjectExpenseUploadModule
         try
         {
             await using var connection = await OpenConnectionAsync();
-            await using var command = new NpgsqlCommand("""
-                SELECT
-                    (SELECT COUNT(*) FROM schema_migrations
-                     WHERE migration_id IN (
-                       '044_project_expense_upload_certify_connection',
-                       '044a_project_expense_self_certify_permission')),
-                    (SELECT COUNT(*) FROM pg_tables
-                     WHERE schemaname='public'
-                       AND tablename IN (
-                         'project_expense_uploads',
-                         'project_expense_lines',
-                         'project_expense_events',
-                         'project_expense_mail_outbox',
-                         'certify_connection_profiles',
-                         'certify_expense_import_runs')),
-                    (SELECT COUNT(*) FROM certify_connection_profiles
-                     WHERE profile_name='default'
-                       AND automatic_sync_enabled=FALSE),
-                    (SELECT COUNT(*) FROM app_permissions
-                     WHERE permission_code IN (
-                       'VIEW_PROJECT_EXPENSE_UPLOAD',
-                       'UPLOAD_PROJECT_EXPENSE_SELF',
-                       'UPLOAD_PROJECT_EXPENSE_ON_BEHALF',
-                       'DELETE_PROJECT_EXPENSE_UPLOAD',
-                       'IMPORT_PROJECT_EXPENSE_CERTIFY',
-                       'VIEW_PROJECT_EXPENSE_INVOICE_CONTEXT',
-                       'MANAGE_CERTIFY_CONNECTION'));
-                """, connection);
+            await using var command = ProjectExpenseReadinessCommand(connection);
             await using var reader = await command.ExecuteReaderAsync();
             await reader.ReadAsync();
             var migrationCount = Convert.ToInt32(reader.GetInt64(0));
@@ -110,4 +84,83 @@ public static partial class Module005ProjectExpenseUploadModule
             }, statusCode: StatusCodes.Status503ServiceUnavailable);
         }
     }
+
+    private static async Task<IResult> GetPublicProjectExpenseReadinessAsync()
+    {
+        try
+        {
+            await using var connection = await OpenConnectionAsync();
+            await using var command = ProjectExpenseReadinessCommand(connection);
+            await using var reader = await command.ExecuteReaderAsync();
+            await reader.ReadAsync();
+            var migrationCount = Convert.ToInt32(reader.GetInt64(0));
+            var tableCount = Convert.ToInt32(reader.GetInt64(1));
+            var safeProfileCount = Convert.ToInt32(reader.GetInt64(2));
+            var permissionCount = Convert.ToInt32(reader.GetInt64(3));
+
+            var migrationContractReady = migrationCount == 2;
+            var tableContractReady = tableCount == 6;
+            var safeProfileReady = safeProfileCount == 1;
+            var permissionContractReady = permissionCount == 7;
+            var ready = migrationContractReady
+                && tableContractReady
+                && safeProfileReady
+                && permissionContractReady;
+
+            return Results.Json(new
+            {
+                status = ready ? "project_expense_runtime_ready" : "project_expense_runtime_incomplete",
+                contractVersion = "project-expense-certify-public-v1",
+                modules = new[] { "005", "038" },
+                migrationContractReady,
+                tableContractReady,
+                safeProfileReady,
+                permissionContractReady,
+                automaticSyncEnabled = false,
+                secretsReturned = false,
+                operationalCountsReturned = false
+            }, statusCode: ready ? StatusCodes.Status200OK : StatusCodes.Status503ServiceUnavailable);
+        }
+        catch
+        {
+            return Results.Json(new
+            {
+                status = "project_expense_runtime_unavailable",
+                contractVersion = "project-expense-certify-public-v1",
+                message = "The Project Expense and Certify runtime could not complete its readiness check.",
+                automaticSyncEnabled = false,
+                secretsReturned = false,
+                operationalCountsReturned = false
+            }, statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+    }
+
+    private static NpgsqlCommand ProjectExpenseReadinessCommand(NpgsqlConnection connection) => new("""
+        SELECT
+            (SELECT COUNT(*) FROM schema_migrations
+             WHERE migration_id IN (
+               '044_project_expense_upload_certify_connection',
+               '044a_project_expense_self_certify_permission')),
+            (SELECT COUNT(*) FROM pg_tables
+             WHERE schemaname='public'
+               AND tablename IN (
+                 'project_expense_uploads',
+                 'project_expense_lines',
+                 'project_expense_events',
+                 'project_expense_mail_outbox',
+                 'certify_connection_profiles',
+                 'certify_expense_import_runs')),
+            (SELECT COUNT(*) FROM certify_connection_profiles
+             WHERE profile_name='default'
+               AND automatic_sync_enabled=FALSE),
+            (SELECT COUNT(*) FROM app_permissions
+             WHERE permission_code IN (
+               'VIEW_PROJECT_EXPENSE_UPLOAD',
+               'UPLOAD_PROJECT_EXPENSE_SELF',
+               'UPLOAD_PROJECT_EXPENSE_ON_BEHALF',
+               'DELETE_PROJECT_EXPENSE_UPLOAD',
+               'IMPORT_PROJECT_EXPENSE_CERTIFY',
+               'VIEW_PROJECT_EXPENSE_INVOICE_CONTEXT',
+               'MANAGE_CERTIFY_CONNECTION'));
+        """, connection);
 }
