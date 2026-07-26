@@ -3,7 +3,7 @@ export const PROJECTPULSE_MODULES = Object.freeze([
   Object.freeze({ moduleNumber: '002', route: 'manager-approval', displayName: 'Approval Inbox', group: 'Approvals' }),
   Object.freeze({ moduleNumber: '003', route: 'utilization', displayName: 'Utilization', group: 'Resource Management' }),
   Object.freeze({ moduleNumber: '004', route: 'holiday-admin', displayName: 'Holiday Administration', group: 'Time Management' }),
-  Object.freeze({ moduleNumber: '005', route: 'project-allocation-info', displayName: 'Project Allocation Information', group: 'Project Management' }),
+  Object.freeze({ moduleNumber: '005', route: 'project-allocation-info', displayName: 'Project Expense Upload', group: 'Project Management' }),
   Object.freeze({ moduleNumber: '006', route: 'psa-modules', displayName: 'PSA Modules', group: 'Platform Operations' }),
   Object.freeze({ moduleNumber: '007', route: 'workflow', displayName: 'Approval / Export / Audit Workflow', group: 'Approvals' }),
   Object.freeze({ moduleNumber: '008', route: 'audit-history', displayName: 'Audit History', group: 'Security & Audit' }),
@@ -31,7 +31,7 @@ export const PROJECTPULSE_MODULES = Object.freeze([
   Object.freeze({ moduleNumber: '030', route: 'reporting', displayName: 'Reporting', group: 'Reports & Workflow' }),
   Object.freeze({ moduleNumber: '036', route: 'sales-insights', displayName: 'Sales Insights Dashboard', group: 'Sales & Opportunities' }),
   Object.freeze({ moduleNumber: '037', route: 'roles-permissions-matrix', displayName: 'Roles & Permissions Matrix', group: 'Administration' }),
-  Object.freeze({ moduleNumber: '038', route: 'certify-integration', displayName: 'Certinia Integration', group: 'Integrations' }),
+  Object.freeze({ moduleNumber: '038', route: 'certify-integration', displayName: 'Certify Connection & Sync Center', group: 'Integrations' }),
   Object.freeze({ moduleNumber: '039', route: 'billing-readiness', displayName: 'Billing Readiness', group: 'Reports & Workflow' }),
   Object.freeze({ moduleNumber: '040', route: 'project-closeout', displayName: 'Project Closeout', group: 'Reports & Workflow' }),
   Object.freeze({ moduleNumber: '041', route: 'closeout-email', displayName: 'Closeout Email Automation', group: 'Reports & Workflow' }),
@@ -71,31 +71,10 @@ const ROUTE_ALIASES = Object.freeze({
   'resource-assignment-handoff': 'signed-handoff'
 });
 
-export const MODULE_BY_NUMBER = new Map(
-  PROJECTPULSE_MODULES.map((module) => [module.moduleNumber.toUpperCase(), module])
-);
-
-export const MODULE_BY_ROUTE = new Map(
-  PROJECTPULSE_MODULES.map((module) => [module.route, module])
-);
-
-export function canonicalModuleRoute(route) {
-  const normalized = String(route || '').replace(/^#/, '').trim();
-  return ROUTE_ALIASES[normalized] || normalized;
-}
-
-export function moduleForRoute(route) {
-  return MODULE_BY_ROUTE.get(canonicalModuleRoute(route)) || null;
-}
-
-export function moduleForNumber(moduleNumber) {
-  return MODULE_BY_NUMBER.get(String(moduleNumber || '').trim().toUpperCase()) || null;
-}
-
-export function currentProjectPulseRoute() {
-  return canonicalModuleRoute(window.location.hash || '#dashboard') || 'dashboard';
-}
-
-export function replaceTimesheetLabel(value) {
-  return String(value ?? '').replace(/\bTime Entry\b/g, 'Timesheet');
-}
+export const MODULE_BY_NUMBER = new Map(PROJECTPULSE_MODULES.map((module) => [module.moduleNumber.toUpperCase(), module]));
+export const MODULE_BY_ROUTE = new Map(PROJECTPULSE_MODULES.map((module) => [module.route, module]));
+export function canonicalModuleRoute(route) { const normalized = String(route || '').replace(/^#/, '').trim(); return ROUTE_ALIASES[normalized] || normalized; }
+export function moduleForRoute(route) { return MODULE_BY_ROUTE.get(canonicalModuleRoute(route)) || null; }
+export function moduleForNumber(moduleNumber) { return MODULE_BY_NUMBER.get(String(moduleNumber || '').trim().toUpperCase()) || null; }
+export function currentProjectPulseRoute() { return canonicalModuleRoute(window.location.hash || '#dashboard') || 'dashboard'; }
+export function replaceTimesheetLabel(value) { return String(value ?? '').replace(/\bTime Entry\b/g, 'Timesheet'); }
