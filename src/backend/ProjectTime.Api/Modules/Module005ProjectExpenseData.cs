@@ -132,7 +132,7 @@ public static partial class Module005ProjectExpenseUploadModule
                 lineCount = reader.GetInt32(17), totalAmount = reader.GetDecimal(18), reimbursableAmount = reader.GetDecimal(19),
                 contractType = reader.GetString(20), billingTreatment = reader.GetString(21), versionNumber = reader.GetInt32(22),
                 isCurrent = reader.GetBoolean(23), uploadedAt = reader.GetFieldValue<DateTimeOffset>(24),
-                deletedAt = reader.IsDBNull(25) ? null : reader.GetFieldValue<DateTimeOffset>(25),
+                deletedAt = reader.IsDBNull(25) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(25),
                 deletionReason = reader.IsDBNull(26) ? null : reader.GetString(26),
                 notificationStatus = reader.GetString(27), notificationDetail = reader.GetString(28),
                 categoryTotals = JsonSerializer.Deserialize<JsonElement>(reader.GetString(29))
