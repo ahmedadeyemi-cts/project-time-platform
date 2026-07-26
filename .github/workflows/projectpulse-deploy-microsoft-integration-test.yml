@@ -74,6 +74,7 @@ jobs:
           test -f release/src/frontend/project-time-web/src/module-availability-registry.js
           test -f control/scripts/apply-microsoft-integration-test-migration.sh
           test -f control/scripts/run-microsoft-integration-test-migration-job.sh
+          test -f control/scripts/wait-containerapp-ready-revision.sh
           test -f control/tests/test-microsoft-integration-migration-045.sh
 
           grep -Fq '045_microsoft_integration_consolidation' release/database/migrations/045_microsoft_integration_consolidation.sql
@@ -94,6 +95,7 @@ jobs:
           grep -Fq "moduleNumber: '065', route: 'entra-secret-administration', displayName: 'Microsoft Integration'" release/src/frontend/project-time-web/src/module-availability-registry.js
           ! grep -Fq "moduleNumber: '067'" release/src/frontend/project-time-web/src/module-availability-registry.js
 
+          bash -n control/scripts/wait-containerapp-ready-revision.sh
           bash control/tests/test-microsoft-integration-migration-045.sh
           echo "target_commit=$TARGET_COMMIT" >> "$GITHUB_OUTPUT"
           echo '::warning::A green run does not prove authenticated Entra import or Microsoft Graph credential testing. Signed-in UAT remains required.'
@@ -200,13 +202,16 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          API_SUFFIX="msintapi-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          CANDIDATE_API_REVISION="${{ vars.AZURE_API_APP }}--${API_SUFFIX}"
           echo 'started=true' >> "$GITHUB_OUTPUT"
+          echo "candidate_api_revision=$CANDIDATE_API_REVISION" >> "$GITHUB_OUTPUT"
           az containerapp update \
             -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
             -n '${{ vars.AZURE_API_APP }}' \
             --image '${{ steps.build.outputs.api_image }}' \
             --set-env-vars PROJECTPULSE_ENVIRONMENT=test PROJECTPULSE_SOURCE_COMMIT='${{ steps.release.outputs.target_commit }}' \
-            --revision-suffix "msintapi-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --revision-suffix "$API_SUFFIX" \
             --output none
 
       - name: Validate API startup and protected Microsoft Integration routes
@@ -217,6 +222,14 @@ jobs:
           BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"
           DIAGNOSTICS=/tmp/microsoft-integration-api-validation
           mkdir -p "$DIAGNOSTICS"
+          CANDIDATE_API_REVISION='${{ steps.deploy_api.outputs.candidate_api_revision }}'
+
+          bash control/scripts/wait-containerapp-ready-revision.sh \
+            '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            '${{ vars.AZURE_API_APP }}' \
+            "$CANDIDATE_API_REVISION" \
+            '${{ steps.build.outputs.api_image }}' \
+            60 10
 
           request() {
             local name="$1" method="$2" url="$3" body="${4:-}" attempt="${5:-1}" separator='?'
@@ -254,12 +267,9 @@ jobs:
           wait_status connection-test POST "$BASE/api/microsoft-integration/test-connection" '401,403' '{}'
 
           READY_API_REVISION="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.latestReadyRevisionName' -o tsv)"
-          [[ -n "$READY_API_REVISION" ]] || { echo 'The API app has no latest ready revision.' >&2; exit 1; }
+          [[ "$READY_API_REVISION" == "$CANDIDATE_API_REVISION" ]] || { echo "Unexpected ready API revision: $READY_API_REVISION" >&2; exit 1; }
           READY_API_IMAGE="$(az containerapp revision show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --revision "$READY_API_REVISION" --query 'properties.template.containers[0].image' -o tsv)"
-          [[ "$READY_API_IMAGE" == '${{ steps.build.outputs.api_image }}' ]] || {
-            echo "The latest ready API revision is not using the built candidate image: revision=$READY_API_REVISION image=$READY_API_IMAGE" >&2
-            exit 1
-          }
+          [[ "$READY_API_IMAGE" == '${{ steps.build.outputs.api_image }}' ]]
           echo "ready_api_revision=$READY_API_REVISION" >> "$GITHUB_OUTPUT"
           echo "ready_api_image=$READY_API_IMAGE" >> "$GITHUB_OUTPUT"
           echo 'MICROSOFT_INTEGRATION_API_DEPLOYMENT_INTEGRITY=READY'
@@ -275,6 +285,9 @@ jobs:
           az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' \
             --query '{latestRevisionName:properties.latestRevisionName,latestReadyRevisionName:properties.latestReadyRevisionName,configuredImage:properties.template.containers[0].image}' \
             -o json > evidence/microsoft-integration-api-validation/containerapp.json 2>&1 || true
+          az containerapp revision list -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' \
+            --query '[].{name:name,active:properties.active,trafficWeight:properties.trafficWeight,provisioningState:properties.provisioningState,healthState:properties.healthState,image:properties.template.containers[0].image}' \
+            -o json > evidence/microsoft-integration-api-validation/revisions.json 2>&1 || true
 
       - name: Upload API validation diagnostics
         if: ${{ failure() && steps.deploy_api.outputs.started == 'true' }}
@@ -289,12 +302,15 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          WEB_SUFFIX="msintweb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          CANDIDATE_WEB_REVISION="${{ vars.AZURE_WEB_APP }}--${WEB_SUFFIX}"
           echo 'started=true' >> "$GITHUB_OUTPUT"
+          echo "candidate_web_revision=$CANDIDATE_WEB_REVISION" >> "$GITHUB_OUTPUT"
           az containerapp update \
             -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
             -n '${{ vars.AZURE_WEB_APP }}' \
             --image '${{ steps.build.outputs.web_image }}' \
-            --revision-suffix "msintweb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --revision-suffix "$WEB_SUFFIX" \
             --output none
 
       - name: Validate served Microsoft Integration assets and ready revision images
@@ -303,6 +319,16 @@ jobs:
         run: |
           set -Eeuo pipefail
           BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"
+          CANDIDATE_API_REVISION='${{ steps.deploy_api.outputs.candidate_api_revision }}'
+          CANDIDATE_WEB_REVISION='${{ steps.deploy_web.outputs.candidate_web_revision }}'
+
+          bash control/scripts/wait-containerapp-ready-revision.sh \
+            '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            '${{ vars.AZURE_WEB_APP }}' \
+            "$CANDIDATE_WEB_REVISION" \
+            '${{ steps.build.outputs.web_image }}' \
+            60 10
+
           READY=false
           for attempt in $(seq 1 36); do
             BUSTER="microsoft-integration-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-$attempt"
@@ -332,7 +358,8 @@ jobs:
 
           READY_API_REVISION="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.latestReadyRevisionName' -o tsv)"
           READY_WEB_REVISION="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.latestReadyRevisionName' -o tsv)"
-          [[ -n "$READY_API_REVISION" && -n "$READY_WEB_REVISION" ]] || { echo 'API or web latest ready revision is missing.' >&2; exit 1; }
+          [[ "$READY_API_REVISION" == "$CANDIDATE_API_REVISION" ]] || { echo "Ready API revision changed unexpectedly: $READY_API_REVISION" >&2; exit 1; }
+          [[ "$READY_WEB_REVISION" == "$CANDIDATE_WEB_REVISION" ]] || { echo "Ready web revision mismatch: $READY_WEB_REVISION" >&2; exit 1; }
           READY_API_IMAGE="$(az containerapp revision show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --revision "$READY_API_REVISION" --query 'properties.template.containers[0].image' -o tsv)"
           READY_WEB_IMAGE="$(az containerapp revision show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --revision "$READY_WEB_REVISION" --query 'properties.template.containers[0].image' -o tsv)"
           [[ "$READY_API_IMAGE" == '${{ steps.build.outputs.api_image }}' ]] || { echo "Ready API revision image mismatch: $READY_API_REVISION $READY_API_IMAGE" >&2; exit 1; }
