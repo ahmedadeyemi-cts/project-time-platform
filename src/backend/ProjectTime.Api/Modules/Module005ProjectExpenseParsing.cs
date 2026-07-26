@@ -7,6 +7,11 @@ namespace ProjectTime.Api.Modules;
 
 public static partial class Module005ProjectExpenseUploadModule
 {
+    private static readonly string[] CertifyCategoryHeaderTokens =
+    {
+        "Airfare", "Rental", "Hotel", "Meal", "Mileage", "Parking", "Toll", "Misc"
+    };
+
     private static ParsedExpenseFile ParseExpenseFile(string fileName, byte[] bytes)
     {
         var extension = Path.GetExtension(fileName).ToLowerInvariant();
@@ -40,7 +45,7 @@ public static partial class Module005ProjectExpenseUploadModule
         var glHeader = FindHeader(rows, new[] { "Employee", "Department Name", "Date", "Category", "GL Code", "Amount" });
         if (glHeader >= 0) return ParseGlDimension(rows, glHeader, csv);
 
-        var categoryHeader = FindHeader(rows, new[] { "Employee", "Airfare", "Car Rental", "Hotel", "Meals", "Total" });
+        var categoryHeader = FindCategoryHeader(rows);
         if (categoryHeader >= 0) return ParseCategorySummary(rows, categoryHeader, csv);
 
         throw new InvalidOperationException("The file is not a recognized Certify Expenses by GL Dimension or Expenses by Category export.");
@@ -56,10 +61,10 @@ public static partial class Module005ProjectExpenseUploadModule
         {
             var row = rows[index];
             var employee = Cell(row, headers, "Employee");
-            var category = Cell(row, headers, "Category");
+            var category = NormalizeExpenseCategory(Cell(row, headers, "Category"));
             var amountText = Cell(row, headers, "Amount");
             if (employee.Equals("Total", StringComparison.OrdinalIgnoreCase)) break;
-            if (string.IsNullOrWhiteSpace(employee) && string.IsNullOrWhiteSpace(category) && string.IsNullOrWhiteSpace(amountText)) continue;
+            if (string.IsNullOrWhiteSpace(employee) && category == "Uncategorized" && string.IsNullOrWhiteSpace(amountText)) continue;
             if (!TryDecimal(amountText, out var amount)) continue;
 
             var reimbursable = TryBoolean(Cell(row, headers, "Reimbursable"), true);
@@ -73,7 +78,7 @@ public static partial class Module005ProjectExpenseUploadModule
                 lineNumber++, employee, ExtractEmail(employee),
                 Cell(row, headers, "Department Name"), Cell(row, headers, "Department Code"),
                 ParseDate(Cell(row, headers, "Date")),
-                string.IsNullOrWhiteSpace(category) ? "Uncategorized" : category,
+                category,
                 Cell(row, headers, "GL Code"), amount, reimbursable,
                 reimbursableAmount, currency, Cell(row, headers, "Reason"), false,
                 JsonSerializer.Serialize(source)));
@@ -103,12 +108,13 @@ public static partial class Module005ProjectExpenseUploadModule
             for (var column = 0; column < headers.Length; column++)
             {
                 if (column == employeeIndex || column == totalIndex) continue;
-                var category = headers[column];
-                if (string.IsNullOrWhiteSpace(category) || !TryDecimal(ValueAt(row, column), out var amount) || amount == 0) continue;
+                var category = NormalizeExpenseCategory(headers[column]);
+                if (category == "Uncategorized" || !TryDecimal(ValueAt(row, column), out var amount) || amount == 0) continue;
                 var source = new Dictionary<string, string>
                 {
                     ["Employee"] = employee,
                     ["Category"] = category,
+                    ["Source Category"] = headers[column],
                     ["Amount"] = amount.ToString(CultureInfo.InvariantCulture),
                     ["Start Date"] = start,
                     ["End Date"] = end
@@ -134,7 +140,7 @@ public static partial class Module005ProjectExpenseUploadModule
         {
             var amount = JsonDecimal(item, "amount", "expenseAmount", "approvedAmount", "reimbursableAmount");
             if (amount is null) continue;
-            var category = JsonText(item, "category", "categoryName", "expenseCategory", "glCategory");
+            var category = NormalizeExpenseCategory(JsonText(item, "category", "categoryName", "expenseCategory", "glCategory"));
             var reimbursable = JsonBoolean(item, true, "reimbursable", "isReimbursable", "billable");
             var reimbursement = JsonDecimal(item, "reimbursableAmount", "reimbursementAmount") ?? (reimbursable ? amount.Value : 0m);
             var employee = JsonText(item, "employeeName", "submitterName", "employee", "ownerName");
@@ -142,7 +148,7 @@ public static partial class Module005ProjectExpenseUploadModule
                 line++, employee, JsonText(item, "employeeEmail", "submitterEmail", "email"),
                 JsonText(item, "departmentName", "department"), JsonText(item, "departmentCode"),
                 ParseDate(JsonText(item, "expenseDate", "date", "transactionDate")),
-                string.IsNullOrWhiteSpace(category) ? "Uncategorized" : category,
+                category,
                 JsonText(item, "glCode", "generalLedgerCode"), amount.Value, reimbursable,
                 reimbursement, NormalizeCurrency(JsonText(item, "currency", "currencyCode")),
                 JsonText(item, "reason", "description", "merchant"), false, item.GetRawText()));
@@ -174,6 +180,34 @@ public static partial class Module005ProjectExpenseUploadModule
             if (requiredValues.All(normalized.Contains)) return index;
         }
         return -1;
+    }
+
+    private static int FindCategoryHeader(IReadOnlyList<List<string>> rows)
+    {
+        for (var index = 0; index < Math.Min(rows.Count, 30); index++)
+        {
+            var headers = rows[index].Select(value => value.Trim()).Where(value => !string.IsNullOrWhiteSpace(value)).ToArray();
+            var hasEmployee = headers.Any(value => value.Equals("Employee", StringComparison.OrdinalIgnoreCase));
+            var hasTotal = headers.Any(value => value.Equals("Total", StringComparison.OrdinalIgnoreCase));
+            var categoryCount = headers.Count(value => CertifyCategoryHeaderTokens.Any(token => value.Contains(token, StringComparison.OrdinalIgnoreCase)));
+            if (hasEmployee && hasTotal && categoryCount > 0) return index;
+        }
+        return -1;
+    }
+
+    private static string NormalizeExpenseCategory(string? text)
+    {
+        var value = (text ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(value)) return "Uncategorized";
+        if (value.Contains("Meals (All Employees,Cust)", StringComparison.OrdinalIgnoreCase)) return "SP-Meals (All Employees,Cust)";
+        if (value.Contains("Airfare", StringComparison.OrdinalIgnoreCase)) return "SP-Cust Pass Through - Airfare";
+        if (value.Contains("Rental", StringComparison.OrdinalIgnoreCase)) return "SP-Cust Pass Through - Rental";
+        if (value.Contains("Hotel", StringComparison.OrdinalIgnoreCase)) return "SP-Cust Pass Through-Hotel";
+        if (value.Contains("Mileage", StringComparison.OrdinalIgnoreCase)) return "SP-Cust Pass Through-Mileage";
+        if (value.Contains("Parking", StringComparison.OrdinalIgnoreCase) || value.Contains("Toll", StringComparison.OrdinalIgnoreCase)) return "SP-Travel, Lodging, Parking";
+        if (value.Contains("Meal", StringComparison.OrdinalIgnoreCase)) return "SP-Cust Pass Through-Meals";
+        if (value.Contains("Misc", StringComparison.OrdinalIgnoreCase)) return "Miscellaneous";
+        return value;
     }
 
     private static Dictionary<string, int> HeaderMap(IReadOnlyList<string> row) =>
