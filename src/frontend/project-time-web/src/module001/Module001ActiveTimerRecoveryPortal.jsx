@@ -44,6 +44,7 @@ export default function Module001ActiveTimerRecoveryPortal() {
   const [clock, setClock] = useState(() => new Date());
   const [busy, setBusy] = useState('');
   const [message, setMessage] = useState('');
+  const [actionError, setActionError] = useState('');
   const [checkError, setCheckError] = useState('');
 
   useEffect(() => {
@@ -65,18 +66,16 @@ export default function Module001ActiveTimerRecoveryPortal() {
   const load = useCallback(async () => {
     if (!host) return;
     try {
-      const payload = await authoritativeApi('/api/timesheet/timers/active');
+      const payload = await authoritativeApi('/api/timesheet/timers/active', { moduleNumber: '001' });
       const activeTimer = payload?.activeTimer || payload?.ActiveTimer || null;
       const stoppedTimer = payload?.autoStoppedTimer || payload?.AutoStoppedTimer || null;
       setTimer(activeTimer);
-      setAutoStoppedTimer(stoppedTimer);
+      if (stoppedTimer) setAutoStoppedTimer(stoppedTimer);
       setCheckError('');
       if (activeTimer) setMessage('A running timer was recovered from the server.');
       else if (stoppedTimer) setMessage('The server automatically stopped a timer at the 12-hour safety limit. Review the resulting draft entry.');
-      else setMessage('');
     } catch (error) {
       setTimer(null);
-      setAutoStoppedTimer(null);
       setCheckError(error.message || 'The active timer could not be checked.');
     }
   }, [host]);
@@ -112,10 +111,12 @@ export default function Module001ActiveTimerRecoveryPortal() {
   async function stop() {
     if (!timer || busy) return;
     setBusy('stop');
+    setActionError('');
     setMessage('Stopping the recovered timer…');
     try {
       const result = await authoritativeApi(`/api/timesheet/timers/${timer.timerSessionId}/stop`, {
         method: 'POST',
+        moduleNumber: '001',
         body: JSON.stringify({
           description: timer.description || '',
           reason: 'Stopped from Module 001 active timer recovery.',
@@ -126,10 +127,9 @@ export default function Module001ActiveTimerRecoveryPortal() {
       setMessage(result.message || 'Timer stopped and its draft time entry was created.');
       window.dispatchEvent(new CustomEvent('projectpulse:module001-timer-recovered', { detail: { action: 'stopped' } }));
     } catch (error) {
-      setMessage(error.message || 'The timer could not be stopped.');
+      setActionError(error.message || 'The timer could not be stopped.');
     } finally {
       setBusy('');
-      void load();
     }
   }
 
@@ -138,10 +138,12 @@ export default function Module001ActiveTimerRecoveryPortal() {
     const confirmed = window.confirm('Discard this running timer without creating a time entry?');
     if (!confirmed) return;
     setBusy('discard');
+    setActionError('');
     setMessage('Discarding the recovered timer…');
     try {
       const result = await authoritativeApi(`/api/timesheet/timers/${timer.timerSessionId}/discard`, {
         method: 'POST',
+        moduleNumber: '001',
         body: JSON.stringify({
           reason: 'Discarded from Module 001 active timer recovery.',
           expectedRowVersion: timer.rowVersion
@@ -151,10 +153,9 @@ export default function Module001ActiveTimerRecoveryPortal() {
       setMessage(result.message || 'Timer discarded.');
       window.dispatchEvent(new CustomEvent('projectpulse:module001-timer-recovered', { detail: { action: 'discarded' } }));
     } catch (error) {
-      setMessage(error.message || 'The timer could not be discarded.');
+      setActionError(error.message || 'The timer could not be discarded.');
     } finally {
       setBusy('');
-      void load();
     }
   }
 
@@ -189,7 +190,10 @@ export default function Module001ActiveTimerRecoveryPortal() {
           <p>{message}</p>
         </div>
         <div className="module001-active-timer-recovery-actions">
-          <button type="button" onClick={() => setAutoStoppedTimer(null)}>Dismiss</button>
+          <button type="button" onClick={() => {
+            setAutoStoppedTimer(null);
+            setMessage('');
+          }}>Dismiss</button>
         </div>
       </section>,
       host
@@ -201,7 +205,7 @@ export default function Module001ActiveTimerRecoveryPortal() {
       <div>
         <p className="eyebrow">Running timer recovered</p>
         <h3>{activeLabel(timer)}</h3>
-        <p>{message}</p>
+        <p className={actionError ? 'module001-active-timer-action-error' : ''}>{actionError || message}</p>
         <small>Started {timer.startedAtUtc ? new Date(timer.startedAtUtc).toLocaleString() : 'on the server'} · Rounded draft {(duration.roundedMinutes / 60).toFixed(2)} hours</small>
         {missingDescription ? <small className="module001-active-timer-description-warning">No work description is recorded. After stopping, add the actual work detail before submitting the week.</small> : null}
       </div>
