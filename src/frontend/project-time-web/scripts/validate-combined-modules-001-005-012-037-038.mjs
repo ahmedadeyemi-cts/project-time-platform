@@ -69,12 +69,14 @@ requireAll(combined, [
 requireAll(publicReadiness, [
   'MapCombinedModulePublicReadinessEndpoint',
   '/health/combined-modules',
+  '/api/public/combined-modules/readiness',
   'CombinedRuntimeReadinessAsync'
 ], 'Public combined readiness');
 
 requireAll(safeExpense, [
   'MapModule005ProjectExpenseUploadEndpointsSafe',
   '/api/project-expenses/readiness',
+  '/api/public/project-expenses/readiness',
   'DeleteUploadFromRequestAsync',
   'JsonSerializer.DeserializeAsync<ExpenseDeleteRequest>',
   'project_expense_runtime_ready',
@@ -135,7 +137,11 @@ requireAll(startupTest, [
   '/health',
   '/api/version',
   '/health/combined-modules',
-  'endpointRegistration=ready'
+  '/api/public/combined-modules/readiness',
+  '/api/public/project-expenses/readiness',
+  '/api/runtime/v2/readiness',
+  'publicReadinessContracts=ready',
+  'protectedAuthBoundary=ready'
 ], 'API startup smoke test');
 
 console.log('COMBINED_MODULES_001_005_012_037_038_CONTRACTS=PASS');
