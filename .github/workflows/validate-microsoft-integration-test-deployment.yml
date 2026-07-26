@@ -1,0 +1,30 @@
+name: Validate Microsoft Integration Test Deployment Control
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/projectpulse-deploy-microsoft-integration-test.yml'
+      - '.github/workflows/validate-microsoft-integration-test-deployment.yml'
+      - 'scripts/apply-microsoft-integration-test-migration.sh'
+      - 'scripts/run-microsoft-integration-test-migration-job.sh'
+      - 'scripts/validate-microsoft-integration-test-deployment.sh'
+      - 'tests/test-microsoft-integration-migration-045.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate Microsoft Integration deployment and migration controls
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate guarded deployment contract
+        shell: bash
+        run: bash scripts/validate-microsoft-integration-test-deployment.sh
+
+      - name: Test migration 045 apply, idempotence, safe rollback, and rollback guards
+        shell: bash
+        run: bash tests/test-microsoft-integration-migration-045.sh
