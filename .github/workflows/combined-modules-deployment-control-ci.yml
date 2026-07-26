@@ -19,4 +19,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Validate guarded combined modules test deployment
-        run: bash scripts/validate-combined-modules-test-deployment.sh
+        shell: bash
+        run: |
+          set +e
+          bash scripts/validate-combined-modules-test-deployment.sh > combined-modules-control-validation.log 2>&1
+          STATUS=$?
+          cat combined-modules-control-validation.log
+          exit "$STATUS"
+      - name: Upload deployment-control diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: combined-modules-deployment-control-diagnostics
+          path: combined-modules-control-validation.log
+          retention-days: 7
