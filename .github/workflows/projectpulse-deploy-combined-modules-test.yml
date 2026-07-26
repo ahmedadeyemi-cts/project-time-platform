@@ -96,7 +96,8 @@ jobs:
           grep -Fq 'function synchronizeViewButtons()' release/src/frontend/project-time-web/src/module001/TimesheetEnhancementPortal.jsx
           grep -Fq 'const assignedTasks = mergeByKey(snapshot.assignedTasks, authoritativeAssignments);' release/src/frontend/project-time-web/src/module001/TimesheetEnhancementPortal.jsx
           grep -Fq 'const nonProjectCategories = mergeByKey(' release/src/frontend/project-time-web/src/module001/TimesheetEnhancementPortal.jsx
-          grep -Fq 'Ready to start. Select Start timer to begin counting.' release/src/frontend/project-time-web/src/module001/TimesheetTimerView.jsx
+          grep -Fq 'Ready to start' release/src/frontend/project-time-web/src/module001/TimesheetTimerView.jsx
+          grep -Fq 'Select Start timer to begin the live clock.' release/src/frontend/project-time-web/src/module001/TimesheetTimerView.jsx
           grep -Fq 'All active users' release/src/frontend/project-time-web/src/module001/PtcRuntimeTaskCatalog.jsx
           grep -Fq "button.textContent = 'Re-upload'" release/src/frontend/project-time-web/src/Module005ExperienceCompatibility.jsx
           grep -Fq 'Re-upload ready. Choose the replacement CSV or Excel file' release/src/frontend/project-time-web/src/Module005ExperienceCompatibility.jsx
