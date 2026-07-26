@@ -7,21 +7,21 @@ using ProjectTime.Api.Modules;
 const decimal ExpectedTotal = 2377.26m;
 var expectedCategories = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase)
 {
-    ["SP-Cust Pass Through - Airfare"] = 500m,
-    ["SP-Cust Pass Through - Rental"] = 200m,
-    ["SP-Cust Pass Through-Hotel"] = 800m,
-    ["SP-Cust Pass Through-Meals"] = 300m,
-    ["SP-Cust Pass Through-Mileage"] = 200m,
-    ["SP-Travel, Lodging, Parking"] = 177.26m,
-    ["SP-Meals (All Employees,Cust)"] = 200m
+    ["SP-Cust Pass Through - Airfare"] = 1416.81m,
+    ["SP-Cust Pass Through - Rental"] = 44.98m,
+    ["SP-Cust Pass Through-Hotel"] = 589.08m,
+    ["SP-Cust Pass Through-Meals"] = 195.91m,
+    ["SP-Cust Pass Through-Mileage"] = 72.52m,
+    ["SP-Meals (All Employees,Cust)"] = 11.96m,
+    ["SP-Travel, Lodging, Parking"] = 46m
 };
 
 var cases = new[]
 {
-    ParseCase("ExpensesByGLDim.xlsx", BuildGlWorkbook(), "gl_dimension", new DateOnly(2026, 6, 2), new DateOnly(2026, 7, 20)),
-    ParseCase("ExpensesByCategory.xlsx", BuildCategoryWorkbook(), "category_summary", new DateOnly(2026, 6, 1), new DateOnly(2026, 7, 29)),
-    ParseCase("ExpensesByGLDim.csv", BuildGlCsv(), "csv_gl_dimension", new DateOnly(2026, 6, 2), new DateOnly(2026, 7, 20)),
-    ParseCase("ExpensesByCategory.csv", BuildCategoryCsv(), "csv_category_summary", new DateOnly(2026, 6, 1), new DateOnly(2026, 7, 29))
+    ParseCase("ExpensesByGLDim.xlsx", BuildGlWorkbook(), "gl_dimension", new DateOnly(2026, 5, 15), new DateOnly(2026, 5, 31), 20),
+    ParseCase("ExpensesByCategory.xlsx", BuildCategoryWorkbook(), "category_summary", new DateOnly(2026, 6, 1), new DateOnly(2026, 7, 29), 7),
+    ParseCase("ExpensesByGLDim.csv", BuildGlCsv(), "csv_gl_dimension", new DateOnly(2026, 5, 15), new DateOnly(2026, 5, 31), 20),
+    ParseCase("ExpensesByCategory.csv", BuildCategoryCsv(), "csv_category_summary", new DateOnly(2026, 6, 1), new DateOnly(2026, 7, 29), 7)
 };
 
 foreach (var parsed in cases)
@@ -42,10 +42,10 @@ AssertCategoryTotalsEqual(cases[2], cases[3], "CSV formats");
 AssertCategoryTotalsEqual(cases[0], cases[2], "GL Excel and CSV");
 AssertCategoryTotalsEqual(cases[1], cases[3], "Category Excel and CSV");
 
-Console.WriteLine("MODULE_005_EXPENSE_PARSER_TEST=PASS formats=4 total=2377.26 normalizedCategories=7");
+Console.WriteLine("MODULE_005_EXPENSE_PARSER_TEST=PASS formats=4 total=2377.26 normalizedCategories=7 exactUploadedStructures=true");
 return;
 
-static ParsedCase ParseCase(string fileName, byte[] bytes, string expectedFormat, DateOnly expectedStart, DateOnly expectedEnd)
+static ParsedCase ParseCase(string fileName, byte[] bytes, string expectedFormat, DateOnly expectedStart, DateOnly expectedEnd, int expectedLineCount)
 {
     var type = typeof(Module005ProjectExpenseUploadModule);
     var method = type.GetMethod("ParseExpenseFile", BindingFlags.Static | BindingFlags.NonPublic)
@@ -77,7 +77,7 @@ static ParsedCase ParseCase(string fileName, byte[] bytes, string expectedFormat
         var amount = Property<decimal>(line, "Amount");
         categories[category] = categories.GetValueOrDefault(category) + amount;
     }
-    AssertEqual(7, lineCount, $"{fileName} line count");
+    AssertEqual(expectedLineCount, lineCount, $"{fileName} line count");
 
     return new ParsedCase(
         fileName,
@@ -134,25 +134,32 @@ static byte[] BuildGlWorkbook()
         "Date", "Amount", "Reimbursable", "Reimb Amount", "Currency", "Reason"
     };
     for (var column = 0; column < headers.Length; column++) sheet.Cell(1, column + 1).Value = headers[column];
-    var date = new DateTime(2026, 6, 2);
+
     var row = 2;
-    foreach (var entry in ExpenseRows())
+    foreach (var entry in TransactionRows())
     {
         sheet.Cell(row, 1).Value = "Yes";
-        sheet.Cell(row, 2).Value = "Engineer Test (engineer@example.test)";
-        sheet.Cell(row, 3).Value = "Engineering";
-        sheet.Cell(row, 4).Value = "ENG";
-        sheet.Cell(row, 5).Value = entry.SourceCategory;
-        sheet.Cell(row, 6).Value = $"GL-{row:000}";
-        sheet.Cell(row, 7).Value = date;
+        sheet.Cell(row, 2).Value = "Engineer, Test";
+        sheet.Cell(row, 3).Value = "SP - Resale Collaboration";
+        sheet.Cell(row, 4).Value = "9321";
+        sheet.Cell(row, 5).Value = entry.Category;
+        sheet.Cell(row, 6).Value = entry.GlCode;
+        sheet.Cell(row, 7).Value = entry.Date.ToDateTime(TimeOnly.MinValue);
         sheet.Cell(row, 8).Value = entry.Amount;
-        sheet.Cell(row, 9).Value = "Yes";
+        sheet.Cell(row, 9).Value = "True";
         sheet.Cell(row, 10).Value = entry.Amount;
         sheet.Cell(row, 11).Value = "USD";
-        sheet.Cell(row, 12).Value = "Certify test expense";
-        date = row == 7 ? new DateTime(2026, 7, 20) : date.AddDays(5);
+        sheet.Cell(row, 12).Value = entry.Reason;
         row++;
     }
+
+    for (var column = 1; column <= 7; column++) sheet.Cell(row, column).Value = "43";
+    sheet.Cell(row, 8).Value = ExpectedTotal;
+    sheet.Cell(row, 9).Value = "43";
+    sheet.Cell(row, 10).Value = ExpectedTotal;
+    sheet.Cell(row, 11).Value = "43";
+    sheet.Cell(row, 12).Value = "43";
+
     using var stream = new MemoryStream();
     workbook.SaveAs(stream);
     return stream.ToArray();
@@ -163,18 +170,26 @@ static byte[] BuildCategoryWorkbook()
     using var workbook = new XLWorkbook();
     var sheet = workbook.AddWorksheet("Expenses by Category");
     sheet.Cell("A1").Value = "Expenses by Category";
-    sheet.Cell("A2").Value = "Start Date:";
-    sheet.Cell("B2").Value = "6/1/2026";
-    sheet.Cell("A3").Value = "End Date:";
-    sheet.Cell("B3").Value = "7/29/2026";
-    sheet.Cell("A5").Value = "Employee";
-    var column = 2;
-    foreach (var entry in ExpenseRows()) sheet.Cell(5, column++).Value = entry.SourceCategory;
-    sheet.Cell(5, column).Value = "Total";
-    sheet.Cell("A6").Value = "Engineer Test (engineer@example.test)";
-    column = 2;
-    foreach (var entry in ExpenseRows()) sheet.Cell(6, column++).Value = entry.Amount;
-    sheet.Cell(6, column).Value = ExpectedTotal;
+    sheet.Cell("A2").Value = "Parameter Values";
+    sheet.Cell("A3").Value = "Search By: Processed Date";
+    sheet.Cell("A4").Value = "Start Date: 6/1/2026";
+    sheet.Cell("A5").Value = "End Date: 7/29/2026";
+    sheet.Cell("A6").Value = "Employee: Engineer Test (engineer@example.test)";
+    sheet.Cell("A7").Value = "Summarize By: Expense Category";
+
+    var categories = CategoryRows().ToArray();
+    sheet.Cell(9, 1).Value = "Employee";
+    for (var index = 0; index < categories.Length; index++) sheet.Cell(9, index + 2).Value = categories[index].Category;
+    sheet.Cell(9, categories.Length + 2).Value = "Total";
+
+    sheet.Cell(11, 1).Value = "Engineer, Test (81790)";
+    for (var index = 0; index < categories.Length; index++) sheet.Cell(11, index + 2).Value = categories[index].Amount;
+    sheet.Cell(11, categories.Length + 2).Value = ExpectedTotal;
+
+    sheet.Cell(12, 1).Value = "Total";
+    for (var index = 0; index < categories.Length; index++) sheet.Cell(12, index + 2).Value = categories[index].Amount;
+    sheet.Cell(12, categories.Length + 2).Value = ExpectedTotal;
+
     using var stream = new MemoryStream();
     workbook.SaveAs(stream);
     return stream.ToArray();
@@ -184,49 +199,81 @@ static byte[] BuildGlCsv()
 {
     var builder = new System.Text.StringBuilder();
     builder.AppendLine("Processed,Employee,Department Name,Department Code,Category,GL Code,Date,Amount,Reimbursable,Reimb Amount,Currency,Reason");
-    var date = new DateOnly(2026, 6, 2);
-    var row = 1;
-    foreach (var entry in ExpenseRows())
+    foreach (var entry in TransactionRows())
     {
         builder.AppendLine(string.Join(',', new[]
         {
-            "Yes", Quote("Engineer Test (engineer@example.test)"), "Engineering", "ENG", Quote(entry.SourceCategory),
-            $"GL-{row:000}", date.ToString("M/d/yyyy", CultureInfo.InvariantCulture), entry.Amount.ToString(CultureInfo.InvariantCulture),
-            "Yes", entry.Amount.ToString(CultureInfo.InvariantCulture), "USD", Quote("Certify test expense")
+            "Yes", Quote("Engineer, Test"), Quote("SP - Resale Collaboration"), "9321", Quote(entry.Category),
+            entry.GlCode, entry.Date.ToString("M/d/yyyy", CultureInfo.InvariantCulture), entry.Amount.ToString(CultureInfo.InvariantCulture),
+            "True", entry.Amount.ToString(CultureInfo.InvariantCulture), "USD", Quote(entry.Reason)
         }));
-        date = row == 6 ? new DateOnly(2026, 7, 20) : date.AddDays(5);
-        row++;
     }
+    builder.AppendLine($"43,43,43,43,43,43,43,{ExpectedTotal.ToString(CultureInfo.InvariantCulture)},43,{ExpectedTotal.ToString(CultureInfo.InvariantCulture)},43,43");
     return System.Text.Encoding.UTF8.GetBytes(builder.ToString());
 }
 
 static byte[] BuildCategoryCsv()
 {
-    var rows = ExpenseRows().ToArray();
+    var categories = CategoryRows().ToArray();
     var builder = new System.Text.StringBuilder();
-    builder.AppendLine("Start Date:,6/1/2026");
-    builder.AppendLine("End Date:,7/29/2026");
+    builder.AppendLine("Expenses by Category");
+    builder.AppendLine("Parameter Values");
+    builder.AppendLine("Search By: Processed Date");
+    builder.AppendLine("Start Date: 6/1/2026");
+    builder.AppendLine("End Date: 7/29/2026");
+    builder.AppendLine(Quote("Employee: Engineer Test (engineer@example.test)"));
+    builder.AppendLine("Summarize By: Expense Category");
+    builder.AppendLine();
     builder.Append("Employee");
-    foreach (var entry in rows) builder.Append(',').Append(Quote(entry.SourceCategory));
+    foreach (var entry in categories) builder.Append(',').Append(Quote(entry.Category));
     builder.AppendLine(",Total");
-    builder.Append(Quote("Engineer Test (engineer@example.test)"));
-    foreach (var entry in rows) builder.Append(',').Append(entry.Amount.ToString(CultureInfo.InvariantCulture));
+    builder.AppendLine();
+    builder.Append(Quote("Engineer, Test (81790)"));
+    foreach (var entry in categories) builder.Append(',').Append(entry.Amount.ToString(CultureInfo.InvariantCulture));
+    builder.Append(',').Append(ExpectedTotal.ToString(CultureInfo.InvariantCulture)).AppendLine();
+    builder.Append("Total");
+    foreach (var entry in categories) builder.Append(',').Append(entry.Amount.ToString(CultureInfo.InvariantCulture));
     builder.Append(',').Append(ExpectedTotal.ToString(CultureInfo.InvariantCulture)).AppendLine();
     return System.Text.Encoding.UTF8.GetBytes(builder.ToString());
 }
 
-static IEnumerable<ExpenseFixture> ExpenseRows()
+static IEnumerable<TransactionFixture> TransactionRows()
 {
-    yield return new("Airfare", 500m);
-    yield return new("Car Rental", 200m);
-    yield return new("Hotel", 800m);
-    yield return new("Meals", 300m);
-    yield return new("Mileage", 200m);
-    yield return new("Parking/Tolls", 177.26m);
-    yield return new("Meals (All Employees,Cust)", 200m);
+    yield return new(new DateOnly(2026, 5, 15), "SP-Cust Pass Through-Meals", "6220", 12.71m, "Meal");
+    yield return new(new DateOnly(2026, 5, 15), "SP-Cust Pass Through-Mileage", "6215", 18.13m, "Travel to airport");
+    yield return new(new DateOnly(2026, 5, 15), "SP-Travel, Lodging, Parking", "6205", 23m, "Airport Parking");
+    yield return new(new DateOnly(2026, 5, 15), "SP-Cust Pass Through-Meals", "6220", 47.35m, "Meal + 1");
+    yield return new(new DateOnly(2026, 5, 16), "SP-Cust Pass Through-Meals", "6220", 55.20m, "Meal");
+    yield return new(new DateOnly(2026, 5, 16), "SP-Meals (All Employees,Cust)", "6220", 5.98m, "Drinks at customer");
+    yield return new(new DateOnly(2026, 5, 17), "SP-Meals (All Employees,Cust)", "6220", 5.98m, "Drinks at customer");
+    yield return new(new DateOnly(2026, 5, 17), "SP-Cust Pass Through-Meals", "6220", 33m, "Meal");
+    yield return new(new DateOnly(2026, 5, 17), "SP-Cust Pass Through-Hotel", "6205", 266.40m, "Hotel");
+    yield return new(new DateOnly(2026, 5, 17), "SP-Cust Pass Through - Rental", "6590", 44.98m, "Trip to airport");
+    yield return new(new DateOnly(2026, 5, 18), "SP-Cust Pass Through-Mileage", "6215", 18.13m, "Travel from airport");
+    yield return new(new DateOnly(2026, 5, 24), "SP-Cust Pass Through - Airfare", "6205", 756.41m, "Customer flight 1");
+    yield return new(new DateOnly(2026, 5, 24), "SP-Cust Pass Through - Airfare", "6205", 660.40m, "Customer flight 2");
+    yield return new(new DateOnly(2026, 5, 29), "SP-Travel, Lodging, Parking", "6205", 23m, "Parking");
+    yield return new(new DateOnly(2026, 5, 29), "SP-Cust Pass Through-Meals", "6220", 17.35m, "Meal");
+    yield return new(new DateOnly(2026, 5, 29), "SP-Cust Pass Through-Mileage", "6215", 18.13m, "Travel to airport");
+    yield return new(new DateOnly(2026, 5, 30), "SP-Cust Pass Through-Meals", "6220", 14.21m, "Meal");
+    yield return new(new DateOnly(2026, 5, 31), "SP-Cust Pass Through-Hotel", "6205", 322.68m, "Hotel stay");
+    yield return new(new DateOnly(2026, 5, 31), "SP-Cust Pass Through-Meals", "6220", 16.09m, "Meal");
+    yield return new(new DateOnly(2026, 5, 31), "SP-Cust Pass Through-Mileage", "6215", 18.13m, "Travel from airport");
+}
+
+static IEnumerable<CategoryFixture> CategoryRows()
+{
+    yield return new("SP-Cust Pass Through - Airfare", 1416.81m);
+    yield return new("SP-Cust Pass Through - Rental", 44.98m);
+    yield return new("SP-Cust Pass Through-Hotel", 589.08m);
+    yield return new("SP-Cust Pass Through-Meals", 195.91m);
+    yield return new("SP-Cust Pass Through-Mileage", 72.52m);
+    yield return new("SP-Meals (All Employees,Cust)", 11.96m);
+    yield return new("SP-Travel, Lodging, Parking", 46m);
 }
 
 static string Quote(string value) => $"\"{value.Replace("\"", "\"\"")}\"";
 
-sealed record ExpenseFixture(string SourceCategory, decimal Amount);
+sealed record TransactionFixture(DateOnly Date, string Category, string GlCode, decimal Amount, string Reason);
+sealed record CategoryFixture(string Category, decimal Amount);
 sealed record ParsedCase(string FileName, decimal TotalAmount, decimal ReimbursableAmount, Dictionary<string, decimal> CategoryTotals);
