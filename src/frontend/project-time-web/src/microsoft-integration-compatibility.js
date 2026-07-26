@@ -23,6 +23,11 @@ function closestModuleSurface(element) {
   return element.closest('a, button, li, article, section, .module-card, .workspace-card, .navigation-item, .sidebar-item');
 }
 
+function setTextIfChanged(element, value) {
+  if (!element || element.textContent === value) return;
+  element.textContent = value;
+}
+
 function normalizeModuleSurfaces() {
   document.querySelectorAll(`a[href="#${RETIRED_ROUTE}"], [data-route="${RETIRED_ROUTE}"]`).forEach((element) => {
     const surface = closestModuleSurface(element) || element;
@@ -43,7 +48,7 @@ function normalizeModuleSurfaces() {
     }
 
     if (/^Entra Secret Administration(?: Metadata)?$/i.test(text)) {
-      element.textContent = 'Microsoft Integration';
+      setTextIfChanged(element, 'Microsoft Integration');
     }
   });
 
@@ -64,11 +69,9 @@ function normalizeModuleSurfaces() {
     const eyebrow = module010.querySelector('.section-heading .eyebrow');
     const heading = module010.querySelector('.section-heading h1');
     const copy = module010.querySelector('.section-heading .section-copy');
-    if (eyebrow) eyebrow.textContent = 'Azure / Entra Directory Users';
-    if (heading) heading.textContent = 'Preview and import Entra users';
-    if (copy) {
-      copy.textContent = 'Preview Entra directory users, filter the list, select the people to import, and confirm that imported users appear in ProjectPulse. Tenant, secret, synchronization, identity, and Microsoft 365 mail settings are managed in Module 065 Microsoft Integration.';
-    }
+    setTextIfChanged(eyebrow, 'Azure / Entra Directory Users');
+    setTextIfChanged(heading, 'Preview and import Entra users');
+    setTextIfChanged(copy, 'Preview Entra directory users, filter the list, select the people to import, and confirm that imported users appear in ProjectPulse. Tenant, secret, synchronization, identity, and Microsoft 365 mail settings are managed in Module 065 Microsoft Integration.');
   }
 
   document.body.classList.toggle('projectpulse-microsoft-integration-active', currentRoute() === ACTIVE_ROUTE);
