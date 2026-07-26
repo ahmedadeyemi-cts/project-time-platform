@@ -1,5 +1,13 @@
 const ACTIVE_ROUTE = 'entra-secret-administration';
 const RETIRED_ROUTE = 'global-mail-configuration';
+const LEGACY_IMPORT_ROUTE = '/api/admin/azure/users/import-selected';
+const ACTIVE_IMPORT_ROUTE = '/api/microsoft-integration/directory-users/import-selected';
+const ROLE_NORMALIZATION_ROUTES = new Set([
+  LEGACY_IMPORT_ROUTE,
+  ACTIVE_IMPORT_ROUTE,
+  '/api/admin/azure/config',
+  '/api/admin/azure/import-settings'
+]);
 
 function currentRoute() {
   return window.location.hash.replace(/^#/, '').split('?')[0].trim();
@@ -66,28 +74,48 @@ function normalizeModuleSurfaces() {
   document.body.classList.toggle('projectpulse-microsoft-integration-active', currentRoute() === ACTIVE_ROUTE);
 }
 
-function installImportEndpointCompatibility() {
-  if (window.__projectPulseMicrosoftImportCompatibilityInstalled) return;
-  window.__projectPulseMicrosoftImportCompatibilityInstalled = true;
+function canonicalRoleCode(value) {
+  const normalized = String(value || '').trim().toUpperCase();
+  if (!normalized || normalized === 'ENGINEERING') return 'ENGINEER';
+  return normalized;
+}
+
+function normalizeRolePayload(pathname, init) {
+  if (!ROLE_NORMALIZATION_ROUTES.has(pathname) || typeof init?.body !== 'string') return init;
+
+  try {
+    const payload = JSON.parse(init.body);
+    payload.defaultRoleCode = canonicalRoleCode(payload.defaultRoleCode);
+    return { ...init, body: JSON.stringify(payload) };
+  } catch {
+    return init;
+  }
+}
+
+function installMicrosoftIntegrationCompatibility() {
+  if (window.__projectPulseMicrosoftIntegrationCompatibilityInstalled) return;
+  window.__projectPulseMicrosoftIntegrationCompatibilityInstalled = true;
 
   const previousFetch = window.fetch.bind(window);
   window.fetch = async (input, init = {}) => {
     const rawUrl = typeof input === 'string' ? input : input?.url;
     const method = String(init?.method || (input instanceof Request ? input.method : '') || 'GET').toUpperCase();
 
-    if (!rawUrl || method !== 'POST') return previousFetch(input, init);
+    if (!rawUrl || !['POST', 'PUT', 'PATCH'].includes(method)) return previousFetch(input, init);
 
     const url = new URL(rawUrl, window.location.origin);
-    if (url.pathname !== '/api/admin/azure/users/import-selected') {
-      return previousFetch(input, init);
+    const normalizedInit = normalizeRolePayload(url.pathname, init);
+
+    if (url.pathname !== LEGACY_IMPORT_ROUTE) {
+      return previousFetch(input, normalizedInit);
     }
 
-    const replacement = new URL('/api/microsoft-integration/directory-users/import-selected', window.location.origin);
+    const replacement = new URL(ACTIVE_IMPORT_ROUTE, window.location.origin);
     const nextInput = input instanceof Request
       ? new Request(replacement.toString(), input)
       : replacement.pathname;
 
-    return previousFetch(nextInput, init);
+    return previousFetch(nextInput, normalizedInit);
   };
 }
 
@@ -96,7 +124,7 @@ function refresh() {
   normalizeModuleSurfaces();
 }
 
-installImportEndpointCompatibility();
+installMicrosoftIntegrationCompatibility();
 refresh();
 
 window.addEventListener('hashchange', refresh);
