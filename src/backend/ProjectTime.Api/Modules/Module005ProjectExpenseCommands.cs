@@ -224,9 +224,8 @@ public static partial class Module005ProjectExpenseUploadModule
         if (upload is null) return Results.NotFound(new { status = "upload_not_found", message = "The expense upload was not found." });
         var project = await LoadProjectAsync(connection, upload.ProjectId, transaction);
         if (project is null) return Results.NotFound(new { status = "project_not_found", message = "The related project was not found." });
-
-        if (upload.OwnerUserId != actor.EffectiveUserId && !HasRole(actor, OnBehalfRoles))
-            return AccessDenied("Only the expense owner, Project Management, PM Leads, or Super Administrators may delete this upload.");
+        var authorization = await AuthorizeExistingUploadActionAsync(connection, transaction, actor, upload);
+        if (authorization is not null) return authorization;
 
         await using (var delete = new NpgsqlCommand("""
             UPDATE project_expense_uploads
