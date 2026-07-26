@@ -210,6 +210,7 @@ jobs:
             --output none
 
       - name: Validate API startup and protected Microsoft Integration routes
+        id: validate_api
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -252,8 +253,15 @@ jobs:
           wait_status client-secret PUT "$BASE/api/microsoft-integration/client-secret" '401,403' '{}'
           wait_status connection-test POST "$BASE/api/microsoft-integration/test-connection" '401,403' '{}'
 
-          ACTIVE_API="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
-          [[ "$ACTIVE_API" == '${{ steps.build.outputs.api_image }}' ]]
+          READY_API_REVISION="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.latestReadyRevisionName' -o tsv)"
+          [[ -n "$READY_API_REVISION" ]] || { echo 'The API app has no latest ready revision.' >&2; exit 1; }
+          READY_API_IMAGE="$(az containerapp revision show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --revision "$READY_API_REVISION" --query 'properties.template.containers[0].image' -o tsv)"
+          [[ "$READY_API_IMAGE" == '${{ steps.build.outputs.api_image }}' ]] || {
+            echo "The latest ready API revision is not using the built candidate image: revision=$READY_API_REVISION image=$READY_API_IMAGE" >&2
+            exit 1
+          }
+          echo "ready_api_revision=$READY_API_REVISION" >> "$GITHUB_OUTPUT"
+          echo "ready_api_image=$READY_API_IMAGE" >> "$GITHUB_OUTPUT"
           echo 'MICROSOFT_INTEGRATION_API_DEPLOYMENT_INTEGRITY=READY'
           echo 'AUTHENTICATED_MICROSOFT_INTEGRATION_UAT=REQUIRED'
 
@@ -289,7 +297,8 @@ jobs:
             --revision-suffix "msintweb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
             --output none
 
-      - name: Validate served Microsoft Integration assets and exact images
+      - name: Validate served Microsoft Integration assets and ready revision images
+        id: validate_web
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -320,10 +329,18 @@ jobs:
             sleep 10
           done
           [[ "$READY" == true ]] || { echo 'Microsoft Integration candidate assets were not served.' >&2; exit 1; }
-          ACTIVE_API="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
-          ACTIVE_WEB="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
-          [[ "$ACTIVE_API" == '${{ steps.build.outputs.api_image }}' ]]
-          [[ "$ACTIVE_WEB" == '${{ steps.build.outputs.web_image }}' ]]
+
+          READY_API_REVISION="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.latestReadyRevisionName' -o tsv)"
+          READY_WEB_REVISION="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.latestReadyRevisionName' -o tsv)"
+          [[ -n "$READY_API_REVISION" && -n "$READY_WEB_REVISION" ]] || { echo 'API or web latest ready revision is missing.' >&2; exit 1; }
+          READY_API_IMAGE="$(az containerapp revision show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --revision "$READY_API_REVISION" --query 'properties.template.containers[0].image' -o tsv)"
+          READY_WEB_IMAGE="$(az containerapp revision show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --revision "$READY_WEB_REVISION" --query 'properties.template.containers[0].image' -o tsv)"
+          [[ "$READY_API_IMAGE" == '${{ steps.build.outputs.api_image }}' ]] || { echo "Ready API revision image mismatch: $READY_API_REVISION $READY_API_IMAGE" >&2; exit 1; }
+          [[ "$READY_WEB_IMAGE" == '${{ steps.build.outputs.web_image }}' ]] || { echo "Ready web revision image mismatch: $READY_WEB_REVISION $READY_WEB_IMAGE" >&2; exit 1; }
+          echo "ready_api_revision=$READY_API_REVISION" >> "$GITHUB_OUTPUT"
+          echo "ready_web_revision=$READY_WEB_REVISION" >> "$GITHUB_OUTPUT"
+          echo "ready_api_image=$READY_API_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "ready_web_image=$READY_WEB_IMAGE" >> "$GITHUB_OUTPUT"
           echo 'MICROSOFT_INTEGRATION_CANDIDATE_ASSETS=DEPLOYED'
           echo 'AUTHENTICATED_ENTRA_IMPORT_AND_GRAPH_UAT=REQUIRED'
 
@@ -333,7 +350,7 @@ jobs:
         run: |
           mkdir -p evidence
           cat > evidence/microsoft-integration-010-065-test-deployment.json <<JSON
-          {"environment":"test","releaseCommit":"${{ steps.release.outputs.target_commit }}","workflowCommit":"${{ github.sha }}","runId":"${{ github.run_id }}","runAttempt":"${{ github.run_attempt }}","modules":["010","065"],"retiredModule":"067","migration":"045_microsoft_integration_consolidation","deploymentType":"migration-api-web","migrationImage":"${{ steps.migration.outputs.image }}","apiImage":"${{ steps.build.outputs.api_image }}","webImage":"${{ steps.build.outputs.web_image }}","previousApiImage":"${{ steps.before.outputs.old_api_image }}","previousWebImage":"${{ steps.before.outputs.old_web_image }}","deploymentIntegrity":"passed","authenticatedUatRequired":true,"functionalUatStatus":"pending-user-session-validation"}
+          {"environment":"test","releaseCommit":"${{ steps.release.outputs.target_commit }}","workflowCommit":"${{ github.sha }}","runId":"${{ github.run_id }}","runAttempt":"${{ github.run_attempt }}","modules":["010","065"],"retiredModule":"067","migration":"045_microsoft_integration_consolidation","deploymentType":"migration-api-web","migrationImage":"${{ steps.migration.outputs.image }}","apiImage":"${{ steps.build.outputs.api_image }}","webImage":"${{ steps.build.outputs.web_image }}","readyApiRevision":"${{ steps.validate_web.outputs.ready_api_revision }}","readyWebRevision":"${{ steps.validate_web.outputs.ready_web_revision }}","readyApiImage":"${{ steps.validate_web.outputs.ready_api_image }}","readyWebImage":"${{ steps.validate_web.outputs.ready_web_image }}","previousApiImage":"${{ steps.before.outputs.old_api_image }}","previousWebImage":"${{ steps.before.outputs.old_web_image }}","deploymentIntegrity":"passed","authenticatedUatRequired":true,"functionalUatStatus":"pending-user-session-validation"}
           JSON
 
       - name: Upload deployment evidence
