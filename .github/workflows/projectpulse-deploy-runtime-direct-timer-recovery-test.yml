@@ -205,7 +205,7 @@ jobs:
                 && grep -Fq 'Try timer check again' /tmp/functional-runtime-uat-validation/app.js \
                 && grep -Fq 'Timer automatically stopped' /tmp/functional-runtime-uat-validation/app.js \
                 && grep -Fq 'All active users' /tmp/functional-runtime-uat-validation/app.js \
-                && grep -Fq 'projectpulse-route-certify-integration' /tmp/functional-runtime-uat-validation/app.js \
+                && grep -Fq 'projectpulse-route-certify-integration' /tmp/functional-runtime-uat-validation/app.css \
                 && grep -Fq 'overscroll-behavior:contain' /tmp/functional-runtime-uat-validation/app.css \
                 && grep -Fq 'max-height:calc(100dvh - 13.5rem)' /tmp/functional-runtime-uat-validation/app.css; then
                 READY=true
