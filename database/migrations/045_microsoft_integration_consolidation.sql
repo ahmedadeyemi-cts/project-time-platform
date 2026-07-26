@@ -87,9 +87,15 @@ $projectpulse045_catalog$;
 DO $projectpulse045_registration$
 BEGIN
     IF to_regclass('public.schema_migrations') IS NOT NULL THEN
-        INSERT INTO schema_migrations (migration_id, applied_at)
-        VALUES ('045_microsoft_integration_consolidation', NOW())
-        ON CONFLICT (migration_id) DO NOTHING;
+        INSERT INTO schema_migrations (migration_id, description, applied_at)
+        VALUES (
+            '045_microsoft_integration_consolidation',
+            'Consolidate Module 067 into Module 065 Microsoft Integration and add encrypted client-secret storage, immutable audit metadata, legacy permission aliases, and non-destructive route retirement',
+            NOW()
+        )
+        ON CONFLICT (migration_id) DO UPDATE
+        SET description = EXCLUDED.description,
+            applied_at = EXCLUDED.applied_at;
     END IF;
 END;
 $projectpulse045_registration$;
