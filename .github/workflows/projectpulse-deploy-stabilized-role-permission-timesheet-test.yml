@@ -1,0 +1,254 @@
+name: ProjectPulse Deploy Stabilized Roles Permissions Timesheet Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_commit:
+        description: Exact verified stabilized application commit
+        required: true
+        default: 2216bfadaca76858fe07e8d1228df888688fd786
+        type: string
+      confirmation:
+        description: Enter DEPLOY-STABILIZED-ROLES-PERMISSIONS-TIMESHEET-TO-TEST
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: projectpulse-deploy-stabilized-role-permission-timesheet-test
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Guarded stabilized role permission and timesheet test deployment
+    environment: test
+    runs-on: ubuntu-latest
+    env:
+      EXPECTED_RELEASE_COMMIT: 2216bfadaca76858fe07e8d1228df888688fd786
+    steps:
+      - name: Check out deployment controls
+        uses: actions/checkout@v5
+        with:
+          path: control
+          fetch-depth: 0
+
+      - name: Check out exact stabilized release
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.release_commit }}
+          path: release
+          fetch-depth: 1
+
+      - name: Guard workflow source and stabilized release
+        id: release
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ '${{ github.ref }}' == 'refs/heads/main' ]] || { echo 'Dispatch this workflow from main.' >&2; exit 1; }
+          [[ '${{ inputs.confirmation }}' == 'DEPLOY-STABILIZED-ROLES-PERMISSIONS-TIMESHEET-TO-TEST' ]] || { echo 'Confirmation text does not match.' >&2; exit 1; }
+          [[ '${{ inputs.release_commit }}' =~ ^[0-9a-f]{40}$ ]] || { echo 'release_commit must be a complete SHA.' >&2; exit 1; }
+          CONTROL_COMMIT="$(git -C control rev-parse HEAD)"
+          TARGET_COMMIT="$(git -C release rev-parse HEAD)"
+          [[ "$CONTROL_COMMIT" == '${{ github.sha }}' ]]
+          [[ "$TARGET_COMMIT" == '${{ inputs.release_commit }}' ]]
+          [[ "$TARGET_COMMIT" == "$EXPECTED_RELEASE_COMMIT" ]] || { echo 'Only the verified stabilization release may deploy.' >&2; exit 1; }
+          git -C control merge-base --is-ancestor "$TARGET_COMMIT" HEAD || { echo 'Release is not an ancestor of deployment controls.' >&2; exit 1; }
+
+          test -f release/src/backend/ProjectTime.Api/Modules/ScopedRolePolicySupport.cs
+          test -f release/src/backend/ProjectTime.Api/Modules/PtcTimeStewardRoleBoundary.cs
+          test -f release/src/frontend/project-time-web/src/module001/PtcTimeStewardGate.jsx
+          test -f release/src/frontend/project-time-web/src/module001/TimesheetEnhancementPortal.jsx
+          test -f release/src/frontend/project-time-web/scripts/validate-role-permission-timesheet-stabilization.mjs
+          test -f control/deployment/containers/stabilized-role-timesheet-validator/Dockerfile
+          test -f control/scripts/verify-stabilized-role-permission-timesheet-test.sh
+          test -f control/scripts/run-stabilized-role-permission-timesheet-validation-job.sh
+
+          grep -Fq 'PTP_DB_HOST' release/src/backend/ProjectTime.Api/Modules/ScopedRolePolicySupport.cs
+          grep -Fq 'UsePtcTimeStewardRoleBoundary' release/src/backend/ProjectTime.Api/Modules/PtcTimeStewardRoleBoundary.cs
+          grep -Fq 'Only Project Team Coordinator or Super Administrator may manage another user' release/src/backend/ProjectTime.Api/Modules/PtcTimeStewardRoleBoundary.cs
+          grep -Fq 'if (state.active && !state.allowed) return null' release/src/frontend/project-time-web/src/module001/PtcTimeStewardGate.jsx
+          grep -Fq '/api/timesheet/timers/targets?weekStart=' release/src/frontend/project-time-web/src/module001/TimesheetEnhancementPortal.jsx
+          grep -Fq 'STABILIZED_ROLE_PERMISSION_TIMESHEET_DATA=PASS' control/scripts/verify-stabilized-role-permission-timesheet-test.sh
+          echo "target_commit=$TARGET_COMMIT" >> "$GITHUB_OUTPUT"
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Verify live API uses complete PTP database configuration
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mapfile -t ENV_NAMES < <(az containerapp show \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' \
+            --query 'properties.template.containers[0].env[].name' -o tsv)
+          printf '%s\n' "${ENV_NAMES[@]}" | sort -u > /tmp/api-env-names
+          for name in PTP_DB_HOST PTP_DB_PORT PTP_DB_NAME PTP_DB_USER PTP_DB_PASSWORD; do
+            grep -Fxq "$name" /tmp/api-env-names || { echo "Missing required API environment variable: $name" >&2; exit 1; }
+          done
+          echo 'STABILIZED_PTP_DATABASE_CONFIGURATION=COMPLETE'
+
+      - name: Load test database connection
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_API_APP: ${{ vars.AZURE_API_APP }}
+        run: bash control/scripts/export-pr55-test-database-url.sh
+
+      - name: Capture current immutable API and web images
+        id: before
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          RAW_API="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
+          RAW_WEB="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
+          API_MODE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.configuration.activeRevisionsMode' -o tsv)"
+          WEB_MODE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.configuration.activeRevisionsMode' -o tsv)"
+          [[ -n "$RAW_API" && -n "$RAW_WEB" && "${API_MODE,,}" == single && "${WEB_MODE,,}" == single ]]
+          resolve_digest() {
+            local image="$1" registry='${{ vars.AZURE_ACR_NAME }}.azurecr.io/' relative repository digest
+            case "$image" in
+              "$registry"*@sha256:*) printf '%s\n' "$image"; return ;;
+              "$registry"*:*) ;;
+              *) echo "Image is outside approved ACR: $image" >&2; return 1 ;;
+            esac
+            relative="${image#"$registry"}"
+            repository="${relative%:*}"
+            digest="$(az acr repository show --name '${{ vars.AZURE_ACR_NAME }}' --image "$relative" --query digest -o tsv)"
+            [[ "$digest" == sha256:* ]]
+            printf '%s%s@%s\n' "$registry" "$repository" "$digest"
+          }
+          echo "old_api_image=$(resolve_digest "$RAW_API")" >> "$GITHUB_OUTPUT"
+          echo "old_web_image=$(resolve_digest "$RAW_WEB")" >> "$GITHUB_OUTPUT"
+
+      - name: Build immutable application and validator images
+        id: build
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          SHA='${{ steps.release.outputs.target_commit }}'
+          API_REPO='project-health-dashboard-api'
+          WEB_REPO='project-health-dashboard-web'
+          VALIDATOR_REPO='project-health-dashboard-stabilized-validator'
+          API_DIGEST="$(control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "$API_REPO:stabilized-$SHA" release/deployment/containers/api/Dockerfile release)"
+          WEB_DIGEST="$(control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "$WEB_REPO:stabilized-$SHA" release/deployment/containers/web/Dockerfile release)"
+          VALIDATOR_DIGEST="$(control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "$VALIDATOR_REPO:stabilized-$SHA" control/deployment/containers/stabilized-role-timesheet-validator/Dockerfile control)"
+          echo "api_image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/$API_REPO@$API_DIGEST" >> "$GITHUB_OUTPUT"
+          echo "web_image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/$WEB_REPO@$WEB_DIGEST" >> "$GITHUB_OUTPUT"
+          echo "validator_image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/$VALIDATOR_REPO@$VALIDATOR_DIGEST" >> "$GITHUB_OUTPUT"
+
+      - name: Verify live roles permissions users and timer targets before deployment
+        shell: bash
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_API_APP: ${{ vars.AZURE_API_APP }}
+          AZURE_ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
+          STABILIZED_VALIDATION_IMAGE: ${{ steps.build.outputs.validator_image }}
+          STABILIZED_VALIDATION_JOB_NAME: srpt-${{ github.run_id }}-${{ github.run_attempt }}
+        run: bash control/scripts/run-stabilized-role-permission-timesheet-validation-job.sh
+
+      - name: Deploy stabilized API
+        id: deploy_api
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' \
+            --image '${{ steps.build.outputs.api_image }}' \
+            --set-env-vars PROJECTPULSE_ENVIRONMENT=test PROJECTPULSE_SOURCE_COMMIT='${{ steps.release.outputs.target_commit }}' \
+            --revision-suffix "srptapi-${GITHUB_RUN_ID}" --output none
+
+      - name: Validate stabilized API routes
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"
+          wait_status() {
+            local url="$1" expected="$2" json="$3" status='' type=''
+            for attempt in $(seq 1 30); do
+              status="$(curl -sS -D /tmp/srpt-headers -o /tmp/srpt-body -w '%{http_code}' -H 'Cache-Control: no-cache' "$url" || true)"
+              type="$(awk 'BEGIN{IGNORECASE=1} /^content-type:/ {gsub(/\r/, ""); print $2}' /tmp/srpt-headers | tail -1)"
+              if [[ ",$expected," == *",$status,"* ]]; then
+                [[ "$json" != true || "$type" == application/json* ]] || { cat /tmp/srpt-body >&2 || true; return 1; }
+                return 0
+              fi
+              sleep 10
+            done
+            echo "$url returned $status" >&2; cat /tmp/srpt-body >&2 || true; return 1
+          }
+          wait_status "$BASE/health" '200' false
+          wait_status "$BASE/api/version" '200' true
+          wait_status "$BASE/api/runtime/role-policy/summary" '401,403' true
+          wait_status "$BASE/api/runtime/role-policy/matrix" '401,403' true
+          wait_status "$BASE/api/runtime/timesheet/steward/users?weekStart=2026-07-19" '401,403' true
+          wait_status "$BASE/api/timesheet/timers/targets?weekStart=2026-07-19" '401,403' true
+
+      - name: Deploy stabilized web
+        id: deploy_web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' \
+            --image '${{ steps.build.outputs.web_image }}' \
+            --revision-suffix "srptweb-${GITHUB_RUN_ID}" --output none
+
+      - name: Validate served stabilized assets and exact images
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"; READY=false
+          for attempt in $(seq 1 30); do
+            BUSTER="srpt-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-$attempt"
+            STATUS="$(curl -sSL -H 'Cache-Control: no-cache' -o /tmp/srpt-index -w '%{http_code}' "$BASE/?release_check=$BUSTER" || true)"
+            JS="$(sed -nE 's/.*src="([^"]+\.js)".*/\1/p' /tmp/srpt-index | head -1)"
+            if [[ "$STATUS" == 200 && -n "$JS" ]]; then
+              case "$JS" in http*) URL="$JS" ;; /*) URL="$BASE$JS" ;; *) URL="$BASE/$JS" ;; esac
+              curl -sSL -H 'Cache-Control: no-cache' -o /tmp/srpt-app.js "$URL?release_check=$BUSTER" || true
+              if grep -Fq 'projectPulseViewAsUser' /tmp/srpt-app.js \
+                && grep -Fq 'PROJECT_TEAM_COORDINATOR' /tmp/srpt-app.js \
+                && grep -Fq 'SUPER_ADMINISTRATOR' /tmp/srpt-app.js \
+                && grep -Fq '/api/timesheet/timers/targets' /tmp/srpt-app.js \
+                && grep -Fq '/api/runtime/role-policy/summary' /tmp/srpt-app.js \
+                && grep -Fq 'The server returned 0 eligible users.' /tmp/srpt-app.js \
+                && grep -Fq 'Regular Tasks' /tmp/srpt-app.js \
+                && grep -Fq 'Service Request Tasks' /tmp/srpt-app.js \
+                && grep -Fq 'Non-Project Time' /tmp/srpt-app.js; then READY=true; break; fi
+            fi
+            sleep 10
+          done
+          [[ "$READY" == true ]] || { echo 'Stabilized web markers were not served.' >&2; exit 1; }
+          ACTIVE_API="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
+          ACTIVE_WEB="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
+          [[ "$ACTIVE_API" == '${{ steps.build.outputs.api_image }}' ]]
+          [[ "$ACTIVE_WEB" == '${{ steps.build.outputs.web_image }}' ]]
+
+      - name: Write stabilized deployment evidence
+        if: success()
+        shell: bash
+        run: |
+          mkdir -p evidence
+          cat > evidence/stabilized-role-permission-timesheet-test.json <<JSON
+          {"environment":"test","releaseCommit":"${{ steps.release.outputs.target_commit }}","workflowCommit":"${{ github.sha }}","runId":"${{ github.run_id }}","apiImage":"${{ steps.build.outputs.api_image }}","webImage":"${{ steps.build.outputs.web_image }}","validatorImage":"${{ steps.build.outputs.validator_image }}","previousApiImage":"${{ steps.before.outputs.old_api_image }}","previousWebImage":"${{ steps.before.outputs.old_web_image }}","databaseChanges":"none","ptpDatabaseConfiguration":"verified","liveDataPreflight":"passed","roleBoundary":"PTC_OR_SUPER_ADMIN_ONLY","timerTargetSource":"authoritative"}
+          JSON
+
+      - name: Upload stabilized deployment evidence
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stabilized-role-permission-timesheet-test-${{ github.run_id }}
+          path: evidence/stabilized-role-permission-timesheet-test.json
+          retention-days: 30
+
+      - name: Roll back API and web images on failure
+        if: ${{ failure() && (steps.deploy_api.outputs.started == 'true' || steps.deploy_web.outputs.started == 'true') }}
+        shell: bash
+        run: |
+          set +e
+          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --image '${{ steps.before.outputs.old_api_image }}' --revision-suffix "srptapirb-${GITHUB_RUN_ID}" --output none
+          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --image '${{ steps.before.outputs.old_web_image }}' --revision-suffix "srptwebrb-${GITHUB_RUN_ID}" --output none

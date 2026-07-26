@@ -1,0 +1,27 @@
+name: Validate Stabilized Roles Permissions Timesheet Deployment Control
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/projectpulse-deploy-stabilized-role-permission-timesheet-test.yml'
+      - '.github/workflows/projectpulse-stabilized-role-permission-timesheet-control-ci.yml'
+      - 'deployment/containers/stabilized-role-timesheet-validator/Dockerfile'
+      - 'scripts/verify-stabilized-role-permission-timesheet-test.sh'
+      - 'scripts/run-stabilized-role-permission-timesheet-validation-job.sh'
+      - 'scripts/validate-stabilized-role-permission-timesheet-test-deployment.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stabilized-role-permission-timesheet-control-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate stabilized role permission and timesheet deployment control
+        run: bash scripts/validate-stabilized-role-permission-timesheet-test-deployment.sh
