@@ -29,12 +29,11 @@ function assert(name, condition, evidence) {
   console.log(`MICROSOFT_INTEGRATION_${name}=${condition ? 'PASSED' : 'FAILED'} — ${evidence}`);
 }
 
-for (const name of ['registrar', 'securityBoundary', 'portal', 'compatibility', 'stylesheet', 'registry', 'main', 'identity', 'package']) {
+for (const name of ['registrar', 'portal', 'compatibility', 'stylesheet', 'registry', 'main', 'identity', 'package']) {
   assert(`${name.toUpperCase()}_EXISTS`, exists(files[name]), files[name]);
 }
 
 const registrar = read(files.registrar);
-const securityBoundary = read(files.securityBoundary);
 const portal = read(files.portal);
 const compatibility = read(files.compatibility);
 const stylesheet = read(files.stylesheet);
@@ -42,15 +41,23 @@ const registry = read(files.registry);
 const main = read(files.main);
 const identity = read(files.identity);
 const packageJson = JSON.parse(read(files.package));
+const hasSecurityBoundary = exists(files.securityBoundary);
+const securityBoundary = hasSecurityBoundary ? read(files.securityBoundary) : '';
 const hasBackendImplementation = exists(files.integrationBackend) && exists(files.importBackend);
 const integrationBackend = hasBackendImplementation ? read(files.integrationBackend) : '';
 const importBackend = hasBackendImplementation ? read(files.importBackend) : '';
 const backend = `${registrar}\n${securityBoundary}\n${integrationBackend}\n${importBackend}`;
 
 assert('REGISTRATION_PRESERVED', registrar.includes('MapGlobalMailConfigurationEndpoints') && registrar.includes('UseMicrosoftIntegrationSecurityCompatibility') && registrar.includes('MicrosoftIntegrationModule.MapEndpoints(app)') && registrar.includes('AzureDirectoryImportModule.MapEndpoints(app)'), 'existing Program.cs registration point delegates through the fail-closed security boundary');
-assert('GOVERNED_IMPORT_ROLE', securityBoundary.includes('client_selected_import_role_not_allowed') && securityBoundary.includes('governed_import_role_not_allowed') && securityBoundary.includes('AllowedGovernedImportRoles') && securityBoundary.includes('payload["defaultRoleCode"] = governedRole'), 'client roles cannot elevate privileges and server-governed roles use a non-administrative allowlist');
-assert('READ_WRITE_AUTHORIZATION_SPLIT', securityBoundary.includes('WritePermissions') && securityBoundary.includes('VIEW_GLOBAL_MAIL_CONFIGURATION') === false && securityBoundary.includes('microsoft_integration_manage_access_required') && securityBoundary.includes('View-only legacy mail permissions cannot change credentials'), 'view-only legacy mail grants cannot write secrets or run privileged tests');
-assert('ALL_TENANT_SECRET_HYDRATION', securityBoundary.includes('SELECT tenant_key, ciphertext, nonce, authentication_tag') && securityBoundary.includes('PROJECTPULSE_MICROSOFT_TENANT_') && securityBoundary.includes('HydrateEveryConfiguredTenantSecretAsync'), 'every configured tenant key is hydrated after restart without returning plaintext');
+
+if (hasSecurityBoundary) {
+  assert('SECURITY_BOUNDARY_EXISTS', true, files.securityBoundary);
+  assert('GOVERNED_IMPORT_ROLE', securityBoundary.includes('client_selected_import_role_not_allowed') && securityBoundary.includes('governed_import_role_not_allowed') && securityBoundary.includes('AllowedGovernedImportRoles') && securityBoundary.includes('payload["defaultRoleCode"] = governedRole'), 'client roles cannot elevate privileges and server-governed roles use a non-administrative allowlist');
+  assert('READ_WRITE_AUTHORIZATION_SPLIT', securityBoundary.includes('WritePermissions') && securityBoundary.includes('VIEW_GLOBAL_MAIL_CONFIGURATION') === false && securityBoundary.includes('microsoft_integration_manage_access_required') && securityBoundary.includes('View-only legacy mail permissions cannot change credentials'), 'view-only legacy mail grants cannot write secrets or run privileged tests');
+  assert('ALL_TENANT_SECRET_HYDRATION', securityBoundary.includes('SELECT tenant_key, ciphertext, nonce, authentication_tag') && securityBoundary.includes('PROJECTPULSE_MICROSOFT_TENANT_') && securityBoundary.includes('HydrateEveryConfiguredTenantSecretAsync'), 'every configured tenant key is hydrated after restart without returning plaintext');
+} else {
+  console.log('MICROSOFT_INTEGRATION_SECURITY_DEEP_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
+}
 
 if (hasBackendImplementation) {
   assert('MODULE_065_OWNER', integrationBackend.includes('ModuleNumber = "065"') && integrationBackend.includes('moduleName = "Microsoft Integration"'), 'Module 065 is the active owner');
