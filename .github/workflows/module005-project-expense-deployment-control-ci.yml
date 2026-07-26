@@ -1,0 +1,22 @@
+name: Validate Module 005 Project Expense Deployment Control
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/projectpulse-deploy-module-005-project-expense-test.yml'
+      - '.github/workflows/module005-project-expense-deployment-control-ci.yml'
+      - 'scripts/apply-module-005-project-expense-test-migrations.sh'
+      - 'scripts/run-module-005-project-expense-test-migration-job.sh'
+      - 'scripts/validate-module-005-project-expense-test-deployment.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate guarded Module 005 test deployment
+        run: bash scripts/validate-module-005-project-expense-test-deployment.sh
