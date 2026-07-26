@@ -1,4 +1,4 @@
-name: Validate Runtime Direct Timer Recovery Deployment Control
+name: Validate Functional Runtime UAT Candidate Deployment Control
 
 on:
   pull_request:
@@ -13,10 +13,10 @@ permissions:
 
 jobs:
   validate:
-    name: Validate runtime direct timer recovery deployment control
+    name: Validate functional runtime UAT candidate deployment control
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Validate guarded web-only deployment contract
+      - name: Validate guarded web-only candidate deployment contract
         shell: bash
         run: bash scripts/validate-runtime-direct-timer-recovery-test-deployment.sh

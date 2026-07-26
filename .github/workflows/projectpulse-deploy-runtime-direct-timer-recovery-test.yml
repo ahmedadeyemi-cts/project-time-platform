@@ -1,15 +1,15 @@
-name: ProjectPulse Deploy Runtime Direct Timer Recovery Test
+name: ProjectPulse Deploy Functional Runtime UAT Candidate Test
 
 on:
   workflow_dispatch:
     inputs:
       release_commit:
-        description: Exact verified runtime and timer recovery release
+        description: Exact verified functional runtime UAT source release
         required: true
-        default: 23e97e68f741bcfb27df4baf4b95397eda54fcb2
+        default: b1dfbde5f0dc6cfe5cbae44001f7e1258b6e453f
         type: string
       confirmation:
-        description: Enter DEPLOY-RUNTIME-DIRECT-TIMER-RECOVERY-TO-TEST
+        description: Enter DEPLOY-FUNCTIONAL-RUNTIME-UAT-CANDIDATE-TO-TEST
         required: true
         type: string
 
@@ -18,16 +18,16 @@ permissions:
   contents: read
 
 concurrency:
-  group: projectpulse-deploy-runtime-direct-timer-recovery-test
+  group: projectpulse-deploy-functional-runtime-uat-candidate-test
   cancel-in-progress: false
 
 jobs:
   deploy:
-    name: Guarded runtime direct and timer recovery web deployment
+    name: Guarded functional runtime UAT candidate web deployment
     environment: test
     runs-on: ubuntu-latest
     env:
-      EXPECTED_RELEASE_COMMIT: 23e97e68f741bcfb27df4baf4b95397eda54fcb2
+      EXPECTED_RELEASE_COMMIT: b1dfbde5f0dc6cfe5cbae44001f7e1258b6e453f
     steps:
       - name: Check out deployment controls
         uses: actions/checkout@v5
@@ -42,7 +42,7 @@ jobs:
           path: release
           fetch-depth: 1
 
-      - name: Guard workflow source and verified frontend release
+      - name: Guard workflow source and functional runtime release
         id: release
         shell: bash
         env:
@@ -53,53 +53,72 @@ jobs:
         run: |
           set -Eeuo pipefail
           [[ "$WORKFLOW_SOURCE_REF" == 'refs/heads/main' ]] || { echo 'Dispatch this workflow from main.' >&2; exit 1; }
-          [[ "$DISPATCH_CONFIRMATION" == 'DEPLOY-RUNTIME-DIRECT-TIMER-RECOVERY-TO-TEST' ]] || { echo 'Confirmation text does not match.' >&2; exit 1; }
+          [[ "$DISPATCH_CONFIRMATION" == 'DEPLOY-FUNCTIONAL-RUNTIME-UAT-CANDIDATE-TO-TEST' ]] || { echo 'Confirmation text does not match.' >&2; exit 1; }
           [[ "$DISPATCH_RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || { echo 'release_commit must be a complete SHA.' >&2; exit 1; }
 
           CONTROL_COMMIT="$(git -C control rev-parse HEAD)"
           TARGET_COMMIT="$(git -C release rev-parse HEAD)"
           [[ "$CONTROL_COMMIT" == "$WORKFLOW_SOURCE_SHA" ]]
           [[ "$TARGET_COMMIT" == "$DISPATCH_RELEASE_COMMIT" ]]
-          [[ "$TARGET_COMMIT" == "$EXPECTED_RELEASE_COMMIT" ]] || { echo 'Only the verified runtime-direct release may deploy.' >&2; exit 1; }
+          [[ "$TARGET_COMMIT" == "$EXPECTED_RELEASE_COMMIT" ]] || { echo 'Only the verified functional runtime UAT release may deploy.' >&2; exit 1; }
           git -C control merge-base --is-ancestor "$TARGET_COMMIT" HEAD || { echo 'The release is not an ancestor of the deployment controls.' >&2; exit 1; }
 
+          test -f release/src/frontend/project-time-web/src/projectpulse-authoritative-api.js
           test -f release/src/frontend/project-time-web/src/runtime-data-compatibility.js
+          test -f release/src/frontend/project-time-web/src/module001/TimesheetEnhancementPortal.jsx
           test -f release/src/frontend/project-time-web/src/module001/Module001ActiveTimerRecoveryPortal.jsx
           test -f release/src/frontend/project-time-web/src/module001/module001-active-timer-recovery.css
-          test -f release/src/frontend/project-time-web/src/certify-integration-center.css
+          test -f release/src/frontend/project-time-web/src/CriticalRoutePresentationBoundary.jsx
+          test -f release/src/frontend/project-time-web/src/critical-route-presentation.css
           test -f release/src/frontend/project-time-web/src/main.jsx
-          test -f release/src/frontend/project-time-web/scripts/validate-combined-modules-001-005-012-037-038.mjs
-          test -f release/src/frontend/project-time-web/scripts/validate-module-001-timesheet-timer-mobile.mjs
-          test -f release/src/frontend/project-time-web/scripts/validate-runtime-role-policy-ptc-data.mjs
-          test -f release/src/frontend/project-time-web/scripts/validate-module-005-project-expense-upload.mjs
           test -f control/scripts/build-pr55-acr-image.sh
 
-          grep -Fq 'projectpulse-critical-runtime-direct-2026-07-26' release/src/frontend/project-time-web/src/runtime-data-compatibility.js
-          grep -Fq 'window.__projectPulseOriginalFetch' release/src/frontend/project-time-web/src/runtime-data-compatibility.js
-          grep -Fq 'x-projectpulse-authoritative-path' release/src/frontend/project-time-web/src/runtime-data-compatibility.js
-          grep -Fq 'direct authoritative response' release/src/frontend/project-time-web/src/runtime-data-compatibility.js
-          grep -Fq "'/api/runtime/v2/timesheet/steward/users': '/api/timesheet/ptc/users'" release/src/frontend/project-time-web/src/runtime-data-compatibility.js
-          grep -Fq 'allActiveUsersAllowed: true' release/src/frontend/project-time-web/src/runtime-data-compatibility.js
+          grep -Fq "const DIAGNOSTIC_MARKER = 'projectpulse-authoritative-xhr-v1'" release/src/frontend/project-time-web/src/projectpulse-authoritative-api.js
+          grep -Fq 'new XMLHttpRequest()' release/src/frontend/project-time-web/src/projectpulse-authoritative-api.js
+          grep -Fq "request.setRequestHeader('X-ProjectPulse-Module-Number', moduleNumber)" release/src/frontend/project-time-web/src/projectpulse-authoritative-api.js
+          grep -Fq 'projectpulse:authoritative-api-diagnostic' release/src/frontend/project-time-web/src/projectpulse-authoritative-api.js
+          grep -Fq '__projectPulseAuthoritativeApiDiagnostics' release/src/frontend/project-time-web/src/projectpulse-authoritative-api.js
+          ! grep -Fq 'window.fetch(' release/src/frontend/project-time-web/src/projectpulse-authoritative-api.js
 
+          grep -Fq "import { authoritativeApi } from './projectpulse-authoritative-api.js';" release/src/frontend/project-time-web/src/runtime-data-compatibility.js
+          grep -Fq "'/api/role-policy/summary': '/api/runtime/v2/role-policy/summary'" release/src/frontend/project-time-web/src/runtime-data-compatibility.js
+          grep -Fq "'/api/role-policy/matrix': '/api/runtime/v2/role-policy/matrix'" release/src/frontend/project-time-web/src/runtime-data-compatibility.js
+          grep -Fq "'/api/runtime/v2/timesheet/steward/users': '/api/timesheet/ptc/users'" release/src/frontend/project-time-web/src/runtime-data-compatibility.js
+          grep -Fq 'projectpulse-authoritative-xhr-compatibility-v2' release/src/frontend/project-time-web/src/runtime-data-compatibility.js
+          ! grep -Fq 'window.__projectPulseOriginalFetch' release/src/frontend/project-time-web/src/runtime-data-compatibility.js
+
+          grep -Fq "import { authoritativeApi } from '../projectpulse-authoritative-api.js';" release/src/frontend/project-time-web/src/module001/TimesheetEnhancementPortal.jsx
+          grep -Fq '/api/timesheet/timers/targets?weekStart=' release/src/frontend/project-time-web/src/module001/TimesheetEnhancementPortal.jsx
+          grep -Fq "requiredCollections: ['targets']" release/src/frontend/project-time-web/src/module001/TimesheetEnhancementPortal.jsx
+          grep -Fq 'timerTargetCounts' release/src/frontend/project-time-web/src/module001/TimesheetEnhancementPortal.jsx
+          grep -Fq 'timerTargetAuthoritativeSources' release/src/frontend/project-time-web/src/module001/TimesheetEnhancementPortal.jsx
+
+          grep -Fq "document.querySelector('#timesheet')" release/src/frontend/project-time-web/src/module001/Module001ActiveTimerRecoveryPortal.jsx
           grep -Fq '/api/timesheet/timers/active' release/src/frontend/project-time-web/src/module001/Module001ActiveTimerRecoveryPortal.jsx
-          grep -Fq 'window.setInterval(load, 5000)' release/src/frontend/project-time-web/src/module001/Module001ActiveTimerRecoveryPortal.jsx
+          grep -Fq 'window.setInterval(() => void load(), 5000)' release/src/frontend/project-time-web/src/module001/Module001ActiveTimerRecoveryPortal.jsx
           grep -Fq 'window.setInterval(() => setClock(new Date()), 1000)' release/src/frontend/project-time-web/src/module001/Module001ActiveTimerRecoveryPortal.jsx
-          grep -Fq 'Running timer recovered' release/src/frontend/project-time-web/src/module001/Module001ActiveTimerRecoveryPortal.jsx
-          grep -Fq "description: timer.description || ''" release/src/frontend/project-time-web/src/module001/Module001ActiveTimerRecoveryPortal.jsx
-          grep -Fq 'No work description is recorded.' release/src/frontend/project-time-web/src/module001/Module001ActiveTimerRecoveryPortal.jsx
+          grep -Fq 'Timer status check failed' release/src/frontend/project-time-web/src/module001/Module001ActiveTimerRecoveryPortal.jsx
+          grep -Fq 'Try timer check again' release/src/frontend/project-time-web/src/module001/Module001ActiveTimerRecoveryPortal.jsx
+          grep -Fq 'Timer automatically stopped' release/src/frontend/project-time-web/src/module001/Module001ActiveTimerRecoveryPortal.jsx
+          grep -Fq 'module001-active-timer-action-error' release/src/frontend/project-time-web/src/module001/Module001ActiveTimerRecoveryPortal.jsx
           grep -Fq 'Stop timer' release/src/frontend/project-time-web/src/module001/Module001ActiveTimerRecoveryPortal.jsx
           grep -Fq 'Discard' release/src/frontend/project-time-web/src/module001/Module001ActiveTimerRecoveryPortal.jsx
-          ! grep -Fq 'Open timer view' release/src/frontend/project-time-web/src/module001/Module001ActiveTimerRecoveryPortal.jsx
-          ! grep -Fq 'Stopped from the active timer recovery surface.' release/src/frontend/project-time-web/src/module001/Module001ActiveTimerRecoveryPortal.jsx
 
-          grep -Fq "import Module001ActiveTimerRecoveryPortal from './module001/Module001ActiveTimerRecoveryPortal.jsx';" release/src/frontend/project-time-web/src/main.jsx
-          grep -Fq '<Module001ActiveTimerRecoveryPortal />' release/src/frontend/project-time-web/src/main.jsx
-          grep -Fq 'main.app-shell.route-certify-integration .certify-integration-center' release/src/frontend/project-time-web/src/certify-integration-center.css
-          grep -Fq 'max-height:calc(100dvh - 15rem)' release/src/frontend/project-time-web/src/certify-integration-center.css
-          grep -Fq 'overflow-y:auto' release/src/frontend/project-time-web/src/certify-integration-center.css
-          grep -Fq 'overscroll-behavior:contain' release/src/frontend/project-time-web/src/certify-integration-center.css
+          grep -Fq "const PREFIX = 'projectpulse-route-'" release/src/frontend/project-time-web/src/CriticalRoutePresentationBoundary.jsx
+          grep -Fq 'body.projectpulse-route-certify-integration .module-grid' release/src/frontend/project-time-web/src/critical-route-presentation.css
+          grep -Fq 'max-height:calc(100dvh - 13.5rem)' release/src/frontend/project-time-web/src/critical-route-presentation.css
+          grep -Fq 'overscroll-behavior:contain' release/src/frontend/project-time-web/src/critical-route-presentation.css
+          grep -Fq "import './projectpulse-authoritative-api.js';" release/src/frontend/project-time-web/src/main.jsx
+          grep -Fq '<CriticalRoutePresentationBoundary />' release/src/frontend/project-time-web/src/main.jsx
 
           echo "target_commit=$TARGET_COMMIT" >> "$GITHUB_OUTPUT"
+          echo '::warning::A green run verifies deployment integrity and candidate assets only. Authenticated UAT remains required for Modules 001, 012, 037, and 038.'
+          cat >> "$GITHUB_STEP_SUMMARY" <<'SUMMARY'
+          ## Validation boundary
+          This workflow verifies the immutable web deployment and served candidate assets.
+
+          It **does not** authenticate as a ProjectPulse user and therefore cannot prove user lists, task assignments, active timers, role-policy data, or Certify interactions function for a signed-in session.
+          SUMMARY
 
       - uses: azure/login@v2
         with:
@@ -130,18 +149,18 @@ jobs:
           esac
           echo "old_web_image=$IMMUTABLE_WEB" >> "$GITHUB_OUTPUT"
 
-      - name: Build immutable runtime-direct web image
+      - name: Build immutable functional runtime UAT web image
         id: build
         shell: bash
         run: |
           set -Eeuo pipefail
           SHA='${{ steps.release.outputs.target_commit }}'
           WEB_REPO='project-health-dashboard-web'
-          WEB_DIGEST="$(control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "$WEB_REPO:runtime-direct-timer-recovery-$SHA" release/deployment/containers/web/Dockerfile release)"
+          WEB_DIGEST="$(control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "$WEB_REPO:functional-runtime-uat-$SHA" release/deployment/containers/web/Dockerfile release)"
           [[ "$WEB_DIGEST" == sha256:* ]]
           echo "web_image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/$WEB_REPO@$WEB_DIGEST" >> "$GITHUB_OUTPUT"
 
-      - name: Deploy runtime-direct web release
+      - name: Deploy functional runtime UAT candidate web release
         id: deploy_web
         shell: bash
         run: |
@@ -151,42 +170,44 @@ jobs:
             -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
             -n '${{ vars.AZURE_WEB_APP }}' \
             --image '${{ steps.build.outputs.web_image }}' \
-            --revision-suffix "rtdir-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --revision-suffix "fruat-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
             --output none
 
-      - name: Validate served runtime, timer recovery, and Module 038 assets
+      - name: Validate served candidate assets — authenticated UAT still required
         shell: bash
         run: |
           set -Eeuo pipefail
           BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"
           READY=false
-          mkdir -p /tmp/runtime-direct-validation
+          mkdir -p /tmp/functional-runtime-uat-validation
 
           for attempt in $(seq 1 36); do
-            BUSTER="runtime-direct-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-$attempt"
-            STATUS="$(curl -sSL -H 'Cache-Control: no-cache, no-store' -o /tmp/runtime-direct-validation/index.html -w '%{http_code}' "$BASE/?release_check=$BUSTER" || true)"
-            JS="$(sed -nE 's/.*src="([^"]+\.js)".*/\1/p' /tmp/runtime-direct-validation/index.html | head -1)"
-            CSS="$(sed -nE 's/.*href="([^"]+\.css)".*/\1/p' /tmp/runtime-direct-validation/index.html | head -1)"
+            BUSTER="functional-runtime-uat-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-$attempt"
+            STATUS="$(curl -sSL -H 'Cache-Control: no-cache, no-store' -o /tmp/functional-runtime-uat-validation/index.html -w '%{http_code}' "$BASE/?release_check=$BUSTER" || true)"
+            JS="$(sed -nE 's/.*src="([^"]+\.js)".*/\1/p' /tmp/functional-runtime-uat-validation/index.html | head -1)"
+            CSS="$(sed -nE 's/.*href="([^"]+\.css)".*/\1/p' /tmp/functional-runtime-uat-validation/index.html | head -1)"
 
             if [[ "$STATUS" == 200 && -n "$JS" && -n "$CSS" ]]; then
               case "$JS" in http*) JS_URL="$JS" ;; /*) JS_URL="$BASE$JS" ;; *) JS_URL="$BASE/$JS" ;; esac
               case "$CSS" in http*) CSS_URL="$CSS" ;; /*) CSS_URL="$BASE$CSS" ;; *) CSS_URL="$BASE/$CSS" ;; esac
-              curl -sSL -H 'Cache-Control: no-cache, no-store' -o /tmp/runtime-direct-validation/app.js "$JS_URL?release_check=$BUSTER" || true
-              curl -sSL -H 'Cache-Control: no-cache, no-store' -o /tmp/runtime-direct-validation/app.css "$CSS_URL?release_check=$BUSTER" || true
+              curl -sSL -H 'Cache-Control: no-cache, no-store' -o /tmp/functional-runtime-uat-validation/app.js "$JS_URL?release_check=$BUSTER" || true
+              curl -sSL -H 'Cache-Control: no-cache, no-store' -o /tmp/functional-runtime-uat-validation/app.css "$CSS_URL?release_check=$BUSTER" || true
 
-              if grep -Fq 'projectpulse-critical-runtime-direct-2026-07-26' /tmp/runtime-direct-validation/app.js \
-                && grep -Fq 'x-projectpulse-authoritative-path' /tmp/runtime-direct-validation/app.js \
-                && grep -Fq '/api/runtime/v2/role-policy/summary' /tmp/runtime-direct-validation/app.js \
-                && grep -Fq '/api/runtime/v2/role-policy/matrix' /tmp/runtime-direct-validation/app.js \
-                && grep -Fq '/api/timesheet/ptc/users' /tmp/runtime-direct-validation/app.js \
-                && grep -Fq '/api/timesheet/timers/active' /tmp/runtime-direct-validation/app.js \
-                && grep -Fq 'Running timer recovered' /tmp/runtime-direct-validation/app.js \
-                && grep -Fq 'No work description is recorded.' /tmp/runtime-direct-validation/app.js \
-                && grep -Fq 'All active users' /tmp/runtime-direct-validation/app.js \
-                && grep -Fq 'Stop timer' /tmp/runtime-direct-validation/app.js \
-                && grep -Fq 'Test connection to unlock' /tmp/runtime-direct-validation/app.js \
-                && grep -Fq 'overscroll-behavior:contain' /tmp/runtime-direct-validation/app.css \
-                && grep -Fq 'max-height:calc(100dvh - 15rem)' /tmp/runtime-direct-validation/app.css; then
+              if grep -Fq 'projectpulse-authoritative-xhr-v1' /tmp/functional-runtime-uat-validation/app.js \
+                && grep -Fq 'projectpulse:authoritative-api-diagnostic' /tmp/functional-runtime-uat-validation/app.js \
+                && grep -Fq 'X-ProjectPulse-Module-Number' /tmp/functional-runtime-uat-validation/app.js \
+                && grep -Fq '/api/runtime/v2/role-policy/summary' /tmp/functional-runtime-uat-validation/app.js \
+                && grep -Fq '/api/runtime/v2/role-policy/matrix' /tmp/functional-runtime-uat-validation/app.js \
+                && grep -Fq '/api/timesheet/ptc/users' /tmp/functional-runtime-uat-validation/app.js \
+                && grep -Fq '/api/timesheet/timers/targets' /tmp/functional-runtime-uat-validation/app.js \
+                && grep -Fq '/api/timesheet/timers/active' /tmp/functional-runtime-uat-validation/app.js \
+                && grep -Fq 'Timer status check failed' /tmp/functional-runtime-uat-validation/app.js \
+                && grep -Fq 'Try timer check again' /tmp/functional-runtime-uat-validation/app.js \
+                && grep -Fq 'Timer automatically stopped' /tmp/functional-runtime-uat-validation/app.js \
+                && grep -Fq 'All active users' /tmp/functional-runtime-uat-validation/app.js \
+                && grep -Fq 'projectpulse-route-certify-integration' /tmp/functional-runtime-uat-validation/app.css \
+                && grep -Fq 'overscroll-behavior:contain' /tmp/functional-runtime-uat-validation/app.css \
+                && grep -Fq 'max-height:calc(100dvh - 13.5rem)' /tmp/functional-runtime-uat-validation/app.css; then
                 READY=true
                 break
               fi
@@ -194,29 +215,36 @@ jobs:
             sleep 10
           done
 
-          [[ "$READY" == true ]] || { echo 'The runtime-direct, timer-recovery, and Module 038 markers were not served.' >&2; exit 1; }
+          [[ "$READY" == true ]] || { echo 'The functional runtime UAT candidate assets were not served.' >&2; exit 1; }
           ACTIVE_WEB="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
           [[ "$ACTIVE_WEB" == '${{ steps.build.outputs.web_image }}' ]]
-          echo 'RUNTIME_DIRECT_TIMER_RECOVERY_LIVE_WEB=READY'
+          echo 'FUNCTIONAL_RUNTIME_UAT_CANDIDATE_ASSETS=DEPLOYED'
+          echo 'AUTHENTICATED_FUNCTIONAL_UAT=REQUIRED'
+          cat >> "$GITHUB_STEP_SUMMARY" <<'SUMMARY'
+          ## Deployment result
+          - Immutable candidate image: verified
+          - Served JavaScript/CSS assets: verified
+          - Authenticated functional UAT: **required**
+          SUMMARY
 
       - name: Write deployment evidence
         if: success()
         shell: bash
         run: |
           mkdir -p evidence
-          cat > evidence/runtime-direct-timer-recovery-test-deployment.json <<JSON
-          {"environment":"test","releaseCommit":"${{ steps.release.outputs.target_commit }}","workflowCommit":"${{ github.sha }}","runId":"${{ github.run_id }}","runAttempt":"${{ github.run_attempt }}","modules":["001","012","037","038"],"deploymentType":"web-only","webImage":"${{ steps.build.outputs.web_image }}","previousWebImage":"${{ steps.before.outputs.old_web_image }}","runtimeTransport":"direct-authoritative","activeTimerRecovery":true,"module038BoundedScroll":true}
+          cat > evidence/functional-runtime-uat-candidate-test-deployment.json <<JSON
+          {"environment":"test","releaseCommit":"${{ steps.release.outputs.target_commit }}","workflowCommit":"${{ github.sha }}","runId":"${{ github.run_id }}","runAttempt":"${{ github.run_attempt }}","modules":["001","012","037","038"],"deploymentType":"web-only","webImage":"${{ steps.build.outputs.web_image }}","previousWebImage":"${{ steps.before.outputs.old_web_image }}","deploymentIntegrity":"passed","assetValidation":"passed","authenticatedUatRequired":true,"functionalUatStatus":"pending-user-session-validation"}
           JSON
 
       - name: Upload deployment evidence
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: runtime-direct-timer-recovery-test-${{ github.run_id }}-${{ github.run_attempt }}
-          path: evidence/runtime-direct-timer-recovery-test-deployment.json
+          name: functional-runtime-uat-candidate-test-${{ github.run_id }}-${{ github.run_attempt }}
+          path: evidence/functional-runtime-uat-candidate-test-deployment.json
           retention-days: 30
 
-      - name: Roll back web image on failure
+      - name: Roll back web image on deployment-integrity failure
         if: ${{ failure() && steps.deploy_web.outputs.started == 'true' }}
         shell: bash
         run: |
@@ -225,5 +253,5 @@ jobs:
             -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
             -n '${{ vars.AZURE_WEB_APP }}' \
             --image '${{ steps.before.outputs.old_web_image }}' \
-            --revision-suffix "rtdirrb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --revision-suffix "fruatrb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
             --output none
