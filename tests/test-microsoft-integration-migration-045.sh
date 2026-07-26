@@ -89,15 +89,15 @@ assert_eq 1 "$(value "SELECT COUNT(*) FROM schema_migrations WHERE migration_id=
 assert_eq 3 "$(value "SELECT COUNT(*) FROM pg_tables WHERE schemaname='public' AND tablename IN ('microsoft_integration_client_secrets','microsoft_integration_audit_events','microsoft_integration_permission_aliases');")" integration_tables_created
 assert_eq 1 "$(value "SELECT COUNT(*) FROM pg_trigger WHERE tgname='trg_projectpulse045_microsoft_integration_audit_immutable' AND NOT tgisinternal;")" immutable_audit_trigger_created
 assert_eq 4 "$(value "SELECT COUNT(*) FROM microsoft_integration_permission_aliases WHERE legacy_module_code='067' AND active_module_code='065';")" permission_aliases_created
-assert_eq 'Microsoft Integration|entra-secret-administration|t' "$(value "SELECT module_name || '|' || route_scope || '|' || is_active::text FROM scoped_role_policy_modules WHERE module_code='065';")" module_065_consolidated
-assert_eq 'f' "$(value "SELECT is_active::text FROM scoped_role_policy_modules WHERE module_code='067';")" module_067_retired
+assert_eq 'Microsoft Integration|entra-secret-administration|true' "$(value "SELECT module_name || '|' || route_scope || '|' || is_active::text FROM scoped_role_policy_modules WHERE module_code='065';")" module_065_consolidated
+assert_eq 'false' "$(value "SELECT is_active::text FROM scoped_role_policy_modules WHERE module_code='067';")" module_067_retired
 assert_eq 1 "$(value "SELECT COUNT(*) FROM projectpulse_native_admin_documents WHERE module_number='067' AND document_key='configuration';")" legacy_configuration_preserved
 
 psql_exec -f "$ROLLBACK" >/dev/null
 assert_eq 0 "$(value "SELECT COUNT(*) FROM schema_migrations WHERE migration_id='045_microsoft_integration_consolidation';")" safe_rollback_removed_registration
 assert_eq '' "$(value "SELECT COALESCE(to_regclass('public.microsoft_integration_client_secrets')::text,'');")" safe_rollback_removed_secret_table
-assert_eq 'Entra Secret Administration|t' "$(value "SELECT module_name || '|' || is_active::text FROM scoped_role_policy_modules WHERE module_code='065';")" safe_rollback_restored_module_065
-assert_eq 'Global Mail Configuration Center|t' "$(value "SELECT module_name || '|' || is_active::text FROM scoped_role_policy_modules WHERE module_code='067';")" safe_rollback_restored_module_067
+assert_eq 'Entra Secret Administration|true' "$(value "SELECT module_name || '|' || is_active::text FROM scoped_role_policy_modules WHERE module_code='065';")" safe_rollback_restored_module_065
+assert_eq 'Global Mail Configuration Center|true' "$(value "SELECT module_name || '|' || is_active::text FROM scoped_role_policy_modules WHERE module_code='067';")" safe_rollback_restored_module_067
 assert_eq 1 "$(value "SELECT COUNT(*) FROM projectpulse_native_admin_documents WHERE module_number='067' AND document_key='configuration';")" rollback_preserved_legacy_configuration
 
 psql_exec -f "$MIGRATION" >/dev/null
