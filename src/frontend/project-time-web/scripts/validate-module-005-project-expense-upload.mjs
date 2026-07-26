@@ -175,4 +175,5 @@ if (externalAvailable) {
   console.log('MODULE_005_EXTERNAL_SOURCE_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
 }
 
+console.log('MODULE_005_038_MERGE_CANDIDATE=PASS');
 console.log('Module 005 Project Expense Upload and Module 038 Certify contracts passed.');
