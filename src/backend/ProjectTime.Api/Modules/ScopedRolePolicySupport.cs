@@ -115,6 +115,42 @@ public static partial class ScopedRolePolicyModule
 
     private static string ConnectionString()
     {
+        var ptpValues = new Dictionary<string, string?>
+        {
+            ["PTP_DB_HOST"] = Environment.GetEnvironmentVariable("PTP_DB_HOST"),
+            ["PTP_DB_PORT"] = Environment.GetEnvironmentVariable("PTP_DB_PORT"),
+            ["PTP_DB_NAME"] = Environment.GetEnvironmentVariable("PTP_DB_NAME"),
+            ["PTP_DB_USER"] = Environment.GetEnvironmentVariable("PTP_DB_USER"),
+            ["PTP_DB_PASSWORD"] = Environment.GetEnvironmentVariable("PTP_DB_PASSWORD")
+        };
+        var configuredPtpValues = ptpValues.Count(pair => !string.IsNullOrWhiteSpace(pair.Value));
+        if (configuredPtpValues > 0)
+        {
+            var missing = ptpValues
+                .Where(pair => string.IsNullOrWhiteSpace(pair.Value))
+                .Select(pair => pair.Key)
+                .ToArray();
+            if (missing.Length > 0)
+            {
+                throw new InvalidOperationException(
+                    $"ProjectPulse PTP database configuration is incomplete: {string.Join(", ", missing)}.");
+            }
+
+            var builder = new NpgsqlConnectionStringBuilder
+            {
+                Host = ptpValues["PTP_DB_HOST"],
+                Port = int.TryParse(ptpValues["PTP_DB_PORT"], out var port) ? port : 5432,
+                Database = ptpValues["PTP_DB_NAME"],
+                Username = ptpValues["PTP_DB_USER"],
+                Password = ptpValues["PTP_DB_PASSWORD"],
+                IncludeErrorDetail = false,
+                Pooling = true,
+                MinPoolSize = 0,
+                MaxPoolSize = 20
+            };
+            return builder.ConnectionString;
+        }
+
         foreach (var name in new[]
         {
             "ConnectionStrings__DefaultConnection",

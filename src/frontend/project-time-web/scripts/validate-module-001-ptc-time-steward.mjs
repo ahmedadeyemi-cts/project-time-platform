@@ -12,20 +12,24 @@ const requireAll = (source, values, label) => {
 
 const paths = {
   portal: 'src/frontend/project-time-web/src/module001/PtcTimesheetManagementPortal.jsx',
+  gate: 'src/frontend/project-time-web/src/module001/PtcTimeStewardGate.jsx',
   css: 'src/frontend/project-time-web/src/module001/ptc-timesheet-management.css',
   model: 'src/frontend/project-time-web/src/role-permission-model.js',
   backend: 'src/backend/ProjectTime.Api/Modules/Module001PtcTimesheetManagement.cs',
+  boundary: 'src/backend/ProjectTime.Api/Modules/PtcTimeStewardRoleBoundary.cs',
   migration: 'database/migrations/043_ptc_time_steward_permissions.sql',
   rollback: 'database/rollback/043_ptc_time_steward_permissions_rollback.sql',
   main: 'src/frontend/project-time-web/src/main.jsx',
   project: 'src/backend/ProjectTime.Api/ProjectTime.Api.csproj'
 };
 
-const [portal, css, model, backend, migration, rollback, main, project] = await Promise.all([
+const [portal, gate, css, model, backend, boundary, migration, rollback, main, project] = await Promise.all([
   text(paths.portal),
+  text(paths.gate),
   text(paths.css),
   text(paths.model),
   optionalText(paths.backend),
+  optionalText(paths.boundary),
   optionalText(paths.migration),
   optionalText(paths.rollback),
   text(paths.main),
@@ -56,6 +60,17 @@ requireAll(portal, [
   'user must review and submit it again'
 ], 'PTC time steward portal');
 
+requireAll(gate, [
+  'PtcTimeStewardGate',
+  "'PROJECT_TEAM_COORDINATOR'",
+  "'SUPER_ADMINISTRATOR'",
+  "'projectPulseViewAsUser'",
+  'roleCodes',
+  'if (state.active && !state.allowed) return null',
+  '<PtcTimesheetManagementPortal />',
+  '<PtcRuntimeTaskCatalog />'
+], 'Effective-role PTC frontend gate');
+
 requireAll(css, [
   '.ptc-time-steward-portal',
   '.ptc-no-submit',
@@ -83,16 +98,34 @@ requireAll(model, [
 ], 'PTC permission model');
 
 requireAll(main, [
+  "import PtcTimeStewardGate from './module001/PtcTimeStewardGate.jsx';",
+  '<PtcTimeStewardGate />'
+], 'Gated frontend mount');
+for (const forbidden of [
   "import PtcTimesheetManagementPortal from './module001/PtcTimesheetManagementPortal.jsx';",
-  '<PtcTimesheetManagementPortal />'
-], 'Frontend mount');
+  "import PtcRuntimeTaskCatalog from './module001/PtcRuntimeTaskCatalog.jsx';"
+]) {
+  if (main.includes(forbidden)) throw new Error(`Main must not bypass the PTC gate: ${forbidden}`);
+}
 
 if (portal.includes('Submit selected user') || portal.includes('Submit on behalf')) {
   throw new Error('PTC workspace must not contain a submission-on-behalf action.');
 }
 
-const externalAvailable = [backend, migration, rollback, project].every(Boolean);
+const externalAvailable = [backend, boundary, migration, rollback, project].every(Boolean);
 if (externalAvailable) {
+  requireAll(boundary, [
+    'UsePtcTimeStewardRoleBoundary',
+    'PROJECT_TEAM_COORDINATOR',
+    'SUPER_ADMINISTRATOR',
+    '/api/timesheet/ptc',
+    '/api/runtime/timesheet/steward',
+    '/api/scoped-time/',
+    'time_steward_role_required',
+    'Only Project Team Coordinator or Super Administrator may manage another user',
+    'view_as_read_only'
+  ], 'Non-bypassable time-steward role boundary');
+
   requireAll(backend, [
     'MapModule001PtcTimesheetManagementEndpoints',
     'app.MapGet("/api/timesheet/ptc/users"',
@@ -119,11 +152,7 @@ if (externalAvailable) {
     'project_tasks'
   ], 'PTC time steward API');
 
-  for (const forbidden of [
-    '"TIME_SUBMIT"',
-    'TIME_DELETE_PERMANENT", actor',
-    'USER_IMPERSONATE", actor'
-  ]) {
+  for (const forbidden of ['"TIME_SUBMIT"', 'TIME_DELETE_PERMANENT", actor', 'USER_IMPERSONATE", actor']) {
     if (backend.includes(forbidden)) throw new Error(`PTC API must not execute protected action: ${forbidden}`);
   }
 
@@ -160,7 +189,10 @@ if (externalAvailable) {
     "migration_id = '043_ptc_time_steward_permissions'"
   ], 'Migration 043 rollback');
 
-  requireAll(project, ['app.MapModule001PtcTimesheetManagementEndpoints();'], 'Backend registration');
+  requireAll(project, [
+    'app.UsePtcTimeStewardRoleBoundary();',
+    'app.MapModule001PtcTimesheetManagementEndpoints();'
+  ], 'Backend registration');
 } else {
   console.log('MODULE_001_PTC_EXTERNAL_SOURCE_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
 }

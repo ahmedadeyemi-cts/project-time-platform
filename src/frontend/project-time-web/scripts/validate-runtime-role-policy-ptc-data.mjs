@@ -12,13 +12,14 @@ const requireAll = (source, values, label) => {
   }
 };
 
-const [jsonResponse, bridge, roleModel, matrixModel, portal, catalog, css, main, backend, project] = await Promise.all([
+const [jsonResponse, bridge, roleModel, matrixModel, portal, catalog, gate, css, main, backend, project] = await Promise.all([
   text('src/frontend/project-time-web/src/api-json-response.js'),
   text('src/frontend/project-time-web/src/runtime-data-compatibility.js'),
   text('src/frontend/project-time-web/src/role-permission-model.js'),
   text('src/frontend/project-time-web/src/role-permission-matrix-model.js'),
   text('src/frontend/project-time-web/src/module001/PtcTimesheetManagementPortal.jsx'),
   text('src/frontend/project-time-web/src/module001/PtcRuntimeTaskCatalog.jsx'),
+  text('src/frontend/project-time-web/src/module001/PtcTimeStewardGate.jsx'),
   text('src/frontend/project-time-web/src/module001/ptc-runtime-task-catalog.css'),
   text('src/frontend/project-time-web/src/main.jsx'),
   optionalText('src/backend/ProjectTime.Api/Modules/RuntimeDataCompatibilityModule.cs'),
@@ -117,6 +118,16 @@ requireAll(catalog, [
   'PtcRuntimeTaskCatalog'
 ], 'PTC grouped runtime task catalog');
 
+requireAll(gate, [
+  'PtcTimeStewardGate',
+  "'PROJECT_TEAM_COORDINATOR'",
+  "'SUPER_ADMINISTRATOR'",
+  "localStorage.getItem('projectPulseViewAsUser')",
+  'if (state.active && !state.allowed) return null',
+  '<PtcTimesheetManagementPortal />',
+  '<PtcRuntimeTaskCatalog />'
+], 'Effective-role runtime PTC gate');
+
 requireAll(css, [
   '.ptc-runtime-task-catalog',
   '.ptc-runtime-groups',
@@ -127,9 +138,15 @@ requireAll(css, [
 
 requireAll(main, [
   "import './runtime-data-compatibility.js';",
+  "import PtcTimeStewardGate from './module001/PtcTimeStewardGate.jsx';",
+  '<PtcTimeStewardGate />'
+], 'Gated runtime data application mount');
+for (const forbidden of [
   "import PtcRuntimeTaskCatalog from './module001/PtcRuntimeTaskCatalog.jsx';",
   '<PtcRuntimeTaskCatalog />'
-], 'Runtime data application mount');
+]) {
+  if (main.includes(forbidden)) throw new Error(`Main must not bypass the PTC effective-role gate: ${forbidden}`);
+}
 
 const externalAvailable = backend.length > 0 && project.length > 0;
 if (externalAvailable) {
@@ -155,20 +172,18 @@ if (externalAvailable) {
     'canSubmitOnBehalf = false'
   ], 'Runtime role-policy and PTC backend');
 
-  requireAll(project, [
-    'app.MapRuntimeDataCompatibilityEndpoints();'
-  ], 'Runtime endpoint registration');
+  requireAll(project, ['app.MapRuntimeDataCompatibilityEndpoints();'], 'Runtime endpoint registration');
 } else {
   console.log('RUNTIME_ROLE_POLICY_PTC_EXTERNAL_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
 }
 
 for (const forbidden of [
-  "app.MapPost(\"/api/runtime/role-policy",
-  "app.MapPut(\"/api/runtime/role-policy",
-  "app.MapPatch(\"/api/runtime/role-policy",
-  "app.MapDelete(\"/api/runtime/role-policy"
+  'app.MapPost("/api/runtime/role-policy',
+  'app.MapPut("/api/runtime/role-policy',
+  'app.MapPatch("/api/runtime/role-policy',
+  'app.MapDelete("/api/runtime/role-policy'
 ]) {
   if (backend.includes(forbidden)) throw new Error(`Runtime role-policy aliases must remain read-only: ${forbidden}`);
 }
 
-console.log('Direct authenticated runtime role-policy and PTC data contracts passed.');
+console.log('Direct authenticated runtime role-policy and gated PTC data contracts passed.');

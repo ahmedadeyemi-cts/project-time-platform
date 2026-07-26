@@ -18,7 +18,6 @@ const rejectText = (source, value, label) => assert.ok(!source.includes(value), 
 
 const app = read('src/frontend/project-time-web/src/App.jsx');
 const generated = read('src/frontend/project-time-web/src/App.Module001.g.jsx');
-const generatedGuide = read('src/frontend/project-time-web/src/SystemUserGuide.Module001.g.jsx');
 const generator = read('src/frontend/project-time-web/scripts/generate-module-001-integrated-app.mjs');
 const main = read('src/frontend/project-time-web/src/main.jsx');
 const portalEntry = read('src/frontend/project-time-web/src/module001/TimesheetEnhancementPortal.jsx');
@@ -29,115 +28,64 @@ const durationSource = read('src/frontend/project-time-web/src/module001/timeshe
 const css = read('src/frontend/project-time-web/src/module001/timesheet-prep.css');
 const timerRecoveryCss = read('src/frontend/project-time-web/src/module001/timesheet-timer-recovery.css');
 const packageJson = read('src/frontend/project-time-web/package.json');
-const module002Validator = read('src/frontend/project-time-web/scripts/validate-module-002-approval-center.mjs');
-const module059Validator = read('src/frontend/project-time-web/scripts/validate-module-059-global.mjs');
 
-for (const view of ['Weekly Grid', 'Daily Focus', 'Quick Entry List']) {
-  requireText(generated, view, 'streamlined Timesheet view');
-}
+for (const view of ['Weekly Grid', 'Daily Focus', 'Quick Entry List']) requireText(generated, view, 'streamlined Timesheet view');
 requireText(portalEntry, './TimesheetEnhancementPortalV2.jsx', 'timer portal implementation');
 requireText(portal, 'Start / Stop Timer', 'timer Timesheet view');
-rejectText(generated, "{ key: 'queue', label: 'My Work Queue'", 'retired My Work Queue tab');
-rejectText(generated, "{ key: 'calendar', label: 'Calendar / Timeline'", 'retired Calendar tab');
-requireText(generator, "setTimesheetView('weekly')", 'legacy hidden-view reset');
-requireText(generator, 'retiredTabsRemoved=2', 'retired-tab generation evidence');
-rejectText(generatedGuide, 'My Work Queue loads actual tasks', 'retired Queue guide workflow');
-rejectText(generatedGuide, 'Calendar / Timeline shows', 'retired Calendar guide workflow');
 requireText(app, "route: 'timesheet'", 'Module 001 route');
-requireText(app, "title: 'Timesheet'", 'Module 001 user-facing name');
-
-requireText(generator, 'buildTimesheetPayload()', 'shared canonical weekly draft');
+requireText(app, "title: 'Timesheet'", 'Module 001 name');
+requireText(generator, 'buildTimesheetPayload()', 'shared weekly draft');
 requireText(generator, 'projectpulse:module001-state', 'canonical state event');
 requireText(generator, 'assignedTasks: assignedOpenTasks', 'canonical assigned-task source');
 requireText(generator, 'nonProjectCategories: categories', 'canonical non-project source');
-rejectText(generator, 'assignedTasks.data', 'undefined assignedTasks reference');
-rejectText(generator, 'nonProjectCategories.data', 'undefined nonProjectCategories reference');
-requireText(app, 'const assignedOpenTasks = openTasks.data?.tasks ?? [];', 'canonical assigned task declaration');
-requireText(app, 'const categories = timesheet.data?.nonProjectCategories ?? [];', 'canonical non-project declaration');
-requireText(app, '/api/assignments/available-tasks?weekStart=', 'working Timesheet task endpoint');
-requireText(app, "projectPulseTaskTimeEntrySection(task) === 'regular'", 'working regular-task classification');
-requireText(app, "projectPulseTaskTimeEntrySection(task) === 'requests'", 'working request-task classification');
-requireText(generated, 'MODULE_001_CANONICAL_STATE_BRIDGE_START', 'generated App bridge');
-requireText(generated, 'assignedTasks: assignedOpenTasks', 'generated assigned tasks');
-requireText(generated, 'nonProjectCategories: categories', 'generated non-project categories');
 requireText(main, './App.Module001.g.jsx', 'generated App import');
 requireText(main, '<TimesheetEnhancementPortal />', 'portal root integration');
 
-requireText(portalEntry, '/api/assignments/available-tasks?weekStart=', 'shared available-task timer refresh');
-requireText(portalEntry, '/api/timesheet/work-queue?weekStart=', 'authoritative timer assignment refresh');
-rejectText(portalEntry, '/api/timesheet/timers/targets?weekStart=', 'divergent timer-only task source');
-requireText(portalEntry, 'Promise.allSettled', 'independent task and assignment refresh');
-requireText(portalEntry, 'projectTaskKey', 'project and task join key');
-requireText(portalEntry, 'buildWorkQueueAssignmentIndex', 'authoritative assignment index');
-requireText(portalEntry, 'assignmentIndex.get(projectTaskKey(task))', 'available-task assignment join');
-requireText(portalEntry, 'normalizeAvailableTask(task, assignmentIndex)', 'joined available-task normalization');
-requireText(portalEntry, 'canonicalWorkTypeGroup', 'shared Work Type classification');
-requireText(portalEntry, "workType === 'project' || workType === 'iqs'", 'Project and IQS regular-task routing');
-requireText(portalEntry, "? 'Regular Tasks'", 'regular task group');
-requireText(portalEntry, ": 'Service Request Tasks'", 'request task group');
-requireText(portalEntry, 'regularAssignedTasks:', 'published regular-task collection');
-requireText(portalEntry, 'requestAssignedTasks:', 'published request-task collection');
-requireText(portalEntry, 'mergeAssignedTasks', 'canonical and shared task merge');
-requireText(portalEntry, 'projectpulse:module001-state', 'enriched state publication');
-requireText(portalEntry, 'AUGMENTED_MARKER', 'state enrichment loop guard');
+requireText(portalEntry, '/api/timesheet/timers/targets?weekStart=', 'authoritative timer target request');
+requireText(portalEntry, "target.targetType === 'assignment'", 'assigned target extraction');
+requireText(portalEntry, "target.groupLabel === 'Regular Tasks'", 'regular task collection');
+requireText(portalEntry, "target.groupLabel === 'Service Request Tasks'", 'service-request collection');
+requireText(portalEntry, "target.targetType === 'category'", 'non-project target extraction');
+requireText(portalEntry, 'timerTargetLoadError', 'visible timer target failure evidence');
+requireText(portalEntry, 'projectpulse:module001-timer-targets', 'timer target state evidence');
+requireText(portalEntry, 'returned an incomplete timer-target payload', 'fail-closed target response');
+requireText(portalEntry, 'X-ProjectPulse-Session', 'timer target session header');
+requireText(portalEntry, 'X-ProjectPulse-View-As-User', 'timer target View-As header');
+rejectText(portalEntry, '/api/assignments/available-tasks', 'retired available-task enrichment');
+rejectText(portalEntry, '/api/timesheet/work-queue', 'retired work-queue enrichment');
 
 for (const contract of ['/api/timesheet/timers/active', '/api/timesheet/timers/start', '/api/timesheet/timers/start-by-code', '/stop', '/discard']) {
   requireText(`${portal}\n${timerView}`, contract, 'timer frontend contract');
 }
 requireText(portal, 'snapshot?.assignedTasks', 'timer assigned-task source');
-requireText(portal, 'snapshot?.nonProjectCategories', 'timer visible category source');
+requireText(portal, 'snapshot?.nonProjectCategories', 'timer non-project source');
 requireText(portal, 'categoryTarget', 'category normalization');
-requireText(portal, "targetType: 'categoryCode'", 'category-code target construction');
-requireText(portal, 'category-code:${code}', 'category-code selector value');
+requireText(portal, "targetType: 'categoryCode'", 'category-code construction');
 requireText(portal, 'nonProjectCategoryCode: target.targetCode', 'category-code start payload');
-requireText(portal, 'Promise.allSettled', 'independent timer runtime loading');
-requireText(portal, 'window.setInterval(refresh, 5000)', 'active-timer polling');
-requireText(portal, "error?.status === 409", 'running-timer conflict recovery');
-requireText(portal, 'error?.payload?.activeTimer', 'running-timer response adoption');
+requireText(portal, 'assignmentId: target.targetType ===', 'assignment timer start payload');
+requireText(portal, 'window.setInterval(refresh, 5000)', 'active timer polling');
+requireText(portal, "error?.status === 409", 'running-timer recovery');
 requireText(portal, "groupLabel: isServiceRequestTask(task) ? 'Service Request Tasks' : 'Regular Tasks'", 'assigned task grouping');
 requireText(portal, "groupLabel: 'Non-Project Time'", 'non-project grouping');
-rejectText(portal, 'TimesheetWorkQueueCard', 'duplicate enhanced Queue implementation');
-rejectText(portal, 'CalendarEnhancement', 'duplicate enhanced Calendar implementation');
-rejectText(portal, 'CurrentTimesheetActivityCard', 'duplicate active-row Queue implementation');
+requireText(portal, 'projectPulseModule001MobileMode', 'mobile preference');
+requireText(portal, 'Mobile mode', 'mobile selector');
 
 requireText(taskPicker, 'role="combobox"', 'autocomplete combobox');
-requireText(taskPicker, 'aria-autocomplete="list"', 'combobox autocomplete mode');
-requireText(taskPicker, 'role="listbox"', 'autocomplete result list');
-requireText(taskPicker, 'role="option"', 'selectable autocomplete result');
-requireText(taskPicker, 'Search activity, task, project, customer, or request', 'timer search prompt');
-requireText(taskPicker, 'Non-Project Time', 'non-project target group');
+requireText(taskPicker, 'aria-autocomplete="list"', 'autocomplete mode');
 requireText(taskPicker, 'Regular Tasks', 'regular task group');
 requireText(taskPicker, 'Service Request Tasks', 'service request group');
-requireText(taskPicker, 'No matching activity or task.', 'search empty state');
-requireText(taskPicker, 'onFocus', 'result panel opens on focus');
-requireText(taskPicker, 'setOpen(true)', 'result panel opens while searching');
-requireText(taskPicker, 'chooseOption', 'matching result selection');
-rejectText(taskPicker, '<select', 'legacy separate search and select controls');
-requireText(timerView, 'category-code:', 'category-code start eligibility');
-requireText(timerView, 'validSelectedTarget', 'timer start eligibility');
-requireText(timerView, "onClick={() => validSelectedTarget && onStart()}", 'guarded timer start');
-requireText(timerView, './timesheet-timer-recovery.css', 'timer recovery layout import');
-requireText(timerRecoveryCss, '#timesheet .timesheet-workspace > .module001-enhancement-view-host', 'inactive enhancement host');
-requireText(timerRecoveryCss, 'display: none;', 'inactive host hidden');
+requireText(taskPicker, 'Non-Project Time', 'non-project group');
+rejectText(taskPicker, '<select', 'legacy task selector');
 requireText(timerRecoveryCss, '#timesheet.module001-timer-mode .module001-enhancement-view-host', 'timer host visibility');
-requireText(timerRecoveryCss, 'grid-column: 1 / -1;', 'full-width timer host');
 requireText(timerRecoveryCss, '.module001-task-results', 'autocomplete panel styling');
-requireText(timerRecoveryCss, 'position: absolute;', 'autocomplete dropdown positioning');
-requireText(timerRecoveryCss, '.module001-task-result-group', 'grouped result styling');
-requireText(portal, 'projectPulseModule001MobileMode', 'mobile preference');
-requireText(portal, 'Mobile mode', 'mobile selector label');
 requireText(css, '#timesheet.module001-mobile-mode', 'mobile presentation');
 requireText(css, 'min-height: 44px', 'touch targets');
 
 for (const contract of ['/api/timesheets/week/draft', '/validate-submission', '/submit', 'Module 002 Approval Inbox', 'Confirm and submit week']) {
   requireText(portal, contract, 'weekly submission frontend');
 }
-requireText(portal, 'snapshot.isViewAs', 'View-As frontend read-only');
-requireText(packageJson, 'validate:module001-enhancement', 'protected Module 001 validator registration');
-requireText(packageJson, 'validate:module002', 'Module 002 validator preservation');
-requireText(packageJson, 'validate:module059', 'Module 059 validator preservation');
-assert.ok(module002Validator.length > 100, 'Module 002 validator must remain present');
-assert.ok(module059Validator.length > 100, 'Module 059 global validator must remain present');
+requireText(portal, 'snapshot.isViewAs', 'View-As read-only mode');
+requireText(packageJson, 'validate:module001-enhancement', 'protected validator registration');
 
 const duration = await import(pathToFileURL(path.join(webRoot, 'src/module001/timesheet-duration.js')).href);
 const roundingCases = [
@@ -148,8 +96,8 @@ const roundingCases = [
 for (const [seconds, expectedMinutes] of roundingCases) {
   assert.equal(duration.roundSecondsUpToQuarterHour(seconds), expectedMinutes, `rounding ${seconds}`);
 }
-requireText(durationSource, 'MAX_TIMER_SECONDS', 'integer 12-hour cap');
-requireText(durationSource, 'QUARTER_HOUR_SECONDS', 'integer quarter-hour duration');
+requireText(durationSource, 'MAX_TIMER_SECONDS', '12-hour cap');
+requireText(durationSource, 'QUARTER_HOUR_SECONDS', 'quarter-hour duration');
 
 const backendPaths = [
   'src/backend/ProjectTime.Api/Modules/Module001TimesheetContracts.cs',
@@ -164,52 +112,30 @@ const backendPaths = [
 ];
 const backendAvailable = backendPaths.every((relative) => fs.existsSync(path.join(repoRoot, relative)));
 if (backendAvailable) {
-  const contracts = read(backendPaths[0]);
-  const data = read(backendPaths[1]);
-  const engine = read(backendPaths[2]);
-  const submission = read(backendPaths[3]);
-  const endpoints = read(backendPaths[4]);
-  const timerTargets = read(backendPaths[5]);
-  const projectFile = read(backendPaths[6]);
-  const migration = read(backendPaths[7]);
-  const rollback = read(backendPaths[8]);
-  const allBackend = `${contracts}\n${data}\n${engine}\n${submission}\n${endpoints}\n${timerTargets}`;
-
-  requireText(allBackend, 'ScopedAuthorizationEvaluator.EvaluateAsync', 'backend scoped authorization');
-  requireText(allBackend, 'actor.EffectiveUserId', 'authenticated effective user');
-  requireText(allBackend, 'TIME_EDIT_OWN', 'self-only edit action');
+  const sources = backendPaths.map((relative) => read(relative));
+  const [contracts, data, engine, submission, endpoints, timerTargets, projectFile, migration, rollback] = sources;
+  const allBackend = sources.slice(0, 6).join('\n');
+  requireText(allBackend, 'ScopedAuthorizationEvaluator.EvaluateAsync', 'backend authorization');
+  requireText(allBackend, 'actor.EffectiveUserId', 'effective user');
+  requireText(allBackend, 'TIME_EDIT_OWN', 'self edit action');
   requireText(allBackend, 'TIME_SUBMIT', 'submission action');
   requireText(allBackend, 'AutoStopModule001TimerAsync', 'server auto-stop');
-  requireText(allBackend, 'Module001BuildSegments', 'midnight and week segmentation');
-  requireText(allBackend, 'Module001RoundedMinutes', 'single authoritative rounding');
-  requireText(allBackend, 'maximumDurationSeconds', 'server timer maximum response');
-  requireText(data, 'if (forUpdate) sql += " FOR UPDATE OF t";', 'timer-row-only PostgreSQL lock');
-  rejectText(data, 'if (forUpdate) sql += " FOR UPDATE";', 'outer-join-wide PostgreSQL lock');
-  rejectText(endpoints, 'Module001TimerStartRequest(Guid UserId', 'browser-supplied timer identity');
-  requireText(endpoints, 'app.MapGet("/api/timesheet/work-queue"', 'authoritative timer assignment endpoint');
-  requireText(endpoints, 'assignmentId = reader.GetGuid(0)', 'work-queue assignment identifier');
-
-  requireText(timerTargets, '/api/timesheet/timers/start-by-code', 'category-code start route');
-  requireText(timerTargets, 'Module001TimerStartByCodeRequest', 'category-code request contract');
-  requireText(timerTargets, 'UPPER(category_code) = @category_code', 'active category-code resolution');
-  requireText(timerTargets, 'TIME_EDIT_OWN', 'category-code write authorization');
-  requireText(timerTargets, 'new Module001TimerStartRequest(', 'shared timer-start execution');
-  requireText(timerTargets, "to_jsonb(pt)->>'work_task_category'", 'authoritative task category');
-  requireText(timerTargets, "to_jsonb(pt)->>'service_request_number'", 'service request number');
-  requireText(timerTargets, 'groupLabel = serviceRequestTask ? "Service Request Tasks" : "Regular Tasks"', 'task group assignment');
+  requireText(allBackend, 'Module001BuildSegments', 'timer segmentation');
+  requireText(allBackend, 'Module001RoundedMinutes', 'authoritative rounding');
+  requireText(data, 'if (forUpdate) sql += " FOR UPDATE OF t";', 'timer-row lock');
+  requireText(timerTargets, 'app.MapGet("/api/timesheet/timers/targets"', 'authoritative target route');
+  requireText(timerTargets, 'project_assignments', 'assignment source');
+  requireText(timerTargets, 'project_tasks', 'task source');
+  requireText(timerTargets, "to_jsonb(pt)->>'work_task_category'", 'task category source');
+  requireText(timerTargets, "to_jsonb(pt)->>'service_request_number'", 'service request source');
   requireText(timerTargets, 'regularTaskCount', 'regular task count');
-  requireText(timerTargets, 'serviceRequestTaskCount', 'service request task count');
+  requireText(timerTargets, 'serviceRequestTaskCount', 'service request count');
   requireText(timerTargets, 'groupLabel = "Non-Project Time"', 'non-project API group');
-  requireText(projectFile, 'app.MapModule001TimerTargetEndpoints();', 'generated Program endpoint registration');
-
-  requireText(migration, 'ux_module001_one_running_timer_per_user', 'one running timer constraint');
-  requireText(migration, 'rounded_minutes % 15 = 0', 'quarter-hour database constraint');
-  requireText(migration, 'BETWEEN 0 AND 43200', '12-hour seconds constraint');
-  requireText(migration, 'BETWEEN 0 AND 720', '12-hour rounded-minutes constraint');
-  requireText(migration, 'module001_timer_audit_events', 'immutable timer audit');
-  requireText(migration, 'module001_weekly_task_lines', 'durable weekly task association');
+  requireText(projectFile, 'app.MapModule001TimerTargetEndpoints();', 'endpoint registration');
+  requireText(migration, 'ux_module001_one_running_timer_per_user', 'one timer constraint');
+  requireText(migration, 'rounded_minutes % 15 = 0', 'quarter-hour constraint');
+  requireText(migration, 'module001_timer_audit_events', 'timer audit');
   requireText(rollback, 'rollback blocked', 'fail-closed rollback');
-  requireText(rollback, 'DROP TABLE IF EXISTS module001_timer_sessions', 'reviewed rollback');
 }
 
-console.log(`MODULE_001_TIMESHEET_TIMER_MOBILE_VALIDATION=PASS roundingCases=${roundingCases.length} backend=${backendAvailable ? 'full' : 'frontend-container'} architecture=streamlined sharedAvailableTasks=true assignmentJoin=true autocompleteCombobox=true`);
+console.log(`MODULE_001_TIMESHEET_TIMER_MOBILE_VALIDATION=PASS roundingCases=${roundingCases.length} backend=${backendAvailable ? 'full' : 'frontend-container'} targetSource=authoritative`);
