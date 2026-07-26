@@ -1,7 +1,7 @@
 import { unwrapApiPayload } from './api-json-response.js';
 
 const MARKER = '__projectPulseRuntimeDataCompatibilityInstalled';
-const RESPONSE_MARKER = 'projectpulse-runtime-data-direct-auth-2026-07-25';
+const RESPONSE_MARKER = 'projectpulse-combined-runtime-v2-2026-07-26';
 
 function requestMethod(input, init) {
   return String(init?.method || (input instanceof Request ? input.method : 'GET')).toUpperCase();
@@ -44,18 +44,31 @@ function authenticatedInit(input, init = {}) {
 }
 
 function rewritePath(pathname) {
-  if (pathname === '/api/role-policy/summary') return '/api/runtime/role-policy/summary';
-  if (pathname === '/api/role-policy/catalog') return '/api/runtime/role-policy/catalog';
-  if (pathname === '/api/role-policy/versions') return '/api/runtime/role-policy/versions';
-  if (pathname === '/api/role-policy/matrix') return '/api/runtime/role-policy/matrix';
-  if (/^\/api\/role-policy\/roles\/[^/]+$/.test(pathname)) {
-    return pathname.replace('/api/role-policy/roles/', '/api/runtime/role-policy/roles/');
+  const exact = {
+    '/api/role-policy/summary': '/api/runtime/v2/role-policy/summary',
+    '/api/runtime/role-policy/summary': '/api/runtime/v2/role-policy/summary',
+    '/api/role-policy/catalog': '/api/runtime/v2/role-policy/catalog',
+    '/api/runtime/role-policy/catalog': '/api/runtime/v2/role-policy/catalog',
+    '/api/role-policy/versions': '/api/runtime/v2/role-policy/versions',
+    '/api/runtime/role-policy/versions': '/api/runtime/v2/role-policy/versions',
+    '/api/role-policy/matrix': '/api/runtime/v2/role-policy/matrix',
+    '/api/runtime/role-policy/matrix': '/api/runtime/v2/role-policy/matrix',
+    '/api/timesheet/ptc/users': '/api/runtime/v2/timesheet/steward/users',
+    '/api/runtime/timesheet/steward/users': '/api/runtime/v2/timesheet/steward/users'
+  };
+  if (exact[pathname]) return exact[pathname];
+  if (/^\/api\/(?:runtime\/)?role-policy\/roles\/[^/]+$/.test(pathname)) {
+    return pathname
+      .replace('/api/runtime/role-policy/roles/', '/api/runtime/v2/role-policy/roles/')
+      .replace('/api/role-policy/roles/', '/api/runtime/v2/role-policy/roles/');
   }
-  if (pathname === '/api/timesheet/ptc/users') return '/api/runtime/timesheet/steward/users';
   if (/^\/api\/timesheet\/ptc\/users\/[0-9a-f-]+\/entries$/i.test(pathname)) {
     return pathname
-      .replace('/api/timesheet/ptc/users/', '/api/runtime/timesheet/steward/users/')
+      .replace('/api/timesheet/ptc/users/', '/api/runtime/v2/timesheet/steward/users/')
       .replace(/\/entries$/, '/workspace');
+  }
+  if (/^\/api\/runtime\/timesheet\/steward\/users\/[0-9a-f-]+\/workspace$/i.test(pathname)) {
+    return pathname.replace('/api/runtime/timesheet/steward/users/', '/api/runtime/v2/timesheet/steward/users/');
   }
   return '';
 }
@@ -135,7 +148,7 @@ if (typeof window !== 'undefined' && typeof window.fetch === 'function' && !wind
     if (response.ok && !hasExpected(normalized, keys)) {
       return new Response(JSON.stringify({
         status: 'runtime_api_contract_incomplete',
-        message: `The runtime API response for ${rewrittenPath} did not contain ${keys.join(', ')}.`,
+        message: `The authoritative runtime response for ${rewrittenPath} did not contain ${keys.join(', ')}.`,
         runtimePath: rewrittenPath,
         responseKeys: Object.keys(normalized || {})
       }), { status: 502, headers });
