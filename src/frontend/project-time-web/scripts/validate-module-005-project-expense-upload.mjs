@@ -76,10 +76,15 @@ requireAll(module038Css, [
   '.certify-sync-control-card',
   'align-content:start',
   'min-height:0',
+  'main.app-shell.route-certify-integration .certify-integration-center',
+  'max-height:calc(100dvh - 15rem)',
+  'overflow-y:auto',
+  'overflow-x:hidden',
+  'overscroll-behavior:contain',
   'grid-template-columns:repeat(2,minmax(0,1fr))',
   '.certify-sync-lock',
   '.certify-sync-ready'
-], 'Module 038 compact no-endless-scroll layout');
+], 'Module 038 bounded compact layout');
 
 requireAll(pageContext, [
   "'project-allocation-info': {",
@@ -228,5 +233,5 @@ if (externalAvailable) {
   console.log('MODULE_005_EXTERNAL_SOURCE_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
 }
 
-console.log('MODULE_005_038_MERGE_CANDIDATE=PASS reupload=true compactSync=true');
+console.log('MODULE_005_038_MERGE_CANDIDATE=PASS reupload=true compactSync=true boundedScroll=true');
 console.log('Module 005 Project Expense Upload and Module 038 Certify contracts passed.');
