@@ -5,6 +5,7 @@ const frontendRoot = process.cwd();
 const repositoryRoot = path.resolve(frontendRoot, '..', '..', '..');
 const files = {
   registrar: 'src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs',
+  securityBoundary: 'src/backend/ProjectTime.Api/Modules/MicrosoftIntegrationSecurityCompatibility.cs',
   integrationBackend: 'src/backend/ProjectTime.Api/Modules/MicrosoftIntegrationModule.cs',
   importBackend: 'src/backend/ProjectTime.Api/Modules/AzureDirectoryImportModule.cs',
   portal: 'src/frontend/project-time-web/src/MicrosoftIntegrationPortal.jsx',
@@ -28,11 +29,12 @@ function assert(name, condition, evidence) {
   console.log(`MICROSOFT_INTEGRATION_${name}=${condition ? 'PASSED' : 'FAILED'} — ${evidence}`);
 }
 
-for (const name of ['registrar', 'portal', 'compatibility', 'stylesheet', 'registry', 'main', 'identity', 'package']) {
+for (const name of ['registrar', 'securityBoundary', 'portal', 'compatibility', 'stylesheet', 'registry', 'main', 'identity', 'package']) {
   assert(`${name.toUpperCase()}_EXISTS`, exists(files[name]), files[name]);
 }
 
 const registrar = read(files.registrar);
+const securityBoundary = read(files.securityBoundary);
 const portal = read(files.portal);
 const compatibility = read(files.compatibility);
 const stylesheet = read(files.stylesheet);
@@ -43,14 +45,17 @@ const packageJson = JSON.parse(read(files.package));
 const hasBackendImplementation = exists(files.integrationBackend) && exists(files.importBackend);
 const integrationBackend = hasBackendImplementation ? read(files.integrationBackend) : '';
 const importBackend = hasBackendImplementation ? read(files.importBackend) : '';
-const backend = `${registrar}\n${integrationBackend}\n${importBackend}`;
+const backend = `${registrar}\n${securityBoundary}\n${integrationBackend}\n${importBackend}`;
 
-assert('REGISTRATION_PRESERVED', registrar.includes('MapGlobalMailConfigurationEndpoints') && registrar.includes('MicrosoftIntegrationModule.MapEndpoints(app)') && registrar.includes('AzureDirectoryImportModule.MapEndpoints(app)'), 'existing Program.cs registration point delegates to module-specific implementations');
+assert('REGISTRATION_PRESERVED', registrar.includes('MapGlobalMailConfigurationEndpoints') && registrar.includes('UseMicrosoftIntegrationSecurityCompatibility') && registrar.includes('MicrosoftIntegrationModule.MapEndpoints(app)') && registrar.includes('AzureDirectoryImportModule.MapEndpoints(app)'), 'existing Program.cs registration point delegates through the fail-closed security boundary');
+assert('GOVERNED_IMPORT_ROLE', securityBoundary.includes('client_selected_import_role_not_allowed') && securityBoundary.includes('governed_import_role_not_allowed') && securityBoundary.includes('AllowedGovernedImportRoles') && securityBoundary.includes('payload["defaultRoleCode"] = governedRole'), 'client roles cannot elevate privileges and server-governed roles use a non-administrative allowlist');
+assert('READ_WRITE_AUTHORIZATION_SPLIT', securityBoundary.includes('WritePermissions') && securityBoundary.includes('VIEW_GLOBAL_MAIL_CONFIGURATION') === false && securityBoundary.includes('microsoft_integration_manage_access_required') && securityBoundary.includes('View-only legacy mail permissions cannot change credentials'), 'view-only legacy mail grants cannot write secrets or run privileged tests');
+assert('ALL_TENANT_SECRET_HYDRATION', securityBoundary.includes('SELECT tenant_key, ciphertext, nonce, authentication_tag') && securityBoundary.includes('PROJECTPULSE_MICROSOFT_TENANT_') && securityBoundary.includes('HydrateEveryConfiguredTenantSecretAsync'), 'every configured tenant key is hydrated after restart without returning plaintext');
 
 if (hasBackendImplementation) {
   assert('MODULE_065_OWNER', integrationBackend.includes('ModuleNumber = "065"') && integrationBackend.includes('moduleName = "Microsoft Integration"'), 'Module 065 is the active owner');
   assert('MODULE_067_COMPATIBILITY', integrationBackend.includes('/api/global-mail/configuration') && integrationBackend.includes('/api/global-mail/health') && integrationBackend.includes('retired = true') && integrationBackend.includes('redirectRoute = ActiveRoute'), 'legacy GET compatibility remains');
-  assert('MODULE_067_PERMISSIONS_MAPPED', ['VIEW_GLOBAL_MAIL_CONFIGURATION', 'MANAGE_GLOBAL_MAIL_CONFIGURATION', 'VIEW_GLOBAL_MAIL', 'MANAGE_GLOBAL_MAIL'].every((value) => integrationBackend.includes(value)), 'legacy permissions accepted by Module 065');
+  assert('MODULE_067_PERMISSIONS_MAPPED', ['VIEW_GLOBAL_MAIL_CONFIGURATION', 'MANAGE_GLOBAL_MAIL_CONFIGURATION', 'VIEW_GLOBAL_MAIL', 'MANAGE_GLOBAL_MAIL'].every((value) => integrationBackend.includes(value)), 'legacy permissions accepted for compatibility while writes remain separately guarded');
   assert('UNIQUE_IMPORT_ENDPOINT', importBackend.includes('/api/microsoft-integration/directory-users/import-selected') && compatibility.includes('/api/admin/azure/users/import-selected') && compatibility.includes('/api/microsoft-integration/directory-users/import-selected'), 'legacy browser call rewrites to unique repaired endpoint');
   assert('SELECTED_IDENTIFIERS', ['selectedUsers', 'selectedEmails', 'selectedUserIds', 'selectedEntraObjectIds'].every((value) => importBackend.includes(value)), 'preview/import identifiers remain compatible');
   assert('SESSION_AUTHORITY', backend.includes('ProjectPulseActualUserId') && backend.includes('ProjectPulseSessionUserId') && backend.includes('view_as_read_only'), 'actual session and View-As write protection');
@@ -74,6 +79,7 @@ assert('MULTI_TENANT_UI', portal.includes('Add tenant') && portal.includes('conf
 assert('DIRECTORY_SYNC_MOVED', portal.includes('Directory synchronization') && portal.includes('/api/admin/azure/config') && portal.includes('/api/admin/azure/import-settings'), 'sync configuration moved to Module 065 while APIs remain compatible');
 assert('MAIL_CONSOLIDATED', portal.includes('Microsoft 365 / SMTP') && portal.includes('Sender mailbox') && portal.includes('smtp.office365.com'), 'Module 067 mail capabilities consolidated');
 assert('MODULE_010_IMPORT_ONLY', compatibility.includes('.azure-config-card, .azure-sync-summary-card') && compatibility.includes('Preview and import Entra users'), 'tenant and sync cards removed from Module 010');
+assert('OBSERVER_RECURSION_GUARD', compatibility.includes('function setTextIfChanged') && compatibility.includes('element.textContent === value') && !compatibility.includes("if (eyebrow) eyebrow.textContent = 'Azure / Entra Directory Users'"), 'DOM normalization mutates headings only when text actually changes');
 assert('ACTIVE_REGISTRY_TITLES', registry.includes("moduleNumber: '010', route: 'azure-admin', displayName: 'Azure / Entra Directory Users'") && registry.includes("moduleNumber: '065', route: 'entra-secret-administration', displayName: 'Microsoft Integration'"), 'active Module 010 and Module 065 names are authoritative');
 assert('MODULE_067_RETIRED_FROM_REGISTRY', !registry.includes("moduleNumber: '067'") && registry.includes("'global-mail-configuration': 'entra-secret-administration'"), 'Module 067 removed from active registry with compatibility alias');
 assert('MODULE_067_HIDDEN', compatibility.includes('data-module-067-retired') && compatibility.includes('surface.hidden = true'), 'legacy App.jsx navigation/cards hidden without broad App rewrite');
