@@ -148,7 +148,7 @@ export default function Module001ActiveTimerRecoveryPortal() {
       const result = await api(`/api/timesheet/timers/${timer.timerSessionId}/stop`, {
         method: 'POST',
         body: JSON.stringify({
-          description: timer.description || 'Stopped from the active timer recovery surface.',
+          description: timer.description || '',
           reason: 'Stopped from Module 001 active timer recovery.',
           expectedRowVersion: timer.rowVersion
         })
@@ -189,6 +189,7 @@ export default function Module001ActiveTimerRecoveryPortal() {
 
   if (!host || !timer) return null;
   const viewAsActive = Boolean(sessionContext().viewAsUserId);
+  const missingDescription = !String(timer.description || '').trim();
 
   return createPortal(
     <section className="module001-active-timer-recovery" aria-label="Recovered running timer">
@@ -197,10 +198,10 @@ export default function Module001ActiveTimerRecoveryPortal() {
         <h3>{activeLabel(timer)}</h3>
         <p>{message}</p>
         <small>Started {timer.startedAtUtc ? new Date(timer.startedAtUtc).toLocaleString() : 'on the server'} · Rounded draft {(duration.roundedMinutes / 60).toFixed(2)} hours</small>
+        {missingDescription ? <small className="module001-active-timer-description-warning">No work description is recorded. After stopping, add the actual work detail before submitting the week.</small> : null}
       </div>
       <strong className="module001-active-timer-recovery-clock" aria-live="polite">{formatElapsedSeconds(duration.cappedSeconds)}</strong>
       <div className="module001-active-timer-recovery-actions">
-        <button type="button" className="secondary" onClick={() => document.querySelector('#module001-start-stop-tab')?.click()}>Open timer view</button>
         <button type="button" disabled={busy !== '' || viewAsActive} onClick={() => void stop()}>{busy === 'stop' ? 'Stopping…' : 'Stop timer'}</button>
         <button type="button" className="danger" disabled={busy !== '' || viewAsActive} onClick={() => void discard()}>{busy === 'discard' ? 'Discarding…' : 'Discard'}</button>
       </div>
