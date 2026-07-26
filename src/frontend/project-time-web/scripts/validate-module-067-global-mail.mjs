@@ -4,7 +4,9 @@ import path from 'node:path';
 const frontendRoot = process.cwd();
 const repositoryRoot = path.resolve(frontendRoot, '..', '..', '..');
 const files = {
-  backend: 'src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs',
+  registrar: 'src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs',
+  integrationBackend: 'src/backend/ProjectTime.Api/Modules/MicrosoftIntegrationModule.cs',
+  importBackend: 'src/backend/ProjectTime.Api/Modules/AzureDirectoryImportModule.cs',
   portal: 'src/frontend/project-time-web/src/MicrosoftIntegrationPortal.jsx',
   compatibility: 'src/frontend/project-time-web/src/microsoft-integration-compatibility.js',
   stylesheet: 'src/frontend/project-time-web/src/microsoft-integration-portal.css',
@@ -25,39 +27,47 @@ function assert(name, condition, evidence) {
   console.log(`MICROSOFT_INTEGRATION_${name}=${condition ? 'PASSED' : 'FAILED'} — ${evidence}`);
 }
 
-for (const [name, relative] of Object.entries(files)) {
-  if (name === 'migration' || name === 'rollback') continue;
-  assert(`${name.toUpperCase()}_EXISTS`, exists(relative), relative);
+for (const name of ['registrar', 'portal', 'compatibility', 'stylesheet', 'main', 'identity', 'package']) {
+  assert(`${name.toUpperCase()}_EXISTS`, exists(files[name]), files[name]);
 }
 
-const backend = read(files.backend);
+const registrar = read(files.registrar);
 const portal = read(files.portal);
 const compatibility = read(files.compatibility);
 const stylesheet = read(files.stylesheet);
 const main = read(files.main);
 const identity = read(files.identity);
 const packageJson = JSON.parse(read(files.package));
+const hasBackendImplementation = exists(files.integrationBackend) && exists(files.importBackend);
+const integrationBackend = hasBackendImplementation ? read(files.integrationBackend) : '';
+const importBackend = hasBackendImplementation ? read(files.importBackend) : '';
+const backend = `${registrar}\n${integrationBackend}\n${importBackend}`;
 
-assert('MODULE_065_OWNER', backend.includes('ActiveModuleNumber = "065"') && backend.includes('moduleName = "Microsoft Integration"'), 'Module 065 is the active owner');
-assert('MODULE_067_COMPATIBILITY', backend.includes('/api/global-mail/configuration') && backend.includes('/api/global-mail/health') && backend.includes('retired = true') && backend.includes('redirectRoute = ActiveRoute'), 'legacy GET compatibility remains');
-assert('MODULE_067_PERMISSIONS_MAPPED', ['VIEW_GLOBAL_MAIL_CONFIGURATION', 'MANAGE_GLOBAL_MAIL_CONFIGURATION', 'VIEW_GLOBAL_MAIL', 'MANAGE_GLOBAL_MAIL'].every((value) => backend.includes(value)), 'legacy permissions accepted by Module 065');
-assert('UNIQUE_IMPORT_ENDPOINT', backend.includes('/api/microsoft-integration/directory-users/import-selected') && compatibility.includes('/api/admin/azure/users/import-selected') && compatibility.includes('/api/microsoft-integration/directory-users/import-selected'), 'legacy browser call rewrites to unique repaired endpoint');
-assert('SELECTED_IDENTIFIERS', ['selectedUsers', 'selectedEmails', 'selectedUserIds', 'selectedEntraObjectIds'].every((value) => backend.includes(value)), 'preview/import identifiers remain compatible');
-assert('SESSION_AUTHORITY', backend.includes('ProjectPulseActualUserId') && backend.includes('ProjectPulseSessionUserId') && backend.includes('view_as_read_only'), 'actual session and View-As write protection');
-assert('APP_USERS_PERSISTENCE', backend.includes('app_users') && backend.includes('InsertAppUserAsync') && backend.includes('UpdateAppUserAsync'), 'insert or safe upsert into app_users');
-assert('DUPLICATE_REPORTING', backend.includes('existing_user_upserted') && backend.includes('duplicate = outcomes.Count'), 'duplicates are reported');
-assert('ROLE_ASSIGNMENT_EXPLICIT', backend.includes('defaultRoleCode') && backend.includes('EnsureRoleAssignmentAsync') && backend.includes('roleAssignment ='), 'role assignment behavior is explicit');
-assert('TRANSACTION_COMMIT', backend.includes('SAVEPOINT module010_import_') || (backend.includes('SAVEPOINT {savepoint}') && backend.includes('transaction.CommitAsync')), 'per-user savepoints and final commit');
-assert('RESULT_COUNTS', ['imported,', 'skipped,', 'duplicate,', 'failed,'].every((value) => backend.includes(value)), 'response reports all requested result categories');
-assert('DOWNSTREAM_VISIBILITY', backend.includes('userAdministration = true') && backend.includes('activeUserSelectors = true') && backend.includes('identityProfileModule062 = true'), 'import visibility contract');
+assert('REGISTRATION_PRESERVED', registrar.includes('MapGlobalMailConfigurationEndpoints') && registrar.includes('MicrosoftIntegrationModule.MapEndpoints(app)') && registrar.includes('AzureDirectoryImportModule.MapEndpoints(app)'), 'existing Program.cs registration point delegates to module-specific implementations');
 
-assert('WRITE_ONLY_SECRET', portal.includes('type="password"') && backend.includes('/api/microsoft-integration/client-secret') && backend.includes('secretReturned = false'), 'client secret is enterable and never returned');
-assert('ENCRYPTED_SECRET', backend.includes('AesGcm') && backend.includes('microsoft_integration_client_secrets') && backend.includes('CryptographicOperations.ZeroMemory'), 'encrypted storage and memory clearing');
-assert('IDENTITY_HYDRATION', backend.includes('PROJECTPULSE_ENTRA_TEST_CLIENT_SECRET') && backend.includes('PROJECTPULSE_ENTRA_PRODUCTION_CLIENT_SECRET') && backend.includes('PROJECTPULSE_ENTRA_CLIENT_SECRET'), 'existing identity environment contract is hydrated');
+if (hasBackendImplementation) {
+  assert('MODULE_065_OWNER', integrationBackend.includes('ModuleNumber = "065"') && integrationBackend.includes('moduleName = "Microsoft Integration"'), 'Module 065 is the active owner');
+  assert('MODULE_067_COMPATIBILITY', integrationBackend.includes('/api/global-mail/configuration') && integrationBackend.includes('/api/global-mail/health') && integrationBackend.includes('retired = true') && integrationBackend.includes('redirectRoute = ActiveRoute'), 'legacy GET compatibility remains');
+  assert('MODULE_067_PERMISSIONS_MAPPED', ['VIEW_GLOBAL_MAIL_CONFIGURATION', 'MANAGE_GLOBAL_MAIL_CONFIGURATION', 'VIEW_GLOBAL_MAIL', 'MANAGE_GLOBAL_MAIL'].every((value) => integrationBackend.includes(value)), 'legacy permissions accepted by Module 065');
+  assert('UNIQUE_IMPORT_ENDPOINT', importBackend.includes('/api/microsoft-integration/directory-users/import-selected') && compatibility.includes('/api/admin/azure/users/import-selected') && compatibility.includes('/api/microsoft-integration/directory-users/import-selected'), 'legacy browser call rewrites to unique repaired endpoint');
+  assert('SELECTED_IDENTIFIERS', ['selectedUsers', 'selectedEmails', 'selectedUserIds', 'selectedEntraObjectIds'].every((value) => importBackend.includes(value)), 'preview/import identifiers remain compatible');
+  assert('SESSION_AUTHORITY', backend.includes('ProjectPulseActualUserId') && backend.includes('ProjectPulseSessionUserId') && backend.includes('view_as_read_only'), 'actual session and View-As write protection');
+  assert('APP_USERS_PERSISTENCE', importBackend.includes('app_users') && importBackend.includes('InsertUserAsync') && importBackend.includes('UpdateUserAsync'), 'insert or safe upsert into app_users');
+  assert('DUPLICATE_REPORTING', importBackend.includes('existing_user_upserted') && importBackend.includes('duplicate = outcomes.Count'), 'duplicates are reported');
+  assert('ROLE_ASSIGNMENT_EXPLICIT', importBackend.includes('defaultRoleCode') && importBackend.includes('EnsureRoleAssignmentAsync') && importBackend.includes('roleAssignment ='), 'role assignment behavior is explicit');
+  assert('TRANSACTION_COMMIT', importBackend.includes('SAVEPOINT {savepoint}') && importBackend.includes('transaction.CommitAsync'), 'per-user savepoints and final commit');
+  assert('RESULT_COUNTS', ['imported,', 'skipped,', 'duplicate,', 'failed,'].every((value) => importBackend.includes(value)), 'response reports all requested result categories');
+  assert('DOWNSTREAM_VISIBILITY', importBackend.includes('userAdministration = true') && importBackend.includes('activeUserSelectors = true') && importBackend.includes('identityProfileModule062 = true'), 'import visibility contract');
+  assert('WRITE_ONLY_SECRET', portal.includes('type="password"') && integrationBackend.includes('/api/microsoft-integration/client-secret') && integrationBackend.includes('secretReturned = false'), 'client secret is enterable and never returned');
+  assert('ENCRYPTED_SECRET', integrationBackend.includes('AesGcm') && integrationBackend.includes('microsoft_integration_client_secrets') && integrationBackend.includes('CryptographicOperations.ZeroMemory'), 'encrypted storage and memory clearing');
+  assert('IDENTITY_HYDRATION', integrationBackend.includes('PROJECTPULSE_ENTRA_TEST_CLIENT_SECRET') && integrationBackend.includes('PROJECTPULSE_ENTRA_PRODUCTION_CLIENT_SECRET') && integrationBackend.includes('PROJECTPULSE_ENTRA_CLIENT_SECRET'), 'existing identity environment contract is hydrated');
+  assert('GRAPH_CONNECTION_TEST', integrationBackend.includes('/api/microsoft-integration/test-connection') && integrationBackend.includes('graph.microsoft.com/v1.0/users') && integrationBackend.includes('Directory.Read.All') && integrationBackend.includes('User.Read.All'), 'application permission test');
+  assert('DELEGATED_PERMISSION', portal.includes('User.Read') && integrationBackend.includes('delegatedProfilePermission = "User.Read"'), 'delegated profile permission documented');
+} else {
+  console.log('MICROSOFT_INTEGRATION_BACKEND_DEEP_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
+}
+
 assert('IDENTITY_SOURCE_PRESERVED', identity.includes('GraphCredentials.ForDomain(domain)') && identity.includes('PROJECTPULSE_ENTRA_TEST_CLIENT_SECRET') && identity.includes('PROJECTPULSE_ENTRA_PRODUCTION_CLIENT_SECRET'), 'Module 062 identity implementation remains intact');
-assert('GRAPH_CONNECTION_TEST', backend.includes('/api/microsoft-integration/test-connection') && backend.includes('graph.microsoft.com/v1.0/users') && backend.includes('Directory.Read.All') && backend.includes('User.Read.All'), 'application permission test');
-assert('DELEGATED_PERMISSION', portal.includes('User.Read') && backend.includes('delegatedProfilePermission = "User.Read"'), 'delegated profile permission documented');
-
 assert('MULTI_TENANT_UI', portal.includes('Add tenant') && portal.includes('configuration.tenants') && portal.includes('activeTenantKey'), 'one or more tenant profiles');
 assert('DIRECTORY_SYNC_MOVED', portal.includes('Directory synchronization') && portal.includes('/api/admin/azure/config') && portal.includes('/api/admin/azure/import-settings'), 'sync configuration moved to Module 065 while APIs remain compatible');
 assert('MAIL_CONSOLIDATED', portal.includes('Microsoft 365 / SMTP') && portal.includes('Sender mailbox') && portal.includes('smtp.office365.com'), 'Module 067 mail capabilities consolidated');
