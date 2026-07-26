@@ -1,0 +1,259 @@
+name: ProjectPulse Deploy Module 005 Project Expense Upload Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_commit:
+        description: Exact verified Module 005/038 application commit
+        required: true
+        default: 3b68790b7fa320d96b96158ab7414bad335bc767
+        type: string
+      confirmation:
+        description: Enter DEPLOY-MODULE-005-PROJECT-EXPENSE-TO-TEST
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: projectpulse-deploy-module-005-project-expense-test
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Guarded Module 005 and 038 test deployment
+    environment: test
+    runs-on: ubuntu-latest
+    env:
+      EXPECTED_RELEASE_COMMIT: 3b68790b7fa320d96b96158ab7414bad335bc767
+    steps:
+      - name: Check out deployment controls
+        uses: actions/checkout@v5
+        with:
+          path: control
+          fetch-depth: 0
+
+      - name: Check out exact Module 005 release
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.release_commit }}
+          path: release
+          fetch-depth: 1
+
+      - name: Guard workflow source and Module 005 release
+        id: release
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ '${{ github.ref }}' == 'refs/heads/main' ]] || { echo 'Dispatch this workflow from main.' >&2; exit 1; }
+          [[ '${{ inputs.confirmation }}' == 'DEPLOY-MODULE-005-PROJECT-EXPENSE-TO-TEST' ]] || { echo 'Confirmation text does not match.' >&2; exit 1; }
+          [[ '${{ inputs.release_commit }}' =~ ^[0-9a-f]{40}$ ]] || { echo 'release_commit must be a complete SHA.' >&2; exit 1; }
+          CONTROL_COMMIT="$(git -C control rev-parse HEAD)"
+          TARGET_COMMIT="$(git -C release rev-parse HEAD)"
+          [[ "$CONTROL_COMMIT" == '${{ github.sha }}' ]]
+          [[ "$TARGET_COMMIT" == '${{ inputs.release_commit }}' ]]
+          [[ "$TARGET_COMMIT" == "$EXPECTED_RELEASE_COMMIT" ]] || { echo 'Only the verified Module 005/038 release may deploy.' >&2; exit 1; }
+          git -C control merge-base --is-ancestor "$TARGET_COMMIT" HEAD || { echo 'Release is not an ancestor of deployment controls.' >&2; exit 1; }
+
+          test -f release/database/migrations/044_project_expense_upload_certify_connection.sql
+          test -f release/database/migrations/044a_project_expense_self_certify_permission.sql
+          test -f release/src/backend/ProjectTime.Api/Modules/Module005ProjectExpenseUploadModule.cs
+          test -f release/src/backend/ProjectTime.Api/Modules/Module038CertifyConnectionModule.cs
+          test -f release/src/frontend/project-time-web/src/ProjectAllocationInfoPanel.jsx
+          test -f release/src/frontend/project-time-web/src/CertifyIntegrationCenter.jsx
+          test -f control/scripts/apply-module-005-project-expense-test-migrations.sh
+          test -f control/scripts/run-module-005-project-expense-test-migration-job.sh
+
+          grep -Fq 'Project Expense Upload' release/src/frontend/project-time-web/src/ProjectAllocationInfoPanel.jsx
+          grep -Fq '/api/project-expenses/upload' release/src/frontend/project-time-web/src/ProjectAllocationInfoPanel.jsx
+          grep -Fq '/api/project-expenses/import/certify' release/src/frontend/project-time-web/src/ProjectAllocationInfoPanel.jsx
+          grep -Fq 'Certify Connection &amp; Sync Center' release/src/frontend/project-time-web/src/CertifyIntegrationCenter.jsx
+          grep -Fq 'MapModule005ProjectExpenseUploadEndpoints' release/src/backend/ProjectTime.Api/Modules/Module005ProjectExpenseUploadModule.cs
+          grep -Fq 'MapModule038CertifyConnectionEndpoints' release/src/backend/ProjectTime.Api/Modules/Module005ProjectExpenseUploadModule.cs
+          grep -Fq 'MODULE_005_PROJECT_EXPENSE_MIGRATIONS=APPLIED_OR_VERIFIED' control/scripts/apply-module-005-project-expense-test-migrations.sh
+          echo "target_commit=$TARGET_COMMIT" >> "$GITHUB_OUTPUT"
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Load test database connection
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_API_APP: ${{ vars.AZURE_API_APP }}
+        run: bash control/scripts/export-pr55-test-database-url.sh
+
+      - name: Capture current immutable API and web images
+        id: before
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          RAW_API="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
+          RAW_WEB="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
+          API_MODE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.configuration.activeRevisionsMode' -o tsv)"
+          WEB_MODE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.configuration.activeRevisionsMode' -o tsv)"
+          [[ -n "$RAW_API" && -n "$RAW_WEB" && "${API_MODE,,}" == single && "${WEB_MODE,,}" == single ]]
+          resolve_digest() {
+            local image="$1" registry='${{ vars.AZURE_ACR_NAME }}.azurecr.io/' relative repository digest
+            case "$image" in
+              "$registry"*@sha256:*) printf '%s\n' "$image"; return ;;
+              "$registry"*:*) ;;
+              *) echo "Image is outside approved ACR: $image" >&2; return 1 ;;
+            esac
+            relative="${image#"$registry"}"
+            repository="${relative%:*}"
+            digest="$(az acr repository show --name '${{ vars.AZURE_ACR_NAME }}' --image "$relative" --query digest -o tsv)"
+            [[ "$digest" == sha256:* ]]
+            printf '%s%s@%s\n' "$registry" "$repository" "$digest"
+          }
+          echo "old_api_image=$(resolve_digest "$RAW_API")" >> "$GITHUB_OUTPUT"
+          echo "old_web_image=$(resolve_digest "$RAW_WEB")" >> "$GITHUB_OUTPUT"
+
+      - name: Build immutable Module 005 API and web images
+        id: build
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          SHA='${{ steps.release.outputs.target_commit }}'
+          API_REPO='project-health-dashboard-api'
+          WEB_REPO='project-health-dashboard-web'
+          API_DIGEST="$(control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "$API_REPO:module005-expense-$SHA" release/deployment/containers/api/Dockerfile release)"
+          WEB_DIGEST="$(control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "$WEB_REPO:module005-expense-$SHA" release/deployment/containers/web/Dockerfile release)"
+          echo "api_image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/$API_REPO@$API_DIGEST" >> "$GITHUB_OUTPUT"
+          echo "web_image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/$WEB_REPO@$WEB_DIGEST" >> "$GITHUB_OUTPUT"
+
+      - name: Build checksum-pinned migrations 044 and 044a image
+        id: migration
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          CONTEXT="$RUNNER_TEMP/module005-expense-migrator-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          install -d -m 0700 "$CONTEXT/migrations"
+          install -m 0644 control/deployment/containers/pr55-migrator/Dockerfile "$CONTEXT/Dockerfile"
+          install -m 0755 control/scripts/apply-module-005-project-expense-test-migrations.sh "$CONTEXT/apply-pr55-test-migrations.sh"
+          install -m 0644 release/database/migrations/044_project_expense_upload_certify_connection.sql "$CONTEXT/migrations/044_project_expense_upload_certify_connection.sql"
+          install -m 0644 release/database/migrations/044a_project_expense_self_certify_permission.sql "$CONTEXT/migrations/044a_project_expense_self_certify_permission.sql"
+          (
+            cd "$CONTEXT/migrations"
+            sha256sum 044_project_expense_upload_certify_connection.sql 044a_project_expense_self_certify_permission.sql > SHA256SUMS
+          )
+          printf '%s\n' '${{ steps.release.outputs.target_commit }}' > "$CONTEXT/release-commit"
+          DIGEST="$(control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "project-health-dashboard-module005-expense-migrator:${{ steps.release.outputs.target_commit }}-${GITHUB_SHA:0:12}" "$CONTEXT/Dockerfile" "$CONTEXT")"
+          echo "image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/project-health-dashboard-module005-expense-migrator@$DIGEST" >> "$GITHUB_OUTPUT"
+
+      - name: Apply or verify migrations 044 and 044a inside private network
+        shell: bash
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_API_APP: ${{ vars.AZURE_API_APP }}
+          AZURE_ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
+          MODULE_005_EXPENSE_MIGRATION_IMAGE: ${{ steps.migration.outputs.image }}
+          MODULE_005_EXPENSE_MIGRATION_JOB_NAME: m005exp-${{ github.run_id }}-${{ github.run_attempt }}
+        run: bash control/scripts/run-module-005-project-expense-test-migration-job.sh
+
+      - name: Deploy Module 005 API
+        id: deploy_api
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' \
+            --image '${{ steps.build.outputs.api_image }}' \
+            --set-env-vars PROJECTPULSE_ENVIRONMENT=test PROJECTPULSE_SOURCE_COMMIT='${{ steps.release.outputs.target_commit }}' \
+            --revision-suffix "m005api-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" --output none
+
+      - name: Validate Module 005 and 038 API routes
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"
+          wait_status() {
+            local url="$1" expected="$2" status='' type=''
+            for attempt in $(seq 1 36); do
+              status="$(curl -sS -D /tmp/m005-headers -o /tmp/m005-body -w '%{http_code}' -H 'Cache-Control: no-cache' "$url" || true)"
+              type="$(awk 'BEGIN{IGNORECASE=1} /^content-type:/ {gsub(/\r/, ""); print $2}' /tmp/m005-headers | tail -1)"
+              if [[ ",$expected," == *",$status,"* ]]; then
+                [[ "$status" == 200 || "$type" == application/json* ]] || { cat /tmp/m005-body >&2 || true; return 1; }
+                return 0
+              fi
+              sleep 10
+            done
+            echo "$url returned $status" >&2; cat /tmp/m005-body >&2 || true; return 1
+          }
+          wait_status "$BASE/health" '200'
+          wait_status "$BASE/api/version" '200'
+          wait_status "$BASE/api/project-expenses/context" '401,403'
+          wait_status "$BASE/api/project-expenses/uploads" '401,403'
+          wait_status "$BASE/api/project-expenses/projects/00000000-0000-0000-0000-000000000001/summary" '401,403'
+          wait_status "$BASE/api/certify/connection" '401,403'
+
+      - name: Deploy Module 005 web
+        id: deploy_web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' \
+            --image '${{ steps.build.outputs.web_image }}' \
+            --revision-suffix "m005web-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" --output none
+
+      - name: Validate served Module 005 and 038 assets and exact images
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"; READY=false
+          for attempt in $(seq 1 36); do
+            BUSTER="m005-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-$attempt"
+            STATUS="$(curl -sSL -H 'Cache-Control: no-cache' -o /tmp/m005-index -w '%{http_code}' "$BASE/?release_check=$BUSTER" || true)"
+            JS="$(sed -nE 's/.*src="([^"]+\.js)".*/\1/p' /tmp/m005-index | head -1)"
+            if [[ "$STATUS" == 200 && -n "$JS" ]]; then
+              case "$JS" in http*) URL="$JS" ;; /*) URL="$BASE$JS" ;; *) URL="$BASE/$JS" ;; esac
+              curl -sSL -H 'Cache-Control: no-cache' -o /tmp/m005-app.js "$URL?release_check=$BUSTER" || true
+              if grep -Fq 'Project Expense Upload' /tmp/m005-app.js \
+                && grep -Fq 'Import from Certify' /tmp/m005-app.js \
+                && grep -Fq '/api/project-expenses/upload' /tmp/m005-app.js \
+                && grep -Fq '/api/project-expenses/import/certify' /tmp/m005-app.js \
+                && grep -Fq '/api/certify/connection' /tmp/m005-app.js \
+                && grep -Fq 'Module 067 Global Mail Configuration' /tmp/m005-app.js \
+                && grep -Fq 'pass_through_invoice' /tmp/m005-app.js; then READY=true; break; fi
+            fi
+            sleep 10
+          done
+          [[ "$READY" == true ]] || { echo 'Module 005/038 release markers were not served.' >&2; exit 1; }
+          ACTIVE_API="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
+          ACTIVE_WEB="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
+          [[ "$ACTIVE_API" == '${{ steps.build.outputs.api_image }}' ]]
+          [[ "$ACTIVE_WEB" == '${{ steps.build.outputs.web_image }}' ]]
+
+      - name: Write Module 005 deployment evidence
+        if: success()
+        shell: bash
+        run: |
+          mkdir -p evidence
+          cat > evidence/module-005-project-expense-test-deployment.json <<JSON
+          {"environment":"test","releaseCommit":"${{ steps.release.outputs.target_commit }}","workflowCommit":"${{ github.sha }}","runId":"${{ github.run_id }}","runAttempt":"${{ github.run_attempt }}","modules":["005","038","042","055C"],"migrations":["044","044a"],"migrationImage":"${{ steps.migration.outputs.image }}","apiImage":"${{ steps.build.outputs.api_image }}","webImage":"${{ steps.build.outputs.web_image }}","previousApiImage":"${{ steps.before.outputs.old_api_image }}","previousWebImage":"${{ steps.before.outputs.old_web_image }}"}
+          JSON
+
+      - name: Upload Module 005 deployment evidence
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: module-005-project-expense-test-deployment-${{ github.run_id }}-${{ github.run_attempt }}
+          path: evidence/module-005-project-expense-test-deployment.json
+          retention-days: 30
+
+      - name: Roll back API and web images on failure
+        if: ${{ failure() && (steps.deploy_api.outputs.started == 'true' || steps.deploy_web.outputs.started == 'true') }}
+        shell: bash
+        run: |
+          set +e
+          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' \
+            --image '${{ steps.before.outputs.old_api_image }}' \
+            --revision-suffix "m005apirb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" --output none
+          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' \
+            --image '${{ steps.before.outputs.old_web_image }}' \
+            --revision-suffix "m005webrb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" --output none
