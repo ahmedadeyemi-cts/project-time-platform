@@ -37,7 +37,7 @@ requireAll(module005, [
 ], 'Module 005 UI');
 
 requireAll(module038, [
-  'MODULE 038', 'Certify Connection & Sync Center',
+  'MODULE 038', 'Certify Connection &amp; Sync Center',
   '/api/certify/connection', '/api/certify/connection/test',
   'PROJECTPULSE_CERTIFY_API_KEY', 'PROJECTPULSE_CERTIFY_API_SECRET',
   'automaticSyncEnabled', 'Automatic sync is locked',
