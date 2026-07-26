@@ -277,7 +277,7 @@ jobs:
         run: |
           mkdir -p evidence
           cat > evidence/combined-modules-001-005-012-037-038-test-deployment.json <<JSON
-          {"environment":"test","releaseCommit":"${{ steps.release.outputs.target_commit }}","workflowCommit":"${{ github.sha }}","runId":"${{ github.run_id }}","runAttempt":"${{ github.run_attempt }}","modules":["001","005","012","037","038"],"verifiedFoundationMigrations":["040","041","042","043"],"appliedOrVerifiedMigrations":["044","044a"],"migrationImage":"${{ steps.migration.outputs.image }}","apiImage":"${{ steps.build.outputs.api_image }}","webImage":"${{ steps.build.outputs.web_image }}","previousApiImage":"${{ steps.before.outputs.old_api_image }}","previousWebImage":"${{ steps.before.outputs.old_web_image }}"}
+          {"environment":"test","releaseCommit":"${{ steps.release.outputs.target_commit }}","workflowCommit":"${{ github.sha }}","runId":"${{ github.run_id }}","runAttempt":"${{ github.run_attempt }}","modules":["001","005","012","037","038"],"requiredSourceMigrations":["040","041","042","043","044","044a"],"verifiedDatabaseFoundationMigrations":["040","043"],"appliedOrVerifiedMigrations":["044","044a"],"migrationImage":"${{ steps.migration.outputs.image }}","apiImage":"${{ steps.build.outputs.api_image }}","webImage":"${{ steps.build.outputs.web_image }}","previousApiImage":"${{ steps.before.outputs.old_api_image }}","previousWebImage":"${{ steps.before.outputs.old_web_image }}"}
           JSON
 
       - name: Upload combined deployment evidence
