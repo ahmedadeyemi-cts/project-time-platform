@@ -11,9 +11,15 @@ const requireAll = (source, values, label) => {
     if (!source.includes(value)) throw new Error(`${label} missing contract: ${value}`);
   }
 };
+const rejectAll = (source, values, label) => {
+  for (const value of values) {
+    if (source.includes(value)) throw new Error(`${label} contains forbidden contract: ${value}`);
+  }
+};
 
-const [jsonResponse, bridge, roleModel, matrixModel, portal, catalog, gate, recovery, css, main, backend, ptcBackend, project] = await Promise.all([
+const [jsonResponse, authoritative, bridge, roleModel, matrixModel, portal, catalog, gate, recovery, css, main, backend, ptcBackend, project] = await Promise.all([
   text('src/frontend/project-time-web/src/api-json-response.js'),
+  text('src/frontend/project-time-web/src/projectpulse-authoritative-api.js'),
   text('src/frontend/project-time-web/src/runtime-data-compatibility.js'),
   text('src/frontend/project-time-web/src/role-permission-model.js'),
   text('src/frontend/project-time-web/src/role-permission-matrix-model.js'),
@@ -36,30 +42,45 @@ requireAll(jsonResponse, [
   'responsePreview'
 ], 'Strict API JSON response handling');
 
+requireAll(authoritative, [
+  "const DIAGNOSTIC_MARKER = 'projectpulse-authoritative-xhr-v1'",
+  'new XMLHttpRequest()',
+  'request.open(method, path, true)',
+  'request.withCredentials = true',
+  "request.setRequestHeader('X-ProjectPulse-Session', token)",
+  "request.setRequestHeader('X-Project-Pulse-Session', token)",
+  "request.setRequestHeader('X-Session-Token', token)",
+  "request.setRequestHeader('Authorization', `Bearer ${token}`)",
+  "request.setRequestHeader('X-ProjectPulse-View-As-User', viewAsUserId)",
+  'requiredCollections',
+  'collectionCounts',
+  'projectpulse:authoritative-api-diagnostic',
+  '__projectPulseAuthoritativeApiDiagnostics'
+], 'Wrapper-independent authoritative XHR client');
+rejectAll(authoritative, ['window.fetch(', 'fetch(path'], 'Wrapper-independent authoritative XHR client');
+
 requireAll(bridge, [
-  '/api/runtime/role-policy/summary',
+  "import { authoritativeApi } from './projectpulse-authoritative-api.js';",
   '/api/runtime/v2/role-policy/summary',
-  '/api/runtime/role-policy/matrix',
+  '/api/runtime/v2/role-policy/catalog',
+  '/api/runtime/v2/role-policy/versions',
   '/api/runtime/v2/role-policy/matrix',
-  '/api/runtime/timesheet/steward/users',
-  '/api/runtime/v2/timesheet/steward/users',
   '/api/timesheet/ptc/users',
   '/entries',
+  'expectedCollections',
   'normalizePtcWorkspace',
   'allActiveUsersAllowed: true',
-  'runtime_api_non_json_response',
-  'runtime_api_contract_incomplete',
+  'projectpulse-authoritative-xhr-compatibility-v2',
   'projectpulse:ptc-runtime-users',
   'projectpulse:ptc-runtime-workspace',
-  'unwrapApiPayload',
   "requestMethod(input, init) !== 'GET'",
-  "'X-Project-Pulse-Session'",
-  "'X-Session-Token'",
-  "'X-ProjectPulse-View-As-User'",
+  'responseKeys: error?.diagnostic?.responseKeys'
+], 'Runtime data authoritative bridge');
+rejectAll(bridge, [
   'window.__projectPulseOriginalFetch',
-  'x-projectpulse-authoritative-path',
-  'direct authoritative response'
-], 'Direct critical runtime transport');
+  'directTransport(previousFetch)',
+  'const raw = await response.text()'
+], 'Runtime data authoritative bridge');
 
 requireAll(roleModel, [
   "'/api/role-policy/summary': '/api/runtime/role-policy/summary'",
@@ -67,45 +88,23 @@ requireAll(roleModel, [
   "'/api/role-policy/versions': '/api/runtime/role-policy/versions'",
   "'/api/role-policy/matrix': '/api/runtime/role-policy/matrix'",
   "'/api/runtime/role-policy/roles/'",
-  'function viewAsUserId()',
-  "localStorage.getItem('projectPulseViewAsUser')",
-  "'X-ProjectPulse-Session'",
-  "'X-Project-Pulse-Session'",
-  "'X-Session-Token'",
-  'Authorization: `Bearer ${token}`',
-  'returned non-JSON content instead of ProjectPulse API data',
-  'const requestPath = readPath(path, method)',
-  "if (method !== 'GET') return path"
-], 'Module 012 authenticated runtime API helper');
+  'const requestPath = readPath(path, method)'
+], 'Module 012 compatibility caller');
 
 requireAll(matrixModel, [
   "'/api/role-policy/catalog': '/api/runtime/role-policy/catalog'",
   "'/api/role-policy/matrix': '/api/runtime/role-policy/matrix'",
-  'function viewAsUserId()',
-  "localStorage.getItem('projectPulseViewAsUser')",
-  "'X-ProjectPulse-Session'",
-  "'X-Project-Pulse-Session'",
-  "'X-Session-Token'",
-  'Authorization: `Bearer ${token}`',
-  'returned non-JSON content instead of ProjectPulse API data',
   'const requestPath = runtimePath(path)'
-], 'Module 037 authenticated runtime API helper');
+], 'Module 037 compatibility caller');
 
 requireAll(portal, [
   '/api/runtime/timesheet/steward/users?weekStart=',
   '/api/runtime/timesheet/steward/users/${encodeURIComponent(selectedUserId)}/workspace?weekStart=',
-  'function viewAsUserId()',
-  "localStorage.getItem('projectPulseViewAsUser')",
-  "'X-ProjectPulse-Session'",
-  "'X-Project-Pulse-Session'",
-  "'X-Session-Token'",
-  'Authorization: `Bearer ${sessionToken}`',
   'publishUsers(payload)',
   'publishWorkspace(payload)',
   'projectpulse:ptc-runtime-users',
-  'projectpulse:ptc-runtime-workspace',
-  'returned non-JSON content instead of ProjectPulse API data'
-], 'PTC authenticated user and workspace calls');
+  'projectpulse:ptc-runtime-workspace'
+], 'PTC runtime user and workspace caller');
 
 requireAll(catalog, [
   'Available work for selected user',
@@ -137,10 +136,14 @@ requireAll(gate, [
 ], 'Effective-role runtime PTC gate');
 
 requireAll(recovery, [
-  'Module001ActiveTimerRecoveryPortal',
+  "import { authoritativeApi } from '../projectpulse-authoritative-api.js';",
+  "document.querySelector('#timesheet')",
   '/api/timesheet/timers/active',
-  'window.setInterval(load, 5000)',
+  'window.setInterval(() => void load(), 5000)',
+  'Timer status check failed',
+  'Try timer check again',
   'Running timer recovered',
+  'Timer automatically stopped',
   'Stop timer',
   'Discard'
 ], 'Persistent active timer recovery');
@@ -154,6 +157,7 @@ requireAll(css, [
 ], 'PTC runtime task catalog styling');
 
 requireAll(main, [
+  "import './projectpulse-authoritative-api.js';",
   "import './runtime-data-compatibility.js';",
   "import Module001ActiveTimerRecoveryPortal from './module001/Module001ActiveTimerRecoveryPortal.jsx';",
   "import PtcTimeStewardGate from './module001/PtcTimeStewardGate.jsx';",
@@ -212,4 +216,4 @@ for (const forbidden of [
   if (backend.includes(forbidden)) throw new Error(`Runtime role-policy aliases must remain read-only: ${forbidden}`);
 }
 
-console.log('Direct authenticated runtime role-policy, all-active-user PTC, and active-timer recovery contracts passed.');
+console.log('WRAPPER_INDEPENDENT_RUNTIME_ROLE_POLICY_PTC_CONTRACTS=PASS');
