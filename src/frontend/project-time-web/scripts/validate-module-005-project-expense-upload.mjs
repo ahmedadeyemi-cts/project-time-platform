@@ -10,7 +10,11 @@ const requireAll = (source, values, label) => {
   for (const value of values) if (!source.includes(value)) throw new Error(`${label} missing contract: ${value}`);
 };
 
-const [module005, module038, portal, main, registry, foundation, parser, data, commands, mail, certify, migration, rollback, project] = await Promise.all([
+const [
+  module005, module038, portal, main, registry,
+  foundation, parser, data, commands, notificationAuth, mail, certify,
+  migration, rollback, project, parserTest, migrationTest
+] = await Promise.all([
   text('src/frontend/project-time-web/src/ProjectAllocationInfoPanel.jsx'),
   text('src/frontend/project-time-web/src/CertifyIntegrationCenter.jsx'),
   text('src/frontend/project-time-web/src/ProjectExpenseCrossModulePortal.jsx'),
@@ -20,11 +24,14 @@ const [module005, module038, portal, main, registry, foundation, parser, data, c
   optional('src/backend/ProjectTime.Api/Modules/Module005ProjectExpenseParsing.cs'),
   optional('src/backend/ProjectTime.Api/Modules/Module005ProjectExpenseData.cs'),
   optional('src/backend/ProjectTime.Api/Modules/Module005ProjectExpenseCommands.cs'),
+  optional('src/backend/ProjectTime.Api/Modules/Module005ProjectExpenseNotificationAuthorization.cs'),
   optional('src/backend/ProjectTime.Api/Modules/Module005ProjectExpenseMail.cs'),
   optional('src/backend/ProjectTime.Api/Modules/Module038CertifyConnectionModule.cs'),
   optional('database/migrations/044_project_expense_upload_certify_connection.sql'),
   optional('database/rollback/044_project_expense_upload_certify_connection_rollback.sql'),
-  optional('src/backend/ProjectTime.Api/ProjectTime.Api.csproj')
+  optional('src/backend/ProjectTime.Api/ProjectTime.Api.csproj'),
+  optional('tests/Module005ExpenseParserTests/Program.cs'),
+  optional('tests/test-project-expense-migration-044.sh')
 ]);
 
 requireAll(module005, [
@@ -63,16 +70,21 @@ requireAll(registry, [
   "moduleNumber: '038', route: 'certify-integration', displayName: 'Certify Connection & Sync Center'"
 ], 'Module registry');
 
-const externalAvailable = [foundation, parser, data, commands, mail, certify, migration, rollback, project].every(Boolean);
+const externalAvailable = [
+  foundation, parser, data, commands, notificationAuth, mail, certify,
+  migration, rollback, project, parserTest, migrationTest
+].every(Boolean);
+
 if (externalAvailable) {
   requireAll(foundation, [
     'DefaultCertifyBaseUrl', 'https://api.certify.com/v1/',
-    'MapModule005ProjectExpenseUploadEndpoints', 'MapModule038CertifyConnectionEndpoints'
+    'MapModule005ProjectExpenseUploadEndpoints', 'MapModule038CertifyConnectionEndpoints',
+    'RetryAuthorizedNotificationAsync'
   ], 'Shared Module 005 and 038 foundation');
 
   requireAll(parser, [
     'Department Name', 'Department Code', 'GL Code', 'Reimb Amount',
-    'FindCategoryHeader', 'NormalizeExpenseCategory',
+    'FindCategoryHeader', 'IsGlCountFooter', 'NormalizeExpenseCategory',
     'SP-Cust Pass Through - Airfare', 'SP-Cust Pass Through - Rental',
     'SP-Cust Pass Through-Hotel', 'SP-Cust Pass Through-Meals',
     'SP-Cust Pass Through-Mileage', 'SP-Meals (All Employees,Cust)',
@@ -84,6 +96,9 @@ if (externalAvailable) {
   requireAll(data, [
     'LoadAccessibleProjectsAsync', 'LoadEligibleOwnersAsync',
     'Only Project Management, PM Leads, and Super Administrators may upload on behalf',
+    'Engineering roles may view only their own project expense uploads.',
+    'projectWideVisibility', 'ownerScope',
+    'AuthorizeExistingUploadActionAsync',
     'ENGINEERING', 'ENGINEERING_LEAD',
     'uploadedAt', 'project_expense_summary_loaded'
   ], 'Project and role scope');
@@ -91,8 +106,16 @@ if (externalAvailable) {
   requireAll(commands, [
     'project_expense_uploads', 'project_expense_lines',
     'UPLOAD_SUPERSEDED', 'UPLOAD_DELETED', 'PRIOR_VERSION_RESTORED',
-    'source_file_bytes', 'QueueExpenseNotificationAsync'
+    'source_file_bytes', 'QueueExpenseNotificationAsync',
+    'AuthorizeExistingUploadActionAsync(connection, transaction, actor, upload)'
   ], 'Upload version workflow');
+
+  requireAll(notificationAuth, [
+    'RetryAuthorizedNotificationAsync',
+    'LoadUploadAsync(connection, uploadId)',
+    'AuthorizeExistingUploadActionAsync(connection, null, actor, upload)',
+    'DeliverExpenseNotificationAsync(connection, uploadId, actor.ActualUserId)'
+  ], 'Notification retry authorization');
 
   requireAll(mail, [
     'PROJECTPULSE_MAIL_PROVIDER', 'PROJECTPULSE_EMAIL_PROVIDER',
@@ -134,6 +157,20 @@ if (externalAvailable) {
     'app.MapModule005ProjectExpenseUploadEndpoints();',
     'app.MapModule038CertifyConnectionEndpoints();'
   ], 'API registration');
+
+  requireAll(parserTest, [
+    'exactUploadedStructures=true',
+    'ExpensesByGLDim.xlsx', 'ExpensesByCategory.xlsx',
+    'ExpensesByGLDim.csv', 'ExpensesByCategory.csv',
+    '43,43,43,43,43,43,43',
+    '2377.26', 'normalizedCategories=7'
+  ], 'Executable uploaded-format parser test');
+
+  requireAll(migrationTest, [
+    'PROJECT_EXPENSE_MIGRATION_044_TEST=PASS',
+    'idempotent=true', 'safeRollback=true',
+    'guardedRollback=true', 'immutableAudit=true'
+  ], 'Migration 044 executable regression test');
 } else {
   console.log('MODULE_005_EXTERNAL_SOURCE_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
 }
