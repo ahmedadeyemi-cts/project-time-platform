@@ -1,0 +1,301 @@
+name: ProjectPulse Deploy Combined Modules 001 005 012 037 038 Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_commit:
+        description: Exact verified combined application commit
+        required: true
+        default: 0979c2bbd877b93fa112d22a43a748e105d958bb
+        type: string
+      confirmation:
+        description: Enter DEPLOY-COMBINED-MODULES-001-005-012-037-038-TO-TEST
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: projectpulse-deploy-combined-modules-001-005-012-037-038-test
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Guarded combined Modules 001 005 012 037 038 test deployment
+    environment: test
+    runs-on: ubuntu-latest
+    env:
+      EXPECTED_RELEASE_COMMIT: 0979c2bbd877b93fa112d22a43a748e105d958bb
+    steps:
+      - name: Check out deployment controls
+        uses: actions/checkout@v5
+        with:
+          path: control
+          fetch-depth: 0
+
+      - name: Check out exact combined release
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.release_commit }}
+          path: release
+          fetch-depth: 1
+
+      - name: Guard workflow source and combined release
+        id: release
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ '${{ github.ref }}' == 'refs/heads/main' ]] || { echo 'Dispatch this workflow from main.' >&2; exit 1; }
+          [[ '${{ inputs.confirmation }}' == 'DEPLOY-COMBINED-MODULES-001-005-012-037-038-TO-TEST' ]] || { echo 'Confirmation text does not match.' >&2; exit 1; }
+          [[ '${{ inputs.release_commit }}' =~ ^[0-9a-f]{40}$ ]] || { echo 'release_commit must be a complete SHA.' >&2; exit 1; }
+          CONTROL_COMMIT="$(git -C control rev-parse HEAD)"
+          TARGET_COMMIT="$(git -C release rev-parse HEAD)"
+          [[ "$CONTROL_COMMIT" == '${{ github.sha }}' ]]
+          [[ "$TARGET_COMMIT" == '${{ inputs.release_commit }}' ]]
+          [[ "$TARGET_COMMIT" == "$EXPECTED_RELEASE_COMMIT" ]] || { echo 'Only the verified combined release may deploy.' >&2; exit 1; }
+          git -C control merge-base --is-ancestor "$TARGET_COMMIT" HEAD || { echo 'Release is not an ancestor of deployment controls.' >&2; exit 1; }
+
+          for migration in \
+            040_scoped_role_policy_versions.sql \
+            041_module_001_timesheet_timer_and_task_association.sql \
+            042_module_availability_controls.sql \
+            043_ptc_time_steward_permissions.sql \
+            044_project_expense_upload_certify_connection.sql \
+            044a_project_expense_self_certify_permission.sql; do
+            test -f "release/database/migrations/$migration"
+          done
+          test -f release/src/backend/ProjectTime.Api/Modules/CombinedModuleRuntimeModule.cs
+          test -f release/src/backend/ProjectTime.Api/Modules/CombinedModulePublicReadiness.cs
+          test -f release/src/backend/ProjectTime.Api/Modules/Module005ProjectExpenseSafeEndpoints.cs
+          test -f release/src/frontend/project-time-web/scripts/validate-combined-modules-001-005-012-037-038.mjs
+          test -f release/tests/test-projectpulse-api-startup.sh
+          test -f control/scripts/apply-combined-modules-test-migrations.sh
+          test -f control/scripts/run-combined-modules-test-migration-job.sh
+
+          grep -Fq 'MapCombinedModuleRuntimeEndpoints' release/src/backend/ProjectTime.Api/Modules/CombinedModuleRuntimeModule.cs
+          grep -Fq '/api/runtime/v2/readiness' release/src/backend/ProjectTime.Api/Modules/CombinedModuleRuntimeModule.cs
+          grep -Fq 'combined-modules-001-005-012-037-038-v2' release/src/backend/ProjectTime.Api/Modules/CombinedModuleRuntimeModule.cs
+          grep -Fq '/health/combined-modules' release/src/backend/ProjectTime.Api/Modules/CombinedModulePublicReadiness.cs
+          grep -Fq 'MapModule005ProjectExpenseUploadEndpointsSafe' release/src/backend/ProjectTime.Api/Modules/Module005ProjectExpenseSafeEndpoints.cs
+          grep -Fq 'DeleteUploadFromRequestAsync' release/src/backend/ProjectTime.Api/Modules/Module005ProjectExpenseSafeEndpoints.cs
+          grep -Fq 'PROJECTPULSE_API_STARTUP_SMOKE=PASS' release/tests/test-projectpulse-api-startup.sh
+          grep -Fq 'COMBINED_MODULES_001_005_012_037_038_DATABASE=APPLIED_OR_VERIFIED' control/scripts/apply-combined-modules-test-migrations.sh
+          echo "target_commit=$TARGET_COMMIT" >> "$GITHUB_OUTPUT"
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Verify live API database configuration
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mapfile -t ENV_NAMES < <(az containerapp show \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' \
+            --query 'properties.template.containers[0].env[].name' -o tsv)
+          printf '%s\n' "${ENV_NAMES[@]}" | sort -u > /tmp/combined-api-env-names
+          for name in PTP_DB_HOST PTP_DB_PORT PTP_DB_NAME PTP_DB_USER PTP_DB_PASSWORD; do
+            grep -Fxq "$name" /tmp/combined-api-env-names || { echo "Missing required API environment variable: $name" >&2; exit 1; }
+          done
+          echo 'COMBINED_MODULES_DATABASE_CONFIGURATION=COMPLETE'
+
+      - name: Load test database connection
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_API_APP: ${{ vars.AZURE_API_APP }}
+        run: bash control/scripts/export-pr55-test-database-url.sh
+
+      - name: Capture current immutable API and web images
+        id: before
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          RAW_API="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
+          RAW_WEB="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
+          API_MODE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.configuration.activeRevisionsMode' -o tsv)"
+          WEB_MODE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.configuration.activeRevisionsMode' -o tsv)"
+          [[ -n "$RAW_API" && -n "$RAW_WEB" && "${API_MODE,,}" == single && "${WEB_MODE,,}" == single ]]
+          resolve_digest() {
+            local image="$1" registry='${{ vars.AZURE_ACR_NAME }}.azurecr.io/' relative repository digest
+            case "$image" in
+              "$registry"*@sha256:*) printf '%s\n' "$image"; return ;;
+              "$registry"*:*) ;;
+              *) echo "Image is outside approved ACR: $image" >&2; return 1 ;;
+            esac
+            relative="${image#"$registry"}"
+            repository="${relative%:*}"
+            digest="$(az acr repository show --name '${{ vars.AZURE_ACR_NAME }}' --image "$relative" --query digest -o tsv)"
+            [[ "$digest" == sha256:* ]]
+            printf '%s%s@%s\n' "$registry" "$repository" "$digest"
+          }
+          echo "old_api_image=$(resolve_digest "$RAW_API")" >> "$GITHUB_OUTPUT"
+          echo "old_web_image=$(resolve_digest "$RAW_WEB")" >> "$GITHUB_OUTPUT"
+
+      - name: Build immutable combined API and web images
+        id: build
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          SHA='${{ steps.release.outputs.target_commit }}'
+          API_REPO='project-health-dashboard-api'
+          WEB_REPO='project-health-dashboard-web'
+          API_DIGEST="$(control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "$API_REPO:combined-modules-$SHA" release/deployment/containers/api/Dockerfile release)"
+          WEB_DIGEST="$(control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "$WEB_REPO:combined-modules-$SHA" release/deployment/containers/web/Dockerfile release)"
+          echo "api_image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/$API_REPO@$API_DIGEST" >> "$GITHUB_OUTPUT"
+          echo "web_image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/$WEB_REPO@$WEB_DIGEST" >> "$GITHUB_OUTPUT"
+
+      - name: Build checksum-pinned migrations 044 and 044a image
+        id: migration
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          CONTEXT="$RUNNER_TEMP/combined-modules-migrator-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          install -d -m 0700 "$CONTEXT/migrations"
+          install -m 0644 control/deployment/containers/pr55-migrator/Dockerfile "$CONTEXT/Dockerfile"
+          install -m 0755 control/scripts/apply-combined-modules-test-migrations.sh "$CONTEXT/apply-pr55-test-migrations.sh"
+          install -m 0644 release/database/migrations/044_project_expense_upload_certify_connection.sql "$CONTEXT/migrations/044_project_expense_upload_certify_connection.sql"
+          install -m 0644 release/database/migrations/044a_project_expense_self_certify_permission.sql "$CONTEXT/migrations/044a_project_expense_self_certify_permission.sql"
+          mapfile -t SQL_FILES < <(find "$CONTEXT/migrations" -type f -name '*.sql' -printf '%P\n' | LC_ALL=C sort)
+          [[ "${#SQL_FILES[@]}" == "2" ]] || { echo "Expected 2 SQL files; found ${#SQL_FILES[@]}." >&2; exit 1; }
+          (
+            cd "$CONTEXT/migrations"
+            sha256sum "${SQL_FILES[@]}" > SHA256SUMS
+          )
+          printf '%s\n' '${{ steps.release.outputs.target_commit }}' > "$CONTEXT/release-commit"
+          DIGEST="$(control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "project-health-dashboard-combined-modules-migrator:${{ steps.release.outputs.target_commit }}-${GITHUB_SHA:0:12}" "$CONTEXT/Dockerfile" "$CONTEXT")"
+          echo "image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/project-health-dashboard-combined-modules-migrator@$DIGEST" >> "$GITHUB_OUTPUT"
+
+      - name: Apply or verify combined database readiness and migrations 044 and 044a inside private network
+        shell: bash
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_API_APP: ${{ vars.AZURE_API_APP }}
+          AZURE_ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
+          COMBINED_MODULES_MIGRATION_IMAGE: ${{ steps.migration.outputs.image }}
+          COMBINED_MODULES_MIGRATION_JOB_NAME: cmbmods-${{ github.run_id }}-${{ github.run_attempt }}
+        run: bash control/scripts/run-combined-modules-test-migration-job.sh
+
+      - name: Deploy combined API
+        id: deploy_api
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' \
+            --image '${{ steps.build.outputs.api_image }}' \
+            --set-env-vars PROJECTPULSE_ENVIRONMENT=test PROJECTPULSE_SOURCE_COMMIT='${{ steps.release.outputs.target_commit }}' \
+            --revision-suffix "cmbapi-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" --output none
+
+      - name: Validate combined API startup readiness and protected routes
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"
+          wait_status() {
+            local url="$1" expected="$2" require_json="$3" status='' type=''
+            for attempt in $(seq 1 36); do
+              status="$(curl -sS -D /tmp/cmb-headers -o /tmp/cmb-body -w '%{http_code}' -H 'Cache-Control: no-cache' "$url" || true)"
+              type="$(awk 'BEGIN{IGNORECASE=1} /^content-type:/ {gsub(/\r/, ""); print $2}' /tmp/cmb-headers | tail -1)"
+              if [[ ",$expected," == *",$status,"* ]]; then
+                [[ "$require_json" != true || "$type" == application/json* ]] || { cat /tmp/cmb-body >&2 || true; return 1; }
+                return 0
+              fi
+              sleep 10
+            done
+            echo "$url returned $status" >&2
+            cat /tmp/cmb-body >&2 || true
+            return 1
+          }
+          wait_status "$BASE/health" '200' false
+          wait_status "$BASE/api/version" '200' true
+          wait_status "$BASE/health/combined-modules" '200' true
+          grep -Fq '"status":"combined_module_runtime_ready"' /tmp/cmb-body
+          grep -Fq '"roleCount":12' /tmp/cmb-body
+          grep -Fq '"moduleCount":70' /tmp/cmb-body
+          grep -Fq '"foundationalMigrationCount":2' /tmp/cmb-body
+          grep -Fq '"expenseMigrationCount":2' /tmp/cmb-body
+          grep -Fq '"expenseTableCount":6' /tmp/cmb-body
+          wait_status "$BASE/api/project-expenses/readiness" '200' true
+          grep -Fq '"status":"project_expense_runtime_ready"' /tmp/cmb-body
+          wait_status "$BASE/api/runtime/v2/role-policy/summary" '401,403' true
+          wait_status "$BASE/api/runtime/v2/role-policy/matrix" '401,403' true
+          wait_status "$BASE/api/runtime/v2/timesheet/steward/users" '401,403' true
+          wait_status "$BASE/api/project-expenses/context" '401,403' true
+          wait_status "$BASE/api/project-expenses/uploads" '401,403' true
+          wait_status "$BASE/api/certify/connection" '401,403' true
+
+      - name: Deploy combined web
+        id: deploy_web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' \
+            --image '${{ steps.build.outputs.web_image }}' \
+            --revision-suffix "cmbweb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" --output none
+
+      - name: Validate served combined assets and exact images
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"; READY=false
+          for attempt in $(seq 1 36); do
+            BUSTER="combined-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-$attempt"
+            STATUS="$(curl -sSL -H 'Cache-Control: no-cache' -o /tmp/cmb-index -w '%{http_code}' "$BASE/?release_check=$BUSTER" || true)"
+            JS="$(sed -nE 's/.*src="([^"]+\.js)".*/\1/p' /tmp/cmb-index | head -1)"
+            if [[ "$STATUS" == 200 && -n "$JS" ]]; then
+              case "$JS" in http*) URL="$JS" ;; /*) URL="$BASE$JS" ;; *) URL="$BASE/$JS" ;; esac
+              curl -sSL -H 'Cache-Control: no-cache' -o /tmp/cmb-app.js "$URL?release_check=$BUSTER" || true
+              if grep -Fq 'Project Expense Upload' /tmp/cmb-app.js \
+                && grep -Fq 'Certify Connection & Sync Center' /tmp/cmb-app.js \
+                && grep -Fq '/api/project-expenses/upload' /tmp/cmb-app.js \
+                && grep -Fq '/api/certify/connection' /tmp/cmb-app.js \
+                && grep -Fq '/api/runtime/v2/role-policy/summary' /tmp/cmb-app.js \
+                && grep -Fq '/api/runtime/v2/role-policy/matrix' /tmp/cmb-app.js \
+                && grep -Fq '/api/runtime/v2/timesheet/steward/users' /tmp/cmb-app.js \
+                && grep -Fq 'The server returned 0 eligible users.' /tmp/cmb-app.js; then
+                READY=true
+                break
+              fi
+            fi
+            sleep 10
+          done
+          [[ "$READY" == true ]] || { echo 'Combined release markers were not served.' >&2; exit 1; }
+          ACTIVE_API="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
+          ACTIVE_WEB="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
+          [[ "$ACTIVE_API" == '${{ steps.build.outputs.api_image }}' ]]
+          [[ "$ACTIVE_WEB" == '${{ steps.build.outputs.web_image }}' ]]
+
+      - name: Write combined deployment evidence
+        if: success()
+        shell: bash
+        run: |
+          mkdir -p evidence
+          cat > evidence/combined-modules-001-005-012-037-038-test-deployment.json <<JSON
+          {"environment":"test","releaseCommit":"${{ steps.release.outputs.target_commit }}","workflowCommit":"${{ github.sha }}","runId":"${{ github.run_id }}","runAttempt":"${{ github.run_attempt }}","modules":["001","005","012","037","038"],"requiredSourceMigrations":["040","041","042","043","044","044a"],"verifiedDatabaseFoundationMigrations":["040","043"],"appliedOrVerifiedMigrations":["044","044a"],"migrationImage":"${{ steps.migration.outputs.image }}","apiImage":"${{ steps.build.outputs.api_image }}","webImage":"${{ steps.build.outputs.web_image }}","previousApiImage":"${{ steps.before.outputs.old_api_image }}","previousWebImage":"${{ steps.before.outputs.old_web_image }}"}
+          JSON
+
+      - name: Upload combined deployment evidence
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: combined-modules-test-deployment-${{ github.run_id }}-${{ github.run_attempt }}
+          path: evidence/combined-modules-001-005-012-037-038-test-deployment.json
+          retention-days: 30
+
+      - name: Roll back API and web images on failure
+        if: ${{ failure() && (steps.deploy_api.outputs.started == 'true' || steps.deploy_web.outputs.started == 'true') }}
+        shell: bash
+        run: |
+          set +e
+          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' \
+            --image '${{ steps.before.outputs.old_api_image }}' \
+            --revision-suffix "cmbapirb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" --output none
+          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' \
+            --image '${{ steps.before.outputs.old_web_image }}' \
+            --revision-suffix "cmbwebrb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" --output none

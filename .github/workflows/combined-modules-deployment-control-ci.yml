@@ -1,0 +1,35 @@
+name: Validate Combined Modules Deployment Control
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/projectpulse-deploy-combined-modules-test.yml'
+      - '.github/workflows/combined-modules-deployment-control-ci.yml'
+      - 'scripts/apply-combined-modules-test-migrations.sh'
+      - 'scripts/run-combined-modules-test-migration-job.sh'
+      - 'scripts/validate-combined-modules-test-deployment.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate guarded combined modules test deployment
+        shell: bash
+        run: |
+          set +e
+          bash scripts/validate-combined-modules-test-deployment.sh > combined-modules-control-validation.log 2>&1
+          STATUS=$?
+          cat combined-modules-control-validation.log
+          exit "$STATUS"
+      - name: Upload deployment-control diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: combined-modules-deployment-control-diagnostics
+          path: combined-modules-control-validation.log
+          retention-days: 7
