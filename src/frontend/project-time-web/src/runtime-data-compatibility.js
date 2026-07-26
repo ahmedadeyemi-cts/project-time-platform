@@ -1,46 +1,10 @@
-import { unwrapApiPayload } from './api-json-response.js';
+import { authoritativeApi } from './projectpulse-authoritative-api.js';
 
 const MARKER = '__projectPulseRuntimeDataCompatibilityInstalled';
-const RESPONSE_MARKER = 'projectpulse-critical-runtime-direct-2026-07-26';
+const RESPONSE_MARKER = 'projectpulse-authoritative-xhr-compatibility-v2';
 
 function requestMethod(input, init) {
   return String(init?.method || (input instanceof Request ? input.method : 'GET')).toUpperCase();
-}
-
-function sessionToken() {
-  try {
-    const session = JSON.parse(window.localStorage.getItem('projectPulseAuthSession') || 'null');
-    return session?.sessionToken || session?.token || session?.accessToken || '';
-  } catch {
-    return '';
-  }
-}
-
-function viewAsUserId() {
-  try {
-    const selected = JSON.parse(window.localStorage.getItem('projectPulseViewAsUser') || 'null');
-    return selected?.userId || window.localStorage.getItem('projectPulseViewAsUserId') || '';
-  } catch {
-    return window.localStorage.getItem('projectPulseViewAsUserId') || '';
-  }
-}
-
-function authenticatedInit(input, init = {}) {
-  const token = sessionToken();
-  const viewAs = viewAsUserId();
-  const headers = new Headers(init?.headers || (input instanceof Request ? input.headers : undefined));
-  if (token) {
-    if (!headers.has('Authorization')) headers.set('Authorization', `Bearer ${token}`);
-    if (!headers.has('X-ProjectPulse-Session')) headers.set('X-ProjectPulse-Session', token);
-    if (!headers.has('X-Project-Pulse-Session')) headers.set('X-Project-Pulse-Session', token);
-    if (!headers.has('X-Session-Token')) headers.set('X-Session-Token', token);
-  }
-  if (viewAs && !headers.has('X-ProjectPulse-View-As-User')) {
-    headers.set('X-ProjectPulse-View-As-User', viewAs);
-  }
-  headers.set('Cache-Control', 'no-cache');
-  headers.set('Pragma', 'no-cache');
-  return { ...init, credentials: 'include', cache: 'no-store', headers };
 }
 
 function rewritePath(pathname) {
@@ -71,20 +35,15 @@ function rewritePath(pathname) {
   return '';
 }
 
-function expectedKeys(pathname) {
-  if (pathname.endsWith('/summary')) return ['roles', 'Roles', 'modules', 'Modules'];
-  if (pathname.endsWith('/catalog')) return ['actions', 'Actions', 'scopes', 'Scopes'];
-  if (pathname.endsWith('/versions')) return ['versions', 'Versions'];
-  if (pathname.endsWith('/matrix')) return ['roles', 'Roles', 'modules', 'Modules', 'grants', 'Grants'];
-  if (pathname.includes('/role-policy/roles/')) return ['role', 'Role', 'assignedUsers', 'AssignedUsers'];
-  if (pathname.endsWith('/users')) return ['users', 'Users'];
-  if (pathname.endsWith('/workspace') || pathname.endsWith('/entries')) return ['user', 'User', 'assignments', 'Assignments'];
+function expectedCollections(pathname) {
+  if (pathname.endsWith('/summary')) return ['roles', 'modules'];
+  if (pathname.endsWith('/catalog')) return ['actions', 'scopes'];
+  if (pathname.endsWith('/versions')) return ['versions'];
+  if (pathname.endsWith('/matrix')) return ['roles', 'modules', 'grants'];
+  if (pathname.includes('/role-policy/roles/')) return ['assignedUsers'];
+  if (pathname.endsWith('/users')) return ['users'];
+  if (pathname.endsWith('/entries')) return ['assignments'];
   return [];
-}
-
-function hasExpected(payload, keys) {
-  if (!keys.length) return true;
-  return keys.some((key) => Object.prototype.hasOwnProperty.call(payload || {}, key));
 }
 
 function looksLikeRequestTask(task = {}) {
@@ -155,16 +114,22 @@ function publishRuntimeData(pathname, payload) {
     window.__projectPulsePtcRuntimeUsers = payload;
     window.dispatchEvent(new CustomEvent('projectpulse:ptc-runtime-users', { detail: payload }));
   }
-  if (pathname.endsWith('/workspace') || pathname.endsWith('/entries')) {
+  if (pathname.endsWith('/entries')) {
     window.__projectPulsePtcRuntimeWorkspace = payload;
     window.dispatchEvent(new CustomEvent('projectpulse:ptc-runtime-workspace', { detail: payload }));
   }
 }
 
-function directTransport(previousFetch) {
-  return typeof window.__projectPulseOriginalFetch === 'function'
-    ? window.__projectPulseOriginalFetch.bind(window)
-    : previousFetch;
+function responseFromPayload(payload, status, runtimePath) {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'no-store',
+      'X-ProjectPulse-Runtime-Data': RESPONSE_MARKER,
+      'X-ProjectPulse-Authoritative-Path': runtimePath
+    }
+  });
 }
 
 if (typeof window !== 'undefined' && typeof window.fetch === 'function' && !window[MARKER]) {
@@ -186,50 +151,28 @@ if (typeof window !== 'undefined' && typeof window.fetch === 'function' && !wind
 
     const rewrittenUrl = new URL(originalUrl.toString());
     rewrittenUrl.pathname = rewrittenPath;
-    const response = await directTransport(previousFetch)(
-      `${rewrittenUrl.pathname}${rewrittenUrl.search}`,
-      authenticatedInit(input, init)
-    );
-    const raw = await response.text();
-    const headers = new Headers(response.headers);
-    headers.delete('content-length');
-    headers.delete('content-encoding');
-    headers.set('content-type', 'application/json; charset=utf-8');
-    headers.set('x-projectpulse-runtime-data', RESPONSE_MARKER);
-    headers.set('x-projectpulse-authoritative-path', rewrittenPath);
+    const runtimePath = `${rewrittenUrl.pathname}${rewrittenUrl.search}`;
 
-    let parsed;
     try {
-      parsed = raw ? JSON.parse(raw) : {};
-    } catch {
-      return new Response(JSON.stringify({
-        status: 'runtime_api_non_json_response',
-        message: 'The ProjectPulse API returned web content instead of JSON.',
+      let payload = await authoritativeApi(runtimePath, {
+        method: 'GET',
+        requiredCollections: expectedCollections(rewrittenPath)
+      });
+      if (rewrittenPath.endsWith('/entries')) payload = normalizePtcWorkspace(payload);
+      publishRuntimeData(rewrittenPath, payload);
+      return responseFromPayload(payload, 200, rewrittenPath);
+    } catch (error) {
+      const status = Number(error?.status || 502);
+      const payload = {
+        status: error?.payload?.status || 'authoritative_runtime_request_failed',
+        message: error?.message || `The authoritative request for ${rewrittenPath} failed.`,
         requestedPath: originalUrl.pathname,
         runtimePath: rewrittenPath,
-        responsePreview: raw.slice(0, 160)
-      }), { status: 502, headers });
+        responseKeys: error?.diagnostic?.responseKeys || Object.keys(error?.payload || {}),
+        diagnostic: error?.diagnostic || null
+      };
+      return responseFromPayload(payload, status >= 400 && status <= 599 ? status : 502, rewrittenPath);
     }
-
-    const keys = expectedKeys(rewrittenPath);
-    let normalized = unwrapApiPayload(parsed, keys);
-    if (rewrittenPath.endsWith('/entries')) normalized = normalizePtcWorkspace(normalized);
-    if (response.ok && !hasExpected(normalized, keys)) {
-      return new Response(JSON.stringify({
-        status: 'runtime_api_contract_incomplete',
-        message: `The direct authoritative response for ${rewrittenPath} did not contain ${keys.join(', ')}.`,
-        requestedPath: originalUrl.pathname,
-        runtimePath: rewrittenPath,
-        responseKeys: Object.keys(normalized || {})
-      }), { status: 502, headers });
-    }
-
-    if (response.ok) publishRuntimeData(rewrittenPath, normalized);
-    return new Response(JSON.stringify(normalized), {
-      status: response.status,
-      statusText: response.statusText,
-      headers
-    });
   };
 
   window[MARKER] = true;
