@@ -23,8 +23,11 @@ const [
   roleAdmin,
   matrix,
   ptcPortal,
+  timerRecovery,
+  main,
   expensePanel,
   certifyCenter,
+  certifyCss,
   startupTest
 ] = await Promise.all([
   read('src/backend/ProjectTime.Api/ProjectTime.Api.csproj'),
@@ -35,8 +38,11 @@ const [
   read('src/frontend/project-time-web/src/RoleAdminDirectoryPanel.jsx'),
   read('src/frontend/project-time-web/src/RolesPermissionsMatrix.jsx'),
   read('src/frontend/project-time-web/src/module001/PtcTimesheetManagementPortal.jsx'),
+  read('src/frontend/project-time-web/src/module001/Module001ActiveTimerRecoveryPortal.jsx'),
+  read('src/frontend/project-time-web/src/main.jsx'),
   read('src/frontend/project-time-web/src/ProjectAllocationInfoPanel.jsx'),
   read('src/frontend/project-time-web/src/CertifyIntegrationCenter.jsx'),
+  read('src/frontend/project-time-web/src/certify-integration-center.css'),
   read('tests/test-projectpulse-api-startup.sh')
 ]);
 
@@ -109,7 +115,7 @@ rejectAll(safeExpense, [
 ], 'Module 005 startup-safe endpoints');
 
 requireAll(compatibility, [
-  'projectpulse-combined-runtime-v2-2026-07-26',
+  'projectpulse-critical-runtime-direct-2026-07-26',
   "'/api/runtime/role-policy/summary': '/api/runtime/v2/role-policy/summary'",
   "'/api/runtime/role-policy/matrix': '/api/runtime/v2/role-policy/matrix'",
   "'/api/runtime/timesheet/steward/users': '/api/timesheet/ptc/users'",
@@ -117,8 +123,10 @@ requireAll(compatibility, [
   '/api/timesheet/ptc/users/',
   'normalizePtcWorkspace',
   'allActiveUsersAllowed: true',
-  'authoritative runtime response'
-], 'Frontend authoritative runtime bridge');
+  'window.__projectPulseOriginalFetch',
+  'x-projectpulse-authoritative-path',
+  'direct authoritative response'
+], 'Frontend direct authoritative runtime bridge');
 
 requireAll(roleAdmin, [
   'REQUIRED_ROLE_COUNT = 12',
@@ -134,10 +142,22 @@ requireAll(matrix, [
 ], 'Module 037 UI');
 requireAll(ptcPortal, [
   '/api/runtime/timesheet/steward/users?weekStart=',
-  'The server returned 0 eligible users',
   'Project Team Coordinator · Time Steward',
   'No submission on behalf'
 ], 'Module 001 time-steward UI');
+requireAll(timerRecovery, [
+  'Module001ActiveTimerRecoveryPortal',
+  '/api/timesheet/timers/active',
+  'window.setInterval(load, 5000)',
+  'window.setInterval(() => setClock(new Date()), 1000)',
+  'Running timer recovered',
+  'Stop timer',
+  'Discard'
+], 'Module 001 persistent active timer recovery');
+requireAll(main, [
+  "import Module001ActiveTimerRecoveryPortal from './module001/Module001ActiveTimerRecoveryPortal.jsx';",
+  '<Module001ActiveTimerRecoveryPortal />'
+], 'Module 001 recovery mount');
 requireAll(expensePanel, [
   'Project Expense Upload',
   'Select customer',
@@ -158,6 +178,12 @@ requireAll(certifyCenter, [
   'automationAllowed',
   'Secret values remain in environment configuration'
 ], 'Module 038 UI');
+requireAll(certifyCss, [
+  'main.app-shell.route-certify-integration .certify-integration-center',
+  'max-height:calc(100dvh - 15rem)',
+  'overflow-y:auto',
+  'overscroll-behavior:contain'
+], 'Module 038 bounded scrolling');
 requireAll(startupTest, [
   'PROJECTPULSE_API_STARTUP_SMOKE=PASS',
   '/health',
