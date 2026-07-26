@@ -17,6 +17,7 @@ const rejectAll = (source, values, label) => {
 const [
   csproj,
   combined,
+  publicReadiness,
   safeExpense,
   compatibility,
   roleAdmin,
@@ -28,6 +29,7 @@ const [
 ] = await Promise.all([
   read('src/backend/ProjectTime.Api/ProjectTime.Api.csproj'),
   read('src/backend/ProjectTime.Api/Modules/CombinedModuleRuntimeModule.cs'),
+  read('src/backend/ProjectTime.Api/Modules/CombinedModulePublicReadiness.cs'),
   read('src/backend/ProjectTime.Api/Modules/Module005ProjectExpenseSafeEndpoints.cs'),
   read('src/frontend/project-time-web/src/runtime-data-compatibility.js'),
   read('src/frontend/project-time-web/src/RoleAdminDirectoryPanel.jsx'),
@@ -40,6 +42,7 @@ const [
 
 requireAll(csproj, [
   'app.MapCombinedModuleRuntimeEndpoints();',
+  'app.MapCombinedModulePublicReadinessEndpoint();',
   'app.MapModule005ProjectExpenseUploadEndpointsSafe();',
   'app.MapModule038CertifyConnectionEndpoints();'
 ], 'API generated registration');
@@ -63,6 +66,11 @@ requireAll(combined, [
   'eligible_time_steward_users_missing',
   'emptyCollectionsAllowed = false'
 ], 'Combined backend runtime');
+requireAll(publicReadiness, [
+  'MapCombinedModulePublicReadinessEndpoint',
+  '/health/combined-modules',
+  'CombinedRuntimeReadinessAsync'
+], 'Public combined readiness');
 
 requireAll(safeExpense, [
   'MapModule005ProjectExpenseUploadEndpointsSafe',
@@ -126,7 +134,7 @@ requireAll(startupTest, [
   'PROJECTPULSE_API_STARTUP_SMOKE=PASS',
   '/health',
   '/api/version',
-  '/api/runtime/v2/readiness',
+  '/health/combined-modules',
   'endpointRegistration=ready'
 ], 'API startup smoke test');
 
