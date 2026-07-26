@@ -45,16 +45,21 @@ jobs:
       - name: Guard workflow source and verified frontend release
         id: release
         shell: bash
+        env:
+          DISPATCH_RELEASE_COMMIT: ${{ inputs.release_commit }}
+          DISPATCH_CONFIRMATION: ${{ inputs.confirmation }}
+          WORKFLOW_SOURCE_REF: ${{ github.ref }}
+          WORKFLOW_SOURCE_SHA: ${{ github.sha }}
         run: |
           set -Eeuo pipefail
-          [[ '${{ github.ref }}' == 'refs/heads/main' ]] || { echo 'Dispatch this workflow from main.' >&2; exit 1; }
-          [[ '${{ inputs.confirmation }}' == 'DEPLOY-RUNTIME-DIRECT-TIMER-RECOVERY-TO-TEST' ]] || { echo 'Confirmation text does not match.' >&2; exit 1; }
-          [[ '${{ inputs.release_commit }}' =~ ^[0-9a-f]{40}$ ]] || { echo 'release_commit must be a complete SHA.' >&2; exit 1; }
+          [[ "$WORKFLOW_SOURCE_REF" == 'refs/heads/main' ]] || { echo 'Dispatch this workflow from main.' >&2; exit 1; }
+          [[ "$DISPATCH_CONFIRMATION" == 'DEPLOY-RUNTIME-DIRECT-TIMER-RECOVERY-TO-TEST' ]] || { echo 'Confirmation text does not match.' >&2; exit 1; }
+          [[ "$DISPATCH_RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || { echo 'release_commit must be a complete SHA.' >&2; exit 1; }
 
           CONTROL_COMMIT="$(git -C control rev-parse HEAD)"
           TARGET_COMMIT="$(git -C release rev-parse HEAD)"
-          [[ "$CONTROL_COMMIT" == '${{ github.sha }}' ]]
-          [[ "$TARGET_COMMIT" == '${{ inputs.release_commit }}' ]]
+          [[ "$CONTROL_COMMIT" == "$WORKFLOW_SOURCE_SHA" ]]
+          [[ "$TARGET_COMMIT" == "$DISPATCH_RELEASE_COMMIT" ]]
           [[ "$TARGET_COMMIT" == "$EXPECTED_RELEASE_COMMIT" ]] || { echo 'Only the verified runtime-direct release may deploy.' >&2; exit 1; }
           git -C control merge-base --is-ancestor "$TARGET_COMMIT" HEAD || { echo 'The release is not an ancestor of the deployment controls.' >&2; exit 1; }
 
