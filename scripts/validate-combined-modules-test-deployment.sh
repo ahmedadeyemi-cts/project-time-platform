@@ -5,7 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKFLOW="$ROOT/.github/workflows/projectpulse-deploy-combined-modules-test.yml"
 APPLY="$ROOT/scripts/apply-combined-modules-test-migrations.sh"
 RUNNER="$ROOT/scripts/run-combined-modules-test-migration-job.sh"
-EXPECTED_RELEASE="b30fa97b06e700f2256b20690d650aafa1c28886"
+EXPECTED_RELEASE="68deed805d99088f6432eb5cea28663a003e4953"
 
 fail() { echo "ERROR: $*" >&2; exit 1; }
 for file in "$WORKFLOW" "$APPLY" "$RUNNER"; do [[ -f "$file" ]] || fail "Missing deployment-control file: $file"; done
@@ -37,6 +37,19 @@ require "$WORKFLOW" 'combined-modules-001-005-012-037-038-public-v1'
 require "$WORKFLOW" '/api/public/project-expenses/readiness'
 require "$WORKFLOW" 'project-expense-certify-public-v1'
 require "$WORKFLOW" 'operationalCountsReturned = false'
+require "$WORKFLOW" "'/api/runtime/v2/timesheet/steward/users': '/api/timesheet/ptc/users'"
+require "$WORKFLOW" "replace(/\\/workspace$/, '/entries')"
+require "$WORKFLOW" 'allActiveUsersAllowed: true'
+require "$WORKFLOW" 'function synchronizeViewButtons()'
+require "$WORKFLOW" 'const assignedTasks = mergeByKey(snapshot.assignedTasks, authoritativeAssignments);'
+require "$WORKFLOW" 'const nonProjectCategories = mergeByKey('
+require "$WORKFLOW" 'Ready to start. Select Start timer to begin counting.'
+require "$WORKFLOW" 'All active users'
+require "$WORKFLOW" "button.textContent = 'Re-upload'"
+require "$WORKFLOW" 'Re-upload ready. Choose the replacement CSV or Excel file'
+require "$WORKFLOW" "const MODULE005_NAME = 'Project Expense Upload'"
+require "$WORKFLOW" 'certify-sync-control-card'
+require "$WORKFLOW" 'Test connection to unlock'
 require "$WORKFLOW" 'publicReadinessContracts=ready'
 require "$WORKFLOW" 'protectedAuthBoundary=ready'
 require "$WORKFLOW" 'operationalCountsSuppressed=true'
@@ -86,6 +99,8 @@ require "$WORKFLOW" 'cmbwebrb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}'
 require "$WORKFLOW" "if [[ '\${{ steps.deploy_api.outputs.started }}' == 'true' ]]; then"
 require "$WORKFLOW" "if [[ '\${{ steps.deploy_web.outputs.started }}' == 'true' ]]; then"
 require "$WORKFLOW" 'Roll back API and web images on failure'
+require "$WORKFLOW" 'Combined UAT repair release markers were not served.'
+require "$WORKFLOW" '"uatRepairModules":["001","005","038"]'
 require "$WORKFLOW" 'combined-modules-test-deployment-${{ github.run_id }}-${{ github.run_attempt }}'
 
 require "$APPLY" "EXPECTED_RELEASE_COMMIT=\"$EXPECTED_RELEASE\""
@@ -131,6 +146,7 @@ reject "$WORKFLOW" '[.]moduleCount[[:space:]]*=='
 reject "$WORKFLOW" '[.]migrationCount[[:space:]]*=='
 reject "$WORKFLOW" '[.]tableCount[[:space:]]*=='
 reject "$WORKFLOW" '[.]permissionCount[[:space:]]*=='
+reject "$WORKFLOW" 'The server returned 0 eligible users[.]'
 reject "$APPLY" 'task[.]task_classification'
 reject "$APPLY" 'DROP[[:space:]]+TABLE|TRUNCATE[[:space:]]+TABLE|DELETE[[:space:]]+FROM[[:space:]]+(app_users|projects|project_assignments|timesheets|time_entries|project_tasks)'
 reject "$RUNNER" 'registry-password[[:space:]]+[^"$]'
