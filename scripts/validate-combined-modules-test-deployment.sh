@@ -38,12 +38,13 @@ require "$WORKFLOW" '/api/public/project-expenses/readiness'
 require "$WORKFLOW" 'project-expense-certify-public-v1'
 require "$WORKFLOW" 'operationalCountsReturned = false'
 require "$WORKFLOW" "'/api/runtime/v2/timesheet/steward/users': '/api/timesheet/ptc/users'"
-require "$WORKFLOW" "replace(/\\/workspace$/, '/entries')"
+require "$WORKFLOW" "replace(/\/workspace$/, '/entries')"
 require "$WORKFLOW" 'allActiveUsersAllowed: true'
 require "$WORKFLOW" 'function synchronizeViewButtons()'
 require "$WORKFLOW" 'const assignedTasks = mergeByKey(snapshot.assignedTasks, authoritativeAssignments);'
 require "$WORKFLOW" 'const nonProjectCategories = mergeByKey('
-require "$WORKFLOW" 'Ready to start. Select Start timer to begin counting.'
+require "$WORKFLOW" "grep -Fq 'Ready to start' release/src/frontend/project-time-web/src/module001/TimesheetTimerView.jsx"
+require "$WORKFLOW" "grep -Fq 'Select Start timer to begin the live clock.' release/src/frontend/project-time-web/src/module001/TimesheetTimerView.jsx"
 require "$WORKFLOW" 'All active users'
 require "$WORKFLOW" "button.textContent = 'Re-upload'"
 require "$WORKFLOW" 'Re-upload ready. Choose the replacement CSV or Excel file'
