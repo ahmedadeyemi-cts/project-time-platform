@@ -242,10 +242,37 @@ function globalXhrSessionBridgeInstalled() {
   return Boolean(window.XMLHttpRequest?.prototype?.__projectPulse050BFinalWrapped);
 }
 
+function globalXhrBridgeToken() {
+  // This intentionally mirrors the exact token/storage contract in App.jsx's
+  // 050B global XHR bridge. Do not broaden it without broadening that bridge.
+  const session = parseStoredJson(window.localStorage, 'projectPulseAuthSession');
+  return session?.sessionToken
+    || session?.token
+    || session?.accessToken
+    || '';
+}
+
+function globalXhrBridgeCanSupplyToken(token) {
+  return Boolean(
+    token
+      && globalXhrSessionBridgeInstalled()
+      && globalXhrBridgeToken() === token
+  );
+}
+
 function sessionNotReadyError(path) {
   const error = new Error('ProjectPulse session is not ready yet.');
   error.status = SESSION_NOT_READY_STATUS;
   error.code = 'session_not_ready';
+  error.path = path;
+  error.silent = true;
+  return error;
+}
+
+function sessionTransportConflictError(path) {
+  const error = new Error('ProjectPulse session transport is waiting for stale browser session state to be replaced.');
+  error.status = SESSION_NOT_READY_STATUS;
+  error.code = 'session_transport_conflict';
   error.path = path;
   error.silent = true;
   return error;
@@ -267,6 +294,18 @@ export async function authoritativeApi(path, options = {}) {
   }
 
   const { token, viewAsUserId } = context;
+  const bridgeToken = globalXhrBridgeToken();
+  if (
+    token
+      && globalXhrSessionBridgeInstalled()
+      && bridgeToken
+      && bridgeToken !== token
+  ) {
+    // The App bridge would append its different token at send(). Stop locally
+    // rather than transmitting a combined, guaranteed-invalid header value.
+    throw sessionTransportConflictError(path);
+  }
+
   const moduleNumber = activeModuleNumber(options.moduleNumber);
   const startedAt = Date.now();
 
@@ -282,11 +321,10 @@ export async function authoritativeApi(path, options = {}) {
     if (moduleNumber) request.setRequestHeader('X-ProjectPulse-Module-Number', moduleNumber);
     if (options.body != null) request.setRequestHeader('Content-Type', 'application/json');
 
-    // App.jsx installs the single global XHR session bridge before React effects run.
-    // Directly applying the same headers here would append duplicate values and make
-    // an otherwise valid token fail backend validation. Only provide a fallback when
-    // the global bridge is genuinely unavailable.
-    if (token && !globalXhrSessionBridgeInstalled()) {
+    // Defer only when App.jsx's global XHR bridge can supply this exact token.
+    // Legacy/session-storage/session_token sessions use the direct fallback when
+    // the bridge has no token, preserving compatibility without duplication.
+    if (token && !globalXhrBridgeCanSupplyToken(token)) {
       request.setRequestHeader('Authorization', `Bearer ${token}`);
       request.setRequestHeader('X-ProjectPulse-Session', token);
       request.setRequestHeader('X-Project-Pulse-Session', token);
