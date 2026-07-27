@@ -5,6 +5,9 @@ const frontendRoot = process.cwd();
 const repositoryRoot = path.resolve(frontendRoot, '..', '..', '..');
 const files = {
   app: 'src/frontend/project-time-web/src/App.jsx',
+  main: 'src/frontend/project-time-web/src/main.jsx',
+  stableOwner: 'src/frontend/project-time-web/src/AdminRuntimeStabilityPortal.jsx',
+  stableCss: 'src/frontend/project-time-web/src/admin-runtime-stability.css',
   auditUi: 'src/frontend/project-time-web/src/AuditHistoryPanel.jsx',
   auditCss: 'src/frontend/project-time-web/src/audit-history.css',
   userUi: 'src/frontend/project-time-web/src/UserAdministrationPanel.jsx',
@@ -30,11 +33,14 @@ function check(name, condition, evidence) {
   console.log(`MODULES_008_009_${name}=${condition ? 'PASSED' : 'FAILED'} — ${evidence}`);
 }
 
-for (const name of ['app', 'auditUi', 'auditCss', 'userUi', 'userCss', 'themeJs', 'themeCss', 'package']) {
+for (const name of ['app', 'main', 'stableOwner', 'stableCss', 'auditUi', 'auditCss', 'userUi', 'userCss', 'themeJs', 'themeCss', 'package']) {
   check(`${name.toUpperCase()}_EXISTS`, exists(files[name]), files[name]);
 }
 
 const app = read(files.app);
+const main = read(files.main);
+const stableOwner = read(files.stableOwner);
+const stableCss = read(files.stableCss);
 const auditUi = read(files.auditUi);
 const auditCss = read(files.auditCss);
 const userUi = read(files.userUi);
@@ -55,38 +61,39 @@ check(
     && auditUi.includes("'X-ProjectPulse-Session': session.token")
     && auditUi.includes("'X-Project-Pulse-Session': session.token")
     && auditUi.includes("'X-Session-Token': session.token")
-    && auditUi.includes('Authorization: `Bearer ${session.token}`'),
-  'Module 008 retains every supported ProjectPulse session-header contract'
+    && auditUi.includes('Authorization: `Bearer ${session.token}`')
+    && auditUi.includes("'X-ProjectPulse-Module-Number': '008'"),
+  'Module 008 retains supported session headers and explicit module attribution'
 );
 
 const appAuditPanelMounts = app.match(/<AuditHistoryPanel\s*\/>/g) ?? [];
 check(
-  'AUDIT_SINGLE_APP_OWNER',
+  'AUDIT_STABLE_ROOT_OWNER',
   appAuditPanelMounts.length === 1
-    && app.includes("activeRoute === 'audit-history'")
-    && app.includes("hasPermission('VIEW_AUDIT_TRAIL')")
-    && app.includes("hasPermission('SYSTEM_ADMINISTRATION')")
-    && app.includes("hasPermission('MANAGE_ALL')"),
-  'Module 008 has exactly one permission-gated React owner in App'
+    && main.includes('<AdminRuntimeStabilityPortal />')
+    && stableOwner.includes('window.__projectPulseModule008StableOwnerInstalled = true')
+    && stableOwner.includes('<AuditHistoryPanel stableRouteOwner />')
+    && auditUi.includes('window.__projectPulseModule008StableOwnerInstalled')
+    && auditUi.includes('return null;'),
+  'the root-mounted stable owner suppresses the permission-dependent App instance without creating a second query'
 );
 check(
   'AUDIT_NO_SELF_MOUNT',
   !auditUi.includes("from 'react-dom/client'")
     && !auditUi.includes('createRoot(')
-    && !auditUi.includes('installModule008RouteRecovery')
-    && !auditUi.includes('installModule008StableRouteOwner')
-    && !auditUi.includes('data-module-008-route-recovery-host')
-    && !auditUi.includes('data-module-008-stable-route-host')
-    && !auditUi.includes('root.render(<AuditHistoryPanel'),
-  'Module 008 no longer creates a second hidden component or duplicate audit query'
+    && !auditUi.includes('MutationObserver')
+    && !stableOwner.includes("from 'react-dom/client'")
+    && !stableOwner.includes('createRoot(')
+    && !stableOwner.includes('MutationObserver'),
+  'Module 008 uses the existing React root and never creates or mutates a competing DOM root'
 );
 check(
-  'AUDIT_NO_HANDOFF_FLICKER',
-  !auditUi.includes('MutationObserver')
-    && !auditUi.includes('requestAnimationFrame(synchronize)')
-    && !auditUi.includes('window.setTimeout(schedule')
-    && !auditUi.includes('panel.hidden = true'),
-  'Module 008 no longer hands rendering between two competing DOM roots'
+  'AUDIT_STABLE_ROUTE_PRESENTATION',
+  stableCss.includes('body.projectpulse-route-audit-history .admin-runtime-stability-route-root')
+    && stableCss.includes('.module010-audit-consolidation')
+    && stableOwner.includes('Open Module 010 evidence in Audit and History')
+    && auditUi.includes('Module 010 sync evidence'),
+  'Module 008 remains visible and owns consolidated Module 010 synchronization evidence'
 );
 check(
   'AUDIT_BACKEND_AUTHORITY',
@@ -95,7 +102,7 @@ check(
     && !auditUi.includes('VIEW_AUDIT_TRAIL')
     && !auditUi.includes('SYSTEM_ADMINISTRATION')
     && !auditUi.includes('MANAGE_ALL'),
-  'component data access remains authorized by the API while App owns visibility'
+  'component data access remains authorized by the API rather than duplicated client permission state'
 );
 
 check('USER_TABBED_INTERFACE', ['Manage users', 'Bulk updates', 'Create local user', 'Manager team scope'].every((value) => userUi.includes(value)), 'four clear Module 009 workspaces');
@@ -107,13 +114,23 @@ check('USER_MANAGER_EMAIL_AUTOMATION', userUi.includes('managerEmailForTeam') &&
 check('USER_SCOPED_STYLES', userCss.includes('.user-admin-v2-tabs') && userCss.includes('.user-admin-v2-team-grid') && userCss.includes('.user-admin-v2-user-list'), 'Module 009 scoped layout');
 
 check(
-  'THEME_STRAY_TEXT_REMOVAL',
+  'THEME_STRAY_TEXT_NORMALIZATION',
   themeJs.includes('Node.TEXT_NODE')
     && themeJs.includes("String(node.textContent || '')")
     && themeJs.includes("replace(/\\u00a0/g, ' ')")
     && themeJs.includes('STRAY_THEME_TEXT.test(value)')
-    && themeJs.includes('node.remove();'),
-  'literal newline text nodes are normalized and removed from the theme control surroundings'
+    && themeJs.includes("node.textContent = ''")
+    && !themeJs.includes('node.remove()')
+    && !themeJs.includes('removeChild('),
+  'literal newline text is neutralized without removing React-owned nodes'
+);
+check(
+  'THEME_NO_DOCUMENT_OBSERVER_OR_RELOAD',
+  !themeJs.includes('MutationObserver')
+    && !themeJs.includes('window.location.reload')
+    && themeJs.includes("document.addEventListener('click', handleThemeClick, true)")
+    && themeJs.includes("window.dispatchEvent(new CustomEvent('projectpulse:theme-changed'"),
+  'theme changes use one event boundary without route-wide observation or page reload'
 );
 check('THEME_NO_APP_EDIT_REQUIRED', userUi.includes("import './admin-experience-theme.js';") && userUi.includes("import './admin-experience-theme.css';"), 'theme bridge loads through existing Module 009 import');
 check(
