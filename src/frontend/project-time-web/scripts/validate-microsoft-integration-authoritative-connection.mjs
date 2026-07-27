@@ -8,6 +8,9 @@ const paths = {
   portal: 'src/frontend/project-time-web/src/MicrosoftIntegrationDualConnectionPortal.jsx',
   registry: 'src/frontend/project-time-web/src/module-availability-registry.js',
   main: 'src/frontend/project-time-web/src/main.jsx',
+  mailActivation: 'src/frontend/project-time-web/src/microsoft-mail-runtime-activation.js',
+  mailRuntime: 'src/backend/ProjectTime.Api/Modules/MicrosoftMailRuntimeConfigurationModule.cs',
+  registrar: 'src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs',
   migration: 'database/migrations/047_microsoft_integration_connection_carryover.sql',
   rollback: 'database/rollback/047_microsoft_integration_connection_carryover_rollback.sql',
   test: 'tests/test-microsoft-integration-connection-carryover-047.sh'
@@ -23,7 +26,7 @@ function assert(name, condition, evidence) {
   console.log(`MICROSOFT_CONNECTION_${name}=${condition ? 'PASSED' : 'FAILED'} — ${evidence}`);
 }
 
-for (const name of ['compatibility', 'css', 'portal', 'registry', 'main']) {
+for (const name of ['compatibility', 'css', 'portal', 'registry', 'main', 'mailActivation']) {
   assert(`${name.toUpperCase()}_EXISTS`, exists(paths[name]), paths[name]);
 }
 
@@ -32,7 +35,12 @@ const css = read(paths.css);
 const portal = read(paths.portal);
 const registry = read(paths.registry);
 const main = read(paths.main);
-const fullRepositoryContext = exists(paths.migration) && exists(paths.rollback) && exists(paths.test);
+const mailActivation = read(paths.mailActivation);
+const fullRepositoryContext = exists(paths.migration)
+  && exists(paths.rollback)
+  && exists(paths.test)
+  && exists(paths.mailRuntime)
+  && exists(paths.registrar);
 
 assert('AUTHORITATIVE_NAME', registry.includes("displayName: 'Microsoft Integration Connection'")
   && compatibility.includes("ACTIVE_MODULE_NAME = 'Microsoft Integration Connection'"),
@@ -54,7 +62,15 @@ assert('MODULE_010_CONFIGURATION_REMOVED', compatibility.includes('.azure-config
   && compatibility.includes("label === 'save configuration'")
   && css.includes('.route-azure-admin .azure-config-card')
   && css.includes('.route-azure-admin .azure-sync-summary-card'),
-'Module 010 retains preview/import while tenant and sync controls are removed');
+'Module 010 tenant and synchronization controls remain moved to Module 065');
+
+assert('MODULE_010_PREVIEW_PRESERVED', compatibility.includes('function restoreModule010Preview')
+  && compatibility.includes("module010.querySelector('.azure-preview-card')")
+  && compatibility.includes("data-module-010-preview-preserved")
+  && css.includes('.route-azure-admin .azure-preview-card')
+  && css.includes('.route-azure-admin .azure-preview-card .azure-admin-heading-actions button')
+  && !css.includes('.route-azure-admin .azure-admin-heading-actions .primary-action'),
+'Preview users, Import selected, filters, and selection controls remain visible');
 
 assert('MODULE_010_PURPOSE', compatibility.includes('Preview and import Entra users')
   && compatibility.includes('Tenant, synchronization, identity, calendar, and Microsoft 365 mail settings are managed in Module 065'),
@@ -77,14 +93,24 @@ assert('GLOBAL_MAIL_CONFIGURATION', portal.includes('Microsoft 365 / SMTP')
   && portal.includes('providerTarget'),
 'global Microsoft mail transport and sender configuration remain on Module 065');
 
+assert('MAIL_RUNTIME_ACTIVATION', main.includes("import './microsoft-mail-runtime-activation.js';")
+  && mailActivation.includes("RUNTIME_PATH = '/api/microsoft-integration/mail-runtime'")
+  && mailActivation.includes('persistedConfiguration: true')
+  && mailActivation.includes('runtimeActivated: false')
+  && !/clientSecret|password|accessToken/i.test(mailActivation),
+'successful Module 065 saves forward only non-secret mail metadata to the runtime');
+
 if (fullRepositoryContext) {
   const migration = read(paths.migration);
   const rollback = read(paths.rollback);
   const test = read(paths.test);
+  const mailRuntime = read(paths.mailRuntime);
+  const registrar = read(paths.registrar);
 
   assert('MIGRATION_EXISTS', true, paths.migration);
   assert('ROLLBACK_EXISTS', true, paths.rollback);
   assert('TEST_EXISTS', true, paths.test);
+  assert('MAIL_RUNTIME_EXISTS', true, paths.mailRuntime);
 
   assert('MODULE_010_CARRYOVER', migration.includes('FROM azure_entra_settings settings')
     && migration.includes("'legacyDirectorySettingsCarriedOver', true")
@@ -102,6 +128,35 @@ if (fullRepositoryContext) {
     && migration.includes("'module057CalendarPresence', 'services'")
     && migration.includes("'globalMailTransport', 'services'"),
   'identity, calendar/presence, and global mail consume the services connection');
+
+  assert('MAIL_RUNTIME_REGISTERED', registrar.includes('MapMicrosoftMailRuntimeConfigurationEndpoints')
+    && mailRuntime.includes('/api/microsoft-integration/mail-runtime')
+    && mailRuntime.includes('ApplicationStarted.Register')
+    && mailRuntime.includes('ReadStoredConfigurationAsync'),
+  'mail metadata is applied immediately and hydrated again after API restart');
+
+  assert('GRAPH_MAIL_RUNTIME', mailRuntime.includes('PROJECTPULSE_MAIL_PROVIDER')
+    && mailRuntime.includes('PROJECTPULSE_M365_TENANT_ID')
+    && mailRuntime.includes('PROJECTPULSE_M365_CLIENT_ID')
+    && mailRuntime.includes('PROJECTPULSE_M365_CLIENT_SECRET')
+    && mailRuntime.includes('PROJECTPULSE_M365_SENDER_MAILBOX')
+    && mailRuntime.includes('PROJECTPULSE_ENTRA_TEST_CLIENT_SECRET')
+    && mailRuntime.includes('PROJECTPULSE_ENTRA_PRODUCTION_CLIENT_SECRET'),
+  'Graph mail uses the selected environment services connection without moving secret values');
+
+  assert('SMTP_RUNTIME', mailRuntime.includes('PROJECTPULSE_SMTP_HOST')
+    && mailRuntime.includes('PROJECTPULSE_SMTP_PORT')
+    && mailRuntime.includes('PROJECTPULSE_SMTP_FROM')
+    && mailRuntime.includes('PROJECTPULSE_SMTP_USERNAME')
+    && mailRuntime.includes('PROJECTPULSE_SMTP_PASSWORD')
+    && mailRuntime.includes('SMTP username/password must remain configured'),
+  'SMTP metadata is page-owned while credentials remain in the approved environment store');
+
+  assert('MAIL_SECRET_SAFETY', mailRuntime.includes('secretValuesRead = false')
+    && mailRuntime.includes('secretValuesReturned = false')
+    && !mailRuntime.includes('clientSecret = request')
+    && !mailRuntime.includes('smtpPassword = request'),
+  'mail runtime endpoint never accepts or returns credential values');
 
   assert('NON_DESTRUCTIVE_MIGRATION', !/DROP\s+TABLE|TRUNCATE\s+TABLE|DELETE\s+FROM\s+(azure_entra_settings|projectpulse_native_admin_documents|microsoft_integration_client_secrets|microsoft_integration_sso_client_secrets|microsoft_integration_audit_events)/i.test(migration)
     && migration.includes("'secretValuesRead', false")
@@ -126,7 +181,7 @@ if (fullRepositoryContext) {
     && test.includes('module062_uses_services_connection'),
   'PostgreSQL test proves metadata carryover and source/secret preservation');
 } else {
-  console.log('MICROSOFT_CONNECTION_MIGRATION_DEEP_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
+  console.log('MICROSOFT_CONNECTION_BACKEND_AND_MIGRATION_DEEP_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
 }
 
 console.log(`MICROSOFT_CONNECTION_VALIDATION_CHECKS=${checks.length}`);
