@@ -1,6 +1,19 @@
 body.projectpulse-microsoft-integration-active .entra-secret-administration-route-panel,
+body.projectpulse-microsoft-integration-active .entra-secret-center[data-module="065"],
+body.projectpulse-microsoft-integration-active [data-phase="065_COMPLETE_SOURCE_LOCKED_RUNTIME"],
 body.projectpulse-microsoft-integration-active .native-module-administration[data-module-administration="065"] {
   display: none !important;
+}
+
+.route-azure-admin .azure-config-card,
+.route-azure-admin .azure-sync-summary-card,
+.route-azure-admin .azure-admin-heading-actions .primary-action {
+  display: none !important;
+}
+
+body.projectpulse-microsoft-integration-active .microsoft-integration-portal[data-microsoft-integration-authoritative="true"],
+body.projectpulse-microsoft-integration-active .microsoft-integration-portal {
+  display: block !important;
 }
 
 .microsoft-integration-portal {

@@ -44,7 +44,7 @@ export const PROJECTPULSE_MODULES = Object.freeze([
   Object.freeze({ moduleNumber: '060', route: 'contracts', displayName: 'Contracts', group: 'Project Operations' }),
   Object.freeze({ moduleNumber: '063', route: 'opportunities', displayName: 'Opportunities', group: 'Sales & Opportunities' }),
   Object.freeze({ moduleNumber: '064', route: 'ai-provider-configuration', displayName: 'AI Provider Configuration Center', group: 'Security' }),
-  Object.freeze({ moduleNumber: '065', route: 'entra-secret-administration', displayName: 'Microsoft Integration', group: 'Integrations' }),
+  Object.freeze({ moduleNumber: '065', route: 'entra-secret-administration', displayName: 'Microsoft Integration Connection', group: 'Integrations' }),
   Object.freeze({ moduleNumber: '066', route: 'project-flowhive', displayName: 'Project FlowHive', group: 'Project Delivery' }),
   Object.freeze({ moduleNumber: '068', route: 'system-architecture', displayName: 'System Architecture & Dependency Map', group: 'Platform Operations' }),
   Object.freeze({ moduleNumber: '069', route: 'qualifications-certifications', displayName: 'Qualifications & Certification Matrix', group: 'Resources' }),

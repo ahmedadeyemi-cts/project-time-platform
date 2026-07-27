@@ -1,0 +1,41 @@
+name: Validate Microsoft Integration Authoritative Connection
+
+on:
+  pull_request:
+    paths:
+      - 'database/migrations/047_microsoft_integration_connection_carryover.sql'
+      - 'database/rollback/047_microsoft_integration_connection_carryover_rollback.sql'
+      - 'src/frontend/project-time-web/src/microsoft-integration-compatibility.js'
+      - 'src/frontend/project-time-web/src/microsoft-integration-portal.css'
+      - 'src/frontend/project-time-web/src/module-availability-registry.js'
+      - 'src/frontend/project-time-web/scripts/validate-microsoft-integration-authoritative-connection.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-module-067-global-mail.mjs'
+      - 'src/frontend/project-time-web/package.json'
+      - 'tests/test-microsoft-integration-connection-carryover-047.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test migration 047 carryover and rollback
+        run: bash tests/test-microsoft-integration-connection-carryover-047.sh
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci
+      - name: Validate authoritative Microsoft connection contract
+        working-directory: src/frontend/project-time-web
+        run: npm run validate:microsoft-connection
+      - name: Validate existing Microsoft Integration contract
+        working-directory: src/frontend/project-time-web
+        run: npm run validate:module067
+      - name: Build frontend production bundle
+        working-directory: src/frontend/project-time-web
+        run: npm run build
