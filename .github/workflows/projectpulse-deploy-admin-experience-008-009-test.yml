@@ -109,7 +109,10 @@ jobs:
           bash -n control/scripts/apply-admin-experience-008-009-test-migration.sh
           bash -n control/scripts/run-admin-experience-008-009-test-migration-job.sh
           bash -n control/scripts/wait-containerapp-ready-revision.sh
-          node release/src/frontend/project-time-web/scripts/validate-modules-008-009-admin-experience.mjs
+          (
+            cd release/src/frontend/project-time-web
+            node scripts/validate-modules-008-009-admin-experience.mjs
+          )
 
           echo "target_commit=$TARGET_COMMIT" >> "$GITHUB_OUTPUT"
           echo '::warning::A green deployment proves migration, image, protected-route, and served-asset integrity. Signed-in Audit and History, individual user management, local password management, bulk updates, and manager-team UAT remain required.'
