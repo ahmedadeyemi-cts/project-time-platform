@@ -21,6 +21,8 @@ require "$DEPLOY" "EXPECTED_RELEASE_COMMIT: $EXPECTED_RELEASE"
 require "$DEPLOY" 'RESTORE-PRE-SESSION-INVALIDATION-WEB-TO-TEST'
 require "$DEPLOY" 'environment: test'
 require "$DEPLOY" 'refs/heads/main'
+require "$DEPLOY" 'group: projectpulse-deploy-global-session-invalidation-test'
+require "$DEPLOY" 'cancel-in-progress: false'
 require "$DEPLOY" 'DISPATCH_RELEASE_COMMIT: ${{ inputs.release_commit }}'
 require "$DEPLOY" 'DISPATCH_CONFIRMATION: ${{ inputs.confirmation }}'
 require "$DEPLOY" 'WORKFLOW_SOURCE_REF: ${{ github.ref }}'
