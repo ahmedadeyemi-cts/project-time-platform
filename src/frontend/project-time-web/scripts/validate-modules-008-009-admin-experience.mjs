@@ -6,8 +6,6 @@ const repositoryRoot = path.resolve(frontendRoot, '..', '..', '..');
 const files = {
   auditUi: 'src/frontend/project-time-web/src/AuditHistoryPanel.jsx',
   auditCss: 'src/frontend/project-time-web/src/audit-history.css',
-  auditRecovery: 'src/frontend/project-time-web/src/AuditHistoryRouteRecoveryPortal.jsx',
-  main: 'src/frontend/project-time-web/src/main.jsx',
   userUi: 'src/frontend/project-time-web/src/UserAdministrationPanel.jsx',
   userCss: 'src/frontend/project-time-web/src/user-administration-panel.css',
   themeJs: 'src/frontend/project-time-web/src/admin-experience-theme.js',
@@ -31,14 +29,12 @@ function check(name, condition, evidence) {
   console.log(`MODULES_008_009_${name}=${condition ? 'PASSED' : 'FAILED'} — ${evidence}`);
 }
 
-for (const name of ['auditUi', 'auditCss', 'auditRecovery', 'main', 'userUi', 'userCss', 'themeJs', 'themeCss', 'package']) {
+for (const name of ['auditUi', 'auditCss', 'userUi', 'userCss', 'themeJs', 'themeCss', 'package']) {
   check(`${name.toUpperCase()}_EXISTS`, exists(files[name]), files[name]);
 }
 
 const auditUi = read(files.auditUi);
 const auditCss = read(files.auditCss);
-const auditRecovery = read(files.auditRecovery);
-const main = read(files.main);
 const userUi = read(files.userUi);
 const userCss = read(files.userCss);
 const themeJs = read(files.themeJs);
@@ -52,30 +48,42 @@ check('AUDIT_ALL_SYSTEM_WORDING', auditUi.includes('service actions') && auditUi
 check('AUDIT_SCOPED_STYLES', auditCss.includes('.audit-event-card') && auditCss.includes('.audit-event-facts') && auditCss.includes('.app-shell.route-audit-history'), 'Module 008 styles and route isolation');
 check('AUDIT_AUTH_FAILURE_VISIBLE', auditUi.includes('readApiErrorMessage') && auditUi.includes('audit-empty-state error') && auditUi.includes('Audit and History could not be loaded.'), 'backend authorization and session failures are visible rather than blank');
 check(
+  'AUDIT_SESSION_HEADER_COMPATIBILITY',
+  auditUi.includes("session?.sessionToken || session?.token || session?.accessToken")
+    && auditUi.includes("'X-ProjectPulse-Session': token")
+    && auditUi.includes("'X-Project-Pulse-Session': token")
+    && auditUi.includes("'X-Session-Token': token")
+    && auditUi.includes('Authorization: `Bearer ${token}`'),
+  'Module 008 retains every supported ProjectPulse session-header contract'
+);
+check(
   'AUDIT_ROUTE_RECOVERY',
-  auditRecovery.includes("activeRoute !== 'audit-history'")
-    && auditRecovery.includes("document.querySelector('.app-shell.route-audit-history')")
-    && auditRecovery.includes("shell.querySelector('#audit-history')")
-    && auditRecovery.includes('createPortal')
-    && auditRecovery.includes('<AuditHistoryPanel recoveryMode />'),
-  'Module 008 mounts only when the normal App route failed to render its panel'
-);
-check(
-  'AUDIT_ROUTE_RECOVERY_MOUNTED',
-  main.includes("import AuditHistoryRouteRecoveryPortal from './AuditHistoryRouteRecoveryPortal.jsx';")
-    && main.includes('<AuditHistoryRouteRecoveryPortal />'),
-  'additive Module 008 recovery portal is mounted from the application entry point'
-);
-check(
-  'AUDIT_BACKEND_AUTHORITY',
-  !/hasPermission|VIEW_AUDIT_TRAIL|SYSTEM_ADMINISTRATION|MANAGE_ALL/.test(auditRecovery),
-  'recovery portal does not duplicate the failed frontend permission gate; the API remains authoritative'
+  auditUi.includes('function installModule008RouteRecovery()')
+    && auditUi.includes("readModule008ActiveRoute() !== 'audit-history'")
+    && auditUi.includes("document.querySelector('.app-shell.route-audit-history')")
+    && auditUi.includes("root.render(<AuditHistoryPanel recoveryMode />)"),
+  'Module 008 mounts its own panel when role-policy state prevents normal App rendering'
 );
 check(
   'AUDIT_NO_DUPLICATE_PANEL',
-  auditRecovery.includes("const appOwnedPanel = shell.querySelector('#audit-history');")
-    && auditRecovery.includes('if (!appOwnedPanel) setPortalTarget(shell);'),
-  'recovery portal defers to an App-owned audit panel when one already exists'
+  auditUi.includes("find((panel) => !panel.closest('[data-module-008-route-recovery-host]'))")
+    && auditUi.includes('if (findAppOwnedPanel(shell))')
+    && auditUi.includes('removeRecovery();'),
+  'recovery yields to the normal App-owned Audit and History panel'
+);
+check(
+  'AUDIT_MODULE_OWNED_RECOVERY',
+  auditUi.includes("host.setAttribute('data-module-008-route-recovery-host', 'true')")
+    && auditUi.includes("data-module-008-route-recovery={recoveryMode ? 'true' : undefined}")
+    && auditUi.includes('installModule008RouteRecovery();'),
+  'recovery is contained inside Module 008 source without shared entry-point or Module 009 changes'
+);
+const recoverySource = auditUi.slice(auditUi.indexOf('function readModule008ActiveRoute()'));
+check(
+  'AUDIT_BACKEND_AUTHORITY',
+  recoverySource.length > 0
+    && !/hasPermission|VIEW_AUDIT_TRAIL|SYSTEM_ADMINISTRATION|MANAGE_ALL/.test(recoverySource),
+  'recovery does not repeat the failed frontend permission gate; the API remains authoritative'
 );
 
 check('USER_TABBED_INTERFACE', ['Manage users', 'Bulk updates', 'Create local user', 'Manager team scope'].every((value) => userUi.includes(value)), 'four clear Module 009 workspaces');
