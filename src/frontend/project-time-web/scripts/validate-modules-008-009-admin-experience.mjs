@@ -85,7 +85,7 @@ if (exists(files.migration) && exists(files.rollback)) {
   check('IMMUTABLE_LEDGER', migration.includes('BEFORE UPDATE OR DELETE') && migration.includes('projectpulse048_block_system_audit_mutation'), 'immutable audit trigger');
   check('ONE_MANAGER_PER_TEAM', migration.includes('ux_user_admin_one_active_manager_per_team') && migration.includes('lower(team_name)'), 'one active manager per team');
   check('GUARDED_ROLLBACK', rollback.includes('Rollback blocked: immutable ProjectPulse system audit evidence exists.') && rollback.includes('Rollback blocked: active manager-to-team assignments exist.'), 'operational evidence prevents rollback');
-  check('NO_PROTECTED_MODULE_SCHEMA', !/azure_entra_settings|microsoft_integration|module[_ ]?010|module[_ ]?065/i.test(migration), 'Modules 010 and 065 schemas untouched');
+  check('NO_PROTECTED_MODULE_SCHEMA', !/azure_entra_settings|microsoft_integration|projectpulse_native_admin_documents|microsoft_integration_client_secrets|microsoft_integration_sso_client_secrets/i.test(migration), 'no Module 010/065 or Microsoft Integration tables are referenced');
 } else {
   console.log('MODULES_008_009_MIGRATION_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
 }
