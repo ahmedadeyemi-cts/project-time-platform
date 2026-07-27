@@ -10,6 +10,27 @@ var assignedProjectId = Guid.Parse("11111111-1111-1111-1111-111111111111");
 var unassignedProjectId = Guid.Parse("22222222-2222-2222-2222-222222222222");
 var checks = 0;
 
+var roleAssignmentRoute = ScopedRolePolicyRules.RouteContract(
+    "/api/admin/users/roles",
+    HttpMethods.Post);
+Expect(
+    "MODULE_012_ROLE_ASSIGNMENT:POST_BOUNDARY",
+    roleAssignmentRoute is
+    {
+        ModuleCode: "012",
+        ActionCode: "ROLE_ASSIGN",
+        IsWrite: true
+    },
+    "role assignment must resolve to Module 012 ROLE_ASSIGN as a write action");
+Expect(
+    "MODULE_012_ROLE_ASSIGNMENT:NON_BYPASSABLE",
+    ScopedRolePolicyRules.NonBypassableActions.Contains("ROLE_ASSIGN"),
+    "role assignment must be denied to non-Super-Administrator sessions by the central evaluator");
+Expect(
+    "MODULE_012_ROLE_ASSIGNMENT:READ_NOT_RECLASSIFIED",
+    ScopedRolePolicyRules.RouteContract("/api/admin/users/roles", HttpMethods.Get) is null,
+    "the legacy POST mutation boundary must not convert a nonexistent GET route into a role-policy read");
+
 var canonicalJsonRoutes = new[]
 {
     "/api/work-register/projects/documents/save",
