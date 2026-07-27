@@ -104,6 +104,11 @@ require "$APPLY" 'VERIFY_SQL="$(mktemp)"'
 require "$APPLY" 'CREATE TEMP TABLE projectpulse_microsoft_verification_baseline AS'
 require "$APPLY" "cat >> \"\$VERIFY_SQL\" <<'SQL'"
 require "$APPLY" 'psql "$DATABASE_URL" --no-psqlrc --set=ON_ERROR_STOP=1 --file="$VERIFY_SQL"'
+require "$APPLY" 'terminate() {'
+require "$APPLY" 'trap cleanup EXIT'
+require "$APPLY" "trap 'terminate 130' INT"
+require "$APPLY" "trap 'terminate 143' TERM"
+require "$APPLY" 'trap - EXIT INT TERM'
 require "$APPLY" 'Migration 047 changed existing Graph or SSO secret evidence counts.'
 require "$APPLY" 'Migration 047 changed or removed the Module 010 or Module 067 source configuration.'
 require "$APPLY" 'Module 010 services client ID was not carried into Module 065.'
@@ -149,6 +154,7 @@ reject "$WORKFLOW" 'ACTIVE_WEB=.*properties[.]template[.]containers\[0\][.]image
 reject "$WORKFLOW" 'sso-test[^\n]*sso-test[^\n]*\{\}'
 reject "$APPLY" ":'[a-z_][a-z0-9_]*'"
 reject "$APPLY" '--set=(users_before|roles_before|documents_before|module010_source_hash_before|module067_source_hash_before)'
+reject "$APPLY" 'trap[[:space:]]+cleanup[[:space:]]+EXIT[[:space:]]+INT[[:space:]]+TERM'
 reject "$APPLY" 'DROP[[:space:]]+TABLE|TRUNCATE[[:space:]]+TABLE|DELETE[[:space:]]+FROM[[:space:]]+(app_users|app_roles|azure_entra_settings|projectpulse_native_admin_documents|microsoft_integration_client_secrets|microsoft_integration_sso_client_secrets|microsoft_integration_audit_events)'
 reject "$RUNNER" 'registry-password[[:space:]]+[^"$]'
 
