@@ -95,12 +95,13 @@ assert('GLOBAL_MAIL_CONFIGURATION', portal.includes('Microsoft 365 / SMTP')
 
 assert('MAIL_RUNTIME_ACTIVATION', main.includes("import './microsoft-mail-runtime-activation.js';")
   && mailActivation.includes("RUNTIME_PATH = '/api/microsoft-integration/mail-runtime'")
+  && mailActivation.includes("new CustomEvent('projectpulse:microsoft-mail-runtime-status'")
   && mailActivation.includes('persistedConfiguration: true')
+  && mailActivation.includes('runtimeActivated: false')
   && mailActivation.includes('return response;')
-  && mailActivation.includes('Runtime activation status is reported separately')
   && !mailActivation.includes("status: 'mail_runtime_activation_failed'")
   && !/clientSecret|password|accessToken/i.test(mailActivation),
-'successful Module 065 saves remain successful while non-secret runtime status is reported separately');
+'successful Module 065 saves remain successful while non-secret runtime status is dispatched separately');
 
 if (fullRepositoryContext) {
   const migration = read(paths.migration);
@@ -211,6 +212,8 @@ if (fullRepositoryContext) {
 
 console.log(`MICROSOFT_CONNECTION_VALIDATION_CHECKS=${checks.length}`);
 if (checks.some((check) => !check.condition)) {
+  const failed = checks.filter((check) => !check.condition).map((check) => check.name);
+  console.error(`MICROSOFT_CONNECTION_FAILED_CHECKS=${failed.join(',')}`);
   console.error('MICROSOFT_INTEGRATION_AUTHORITATIVE_CONNECTION=FAILED');
   process.exit(1);
 }
