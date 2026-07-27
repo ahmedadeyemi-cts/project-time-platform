@@ -33,6 +33,12 @@ assert('RUNTIME_REGISTERED', registrar.includes('UseMicrosoftSsoRuntimeCompatibi
   && registrar.includes('MapMicrosoftSsoRuntimeProfileEndpoints')
   && registrar.includes('MapMicrosoftServicesRuntimeProfileEndpoints'),
 'SSO sanitization plus separate SSO and Microsoft services runtime endpoints are registered');
+assert('FORWARDED_PUBLIC_ORIGIN', registrar.includes('UseMicrosoftPublicSsoOriginCompatibility')
+  && registrar.includes('X-Forwarded-Host')
+  && registrar.includes('X-Forwarded-Proto')
+  && registrar.includes('invalid_forwarded_public_origin')
+  && registrar.indexOf('UseMicrosoftPublicSsoOriginCompatibility') < registrar.indexOf('UseMicrosoftSsoRuntimeCompatibility'),
+'Module 065 normalizes the trusted proxy public origin before callback validation and rejects malformed forwarded values');
 assert('IMMEDIATE_ACTIVATION_MOUNTED', main.includes("import './microsoft-sso-runtime-activation.js';"), 'saved Module 065 metadata activation is installed before rendering');
 assert('SAVE_INTERCEPT', activation.includes("DOCUMENT_PATH = '/api/native-administration/065/document'")
   && activation.includes("SSO_APPLY_PATH = '/api/microsoft-integration/sso-apply-profile'")
@@ -44,12 +50,18 @@ assert('SAVE_REMAINS_AUTHORITATIVE', activation.includes('return response;')
   && !activation.includes("status: 'sso_runtime_activation_failed'"),
 'persisted Module 065 revisions remain successful while sanitized runtime activation status is reported separately');
 assert('ORIGINAL_AUTH_HEADERS_REUSED', activation.includes('mergedHeaders(input, init)'), 'runtime apply retains the authenticated request header chain');
-assert('PORTAL_METADATA_FIRST', portal.includes('await persistConfiguration();')
+assert('PORTAL_METADATA_FIRST', portal.includes('await persistConfiguration(purpose);')
   && portal.includes("saveSecret('sso')")
   && portal.includes("saveSecret('services')")
   && portal.includes('Save SSO connection')
   && portal.includes('Save services connection'),
-'connection metadata is persisted before either write-only secret is stored');
+'connection metadata is persisted for the requested connection before either write-only secret is stored');
+assert('PORTAL_INDEPENDENT_SSO_SAVE', portal.includes("async function persistConfiguration(purpose = 'integration')")
+  && portal.includes('validateActiveConnection(purpose);')
+  && portal.includes("if (purpose !== 'sso')")
+  && portal.includes("applicationId: activeTenant.services.clientId || nativeDocument?.configuration?.applicationId || ''")
+  && portal.includes("await persistConfiguration('integration');"),
+'SSO metadata can be saved independently without validating or overwriting the services/Graph profile');
 assert('PORTAL_CURRENT_CALLBACK', portal.includes("const SSO_CALLBACK_PATH = '/api/auth/sso/callback'")
   && portal.includes('currentCallbackUri()')
   && portal.includes('Use current callback'),
@@ -58,6 +70,11 @@ assert('MODULE_010_PROFILE_PRELOAD', compatibility.includes("PREVIEW_ROUTE = '/a
   && compatibility.includes('applyStoredServicesProfile')
   && compatibility.includes("SERVICES_APPLY_PATH = '/api/microsoft-integration/services-apply-profile'"),
 'Module 010 preview activates the saved Module 065 services profile before calling the legacy preview endpoint');
+assert('MODULE_010_RUNNING_ENVIRONMENT', compatibility.includes('function runtimeEnvironmentMode()')
+  && compatibility.includes('tenant?.environmentMode === runtimeEnvironment')
+  && compatibility.includes("status: 'module_065_services_profile_not_active'")
+  && compatibility.includes('applyPayload?.runtimeActivated !== true'),
+'Module 010 preview selects the running environment and stops unless Module 065 confirms runtime activation');
 
 if (runtimeAvailable) {
   assert('MICROSOFT_AUTHORITY_DERIVED', runtime.includes('MicrosoftAuthority(tenantGuid)') && runtime.includes('payload["authorityUrl"] = MicrosoftAuthority(tenantGuid)'), 'SSO discovery authority is derived from a validated tenant GUID');
@@ -69,7 +86,7 @@ if (runtimeAvailable) {
   assert('REDIRECT_VALIDATION', runtime.includes('TryRedirectUri')
     && runtime.includes('CallbackPath')
     && runtime.includes('sso_redirect_host_mismatch'),
-  'saved callback requires HTTPS, the canonical callback path, and the active environment host');
+  'saved callback requires HTTPS, the canonical callback path, and the active public environment host');
   assert('ACTIVE_PROFILE_APPLIED', runtime.includes('PROJECTPULSE_SSO_MODE')
     && runtime.includes('PROJECTPULSE_SSO_TENANT_ID')
     && runtime.includes('PROJECTPULSE_SSO_CLIENT_ID')
