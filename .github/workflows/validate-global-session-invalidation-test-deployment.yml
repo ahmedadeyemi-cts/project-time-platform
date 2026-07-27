@@ -1,9 +1,9 @@
-name: Validate Role Policy Audit Stability Test Deployment
+name: Validate Role Policy Audit Module 065 Test Deployment
 
 on:
   push:
     branches:
-      - 'release/role-policy-audit-stability-api-web-test-*'
+      - 'release/role-policy-audit-module065-api-web-test-*'
   pull_request:
     paths:
       - '.github/workflows/projectpulse-deploy-global-session-invalidation-test.yml'
@@ -16,9 +16,9 @@ permissions:
 
 jobs:
   validate:
-    name: Validate guarded role-policy and audit API/web controls
+    name: Validate guarded role-policy audit and Module 065 controls
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 40
 
     steps:
       - uses: actions/checkout@v4
@@ -55,7 +55,7 @@ jobs:
             }
           done
 
-          echo 'ROLE_POLICY_AUDIT_DEPLOYMENT_CONTROL_SCOPE=PASS'
+          echo 'ROLE_POLICY_AUDIT_MODULE065_DEPLOYMENT_SCOPE=PASS'
 
       - uses: actions/setup-dotnet@v4
         with:
@@ -70,6 +70,19 @@ jobs:
       - name: Validate deployment-control contract
         shell: bash
         run: bash scripts/validate-global-session-invalidation-test-deployment.sh
+
+      - name: Validate release-root and rollback contracts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          WORKFLOW=.github/workflows/projectpulse-deploy-global-session-invalidation-test.yml
+          grep -Fq 'cd release' "$WORKFLOW"
+          grep -Fq 'test -d src/backend/ProjectTime.Api' "$WORKFLOW"
+          grep -Fq 'CURRENT_API_IMAGE="$(resolve_digest "$RAW_API_IMAGE")"' "$WORKFLOW"
+          grep -Fq 'CURRENT_WEB_IMAGE="$(resolve_digest "$RAW_WEB_IMAGE")"' "$WORKFLOW"
+          grep -Fq '[[ -n "$CURRENT_API_IMAGE" && -n "$CURRENT_WEB_IMAGE" ]]' "$WORKFLOW"
+          ! grep -Eq 'echo[[:space:]]+"current_(api|web)_image=\$\(resolve_digest' "$WORKFLOW"
+          echo 'RELEASE_ROOT_AND_ROLLBACK_CONTRACT=PASS'
 
       - name: Build combined API source
         run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
@@ -92,9 +105,17 @@ jobs:
         working-directory: src/frontend/project-time-web
         run: node scripts/test-authoritative-session-transport-theme-runtime.mjs
 
-      - name: Validate Module 008 single owner and Module 009 preservation
+      - name: Validate Module 008 and Module 009
         working-directory: src/frontend/project-time-web
         run: npm run validate:modules008009
+
+      - name: Validate Module 065 authoritative connection
+        working-directory: src/frontend/project-time-web
+        run: npm run validate:microsoft-connection
+
+      - name: Validate Module 065 SSO runtime
+        working-directory: src/frontend/project-time-web
+        run: npm run validate:microsoft-sso-runtime
 
       - name: Build frontend production bundle
         working-directory: src/frontend/project-time-web
@@ -114,15 +135,15 @@ jobs:
           set -Eeuo pipefail
           if [[ "$JOB_STATUS" == success ]]; then
             STATE=success
-            DESCRIPTION='Role-policy/audit API-web controls and executable checks passed.'
+            DESCRIPTION='Role-policy, audit, Module 065, release-root, and rollback checks passed.'
           else
             STATE=failure
-            DESCRIPTION='Role-policy/audit deployment-control validation failed.'
+            DESCRIPTION='Combined deployment-control validation failed.'
           fi
 
           PAYLOAD="$(jq -nc \
             --arg state "$STATE" \
-            --arg context 'role-policy-audit-stability/deployment-controls' \
+            --arg context 'role-policy-audit-module065/deployment-controls' \
             --arg description "$DESCRIPTION" \
             --arg target_url "$RUN_URL" \
             '{state:$state,context:$context,description:$description,target_url:$target_url}')"
