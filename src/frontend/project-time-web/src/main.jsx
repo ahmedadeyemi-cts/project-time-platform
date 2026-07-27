@@ -19,6 +19,7 @@ import PtcTimeStewardGate from './module001/PtcTimeStewardGate.jsx';
 import ProjectExpenseCrossModulePortal from './ProjectExpenseCrossModulePortal.jsx';
 import Module005ExperienceCompatibility from './Module005ExperienceCompatibility.jsx';
 import MicrosoftIntegrationDualConnectionPortal from './MicrosoftIntegrationDualConnectionPortal.jsx';
+import AuditHistoryRouteRecoveryPortal from './AuditHistoryRouteRecoveryPortal.jsx';
 import './approval-access-navigation-compatibility.js';
 import './scoped-rbac-catalog-compatibility.js';
 import './styles.css';
@@ -41,6 +42,7 @@ createRoot(document.getElementById('root')).render(
     <ProjectExpenseCrossModulePortal />
     <Module005ExperienceCompatibility />
     <MicrosoftIntegrationDualConnectionPortal />
+    <AuditHistoryRouteRecoveryPortal />
     <HelpAssistant />
   </React.StrictMode>
 );
