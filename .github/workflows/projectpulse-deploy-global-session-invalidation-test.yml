@@ -1,0 +1,335 @@
+name: ProjectPulse Deploy Global Session Invalidation Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_commit:
+        description: Exact verified global session invalidation release
+        required: true
+        default: a8dd45811fbb89c97785a5adea23cbf3813978f8
+        type: string
+      confirmation:
+        description: Enter DEPLOY-GLOBAL-SESSION-INVALIDATION-TO-TEST
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: projectpulse-deploy-global-session-invalidation-test
+  cancel-in-progress: false
+
+jobs:
+  deploy-web:
+    name: Guarded global session invalidation web-only test deployment
+    environment: test
+    runs-on: ubuntu-latest
+    env:
+      EXPECTED_RELEASE_COMMIT: a8dd45811fbb89c97785a5adea23cbf3813978f8
+
+    steps:
+      - name: Check out deployment controls
+        uses: actions/checkout@v5
+        with:
+          path: control
+          fetch-depth: 0
+
+      - name: Check out exact session release
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.release_commit }}
+          path: release
+          fetch-depth: 1
+
+      - name: Guard workflow source and exact session release
+        id: release
+        shell: bash
+        env:
+          DISPATCH_RELEASE_COMMIT: ${{ inputs.release_commit }}
+          DISPATCH_CONFIRMATION: ${{ inputs.confirmation }}
+          WORKFLOW_SOURCE_REF: ${{ github.ref }}
+          WORKFLOW_SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -Eeuo pipefail
+
+          [[ "$WORKFLOW_SOURCE_REF" == 'refs/heads/main' ]] || {
+            echo 'Dispatch this workflow from main.' >&2
+            exit 1
+          }
+          [[ "$DISPATCH_CONFIRMATION" == 'DEPLOY-GLOBAL-SESSION-INVALIDATION-TO-TEST' ]] || {
+            echo 'The deployment confirmation text does not match.' >&2
+            exit 1
+          }
+          [[ "$DISPATCH_RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || {
+            echo 'release_commit must be a complete 40-character SHA.' >&2
+            exit 1
+          }
+
+          CONTROL_COMMIT="$(git -C control rev-parse HEAD)"
+          TARGET_COMMIT="$(git -C release rev-parse HEAD)"
+          [[ "$CONTROL_COMMIT" == "$WORKFLOW_SOURCE_SHA" ]]
+          [[ "$TARGET_COMMIT" == "$DISPATCH_RELEASE_COMMIT" ]]
+          [[ "$TARGET_COMMIT" == "$EXPECTED_RELEASE_COMMIT" ]] || {
+            echo 'Only the verified global session invalidation release may deploy.' >&2
+            exit 1
+          }
+          git -C control merge-base --is-ancestor "$TARGET_COMMIT" HEAD || {
+            echo 'The session release is not an ancestor of the deployment controls.' >&2
+            exit 1
+          }
+
+          SOURCE='release/src/frontend/project-time-web/src/projectpulse-authoritative-api.js'
+          VALIDATOR='release/src/frontend/project-time-web/scripts/validate-global-session-invalidation.mjs'
+          PACKAGE='release/src/frontend/project-time-web/package.json'
+          test -f "$SOURCE"
+          test -f "$VALIDATOR"
+          test -f "$PACKAGE"
+          test -f control/scripts/build-pr55-acr-image.sh
+          test -f control/scripts/wait-containerapp-ready-revision.sh
+
+          grep -Fq "projectpulse-authoritative-session-invalidation-v1" "$SOURCE"
+          grep -Fq "projectpulse:session-invalidated" "$SOURCE"
+          grep -Fq "window.__projectPulseSessionInvalidationStarted" "$SOURCE"
+          grep -Fq "SESSION_REJECTION_STATUS_CODES" "$SOURCE"
+          grep -Fq "'session_required'" "$SOURCE"
+          grep -Fq "clearSessionStorage();" "$SOURCE"
+          grep -Fq "window.location.hash = '#dashboard';" "$SOURCE"
+          grep -Fq "window.location.reload();" "$SOURCE"
+          grep -Fq "void inspectFetchSessionRejection(input, response);" "$SOURCE"
+          grep -Fq "if (isSessionRejection(request.status, payload, raw))" "$SOURCE"
+          ! grep -Fq "projectPulsePostLoginRoute" "$SOURCE"
+
+          (
+            cd release/src/frontend/project-time-web
+            npm run validate:global-session-invalidation
+          )
+
+          echo "target_commit=$TARGET_COMMIT" >> "$GITHUB_OUTPUT"
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Capture current immutable web image
+        id: before
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          RAW_WEB_IMAGE="$(az containerapp show \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_WEB_APP }}' \
+            --query 'properties.template.containers[0].image' -o tsv)"
+          WEB_MODE="$(az containerapp show \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_WEB_APP }}' \
+            --query 'properties.configuration.activeRevisionsMode' -o tsv)"
+
+          [[ -n "$RAW_WEB_IMAGE" ]]
+          [[ "${WEB_MODE,,}" == 'single' ]]
+
+          resolve_digest() {
+            local image="$1"
+            local registry='${{ vars.AZURE_ACR_NAME }}.azurecr.io/'
+            local relative repository digest
+
+            case "$image" in
+              "$registry"*@sha256:*) printf '%s\n' "$image"; return ;;
+              "$registry"*:*) ;;
+              *) echo "Web image is outside the approved ACR: $image" >&2; return 1 ;;
+            esac
+
+            relative="${image#"$registry"}"
+            repository="${relative%:*}"
+            digest="$(az acr repository show \
+              --name '${{ vars.AZURE_ACR_NAME }}' \
+              --image "$relative" \
+              --query digest -o tsv)"
+            [[ "$digest" == sha256:* ]]
+            printf '%s%s@%s\n' "$registry" "$repository" "$digest"
+          }
+
+          OLD_WEB_IMAGE="$(resolve_digest "$RAW_WEB_IMAGE")"
+          echo "old_web_image=$OLD_WEB_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "CAPTURED_WEB_ROLLBACK_IMAGE=$OLD_WEB_IMAGE"
+
+      - name: Build exact session recovery web candidate
+        id: build
+        shell: bash
+        working-directory: release
+        run: |
+          set -Eeuo pipefail
+          TARGET_COMMIT='${{ steps.release.outputs.target_commit }}'
+          WEB_REPOSITORY='project-health-dashboard-web'
+          WEB_DIGEST="$(
+            ../control/scripts/build-pr55-acr-image.sh \
+              '${{ vars.AZURE_ACR_NAME }}' \
+              "$WEB_REPOSITORY:global-session-invalidation-$TARGET_COMMIT" \
+              deployment/containers/web/Dockerfile \
+              .
+          )"
+          [[ "$WEB_DIGEST" == sha256:* ]]
+          WEB_IMAGE='${{ vars.AZURE_ACR_NAME }}.azurecr.io/'"$WEB_REPOSITORY@$WEB_DIGEST"
+          echo "web_image=$WEB_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "IMMUTABLE_WEB_CANDIDATE=$WEB_IMAGE"
+
+      - name: Deploy session recovery web candidate only
+        id: deploy_web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          SUFFIX="sessfix-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          REVISION='${{ vars.AZURE_WEB_APP }}'"--$SUFFIX"
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
+
+          az containerapp update \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_WEB_APP }}' \
+            --image '${{ steps.build.outputs.web_image }}' \
+            --revision-suffix "$SUFFIX" \
+            --output none
+
+      - name: Wait for exact session recovery web revision
+        shell: bash
+        run: |
+          bash control/scripts/wait-containerapp-ready-revision.sh \
+            '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            '${{ vars.AZURE_WEB_APP }}' \
+            '${{ steps.deploy_web.outputs.revision }}' \
+            '${{ steps.build.outputs.web_image }}' 60 10
+
+      - name: Validate served global session recovery bundle
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          BASE_URL='${{ vars.PUBLIC_URL }}'
+          BASE_URL="${BASE_URL%/}"
+          READY=false
+          LAST_STATUS='not-requested'
+          LAST_JS='not-resolved'
+
+          absolute_asset_url() {
+            local path="$1"
+            case "$path" in
+              http://*|https://*) printf '%s\n' "$path" ;;
+              /*) printf '%s%s\n' "$BASE_URL" "$path" ;;
+              *) printf '%s/%s\n' "$BASE_URL" "$path" ;;
+            esac
+          }
+
+          for attempt in $(seq 1 30); do
+            BUSTER="sessfix-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${attempt}"
+            STATUS="$(curl --silent --show-error --location \
+              --header 'Cache-Control: no-cache' \
+              --header 'Pragma: no-cache' \
+              --output /tmp/session-index.html \
+              --write-out '%{http_code}' \
+              "$BASE_URL/?release_check=$BUSTER" || true)"
+            LAST_STATUS="$STATUS"
+
+            if [[ "$STATUS" == '200' ]]; then
+              JS_PATH="$(sed -nE 's/.*src="([^"]+\.js)".*/\1/p' /tmp/session-index.html | head -1)"
+              LAST_JS="$JS_PATH"
+              if [[ -n "$JS_PATH" ]]; then
+                JS_URL="$(absolute_asset_url "$JS_PATH")"
+                JS_STATUS="$(curl --silent --show-error --location \
+                  --header 'Cache-Control: no-cache' \
+                  --header 'Pragma: no-cache' \
+                  --output /tmp/session-app.js \
+                  --write-out '%{http_code}' \
+                  "$JS_URL?release_check=$BUSTER" || true)"
+                LAST_STATUS="html=$STATUS,js=$JS_STATUS"
+
+                if [[ "$JS_STATUS" == '200' ]] \
+                  && grep -Fq 'projectpulse-authoritative-session-invalidation-v1' /tmp/session-app.js \
+                  && grep -Fq 'projectpulse:session-invalidated' /tmp/session-app.js \
+                  && grep -Fq 'projectPulseSessionInvalidationStarted' /tmp/session-app.js \
+                  && grep -Fq 'session_required' /tmp/session-app.js \
+                  && grep -Fq 'projectPulseAuthSession' /tmp/session-app.js \
+                  && grep -Fq 'projectPulseViewAsUser' /tmp/session-app.js \
+                  && grep -Fq 'X-ProjectPulse-Session' /tmp/session-app.js \
+                  && grep -Fq '/api/admin/audit-history/events' /tmp/session-app.js \
+                  && grep -Fq 'Manager team scope' /tmp/session-app.js; then
+                  READY=true
+                  echo "GLOBAL_SESSION_RECOVERY_ASSETS_READY attempt=$attempt js=$JS_PATH"
+                  break
+                fi
+              fi
+            fi
+
+            (( attempt < 30 )) && sleep 10
+          done
+
+          [[ "$READY" == true ]] || {
+            echo "Global session recovery assets did not become ready: status=$LAST_STATUS js=$LAST_JS" >&2
+            exit 1
+          }
+
+          ACTIVE_WEB_IMAGE="$(az containerapp show \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_WEB_APP }}' \
+            --query 'properties.template.containers[0].image' -o tsv)"
+          [[ "$ACTIVE_WEB_IMAGE" == '${{ steps.build.outputs.web_image }}' ]] || {
+            echo "Active web image mismatch: expected=${{ steps.build.outputs.web_image }} actual=$ACTIVE_WEB_IMAGE" >&2
+            exit 1
+          }
+
+          echo 'GLOBAL_SESSION_INVALIDATION_WEB_VALIDATION=PASS'
+
+      - name: Write global session deployment evidence
+        if: success()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p evidence
+          cat > evidence/global-session-invalidation-test-deployment.json <<JSON
+          {
+            "environment": "test",
+            "releaseCommit": "${{ steps.release.outputs.target_commit }}",
+            "workflowCommit": "${{ github.sha }}",
+            "runId": "${{ github.run_id }}",
+            "webImage": "${{ steps.build.outputs.web_image }}",
+            "previousWebImage": "${{ steps.before.outputs.old_web_image }}",
+            "apiDeployment": "unchanged",
+            "migrations": "unchanged",
+            "database": "unchanged",
+            "modules008009": "preserved",
+            "modules010065": "preserved",
+            "servedAssetValidation": "passed"
+          }
+          JSON
+
+      - name: Upload global session deployment evidence
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: global-session-invalidation-test-${{ github.run_id }}
+          path: evidence/global-session-invalidation-test-deployment.json
+          retention-days: 30
+
+      - name: Roll back web image on failure
+        if: ${{ failure() && steps.deploy_web.outputs.started == 'true' }}
+        shell: bash
+        run: |
+          set +e
+          SUFFIX="sessrb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          ROLLBACK_REVISION='${{ vars.AZURE_WEB_APP }}'"--$SUFFIX"
+          echo 'Global session invalidation deployment failed. Restoring the captured immutable web image.' >&2
+
+          az containerapp update \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_WEB_APP }}' \
+            --image '${{ steps.before.outputs.old_web_image }}' \
+            --revision-suffix "$SUFFIX" \
+            --output none
+
+          bash control/scripts/wait-containerapp-ready-revision.sh \
+            '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            '${{ vars.AZURE_WEB_APP }}' \
+            "$ROLLBACK_REVISION" \
+            '${{ steps.before.outputs.old_web_image }}' 60 10
