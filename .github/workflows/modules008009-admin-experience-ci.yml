@@ -1,0 +1,103 @@
+name: Validate Modules 008 and 009 Admin Experience
+
+on:
+  push:
+    branches:
+      - 'feature/modules-008-009-admin-experience-*'
+  pull_request:
+    paths:
+      - 'database/migrations/048_admin_audit_and_manager_team_scope.sql'
+      - 'database/rollback/048_admin_audit_and_manager_team_scope_rollback.sql'
+      - 'src/backend/ProjectTime.Api/Modules/AdminExperienceCommon.cs'
+      - 'src/backend/ProjectTime.Api/Modules/AdminAuditHistoryModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/UserAdministrationTeamScopeModule.cs'
+      - 'src/backend/ProjectTime.Api/ProjectTime.Api.csproj'
+      - 'src/frontend/project-time-web/src/AuditHistoryPanel.jsx'
+      - 'src/frontend/project-time-web/src/audit-history.css'
+      - 'src/frontend/project-time-web/src/UserAdministrationPanel.jsx'
+      - 'src/frontend/project-time-web/src/user-administration-panel.css'
+      - 'src/frontend/project-time-web/src/admin-experience-theme.js'
+      - 'src/frontend/project-time-web/src/admin-experience-theme.css'
+      - 'src/frontend/project-time-web/scripts/validate-modules-008-009-admin-experience.mjs'
+      - 'src/frontend/project-time-web/package.json'
+      - 'tests/test-admin-experience-migration-048.sh'
+      - '.github/workflows/modules008009-admin-experience-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: projectpulse_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d projectpulse_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      PROJECTPULSE_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/projectpulse_test
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Enforce isolated source scope
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git fetch origin main --no-tags
+          CHANGED="$(git diff --name-only origin/main...HEAD)"
+          printf '%s\n' "$CHANGED"
+
+          PROTECTED='^(\.github/workflows/projectpulse-deploy-runtime-direct-timer-recovery-test\.yml|\.github/workflows/validate-runtime-direct-timer-recovery-deployment\.yml|scripts/validate-runtime-direct-timer-recovery-test-deployment\.sh|src/frontend/project-time-web/src/main\.jsx|src/frontend/project-time-web/src/microsoft-|src/frontend/project-time-web/scripts/validate-microsoft-|src/backend/ProjectTime\.Api/Modules/(GlobalMailConfigurationModule|MicrosoftMailRuntimeConfigurationModule|MicrosoftIntegrationModule|AzureDirectoryImportModule)\.cs|docs/modules/module-0(10|65)-|database/(migrations|rollback)/04[567]_microsoft_)'
+          if grep -E "$PROTECTED" <<<"$CHANGED"; then
+            echo 'Protected Module 010/065, Microsoft Integration, main.jsx, or deployment-control file changed.' >&2
+            exit 1
+          fi
+
+          if grep -E '(^|/)(module001|module-001|module012|module-012|module037|module-037|module038|module-038)' <<<"$CHANGED"; then
+            echo 'Protected Module 001/012/037/038 source changed.' >&2
+            exit 1
+          fi
+
+          echo 'MODULES_008_009_ISOLATION=PASSED'
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Build API
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+
+      - name: Test migration 048 apply, invariants, and rollback
+        shell: bash
+        run: bash tests/test-admin-experience-migration-048.sh
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Validate Modules 008 and 009 contract
+        working-directory: src/frontend/project-time-web
+        run: npm run validate:modules008009
+
+      - name: Build frontend production bundle
+        working-directory: src/frontend/project-time-web
+        run: npm run build
