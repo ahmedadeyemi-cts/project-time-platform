@@ -1,5 +1,6 @@
 const ACTIVE_ROUTE = 'entra-secret-administration';
 const RETIRED_ROUTE = 'global-mail-configuration';
+const ACTIVE_MODULE_NAME = 'Microsoft Integration Connection';
 const LEGACY_IMPORT_ROUTE = '/api/admin/azure/users/import-selected';
 const ACTIVE_IMPORT_ROUTE = '/api/microsoft-integration/directory-users/import-selected';
 const ROLE_NORMALIZATION_ROUTES = new Set([
@@ -28,11 +29,46 @@ function setTextIfChanged(element, value) {
   element.textContent = value;
 }
 
+function suppressMovedSurface(element, reason) {
+  if (!element) return;
+  element.setAttribute('data-moved-to-module-065', reason || 'true');
+  element.hidden = true;
+  element.setAttribute('aria-hidden', 'true');
+  element.style.setProperty('display', 'none', 'important');
+}
+
+function activateAuthoritativeModule065() {
+  const active = currentRoute() === ACTIVE_ROUTE;
+  document.body.classList.toggle('projectpulse-microsoft-integration-active', active);
+  if (!active) return;
+
+  document.querySelectorAll([
+    '.entra-secret-center[data-module="065"]',
+    '.native-module-administration[data-module-administration="065"]',
+    '.entra-secret-administration-route-panel',
+    '[data-phase="065_COMPLETE_SOURCE_LOCKED_RUNTIME"]'
+  ].join(',')).forEach((element) => {
+    if (!element.closest('.microsoft-integration-portal')) {
+      suppressMovedSurface(element, 'legacy-module-065-surface');
+    }
+  });
+
+  const portal = document.querySelector('.microsoft-integration-portal[data-module="065"], .microsoft-integration-portal');
+  if (portal) {
+    portal.setAttribute('data-microsoft-integration-authoritative', 'true');
+    portal.hidden = false;
+    portal.removeAttribute('aria-hidden');
+    portal.style.removeProperty('display');
+    setTextIfChanged(portal.querySelector('.microsoft-integration-heading h1'), ACTIVE_MODULE_NAME);
+  }
+}
+
 function normalizeModuleSurfaces() {
   document.querySelectorAll(`a[href="#${RETIRED_ROUTE}"], [data-route="${RETIRED_ROUTE}"]`).forEach((element) => {
     const surface = closestModuleSurface(element) || element;
     surface.setAttribute('data-module-067-retired', 'true');
     surface.hidden = true;
+    surface.style.setProperty('display', 'none', 'important');
   });
 
   document.querySelectorAll('a, button, h1, h2, h3, h4, p, span, strong, div').forEach((element) => {
@@ -44,37 +80,38 @@ function normalizeModuleSurfaces() {
       if (surface && !surface.querySelector(`a[href="#${ACTIVE_ROUTE}"]`)) {
         surface.setAttribute('data-module-067-retired', 'true');
         surface.hidden = true;
+        surface.style.setProperty('display', 'none', 'important');
       }
     }
 
-    if (/^Entra Secret Administration(?: Metadata)?$/i.test(text)) {
-      setTextIfChanged(element, 'Microsoft Integration');
+    if (/^Entra Secret Administration(?: Metadata management)?$/i.test(text)
+      || /^Microsoft Integration$/i.test(text)) {
+      setTextIfChanged(element, ACTIVE_MODULE_NAME);
     }
   });
 
   const module010 = document.querySelector('#azure-admin');
   if (module010) {
     module010.querySelectorAll('.azure-config-card, .azure-sync-summary-card').forEach((element) => {
-      element.setAttribute('data-moved-to-module-065', 'true');
-      element.hidden = true;
+      suppressMovedSurface(element, 'tenant-sync-configuration');
     });
 
     module010.querySelectorAll('button').forEach((button) => {
       const label = button.textContent?.trim().toLowerCase();
-      if (label === 'sync now' || label === 'reconcile inactive users') {
-        button.hidden = true;
+      if (label === 'sync now' || label === 'reconcile inactive users' || label === 'save configuration') {
+        suppressMovedSurface(button, 'configuration-action');
       }
     });
 
     const eyebrow = module010.querySelector('.section-heading .eyebrow');
     const heading = module010.querySelector('.section-heading h1');
     const copy = module010.querySelector('.section-heading .section-copy');
-    setTextIfChanged(eyebrow, 'Azure / Entra Directory Users');
+    setTextIfChanged(eyebrow, 'MODULE 010 · AZURE / ENTRA DIRECTORY USERS');
     setTextIfChanged(heading, 'Preview and import Entra users');
-    setTextIfChanged(copy, 'Preview Entra directory users, filter the list, select the people to import, and confirm that imported users appear in ProjectPulse. Tenant, secret, synchronization, identity, and Microsoft 365 mail settings are managed in Module 065 Microsoft Integration.');
+    setTextIfChanged(copy, `Preview Entra directory users, filter the list, select the people to import, and confirm that imported users appear in ProjectPulse. Tenant, synchronization, identity, calendar, and Microsoft 365 mail settings are managed in Module 065 ${ACTIVE_MODULE_NAME}.`);
   }
 
-  document.body.classList.toggle('projectpulse-microsoft-integration-active', currentRoute() === ACTIVE_ROUTE);
+  activateAuthoritativeModule065();
 }
 
 function canonicalRoleCode(value) {
