@@ -1,15 +1,15 @@
-name: ProjectPulse Deploy Global Session Invalidation Test
+name: ProjectPulse Deploy Login Session Race Fix Test
 
 on:
   workflow_dispatch:
     inputs:
       release_commit:
-        description: Exact verified global session invalidation release
+        description: Exact verified login session race-fix release
         required: true
-        default: a8dd45811fbb89c97785a5adea23cbf3813978f8
+        default: fd3a1ea9f304780da9e572724562b2621bde575c
         type: string
       confirmation:
-        description: Enter DEPLOY-GLOBAL-SESSION-INVALIDATION-TO-TEST
+        description: Enter DEPLOY-LOGIN-SESSION-RACE-FIX-TO-TEST
         required: true
         type: string
 
@@ -23,11 +23,11 @@ concurrency:
 
 jobs:
   deploy-web:
-    name: Guarded global session invalidation web-only test deployment
+    name: Guarded login session race-fix web-only test deployment
     environment: test
     runs-on: ubuntu-latest
     env:
-      EXPECTED_RELEASE_COMMIT: a8dd45811fbb89c97785a5adea23cbf3813978f8
+      EXPECTED_RELEASE_COMMIT: fd3a1ea9f304780da9e572724562b2621bde575c
 
     steps:
       - name: Check out deployment controls
@@ -36,14 +36,14 @@ jobs:
           path: control
           fetch-depth: 0
 
-      - name: Check out exact session release
+      - name: Check out exact login race-fix release
         uses: actions/checkout@v5
         with:
           ref: ${{ inputs.release_commit }}
           path: release
           fetch-depth: 1
 
-      - name: Guard workflow source and exact session release
+      - name: Guard workflow source and exact login race-fix release
         id: release
         shell: bash
         env:
@@ -58,7 +58,7 @@ jobs:
             echo 'Dispatch this workflow from main.' >&2
             exit 1
           }
-          [[ "$DISPATCH_CONFIRMATION" == 'DEPLOY-GLOBAL-SESSION-INVALIDATION-TO-TEST' ]] || {
+          [[ "$DISPATCH_CONFIRMATION" == 'DEPLOY-LOGIN-SESSION-RACE-FIX-TO-TEST' ]] || {
             echo 'The deployment confirmation text does not match.' >&2
             exit 1
           }
@@ -72,11 +72,11 @@ jobs:
           [[ "$CONTROL_COMMIT" == "$WORKFLOW_SOURCE_SHA" ]]
           [[ "$TARGET_COMMIT" == "$DISPATCH_RELEASE_COMMIT" ]]
           [[ "$TARGET_COMMIT" == "$EXPECTED_RELEASE_COMMIT" ]] || {
-            echo 'Only the verified global session invalidation release may deploy.' >&2
+            echo 'Only the verified login session race-fix release may deploy.' >&2
             exit 1
           }
           git -C control merge-base --is-ancestor "$TARGET_COMMIT" HEAD || {
-            echo 'The session release is not an ancestor of the deployment controls.' >&2
+            echo 'The login race-fix release is not an ancestor of the deployment controls.' >&2
             exit 1
           }
 
@@ -91,14 +91,15 @@ jobs:
 
           grep -Fq "projectpulse-authoritative-session-invalidation-v1" "$SOURCE"
           grep -Fq "projectpulse:session-invalidated" "$SOURCE"
-          grep -Fq "window.__projectPulseSessionInvalidationStarted" "$SOURCE"
-          grep -Fq "SESSION_REJECTION_STATUS_CODES" "$SOURCE"
-          grep -Fq "'session_required'" "$SOURCE"
-          grep -Fq "clearSessionStorage();" "$SOURCE"
-          grep -Fq "window.location.hash = '#dashboard';" "$SOURCE"
-          grep -Fq "window.location.reload();" "$SOURCE"
-          grep -Fq "void inspectFetchSessionRejection(input, response);" "$SOURCE"
-          grep -Fq "if (isSessionRejection(request.status, payload, raw))" "$SOURCE"
+          grep -Fq "function requestSessionToken(input, init = {})" "$SOURCE"
+          grep -Fq "const requestToken = requestSessionToken(input, init);" "$SOURCE"
+          grep -Fq "requestToken === currentToken" "$SOURCE"
+          grep -Fq "void inspectFetchSessionRejection(input, response, requestToken);" "$SOURCE"
+          grep -Fq "if (isSessionRejection(request.status, payload, raw, token))" "$SOURCE"
+          grep -Fq "invalidateProjectPulseSession(path, payload, raw, token);" "$SOURCE"
+          grep -Fq "if (!path || response?.status !== 401 || !requestToken) return;" "$SOURCE"
+          ! grep -Fq "invalidateProjectPulseSession(path, payload, raw);" "$SOURCE"
+          ! grep -Fq "if (!path || response?.status !== 401 || !storedSessionContext().token) return;" "$SOURCE"
           ! grep -Fq "projectPulsePostLoginRoute" "$SOURCE"
 
           (
@@ -157,7 +158,7 @@ jobs:
           echo "old_web_image=$OLD_WEB_IMAGE" >> "$GITHUB_OUTPUT"
           echo "CAPTURED_WEB_ROLLBACK_IMAGE=$OLD_WEB_IMAGE"
 
-      - name: Build exact session recovery web candidate
+      - name: Build exact login race-fix web candidate
         id: build
         shell: bash
         working-directory: release
@@ -168,7 +169,7 @@ jobs:
           WEB_DIGEST="$(
             ../control/scripts/build-pr55-acr-image.sh \
               '${{ vars.AZURE_ACR_NAME }}' \
-              "$WEB_REPOSITORY:global-session-invalidation-$TARGET_COMMIT" \
+              "$WEB_REPOSITORY:login-session-race-$TARGET_COMMIT" \
               deployment/containers/web/Dockerfile \
               .
           )"
@@ -177,12 +178,12 @@ jobs:
           echo "web_image=$WEB_IMAGE" >> "$GITHUB_OUTPUT"
           echo "IMMUTABLE_WEB_CANDIDATE=$WEB_IMAGE"
 
-      - name: Deploy session recovery web candidate only
+      - name: Deploy login race-fix web candidate only
         id: deploy_web
         shell: bash
         run: |
           set -Eeuo pipefail
-          SUFFIX="sessfix-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          SUFFIX="loginrace-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           REVISION='${{ vars.AZURE_WEB_APP }}'"--$SUFFIX"
           echo 'started=true' >> "$GITHUB_OUTPUT"
           echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
@@ -194,7 +195,7 @@ jobs:
             --revision-suffix "$SUFFIX" \
             --output none
 
-      - name: Wait for exact session recovery web revision
+      - name: Wait for exact login race-fix web revision
         shell: bash
         run: |
           bash control/scripts/wait-containerapp-ready-revision.sh \
@@ -203,7 +204,7 @@ jobs:
             '${{ steps.deploy_web.outputs.revision }}' \
             '${{ steps.build.outputs.web_image }}' 60 10
 
-      - name: Validate served global session recovery bundle
+      - name: Validate served login race-fix bundle
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -223,40 +224,40 @@ jobs:
           }
 
           for attempt in $(seq 1 30); do
-            BUSTER="sessfix-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${attempt}"
+            BUSTER="loginrace-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${attempt}"
             STATUS="$(curl --silent --show-error --location \
               --header 'Cache-Control: no-cache' \
               --header 'Pragma: no-cache' \
-              --output /tmp/session-index.html \
+              --output /tmp/login-race-index.html \
               --write-out '%{http_code}' \
               "$BASE_URL/?release_check=$BUSTER" || true)"
             LAST_STATUS="$STATUS"
 
             if [[ "$STATUS" == '200' ]]; then
-              JS_PATH="$(sed -nE 's/.*src="([^"]+\.js)".*/\1/p' /tmp/session-index.html | head -1)"
+              JS_PATH="$(sed -nE 's/.*src="([^"]+\.js)".*/\1/p' /tmp/login-race-index.html | head -1)"
               LAST_JS="$JS_PATH"
               if [[ -n "$JS_PATH" ]]; then
                 JS_URL="$(absolute_asset_url "$JS_PATH")"
                 JS_STATUS="$(curl --silent --show-error --location \
                   --header 'Cache-Control: no-cache' \
                   --header 'Pragma: no-cache' \
-                  --output /tmp/session-app.js \
+                  --output /tmp/login-race-app.js \
                   --write-out '%{http_code}' \
                   "$JS_URL?release_check=$BUSTER" || true)"
                 LAST_STATUS="html=$STATUS,js=$JS_STATUS"
 
                 if [[ "$JS_STATUS" == '200' ]] \
-                  && grep -Fq 'projectpulse-authoritative-session-invalidation-v1' /tmp/session-app.js \
-                  && grep -Fq 'projectpulse:session-invalidated' /tmp/session-app.js \
-                  && grep -Fq 'projectPulseSessionInvalidationStarted' /tmp/session-app.js \
-                  && grep -Fq 'session_required' /tmp/session-app.js \
-                  && grep -Fq 'projectPulseAuthSession' /tmp/session-app.js \
-                  && grep -Fq 'projectPulseViewAsUser' /tmp/session-app.js \
-                  && grep -Fq 'X-ProjectPulse-Session' /tmp/session-app.js \
-                  && grep -Fq '/api/admin/audit-history/events' /tmp/session-app.js \
-                  && grep -Fq 'Manager team scope' /tmp/session-app.js; then
+                  && grep -Fq 'projectpulse-authoritative-session-invalidation-v1' /tmp/login-race-app.js \
+                  && grep -Fq 'projectpulse:session-invalidated' /tmp/login-race-app.js \
+                  && grep -Fq 'session_required' /tmp/login-race-app.js \
+                  && grep -Fq 'projectPulseAuthSession' /tmp/login-race-app.js \
+                  && grep -Fq 'X-ProjectPulse-Session' /tmp/login-race-app.js \
+                  && grep -Fq 'X-Project-Pulse-Session' /tmp/login-race-app.js \
+                  && grep -Fq 'X-Session-Token' /tmp/login-race-app.js \
+                  && grep -Fq '/api/admin/audit-history/events' /tmp/login-race-app.js \
+                  && grep -Fq 'Manager team scope' /tmp/login-race-app.js; then
                   READY=true
-                  echo "GLOBAL_SESSION_RECOVERY_ASSETS_READY attempt=$attempt js=$JS_PATH"
+                  echo "LOGIN_SESSION_RACE_FIX_ASSETS_READY attempt=$attempt js=$JS_PATH"
                   break
                 fi
               fi
@@ -266,7 +267,7 @@ jobs:
           done
 
           [[ "$READY" == true ]] || {
-            echo "Global session recovery assets did not become ready: status=$LAST_STATUS js=$LAST_JS" >&2
+            echo "Login session race-fix assets did not become ready: status=$LAST_STATUS js=$LAST_JS" >&2
             exit 1
           }
 
@@ -279,15 +280,15 @@ jobs:
             exit 1
           }
 
-          echo 'GLOBAL_SESSION_INVALIDATION_WEB_VALIDATION=PASS'
+          echo 'LOGIN_SESSION_RACE_FIX_WEB_VALIDATION=PASS'
 
-      - name: Write global session deployment evidence
+      - name: Write login race-fix deployment evidence
         if: success()
         shell: bash
         run: |
           set -Eeuo pipefail
           mkdir -p evidence
-          cat > evidence/global-session-invalidation-test-deployment.json <<JSON
+          cat > evidence/login-session-race-fix-test-deployment.json <<JSON
           {
             "environment": "test",
             "releaseCommit": "${{ steps.release.outputs.target_commit }}",
@@ -295,6 +296,7 @@ jobs:
             "runId": "${{ github.run_id }}",
             "webImage": "${{ steps.build.outputs.web_image }}",
             "previousWebImage": "${{ steps.before.outputs.old_web_image }}",
+            "requestTokenCorrelation": "source-verified-and-exact-image-served",
             "apiDeployment": "unchanged",
             "migrations": "unchanged",
             "database": "unchanged",
@@ -304,12 +306,12 @@ jobs:
           }
           JSON
 
-      - name: Upload global session deployment evidence
+      - name: Upload login race-fix deployment evidence
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: global-session-invalidation-test-${{ github.run_id }}
-          path: evidence/global-session-invalidation-test-deployment.json
+          name: login-session-race-fix-test-${{ github.run_id }}
+          path: evidence/login-session-race-fix-test-deployment.json
           retention-days: 30
 
       - name: Roll back web image on failure
@@ -317,9 +319,9 @@ jobs:
         shell: bash
         run: |
           set +e
-          SUFFIX="sessrb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          SUFFIX="loginracerb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           ROLLBACK_REVISION='${{ vars.AZURE_WEB_APP }}'"--$SUFFIX"
-          echo 'Global session invalidation deployment failed. Restoring the captured immutable web image.' >&2
+          echo 'Login session race-fix deployment failed. Restoring the captured immutable web image.' >&2
 
           az containerapp update \
             -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
