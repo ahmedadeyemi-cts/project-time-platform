@@ -10,6 +10,58 @@ var assignedProjectId = Guid.Parse("11111111-1111-1111-1111-111111111111");
 var unassignedProjectId = Guid.Parse("22222222-2222-2222-2222-222222222222");
 var checks = 0;
 
+var roleAssignmentRoute = ScopedRolePolicyRules.RouteContract(
+    "/api/admin/users/roles",
+    HttpMethods.Post);
+Expect(
+    "MODULE_012_ROLE_ASSIGNMENT:POST_BOUNDARY",
+    roleAssignmentRoute is
+    {
+        ModuleCode: "012",
+        ActionCode: "ROLE_ASSIGN",
+        IsWrite: true
+    },
+    "role assignment must resolve to Module 012 ROLE_ASSIGN as a write action");
+
+var roleAssignmentTrailingSlashRoute = ScopedRolePolicyRules.RouteContract(
+    "/api/admin/users/roles/",
+    HttpMethods.Post);
+Expect(
+    "MODULE_012_ROLE_ASSIGNMENT:TRAILING_SLASH_POST_BOUNDARY",
+    roleAssignmentTrailingSlashRoute is
+    {
+        ModuleCode: "012",
+        ActionCode: "ROLE_ASSIGN",
+        IsWrite: true
+    },
+    "the trailing-slash role-assignment route must resolve to the same non-bypassable Module 012 write action");
+
+var roleAssignmentRepeatedSlashRoute = ScopedRolePolicyRules.RouteContract(
+    "/api/admin/users/roles///",
+    HttpMethods.Post);
+Expect(
+    "MODULE_012_ROLE_ASSIGNMENT:REPEATED_TRAILING_SLASH_POST_BOUNDARY",
+    roleAssignmentRepeatedSlashRoute is
+    {
+        ModuleCode: "012",
+        ActionCode: "ROLE_ASSIGN",
+        IsWrite: true
+    },
+    "repeated trailing slashes must not bypass the role-assignment authorization boundary");
+
+Expect(
+    "MODULE_012_ROLE_ASSIGNMENT:NON_BYPASSABLE",
+    ScopedRolePolicyRules.NonBypassableActions.Contains("ROLE_ASSIGN"),
+    "role assignment must be denied to non-Super-Administrator sessions by the central evaluator");
+Expect(
+    "MODULE_012_ROLE_ASSIGNMENT:READ_NOT_RECLASSIFIED",
+    ScopedRolePolicyRules.RouteContract("/api/admin/users/roles", HttpMethods.Get) is null,
+    "the legacy POST mutation boundary must not convert a nonexistent GET route into a role-policy read");
+Expect(
+    "MODULE_012_ROLE_ASSIGNMENT:TRAILING_SLASH_READ_NOT_RECLASSIFIED",
+    ScopedRolePolicyRules.RouteContract("/api/admin/users/roles/", HttpMethods.Get) is null,
+    "the trailing-slash path must not invent a GET role-policy route");
+
 var canonicalJsonRoutes = new[]
 {
     "/api/work-register/projects/documents/save",

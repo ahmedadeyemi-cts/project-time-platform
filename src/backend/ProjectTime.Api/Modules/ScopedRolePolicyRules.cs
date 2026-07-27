@@ -7,6 +7,7 @@ public static class ScopedRolePolicyRules
         {
             "TIME_DELETE_PERMANENT",
             "USER_IMPERSONATE",
+            "ROLE_ASSIGN",
             "SYSTEM_CONFIGURE",
             "AUDIT_BYPASS",
             "APPROVAL_DELETE_PERMANENT",
@@ -44,10 +45,15 @@ public static class ScopedRolePolicyRules
 
     public static ScopedRouteContract? RouteContract(string path, string method)
     {
-        var normalized = (path ?? string.Empty).ToLowerInvariant();
+        var normalized = NormalizeRoutePath(path);
         var isWrite = !HttpMethods.IsGet(method)
             && !HttpMethods.IsHead(method)
             && !HttpMethods.IsOptions(method);
+
+        if (isWrite && normalized == "/api/admin/users/roles")
+        {
+            return new ScopedRouteContract("012", "ROLE_ASSIGN", true);
+        }
 
         if (normalized.StartsWith("/api/timesheet")
             || normalized.StartsWith("/api/timesheets")
@@ -81,6 +87,16 @@ public static class ScopedRolePolicyRules
         }
 
         return null;
+    }
+
+    private static string NormalizeRoutePath(string? path)
+    {
+        var normalized = (path ?? string.Empty).Trim().ToLowerInvariant();
+        if (normalized.Length > 1)
+        {
+            normalized = normalized.TrimEnd('/');
+        }
+        return normalized;
     }
 
     public static string ResolveApprovalAction(

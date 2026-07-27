@@ -2,6 +2,7 @@ import { authoritativeApi } from './projectpulse-authoritative-api.js';
 
 const MARKER = '__projectPulseRuntimeDataCompatibilityInstalled';
 const RESPONSE_MARKER = 'projectpulse-authoritative-xhr-compatibility-v2';
+const ROLE_POLICY_SESSION_WAIT_MS = 3500;
 
 function requestMethod(input, init) {
   return String(init?.method || (input instanceof Request ? input.method : 'GET')).toUpperCase();
@@ -44,6 +45,21 @@ function expectedCollections(pathname) {
   if (pathname.endsWith('/users')) return ['users'];
   if (pathname.endsWith('/entries')) return ['assignments'];
   return [];
+}
+
+function rolePolicyModuleNumber(pathname) {
+  if (!pathname.includes('/role-policy/')) return '';
+  if (pathname.endsWith('/matrix')) return '037';
+  if (
+    pathname.endsWith('/summary')
+    || pathname.endsWith('/versions')
+    || pathname.includes('/role-policy/roles/')
+  ) return '012';
+  return '';
+}
+
+function rolePolicySessionWaitMs(pathname) {
+  return pathname.includes('/role-policy/') ? ROLE_POLICY_SESSION_WAIT_MS : undefined;
 }
 
 function looksLikeRequestTask(task = {}) {
@@ -152,11 +168,14 @@ if (typeof window !== 'undefined' && typeof window.fetch === 'function' && !wind
     const rewrittenUrl = new URL(originalUrl.toString());
     rewrittenUrl.pathname = rewrittenPath;
     const runtimePath = `${rewrittenUrl.pathname}${rewrittenUrl.search}`;
+    const moduleNumber = rolePolicyModuleNumber(rewrittenPath);
 
     try {
       let payload = await authoritativeApi(runtimePath, {
         method: 'GET',
-        requiredCollections: expectedCollections(rewrittenPath)
+        requiredCollections: expectedCollections(rewrittenPath),
+        moduleNumber,
+        sessionWaitMs: rolePolicySessionWaitMs(rewrittenPath)
       });
       if (rewrittenPath.endsWith('/entries')) payload = normalizePtcWorkspace(payload);
       publishRuntimeData(rewrittenPath, payload);
@@ -168,6 +187,7 @@ if (typeof window !== 'undefined' && typeof window.fetch === 'function' && !wind
         message: error?.message || `The authoritative request for ${rewrittenPath} failed.`,
         requestedPath: originalUrl.pathname,
         runtimePath: rewrittenPath,
+        moduleNumber: error?.diagnostic?.moduleNumber || moduleNumber || '',
         responseKeys: error?.diagnostic?.responseKeys || Object.keys(error?.payload || {}),
         diagnostic: error?.diagnostic || null
       };
