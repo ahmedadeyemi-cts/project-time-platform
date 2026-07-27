@@ -76,6 +76,11 @@ assert('NO_NAVIGATION_PRIVILEGE_EXPANSION', bridge.includes('decorateMoreLink')
   && !bridge.includes('PROJECTPULSE_MODULES.forEach((module) => dropdown')
   && !bridge.includes('appendChild(document.createElement(\'a\'))'),
 'More enhancement decorates rendered authorized links and does not invent additional access');
+assert('IDEMPOTENT_VISIBILITY_MUTATIONS', bridge.includes('if (!element.hidden) element.hidden = true;')
+  && bridge.includes("if (element.getAttribute(HIDDEN_ATTRIBUTE) !== 'true')")
+  && bridge.includes("if (element.getAttribute('aria-hidden') !== 'true')")
+  && bridge.includes('if (element.hidden) element.hidden = false;'),
+'repeated permission passes do not rewrite the same observed hidden state or create a MutationObserver loop');
 
 assert('MODULE_007_RETAINED', registry.includes("moduleNumber: '007'")
   && registry.includes("displayName: 'Approval, Export & Audit Workflow'")
