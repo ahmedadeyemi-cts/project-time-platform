@@ -22,6 +22,7 @@ const paths = {
   stableCss: 'src/frontend/project-time-web/src/admin-runtime-stability.css',
   theme: 'src/frontend/project-time-web/src/admin-experience-theme.js',
   themeCss: 'src/frontend/project-time-web/src/admin-experience-theme.css',
+  ownershipPrelude: 'src/frontend/project-time-web/src/react-dom-ownership-prelude.js',
   microsoftCompat: 'src/frontend/project-time-web/src/microsoft-integration-compatibility.js',
   microsoftCss: 'src/frontend/project-time-web/src/microsoft-integration-portal.css',
   mailUi: 'src/frontend/project-time-web/src/MicrosoftMailTransportReadinessPanel.jsx',
@@ -43,6 +44,7 @@ const stableOwner = read(paths.stableOwner);
 const stableCss = read(paths.stableCss);
 const theme = read(paths.theme);
 const themeCss = read(paths.themeCss);
+const ownershipPrelude = read(paths.ownershipPrelude);
 const microsoftCompat = read(paths.microsoftCompat);
 const microsoftCss = read(paths.microsoftCss);
 const mailUi = read(paths.mailUi);
@@ -93,14 +95,23 @@ check('AUDIT_MODULE010_CONSOLIDATION', stableOwner.includes('Synchronization his
   && microsoftCss.includes('.route-azure-admin .azure-sync-runs-card'),
 'Module 010 local sync history presentation is consolidated into Module 008');
 
+check('VIEW_AS_REACT_DOM_OWNERSHIP', main.includes("import './react-dom-ownership-prelude.js';")
+  && main.indexOf("import './react-dom-ownership-prelude.js';") < main.indexOf("import App from './App.Module001.g.jsx';")
+  && ownershipPrelude.includes('__projectPulseGlobalViewAsTopbarMountInstalled = true')
+  && ownershipPrelude.includes("'view-as-body-owned'")
+  && !/insertBefore|appendChild|removeChild|MutationObserver/.test(ownershipPrelude)
+  && stableCss.includes('#projectpulse-global-view-as:not([data-topbar-mounted="true"])'),
+'legacy View-As remains body-owned and cannot insert or reparent nodes inside the React top bar');
+
 check('NO_REACT_DOM_MUTATION_BRIDGES', !theme.includes('MutationObserver')
   && !theme.includes('node.remove()')
   && !theme.includes('removeChild(')
   && !microsoftCompat.includes('MutationObserver')
   && !microsoftCompat.includes('querySelectorAll(')
   && !microsoftCompat.includes('style.setProperty')
-  && !microsoftCompat.includes('.hidden ='),
-'compatibility bridges no longer insert, remove, hide, or move React-owned nodes');
+  && !microsoftCompat.includes('.hidden =')
+  && !/insertBefore|appendChild|removeChild|MutationObserver/.test(ownershipPrelude),
+'compatibility bridges no longer insert, remove, hide, move, or reparent React-owned nodes');
 
 check('THEME_ICON_NO_RELOAD', theme.includes("button.textContent = ''")
   && theme.includes("document.addEventListener('click', handleThemeClick, true)")
