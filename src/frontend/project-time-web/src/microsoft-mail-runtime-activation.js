@@ -2,6 +2,7 @@ const MARKER = '__projectPulseMailRuntimeActivationInstalled';
 const DOCUMENT_PATH = '/api/native-administration/065/document';
 const RUNTIME_PATH = '/api/microsoft-integration/mail-runtime';
 const CONFIG_PREFIX = 'PROJECTPULSE_MICROSOFT_INTEGRATION_JSON:';
+const STATUS_ID = 'projectpulse-microsoft-mail-runtime-status';
 
 function extractConfiguration(body) {
   try {
@@ -48,6 +49,23 @@ function headersFor(input, init) {
   return headers;
 }
 
+function presentStatus(detail) {
+  window.dispatchEvent(new CustomEvent('projectpulse:microsoft-mail-runtime-status', { detail }));
+  const portal = document.querySelector('.microsoft-integration-portal');
+  if (!portal) return;
+  let status = document.getElementById(STATUS_ID);
+  if (!status) {
+    status = document.createElement('div');
+    status.id = STATUS_ID;
+    status.setAttribute('role', 'status');
+    const heading = portal.querySelector('.microsoft-integration-heading');
+    if (heading?.nextSibling) portal.insertBefore(status, heading.nextSibling);
+    else portal.prepend(status);
+  }
+  status.className = `microsoft-integration-banner ${detail.runtimeActivated ? 'success' : ''}`.trim();
+  status.textContent = detail.message;
+}
+
 if (typeof window !== 'undefined' && !window[MARKER]) {
   const previousFetch = window.fetch.bind(window);
   window.fetch = async (input, init = {}) => {
@@ -58,25 +76,39 @@ if (typeof window !== 'undefined' && !window[MARKER]) {
     const response = await previousFetch(input, init);
     if (!configuration || !response.ok) return response;
 
-    const applied = await previousFetch(RUNTIME_PATH, {
-      method: 'PUT',
-      cache: 'no-store',
-      headers: headersFor(input, init),
-      body: JSON.stringify(configuration)
-    });
-    if (applied.ok) return response;
+    try {
+      const applied = await previousFetch(RUNTIME_PATH, {
+        method: 'PUT',
+        cache: 'no-store',
+        headers: headersFor(input, init),
+        body: JSON.stringify(configuration)
+      });
+      let payload = {};
+      try { payload = await applied.json(); } catch { /* sanitized fallback */ }
+      presentStatus({
+        status: payload?.status || (applied.ok ? 'mail_runtime_applied' : 'mail_runtime_activation_pending'),
+        message: payload?.message || (applied.ok
+          ? 'Mail settings were saved and applied to the running API.'
+          : 'Mail settings were saved. Runtime activation is still pending.'),
+        persistedConfiguration: true,
+        runtimeActivated: Boolean(applied.ok && payload?.runtimeReady !== false),
+        runtimeReady: Boolean(payload?.runtimeReady),
+        secretValuesReturned: false
+      });
+    } catch {
+      presentStatus({
+        status: 'mail_runtime_activation_pending',
+        message: 'Mail settings were saved. Runtime activation could not be confirmed yet.',
+        persistedConfiguration: true,
+        runtimeActivated: false,
+        runtimeReady: false,
+        secretValuesReturned: false
+      });
+    }
 
-    let payload = {};
-    try { payload = await applied.json(); } catch { /* no-op */ }
-    return new Response(JSON.stringify({
-      status: 'mail_runtime_activation_failed',
-      message: payload?.message || 'Mail settings were saved, but runtime activation failed.',
-      persistedConfiguration: true,
-      runtimeActivated: false
-    }), {
-      status: applied.status >= 400 ? applied.status : 502,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    // The authoritative document save succeeded. Runtime activation status is
+    // reported separately and must never replace or invalidate that response.
+    return response;
   };
   window[MARKER] = true;
 }
