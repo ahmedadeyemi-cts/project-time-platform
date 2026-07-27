@@ -1,3 +1,13 @@
+#projectpulse-global-view-as:not([data-topbar-mounted="true"]) {
+  position: fixed !important;
+  top: 4.85rem !important;
+  left: 50% !important;
+  right: auto !important;
+  transform: translateX(-50%);
+  z-index: 9998 !important;
+  max-width: min(620px, calc(100vw - 2rem)) !important;
+}
+
 body.projectpulse-route-audit-history .admin-runtime-stability-route-root {
   position: relative;
   z-index: 2;
@@ -57,6 +67,13 @@ body.projectpulse-route-audit-history .app-shell.route-audit-history {
 }
 
 @media (max-width: 900px) {
+  #projectpulse-global-view-as:not([data-topbar-mounted="true"]) {
+    position: static !important;
+    transform: none;
+    max-width: calc(100vw - 1rem) !important;
+    margin: 0.5rem !important;
+  }
+
   body.projectpulse-route-audit-history .admin-runtime-stability-route-root,
   .module010-audit-consolidation {
     width: min(100% - 24px, 1480px);
