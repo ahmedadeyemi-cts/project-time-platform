@@ -4,12 +4,29 @@ set -Eeuo pipefail
 EXPECTED_RELEASE_COMMIT="c38edbb63f50bf736092e3f71c581eead5bdb13a"
 RELEASE_ROOT="${1:-}"
 DATABASE_URL="${PROJECTPULSE_TEST_DATABASE_URL:-}"
+VERIFY_SQL=""
 
 fail() { echo "ERROR: $*" >&2; exit 1; }
+cleanup() {
+  if [[ -n "$VERIFY_SQL" && -f "$VERIFY_SQL" ]]; then
+    rm -f "$VERIFY_SQL"
+  fi
+}
+terminate() {
+  local code="$1"
+  trap - EXIT INT TERM
+  cleanup
+  exit "$code"
+}
+trap cleanup EXIT
+trap 'terminate 130' INT
+trap 'terminate 143' TERM
+
 [[ -n "$RELEASE_ROOT" ]] || fail "Usage: $0 <release-root>"
 [[ -n "$DATABASE_URL" ]] || fail "PROJECTPULSE_TEST_DATABASE_URL is not configured."
 command -v psql >/dev/null || fail "psql is required."
 command -v sha256sum >/dev/null || fail "sha256sum is required."
+command -v mktemp >/dev/null || fail "mktemp is required."
 
 if [[ -d "$RELEASE_ROOT/.git" ]]; then
   ACTUAL_RELEASE_COMMIT="$(git -C "$RELEASE_ROOT" rev-parse HEAD)"
@@ -43,9 +60,14 @@ done
 ) || fail "Migration checksum validation failed."
 echo "MICROSOFT_INTEGRATION_MIGRATION_CHECKSUMS=VERIFIED"
 
+table_exists() {
+  local table="$1"
+  [[ "$(psql "$DATABASE_URL" --no-psqlrc -At --set=ON_ERROR_STOP=1 --command="SELECT to_regclass('public.$table') IS NOT NULL;")" == "t" ]]
+}
+
 count_if_table() {
   local table="$1"
-  if [[ "$(psql "$DATABASE_URL" --no-psqlrc -At --set=ON_ERROR_STOP=1 --command="SELECT to_regclass('public.$table') IS NOT NULL;")" == "t" ]]; then
+  if table_exists "$table"; then
     psql "$DATABASE_URL" --no-psqlrc -At --set=ON_ERROR_STOP=1 --command="SELECT COUNT(*) FROM $table;"
   else
     printf '0\n'
@@ -69,13 +91,11 @@ read -r USERS_BEFORE ROLES_BEFORE DOCUMENTS_BEFORE <<<"$(
 GRAPH_SECRET_ROWS_BEFORE="$(count_if_table microsoft_integration_client_secrets)"
 SSO_SECRET_ROWS_BEFORE="$(count_if_table microsoft_integration_sso_client_secrets)"
 AUDIT_ROWS_BEFORE="$(count_if_table microsoft_integration_audit_events)"
-CARRYOVER_AUDIT_ROWS_BEFORE="$(
-  psql "$DATABASE_URL" --no-psqlrc -At --set=ON_ERROR_STOP=1 --command="
-    SELECT CASE
-      WHEN to_regclass('public.microsoft_integration_audit_events') IS NULL THEN 0
-      ELSE (SELECT COUNT(*) FROM microsoft_integration_audit_events WHERE action_code='LEGACY_CONFIGURATION_CARRIED_OVER')
-    END;"
-)"
+if table_exists microsoft_integration_audit_events; then
+  CARRYOVER_AUDIT_ROWS_BEFORE="$(psql "$DATABASE_URL" --no-psqlrc -At --set=ON_ERROR_STOP=1 --command="SELECT COUNT(*) FROM microsoft_integration_audit_events WHERE action_code='LEGACY_CONFIGURATION_CARRIED_OVER';")"
+else
+  CARRYOVER_AUDIT_ROWS_BEFORE=0
+fi
 MODULE010_ROWS_BEFORE="$(count_if_table azure_entra_settings)"
 MODULE067_DOCUMENTS_BEFORE="$(psql "$DATABASE_URL" --no-psqlrc -At --set=ON_ERROR_STOP=1 --command="SELECT COUNT(*) FROM projectpulse_native_admin_documents WHERE module_number='067' AND document_key='configuration';")"
 MODULE010_SOURCE_HASH_BEFORE="$(source_hash "SELECT to_jsonb(settings) FROM azure_entra_settings settings ORDER BY settings.updated_at DESC NULLS LAST, settings.created_at DESC NULLS LAST LIMIT 1")"
@@ -93,6 +113,7 @@ for value in "$USERS_BEFORE" "$ROLES_BEFORE" "$DOCUMENTS_BEFORE" "$GRAPH_SECRET_
 done
 [[ "$MODULE010_SOURCE_HASH_BEFORE" =~ ^[0-9a-f]{32}$ ]] || fail "Module 010 source hash is invalid."
 [[ "$MODULE067_SOURCE_HASH_BEFORE" =~ ^[0-9a-f]{32}$ ]] || fail "Module 067 source hash is invalid."
+[[ "$MODULE065_MARKER_BEFORE" == "t" || "$MODULE065_MARKER_BEFORE" == "f" ]] || fail "Module 065 marker state is invalid."
 
 echo "MICROSOFT_INTEGRATION_EVIDENCE_BASELINE graphSecrets=$GRAPH_SECRET_ROWS_BEFORE ssoSecrets=$SSO_SECRET_ROWS_BEFORE audit=$AUDIT_ROWS_BEFORE carryoverAudit=$CARRYOVER_AUDIT_ROWS_BEFORE module010Rows=$MODULE010_ROWS_BEFORE module067Documents=$MODULE067_DOCUMENTS_BEFORE module065Marker=$MODULE065_MARKER_BEFORE"
 
@@ -116,50 +137,26 @@ if [[ "$MODULE065_MARKER_BEFORE" != "t" ]]; then
 fi
 MAX_DOCUMENTS_AFTER=$((DOCUMENTS_BEFORE + 1))
 
-psql "$DATABASE_URL" --no-psqlrc --set=ON_ERROR_STOP=1 \
-  --set=users_before="$USERS_BEFORE" \
-  --set=roles_before="$ROLES_BEFORE" \
-  --set=documents_before="$DOCUMENTS_BEFORE" \
-  --set=max_documents_after="$MAX_DOCUMENTS_AFTER" \
-  --set=graph_secret_rows_before="$GRAPH_SECRET_ROWS_BEFORE" \
-  --set=sso_secret_rows_before="$SSO_SECRET_ROWS_BEFORE" \
-  --set=expected_audit_rows_after="$EXPECTED_AUDIT_ROWS_AFTER" \
-  --set=expected_carryover_audit_rows_after="$EXPECTED_CARRYOVER_AUDIT_ROWS_AFTER" \
-  --set=module010_rows_before="$MODULE010_ROWS_BEFORE" \
-  --set=module067_documents_before="$MODULE067_DOCUMENTS_BEFORE" \
-  --set=module010_source_hash_before="$MODULE010_SOURCE_HASH_BEFORE" \
-  --set=module067_source_hash_before="$MODULE067_SOURCE_HASH_BEFORE" \
-  --command="
-CREATE TEMP TABLE projectpulse_microsoft_verification_baseline (
-  users_before bigint,
-  roles_before bigint,
-  documents_before bigint,
-  max_documents_after bigint,
-  graph_secret_rows_before bigint,
-  sso_secret_rows_before bigint,
-  expected_audit_rows_after bigint,
-  expected_carryover_audit_rows_after bigint,
-  module010_rows_before bigint,
-  module067_documents_before bigint,
-  module010_source_hash_before text,
-  module067_source_hash_before text
-);
-INSERT INTO projectpulse_microsoft_verification_baseline VALUES (
-  :'users_before'::bigint,
-  :'roles_before'::bigint,
-  :'documents_before'::bigint,
-  :'max_documents_after'::bigint,
-  :'graph_secret_rows_before'::bigint,
-  :'sso_secret_rows_before'::bigint,
-  :'expected_audit_rows_after'::bigint,
-  :'expected_carryover_audit_rows_after'::bigint,
-  :'module010_rows_before'::bigint,
-  :'module067_documents_before'::bigint,
-  :'module010_source_hash_before',
-  :'module067_source_hash_before'
-);
+VERIFY_SQL="$(mktemp)"
+cat > "$VERIFY_SQL" <<SQL
+CREATE TEMP TABLE projectpulse_microsoft_verification_baseline AS
+SELECT
+  ${USERS_BEFORE}::bigint AS users_before,
+  ${ROLES_BEFORE}::bigint AS roles_before,
+  ${DOCUMENTS_BEFORE}::bigint AS documents_before,
+  ${MAX_DOCUMENTS_AFTER}::bigint AS max_documents_after,
+  ${GRAPH_SECRET_ROWS_BEFORE}::bigint AS graph_secret_rows_before,
+  ${SSO_SECRET_ROWS_BEFORE}::bigint AS sso_secret_rows_before,
+  ${EXPECTED_AUDIT_ROWS_AFTER}::bigint AS expected_audit_rows_after,
+  ${EXPECTED_CARRYOVER_AUDIT_ROWS_AFTER}::bigint AS expected_carryover_audit_rows_after,
+  ${MODULE010_ROWS_BEFORE}::bigint AS module010_rows_before,
+  ${MODULE067_DOCUMENTS_BEFORE}::bigint AS module067_documents_before,
+  '${MODULE010_SOURCE_HASH_BEFORE}'::text AS module010_source_hash_before,
+  '${MODULE067_SOURCE_HASH_BEFORE}'::text AS module067_source_hash_before;
+SQL
 
-DO \$verify_microsoft_connection_carryover\$
+cat >> "$VERIFY_SQL" <<'SQL'
+DO $verify_microsoft_connection_carryover$
 DECLARE
   baseline record;
   users_after bigint;
@@ -346,5 +343,8 @@ BEGIN
     RAISE EXCEPTION 'Module 065 Microsoft connection ownership metadata is incomplete.';
   END IF;
 END
-\$verify_microsoft_connection_carryover\$;
-SELECT 'MICROSOFT_INTEGRATION_CONNECTION_DATABASE=APPLIED_OR_VERIFIED';"
+$verify_microsoft_connection_carryover$;
+SELECT 'MICROSOFT_INTEGRATION_CONNECTION_DATABASE=APPLIED_OR_VERIFIED';
+SQL
+
+psql "$DATABASE_URL" --no-psqlrc --set=ON_ERROR_STOP=1 --file="$VERIFY_SQL"
