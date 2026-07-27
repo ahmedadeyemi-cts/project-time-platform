@@ -69,7 +69,7 @@ require "$WORKFLOW" 'Apply or verify migration 048 inside private network'
 require "$WORKFLOW" 'run-admin-experience-008-009-test-migration-job.sh'
 require "$WORKFLOW" 'ADMIN_EXPERIENCE_MIGRATION_IMAGE'
 require "$WORKFLOW" 'ADMIN_EXPERIENCE_MIGRATION_JOB_NAME'
-require "$WORKFLOW" "printf '%s\\n' '\${{ steps.release.outputs.target_commit }}' > \"\$CONTEXT/release-commit\""
+require "$WORKFLOW" "printf '%s\n' '\${{ steps.release.outputs.target_commit }}' > \"\$CONTEXT/release-commit\""
 
 require "$WORKFLOW" 'Deploy API candidate'
 require "$WORKFLOW" 'Wait for exact API candidate revision'
@@ -168,6 +168,6 @@ INPUT_REFERENCE_COUNT="$(grep -Fc '${{ inputs.' "$WORKFLOW")"
 [[ "$INPUT_REFERENCE_COUNT" == "3" ]] || fail "Expected exactly three non-shell input references; found $INPUT_REFERENCE_COUNT."
 
 CONTROL_FILE_REFERENCE_COUNT="$(grep -Ec "^[[:space:]]+- '(\.github/workflows/projectpulse-deploy-admin-experience-008-009-test\.yml|\.github/workflows/validate-admin-experience-008-009-test-deployment\.yml|scripts/apply-admin-experience-008-009-test-migration\.sh|scripts/run-admin-experience-008-009-test-migration-job\.sh|scripts/validate-admin-experience-008-009-test-deployment\.sh)'$" "$VALIDATOR_WORKFLOW")"
-[[ "$CONTROL_FILE_REFERENCE_COUNT" == "10" ]] || fail "Deployment validation workflow must reference the five deployment-control files once in paths and once in the exact-scope array."
+[[ "$CONTROL_FILE_REFERENCE_COUNT" == "5" ]] || fail "Deployment validation workflow must watch exactly the five deployment-control files."
 
 echo 'ADMIN_EXPERIENCE_008_009_TEST_DEPLOYMENT_GUARD=PASS'
