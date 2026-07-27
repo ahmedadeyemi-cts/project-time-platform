@@ -116,9 +116,6 @@ public static class MicrosoftMailRuntimeConfigurationModule
             }
             : "locked";
 
-        // The shared dispatcher currently supports exact `smtp` but not Graph.
-        // Unsupported or non-live states remain outbox-only rather than silently
-        // falling through to another provider.
         var sharedProvider = liveDeliveryEnabled && configuration.ProviderTarget == "smtp_relay"
             ? "smtp"
             : "outbox_only";
@@ -138,7 +135,7 @@ public static class MicrosoftMailRuntimeConfigurationModule
             "PROJECTPULSE_M365_CLIENT_SECRET",
             string.IsNullOrWhiteSpace(servicesSecret) ? null : servicesSecret);
 
-        var smtpCredential = SmtpCredential(configuration.EnvironmentMode);
+        var smtpCredential = ResolveSmtpCredential(configuration.EnvironmentMode);
         var servicesSecretAvailable = !string.IsNullOrWhiteSpace(servicesSecret);
         var smtpCredentialAvailable = !string.IsNullOrWhiteSpace(smtpCredential.Username)
             && !string.IsNullOrWhiteSpace(smtpCredential.Password);
@@ -394,7 +391,7 @@ public static class MicrosoftMailRuntimeConfigurationModule
             activeMode == "test" ? Environment.GetEnvironmentVariable("PROJECTPULSE_ENTRA_CLIENT_SECRET") : string.Empty);
     }
 
-    private static SmtpCredential SmtpCredential(string environmentMode)
+    private static SmtpCredential ResolveSmtpCredential(string environmentMode)
     {
         var activeMode = NormalizeEnvironment(Environment.GetEnvironmentVariable("PROJECTPULSE_ENTRA_MODE"));
         var prefix = environmentMode == "production" ? "PROJECTPULSE_PRODUCTION_SMTP_" : "PROJECTPULSE_TEST_SMTP_";
