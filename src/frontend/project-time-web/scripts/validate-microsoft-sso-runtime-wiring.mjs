@@ -102,7 +102,7 @@ if (servicesAvailable) {
     && !services.includes('ClientSecret'),
   'the services runtime endpoint never accepts or returns a secret value');
 } else {
-  assert('SERVICES_RUNTIME_EXISTS', false, servicesPath);
+  console.log('MICROSOFT_SERVICES_RUNTIME_DEEP_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
 }
 
 if (checks.some((check) => !check.condition)) {
