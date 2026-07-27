@@ -1,3 +1,4 @@
+.theme-toggle.projectpulse-theme-control,
 [data-projectpulse-theme-control='true'] {
   position: fixed !important;
   left: 72px !important;
