@@ -1,16 +1,17 @@
-name: Validate Authoritative Session Transport and Theme
+name: Validate Module 008 Stability, Authoritative Fallback and Theme Dock
 
 on:
   push:
     branches:
-      - 'hotfix/authoritative-session-transport-and-theme-*'
+      - 'hotfix/module-008-stable-route-authoritative-fallback-theme-dock-*'
   pull_request:
     paths:
       - 'src/frontend/project-time-web/src/projectpulse-authoritative-api.js'
+      - 'src/frontend/project-time-web/src/AuditHistoryPanel.jsx'
+      - 'src/frontend/project-time-web/src/admin-experience-theme.css'
       - 'src/frontend/project-time-web/scripts/validate-global-session-invalidation.mjs'
       - 'src/frontend/project-time-web/scripts/test-authoritative-session-transport-theme-runtime.mjs'
-      - 'src/frontend/project-time-web/src/admin-experience-theme.js'
-      - 'src/frontend/project-time-web/src/admin-experience-theme.css'
+      - 'src/frontend/project-time-web/scripts/validate-modules-008-009-admin-experience.mjs'
       - '.github/workflows/validate-global-session-invalidation.yml'
 
 permissions:
@@ -19,7 +20,7 @@ permissions:
 
 jobs:
   validate:
-    name: Validate safe session transport and modern theme control
+    name: Validate stable Module 008, native response recovery and icon dock
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -40,8 +41,9 @@ jobs:
             '.github/workflows/validate-global-session-invalidation.yml'
             'src/frontend/project-time-web/scripts/validate-global-session-invalidation.mjs'
             'src/frontend/project-time-web/scripts/test-authoritative-session-transport-theme-runtime.mjs'
+            'src/frontend/project-time-web/scripts/validate-modules-008-009-admin-experience.mjs'
             'src/frontend/project-time-web/src/projectpulse-authoritative-api.js'
-            'src/frontend/project-time-web/src/admin-experience-theme.js'
+            'src/frontend/project-time-web/src/AuditHistoryPanel.jsx'
             'src/frontend/project-time-web/src/admin-experience-theme.css'
           )
 
@@ -61,13 +63,13 @@ jobs:
             }
           done
 
-          PROTECTED='^(src/frontend/project-time-web/src/(App|main|UserAdministrationPanel|AuditHistoryPanel|MicrosoftIntegrationPortal)\.jsx|src/backend/|database/|\.github/workflows/projectpulse-deploy-|scripts/validate-runtime-direct-timer-recovery-test-deployment\.sh)'
+          PROTECTED='^(src/frontend/project-time-web/src/(App|main|UserAdministrationPanel|MicrosoftIntegrationPortal)\.jsx|src/backend/|database/|\.github/workflows/projectpulse-deploy-|scripts/validate-runtime-direct-timer-recovery-test-deployment\.sh)'
           if printf '%s\n' "${CHANGED[@]}" | grep -E "$PROTECTED"; then
             echo 'Protected module, backend, migration, shared entry point, or deployment source changed.' >&2
             exit 1
           fi
 
-          echo 'AUTHORITATIVE_SESSION_THEME_SOURCE_ISOLATION=PASSED'
+          echo 'MODULE_008_NATIVE_FALLBACK_THEME_SOURCE_ISOLATION=PASSED'
 
       - uses: actions/setup-dotnet@v4
         with:
@@ -86,15 +88,15 @@ jobs:
         working-directory: src/frontend/project-time-web
         run: npm ci --no-audit --no-fund
 
-      - name: Validate authoritative session transport
+      - name: Validate authoritative native fallback
         working-directory: src/frontend/project-time-web
         run: npm run validate:global-session-invalidation
 
-      - name: Execute session and theme runtime regression harness
+      - name: Execute response recovery and theme runtime harness
         working-directory: src/frontend/project-time-web
         run: node scripts/test-authoritative-session-transport-theme-runtime.mjs
 
-      - name: Validate Modules 008 and 009 theme contract
+      - name: Validate stable Module 008 and unchanged Module 009 contract
         working-directory: src/frontend/project-time-web
         run: npm run validate:modules008009
 
@@ -102,7 +104,7 @@ jobs:
         working-directory: src/frontend/project-time-web
         run: npm run build
 
-      - name: Publish exact-commit session and theme status
+      - name: Publish exact-commit stability status
         if: always()
         shell: bash
         env:
@@ -116,15 +118,15 @@ jobs:
           set -Eeuo pipefail
           if [[ "$JOB_STATUS" == success ]]; then
             STATE=success
-            DESCRIPTION='Executable session transport and modern theme regression checks passed.'
+            DESCRIPTION='Stable Module 008, native response recovery and icon dock passed.'
           else
             STATE=failure
-            DESCRIPTION='Authoritative session transport or theme runtime validation failed.'
+            DESCRIPTION='Module 008 stability, response recovery or theme dock validation failed.'
           fi
 
           PAYLOAD="$(jq -nc \
             --arg state "$STATE" \
-            --arg context 'session-theme/authoritative-transport' \
+            --arg context 'module-008/native-fallback-theme-dock' \
             --arg description "$DESCRIPTION" \
             --arg target_url "$RUN_URL" \
             '{state:$state,context:$context,description:$description,target_url:$target_url}')"

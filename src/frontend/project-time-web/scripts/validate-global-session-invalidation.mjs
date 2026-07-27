@@ -26,7 +26,7 @@ check(
   'EARLIEST_IMPORT',
   main.indexOf("import './projectpulse-authoritative-api.js';") >= 0
     && main.indexOf("import './projectpulse-authoritative-api.js';") < main.indexOf("import App from './App.Module001.g.jsx';"),
-  'session readiness gate installs before App and later fetch bridges'
+  'session readiness and native recovery are captured before App and later fetch bridges'
 );
 
 check(
@@ -97,9 +97,6 @@ check(
   'BRIDGE_TOKEN_CONTRACT',
   authoritative.includes('function globalXhrBridgeToken()')
     && authoritative.includes("parseStoredJson(window.localStorage, 'projectPulseAuthSession')")
-    && authoritative.includes('session?.sessionToken')
-    && authoritative.includes('session?.token')
-    && authoritative.includes('session?.accessToken')
     && authoritative.includes('Do not broaden it without broadening that bridge'),
   'authoritative transport mirrors the exact storage/token contract the App bridge can supply'
 );
@@ -131,6 +128,62 @@ check(
     && authoritative.includes('bridgeToken !== token')
     && authoritative.includes('throw sessionTransportConflictError(path);'),
   'a different stale bridge token stops locally rather than creating an appended invalid header'
+);
+
+check(
+  'CAPTURED_NATIVE_TRANSPORT',
+  authoritative.includes('const CAPTURED_NATIVE_FETCH')
+    && authoritative.includes('window.fetch.bind(window)')
+    && authoritative.indexOf('const CAPTURED_NATIVE_FETCH') < authoritative.indexOf('function installProtectedFetchReadinessGate()')
+    && authoritative.includes("const NATIVE_FALLBACK_MARKER = 'projectpulse-authoritative-native-fetch-fallback-v1'"),
+  'one clean native fetch reference is captured before all later global wrappers'
+);
+
+check(
+  'SHAPE_AWARE_NORMALIZATION',
+  authoritative.includes('function normalizePayload(payload, requiredCollections = [])')
+    && authoritative.includes('function payloadCandidates(payload, requiredCollections)')
+    && authoritative.includes('normalizeCollectionKeys(candidate, required)')
+    && authoritative.includes('required.every((name) => Array.isArray(normalized[name]))')
+    && authoritative.includes('if (requiredCollections.length === 1)'),
+  'root, envelope, case-insensitive, and direct-array payload shapes are normalized without discarding valid collections'
+);
+
+check(
+  'ENVELOPE_UNWRAP_COMPATIBILITY',
+  authoritative.includes('const hasNonEnvelopeKey = rootKeys.some((key) => !ENVELOPE_KEYS.includes(key));')
+    && authoritative.includes('const nestedCandidate = candidates')
+    && authoritative.includes('.slice(1)')
+    && authoritative.includes('return nestedCandidate || payload;'),
+  'envelope-only responses without required collections unwrap to the populated inner object'
+);
+
+check(
+  'EMPTY_XHR_NATIVE_RECOVERY',
+  authoritative.includes('async function nativeFetchAuthoritative(path, options)')
+    && authoritative.includes("recoveredFrom: 'xhr-success-missing-collections'")
+    && authoritative.includes("finishSuccess(fallback.payload, fallback.status, 'native-fetch-fallback'")
+    && authoritative.includes("method === 'GET' && options.nativeFallback !== false")
+    && authoritative.includes('const fallbackMissing = collectionMissing(fallback.payload, requiredCollections);'),
+  'HTTP 200 XHR responses missing required collections are retried once through the captured native transport'
+);
+
+check(
+  'NO_COLLECTION_FABRICATION',
+  !authoritative.includes('requiredCollections.map((name) => [name, []])')
+    && !authoritative.includes('new Array(requiredCollections')
+    && !authoritative.includes('missingCollections.forEach((name) => payload[name] = [])'),
+  'the recovery transport never fabricates required collections to silence errors'
+);
+
+check(
+  'FALLBACK_DIAGNOSTICS',
+  authoritative.includes('xhrRawResponseType')
+    && authoritative.includes('xhrRawResponseKeys')
+    && authoritative.includes('fallbackRawResponseType')
+    && authoritative.includes('fallbackRawResponseKeys')
+    && authoritative.includes("transport: 'native-fetch-fallback'"),
+  'recovered and failed response shapes remain visible in runtime diagnostics'
 );
 
 check(

@@ -2,6 +2,7 @@ import { currentProjectPulseRoute, moduleForRoute } from './module-availability-
 
 const DIAGNOSTIC_EVENT = 'projectpulse:authoritative-api-diagnostic';
 const DIAGNOSTIC_MARKER = 'projectpulse-authoritative-xhr-v1';
+const NATIVE_FALLBACK_MARKER = 'projectpulse-authoritative-native-fetch-fallback-v1';
 const SESSION_NOT_READY_STATUS = 425;
 const SESSION_WAIT_MS = 1200;
 const SESSION_KEYS = Object.freeze([
@@ -17,6 +18,23 @@ const PUBLIC_API_PREFIXES = Object.freeze([
   '/api/app-config',
   '/api/config'
 ]);
+const ENVELOPE_KEYS = Object.freeze([
+  'data',
+  'Data',
+  'result',
+  'Result',
+  'value',
+  'Value',
+  'payload',
+  'Payload'
+]);
+
+// Captured before App.jsx and runtime compatibility layers install their wrappers.
+// This gives the authoritative client one clean recovery path if a browser XHR
+// completes with HTTP 200 but exposes an empty or envelope-corrupted JSON shape.
+const CAPTURED_NATIVE_FETCH = typeof window !== 'undefined' && typeof window.fetch === 'function'
+  ? window.fetch.bind(window)
+  : null;
 
 function parseStoredJson(storage, key) {
   try {
@@ -81,15 +99,85 @@ function activeModuleNumber(explicitModuleNumber = '') {
   }
 }
 
-function unwrap(payload) {
-  let current = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : {};
-  for (let depth = 0; depth < 3; depth += 1) {
-    const key = ['data', 'Data', 'result', 'Result', 'value', 'Value', 'payload', 'Payload']
-      .find((candidate) => current?.[candidate] && typeof current[candidate] === 'object' && !Array.isArray(current[candidate]));
-    if (!key) break;
-    current = current[key];
+function isObjectRecord(value) {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function normalizeCollectionKeys(candidate, requiredCollections) {
+  if (!isObjectRecord(candidate)) return {};
+  if (!requiredCollections.length) return candidate;
+
+  const normalized = { ...candidate };
+  const actualKeys = Object.keys(candidate);
+
+  for (const required of requiredCollections) {
+    if (Array.isArray(normalized[required])) continue;
+    const match = actualKeys.find((key) => key.toLowerCase() === required.toLowerCase());
+    if (match && Array.isArray(candidate[match])) normalized[required] = candidate[match];
   }
-  return current;
+
+  return normalized;
+}
+
+function payloadCandidates(payload, requiredCollections) {
+  const candidates = [];
+  const visited = new Set();
+
+  const visit = (value, depth = 0) => {
+    if (Array.isArray(value)) {
+      if (requiredCollections.length === 1) {
+        candidates.push({ [requiredCollections[0]]: value });
+      }
+      return;
+    }
+
+    if (!isObjectRecord(value) || visited.has(value)) return;
+    visited.add(value);
+    candidates.push(value);
+
+    if (depth >= 3) return;
+    for (const key of ENVELOPE_KEYS) {
+      if (value[key] !== undefined && value[key] !== null) visit(value[key], depth + 1);
+    }
+  };
+
+  visit(payload);
+  return candidates;
+}
+
+function normalizePayload(payload, requiredCollections = []) {
+  const required = Array.isArray(requiredCollections)
+    ? requiredCollections.filter(Boolean)
+    : [];
+  const candidates = payloadCandidates(payload, required);
+
+  if (required.length) {
+    for (const candidate of candidates) {
+      const normalized = normalizeCollectionKeys(candidate, required);
+      if (required.every((name) => Array.isArray(normalized[name]))) return normalized;
+    }
+  }
+
+  if (isObjectRecord(payload)) {
+    const rootKeys = Object.keys(payload);
+    const hasNonEnvelopeKey = rootKeys.some((key) => !ENVELOPE_KEYS.includes(key));
+    if (hasNonEnvelopeKey || candidates.length === 0) return payload;
+
+    // The root is only an envelope. Preserve the previous unwrap behavior by
+    // returning the first populated nested object rather than the envelope root.
+    const nestedCandidate = candidates
+      .slice(1)
+      .find((candidate) => Object.keys(candidate).length > 0);
+    return nestedCandidate || payload;
+  }
+
+  return candidates.find((candidate) => Object.keys(candidate).length > 0) || {};
+}
+
+function payloadType(value) {
+  if (Array.isArray(value)) return 'array';
+  if (value === null) return 'null';
+  return typeof value;
 }
 
 function normalizeApiPath(input) {
@@ -278,6 +366,50 @@ function sessionTransportConflictError(path) {
   return error;
 }
 
+async function nativeFetchAuthoritative(path, options) {
+  if (!CAPTURED_NATIVE_FETCH) {
+    const error = new Error('The browser native fetch transport is unavailable.');
+    error.code = 'native_fetch_unavailable';
+    throw error;
+  }
+
+  const headers = applySessionHeaders(new Headers(options.headers || {}), options.token);
+  headers.set('Accept', 'application/json');
+  headers.set('Cache-Control', 'no-cache, no-store, max-age=0');
+  headers.set('Pragma', 'no-cache');
+  headers.set('X-ProjectPulse-Authoritative-Client', NATIVE_FALLBACK_MARKER);
+  if (options.moduleNumber) headers.set('X-ProjectPulse-Module-Number', options.moduleNumber);
+  if (options.viewAsUserId) headers.set('X-ProjectPulse-View-As-User', options.viewAsUserId);
+  if (options.body != null) headers.set('Content-Type', 'application/json');
+
+  const response = await CAPTURED_NATIVE_FETCH(path, {
+    method: options.method,
+    headers,
+    body: options.body == null ? undefined : options.body,
+    credentials: 'include',
+    cache: 'no-store'
+  });
+
+  const raw = await response.text();
+  let rawPayload;
+  try {
+    rawPayload = raw ? JSON.parse(raw) : {};
+  } catch {
+    const error = new Error(`${path} returned non-JSON content through the native fallback.`);
+    error.status = response.status;
+    error.responseText = raw;
+    throw error;
+  }
+
+  return {
+    status: response.status,
+    ok: response.ok,
+    raw,
+    rawPayload,
+    payload: normalizePayload(rawPayload, options.requiredCollections)
+  };
+}
+
 export function authoritativeApiDiagnostics() {
   return { ...(window.__projectPulseAuthoritativeApiDiagnostics || {}) };
 }
@@ -336,8 +468,8 @@ export async function authoritativeApi(path, options = {}) {
       if (value != null) request.setRequestHeader(name, String(value));
     }
 
-    const finishError = (message, status = 0, payload = null, responseText = '') => {
-      const normalized = payload && typeof payload === 'object' ? payload : {};
+    const finishError = (message, status = 0, payload = null, responseText = '', extra = {}) => {
+      const normalized = isObjectRecord(payload) ? payload : {};
       const diagnostic = {
         marker: DIAGNOSTIC_MARKER,
         ok: false,
@@ -350,6 +482,7 @@ export async function authoritativeApi(path, options = {}) {
         requiredCollections,
         message,
         responsePreview: String(responseText || '').slice(0, 240),
+        ...extra,
         at: new Date().toISOString()
       };
       publishDiagnostic(diagnostic);
@@ -360,54 +493,142 @@ export async function authoritativeApi(path, options = {}) {
       reject(error);
     };
 
-    request.onload = () => {
-      const raw = request.responseText || '';
-      let payload;
-      try {
-        payload = raw ? JSON.parse(raw) : {};
-      } catch {
-        finishError(`${path} returned non-JSON content instead of ProjectPulse API data.`, request.status, null, raw);
-        return;
-      }
-      payload = unwrap(payload);
-      if (request.status < 200 || request.status >= 300) {
-        finishError(
-          payload.message || payload.Message || payload.detail || payload.Detail || `${path} returned HTTP ${request.status}.`,
-          request.status,
-          payload,
-          raw
-        );
-        return;
-      }
-      const missingCollections = collectionMissing(payload, requiredCollections);
-      if (missingCollections.length) {
-        finishError(
-          `The authoritative response for ${path} did not contain required collections: ${missingCollections.join(', ')}.`,
-          request.status,
-          payload,
-          raw
-        );
-        return;
-      }
+    const finishSuccess = (payload, status, transport, extra = {}) => {
       const diagnostic = {
         marker: DIAGNOSTIC_MARKER,
         ok: true,
         method,
         path,
         moduleNumber,
-        status: request.status,
+        status,
         durationMs: Date.now() - startedAt,
+        transport,
         responseKeys: Object.keys(payload || {}),
         collectionCounts: Object.fromEntries(requiredCollections.map((name) => [name, payload[name].length])),
+        ...extra,
         at: new Date().toISOString()
       };
       publishDiagnostic(diagnostic);
       resolve(payload);
     };
 
-    request.onerror = () => finishError(`${path} could not be reached.`, request.status || 0, null, request.responseText || '');
-    request.ontimeout = () => finishError(`${path} timed out.`, request.status || 0, null, request.responseText || '');
-    request.onabort = () => finishError(`${path} was cancelled.`, request.status || 0, null, request.responseText || '');
+    request.onload = async () => {
+      const raw = request.responseText || '';
+      let rawPayload;
+      try {
+        rawPayload = raw ? JSON.parse(raw) : {};
+      } catch {
+        finishError(`${path} returned non-JSON content instead of ProjectPulse API data.`, request.status, null, raw, {
+          transport: 'xhr',
+          rawResponseType: 'non-json'
+        });
+        return;
+      }
+
+      const payload = normalizePayload(rawPayload, requiredCollections);
+      if (request.status < 200 || request.status >= 300) {
+        finishError(
+          payload.message || payload.Message || payload.detail || payload.Detail || `${path} returned HTTP ${request.status}.`,
+          request.status,
+          payload,
+          raw,
+          {
+            transport: 'xhr',
+            rawResponseType: payloadType(rawPayload),
+            rawResponseKeys: isObjectRecord(rawPayload) ? Object.keys(rawPayload) : []
+          }
+        );
+        return;
+      }
+
+      const missingCollections = collectionMissing(payload, requiredCollections);
+      if (missingCollections.length && method === 'GET' && options.nativeFallback !== false) {
+        try {
+          const fallback = await nativeFetchAuthoritative(path, {
+            method,
+            body: options.body == null ? null : options.body,
+            headers: options.headers,
+            token,
+            viewAsUserId,
+            moduleNumber,
+            requiredCollections
+          });
+          const fallbackMissing = collectionMissing(fallback.payload, requiredCollections);
+
+          if (fallback.ok && fallbackMissing.length === 0) {
+            finishSuccess(fallback.payload, fallback.status, 'native-fetch-fallback', {
+              recoveredFrom: 'xhr-success-missing-collections',
+              xhrStatus: request.status,
+              xhrRawResponseType: payloadType(rawPayload),
+              xhrRawResponseKeys: isObjectRecord(rawPayload) ? Object.keys(rawPayload) : [],
+              fallbackRawResponseType: payloadType(fallback.rawPayload),
+              fallbackRawResponseKeys: isObjectRecord(fallback.rawPayload) ? Object.keys(fallback.rawPayload) : []
+            });
+            return;
+          }
+
+          finishError(
+            fallback.payload?.message
+              || `The authoritative response for ${path} did not contain required collections: ${fallbackMissing.join(', ') || missingCollections.join(', ')}.`,
+            fallback.status,
+            fallback.payload,
+            fallback.raw,
+            {
+              transport: 'native-fetch-fallback',
+              recoveredFrom: 'xhr-success-missing-collections',
+              xhrStatus: request.status,
+              xhrRawResponseType: payloadType(rawPayload),
+              xhrRawResponseKeys: isObjectRecord(rawPayload) ? Object.keys(rawPayload) : [],
+              fallbackRawResponseType: payloadType(fallback.rawPayload),
+              fallbackRawResponseKeys: isObjectRecord(fallback.rawPayload) ? Object.keys(fallback.rawPayload) : []
+            }
+          );
+          return;
+        } catch (fallbackError) {
+          finishError(
+            fallbackError instanceof Error
+              ? fallbackError.message
+              : `The authoritative fallback for ${path} failed.`,
+            Number(fallbackError?.status || request.status || 502),
+            payload,
+            raw,
+            {
+              transport: 'native-fetch-fallback',
+              recoveredFrom: 'xhr-success-missing-collections',
+              xhrStatus: request.status,
+              xhrRawResponseType: payloadType(rawPayload),
+              xhrRawResponseKeys: isObjectRecord(rawPayload) ? Object.keys(rawPayload) : [],
+              fallbackErrorCode: fallbackError?.code || ''
+            }
+          );
+          return;
+        }
+      }
+
+      if (missingCollections.length) {
+        finishError(
+          `The authoritative response for ${path} did not contain required collections: ${missingCollections.join(', ')}.`,
+          request.status,
+          payload,
+          raw,
+          {
+            transport: 'xhr',
+            rawResponseType: payloadType(rawPayload),
+            rawResponseKeys: isObjectRecord(rawPayload) ? Object.keys(rawPayload) : []
+          }
+        );
+        return;
+      }
+
+      finishSuccess(payload, request.status, 'xhr', {
+        rawResponseType: payloadType(rawPayload),
+        rawResponseKeys: isObjectRecord(rawPayload) ? Object.keys(rawPayload) : []
+      });
+    };
+
+    request.onerror = () => finishError(`${path} could not be reached.`, request.status || 0, null, request.responseText || '', { transport: 'xhr' });
+    request.ontimeout = () => finishError(`${path} timed out.`, request.status || 0, null, request.responseText || '', { transport: 'xhr' });
+    request.onabort = () => finishError(`${path} was cancelled.`, request.status || 0, null, request.responseText || '', { transport: 'xhr' });
     request.send(options.body == null ? null : options.body);
   });
 }
