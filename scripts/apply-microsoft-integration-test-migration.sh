@@ -43,15 +43,6 @@ done
 ) || fail "Migration checksum validation failed."
 echo "MICROSOFT_INTEGRATION_MIGRATION_CHECKSUMS=VERIFIED"
 
-read -r USERS_BEFORE ROLES_BEFORE DOCUMENTS_BEFORE <<<"$(
-  psql "$DATABASE_URL" --no-psqlrc -At --set=ON_ERROR_STOP=1 --command="
-    SELECT
-      (SELECT COUNT(*) FROM app_users),
-      (SELECT COUNT(*) FROM app_roles),
-      (SELECT COUNT(*) FROM projectpulse_native_admin_documents);" | tr '|' ' '
-)"
-[[ -n "${USERS_BEFORE:-}" ]] || fail "Required ProjectPulse operational tables are unavailable."
-
 count_if_table() {
   local table="$1"
   if [[ "$(psql "$DATABASE_URL" --no-psqlrc -At --set=ON_ERROR_STOP=1 --command="SELECT to_regclass('public.$table') IS NOT NULL;")" == "t" ]]; then
@@ -66,15 +57,24 @@ source_hash() {
   psql "$DATABASE_URL" --no-psqlrc -At --set=ON_ERROR_STOP=1 --command="SELECT md5(COALESCE(($expression)::text, ''));"
 }
 
+read -r USERS_BEFORE ROLES_BEFORE DOCUMENTS_BEFORE <<<"$(
+  psql "$DATABASE_URL" --no-psqlrc -At --set=ON_ERROR_STOP=1 --command="
+    SELECT
+      (SELECT COUNT(*) FROM app_users),
+      (SELECT COUNT(*) FROM app_roles),
+      (SELECT COUNT(*) FROM projectpulse_native_admin_documents);" | tr '|' ' '
+)"
+[[ -n "${USERS_BEFORE:-}" ]] || fail "Required ProjectPulse operational tables are unavailable."
+
 GRAPH_SECRET_ROWS_BEFORE="$(count_if_table microsoft_integration_client_secrets)"
 SSO_SECRET_ROWS_BEFORE="$(count_if_table microsoft_integration_sso_client_secrets)"
 AUDIT_ROWS_BEFORE="$(count_if_table microsoft_integration_audit_events)"
 CARRYOVER_AUDIT_ROWS_BEFORE="$(
-  if [[ "$(psql "$DATABASE_URL" --no-psqlrc -At --set=ON_ERROR_STOP=1 --command="SELECT to_regclass('public.microsoft_integration_audit_events') IS NOT NULL;")" == "t" ]]; then
-    psql "$DATABASE_URL" --no-psqlrc -At --set=ON_ERROR_STOP=1 --command="SELECT COUNT(*) FROM microsoft_integration_audit_events WHERE action_code='LEGACY_CONFIGURATION_CARRIED_OVER';"
-  else
-    printf '0\n'
-  fi
+  psql "$DATABASE_URL" --no-psqlrc -At --set=ON_ERROR_STOP=1 --command="
+    SELECT CASE
+      WHEN to_regclass('public.microsoft_integration_audit_events') IS NULL THEN 0
+      ELSE (SELECT COUNT(*) FROM microsoft_integration_audit_events WHERE action_code='LEGACY_CONFIGURATION_CARRIED_OVER')
+    END;"
 )"
 MODULE010_ROWS_BEFORE="$(count_if_table azure_entra_settings)"
 MODULE067_DOCUMENTS_BEFORE="$(psql "$DATABASE_URL" --no-psqlrc -At --set=ON_ERROR_STOP=1 --command="SELECT COUNT(*) FROM projectpulse_native_admin_documents WHERE module_number='067' AND document_key='configuration';")"
@@ -82,16 +82,17 @@ MODULE010_SOURCE_HASH_BEFORE="$(source_hash "SELECT to_jsonb(settings) FROM azur
 MODULE067_SOURCE_HASH_BEFORE="$(source_hash "SELECT document_json FROM projectpulse_native_admin_documents WHERE module_number='067' AND document_key='configuration' LIMIT 1")"
 MODULE065_MARKER_BEFORE="$(psql "$DATABASE_URL" --no-psqlrc -At --set=ON_ERROR_STOP=1 --command="
   SELECT EXISTS (
-    SELECT 1
-    FROM projectpulse_native_admin_documents
+    SELECT 1 FROM projectpulse_native_admin_documents
     WHERE module_number='065'
       AND document_key='configuration'
       AND COALESCE(document_json->'configuration'->>'notes','') LIKE 'PROJECTPULSE_MICROSOFT_INTEGRATION_JSON:%'
   );")"
 
-for value in "$GRAPH_SECRET_ROWS_BEFORE" "$SSO_SECRET_ROWS_BEFORE" "$AUDIT_ROWS_BEFORE" "$CARRYOVER_AUDIT_ROWS_BEFORE" "$MODULE010_ROWS_BEFORE" "$MODULE067_DOCUMENTS_BEFORE"; do
-  [[ "$value" =~ ^[0-9]+$ ]] || fail "Existing Microsoft Integration evidence counts are invalid."
+for value in "$USERS_BEFORE" "$ROLES_BEFORE" "$DOCUMENTS_BEFORE" "$GRAPH_SECRET_ROWS_BEFORE" "$SSO_SECRET_ROWS_BEFORE" "$AUDIT_ROWS_BEFORE" "$CARRYOVER_AUDIT_ROWS_BEFORE" "$MODULE010_ROWS_BEFORE" "$MODULE067_DOCUMENTS_BEFORE"; do
+  [[ "$value" =~ ^[0-9]+$ ]] || fail "Existing Microsoft Integration baseline values are invalid."
 done
+[[ "$MODULE010_SOURCE_HASH_BEFORE" =~ ^[0-9a-f]{32}$ ]] || fail "Module 010 source hash is invalid."
+[[ "$MODULE067_SOURCE_HASH_BEFORE" =~ ^[0-9a-f]{32}$ ]] || fail "Module 067 source hash is invalid."
 
 echo "MICROSOFT_INTEGRATION_EVIDENCE_BASELINE graphSecrets=$GRAPH_SECRET_ROWS_BEFORE ssoSecrets=$SSO_SECRET_ROWS_BEFORE audit=$AUDIT_ROWS_BEFORE carryoverAudit=$CARRYOVER_AUDIT_ROWS_BEFORE module010Rows=$MODULE010_ROWS_BEFORE module067Documents=$MODULE067_DOCUMENTS_BEFORE module065Marker=$MODULE065_MARKER_BEFORE"
 
@@ -129,8 +130,38 @@ psql "$DATABASE_URL" --no-psqlrc --set=ON_ERROR_STOP=1 \
   --set=module010_source_hash_before="$MODULE010_SOURCE_HASH_BEFORE" \
   --set=module067_source_hash_before="$MODULE067_SOURCE_HASH_BEFORE" \
   --command="
+CREATE TEMP TABLE projectpulse_microsoft_verification_baseline (
+  users_before bigint,
+  roles_before bigint,
+  documents_before bigint,
+  max_documents_after bigint,
+  graph_secret_rows_before bigint,
+  sso_secret_rows_before bigint,
+  expected_audit_rows_after bigint,
+  expected_carryover_audit_rows_after bigint,
+  module010_rows_before bigint,
+  module067_documents_before bigint,
+  module010_source_hash_before text,
+  module067_source_hash_before text
+);
+INSERT INTO projectpulse_microsoft_verification_baseline VALUES (
+  :'users_before'::bigint,
+  :'roles_before'::bigint,
+  :'documents_before'::bigint,
+  :'max_documents_after'::bigint,
+  :'graph_secret_rows_before'::bigint,
+  :'sso_secret_rows_before'::bigint,
+  :'expected_audit_rows_after'::bigint,
+  :'expected_carryover_audit_rows_after'::bigint,
+  :'module010_rows_before'::bigint,
+  :'module067_documents_before'::bigint,
+  :'module010_source_hash_before',
+  :'module067_source_hash_before'
+);
+
 DO \$verify_microsoft_connection_carryover\$
 DECLARE
+  baseline record;
   users_after bigint;
   roles_after bigint;
   documents_after bigint;
@@ -149,13 +180,15 @@ DECLARE
   source_settings jsonb;
   legacy_mail jsonb;
 BEGIN
+  SELECT * INTO baseline FROM projectpulse_microsoft_verification_baseline LIMIT 1;
+
   SELECT COUNT(*) INTO users_after FROM app_users;
   SELECT COUNT(*) INTO roles_after FROM app_roles;
   SELECT COUNT(*) INTO documents_after FROM projectpulse_native_admin_documents;
-  IF users_after <> :users_before::bigint OR roles_after <> :roles_before::bigint THEN
+  IF users_after <> baseline.users_before OR roles_after <> baseline.roles_before THEN
     RAISE EXCEPTION 'Microsoft Integration migrations changed operational user or role counts.';
   END IF;
-  IF documents_after < :documents_before::bigint OR documents_after > :max_documents_after::bigint THEN
+  IF documents_after < baseline.documents_before OR documents_after > baseline.max_documents_after THEN
     RAISE EXCEPTION 'Migration 047 changed the native-document count outside the permitted Module 065 carryover range.';
   END IF;
 
@@ -212,17 +245,16 @@ BEGIN
   SELECT COUNT(*) INTO carryover_audit_rows_after
   FROM microsoft_integration_audit_events
   WHERE action_code='LEGACY_CONFIGURATION_CARRIED_OVER';
-  IF graph_secret_rows_after <> :graph_secret_rows_before::bigint
-     OR sso_secret_rows_after <> :sso_secret_rows_before::bigint THEN
+  IF graph_secret_rows_after <> baseline.graph_secret_rows_before
+     OR sso_secret_rows_after <> baseline.sso_secret_rows_before THEN
     RAISE EXCEPTION 'Migration 047 changed existing Graph or SSO secret evidence counts.';
   END IF;
-  IF audit_rows_after <> :expected_audit_rows_after::bigint
-     OR carryover_audit_rows_after <> :expected_carryover_audit_rows_after::bigint THEN
+  IF audit_rows_after <> baseline.expected_audit_rows_after
+     OR carryover_audit_rows_after <> baseline.expected_carryover_audit_rows_after THEN
     RAISE EXCEPTION 'Migration 047 did not create exactly the expected sanitized carryover audit evidence.';
   END IF;
   IF EXISTS (
-    SELECT 1
-    FROM microsoft_integration_audit_events
+    SELECT 1 FROM microsoft_integration_audit_events
     WHERE action_code='LEGACY_CONFIGURATION_CARRIED_OVER'
       AND (
         COALESCE(event_metadata->>'secretValuesRead','true') <> 'false'
@@ -249,10 +281,10 @@ BEGIN
     WHERE module_number='067' AND document_key='configuration'
     LIMIT 1
   ), '')) INTO module067_source_hash_after;
-  IF module010_rows_after <> :module010_rows_before::bigint
-     OR module067_documents_after <> :module067_documents_before::bigint
-     OR module010_source_hash_after <> :'module010_source_hash_before'
-     OR module067_source_hash_after <> :'module067_source_hash_before' THEN
+  IF module010_rows_after <> baseline.module010_rows_before
+     OR module067_documents_after <> baseline.module067_documents_before
+     OR module010_source_hash_after <> baseline.module010_source_hash_before
+     OR module067_source_hash_after <> baseline.module067_source_hash_before THEN
     RAISE EXCEPTION 'Migration 047 changed or removed the Module 010 or Module 067 source configuration.';
   END IF;
 
