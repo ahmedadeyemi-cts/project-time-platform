@@ -118,9 +118,11 @@ check('USER_SCOPED_STYLES', userCss.includes('.user-admin-v2-tabs') && userCss.i
 check(
   'THEME_STRAY_TEXT_REMOVAL',
   themeJs.includes('Node.TEXT_NODE')
-    && themeJs.includes("String(node.textContent || '').replace")
+    && themeJs.includes("String(node.textContent || '')")
+    && themeJs.includes("replace(/\\u00a0/g, ' ')")
+    && themeJs.includes('STRAY_THEME_TEXT.test(value)')
     && themeJs.includes('node.remove();'),
-  'literal newline text nodes are removed from the theme control surroundings'
+  'literal newline text nodes are normalized and removed from the theme control surroundings'
 );
 check('THEME_NO_APP_EDIT_REQUIRED', userUi.includes("import './admin-experience-theme.js';") && userUi.includes("import './admin-experience-theme.css';"), 'theme bridge loads through existing Module 009 import');
 check(
