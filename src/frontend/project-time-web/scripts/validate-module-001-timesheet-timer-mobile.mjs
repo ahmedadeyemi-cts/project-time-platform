@@ -55,9 +55,14 @@ requireText(authoritative, 'requiredCollections', 'authoritative collection vali
 requireText(authoritative, '__projectPulseAuthoritativeApiDiagnostics', 'authoritative diagnostics storage');
 rejectText(authoritative, 'window.fetch(', 'wrapper-independent transport');
 
-requireText(portalEntry, "import { authoritativeApi } from '../projectpulse-authoritative-api.js';", 'authoritative timer-target client');
-requireText(portalEntry, '/api/timesheet/timers/targets?weekStart=', 'authoritative timer target request');
-requireText(portalEntry, "requiredCollections: ['targets']", 'authoritative timer target collection contract');
+requireText(portalEntry, "const TIMER_TARGET_CLIENT = 'projectpulse-timer-target-direct-fetch-v1';", 'direct timer-target client marker');
+requireText(portalEntry, 'function isTimesheetRoute()', 'route-scoped target loading');
+requireText(portalEntry, "=== 'timesheet'", 'Timesheet-only target loading');
+requireText(portalEntry, 'async function loadTimerTargets(weekStart)', 'direct timer target request');
+requireText(portalEntry, '/api/timesheet/timers/targets?weekStart=', 'authoritative timer target endpoint');
+requireText(portalEntry, "'X-ProjectPulse-Module-Number': '001'", 'explicit Module 001 attribution');
+requireText(portalEntry, "'X-ProjectPulse-Timer-Target-Client': TIMER_TARGET_CLIENT", 'direct target client evidence');
+requireText(portalEntry, 'normalizeTimerTargetPayload(payload)', 'timer target collection validation');
 requireText(portalEntry, "target.targetType === 'assignment'", 'assigned target extraction');
 requireText(portalEntry, 'mergeByKey(snapshot.assignedTasks, authoritativeAssignments)', 'assigned task preservation');
 requireText(portalEntry, 'snapshot.nonProjectCategories', 'non-project preservation');
@@ -72,7 +77,8 @@ requireText(portalEntry, 'Existing Timesheet activities remain available', 'fail
 requireText(portalEntry, 'projectpulse:module001-timer-targets', 'timer target state evidence');
 requireText(portalEntry, 'synchronizeViewButtons', 'single active Timesheet view');
 requireText(portalEntry, "button.setAttribute('aria-selected', active ? 'true' : 'false')", 'active view accessibility state');
-rejectText(portalEntry, 'const response = await fetch(path', 'retired wrapped timer-target fetch');
+rejectText(portalEntry, "import { authoritativeApi } from '../projectpulse-authoritative-api.js';", 'retired XHR timer target transport');
+rejectText(portalEntry, 'new MutationObserver', 'route-wide target DOM observation');
 rejectText(portalEntry, '/api/assignments/available-tasks', 'retired available-task enrichment');
 rejectText(portalEntry, '/api/timesheet/work-queue', 'retired work-queue enrichment');
 
@@ -184,4 +190,4 @@ if (backendAvailable) {
   requireText(rollback, 'rollback blocked', 'fail-closed rollback');
 }
 
-console.log(`MODULE_001_FUNCTIONAL_TIMER_TARGET_VALIDATION=PASS roundingCases=${roundingCases.length} backend=${backendAvailable ? 'full' : 'frontend-container'} wrapperIndependent=true visibleRecoveryErrors=true targetCounts=true`);
+console.log(`MODULE_001_FUNCTIONAL_TIMER_TARGET_VALIDATION=PASS roundingCases=${roundingCases.length} backend=${backendAvailable ? 'full' : 'frontend-container'} directScopedTransport=true visibleRecoveryErrors=true targetCounts=true`);
