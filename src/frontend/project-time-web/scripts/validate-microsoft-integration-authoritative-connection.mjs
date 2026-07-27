@@ -187,16 +187,26 @@ if (fullRepositoryContext) {
     && smtpProjection.includes('PROJECTPULSE_PRODUCTION_SMTP_')
     && smtpProjection.includes('PROJECTPULSE_SMTP_USERNAME')
     && smtpProjection.includes('PROJECTPULSE_SMTP_PASSWORD')
-    && smtpProjection.includes('activeMode == environmentMode')
+    && smtpProjection.includes('OriginalActiveEnvironment == environmentMode')
+    && smtpProjection.includes('OriginalLegacyUsername')
+    && smtpProjection.includes('OriginalLegacyPassword')
     && smtpProjection.includes('providerTarget != "smtp_relay"')
     && smtpProjection.includes('ClearLegacyCredential()'),
-  'only the selected environment SMTP pair is projected into the legacy sender variables and stale values are cleared');
+  'only the selected environment SMTP pair or immutable matching startup fallback is projected, and stale values are cleared');
 
-  assert('SMTP_PROJECTION_SUCCESS_AND_RESTART', smtpProjection.includes('context.Response.StatusCode is >= 200 and < 300')
-    && smtpProjection.includes('ApplicationStarted.Register')
+  assert('SMTP_PROJECTION_AUTHORIZED_RESPONSE', smtpProjection.includes('originalResponseBody')
+    && smtpProjection.includes('responseBuffer')
+    && smtpProjection.includes('context.Response.StatusCode is >= 200 and < 300')
+    && smtpProjection.includes('ReadValidatedSelectionFromResponseAsync')
+    && smtpProjection.includes('JsonDocument.ParseAsync')
+    && !smtpProjection.includes('Request.EnableBuffering')
+    && !smtpProjection.includes('context.Request.Body'),
+  'SMTP selection is read only from the sanitized successful endpoint response after authorization');
+
+  assert('SMTP_PROJECTION_RESTART', smtpProjection.includes('ApplicationStarted.Register')
     && smtpProjection.includes('ReadStoredSelectionAsync')
     && smtpProjection.includes("module_number='065'"),
-  'SMTP projection occurs only after a successful runtime update and is restored from Module 065 after restart');
+  'selected SMTP projection is restored from Module 065 after API restart');
 
   assert('SMTP_PROJECTION_BROWSER_SAFETY', !smtpProjection.includes('ReadFromJsonAsync<SmtpCredential')
     && !smtpProjection.includes('Results.Ok(new')
