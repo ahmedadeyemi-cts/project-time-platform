@@ -1,0 +1,103 @@
+name: Validate Modules 021 and 026 SELL Customer Sync
+
+on:
+  push:
+    branches:
+      - 'feature/modules-021-026-sell-customer-sync-*'
+  pull_request:
+    paths:
+      - 'database/migrations/049_module_021_sell_customer_sync.sql'
+      - 'database/rollback/049_module_021_sell_customer_sync_rollback.sql'
+      - 'src/backend/ProjectTime.Api/Modules/CustomerDirectorySellSyncModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs'
+      - 'src/frontend/project-time-web/src/CrmErpIntegrationCenter.jsx'
+      - 'src/frontend/project-time-web/src/CustomerDirectoryCenter.jsx'
+      - 'src/frontend/project-time-web/src/crm-erp-integration-center.css'
+      - 'src/frontend/project-time-web/src/customer-directory-sell-sync.css'
+      - 'src/frontend/project-time-web/scripts/validate-modules-021-026-sell-customer-sync.mjs'
+      - 'src/frontend/project-time-web/package.json'
+      - 'tests/test-module-021-sell-customer-sync-049.sh'
+      - '.github/workflows/modules021026-sell-customer-sync-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: projectpulse_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d projectpulse_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      PROJECTPULSE_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/projectpulse_test
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify isolated source scope
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git fetch origin main --no-tags
+          CHANGED="$(git diff --name-only origin/main...HEAD)"
+          printf '%s\n' "$CHANGED"
+
+          if grep -E '(^|/)(module001|module-001|module008|module-008|module009|module-009|module012|module-012|module037|module-037|module038|module-038)' <<<"$CHANGED"; then
+            echo 'Protected active module source changed.' >&2
+            exit 1
+          fi
+
+          if grep -E '^\.github/workflows/projectpulse-deploy-' <<<"$CHANGED"; then
+            echo 'Deployment workflow changes are outside this source issue.' >&2
+            exit 1
+          fi
+
+          echo 'MODULES_021_026_ISOLATION=PASSED'
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Build ProjectTime API
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+
+      - name: Test migration 049 apply, linkage, evidence, and rollback
+        shell: bash
+        run: bash tests/test-module-021-sell-customer-sync-049.sh
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Validate Module 026 integration framework
+        working-directory: src/frontend/project-time-web
+        run: npm run validate:module026
+
+      - name: Validate Modules 021 and 026 SELL customer contract
+        working-directory: src/frontend/project-time-web
+        run: npm run validate:modules021026
+
+      - name: Build frontend production bundle
+        working-directory: src/frontend/project-time-web
+        run: npm run build
