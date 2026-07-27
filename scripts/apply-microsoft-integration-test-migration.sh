@@ -12,7 +12,15 @@ cleanup() {
     rm -f "$VERIFY_SQL"
   fi
 }
-trap cleanup EXIT INT TERM
+terminate() {
+  local code="$1"
+  trap - EXIT INT TERM
+  cleanup
+  exit "$code"
+}
+trap cleanup EXIT
+trap 'terminate 130' INT
+trap 'terminate 143' TERM
 
 [[ -n "$RELEASE_ROOT" ]] || fail "Usage: $0 <release-root>"
 [[ -n "$DATABASE_URL" ]] || fail "PROJECTPULSE_TEST_DATABASE_URL is not configured."
