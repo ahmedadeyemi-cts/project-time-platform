@@ -13,9 +13,61 @@ body.projectpulse-route-audit-history .app-shell.route-audit-history {
   padding-bottom: 34px;
 }
 
+.module010-audit-consolidation {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.25rem;
+  width: min(1480px, calc(100% - 64px));
+  margin: -34px auto 72px;
+  padding: 1.15rem 1.25rem;
+  border: 1px solid color-mix(in srgb, var(--brand-blue) 20%, var(--border));
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--accent) 45%, var(--surface));
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
+
+.module010-audit-consolidation h2 {
+  margin: 0 0 0.35rem;
+  font-size: 1.2rem;
+}
+
+.module010-audit-consolidation p:not(.eyebrow) {
+  max-width: 900px;
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.module010-audit-consolidation a {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 0.8rem 1rem;
+  background: var(--brand-blue);
+  color: #fff;
+  font-weight: 850;
+  text-decoration: none;
+  text-align: center;
+}
+
+.module010-audit-consolidation a:hover,
+.module010-audit-consolidation a:focus-visible {
+  background: var(--brand-blue-strong);
+}
+
 @media (max-width: 900px) {
-  body.projectpulse-route-audit-history .admin-runtime-stability-route-root {
+  body.projectpulse-route-audit-history .admin-runtime-stability-route-root,
+  .module010-audit-consolidation {
     width: min(100% - 24px, 1480px);
     margin: -22px auto 56px;
+  }
+
+  .module010-audit-consolidation {
+    display: grid;
+  }
+
+  .module010-audit-consolidation a {
+    width: 100%;
   }
 }
