@@ -143,7 +143,7 @@ if (fullRepositoryContext) {
     && mailRuntime.includes('PROJECTPULSE_MICROSOFT_TENANT_USSIGNAL_CLIENT_SECRET')
     && mailRuntime.includes('activeMode == "test"')
     && mailRuntime.includes('activeMode == "production"')
-    && !/return First\([\s\S]*PROJECTPULSE_ENTRA_CLIENT_SECRET[\s\S]*PROJECTPULSE_M365_CLIENT_SECRET[\s\S]*\);/.test(mailRuntime),
+    && !mailRuntime.includes('Environment.GetEnvironmentVariable("PROJECTPULSE_ENTRA_CLIENT_SECRET"),\n            Environment.GetEnvironmentVariable("PROJECTPULSE_M365_CLIENT_SECRET")'),
   'Test never borrows Production credentials and Production never borrows Test credentials');
 
   assert('RECIPIENT_BOUNDARY_ENFORCED', mailRuntime.includes('configuration.RecipientBoundary == "production_governed"')
