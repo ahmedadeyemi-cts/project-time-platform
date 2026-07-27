@@ -1,14 +1,16 @@
-name: Validate Global Session Invalidation
+name: Validate Authoritative Session Transport and Theme
 
 on:
   push:
     branches:
-      - 'hotfix/global-session-invalidation-recovery-*'
+      - 'hotfix/authoritative-session-transport-and-theme-*'
   pull_request:
     paths:
       - 'src/frontend/project-time-web/src/projectpulse-authoritative-api.js'
       - 'src/frontend/project-time-web/scripts/validate-global-session-invalidation.mjs'
-      - 'src/frontend/project-time-web/package.json'
+      - 'src/frontend/project-time-web/scripts/test-authoritative-session-transport-theme-runtime.mjs'
+      - 'src/frontend/project-time-web/src/admin-experience-theme.js'
+      - 'src/frontend/project-time-web/src/admin-experience-theme.css'
       - '.github/workflows/validate-global-session-invalidation.yml'
 
 permissions:
@@ -17,6 +19,7 @@ permissions:
 
 jobs:
   validate:
+    name: Validate safe session transport and modern theme control
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -25,7 +28,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Enforce isolated authentication scope
+      - name: Enforce isolated source scope
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -35,9 +38,11 @@ jobs:
 
           ALLOWED=(
             '.github/workflows/validate-global-session-invalidation.yml'
-            'src/frontend/project-time-web/package.json'
             'src/frontend/project-time-web/scripts/validate-global-session-invalidation.mjs'
+            'src/frontend/project-time-web/scripts/test-authoritative-session-transport-theme-runtime.mjs'
             'src/frontend/project-time-web/src/projectpulse-authoritative-api.js'
+            'src/frontend/project-time-web/src/admin-experience-theme.js'
+            'src/frontend/project-time-web/src/admin-experience-theme.css'
           )
 
           [[ "${#CHANGED[@]}" -gt 0 ]] || {
@@ -62,7 +67,7 @@ jobs:
             exit 1
           fi
 
-          echo 'GLOBAL_SESSION_SOURCE_ISOLATION=PASSED'
+          echo 'AUTHORITATIVE_SESSION_THEME_SOURCE_ISOLATION=PASSED'
 
       - uses: actions/setup-dotnet@v4
         with:
@@ -81,15 +86,23 @@ jobs:
         working-directory: src/frontend/project-time-web
         run: npm ci --no-audit --no-fund
 
-      - name: Validate global stale-session recovery
+      - name: Validate authoritative session transport
         working-directory: src/frontend/project-time-web
         run: npm run validate:global-session-invalidation
+
+      - name: Execute session and theme runtime regression harness
+        working-directory: src/frontend/project-time-web
+        run: node scripts/test-authoritative-session-transport-theme-runtime.mjs
+
+      - name: Validate Modules 008 and 009 theme contract
+        working-directory: src/frontend/project-time-web
+        run: npm run validate:modules008009
 
       - name: Build complete frontend production bundle
         working-directory: src/frontend/project-time-web
         run: npm run build
 
-      - name: Publish exact-commit session lifecycle status
+      - name: Publish exact-commit session and theme status
         if: always()
         shell: bash
         env:
@@ -103,15 +116,15 @@ jobs:
           set -Eeuo pipefail
           if [[ "$JOB_STATUS" == success ]]; then
             STATE=success
-            DESCRIPTION='Global stale-session invalidation and full frontend build passed.'
+            DESCRIPTION='Executable session transport and modern theme regression checks passed.'
           else
             STATE=failure
-            DESCRIPTION='Global stale-session invalidation validation failed.'
+            DESCRIPTION='Authoritative session transport or theme runtime validation failed.'
           fi
 
           PAYLOAD="$(jq -nc \
             --arg state "$STATE" \
-            --arg context 'global-session/invalidation-recovery' \
+            --arg context 'session-theme/authoritative-transport' \
             --arg description "$DESCRIPTION" \
             --arg target_url "$RUN_URL" \
             '{state:$state,context:$context,description:$description,target_url:$target_url}')"

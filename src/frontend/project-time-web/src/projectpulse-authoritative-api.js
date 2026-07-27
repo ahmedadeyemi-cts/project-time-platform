@@ -2,24 +2,21 @@ import { currentProjectPulseRoute, moduleForRoute } from './module-availability-
 
 const DIAGNOSTIC_EVENT = 'projectpulse:authoritative-api-diagnostic';
 const DIAGNOSTIC_MARKER = 'projectpulse-authoritative-xhr-v1';
-const SESSION_INVALIDATED_EVENT = 'projectpulse:session-invalidated';
-const SESSION_INVALIDATION_MARKER = 'projectpulse-authoritative-session-invalidation-v1';
+const SESSION_NOT_READY_STATUS = 425;
+const SESSION_WAIT_MS = 1200;
 const SESSION_KEYS = Object.freeze([
   'projectPulseAuthSession',
   'ProjectPulseAuthSession',
   'projectPulseSession'
 ]);
-const VIEW_AS_KEYS = Object.freeze([
-  'projectPulseViewAsUser',
-  'projectPulseViewAsUserId'
+const PUBLIC_API_PREFIXES = Object.freeze([
+  '/health',
+  '/api/auth/',
+  '/api/public/',
+  '/api/bootstrap/',
+  '/api/app-config',
+  '/api/config'
 ]);
-const SESSION_REJECTION_STATUS_CODES = new Set([
-  'session_required',
-  'session_expired',
-  'session_invalid',
-  'invalid_session'
-]);
-const SESSION_REJECTION_MESSAGE = /(?:session|token).*(?:expired|invalid|missing|required|could not be verified)|missing session token|sign in again/i;
 
 function parseStoredJson(storage, key) {
   try {
@@ -30,33 +27,48 @@ function parseStoredJson(storage, key) {
   }
 }
 
+function sessionTokenFromValue(session) {
+  return session?.sessionToken
+    || session?.token
+    || session?.accessToken
+    || session?.session_token
+    || '';
+}
+
+function sessionIsExpired(session) {
+  if (!session?.expiresAt) return false;
+  const expiresAt = Date.parse(session.expiresAt);
+  return Number.isFinite(expiresAt) && Date.now() >= expiresAt;
+}
+
 function storedSessionContext() {
   for (const storage of [window.localStorage, window.sessionStorage]) {
     for (const key of SESSION_KEYS) {
       const session = parseStoredJson(storage, key);
-      const token = session?.sessionToken
-        || session?.token
-        || session?.accessToken
-        || session?.session_token
-        || '';
-      if (token) return { session, token, key, storage };
+      const token = sessionTokenFromValue(session);
+      if (token && !sessionIsExpired(session)) return { session, token, key, storage };
     }
   }
 
   return { session: null, token: '', key: '', storage: null };
 }
 
-function sessionContext() {
-  const { token } = storedSessionContext();
+function readViewAsUserId() {
   try {
     const selected = JSON.parse(window.localStorage.getItem('projectPulseViewAsUser') || 'null');
-    return {
-      token,
-      viewAsUserId: selected?.userId || window.localStorage.getItem('projectPulseViewAsUserId') || ''
-    };
+    return selected?.userId || window.localStorage.getItem('projectPulseViewAsUserId') || '';
   } catch {
-    return { token, viewAsUserId: '' };
+    return '';
   }
+}
+
+function sessionContext() {
+  const { session, token } = storedSessionContext();
+  return {
+    session,
+    token,
+    viewAsUserId: readViewAsUserId()
+  };
 }
 
 function activeModuleNumber(explicitModuleNumber = '') {
@@ -91,6 +103,13 @@ function normalizeApiPath(input) {
   }
 }
 
+function isPublicApiPath(path = '') {
+  const normalized = String(path || '').toLowerCase();
+  return PUBLIC_API_PREFIXES.some((prefix) => (
+    normalized === prefix || normalized.startsWith(prefix)
+  ));
+}
+
 function normalizeHeaderToken(value = '') {
   const text = String(value || '').trim();
   if (!text) return '';
@@ -113,112 +132,94 @@ function requestSessionToken(input, init = {}) {
       if (token) return token;
     }
   } catch {
-    // A malformed header object cannot authorize session invalidation.
+    // Malformed header input is treated as an unauthenticated request.
   }
 
   return '';
 }
 
-function requestTokenMatchesCurrentSession(requestToken = '') {
-  const currentToken = storedSessionContext().token;
-  return Boolean(requestToken && currentToken && requestToken === currentToken);
+function applySessionHeaders(headers, token) {
+  if (!token) return headers;
+  headers.set('X-ProjectPulse-Session', token);
+  headers.set('X-Project-Pulse-Session', token);
+  headers.set('X-Session-Token', token);
+  headers.set('Authorization', `Bearer ${token}`);
+  return headers;
 }
 
-function isSessionRejection(status, payload = {}, responseText = '', requestToken = '') {
-  if (Number(status) !== 401 || !requestTokenMatchesCurrentSession(requestToken)) return false;
+function waitForUsableSession(timeoutMs = SESSION_WAIT_MS) {
+  const immediate = sessionContext();
+  if (immediate.token) return Promise.resolve(immediate);
 
-  const normalized = unwrap(payload);
-  const statusCode = String(
-    normalized?.status
-      || normalized?.Status
-      || normalized?.code
-      || normalized?.Code
-      || ''
-  ).trim().toLowerCase();
-  const message = String(
-    normalized?.message
-      || normalized?.Message
-      || normalized?.detail
-      || normalized?.Detail
-      || responseText
-      || ''
-  ).trim();
+  return new Promise((resolve) => {
+    let finished = false;
+    let timeoutId = null;
 
-  return SESSION_REJECTION_STATUS_CODES.has(statusCode)
-    || SESSION_REJECTION_MESSAGE.test(message);
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      if (timeoutId) window.clearTimeout(timeoutId);
+      window.removeEventListener('storage', handleSignal);
+      window.removeEventListener('projectpulse:auth-session-ready', handleSignal);
+      resolve(sessionContext());
+    };
+
+    const handleSignal = () => {
+      if (sessionContext().token) finish();
+    };
+
+    window.addEventListener('storage', handleSignal);
+    window.addEventListener('projectpulse:auth-session-ready', handleSignal);
+    timeoutId = window.setTimeout(finish, Math.max(0, Number(timeoutMs || 0)));
+  });
 }
 
-function clearSessionStorage() {
-  for (const storage of [window.localStorage, window.sessionStorage]) {
-    for (const key of [...SESSION_KEYS, ...VIEW_AS_KEYS]) {
-      try {
-        storage.removeItem(key);
-      } catch {
-        // Continue clearing every supported storage location.
-      }
+function createSessionNotReadyResponse(path) {
+  return new Response(JSON.stringify({
+    status: 'session_not_ready',
+    message: 'ProjectPulse session is not ready yet.',
+    path
+  }), {
+    status: SESSION_NOT_READY_STATUS,
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store'
     }
-  }
+  });
 }
 
-function invalidateProjectPulseSession(path, payload = {}, responseText = '', requestToken = '') {
-  if (!requestTokenMatchesCurrentSession(requestToken)) return false;
-  if (window.__projectPulseSessionInvalidationStarted) return true;
-
-  window.__projectPulseSessionInvalidationStarted = true;
-  const detail = {
-    marker: SESSION_INVALIDATION_MARKER,
-    path,
-    message: String(payload?.message || payload?.Message || responseText || 'Session expired or invalid.'),
-    at: new Date().toISOString()
-  };
-
-  try {
-    window.sessionStorage.setItem('projectPulseSessionInvalidatedAt', detail.at);
-  } catch {
-    // Session invalidation still works when auxiliary storage is unavailable.
-  }
-
-  clearSessionStorage();
-  window.dispatchEvent(new CustomEvent(SESSION_INVALIDATED_EVENT, { detail }));
-
-  window.setTimeout(() => {
-    window.location.hash = '#dashboard';
-    window.location.reload();
-  }, 0);
-
-  return true;
-}
-
-async function inspectFetchSessionRejection(input, response, requestToken = '') {
-  const path = normalizeApiPath(input);
-  if (!path || response?.status !== 401 || !requestToken) return;
-
-  let payload = {};
-  let raw = '';
-  try {
-    raw = await response.clone().text();
-    payload = raw ? JSON.parse(raw) : {};
-  } catch {
-    payload = {};
-  }
-
-  if (isSessionRejection(response.status, payload, raw, requestToken)) {
-    invalidateProjectPulseSession(path, payload, raw, requestToken);
-  }
-}
-
-function installGlobalFetchSessionInvalidation() {
-  if (typeof window === 'undefined' || window.__projectPulseGlobalSessionInvalidationInstalled) return;
+function installProtectedFetchReadinessGate() {
+  if (typeof window === 'undefined' || window.__projectPulseProtectedFetchReadinessGateInstalled) return;
 
   const originalFetch = window.fetch.bind(window);
   window.fetch = async (input, init = {}) => {
-    const requestToken = requestSessionToken(input, init);
-    const response = await originalFetch(input, init);
-    void inspectFetchSessionRejection(input, response, requestToken);
-    return response;
+    const path = normalizeApiPath(input);
+    if (!path || isPublicApiPath(path)) return originalFetch(input, init);
+
+    let token = requestSessionToken(input, init);
+    if (!token) token = (await waitForUsableSession()).token;
+    if (!token) return createSessionNotReadyResponse(path);
+
+    const headers = applySessionHeaders(
+      new Headers(init?.headers || (input instanceof Request ? input.headers : undefined)),
+      token
+    );
+
+    return originalFetch(input, {
+      ...init,
+      headers
+    });
   };
 
-  window.__projectPulseGlobalSessionInvalidationInstalled = true;
+  window.__projectPulseProtectedFetchReadinessGateInstalled = true;
+}
+
+function shouldPublishError(diagnostic) {
+  const key = `${diagnostic.path}|${diagnostic.status}|${diagnostic.message}`;
+  const now = Date.now();
+  const previous = window.__projectPulseAuthoritativeApiLastError;
+  window.__projectPulseAuthoritativeApiLastError = { key, at: now };
+  return !previous || previous.key !== key || now - previous.at >= 15000;
 }
 
 function publishDiagnostic(diagnostic) {
@@ -228,11 +229,53 @@ function publishDiagnostic(diagnostic) {
     [diagnostic.path]: diagnostic
   };
   window.dispatchEvent(new CustomEvent(DIAGNOSTIC_EVENT, { detail: diagnostic }));
-  if (!diagnostic.ok) console.error('[ProjectPulse authoritative API]', diagnostic);
+  if (!diagnostic.ok && shouldPublishError(diagnostic)) {
+    console.error('[ProjectPulse authoritative API]', diagnostic);
+  }
 }
 
 function collectionMissing(payload, requiredCollections) {
   return requiredCollections.filter((name) => !Array.isArray(payload?.[name]));
+}
+
+function globalXhrSessionBridgeInstalled() {
+  return Boolean(window.XMLHttpRequest?.prototype?.__projectPulse050BFinalWrapped);
+}
+
+function globalXhrBridgeToken() {
+  // This intentionally mirrors the exact token/storage contract in App.jsx's
+  // 050B global XHR bridge. Do not broaden it without broadening that bridge.
+  const session = parseStoredJson(window.localStorage, 'projectPulseAuthSession');
+  return session?.sessionToken
+    || session?.token
+    || session?.accessToken
+    || '';
+}
+
+function globalXhrBridgeCanSupplyToken(token) {
+  return Boolean(
+    token
+      && globalXhrSessionBridgeInstalled()
+      && globalXhrBridgeToken() === token
+  );
+}
+
+function sessionNotReadyError(path) {
+  const error = new Error('ProjectPulse session is not ready yet.');
+  error.status = SESSION_NOT_READY_STATUS;
+  error.code = 'session_not_ready';
+  error.path = path;
+  error.silent = true;
+  return error;
+}
+
+function sessionTransportConflictError(path) {
+  const error = new Error('ProjectPulse session transport is waiting for stale browser session state to be replaced.');
+  error.status = SESSION_NOT_READY_STATUS;
+  error.code = 'session_transport_conflict';
+  error.path = path;
+  error.silent = true;
+  return error;
 }
 
 export function authoritativeApiDiagnostics() {
@@ -242,7 +285,27 @@ export function authoritativeApiDiagnostics() {
 export async function authoritativeApi(path, options = {}) {
   const method = String(options.method || 'GET').toUpperCase();
   const requiredCollections = Array.isArray(options.requiredCollections) ? options.requiredCollections : [];
-  const { token, viewAsUserId } = sessionContext();
+  const context = isPublicApiPath(path)
+    ? sessionContext()
+    : await waitForUsableSession(options.sessionWaitMs ?? SESSION_WAIT_MS);
+
+  if (!isPublicApiPath(path) && !context.token) {
+    throw sessionNotReadyError(path);
+  }
+
+  const { token, viewAsUserId } = context;
+  const bridgeToken = globalXhrBridgeToken();
+  if (
+    token
+      && globalXhrSessionBridgeInstalled()
+      && bridgeToken
+      && bridgeToken !== token
+  ) {
+    // The App bridge would append its different token at send(). Stop locally
+    // rather than transmitting a combined, guaranteed-invalid header value.
+    throw sessionTransportConflictError(path);
+  }
+
   const moduleNumber = activeModuleNumber(options.moduleNumber);
   const startedAt = Date.now();
 
@@ -257,12 +320,17 @@ export async function authoritativeApi(path, options = {}) {
     request.setRequestHeader('X-ProjectPulse-Authoritative-Client', DIAGNOSTIC_MARKER);
     if (moduleNumber) request.setRequestHeader('X-ProjectPulse-Module-Number', moduleNumber);
     if (options.body != null) request.setRequestHeader('Content-Type', 'application/json');
-    if (token) {
+
+    // Defer only when App.jsx's global XHR bridge can supply this exact token.
+    // Legacy/session-storage/session_token sessions use the direct fallback when
+    // the bridge has no token, preserving compatibility without duplication.
+    if (token && !globalXhrBridgeCanSupplyToken(token)) {
       request.setRequestHeader('Authorization', `Bearer ${token}`);
       request.setRequestHeader('X-ProjectPulse-Session', token);
       request.setRequestHeader('X-Project-Pulse-Session', token);
       request.setRequestHeader('X-Session-Token', token);
     }
+
     if (viewAsUserId) request.setRequestHeader('X-ProjectPulse-View-As-User', viewAsUserId);
     for (const [name, value] of Object.entries(options.headers || {})) {
       if (value != null) request.setRequestHeader(name, String(value));
@@ -303,9 +371,6 @@ export async function authoritativeApi(path, options = {}) {
       }
       payload = unwrap(payload);
       if (request.status < 200 || request.status >= 300) {
-        if (isSessionRejection(request.status, payload, raw, token)) {
-          invalidateProjectPulseSession(path, payload, raw, token);
-        }
         finishError(
           payload.message || payload.Message || payload.detail || payload.Detail || `${path} returned HTTP ${request.status}.`,
           request.status,
@@ -347,4 +412,6 @@ export async function authoritativeApi(path, options = {}) {
   });
 }
 
-installGlobalFetchSessionInvalidation();
+if (typeof window !== 'undefined' && typeof window.fetch === 'function') {
+  installProtectedFetchReadinessGate();
+}
