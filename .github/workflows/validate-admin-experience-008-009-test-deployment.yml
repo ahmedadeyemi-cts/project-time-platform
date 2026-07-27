@@ -74,8 +74,20 @@ jobs:
           cache-dependency-path: src/frontend/project-time-web/package-lock.json
 
       - name: Validate guarded deployment contract
+        id: deployment_guard
         shell: bash
-        run: bash scripts/validate-admin-experience-008-009-test-deployment.sh
+        run: |
+          set -o pipefail
+          bash scripts/validate-admin-experience-008-009-test-deployment.sh 2>&1 \
+            | tee /tmp/admin-experience-deployment-guard.log
+
+      - name: Upload deployment guard diagnostics
+        if: ${{ failure() && steps.deployment_guard.outcome == 'failure' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: admin-experience-deployment-guard-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/admin-experience-deployment-guard.log
+          retention-days: 7
 
       - name: Test migration 048 apply, invariants, and guarded rollback
         shell: bash
