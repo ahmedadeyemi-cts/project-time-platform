@@ -6,6 +6,7 @@ import './api-error-presentation.js';
 import './runtime-data-compatibility.js';
 import './microsoft-integration-compatibility.js';
 import './microsoft-sso-runtime-activation.js';
+import './microsoft-mail-runtime-activation.js';
 import App from './App.Module001.g.jsx';
 import HelpAssistant from './HelpAssistant.jsx';
 import ModulesDirectoryPortal from './ModulesDirectoryPortal.jsx';

@@ -6,9 +6,26 @@ body.projectpulse-microsoft-integration-active .native-module-administration[dat
 }
 
 .route-azure-admin .azure-config-card,
-.route-azure-admin .azure-sync-summary-card,
-.route-azure-admin .azure-admin-heading-actions .primary-action {
+.route-azure-admin .azure-sync-summary-card {
   display: none !important;
+}
+
+.route-azure-admin .azure-preview-card,
+.route-azure-admin .azure-preview-card .azure-admin-heading-actions,
+.route-azure-admin .azure-preview-card .azure-admin-heading-actions button,
+.route-azure-admin .azure-preview-card .azure-selection-toolbar,
+.route-azure-admin .azure-preview-card .azure-filter-grid,
+.route-azure-admin .azure-preview-card .azure-preview-table {
+  display: revert !important;
+}
+
+.route-azure-admin .azure-preview-card {
+  display: block !important;
+}
+
+.route-azure-admin .azure-preview-card .azure-admin-heading-actions,
+.route-azure-admin .azure-preview-card .azure-selection-toolbar {
+  display: flex !important;
 }
 
 body.projectpulse-microsoft-integration-active .microsoft-integration-portal[data-microsoft-integration-authoritative="true"],
