@@ -1,31 +1,138 @@
 body.projectpulse-microsoft-integration-active .entra-secret-administration-route-panel,
 body.projectpulse-microsoft-integration-active .entra-secret-center[data-module="065"],
 body.projectpulse-microsoft-integration-active [data-phase="065_COMPLETE_SOURCE_LOCKED_RUNTIME"],
-body.projectpulse-microsoft-integration-active .native-module-administration[data-module-administration="065"] {
+body.projectpulse-microsoft-integration-active .native-module-administration[data-module-administration="065"],
+a[href="#global-mail-configuration"],
+[data-route="global-mail-configuration"],
+[data-module-number="067"] {
   display: none !important;
 }
 
 .route-azure-admin .azure-config-card,
-.route-azure-admin .azure-sync-summary-card {
+.route-azure-admin .azure-sync-summary-card,
+.route-azure-admin .azure-sync-runs-card {
   display: none !important;
 }
 
+.route-azure-admin .azure-admin-panel,
+.route-azure-admin #azure-admin,
+.route-azure-admin .azure-admin-workspace,
+.route-azure-admin .azure-admin-card,
 .route-azure-admin .azure-preview-card,
-.route-azure-admin .azure-preview-card .azure-admin-heading-actions,
-.route-azure-admin .azure-preview-card .azure-admin-heading-actions button,
-.route-azure-admin .azure-preview-card .azure-selection-toolbar,
-.route-azure-admin .azure-preview-card .azure-filter-grid,
-.route-azure-admin .azure-preview-card .azure-preview-table {
-  display: revert !important;
+.route-azure-admin .azure-imported-users-card {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
 }
 
-.route-azure-admin .azure-preview-card {
+.route-azure-admin .azure-admin-workspace {
   display: block !important;
 }
 
-.route-azure-admin .azure-preview-card .azure-admin-heading-actions,
-.route-azure-admin .azure-preview-card .azure-selection-toolbar {
+.route-azure-admin .azure-preview-card,
+.route-azure-admin .azure-imported-users-card {
+  display: block !important;
+  overflow: hidden;
+}
+
+.route-azure-admin .azure-preview-card .azure-card-heading,
+.route-azure-admin .azure-imported-users-card .azure-card-heading {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 1rem;
+}
+
+.route-azure-admin .azure-admin-heading-actions {
   display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: center;
+  justify-content: flex-start !important;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  gap: 0.65rem;
+}
+
+.route-azure-admin .azure-admin-heading-actions button {
+  display: inline-flex !important;
+  flex: 0 1 auto;
+  max-width: 100%;
+  white-space: normal;
+}
+
+.route-azure-admin .azure-filter-grid {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  gap: 0.9rem;
+}
+
+.route-azure-admin .azure-filter-grid > *,
+.route-azure-admin .azure-filter-grid input,
+.route-azure-admin .azure-filter-grid select {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.route-azure-admin .azure-selection-toolbar {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: center;
+  justify-content: flex-start !important;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  gap: 0.65rem;
+  overflow: visible;
+}
+
+.route-azure-admin .azure-selection-toolbar > * {
+  flex: 0 1 auto;
+  max-width: 100%;
+}
+
+.route-azure-admin .azure-preview-table {
+  display: block !important;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-gutter: stable;
+}
+
+.route-azure-admin .azure-preview-table table {
+  width: 100%;
+  min-width: 760px;
+}
+
+.route-azure-admin #azure-admin > .section-heading .eyebrow,
+.route-azure-admin #azure-admin > .section-heading h1,
+.route-azure-admin #azure-admin > .section-heading .section-copy {
+  font-size: 0;
+}
+
+.route-azure-admin #azure-admin > .section-heading .eyebrow::after {
+  content: 'MODULE 010 · AZURE / ENTRA DIRECTORY USERS';
+  font-size: 0.72rem;
+}
+
+.route-azure-admin #azure-admin > .section-heading h1::after {
+  content: 'Preview and import Entra users';
+  display: block;
+  font-size: clamp(1.85rem, 3vw, 2.65rem);
+  line-height: 1.08;
+}
+
+.route-azure-admin #azure-admin > .section-heading .section-copy::after {
+  content: 'Preview Entra directory users, filter the list, select the people to import, and confirm that imported users appear in ProjectPulse. Tenant, identity, synchronization, and Microsoft mail configuration are managed in Module 065.';
+  display: block;
+  font-size: 0.95rem;
+  line-height: 1.55;
 }
 
 body.projectpulse-microsoft-integration-active .microsoft-integration-portal[data-microsoft-integration-authoritative="true"],
@@ -38,7 +145,8 @@ body.projectpulse-microsoft-integration-active .microsoft-integration-portal {
   padding: 1.25rem;
   border: 1px solid rgba(15, 57, 87, 0.16);
   border-radius: 1rem;
-  background: #f7fafc;
+  background: var(--surface, #f7fafc);
+  color: var(--text, #172033);
 }
 
 .microsoft-integration-heading,
@@ -72,7 +180,8 @@ body.projectpulse-microsoft-integration-active .microsoft-integration-portal {
   padding: 1rem;
   border: 1px solid rgba(15, 57, 87, 0.14);
   border-radius: 0.9rem;
-  background: #fff;
+  background: var(--surface, #fff);
+  color: var(--text, #172033);
   box-shadow: 0 8px 24px rgba(15, 57, 87, 0.06);
 }
 
@@ -102,8 +211,8 @@ body.projectpulse-microsoft-integration-active .microsoft-integration-portal {
   padding: 0.65rem 0.7rem;
   border: 1px solid rgba(15, 57, 87, 0.24);
   border-radius: 0.55rem;
-  background: #fff;
-  color: #13293d;
+  background: var(--surface, #fff);
+  color: var(--text, #13293d);
   font: inherit;
   font-weight: 500;
 }
@@ -116,7 +225,7 @@ body.projectpulse-microsoft-integration-active .microsoft-integration-portal {
 }
 
 .microsoft-integration-field small {
-  color: #526577;
+  color: var(--muted, #526577);
   font-weight: 500;
 }
 
@@ -139,7 +248,7 @@ body.projectpulse-microsoft-integration-active .microsoft-integration-portal {
   border: 1px solid rgba(0, 119, 182, 0.2);
   border-radius: 0.65rem;
   background: rgba(0, 119, 182, 0.06);
-  color: #17324d;
+  color: var(--text, #17324d);
 }
 
 .microsoft-integration-banner.success {
@@ -172,7 +281,7 @@ body.projectpulse-microsoft-integration-active .microsoft-integration-portal {
 
 .microsoft-integration-check-list span,
 .microsoft-integration-fact span {
-  color: #526577;
+  color: var(--muted, #526577);
   text-align: right;
 }
 
@@ -194,6 +303,16 @@ body.projectpulse-microsoft-integration-active .microsoft-integration-portal {
 }
 
 @media (max-width: 760px) {
+  .route-azure-admin .azure-admin-heading-actions,
+  .route-azure-admin .azure-admin-heading-actions button,
+  .route-azure-admin .azure-selection-toolbar button {
+    width: 100%;
+  }
+
+  .route-azure-admin .azure-preview-table table {
+    min-width: 680px;
+  }
+
   .microsoft-integration-portal {
     margin: 0.5rem;
     padding: 0.85rem;
