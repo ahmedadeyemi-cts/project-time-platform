@@ -1,155 +1,404 @@
 .audit-history-panel {
   display: grid;
-  gap: 18px;
+  gap: 20px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.audit-history-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 28px 30px;
+  border: 1px solid var(--pulse-card-border, var(--border));
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--brand-cyan) 15%, transparent), transparent 38%),
+    var(--pulse-card-bg, var(--surface));
+  box-shadow: var(--pulse-card-shadow-soft, var(--shadow));
+}
+
+.audit-history-hero h1 {
+  margin: 4px 0 10px;
+}
+
+.audit-history-hero p:not(.eyebrow) {
+  max-width: 780px;
+  margin: 0;
+  color: var(--pulse-muted, var(--muted));
+  line-height: 1.65;
+}
+
+.audit-history-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+}
+
+.audit-ledger-state {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  border: 1px solid color-mix(in srgb, #d97706 32%, var(--border));
+  border-radius: 999px;
+  padding: 8px 13px;
+  background: color-mix(in srgb, #fef3c7 76%, var(--surface));
+  color: #92400e;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.audit-ledger-state.ready {
+  border-color: color-mix(in srgb, #16a34a 34%, var(--border));
+  background: color-mix(in srgb, #dcfce7 76%, var(--surface));
+  color: #166534;
 }
 
 .audit-summary-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(140px, 1fr));
+  grid-template-columns: repeat(6, minmax(120px, 1fr));
   gap: 12px;
 }
 
-.audit-summary-grid article {
-  border: 1px solid var(--pulse-card-border);
+.audit-summary-card {
+  min-height: 104px;
+  border: 1px solid var(--pulse-card-border, var(--border));
   border-radius: 18px;
   padding: 16px;
-  background: var(--pulse-card-bg);
-  box-shadow: var(--pulse-card-shadow);
+  background: var(--pulse-card-bg, var(--surface));
+  box-shadow: var(--pulse-card-shadow-soft, var(--shadow));
 }
 
-.audit-summary-grid span {
+.audit-summary-card span,
+.audit-summary-card strong {
   display: block;
-  color: var(--pulse-muted);
-  font-size: 0.85rem;
-  font-weight: 700;
 }
 
-.audit-summary-grid strong {
-  display: block;
-  margin-top: 6px;
-  font-size: 1.8rem;
+.audit-summary-card span {
+  color: var(--pulse-muted, var(--muted));
+  font-size: 0.8rem;
+  font-weight: 800;
 }
+
+.audit-summary-card strong {
+  margin-top: 8px;
+  color: var(--pulse-text, var(--text));
+  font-size: 1.9rem;
+}
+
+.audit-summary-card.success strong { color: #15803d; }
+.audit-summary-card.warning strong { color: #b45309; }
+.audit-summary-card.failure strong { color: #b91c1c; }
+.audit-summary-card.pending strong { color: #1d4ed8; }
+.audit-summary-card.immutable strong { color: var(--brand-blue-strong); }
 
 .audit-filter-bar {
   display: grid;
-  grid-template-columns: repeat(5, minmax(150px, 1fr));
+  grid-template-columns: repeat(4, minmax(140px, 0.8fr)) minmax(260px, 1.6fr) auto;
   gap: 12px;
   align-items: end;
+  padding: 18px;
+  border: 1px solid var(--pulse-card-border, var(--border));
+  border-radius: 20px;
+  background: var(--pulse-card-bg, var(--surface));
+  box-shadow: var(--pulse-card-shadow-soft, var(--shadow));
 }
 
 .audit-filter-bar label {
   display: grid;
-  gap: 6px;
-  color: var(--pulse-muted);
-  font-weight: 800;
+  gap: 7px;
+  color: var(--pulse-muted, var(--muted));
+  font-size: 0.78rem;
+  font-weight: 900;
 }
 
 .audit-filter-bar select,
 .audit-filter-bar input {
   width: 100%;
-  border: 1px solid var(--pulse-card-border);
-  border-radius: 12px;
-  padding: 10px 12px;
-  background: var(--pulse-input-bg, #fff);
-  color: var(--pulse-text);
 }
 
-.audit-table-wrap {
-  overflow-x: auto;
-  border: 1px solid var(--pulse-card-border);
+.audit-event-list {
+  display: grid;
+  gap: 10px;
+}
+
+.audit-event-card {
+  overflow: hidden;
+  border: 1px solid var(--pulse-card-border, var(--border));
   border-radius: 18px;
-  background: var(--pulse-card-bg);
+  background: var(--pulse-card-bg, var(--surface));
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.05);
 }
 
-.audit-table {
-  width: 100%;
-  border-collapse: collapse;
-  min-width: 1180px;
+.audit-event-card[open] {
+  border-color: color-mix(in srgb, var(--brand-blue) 34%, var(--border));
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.1);
 }
 
-.audit-table th,
-.audit-table td {
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--pulse-card-border);
-  text-align: left;
-  vertical-align: top;
+.audit-event-card > summary {
+  display: grid;
+  grid-template-columns: auto minmax(260px, 1.6fr) minmax(210px, 0.8fr) auto;
+  align-items: center;
+  gap: 16px;
+  padding: 15px 18px;
+  cursor: pointer;
+  list-style: none;
 }
 
-.audit-table th {
-  color: var(--pulse-muted);
-  font-size: 0.76rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+.audit-event-card > summary::-webkit-details-marker {
+  display: none;
 }
 
-.audit-details {
-  max-width: 420px;
-  white-space: normal;
-  line-height: 1.45;
+.audit-event-card > summary:hover {
+  background: color-mix(in srgb, var(--accent) 42%, transparent);
+}
+
+.audit-event-summary-copy,
+.audit-event-context {
+  min-width: 0;
+}
+
+.audit-event-summary-copy strong,
+.audit-event-summary-copy small,
+.audit-event-context strong,
+.audit-event-context small {
+  display: block;
+}
+
+.audit-event-summary-copy strong {
+  overflow: hidden;
+  color: var(--pulse-text, var(--text));
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.audit-event-summary-copy small,
+.audit-event-context small {
+  margin-top: 4px;
+  color: var(--pulse-muted, var(--muted));
+  line-height: 1.4;
+}
+
+.audit-event-context {
+  text-align: right;
+}
+
+.audit-event-context strong {
+  color: var(--pulse-text, var(--text));
+  font-size: 0.82rem;
+}
+
+.audit-event-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--brand-blue-strong);
+  font-size: 1.15rem;
+  transition: transform 0.18s ease;
+}
+
+.audit-event-card[open] .audit-event-chevron {
+  transform: rotate(180deg);
 }
 
 .audit-status {
   display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 82px;
   border-radius: 999px;
-  padding: 6px 10px;
-  font-size: 0.78rem;
+  padding: 7px 10px;
+  font-size: 0.72rem;
   font-weight: 900;
 }
 
 .audit-status.success {
-  background: rgba(220, 252, 231, 0.9);
+  background: color-mix(in srgb, #dcfce7 85%, var(--surface));
   color: #166534;
 }
 
 .audit-status.failure {
-  background: rgba(254, 226, 226, 0.9);
+  background: color-mix(in srgb, #fee2e2 85%, var(--surface));
   color: #991b1b;
 }
 
 .audit-status.warning {
-  background: rgba(254, 243, 199, 0.9);
+  background: color-mix(in srgb, #fef3c7 85%, var(--surface));
   color: #92400e;
 }
 
 .audit-status.pending {
-  background: rgba(219, 234, 254, 0.9);
+  background: color-mix(in srgb, #dbeafe 85%, var(--surface));
   color: #1d4ed8;
 }
 
-@media (max-width: 1100px) {
-  .audit-summary-grid,
+.audit-status.info {
+  background: color-mix(in srgb, var(--accent) 80%, var(--surface));
+  color: var(--brand-blue-strong);
+}
+
+.audit-event-detail {
+  display: grid;
+  gap: 18px;
+  padding: 0 18px 18px;
+  border-top: 1px solid var(--pulse-card-border, var(--border));
+}
+
+.audit-event-facts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  padding-top: 18px;
+}
+
+.audit-event-facts > div {
+  min-width: 0;
+  border: 1px solid var(--pulse-card-border, var(--border));
+  border-radius: 14px;
+  padding: 12px;
+  background: color-mix(in srgb, var(--surface-strong) 86%, transparent);
+}
+
+.audit-event-facts span,
+.audit-event-facts strong {
+  display: block;
+}
+
+.audit-event-facts span {
+  color: var(--pulse-muted, var(--muted));
+  font-size: 0.72rem;
+  font-weight: 850;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.audit-event-facts strong {
+  overflow-wrap: anywhere;
+  margin-top: 6px;
+  color: var(--pulse-text, var(--text));
+  font-size: 0.84rem;
+}
+
+.audit-evidence-block {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.35fr) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.audit-evidence-block h3 {
+  margin: 0;
+}
+
+.audit-evidence-block pre {
+  max-height: 360px;
+  overflow: auto;
+  margin: 0;
+  border: 1px solid var(--pulse-card-border, var(--border));
+  border-radius: 14px;
+  padding: 14px;
+  background: #0f172a;
+  color: #dbeafe;
+  font: 0.78rem/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.audit-empty-state,
+.audit-source-footnote {
+  border: 1px dashed var(--pulse-card-border, var(--border));
+  border-radius: 18px;
+  padding: 18px;
+  background: color-mix(in srgb, var(--surface) 82%, var(--bg-soft));
+  color: var(--pulse-muted, var(--muted));
+  text-align: center;
+}
+
+.audit-empty-state.error {
+  border-color: color-mix(in srgb, #ef4444 45%, var(--border));
+  color: #b91c1c;
+}
+
+.audit-source-footnote {
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.audit-source-footnote strong {
+  color: var(--pulse-text, var(--text));
+}
+
+[data-theme='dark'] .audit-ledger-state {
+  background: rgba(146, 64, 14, 0.22);
+  color: #fcd34d;
+}
+
+[data-theme='dark'] .audit-ledger-state.ready {
+  background: rgba(22, 101, 52, 0.25);
+  color: #86efac;
+}
+
+[data-theme='dark'] .audit-summary-card.success strong { color: #86efac; }
+[data-theme='dark'] .audit-summary-card.warning strong { color: #fcd34d; }
+[data-theme='dark'] .audit-summary-card.failure strong { color: #fca5a5; }
+[data-theme='dark'] .audit-summary-card.pending strong { color: #93c5fd; }
+
+@media (max-width: 1180px) {
+  .audit-summary-grid {
+    grid-template-columns: repeat(3, minmax(120px, 1fr));
+  }
+
   .audit-filter-bar {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(180px, 1fr));
+  }
+
+  .audit-search-field {
+    grid-column: 1 / -1;
+  }
+
+  .audit-event-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
-/* Hard route isolation for Audit History.
-   The application currently renders many workspace sections in one long document.
-   When the hash route is audit-history, hide all direct workspace sections except Audit. */
+@media (max-width: 760px) {
+  .audit-history-hero,
+  .audit-history-hero-actions {
+    display: grid;
+    justify-content: stretch;
+  }
+
+  .audit-summary-grid,
+  .audit-filter-bar,
+  .audit-event-facts,
+  .audit-evidence-block {
+    grid-template-columns: 1fr;
+  }
+
+  .audit-event-card > summary {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .audit-event-context {
+    grid-column: 2;
+    text-align: left;
+  }
+}
+
+/* Hard route isolation for Audit and History. */
 .app-shell.route-audit-history > section:not(#audit-history),
 .app-shell.route-audit-history > .module-grid,
-.app-shell.route-audit-history > #workflow {
-  display: none !important;
-}
-
-.app-shell.route-audit-history #audit-history {
-  display: grid !important;
-  min-height: calc(100vh - 180px);
-}
-
-/* Strong Audit route isolation.
-   Hide every workspace section inside the authenticated shell except the Audit History page. */
-.app-shell.route-audit-history section:not(#audit-history) {
-  display: none !important;
-}
-
-.app-shell.route-audit-history #audit-history {
-  display: grid !important;
-  visibility: visible !important;
-  min-height: calc(100vh - 160px);
-}
-
-/* Hide non-section workspace grids that may still remain in the long-form dashboard layout. */
+.app-shell.route-audit-history > #workflow,
+.app-shell.route-audit-history section:not(#audit-history),
 .app-shell.route-audit-history .module-grid,
 .app-shell.route-audit-history .workflow-grid,
 .app-shell.route-audit-history .role-feature-grid,
@@ -162,4 +411,10 @@
 .app-shell.route-audit-history .current-quarter-utilization-panel,
 .app-shell.route-audit-history .role-admin-panel {
   display: none !important;
+}
+
+.app-shell.route-audit-history #audit-history {
+  display: grid !important;
+  visibility: visible !important;
+  min-height: calc(100vh - 160px);
 }
