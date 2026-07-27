@@ -2,23 +2,33 @@ import { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './audit-history.css';
 
-function getProjectPulseAuthHeaders() {
+function readStoredJson(key) {
   try {
-    const raw = window.localStorage.getItem('projectPulseAuthSession');
-    if (!raw) return {};
-    const session = JSON.parse(raw);
-    const token = session?.sessionToken || session?.token || session?.accessToken || '';
-    if (!token) return {};
-
-    return {
-      'X-ProjectPulse-Session': token,
-      'X-Project-Pulse-Session': token,
-      'X-Session-Token': token,
-      Authorization: `Bearer ${token}`
-    };
+    const raw = window.localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : null;
   } catch {
-    return {};
+    return null;
   }
+}
+
+function readProjectPulseAuthSession() {
+  const session = readStoredJson('projectPulseAuthSession');
+  const token = session?.sessionToken || session?.token || session?.accessToken || '';
+  if (!token) return null;
+  if (session?.expiresAt && Date.now() >= Date.parse(session.expiresAt)) return null;
+  return { ...session, token };
+}
+
+function getProjectPulseAuthHeaders() {
+  const session = readProjectPulseAuthSession();
+  if (!session?.token) return {};
+
+  return {
+    'X-ProjectPulse-Session': session.token,
+    'X-Project-Pulse-Session': session.token,
+    'X-Session-Token': session.token,
+    Authorization: `Bearer ${session.token}`
+  };
 }
 
 async function readApiErrorMessage(response, path) {
@@ -298,6 +308,11 @@ function readModule008ActiveRoute() {
     .trim();
 }
 
+function readModule008ViewAsUser() {
+  const viewAs = readStoredJson('projectPulseViewAsUser');
+  return viewAs?.userId ? viewAs : null;
+}
+
 function installModule008RouteRecovery() {
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
   if (window.__projectPulseModule008RouteRecoveryInstalled) return;
@@ -305,7 +320,6 @@ function installModule008RouteRecovery() {
 
   let host = null;
   let root = null;
-  let retryTimer = 0;
   let scheduled = false;
 
   const removeRecovery = () => {
@@ -320,19 +334,20 @@ function installModule008RouteRecovery() {
 
   const synchronize = () => {
     scheduled = false;
-    if (retryTimer) {
-      window.clearTimeout(retryTimer);
-      retryTimer = 0;
-    }
 
     if (readModule008ActiveRoute() !== 'audit-history') {
       removeRecovery();
       return;
     }
 
+    if (!readProjectPulseAuthSession() || readModule008ViewAsUser()) {
+      removeRecovery();
+      return;
+    }
+
     const shell = document.querySelector('.app-shell.route-audit-history');
     if (!shell) {
-      retryTimer = window.setTimeout(synchronize, 50);
+      removeRecovery();
       return;
     }
 
@@ -375,6 +390,12 @@ function installModule008RouteRecovery() {
 
   window.addEventListener('hashchange', schedule);
   window.addEventListener('projectpulse:auth-session-ready', schedule);
+  window.addEventListener('projectpulse:view-as-changed', schedule);
+  window.addEventListener('storage', (event) => {
+    if (event.key === 'projectPulseAuthSession' || event.key === 'projectPulseViewAsUser') {
+      schedule();
+    }
+  });
 }
 
 installModule008RouteRecovery();
