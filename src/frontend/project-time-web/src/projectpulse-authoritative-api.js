@@ -91,8 +91,41 @@ function normalizeApiPath(input) {
   }
 }
 
-function isSessionRejection(status, payload = {}, responseText = '') {
-  if (Number(status) !== 401 || !storedSessionContext().token) return false;
+function normalizeHeaderToken(value = '') {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  return text.replace(/^Bearer\s+/i, '').trim();
+}
+
+function requestSessionToken(input, init = {}) {
+  try {
+    const headers = new Headers(
+      init?.headers || (input instanceof Request ? input.headers : undefined)
+    );
+
+    for (const name of [
+      'X-ProjectPulse-Session',
+      'X-Project-Pulse-Session',
+      'X-Session-Token',
+      'Authorization'
+    ]) {
+      const token = normalizeHeaderToken(headers.get(name));
+      if (token) return token;
+    }
+  } catch {
+    // A malformed header object cannot authorize session invalidation.
+  }
+
+  return '';
+}
+
+function requestTokenMatchesCurrentSession(requestToken = '') {
+  const currentToken = storedSessionContext().token;
+  return Boolean(requestToken && currentToken && requestToken === currentToken);
+}
+
+function isSessionRejection(status, payload = {}, responseText = '', requestToken = '') {
+  if (Number(status) !== 401 || !requestTokenMatchesCurrentSession(requestToken)) return false;
 
   const normalized = unwrap(payload);
   const statusCode = String(
@@ -127,8 +160,8 @@ function clearSessionStorage() {
   }
 }
 
-function invalidateProjectPulseSession(path, payload = {}, responseText = '') {
-  if (!storedSessionContext().token) return false;
+function invalidateProjectPulseSession(path, payload = {}, responseText = '', requestToken = '') {
+  if (!requestTokenMatchesCurrentSession(requestToken)) return false;
   if (window.__projectPulseSessionInvalidationStarted) return true;
 
   window.__projectPulseSessionInvalidationStarted = true;
@@ -156,9 +189,9 @@ function invalidateProjectPulseSession(path, payload = {}, responseText = '') {
   return true;
 }
 
-async function inspectFetchSessionRejection(input, response) {
+async function inspectFetchSessionRejection(input, response, requestToken = '') {
   const path = normalizeApiPath(input);
-  if (!path || response?.status !== 401 || !storedSessionContext().token) return;
+  if (!path || response?.status !== 401 || !requestToken) return;
 
   let payload = {};
   let raw = '';
@@ -169,8 +202,8 @@ async function inspectFetchSessionRejection(input, response) {
     payload = {};
   }
 
-  if (isSessionRejection(response.status, payload, raw)) {
-    invalidateProjectPulseSession(path, payload, raw);
+  if (isSessionRejection(response.status, payload, raw, requestToken)) {
+    invalidateProjectPulseSession(path, payload, raw, requestToken);
   }
 }
 
@@ -179,8 +212,9 @@ function installGlobalFetchSessionInvalidation() {
 
   const originalFetch = window.fetch.bind(window);
   window.fetch = async (input, init = {}) => {
+    const requestToken = requestSessionToken(input, init);
     const response = await originalFetch(input, init);
-    void inspectFetchSessionRejection(input, response);
+    void inspectFetchSessionRejection(input, response, requestToken);
     return response;
   };
 
@@ -269,8 +303,8 @@ export async function authoritativeApi(path, options = {}) {
       }
       payload = unwrap(payload);
       if (request.status < 200 || request.status >= 300) {
-        if (isSessionRejection(request.status, payload, raw)) {
-          invalidateProjectPulseSession(path, payload, raw);
+        if (isSessionRejection(request.status, payload, raw, token)) {
+          invalidateProjectPulseSession(path, payload, raw, token);
         }
         finishError(
           payload.message || payload.Message || payload.detail || payload.Detail || `${path} returned HTTP ${request.status}.`,
