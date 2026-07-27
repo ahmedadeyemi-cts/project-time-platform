@@ -271,7 +271,7 @@ jobs:
           wait_status services-test POST "$BASE/api/microsoft-integration/test-connection" '401,403' '{}'
           wait_status sso-readiness GET "$BASE/api/microsoft-integration/sso-readiness" '401,403'
           wait_status sso-secret PUT "$BASE/api/microsoft-integration/sso-client-secret" '401,403' '{}'
-          wait_status sso-test POST "$BASE/api/microsoft-integration/sso-test" '401,403' '{}'
+          wait_status sso-test POST "$BASE/api/microsoft-integration/sso-test" '401,403' '{"tenantId":"00000000-0000-0000-0000-000000000000"}'
           wait_status sso-apply POST "$BASE/api/microsoft-integration/sso-apply-profile" '401,403' '{}'
           READY_API_REVISION="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.latestReadyRevisionName' -o tsv)"
           [[ "$READY_API_REVISION" == '${{ steps.deploy_api.outputs.candidate_api_revision }}' ]]
