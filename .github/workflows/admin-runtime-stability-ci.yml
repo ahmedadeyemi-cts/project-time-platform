@@ -1,0 +1,151 @@
+name: Validate Admin Runtime Stability 008 010 012 037 065
+
+on:
+  push:
+    branches:
+      - 'fix/admin-runtime-stability-*'
+  pull_request:
+    paths:
+      - 'src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ModuleAvailabilityReadContinuityCompatibility.cs'
+      - 'src/backend/ProjectTime.Api/Modules/MicrosoftMailTransportTestModule.cs'
+      - 'src/frontend/project-time-web/src/AdminRuntimeStabilityPortal.jsx'
+      - 'src/frontend/project-time-web/src/AuditHistoryPanel.jsx'
+      - 'src/frontend/project-time-web/src/MicrosoftMailTransportReadinessPanel.jsx'
+      - 'src/frontend/project-time-web/src/admin-experience-theme.js'
+      - 'src/frontend/project-time-web/src/admin-runtime-stability.css'
+      - 'src/frontend/project-time-web/src/main.jsx'
+      - 'src/frontend/project-time-web/src/microsoft-integration-compatibility.js'
+      - 'src/frontend/project-time-web/src/microsoft-integration-portal.css'
+      - 'src/frontend/project-time-web/src/microsoft-mail-transport-readiness.css'
+      - 'src/frontend/project-time-web/src/module001/TimesheetEnhancementPortal.jsx'
+      - 'src/frontend/project-time-web/src/runtime-data-compatibility.js'
+      - 'src/frontend/project-time-web/scripts/test-admin-runtime-stability-runtime.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-admin-runtime-stability.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-module-001-timesheet-timer-mobile.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-modules-008-009-admin-experience.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-microsoft-integration-authoritative-connection.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-microsoft-sso-runtime-wiring.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-role-permission-timesheet-stabilization.mjs'
+      - 'src/frontend/project-time-web/package.json'
+      - '.github/workflows/admin-runtime-stability-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Compile and execute integrated admin runtime checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify source isolation and protected exclusions
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git fetch origin main --no-tags
+          CHANGED="$(git diff --name-only origin/main...HEAD)"
+          printf '%s\n' "$CHANGED"
+
+          if grep -E '^database/(migrations|rollback)/' <<<"$CHANGED"; then
+            echo 'This runtime stabilization source must not add or alter a migration.' >&2
+            exit 1
+          fi
+
+          if grep -E '^\.github/workflows/(projectpulse-deploy-runtime-direct-timer-recovery-test|validate-runtime-direct-timer-recovery-deployment)\.yml$|^scripts/validate-runtime-direct-timer-recovery-test-deployment\.sh$' <<<"$CHANGED"; then
+            echo 'A protected deployment-control file changed.' >&2
+            exit 1
+          fi
+
+          if grep -E '^\.github/workflows/projectpulse-deploy-' <<<"$CHANGED"; then
+            echo 'Deployment workflow changes are outside this source branch.' >&2
+            exit 1
+          fi
+
+          if grep -E 'CustomerDirectorySellSyncModule|CustomerDirectoryCenter|CrmErpIntegrationCenter|049_module_021_sell_customer_sync' <<<"$CHANGED"; then
+            echo 'PR 187 source ownership was modified by the admin runtime branch.' >&2
+            exit 1
+          fi
+
+          echo 'ADMIN_RUNTIME_STABILITY_ISOLATION=PASS'
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Build ProjectTime API in Release mode
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+
+      - name: Execute central authorization tests
+        run: >-
+          dotnet run
+          --project tests/ProjectTime.Api.AuthorizationTests/ProjectTime.Api.AuthorizationTests.csproj
+          --configuration Release
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Validate integrated admin runtime source contract
+        working-directory: src/frontend/project-time-web
+        run: npm run validate:admin-runtime-stability
+
+      - name: Execute direct role-policy runtime test
+        working-directory: src/frontend/project-time-web
+        run: node scripts/test-admin-runtime-stability-runtime.mjs
+
+      - name: Execute session and theme browser-runtime harness
+        working-directory: src/frontend/project-time-web
+        run: node scripts/test-authoritative-session-transport-theme-runtime.mjs
+
+      - name: Validate safe global session transport
+        working-directory: src/frontend/project-time-web
+        run: npm run validate:global-session-invalidation
+
+      - name: Validate Modules 008 and 009
+        working-directory: src/frontend/project-time-web
+        run: npm run validate:modules008009
+
+      - name: Validate Module 001 timer transport
+        working-directory: src/frontend/project-time-web
+        run: npm run validate:module001-enhancement
+
+      - name: Validate role and timesheet stabilization
+        working-directory: src/frontend/project-time-web
+        run: npm run validate:role-permission-timesheet-stabilization
+
+      - name: Validate Module 012
+        working-directory: src/frontend/project-time-web
+        run: npm run validate:module012
+
+      - name: Validate Module 037
+        working-directory: src/frontend/project-time-web
+        run: npm run validate:module037
+
+      - name: Validate module availability
+        working-directory: src/frontend/project-time-web
+        run: npm run validate:module-availability
+
+      - name: Validate authoritative Microsoft Integration
+        working-directory: src/frontend/project-time-web
+        run: npm run validate:microsoft-connection
+
+      - name: Validate Microsoft SSO runtime
+        working-directory: src/frontend/project-time-web
+        run: npm run validate:microsoft-sso-runtime
+
+      - name: Build complete frontend production bundle
+        working-directory: src/frontend/project-time-web
+        run: npm run build
