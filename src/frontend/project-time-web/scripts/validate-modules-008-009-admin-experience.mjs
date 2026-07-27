@@ -57,26 +57,32 @@ check(
   'Module 008 retains every supported ProjectPulse session-header contract'
 );
 check(
-  'AUDIT_ROUTE_RECOVERY',
-  auditUi.includes('function installModule008RouteRecovery()')
-    && auditUi.includes("readModule008ActiveRoute() !== 'audit-history'")
-    && auditUi.includes("document.querySelector('.app-shell.route-audit-history')")
-    && auditUi.includes('root.render(<AuditHistoryPanel recoveryMode />)'),
-  'Module 008 mounts its own panel when role-policy state prevents normal App rendering'
+  'AUDIT_STABLE_ROUTE_OWNER',
+  auditUi.includes('function installModule008StableRouteOwner()')
+    && auditUi.includes("host.setAttribute('data-module-008-stable-route-host', 'true')")
+    && auditUi.includes('root.render(<AuditHistoryPanel routeOwnerMode />)')
+    && auditUi.includes("data-module-008-stable-route-owner={routeOwnerMode ? 'true' : undefined}")
+    && auditUi.includes('installModule008StableRouteOwner();'),
+  'Module 008 has one module-owned stable route host instead of a temporary recovery mount'
 );
 check(
-  'AUDIT_NO_DUPLICATE_PANEL',
-  auditUi.includes("find((panel) => !panel.closest('[data-module-008-route-recovery-host]'))")
-    && auditUi.includes('if (findAppOwnedPanel(shell))')
-    && auditUi.includes('removeRecovery();'),
-  'recovery yields to the normal App-owned Audit and History panel'
+  'AUDIT_SINGLE_VISIBLE_OWNER',
+  auditUi.includes('const suppressAppOwnedPanels = (shell) =>')
+    && auditUi.includes("panel.removeAttribute('id');")
+    && auditUi.includes('panel.hidden = true;')
+    && auditUi.includes("data-module-008-superseded-by-stable-route-owner")
+    && auditUi.includes('restoreSuppressedAppPanels();'),
+  'the App-owned duplicate is hidden and its duplicate id removed while the stable owner is active'
 );
 check(
-  'AUDIT_MODULE_OWNED_RECOVERY',
-  auditUi.includes("host.setAttribute('data-module-008-route-recovery-host', 'true')")
-    && auditUi.includes("data-module-008-route-recovery={recoveryMode ? 'true' : undefined}")
-    && auditUi.includes('installModule008RouteRecovery();'),
-  'recovery is contained inside Module 008 source without shared entry-point or Module 009 changes'
+  'AUDIT_NO_HANDOFF_FLICKER',
+  !auditUi.includes('function installModule008RouteRecovery()')
+    && !auditUi.includes('findAppOwnedPanel(shell)')
+    && !auditUi.includes('if (findAppOwnedPanel(shell))')
+    && !auditUi.includes('root.render(<AuditHistoryPanel recoveryMode />)')
+    && auditUi.includes('ensureStableHost(shell);')
+    && auditUi.includes('suppressAppOwnedPanels(shell);'),
+  'the panel no longer mounts, yields, unmounts, and remounts as permission data settles'
 );
 check(
   'AUDIT_VIEW_AS_ISOLATION',
@@ -84,21 +90,21 @@ check(
     && auditUi.includes('if (!readProjectPulseAuthSession() || readModule008ViewAsUser())')
     && auditUi.includes("window.addEventListener('projectpulse:view-as-changed', schedule)")
     && auditUi.includes("event.key === 'projectPulseAuthSession' || event.key === 'projectPulseViewAsUser'"),
-  'route recovery remains disabled during Administrator View-As and reacts to effective-user changes'
+  'stable route ownership remains disabled during Administrator View-As and reacts to effective-user changes'
 );
 check(
   'AUDIT_NO_UNBOUNDED_RETRY',
   !auditUi.includes('retryTimer')
     && !auditUi.includes('window.setTimeout(synchronize, 50)')
-    && auditUi.includes("const shell = document.querySelector('.app-shell.route-audit-history');\n    if (!shell) {\n      removeRecovery();\n      return;\n    }"),
+    && auditUi.includes("const shell = document.querySelector('.app-shell.route-audit-history');\n    if (!shell) {\n      removeStableOwner();\n      return;\n    }"),
   'unauthenticated or non-route shells do not create an unbounded polling loop'
 );
-const recoverySource = auditUi.slice(auditUi.indexOf('function readModule008ActiveRoute()'));
+const routeOwnerSource = auditUi.slice(auditUi.indexOf('function readModule008ActiveRoute()'));
 check(
   'AUDIT_BACKEND_AUTHORITY',
-  recoverySource.length > 0
-    && !/hasPermission|VIEW_AUDIT_TRAIL|SYSTEM_ADMINISTRATION|MANAGE_ALL/.test(recoverySource),
-  'recovery does not duplicate frontend permission grants; the API remains authoritative'
+  routeOwnerSource.length > 0
+    && !/hasPermission|VIEW_AUDIT_TRAIL|SYSTEM_ADMINISTRATION|MANAGE_ALL/.test(routeOwnerSource),
+  'stable route ownership does not grant permissions; the API remains authoritative'
 );
 
 check('USER_TABBED_INTERFACE', ['Manage users', 'Bulk updates', 'Create local user', 'Manager team scope'].every((value) => userUi.includes(value)), 'four clear Module 009 workspaces');
@@ -112,12 +118,27 @@ check('USER_SCOPED_STYLES', userCss.includes('.user-admin-v2-tabs') && userCss.i
 check(
   'THEME_STRAY_TEXT_REMOVAL',
   themeJs.includes('Node.TEXT_NODE')
-    && themeJs.includes("String(node.textContent || '').trim()")
+    && themeJs.includes("String(node.textContent || '').replace")
     && themeJs.includes('node.remove();'),
-  'literal newline text nodes are removed without depending on regex source escaping'
+  'literal newline text nodes are removed from the theme control surroundings'
 );
 check('THEME_NO_APP_EDIT_REQUIRED', userUi.includes("import './admin-experience-theme.js';") && userUi.includes("import './admin-experience-theme.css';"), 'theme bridge loads through existing Module 009 import');
-check('THEME_DESIGN', themeCss.includes('.theme-toggle.projectpulse-theme-control') && themeCss.includes("content: 'Dark mode'") && themeCss.includes("content: 'Light mode'"), 'branded light/dark control');
+check(
+  'THEME_ICON_ONLY_DOCK',
+  themeCss.includes("[data-projectpulse-theme-control='true']")
+    && /left:\s*0\s*!important/.test(themeCss)
+    && /width:\s*44px\s*!important/.test(themeCss)
+    && /border-radius:\s*0 14px 14px 0\s*!important/.test(themeCss)
+    && /::after\s*\{[\s\S]*display:\s*none\s*!important/.test(themeCss)
+    && !themeCss.includes("content: 'Dark mode'")
+    && !themeCss.includes("content: 'Light mode'"),
+  'the accessible theme control is a compact icon-only button docked to the bottom-left edge'
+);
+check(
+  'THEME_LIGHT_DARK_ICONS',
+  themeCss.includes("content: '☾'") && themeCss.includes("content: '☀'"),
+  'moon and sun states remain visible without text labels'
+);
 
 const backendAvailable = ['common', 'auditBackend', 'teamBackend', 'project'].every((name) => exists(files[name]));
 if (backendAvailable) {
