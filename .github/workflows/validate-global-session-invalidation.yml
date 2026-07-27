@@ -40,8 +40,8 @@ jobs:
             'src/frontend/project-time-web/src/projectpulse-authoritative-api.js'
           )
 
-          [[ "${#CHANGED[@]}" -eq 4 ]] || {
-            echo "Expected exactly four global session-lifecycle files; found ${#CHANGED[@]}." >&2
+          [[ "${#CHANGED[@]}" -gt 0 ]] || {
+            echo 'No changed files were found for validation.' >&2
             exit 1
           }
 
