@@ -198,8 +198,13 @@ jobs:
             printf '%s%s@%s\n' "$registry" "$repository" "$digest"
           }
 
-          echo "current_api_image=$(resolve_digest "$RAW_API_IMAGE")" >> "$GITHUB_OUTPUT"
-          echo "current_web_image=$(resolve_digest "$RAW_WEB_IMAGE")" >> "$GITHUB_OUTPUT"
+          CURRENT_API_IMAGE="$(resolve_digest "$RAW_API_IMAGE")"
+          CURRENT_WEB_IMAGE="$(resolve_digest "$RAW_WEB_IMAGE")"
+          [[ -n "$CURRENT_API_IMAGE" && -n "$CURRENT_WEB_IMAGE" ]]
+          echo "current_api_image=$CURRENT_API_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "current_web_image=$CURRENT_WEB_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "CAPTURED_CURRENT_API_IMAGE=$CURRENT_API_IMAGE"
+          echo "CAPTURED_CURRENT_WEB_IMAGE=$CURRENT_WEB_IMAGE"
 
       - name: Build exact immutable API and web candidates
         id: build
@@ -344,6 +349,7 @@ jobs:
             "apiRevision": "${{ steps.validate_api.outputs.ready_revision }}",
             "webRevision": "${{ steps.validate_web.outputs.ready_revision }}",
             "releaseWorkingDirectory": "verified",
+            "rollbackImageResolution": "fail-closed",
             "roleAssignmentBoundary": "standard-and-trailing-slash-protected",
             "authoritativeNativeFallback": "served-and-source-validated",
             "module008SingleOwner": "served-and-source-validated",
