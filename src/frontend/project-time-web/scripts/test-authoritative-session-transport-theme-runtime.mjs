@@ -8,6 +8,7 @@ const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const frontendRoot = path.resolve(scriptDirectory, '..');
 const transportPath = path.join(frontendRoot, 'src', 'projectpulse-authoritative-api.js');
 const themePath = path.join(frontendRoot, 'src', 'admin-experience-theme.js');
+const themeCssPath = path.join(frontendRoot, 'src', 'admin-experience-theme.css');
 
 class MemoryStorage {
   constructor() {
@@ -33,6 +34,13 @@ function buildTransportHarness() {
   const sessionStorage = new MemoryStorage();
   const fetchCalls = [];
   const xhrInstances = [];
+  const nativeResponses = new Map();
+
+  const queueNativeResponse = (requestPath, payload, status = 200) => {
+    const queue = nativeResponses.get(requestPath) || [];
+    queue.push({ payload, status });
+    nativeResponses.set(requestPath, queue);
+  };
 
   class FakeCustomEvent {
     constructor(type, init = {}) {
@@ -87,9 +95,15 @@ function buildTransportHarness() {
   FakeXhr.prototype.__projectPulse050BFinalWrapped = true;
 
   const nativeFetch = async (input, init = {}) => {
-    fetchCalls.push({ input, init });
-    return new Response(JSON.stringify({ ok: true }), {
-      status: 200,
+    const raw = typeof input === 'string' ? input : input?.url;
+    const url = new URL(raw, 'https://phd-west-test.onenecklab.com');
+    const requestPath = `${url.pathname}${url.search}`;
+    const queue = nativeResponses.get(requestPath) || [];
+    const responseDefinition = queue.shift() || { payload: { ok: true }, status: 200 };
+    nativeResponses.set(requestPath, queue);
+    fetchCalls.push({ input, init, requestPath, responseDefinition });
+    return new Response(JSON.stringify(responseDefinition.payload), {
+      status: responseDefinition.status,
       headers: { 'Content-Type': 'application/json' }
     });
   };
@@ -109,6 +123,7 @@ function buildTransportHarness() {
     JSON,
     Map,
     Set,
+    WeakSet,
     Promise,
     Error,
     Number,
@@ -145,7 +160,7 @@ function buildTransportHarness() {
   source = source.replace(/^import .*?;\s*/s, '');
   source = source.replace('export function authoritativeApiDiagnostics', 'function authoritativeApiDiagnostics');
   source = source.replace('export async function authoritativeApi', 'async function authoritativeApi');
-  source += '\nglobalThis.__transportTest = { authoritativeApi, sessionContext };\n';
+  source += '\nglobalThis.__transportTest = { authoritativeApi, authoritativeApiDiagnostics, sessionContext };\n';
 
   vm.runInNewContext(source, sandbox, { filename: transportPath });
 
@@ -156,7 +171,9 @@ function buildTransportHarness() {
     fetchCalls,
     xhrInstances,
     FakeXhr,
-    authoritativeApi: sandbox.__transportTest.authoritativeApi
+    queueNativeResponse,
+    authoritativeApi: sandbox.__transportTest.authoritativeApi,
+    diagnostics: sandbox.__transportTest.authoritativeApiDiagnostics
   };
 }
 
@@ -174,6 +191,14 @@ function assertSingleSessionHeaders(xhr, token) {
   }
 }
 
+function assertFetchSessionHeaders(call, token) {
+  const headers = new Headers(call.init.headers);
+  assert.equal(headers.get('X-ProjectPulse-Session'), token);
+  assert.equal(headers.get('X-Project-Pulse-Session'), token);
+  assert.equal(headers.get('X-Session-Token'), token);
+  assert.equal(headers.get('Authorization'), `Bearer ${token}`);
+}
+
 async function testTransportRuntime() {
   const harness = buildTransportHarness();
   const {
@@ -183,7 +208,9 @@ async function testTransportRuntime() {
     fetchCalls,
     xhrInstances,
     FakeXhr,
-    authoritativeApi
+    queueNativeResponse,
+    authoritativeApi,
+    diagnostics
   } = harness;
 
   const protectedResponse = await sandbox.fetch('/api/timesheet/timers/targets');
@@ -203,16 +230,45 @@ async function testTransportRuntime() {
 
   await sandbox.fetch('/api/module-availability/overrides');
   assert.equal(fetchCalls.length, 2, 'authenticated protected fetch should reach the network');
-  const protectedHeaders = new Headers(fetchCalls.at(-1).init.headers);
-  assert.equal(protectedHeaders.get('X-ProjectPulse-Session'), token);
-  assert.equal(protectedHeaders.get('X-Project-Pulse-Session'), token);
-  assert.equal(protectedHeaders.get('X-Session-Token'), token);
-  assert.equal(protectedHeaders.get('Authorization'), `Bearer ${token}`);
+  assertFetchSessionHeaders(fetchCalls.at(-1), token);
 
   FakeXhr.nextStatus = 200;
   FakeXhr.nextPayload = { targets: [] };
   await authoritativeApi('/api/timesheet/timers/targets', { requiredCollections: ['targets'] });
   assertSingleSessionHeaders(xhrInstances.at(-1), token);
+
+  // Reproduce the live browser defect: XHR reports HTTP 200 but exposes an empty
+  // JSON object. The clean native fetch captured before wrappers must recover the
+  // authoritative collections without logging a false failure.
+  FakeXhr.nextStatus = 200;
+  FakeXhr.nextPayload = {};
+  queueNativeResponse('/api/runtime/v2/role-policy/summary', {
+    roles: [{ roleCode: 'SUPER_ADMINISTRATOR' }],
+    modules: [{ moduleCode: '008' }],
+    status: 'authoritative_role_policy_summary_loaded'
+  });
+  const recoveredSummary = await authoritativeApi('/api/runtime/v2/role-policy/summary', {
+    requiredCollections: ['roles', 'modules']
+  });
+  assert.equal(recoveredSummary.roles.length, 1);
+  assert.equal(recoveredSummary.modules.length, 1);
+  assert.equal(fetchCalls.at(-1).requestPath, '/api/runtime/v2/role-policy/summary');
+  assertFetchSessionHeaders(fetchCalls.at(-1), token);
+  assert.equal(
+    diagnostics()['/api/runtime/v2/role-policy/summary']?.transport,
+    'native-fetch-fallback'
+  );
+
+  // A direct-array response is valid for one required collection and must be
+  // normalized rather than discarded as an empty object.
+  FakeXhr.nextPayload = {};
+  queueNativeResponse('/api/runtime/v2/role-policy/versions', [
+    { versionNumber: 1, policyStatus: 'PUBLISHED' }
+  ]);
+  const recoveredVersions = await authoritativeApi('/api/runtime/v2/role-policy/versions', {
+    requiredCollections: ['versions']
+  });
+  assert.equal(recoveredVersions.versions.length, 1);
 
   FakeXhr.nextStatus = 401;
   FakeXhr.nextPayload = { status: 'session_required', message: 'Session expired or invalid.' };
@@ -238,8 +294,8 @@ async function testTransportRuntime() {
   await authoritativeApi('/api/timesheet/timers/targets', { requiredCollections: ['targets'] });
   assertSingleSessionHeaders(xhrInstances.at(-1), sessionTokenShape);
 
-  // The same fallback must work for supported legacy sessionStorage keys when
-  // the App bridge has no localStorage token to inject.
+  // The same direct header fallback must work for supported legacy sessionStorage
+  // keys when the App bridge has no localStorage token to inject.
   localStorage.removeItem('projectPulseAuthSession');
   const legacyToken = 'legacy-session-storage-token';
   sessionStorage.setItem('projectPulseSession', JSON.stringify({
@@ -409,6 +465,7 @@ function buildThemeHarness() {
 
 function testThemeRuntime() {
   const { stray, button, parent } = buildThemeHarness();
+  const themeCss = fs.readFileSync(themeCssPath, 'utf8');
 
   assert.equal(stray.removed, true, 'literal \\n text node should be removed');
   assert.equal(parent.childNodes.includes(stray), false, 'stray theme text must leave the DOM');
@@ -417,6 +474,13 @@ function testThemeRuntime() {
   assert.equal(button.classList.contains('projectpulse-theme-control'), true);
   assert.equal(button.getAttribute('aria-label'), 'Switch to dark mode');
   assert.equal(button.getAttribute('aria-pressed'), 'false');
+
+  assert.match(themeCss, /left:\s*0\s*!important/);
+  assert.match(themeCss, /width:\s*44px\s*!important/);
+  assert.match(themeCss, /border-radius:\s*0 14px 14px 0\s*!important/);
+  assert.match(themeCss, /::after\s*\{[\s\S]*display:\s*none\s*!important/);
+  assert.doesNotMatch(themeCss, /content:\s*'Dark mode'/);
+  assert.doesNotMatch(themeCss, /content:\s*'Light mode'/);
 
   console.log('THEME_CONTROL_RUNTIME=PASSED');
 }
