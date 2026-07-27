@@ -1,7 +1,6 @@
-using System.IdentityModel.Tokens.Jwt;
-using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Sockets;
+using System.Text;
 using System.Text.Json;
 using Npgsql;
 
@@ -10,8 +9,7 @@ namespace ProjectTime.Api.Modules;
 /// <summary>
 /// Module 065 non-delivery readiness test for the configured Microsoft mail
 /// transport. It never accepts or returns credentials, never sends email, and
-/// records sanitized evidence in Module 008 when the immutable audit ledger is
-/// available.
+/// records sanitized evidence in Module 008 when the audit ledger is available.
 /// </summary>
 public static class MicrosoftMailTransportTestModule
 {
@@ -69,7 +67,6 @@ public static class MicrosoftMailTransportTestModule
 
         var metadataReady = !string.IsNullOrWhiteSpace(environmentMode)
             && !string.IsNullOrWhiteSpace(provider)
-            && !string.IsNullOrWhiteSpace(sender)
             && IsEmail(sender);
         var providerReady = provider switch
         {
@@ -113,7 +110,6 @@ public static class MicrosoftMailTransportTestModule
                 smtp.Message
             },
             liveMessageSent = false,
-            secretValuesRead = false,
             secretValuesReturned = false
         };
 
@@ -248,14 +244,11 @@ public static class MicrosoftMailTransportTestModule
                 ? tokenElement.GetString() ?? string.Empty
                 : string.Empty;
             if (string.IsNullOrWhiteSpace(accessToken))
-            {
                 return new("token_missing", false, false, false, false, 200, "Microsoft identity did not return an application access token.");
-            }
 
             var roles = ReadTokenRoles(accessToken);
-            var mailSend = roles.Contains("Mail.Send", StringComparer.OrdinalIgnoreCase);
-            var directoryRoles = roles.Contains("Directory.Read.All", StringComparer.OrdinalIgnoreCase)
-                && roles.Contains("User.Read.All", StringComparer.OrdinalIgnoreCase);
+            var mailSend = roles.Contains("Mail.Send");
+            var directoryRoles = roles.Contains("Directory.Read.All") && roles.Contains("User.Read.All");
 
             using var senderRequest = new HttpRequestMessage(
                 HttpMethod.Get,
@@ -335,12 +328,29 @@ public static class MicrosoftMailTransportTestModule
     {
         try
         {
-            var handler = new JwtSecurityTokenHandler();
-            var token = handler.ReadJwtToken(accessToken);
-            return token.Claims
-                .Where(claim => claim.Type == "roles")
-                .Select(claim => claim.Value)
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var segments = accessToken.Split('.');
+            if (segments.Length < 2) return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var payload = segments[1].Replace('-', '+').Replace('_', '/');
+            payload = payload.PadRight(payload.Length + ((4 - payload.Length % 4) % 4), '=');
+            using var document = JsonDocument.Parse(Encoding.UTF8.GetString(Convert.FromBase64String(payload)));
+            if (!document.RootElement.TryGetProperty("roles", out var roles))
+                return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (roles.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var role in roles.EnumerateArray())
+                {
+                    var value = role.GetString();
+                    if (!string.IsNullOrWhiteSpace(value)) result.Add(value);
+                }
+            }
+            else if (roles.ValueKind == JsonValueKind.String)
+            {
+                var value = roles.GetString();
+                if (!string.IsNullOrWhiteSpace(value)) result.Add(value);
+            }
+            return result;
         }
         catch
         {
