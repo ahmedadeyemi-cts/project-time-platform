@@ -1,4 +1,4 @@
-name: Validate Global Session Invalidation Test Deployment
+name: Validate Authoritative Session and Theme Test Deployment
 
 on:
   push:
@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   validate:
-    name: Validate guarded global session web-only deployment controls
+    name: Validate guarded authoritative session and theme web deployment
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -55,7 +55,7 @@ jobs:
             }
           done
 
-          echo 'GLOBAL_SESSION_DEPLOYMENT_CONTROL_SCOPE=PASS'
+          echo 'AUTHORITATIVE_SESSION_THEME_DEPLOYMENT_CONTROL_SCOPE=PASS'
 
       - uses: actions/setup-node@v4
         with:
@@ -71,9 +71,17 @@ jobs:
         working-directory: src/frontend/project-time-web
         run: npm ci --no-audit --no-fund
 
-      - name: Validate global session lifecycle source
+      - name: Validate authoritative session source
         working-directory: src/frontend/project-time-web
         run: npm run validate:global-session-invalidation
+
+      - name: Execute session and theme runtime regression harness
+        working-directory: src/frontend/project-time-web
+        run: node scripts/test-authoritative-session-transport-theme-runtime.mjs
+
+      - name: Validate Modules 008 and 009 theme contract
+        working-directory: src/frontend/project-time-web
+        run: npm run validate:modules008009
 
       - name: Build frontend production bundle
         working-directory: src/frontend/project-time-web
@@ -93,15 +101,15 @@ jobs:
           set -Eeuo pipefail
           if [[ "$JOB_STATUS" == success ]]; then
             STATE=success
-            DESCRIPTION='Global session web-only deployment controls and frontend build passed.'
+            DESCRIPTION='Authoritative session/theme controls and executable frontend checks passed.'
           else
             STATE=failure
-            DESCRIPTION='Global session deployment-control validation failed.'
+            DESCRIPTION='Authoritative session/theme deployment-control validation failed.'
           fi
 
           PAYLOAD="$(jq -nc \
             --arg state "$STATE" \
-            --arg context 'global-session-invalidation/deployment-controls' \
+            --arg context 'authoritative-session-theme/deployment-controls' \
             --arg description "$DESCRIPTION" \
             --arg target_url "$RUN_URL" \
             '{state:$state,context:$context,description:$description,target_url:$target_url}')"
