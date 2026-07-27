@@ -94,21 +94,43 @@ check(
 );
 
 check(
-  'NO_DUPLICATE_XHR_HEADERS',
-  authoritative.includes('function globalXhrSessionBridgeInstalled()')
-    && authoritative.includes('if (token && !globalXhrSessionBridgeInstalled())')
-    && authoritative.includes('Directly applying the same headers here would append duplicate values')
-    && !authoritative.includes("if (token) {\n      request.setRequestHeader('Authorization'"),
-  'authoritative XHR avoids appending a second copy of every session header'
+  'BRIDGE_TOKEN_CONTRACT',
+  authoritative.includes('function globalXhrBridgeToken()')
+    && authoritative.includes("parseStoredJson(window.localStorage, 'projectPulseAuthSession')")
+    && authoritative.includes('session?.sessionToken')
+    && authoritative.includes('session?.token')
+    && authoritative.includes('session?.accessToken')
+    && authoritative.includes('Do not broaden it without broadening that bridge'),
+  'authoritative transport mirrors the exact storage/token contract the App bridge can supply'
 );
 
 check(
-  'DIRECT_HEADER_FALLBACK',
-  authoritative.includes("request.setRequestHeader('Authorization', `Bearer ${token}`)")
+  'NO_DUPLICATE_XHR_HEADERS',
+  authoritative.includes('function globalXhrBridgeCanSupplyToken(token)')
+    && authoritative.includes('globalXhrBridgeToken() === token')
+    && authoritative.includes('if (token && !globalXhrBridgeCanSupplyToken(token))')
+    && authoritative.includes('Defer only when App.jsx\'s global XHR bridge can supply this exact token.')
+    && !authoritative.includes("if (token) {\n      request.setRequestHeader('Authorization'"),
+  'authoritative XHR defers only when the global bridge will inject the same exact token'
+);
+
+check(
+  'LEGACY_DIRECT_HEADER_FALLBACK',
+  authoritative.includes('Legacy/session-storage/session_token sessions use the direct fallback')
+    && authoritative.includes("request.setRequestHeader('Authorization', `Bearer ${token}`)")
     && authoritative.includes("request.setRequestHeader('X-ProjectPulse-Session', token)")
     && authoritative.includes("request.setRequestHeader('X-Project-Pulse-Session', token)")
     && authoritative.includes("request.setRequestHeader('X-Session-Token', token)"),
-  'standalone or test contexts still have a guarded direct-header fallback'
+  'legacy and session-storage token forms retain a direct-header path when the bridge has no token'
+);
+
+check(
+  'CONFLICT_FAILS_LOCAL',
+  authoritative.includes('function sessionTransportConflictError(path)')
+    && authoritative.includes("error.code = 'session_transport_conflict';")
+    && authoritative.includes('bridgeToken !== token')
+    && authoritative.includes('throw sessionTransportConflictError(path);'),
+  'a different stale bridge token stops locally rather than creating an appended invalid header'
 );
 
 check(
