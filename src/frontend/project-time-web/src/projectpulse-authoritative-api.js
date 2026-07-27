@@ -162,6 +162,13 @@ function normalizePayload(payload, requiredCollections = []) {
     const rootKeys = Object.keys(payload);
     const hasNonEnvelopeKey = rootKeys.some((key) => !ENVELOPE_KEYS.includes(key));
     if (hasNonEnvelopeKey || candidates.length === 0) return payload;
+
+    // The root is only an envelope. Preserve the previous unwrap behavior by
+    // returning the first populated nested object rather than the envelope root.
+    const nestedCandidate = candidates
+      .slice(1)
+      .find((candidate) => Object.keys(candidate).length > 0);
+    return nestedCandidate || payload;
   }
 
   return candidates.find((candidate) => Object.keys(candidate).length > 0) || {};
