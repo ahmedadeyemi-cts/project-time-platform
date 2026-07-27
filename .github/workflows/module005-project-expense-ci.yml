@@ -7,6 +7,7 @@ on:
       - 'database/rollback/044*'
       - 'src/backend/ProjectTime.Api/Modules/Module005*'
       - 'src/backend/ProjectTime.Api/Modules/Module038CertifyConnectionModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/MicrosoftSmtpCredentialProjectionCompatibility.cs'
       - 'src/backend/ProjectTime.Api/ProjectTime.Api.csproj'
       - 'src/frontend/project-time-web/src/ProjectAllocationInfoPanel.jsx'
       - 'src/frontend/project-time-web/src/CertifyIntegrationCenter.jsx'
