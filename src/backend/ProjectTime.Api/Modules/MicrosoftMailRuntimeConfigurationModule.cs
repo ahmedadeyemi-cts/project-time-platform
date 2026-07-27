@@ -4,11 +4,9 @@ using Npgsql;
 namespace ProjectTime.Api.Modules;
 
 /// <summary>
-/// Makes the Module 065 Microsoft 365 / SMTP configuration authoritative for
-/// the running mail delivery process without returning or moving secret values.
-/// Metadata is stored in the existing Module 065 native document. Existing
-/// Test/Production services secrets remain in their current environment or
-/// encrypted Microsoft Integration stores.
+/// Applies the non-secret Microsoft mail metadata stored by Module 065 to the
+/// running API. Test and Production credentials remain isolated in their
+/// existing environment or encrypted stores and are never returned.
 /// </summary>
 public static class MicrosoftMailRuntimeConfigurationModule
 {
@@ -34,8 +32,8 @@ public static class MicrosoftMailRuntimeConfigurationModule
 
     private static async Task<IResult> ApplyRuntimeAsync(HttpContext context)
     {
-        var access = await AuthorizeAsync(context);
-        if (access is not null) return access;
+        var accessFailure = await AuthorizeAsync(context);
+        if (accessFailure is not null) return accessFailure;
         if (IsViewAs(context))
         {
             return Results.Json(new
@@ -59,20 +57,27 @@ public static class MicrosoftMailRuntimeConfigurationModule
 
         var normalized = Normalize(request);
         if (normalized.Failure is not null) return normalized.Failure;
-        var result = ApplyRuntime(normalized.Configuration!);
+        var configuration = normalized.Configuration!;
+        var result = ApplyRuntime(configuration);
 
         return Results.Ok(new
         {
             module = ModuleNumber,
             status = result.Ready ? "mail_runtime_ready" : "mail_runtime_configuration_pending",
-            provider = result.Provider,
-            environmentMode = normalized.Configuration!.EnvironmentMode,
-            senderMailbox = normalized.Configuration.SenderAddress,
+            environmentMode = configuration.EnvironmentMode,
+            providerTarget = configuration.ProviderTarget,
+            moduleProvider = result.ModuleProvider,
+            sharedProvider = result.SharedProvider,
+            recipientBoundary = configuration.RecipientBoundary,
+            senderMailbox = configuration.SenderAddress,
             metadataApplied = true,
-            secretValuesRead = false,
-            secretValuesReturned = false,
+            liveDeliveryEnabled = result.LiveDeliveryEnabled,
+            graphCapableDeliveryReady = result.GraphCapableDeliveryReady,
+            sharedDeliveryReady = result.SharedDeliveryReady,
             servicesSecretAvailable = result.ServicesSecretAvailable,
             smtpCredentialAvailable = result.SmtpCredentialAvailable,
+            secretValuesRead = false,
+            secretValuesReturned = false,
             runtimeReady = result.Ready,
             message = result.Message
         });
@@ -80,8 +85,6 @@ public static class MicrosoftMailRuntimeConfigurationModule
 
     private static async Task HydrateRuntimeAsync()
     {
-        // Existing Microsoft secret hydration is also registered at startup.
-        // A short bounded retry lets that process populate the environment first.
         foreach (var delay in new[] { 500, 1500, 3000 })
         {
             try
@@ -89,8 +92,8 @@ public static class MicrosoftMailRuntimeConfigurationModule
                 await Task.Delay(delay);
                 var configuration = await ReadStoredConfigurationAsync();
                 if (configuration is null) continue;
-                var result = ApplyRuntime(configuration);
-                if (result.Ready || result.ServicesSecretAvailable || result.SmtpCredentialAvailable) return;
+                ApplyRuntime(configuration);
+                return;
             }
             catch
             {
@@ -101,16 +104,28 @@ public static class MicrosoftMailRuntimeConfigurationModule
 
     private static RuntimeResult ApplyRuntime(MailRuntimeConfiguration configuration)
     {
-        var provider = configuration.ProviderTarget switch
-        {
-            "microsoft_graph" => "microsoft_graph",
-            "smtp_relay" => "exchange_online_smtp",
-            "locked" => "locked",
-            _ => string.Empty
-        };
+        var liveDeliveryEnabled = configuration.RecipientBoundary == "production_governed"
+            && configuration.ProviderTarget != "locked";
 
-        SetIfPresent("PROJECTPULSE_MAIL_PROVIDER", provider);
-        SetIfPresent("PROJECTPULSE_EMAIL_PROVIDER", provider);
+        var moduleProvider = liveDeliveryEnabled
+            ? configuration.ProviderTarget switch
+            {
+                "microsoft_graph" => "microsoft_graph",
+                "smtp_relay" => "exchange_online_smtp",
+                _ => "locked"
+            }
+            : "locked";
+
+        // The shared dispatcher currently supports exact `smtp` but not Graph.
+        // Unsupported or non-live states remain outbox-only rather than silently
+        // falling through to another provider.
+        var sharedProvider = liveDeliveryEnabled && configuration.ProviderTarget == "smtp_relay"
+            ? "smtp"
+            : "outbox_only";
+
+        Environment.SetEnvironmentVariable("PROJECTPULSE_MAIL_PROVIDER", moduleProvider);
+        Environment.SetEnvironmentVariable("PROJECTPULSE_EMAIL_PROVIDER", sharedProvider);
+        Environment.SetEnvironmentVariable("PROJECTPULSE_MAIL_RECIPIENT_BOUNDARY", configuration.RecipientBoundary);
         SetIfPresent("PROJECTPULSE_M365_TENANT_ID", configuration.TenantId);
         SetIfPresent("PROJECTPULSE_M365_CLIENT_ID", configuration.ClientId);
         SetIfPresent("PROJECTPULSE_M365_SENDER_MAILBOX", configuration.SenderAddress);
@@ -119,80 +134,112 @@ public static class MicrosoftMailRuntimeConfigurationModule
         SetIfPresent("PROJECTPULSE_SMTP_FROM", configuration.SenderAddress);
 
         var servicesSecret = ServicesSecret(configuration.EnvironmentMode);
-        if (!string.IsNullOrWhiteSpace(servicesSecret))
-            Environment.SetEnvironmentVariable("PROJECTPULSE_M365_CLIENT_SECRET", servicesSecret);
+        Environment.SetEnvironmentVariable(
+            "PROJECTPULSE_M365_CLIENT_SECRET",
+            string.IsNullOrWhiteSpace(servicesSecret) ? null : servicesSecret);
 
-        var smtpUser = First(
-            Environment.GetEnvironmentVariable("PROJECTPULSE_SMTP_USERNAME"),
-            Environment.GetEnvironmentVariable("SMTP_USERNAME"));
-        var smtpPassword = First(
-            Environment.GetEnvironmentVariable("PROJECTPULSE_SMTP_PASSWORD"),
-            Environment.GetEnvironmentVariable("SMTP_PASSWORD"));
-        var smtpCredentialAvailable = !string.IsNullOrWhiteSpace(smtpUser)
-            && !string.IsNullOrWhiteSpace(smtpPassword);
+        var smtpCredential = SmtpCredential(configuration.EnvironmentMode);
         var servicesSecretAvailable = !string.IsNullOrWhiteSpace(servicesSecret);
+        var smtpCredentialAvailable = !string.IsNullOrWhiteSpace(smtpCredential.Username)
+            && !string.IsNullOrWhiteSpace(smtpCredential.Password);
 
-        if (provider == "microsoft_graph")
+        if (!liveDeliveryEnabled)
         {
-            var ready = Guid.TryParse(configuration.TenantId, out _)
+            var message = configuration.RecipientBoundary == "locked"
+                ? "Microsoft mail delivery is locked. Metadata was saved, but no live message can be sent."
+                : "The Test-only boundary keeps delivery outbox-only. Metadata was saved without enabling live mail.";
+            return new(
+                moduleProvider,
+                sharedProvider,
+                false,
+                false,
+                false,
+                servicesSecretAvailable,
+                smtpCredentialAvailable,
+                false,
+                message);
+        }
+
+        if (configuration.ProviderTarget == "microsoft_graph")
+        {
+            var graphReady = Guid.TryParse(configuration.TenantId, out _)
                 && Guid.TryParse(configuration.ClientId, out _)
                 && servicesSecretAvailable
                 && IsEmail(configuration.SenderAddress);
             return new(
-                provider,
-                ready,
+                moduleProvider,
+                sharedProvider,
+                true,
+                graphReady,
+                false,
                 servicesSecretAvailable,
                 smtpCredentialAvailable,
-                ready
-                    ? "Microsoft Graph mail runtime is ready. The existing services application and sender mailbox will be used."
-                    : "Microsoft Graph mail still requires a valid tenant ID, services client ID, services secret, and sender mailbox.");
+                graphReady,
+                graphReady
+                    ? "Microsoft Graph mail is ready for Graph-capable delivery paths. Shared notification flows remain outbox-only until the shared dispatcher supports Graph."
+                    : "Microsoft Graph mail requires a valid tenant ID, services client ID, environment-specific services secret, and sender mailbox.");
         }
 
-        if (provider == "exchange_online_smtp")
+        if (configuration.ProviderTarget == "smtp_relay")
         {
-            var ready = !string.IsNullOrWhiteSpace(configuration.SmtpHost)
+            var smtpReady = !string.IsNullOrWhiteSpace(configuration.SmtpHost)
                 && configuration.SmtpPort is > 0 and <= 65535
                 && IsEmail(configuration.SenderAddress)
                 && smtpCredentialAvailable;
             return new(
-                provider,
-                ready,
+                moduleProvider,
+                sharedProvider,
+                true,
+                false,
+                smtpReady,
                 servicesSecretAvailable,
                 smtpCredentialAvailable,
-                ready
-                    ? "Microsoft 365 SMTP runtime is ready."
-                    : "SMTP relay metadata was applied, but SMTP username/password must remain configured in the approved Container App secret environment.");
+                smtpReady,
+                smtpReady
+                    ? "Microsoft 365 SMTP is ready for the shared mail dispatcher."
+                    : "SMTP metadata was applied, but environment-specific SMTP username/password credentials are still required.");
         }
 
         return new(
-            provider,
+            "locked",
+            "outbox_only",
+            false,
+            false,
             false,
             servicesSecretAvailable,
             smtpCredentialAvailable,
-            "Microsoft mail delivery is locked or no supported provider is selected.");
+            false,
+            "No supported live Microsoft mail provider is selected.");
     }
 
     private static NormalizedRequest Normalize(MailRuntimeRequest? request)
     {
         var environmentMode = NormalizeEnvironment(request?.EnvironmentMode);
-        var provider = (request?.ProviderTarget ?? string.Empty).Trim().ToLowerInvariant();
+        var provider = (request?.ProviderTarget ?? "locked").Trim().ToLowerInvariant();
+        var boundary = (request?.RecipientBoundary ?? "test_only").Trim().ToLowerInvariant();
         var tenantId = (request?.TenantId ?? string.Empty).Trim();
         var clientId = (request?.ClientId ?? string.Empty).Trim();
         var senderAddress = (request?.SenderAddress ?? string.Empty).Trim().ToLowerInvariant();
-        var smtpHost = (request?.SmtpHost ?? string.Empty).Trim().ToLowerInvariant();
+        var replyToAddress = (request?.ReplyToAddress ?? string.Empty).Trim().ToLowerInvariant();
+        var smtpHost = First((request?.SmtpHost ?? string.Empty).Trim().ToLowerInvariant(), "smtp.office365.com");
         var smtpPort = request?.SmtpPort ?? 587;
 
         if (string.IsNullOrWhiteSpace(environmentMode))
             return new(null, InvalidRequest("Environment must be Test or Production."));
         if (provider is not ("microsoft_graph" or "smtp_relay" or "locked"))
             return new(null, InvalidRequest("Provider must be Microsoft Graph, Microsoft 365 SMTP relay, or Locked."));
-        if (provider != "locked" && !IsEmail(senderAddress))
-            return new(null, InvalidRequest("A valid sender mailbox is required."));
-        if (provider == "microsoft_graph"
-            && (!Guid.TryParse(tenantId, out _) || !Guid.TryParse(clientId, out _)))
-            return new(null, InvalidRequest("Microsoft Graph mail requires GUID tenant and services application/client IDs."));
-        if (provider == "smtp_relay" && (string.IsNullOrWhiteSpace(smtpHost) || smtpPort is <= 0 or > 65535))
-            return new(null, InvalidRequest("SMTP relay requires a valid host and port."));
+        if (boundary is not ("test_only" or "production_governed" or "locked"))
+            return new(null, InvalidRequest("Recipient boundary must be Test only, Production governed, or Locked."));
+        if (!string.IsNullOrWhiteSpace(senderAddress) && !IsEmail(senderAddress))
+            return new(null, InvalidRequest("Sender mailbox must be a valid email address."));
+        if (!string.IsNullOrWhiteSpace(replyToAddress) && !IsEmail(replyToAddress))
+            return new(null, InvalidRequest("Reply-to address must be a valid email address."));
+        if (!string.IsNullOrWhiteSpace(tenantId) && !Guid.TryParse(tenantId, out _))
+            return new(null, InvalidRequest("Microsoft tenant ID must be a GUID."));
+        if (!string.IsNullOrWhiteSpace(clientId) && !Guid.TryParse(clientId, out _))
+            return new(null, InvalidRequest("Microsoft services application/client ID must be a GUID."));
+        if (smtpPort is <= 0 or > 65535)
+            return new(null, InvalidRequest("SMTP port must be between 1 and 65535."));
 
         return new(new(
             environmentMode,
@@ -203,8 +250,8 @@ public static class MicrosoftMailRuntimeConfigurationModule
             smtpPort,
             senderAddress,
             (request?.SenderName ?? string.Empty).Trim(),
-            (request?.ReplyToAddress ?? string.Empty).Trim().ToLowerInvariant(),
-            (request?.RecipientBoundary ?? "test_only").Trim().ToLowerInvariant()), null);
+            replyToAddress,
+            boundary), null);
     }
 
     private static async Task<MailRuntimeConfiguration?> ReadStoredConfigurationAsync()
@@ -331,13 +378,35 @@ public static class MicrosoftMailRuntimeConfigurationModule
 
     private static string ServicesSecret(string environmentMode)
     {
-        var production = environmentMode == "production";
+        var activeMode = NormalizeEnvironment(Environment.GetEnvironmentVariable("PROJECTPULSE_ENTRA_MODE"));
+        if (environmentMode == "production")
+        {
+            return First(
+                Environment.GetEnvironmentVariable("PROJECTPULSE_ENTRA_PRODUCTION_CLIENT_SECRET"),
+                Environment.GetEnvironmentVariable("PROJECTPULSE_MICROSOFT_TENANT_USSIGNAL_CLIENT_SECRET"),
+                Environment.GetEnvironmentVariable("PROJECTPULSE_M365_CLIENT_SECRET"),
+                activeMode == "production" ? Environment.GetEnvironmentVariable("PROJECTPULSE_ENTRA_CLIENT_SECRET") : string.Empty);
+        }
+
         return First(
-            Environment.GetEnvironmentVariable(production
-                ? "PROJECTPULSE_ENTRA_PRODUCTION_CLIENT_SECRET"
-                : "PROJECTPULSE_ENTRA_TEST_CLIENT_SECRET"),
-            Environment.GetEnvironmentVariable("PROJECTPULSE_ENTRA_CLIENT_SECRET"),
-            Environment.GetEnvironmentVariable("PROJECTPULSE_M365_CLIENT_SECRET"));
+            Environment.GetEnvironmentVariable("PROJECTPULSE_ENTRA_TEST_CLIENT_SECRET"),
+            Environment.GetEnvironmentVariable("PROJECTPULSE_MICROSOFT_TENANT_ONENECKLAB_CLIENT_SECRET"),
+            activeMode == "test" ? Environment.GetEnvironmentVariable("PROJECTPULSE_ENTRA_CLIENT_SECRET") : string.Empty);
+    }
+
+    private static SmtpCredential SmtpCredential(string environmentMode)
+    {
+        var activeMode = NormalizeEnvironment(Environment.GetEnvironmentVariable("PROJECTPULSE_ENTRA_MODE"));
+        var prefix = environmentMode == "production" ? "PROJECTPULSE_PRODUCTION_SMTP_" : "PROJECTPULSE_TEST_SMTP_";
+        return new(
+            First(
+                Environment.GetEnvironmentVariable(prefix + "USERNAME"),
+                activeMode == environmentMode ? Environment.GetEnvironmentVariable("PROJECTPULSE_SMTP_USERNAME") : string.Empty,
+                activeMode == environmentMode ? Environment.GetEnvironmentVariable("SMTP_USERNAME") : string.Empty),
+            First(
+                Environment.GetEnvironmentVariable(prefix + "PASSWORD"),
+                activeMode == environmentMode ? Environment.GetEnvironmentVariable("PROJECTPULSE_SMTP_PASSWORD") : string.Empty,
+                activeMode == environmentMode ? Environment.GetEnvironmentVariable("SMTP_PASSWORD") : string.Empty));
     }
 
     private static void SetIfPresent(string name, string value)
@@ -478,11 +547,16 @@ public static class MicrosoftMailRuntimeConfigurationModule
         string ReplyToAddress,
         string RecipientBoundary);
 
+    private sealed record SmtpCredential(string Username, string Password);
     private sealed record NormalizedRequest(MailRuntimeConfiguration? Configuration, IResult? Failure);
     private sealed record RuntimeResult(
-        string Provider,
-        bool Ready,
+        string ModuleProvider,
+        string SharedProvider,
+        bool LiveDeliveryEnabled,
+        bool GraphCapableDeliveryReady,
+        bool SharedDeliveryReady,
         bool ServicesSecretAvailable,
         bool SmtpCredentialAvailable,
+        bool Ready,
         string Message);
 }
