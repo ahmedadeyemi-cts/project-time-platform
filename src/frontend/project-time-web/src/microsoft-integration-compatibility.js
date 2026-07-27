@@ -37,6 +37,15 @@ function suppressMovedSurface(element, reason) {
   element.style.setProperty('display', 'none', 'important');
 }
 
+function restoreModule010Preview(element) {
+  if (!element) return;
+  element.hidden = false;
+  element.removeAttribute('aria-hidden');
+  element.removeAttribute('data-moved-to-module-065');
+  element.style.removeProperty('display');
+  element.setAttribute('data-module-010-preview-preserved', 'true');
+}
+
 function activateAuthoritativeModule065() {
   const active = currentRoute() === ACTIVE_ROUTE;
   document.body.classList.toggle('projectpulse-microsoft-integration-active', active);
@@ -102,6 +111,11 @@ function normalizeModuleSurfaces() {
         suppressMovedSurface(button, 'configuration-action');
       }
     });
+
+    const previewCard = module010.querySelector('.azure-preview-card');
+    restoreModule010Preview(previewCard);
+    previewCard?.querySelectorAll('button, .azure-admin-heading-actions, .azure-selection-toolbar, .azure-filter-grid, .azure-preview-table')
+      .forEach(restoreModule010Preview);
 
     const eyebrow = module010.querySelector('.section-heading .eyebrow');
     const heading = module010.querySelector('.section-heading h1');
