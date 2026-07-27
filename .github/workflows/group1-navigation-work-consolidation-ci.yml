@@ -10,6 +10,7 @@ on:
       - 'src/frontend/project-time-web/src/module-availability-bridge.js'
       - 'src/frontend/project-time-web/src/permission-aware-more-menu.css'
       - 'src/frontend/project-time-web/scripts/validate-group-1-navigation-work-consolidation.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-module-012-scoped-role-admin.mjs'
       - '.github/workflows/group1-navigation-work-consolidation-ci.yml'
   workflow_dispatch:
 
@@ -34,7 +35,7 @@ jobs:
           CHANGED="$(git diff --name-only origin/main...HEAD)"
           printf '%s\n' "$CHANGED"
 
-          ALLOWED='^(\.github/workflows/group1-navigation-work-consolidation-ci\.yml|src/frontend/project-time-web/src/module-availability-registry\.js|src/frontend/project-time-web/src/module-availability-bridge\.js|src/frontend/project-time-web/src/permission-aware-more-menu\.css|src/frontend/project-time-web/scripts/validate-group-1-navigation-work-consolidation\.mjs)$'
+          ALLOWED='^(\.github/workflows/group1-navigation-work-consolidation-ci\.yml|src/frontend/project-time-web/src/module-availability-registry\.js|src/frontend/project-time-web/src/module-availability-bridge\.js|src/frontend/project-time-web/src/permission-aware-more-menu\.css|src/frontend/project-time-web/scripts/validate-group-1-navigation-work-consolidation\.mjs|src/frontend/project-time-web/scripts/validate-module-012-scoped-role-admin\.mjs)$'
           UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
           if [[ -n "$UNEXPECTED" ]]; then
             echo 'Unexpected Group 1 source scope:' >&2
@@ -69,6 +70,7 @@ jobs:
           node --check src/frontend/project-time-web/src/module-availability-registry.js
           node --check src/frontend/project-time-web/src/module-availability-bridge.js
           node --check src/frontend/project-time-web/scripts/validate-group-1-navigation-work-consolidation.mjs
+          node --check src/frontend/project-time-web/scripts/validate-module-012-scoped-role-admin.mjs
 
       - name: Validate Group 1 contract
         working-directory: src/frontend/project-time-web
