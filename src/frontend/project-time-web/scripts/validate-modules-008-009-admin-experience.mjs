@@ -61,7 +61,7 @@ check(
   auditUi.includes('function installModule008RouteRecovery()')
     && auditUi.includes("readModule008ActiveRoute() !== 'audit-history'")
     && auditUi.includes("document.querySelector('.app-shell.route-audit-history')")
-    && auditUi.includes("root.render(<AuditHistoryPanel recoveryMode />)"),
+    && auditUi.includes('root.render(<AuditHistoryPanel recoveryMode />)'),
   'Module 008 mounts its own panel when role-policy state prevents normal App rendering'
 );
 check(
@@ -94,7 +94,13 @@ check('USER_MULTI_TEAM_MANAGER', userUi.includes('/api/admin/user-admin/manager-
 check('USER_MANAGER_EMAIL_AUTOMATION', userUi.includes('managerEmailForTeam') && userUi.includes('Automatically controlled by the active manager team assignment'), 'team manager email applied to user saves');
 check('USER_SCOPED_STYLES', userCss.includes('.user-admin-v2-tabs') && userCss.includes('.user-admin-v2-team-grid') && userCss.includes('.user-admin-v2-user-list'), 'Module 009 scoped layout');
 
-check('THEME_STRAY_TEXT_REMOVAL', themeJs.includes("/^(?:\\n|\/n|n)$/i") && themeJs.includes('Node.TEXT_NODE'), 'literal newline artifact removed');
+check(
+  'THEME_STRAY_TEXT_REMOVAL',
+  themeJs.includes('Node.TEXT_NODE')
+    && themeJs.includes("String(node.textContent || '').trim()")
+    && themeJs.includes('node.remove();'),
+  'literal newline text nodes are removed without depending on regex source escaping'
+);
 check('THEME_NO_APP_EDIT_REQUIRED', userUi.includes("import './admin-experience-theme.js';") && userUi.includes("import './admin-experience-theme.css';"), 'theme bridge loads through existing Module 009 import');
 check('THEME_DESIGN', themeCss.includes('.theme-toggle.projectpulse-theme-control') && themeCss.includes("content: 'Dark mode'") && themeCss.includes("content: 'Light mode'"), 'branded light/dark control');
 
@@ -133,7 +139,9 @@ check('BUILD_GUARD', packageJson.scripts?.build?.includes('validate:modules00800
 
 console.log('');
 console.log(`MODULES_008_009_VALIDATION_CHECKS=${checks.length}`);
-if (checks.some((item) => !item.condition)) {
+const failedChecks = checks.filter((item) => !item.condition).map((item) => item.name);
+if (failedChecks.length > 0) {
+  console.error(`MODULES_008_009_FAILED_CHECKS=${failedChecks.join(',')}`);
   console.error('MODULES_008_009_CONTRACT=FAILED');
   process.exit(1);
 }
