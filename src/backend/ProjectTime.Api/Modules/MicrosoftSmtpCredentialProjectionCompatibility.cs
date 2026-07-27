@@ -1,4 +1,3 @@
-using System.Text;
 using System.Text.Json;
 using Npgsql;
 
@@ -15,23 +14,61 @@ public static class MicrosoftSmtpCredentialProjectionCompatibility
     private const string RuntimePath = "/api/microsoft-integration/mail-runtime";
     private const string ConfigurationMarker = "PROJECTPULSE_MICROSOFT_INTEGRATION_JSON:";
 
+    // Capture the process-start legacy fallback before any projection mutates
+    // the generic variables. Later environment switches never read projected
+    // values as credential sources.
+    private static readonly string OriginalActiveEnvironment = NormalizeEnvironment(
+        Environment.GetEnvironmentVariable("PROJECTPULSE_ENTRA_MODE"));
+    private static readonly string OriginalLegacyUsername = First(
+        Environment.GetEnvironmentVariable("PROJECTPULSE_SMTP_USERNAME"),
+        Environment.GetEnvironmentVariable("SMTP_USERNAME"));
+    private static readonly string OriginalLegacyPassword = First(
+        Environment.GetEnvironmentVariable("PROJECTPULSE_SMTP_PASSWORD"),
+        Environment.GetEnvironmentVariable("SMTP_PASSWORD"));
+
     public static WebApplication UseMicrosoftSmtpCredentialProjectionCompatibility(this WebApplication app)
     {
         app.Use(async (context, next) =>
         {
-            RuntimeSelection? selection = null;
-            if (HttpMethods.IsPut(context.Request.Method)
-                && context.Request.Path.Equals(RuntimePath, StringComparison.OrdinalIgnoreCase))
+            if (!HttpMethods.IsPut(context.Request.Method)
+                || !context.Request.Path.Equals(RuntimePath, StringComparison.OrdinalIgnoreCase))
             {
-                selection = await ReadSelectionAsync(context);
+                await next();
+                return;
             }
 
-            await next();
-
-            if (selection is not null
-                && context.Response.StatusCode is >= 200 and < 300)
+            // Authorization and request validation occur in the endpoint first.
+            // Capture only its small sanitized JSON response; never buffer or
+            // parse the unauthenticated request body.
+            var originalResponseBody = context.Response.Body;
+            await using var responseBuffer = new MemoryStream();
+            context.Response.Body = responseBuffer;
+            try
             {
-                ApplySelectedCredential(selection.EnvironmentMode, selection.ProviderTarget);
+                await next();
+
+                responseBuffer.Position = 0;
+                if (context.Response.StatusCode is >= 200 and < 300)
+                {
+                    var selection = await ReadValidatedSelectionFromResponseAsync(
+                        responseBuffer,
+                        context.RequestAborted);
+                    if (selection is not null)
+                    {
+                        ApplySelectedCredential(
+                            selection.EnvironmentMode,
+                            selection.ProviderTarget);
+                    }
+                }
+
+                responseBuffer.Position = 0;
+                await responseBuffer.CopyToAsync(
+                    originalResponseBody,
+                    context.RequestAborted);
+            }
+            finally
+            {
+                context.Response.Body = originalResponseBody;
             }
         });
 
@@ -39,27 +76,26 @@ public static class MicrosoftSmtpCredentialProjectionCompatibility
         return app;
     }
 
-    private static async Task<RuntimeSelection?> ReadSelectionAsync(HttpContext context)
+    private static async Task<RuntimeSelection?> ReadValidatedSelectionFromResponseAsync(
+        Stream responseBody,
+        CancellationToken cancellationToken)
     {
-        context.Request.EnableBuffering();
         try
         {
-            using var reader = new StreamReader(
-                context.Request.Body,
-                Encoding.UTF8,
-                detectEncodingFromByteOrderMarks: false,
-                leaveOpen: true);
-            var raw = await reader.ReadToEndAsync(context.RequestAborted);
-            context.Request.Body.Position = 0;
-            if (string.IsNullOrWhiteSpace(raw)) return null;
-            using var document = JsonDocument.Parse(raw);
-            return new(
-                NormalizeEnvironment(JsonString(document.RootElement, "environmentMode")),
-                JsonString(document.RootElement, "providerTarget").Trim().ToLowerInvariant());
+            using var document = await JsonDocument.ParseAsync(
+                responseBody,
+                cancellationToken: cancellationToken);
+            var environmentMode = NormalizeEnvironment(
+                JsonString(document.RootElement, "environmentMode"));
+            var providerTarget = JsonString(
+                document.RootElement,
+                "providerTarget").Trim().ToLowerInvariant();
+            return string.IsNullOrWhiteSpace(environmentMode)
+                ? null
+                : new(environmentMode, providerTarget);
         }
         catch
         {
-            context.Request.Body.Position = 0;
             return null;
         }
     }
@@ -84,7 +120,6 @@ public static class MicrosoftSmtpCredentialProjectionCompatibility
 
     private static SmtpCredential ResolveCredential(string environmentMode)
     {
-        var activeMode = NormalizeEnvironment(Environment.GetEnvironmentVariable("PROJECTPULSE_ENTRA_MODE"));
         var prefix = environmentMode == "production"
             ? "PROJECTPULSE_PRODUCTION_SMTP_"
             : "PROJECTPULSE_TEST_SMTP_";
@@ -92,19 +127,13 @@ public static class MicrosoftSmtpCredentialProjectionCompatibility
         return new(
             First(
                 Environment.GetEnvironmentVariable(prefix + "USERNAME"),
-                activeMode == environmentMode
-                    ? Environment.GetEnvironmentVariable("PROJECTPULSE_SMTP_USERNAME")
-                    : string.Empty,
-                activeMode == environmentMode
-                    ? Environment.GetEnvironmentVariable("SMTP_USERNAME")
+                OriginalActiveEnvironment == environmentMode
+                    ? OriginalLegacyUsername
                     : string.Empty),
             First(
                 Environment.GetEnvironmentVariable(prefix + "PASSWORD"),
-                activeMode == environmentMode
-                    ? Environment.GetEnvironmentVariable("PROJECTPULSE_SMTP_PASSWORD")
-                    : string.Empty,
-                activeMode == environmentMode
-                    ? Environment.GetEnvironmentVariable("SMTP_PASSWORD")
+                OriginalActiveEnvironment == environmentMode
+                    ? OriginalLegacyPassword
                     : string.Empty));
     }
 
@@ -161,7 +190,9 @@ public static class MicrosoftSmtpCredentialProjectionCompatibility
         var environmentMode = NormalizeEnvironment(JsonString(root, "activeEnvironmentMode"));
         if (!TryProperty(root, "mail", out var mail)) return null;
         var providerTarget = JsonString(mail, "providerTarget").Trim().ToLowerInvariant();
-        return new(environmentMode, providerTarget);
+        return string.IsNullOrWhiteSpace(environmentMode)
+            ? null
+            : new(environmentMode, providerTarget);
     }
 
     private static string BuildConnectionString()
@@ -182,11 +213,11 @@ public static class MicrosoftSmtpCredentialProjectionCompatibility
         var host = Environment.GetEnvironmentVariable("PTP_DB_HOST");
         var database = Environment.GetEnvironmentVariable("PTP_DB_NAME");
         var username = Environment.GetEnvironmentVariable("PTP_DB_USER");
-        var password = Environment.GetEnvironmentVariable("PTP_DB_PASSWORD");
+        var databasePassword = Environment.GetEnvironmentVariable("PTP_DB_PASSWORD");
         if (string.IsNullOrWhiteSpace(host)
             || string.IsNullOrWhiteSpace(database)
             || string.IsNullOrWhiteSpace(username)
-            || string.IsNullOrWhiteSpace(password)) return string.Empty;
+            || string.IsNullOrWhiteSpace(databasePassword)) return string.Empty;
 
         return new NpgsqlConnectionStringBuilder
         {
@@ -194,7 +225,7 @@ public static class MicrosoftSmtpCredentialProjectionCompatibility
             Port = int.TryParse(Environment.GetEnvironmentVariable("PTP_DB_PORT"), out var port) ? port : 5432,
             Database = database,
             Username = username,
-            Password = password,
+            Password = databasePassword,
             IncludeErrorDetail = false,
             Pooling = true,
             MaxPoolSize = 5
