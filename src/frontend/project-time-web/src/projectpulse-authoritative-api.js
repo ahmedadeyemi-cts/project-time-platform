@@ -132,26 +132,24 @@ function invalidateProjectPulseSession(path, payload = {}, responseText = '') {
   if (window.__projectPulseSessionInvalidationStarted) return true;
 
   window.__projectPulseSessionInvalidationStarted = true;
-  const previousRoute = String(window.location.hash || '#dashboard');
   const detail = {
     marker: SESSION_INVALIDATION_MARKER,
     path,
-    previousRoute,
     message: String(payload?.message || payload?.Message || responseText || 'Session expired or invalid.'),
     at: new Date().toISOString()
   };
 
   try {
-    window.sessionStorage.setItem('projectPulsePostLoginRoute', previousRoute);
     window.sessionStorage.setItem('projectPulseSessionInvalidatedAt', detail.at);
   } catch {
-    // Session recovery still works when auxiliary storage is unavailable.
+    // Session invalidation still works when auxiliary storage is unavailable.
   }
 
   clearSessionStorage();
   window.dispatchEvent(new CustomEvent(SESSION_INVALIDATED_EVENT, { detail }));
 
   window.setTimeout(() => {
+    window.location.hash = '#dashboard';
     window.location.reload();
   }, 0);
 
