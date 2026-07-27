@@ -28,6 +28,7 @@ on:
       - 'src/frontend/project-time-web/scripts/validate-modules-008-009-admin-experience.mjs'
       - 'src/frontend/project-time-web/scripts/validate-microsoft-integration-authoritative-connection.mjs'
       - 'src/frontend/project-time-web/scripts/validate-microsoft-sso-runtime-wiring.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-module-067-global-mail.mjs'
       - 'src/frontend/project-time-web/scripts/validate-role-permission-timesheet-stabilization.mjs'
       - 'src/frontend/project-time-web/scripts/validate-runtime-role-policy-ptc-data.mjs'
       - 'src/frontend/project-time-web/package.json'
@@ -106,6 +107,13 @@ jobs:
         working-directory: src/frontend/project-time-web
         run: npm ci --no-audit --no-fund
 
+      - name: Generate integrated Module 001 App source
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node scripts/generate-module-001-integrated-app.mjs 2>&1 | tee /tmp/admin-runtime-app-generation.log
+
       - name: Validate integrated admin runtime source contract
         working-directory: src/frontend/project-time-web
         shell: bash
@@ -129,39 +137,66 @@ jobs:
 
       - name: Validate safe global session transport
         working-directory: src/frontend/project-time-web
-        run: npm run validate:global-session-invalidation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm run validate:global-session-invalidation 2>&1 | tee /tmp/admin-runtime-global-session.log
 
       - name: Validate Modules 008 and 009
         working-directory: src/frontend/project-time-web
-        run: npm run validate:modules008009
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm run validate:modules008009 2>&1 | tee /tmp/admin-runtime-modules008009.log
 
       - name: Validate Module 001 timer transport
         working-directory: src/frontend/project-time-web
-        run: npm run validate:module001-enhancement
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm run validate:module001-enhancement 2>&1 | tee /tmp/admin-runtime-module001.log
 
       - name: Validate role and timesheet stabilization
         working-directory: src/frontend/project-time-web
-        run: npm run validate:role-permission-timesheet-stabilization
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm run validate:role-permission-timesheet-stabilization 2>&1 | tee /tmp/admin-runtime-role-timesheet.log
 
       - name: Validate Module 012
         working-directory: src/frontend/project-time-web
-        run: npm run validate:module012
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm run validate:module012 2>&1 | tee /tmp/admin-runtime-module012.log
 
       - name: Validate Module 037
         working-directory: src/frontend/project-time-web
-        run: npm run validate:module037
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm run validate:module037 2>&1 | tee /tmp/admin-runtime-module037.log
 
       - name: Validate module availability
         working-directory: src/frontend/project-time-web
-        run: npm run validate:module-availability
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm run validate:module-availability 2>&1 | tee /tmp/admin-runtime-module-availability.log
 
       - name: Validate authoritative Microsoft Integration
         working-directory: src/frontend/project-time-web
-        run: npm run validate:microsoft-connection
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm run validate:microsoft-connection 2>&1 | tee /tmp/admin-runtime-microsoft-connection.log
 
       - name: Validate Microsoft SSO runtime
         working-directory: src/frontend/project-time-web
-        run: npm run validate:microsoft-sso-runtime
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm run validate:microsoft-sso-runtime 2>&1 | tee /tmp/admin-runtime-microsoft-sso.log
 
       - name: Build complete frontend production bundle
         working-directory: src/frontend/project-time-web
