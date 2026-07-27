@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { createRoot } from 'react-dom/client';
 import './audit-history.css';
 
 function readStoredJson(key) {
@@ -79,7 +78,7 @@ function compactValue(value) {
   return String(value);
 }
 
-export default function AuditHistoryPanel({ routeOwnerMode = false } = {}) {
+export default function AuditHistoryPanel() {
   const [filters, setFilters] = useState({
     days: '14',
     category: 'all',
@@ -143,11 +142,7 @@ export default function AuditHistoryPanel({ routeOwnerMode = false } = {}) {
   }
 
   return (
-    <section
-      id="audit-history"
-      className="panel audit-history-panel"
-      data-module-008-stable-route-owner={routeOwnerMode ? 'true' : undefined}
-    >
+    <section id="audit-history" className="panel audit-history-panel">
       <div className="audit-history-hero">
         <div>
           <p className="eyebrow">Module 008 · Security & Audit</p>
@@ -300,144 +295,3 @@ export default function AuditHistoryPanel({ routeOwnerMode = false } = {}) {
     </section>
   );
 }
-
-function readModule008ActiveRoute() {
-  return String(window.location.hash || '')
-    .replace(/^#\/?/, '')
-    .split('?')[0]
-    .trim();
-}
-
-function readModule008ViewAsUser() {
-  const viewAs = readStoredJson('projectPulseViewAsUser');
-  return viewAs?.userId ? viewAs : null;
-}
-
-function installModule008StableRouteOwner() {
-  if (typeof window === 'undefined' || typeof document === 'undefined') return;
-  if (window.__projectPulseModule008StableRouteOwnerInstalled) return;
-  window.__projectPulseModule008StableRouteOwnerInstalled = true;
-
-  let host = null;
-  let root = null;
-  let scheduled = false;
-  const suppressedAppPanels = new Set();
-
-  const restoreSuppressedAppPanels = () => {
-    for (const panel of suppressedAppPanels) {
-      if (!panel?.isConnected) continue;
-      panel.hidden = false;
-      panel.removeAttribute('aria-hidden');
-      panel.removeAttribute('data-module-008-superseded-by-stable-route-owner');
-      const originalId = panel.getAttribute('data-module-008-original-id');
-      if (originalId && !panel.id) panel.id = originalId;
-      panel.removeAttribute('data-module-008-original-id');
-    }
-    suppressedAppPanels.clear();
-  };
-
-  const removeStableOwner = () => {
-    if (root) root.unmount();
-    if (host?.isConnected) host.remove();
-    root = null;
-    host = null;
-    restoreSuppressedAppPanels();
-  };
-
-  const appOwnedPanels = (shell) => Array.from(shell.querySelectorAll(
-    '#audit-history, [data-module-008-original-id="audit-history"]'
-  )).filter((panel) => !panel.closest('[data-module-008-stable-route-host]'));
-
-  const suppressAppOwnedPanels = (shell) => {
-    for (const panel of appOwnedPanels(shell)) {
-      if (!panel.getAttribute('data-module-008-original-id')) {
-        panel.setAttribute('data-module-008-original-id', panel.id || 'audit-history');
-      }
-      panel.removeAttribute('id');
-      panel.hidden = true;
-      panel.setAttribute('aria-hidden', 'true');
-      panel.setAttribute('data-module-008-superseded-by-stable-route-owner', 'true');
-      suppressedAppPanels.add(panel);
-    }
-  };
-
-  const ensureStableHost = (shell) => {
-    const firstAppPanel = appOwnedPanels(shell)[0] || null;
-
-    if (!host) {
-      host = document.createElement('div');
-      host.className = 'module-008-stable-route-host';
-      host.setAttribute('data-module-008-stable-route-host', 'true');
-      if (firstAppPanel?.parentNode) {
-        firstAppPanel.parentNode.insertBefore(host, firstAppPanel);
-      } else {
-        shell.appendChild(host);
-      }
-      root = createRoot(host);
-      root.render(<AuditHistoryPanel routeOwnerMode />);
-      return;
-    }
-
-    if (host.parentElement !== shell) {
-      if (firstAppPanel?.parentNode) {
-        firstAppPanel.parentNode.insertBefore(host, firstAppPanel);
-      } else {
-        shell.appendChild(host);
-      }
-    }
-  };
-
-  const synchronize = () => {
-    scheduled = false;
-
-    if (readModule008ActiveRoute() !== 'audit-history') {
-      removeStableOwner();
-      return;
-    }
-
-    if (!readProjectPulseAuthSession() || readModule008ViewAsUser()) {
-      removeStableOwner();
-      return;
-    }
-
-    const shell = document.querySelector('.app-shell.route-audit-history');
-    if (!shell) {
-      removeStableOwner();
-      return;
-    }
-
-    ensureStableHost(shell);
-    suppressAppOwnedPanels(shell);
-  };
-
-  const schedule = () => {
-    if (scheduled) return;
-    scheduled = true;
-    window.requestAnimationFrame(synchronize);
-  };
-
-  const observer = new MutationObserver(schedule);
-  const begin = () => {
-    observer.observe(document.body, { childList: true, subtree: true });
-    schedule();
-    window.setTimeout(schedule, 100);
-    window.setTimeout(schedule, 500);
-  };
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', begin, { once: true });
-  } else {
-    begin();
-  }
-
-  window.addEventListener('hashchange', schedule);
-  window.addEventListener('projectpulse:auth-session-ready', schedule);
-  window.addEventListener('projectpulse:view-as-changed', schedule);
-  window.addEventListener('storage', (event) => {
-    if (event.key === 'projectPulseAuthSession' || event.key === 'projectPulseViewAsUser') {
-      schedule();
-    }
-  });
-}
-
-installModule008StableRouteOwner();
