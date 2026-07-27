@@ -66,7 +66,7 @@ assert('MODULE_010_CONFIGURATION_REMOVED', compatibility.includes('.azure-config
 
 assert('MODULE_010_PREVIEW_PRESERVED', compatibility.includes('function restoreModule010Preview')
   && compatibility.includes("module010.querySelector('.azure-preview-card')")
-  && compatibility.includes("data-module-010-preview-preserved")
+  && compatibility.includes('data-module-010-preview-preserved')
   && css.includes('.route-azure-admin .azure-preview-card')
   && css.includes('.route-azure-admin .azure-preview-card .azure-admin-heading-actions button')
   && !css.includes('.route-azure-admin .azure-admin-heading-actions .primary-action'),
@@ -96,9 +96,11 @@ assert('GLOBAL_MAIL_CONFIGURATION', portal.includes('Microsoft 365 / SMTP')
 assert('MAIL_RUNTIME_ACTIVATION', main.includes("import './microsoft-mail-runtime-activation.js';")
   && mailActivation.includes("RUNTIME_PATH = '/api/microsoft-integration/mail-runtime'")
   && mailActivation.includes('persistedConfiguration: true')
-  && mailActivation.includes('runtimeActivated: false')
+  && mailActivation.includes('return response;')
+  && mailActivation.includes('Runtime activation status is reported separately')
+  && !mailActivation.includes("status: 'mail_runtime_activation_failed'")
   && !/clientSecret|password|accessToken/i.test(mailActivation),
-'successful Module 065 saves forward only non-secret mail metadata to the runtime');
+'successful Module 065 saves remain successful while non-secret runtime status is reported separately');
 
 if (fullRepositoryContext) {
   const migration = read(paths.migration);
@@ -135,22 +137,45 @@ if (fullRepositoryContext) {
     && mailRuntime.includes('ReadStoredConfigurationAsync'),
   'mail metadata is applied immediately and hydrated again after API restart');
 
+  assert('ENVIRONMENT_SECRET_ISOLATION', mailRuntime.includes('PROJECTPULSE_ENTRA_TEST_CLIENT_SECRET')
+    && mailRuntime.includes('PROJECTPULSE_ENTRA_PRODUCTION_CLIENT_SECRET')
+    && mailRuntime.includes('PROJECTPULSE_MICROSOFT_TENANT_ONENECKLAB_CLIENT_SECRET')
+    && mailRuntime.includes('PROJECTPULSE_MICROSOFT_TENANT_USSIGNAL_CLIENT_SECRET')
+    && mailRuntime.includes('activeMode == "test"')
+    && mailRuntime.includes('activeMode == "production"')
+    && !/return First\([\s\S]*PROJECTPULSE_ENTRA_CLIENT_SECRET[\s\S]*PROJECTPULSE_M365_CLIENT_SECRET[\s\S]*\);/.test(mailRuntime),
+  'Test never borrows Production credentials and Production never borrows Test credentials');
+
+  assert('RECIPIENT_BOUNDARY_ENFORCED', mailRuntime.includes('configuration.RecipientBoundary == "production_governed"')
+    && mailRuntime.includes('PROJECTPULSE_MAIL_RECIPIENT_BOUNDARY')
+    && mailRuntime.includes('The Test-only boundary keeps delivery outbox-only')
+    && mailRuntime.includes('Microsoft mail delivery is locked')
+    && mailRuntime.includes('liveDeliveryEnabled'),
+  'test_only and locked states cannot enable live delivery');
+
+  assert('SHARED_PROVIDER_COMPATIBILITY', mailRuntime.includes('var sharedProvider = liveDeliveryEnabled')
+    && mailRuntime.includes('? "smtp"')
+    && mailRuntime.includes(': "outbox_only"')
+    && mailRuntime.includes('PROJECTPULSE_EMAIL_PROVIDER')
+    && !mailRuntime.includes('SetIfPresent("PROJECTPULSE_EMAIL_PROVIDER", provider)'),
+  'the shared dispatcher receives only supported smtp or outbox_only values');
+
   assert('GRAPH_MAIL_RUNTIME', mailRuntime.includes('PROJECTPULSE_MAIL_PROVIDER')
     && mailRuntime.includes('PROJECTPULSE_M365_TENANT_ID')
     && mailRuntime.includes('PROJECTPULSE_M365_CLIENT_ID')
     && mailRuntime.includes('PROJECTPULSE_M365_CLIENT_SECRET')
     && mailRuntime.includes('PROJECTPULSE_M365_SENDER_MAILBOX')
-    && mailRuntime.includes('PROJECTPULSE_ENTRA_TEST_CLIENT_SECRET')
-    && mailRuntime.includes('PROJECTPULSE_ENTRA_PRODUCTION_CLIENT_SECRET'),
-  'Graph mail uses the selected environment services connection without moving secret values');
+    && mailRuntime.includes('Graph-capable delivery paths')
+    && mailRuntime.includes('Shared notification flows remain outbox-only'),
+  'Graph mail is enabled only for Graph-capable paths and is not misrepresented as shared-dispatcher support');
 
   assert('SMTP_RUNTIME', mailRuntime.includes('PROJECTPULSE_SMTP_HOST')
     && mailRuntime.includes('PROJECTPULSE_SMTP_PORT')
     && mailRuntime.includes('PROJECTPULSE_SMTP_FROM')
-    && mailRuntime.includes('PROJECTPULSE_SMTP_USERNAME')
-    && mailRuntime.includes('PROJECTPULSE_SMTP_PASSWORD')
-    && mailRuntime.includes('SMTP username/password must remain configured'),
-  'SMTP metadata is page-owned while credentials remain in the approved environment store');
+    && mailRuntime.includes('PROJECTPULSE_TEST_SMTP_')
+    && mailRuntime.includes('PROJECTPULSE_PRODUCTION_SMTP_')
+    && mailRuntime.includes('Microsoft 365 SMTP is ready for the shared mail dispatcher'),
+  'SMTP metadata is page-owned and credentials remain environment-specific');
 
   assert('MAIL_SECRET_SAFETY', mailRuntime.includes('secretValuesRead = false')
     && mailRuntime.includes('secretValuesReturned = false')
