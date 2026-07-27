@@ -150,6 +150,15 @@ check(
 );
 
 check(
+  'ENVELOPE_UNWRAP_COMPATIBILITY',
+  authoritative.includes('const hasNonEnvelopeKey = rootKeys.some((key) => !ENVELOPE_KEYS.includes(key));')
+    && authoritative.includes('const nestedCandidate = candidates')
+    && authoritative.includes('.slice(1)')
+    && authoritative.includes('return nestedCandidate || payload;'),
+  'envelope-only responses without required collections unwrap to the populated inner object'
+);
+
+check(
   'EMPTY_XHR_NATIVE_RECOVERY',
   authoritative.includes('async function nativeFetchAuthoritative(path, options)')
     && authoritative.includes("recoveredFrom: 'xhr-success-missing-collections'")
