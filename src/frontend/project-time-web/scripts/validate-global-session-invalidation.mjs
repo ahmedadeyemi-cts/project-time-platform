@@ -46,8 +46,40 @@ check(
 );
 
 check(
+  'REQUEST_TOKEN_CAPTURE',
+  authoritative.includes('function requestSessionToken(input, init = {})')
+    && authoritative.includes("'X-ProjectPulse-Session'")
+    && authoritative.includes("'X-Project-Pulse-Session'")
+    && authoritative.includes("'X-Session-Token'")
+    && authoritative.includes("'Authorization'")
+    && authoritative.includes('const requestToken = requestSessionToken(input, init);')
+    && authoritative.indexOf('const requestToken = requestSessionToken(input, init);') < authoritative.indexOf('const response = await originalFetch(input, init);'),
+  'the token actually carried by each fetch request is captured before dispatch'
+);
+
+check(
+  'REQUEST_TOKEN_CORRELATION',
+  authoritative.includes('function requestTokenMatchesCurrentSession(requestToken = \'\')')
+    && authoritative.includes('requestToken === currentToken')
+    && authoritative.includes("function isSessionRejection(status, payload = {}, responseText = '', requestToken = '')")
+    && authoritative.includes('!requestTokenMatchesCurrentSession(requestToken)')
+    && authoritative.includes("function invalidateProjectPulseSession(path, payload = {}, responseText = '', requestToken = '')"),
+  'only a failed request carrying the currently stored token may invalidate that session'
+);
+
+check(
+  'PRELOGIN_RESPONSE_RACE_BLOCKED',
+  authoritative.includes("async function inspectFetchSessionRejection(input, response, requestToken = '')")
+    && authoritative.includes("if (!path || response?.status !== 401 || !requestToken) return;")
+    && authoritative.includes('isSessionRejection(response.status, payload, raw, requestToken)')
+    && authoritative.includes('invalidateProjectPulseSession(path, payload, raw, requestToken)')
+    && !authoritative.includes('if (!path || response?.status !== 401 || !storedSessionContext().token) return;'),
+  'anonymous requests started before login cannot erase a newly stored session when their late 401 responses arrive'
+);
+
+check(
   'SESSION_REQUIRED_ONLY',
-  authoritative.includes('if (Number(status) !== 401 || !storedSessionContext().token) return false;')
+  authoritative.includes('if (Number(status) !== 401 || !requestTokenMatchesCurrentSession(requestToken)) return false;')
     && authoritative.includes('SESSION_REJECTION_STATUS_CODES.has(statusCode)')
     && authoritative.includes('SESSION_REJECTION_MESSAGE.test(message)')
     && authoritative.includes("'session_required'")
@@ -61,7 +93,7 @@ check(
   authoritative.includes('window.__projectPulseSessionInvalidationStarted')
     && authoritative.includes('if (window.__projectPulseSessionInvalidationStarted) return true;')
     && authoritative.includes('window.__projectPulseSessionInvalidationStarted = true;'),
-  'concurrent 401 responses trigger one invalidation/reload'
+  'concurrent 401 responses for the same rejected token trigger one invalidation/reload'
 );
 
 check(
@@ -84,24 +116,25 @@ check(
   'FETCH_COVERAGE',
   authoritative.includes('function installGlobalFetchSessionInvalidation()')
     && authoritative.includes('const originalFetch = window.fetch.bind(window);')
-    && authoritative.includes('void inspectFetchSessionRejection(input, response);')
+    && authoritative.includes('void inspectFetchSessionRejection(input, response, requestToken);')
     && authoritative.includes('response.clone().text()'),
-  'all later fetch wrappers inherit centralized 401 inspection'
+  'all later fetch wrappers inherit request-correlated 401 inspection'
 );
 
 check(
-  'XHR_COVERAGE',
-  authoritative.includes('if (isSessionRejection(request.status, payload, raw))')
-    && authoritative.includes('invalidateProjectPulseSession(path, payload, raw);')
+  'XHR_REQUEST_TOKEN_CORRELATION',
+  authoritative.includes('const { token, viewAsUserId } = sessionContext();')
+    && authoritative.includes('if (isSessionRejection(request.status, payload, raw, token))')
+    && authoritative.includes('invalidateProjectPulseSession(path, payload, raw, token);')
     && authoritative.includes('projectpulse-authoritative-xhr-v1'),
-  'authoritative XMLHttpRequest failures use the same invalidation path'
+  'authoritative XMLHttpRequest failures are correlated to the token captured at request dispatch'
 );
 
 check(
   'NO_UNAUTHENTICATED_RELOAD_LOOP',
-  authoritative.includes('if (!storedSessionContext().token) return false;')
-    && authoritative.includes('if (!path || response?.status !== 401 || !storedSessionContext().token) return;'),
-  '401 responses without a stored session never reload the sign-in page'
+  authoritative.includes("if (!requestTokenMatchesCurrentSession(requestToken)) return false;")
+    && authoritative.includes("if (!path || response?.status !== 401 || !requestToken) return;"),
+  '401 responses from requests without a token never reload the sign-in page'
 );
 
 check(
