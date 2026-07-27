@@ -5,8 +5,12 @@ on:
     paths:
       - 'database/migrations/047_microsoft_integration_connection_carryover.sql'
       - 'database/rollback/047_microsoft_integration_connection_carryover_rollback.sql'
+      - 'src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/MicrosoftMailRuntimeConfigurationModule.cs'
       - 'src/frontend/project-time-web/src/microsoft-integration-compatibility.js'
       - 'src/frontend/project-time-web/src/microsoft-integration-portal.css'
+      - 'src/frontend/project-time-web/src/microsoft-mail-runtime-activation.js'
+      - 'src/frontend/project-time-web/src/main.jsx'
       - 'src/frontend/project-time-web/src/module-availability-registry.js'
       - 'src/frontend/project-time-web/scripts/validate-microsoft-integration-authoritative-connection.mjs'
       - 'src/frontend/project-time-web/scripts/validate-module-067-global-mail.mjs'
@@ -22,9 +26,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Build Microsoft mail runtime API
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
       - name: Test migration 047 carryover and rollback
         run: bash tests/test-microsoft-integration-connection-carryover-047.sh
       - name: Install frontend dependencies
