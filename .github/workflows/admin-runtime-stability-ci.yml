@@ -19,14 +19,17 @@ on:
       - 'src/frontend/project-time-web/src/microsoft-integration-portal.css'
       - 'src/frontend/project-time-web/src/microsoft-mail-transport-readiness.css'
       - 'src/frontend/project-time-web/src/module001/TimesheetEnhancementPortal.jsx'
+      - 'src/frontend/project-time-web/src/react-dom-ownership-prelude.js'
       - 'src/frontend/project-time-web/src/runtime-data-compatibility.js'
       - 'src/frontend/project-time-web/scripts/test-admin-runtime-stability-runtime.mjs'
+      - 'src/frontend/project-time-web/scripts/test-session-theme-dom-safety-runtime.mjs'
       - 'src/frontend/project-time-web/scripts/validate-admin-runtime-stability.mjs'
       - 'src/frontend/project-time-web/scripts/validate-module-001-timesheet-timer-mobile.mjs'
       - 'src/frontend/project-time-web/scripts/validate-modules-008-009-admin-experience.mjs'
       - 'src/frontend/project-time-web/scripts/validate-microsoft-integration-authoritative-connection.mjs'
       - 'src/frontend/project-time-web/scripts/validate-microsoft-sso-runtime-wiring.mjs'
       - 'src/frontend/project-time-web/scripts/validate-role-permission-timesheet-stabilization.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-runtime-role-policy-ptc-data.mjs'
       - 'src/frontend/project-time-web/package.json'
       - '.github/workflows/admin-runtime-stability-ci.yml'
   workflow_dispatch:
@@ -86,13 +89,18 @@ jobs:
           cache-dependency-path: src/frontend/project-time-web/package-lock.json
 
       - name: Build ProjectTime API in Release mode
-        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release 2>&1 | tee /tmp/admin-runtime-api-build.log
 
       - name: Execute central authorization tests
-        run: >-
-          dotnet run
-          --project tests/ProjectTime.Api.AuthorizationTests/ProjectTime.Api.AuthorizationTests.csproj
-          --configuration Release
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          dotnet run \
+            --project tests/ProjectTime.Api.AuthorizationTests/ProjectTime.Api.AuthorizationTests.csproj \
+            --configuration Release 2>&1 | tee /tmp/admin-runtime-authorization.log
 
       - name: Install frontend dependencies
         working-directory: src/frontend/project-time-web
@@ -100,15 +108,24 @@ jobs:
 
       - name: Validate integrated admin runtime source contract
         working-directory: src/frontend/project-time-web
-        run: npm run validate:admin-runtime-stability
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm run validate:admin-runtime-stability 2>&1 | tee /tmp/admin-runtime-static.log
 
       - name: Execute direct role-policy runtime test
         working-directory: src/frontend/project-time-web
-        run: node scripts/test-admin-runtime-stability-runtime.mjs
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node scripts/test-admin-runtime-stability-runtime.mjs 2>&1 | tee /tmp/admin-runtime-role-policy.log
 
-      - name: Execute session and theme browser-runtime harness
+      - name: Execute safe session theme and DOM ownership runtime harness
         working-directory: src/frontend/project-time-web
-        run: node scripts/test-authoritative-session-transport-theme-runtime.mjs
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node scripts/test-session-theme-dom-safety-runtime.mjs 2>&1 | tee /tmp/admin-runtime-session-theme.log
 
       - name: Validate safe global session transport
         working-directory: src/frontend/project-time-web
@@ -148,4 +165,16 @@ jobs:
 
       - name: Build complete frontend production bundle
         working-directory: src/frontend/project-time-web
-        run: npm run build
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm run build 2>&1 | tee /tmp/admin-runtime-frontend-build.log
+
+      - name: Upload focused validation diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: admin-runtime-stability-diagnostics-${{ github.run_id }}
+          path: /tmp/admin-runtime-*.log
+          if-no-files-found: warn
+          retention-days: 7
