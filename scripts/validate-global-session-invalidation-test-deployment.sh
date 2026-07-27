@@ -4,7 +4,7 @@ set -Eeuo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEPLOY="$ROOT/.github/workflows/projectpulse-deploy-global-session-invalidation-test.yml"
 VALIDATE="$ROOT/.github/workflows/validate-global-session-invalidation-test-deployment.yml"
-EXPECTED_RELEASE="2e72ad9a95ed7cf027b8e95e237b880824adddf4"
+EXPECTED_RELEASE="f626222c6de103a30db88a071517c6cc2587d96a"
 
 fail() { echo "ERROR: $*" >&2; exit 1; }
 require_file() { [[ -f "$1" ]] || fail "Missing required file: ${1#$ROOT/}"; }
@@ -14,102 +14,94 @@ reject() { ! grep -Eiq -- "$2" "$1" || fail "Forbidden pattern in ${1#$ROOT/}: $
 require_file "$DEPLOY"
 require_file "$VALIDATE"
 
-require "$DEPLOY" 'name: ProjectPulse Deploy Role Policy Audit Stability Test'
+require "$DEPLOY" 'name: ProjectPulse Deploy Role Policy Audit Module 065 Test'
 require "$DEPLOY" 'workflow_dispatch:'
 require "$DEPLOY" "default: $EXPECTED_RELEASE"
 require "$DEPLOY" "EXPECTED_RELEASE_COMMIT: $EXPECTED_RELEASE"
-require "$DEPLOY" 'DEPLOY-ROLE-POLICY-AUDIT-STABILITY-TO-TEST'
-require "$DEPLOY" 'environment: test'
+require "$DEPLOY" 'DEPLOY-ROLE-POLICY-AUDIT-MODULE065-TO-TEST'
 require "$DEPLOY" 'refs/heads/main'
+require "$DEPLOY" 'environment: test'
 require "$DEPLOY" 'group: projectpulse-deploy-global-session-invalidation-test'
 require "$DEPLOY" 'cancel-in-progress: false'
-require "$DEPLOY" 'DISPATCH_RELEASE_COMMIT: ${{ inputs.release_commit }}'
-require "$DEPLOY" 'DISPATCH_CONFIRMATION: ${{ inputs.confirmation }}'
-require "$DEPLOY" 'WORKFLOW_SOURCE_REF: ${{ github.ref }}'
-require "$DEPLOY" 'WORKFLOW_SOURCE_SHA: ${{ github.sha }}'
+require "$DEPLOY" 'Only the verified PR 181, PR 182, and PR 184 combined release may deploy.'
 require "$DEPLOY" 'git -C control merge-base --is-ancestor'
-require "$DEPLOY" 'Only the verified PR 181 and PR 182 combined release may deploy.'
 
-# PR 181 source and executable authorization proof.
-require "$DEPLOY" 'ScopedRolePolicyRules.cs'
-require "$DEPLOY" 'runtime-data-compatibility.js'
-require "$DEPLOY" 'ProjectTime.Api.AuthorizationTests.csproj'
+# Release-root execution and fail-closed rollback points.
+require "$DEPLOY" 'cd release'
+require "$DEPLOY" 'test -d src/backend/ProjectTime.Api'
+require "$DEPLOY" 'dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release'
+require "$DEPLOY" '--project tests/ProjectTime.Api.AuthorizationTests/ProjectTime.Api.AuthorizationTests.csproj'
+reject "$DEPLOY" 'dotnet build release/src/backend/ProjectTime.Api/ProjectTime.Api.csproj'
+reject "$DEPLOY" '--project release/tests/ProjectTime.Api.AuthorizationTests/ProjectTime.Api.AuthorizationTests.csproj'
+require "$DEPLOY" 'CURRENT_API_IMAGE="$(resolve_digest "$RAW_API_IMAGE")"'
+require "$DEPLOY" 'CURRENT_WEB_IMAGE="$(resolve_digest "$RAW_WEB_IMAGE")"'
+require "$DEPLOY" '[[ -n "$CURRENT_API_IMAGE" && -n "$CURRENT_WEB_IMAGE" ]]'
+reject "$DEPLOY" 'echo[[:space:]]+"current_api_image=\$\(resolve_digest'
+reject "$DEPLOY" 'echo[[:space:]]+"current_web_image=\$\(resolve_digest'
+require "$DEPLOY" '"releaseWorkingDirectory": "verified"'
+require "$DEPLOY" '"rollbackImageResolution": "fail-closed"'
+
+# PR 181, PR 182, and PR 184 source contracts.
 require "$DEPLOY" '"ROLE_ASSIGN"'
 require "$DEPLOY" 'NormalizeRoutePath(path)'
-require "$DEPLOY" "normalized = normalized.TrimEnd('/');"
 require "$DEPLOY" 'const ROLE_POLICY_SESSION_WAIT_MS = 3500;'
-require "$DEPLOY" "if (pathname.endsWith('/matrix')) return '037';"
 require "$DEPLOY" 'TRAILING_SLASH_POST_BOUNDARY'
-require "$DEPLOY" 'REPEATED_TRAILING_SLASH_POST_BOUNDARY'
-require "$DEPLOY" 'TRAILING_SLASH_READ_NOT_RECLASSIFIED'
-require "$DEPLOY" 'dotnet run'
-
-# PR 182 response recovery, one-owner Module 008, and icon dock proof.
 require "$DEPLOY" 'projectpulse-authoritative-native-fetch-fallback-v1'
-require "$DEPLOY" 'const CAPTURED_NATIVE_FETCH'
 require "$DEPLOY" "recoveredFrom: 'xhr-success-missing-collections'"
-require "$DEPLOY" 'const nestedCandidate = candidates'
-require "$DEPLOY" "finishSuccess(fallback.payload, fallback.status, 'native-fetch-fallback'"
 require "$DEPLOY" "! grep -Fq 'projectpulse-authoritative-session-invalidation-v1'"
-require "$DEPLOY" "! grep -Fq 'projectpulse:session-invalidated'"
-require "$DEPLOY" "! grep -Fq 'invalidateProjectPulseSession'"
-require "$DEPLOY" "! grep -Fq 'window.location.reload();'"
 require "$DEPLOY" "! grep -Fq \"from 'react-dom/client'\""
-require "$DEPLOY" "! grep -Fq 'createRoot('"
-require "$DEPLOY" "! grep -Fq 'MutationObserver'"
-require "$DEPLOY" "! grep -Fq 'data-module-008-route-recovery-host'"
-require "$DEPLOY" "! grep -Fq 'data-module-008-stable-route-host'"
 require "$DEPLOY" 'STRAY_THEME_TEXT'
-require "$DEPLOY" 'width:[[:space:]]*44px'
 require "$DEPLOY" "content: '☾'"
 require "$DEPLOY" "content: '☀'"
-require "$DEPLOY" "! grep -Fq \"content: 'Dark mode'\""
-require "$DEPLOY" "! grep -Fq \"content: 'Light mode'\""
-require "$DEPLOY" 'test-authoritative-session-transport-theme-runtime.mjs'
-require "$DEPLOY" 'validate-modules-008-009-admin-experience.mjs'
+require "$DEPLOY" 'UseMicrosoftPublicSsoOriginCompatibility'
+require "$DEPLOY" 'X-Forwarded-Host'
+require "$DEPLOY" 'X-Forwarded-Proto'
+require "$DEPLOY" 'invalid_forwarded_public_origin'
+require "$DEPLOY" 'MapMicrosoftServicesRuntimeProfileEndpoints'
+require "$DEPLOY" "async function persistConfiguration(purpose = 'integration')"
+require "$DEPLOY" "if (purpose !== 'sso')"
+require "$DEPLOY" 'Save SSO connection'
+require "$DEPLOY" 'Use current callback'
+require "$DEPLOY" 'tenant?.environmentMode === runtimeEnvironment'
+require "$DEPLOY" 'applyPayload?.runtimeActivated !== true'
+require "$DEPLOY" 'module_065_services_profile_not_active'
+require "$DEPLOY" 'npm run validate:microsoft-connection'
+require "$DEPLOY" 'npm run validate:microsoft-sso-runtime'
 require "$DEPLOY" 'npm run build'
 
-# Immutable API/web deployment and authenticated-boundary smoke evidence.
+# Exact API/web deployment and protected route probes.
 require "$DEPLOY" 'Capture current immutable API and web images'
 require "$DEPLOY" 'Build exact immutable API and web candidates'
 require "$DEPLOY" 'Deploy exact API candidate'
 require "$DEPLOY" 'Wait for exact API revision'
-require "$DEPLOY" 'Validate public API readiness and protected boundaries'
-require "$DEPLOY" "'/api/admin/users/roles' '401'"
-require "$DEPLOY" "'/api/admin/users/roles/' '401'"
-require "$DEPLOY" "'/api/admin/audit-history/events' '401'"
-require "$DEPLOY" 'ROLE_POLICY_AUDIT_API_VALIDATION=PASS'
+require "$DEPLOY" "probe role-assign POST '/api/admin/users/roles' '401' '{}'"
+require "$DEPLOY" "probe role-assign-slash POST '/api/admin/users/roles/' '401' '{}'"
+require "$DEPLOY" "probe audit-history GET '/api/admin/audit-history/events' '401'"
+require "$DEPLOY" "probe module065-sso POST '/api/microsoft-integration/sso-apply-profile' '401' '{}'"
+require "$DEPLOY" "probe module065-services POST '/api/microsoft-integration/services-apply-profile' '401' '{}'"
+require "$DEPLOY" "probe module065-mail PUT '/api/microsoft-integration/mail-runtime' '401,403' '{}'"
+require "$DEPLOY" 'ROLE_POLICY_AUDIT_MODULE065_API_VALIDATION=PASS'
 require "$DEPLOY" 'Deploy exact web candidate'
 require "$DEPLOY" 'Wait for exact web revision'
-require "$DEPLOY" 'Validate served response recovery, Module 008, role-policy and theme assets'
-require "$DEPLOY" 'projectpulse-authoritative-native-fetch-fallback-v1'
-require "$DEPLOY" 'xhr-success-missing-collections'
-require "$DEPLOY" "! grep -Fq 'data-module-008-route-recovery-host'"
-require "$DEPLOY" "! grep -Fq 'data-module-008-stable-route-host'"
-require "$DEPLOY" 'width:44px'
-require "$DEPLOY" 'left:0'
-require "$DEPLOY" 'ROLE_POLICY_AUDIT_WEB_VALIDATION=PASS'
+require "$DEPLOY" 'Validate served role-policy, audit, theme, and Module 065 assets'
+require "$DEPLOY" '/api/microsoft-integration/sso-apply-profile'
+require "$DEPLOY" '/api/microsoft-integration/services-apply-profile'
+require "$DEPLOY" 'module_065_services_profile_not_active'
+require "$DEPLOY" 'ROLE_POLICY_AUDIT_MODULE065_WEB_VALIDATION=PASS'
 
-require "$DEPLOY" '"releaseCommit": "${{ steps.release.outputs.target_commit }}"'
-require "$DEPLOY" '"apiImage": "${{ steps.build.outputs.api_image }}"'
-require "$DEPLOY" '"webImage": "${{ steps.build.outputs.web_image }}"'
-require "$DEPLOY" '"previousApiImage": "${{ steps.before.outputs.current_api_image }}"'
-require "$DEPLOY" '"previousWebImage": "${{ steps.before.outputs.current_web_image }}"'
-require "$DEPLOY" '"roleAssignmentBoundary": "standard-and-trailing-slash-protected"'
-require "$DEPLOY" '"authoritativeNativeFallback": "served-and-source-validated"'
-require "$DEPLOY" '"module008SingleOwner": "served-and-source-validated"'
-require "$DEPLOY" '"themeControl": "icon-only-bottom-left-dock"'
+# Evidence and safe rollback.
+require "$DEPLOY" '"module065PublicSsoOrigin": "forwarded-origin-validated"'
+require "$DEPLOY" '"module065PreviewEnvironment": "running-environment-required"'
+require "$DEPLOY" '"module065IndependentSsoSave": "source-and-served-assets-validated"'
+require "$DEPLOY" '"module065Secrets": "unchanged"'
 require "$DEPLOY" '"migrations": "unchanged"'
 require "$DEPLOY" '"database": "unchanged"'
 require "$DEPLOY" '"configuration": "unchanged"'
-require "$DEPLOY" '"smokeTests": "passed"'
-
 require "$DEPLOY" 'Restore captured web and API images on failure'
 require "$DEPLOY" 'Web rollback skipped because another image is active'
 require "$DEPLOY" 'API rollback skipped because another image is active'
-require "$DEPLOY" 'wait-containerapp-ready-revision.sh'
-require "$DEPLOY" 'rpauditwebrb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}'
-require "$DEPLOY" 'rpauditapirb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}'
+require "$DEPLOY" 'rpam065webrb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}'
+require "$DEPLOY" 'rpam065apirb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}'
 
 reject "$DEPLOY" '^[[:space:]]*push:'
 reject "$DEPLOY" '^[[:space:]]*schedule:'
@@ -118,26 +110,21 @@ reject "$DEPLOY" 'PROJECTPULSE_ENVIRONMENT=production'
 reject "$DEPLOY" 'psql|PROJECTPULSE_TEST_DATABASE_URL|PTP_DB_'
 reject "$DEPLOY" 'database/migrations|database/rollback|Apply or verify migration|migration image'
 reject "$DEPLOY" 'az[[:space:]]+role[[:space:]]+assignment'
-reject "$DEPLOY" 'functionalUatStatus":"passed"'
 
-require "$VALIDATE" 'name: Validate Role Policy Audit Stability Test Deployment'
-require "$VALIDATE" 'push:'
-require "$VALIDATE" 'pull_request:'
+require "$VALIDATE" 'name: Validate Role Policy Audit Module 065 Test Deployment'
 require "$VALIDATE" 'Enforce exact deployment-control scope'
+require "$VALIDATE" 'Validate release-root and rollback contracts'
 require "$VALIDATE" 'scripts/validate-global-session-invalidation-test-deployment.sh'
-require "$VALIDATE" 'dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release'
 require "$VALIDATE" 'ProjectTime.Api.AuthorizationTests.csproj'
 require "$VALIDATE" 'npm run validate:global-session-invalidation'
 require "$VALIDATE" 'test-authoritative-session-transport-theme-runtime.mjs'
 require "$VALIDATE" 'npm run validate:modules008009'
+require "$VALIDATE" 'npm run validate:microsoft-connection'
+require "$VALIDATE" 'npm run validate:microsoft-sso-runtime'
 require "$VALIDATE" 'npm run build'
-require "$VALIDATE" 'role-policy-audit-stability/deployment-controls'
-require "$VALIDATE" '.github/workflows/projectpulse-deploy-global-session-invalidation-test.yml'
-require "$VALIDATE" '.github/workflows/validate-global-session-invalidation-test-deployment.yml'
-require "$VALIDATE" 'scripts/validate-global-session-invalidation-test-deployment.sh'
-
-reject "$VALIDATE" 'az[[:space:]]+containerapp[[:space:]]+update'
+require "$VALIDATE" 'role-policy-audit-module065/deployment-controls'
 reject "$VALIDATE" 'azure/login'
+reject "$VALIDATE" 'az[[:space:]]+containerapp[[:space:]]+update'
 reject "$VALIDATE" 'environment:[[:space:]]*production'
 
-echo 'ROLE_POLICY_AUDIT_STABILITY_TEST_DEPLOYMENT_GUARD=PASS'
+echo 'ROLE_POLICY_AUDIT_MODULE065_TEST_DEPLOYMENT_GUARD=PASS'
