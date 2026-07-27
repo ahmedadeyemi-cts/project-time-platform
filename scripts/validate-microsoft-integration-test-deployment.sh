@@ -42,7 +42,7 @@ require "$WORKFLOW" 'bash release/tests/test-microsoft-integration-connection-ca
 require "$WORKFLOW" '045_microsoft_integration_consolidation.sql'
 require "$WORKFLOW" '046_microsoft_sso_connection_profiles.sql'
 require "$WORKFLOW" '047_microsoft_integration_connection_carryover.sql'
-require "$WORKFLOW" "FROM azure_entra_settings settings"
+require "$WORKFLOW" 'FROM azure_entra_settings settings'
 require "$WORKFLOW" "module_number = '067'"
 require "$WORKFLOW" "'module062IdentityProfile', 'services'"
 require "$WORKFLOW" "'globalMailTransport', 'services'"
@@ -76,8 +76,8 @@ require "$WORKFLOW" '.route-azure-admin .azure-config-card'
 require "$WORKFLOW" '.route-azure-admin .azure-sync-summary-card'
 require "$WORKFLOW" 'readyApiRevision'
 require "$WORKFLOW" 'readyWebRevision'
-require "$WORKFLOW" 'readyApiImage'
-require "$WORKFLOW" 'readyWebImage'
+require "$WORKFLOW" '"apiImage":"${{ steps.validate_web.outputs.ready_api_image }}"'
+require "$WORKFLOW" '"webImage":"${{ steps.validate_web.outputs.ready_web_image }}"'
 require "$WORKFLOW" 'AUTHENTICATED_MICROSOFT_CONNECTION_UAT=REQUIRED'
 require "$WORKFLOW" 'functionalUatStatus":"pending-user-session-validation"'
 require "$WORKFLOW" '"secretMutation":false'
