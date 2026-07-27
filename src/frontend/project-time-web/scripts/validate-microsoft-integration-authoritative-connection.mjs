@@ -200,7 +200,10 @@ if (fullRepositoryContext) {
 
   assert('SMTP_PROJECTION_BROWSER_SAFETY', !smtpProjection.includes('ReadFromJsonAsync<SmtpCredential')
     && !smtpProjection.includes('Results.Ok(new')
-    && !smtpProjection.includes('password =')
+    && !smtpProjection.includes('request?.Username')
+    && !smtpProjection.includes('request?.Password')
+    && !smtpProjection.includes('request?.SmtpUsername')
+    && !smtpProjection.includes('request?.SmtpPassword')
     && smtpProjection.includes('credential values')
     && smtpProjection.includes('never accepted from or returned to the browser'),
   'SMTP credential values remain environment-backed and never cross the browser API');
