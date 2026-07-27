@@ -61,13 +61,13 @@ SQL
 )"
 
 [[ "$MIGRATION_COUNT" == 1 ]] || fail "Migration 048 registration is not idempotent."
-[[ "$AUDIT_TABLE" == t ]] || fail "Unified audit table was not created."
-[[ "$ASSIGNMENT_TABLE" == t ]] || fail "Manager team assignment table was not created."
-[[ "$IMMUTABLE_TRIGGER" == t ]] || fail "Immutable audit trigger was not created."
-[[ "$UNIQUE_MANAGER_INDEX" == t ]] || fail "One-active-manager-per-team index was not created."
+[[ "$AUDIT_TABLE" == true ]] || fail "Unified audit table was not created."
+[[ "$ASSIGNMENT_TABLE" == true ]] || fail "Manager team assignment table was not created."
+[[ "$IMMUTABLE_TRIGGER" == true ]] || fail "Immutable audit trigger was not created."
+[[ "$UNIQUE_MANAGER_INDEX" == true ]] || fail "One-active-manager-per-team index was not created."
 
 read -r MANAGER_ONE MANAGER_TWO ACTOR_ID <<<"$(
-  psql "$DATABASE_URL" --no-psqlrc -At --set=ON_ERROR_STOP=1 <<'SQL'
+  psql "$DATABASE_URL" --no-psqlrc -At -F ' ' --set=ON_ERROR_STOP=1 <<'SQL'
 WITH inserted AS (
     INSERT INTO app_users (email, display_name, team_name)
     VALUES
@@ -200,8 +200,8 @@ SELECT 'REGISTRATION_REMOVED=' || quote_literal(NOT EXISTS (
 SQL
 )"
 
-[[ "$AUDIT_REMOVED" == t ]] || fail "Rollback did not remove the empty audit table."
-[[ "$ASSIGNMENT_REMOVED" == t ]] || fail "Rollback did not remove the empty assignment table."
-[[ "$REGISTRATION_REMOVED" == t ]] || fail "Rollback did not remove migration registration."
+[[ "$AUDIT_REMOVED" == true ]] || fail "Rollback did not remove the empty audit table."
+[[ "$ASSIGNMENT_REMOVED" == true ]] || fail "Rollback did not remove the empty assignment table."
+[[ "$REGISTRATION_REMOVED" == true ]] || fail "Rollback did not remove migration registration."
 
 echo "MIGRATION_048_APPLY_IDEMPOTENCE_ROLLBACK=PASSED"
