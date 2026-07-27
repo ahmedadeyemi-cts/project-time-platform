@@ -45,7 +45,7 @@ public static class ScopedRolePolicyRules
 
     public static ScopedRouteContract? RouteContract(string path, string method)
     {
-        var normalized = (path ?? string.Empty).ToLowerInvariant();
+        var normalized = NormalizeRoutePath(path);
         var isWrite = !HttpMethods.IsGet(method)
             && !HttpMethods.IsHead(method)
             && !HttpMethods.IsOptions(method);
@@ -87,6 +87,16 @@ public static class ScopedRolePolicyRules
         }
 
         return null;
+    }
+
+    private static string NormalizeRoutePath(string? path)
+    {
+        var normalized = (path ?? string.Empty).Trim().ToLowerInvariant();
+        if (normalized.Length > 1)
+        {
+            normalized = normalized.TrimEnd('/');
+        }
+        return normalized;
     }
 
     public static string ResolveApprovalAction(
