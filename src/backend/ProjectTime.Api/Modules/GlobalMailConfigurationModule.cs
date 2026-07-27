@@ -88,7 +88,7 @@ public static class GlobalMailConfigurationModule
             return true;
         }
 
-        var originHeader = FirstForwardedValue(request.Headers.Origin.ToString());
+        var originHeader = FirstForwardedValue(request.Headers["Origin"].ToString());
         if (!string.IsNullOrWhiteSpace(originHeader)
             && TryOrigin(originHeader, context, out publicOrigin))
         {
@@ -96,7 +96,7 @@ public static class GlobalMailConfigurationModule
             return true;
         }
 
-        var refererHeader = FirstForwardedValue(request.Headers.Referer.ToString());
+        var refererHeader = FirstForwardedValue(request.Headers["Referer"].ToString());
         if (!string.IsNullOrWhiteSpace(refererHeader)
             && Uri.TryCreate(refererHeader, UriKind.Absolute, out var referer)
             && TryOrigin(referer.GetLeftPart(UriPartial.Authority), context, out publicOrigin))
