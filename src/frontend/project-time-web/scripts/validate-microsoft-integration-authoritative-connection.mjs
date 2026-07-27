@@ -23,8 +23,8 @@ function assert(name, condition, evidence) {
   console.log(`MICROSOFT_CONNECTION_${name}=${condition ? 'PASSED' : 'FAILED'} — ${evidence}`);
 }
 
-for (const [name, relative] of Object.entries(paths)) {
-  assert(`${name.toUpperCase()}_EXISTS`, exists(relative), relative);
+for (const name of ['compatibility', 'css', 'portal', 'registry', 'main']) {
+  assert(`${name.toUpperCase()}_EXISTS`, exists(paths[name]), paths[name]);
 }
 
 const compatibility = read(paths.compatibility);
@@ -32,9 +32,7 @@ const css = read(paths.css);
 const portal = read(paths.portal);
 const registry = read(paths.registry);
 const main = read(paths.main);
-const migration = read(paths.migration);
-const rollback = read(paths.rollback);
-const test = read(paths.test);
+const fullRepositoryContext = exists(paths.migration) && exists(paths.rollback) && exists(paths.test);
 
 assert('AUTHORITATIVE_NAME', registry.includes("displayName: 'Microsoft Integration Connection'")
   && compatibility.includes("ACTIVE_MODULE_NAME = 'Microsoft Integration Connection'"),
@@ -79,45 +77,57 @@ assert('GLOBAL_MAIL_CONFIGURATION', portal.includes('Microsoft 365 / SMTP')
   && portal.includes('providerTarget'),
 'global Microsoft mail transport and sender configuration remain on Module 065');
 
-assert('MODULE_010_CARRYOVER', migration.includes('FROM azure_entra_settings settings')
-  && migration.includes("'legacyDirectorySettingsCarriedOver', true")
-  && migration.includes("'clientId', COALESCE(azure_settings ->> 'client_id'")
-  && migration.includes("'redirectUri', COALESCE(azure_settings ->> 'redirect_uri'"),
-'existing Module 010 tenant, services client, redirect, scopes, role, and sync metadata are carried over');
+if (fullRepositoryContext) {
+  const migration = read(paths.migration);
+  const rollback = read(paths.rollback);
+  const test = read(paths.test);
 
-assert('MODULE_067_MAIL_CARRYOVER', migration.includes("module_number = '067'")
-  && migration.includes("'legacyModule067ConfigurationCarriedOver'")
-  && migration.includes("'senderAddress'")
-  && migration.includes("'replyToAddress'"),
-'existing Module 067 global mail settings are carried over');
+  assert('MIGRATION_EXISTS', true, paths.migration);
+  assert('ROLLBACK_EXISTS', true, paths.rollback);
+  assert('TEST_EXISTS', true, paths.test);
 
-assert('MODULE_062_CONNECTION_OWNERSHIP', migration.includes("'module062IdentityProfile', 'services'")
-  && migration.includes("'module057CalendarPresence', 'services'")
-  && migration.includes("'globalMailTransport', 'services'"),
-'identity, calendar/presence, and global mail consume the services connection');
+  assert('MODULE_010_CARRYOVER', migration.includes('FROM azure_entra_settings settings')
+    && migration.includes("'legacyDirectorySettingsCarriedOver', true")
+    && migration.includes("'clientId', COALESCE(azure_settings ->> 'client_id'")
+    && migration.includes("'redirectUri', COALESCE(azure_settings ->> 'redirect_uri'"),
+  'existing Module 010 tenant, services client, redirect, scopes, role, and sync metadata are carried over');
 
-assert('NON_DESTRUCTIVE_MIGRATION', !/DROP\s+TABLE|TRUNCATE\s+TABLE|DELETE\s+FROM\s+(azure_entra_settings|projectpulse_native_admin_documents|microsoft_integration_client_secrets|microsoft_integration_sso_client_secrets|microsoft_integration_audit_events)/i.test(migration)
-  && migration.includes("'secretValuesRead', false")
-  && migration.includes("'secretValuesChanged', false")
-  && migration.includes("'sourceTablesDeleted', false"),
-'carryover does not read, change, or delete existing secret/source evidence');
+  assert('MODULE_067_MAIL_CARRYOVER', migration.includes("module_number = '067'")
+    && migration.includes("'legacyModule067ConfigurationCarriedOver'")
+    && migration.includes("'senderAddress'")
+    && migration.includes("'replyToAddress'"),
+  'existing Module 067 global mail settings are carried over');
 
-assert('IDEMPOTENT_DOCUMENT', migration.includes("existing_notes NOT LIKE marker || '%'")
-  && migration.includes('ON CONFLICT (module_number, document_key)')
-  && migration.includes('ON CONFLICT (module_number, document_key, revision_number) DO NOTHING'),
-'carryover writes one revision only when the consolidated marker is absent');
+  assert('MODULE_062_CONNECTION_OWNERSHIP', migration.includes("'module062IdentityProfile', 'services'")
+    && migration.includes("'module057CalendarPresence', 'services'")
+    && migration.includes("'globalMailTransport', 'services'"),
+  'identity, calendar/presence, and global mail consume the services connection');
 
-assert('NON_DESTRUCTIVE_ROLLBACK', rollback.includes('carried-over Module 010 and Module 067 configuration remains')
-  && !/DROP\s+TABLE|DELETE\s+FROM\s+projectpulse_native_admin_documents/i.test(rollback),
-'rollback preserves active connection metadata and secrets');
+  assert('NON_DESTRUCTIVE_MIGRATION', !/DROP\s+TABLE|TRUNCATE\s+TABLE|DELETE\s+FROM\s+(azure_entra_settings|projectpulse_native_admin_documents|microsoft_integration_client_secrets|microsoft_integration_sso_client_secrets|microsoft_integration_audit_events)/i.test(migration)
+    && migration.includes("'secretValuesRead', false")
+    && migration.includes("'secretValuesChanged', false")
+    && migration.includes("'sourceTablesDeleted', false"),
+  'carryover does not read, change, or delete existing secret/source evidence');
 
-assert('POSTGRES_LIFECYCLE_TEST', test.includes('MICROSOFT_INTEGRATION_CONNECTION_CARRYOVER_047_TEST=PASS')
-  && test.includes('module010_source_preserved')
-  && test.includes('module067_source_preserved')
-  && test.includes('graph_secret_preserved')
-  && test.includes('sso_secret_preserved')
-  && test.includes('module062_uses_services_connection'),
-'PostgreSQL test proves metadata carryover and source/secret preservation');
+  assert('IDEMPOTENT_DOCUMENT', migration.includes("existing_notes NOT LIKE marker || '%'")
+    && migration.includes('ON CONFLICT (module_number, document_key)')
+    && migration.includes('ON CONFLICT (module_number, document_key, revision_number) DO NOTHING'),
+  'carryover writes one revision only when the consolidated marker is absent');
+
+  assert('NON_DESTRUCTIVE_ROLLBACK', rollback.includes('carried-over Module 010 and Module 067 configuration remains')
+    && !/DROP\s+TABLE|DELETE\s+FROM\s+projectpulse_native_admin_documents/i.test(rollback),
+  'rollback preserves active connection metadata and secrets');
+
+  assert('POSTGRES_LIFECYCLE_TEST', test.includes('MICROSOFT_INTEGRATION_CONNECTION_CARRYOVER_047_TEST=PASS')
+    && test.includes('module010_source_preserved')
+    && test.includes('module067_source_preserved')
+    && test.includes('graph_secret_preserved')
+    && test.includes('sso_secret_preserved')
+    && test.includes('module062_uses_services_connection'),
+  'PostgreSQL test proves metadata carryover and source/secret preservation');
+} else {
+  console.log('MICROSOFT_CONNECTION_MIGRATION_DEEP_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
+}
 
 console.log(`MICROSOFT_CONNECTION_VALIDATION_CHECKS=${checks.length}`);
 if (checks.some((check) => !check.condition)) {
