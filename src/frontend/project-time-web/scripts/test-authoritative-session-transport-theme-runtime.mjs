@@ -67,10 +67,10 @@ function buildTransportHarness() {
 
     send() {
       const session = JSON.parse(localStorage.getItem('projectPulseAuthSession') || 'null');
-      const token = session?.sessionToken || '';
+      const token = session?.sessionToken || session?.token || session?.accessToken || '';
 
-      // This models App.jsx's installed 050B global XHR bridge. The authoritative
-      // client must not add a second copy before this send-time injection occurs.
+      // This models App.jsx's exact 050B global XHR bridge contract. It does not
+      // read legacy storage keys, sessionStorage, or the session_token field.
       if (token) {
         this.setRequestHeader('X-ProjectPulse-Session', token);
         this.setRequestHeader('X-Project-Pulse-Session', token);
@@ -152,6 +152,7 @@ function buildTransportHarness() {
   return {
     sandbox,
     localStorage,
+    sessionStorage,
     fetchCalls,
     xhrInstances,
     FakeXhr,
@@ -159,9 +160,31 @@ function buildTransportHarness() {
   };
 }
 
+function assertSingleSessionHeaders(xhr, token) {
+  const expected = new Map([
+    ['x-projectpulse-session', token],
+    ['x-project-pulse-session', token],
+    ['x-session-token', token],
+    ['authorization', `Bearer ${token}`]
+  ]);
+
+  for (const [header, value] of expected) {
+    assert.equal(xhr.headers.get(header)?.length, 1, `${header} must be sent exactly once`);
+    assert.equal(xhr.headers.get(header)[0], value, `${header} should contain the expected token`);
+  }
+}
+
 async function testTransportRuntime() {
   const harness = buildTransportHarness();
-  const { sandbox, localStorage, fetchCalls, xhrInstances, FakeXhr, authoritativeApi } = harness;
+  const {
+    sandbox,
+    localStorage,
+    sessionStorage,
+    fetchCalls,
+    xhrInstances,
+    FakeXhr,
+    authoritativeApi
+  } = harness;
 
   const protectedResponse = await sandbox.fetch('/api/timesheet/timers/targets');
   assert.equal(protectedResponse.status, 425, 'pre-login protected fetch should stop locally');
@@ -189,17 +212,7 @@ async function testTransportRuntime() {
   FakeXhr.nextStatus = 200;
   FakeXhr.nextPayload = { targets: [] };
   await authoritativeApi('/api/timesheet/timers/targets', { requiredCollections: ['targets'] });
-  const successfulXhr = xhrInstances.at(-1);
-
-  for (const header of [
-    'x-projectpulse-session',
-    'x-project-pulse-session',
-    'x-session-token',
-    'authorization'
-  ]) {
-    assert.equal(successfulXhr.headers.get(header)?.length, 1, `${header} must be sent exactly once`);
-  }
-  assert.equal(successfulXhr.headers.get('x-projectpulse-session')[0], token);
+  assertSingleSessionHeaders(xhrInstances.at(-1), token);
 
   FakeXhr.nextStatus = 401;
   FakeXhr.nextPayload = { status: 'session_required', message: 'Session expired or invalid.' };
@@ -211,6 +224,51 @@ async function testTransportRuntime() {
     JSON.parse(localStorage.getItem('projectPulseAuthSession')).sessionToken,
     token,
     'a rejected request must not delete the working browser session'
+  );
+
+  // The App bridge cannot read session_token. Authoritative XHR must therefore
+  // supply the headers directly even while the bridge is installed.
+  const sessionTokenShape = 'session-token-shape-value';
+  localStorage.setItem('projectPulseAuthSession', JSON.stringify({
+    session_token: sessionTokenShape,
+    expiresAt: new Date(Date.now() + 60_000).toISOString()
+  }));
+  FakeXhr.nextStatus = 200;
+  FakeXhr.nextPayload = { targets: [] };
+  await authoritativeApi('/api/timesheet/timers/targets', { requiredCollections: ['targets'] });
+  assertSingleSessionHeaders(xhrInstances.at(-1), sessionTokenShape);
+
+  // The same fallback must work for supported legacy sessionStorage keys when
+  // the App bridge has no localStorage token to inject.
+  localStorage.removeItem('projectPulseAuthSession');
+  const legacyToken = 'legacy-session-storage-token';
+  sessionStorage.setItem('projectPulseSession', JSON.stringify({
+    session_token: legacyToken,
+    expiresAt: new Date(Date.now() + 60_000).toISOString()
+  }));
+  await authoritativeApi('/api/timesheet/timers/targets', { requiredCollections: ['targets'] });
+  assertSingleSessionHeaders(xhrInstances.at(-1), legacyToken);
+
+  // If the App bridge would append an old local token while the authoritative
+  // context selected a different valid fallback, stop locally instead of sending
+  // a combined invalid header value.
+  localStorage.setItem('projectPulseAuthSession', JSON.stringify({
+    sessionToken: 'expired-bridge-token',
+    expiresAt: new Date(Date.now() - 60_000).toISOString()
+  }));
+  sessionStorage.setItem('projectPulseSession', JSON.stringify({
+    sessionToken: 'fresh-fallback-token',
+    expiresAt: new Date(Date.now() + 60_000).toISOString()
+  }));
+  const xhrCountBeforeConflict = xhrInstances.length;
+  await assert.rejects(
+    authoritativeApi('/api/runtime/v2/role-policy/catalog'),
+    (error) => error?.code === 'session_transport_conflict' && error?.silent === true
+  );
+  assert.equal(
+    xhrInstances.length,
+    xhrCountBeforeConflict,
+    'a bridge-token conflict must stop before creating or sending an XHR'
   );
 
   console.log('AUTHORITATIVE_SESSION_RUNTIME=PASSED');
