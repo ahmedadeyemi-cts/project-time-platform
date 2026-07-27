@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKFLOW="$ROOT/.github/workflows/projectpulse-deploy-microsoft-preview-mail-runtime-test.yml"
-EXPECTED_RELEASE="50e415d2053610a10d3ba6ca3662d6414b55ec25"
+EXPECTED_RELEASE="c4a97ac1ee3309be8d216380f2f18810a4362f21"
 
 fail() { echo "ERROR: $*" >&2; exit 1; }
 [[ -f "$WORKFLOW" ]] || fail "Missing deployment workflow: ${WORKFLOW#$ROOT/}"
@@ -27,6 +27,14 @@ require "$WORKFLOW" 'test -f control/scripts/wait-containerapp-ready-revision.sh
 require "$WORKFLOW" 'bash control/scripts/wait-containerapp-ready-revision.sh'
 
 require "$WORKFLOW" 'MicrosoftMailRuntimeConfigurationModule.cs'
+require "$WORKFLOW" 'MicrosoftSmtpCredentialProjectionCompatibility.cs'
+require "$WORKFLOW" 'UseMicrosoftSmtpCredentialProjectionCompatibility'
+require "$WORKFLOW" 'OriginalActiveEnvironment'
+require "$WORKFLOW" 'OriginalLegacyUsername'
+require "$WORKFLOW" 'OriginalLegacyPassword'
+require "$WORKFLOW" 'ReadValidatedSelectionFromResponseAsync'
+require "$WORKFLOW" 'JsonDocument.ParseAsync'
+require "$WORKFLOW" 'ClearLegacyCredential'
 require "$WORKFLOW" 'microsoft-mail-runtime-activation.js'
 require "$WORKFLOW" 'function restoreModule010Preview'
 require "$WORKFLOW" 'data-module-010-preview-preserved'
@@ -35,9 +43,13 @@ require "$WORKFLOW" 'PROJECTPULSE_MAIL_RECIPIENT_BOUNDARY'
 require "$WORKFLOW" 'outbox_only'
 require "$WORKFLOW" 'PROJECTPULSE_ENTRA_TEST_CLIENT_SECRET'
 require "$WORKFLOW" 'PROJECTPULSE_ENTRA_PRODUCTION_CLIENT_SECRET'
+require "$WORKFLOW" 'PROJECTPULSE_TEST_SMTP_'
+require "$WORKFLOW" 'PROJECTPULSE_PRODUCTION_SMTP_'
 require "$WORKFLOW" 'projectpulse:microsoft-mail-runtime-status'
 require "$WORKFLOW" "import './microsoft-mail-runtime-activation.js';"
 require "$WORKFLOW" "! grep -Fq '.route-azure-admin .azure-admin-heading-actions .primary-action'"
+require "$WORKFLOW" "! grep -Fq 'Request.EnableBuffering' release/src/backend/ProjectTime.Api/Modules/MicrosoftSmtpCredentialProjectionCompatibility.cs"
+require "$WORKFLOW" "! grep -Fq 'context.Request.Body' release/src/backend/ProjectTime.Api/Modules/MicrosoftSmtpCredentialProjectionCompatibility.cs"
 
 require "$WORKFLOW" 'Capture current immutable API and web images'
 require "$WORKFLOW" 'Build immutable API and web candidates'
@@ -84,6 +96,7 @@ reject "$WORKFLOW" 'databaseMutation":true'
 reject "$WORKFLOW" 'ACTIVE_API=.*properties[.]template[.]containers\[0\][.]image'
 reject "$WORKFLOW" 'ACTIVE_WEB=.*properties[.]template[.]containers\[0\][.]image'
 reject "$WORKFLOW" 'test[[:space:]]+-x[[:space:]]+control/scripts/wait-containerapp-ready-revision[.]sh'
+reject "$WORKFLOW" '50e415d2053610a10d3ba6ca3662d6414b55ec25'
 
 INPUT_REFERENCE_COUNT="$(grep -Fc '${{ inputs.' "$WORKFLOW")"
 [[ "$INPUT_REFERENCE_COUNT" == "3" ]] || fail "Expected exactly three non-shell input references; found $INPUT_REFERENCE_COUNT."
