@@ -77,12 +77,17 @@ requireAll(authoritative, [
   'requiredCollections',
   'collectionCounts',
   'projectpulse:authoritative-api-diagnostic'
-], 'Wrapper-independent authoritative API');
+], 'Wrapper-independent authoritative API retained for protected mutation and recovery flows');
 
 requireAll(timerPortal, [
-  "import { authoritativeApi } from '../projectpulse-authoritative-api.js';",
+  "const TIMER_TARGET_CLIENT = 'projectpulse-timer-target-direct-fetch-v1';",
+  'function isTimesheetRoute()',
+  "=== 'timesheet'",
+  'async function loadTimerTargets(weekStart)',
   '/api/timesheet/timers/targets?weekStart=',
-  "requiredCollections: ['targets']",
+  "'X-ProjectPulse-Module-Number': '001'",
+  "'X-ProjectPulse-Timer-Target-Client': TIMER_TARGET_CLIENT",
+  'normalizeTimerTargetPayload(payload)',
   'mergeByKey(snapshot.assignedTasks, authoritativeAssignments)',
   'snapshot.nonProjectCategories',
   "target.groupLabel !== 'Service Request Tasks' && target.groupLabel !== 'Requests / Service Requests'",
@@ -95,15 +100,17 @@ requireAll(timerPortal, [
   'projectpulse:module001-timer-targets',
   'Existing Timesheet activities remain available',
   'synchronizeViewButtons'
-], 'Authoritative Module 001 timer target integration with preserved fallback catalogs');
+], 'Module 001 timer target integration with direct validated transport and preserved fallback catalogs');
+
 for (const forbidden of [
+  "import { authoritativeApi } from '../projectpulse-authoritative-api.js';",
   '/api/assignments/available-tasks',
   '/api/timesheet/work-queue',
-  'const response = await fetch(path',
+  'new MutationObserver',
   'returned an incomplete timer-target payload',
   'The canonical Timesheet snapshot remains usable if the assignment join refresh fails.'
 ]) {
-  if (timerPortal.includes(forbidden)) throw new Error(`Legacy silent timer target path remains: ${forbidden}`);
+  if (timerPortal.includes(forbidden)) throw new Error(`Legacy or route-wide timer target path remains: ${forbidden}`);
 }
 
 if (timerBackend) {
@@ -130,4 +137,4 @@ if (queries) {
   ], 'Role and module query foundation');
 }
 
-console.log('Role permission and timesheet stabilization contracts passed with wrapper-independent Module 001 target transport.');
+console.log('Role permission and timesheet stabilization contracts passed with route-scoped direct Module 001 target transport.');
