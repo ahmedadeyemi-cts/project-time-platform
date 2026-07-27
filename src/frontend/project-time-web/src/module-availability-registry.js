@@ -5,11 +5,11 @@ export const PROJECTPULSE_MODULES = Object.freeze([
   Object.freeze({ moduleNumber: '004', route: 'holiday-admin', displayName: 'Holiday Administration', group: 'Time Management' }),
   Object.freeze({ moduleNumber: '005', route: 'project-allocation-info', displayName: 'Project Expense Upload', group: 'Project Management' }),
   Object.freeze({ moduleNumber: '006', route: 'psa-modules', displayName: 'PSA Modules', group: 'Platform Operations' }),
-  Object.freeze({ moduleNumber: '007', route: 'workflow', displayName: 'Approval / Export / Audit Workflow', group: 'Approvals' }),
+  Object.freeze({ moduleNumber: '007', route: 'workflow', displayName: 'Approval, Export & Audit Workflow', group: 'Approvals', description: 'Post-time-entry approval, accounting reconciliation, export preparation, package download, preflight validation, and workflow audit evidence.' }),
   Object.freeze({ moduleNumber: '008', route: 'audit-history', displayName: 'Audit History', group: 'Security & Audit' }),
   Object.freeze({ moduleNumber: '009', route: 'user-admin', displayName: 'User Administration', group: 'Administration' }),
   Object.freeze({ moduleNumber: '010', route: 'azure-admin', displayName: 'Azure / Entra Directory Users', group: 'Administration' }),
-  Object.freeze({ moduleNumber: '011', route: 'work-task-builder', displayName: 'Work Task Builder', group: 'Project Delivery' }),
+  Object.freeze({ moduleNumber: '011', route: 'work-task-builder', displayName: 'Work Task Builder', group: 'Project Delivery', lifecycle: 'retired', isRetired: true, replacementRoutes: Object.freeze(['work-register', 'create-work-register']), retirementReason: 'Project creation and project/task management moved to Modules 055D and 055C.' }),
   Object.freeze({ moduleNumber: '012', route: 'role-admin', displayName: 'Role Administration', group: 'Administration' }),
   Object.freeze({ moduleNumber: '013', route: 'service-control', displayName: 'Service Control', group: 'Platform Operations' }),
   Object.freeze({ moduleNumber: '014', route: 'backup-dr', displayName: 'Backup & Disaster Recovery', group: 'Platform Operations' }),
@@ -17,8 +17,8 @@ export const PROJECTPULSE_MODULES = Object.freeze([
   Object.freeze({ moduleNumber: '016', route: 'backup-retention', displayName: 'Backup Retention', group: 'Platform Operations' }),
   Object.freeze({ moduleNumber: '017', route: 'replication-sync', displayName: 'Replication & Sync', group: 'Platform Operations' }),
   Object.freeze({ moduleNumber: '018', route: 'project-workload', displayName: 'Project Workload', group: 'Project Management' }),
-  Object.freeze({ moduleNumber: '019', route: 'project-workspace', displayName: 'Project Workspace', group: 'Project Delivery' }),
-  Object.freeze({ moduleNumber: '020', route: 'project-intake', displayName: 'Project Intake', group: 'Project Delivery' }),
+  Object.freeze({ moduleNumber: '019', route: 'project-workspace', displayName: 'Project Engineering Workspace', group: 'Project Delivery', description: 'Role-scoped project assignments and document access. It consumes project data directly and has no Module 011 dependency.' }),
+  Object.freeze({ moduleNumber: '020', route: 'project-intake', displayName: 'Project Intake & Resource Handoff', group: 'Project Delivery', description: 'Pre-project request, signed-date aging, project-link confirmation, engineering demand, and resource handoff before Modules 055D and 055C own the project record.' }),
   Object.freeze({ moduleNumber: '021', route: 'customer-directory', displayName: 'Customer Directory', group: 'Customers' }),
   Object.freeze({ moduleNumber: '022', route: 'cost-alerts', displayName: 'Cost Alerts', group: 'Reports & Workflow' }),
   Object.freeze({ moduleNumber: '023', route: 'time-compliance', displayName: 'Time Compliance', group: 'Time Management' }),
@@ -37,8 +37,8 @@ export const PROJECTPULSE_MODULES = Object.freeze([
   Object.freeze({ moduleNumber: '041', route: 'closeout-email', displayName: 'Closeout Email Automation', group: 'Reports & Workflow' }),
   Object.freeze({ moduleNumber: '042', route: 'invoice-billing-center', displayName: 'Invoice & Billing Center', group: 'Reports & Workflow' }),
   Object.freeze({ moduleNumber: '055B', route: 'rate-card-administration', displayName: 'Rate Card Administration', group: 'Project Operations' }),
-  Object.freeze({ moduleNumber: '055C', route: 'work-register', displayName: 'Manage Existing Projects', group: 'Project Operations' }),
-  Object.freeze({ moduleNumber: '055D', route: 'create-work-register', displayName: 'Create New Project', group: 'Project Operations' }),
+  Object.freeze({ moduleNumber: '055C', route: 'work-register', displayName: 'Manage Existing Projects', group: 'Project Operations', description: 'Authoritative workspace for editing existing project records and maintaining project delivery details after creation.' }),
+  Object.freeze({ moduleNumber: '055D', route: 'create-work-register', displayName: 'Create New Project', group: 'Project Operations', description: 'Authoritative project-creation workflow using GSD or SELL source information.' }),
   Object.freeze({ moduleNumber: '057', route: 'calendar-capacity', displayName: 'Calendar & Capacity', group: 'Resource Management' }),
   Object.freeze({ moduleNumber: '058', route: 'cicd-pipeline', displayName: 'CI/CD Pipeline', group: 'Platform Operations' }),
   Object.freeze({ moduleNumber: '060', route: 'contracts', displayName: 'Contracts', group: 'Project Operations' }),
@@ -48,7 +48,7 @@ export const PROJECTPULSE_MODULES = Object.freeze([
   Object.freeze({ moduleNumber: '066', route: 'project-flowhive', displayName: 'Project FlowHive', group: 'Project Delivery' }),
   Object.freeze({ moduleNumber: '068', route: 'system-architecture', displayName: 'System Architecture & Dependency Map', group: 'Platform Operations' }),
   Object.freeze({ moduleNumber: '069', route: 'qualifications-certifications', displayName: 'Qualifications & Certification Matrix', group: 'Resources' }),
-  Object.freeze({ moduleNumber: '070', route: 'capacity-pipeline-forecast', displayName: 'Capacity & Pipeline Forecasting', group: 'Resource Management' }),
+  Object.freeze({ moduleNumber: '070', route: 'capacity-pipeline-forecast', displayName: 'Capacity & Pipeline Forecasting', group: 'Resource Management', description: 'Reads capacity, assignments, and project-intake demand directly. It has no Module 011 dependency.' }),
   Object.freeze({ moduleNumber: '071', route: 'oncall-scheduling', displayName: 'On-Call Scheduling', group: 'Platform Operations' }),
   Object.freeze({ moduleNumber: '072', route: 'oneassist-routing-directory', displayName: 'OneAssist Routing Directory', group: 'Platform Operations' }),
   Object.freeze({ moduleNumber: '073', route: 'sales-coverage-alignment', displayName: 'Sales Coverage Alignment', group: 'Sales & Opportunities' }),
@@ -64,18 +64,26 @@ export const PROJECTPULSE_MODULES = Object.freeze([
   Object.freeze({ moduleNumber: '999', route: 'user-guide', displayName: 'ProjectPulse Complete User Guide', group: 'Help & Documentation' }),
 ]);
 
+export const RETIRED_PROJECTPULSE_MODULES = Object.freeze(
+  PROJECTPULSE_MODULES.filter((module) => module.isRetired === true)
+);
+
 const ROUTE_ALIASES = Object.freeze({
   'project-manager-workload': 'project-workload',
   'project-management-workload': 'project-workload',
   'resource-assignment-handoff': 'signed-handoff',
-  'global-mail-configuration': 'entra-secret-administration'
+  'global-mail-configuration': 'entra-secret-administration',
+  'work-task-builder': 'work-register'
 });
 
 export const MODULE_BY_NUMBER = new Map(PROJECTPULSE_MODULES.map((module) => [module.moduleNumber.toUpperCase(), module]));
 export const MODULE_BY_ROUTE = new Map(PROJECTPULSE_MODULES.map((module) => [module.route, module]));
-export function canonicalModuleRoute(route) { const normalized = String(route || '').replace(/^#/, '').trim(); return ROUTE_ALIASES[normalized] || normalized; }
+export function rawModuleRoute(route) { return String(route || '').replace(/^#/, '').trim(); }
+export function canonicalModuleRoute(route) { const normalized = rawModuleRoute(route); return ROUTE_ALIASES[normalized] || normalized; }
 export function moduleForRoute(route) { return MODULE_BY_ROUTE.get(canonicalModuleRoute(route)) || null; }
 export function moduleForNumber(moduleNumber) { return MODULE_BY_NUMBER.get(String(moduleNumber || '').trim().toUpperCase()) || null; }
+export function retiredModuleForRoute(route) { const normalized = rawModuleRoute(route); return RETIRED_PROJECTPULSE_MODULES.find((module) => module.route === normalized) || null; }
+export function isRetiredModuleRoute(route) { return Boolean(retiredModuleForRoute(route)); }
 export function currentProjectPulseRoute() { return canonicalModuleRoute(window.location.hash || '#dashboard') || 'dashboard'; }
 export function replaceTimesheetLabel(value) {
   return String(value ?? '')
