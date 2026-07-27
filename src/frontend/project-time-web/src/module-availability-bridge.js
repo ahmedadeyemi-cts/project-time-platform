@@ -113,10 +113,10 @@ function installPermissionNavigationGuard(nativeFetch) {
   }
 
   function restorePermissionVisibility(element) {
-    element.removeAttribute(HIDDEN_ATTRIBUTE);
+    if (element.hasAttribute(HIDDEN_ATTRIBUTE)) element.removeAttribute(HIDDEN_ATTRIBUTE);
     if (element.getAttribute('data-module-availability-hidden') !== 'true') {
-      element.hidden = false;
-      element.removeAttribute('aria-hidden');
+      if (element.hidden) element.hidden = false;
+      if (element.getAttribute('aria-hidden') === 'true') element.removeAttribute('aria-hidden');
     }
   }
 
@@ -129,9 +129,9 @@ function installPermissionNavigationGuard(nativeFetch) {
       const descriptor = descriptorOf(element);
       if (!descriptor.module && !descriptor.retired) return;
       if (!isBlocked(descriptor)) return;
-      element.hidden = true;
-      element.setAttribute(HIDDEN_ATTRIBUTE, 'true');
-      element.setAttribute('aria-hidden', 'true');
+      if (!element.hidden) element.hidden = true;
+      if (element.getAttribute(HIDDEN_ATTRIBUTE) !== 'true') element.setAttribute(HIDDEN_ATTRIBUTE, 'true');
+      if (element.getAttribute('aria-hidden') !== 'true') element.setAttribute('aria-hidden', 'true');
     });
   }
 
