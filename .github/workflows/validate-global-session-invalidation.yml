@@ -1,0 +1,125 @@
+name: Validate Global Session Invalidation
+
+on:
+  push:
+    branches:
+      - 'hotfix/global-session-invalidation-recovery-*'
+  pull_request:
+    paths:
+      - 'src/frontend/project-time-web/src/projectpulse-authoritative-api.js'
+      - 'src/frontend/project-time-web/scripts/validate-global-session-invalidation.mjs'
+      - 'src/frontend/project-time-web/package.json'
+      - '.github/workflows/validate-global-session-invalidation.yml'
+
+permissions:
+  contents: read
+  statuses: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Enforce isolated authentication scope
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git fetch origin main --no-tags
+          mapfile -t CHANGED < <(git diff --name-only origin/main...HEAD)
+          printf '%s\n' "${CHANGED[@]}"
+
+          ALLOWED=(
+            '.github/workflows/validate-global-session-invalidation.yml'
+            'src/frontend/project-time-web/package.json'
+            'src/frontend/project-time-web/scripts/validate-global-session-invalidation.mjs'
+            'src/frontend/project-time-web/src/projectpulse-authoritative-api.js'
+          )
+
+          [[ "${#CHANGED[@]}" -eq 4 ]] || {
+            echo "Expected exactly four global session-lifecycle files; found ${#CHANGED[@]}." >&2
+            exit 1
+          }
+
+          for changed in "${CHANGED[@]}"; do
+            MATCH=false
+            for allowed in "${ALLOWED[@]}"; do
+              [[ "$changed" == "$allowed" ]] && MATCH=true
+            done
+            [[ "$MATCH" == true ]] || {
+              echo "Unexpected changed file: $changed" >&2
+              exit 1
+            }
+          done
+
+          PROTECTED='^(src/frontend/project-time-web/src/(App|main|UserAdministrationPanel|AuditHistoryPanel|MicrosoftIntegrationPortal)\.jsx|src/backend/|database/|\.github/workflows/projectpulse-deploy-|scripts/validate-runtime-direct-timer-recovery-test-deployment\.sh)'
+          if printf '%s\n' "${CHANGED[@]}" | grep -E "$PROTECTED"; then
+            echo 'Protected module, backend, migration, shared entry point, or deployment source changed.' >&2
+            exit 1
+          fi
+
+          echo 'GLOBAL_SESSION_SOURCE_ISOLATION=PASSED'
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Build API compatibility baseline
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Validate global stale-session recovery
+        working-directory: src/frontend/project-time-web
+        run: npm run validate:global-session-invalidation
+
+      - name: Build complete frontend production bundle
+        working-directory: src/frontend/project-time-web
+        run: npm run build
+
+      - name: Publish exact-commit session lifecycle status
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
+          COMMIT_SHA: ${{ github.sha }}
+          API_ROOT: ${{ github.api_url }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -Eeuo pipefail
+          if [[ "$JOB_STATUS" == success ]]; then
+            STATE=success
+            DESCRIPTION='Global stale-session invalidation and full frontend build passed.'
+          else
+            STATE=failure
+            DESCRIPTION='Global stale-session invalidation validation failed.'
+          fi
+
+          PAYLOAD="$(jq -nc \
+            --arg state "$STATE" \
+            --arg context 'global-session/invalidation-recovery' \
+            --arg description "$DESCRIPTION" \
+            --arg target_url "$RUN_URL" \
+            '{state:$state,context:$context,description:$description,target_url:$target_url}')"
+
+          curl --fail-with-body --silent --show-error \
+            --request POST \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'Accept: application/vnd.github+json' \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            --data "$PAYLOAD" \
+            "$API_ROOT/repos/$REPOSITORY/statuses/$COMMIT_SHA"
