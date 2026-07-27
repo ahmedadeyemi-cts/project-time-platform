@@ -15,6 +15,7 @@ public static class GlobalMailConfigurationModule
         MicrosoftIntegrationModule.MapEndpoints(app);
         app.MapMicrosoftSsoConnectionProfileEndpoints();
         app.MapMicrosoftSsoRuntimeProfileEndpoints();
+        app.MapMicrosoftServicesRuntimeProfileEndpoints();
         app.MapMicrosoftMailRuntimeConfigurationEndpoints();
         AzureDirectoryImportModule.MapEndpoints(app);
         return app;

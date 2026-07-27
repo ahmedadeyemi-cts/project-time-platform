@@ -1,7 +1,9 @@
 const INSTALL_MARKER = '__projectPulseMicrosoftSsoRuntimeActivationInstalled';
 const CONFIG_MARKER = 'PROJECTPULSE_MICROSOFT_INTEGRATION_JSON:';
 const DOCUMENT_PATH = '/api/native-administration/065/document';
-const APPLY_PATH = '/api/microsoft-integration/sso-apply-profile';
+const SSO_APPLY_PATH = '/api/microsoft-integration/sso-apply-profile';
+const SERVICES_APPLY_PATH = '/api/microsoft-integration/services-apply-profile';
+const STATUS_ID = 'projectpulse-microsoft-connection-runtime-status';
 
 function requestUrl(input) {
   try {
@@ -20,7 +22,7 @@ function requestBody(input, init) {
   return null;
 }
 
-function activeSsoProfile(bodyText) {
+function activeRuntimeProfiles(bodyText) {
   try {
     const request = JSON.parse(bodyText || '{}');
     const notes = request?.document?.configuration?.notes;
@@ -30,15 +32,34 @@ function activeSsoProfile(bodyText) {
     const active = tenants.find((tenant) => tenant?.key === configuration?.activeTenantKey)
       || tenants.find((tenant) => tenant?.environmentMode === configuration?.activeEnvironmentMode)
       || null;
-    const sso = active?.sso || active?.ssoConnection || {};
-    const clientId = sso.clientId || sso.applicationId || active?.ssoClientId || '';
-    if (!active || !active.tenantId || !clientId || !(sso.redirectUri || active.redirectUri)) return null;
+    if (!active) return null;
+
+    const sso = active.sso || active.ssoConnection || {};
+    const services = active.services || active.servicesConnection || {};
+    const mail = configuration.mail || {};
+    const ssoClientId = sso.clientId || sso.applicationId || active.ssoClientId || '';
+    const servicesClientId = services.clientId || services.applicationId || active.serviceClientId || active.clientId || '';
+
     return {
-      environmentMode: active.environmentMode,
-      tenantId: active.tenantId,
-      clientId,
-      redirectUri: sso.redirectUri || active.redirectUri,
-      allowedDomains: sso.allowedDomains || active.ssoAllowedDomains || active.tenantDomain || ''
+      sso: active.tenantId && ssoClientId && (sso.redirectUri || active.redirectUri)
+        ? {
+            environmentMode: active.environmentMode,
+            tenantId: active.tenantId,
+            clientId: ssoClientId,
+            redirectUri: sso.redirectUri || active.redirectUri,
+            allowedDomains: sso.allowedDomains || active.ssoAllowedDomains || active.tenantDomain || ''
+          }
+        : null,
+      services: active.tenantId && servicesClientId
+        ? {
+            environmentMode: active.environmentMode,
+            tenantKey: active.key || active.tenantKey,
+            tenantId: active.tenantId,
+            clientId: servicesClientId,
+            graphScopes: services.graphScopes || services.scopes || active.graphScopes || '',
+            senderMailbox: mail.senderAddress || ''
+          }
+        : null
     };
   } catch {
     return null;
@@ -52,17 +73,34 @@ function mergedHeaders(input, init) {
   return headers;
 }
 
-function activationFailure(response, payload) {
-  const message = payload?.message || payload?.status || `SSO runtime activation failed with HTTP ${response.status}.`;
-  return new Response(JSON.stringify({
-    status: 'sso_runtime_activation_failed',
-    message,
-    persistedConfiguration: true,
-    runtimeActivated: false
-  }), {
-    status: response.status >= 400 ? response.status : 502,
-    headers: { 'Content-Type': 'application/json' }
+function presentStatus(detail) {
+  window.dispatchEvent(new CustomEvent('projectpulse:microsoft-connection-runtime-status', { detail }));
+  const portal = document.querySelector('.microsoft-integration-portal');
+  if (!portal) return;
+  let status = document.getElementById(STATUS_ID);
+  if (!status) {
+    status = document.createElement('div');
+    status.id = STATUS_ID;
+    status.setAttribute('role', 'status');
+    const heading = portal.querySelector('.microsoft-integration-heading');
+    if (heading?.nextSibling) portal.insertBefore(status, heading.nextSibling);
+    else portal.prepend(status);
+  }
+  status.className = `microsoft-integration-banner ${detail.runtimeActivated ? 'success' : 'error'}`;
+  status.textContent = detail.message;
+}
+
+async function applyProfile(delegatedFetch, path, profile, input, init) {
+  if (!profile) return { ok: true, skipped: true, payload: {} };
+  const response = await delegatedFetch(path, {
+    method: 'POST',
+    cache: 'no-store',
+    headers: mergedHeaders(input, init),
+    body: JSON.stringify(profile)
   });
+  let payload = {};
+  try { payload = await response.json(); } catch { /* sanitized fallback below */ }
+  return { ok: response.ok, skipped: false, payload, status: response.status };
 }
 
 if (typeof window !== 'undefined' && !window[INSTALL_MARKER]) {
@@ -70,26 +108,54 @@ if (typeof window !== 'undefined' && !window[INSTALL_MARKER]) {
   window.fetch = async (input, init = {}) => {
     const url = requestUrl(input);
     const method = requestMethod(input, init);
-    const profile = url?.origin === window.location.origin
+    const profiles = url?.origin === window.location.origin
       && url.pathname === DOCUMENT_PATH
       && method === 'PUT'
-      ? activeSsoProfile(requestBody(input, init))
+      ? activeRuntimeProfiles(requestBody(input, init))
       : null;
 
     const response = await delegatedFetch(input, init);
-    if (!profile || !response.ok) return response;
+    if (!profiles || !response.ok) return response;
 
-    const activationResponse = await delegatedFetch(APPLY_PATH, {
-      method: 'POST',
-      cache: 'no-store',
-      headers: mergedHeaders(input, init),
-      body: JSON.stringify(profile)
-    });
-    if (activationResponse.ok) return response;
+    try {
+      const servicesResult = await applyProfile(
+        delegatedFetch,
+        SERVICES_APPLY_PATH,
+        profiles.services,
+        input,
+        init
+      );
+      const ssoResult = servicesResult.ok
+        ? await applyProfile(delegatedFetch, SSO_APPLY_PATH, profiles.sso, input, init)
+        : { ok: false, skipped: true, payload: {} };
+      const runtimeActivated = servicesResult.ok && ssoResult.ok;
+      const failure = !servicesResult.ok ? servicesResult : !ssoResult.ok ? ssoResult : null;
+      presentStatus({
+        status: failure?.payload?.status || (runtimeActivated ? 'microsoft_runtime_profiles_applied' : 'microsoft_runtime_activation_pending'),
+        message: failure?.payload?.message || (runtimeActivated
+          ? 'Module 065 connection metadata was saved and applied to the running SSO and Microsoft services paths.'
+          : 'Module 065 connection metadata was saved. Runtime activation is still pending.'),
+        persistedConfiguration: true,
+        runtimeActivated,
+        ssoRuntimeActivated: Boolean(ssoResult.ok && !ssoResult.skipped),
+        servicesRuntimeActivated: Boolean(servicesResult.ok && !servicesResult.skipped),
+        secretValuesReturned: false
+      });
+    } catch {
+      presentStatus({
+        status: 'microsoft_runtime_activation_pending',
+        message: 'Module 065 connection metadata was saved. Runtime activation could not be confirmed yet.',
+        persistedConfiguration: true,
+        runtimeActivated: false,
+        ssoRuntimeActivated: false,
+        servicesRuntimeActivated: false,
+        secretValuesReturned: false
+      });
+    }
 
-    let payload = {};
-    try { payload = await activationResponse.json(); } catch { /* sanitized fallback below */ }
-    return activationFailure(activationResponse, payload);
+    // The authoritative document save remains successful. Runtime activation is
+    // reported independently so the saved revision is never lost to the client.
+    return response;
   };
   window[INSTALL_MARKER] = true;
 }
