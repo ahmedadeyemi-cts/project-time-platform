@@ -54,6 +54,7 @@ require "$WORKFLOW" 'Manager team scope'
 require "$WORKFLOW" 'Switch to dark mode'
 require "$WORKFLOW" '.theme-toggle.projectpulse-theme-control'
 require "$WORKFLOW" 'validate-modules-008-009-admin-experience.mjs'
+require "$WORKFLOW" 'cd release/src/frontend/project-time-web'
 
 require "$WORKFLOW" 'Verify database environment configuration'
 require "$WORKFLOW" 'PTP_DB_HOST PTP_DB_PORT PTP_DB_NAME PTP_DB_USER PTP_DB_PASSWORD'
@@ -132,12 +133,14 @@ require "$RUNNER" 'ADMIN_EXPERIENCE_MIGRATION_JOB_CLEANUP=COMPLETE'
 require "$RUNNER" 'ADMIN_EXPERIENCE_MIGRATION_JOB_STATUS=Succeeded'
 
 require "$VALIDATOR_WORKFLOW" 'name: Validate Admin Experience 008 009 Test Deployment'
+require "$VALIDATOR_WORKFLOW" 'push:'
 require "$VALIDATOR_WORKFLOW" 'pull_request:'
 require "$VALIDATOR_WORKFLOW" 'validate-admin-experience-008-009-test-deployment.sh'
 require "$VALIDATOR_WORKFLOW" 'test-admin-experience-migration-048.sh'
 require "$VALIDATOR_WORKFLOW" 'validate:modules008009'
 require "$VALIDATOR_WORKFLOW" 'dotnet build'
 require "$VALIDATOR_WORKFLOW" 'npm run build'
+require "$VALIDATOR_WORKFLOW" 'admin-experience-008-009/deployment-controls'
 
 reject "$WORKFLOW" 'push:'
 reject "$WORKFLOW" 'schedule:'
@@ -164,7 +167,7 @@ reject "$RUNNER" 'environment:[[:space:]]*production'
 INPUT_REFERENCE_COUNT="$(grep -Fc '${{ inputs.' "$WORKFLOW")"
 [[ "$INPUT_REFERENCE_COUNT" == "3" ]] || fail "Expected exactly three non-shell input references; found $INPUT_REFERENCE_COUNT."
 
-CONTROL_FILE_COUNT="$(grep -Ec "^[[:space:]]+- '(\.github/workflows/projectpulse-deploy-admin-experience-008-009-test\.yml|\.github/workflows/validate-admin-experience-008-009-test-deployment\.yml|scripts/apply-admin-experience-008-009-test-migration\.sh|scripts/run-admin-experience-008-009-test-migration-job\.sh|scripts/validate-admin-experience-008-009-test-deployment\.sh)'$" "$VALIDATOR_WORKFLOW")"
-[[ "$CONTROL_FILE_COUNT" == "5" ]] || fail "Deployment validation workflow must watch exactly the five deployment-control files."
+CONTROL_FILE_REFERENCE_COUNT="$(grep -Ec "^[[:space:]]+- '(\.github/workflows/projectpulse-deploy-admin-experience-008-009-test\.yml|\.github/workflows/validate-admin-experience-008-009-test-deployment\.yml|scripts/apply-admin-experience-008-009-test-migration\.sh|scripts/run-admin-experience-008-009-test-migration-job\.sh|scripts/validate-admin-experience-008-009-test-deployment\.sh)'$" "$VALIDATOR_WORKFLOW")"
+[[ "$CONTROL_FILE_REFERENCE_COUNT" == "10" ]] || fail "Deployment validation workflow must reference the five deployment-control files once in paths and once in the exact-scope array."
 
 echo 'ADMIN_EXPERIENCE_008_009_TEST_DEPLOYMENT_GUARD=PASS'
