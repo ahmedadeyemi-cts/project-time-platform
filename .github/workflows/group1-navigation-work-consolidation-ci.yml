@@ -79,5 +79,37 @@ jobs:
         run: npm ci --no-audit --no-fund
 
       - name: Build complete frontend production bundle
+        id: frontend_build
+        continue-on-error: true
         working-directory: src/frontend/project-time-web
-        run: npm run build
+        shell: bash
+        run: |
+          set +e
+          npm run build > group1-frontend-build.log 2>&1
+          STATUS=$?
+          echo "exit_code=$STATUS" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload frontend build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: group1-frontend-build-${{ github.run_id }}-${{ github.run_attempt }}
+          path: src/frontend/project-time-web/group1-frontend-build.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce frontend build result
+        if: always()
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          STATUS='${{ steps.frontend_build.outputs.exit_code }}'
+          if [[ "$STATUS" != '0' ]]; then
+            echo 'Frontend build failed. Last 80 diagnostic lines:' >&2
+            tail -n 80 group1-frontend-build.log >&2
+            exit "$STATUS"
+          fi
+          tail -n 30 group1-frontend-build.log
+          echo 'GROUP1_FRONTEND_BUILD=PASSED'
