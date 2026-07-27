@@ -111,6 +111,7 @@ if (fullRepositoryContext) {
   const test = read(paths.test);
   const mailRuntime = read(paths.mailRuntime);
   const smtpProjection = read(paths.smtpProjection);
+  const smtpProjectionLower = smtpProjection.toLowerCase();
   const registrar = read(paths.registrar);
 
   assert('MIGRATION_EXISTS', true, paths.migration);
@@ -214,8 +215,8 @@ if (fullRepositoryContext) {
     && !smtpProjection.includes('request?.Password')
     && !smtpProjection.includes('request?.SmtpUsername')
     && !smtpProjection.includes('request?.SmtpPassword')
-    && smtpProjection.includes('credential values')
-    && smtpProjection.includes('never accepted from or returned to the browser'),
+    && smtpProjectionLower.includes('credential values')
+    && smtpProjectionLower.includes('never accepted from or returned to the browser'),
   'SMTP credential values remain environment-backed and never cross the browser API');
 
   assert('MAIL_SECRET_SAFETY', mailRuntime.includes('secretValuesRead = false')
