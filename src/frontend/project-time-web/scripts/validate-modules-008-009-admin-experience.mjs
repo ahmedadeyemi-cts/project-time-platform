@@ -6,6 +6,8 @@ const repositoryRoot = path.resolve(frontendRoot, '..', '..', '..');
 const files = {
   auditUi: 'src/frontend/project-time-web/src/AuditHistoryPanel.jsx',
   auditCss: 'src/frontend/project-time-web/src/audit-history.css',
+  auditRecovery: 'src/frontend/project-time-web/src/AuditHistoryRouteRecoveryPortal.jsx',
+  main: 'src/frontend/project-time-web/src/main.jsx',
   userUi: 'src/frontend/project-time-web/src/UserAdministrationPanel.jsx',
   userCss: 'src/frontend/project-time-web/src/user-administration-panel.css',
   themeJs: 'src/frontend/project-time-web/src/admin-experience-theme.js',
@@ -29,12 +31,14 @@ function check(name, condition, evidence) {
   console.log(`MODULES_008_009_${name}=${condition ? 'PASSED' : 'FAILED'} — ${evidence}`);
 }
 
-for (const name of ['auditUi', 'auditCss', 'userUi', 'userCss', 'themeJs', 'themeCss', 'package']) {
+for (const name of ['auditUi', 'auditCss', 'auditRecovery', 'main', 'userUi', 'userCss', 'themeJs', 'themeCss', 'package']) {
   check(`${name.toUpperCase()}_EXISTS`, exists(files[name]), files[name]);
 }
 
 const auditUi = read(files.auditUi);
 const auditCss = read(files.auditCss);
+const auditRecovery = read(files.auditRecovery);
+const main = read(files.main);
 const userUi = read(files.userUi);
 const userCss = read(files.userCss);
 const themeJs = read(files.themeJs);
@@ -46,6 +50,33 @@ check('AUDIT_CONDENSED_DETAILS', auditUi.includes('<details') && auditUi.include
 check('AUDIT_FILTERS', ['Lookback', 'Category', 'Status', 'Source', 'Search history'].every((value) => auditUi.includes(value)), 'administrator filters are available');
 check('AUDIT_ALL_SYSTEM_WORDING', auditUi.includes('service actions') && auditUi.includes('API lifecycle events') && auditUi.includes('other system history'), 'scope covers system-wide history');
 check('AUDIT_SCOPED_STYLES', auditCss.includes('.audit-event-card') && auditCss.includes('.audit-event-facts') && auditCss.includes('.app-shell.route-audit-history'), 'Module 008 styles and route isolation');
+check('AUDIT_AUTH_FAILURE_VISIBLE', auditUi.includes('readApiErrorMessage') && auditUi.includes('audit-empty-state error') && auditUi.includes('Audit and History could not be loaded.'), 'backend authorization and session failures are visible rather than blank');
+check(
+  'AUDIT_ROUTE_RECOVERY',
+  auditRecovery.includes("activeRoute !== 'audit-history'")
+    && auditRecovery.includes("document.querySelector('.app-shell.route-audit-history')")
+    && auditRecovery.includes("shell.querySelector('#audit-history')")
+    && auditRecovery.includes('createPortal')
+    && auditRecovery.includes('<AuditHistoryPanel recoveryMode />'),
+  'Module 008 mounts only when the normal App route failed to render its panel'
+);
+check(
+  'AUDIT_ROUTE_RECOVERY_MOUNTED',
+  main.includes("import AuditHistoryRouteRecoveryPortal from './AuditHistoryRouteRecoveryPortal.jsx';")
+    && main.includes('<AuditHistoryRouteRecoveryPortal />'),
+  'additive Module 008 recovery portal is mounted from the application entry point'
+);
+check(
+  'AUDIT_BACKEND_AUTHORITY',
+  !/hasPermission|VIEW_AUDIT_TRAIL|SYSTEM_ADMINISTRATION|MANAGE_ALL/.test(auditRecovery),
+  'recovery portal does not duplicate the failed frontend permission gate; the API remains authoritative'
+);
+check(
+  'AUDIT_NO_DUPLICATE_PANEL',
+  auditRecovery.includes("const appOwnedPanel = shell.querySelector('#audit-history');")
+    && auditRecovery.includes('if (!appOwnedPanel) setPortalTarget(shell);'),
+  'recovery portal defers to an App-owned audit panel when one already exists'
+);
 
 check('USER_TABBED_INTERFACE', ['Manage users', 'Bulk updates', 'Create local user', 'Manager team scope'].every((value) => userUi.includes(value)), 'four clear Module 009 workspaces');
 check('USER_SEARCH_FILTERS', userUi.includes('Search users') && userUi.includes('All roles') && userUi.includes('All teams') && userUi.includes('All accounts'), 'search and user filters');
@@ -55,7 +86,7 @@ check('USER_MULTI_TEAM_MANAGER', userUi.includes('/api/admin/user-admin/manager-
 check('USER_MANAGER_EMAIL_AUTOMATION', userUi.includes('managerEmailForTeam') && userUi.includes('Automatically controlled by the active manager team assignment'), 'team manager email applied to user saves');
 check('USER_SCOPED_STYLES', userCss.includes('.user-admin-v2-tabs') && userCss.includes('.user-admin-v2-team-grid') && userCss.includes('.user-admin-v2-user-list'), 'Module 009 scoped layout');
 
-check('THEME_STRAY_TEXT_REMOVAL', themeJs.includes("/^(?:\\\\n|\\/n|n)$/i") && themeJs.includes('Node.TEXT_NODE'), 'literal newline artifact removed');
+check('THEME_STRAY_TEXT_REMOVAL', themeJs.includes("/^(?:\\n|\/n|n)$/i") && themeJs.includes('Node.TEXT_NODE'), 'literal newline artifact removed');
 check('THEME_NO_APP_EDIT_REQUIRED', userUi.includes("import './admin-experience-theme.js';") && userUi.includes("import './admin-experience-theme.css';"), 'theme bridge loads through existing Module 009 import');
 check('THEME_DESIGN', themeCss.includes('.theme-toggle.projectpulse-theme-control') && themeCss.includes("content: 'Dark mode'") && themeCss.includes("content: 'Light mode'"), 'branded light/dark control');
 
