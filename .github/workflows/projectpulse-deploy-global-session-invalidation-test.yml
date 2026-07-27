@@ -1,15 +1,15 @@
-name: ProjectPulse Deploy Authoritative Session and Theme Test
+name: ProjectPulse Deploy Role Policy Audit Stability Test
 
 on:
   workflow_dispatch:
     inputs:
       release_commit:
-        description: Exact verified authoritative session and theme release
+        description: Exact verified PR 181 and PR 182 combined source release
         required: true
-        default: 54a0b678b86dde32c409d20aa3751ce0293f079d
+        default: 2e72ad9a95ed7cf027b8e95e237b880824adddf4
         type: string
       confirmation:
-        description: Enter DEPLOY-AUTHORITATIVE-SESSION-THEME-TO-TEST
+        description: Enter DEPLOY-ROLE-POLICY-AUDIT-STABILITY-TO-TEST
         required: true
         type: string
 
@@ -22,12 +22,12 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy-web:
-    name: Guarded authoritative session and theme web-only deployment
+  deploy:
+    name: Guarded role-policy and audit stability API/web deployment
     environment: test
     runs-on: ubuntu-latest
     env:
-      EXPECTED_RELEASE_COMMIT: 54a0b678b86dde32c409d20aa3751ce0293f079d
+      EXPECTED_RELEASE_COMMIT: 2e72ad9a95ed7cf027b8e95e237b880824adddf4
 
     steps:
       - name: Check out deployment controls
@@ -36,14 +36,14 @@ jobs:
           path: control
           fetch-depth: 0
 
-      - name: Check out exact source release
+      - name: Check out exact combined source release
         uses: actions/checkout@v5
         with:
           ref: ${{ inputs.release_commit }}
           path: release
           fetch-depth: 1
 
-      - name: Guard workflow source and exact release
+      - name: Guard workflow source and exact combined release
         id: release
         shell: bash
         env:
@@ -58,7 +58,7 @@ jobs:
             echo 'Dispatch this workflow from main.' >&2
             exit 1
           }
-          [[ "$DISPATCH_CONFIRMATION" == 'DEPLOY-AUTHORITATIVE-SESSION-THEME-TO-TEST' ]] || {
+          [[ "$DISPATCH_CONFIRMATION" == 'DEPLOY-ROLE-POLICY-AUDIT-STABILITY-TO-TEST' ]] || {
             echo 'The deployment confirmation text does not match.' >&2
             exit 1
           }
@@ -72,59 +72,98 @@ jobs:
           [[ "$CONTROL_COMMIT" == "$WORKFLOW_SOURCE_SHA" ]]
           [[ "$TARGET_COMMIT" == "$DISPATCH_RELEASE_COMMIT" ]]
           [[ "$TARGET_COMMIT" == "$EXPECTED_RELEASE_COMMIT" ]] || {
-            echo 'Only the verified authoritative session and theme release may deploy.' >&2
+            echo 'Only the verified PR 181 and PR 182 combined release may deploy.' >&2
             exit 1
           }
           git -C control merge-base --is-ancestor "$TARGET_COMMIT" HEAD || {
-            echo 'The source release is not an ancestor of the deployment controls.' >&2
+            echo 'The combined source release is not an ancestor of the deployment controls.' >&2
             exit 1
           }
 
+          ROLE_RULES='release/src/backend/ProjectTime.Api/Modules/ScopedRolePolicyRules.cs'
+          ROLE_BRIDGE='release/src/frontend/project-time-web/src/runtime-data-compatibility.js'
+          AUTH_TEST='release/tests/ProjectTime.Api.AuthorizationTests/Program.cs'
           TRANSPORT='release/src/frontend/project-time-web/src/projectpulse-authoritative-api.js'
+          AUDIT_UI='release/src/frontend/project-time-web/src/AuditHistoryPanel.jsx'
           THEME_JS='release/src/frontend/project-time-web/src/admin-experience-theme.js'
           THEME_CSS='release/src/frontend/project-time-web/src/admin-experience-theme.css'
           RUNTIME_TEST='release/src/frontend/project-time-web/scripts/test-authoritative-session-transport-theme-runtime.mjs'
-          STATIC_VALIDATOR='release/src/frontend/project-time-web/scripts/validate-global-session-invalidation.mjs'
+          SESSION_VALIDATOR='release/src/frontend/project-time-web/scripts/validate-global-session-invalidation.mjs'
           MODULE_VALIDATOR='release/src/frontend/project-time-web/scripts/validate-modules-008-009-admin-experience.mjs'
 
           for required in \
+            "$ROLE_RULES" \
+            "$ROLE_BRIDGE" \
+            "$AUTH_TEST" \
             "$TRANSPORT" \
+            "$AUDIT_UI" \
             "$THEME_JS" \
             "$THEME_CSS" \
             "$RUNTIME_TEST" \
-            "$STATIC_VALIDATOR" \
+            "$SESSION_VALIDATOR" \
             "$MODULE_VALIDATOR" \
-            release/src/frontend/project-time-web/src/AuditHistoryPanel.jsx \
-            release/src/frontend/project-time-web/src/UserAdministrationPanel.jsx \
+            release/src/backend/ProjectTime.Api/ProjectTime.Api.csproj \
+            release/tests/ProjectTime.Api.AuthorizationTests/ProjectTime.Api.AuthorizationTests.csproj \
             control/scripts/build-pr55-acr-image.sh \
             control/scripts/wait-containerapp-ready-revision.sh; do
             test -f "$required"
           done
 
-          grep -Fq 'projectpulse-authoritative-xhr-v1' "$TRANSPORT"
-          grep -Fq 'function installProtectedFetchReadinessGate()' "$TRANSPORT"
-          grep -Fq 'function globalXhrBridgeCanSupplyToken(token)' "$TRANSPORT"
-          grep -Fq 'globalXhrBridgeToken() === token' "$TRANSPORT"
-          grep -Fq 'if (token && !globalXhrBridgeCanSupplyToken(token))' "$TRANSPORT"
-          grep -Fq "error.code = 'session_not_ready';" "$TRANSPORT"
-          grep -Fq "error.code = 'session_transport_conflict';" "$TRANSPORT"
+          # PR 181 role-policy readiness, attribution, and non-bypassable role assignment.
+          grep -Fq '"ROLE_ASSIGN"' "$ROLE_RULES"
+          grep -Fq 'NormalizeRoutePath(path)' "$ROLE_RULES"
+          grep -Fq "normalized = normalized.TrimEnd('/');" "$ROLE_RULES"
+          grep -Fq 'normalized == "/api/admin/users/roles"' "$ROLE_RULES"
+          grep -Fq 'new ScopedRouteContract("012", "ROLE_ASSIGN", true)' "$ROLE_RULES"
+          grep -Fq 'const ROLE_POLICY_SESSION_WAIT_MS = 3500;' "$ROLE_BRIDGE"
+          grep -Fq "if (pathname.endsWith('/matrix')) return '037';" "$ROLE_BRIDGE"
+          grep -Fq "pathname.endsWith('/summary')" "$ROLE_BRIDGE"
+          grep -Fq 'sessionWaitMs: rolePolicySessionWaitMs(rewrittenPath)' "$ROLE_BRIDGE"
+          grep -Fq 'TRAILING_SLASH_POST_BOUNDARY' "$AUTH_TEST"
+          grep -Fq 'REPEATED_TRAILING_SLASH_POST_BOUNDARY' "$AUTH_TEST"
+          grep -Fq 'TRAILING_SLASH_READ_NOT_RECLASSIFIED' "$AUTH_TEST"
+
+          # PR 182 authoritative response recovery, one Module 008 owner, and icon dock.
+          grep -Fq "projectpulse-authoritative-native-fetch-fallback-v1" "$TRANSPORT"
+          grep -Fq 'const CAPTURED_NATIVE_FETCH' "$TRANSPORT"
+          grep -Fq "recoveredFrom: 'xhr-success-missing-collections'" "$TRANSPORT"
+          grep -Fq 'const nestedCandidate = candidates' "$TRANSPORT"
+          grep -Fq '.slice(1)' "$TRANSPORT"
+          grep -Fq "finishSuccess(fallback.payload, fallback.status, 'native-fetch-fallback'" "$TRANSPORT"
           ! grep -Fq 'projectpulse-authoritative-session-invalidation-v1' "$TRANSPORT"
           ! grep -Fq 'projectpulse:session-invalidated' "$TRANSPORT"
           ! grep -Fq 'invalidateProjectPulseSession' "$TRANSPORT"
           ! grep -Fq 'window.location.reload();' "$TRANSPORT"
 
+          grep -Fq '/api/admin/audit-history/events' "$AUDIT_UI"
+          ! grep -Fq "from 'react-dom/client'" "$AUDIT_UI"
+          ! grep -Fq 'createRoot(' "$AUDIT_UI"
+          ! grep -Fq 'MutationObserver' "$AUDIT_UI"
+          ! grep -Fq 'data-module-008-route-recovery-host' "$AUDIT_UI"
+          ! grep -Fq 'data-module-008-stable-route-host' "$AUDIT_UI"
+
           grep -Fq 'dataset.projectpulseThemeControl' "$THEME_JS"
           grep -Fq 'STRAY_THEME_TEXT' "$THEME_JS"
-          grep -Fq 'Switch to ${target} mode' "$THEME_JS"
           grep -Fq "[data-projectpulse-theme-control='true']" "$THEME_CSS"
-          grep -Fq "content: 'Dark mode'" "$THEME_CSS"
-          grep -Fq "content: 'Light mode'" "$THEME_CSS"
+          grep -Eq 'left:[[:space:]]*0[[:space:]]*!important' "$THEME_CSS"
+          grep -Eq 'width:[[:space:]]*44px[[:space:]]*!important' "$THEME_CSS"
+          grep -Fq "content: '☾'" "$THEME_CSS"
+          grep -Fq "content: '☀'" "$THEME_CSS"
+          ! grep -Fq "content: 'Dark mode'" "$THEME_CSS"
+          ! grep -Fq "content: 'Light mode'" "$THEME_CSS"
+
+          dotnet build release/src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+          dotnet run \
+            --project release/tests/ProjectTime.Api.AuthorizationTests/ProjectTime.Api.AuthorizationTests.csproj \
+            --configuration Release
 
           (
             cd release/src/frontend/project-time-web
+            npm ci --no-audit --no-fund
             node scripts/validate-global-session-invalidation.mjs
             node scripts/test-authoritative-session-transport-theme-runtime.mjs
             node scripts/validate-modules-008-009-admin-experience.mjs
+            npm run build
           )
 
           echo "target_commit=$TARGET_COMMIT" >> "$GITHUB_OUTPUT"
@@ -135,23 +174,31 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Capture current immutable web image
+      - name: Capture current immutable API and web images
         id: before
         shell: bash
         run: |
           set -Eeuo pipefail
 
+          RAW_API_IMAGE="$(az containerapp show \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' \
+            --query 'properties.template.containers[0].image' -o tsv)"
           RAW_WEB_IMAGE="$(az containerapp show \
             -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
             -n '${{ vars.AZURE_WEB_APP }}' \
             --query 'properties.template.containers[0].image' -o tsv)"
+          API_MODE="$(az containerapp show \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' \
+            --query 'properties.configuration.activeRevisionsMode' -o tsv)"
           WEB_MODE="$(az containerapp show \
             -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
             -n '${{ vars.AZURE_WEB_APP }}' \
             --query 'properties.configuration.activeRevisionsMode' -o tsv)"
 
-          [[ -n "$RAW_WEB_IMAGE" ]]
-          [[ "${WEB_MODE,,}" == 'single' ]]
+          [[ -n "$RAW_API_IMAGE" && -n "$RAW_WEB_IMAGE" ]]
+          [[ "${API_MODE,,}" == 'single' && "${WEB_MODE,,}" == 'single' ]]
 
           resolve_digest() {
             local image="$1"
@@ -161,7 +208,7 @@ jobs:
             case "$image" in
               "$registry"*@sha256:*) printf '%s\n' "$image"; return ;;
               "$registry"*:*) ;;
-              *) echo "Web image is outside the approved ACR: $image" >&2; return 1 ;;
+              *) echo "Image is outside the approved ACR: $image" >&2; return 1 ;;
             esac
 
             relative="${image#"$registry"}"
@@ -174,36 +221,152 @@ jobs:
             printf '%s%s@%s\n' "$registry" "$repository" "$digest"
           }
 
+          CURRENT_API_IMAGE="$(resolve_digest "$RAW_API_IMAGE")"
           CURRENT_WEB_IMAGE="$(resolve_digest "$RAW_WEB_IMAGE")"
+          echo "current_api_image=$CURRENT_API_IMAGE" >> "$GITHUB_OUTPUT"
           echo "current_web_image=$CURRENT_WEB_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "CAPTURED_CURRENT_API_IMAGE=$CURRENT_API_IMAGE"
           echo "CAPTURED_CURRENT_WEB_IMAGE=$CURRENT_WEB_IMAGE"
 
-      - name: Build exact web candidate
+      - name: Build exact immutable API and web candidates
         id: build
         shell: bash
-        working-directory: release
         run: |
           set -Eeuo pipefail
           TARGET_COMMIT='${{ steps.release.outputs.target_commit }}'
+          API_REPOSITORY='project-health-dashboard-api'
           WEB_REPOSITORY='project-health-dashboard-web'
-          WEB_DIGEST="$(
-            ../control/scripts/build-pr55-acr-image.sh \
+
+          API_DIGEST="$(
+            control/scripts/build-pr55-acr-image.sh \
               '${{ vars.AZURE_ACR_NAME }}' \
-              "$WEB_REPOSITORY:authoritative-session-theme-$TARGET_COMMIT" \
-              deployment/containers/web/Dockerfile \
-              .
+              "$API_REPOSITORY:role-policy-audit-stability-$TARGET_COMMIT" \
+              release/deployment/containers/api/Dockerfile \
+              release
           )"
-          [[ "$WEB_DIGEST" == sha256:* ]]
+          WEB_DIGEST="$(
+            control/scripts/build-pr55-acr-image.sh \
+              '${{ vars.AZURE_ACR_NAME }}' \
+              "$WEB_REPOSITORY:role-policy-audit-stability-$TARGET_COMMIT" \
+              release/deployment/containers/web/Dockerfile \
+              release
+          )"
+
+          [[ "$API_DIGEST" == sha256:* && "$WEB_DIGEST" == sha256:* ]]
+          API_IMAGE='${{ vars.AZURE_ACR_NAME }}.azurecr.io/'"$API_REPOSITORY@$API_DIGEST"
           WEB_IMAGE='${{ vars.AZURE_ACR_NAME }}.azurecr.io/'"$WEB_REPOSITORY@$WEB_DIGEST"
+          echo "api_image=$API_IMAGE" >> "$GITHUB_OUTPUT"
           echo "web_image=$WEB_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "IMMUTABLE_API_CANDIDATE=$API_IMAGE"
           echo "IMMUTABLE_WEB_CANDIDATE=$WEB_IMAGE"
 
-      - name: Deploy web candidate only
+      - name: Deploy exact API candidate
+        id: deploy_api
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          SUFFIX="rpauditapi-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          REVISION='${{ vars.AZURE_API_APP }}'"--$SUFFIX"
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
+
+          az containerapp update \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' \
+            --image '${{ steps.build.outputs.api_image }}' \
+            --revision-suffix "$SUFFIX" \
+            --output none
+
+      - name: Wait for exact API revision
+        shell: bash
+        run: |
+          bash control/scripts/wait-containerapp-ready-revision.sh \
+            '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            '${{ vars.AZURE_API_APP }}' \
+            '${{ steps.deploy_api.outputs.revision }}' \
+            '${{ steps.build.outputs.api_image }}' 60 10
+
+      - name: Validate public API readiness and protected boundaries
+        id: validate_api
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          BASE_URL='${{ vars.PUBLIC_URL }}'
+          BASE_URL="${BASE_URL%/}"
+          DIAGNOSTICS=/tmp/role-policy-audit-api-validation
+          mkdir -p "$DIAGNOSTICS"
+
+          request() {
+            local name="$1" method="$2" path="$3" body="${4:-}" attempt="${5:-1}" separator='?'
+            [[ "$path" == *\?* ]] && separator='&'
+            local url="$BASE_URL$path${separator}release_check=rpaudit-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${attempt}"
+            local args=(--silent --show-error --location --request "$method" \
+              --dump-header "$DIAGNOSTICS/$name.headers" \
+              --output "$DIAGNOSTICS/$name.body" \
+              --write-out '%{http_code}' \
+              --header 'Cache-Control: no-cache, no-store' \
+              --header 'Pragma: no-cache')
+            if [[ -n "$body" ]]; then
+              args+=(--header 'Content-Type: application/json' --data "$body")
+            fi
+            curl "${args[@]}" "$url" || true
+          }
+
+          content_type() {
+            awk 'BEGIN{IGNORECASE=1} /^content-type:/ {gsub(/\r/, ""); print $2}' "$1" 2>/dev/null | tail -1
+          }
+
+          wait_json_status() {
+            local name="$1" method="$2" path="$3" expected="$4" body="${5:-}"
+            local status='' type=''
+            for attempt in $(seq 1 36); do
+              status="$(request "$name" "$method" "$path" "$body" "$attempt")"
+              type="$(content_type "$DIAGNOSTICS/$name.headers")"
+              printf 'PROBE name=%s attempt=%s status=%s type=%s\n' "$name" "$attempt" "$status" "$type"
+              if [[ ",$expected," == *",$status,"* && "$type" == application/json* ]]; then
+                jq -e 'type == "object"' "$DIAGNOSTICS/$name.body" >/dev/null
+                return 0
+              fi
+              sleep 10
+            done
+            echo "$path did not reach expected JSON status $expected." >&2
+            cat "$DIAGNOSTICS/$name.body" >&2 || true
+            return 1
+          }
+
+          wait_json_status health GET '/health' '200'
+          wait_json_status version GET '/api/version' '200'
+          wait_json_status role-summary GET '/api/runtime/v2/role-policy/summary' '401'
+          wait_json_status role-catalog GET '/api/runtime/v2/role-policy/catalog' '401'
+          wait_json_status role-assign POST '/api/admin/users/roles' '401' '{}'
+          wait_json_status role-assign-slash POST '/api/admin/users/roles/' '401' '{}'
+          wait_json_status audit-history GET '/api/admin/audit-history/events' '401'
+
+          for name in role-summary role-catalog role-assign role-assign-slash audit-history; do
+            jq -e '.status == "session_required" or (.message | type == "string")' \
+              "$DIAGNOSTICS/$name.body" >/dev/null
+          done
+
+          READY_API_REVISION="$(az containerapp show \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' \
+            --query 'properties.latestReadyRevisionName' -o tsv)"
+          [[ "$READY_API_REVISION" == '${{ steps.deploy_api.outputs.revision }}' ]]
+          READY_API_IMAGE="$(az containerapp revision show \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' \
+            --revision "$READY_API_REVISION" \
+            --query 'properties.template.containers[0].image' -o tsv)"
+          [[ "$READY_API_IMAGE" == '${{ steps.build.outputs.api_image }}' ]]
+          echo "ready_revision=$READY_API_REVISION" >> "$GITHUB_OUTPUT"
+          echo 'ROLE_POLICY_AUDIT_API_VALIDATION=PASS'
+
+      - name: Deploy exact web candidate
         id: deploy_web
         shell: bash
         run: |
           set -Eeuo pipefail
-          SUFFIX="sesstheme-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          SUFFIX="rpauditweb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           REVISION='${{ vars.AZURE_WEB_APP }}'"--$SUFFIX"
           echo 'started=true' >> "$GITHUB_OUTPUT"
           echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
@@ -224,7 +387,8 @@ jobs:
             '${{ steps.deploy_web.outputs.revision }}' \
             '${{ steps.build.outputs.web_image }}' 60 10
 
-      - name: Validate served session and theme assets
+      - name: Validate served response recovery, Module 008, role-policy and theme assets
+        id: validate_web
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -244,19 +408,19 @@ jobs:
             esac
           }
 
-          for attempt in $(seq 1 30); do
-            BUSTER="sesstheme-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${attempt}"
+          for attempt in $(seq 1 36); do
+            BUSTER="rpaudit-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${attempt}"
             HTML_STATUS="$(curl --silent --show-error --location \
-              --header 'Cache-Control: no-cache' \
+              --header 'Cache-Control: no-cache, no-store' \
               --header 'Pragma: no-cache' \
-              --output /tmp/session-theme-index.html \
+              --output /tmp/role-policy-audit-index.html \
               --write-out '%{http_code}' \
               "$BASE_URL/?release_check=$BUSTER" || true)"
             LAST_STATUS="html=$HTML_STATUS"
 
             if [[ "$HTML_STATUS" == '200' ]]; then
-              JS_PATH="$(sed -nE 's/.*src="([^"]+\.js)".*/\1/p' /tmp/session-theme-index.html | head -1)"
-              CSS_PATH="$(sed -nE 's/.*href="([^"]+\.css)".*/\1/p' /tmp/session-theme-index.html | head -1)"
+              JS_PATH="$(sed -nE 's/.*src="([^"]+\.js)".*/\1/p' /tmp/role-policy-audit-index.html | head -1)"
+              CSS_PATH="$(sed -nE 's/.*href="([^"]+\.css)".*/\1/p' /tmp/role-policy-audit-index.html | head -1)"
               LAST_JS="$JS_PATH"
               LAST_CSS="$CSS_PATH"
 
@@ -264,121 +428,154 @@ jobs:
                 JS_URL="$(absolute_asset_url "$JS_PATH")"
                 CSS_URL="$(absolute_asset_url "$CSS_PATH")"
                 JS_STATUS="$(curl --silent --show-error --location \
-                  --header 'Cache-Control: no-cache' \
+                  --header 'Cache-Control: no-cache, no-store' \
                   --header 'Pragma: no-cache' \
-                  --output /tmp/session-theme-app.js \
+                  --output /tmp/role-policy-audit-app.js \
                   --write-out '%{http_code}' \
                   "$JS_URL?release_check=$BUSTER" || true)"
                 CSS_STATUS="$(curl --silent --show-error --location \
-                  --header 'Cache-Control: no-cache' \
+                  --header 'Cache-Control: no-cache, no-store' \
                   --header 'Pragma: no-cache' \
-                  --output /tmp/session-theme-app.css \
+                  --output /tmp/role-policy-audit-app.css \
                   --write-out '%{http_code}' \
                   "$CSS_URL?release_check=$BUSTER" || true)"
                 LAST_STATUS="html=$HTML_STATUS,js=$JS_STATUS,css=$CSS_STATUS"
 
                 if [[ "$JS_STATUS" == '200' && "$CSS_STATUS" == '200' ]] \
-                  && grep -Fq 'projectpulse-authoritative-xhr-v1' /tmp/session-theme-app.js \
-                  && grep -Fq 'session_not_ready' /tmp/session-theme-app.js \
-                  && grep -Fq 'session_transport_conflict' /tmp/session-theme-app.js \
-                  && grep -Fq 'projectPulseAuthSession' /tmp/session-theme-app.js \
-                  && grep -Fq 'X-ProjectPulse-Session' /tmp/session-theme-app.js \
-                  && grep -Fq '/api/admin/audit-history/events' /tmp/session-theme-app.js \
-                  && grep -Fq 'Manager team scope' /tmp/session-theme-app.js \
-                  && grep -Fq 'projectpulse-theme-control' /tmp/session-theme-app.js \
-                  && grep -Fq 'projectpulseThemeControl' /tmp/session-theme-app.js \
-                  && ! grep -Fq 'projectpulse-authoritative-session-invalidation-v1' /tmp/session-theme-app.js \
-                  && ! grep -Fq 'projectpulse:session-invalidated' /tmp/session-theme-app.js \
-                  && grep -Fq 'data-projectpulse-theme-control' /tmp/session-theme-app.css \
-                  && grep -Fq 'Dark mode' /tmp/session-theme-app.css \
-                  && grep -Fq 'Light mode' /tmp/session-theme-app.css \
-                  && grep -Fq 'backdrop-filter' /tmp/session-theme-app.css; then
+                  && grep -Fq 'projectpulse-authoritative-xhr-v1' /tmp/role-policy-audit-app.js \
+                  && grep -Fq 'projectpulse-authoritative-native-fetch-fallback-v1' /tmp/role-policy-audit-app.js \
+                  && grep -Fq 'xhr-success-missing-collections' /tmp/role-policy-audit-app.js \
+                  && grep -Fq 'session_not_ready' /tmp/role-policy-audit-app.js \
+                  && grep -Fq 'session_transport_conflict' /tmp/role-policy-audit-app.js \
+                  && grep -Fq '/api/runtime/v2/role-policy/summary' /tmp/role-policy-audit-app.js \
+                  && grep -Fq '/api/admin/audit-history/events' /tmp/role-policy-audit-app.js \
+                  && grep -Fq 'Manager team scope' /tmp/role-policy-audit-app.js \
+                  && grep -Fq 'projectpulseThemeControl' /tmp/role-policy-audit-app.js \
+                  && ! grep -Fq 'data-module-008-route-recovery-host' /tmp/role-policy-audit-app.js \
+                  && ! grep -Fq 'data-module-008-stable-route-host' /tmp/role-policy-audit-app.js \
+                  && ! grep -Fq 'projectpulse-authoritative-session-invalidation-v1' /tmp/role-policy-audit-app.js \
+                  && ! grep -Fq 'projectpulse:session-invalidated' /tmp/role-policy-audit-app.js \
+                  && grep -Fq 'data-projectpulse-theme-control' /tmp/role-policy-audit-app.css \
+                  && grep -Fq 'width:44px' /tmp/role-policy-audit-app.css \
+                  && grep -Fq 'left:0' /tmp/role-policy-audit-app.css \
+                  && ! grep -Fq "content:'Dark mode'" /tmp/role-policy-audit-app.css \
+                  && ! grep -Fq "content:'Light mode'" /tmp/role-policy-audit-app.css; then
                   READY=true
-                  echo "AUTHORITATIVE_SESSION_THEME_ASSETS_READY attempt=$attempt js=$JS_PATH css=$CSS_PATH"
+                  echo "ROLE_POLICY_AUDIT_WEB_ASSETS_READY attempt=$attempt js=$JS_PATH css=$CSS_PATH"
                   break
                 fi
               fi
             fi
 
-            (( attempt < 30 )) && sleep 10
+            sleep 10
           done
 
           [[ "$READY" == true ]] || {
-            echo "Session/theme assets did not become ready: status=$LAST_STATUS js=$LAST_JS css=$LAST_CSS" >&2
+            echo "Combined web assets did not become ready: status=$LAST_STATUS js=$LAST_JS css=$LAST_CSS" >&2
             exit 1
           }
 
-          ACTIVE_WEB_IMAGE="$(az containerapp show \
+          READY_WEB_REVISION="$(az containerapp show \
             -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
             -n '${{ vars.AZURE_WEB_APP }}' \
+            --query 'properties.latestReadyRevisionName' -o tsv)"
+          [[ "$READY_WEB_REVISION" == '${{ steps.deploy_web.outputs.revision }}' ]]
+          READY_WEB_IMAGE="$(az containerapp revision show \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_WEB_APP }}' \
+            --revision "$READY_WEB_REVISION" \
             --query 'properties.template.containers[0].image' -o tsv)"
-          [[ "$ACTIVE_WEB_IMAGE" == '${{ steps.build.outputs.web_image }}' ]] || {
-            echo "Active web image mismatch: expected=${{ steps.build.outputs.web_image }} actual=$ACTIVE_WEB_IMAGE" >&2
-            exit 1
-          }
+          [[ "$READY_WEB_IMAGE" == '${{ steps.build.outputs.web_image }}' ]]
+          echo "ready_revision=$READY_WEB_REVISION" >> "$GITHUB_OUTPUT"
+          echo 'ROLE_POLICY_AUDIT_WEB_VALIDATION=PASS'
 
-          echo 'AUTHORITATIVE_SESSION_THEME_WEB_VALIDATION=PASS'
-
-      - name: Write deployment evidence
+      - name: Write combined deployment evidence
         if: success()
         shell: bash
         run: |
           set -Eeuo pipefail
           mkdir -p evidence
-          cat > evidence/authoritative-session-theme-test-deployment.json <<JSON
+          cat > evidence/role-policy-audit-stability-test-deployment.json <<JSON
           {
             "environment": "test",
             "releaseCommit": "${{ steps.release.outputs.target_commit }}",
             "workflowCommit": "${{ github.sha }}",
             "runId": "${{ github.run_id }}",
+            "apiImage": "${{ steps.build.outputs.api_image }}",
             "webImage": "${{ steps.build.outputs.web_image }}",
+            "previousApiImage": "${{ steps.before.outputs.current_api_image }}",
             "previousWebImage": "${{ steps.before.outputs.current_web_image }}",
-            "sessionRuntimeHarness": "passed-before-deployment",
-            "servedJavaScriptValidation": "passed",
-            "servedThemeCssValidation": "passed",
-            "apiDeployment": "unchanged",
+            "apiRevision": "${{ steps.validate_api.outputs.ready_revision }}",
+            "webRevision": "${{ steps.validate_web.outputs.ready_revision }}",
+            "roleAssignmentBoundary": "standard-and-trailing-slash-protected",
+            "authoritativeNativeFallback": "served-and-source-validated",
+            "module008SingleOwner": "served-and-source-validated",
+            "themeControl": "icon-only-bottom-left-dock",
             "migrations": "unchanged",
-            "database": "unchanged"
+            "database": "unchanged",
+            "configuration": "unchanged",
+            "smokeTests": "passed"
           }
           JSON
 
-      - name: Upload deployment evidence
+      - name: Upload combined deployment evidence
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: authoritative-session-theme-test-${{ github.run_id }}
-          path: evidence/authoritative-session-theme-test-deployment.json
+          name: role-policy-audit-stability-test-${{ github.run_id }}
+          path: evidence/role-policy-audit-stability-test-deployment.json
           retention-days: 30
 
-      - name: Restore captured web image on failure
-        if: ${{ failure() && steps.deploy_web.outputs.started == 'true' }}
+      - name: Restore captured web and API images on failure
+        if: ${{ failure() && (steps.deploy_api.outputs.started == 'true' || steps.deploy_web.outputs.started == 'true') }}
         shell: bash
         run: |
           set +e
 
-          ACTIVE_WEB_IMAGE="$(az containerapp show \
-            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
-            -n '${{ vars.AZURE_WEB_APP }}' \
-            --query 'properties.template.containers[0].image' -o tsv 2>/dev/null)"
-
-          if [[ "$ACTIVE_WEB_IMAGE" != '${{ steps.build.outputs.web_image }}' ]]; then
-            echo "Rollback skipped because another image is active: $ACTIVE_WEB_IMAGE" >&2
-            exit 0
+          if [[ '${{ steps.deploy_web.outputs.started }}' == 'true' ]]; then
+            ACTIVE_WEB_IMAGE="$(az containerapp show \
+              -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+              -n '${{ vars.AZURE_WEB_APP }}' \
+              --query 'properties.template.containers[0].image' -o tsv 2>/dev/null)"
+            if [[ "$ACTIVE_WEB_IMAGE" == '${{ steps.build.outputs.web_image }}' ]]; then
+              WEB_SUFFIX="rpauditwebrb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+              WEB_REVISION='${{ vars.AZURE_WEB_APP }}'"--$WEB_SUFFIX"
+              az containerapp update \
+                -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+                -n '${{ vars.AZURE_WEB_APP }}' \
+                --image '${{ steps.before.outputs.current_web_image }}' \
+                --revision-suffix "$WEB_SUFFIX" \
+                --output none
+              bash control/scripts/wait-containerapp-ready-revision.sh \
+                '${{ vars.AZURE_RESOURCE_GROUP }}' \
+                '${{ vars.AZURE_WEB_APP }}' \
+                "$WEB_REVISION" \
+                '${{ steps.before.outputs.current_web_image }}' 60 10
+            else
+              echo "Web rollback skipped because another image is active: $ACTIVE_WEB_IMAGE" >&2
+            fi
           fi
 
-          SUFFIX="sessthemerb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          ROLLBACK_REVISION='${{ vars.AZURE_WEB_APP }}'"--$SUFFIX"
-          echo 'Session/theme deployment failed. Restoring the captured web image.' >&2
-
-          az containerapp update \
-            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
-            -n '${{ vars.AZURE_WEB_APP }}' \
-            --image '${{ steps.before.outputs.current_web_image }}' \
-            --revision-suffix "$SUFFIX" \
-            --output none
-
-          bash control/scripts/wait-containerapp-ready-revision.sh \
-            '${{ vars.AZURE_RESOURCE_GROUP }}' \
-            '${{ vars.AZURE_WEB_APP }}' \
-            "$ROLLBACK_REVISION" \
-            '${{ steps.before.outputs.current_web_image }}' 60 10
+          if [[ '${{ steps.deploy_api.outputs.started }}' == 'true' ]]; then
+            ACTIVE_API_IMAGE="$(az containerapp show \
+              -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+              -n '${{ vars.AZURE_API_APP }}' \
+              --query 'properties.template.containers[0].image' -o tsv 2>/dev/null)"
+            if [[ "$ACTIVE_API_IMAGE" == '${{ steps.build.outputs.api_image }}' ]]; then
+              API_SUFFIX="rpauditapirb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+              API_REVISION='${{ vars.AZURE_API_APP }}'"--$API_SUFFIX"
+              az containerapp update \
+                -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+                -n '${{ vars.AZURE_API_APP }}' \
+                --image '${{ steps.before.outputs.current_api_image }}' \
+                --revision-suffix "$API_SUFFIX" \
+                --output none
+              bash control/scripts/wait-containerapp-ready-revision.sh \
+                '${{ vars.AZURE_RESOURCE_GROUP }}' \
+                '${{ vars.AZURE_API_APP }}' \
+                "$API_REVISION" \
+                '${{ steps.before.outputs.current_api_image }}' 60 10
+            else
+              echo "API rollback skipped because another image is active: $ACTIVE_API_IMAGE" >&2
+            fi
+          fi
