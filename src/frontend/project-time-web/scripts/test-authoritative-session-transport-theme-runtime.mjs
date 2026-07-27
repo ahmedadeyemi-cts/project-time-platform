@@ -237,6 +237,19 @@ async function testTransportRuntime() {
   await authoritativeApi('/api/timesheet/timers/targets', { requiredCollections: ['targets'] });
   assertSingleSessionHeaders(xhrInstances.at(-1), token);
 
+  // Standard envelope responses without requiredCollections must preserve the
+  // previous unwrap behavior used by active-timer and mutation consumers.
+  FakeXhr.nextPayload = {
+    data: {
+      activeTimer: { timerId: 'timer-1', status: 'running' },
+      message: 'Running timer recovered.'
+    }
+  };
+  const activeTimerEnvelope = await authoritativeApi('/api/timesheet/timers/active');
+  assert.equal(activeTimerEnvelope.activeTimer.timerId, 'timer-1');
+  assert.equal(activeTimerEnvelope.message, 'Running timer recovered.');
+  assert.equal(activeTimerEnvelope.data, undefined, 'envelope-only roots should unwrap to their inner payload');
+
   // Reproduce the live browser defect: XHR reports HTTP 200 but exposes an empty
   // JSON object. The clean native fetch captured before wrappers must recover the
   // authoritative collections without logging a false failure.
