@@ -49,11 +49,11 @@ check('AUDIT_SCOPED_STYLES', auditCss.includes('.audit-event-card') && auditCss.
 check('AUDIT_AUTH_FAILURE_VISIBLE', auditUi.includes('readApiErrorMessage') && auditUi.includes('audit-empty-state error') && auditUi.includes('Audit and History could not be loaded.'), 'backend authorization and session failures are visible rather than blank');
 check(
   'AUDIT_SESSION_HEADER_COMPATIBILITY',
-  auditUi.includes("session?.sessionToken || session?.token || session?.accessToken")
-    && auditUi.includes("'X-ProjectPulse-Session': token")
-    && auditUi.includes("'X-Project-Pulse-Session': token")
-    && auditUi.includes("'X-Session-Token': token")
-    && auditUi.includes('Authorization: `Bearer ${token}`'),
+  auditUi.includes("const token = session?.sessionToken || session?.token || session?.accessToken")
+    && auditUi.includes("'X-ProjectPulse-Session': session.token")
+    && auditUi.includes("'X-Project-Pulse-Session': session.token")
+    && auditUi.includes("'X-Session-Token': session.token")
+    && auditUi.includes('Authorization: `Bearer ${session.token}`'),
   'Module 008 retains every supported ProjectPulse session-header contract'
 );
 check(
@@ -78,12 +78,27 @@ check(
     && auditUi.includes('installModule008RouteRecovery();'),
   'recovery is contained inside Module 008 source without shared entry-point or Module 009 changes'
 );
+check(
+  'AUDIT_VIEW_AS_ISOLATION',
+  auditUi.includes("readStoredJson('projectPulseViewAsUser')")
+    && auditUi.includes('if (!readProjectPulseAuthSession() || readModule008ViewAsUser())')
+    && auditUi.includes("window.addEventListener('projectpulse:view-as-changed', schedule)")
+    && auditUi.includes("event.key === 'projectPulseAuthSession' || event.key === 'projectPulseViewAsUser'"),
+  'route recovery remains disabled during Administrator View-As and reacts to effective-user changes'
+);
+check(
+  'AUDIT_NO_UNBOUNDED_RETRY',
+  !auditUi.includes('retryTimer')
+    && !auditUi.includes('window.setTimeout(synchronize, 50)')
+    && auditUi.includes("const shell = document.querySelector('.app-shell.route-audit-history');\n    if (!shell) {\n      removeRecovery();\n      return;\n    }"),
+  'unauthenticated or non-route shells do not create an unbounded polling loop'
+);
 const recoverySource = auditUi.slice(auditUi.indexOf('function readModule008ActiveRoute()'));
 check(
   'AUDIT_BACKEND_AUTHORITY',
   recoverySource.length > 0
     && !/hasPermission|VIEW_AUDIT_TRAIL|SYSTEM_ADMINISTRATION|MANAGE_ALL/.test(recoverySource),
-  'recovery does not repeat the failed frontend permission gate; the API remains authoritative'
+  'recovery does not duplicate frontend permission grants; the API remains authoritative'
 );
 
 check('USER_TABBED_INTERFACE', ['Manage users', 'Bulk updates', 'Create local user', 'Manager team scope'].every((value) => userUi.includes(value)), 'four clear Module 009 workspaces');
