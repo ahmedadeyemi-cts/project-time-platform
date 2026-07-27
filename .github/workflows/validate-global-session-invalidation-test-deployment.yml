@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - 'release/role-policy-audit-stability-api-web-test-*'
+      - 'hotfix/combined-deployment-release-working-directory-*'
   pull_request:
     paths:
       - '.github/workflows/projectpulse-deploy-global-session-invalidation-test.yml'
@@ -71,6 +72,19 @@ jobs:
         shell: bash
         run: bash scripts/validate-global-session-invalidation-test-deployment.sh
 
+      - name: Validate release working-directory contract
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          WORKFLOW=.github/workflows/projectpulse-deploy-global-session-invalidation-test.yml
+          grep -Fq 'cd release' "$WORKFLOW"
+          grep -Fq 'test -d src/backend/ProjectTime.Api' "$WORKFLOW"
+          grep -Fq 'dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release' "$WORKFLOW"
+          grep -Fq -- '--project tests/ProjectTime.Api.AuthorizationTests/ProjectTime.Api.AuthorizationTests.csproj' "$WORKFLOW"
+          ! grep -Fq 'dotnet build release/src/backend/ProjectTime.Api/ProjectTime.Api.csproj' "$WORKFLOW"
+          ! grep -Fq -- '--project release/tests/ProjectTime.Api.AuthorizationTests/ProjectTime.Api.AuthorizationTests.csproj' "$WORKFLOW"
+          echo 'RELEASE_WORKING_DIRECTORY_CONTRACT=PASS'
+
       - name: Build combined API source
         run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
 
@@ -114,7 +128,7 @@ jobs:
           set -Eeuo pipefail
           if [[ "$JOB_STATUS" == success ]]; then
             STATE=success
-            DESCRIPTION='Role-policy/audit API-web controls and executable checks passed.'
+            DESCRIPTION='Role-policy/audit controls and release-root execution passed.'
           else
             STATE=failure
             DESCRIPTION='Role-policy/audit deployment-control validation failed.'
