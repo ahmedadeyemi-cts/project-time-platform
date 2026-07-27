@@ -35,14 +35,14 @@ function removeStrayThemeText(button) {
   for (const container of containers) {
     [...container.childNodes].forEach((node) => {
       if (node.nodeType !== Node.TEXT_NODE) return;
-      const value = String(node.textContent || '').replace(/\u00a0/g, ' ').trim();
+      const value = String(node.textContent || '').trim().replace(/\u00a0/g, ' ').trim();
       if (STRAY_THEME_TEXT.test(value)) node.remove();
     });
   }
 
   const previous = button?.previousSibling;
   if (previous?.nodeType === Node.TEXT_NODE) {
-    const value = String(previous.textContent || '').replace(/\u00a0/g, ' ').trim();
+    const value = String(previous.textContent || '').trim().replace(/\u00a0/g, ' ').trim();
     if (STRAY_THEME_TEXT.test(value)) previous.remove();
   }
 }
