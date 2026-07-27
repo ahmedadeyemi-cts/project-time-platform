@@ -11,6 +11,7 @@ public static class GlobalMailConfigurationModule
     {
         app.UseMicrosoftIntegrationSecurityCompatibility();
         app.UseMicrosoftSsoRuntimeCompatibility();
+        app.UseMicrosoftSmtpCredentialProjectionCompatibility();
         MicrosoftIntegrationModule.MapEndpoints(app);
         app.MapMicrosoftSsoConnectionProfileEndpoints();
         app.MapMicrosoftSsoRuntimeProfileEndpoints();
