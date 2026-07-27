@@ -7,6 +7,7 @@ import './runtime-data-compatibility.js';
 import './microsoft-integration-compatibility.js';
 import './microsoft-sso-runtime-activation.js';
 import './microsoft-mail-runtime-activation.js';
+import './react-dom-ownership-prelude.js';
 import App from './App.Module001.g.jsx';
 import AdminRuntimeStabilityPortal from './AdminRuntimeStabilityPortal.jsx';
 import HelpAssistant from './HelpAssistant.jsx';
