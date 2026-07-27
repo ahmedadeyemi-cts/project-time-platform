@@ -56,12 +56,14 @@ requireAll(authoritative, [
   'collectionCounts',
   'projectpulse:authoritative-api-diagnostic',
   '__projectPulseAuthoritativeApiDiagnostics'
-], 'Wrapper-independent authoritative XHR client');
+], 'Wrapper-independent authoritative XHR client retained for PTC and protected actions');
 rejectAll(authoritative, ['window.fetch(', 'fetch(path'], 'Wrapper-independent authoritative XHR client');
 
 requireAll(bridge, [
   "import { authoritativeApi } from './projectpulse-authoritative-api.js';",
-  '/api/runtime/v2/role-policy/summary',
+  "DIRECT_ROLE_POLICY_MARKER = 'projectpulse-role-policy-direct-fetch-v3'",
+  "'/api/role-policy/summary': '/api/runtime/v2/role-policy/summary'",
+  "'/api/runtime/v2/role-policy/summary': '/api/role-policy/summary'",
   '/api/runtime/v2/role-policy/catalog',
   '/api/runtime/v2/role-policy/versions',
   '/api/runtime/v2/role-policy/matrix',
@@ -70,17 +72,20 @@ requireAll(bridge, [
   'expectedCollections',
   'normalizePtcWorkspace',
   'allActiveUsersAllowed: true',
-  'projectpulse-authoritative-xhr-compatibility-v2',
+  'directRolePolicyResponse',
+  'fetchRolePolicyCandidate',
+  'hasCollections(normalized, collections)',
+  "status: 'role_policy_contract_mismatch'",
   'projectpulse:ptc-runtime-users',
   'projectpulse:ptc-runtime-workspace',
   "requestMethod(input, init) !== 'GET'",
   'responseKeys: error?.diagnostic?.responseKeys'
-], 'Runtime data authoritative bridge');
+], 'Direct validated role-policy transport with preserved authoritative PTC bridge');
 rejectAll(bridge, [
   'window.__projectPulseOriginalFetch',
-  'directTransport(previousFetch)',
-  'const raw = await response.text()'
-], 'Runtime data authoritative bridge');
+  'requiredCollections.map((name) => [name, []])',
+  'normalized[name] = []'
+], 'Runtime data bridge safety');
 
 requireAll(roleModel, [
   "'/api/role-policy/summary': '/api/runtime/role-policy/summary'",
@@ -216,4 +221,4 @@ for (const forbidden of [
   if (backend.includes(forbidden)) throw new Error(`Runtime role-policy aliases must remain read-only: ${forbidden}`);
 }
 
-console.log('WRAPPER_INDEPENDENT_RUNTIME_ROLE_POLICY_PTC_CONTRACTS=PASS');
+console.log('DIRECT_ROLE_POLICY_AND_WRAPPER_INDEPENDENT_PTC_CONTRACTS=PASS');
