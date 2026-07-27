@@ -2,17 +2,60 @@ import { currentProjectPulseRoute, moduleForRoute } from './module-availability-
 
 const DIAGNOSTIC_EVENT = 'projectpulse:authoritative-api-diagnostic';
 const DIAGNOSTIC_MARKER = 'projectpulse-authoritative-xhr-v1';
+const SESSION_INVALIDATED_EVENT = 'projectpulse:session-invalidated';
+const SESSION_INVALIDATION_MARKER = 'projectpulse-authoritative-session-invalidation-v1';
+const SESSION_KEYS = Object.freeze([
+  'projectPulseAuthSession',
+  'ProjectPulseAuthSession',
+  'projectPulseSession'
+]);
+const VIEW_AS_KEYS = Object.freeze([
+  'projectPulseViewAsUser',
+  'projectPulseViewAsUserId'
+]);
+const SESSION_REJECTION_STATUS_CODES = new Set([
+  'session_required',
+  'session_expired',
+  'session_invalid',
+  'invalid_session'
+]);
+const SESSION_REJECTION_MESSAGE = /(?:session|token).*(?:expired|invalid|missing|required|could not be verified)|missing session token|sign in again/i;
+
+function parseStoredJson(storage, key) {
+  try {
+    const raw = storage?.getItem(key);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function storedSessionContext() {
+  for (const storage of [window.localStorage, window.sessionStorage]) {
+    for (const key of SESSION_KEYS) {
+      const session = parseStoredJson(storage, key);
+      const token = session?.sessionToken
+        || session?.token
+        || session?.accessToken
+        || session?.session_token
+        || '';
+      if (token) return { session, token, key, storage };
+    }
+  }
+
+  return { session: null, token: '', key: '', storage: null };
+}
 
 function sessionContext() {
+  const { token } = storedSessionContext();
   try {
-    const session = JSON.parse(window.localStorage.getItem('projectPulseAuthSession') || 'null');
     const selected = JSON.parse(window.localStorage.getItem('projectPulseViewAsUser') || 'null');
     return {
-      token: session?.sessionToken || session?.token || session?.accessToken || '',
+      token,
       viewAsUserId: selected?.userId || window.localStorage.getItem('projectPulseViewAsUserId') || ''
     };
   } catch {
-    return { token: '', viewAsUserId: '' };
+    return { token, viewAsUserId: '' };
   }
 }
 
@@ -35,6 +78,113 @@ function unwrap(payload) {
     current = current[key];
   }
   return current;
+}
+
+function normalizeApiPath(input) {
+  try {
+    const raw = typeof input === 'string' ? input : input?.url;
+    if (!raw) return '';
+    const url = new URL(raw, window.location.origin);
+    return url.origin === window.location.origin ? url.pathname : '';
+  } catch {
+    return '';
+  }
+}
+
+function isSessionRejection(status, payload = {}, responseText = '') {
+  if (Number(status) !== 401 || !storedSessionContext().token) return false;
+
+  const normalized = unwrap(payload);
+  const statusCode = String(
+    normalized?.status
+      || normalized?.Status
+      || normalized?.code
+      || normalized?.Code
+      || ''
+  ).trim().toLowerCase();
+  const message = String(
+    normalized?.message
+      || normalized?.Message
+      || normalized?.detail
+      || normalized?.Detail
+      || responseText
+      || ''
+  ).trim();
+
+  return SESSION_REJECTION_STATUS_CODES.has(statusCode)
+    || SESSION_REJECTION_MESSAGE.test(message);
+}
+
+function clearSessionStorage() {
+  for (const storage of [window.localStorage, window.sessionStorage]) {
+    for (const key of [...SESSION_KEYS, ...VIEW_AS_KEYS]) {
+      try {
+        storage.removeItem(key);
+      } catch {
+        // Continue clearing every supported storage location.
+      }
+    }
+  }
+}
+
+function invalidateProjectPulseSession(path, payload = {}, responseText = '') {
+  if (!storedSessionContext().token) return false;
+  if (window.__projectPulseSessionInvalidationStarted) return true;
+
+  window.__projectPulseSessionInvalidationStarted = true;
+  const detail = {
+    marker: SESSION_INVALIDATION_MARKER,
+    path,
+    message: String(payload?.message || payload?.Message || responseText || 'Session expired or invalid.'),
+    at: new Date().toISOString()
+  };
+
+  try {
+    window.sessionStorage.setItem('projectPulseSessionInvalidatedAt', detail.at);
+  } catch {
+    // Session invalidation still works when auxiliary storage is unavailable.
+  }
+
+  clearSessionStorage();
+  window.dispatchEvent(new CustomEvent(SESSION_INVALIDATED_EVENT, { detail }));
+
+  window.setTimeout(() => {
+    window.location.hash = '#dashboard';
+    window.location.reload();
+  }, 0);
+
+  return true;
+}
+
+async function inspectFetchSessionRejection(input, response) {
+  const path = normalizeApiPath(input);
+  if (!path || response?.status !== 401 || !storedSessionContext().token) return;
+
+  let payload = {};
+  let raw = '';
+  try {
+    raw = await response.clone().text();
+    payload = raw ? JSON.parse(raw) : {};
+  } catch {
+    payload = {};
+  }
+
+  if (isSessionRejection(response.status, payload, raw)) {
+    invalidateProjectPulseSession(path, payload, raw);
+  }
+}
+
+function installGlobalFetchSessionInvalidation() {
+  if (typeof window === 'undefined' || window.__projectPulseGlobalSessionInvalidationInstalled) return;
+
+  const originalFetch = window.fetch.bind(window);
+  window.fetch = async (input, init = {}) => {
+    const response = await originalFetch(input, init);
+    void inspectFetchSessionRejection(input, response);
+    return response;
+  };
+
+  window.__projectPulseGlobalSessionInvalidationInstalled = true;
 }
 
 function publishDiagnostic(diagnostic) {
@@ -119,6 +269,9 @@ export async function authoritativeApi(path, options = {}) {
       }
       payload = unwrap(payload);
       if (request.status < 200 || request.status >= 300) {
+        if (isSessionRejection(request.status, payload, raw)) {
+          invalidateProjectPulseSession(path, payload, raw);
+        }
         finishError(
           payload.message || payload.Message || payload.detail || payload.Detail || `${path} returned HTTP ${request.status}.`,
           request.status,
@@ -159,3 +312,5 @@ export async function authoritativeApi(path, options = {}) {
     request.send(options.body == null ? null : options.body);
   });
 }
+
+installGlobalFetchSessionInvalidation();
