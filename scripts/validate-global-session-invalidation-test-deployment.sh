@@ -27,7 +27,6 @@ require "$DEPLOY" 'Only the verified PR 181 and PR 182 combined release may depl
 require "$DEPLOY" 'git -C control merge-base --is-ancestor'
 
 # The failed run launched a repository-relative executable from the control root.
-# The corrected Action must enter the release checkout before both .NET commands.
 require "$DEPLOY" 'cd release'
 require "$DEPLOY" 'test -d src/backend/ProjectTime.Api'
 require "$DEPLOY" 'dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release'
@@ -35,6 +34,16 @@ require "$DEPLOY" '--project tests/ProjectTime.Api.AuthorizationTests/ProjectTim
 reject "$DEPLOY" 'dotnet build release/src/backend/ProjectTime.Api/ProjectTime.Api.csproj'
 reject "$DEPLOY" '--project release/tests/ProjectTime.Api.AuthorizationTests/ProjectTime.Api.AuthorizationTests.csproj'
 require "$DEPLOY" '"releaseWorkingDirectory": "verified"'
+
+# Rollback points must fail closed before any candidate deployment starts.
+require "$DEPLOY" 'CURRENT_API_IMAGE="$(resolve_digest "$RAW_API_IMAGE")"'
+require "$DEPLOY" 'CURRENT_WEB_IMAGE="$(resolve_digest "$RAW_WEB_IMAGE")"'
+require "$DEPLOY" '[[ -n "$CURRENT_API_IMAGE" && -n "$CURRENT_WEB_IMAGE" ]]'
+require "$DEPLOY" 'echo "current_api_image=$CURRENT_API_IMAGE" >> "$GITHUB_OUTPUT"'
+require "$DEPLOY" 'echo "current_web_image=$CURRENT_WEB_IMAGE" >> "$GITHUB_OUTPUT"'
+reject "$DEPLOY" 'echo[[:space:]]+"current_api_image=\$\(resolve_digest'
+reject "$DEPLOY" 'echo[[:space:]]+"current_web_image=\$\(resolve_digest'
+require "$DEPLOY" '"rollbackImageResolution": "fail-closed"'
 
 # PR 181 source and authorization contracts.
 require "$DEPLOY" 'ScopedRolePolicyRules.cs'
