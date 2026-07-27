@@ -1,0 +1,338 @@
+name: ProjectPulse Deploy Microsoft Preview Mail Runtime Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_commit:
+        description: Exact verified Microsoft Preview and mail-runtime source release
+        required: true
+        default: 50e415d2053610a10d3ba6ca3662d6414b55ec25
+        type: string
+      confirmation:
+        description: Enter DEPLOY-MICROSOFT-PREVIEW-MAIL-RUNTIME-TO-TEST
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: projectpulse-deploy-microsoft-preview-mail-runtime-test
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Guarded Microsoft Preview and mail-runtime test deployment
+    environment: test
+    runs-on: ubuntu-latest
+    env:
+      EXPECTED_RELEASE_COMMIT: 50e415d2053610a10d3ba6ca3662d6414b55ec25
+    steps:
+      - name: Check out deployment controls
+        uses: actions/checkout@v5
+        with:
+          path: control
+          fetch-depth: 0
+
+      - name: Check out exact verified source release
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.release_commit }}
+          path: release
+          fetch-depth: 1
+
+      - name: Guard workflow source and Microsoft Preview mail release
+        id: release
+        shell: bash
+        env:
+          DISPATCH_RELEASE_COMMIT: ${{ inputs.release_commit }}
+          DISPATCH_CONFIRMATION: ${{ inputs.confirmation }}
+          WORKFLOW_SOURCE_REF: ${{ github.ref }}
+          WORKFLOW_SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$WORKFLOW_SOURCE_REF" == 'refs/heads/main' ]] || { echo 'Dispatch this workflow from main.' >&2; exit 1; }
+          [[ "$DISPATCH_CONFIRMATION" == 'DEPLOY-MICROSOFT-PREVIEW-MAIL-RUNTIME-TO-TEST' ]] || { echo 'Confirmation text does not match.' >&2; exit 1; }
+          [[ "$DISPATCH_RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || { echo 'release_commit must be a complete SHA.' >&2; exit 1; }
+
+          CONTROL_COMMIT="$(git -C control rev-parse HEAD)"
+          TARGET_COMMIT="$(git -C release rev-parse HEAD)"
+          [[ "$CONTROL_COMMIT" == "$WORKFLOW_SOURCE_SHA" ]]
+          [[ "$TARGET_COMMIT" == "$DISPATCH_RELEASE_COMMIT" ]]
+          [[ "$TARGET_COMMIT" == "$EXPECTED_RELEASE_COMMIT" ]] || { echo 'Only the verified Microsoft Preview and mail-runtime release may deploy.' >&2; exit 1; }
+          git -C control merge-base --is-ancestor "$TARGET_COMMIT" HEAD || { echo 'The source release is not an ancestor of the deployment controls.' >&2; exit 1; }
+
+          required_files=(
+            src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs
+            src/backend/ProjectTime.Api/Modules/MicrosoftMailRuntimeConfigurationModule.cs
+            src/frontend/project-time-web/src/microsoft-integration-compatibility.js
+            src/frontend/project-time-web/src/microsoft-integration-portal.css
+            src/frontend/project-time-web/src/microsoft-mail-runtime-activation.js
+            src/frontend/project-time-web/src/main.jsx
+            src/frontend/project-time-web/scripts/validate-microsoft-integration-authoritative-connection.mjs
+          )
+          for file in "${required_files[@]}"; do test -f "release/$file"; done
+          test -x control/scripts/build-pr55-acr-image.sh
+          test -f control/scripts/wait-containerapp-ready-revision.sh
+
+          grep -Fq 'MapMicrosoftMailRuntimeConfigurationEndpoints' release/src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs
+          grep -Fq '/api/microsoft-integration/mail-runtime' release/src/backend/ProjectTime.Api/Modules/MicrosoftMailRuntimeConfigurationModule.cs
+          grep -Fq 'configuration.RecipientBoundary == "production_governed"' release/src/backend/ProjectTime.Api/Modules/MicrosoftMailRuntimeConfigurationModule.cs
+          grep -Fq 'PROJECTPULSE_MAIL_RECIPIENT_BOUNDARY' release/src/backend/ProjectTime.Api/Modules/MicrosoftMailRuntimeConfigurationModule.cs
+          grep -Fq 'outbox_only' release/src/backend/ProjectTime.Api/Modules/MicrosoftMailRuntimeConfigurationModule.cs
+          grep -Fq 'PROJECTPULSE_ENTRA_TEST_CLIENT_SECRET' release/src/backend/ProjectTime.Api/Modules/MicrosoftMailRuntimeConfigurationModule.cs
+          grep -Fq 'PROJECTPULSE_ENTRA_PRODUCTION_CLIENT_SECRET' release/src/backend/ProjectTime.Api/Modules/MicrosoftMailRuntimeConfigurationModule.cs
+          grep -Fq 'function restoreModule010Preview' release/src/frontend/project-time-web/src/microsoft-integration-compatibility.js
+          grep -Fq 'data-module-010-preview-preserved' release/src/frontend/project-time-web/src/microsoft-integration-compatibility.js
+          grep -Fq '.route-azure-admin .azure-preview-card' release/src/frontend/project-time-web/src/microsoft-integration-portal.css
+          grep -Fq "projectpulse:microsoft-mail-runtime-status" release/src/frontend/project-time-web/src/microsoft-mail-runtime-activation.js
+          grep -Fq "import './microsoft-mail-runtime-activation.js';" release/src/frontend/project-time-web/src/main.jsx
+          ! grep -Fq '.route-azure-admin .azure-admin-heading-actions .primary-action' release/src/frontend/project-time-web/src/microsoft-integration-portal.css
+
+          echo "target_commit=$TARGET_COMMIT" >> "$GITHUB_OUTPUT"
+          echo '::warning::A green deployment proves exact API/web revision integrity and served Preview/mail-runtime assets. Signed-in Preview, Graph, SMTP, SSO, and mail-delivery UAT remain required.'
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Capture current immutable API and web images
+        id: before
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          RAW_API="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
+          RAW_WEB="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
+          API_MODE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.configuration.activeRevisionsMode' -o tsv)"
+          WEB_MODE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.configuration.activeRevisionsMode' -o tsv)"
+          [[ -n "$RAW_API" && -n "$RAW_WEB" && "${API_MODE,,}" == single && "${WEB_MODE,,}" == single ]]
+
+          resolve_digest() {
+            local image="$1" registry='${{ vars.AZURE_ACR_NAME }}.azurecr.io/' relative repository digest
+            case "$image" in
+              "$registry"*@sha256:*) printf '%s\n' "$image"; return ;;
+              "$registry"*:*) ;;
+              *) echo "Image is outside approved ACR: $image" >&2; return 1 ;;
+            esac
+            relative="${image#"$registry"}"
+            repository="${relative%:*}"
+            digest="$(az acr repository show --name '${{ vars.AZURE_ACR_NAME }}' --image "$relative" --query digest -o tsv)"
+            [[ "$digest" == sha256:* ]]
+            printf '%s%s@%s\n' "$registry" "$repository" "$digest"
+          }
+
+          echo "old_api_image=$(resolve_digest "$RAW_API")" >> "$GITHUB_OUTPUT"
+          echo "old_web_image=$(resolve_digest "$RAW_WEB")" >> "$GITHUB_OUTPUT"
+
+      - name: Build immutable API and web candidates
+        id: build
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          SHA='${{ steps.release.outputs.target_commit }}'
+          API_REPO='project-health-dashboard-api'
+          WEB_REPO='project-health-dashboard-web'
+          API_DIGEST="$(control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "$API_REPO:microsoft-preview-mail-$SHA" release/deployment/containers/api/Dockerfile release)"
+          WEB_DIGEST="$(control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "$WEB_REPO:microsoft-preview-mail-$SHA" release/deployment/containers/web/Dockerfile release)"
+          [[ "$API_DIGEST" == sha256:* && "$WEB_DIGEST" == sha256:* ]]
+          echo "api_image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/$API_REPO@$API_DIGEST" >> "$GITHUB_OUTPUT"
+          echo "web_image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/$WEB_REPO@$WEB_DIGEST" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy API candidate
+        id: deploy_api
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          API_SUFFIX="mspmailapi-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          CANDIDATE_API_REVISION="${{ vars.AZURE_API_APP }}--${API_SUFFIX}"
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          echo "candidate_api_revision=$CANDIDATE_API_REVISION" >> "$GITHUB_OUTPUT"
+          az containerapp update \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' \
+            --image '${{ steps.build.outputs.api_image }}' \
+            --set-env-vars PROJECTPULSE_ENVIRONMENT=test PROJECTPULSE_SOURCE_COMMIT='${{ steps.release.outputs.target_commit }}' \
+            --revision-suffix "$API_SUFFIX" \
+            --output none
+
+      - name: Wait for exact API candidate revision
+        shell: bash
+        run: |
+          bash control/scripts/wait-containerapp-ready-revision.sh \
+            '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            '${{ vars.AZURE_API_APP }}' \
+            '${{ steps.deploy_api.outputs.candidate_api_revision }}' \
+            '${{ steps.build.outputs.api_image }}' 60 10
+
+      - name: Validate protected Microsoft Preview mail API routes
+        id: validate_api
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"
+          DIAGNOSTICS=/tmp/microsoft-preview-mail-api-validation
+          mkdir -p "$DIAGNOSTICS"
+
+          request() {
+            local name="$1" method="$2" url="$3" body="${4:-}" attempt="${5:-1}" separator='?'
+            [[ "$url" == *\?* ]] && separator='&'
+            local probe_url="${url}${separator}release_check=mspmail-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${attempt}"
+            local args=(-sS -X "$method" -D "$DIAGNOSTICS/${name}.headers" -o "$DIAGNOSTICS/${name}.body" -w '%{http_code}' -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache')
+            if [[ -n "$body" ]]; then args+=(-H 'Content-Type: application/json' --data "$body"); fi
+            curl "${args[@]}" "$probe_url" || true
+          }
+          content_type() { awk 'BEGIN{IGNORECASE=1} /^content-type:/ {gsub(/\r/, ""); print $2}' "$1" 2>/dev/null | tail -1; }
+          wait_status() {
+            local name="$1" method="$2" url="$3" expected="$4" body="${5:-}" status='' type=''
+            for attempt in $(seq 1 36); do
+              status="$(request "$name" "$method" "$url" "$body" "$attempt")"
+              type="$(content_type "$DIAGNOSTICS/${name}.headers")"
+              printf 'PROBE name=%s attempt=%s status=%s type=%s\n' "$name" "$attempt" "$status" "$type"
+              if [[ ",$expected," == *",$status,"* && "$type" == application/json* ]]; then return 0; fi
+              sleep 10
+            done
+            echo "$url did not reach expected status $expected with JSON content." >&2
+            cat "$DIAGNOSTICS/${name}.body" >&2 || true
+            return 1
+          }
+
+          wait_status health GET "$BASE/health" '200'
+          wait_status version GET "$BASE/api/version" '200'
+          wait_status overview GET "$BASE/api/microsoft-integration/overview" '401,403'
+          wait_status mail-runtime PUT "$BASE/api/microsoft-integration/mail-runtime" '401,403' '{}'
+          wait_status directory-import POST "$BASE/api/microsoft-integration/directory-users/import-selected" '401,403' '{}'
+
+          READY_API_REVISION="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.latestReadyRevisionName' -o tsv)"
+          [[ "$READY_API_REVISION" == '${{ steps.deploy_api.outputs.candidate_api_revision }}' ]]
+          READY_API_IMAGE="$(az containerapp revision show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --revision "$READY_API_REVISION" --query 'properties.template.containers[0].image' -o tsv)"
+          [[ "$READY_API_IMAGE" == '${{ steps.build.outputs.api_image }}' ]]
+          echo "ready_api_revision=$READY_API_REVISION" >> "$GITHUB_OUTPUT"
+          echo "ready_api_image=$READY_API_IMAGE" >> "$GITHUB_OUTPUT"
+          echo 'MICROSOFT_PREVIEW_MAIL_API_DEPLOYMENT_INTEGRITY=READY'
+          echo 'AUTHENTICATED_MICROSOFT_PREVIEW_MAIL_UAT=REQUIRED'
+
+      - name: Capture API validation diagnostics
+        if: ${{ failure() && steps.deploy_api.outputs.started == 'true' }}
+        shell: bash
+        run: |
+          set +e
+          mkdir -p evidence/microsoft-preview-mail-api-validation
+          cp -R /tmp/microsoft-preview-mail-api-validation/. evidence/microsoft-preview-mail-api-validation/ 2>/dev/null || true
+          az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' -o json > evidence/microsoft-preview-mail-api-validation/containerapp.json 2>&1 || true
+          az containerapp revision list -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' -o json > evidence/microsoft-preview-mail-api-validation/revisions.json 2>&1 || true
+
+      - name: Upload API validation diagnostics
+        if: ${{ failure() && steps.deploy_api.outputs.started == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: microsoft-preview-mail-api-validation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: evidence/microsoft-preview-mail-api-validation
+          retention-days: 7
+
+      - name: Deploy web candidate
+        id: deploy_web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          WEB_SUFFIX="mspmailweb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          CANDIDATE_WEB_REVISION="${{ vars.AZURE_WEB_APP }}--${WEB_SUFFIX}"
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          echo "candidate_web_revision=$CANDIDATE_WEB_REVISION" >> "$GITHUB_OUTPUT"
+          az containerapp update \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_WEB_APP }}' \
+            --image '${{ steps.build.outputs.web_image }}' \
+            --revision-suffix "$WEB_SUFFIX" \
+            --output none
+
+      - name: Wait for exact web candidate revision
+        shell: bash
+        run: |
+          bash control/scripts/wait-containerapp-ready-revision.sh \
+            '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            '${{ vars.AZURE_WEB_APP }}' \
+            '${{ steps.deploy_web.outputs.candidate_web_revision }}' \
+            '${{ steps.build.outputs.web_image }}' 60 10
+
+      - name: Validate served Preview and mail-runtime assets
+        id: validate_web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"
+          READY=false
+          for attempt in $(seq 1 36); do
+            BUSTER="microsoft-preview-mail-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-$attempt"
+            STATUS="$(curl -sSL -H 'Cache-Control: no-cache, no-store' -o /tmp/mspmail-index -w '%{http_code}' "$BASE/?release_check=$BUSTER" || true)"
+            JS="$(sed -nE 's/.*src="([^"]+\.js)".*/\1/p' /tmp/mspmail-index | head -1)"
+            CSS="$(sed -nE 's/.*href="([^"]+\.css)".*/\1/p' /tmp/mspmail-index | head -1)"
+            if [[ "$STATUS" == 200 && -n "$JS" && -n "$CSS" ]]; then
+              case "$JS" in http*) JS_URL="$JS" ;; /*) JS_URL="$BASE$JS" ;; *) JS_URL="$BASE/$JS" ;; esac
+              case "$CSS" in http*) CSS_URL="$CSS" ;; /*) CSS_URL="$BASE$CSS" ;; *) CSS_URL="$BASE/$CSS" ;; esac
+              curl -sSL -H 'Cache-Control: no-cache, no-store' -o /tmp/mspmail-app.js "$JS_URL?release_check=$BUSTER" || true
+              curl -sSL -H 'Cache-Control: no-cache, no-store' -o /tmp/mspmail-app.css "$CSS_URL?release_check=$BUSTER" || true
+              if grep -Fq '/api/microsoft-integration/mail-runtime' /tmp/mspmail-app.js \
+                && grep -Fq 'projectpulse:microsoft-mail-runtime-status' /tmp/mspmail-app.js \
+                && grep -Fq 'data-module-010-preview-preserved' /tmp/mspmail-app.js \
+                && grep -Fq 'Preview and import Entra users' /tmp/mspmail-app.js \
+                && grep -Fq 'production_governed' /tmp/mspmail-app.js \
+                && grep -Fq '.route-azure-admin .azure-preview-card' /tmp/mspmail-app.css \
+                && grep -Fq '.route-azure-admin .azure-preview-card .azure-admin-heading-actions button' /tmp/mspmail-app.css; then
+                READY=true
+                break
+              fi
+            fi
+            sleep 10
+          done
+          [[ "$READY" == true ]] || { echo 'Microsoft Preview and mail-runtime candidate assets were not served.' >&2; exit 1; }
+
+          READY_API_REVISION="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.latestReadyRevisionName' -o tsv)"
+          READY_WEB_REVISION="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.latestReadyRevisionName' -o tsv)"
+          [[ "$READY_API_REVISION" == '${{ steps.deploy_api.outputs.candidate_api_revision }}' ]]
+          [[ "$READY_WEB_REVISION" == '${{ steps.deploy_web.outputs.candidate_web_revision }}' ]]
+          READY_API_IMAGE="$(az containerapp revision show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --revision "$READY_API_REVISION" --query 'properties.template.containers[0].image' -o tsv)"
+          READY_WEB_IMAGE="$(az containerapp revision show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --revision "$READY_WEB_REVISION" --query 'properties.template.containers[0].image' -o tsv)"
+          [[ "$READY_API_IMAGE" == '${{ steps.build.outputs.api_image }}' ]]
+          [[ "$READY_WEB_IMAGE" == '${{ steps.build.outputs.web_image }}' ]]
+          echo "ready_api_revision=$READY_API_REVISION" >> "$GITHUB_OUTPUT"
+          echo "ready_web_revision=$READY_WEB_REVISION" >> "$GITHUB_OUTPUT"
+          echo "ready_api_image=$READY_API_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "ready_web_image=$READY_WEB_IMAGE" >> "$GITHUB_OUTPUT"
+          echo 'MICROSOFT_PREVIEW_MAIL_CANDIDATE_ASSETS=DEPLOYED'
+          echo 'AUTHENTICATED_PREVIEW_GRAPH_SMTP_UAT=REQUIRED'
+
+      - name: Write deployment evidence
+        if: success()
+        shell: bash
+        run: |
+          mkdir -p evidence
+          cat > evidence/microsoft-preview-mail-runtime-test-deployment.json <<JSON
+          {"environment":"test","releaseCommit":"${{ steps.release.outputs.target_commit }}","workflowCommit":"${{ github.sha }}","runId":"${{ github.run_id }}","runAttempt":"${{ github.run_attempt }}","deploymentType":"api-web-no-migration","databaseMutation":false,"apiImage":"${{ steps.validate_web.outputs.ready_api_image }}","webImage":"${{ steps.validate_web.outputs.ready_web_image }}","readyApiRevision":"${{ steps.validate_web.outputs.ready_api_revision }}","readyWebRevision":"${{ steps.validate_web.outputs.ready_web_revision }}","previousApiImage":"${{ steps.before.outputs.old_api_image }}","previousWebImage":"${{ steps.before.outputs.old_web_image }}","previewRestoration":"asset-verified","mailRuntimeRoute":"protected-route-verified","recipientBoundaryEnforcement":"source-and-asset-verified","deploymentIntegrity":"passed","authenticatedUatRequired":true,"functionalUatStatus":"pending-user-session-validation"}
+          JSON
+
+      - name: Upload deployment evidence
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: microsoft-preview-mail-runtime-test-${{ github.run_id }}-${{ github.run_attempt }}
+          path: evidence/microsoft-preview-mail-runtime-test-deployment.json
+          retention-days: 30
+
+      - name: Roll back API and web images on failure
+        if: ${{ failure() && (steps.deploy_api.outputs.started == 'true' || steps.deploy_web.outputs.started == 'true') }}
+        shell: bash
+        run: |
+          set +e
+          if [[ '${{ steps.deploy_api.outputs.started }}' == 'true' ]]; then
+            az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' \
+              --image '${{ steps.before.outputs.old_api_image }}' \
+              --revision-suffix "mspmailapirb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" --output none
+          fi
+          if [[ '${{ steps.deploy_web.outputs.started }}' == 'true' ]]; then
+            az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' \
+              --image '${{ steps.before.outputs.old_web_image }}' \
+              --revision-suffix "mspmailwebrb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" --output none
+          fi
