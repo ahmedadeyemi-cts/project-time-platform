@@ -26,14 +26,7 @@ check(
   'EARLIEST_IMPORT',
   main.indexOf("import './projectpulse-authoritative-api.js';") >= 0
     && main.indexOf("import './projectpulse-authoritative-api.js';") < main.indexOf("import App from './App.Module001.g.jsx';"),
-  'session invalidation installs before App and later fetch bridges'
-);
-
-check(
-  'ALL_SESSION_KEYS',
-  ['projectPulseAuthSession', 'ProjectPulseAuthSession', 'projectPulseSession', 'projectPulseViewAsUser', 'projectPulseViewAsUserId']
-    .every((value) => authoritative.includes(`'${value}'`)),
-  'legacy and current auth/View-As storage keys are cleared'
+  'session readiness gate installs before App and later fetch bridges'
 );
 
 check(
@@ -42,131 +35,120 @@ check(
     && authoritative.includes('session?.token')
     && authoritative.includes('session?.accessToken')
     && authoritative.includes('session?.session_token'),
-  'every known browser session token shape is supported'
+  'all known browser session token shapes remain supported'
 );
 
 check(
-  'REQUEST_TOKEN_CAPTURE',
-  authoritative.includes('function requestSessionToken(input, init = {})')
-    && authoritative.includes("'X-ProjectPulse-Session'")
-    && authoritative.includes("'X-Project-Pulse-Session'")
-    && authoritative.includes("'X-Session-Token'")
-    && authoritative.includes("'Authorization'")
-    && authoritative.includes('const requestToken = requestSessionToken(input, init);')
-    && authoritative.indexOf('const requestToken = requestSessionToken(input, init);') < authoritative.indexOf('const response = await originalFetch(input, init);'),
-  'the token actually carried by each fetch request is captured before dispatch'
+  'EXPIRATION_AWARE',
+  authoritative.includes('function sessionIsExpired(session)')
+    && authoritative.includes('Date.parse(session.expiresAt)')
+    && authoritative.includes('token && !sessionIsExpired(session)'),
+  'expired stored sessions are not used for protected requests'
 );
 
 check(
-  'REQUEST_TOKEN_CORRELATION',
-  authoritative.includes('function requestTokenMatchesCurrentSession(requestToken = \'\')')
-    && authoritative.includes('requestToken === currentToken')
-    && authoritative.includes("function isSessionRejection(status, payload = {}, responseText = '', requestToken = '')")
-    && authoritative.includes('!requestTokenMatchesCurrentSession(requestToken)')
-    && authoritative.includes("function invalidateProjectPulseSession(path, payload = {}, responseText = '', requestToken = '')"),
-  'only a failed request carrying the currently stored token may invalidate that session'
+  'PUBLIC_AUTH_EXEMPTIONS',
+  ['/health', '/api/auth/', '/api/public/', '/api/bootstrap/', '/api/app-config', '/api/config']
+    .every((value) => authoritative.includes(`'${value}'`)),
+  'login, bootstrap, public, health, and configuration routes bypass the readiness gate'
 );
 
 check(
-  'PRELOGIN_RESPONSE_RACE_BLOCKED',
-  authoritative.includes("async function inspectFetchSessionRejection(input, response, requestToken = '')")
-    && authoritative.includes("if (!path || response?.status !== 401 || !requestToken) return;")
-    && authoritative.includes('isSessionRejection(response.status, payload, raw, requestToken)')
-    && authoritative.includes('invalidateProjectPulseSession(path, payload, raw, requestToken)')
-    && !authoritative.includes('if (!path || response?.status !== 401 || !storedSessionContext().token) return;'),
-  'anonymous requests started before login cannot erase a newly stored session when their late 401 responses arrive'
+  'FETCH_READINESS_GATE',
+  authoritative.includes('function installProtectedFetchReadinessGate()')
+    && authoritative.includes('let token = requestSessionToken(input, init);')
+    && authoritative.includes('if (!token) token = (await waitForUsableSession()).token;')
+    && authoritative.includes('if (!token) return createSessionNotReadyResponse(path);')
+    && authoritative.includes('applySessionHeaders('),
+  'protected fetch calls wait for a usable session and never leave the browser without one'
 );
 
 check(
-  'NO_BARE_INVALIDATION_CALLS',
-  !authoritative.includes('invalidateProjectPulseSession(path, payload, raw);')
-    && !authoritative.includes('isSessionRejection(request.status, payload, raw)')
-    && !authoritative.includes('isSessionRejection(response.status, payload, raw)'),
-  'every invalidation decision is tied to the token captured when the failed request was sent'
+  'BOUNDED_SESSION_WAIT',
+  authoritative.includes('const SESSION_WAIT_MS = 1200;')
+    && authoritative.includes("window.addEventListener('projectpulse:auth-session-ready', handleSignal)")
+    && authoritative.includes('window.setTimeout(finish, Math.max(0, Number(timeoutMs || 0)))'),
+  'pre-login requests wait briefly for the successful login event without polling indefinitely'
 );
 
 check(
-  'SESSION_REQUIRED_ONLY',
-  authoritative.includes('if (Number(status) !== 401 || !requestTokenMatchesCurrentSession(requestToken)) return false;')
-    && authoritative.includes('SESSION_REJECTION_STATUS_CODES.has(statusCode)')
-    && authoritative.includes('SESSION_REJECTION_MESSAGE.test(message)')
-    && authoritative.includes("'session_required'")
-    && authoritative.includes("'session_expired'")
-    && authoritative.includes("'session_invalid'"),
-  'generic authorization failures do not revoke valid sessions'
+  'NO_AUTOMATIC_SESSION_DELETION',
+  !authoritative.includes('clearSessionStorage')
+    && !authoritative.includes('invalidateProjectPulseSession')
+    && !authoritative.includes('projectpulse:session-invalidated')
+    && !authoritative.includes('projectpulse-authoritative-session-invalidation-v1')
+    && !authoritative.includes('window.location.reload()')
+    && !authoritative.includes("window.location.hash = '#dashboard'"),
+  'the transport cannot clear browser sessions, reload the app, or change routes'
 );
 
 check(
-  'SINGLE_FLIGHT_INVALIDATION',
-  authoritative.includes('window.__projectPulseSessionInvalidationStarted')
-    && authoritative.includes('if (window.__projectPulseSessionInvalidationStarted) return true;')
-    && authoritative.includes('window.__projectPulseSessionInvalidationStarted = true;'),
-  'concurrent 401 responses for the same rejected token trigger one invalidation/reload'
+  'GLOBAL_XHR_BRIDGE_PRESENT',
+  app.includes('function installProjectPulse050BFinalXhrBridge()')
+    && app.includes('xhrPrototype.__projectPulse050BFinalWrapped = true;')
+    && app.includes("this.setRequestHeader('X-ProjectPulse-Session', token)")
+    && app.includes("this.setRequestHeader('X-Project-Pulse-Session', token)")
+    && app.includes("this.setRequestHeader('X-Session-Token', token)")
+    && app.includes('this.setRequestHeader(\'Authorization\', `Bearer ${token}`)'),
+  'App retains the single global XHR session-header bridge'
 );
 
 check(
-  'CLEAR_BEFORE_RELOAD',
-  authoritative.indexOf('clearSessionStorage();') >= 0
-    && authoritative.indexOf('clearSessionStorage();') < authoritative.indexOf("window.dispatchEvent(new CustomEvent(SESSION_INVALIDATED_EVENT")
-    && authoritative.indexOf("window.dispatchEvent(new CustomEvent(SESSION_INVALIDATED_EVENT") < authoritative.indexOf('window.location.reload();'),
-  'stale session and View-As state are removed before reload'
+  'NO_DUPLICATE_XHR_HEADERS',
+  authoritative.includes('function globalXhrSessionBridgeInstalled()')
+    && authoritative.includes('if (token && !globalXhrSessionBridgeInstalled())')
+    && authoritative.includes('Directly applying the same headers here would append duplicate values')
+    && !authoritative.includes("if (token) {\n      request.setRequestHeader('Authorization'"),
+  'authoritative XHR avoids appending a second copy of every session header'
 );
 
 check(
-  'DASHBOARD_REAUTH_BOUNDARY',
-  authoritative.includes("window.location.hash = '#dashboard';")
-    && authoritative.includes('window.location.reload();')
-    && !authoritative.includes('projectPulsePostLoginRoute'),
-  'invalid sessions return to the existing dashboard-first sign-in flow without unused route state'
+  'DIRECT_HEADER_FALLBACK',
+  authoritative.includes("request.setRequestHeader('Authorization', `Bearer ${token}`)")
+    && authoritative.includes("request.setRequestHeader('X-ProjectPulse-Session', token)")
+    && authoritative.includes("request.setRequestHeader('X-Project-Pulse-Session', token)")
+    && authoritative.includes("request.setRequestHeader('X-Session-Token', token)"),
+  'standalone or test contexts still have a guarded direct-header fallback'
 );
 
 check(
-  'FETCH_COVERAGE',
-  authoritative.includes('function installGlobalFetchSessionInvalidation()')
-    && authoritative.includes('const originalFetch = window.fetch.bind(window);')
-    && authoritative.includes('void inspectFetchSessionRejection(input, response, requestToken);')
-    && authoritative.includes('response.clone().text()'),
-  'all later fetch wrappers inherit request-correlated 401 inspection'
+  'SILENT_SESSION_NOT_READY',
+  authoritative.includes("error.code = 'session_not_ready';")
+    && authoritative.includes('error.silent = true;')
+    && authoritative.includes('throw sessionNotReadyError(path);'),
+  'session-not-ready requests stop locally without authoritative console errors'
 );
 
 check(
-  'XHR_REQUEST_TOKEN_CORRELATION',
-  authoritative.includes('const { token, viewAsUserId } = sessionContext();')
-    && authoritative.includes('if (isSessionRejection(request.status, payload, raw, token))')
-    && authoritative.includes('invalidateProjectPulseSession(path, payload, raw, token);')
-    && authoritative.includes('projectpulse-authoritative-xhr-v1'),
-  'authoritative XMLHttpRequest failures are correlated to the token captured at request dispatch'
+  'ERROR_DEDUPLICATION',
+  authoritative.includes('function shouldPublishError(diagnostic)')
+    && authoritative.includes('now - previous.at >= 15000')
+    && authoritative.includes('if (!diagnostic.ok && shouldPublishError(diagnostic))'),
+  'real API errors remain visible but repeated identical console messages are throttled'
 );
 
 check(
-  'NO_UNAUTHENTICATED_RELOAD_LOOP',
-  authoritative.includes("if (!requestTokenMatchesCurrentSession(requestToken)) return false;")
-    && authoritative.includes("if (!path || response?.status !== 401 || !requestToken) return;"),
-  '401 responses from requests without a token never reload the sign-in page'
-);
-
-check(
-  'APP_CURRENT_SESSION_CONTRACT',
-  app.includes("window.localStorage.getItem('projectPulseAuthSession')")
-    && app.includes("window.localStorage.removeItem('projectPulseAuthSession')")
-    && app.includes('setAuthSession(null)')
-    && app.includes("window.location.hash = '#dashboard';"),
-  'global invalidation clears the session and uses App’s existing dashboard sign-in contract'
+  'AUTHORITATIVE_CONTRACT',
+  authoritative.includes('projectpulse-authoritative-xhr-v1')
+    && authoritative.includes('requiredCollections')
+    && authoritative.includes('collectionMissing')
+    && authoritative.includes("request.setRequestHeader('X-ProjectPulse-Authoritative-Client', DIAGNOSTIC_MARKER)"),
+  'existing authoritative response validation and diagnostics remain intact'
 );
 
 check(
   'BUILD_GUARD',
   packageJson.scripts?.build?.includes('validate:global-session-invalidation')
     && packageJson.scripts?.['validate:global-session-invalidation']?.includes('validate-global-session-invalidation.mjs'),
-  'future production builds must pass this session-lifecycle contract'
+  'future production builds must pass the safe session-transport contract'
 );
 
 const failures = checks.filter((item) => !item.condition).map((item) => item.name);
 console.log(`GLOBAL_SESSION_VALIDATION_CHECKS=${checks.length}`);
 if (failures.length) {
   console.error(`GLOBAL_SESSION_FAILED_CHECKS=${failures.join(',')}`);
-  console.error('GLOBAL_SESSION_INVALIDATION_CONTRACT=FAILED');
+  console.error('GLOBAL_SESSION_TRANSPORT_CONTRACT=FAILED');
   process.exit(1);
 }
 
-console.log('GLOBAL_SESSION_INVALIDATION_CONTRACT=PASSED');
+console.log('GLOBAL_SESSION_TRANSPORT_CONTRACT=PASSED');
