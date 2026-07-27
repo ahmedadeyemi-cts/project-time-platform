@@ -1,9 +1,9 @@
-name: Validate Authoritative Session and Theme Test Deployment
+name: Validate Role Policy Audit Stability Test Deployment
 
 on:
   push:
     branches:
-      - 'release/global-session-invalidation-web-test-*'
+      - 'release/role-policy-audit-stability-api-web-test-*'
   pull_request:
     paths:
       - '.github/workflows/projectpulse-deploy-global-session-invalidation-test.yml'
@@ -16,16 +16,16 @@ permissions:
 
 jobs:
   validate:
-    name: Validate guarded authoritative session and theme web deployment
+    name: Validate guarded role-policy and audit API/web controls
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
 
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Enforce deployment-control allowlist
+      - name: Enforce exact deployment-control scope
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -39,8 +39,8 @@ jobs:
             'scripts/validate-global-session-invalidation-test-deployment.sh'
           )
 
-          [[ "${#CHANGED[@]}" -gt 0 ]] || {
-            echo 'No deployment-control changes were found.' >&2
+          [[ "${#CHANGED[@]}" -eq 3 ]] || {
+            echo "Expected exactly three deployment-control files; found ${#CHANGED[@]}." >&2
             exit 1
           }
 
@@ -55,7 +55,11 @@ jobs:
             }
           done
 
-          echo 'AUTHORITATIVE_SESSION_THEME_DEPLOYMENT_CONTROL_SCOPE=PASS'
+          echo 'ROLE_POLICY_AUDIT_DEPLOYMENT_CONTROL_SCOPE=PASS'
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
 
       - uses: actions/setup-node@v4
         with:
@@ -67,19 +71,28 @@ jobs:
         shell: bash
         run: bash scripts/validate-global-session-invalidation-test-deployment.sh
 
+      - name: Build combined API source
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+
+      - name: Execute role-assignment authorization tests
+        run: >-
+          dotnet run
+          --project tests/ProjectTime.Api.AuthorizationTests/ProjectTime.Api.AuthorizationTests.csproj
+          --configuration Release
+
       - name: Install frontend dependencies
         working-directory: src/frontend/project-time-web
         run: npm ci --no-audit --no-fund
 
-      - name: Validate authoritative session source
+      - name: Validate authoritative response recovery
         working-directory: src/frontend/project-time-web
         run: npm run validate:global-session-invalidation
 
-      - name: Execute session and theme runtime regression harness
+      - name: Execute response recovery and theme runtime harness
         working-directory: src/frontend/project-time-web
         run: node scripts/test-authoritative-session-transport-theme-runtime.mjs
 
-      - name: Validate Modules 008 and 009 theme contract
+      - name: Validate Module 008 single owner and Module 009 preservation
         working-directory: src/frontend/project-time-web
         run: npm run validate:modules008009
 
@@ -101,15 +114,15 @@ jobs:
           set -Eeuo pipefail
           if [[ "$JOB_STATUS" == success ]]; then
             STATE=success
-            DESCRIPTION='Authoritative session/theme controls and executable frontend checks passed.'
+            DESCRIPTION='Role-policy/audit API-web controls and executable checks passed.'
           else
             STATE=failure
-            DESCRIPTION='Authoritative session/theme deployment-control validation failed.'
+            DESCRIPTION='Role-policy/audit deployment-control validation failed.'
           fi
 
           PAYLOAD="$(jq -nc \
             --arg state "$STATE" \
-            --arg context 'authoritative-session-theme/deployment-controls' \
+            --arg context 'role-policy-audit-stability/deployment-controls' \
             --arg description "$DESCRIPTION" \
             --arg target_url "$RUN_URL" \
             '{state:$state,context:$context,description:$description,target_url:$target_url}')"
