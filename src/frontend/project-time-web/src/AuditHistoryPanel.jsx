@@ -79,7 +79,7 @@ function compactValue(value) {
   return String(value);
 }
 
-export default function AuditHistoryPanel({ recoveryMode = false } = {}) {
+export default function AuditHistoryPanel({ routeOwnerMode = false } = {}) {
   const [filters, setFilters] = useState({
     days: '14',
     category: 'all',
@@ -146,7 +146,7 @@ export default function AuditHistoryPanel({ recoveryMode = false } = {}) {
     <section
       id="audit-history"
       className="panel audit-history-panel"
-      data-module-008-route-recovery={recoveryMode ? 'true' : undefined}
+      data-module-008-stable-route-owner={routeOwnerMode ? 'true' : undefined}
     >
       <div className="audit-history-hero">
         <div>
@@ -313,59 +313,101 @@ function readModule008ViewAsUser() {
   return viewAs?.userId ? viewAs : null;
 }
 
-function installModule008RouteRecovery() {
+function installModule008StableRouteOwner() {
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
-  if (window.__projectPulseModule008RouteRecoveryInstalled) return;
-  window.__projectPulseModule008RouteRecoveryInstalled = true;
+  if (window.__projectPulseModule008StableRouteOwnerInstalled) return;
+  window.__projectPulseModule008StableRouteOwnerInstalled = true;
 
   let host = null;
   let root = null;
   let scheduled = false;
+  const suppressedAppPanels = new Set();
 
-  const removeRecovery = () => {
+  const restoreSuppressedAppPanels = () => {
+    for (const panel of suppressedAppPanels) {
+      if (!panel?.isConnected) continue;
+      panel.hidden = false;
+      panel.removeAttribute('aria-hidden');
+      panel.removeAttribute('data-module-008-superseded-by-stable-route-owner');
+      const originalId = panel.getAttribute('data-module-008-original-id');
+      if (originalId && !panel.id) panel.id = originalId;
+      panel.removeAttribute('data-module-008-original-id');
+    }
+    suppressedAppPanels.clear();
+  };
+
+  const removeStableOwner = () => {
     if (root) root.unmount();
     if (host?.isConnected) host.remove();
     root = null;
     host = null;
+    restoreSuppressedAppPanels();
   };
 
-  const findAppOwnedPanel = (shell) => Array.from(shell.querySelectorAll('#audit-history'))
-    .find((panel) => !panel.closest('[data-module-008-route-recovery-host]'));
+  const appOwnedPanels = (shell) => Array.from(shell.querySelectorAll(
+    '#audit-history, [data-module-008-original-id="audit-history"]'
+  )).filter((panel) => !panel.closest('[data-module-008-stable-route-host]'));
+
+  const suppressAppOwnedPanels = (shell) => {
+    for (const panel of appOwnedPanels(shell)) {
+      if (!panel.getAttribute('data-module-008-original-id')) {
+        panel.setAttribute('data-module-008-original-id', panel.id || 'audit-history');
+      }
+      panel.removeAttribute('id');
+      panel.hidden = true;
+      panel.setAttribute('aria-hidden', 'true');
+      panel.setAttribute('data-module-008-superseded-by-stable-route-owner', 'true');
+      suppressedAppPanels.add(panel);
+    }
+  };
+
+  const ensureStableHost = (shell) => {
+    const firstAppPanel = appOwnedPanels(shell)[0] || null;
+
+    if (!host) {
+      host = document.createElement('div');
+      host.className = 'module-008-stable-route-host';
+      host.setAttribute('data-module-008-stable-route-host', 'true');
+      if (firstAppPanel?.parentNode) {
+        firstAppPanel.parentNode.insertBefore(host, firstAppPanel);
+      } else {
+        shell.appendChild(host);
+      }
+      root = createRoot(host);
+      root.render(<AuditHistoryPanel routeOwnerMode />);
+      return;
+    }
+
+    if (host.parentElement !== shell) {
+      if (firstAppPanel?.parentNode) {
+        firstAppPanel.parentNode.insertBefore(host, firstAppPanel);
+      } else {
+        shell.appendChild(host);
+      }
+    }
+  };
 
   const synchronize = () => {
     scheduled = false;
 
     if (readModule008ActiveRoute() !== 'audit-history') {
-      removeRecovery();
+      removeStableOwner();
       return;
     }
 
     if (!readProjectPulseAuthSession() || readModule008ViewAsUser()) {
-      removeRecovery();
+      removeStableOwner();
       return;
     }
 
     const shell = document.querySelector('.app-shell.route-audit-history');
     if (!shell) {
-      removeRecovery();
+      removeStableOwner();
       return;
     }
 
-    if (findAppOwnedPanel(shell)) {
-      removeRecovery();
-      return;
-    }
-
-    if (!host) {
-      host = document.createElement('div');
-      host.setAttribute('data-module-008-route-recovery-host', 'true');
-      shell.appendChild(host);
-      root = createRoot(host);
-      root.render(<AuditHistoryPanel recoveryMode />);
-      return;
-    }
-
-    if (host.parentElement !== shell) shell.appendChild(host);
+    ensureStableHost(shell);
+    suppressAppOwnedPanels(shell);
   };
 
   const schedule = () => {
@@ -398,4 +440,4 @@ function installModule008RouteRecovery() {
   });
 }
 
-installModule008RouteRecovery();
+installModule008StableRouteOwner();
