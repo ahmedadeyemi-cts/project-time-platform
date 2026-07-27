@@ -5,13 +5,10 @@ function getProjectPulseAuthHeaders() {
   try {
     const raw = window.localStorage.getItem('projectPulseAuthSession');
     if (!raw) return {};
-
     const session = JSON.parse(raw);
-    if (!session?.sessionToken) return {};
-
-    return {
-      'X-ProjectPulse-Session': session.sessionToken
-    };
+    return session?.sessionToken
+      ? { 'X-ProjectPulse-Session': session.sessionToken }
+      : {};
   } catch {
     return {};
   }
@@ -19,82 +16,86 @@ function getProjectPulseAuthHeaders() {
 
 async function readApiErrorMessage(response, path) {
   const raw = await response.text();
-
   if (!raw) return `${path} returned HTTP ${response.status}`;
 
   try {
     const parsed = JSON.parse(raw);
-    return `${path} returned HTTP ${response.status}: ${parsed.message || parsed.detail || parsed.status || raw}`;
+    return parsed.message || parsed.detail || parsed.status || raw;
   } catch {
-    return `${path} returned HTTP ${response.status}: ${raw}`;
+    return raw;
   }
 }
 
 async function fetchJson(path) {
-  const response = await fetch(path, {
-    headers: getProjectPulseAuthHeaders()
-  });
-
-  if (!response.ok) {
-    throw new Error(await readApiErrorMessage(response, path));
-  }
-
+  const response = await fetch(path, { headers: getProjectPulseAuthHeaders() });
+  if (!response.ok) throw new Error(await readApiErrorMessage(response, path));
   return response.json();
 }
 
 function formatDateTime(value) {
-  if (!value) return 'Not available';
+  if (!value) return 'Time not recorded';
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toLocaleString();
+}
 
-  try {
-    return new Date(value).toLocaleString();
-  } catch {
-    return String(value);
-  }
+function humanize(value) {
+  return String(value || 'System')
+    .replaceAll('_', ' ')
+    .replaceAll('-', ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function statusLabel(status) {
-  if (status === 'success') return 'Success';
-  if (status === 'failure') return 'Failure';
-  if (status === 'warning') return 'Warning';
-  if (status === 'pending') return 'Pending';
-  return status || 'Unknown';
+  const labels = {
+    success: 'Success',
+    failure: 'Failure',
+    warning: 'Warning',
+    pending: 'Pending',
+    info: 'Information'
+  };
+  return labels[status] || humanize(status);
 }
 
-function categoryLabel(category) {
-  if (category === 'authentication') return 'Authentication';
-  if (category === 'password_reset') return 'Password Reset';
-  if (category === 'azure_sync') return 'Azure / Entra Sync';
-  if (category === 'notification') return 'Notification';
-  if (category === 'system_audit') return 'System Audit';
-  return category || 'Unknown';
+function compactValue(value) {
+  if (value === null || value === undefined || value === '') return 'Not recorded';
+  if (typeof value === 'object') return JSON.stringify(value, null, 2);
+  return String(value);
 }
 
 export default function AuditHistoryPanel() {
-  const [days, setDays] = useState('14');
-  const [category, setCategory] = useState('all');
-  const [status, setStatus] = useState('all');
-  const [search, setSearch] = useState('');
-  const [querySearch, setQuerySearch] = useState('');
-  const [auditData, setAuditData] = useState({ loading: true, data: null, error: null });
+  const [filters, setFilters] = useState({
+    days: '14',
+    category: 'all',
+    status: 'all',
+    source: 'all',
+    search: ''
+  });
+  const [submittedSearch, setSubmittedSearch] = useState('');
+  const [auditData, setAuditData] = useState({
+    loading: true,
+    data: null,
+    error: ''
+  });
 
   async function loadAuditHistory() {
-    setAuditData((current) => ({ ...current, loading: true, error: null }));
-
+    setAuditData((current) => ({ ...current, loading: true, error: '' }));
     const params = new URLSearchParams({
-      days,
-      category,
-      status,
-      search: querySearch
+      days: filters.days,
+      category: filters.category,
+      status: filters.status,
+      source: filters.source,
+      search: submittedSearch,
+      limit: '500'
     });
 
     try {
-      const result = await fetchJson(`/api/audit/history?${params.toString()}`);
-      setAuditData({ loading: false, data: result, error: null });
+      const result = await fetchJson(`/api/admin/audit-history/events?${params.toString()}`);
+      setAuditData({ loading: false, data: result, error: '' });
     } catch (error) {
       setAuditData({
         loading: false,
         data: null,
-        error: error instanceof Error ? error.message : 'Unable to load audit history.'
+        error: error instanceof Error ? error.message : 'Audit and History could not be loaded.'
       });
     }
   }
@@ -102,164 +103,179 @@ export default function AuditHistoryPanel() {
   useEffect(() => {
     void loadAuditHistory();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [days, category, status, querySearch]);
+  }, [filters.days, filters.category, filters.status, filters.source, submittedSearch]);
 
   const events = auditData.data?.events ?? [];
-
-  const summary = useMemo(() => {
-    return events.reduce(
-      (accumulator, event) => {
-        accumulator.total += 1;
-        accumulator[event.status] = (accumulator[event.status] ?? 0) + 1;
-        return accumulator;
-      },
-      { total: 0, success: 0, failure: 0, warning: 0, pending: 0 }
-    );
-  }, [events]);
+  const summary = auditData.data?.summary ?? {
+    total: 0,
+    success: 0,
+    failure: 0,
+    warning: 0,
+    pending: 0,
+    info: 0,
+    immutable: 0
+  };
+  const availableSources = useMemo(
+    () => (auditData.data?.sourceStates ?? []).filter((source) => source.status === 'available'),
+    [auditData.data]
+  );
 
   function applySearch(event) {
     event.preventDefault();
-    setQuerySearch(search.trim());
+    setSubmittedSearch(filters.search.trim());
   }
 
   return (
     <section id="audit-history" className="panel audit-history-panel">
-      <div className="section-header compact">
+      <div className="audit-history-hero">
         <div>
-          <p className="eyebrow">Security & Audit</p>
-          <h2>Audit and failure history</h2>
-          <p className="muted">
-            Review successful logins, failed login attempts, password reset workflow history, Azure sync events,
-            notification failures, and system audit events.
+          <p className="eyebrow">Module 008 · Security & Audit</p>
+          <h1>Audit and History</h1>
+          <p>
+            Review administrative changes, authentication activity, approvals, notifications,
+            integrations, service actions, API lifecycle events, and other system history from one place.
+            Select an event to open its sanitized evidence and source details.
           </p>
         </div>
-        <button type="button" className="secondary-action" onClick={loadAuditHistory} disabled={auditData.loading}>
-          Refresh
-        </button>
+        <div className="audit-history-hero-actions">
+          <span className={auditData.data?.centralAudit?.immutable ? 'audit-ledger-state ready' : 'audit-ledger-state'}>
+            {auditData.data?.centralAudit?.immutable ? 'Immutable ledger ready' : 'Immutable ledger pending migration'}
+          </span>
+          <button type="button" className="secondary-action" onClick={loadAuditHistory} disabled={auditData.loading}>
+            {auditData.loading ? 'Refreshing…' : 'Refresh history'}
+          </button>
+        </div>
       </div>
 
-      <div className="audit-summary-grid">
-        <article>
-          <span>Total events</span>
-          <strong>{summary.total}</strong>
-        </article>
-        <article>
-          <span>Success</span>
-          <strong>{summary.success}</strong>
-        </article>
-        <article>
-          <span>Failures</span>
-          <strong>{summary.failure}</strong>
-        </article>
-        <article>
-          <span>Warnings</span>
-          <strong>{summary.warning}</strong>
-        </article>
-        <article>
-          <span>Pending</span>
-          <strong>{summary.pending}</strong>
-        </article>
+      <div className="audit-summary-grid" aria-label="Audit summary">
+        {[
+          ['All events', summary.total, 'all'],
+          ['Successful', summary.success, 'success'],
+          ['Warnings', summary.warning, 'warning'],
+          ['Failures', summary.failure, 'failure'],
+          ['Pending', summary.pending, 'pending'],
+          ['Immutable', summary.immutable, 'immutable']
+        ].map(([label, value, tone]) => (
+          <article className={`audit-summary-card ${tone}`} key={label}>
+            <span>{label}</span>
+            <strong>{value ?? 0}</strong>
+          </article>
+        ))}
       </div>
 
       <form className="audit-filter-bar" onSubmit={applySearch}>
         <label>
           Lookback
-          <select value={days} onChange={(event) => setDays(event.target.value)}>
+          <select value={filters.days} onChange={(event) => setFilters((current) => ({ ...current, days: event.target.value }))}>
             <option value="1">Last 24 hours</option>
             <option value="7">Last 7 days</option>
             <option value="14">Last 14 days</option>
             <option value="30">Last 30 days</option>
             <option value="90">Last 90 days</option>
             <option value="365">Last year</option>
+            <option value="3650">All retained history</option>
           </select>
         </label>
 
         <label>
           Category
-          <select value={category} onChange={(event) => setCategory(event.target.value)}>
+          <select value={filters.category} onChange={(event) => setFilters((current) => ({ ...current, category: event.target.value }))}>
             <option value="all">All categories</option>
-            <option value="authentication">Authentication</option>
-            <option value="password_reset">Password Reset</option>
-            <option value="azure_sync">Azure / Entra Sync</option>
-            <option value="notification">Notification</option>
-            <option value="system_audit">System Audit</option>
+            {(auditData.data?.categories ?? []).map((category) => (
+              <option value={category} key={category}>{humanize(category)}</option>
+            ))}
           </select>
         </label>
 
         <label>
           Status
-          <select value={status} onChange={(event) => setStatus(event.target.value)}>
+          <select value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}>
             <option value="all">All statuses</option>
             <option value="success">Success</option>
-            <option value="failure">Failure</option>
             <option value="warning">Warning</option>
+            <option value="failure">Failure</option>
             <option value="pending">Pending</option>
+            <option value="info">Information</option>
           </select>
         </label>
 
         <label>
-          Search
+          Source
+          <select value={filters.source} onChange={(event) => setFilters((current) => ({ ...current, source: event.target.value }))}>
+            <option value="all">All sources</option>
+            {availableSources.map((source) => (
+              <option value={source.source} key={source.source}>
+                {source.label} ({source.eventCount})
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="audit-search-field">
+          Search history
           <input
             type="search"
-            value={search}
-            placeholder="Actor, target, event, details..."
-            onChange={(event) => setSearch(event.target.value)}
+            value={filters.search}
+            placeholder="Person, event, target, source, correlation…"
+            onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))}
           />
         </label>
 
-        <button type="submit" className="primary-action">Apply</button>
+        <button type="submit" className="primary-action">Search</button>
       </form>
 
-      {auditData.error ? (
-        <div className="manager-empty-state error">{auditData.error}</div>
-      ) : null}
-
-      {auditData.loading ? (
-        <div className="manager-empty-state">Loading audit history...</div>
-      ) : null}
-
+      {auditData.error ? <div className="audit-empty-state error">{auditData.error}</div> : null}
+      {auditData.loading ? <div className="audit-empty-state">Loading unified audit history…</div> : null}
       {!auditData.loading && !auditData.error && events.length === 0 ? (
-        <div className="manager-empty-state">No audit events match the selected filters.</div>
+        <div className="audit-empty-state">No retained events match the selected filters.</div>
       ) : null}
 
       {events.length > 0 ? (
-        <div className="audit-table-wrap">
-          <table className="audit-table">
-            <thead>
-              <tr>
-                <th>Time</th>
-                <th>Category</th>
-                <th>Status</th>
-                <th>Event</th>
-                <th>Actor</th>
-                <th>Target</th>
-                <th>Source</th>
-                <th>Details</th>
-                <th>IP</th>
-              </tr>
-            </thead>
-            <tbody>
-              {events.map((event) => (
-                <tr key={event.eventId}>
-                  <td>{formatDateTime(event.eventTime)}</td>
-                  <td>{categoryLabel(event.category)}</td>
-                  <td>
-                    <span className={`audit-status ${event.status}`}>
-                      {statusLabel(event.status)}
-                    </span>
-                  </td>
-                  <td><strong>{event.eventType}</strong></td>
-                  <td>{event.actor}</td>
-                  <td>{event.target}</td>
-                  <td>{event.source}</td>
-                  <td className="audit-details">{event.details || 'No details recorded.'}</td>
-                  <td>{event.ipAddress || '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="audit-event-list">
+          {events.map((event) => (
+            <details className={`audit-event-card ${event.status}`} key={event.eventId}>
+              <summary>
+                <span className={`audit-status ${event.status}`}>{statusLabel(event.status)}</span>
+                <span className="audit-event-summary-copy">
+                  <strong>{event.eventType}</strong>
+                  <small>{event.summary || 'No summary was recorded.'}</small>
+                </span>
+                <span className="audit-event-context">
+                  <strong>{formatDateTime(event.eventTime)}</strong>
+                  <small>{humanize(event.category)} · {event.source}</small>
+                </span>
+                <span className="audit-event-chevron" aria-hidden="true">⌄</span>
+              </summary>
+
+              <div className="audit-event-detail">
+                <div className="audit-event-facts">
+                  <div><span>Actor</span><strong>{event.actor || 'System / not recorded'}</strong></div>
+                  <div><span>Target</span><strong>{event.target || 'Not specified'}</strong></div>
+                  <div><span>Source table</span><strong>{event.sourceTable || 'Not recorded'}</strong></div>
+                  <div><span>Source record</span><strong>{event.sourceRecordId || 'Not recorded'}</strong></div>
+                  <div><span>Correlation ID</span><strong>{event.correlationId || 'Not recorded'}</strong></div>
+                  <div><span>Client IP</span><strong>{event.ipAddress || 'Not recorded'}</strong></div>
+                  <div><span>Evidence policy</span><strong>{event.immutable ? 'Immutable / append-only' : 'Source-controlled history'}</strong></div>
+                  <div><span>Category</span><strong>{humanize(event.category)}</strong></div>
+                </div>
+
+                <div className="audit-evidence-block">
+                  <div>
+                    <p className="eyebrow">Sanitized evidence</p>
+                    <h3>Recorded details</h3>
+                  </div>
+                  <pre>{compactValue(event.details)}</pre>
+                </div>
+              </div>
+            </details>
+          ))}
         </div>
       ) : null}
+
+      <div className="audit-source-footnote">
+        <strong>{availableSources.length}</strong> audit/history source{availableSources.length === 1 ? '' : 's'} available.
+        Sensitive fields such as passwords, tokens, secrets, credentials, and connection strings are redacted by the API.
+      </div>
     </section>
   );
 }
