@@ -393,14 +393,14 @@ export default function MicrosoftIntegrationDualConnectionPortal() {
     }
   }
 
-  async function persistConfiguration() {
-    validateActiveConnection('integration');
+  async function persistConfiguration(purpose = 'integration') {
+    validateActiveConnection(purpose);
     const persisted = serializedConfiguration();
     const document = {
       ...nativeDocument,
       configuration: {
         ...(nativeDocument?.configuration || {}),
-        applicationId: activeTenant.services.clientId,
+        applicationId: activeTenant.services.clientId || nativeDocument?.configuration?.applicationId || '',
         tenantId: activeTenant.tenantId,
         ownerTeam: nativeDocument?.configuration?.ownerTeam || 'Platform Administration',
         notes: `${CONFIG_MARKER}${JSON.stringify(persisted)}`
@@ -412,38 +412,40 @@ export default function MicrosoftIntegrationDualConnectionPortal() {
       body: JSON.stringify({ expectedRevision: revision, document })
     });
 
-    // Module 010 continues to use the Microsoft services/Graph application, never the SSO App Registration.
-    await Promise.all([
-      fetchJson('/api/admin/azure/config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tenantId: activeTenant.tenantId,
-          clientId: activeTenant.services.clientId,
-          authorityUrl: activeTenant.sso.authorityUrl || `https://login.microsoftonline.com/${activeTenant.tenantId}`,
-          redirectUri: activeTenant.sso.redirectUri || '',
-          graphScope: normalizeServicesScopes(activeTenant.services.graphScopes),
-          syncEnabled: Boolean(activeTenant.directorySyncEnabled),
-          defaultRoleCode: activeTenant.defaultRoleCode,
-          syncFrequencyHours: Number(activeTenant.syncFrequencyHours || 24)
+    if (purpose !== 'sso') {
+      // Module 010 continues to use the Microsoft services/Graph application, never the SSO App Registration.
+      await Promise.all([
+        fetchJson('/api/admin/azure/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tenantId: activeTenant.tenantId,
+            clientId: activeTenant.services.clientId,
+            authorityUrl: activeTenant.sso.authorityUrl || `https://login.microsoftonline.com/${activeTenant.tenantId}`,
+            redirectUri: activeTenant.sso.redirectUri || '',
+            graphScope: normalizeServicesScopes(activeTenant.services.graphScopes),
+            syncEnabled: Boolean(activeTenant.directorySyncEnabled),
+            defaultRoleCode: activeTenant.defaultRoleCode,
+            syncFrequencyHours: Number(activeTenant.syncFrequencyHours || 24)
+          })
+        }),
+        fetchJson('/api/admin/azure/import-settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            environmentMode: activeTenant.environmentMode,
+            tenantDomain: activeTenant.tenantDomain,
+            sourceProvider: activeTenant.sourceProvider,
+            tenantName: activeTenant.name,
+            importSourceType: 'ALL_USERS',
+            graphGroupId: '',
+            graphFilter: '',
+            defaultRoleCode: activeTenant.defaultRoleCode,
+            disableMissingFromSource: false
+          })
         })
-      }),
-      fetchJson('/api/admin/azure/import-settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          environmentMode: activeTenant.environmentMode,
-          tenantDomain: activeTenant.tenantDomain,
-          sourceProvider: activeTenant.sourceProvider,
-          tenantName: activeTenant.name,
-          importSourceType: 'ALL_USERS',
-          graphGroupId: '',
-          graphFilter: '',
-          defaultRoleCode: activeTenant.defaultRoleCode,
-          disableMissingFromSource: false
-        })
-      })
-    ]);
+      ]);
+    }
 
     setNativeDocument(saved.document || document);
     setRevision(Number(saved.revision || revision + 1));
@@ -514,7 +516,7 @@ export default function MicrosoftIntegrationDualConnectionPortal() {
     setMessage('');
     setError('');
     try {
-      await persistConfiguration();
+      await persistConfiguration('integration');
       setMessage(`${activeTenant.environmentMode === 'production' ? 'Production' : 'Test'} SSO, Microsoft services, Module 010 preview, and Module 065 mail metadata saved. Runtime activation status appears above.`);
       await load();
     } catch (saveError) {
@@ -535,7 +537,7 @@ export default function MicrosoftIntegrationDualConnectionPortal() {
     setError('');
     try {
       validateActiveConnection(purpose);
-      await persistConfiguration();
+      await persistConfiguration(purpose);
       const result = purpose === 'sso'
         ? await fetchJson('/api/microsoft-integration/sso-client-secret', {
           method: 'PUT',
@@ -568,7 +570,7 @@ export default function MicrosoftIntegrationDualConnectionPortal() {
     setError('');
     try {
       validateActiveConnection(purpose);
-      await persistConfiguration();
+      await persistConfiguration(purpose);
       await applyConnectionRuntime(purpose);
       const result = purpose === 'sso'
         ? await fetchJson('/api/microsoft-integration/sso-test', {
