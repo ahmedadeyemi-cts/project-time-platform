@@ -1,6 +1,9 @@
 name: Validate Admin Experience 008 009 Test Deployment
 
 on:
+  push:
+    branches:
+      - 'release/modules-008-009-admin-experience-test-*'
   pull_request:
     paths:
       - '.github/workflows/projectpulse-deploy-admin-experience-008-009-test.yml'
@@ -12,6 +15,7 @@ on:
 
 permissions:
   contents: read
+  statuses: write
 
 jobs:
   validate:
@@ -91,3 +95,36 @@ jobs:
       - name: Build frontend production bundle
         working-directory: src/frontend/project-time-web
         run: npm run build
+
+      - name: Publish exact-commit deployment-control status
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
+          COMMIT_SHA: ${{ github.sha }}
+          API_ROOT: ${{ github.api_url }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -Eeuo pipefail
+          if [[ "$JOB_STATUS" == success ]]; then
+            STATE=success
+            DESCRIPTION='Modules 008/009 deployment controls and full targeted validation passed.'
+          else
+            STATE=failure
+            DESCRIPTION='Modules 008/009 deployment-control validation failed.'
+          fi
+          PAYLOAD="$(jq -nc \
+            --arg state "$STATE" \
+            --arg context 'admin-experience-008-009/deployment-controls' \
+            --arg description "$DESCRIPTION" \
+            --arg target_url "$RUN_URL" \
+            '{state:$state,context:$context,description:$description,target_url:$target_url}')"
+          curl --fail-with-body --silent --show-error \
+            --request POST \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'Accept: application/vnd.github+json' \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            --data "$PAYLOAD" \
+            "$API_ROOT/repos/$REPOSITORY/statuses/$COMMIT_SHA"
