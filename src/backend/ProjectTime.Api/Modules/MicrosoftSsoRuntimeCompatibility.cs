@@ -14,6 +14,7 @@ public static class MicrosoftSsoRuntimeCompatibility
 {
     private const string TestPath = "/api/microsoft-integration/sso-test";
     private const string ApplyPath = "/api/microsoft-integration/sso-apply-profile";
+    private const string CallbackPath = "/api/auth/sso/callback";
 
     private static readonly HashSet<string> WritePermissions = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -71,8 +72,35 @@ public static class MicrosoftSsoRuntimeCompatibility
                 return;
             }
 
+            var clientId = FirstString(payload, "clientId", "client_id", "ssoClientId", "sso_client_id");
+            if (!Guid.TryParse(clientId, out var clientGuid))
+            {
+                await Results.BadRequest(new
+                {
+                    module = "065",
+                    status = "invalid_sso_client_id",
+                    message = "The SSO application/client ID must be a GUID."
+                }).ExecuteAsync(context);
+                return;
+            }
+
+            var redirectValue = FirstString(payload, "redirectUri", "redirect_uri");
+            if (!TryRedirectUri(redirectValue, out var redirectUri))
+            {
+                await Results.BadRequest(new
+                {
+                    module = "065",
+                    status = "invalid_sso_redirect_uri",
+                    expectedPath = CallbackPath,
+                    message = $"The SSO redirect URI must use HTTPS and end with {CallbackPath}."
+                }).ExecuteAsync(context);
+                return;
+            }
+
             payload["tenantId"] = tenantGuid.ToString("D");
+            payload["clientId"] = clientGuid.ToString("D");
             payload["authorityUrl"] = MicrosoftAuthority(tenantGuid);
+            payload["redirectUri"] = redirectUri;
             var bytes = Encoding.UTF8.GetBytes(payload.ToJsonString());
             context.Request.Body = new MemoryStream(bytes, writable: false);
             context.Request.ContentLength = bytes.Length;
@@ -122,7 +150,7 @@ public static class MicrosoftSsoRuntimeCompatibility
         if (!Guid.TryParse(request?.ClientId, out var clientId))
             return InvalidRequest("The SSO application/client ID must be a GUID.");
         if (!TryRedirectUri(request?.RedirectUri, out var redirectUri))
-            return InvalidRequest("The redirect URI must use HTTPS, except localhost and 127.0.0.1 development callbacks may use HTTP.");
+            return InvalidRequest($"The redirect URI must use HTTPS and end with {CallbackPath}.");
 
         var allowedDomains = NormalizeDomains(request?.AllowedDomains);
         if (allowedDomains.Length == 0)
@@ -136,29 +164,49 @@ public static class MicrosoftSsoRuntimeCompatibility
             redirectUri,
             string.Join(',', allowedDomains));
 
-        ApplyEnvironmentProfile(profile);
+        var runtimeEnvironment = RuntimeEnvironmentMode(context.Request.Host.Host);
+        if (runtimeEnvironment == profile.EnvironmentMode
+            && !RedirectMatchesCurrentHost(profile.RedirectUri, context))
+        {
+            return Results.Json(new
+            {
+                module = "065",
+                status = "sso_redirect_host_mismatch",
+                configuredRedirectUri = profile.RedirectUri,
+                expectedRedirectUri = ExpectedRedirectUri(context),
+                message = "The active SSO redirect URI must exactly match this ProjectPulse environment and the Entra App Registration redirect URI."
+            }, statusCode: StatusCodes.Status409Conflict);
+        }
+
+        var runtimeActivated = ApplyEnvironmentProfile(profile, runtimeEnvironment);
+        var secretAvailable = !string.IsNullOrWhiteSpace(ActiveSsoSecret(profile.EnvironmentMode));
 
         return Results.Ok(new
         {
             module = "065",
-            status = "sso_runtime_profile_applied",
+            status = runtimeActivated
+                ? "sso_runtime_profile_applied"
+                : "sso_profile_saved_for_other_environment",
             profile.EnvironmentMode,
+            runtimeEnvironment,
             connectionPurpose = "sso_app_registration",
-            runtimeActivated = NormalizeEnvironment(
-                Environment.GetEnvironmentVariable("PROJECTPULSE_ENTRA_MODE")) == profile.EnvironmentMode,
+            runtimeActivated,
             profile.TenantId,
             profile.ClientId,
             profile.AuthorityUrl,
             profile.RedirectUri,
             allowedDomains,
+            secretAvailable,
             servicesConnectionChanged = false,
             graphEnvironmentChanged = false,
             secretReturned = false,
-            message = "The saved SSO metadata is available to the running authentication flow without changing Microsoft services credentials."
+            message = runtimeActivated
+                ? "The Module 065 SSO profile is active for the running authentication flow without changing Microsoft services credentials."
+                : $"The {DisplayEnvironment(profile.EnvironmentMode)} SSO profile was preserved, but this API is running in the {DisplayEnvironment(runtimeEnvironment)} environment."
         });
     }
 
-    private static void ApplyEnvironmentProfile(RuntimeProfile profile)
+    private static bool ApplyEnvironmentProfile(RuntimeProfile profile, string runtimeEnvironment)
     {
         var prefix = profile.EnvironmentMode == "production"
             ? "PROJECTPULSE_ENTRA_PRODUCTION_SSO_"
@@ -169,14 +217,57 @@ public static class MicrosoftSsoRuntimeCompatibility
         Environment.SetEnvironmentVariable(prefix + "REDIRECT_URI", profile.RedirectUri);
         Environment.SetEnvironmentVariable(prefix + "ALLOWED_DOMAINS", profile.AllowedDomains);
 
-        var activeMode = NormalizeEnvironment(Environment.GetEnvironmentVariable("PROJECTPULSE_ENTRA_MODE"));
-        if (activeMode != profile.EnvironmentMode) return;
+        if (!string.Equals(runtimeEnvironment, profile.EnvironmentMode, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        Environment.SetEnvironmentVariable("PROJECTPULSE_SSO_MODE", profile.EnvironmentMode);
         Environment.SetEnvironmentVariable("PROJECTPULSE_SSO_TENANT_ID", profile.TenantId);
         Environment.SetEnvironmentVariable("PROJECTPULSE_SSO_CLIENT_ID", profile.ClientId);
         Environment.SetEnvironmentVariable("PROJECTPULSE_SSO_AUTHORITY", profile.AuthorityUrl);
         Environment.SetEnvironmentVariable("PROJECTPULSE_SSO_REDIRECT_URI", profile.RedirectUri);
         Environment.SetEnvironmentVariable("PROJECTPULSE_SSO_ALLOWED_DOMAINS", profile.AllowedDomains);
+
+        var secret = ActiveSsoSecret(profile.EnvironmentMode);
+        if (!string.IsNullOrWhiteSpace(secret))
+            Environment.SetEnvironmentVariable("PROJECTPULSE_SSO_CLIENT_SECRET", secret);
+        return true;
     }
+
+    private static string ActiveSsoSecret(string environmentMode)
+    {
+        var environmentName = environmentMode == "production"
+            ? "PROJECTPULSE_ENTRA_PRODUCTION_SSO_CLIENT_SECRET"
+            : "PROJECTPULSE_ENTRA_TEST_SSO_CLIENT_SECRET";
+        return First(
+            Environment.GetEnvironmentVariable(environmentName),
+            NormalizeEnvironment(Environment.GetEnvironmentVariable("PROJECTPULSE_SSO_MODE")) == environmentMode
+                ? Environment.GetEnvironmentVariable("PROJECTPULSE_SSO_CLIENT_SECRET")
+                : string.Empty);
+    }
+
+    private static string RuntimeEnvironmentMode(string? host)
+    {
+        foreach (var name in new[] { "PROJECTPULSE_ENVIRONMENT", "PROJECTPULSE_SSO_MODE", "PROJECTPULSE_ENTRA_MODE", "ASPNETCORE_ENVIRONMENT" })
+        {
+            var value = NormalizeEnvironment(Environment.GetEnvironmentVariable(name));
+            if (!string.IsNullOrWhiteSpace(value)) return value;
+        }
+        var normalizedHost = (host ?? string.Empty).ToLowerInvariant();
+        if (normalizedHost.Contains("-test.") || normalizedHost.Contains("localhost") || normalizedHost.Contains("127.0.0.1")) return "test";
+        if (normalizedHost.Contains("-prod.") || normalizedHost.Contains("ussignal")) return "production";
+        return string.Empty;
+    }
+
+    private static bool RedirectMatchesCurrentHost(string redirectUri, HttpContext context)
+    {
+        if (!Uri.TryCreate(redirectUri, UriKind.Absolute, out var uri)) return false;
+        return uri.Host.Equals(context.Request.Host.Host, StringComparison.OrdinalIgnoreCase)
+            && uri.Scheme.Equals(context.Request.Scheme, StringComparison.OrdinalIgnoreCase)
+            && uri.AbsolutePath.TrimEnd('/').Equals(CallbackPath, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string ExpectedRedirectUri(HttpContext context) =>
+        $"{context.Request.Scheme}://{context.Request.Host}{CallbackPath}";
 
     private static async Task<AccessResult> ResolveAccessAsync(HttpContext context)
     {
@@ -302,7 +393,9 @@ public static class MicrosoftSsoRuntimeCompatibility
         if (!uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
             && !(local && uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)))
             return false;
-        normalized = uri.AbsoluteUri;
+        if (!uri.AbsolutePath.TrimEnd('/').Equals(CallbackPath, StringComparison.OrdinalIgnoreCase))
+            return false;
+        normalized = uri.AbsoluteUri.TrimEnd('/');
         return true;
     }
 
@@ -332,6 +425,12 @@ public static class MicrosoftSsoRuntimeCompatibility
         }
         return string.Empty;
     }
+
+    private static string First(params string?[] values) =>
+        values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim() ?? string.Empty;
+
+    private static string DisplayEnvironment(string? environmentMode) =>
+        environmentMode == "production" ? "Production" : environmentMode == "test" ? "Test" : "unknown";
 
     private static IResult InvalidRequest(string message) => Results.BadRequest(new
     {
