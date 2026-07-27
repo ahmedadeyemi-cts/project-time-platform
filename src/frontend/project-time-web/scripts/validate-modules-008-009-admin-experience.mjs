@@ -4,6 +4,7 @@ import path from 'node:path';
 const frontendRoot = process.cwd();
 const repositoryRoot = path.resolve(frontendRoot, '..', '..', '..');
 const files = {
+  app: 'src/frontend/project-time-web/src/App.jsx',
   auditUi: 'src/frontend/project-time-web/src/AuditHistoryPanel.jsx',
   auditCss: 'src/frontend/project-time-web/src/audit-history.css',
   userUi: 'src/frontend/project-time-web/src/UserAdministrationPanel.jsx',
@@ -29,10 +30,11 @@ function check(name, condition, evidence) {
   console.log(`MODULES_008_009_${name}=${condition ? 'PASSED' : 'FAILED'} — ${evidence}`);
 }
 
-for (const name of ['auditUi', 'auditCss', 'userUi', 'userCss', 'themeJs', 'themeCss', 'package']) {
+for (const name of ['app', 'auditUi', 'auditCss', 'userUi', 'userCss', 'themeJs', 'themeCss', 'package']) {
   check(`${name.toUpperCase()}_EXISTS`, exists(files[name]), files[name]);
 }
 
+const app = read(files.app);
 const auditUi = read(files.auditUi);
 const auditCss = read(files.auditCss);
 const userUi = read(files.userUi);
@@ -56,55 +58,44 @@ check(
     && auditUi.includes('Authorization: `Bearer ${session.token}`'),
   'Module 008 retains every supported ProjectPulse session-header contract'
 );
+
+const appAuditPanelMounts = app.match(/<AuditHistoryPanel\s*\/>/g) ?? [];
 check(
-  'AUDIT_STABLE_ROUTE_OWNER',
-  auditUi.includes('function installModule008StableRouteOwner()')
-    && auditUi.includes("host.setAttribute('data-module-008-stable-route-host', 'true')")
-    && auditUi.includes('root.render(<AuditHistoryPanel routeOwnerMode />)')
-    && auditUi.includes("data-module-008-stable-route-owner={routeOwnerMode ? 'true' : undefined}")
-    && auditUi.includes('installModule008StableRouteOwner();'),
-  'Module 008 has one module-owned stable route host instead of a temporary recovery mount'
+  'AUDIT_SINGLE_APP_OWNER',
+  appAuditPanelMounts.length === 1
+    && app.includes("activeRoute === 'audit-history'")
+    && app.includes("hasPermission('VIEW_AUDIT_TRAIL')")
+    && app.includes("hasPermission('SYSTEM_ADMINISTRATION')")
+    && app.includes("hasPermission('MANAGE_ALL')"),
+  'Module 008 has exactly one permission-gated React owner in App'
 );
 check(
-  'AUDIT_SINGLE_VISIBLE_OWNER',
-  auditUi.includes('const suppressAppOwnedPanels = (shell) =>')
-    && auditUi.includes("panel.removeAttribute('id');")
-    && auditUi.includes('panel.hidden = true;')
-    && auditUi.includes("data-module-008-superseded-by-stable-route-owner")
-    && auditUi.includes('restoreSuppressedAppPanels();'),
-  'the App-owned duplicate is hidden and its duplicate id removed while the stable owner is active'
+  'AUDIT_NO_SELF_MOUNT',
+  !auditUi.includes("from 'react-dom/client'")
+    && !auditUi.includes('createRoot(')
+    && !auditUi.includes('installModule008RouteRecovery')
+    && !auditUi.includes('installModule008StableRouteOwner')
+    && !auditUi.includes('data-module-008-route-recovery-host')
+    && !auditUi.includes('data-module-008-stable-route-host')
+    && !auditUi.includes('root.render(<AuditHistoryPanel'),
+  'Module 008 no longer creates a second hidden component or duplicate audit query'
 );
 check(
   'AUDIT_NO_HANDOFF_FLICKER',
-  !auditUi.includes('function installModule008RouteRecovery()')
-    && !auditUi.includes('findAppOwnedPanel(shell)')
-    && !auditUi.includes('if (findAppOwnedPanel(shell))')
-    && !auditUi.includes('root.render(<AuditHistoryPanel recoveryMode />)')
-    && auditUi.includes('ensureStableHost(shell);')
-    && auditUi.includes('suppressAppOwnedPanels(shell);'),
-  'the panel no longer mounts, yields, unmounts, and remounts as permission data settles'
+  !auditUi.includes('MutationObserver')
+    && !auditUi.includes('requestAnimationFrame(synchronize)')
+    && !auditUi.includes('window.setTimeout(schedule')
+    && !auditUi.includes('panel.hidden = true'),
+  'Module 008 no longer hands rendering between two competing DOM roots'
 );
-check(
-  'AUDIT_VIEW_AS_ISOLATION',
-  auditUi.includes("readStoredJson('projectPulseViewAsUser')")
-    && auditUi.includes('if (!readProjectPulseAuthSession() || readModule008ViewAsUser())')
-    && auditUi.includes("window.addEventListener('projectpulse:view-as-changed', schedule)")
-    && auditUi.includes("event.key === 'projectPulseAuthSession' || event.key === 'projectPulseViewAsUser'"),
-  'stable route ownership remains disabled during Administrator View-As and reacts to effective-user changes'
-);
-check(
-  'AUDIT_NO_UNBOUNDED_RETRY',
-  !auditUi.includes('retryTimer')
-    && !auditUi.includes('window.setTimeout(synchronize, 50)')
-    && auditUi.includes("const shell = document.querySelector('.app-shell.route-audit-history');\n    if (!shell) {\n      removeStableOwner();\n      return;\n    }"),
-  'unauthenticated or non-route shells do not create an unbounded polling loop'
-);
-const routeOwnerSource = auditUi.slice(auditUi.indexOf('function readModule008ActiveRoute()'));
 check(
   'AUDIT_BACKEND_AUTHORITY',
-  routeOwnerSource.length > 0
-    && !/hasPermission|VIEW_AUDIT_TRAIL|SYSTEM_ADMINISTRATION|MANAGE_ALL/.test(routeOwnerSource),
-  'stable route ownership does not grant permissions; the API remains authoritative'
+  auditUi.includes('/api/admin/audit-history/events')
+    && !auditUi.includes('hasPermission(')
+    && !auditUi.includes('VIEW_AUDIT_TRAIL')
+    && !auditUi.includes('SYSTEM_ADMINISTRATION')
+    && !auditUi.includes('MANAGE_ALL'),
+  'component data access remains authorized by the API while App owns visibility'
 );
 
 check('USER_TABBED_INTERFACE', ['Manage users', 'Bulk updates', 'Create local user', 'Manager team scope'].every((value) => userUi.includes(value)), 'four clear Module 009 workspaces');
