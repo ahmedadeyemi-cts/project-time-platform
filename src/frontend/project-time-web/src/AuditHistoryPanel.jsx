@@ -1,17 +1,34 @@
 import { useEffect, useMemo, useState } from 'react';
+import { createRoot } from 'react-dom/client';
 import './audit-history.css';
 
-function getProjectPulseAuthHeaders() {
+function readStoredJson(key) {
   try {
-    const raw = window.localStorage.getItem('projectPulseAuthSession');
-    if (!raw) return {};
-    const session = JSON.parse(raw);
-    return session?.sessionToken
-      ? { 'X-ProjectPulse-Session': session.sessionToken }
-      : {};
+    const raw = window.localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : null;
   } catch {
-    return {};
+    return null;
   }
+}
+
+function readProjectPulseAuthSession() {
+  const session = readStoredJson('projectPulseAuthSession');
+  const token = session?.sessionToken || session?.token || session?.accessToken || '';
+  if (!token) return null;
+  if (session?.expiresAt && Date.now() >= Date.parse(session.expiresAt)) return null;
+  return { ...session, token };
+}
+
+function getProjectPulseAuthHeaders() {
+  const session = readProjectPulseAuthSession();
+  if (!session?.token) return {};
+
+  return {
+    'X-ProjectPulse-Session': session.token,
+    'X-Project-Pulse-Session': session.token,
+    'X-Session-Token': session.token,
+    Authorization: `Bearer ${session.token}`
+  };
 }
 
 async function readApiErrorMessage(response, path) {
@@ -62,7 +79,7 @@ function compactValue(value) {
   return String(value);
 }
 
-export default function AuditHistoryPanel() {
+export default function AuditHistoryPanel({ recoveryMode = false } = {}) {
   const [filters, setFilters] = useState({
     days: '14',
     category: 'all',
@@ -126,7 +143,11 @@ export default function AuditHistoryPanel() {
   }
 
   return (
-    <section id="audit-history" className="panel audit-history-panel">
+    <section
+      id="audit-history"
+      className="panel audit-history-panel"
+      data-module-008-route-recovery={recoveryMode ? 'true' : undefined}
+    >
       <div className="audit-history-hero">
         <div>
           <p className="eyebrow">Module 008 · Security & Audit</p>
@@ -279,3 +300,102 @@ export default function AuditHistoryPanel() {
     </section>
   );
 }
+
+function readModule008ActiveRoute() {
+  return String(window.location.hash || '')
+    .replace(/^#\/?/, '')
+    .split('?')[0]
+    .trim();
+}
+
+function readModule008ViewAsUser() {
+  const viewAs = readStoredJson('projectPulseViewAsUser');
+  return viewAs?.userId ? viewAs : null;
+}
+
+function installModule008RouteRecovery() {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+  if (window.__projectPulseModule008RouteRecoveryInstalled) return;
+  window.__projectPulseModule008RouteRecoveryInstalled = true;
+
+  let host = null;
+  let root = null;
+  let scheduled = false;
+
+  const removeRecovery = () => {
+    if (root) root.unmount();
+    if (host?.isConnected) host.remove();
+    root = null;
+    host = null;
+  };
+
+  const findAppOwnedPanel = (shell) => Array.from(shell.querySelectorAll('#audit-history'))
+    .find((panel) => !panel.closest('[data-module-008-route-recovery-host]'));
+
+  const synchronize = () => {
+    scheduled = false;
+
+    if (readModule008ActiveRoute() !== 'audit-history') {
+      removeRecovery();
+      return;
+    }
+
+    if (!readProjectPulseAuthSession() || readModule008ViewAsUser()) {
+      removeRecovery();
+      return;
+    }
+
+    const shell = document.querySelector('.app-shell.route-audit-history');
+    if (!shell) {
+      removeRecovery();
+      return;
+    }
+
+    if (findAppOwnedPanel(shell)) {
+      removeRecovery();
+      return;
+    }
+
+    if (!host) {
+      host = document.createElement('div');
+      host.setAttribute('data-module-008-route-recovery-host', 'true');
+      shell.appendChild(host);
+      root = createRoot(host);
+      root.render(<AuditHistoryPanel recoveryMode />);
+      return;
+    }
+
+    if (host.parentElement !== shell) shell.appendChild(host);
+  };
+
+  const schedule = () => {
+    if (scheduled) return;
+    scheduled = true;
+    window.requestAnimationFrame(synchronize);
+  };
+
+  const observer = new MutationObserver(schedule);
+  const begin = () => {
+    observer.observe(document.body, { childList: true, subtree: true });
+    schedule();
+    window.setTimeout(schedule, 100);
+    window.setTimeout(schedule, 500);
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', begin, { once: true });
+  } else {
+    begin();
+  }
+
+  window.addEventListener('hashchange', schedule);
+  window.addEventListener('projectpulse:auth-session-ready', schedule);
+  window.addEventListener('projectpulse:view-as-changed', schedule);
+  window.addEventListener('storage', (event) => {
+    if (event.key === 'projectPulseAuthSession' || event.key === 'projectPulseViewAsUser') {
+      schedule();
+    }
+  });
+}
+
+installModule008RouteRecovery();

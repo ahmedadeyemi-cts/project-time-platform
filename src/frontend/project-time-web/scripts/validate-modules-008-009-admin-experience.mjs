@@ -46,6 +46,60 @@ check('AUDIT_CONDENSED_DETAILS', auditUi.includes('<details') && auditUi.include
 check('AUDIT_FILTERS', ['Lookback', 'Category', 'Status', 'Source', 'Search history'].every((value) => auditUi.includes(value)), 'administrator filters are available');
 check('AUDIT_ALL_SYSTEM_WORDING', auditUi.includes('service actions') && auditUi.includes('API lifecycle events') && auditUi.includes('other system history'), 'scope covers system-wide history');
 check('AUDIT_SCOPED_STYLES', auditCss.includes('.audit-event-card') && auditCss.includes('.audit-event-facts') && auditCss.includes('.app-shell.route-audit-history'), 'Module 008 styles and route isolation');
+check('AUDIT_AUTH_FAILURE_VISIBLE', auditUi.includes('readApiErrorMessage') && auditUi.includes('audit-empty-state error') && auditUi.includes('Audit and History could not be loaded.'), 'backend authorization and session failures are visible rather than blank');
+check(
+  'AUDIT_SESSION_HEADER_COMPATIBILITY',
+  auditUi.includes("const token = session?.sessionToken || session?.token || session?.accessToken")
+    && auditUi.includes("'X-ProjectPulse-Session': session.token")
+    && auditUi.includes("'X-Project-Pulse-Session': session.token")
+    && auditUi.includes("'X-Session-Token': session.token")
+    && auditUi.includes('Authorization: `Bearer ${session.token}`'),
+  'Module 008 retains every supported ProjectPulse session-header contract'
+);
+check(
+  'AUDIT_ROUTE_RECOVERY',
+  auditUi.includes('function installModule008RouteRecovery()')
+    && auditUi.includes("readModule008ActiveRoute() !== 'audit-history'")
+    && auditUi.includes("document.querySelector('.app-shell.route-audit-history')")
+    && auditUi.includes('root.render(<AuditHistoryPanel recoveryMode />)'),
+  'Module 008 mounts its own panel when role-policy state prevents normal App rendering'
+);
+check(
+  'AUDIT_NO_DUPLICATE_PANEL',
+  auditUi.includes("find((panel) => !panel.closest('[data-module-008-route-recovery-host]'))")
+    && auditUi.includes('if (findAppOwnedPanel(shell))')
+    && auditUi.includes('removeRecovery();'),
+  'recovery yields to the normal App-owned Audit and History panel'
+);
+check(
+  'AUDIT_MODULE_OWNED_RECOVERY',
+  auditUi.includes("host.setAttribute('data-module-008-route-recovery-host', 'true')")
+    && auditUi.includes("data-module-008-route-recovery={recoveryMode ? 'true' : undefined}")
+    && auditUi.includes('installModule008RouteRecovery();'),
+  'recovery is contained inside Module 008 source without shared entry-point or Module 009 changes'
+);
+check(
+  'AUDIT_VIEW_AS_ISOLATION',
+  auditUi.includes("readStoredJson('projectPulseViewAsUser')")
+    && auditUi.includes('if (!readProjectPulseAuthSession() || readModule008ViewAsUser())')
+    && auditUi.includes("window.addEventListener('projectpulse:view-as-changed', schedule)")
+    && auditUi.includes("event.key === 'projectPulseAuthSession' || event.key === 'projectPulseViewAsUser'"),
+  'route recovery remains disabled during Administrator View-As and reacts to effective-user changes'
+);
+check(
+  'AUDIT_NO_UNBOUNDED_RETRY',
+  !auditUi.includes('retryTimer')
+    && !auditUi.includes('window.setTimeout(synchronize, 50)')
+    && auditUi.includes("const shell = document.querySelector('.app-shell.route-audit-history');\n    if (!shell) {\n      removeRecovery();\n      return;\n    }"),
+  'unauthenticated or non-route shells do not create an unbounded polling loop'
+);
+const recoverySource = auditUi.slice(auditUi.indexOf('function readModule008ActiveRoute()'));
+check(
+  'AUDIT_BACKEND_AUTHORITY',
+  recoverySource.length > 0
+    && !/hasPermission|VIEW_AUDIT_TRAIL|SYSTEM_ADMINISTRATION|MANAGE_ALL/.test(recoverySource),
+  'recovery does not duplicate frontend permission grants; the API remains authoritative'
+);
 
 check('USER_TABBED_INTERFACE', ['Manage users', 'Bulk updates', 'Create local user', 'Manager team scope'].every((value) => userUi.includes(value)), 'four clear Module 009 workspaces');
 check('USER_SEARCH_FILTERS', userUi.includes('Search users') && userUi.includes('All roles') && userUi.includes('All teams') && userUi.includes('All accounts'), 'search and user filters');
@@ -55,7 +109,13 @@ check('USER_MULTI_TEAM_MANAGER', userUi.includes('/api/admin/user-admin/manager-
 check('USER_MANAGER_EMAIL_AUTOMATION', userUi.includes('managerEmailForTeam') && userUi.includes('Automatically controlled by the active manager team assignment'), 'team manager email applied to user saves');
 check('USER_SCOPED_STYLES', userCss.includes('.user-admin-v2-tabs') && userCss.includes('.user-admin-v2-team-grid') && userCss.includes('.user-admin-v2-user-list'), 'Module 009 scoped layout');
 
-check('THEME_STRAY_TEXT_REMOVAL', themeJs.includes("/^(?:\\\\n|\\/n|n)$/i") && themeJs.includes('Node.TEXT_NODE'), 'literal newline artifact removed');
+check(
+  'THEME_STRAY_TEXT_REMOVAL',
+  themeJs.includes('Node.TEXT_NODE')
+    && themeJs.includes("String(node.textContent || '').trim()")
+    && themeJs.includes('node.remove();'),
+  'literal newline text nodes are removed without depending on regex source escaping'
+);
 check('THEME_NO_APP_EDIT_REQUIRED', userUi.includes("import './admin-experience-theme.js';") && userUi.includes("import './admin-experience-theme.css';"), 'theme bridge loads through existing Module 009 import');
 check('THEME_DESIGN', themeCss.includes('.theme-toggle.projectpulse-theme-control') && themeCss.includes("content: 'Dark mode'") && themeCss.includes("content: 'Light mode'"), 'branded light/dark control');
 
@@ -94,7 +154,9 @@ check('BUILD_GUARD', packageJson.scripts?.build?.includes('validate:modules00800
 
 console.log('');
 console.log(`MODULES_008_009_VALIDATION_CHECKS=${checks.length}`);
-if (checks.some((item) => !item.condition)) {
+const failedChecks = checks.filter((item) => !item.condition).map((item) => item.name);
+if (failedChecks.length > 0) {
+  console.error(`MODULES_008_009_FAILED_CHECKS=${failedChecks.join(',')}`);
   console.error('MODULES_008_009_CONTRACT=FAILED');
   process.exit(1);
 }
