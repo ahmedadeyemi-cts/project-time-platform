@@ -1,0 +1,415 @@
+name: ProjectPulse Deploy Admin Experience 008 009 Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_commit:
+        description: Exact verified Modules 008 and 009 administrative experience source release
+        required: true
+        default: 55ff9c3a07535ae7c7e2469cf69cdb075c51d1b3
+        type: string
+      confirmation:
+        description: Enter DEPLOY-ADMIN-EXPERIENCE-008-009-TO-TEST
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: projectpulse-deploy-admin-experience-008-009-test
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Guarded Modules 008 and 009 test deployment
+    environment: test
+    runs-on: ubuntu-latest
+    env:
+      EXPECTED_RELEASE_COMMIT: 55ff9c3a07535ae7c7e2469cf69cdb075c51d1b3
+
+    steps:
+      - name: Check out deployment controls
+        uses: actions/checkout@v5
+        with:
+          path: control
+          fetch-depth: 0
+
+      - name: Check out exact verified source release
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.release_commit }}
+          path: release
+          fetch-depth: 1
+
+      - name: Guard workflow source and Modules 008 and 009 release
+        id: release
+        shell: bash
+        env:
+          DISPATCH_RELEASE_COMMIT: ${{ inputs.release_commit }}
+          DISPATCH_CONFIRMATION: ${{ inputs.confirmation }}
+          WORKFLOW_SOURCE_REF: ${{ github.ref }}
+          WORKFLOW_SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$WORKFLOW_SOURCE_REF" == 'refs/heads/main' ]] || { echo 'Dispatch this workflow from main.' >&2; exit 1; }
+          [[ "$DISPATCH_CONFIRMATION" == 'DEPLOY-ADMIN-EXPERIENCE-008-009-TO-TEST' ]] || { echo 'Confirmation text does not match.' >&2; exit 1; }
+          [[ "$DISPATCH_RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || { echo 'release_commit must be a complete SHA.' >&2; exit 1; }
+
+          CONTROL_COMMIT="$(git -C control rev-parse HEAD)"
+          TARGET_COMMIT="$(git -C release rev-parse HEAD)"
+          [[ "$CONTROL_COMMIT" == "$WORKFLOW_SOURCE_SHA" ]]
+          [[ "$TARGET_COMMIT" == "$DISPATCH_RELEASE_COMMIT" ]]
+          [[ "$TARGET_COMMIT" == "$EXPECTED_RELEASE_COMMIT" ]] || { echo 'Only the verified Modules 008 and 009 source release may deploy.' >&2; exit 1; }
+          git -C control merge-base --is-ancestor "$TARGET_COMMIT" HEAD || { echo 'The source release is not an ancestor of the deployment controls.' >&2; exit 1; }
+
+          required_files=(
+            database/migrations/048_admin_audit_and_manager_team_scope.sql
+            database/rollback/048_admin_audit_and_manager_team_scope_rollback.sql
+            src/backend/ProjectTime.Api/Modules/AdminAuditHistoryModule.cs
+            src/backend/ProjectTime.Api/Modules/AdminExperienceCommon.cs
+            src/backend/ProjectTime.Api/Modules/UserAdministrationTeamScopeModule.cs
+            src/backend/ProjectTime.Api/ProjectTime.Api.csproj
+            src/frontend/project-time-web/src/AuditHistoryPanel.jsx
+            src/frontend/project-time-web/src/audit-history.css
+            src/frontend/project-time-web/src/UserAdministrationPanel.jsx
+            src/frontend/project-time-web/src/user-administration-panel.css
+            src/frontend/project-time-web/src/admin-experience-theme.js
+            src/frontend/project-time-web/src/admin-experience-theme.css
+            src/frontend/project-time-web/scripts/validate-modules-008-009-admin-experience.mjs
+            tests/test-admin-experience-migration-048.sh
+          )
+          for file in "${required_files[@]}"; do test -f "release/$file"; done
+
+          test -x control/scripts/build-pr55-acr-image.sh
+          test -f control/scripts/export-pr55-test-database-url.sh
+          test -f control/scripts/wait-containerapp-ready-revision.sh
+          test -f control/scripts/apply-admin-experience-008-009-test-migration.sh
+          test -f control/scripts/run-admin-experience-008-009-test-migration-job.sh
+          test -f control/deployment/containers/pr55-migrator/Dockerfile
+
+          grep -Fq '048_admin_audit_and_manager_team_scope' release/database/migrations/048_admin_audit_and_manager_team_scope.sql
+          grep -Fq 'projectpulse_system_audit_events' release/database/migrations/048_admin_audit_and_manager_team_scope.sql
+          grep -Fq 'user_admin_manager_team_assignments' release/database/migrations/048_admin_audit_and_manager_team_scope.sql
+          grep -Fq 'BEFORE UPDATE OR DELETE' release/database/migrations/048_admin_audit_and_manager_team_scope.sql
+          grep -Fq 'ux_user_admin_one_active_manager_per_team' release/database/migrations/048_admin_audit_and_manager_team_scope.sql
+          grep -Fq 'MapAdminAuditHistoryEndpoints' release/src/backend/ProjectTime.Api/ProjectTime.Api.csproj
+          grep -Fq 'MapUserAdministrationTeamScopeEndpoints' release/src/backend/ProjectTime.Api/ProjectTime.Api.csproj
+          grep -Fq '/api/admin/audit-history/events' release/src/backend/ProjectTime.Api/Modules/AdminAuditHistoryModule.cs
+          grep -Fq '/api/admin/user-admin/manager-team-assignments' release/src/backend/ProjectTime.Api/Modules/UserAdministrationTeamScopeModule.cs
+          grep -Fq 'manager_email = @manager_email' release/src/backend/ProjectTime.Api/Modules/UserAdministrationTeamScopeModule.cs
+          grep -Fq 'ApplicationStarted' release/src/backend/ProjectTime.Api/Modules/AdminAuditHistoryModule.cs
+          grep -Fq 'ApplicationStopping' release/src/backend/ProjectTime.Api/Modules/AdminAuditHistoryModule.cs
+          grep -Fq 'Manage users' release/src/frontend/project-time-web/src/UserAdministrationPanel.jsx
+          grep -Fq 'Manager team scope' release/src/frontend/project-time-web/src/UserAdministrationPanel.jsx
+          grep -Fq 'Switch to dark mode' release/src/frontend/project-time-web/src/admin-experience-theme.js
+          grep -Fq '.theme-toggle.projectpulse-theme-control' release/src/frontend/project-time-web/src/admin-experience-theme.css
+
+          bash -n control/scripts/apply-admin-experience-008-009-test-migration.sh
+          bash -n control/scripts/run-admin-experience-008-009-test-migration-job.sh
+          bash -n control/scripts/wait-containerapp-ready-revision.sh
+          node release/src/frontend/project-time-web/scripts/validate-modules-008-009-admin-experience.mjs
+
+          echo "target_commit=$TARGET_COMMIT" >> "$GITHUB_OUTPUT"
+          echo '::warning::A green deployment proves migration, image, protected-route, and served-asset integrity. Signed-in Audit and History, individual user management, local password management, bulk updates, and manager-team UAT remain required.'
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Verify database environment configuration
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mapfile -t ENV_NAMES < <(az containerapp show \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' \
+            --query 'properties.template.containers[0].env[].name' -o tsv)
+          printf '%s\n' "${ENV_NAMES[@]}" | sort -u > /tmp/admin-experience-api-env-names
+          for name in PTP_DB_HOST PTP_DB_PORT PTP_DB_NAME PTP_DB_USER PTP_DB_PASSWORD; do
+            grep -Fxq "$name" /tmp/admin-experience-api-env-names || { echo "Missing required API environment variable: $name" >&2; exit 1; }
+          done
+          echo 'ADMIN_EXPERIENCE_DATABASE_CONFIGURATION=COMPLETE'
+
+      - name: Load test database connection
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_API_APP: ${{ vars.AZURE_API_APP }}
+        run: bash control/scripts/export-pr55-test-database-url.sh
+
+      - name: Capture current immutable API and web images
+        id: before
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          RAW_API="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
+          RAW_WEB="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
+          API_MODE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.configuration.activeRevisionsMode' -o tsv)"
+          WEB_MODE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.configuration.activeRevisionsMode' -o tsv)"
+          [[ -n "$RAW_API" && -n "$RAW_WEB" && "${API_MODE,,}" == single && "${WEB_MODE,,}" == single ]]
+
+          resolve_digest() {
+            local image="$1" registry='${{ vars.AZURE_ACR_NAME }}.azurecr.io/' relative repository digest
+            case "$image" in
+              "$registry"*@sha256:*) printf '%s\n' "$image"; return ;;
+              "$registry"*:*) ;;
+              *) echo "Image is outside approved ACR: $image" >&2; return 1 ;;
+            esac
+            relative="${image#"$registry"}"
+            repository="${relative%:*}"
+            digest="$(az acr repository show --name '${{ vars.AZURE_ACR_NAME }}' --image "$relative" --query digest -o tsv)"
+            [[ "$digest" == sha256:* ]]
+            printf '%s%s@%s\n' "$registry" "$repository" "$digest"
+          }
+
+          echo "old_api_image=$(resolve_digest "$RAW_API")" >> "$GITHUB_OUTPUT"
+          echo "old_web_image=$(resolve_digest "$RAW_WEB")" >> "$GITHUB_OUTPUT"
+
+      - name: Build immutable API and web candidates
+        id: build
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          SHA='${{ steps.release.outputs.target_commit }}'
+          API_REPO='project-health-dashboard-api'
+          WEB_REPO='project-health-dashboard-web'
+          API_DIGEST="$(control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "$API_REPO:admin-experience-$SHA" release/deployment/containers/api/Dockerfile release)"
+          WEB_DIGEST="$(control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "$WEB_REPO:admin-experience-$SHA" release/deployment/containers/web/Dockerfile release)"
+          [[ "$API_DIGEST" == sha256:* && "$WEB_DIGEST" == sha256:* ]]
+          echo "api_image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/$API_REPO@$API_DIGEST" >> "$GITHUB_OUTPUT"
+          echo "web_image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/$WEB_REPO@$WEB_DIGEST" >> "$GITHUB_OUTPUT"
+
+      - name: Build checksum-pinned migration 048 image
+        id: migration
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          CONTEXT="$RUNNER_TEMP/admin-experience-migrator-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          install -d -m 0700 "$CONTEXT/migrations"
+          install -m 0644 control/deployment/containers/pr55-migrator/Dockerfile "$CONTEXT/Dockerfile"
+          install -m 0755 control/scripts/apply-admin-experience-008-009-test-migration.sh "$CONTEXT/apply-pr55-test-migrations.sh"
+          install -m 0644 release/database/migrations/048_admin_audit_and_manager_team_scope.sql "$CONTEXT/migrations/048_admin_audit_and_manager_team_scope.sql"
+          (
+            cd "$CONTEXT/migrations"
+            sha256sum 048_admin_audit_and_manager_team_scope.sql > SHA256SUMS
+          )
+          printf '%s\n' '${{ steps.release.outputs.target_commit }}' > "$CONTEXT/release-commit"
+          DIGEST="$(control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "project-health-dashboard-admin-experience-migrator:${{ steps.release.outputs.target_commit }}-${GITHUB_SHA:0:12}" "$CONTEXT/Dockerfile" "$CONTEXT")"
+          [[ "$DIGEST" == sha256:* ]]
+          echo "image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/project-health-dashboard-admin-experience-migrator@$DIGEST" >> "$GITHUB_OUTPUT"
+
+      - name: Apply or verify migration 048 inside private network
+        id: migration_apply
+        shell: bash
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_API_APP: ${{ vars.AZURE_API_APP }}
+          AZURE_ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
+          ADMIN_EXPERIENCE_MIGRATION_IMAGE: ${{ steps.migration.outputs.image }}
+          ADMIN_EXPERIENCE_MIGRATION_JOB_NAME: adexp-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          bash control/scripts/run-admin-experience-008-009-test-migration-job.sh
+          echo 'completed=true' >> "$GITHUB_OUTPUT"
+
+      - name: Deploy API candidate
+        id: deploy_api
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          API_SUFFIX="adexpapi-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          CANDIDATE_API_REVISION="${{ vars.AZURE_API_APP }}--${API_SUFFIX}"
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          echo "candidate_api_revision=$CANDIDATE_API_REVISION" >> "$GITHUB_OUTPUT"
+          az containerapp update \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' \
+            --image '${{ steps.build.outputs.api_image }}' \
+            --set-env-vars PROJECTPULSE_ENVIRONMENT=test PROJECTPULSE_SOURCE_COMMIT='${{ steps.release.outputs.target_commit }}' \
+            --revision-suffix "$API_SUFFIX" \
+            --output none
+
+      - name: Wait for exact API candidate revision
+        shell: bash
+        run: |
+          bash control/scripts/wait-containerapp-ready-revision.sh \
+            '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            '${{ vars.AZURE_API_APP }}' \
+            '${{ steps.deploy_api.outputs.candidate_api_revision }}' \
+            '${{ steps.build.outputs.api_image }}' 60 10
+
+      - name: Validate protected Modules 008 and 009 API routes
+        id: validate_api
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"
+          DIAGNOSTICS=/tmp/admin-experience-api-validation
+          mkdir -p "$DIAGNOSTICS"
+
+          request() {
+            local name="$1" method="$2" url="$3" body="${4:-}" attempt="${5:-1}" separator='?'
+            [[ "$url" == *\?* ]] && separator='&'
+            local probe_url="${url}${separator}release_check=adexp-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${attempt}"
+            local args=(-sS -X "$method" -D "$DIAGNOSTICS/${name}.headers" -o "$DIAGNOSTICS/${name}.body" -w '%{http_code}' -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache')
+            if [[ -n "$body" ]]; then args+=(-H 'Content-Type: application/json' --data "$body"); fi
+            curl "${args[@]}" "$probe_url" || true
+          }
+          content_type() { awk 'BEGIN{IGNORECASE=1} /^content-type:/ {gsub(/\r/, ""); print $2}' "$1" 2>/dev/null | tail -1; }
+          wait_status() {
+            local name="$1" method="$2" url="$3" expected="$4" body="${5:-}" status='' type=''
+            for attempt in $(seq 1 36); do
+              status="$(request "$name" "$method" "$url" "$body" "$attempt")"
+              type="$(content_type "$DIAGNOSTICS/${name}.headers")"
+              printf 'PROBE name=%s attempt=%s status=%s type=%s\n' "$name" "$attempt" "$status" "$type"
+              if [[ ",$expected," == *",$status,"* && "$type" == application/json* ]]; then return 0; fi
+              sleep 10
+            done
+            echo "$url did not reach expected status $expected with JSON content." >&2
+            cat "$DIAGNOSTICS/${name}.body" >&2 || true
+            return 1
+          }
+
+          wait_status health GET "$BASE/health" '200'
+          wait_status version GET "$BASE/api/version" '200'
+          wait_status audit-history GET "$BASE/api/admin/audit-history/events" '401,403'
+          wait_status manager-scope GET "$BASE/api/admin/user-admin/manager-team-assignments" '401,403'
+          wait_status manager-scope-write PUT "$BASE/api/admin/user-admin/manager-team-assignments/00000000-0000-0000-0000-000000000001" '401,403' '{}'
+
+          READY_API_REVISION="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.latestReadyRevisionName' -o tsv)"
+          [[ "$READY_API_REVISION" == '${{ steps.deploy_api.outputs.candidate_api_revision }}' ]]
+          READY_API_IMAGE="$(az containerapp revision show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --revision "$READY_API_REVISION" --query 'properties.template.containers[0].image' -o tsv)"
+          [[ "$READY_API_IMAGE" == '${{ steps.build.outputs.api_image }}' ]]
+          echo "ready_api_revision=$READY_API_REVISION" >> "$GITHUB_OUTPUT"
+          echo "ready_api_image=$READY_API_IMAGE" >> "$GITHUB_OUTPUT"
+          echo 'ADMIN_EXPERIENCE_API_DEPLOYMENT_INTEGRITY=READY'
+          echo 'AUTHENTICATED_ADMIN_EXPERIENCE_UAT=REQUIRED'
+
+      - name: Capture API validation diagnostics
+        if: ${{ failure() && steps.deploy_api.outputs.started == 'true' }}
+        shell: bash
+        run: |
+          set +e
+          mkdir -p evidence/admin-experience-api-validation
+          cp -R /tmp/admin-experience-api-validation/. evidence/admin-experience-api-validation/ 2>/dev/null || true
+          az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' -o json > evidence/admin-experience-api-validation/containerapp.json 2>&1 || true
+          az containerapp revision list -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' -o json > evidence/admin-experience-api-validation/revisions.json 2>&1 || true
+
+      - name: Upload API validation diagnostics
+        if: ${{ failure() && steps.deploy_api.outputs.started == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: admin-experience-api-validation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: evidence/admin-experience-api-validation
+          retention-days: 7
+
+      - name: Deploy web candidate
+        id: deploy_web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          WEB_SUFFIX="adexpweb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          CANDIDATE_WEB_REVISION="${{ vars.AZURE_WEB_APP }}--${WEB_SUFFIX}"
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          echo "candidate_web_revision=$CANDIDATE_WEB_REVISION" >> "$GITHUB_OUTPUT"
+          az containerapp update \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_WEB_APP }}' \
+            --image '${{ steps.build.outputs.web_image }}' \
+            --revision-suffix "$WEB_SUFFIX" \
+            --output none
+
+      - name: Wait for exact web candidate revision
+        shell: bash
+        run: |
+          bash control/scripts/wait-containerapp-ready-revision.sh \
+            '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            '${{ vars.AZURE_WEB_APP }}' \
+            '${{ steps.deploy_web.outputs.candidate_web_revision }}' \
+            '${{ steps.build.outputs.web_image }}' 60 10
+
+      - name: Validate served Modules 008 and 009 assets
+        id: validate_web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"
+          READY=false
+          for attempt in $(seq 1 36); do
+            BUSTER="admin-experience-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-$attempt"
+            STATUS="$(curl -sSL -H 'Cache-Control: no-cache, no-store' -o /tmp/adexp-index -w '%{http_code}' "$BASE/?release_check=$BUSTER" || true)"
+            JS="$(sed -nE 's/.*src="([^"]+\.js)".*/\1/p' /tmp/adexp-index | head -1)"
+            CSS="$(sed -nE 's/.*href="([^"]+\.css)".*/\1/p' /tmp/adexp-index | head -1)"
+            if [[ "$STATUS" == 200 && -n "$JS" && -n "$CSS" ]]; then
+              case "$JS" in http*) JS_URL="$JS" ;; /*) JS_URL="$BASE$JS" ;; *) JS_URL="$BASE/$JS" ;; esac
+              case "$CSS" in http*) CSS_URL="$CSS" ;; /*) CSS_URL="$BASE$CSS" ;; *) CSS_URL="$BASE/$CSS" ;; esac
+              curl -sSL -H 'Cache-Control: no-cache, no-store' -o /tmp/adexp-app.js "$JS_URL?release_check=$BUSTER" || true
+              curl -sSL -H 'Cache-Control: no-cache, no-store' -o /tmp/adexp-app.css "$CSS_URL?release_check=$BUSTER" || true
+              if grep -Fq '/api/admin/audit-history/events' /tmp/adexp-app.js \
+                && grep -Fq '/api/admin/user-admin/manager-team-assignments/' /tmp/adexp-app.js \
+                && grep -Fq 'Manager team scope' /tmp/adexp-app.js \
+                && grep -Fq 'Create local user' /tmp/adexp-app.js \
+                && grep -Fq 'Switch to dark mode' /tmp/adexp-app.js \
+                && grep -Fq '.audit-event-card' /tmp/adexp-app.css \
+                && grep -Fq '.user-admin-v2-tabs' /tmp/adexp-app.css \
+                && grep -Fq '.theme-toggle.projectpulse-theme-control' /tmp/adexp-app.css; then
+                READY=true
+                break
+              fi
+            fi
+            sleep 10
+          done
+          [[ "$READY" == true ]] || { echo 'Modules 008 and 009 candidate assets were not served.' >&2; exit 1; }
+
+          READY_API_REVISION="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.latestReadyRevisionName' -o tsv)"
+          READY_WEB_REVISION="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.latestReadyRevisionName' -o tsv)"
+          [[ "$READY_API_REVISION" == '${{ steps.deploy_api.outputs.candidate_api_revision }}' ]]
+          [[ "$READY_WEB_REVISION" == '${{ steps.deploy_web.outputs.candidate_web_revision }}' ]]
+          READY_API_IMAGE="$(az containerapp revision show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --revision "$READY_API_REVISION" --query 'properties.template.containers[0].image' -o tsv)"
+          READY_WEB_IMAGE="$(az containerapp revision show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --revision "$READY_WEB_REVISION" --query 'properties.template.containers[0].image' -o tsv)"
+          [[ "$READY_API_IMAGE" == '${{ steps.build.outputs.api_image }}' ]]
+          [[ "$READY_WEB_IMAGE" == '${{ steps.build.outputs.web_image }}' ]]
+          echo "ready_api_revision=$READY_API_REVISION" >> "$GITHUB_OUTPUT"
+          echo "ready_web_revision=$READY_WEB_REVISION" >> "$GITHUB_OUTPUT"
+          echo "ready_api_image=$READY_API_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "ready_web_image=$READY_WEB_IMAGE" >> "$GITHUB_OUTPUT"
+          echo 'ADMIN_EXPERIENCE_CANDIDATE_ASSETS=DEPLOYED'
+          echo 'AUTHENTICATED_ADMIN_EXPERIENCE_UAT=REQUIRED'
+
+      - name: Write deployment evidence
+        if: success()
+        shell: bash
+        run: |
+          mkdir -p evidence
+          cat > evidence/admin-experience-008-009-test-deployment.json <<JSON
+          {"environment":"test","releaseCommit":"${{ steps.release.outputs.target_commit }}","workflowCommit":"${{ github.sha }}","runId":"${{ github.run_id }}","runAttempt":"${{ github.run_attempt }}","deploymentType":"migration-api-web","databaseMutation":true,"migration":"048_admin_audit_and_manager_team_scope","migrationStatus":"applied-or-verified","migrationRollbackPolicy":"not-automatic; blocked after immutable evidence or active manager assignments","apiImage":"${{ steps.validate_web.outputs.ready_api_image }}","webImage":"${{ steps.validate_web.outputs.ready_web_image }}","readyApiRevision":"${{ steps.validate_web.outputs.ready_api_revision }}","readyWebRevision":"${{ steps.validate_web.outputs.ready_web_revision }}","previousApiImage":"${{ steps.before.outputs.old_api_image }}","previousWebImage":"${{ steps.before.outputs.old_web_image }}","auditRoute":"protected-route-verified","managerTeamRoute":"protected-read-write-routes-verified","servedAssets":"verified","deploymentIntegrity":"passed","authenticatedUatRequired":true,"functionalUatStatus":"pending-user-session-validation"}
+          JSON
+
+      - name: Upload deployment evidence
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: admin-experience-008-009-test-${{ github.run_id }}-${{ github.run_attempt }}
+          path: evidence/admin-experience-008-009-test-deployment.json
+          retention-days: 30
+
+      - name: Roll back API and web images on failure
+        if: ${{ failure() && (steps.deploy_api.outputs.started == 'true' || steps.deploy_web.outputs.started == 'true') }}
+        shell: bash
+        run: |
+          set +e
+          if [[ '${{ steps.deploy_api.outputs.started }}' == 'true' ]]; then
+            az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' \
+              --image '${{ steps.before.outputs.old_api_image }}' \
+              --revision-suffix "adexpapirb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" --output none
+          fi
+          if [[ '${{ steps.deploy_web.outputs.started }}' == 'true' ]]; then
+            az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' \
+              --image '${{ steps.before.outputs.old_web_image }}' \
+              --revision-suffix "adexpwebrb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" --output none
+          fi
+          if [[ '${{ steps.migration_apply.outputs.completed }}' == 'true' ]]; then
+            echo 'ADMIN_EXPERIENCE_MIGRATION_ROLLBACK=NOT_ATTEMPTED_ADDITIVE_MIGRATION_REMAINS'
+          fi
