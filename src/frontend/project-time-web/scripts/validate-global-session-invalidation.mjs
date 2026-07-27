@@ -73,10 +73,11 @@ check(
 );
 
 check(
-  'RETURN_ROUTE_PRESERVED',
-  authoritative.includes("window.sessionStorage.setItem('projectPulsePostLoginRoute', previousRoute)")
-    && authoritative.includes("const previousRoute = String(window.location.hash || '#dashboard')"),
-  'the interrupted route is retained for post-login recovery'
+  'DASHBOARD_REAUTH_BOUNDARY',
+  authoritative.includes("window.location.hash = '#dashboard';")
+    && authoritative.includes('window.location.reload();')
+    && !authoritative.includes('projectPulsePostLoginRoute'),
+  'invalid sessions return to the existing dashboard-first sign-in flow without unused route state'
 );
 
 check(
@@ -107,8 +108,9 @@ check(
   'APP_CURRENT_SESSION_CONTRACT',
   app.includes("window.localStorage.getItem('projectPulseAuthSession')")
     && app.includes("window.localStorage.removeItem('projectPulseAuthSession')")
-    && app.includes('setAuthSession(null)'),
-  'global invalidation clears the same storage contract App uses for sign-in state'
+    && app.includes('setAuthSession(null)')
+    && app.includes("window.location.hash = '#dashboard';"),
+  'global invalidation clears the session and uses App’s existing dashboard sign-in contract'
 );
 
 check(
