@@ -10,6 +10,7 @@ const paths = {
   main: 'src/frontend/project-time-web/src/main.jsx',
   mailActivation: 'src/frontend/project-time-web/src/microsoft-mail-runtime-activation.js',
   mailRuntime: 'src/backend/ProjectTime.Api/Modules/MicrosoftMailRuntimeConfigurationModule.cs',
+  smtpProjection: 'src/backend/ProjectTime.Api/Modules/MicrosoftSmtpCredentialProjectionCompatibility.cs',
   registrar: 'src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs',
   migration: 'database/migrations/047_microsoft_integration_connection_carryover.sql',
   rollback: 'database/rollback/047_microsoft_integration_connection_carryover_rollback.sql',
@@ -40,6 +41,7 @@ const fullRepositoryContext = exists(paths.migration)
   && exists(paths.rollback)
   && exists(paths.test)
   && exists(paths.mailRuntime)
+  && exists(paths.smtpProjection)
   && exists(paths.registrar);
 
 assert('AUTHORITATIVE_NAME', registry.includes("displayName: 'Microsoft Integration Connection'")
@@ -108,12 +110,14 @@ if (fullRepositoryContext) {
   const rollback = read(paths.rollback);
   const test = read(paths.test);
   const mailRuntime = read(paths.mailRuntime);
+  const smtpProjection = read(paths.smtpProjection);
   const registrar = read(paths.registrar);
 
   assert('MIGRATION_EXISTS', true, paths.migration);
   assert('ROLLBACK_EXISTS', true, paths.rollback);
   assert('TEST_EXISTS', true, paths.test);
   assert('MAIL_RUNTIME_EXISTS', true, paths.mailRuntime);
+  assert('SMTP_PROJECTION_EXISTS', true, paths.smtpProjection);
 
   assert('MODULE_010_CARRYOVER', migration.includes('FROM azure_entra_settings settings')
     && migration.includes("'legacyDirectorySettingsCarriedOver', true")
@@ -133,10 +137,11 @@ if (fullRepositoryContext) {
   'identity, calendar/presence, and global mail consume the services connection');
 
   assert('MAIL_RUNTIME_REGISTERED', registrar.includes('MapMicrosoftMailRuntimeConfigurationEndpoints')
+    && registrar.includes('UseMicrosoftSmtpCredentialProjectionCompatibility')
     && mailRuntime.includes('/api/microsoft-integration/mail-runtime')
     && mailRuntime.includes('ApplicationStarted.Register')
     && mailRuntime.includes('ReadStoredConfigurationAsync'),
-  'mail metadata is applied immediately and hydrated again after API restart');
+  'mail metadata and selected SMTP credentials are applied immediately and hydrated after API restart');
 
   assert('ENVIRONMENT_SECRET_ISOLATION', mailRuntime.includes('PROJECTPULSE_ENTRA_TEST_CLIENT_SECRET')
     && mailRuntime.includes('PROJECTPULSE_ENTRA_PRODUCTION_CLIENT_SECRET')
@@ -177,6 +182,41 @@ if (fullRepositoryContext) {
     && mailRuntime.includes('PROJECTPULSE_PRODUCTION_SMTP_')
     && mailRuntime.includes('Microsoft 365 SMTP is ready for the shared mail dispatcher'),
   'SMTP metadata is page-owned and credentials remain environment-specific');
+
+  assert('SMTP_SELECTED_ENVIRONMENT_PROJECTION', smtpProjection.includes('PROJECTPULSE_TEST_SMTP_')
+    && smtpProjection.includes('PROJECTPULSE_PRODUCTION_SMTP_')
+    && smtpProjection.includes('PROJECTPULSE_SMTP_USERNAME')
+    && smtpProjection.includes('PROJECTPULSE_SMTP_PASSWORD')
+    && smtpProjection.includes('OriginalActiveEnvironment == environmentMode')
+    && smtpProjection.includes('OriginalLegacyUsername')
+    && smtpProjection.includes('OriginalLegacyPassword')
+    && smtpProjection.includes('providerTarget != "smtp_relay"')
+    && smtpProjection.includes('ClearLegacyCredential()'),
+  'only the selected environment SMTP pair or immutable matching startup fallback is projected, and stale values are cleared');
+
+  assert('SMTP_PROJECTION_AUTHORIZED_RESPONSE', smtpProjection.includes('originalResponseBody')
+    && smtpProjection.includes('responseBuffer')
+    && smtpProjection.includes('context.Response.StatusCode is >= 200 and < 300')
+    && smtpProjection.includes('ReadValidatedSelectionFromResponseAsync')
+    && smtpProjection.includes('JsonDocument.ParseAsync')
+    && !smtpProjection.includes('Request.EnableBuffering')
+    && !smtpProjection.includes('context.Request.Body'),
+  'SMTP selection is read only from the sanitized successful endpoint response after authorization');
+
+  assert('SMTP_PROJECTION_RESTART', smtpProjection.includes('ApplicationStarted.Register')
+    && smtpProjection.includes('ReadStoredSelectionAsync')
+    && smtpProjection.includes("module_number='065'"),
+  'selected SMTP projection is restored from Module 065 after API restart');
+
+  assert('SMTP_PROJECTION_BROWSER_SAFETY', !smtpProjection.includes('ReadFromJsonAsync<SmtpCredential')
+    && !smtpProjection.includes('Results.Ok(new')
+    && !smtpProjection.includes('request?.Username')
+    && !smtpProjection.includes('request?.Password')
+    && !smtpProjection.includes('request?.SmtpUsername')
+    && !smtpProjection.includes('request?.SmtpPassword')
+    && !smtpProjection.includes('context.Request.Body')
+    && !smtpProjection.includes('Request.EnableBuffering'),
+  'SMTP credential values remain environment-backed and the protected request body is never parsed by the projection layer');
 
   assert('MAIL_SECRET_SAFETY', mailRuntime.includes('secretValuesRead = false')
     && mailRuntime.includes('secretValuesReturned = false')
