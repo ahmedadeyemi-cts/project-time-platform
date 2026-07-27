@@ -1,6 +1,10 @@
 const ACTIVE_ROUTE = 'entra-secret-administration';
 const RETIRED_ROUTE = 'global-mail-configuration';
 const ACTIVE_MODULE_NAME = 'Microsoft Integration Connection';
+const CONFIG_MARKER = 'PROJECTPULSE_MICROSOFT_INTEGRATION_JSON:';
+const DOCUMENT_PATH = '/api/native-administration/065/document';
+const SERVICES_APPLY_PATH = '/api/microsoft-integration/services-apply-profile';
+const PREVIEW_ROUTE = '/api/admin/azure/users/preview';
 const LEGACY_IMPORT_ROUTE = '/api/admin/azure/users/import-selected';
 const ACTIVE_IMPORT_ROUTE = '/api/microsoft-integration/directory-users/import-selected';
 const ROLE_NORMALIZATION_ROUTES = new Set([
@@ -146,6 +150,79 @@ function normalizeRolePayload(pathname, init) {
   }
 }
 
+function activeServicesProfile(payload) {
+  try {
+    const notes = payload?.document?.configuration?.notes;
+    if (typeof notes !== 'string' || !notes.startsWith(CONFIG_MARKER)) return null;
+    const stored = JSON.parse(notes.slice(CONFIG_MARKER.length));
+    const tenants = Array.isArray(stored?.tenants) ? stored.tenants : [];
+    const active = tenants.find((tenant) => tenant?.key === stored?.activeTenantKey)
+      || tenants.find((tenant) => tenant?.environmentMode === stored?.activeEnvironmentMode);
+    if (!active) return null;
+    const services = active.services || active.servicesConnection || {};
+    const clientId = services.clientId || services.applicationId || active.serviceClientId || active.clientId || '';
+    if (!active.tenantId || !clientId) return null;
+    return {
+      environmentMode: active.environmentMode,
+      tenantKey: active.key || active.tenantKey,
+      tenantId: active.tenantId,
+      clientId,
+      graphScopes: services.graphScopes || services.scopes || active.graphScopes || '',
+      senderMailbox: stored?.mail?.senderAddress || ''
+    };
+  } catch {
+    return null;
+  }
+}
+
+function responseFailure(status, payload, fallback) {
+  return new Response(JSON.stringify({
+    status: payload?.status || 'module_065_services_runtime_unavailable',
+    message: payload?.message || fallback,
+    module: '010',
+    configurationSource: 'module_065'
+  }), {
+    status: status >= 400 && status <= 599 ? status : 503,
+    headers: { 'Content-Type': 'application/json' }
+  });
+}
+
+async function applyStoredServicesProfile(previousFetch, init) {
+  const headers = new Headers(init?.headers || {});
+  const documentResponse = await previousFetch(DOCUMENT_PATH, {
+    method: 'GET',
+    cache: 'no-store',
+    credentials: 'include',
+    headers
+  });
+  let documentPayload = {};
+  try { documentPayload = await documentResponse.json(); } catch { /* controlled failure below */ }
+  if (!documentResponse.ok) {
+    return responseFailure(documentResponse.status, documentPayload, 'Module 065 Microsoft services configuration could not be loaded.');
+  }
+
+  const profile = activeServicesProfile(documentPayload);
+  if (!profile) {
+    return responseFailure(503, {
+      status: 'module_065_services_profile_incomplete',
+      message: 'Complete and save the active Microsoft services tenant ID and application/client ID in Module 065 before previewing Entra users.'
+    });
+  }
+
+  headers.set('Content-Type', 'application/json');
+  const applyResponse = await previousFetch(SERVICES_APPLY_PATH, {
+    method: 'POST',
+    cache: 'no-store',
+    credentials: 'include',
+    headers,
+    body: JSON.stringify(profile)
+  });
+  if (applyResponse.ok) return null;
+  let applyPayload = {};
+  try { applyPayload = await applyResponse.json(); } catch { /* controlled failure below */ }
+  return responseFailure(applyResponse.status, applyPayload, 'Module 065 could not activate the Microsoft services profile for Entra preview.');
+}
+
 function installMicrosoftIntegrationCompatibility() {
   if (window.__projectPulseMicrosoftIntegrationCompatibilityInstalled) return;
   window.__projectPulseMicrosoftIntegrationCompatibilityInstalled = true;
@@ -159,6 +236,12 @@ function installMicrosoftIntegrationCompatibility() {
 
     const url = new URL(rawUrl, window.location.origin);
     const normalizedInit = normalizeRolePayload(url.pathname, init);
+
+    if (url.pathname === PREVIEW_ROUTE && method === 'POST') {
+      const failure = await applyStoredServicesProfile(previousFetch, normalizedInit);
+      if (failure) return failure;
+      return previousFetch(input, normalizedInit);
+    }
 
     if (url.pathname !== LEGACY_IMPORT_ROUTE) {
       return previousFetch(input, normalizedInit);
