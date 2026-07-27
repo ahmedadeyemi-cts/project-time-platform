@@ -78,6 +78,14 @@ check(
 );
 
 check(
+  'NO_BARE_INVALIDATION_CALLS',
+  !authoritative.includes('invalidateProjectPulseSession(path, payload, raw);')
+    && !authoritative.includes('isSessionRejection(request.status, payload, raw)')
+    && !authoritative.includes('isSessionRejection(response.status, payload, raw)'),
+  'every invalidation decision is tied to the token captured when the failed request was sent'
+);
+
+check(
   'SESSION_REQUIRED_ONLY',
   authoritative.includes('if (Number(status) !== 401 || !requestTokenMatchesCurrentSession(requestToken)) return false;')
     && authoritative.includes('SESSION_REJECTION_STATUS_CODES.has(statusCode)')
