@@ -18,6 +18,12 @@ function currentRoute() {
   return window.location.hash.replace(/^#/, '').split('?')[0].trim();
 }
 
+function runtimeEnvironmentMode() {
+  const host = window.location.hostname.toLowerCase();
+  if (host.includes('-test.') || host === 'localhost' || host === '127.0.0.1') return 'test';
+  return 'production';
+}
+
 function redirectRetiredRoute() {
   if (currentRoute() === RETIRED_ROUTE) {
     window.location.replace(`#${ACTIVE_ROUTE}`);
@@ -156,8 +162,10 @@ function activeServicesProfile(payload) {
     if (typeof notes !== 'string' || !notes.startsWith(CONFIG_MARKER)) return null;
     const stored = JSON.parse(notes.slice(CONFIG_MARKER.length));
     const tenants = Array.isArray(stored?.tenants) ? stored.tenants : [];
-    const active = tenants.find((tenant) => tenant?.key === stored?.activeTenantKey)
-      || tenants.find((tenant) => tenant?.environmentMode === stored?.activeEnvironmentMode);
+    const runtimeEnvironment = runtimeEnvironmentMode();
+    const active = tenants.find((tenant) => tenant?.environmentMode === runtimeEnvironment)
+      || tenants.find((tenant) => tenant?.key === stored?.activeTenantKey && tenant?.environmentMode === runtimeEnvironment)
+      || tenants.find((tenant) => tenant?.environmentMode === stored?.activeEnvironmentMode && tenant?.environmentMode === runtimeEnvironment);
     if (!active) return null;
     const services = active.services || active.servicesConnection || {};
     const clientId = services.clientId || services.applicationId || active.serviceClientId || active.clientId || '';
@@ -205,7 +213,7 @@ async function applyStoredServicesProfile(previousFetch, init) {
   if (!profile) {
     return responseFailure(503, {
       status: 'module_065_services_profile_incomplete',
-      message: 'Complete and save the active Microsoft services tenant ID and application/client ID in Module 065 before previewing Entra users.'
+      message: `Complete and save the ${runtimeEnvironmentMode() === 'production' ? 'Production' : 'Test'} Microsoft services tenant ID and application/client ID in Module 065 before previewing Entra users.`
     });
   }
 
@@ -217,10 +225,18 @@ async function applyStoredServicesProfile(previousFetch, init) {
     headers,
     body: JSON.stringify(profile)
   });
-  if (applyResponse.ok) return null;
   let applyPayload = {};
   try { applyPayload = await applyResponse.json(); } catch { /* controlled failure below */ }
-  return responseFailure(applyResponse.status, applyPayload, 'Module 065 could not activate the Microsoft services profile for Entra preview.');
+  if (!applyResponse.ok) {
+    return responseFailure(applyResponse.status, applyPayload, 'Module 065 could not activate the Microsoft services profile for Entra preview.');
+  }
+  if (applyPayload?.runtimeActivated !== true) {
+    return responseFailure(409, {
+      status: 'module_065_services_profile_not_active',
+      message: 'Module 010 preview requires the Module 065 services profile for the currently running ProjectPulse environment.'
+    });
+  }
+  return null;
 }
 
 function installMicrosoftIntegrationCompatibility() {
