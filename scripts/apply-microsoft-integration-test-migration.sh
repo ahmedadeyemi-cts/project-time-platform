@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-EXPECTED_RELEASE_COMMIT="1ac741b4c50ce10d73a3b1fb061bfa6fa4eb0d3d"
+EXPECTED_RELEASE_COMMIT="c38edbb63f50bf736092e3f71c581eead5bdb13a"
 RELEASE_ROOT="${1:-}"
 DATABASE_URL="${PROJECTPULSE_TEST_DATABASE_URL:-}"
 
@@ -24,17 +24,19 @@ MIGRATION_ROOT="$RELEASE_ROOT/database/migrations"
 MIGRATIONS=(
   "045_microsoft_integration_consolidation.sql"
   "046_microsoft_sso_connection_profiles.sql"
+  "047_microsoft_integration_connection_carryover.sql"
 )
 MIGRATION_IDS=(
   "045_microsoft_integration_consolidation"
   "046_microsoft_sso_connection_profiles"
+  "047_microsoft_integration_connection_carryover"
 )
 CHECKSUM_MANIFEST="$MIGRATION_ROOT/SHA256SUMS"
 for migration in "${MIGRATIONS[@]}"; do
   [[ -f "$MIGRATION_ROOT/$migration" ]] || fail "Required migration is missing: $migration"
 done
 [[ -f "$CHECKSUM_MANIFEST" ]] || fail "Migration checksum manifest is missing."
-[[ "$(wc -l < "$CHECKSUM_MANIFEST" | tr -d ' ')" == "2" ]] || fail "Migration checksum manifest must contain exactly two SQL files."
+[[ "$(wc -l < "$CHECKSUM_MANIFEST" | tr -d ' ')" == "3" ]] || fail "Migration checksum manifest must contain exactly three SQL files."
 (
   cd "$MIGRATION_ROOT"
   sha256sum --check --strict SHA256SUMS
@@ -58,11 +60,40 @@ count_if_table() {
     printf '0\n'
   fi
 }
+
+source_hash() {
+  local expression="$1"
+  psql "$DATABASE_URL" --no-psqlrc -At --set=ON_ERROR_STOP=1 --command="SELECT md5(COALESCE(($expression)::text, ''));"
+}
+
 GRAPH_SECRET_ROWS_BEFORE="$(count_if_table microsoft_integration_client_secrets)"
 SSO_SECRET_ROWS_BEFORE="$(count_if_table microsoft_integration_sso_client_secrets)"
 AUDIT_ROWS_BEFORE="$(count_if_table microsoft_integration_audit_events)"
-[[ "$GRAPH_SECRET_ROWS_BEFORE" =~ ^[0-9]+$ && "$SSO_SECRET_ROWS_BEFORE" =~ ^[0-9]+$ && "$AUDIT_ROWS_BEFORE" =~ ^[0-9]+$ ]] || fail "Existing Microsoft Integration evidence counts are invalid."
-echo "MICROSOFT_INTEGRATION_EVIDENCE_BASELINE graphSecrets=$GRAPH_SECRET_ROWS_BEFORE ssoSecrets=$SSO_SECRET_ROWS_BEFORE audit=$AUDIT_ROWS_BEFORE"
+CARRYOVER_AUDIT_ROWS_BEFORE="$(
+  if [[ "$(psql "$DATABASE_URL" --no-psqlrc -At --set=ON_ERROR_STOP=1 --command="SELECT to_regclass('public.microsoft_integration_audit_events') IS NOT NULL;")" == "t" ]]; then
+    psql "$DATABASE_URL" --no-psqlrc -At --set=ON_ERROR_STOP=1 --command="SELECT COUNT(*) FROM microsoft_integration_audit_events WHERE action_code='LEGACY_CONFIGURATION_CARRIED_OVER';"
+  else
+    printf '0\n'
+  fi
+)"
+MODULE010_ROWS_BEFORE="$(count_if_table azure_entra_settings)"
+MODULE067_DOCUMENTS_BEFORE="$(psql "$DATABASE_URL" --no-psqlrc -At --set=ON_ERROR_STOP=1 --command="SELECT COUNT(*) FROM projectpulse_native_admin_documents WHERE module_number='067' AND document_key='configuration';")"
+MODULE010_SOURCE_HASH_BEFORE="$(source_hash "SELECT to_jsonb(settings) FROM azure_entra_settings settings ORDER BY settings.updated_at DESC NULLS LAST, settings.created_at DESC NULLS LAST LIMIT 1")"
+MODULE067_SOURCE_HASH_BEFORE="$(source_hash "SELECT document_json FROM projectpulse_native_admin_documents WHERE module_number='067' AND document_key='configuration' LIMIT 1")"
+MODULE065_MARKER_BEFORE="$(psql "$DATABASE_URL" --no-psqlrc -At --set=ON_ERROR_STOP=1 --command="
+  SELECT EXISTS (
+    SELECT 1
+    FROM projectpulse_native_admin_documents
+    WHERE module_number='065'
+      AND document_key='configuration'
+      AND COALESCE(document_json->'configuration'->>'notes','') LIKE 'PROJECTPULSE_MICROSOFT_INTEGRATION_JSON:%'
+  );")"
+
+for value in "$GRAPH_SECRET_ROWS_BEFORE" "$SSO_SECRET_ROWS_BEFORE" "$AUDIT_ROWS_BEFORE" "$CARRYOVER_AUDIT_ROWS_BEFORE" "$MODULE010_ROWS_BEFORE" "$MODULE067_DOCUMENTS_BEFORE"; do
+  [[ "$value" =~ ^[0-9]+$ ]] || fail "Existing Microsoft Integration evidence counts are invalid."
+done
+
+echo "MICROSOFT_INTEGRATION_EVIDENCE_BASELINE graphSecrets=$GRAPH_SECRET_ROWS_BEFORE ssoSecrets=$SSO_SECRET_ROWS_BEFORE audit=$AUDIT_ROWS_BEFORE carryoverAudit=$CARRYOVER_AUDIT_ROWS_BEFORE module010Rows=$MODULE010_ROWS_BEFORE module067Documents=$MODULE067_DOCUMENTS_BEFORE module065Marker=$MODULE065_MARKER_BEFORE"
 
 for index in "${!MIGRATIONS[@]}"; do
   migration="${MIGRATIONS[$index]}"
@@ -76,8 +107,29 @@ for index in "${!MIGRATIONS[@]}"; do
   fi
 done
 
-psql "$DATABASE_URL" --no-psqlrc --set=ON_ERROR_STOP=1 --command="
-DO \$verify_microsoft_dual_connections\$
+EXPECTED_AUDIT_ROWS_AFTER="$AUDIT_ROWS_BEFORE"
+EXPECTED_CARRYOVER_AUDIT_ROWS_AFTER="$CARRYOVER_AUDIT_ROWS_BEFORE"
+if [[ "$MODULE065_MARKER_BEFORE" != "t" ]]; then
+  EXPECTED_AUDIT_ROWS_AFTER=$((AUDIT_ROWS_BEFORE + 1))
+  EXPECTED_CARRYOVER_AUDIT_ROWS_AFTER=$((CARRYOVER_AUDIT_ROWS_BEFORE + 1))
+fi
+MAX_DOCUMENTS_AFTER=$((DOCUMENTS_BEFORE + 1))
+
+psql "$DATABASE_URL" --no-psqlrc --set=ON_ERROR_STOP=1 \
+  --set=users_before="$USERS_BEFORE" \
+  --set=roles_before="$ROLES_BEFORE" \
+  --set=documents_before="$DOCUMENTS_BEFORE" \
+  --set=max_documents_after="$MAX_DOCUMENTS_AFTER" \
+  --set=graph_secret_rows_before="$GRAPH_SECRET_ROWS_BEFORE" \
+  --set=sso_secret_rows_before="$SSO_SECRET_ROWS_BEFORE" \
+  --set=expected_audit_rows_after="$EXPECTED_AUDIT_ROWS_AFTER" \
+  --set=expected_carryover_audit_rows_after="$EXPECTED_CARRYOVER_AUDIT_ROWS_AFTER" \
+  --set=module010_rows_before="$MODULE010_ROWS_BEFORE" \
+  --set=module067_documents_before="$MODULE067_DOCUMENTS_BEFORE" \
+  --set=module010_source_hash_before="$MODULE010_SOURCE_HASH_BEFORE" \
+  --set=module067_source_hash_before="$MODULE067_SOURCE_HASH_BEFORE" \
+  --command="
+DO \$verify_microsoft_connection_carryover\$
 DECLARE
   users_after bigint;
   roles_after bigint;
@@ -85,21 +137,33 @@ DECLARE
   graph_secret_rows_after bigint;
   sso_secret_rows_after bigint;
   audit_rows_after bigint;
+  carryover_audit_rows_after bigint;
   aliases_count bigint;
+  module010_rows_after bigint;
+  module067_documents_after bigint;
+  module010_source_hash_after text;
+  module067_source_hash_after text;
+  notes text;
+  consolidated jsonb;
+  active_tenant jsonb;
+  source_settings jsonb;
+  legacy_mail jsonb;
 BEGIN
   SELECT COUNT(*) INTO users_after FROM app_users;
   SELECT COUNT(*) INTO roles_after FROM app_roles;
   SELECT COUNT(*) INTO documents_after FROM projectpulse_native_admin_documents;
-  IF users_after <> ${USERS_BEFORE}
-     OR roles_after <> ${ROLES_BEFORE}
-     OR documents_after <> ${DOCUMENTS_BEFORE} THEN
-    RAISE EXCEPTION 'Microsoft Integration migrations changed operational user, role, or native-document counts.';
+  IF users_after <> :users_before::bigint OR roles_after <> :roles_before::bigint THEN
+    RAISE EXCEPTION 'Microsoft Integration migrations changed operational user or role counts.';
+  END IF;
+  IF documents_after < :documents_before::bigint OR documents_after > :max_documents_after::bigint THEN
+    RAISE EXCEPTION 'Migration 047 changed the native-document count outside the permitted Module 065 carryover range.';
   END IF;
 
   IF (SELECT COUNT(*) FROM schema_migrations WHERE migration_id IN (
       '045_microsoft_integration_consolidation',
-      '046_microsoft_sso_connection_profiles')) <> 2 THEN
-    RAISE EXCEPTION 'Migrations 045 and 046 are not both registered exactly once.';
+      '046_microsoft_sso_connection_profiles',
+      '047_microsoft_integration_connection_carryover')) <> 3 THEN
+    RAISE EXCEPTION 'Migrations 045, 046, and 047 are not all registered exactly once.';
   END IF;
 
   IF to_regclass('public.microsoft_integration_client_secrets') IS NULL
@@ -129,11 +193,11 @@ BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM scoped_role_policy_modules
     WHERE module_code='065'
-      AND module_name='Microsoft Integration'
+      AND module_name='Microsoft Integration Connection'
       AND route_scope='entra-secret-administration'
       AND is_active=TRUE
   ) THEN
-    RAISE EXCEPTION 'Module 065 Microsoft Integration catalog state is incomplete.';
+    RAISE EXCEPTION 'Module 065 Microsoft Integration Connection catalog state is incomplete.';
   END IF;
   IF NOT EXISTS (
     SELECT 1 FROM scoped_role_policy_modules
@@ -145,11 +209,110 @@ BEGIN
   SELECT COUNT(*) INTO graph_secret_rows_after FROM microsoft_integration_client_secrets;
   SELECT COUNT(*) INTO sso_secret_rows_after FROM microsoft_integration_sso_client_secrets;
   SELECT COUNT(*) INTO audit_rows_after FROM microsoft_integration_audit_events;
-  IF graph_secret_rows_after <> ${GRAPH_SECRET_ROWS_BEFORE}
-     OR sso_secret_rows_after <> ${SSO_SECRET_ROWS_BEFORE}
-     OR audit_rows_after <> ${AUDIT_ROWS_BEFORE} THEN
-    RAISE EXCEPTION 'Microsoft Integration migrations changed existing Graph, SSO, or audit evidence counts.';
+  SELECT COUNT(*) INTO carryover_audit_rows_after
+  FROM microsoft_integration_audit_events
+  WHERE action_code='LEGACY_CONFIGURATION_CARRIED_OVER';
+  IF graph_secret_rows_after <> :graph_secret_rows_before::bigint
+     OR sso_secret_rows_after <> :sso_secret_rows_before::bigint THEN
+    RAISE EXCEPTION 'Migration 047 changed existing Graph or SSO secret evidence counts.';
+  END IF;
+  IF audit_rows_after <> :expected_audit_rows_after::bigint
+     OR carryover_audit_rows_after <> :expected_carryover_audit_rows_after::bigint THEN
+    RAISE EXCEPTION 'Migration 047 did not create exactly the expected sanitized carryover audit evidence.';
+  END IF;
+  IF EXISTS (
+    SELECT 1
+    FROM microsoft_integration_audit_events
+    WHERE action_code='LEGACY_CONFIGURATION_CARRIED_OVER'
+      AND (
+        COALESCE(event_metadata->>'secretValuesRead','true') <> 'false'
+        OR COALESCE(event_metadata->>'secretValuesChanged','true') <> 'false'
+        OR COALESCE(event_metadata->>'sourceTablesDeleted','true') <> 'false'
+      )
+  ) THEN
+    RAISE EXCEPTION 'Migration 047 carryover evidence is not sanitized.';
+  END IF;
+
+  SELECT COUNT(*) INTO module010_rows_after FROM azure_entra_settings;
+  SELECT COUNT(*) INTO module067_documents_after
+  FROM projectpulse_native_admin_documents
+  WHERE module_number='067' AND document_key='configuration';
+  SELECT md5(COALESCE((
+    SELECT to_jsonb(settings)::text
+    FROM azure_entra_settings settings
+    ORDER BY settings.updated_at DESC NULLS LAST, settings.created_at DESC NULLS LAST
+    LIMIT 1
+  ), '')) INTO module010_source_hash_after;
+  SELECT md5(COALESCE((
+    SELECT document_json::text
+    FROM projectpulse_native_admin_documents
+    WHERE module_number='067' AND document_key='configuration'
+    LIMIT 1
+  ), '')) INTO module067_source_hash_after;
+  IF module010_rows_after <> :module010_rows_before::bigint
+     OR module067_documents_after <> :module067_documents_before::bigint
+     OR module010_source_hash_after <> :'module010_source_hash_before'
+     OR module067_source_hash_after <> :'module067_source_hash_before' THEN
+    RAISE EXCEPTION 'Migration 047 changed or removed the Module 010 or Module 067 source configuration.';
+  END IF;
+
+  SELECT document_json->'configuration'->>'notes'
+  INTO notes
+  FROM projectpulse_native_admin_documents
+  WHERE module_number='065' AND document_key='configuration';
+  IF notes IS NULL OR notes NOT LIKE 'PROJECTPULSE_MICROSOFT_INTEGRATION_JSON:%' THEN
+    RAISE EXCEPTION 'Module 065 consolidated configuration marker is missing.';
+  END IF;
+  consolidated := substring(notes from length('PROJECTPULSE_MICROSOFT_INTEGRATION_JSON:') + 1)::jsonb;
+  SELECT tenant INTO active_tenant
+  FROM jsonb_array_elements(COALESCE(consolidated->'tenants','[]'::jsonb)) tenant
+  WHERE tenant->>'key' = consolidated->>'activeTenantKey'
+  LIMIT 1;
+  IF active_tenant IS NULL THEN
+    RAISE EXCEPTION 'Module 065 active tenant profile is missing.';
+  END IF;
+
+  SELECT to_jsonb(settings) INTO source_settings
+  FROM azure_entra_settings settings
+  ORDER BY settings.updated_at DESC NULLS LAST, settings.created_at DESC NULLS LAST
+  LIMIT 1;
+  IF source_settings IS NOT NULL THEN
+    IF COALESCE(source_settings->>'tenant_id','') <> ''
+       AND active_tenant->>'tenantId' <> source_settings->>'tenant_id' THEN
+      RAISE EXCEPTION 'Module 010 tenant ID was not carried into Module 065.';
+    END IF;
+    IF COALESCE(source_settings->>'client_id','') <> ''
+       AND active_tenant->'services'->>'clientId' <> source_settings->>'client_id' THEN
+      RAISE EXCEPTION 'Module 010 services client ID was not carried into Module 065.';
+    END IF;
+    IF COALESCE(source_settings->>'redirect_uri','') <> ''
+       AND active_tenant->'sso'->>'redirectUri' <> source_settings->>'redirect_uri' THEN
+      RAISE EXCEPTION 'Module 010 redirect URI was not carried into Module 065.';
+    END IF;
+  END IF;
+
+  SELECT document_json->'configuration' INTO legacy_mail
+  FROM projectpulse_native_admin_documents
+  WHERE module_number='067' AND document_key='configuration'
+  LIMIT 1;
+  IF legacy_mail IS NOT NULL THEN
+    IF COALESCE(legacy_mail->>'senderAddress','') <> ''
+       AND consolidated->'mail'->>'senderAddress' <> legacy_mail->>'senderAddress' THEN
+      RAISE EXCEPTION 'Module 067 sender address was not carried into Module 065.';
+    END IF;
+    IF COALESCE(legacy_mail->>'smtpHost','') <> ''
+       AND consolidated->'mail'->>'smtpHost' <> legacy_mail->>'smtpHost' THEN
+      RAISE EXCEPTION 'Module 067 SMTP host was not carried into Module 065.';
+    END IF;
+  END IF;
+
+  IF consolidated->'connectionOwnership'->>'module010DirectoryImport' <> 'services'
+     OR consolidated->'connectionOwnership'->>'module057CalendarPresence' <> 'services'
+     OR consolidated->'connectionOwnership'->>'module062IdentityProfile' <> 'services'
+     OR consolidated->'connectionOwnership'->>'globalMailTransport' <> 'services'
+     OR consolidated->'connectionOwnership'->>'interactiveSso' <> 'sso' THEN
+    RAISE EXCEPTION 'Module 065 Microsoft connection ownership metadata is incomplete.';
   END IF;
 END
-\$verify_microsoft_dual_connections\$;
-SELECT 'MICROSOFT_DUAL_CONNECTIONS_DATABASE=APPLIED_OR_VERIFIED';"
+\$verify_microsoft_connection_carryover\$;
+SELECT 'MICROSOFT_INTEGRATION_CONNECTION_DATABASE=APPLIED_OR_VERIFIED';"
