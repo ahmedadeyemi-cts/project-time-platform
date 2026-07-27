@@ -186,8 +186,9 @@ if (fullRepositoryContext) {
   'SMTP readiness checks only the approved endpoint and environment-specific credential presence');
   assert('MAIL_TEST_AUDIT', mailTest.includes('MICROSOFT_MAIL_TRANSPORT_TESTED')
     && mailTest.includes('AdminExperienceCommon.WriteAuditAsync')
-    && mailTest.includes('sanitized Module 008'),
-  'readiness outcomes are written as sanitized Module 008 evidence when available');
+    && mailTest.includes('"projectpulse_system_audit_events"')
+    && mailTest.includes('auditEvidenceRequested = true'),
+  'readiness outcomes request concrete, sanitized Module 008 audit evidence when available');
 
   assert('MODULE_010_CARRYOVER', migration.includes('FROM azure_entra_settings settings')
     && migration.includes("'legacyDirectorySettingsCarriedOver', true")
