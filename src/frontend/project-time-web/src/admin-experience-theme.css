@@ -1,0 +1,84 @@
+.theme-toggle.projectpulse-theme-control {
+  position: fixed !important;
+  left: 84px !important;
+  bottom: 18px !important;
+  z-index: 9000 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  min-width: 118px;
+  min-height: 42px;
+  margin: 0 !important;
+  border: 1px solid color-mix(in srgb, var(--brand-blue) 28%, var(--border)) !important;
+  border-radius: 999px !important;
+  padding: 9px 14px !important;
+  background: color-mix(in srgb, var(--surface) 92%, transparent) !important;
+  color: var(--text) !important;
+  box-shadow: 0 16px 38px rgba(15, 23, 42, 0.18) !important;
+  backdrop-filter: blur(16px);
+  font-size: 0 !important;
+  line-height: 1 !important;
+  white-space: nowrap;
+}
+
+.theme-toggle.projectpulse-theme-control::before {
+  content: '◐';
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--brand-blue-strong);
+  font-size: 0.95rem;
+  font-weight: 900;
+}
+
+.theme-toggle.projectpulse-theme-control::after {
+  content: 'Dark mode';
+  color: var(--text);
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.01em;
+}
+
+:root[data-theme='dark'] .theme-toggle.projectpulse-theme-control {
+  border-color: rgba(125, 211, 252, 0.28) !important;
+  background: rgba(15, 23, 42, 0.9) !important;
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.34) !important;
+}
+
+:root[data-theme='dark'] .theme-toggle.projectpulse-theme-control::before {
+  content: '☀';
+  background: rgba(250, 204, 21, 0.15);
+  color: #fde68a;
+}
+
+:root[data-theme='dark'] .theme-toggle.projectpulse-theme-control::after {
+  content: 'Light mode';
+  color: #f8fafc;
+}
+
+.theme-toggle.projectpulse-theme-control:hover,
+.theme-toggle.projectpulse-theme-control:focus-visible {
+  border-color: var(--brand-blue) !important;
+  transform: translateY(-1px);
+  box-shadow: 0 18px 42px rgba(0, 75, 141, 0.24) !important;
+  outline: 3px solid color-mix(in srgb, var(--brand-blue) 18%, transparent);
+}
+
+@media (max-width: 760px) {
+  .theme-toggle.projectpulse-theme-control {
+    left: 16px !important;
+    bottom: 14px !important;
+    min-width: 44px;
+    width: 44px;
+    padding: 8px !important;
+  }
+
+  .theme-toggle.projectpulse-theme-control::after {
+    display: none;
+  }
+}
