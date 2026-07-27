@@ -48,8 +48,8 @@ require "$WORKFLOW" 'PROJECTPULSE_PRODUCTION_SMTP_'
 require "$WORKFLOW" 'projectpulse:microsoft-mail-runtime-status'
 require "$WORKFLOW" "import './microsoft-mail-runtime-activation.js';"
 require "$WORKFLOW" "! grep -Fq '.route-azure-admin .azure-admin-heading-actions .primary-action'"
-require "$WORKFLOW" "! grep -Fq 'Request.EnableBuffering' release/src/backend/ProjectTime.Api/Modules/MicrosoftSmtpCredentialProjectionCompatibility.cs"
-require "$WORKFLOW" "! grep -Fq 'context.Request.Body' release/src/backend/ProjectTime.Api/Modules/MicrosoftSmtpCredentialProjectionCompatibility.cs"
+require "$WORKFLOW" "! grep -Fq 'Request.EnableBuffering' \"\$PROJECTION\""
+require "$WORKFLOW" "! grep -Fq 'context.Request.Body' \"\$PROJECTION\""
 
 require "$WORKFLOW" 'Capture current immutable API and web images'
 require "$WORKFLOW" 'Build immutable API and web candidates'
