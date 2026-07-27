@@ -7,6 +7,7 @@ public static class ScopedRolePolicyRules
         {
             "TIME_DELETE_PERMANENT",
             "USER_IMPERSONATE",
+            "ROLE_ASSIGN",
             "SYSTEM_CONFIGURE",
             "AUDIT_BYPASS",
             "APPROVAL_DELETE_PERMANENT",
@@ -48,6 +49,11 @@ public static class ScopedRolePolicyRules
         var isWrite = !HttpMethods.IsGet(method)
             && !HttpMethods.IsHead(method)
             && !HttpMethods.IsOptions(method);
+
+        if (isWrite && normalized == "/api/admin/users/roles")
+        {
+            return new ScopedRouteContract("012", "ROLE_ASSIGN", true);
+        }
 
         if (normalized.StartsWith("/api/timesheet")
             || normalized.StartsWith("/api/timesheets")
