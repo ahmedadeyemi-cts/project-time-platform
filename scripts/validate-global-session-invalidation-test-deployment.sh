@@ -4,7 +4,7 @@ set -Eeuo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEPLOY="$ROOT/.github/workflows/projectpulse-deploy-global-session-invalidation-test.yml"
 VALIDATE="$ROOT/.github/workflows/validate-global-session-invalidation-test-deployment.yml"
-EXPECTED_RELEASE="fd3a1ea9f304780da9e572724562b2621bde575c"
+EXPECTED_RELEASE="9ba6d676189ebca39f408c3bc7a71aa652cea8bf"
 
 fail() { echo "ERROR: $*" >&2; exit 1; }
 require_file() { [[ -f "$1" ]] || fail "Missing required file: ${1#$ROOT/}"; }
@@ -14,56 +14,47 @@ reject() { ! grep -Eiq -- "$2" "$1" || fail "Forbidden pattern in ${1#$ROOT/}: $
 require_file "$DEPLOY"
 require_file "$VALIDATE"
 
-require "$DEPLOY" 'name: ProjectPulse Deploy Login Session Race Fix Test'
+require "$DEPLOY" 'name: ProjectPulse Emergency Restore Pre-Session-Invalidation Web Test'
 require "$DEPLOY" 'workflow_dispatch:'
 require "$DEPLOY" "default: $EXPECTED_RELEASE"
 require "$DEPLOY" "EXPECTED_RELEASE_COMMIT: $EXPECTED_RELEASE"
-require "$DEPLOY" 'DEPLOY-LOGIN-SESSION-RACE-FIX-TO-TEST'
+require "$DEPLOY" 'RESTORE-PRE-SESSION-INVALIDATION-WEB-TO-TEST'
 require "$DEPLOY" 'environment: test'
 require "$DEPLOY" 'refs/heads/main'
+require "$DEPLOY" 'group: projectpulse-deploy-global-session-invalidation-test'
+require "$DEPLOY" 'cancel-in-progress: false'
 require "$DEPLOY" 'DISPATCH_RELEASE_COMMIT: ${{ inputs.release_commit }}'
 require "$DEPLOY" 'DISPATCH_CONFIRMATION: ${{ inputs.confirmation }}'
 require "$DEPLOY" 'WORKFLOW_SOURCE_REF: ${{ github.ref }}'
 require "$DEPLOY" 'WORKFLOW_SOURCE_SHA: ${{ github.sha }}'
 require "$DEPLOY" 'git -C control merge-base --is-ancestor'
-require "$DEPLOY" 'Only the verified login session race-fix release may deploy.'
+require "$DEPLOY" 'Only the approved pre-session-invalidation rollback release may deploy.'
 
-require "$DEPLOY" 'function requestSessionToken(input, init = {})'
-require "$DEPLOY" 'const requestToken = requestSessionToken(input, init);'
-require "$DEPLOY" 'requestToken === currentToken'
-require "$DEPLOY" 'void inspectFetchSessionRejection(input, response, requestToken);'
-require "$DEPLOY" 'if (isSessionRejection(request.status, payload, raw, token))'
-require "$DEPLOY" 'invalidateProjectPulseSession(path, payload, raw, token);'
-require "$DEPLOY" 'if (!path || response?.status !== 401 || !requestToken) return;'
-require "$DEPLOY" '! grep -Fq "invalidateProjectPulseSession(path, payload, raw);"'
-require "$DEPLOY" '! grep -Fq "if (!path || response?.status !== 401 || !storedSessionContext().token) return;"'
-require "$DEPLOY" '! grep -Fq "projectPulsePostLoginRoute"'
-require "$DEPLOY" 'npm run validate:global-session-invalidation'
-
-require "$DEPLOY" 'Capture current immutable web image'
-require "$DEPLOY" 'Build exact login race-fix web candidate'
-require "$DEPLOY" 'Deploy login race-fix web candidate only'
-require "$DEPLOY" 'Wait for exact login race-fix web revision'
-require "$DEPLOY" 'Validate served login race-fix bundle'
-require "$DEPLOY" 'projectpulse-authoritative-session-invalidation-v1'
-require "$DEPLOY" 'projectpulse:session-invalidated'
-require "$DEPLOY" 'session_required'
-require "$DEPLOY" 'projectPulseAuthSession'
-require "$DEPLOY" 'X-ProjectPulse-Session'
-require "$DEPLOY" 'X-Project-Pulse-Session'
-require "$DEPLOY" 'X-Session-Token'
+require "$DEPLOY" "grep -Fq 'projectpulse-authoritative-xhr-v1' \"\$SOURCE\""
+require "$DEPLOY" "request.setRequestHeader('X-ProjectPulse-Session', token);"
+require "$DEPLOY" "request.setRequestHeader('X-Project-Pulse-Session', token);"
+require "$DEPLOY" "request.setRequestHeader('X-Session-Token', token);"
+require "$DEPLOY" "! grep -Fq 'projectpulse-authoritative-session-invalidation-v1' \"\$SOURCE\""
+require "$DEPLOY" "! grep -Fq 'projectpulse:session-invalidated' \"\$SOURCE\""
+require "$DEPLOY" "! grep -Fq 'invalidateProjectPulseSession' \"\$SOURCE\""
+require "$DEPLOY" "! grep -Fq 'window.location.reload();' \"\$SOURCE\""
 require "$DEPLOY" '/api/admin/audit-history/events'
 require "$DEPLOY" 'Manager team scope'
-require "$DEPLOY" 'LOGIN_SESSION_RACE_FIX_WEB_VALIDATION=PASS'
-require "$DEPLOY" '"requestTokenCorrelation": "source-verified-and-exact-image-served"'
+
+require "$DEPLOY" 'Capture current immutable web image'
+require "$DEPLOY" 'Build exact rollback web candidate'
+require "$DEPLOY" 'Restore pre-session-invalidation web candidate only'
+require "$DEPLOY" 'Wait for exact restored web revision'
+require "$DEPLOY" 'Validate served rollback bundle'
+require "$DEPLOY" 'PRE_SESSION_INVALIDATION_WEB_RESTORED'
+require "$DEPLOY" 'EMERGENCY_LOGIN_WEB_RESTORE_VALIDATION=PASS'
+require "$DEPLOY" '"globalSessionInvalidation": "absent-from-restored-bundle"'
 require "$DEPLOY" '"apiDeployment": "unchanged"'
 require "$DEPLOY" '"migrations": "unchanged"'
 require "$DEPLOY" '"database": "unchanged"'
-require "$DEPLOY" '"modules008009": "preserved"'
-require "$DEPLOY" '"modules010065": "preserved"'
-require "$DEPLOY" 'Roll back web image on failure'
+require "$DEPLOY" 'Restore current web image if emergency rollback fails'
 require "$DEPLOY" 'wait-containerapp-ready-revision.sh'
-require "$DEPLOY" 'loginracerb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}'
+require "$DEPLOY" 'loginrestorefail-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}'
 
 reject "$DEPLOY" '^[[:space:]]*push:'
 reject "$DEPLOY" '^[[:space:]]*schedule:'
@@ -92,4 +83,4 @@ reject "$VALIDATE" 'az[[:space:]]+containerapp[[:space:]]+update'
 reject "$VALIDATE" 'azure/login'
 reject "$VALIDATE" 'environment:[[:space:]]*production'
 
-echo 'LOGIN_SESSION_RACE_FIX_TEST_DEPLOYMENT_GUARD=PASS'
+echo 'EMERGENCY_LOGIN_WEB_RESTORE_DEPLOYMENT_GUARD=PASS'

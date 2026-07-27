@@ -1,15 +1,15 @@
-name: ProjectPulse Deploy Login Session Race Fix Test
+name: ProjectPulse Emergency Restore Pre-Session-Invalidation Web Test
 
 on:
   workflow_dispatch:
     inputs:
       release_commit:
-        description: Exact verified login session race-fix release
+        description: Exact last known login-capable web release
         required: true
-        default: fd3a1ea9f304780da9e572724562b2621bde575c
+        default: 9ba6d676189ebca39f408c3bc7a71aa652cea8bf
         type: string
       confirmation:
-        description: Enter DEPLOY-LOGIN-SESSION-RACE-FIX-TO-TEST
+        description: Enter RESTORE-PRE-SESSION-INVALIDATION-WEB-TO-TEST
         required: true
         type: string
 
@@ -22,12 +22,12 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy-web:
-    name: Guarded login session race-fix web-only test deployment
+  restore-web:
+    name: Guarded emergency web-only login restoration
     environment: test
     runs-on: ubuntu-latest
     env:
-      EXPECTED_RELEASE_COMMIT: fd3a1ea9f304780da9e572724562b2621bde575c
+      EXPECTED_RELEASE_COMMIT: 9ba6d676189ebca39f408c3bc7a71aa652cea8bf
 
     steps:
       - name: Check out deployment controls
@@ -36,14 +36,14 @@ jobs:
           path: control
           fetch-depth: 0
 
-      - name: Check out exact login race-fix release
+      - name: Check out exact rollback release
         uses: actions/checkout@v5
         with:
           ref: ${{ inputs.release_commit }}
           path: release
           fetch-depth: 1
 
-      - name: Guard workflow source and exact login race-fix release
+      - name: Guard workflow source and exact rollback release
         id: release
         shell: bash
         env:
@@ -58,8 +58,8 @@ jobs:
             echo 'Dispatch this workflow from main.' >&2
             exit 1
           }
-          [[ "$DISPATCH_CONFIRMATION" == 'DEPLOY-LOGIN-SESSION-RACE-FIX-TO-TEST' ]] || {
-            echo 'The deployment confirmation text does not match.' >&2
+          [[ "$DISPATCH_CONFIRMATION" == 'RESTORE-PRE-SESSION-INVALIDATION-WEB-TO-TEST' ]] || {
+            echo 'The emergency restore confirmation text does not match.' >&2
             exit 1
           }
           [[ "$DISPATCH_RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || {
@@ -72,40 +72,33 @@ jobs:
           [[ "$CONTROL_COMMIT" == "$WORKFLOW_SOURCE_SHA" ]]
           [[ "$TARGET_COMMIT" == "$DISPATCH_RELEASE_COMMIT" ]]
           [[ "$TARGET_COMMIT" == "$EXPECTED_RELEASE_COMMIT" ]] || {
-            echo 'Only the verified login session race-fix release may deploy.' >&2
+            echo 'Only the approved pre-session-invalidation rollback release may deploy.' >&2
             exit 1
           }
           git -C control merge-base --is-ancestor "$TARGET_COMMIT" HEAD || {
-            echo 'The login race-fix release is not an ancestor of the deployment controls.' >&2
+            echo 'The rollback release is not an ancestor of the deployment controls.' >&2
             exit 1
           }
 
           SOURCE='release/src/frontend/project-time-web/src/projectpulse-authoritative-api.js'
-          VALIDATOR='release/src/frontend/project-time-web/scripts/validate-global-session-invalidation.mjs'
-          PACKAGE='release/src/frontend/project-time-web/package.json'
           test -f "$SOURCE"
-          test -f "$VALIDATOR"
-          test -f "$PACKAGE"
+          test -f release/src/frontend/project-time-web/src/AuditHistoryPanel.jsx
+          test -f release/src/frontend/project-time-web/src/UserAdministrationPanel.jsx
           test -f control/scripts/build-pr55-acr-image.sh
           test -f control/scripts/wait-containerapp-ready-revision.sh
 
-          grep -Fq "projectpulse-authoritative-session-invalidation-v1" "$SOURCE"
-          grep -Fq "projectpulse:session-invalidated" "$SOURCE"
-          grep -Fq "function requestSessionToken(input, init = {})" "$SOURCE"
-          grep -Fq "const requestToken = requestSessionToken(input, init);" "$SOURCE"
-          grep -Fq "requestToken === currentToken" "$SOURCE"
-          grep -Fq "void inspectFetchSessionRejection(input, response, requestToken);" "$SOURCE"
-          grep -Fq "if (isSessionRejection(request.status, payload, raw, token))" "$SOURCE"
-          grep -Fq "invalidateProjectPulseSession(path, payload, raw, token);" "$SOURCE"
-          grep -Fq "if (!path || response?.status !== 401 || !requestToken) return;" "$SOURCE"
-          ! grep -Fq "invalidateProjectPulseSession(path, payload, raw);" "$SOURCE"
-          ! grep -Fq "if (!path || response?.status !== 401 || !storedSessionContext().token) return;" "$SOURCE"
-          ! grep -Fq "projectPulsePostLoginRoute" "$SOURCE"
+          grep -Fq 'projectpulse-authoritative-xhr-v1' "$SOURCE"
+          grep -Fq "window.localStorage.getItem('projectPulseAuthSession')" "$SOURCE"
+          grep -Fq "request.setRequestHeader('X-ProjectPulse-Session', token);" "$SOURCE"
+          grep -Fq "request.setRequestHeader('X-Project-Pulse-Session', token);" "$SOURCE"
+          grep -Fq "request.setRequestHeader('X-Session-Token', token);" "$SOURCE"
+          ! grep -Fq 'projectpulse-authoritative-session-invalidation-v1' "$SOURCE"
+          ! grep -Fq 'projectpulse:session-invalidated' "$SOURCE"
+          ! grep -Fq 'invalidateProjectPulseSession' "$SOURCE"
+          ! grep -Fq 'window.location.reload();' "$SOURCE"
 
-          (
-            cd release/src/frontend/project-time-web
-            npm run validate:global-session-invalidation
-          )
+          grep -Fq '/api/admin/audit-history/events' release/src/frontend/project-time-web/src/AuditHistoryPanel.jsx
+          grep -Fq 'Manager team scope' release/src/frontend/project-time-web/src/UserAdministrationPanel.jsx
 
           echo "target_commit=$TARGET_COMMIT" >> "$GITHUB_OUTPUT"
 
@@ -154,11 +147,11 @@ jobs:
             printf '%s%s@%s\n' "$registry" "$repository" "$digest"
           }
 
-          OLD_WEB_IMAGE="$(resolve_digest "$RAW_WEB_IMAGE")"
-          echo "old_web_image=$OLD_WEB_IMAGE" >> "$GITHUB_OUTPUT"
-          echo "CAPTURED_WEB_ROLLBACK_IMAGE=$OLD_WEB_IMAGE"
+          CURRENT_WEB_IMAGE="$(resolve_digest "$RAW_WEB_IMAGE")"
+          echo "current_web_image=$CURRENT_WEB_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "CAPTURED_CURRENT_WEB_IMAGE=$CURRENT_WEB_IMAGE"
 
-      - name: Build exact login race-fix web candidate
+      - name: Build exact rollback web candidate
         id: build
         shell: bash
         working-directory: release
@@ -169,21 +162,21 @@ jobs:
           WEB_DIGEST="$(
             ../control/scripts/build-pr55-acr-image.sh \
               '${{ vars.AZURE_ACR_NAME }}' \
-              "$WEB_REPOSITORY:login-session-race-$TARGET_COMMIT" \
+              "$WEB_REPOSITORY:emergency-login-restore-$TARGET_COMMIT" \
               deployment/containers/web/Dockerfile \
               .
           )"
           [[ "$WEB_DIGEST" == sha256:* ]]
           WEB_IMAGE='${{ vars.AZURE_ACR_NAME }}.azurecr.io/'"$WEB_REPOSITORY@$WEB_DIGEST"
           echo "web_image=$WEB_IMAGE" >> "$GITHUB_OUTPUT"
-          echo "IMMUTABLE_WEB_CANDIDATE=$WEB_IMAGE"
+          echo "IMMUTABLE_ROLLBACK_WEB_CANDIDATE=$WEB_IMAGE"
 
-      - name: Deploy login race-fix web candidate only
+      - name: Restore pre-session-invalidation web candidate only
         id: deploy_web
         shell: bash
         run: |
           set -Eeuo pipefail
-          SUFFIX="loginrace-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          SUFFIX="loginrestore-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           REVISION='${{ vars.AZURE_WEB_APP }}'"--$SUFFIX"
           echo 'started=true' >> "$GITHUB_OUTPUT"
           echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
@@ -195,7 +188,7 @@ jobs:
             --revision-suffix "$SUFFIX" \
             --output none
 
-      - name: Wait for exact login race-fix web revision
+      - name: Wait for exact restored web revision
         shell: bash
         run: |
           bash control/scripts/wait-containerapp-ready-revision.sh \
@@ -204,7 +197,7 @@ jobs:
             '${{ steps.deploy_web.outputs.revision }}' \
             '${{ steps.build.outputs.web_image }}' 60 10
 
-      - name: Validate served login race-fix bundle
+      - name: Validate served rollback bundle
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -224,40 +217,40 @@ jobs:
           }
 
           for attempt in $(seq 1 30); do
-            BUSTER="loginrace-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${attempt}"
+            BUSTER="loginrestore-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${attempt}"
             STATUS="$(curl --silent --show-error --location \
               --header 'Cache-Control: no-cache' \
               --header 'Pragma: no-cache' \
-              --output /tmp/login-race-index.html \
+              --output /tmp/login-restore-index.html \
               --write-out '%{http_code}' \
               "$BASE_URL/?release_check=$BUSTER" || true)"
             LAST_STATUS="$STATUS"
 
             if [[ "$STATUS" == '200' ]]; then
-              JS_PATH="$(sed -nE 's/.*src="([^"]+\.js)".*/\1/p' /tmp/login-race-index.html | head -1)"
+              JS_PATH="$(sed -nE 's/.*src="([^"]+\.js)".*/\1/p' /tmp/login-restore-index.html | head -1)"
               LAST_JS="$JS_PATH"
               if [[ -n "$JS_PATH" ]]; then
                 JS_URL="$(absolute_asset_url "$JS_PATH")"
                 JS_STATUS="$(curl --silent --show-error --location \
                   --header 'Cache-Control: no-cache' \
                   --header 'Pragma: no-cache' \
-                  --output /tmp/login-race-app.js \
+                  --output /tmp/login-restore-app.js \
                   --write-out '%{http_code}' \
                   "$JS_URL?release_check=$BUSTER" || true)"
                 LAST_STATUS="html=$STATUS,js=$JS_STATUS"
 
                 if [[ "$JS_STATUS" == '200' ]] \
-                  && grep -Fq 'projectpulse-authoritative-session-invalidation-v1' /tmp/login-race-app.js \
-                  && grep -Fq 'projectpulse:session-invalidated' /tmp/login-race-app.js \
-                  && grep -Fq 'session_required' /tmp/login-race-app.js \
-                  && grep -Fq 'projectPulseAuthSession' /tmp/login-race-app.js \
-                  && grep -Fq 'X-ProjectPulse-Session' /tmp/login-race-app.js \
-                  && grep -Fq 'X-Project-Pulse-Session' /tmp/login-race-app.js \
-                  && grep -Fq 'X-Session-Token' /tmp/login-race-app.js \
-                  && grep -Fq '/api/admin/audit-history/events' /tmp/login-race-app.js \
-                  && grep -Fq 'Manager team scope' /tmp/login-race-app.js; then
+                  && grep -Fq 'projectpulse-authoritative-xhr-v1' /tmp/login-restore-app.js \
+                  && grep -Fq 'projectPulseAuthSession' /tmp/login-restore-app.js \
+                  && grep -Fq 'X-ProjectPulse-Session' /tmp/login-restore-app.js \
+                  && grep -Fq 'X-Project-Pulse-Session' /tmp/login-restore-app.js \
+                  && grep -Fq 'X-Session-Token' /tmp/login-restore-app.js \
+                  && grep -Fq '/api/admin/audit-history/events' /tmp/login-restore-app.js \
+                  && grep -Fq 'Manager team scope' /tmp/login-restore-app.js \
+                  && ! grep -Fq 'projectpulse-authoritative-session-invalidation-v1' /tmp/login-restore-app.js \
+                  && ! grep -Fq 'projectpulse:session-invalidated' /tmp/login-restore-app.js; then
                   READY=true
-                  echo "LOGIN_SESSION_RACE_FIX_ASSETS_READY attempt=$attempt js=$JS_PATH"
+                  echo "PRE_SESSION_INVALIDATION_WEB_RESTORED attempt=$attempt js=$JS_PATH"
                   break
                 fi
               fi
@@ -267,7 +260,7 @@ jobs:
           done
 
           [[ "$READY" == true ]] || {
-            echo "Login session race-fix assets did not become ready: status=$LAST_STATUS js=$LAST_JS" >&2
+            echo "Pre-session-invalidation bundle did not become ready: status=$LAST_STATUS js=$LAST_JS" >&2
             exit 1
           }
 
@@ -280,53 +273,51 @@ jobs:
             exit 1
           }
 
-          echo 'LOGIN_SESSION_RACE_FIX_WEB_VALIDATION=PASS'
+          echo 'EMERGENCY_LOGIN_WEB_RESTORE_VALIDATION=PASS'
 
-      - name: Write login race-fix deployment evidence
+      - name: Write emergency restore evidence
         if: success()
         shell: bash
         run: |
           set -Eeuo pipefail
           mkdir -p evidence
-          cat > evidence/login-session-race-fix-test-deployment.json <<JSON
+          cat > evidence/emergency-login-web-restore-test.json <<JSON
           {
             "environment": "test",
             "releaseCommit": "${{ steps.release.outputs.target_commit }}",
             "workflowCommit": "${{ github.sha }}",
             "runId": "${{ github.run_id }}",
-            "webImage": "${{ steps.build.outputs.web_image }}",
-            "previousWebImage": "${{ steps.before.outputs.old_web_image }}",
-            "requestTokenCorrelation": "source-verified-and-exact-image-served",
+            "restoredWebImage": "${{ steps.build.outputs.web_image }}",
+            "replacedWebImage": "${{ steps.before.outputs.current_web_image }}",
+            "globalSessionInvalidation": "absent-from-restored-bundle",
             "apiDeployment": "unchanged",
             "migrations": "unchanged",
             "database": "unchanged",
-            "modules008009": "preserved",
-            "modules010065": "preserved",
             "servedAssetValidation": "passed"
           }
           JSON
 
-      - name: Upload login race-fix deployment evidence
+      - name: Upload emergency restore evidence
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: login-session-race-fix-test-${{ github.run_id }}
-          path: evidence/login-session-race-fix-test-deployment.json
+          name: emergency-login-web-restore-test-${{ github.run_id }}
+          path: evidence/emergency-login-web-restore-test.json
           retention-days: 30
 
-      - name: Roll back web image on failure
+      - name: Restore current web image if emergency rollback fails
         if: ${{ failure() && steps.deploy_web.outputs.started == 'true' }}
         shell: bash
         run: |
           set +e
-          SUFFIX="loginracerb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          SUFFIX="loginrestorefail-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           ROLLBACK_REVISION='${{ vars.AZURE_WEB_APP }}'"--$SUFFIX"
-          echo 'Login session race-fix deployment failed. Restoring the captured immutable web image.' >&2
+          echo 'Emergency login rollback failed. Restoring the image captured before this run.' >&2
 
           az containerapp update \
             -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
             -n '${{ vars.AZURE_WEB_APP }}' \
-            --image '${{ steps.before.outputs.old_web_image }}' \
+            --image '${{ steps.before.outputs.current_web_image }}' \
             --revision-suffix "$SUFFIX" \
             --output none
 
@@ -334,4 +325,4 @@ jobs:
             '${{ vars.AZURE_RESOURCE_GROUP }}' \
             '${{ vars.AZURE_WEB_APP }}' \
             "$ROLLBACK_REVISION" \
-            '${{ steps.before.outputs.old_web_image }}' 60 10
+            '${{ steps.before.outputs.current_web_image }}' 60 10
