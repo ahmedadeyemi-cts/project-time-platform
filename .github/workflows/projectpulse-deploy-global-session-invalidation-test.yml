@@ -113,7 +113,7 @@ jobs:
           ! grep -Fq 'invalidateProjectPulseSession' "$TRANSPORT"
           ! grep -Fq 'window.location.reload();' "$TRANSPORT"
 
-          grep -Fq 'data.projectpulseThemeControl' "$THEME_JS" || grep -Fq 'dataset.projectpulseThemeControl' "$THEME_JS"
+          grep -Fq 'dataset.projectpulseThemeControl' "$THEME_JS"
           grep -Fq 'STRAY_THEME_TEXT' "$THEME_JS"
           grep -Fq 'Switch to ${target} mode' "$THEME_JS"
           grep -Fq "[data-projectpulse-theme-control='true']" "$THEME_CSS"
@@ -286,7 +286,7 @@ jobs:
                   && grep -Fq '/api/admin/audit-history/events' /tmp/session-theme-app.js \
                   && grep -Fq 'Manager team scope' /tmp/session-theme-app.js \
                   && grep -Fq 'projectpulse-theme-control' /tmp/session-theme-app.js \
-                  && grep -Fq 'Switch to dark mode' /tmp/session-theme-app.js \
+                  && grep -Fq 'projectpulseThemeControl' /tmp/session-theme-app.js \
                   && ! grep -Fq 'projectpulse-authoritative-session-invalidation-v1' /tmp/session-theme-app.js \
                   && ! grep -Fq 'projectpulse:session-invalidated' /tmp/session-theme-app.js \
                   && grep -Fq 'data-projectpulse-theme-control' /tmp/session-theme-app.css \
