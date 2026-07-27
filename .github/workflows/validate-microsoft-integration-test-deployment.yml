@@ -11,6 +11,7 @@ on:
       - 'scripts/validate-microsoft-integration-test-deployment.sh'
       - 'tests/test-microsoft-integration-migration-045.sh'
       - 'tests/test-microsoft-sso-connection-migration-046.sh'
+      - 'tests/test-microsoft-integration-connection-carryover-047.sh'
   workflow_dispatch:
 
 permissions:
@@ -18,7 +19,7 @@ permissions:
 
 jobs:
   validate:
-    name: Validate Microsoft dual-connection deployment and migration controls
+    name: Validate Microsoft Integration Connection deployment controls
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -27,7 +28,7 @@ jobs:
         shell: bash
         run: bash scripts/validate-microsoft-integration-test-deployment.sh
 
-      - name: Test migrations 045 and 046 independently
+      - name: Test migrations 045 046 and 047 independently
         shell: bash
         run: |
           set +e
@@ -37,14 +38,18 @@ jobs:
           bash tests/test-microsoft-sso-connection-migration-046.sh > /tmp/microsoft-integration-migration-046.log 2>&1
           status_046=$?
           cat /tmp/microsoft-integration-migration-046.log
-          if (( status_045 != 0 || status_046 != 0 )); then exit 1; fi
+          bash tests/test-microsoft-integration-connection-carryover-047.sh > /tmp/microsoft-integration-migration-047.log 2>&1
+          status_047=$?
+          cat /tmp/microsoft-integration-migration-047.log
+          if (( status_045 != 0 || status_046 != 0 || status_047 != 0 )); then exit 1; fi
 
       - name: Upload migration diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: microsoft-dual-connections-migration-diagnostics
+          name: microsoft-integration-connection-migration-diagnostics
           path: |
             /tmp/microsoft-integration-migration-045.log
             /tmp/microsoft-integration-migration-046.log
+            /tmp/microsoft-integration-migration-047.log
           retention-days: 7
