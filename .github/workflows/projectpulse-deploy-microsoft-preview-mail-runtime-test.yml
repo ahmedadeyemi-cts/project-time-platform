@@ -74,7 +74,7 @@ jobs:
           )
           for file in "${required_files[@]}"; do test -f "release/$file"; done
           test -x control/scripts/build-pr55-acr-image.sh
-          test -x control/scripts/wait-containerapp-ready-revision.sh
+          test -f control/scripts/wait-containerapp-ready-revision.sh
 
           grep -Fq 'MapMicrosoftMailRuntimeConfigurationEndpoints' release/src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs
           grep -Fq '/api/microsoft-integration/mail-runtime' release/src/backend/ProjectTime.Api/Modules/MicrosoftMailRuntimeConfigurationModule.cs
