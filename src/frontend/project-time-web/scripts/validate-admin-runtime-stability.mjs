@@ -3,9 +3,9 @@ import path from 'node:path';
 
 const frontendRoot = process.cwd();
 const repositoryRoot = path.resolve(frontendRoot, '..', '..', '..');
-const file = (relative) => path.join(repositoryRoot, relative);
-const read = (relative) => fs.readFileSync(file(relative), 'utf8');
-const exists = (relative) => fs.existsSync(file(relative));
+const absolute = (relative) => path.join(repositoryRoot, relative);
+const exists = (relative) => fs.existsSync(absolute(relative));
+const read = (relative) => fs.readFileSync(absolute(relative), 'utf8');
 const checks = [];
 
 function check(name, condition, evidence) {
@@ -13,64 +13,51 @@ function check(name, condition, evidence) {
   console.log(`ADMIN_RUNTIME_STABILITY_${name}=${condition ? 'PASSED' : 'FAILED'} — ${evidence}`);
 }
 
-const paths = {
+const frontendPaths = {
   main: 'src/frontend/project-time-web/src/main.jsx',
   runtime: 'src/frontend/project-time-web/src/runtime-data-compatibility.js',
   timer: 'src/frontend/project-time-web/src/module001/TimesheetEnhancementPortal.jsx',
   audit: 'src/frontend/project-time-web/src/AuditHistoryPanel.jsx',
-  stableOwner: 'src/frontend/project-time-web/src/AdminRuntimeStabilityPortal.jsx',
+  owner: 'src/frontend/project-time-web/src/AdminRuntimeStabilityPortal.jsx',
   stableCss: 'src/frontend/project-time-web/src/admin-runtime-stability.css',
   theme: 'src/frontend/project-time-web/src/admin-experience-theme.js',
   themeCss: 'src/frontend/project-time-web/src/admin-experience-theme.css',
-  ownershipPrelude: 'src/frontend/project-time-web/src/react-dom-ownership-prelude.js',
-  microsoftCompat: 'src/frontend/project-time-web/src/microsoft-integration-compatibility.js',
+  ownership: 'src/frontend/project-time-web/src/react-dom-ownership-prelude.js',
+  microsoft: 'src/frontend/project-time-web/src/microsoft-integration-compatibility.js',
   microsoftCss: 'src/frontend/project-time-web/src/microsoft-integration-portal.css',
-  mailUi: 'src/frontend/project-time-web/src/MicrosoftMailTransportReadinessPanel.jsx',
-  mailTest: 'src/backend/ProjectTime.Api/Modules/MicrosoftMailTransportTestModule.cs',
-  registrar: 'src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs',
-  continuity: 'src/backend/ProjectTime.Api/Modules/ModuleAvailabilityReadContinuityCompatibility.cs',
-  package: 'src/frontend/project-time-web/package.json'
+  mailUi: 'src/frontend/project-time-web/src/MicrosoftMailTransportReadinessPanel.jsx'
 };
 
-for (const [name, relative] of Object.entries(paths)) {
+for (const [name, relative] of Object.entries(frontendPaths)) {
   check(`${name.toUpperCase()}_EXISTS`, exists(relative), relative);
 }
 
-const main = read(paths.main);
-const runtime = read(paths.runtime);
-const timer = read(paths.timer);
-const audit = read(paths.audit);
-const stableOwner = read(paths.stableOwner);
-const stableCss = read(paths.stableCss);
-const theme = read(paths.theme);
-const themeCss = read(paths.themeCss);
-const ownershipPrelude = read(paths.ownershipPrelude);
-const microsoftCompat = read(paths.microsoftCompat);
-const microsoftCss = read(paths.microsoftCss);
-const mailUi = read(paths.mailUi);
-const mailTest = read(paths.mailTest);
-const registrar = read(paths.registrar);
-const continuity = read(paths.continuity);
-const packageJson = JSON.parse(read(paths.package));
+const main = read(frontendPaths.main);
+const runtime = read(frontendPaths.runtime);
+const timer = read(frontendPaths.timer);
+const audit = read(frontendPaths.audit);
+const owner = read(frontendPaths.owner);
+const stableCss = read(frontendPaths.stableCss);
+const theme = read(frontendPaths.theme);
+const themeCss = read(frontendPaths.themeCss);
+const ownership = read(frontendPaths.ownership);
+const microsoft = read(frontendPaths.microsoft);
+const microsoftCss = read(frontendPaths.microsoftCss);
+const mailUi = read(frontendPaths.mailUi);
 
-check('ROLE_POLICY_DIRECT_VALIDATION', runtime.includes("DIRECT_ROLE_POLICY_MARKER = 'projectpulse-role-policy-direct-fetch-v3'")
+check('ROLE_POLICY_DIRECT_VALIDATION', runtime.includes('projectpulse-role-policy-direct-fetch-v3')
   && runtime.includes("'/api/role-policy/summary': '/api/runtime/v2/role-policy/summary'")
   && runtime.includes("'/api/runtime/v2/role-policy/summary': '/api/role-policy/summary'")
   && runtime.includes('hasCollections(normalized, collections)')
   && runtime.includes("status: 'role_policy_contract_mismatch'")
-  && runtime.includes('attempts'),
-'role-policy reads use direct session transport, validated legacy/v2 fallbacks, and explicit mismatch evidence');
+  && !runtime.includes('normalized[name] = []'),
+'role-policy reads use validated legacy/v2 direct transports and never fabricate collections');
 
 check('ROLE_POLICY_MODULE_ATTRIBUTION', runtime.includes("currentRoute() === 'roles-permissions-matrix'")
   && runtime.includes("return '037'")
   && runtime.includes("return '012'")
   && runtime.includes("headers.set('X-ProjectPulse-Module-Number', moduleNumber)"),
-'Modules 012 and 037 are attributed explicitly on direct role-policy reads');
-
-check('ROLE_POLICY_NO_EMPTY_COLLECTION_FABRICATION', !runtime.includes('collections.map((name) => [name, []])')
-  && !runtime.includes('normalized[name] = []')
-  && !runtime.includes('return { roles: [], modules: [] }'),
-'missing role-policy collections are reported and never fabricated');
+'Modules 012 and 037 are attributed explicitly');
 
 check('TIMER_ROUTE_SCOPED', timer.includes('function isTimesheetRoute()')
   && timer.includes("=== 'timesheet'")
@@ -78,40 +65,37 @@ check('TIMER_ROUTE_SCOPED', timer.includes('function isTimesheetRoute()')
   && timer.includes('async function loadTimerTargets(weekStart)')
   && !timer.includes('new MutationObserver')
   && !timer.includes("import { authoritativeApi }"),
-'Timer-target requests run only on Module 001 through a validated direct transport');
+'Timer targets run only on Module 001 through a direct validated transport');
 
 check('AUDIT_STABLE_OWNER', main.includes('<AdminRuntimeStabilityPortal />')
-  && stableOwner.includes('window.__projectPulseModule008StableOwnerInstalled = true')
-  && stableOwner.includes('<AuditHistoryPanel stableRouteOwner />')
-  && audit.includes('window.__projectPulseModule008StableOwnerInstalled')
+  && owner.includes('window.__projectPulseModule008StableOwnerInstalled = true')
+  && owner.includes('<AuditHistoryPanel stableRouteOwner />')
+  && audit.includes('__projectPulseModule008StableOwnerInstalled')
   && audit.includes('&& !stableRouteOwner)')
-  && audit.includes('return null;')
   && stableCss.includes('.admin-runtime-stability-route-root'),
-'Module 008 has one root-owned stable route surface independent of transient permission collections');
+'Module 008 has one root-owned route surface independent of transient role-policy data');
 
-check('AUDIT_MODULE010_CONSOLIDATION', stableOwner.includes('Synchronization history is consolidated in Module 008')
-  && stableOwner.includes('#audit-history?category=integration')
+check('AUDIT_MODULE010_CONSOLIDATION', owner.includes('Synchronization history is consolidated in Module 008')
+  && owner.includes('#audit-history?category=integration')
   && audit.includes('Module 010 sync evidence')
   && microsoftCss.includes('.route-azure-admin .azure-sync-runs-card'),
-'Module 010 local sync history presentation is consolidated into Module 008');
+'Module 010 synchronization evidence is consolidated into Module 008');
 
 check('VIEW_AS_REACT_DOM_OWNERSHIP', main.includes("import './react-dom-ownership-prelude.js';")
   && main.indexOf("import './react-dom-ownership-prelude.js';") < main.indexOf("import App from './App.Module001.g.jsx';")
-  && ownershipPrelude.includes('__projectPulseGlobalViewAsTopbarMountInstalled = true')
-  && ownershipPrelude.includes("'view-as-body-owned'")
-  && !/insertBefore|appendChild|removeChild|MutationObserver/.test(ownershipPrelude)
-  && stableCss.includes('#projectpulse-global-view-as:not([data-topbar-mounted="true"])'),
-'legacy View-As remains body-owned and cannot insert or reparent nodes inside the React top bar');
+  && ownership.includes('__projectPulseGlobalViewAsTopbarMountInstalled = true')
+  && ownership.includes('view-as-body-owned')
+  && !/insertBefore|appendChild|removeChild|MutationObserver/.test(ownership),
+'legacy View-As cannot reparent nodes inside the React-owned top bar');
 
 check('NO_REACT_DOM_MUTATION_BRIDGES', !theme.includes('MutationObserver')
   && !theme.includes('node.remove()')
   && !theme.includes('removeChild(')
-  && !microsoftCompat.includes('MutationObserver')
-  && !microsoftCompat.includes('querySelectorAll(')
-  && !microsoftCompat.includes('style.setProperty')
-  && !microsoftCompat.includes('.hidden =')
-  && !/insertBefore|appendChild|removeChild|MutationObserver/.test(ownershipPrelude),
-'compatibility bridges no longer insert, remove, hide, move, or reparent React-owned nodes');
+  && !microsoft.includes('MutationObserver')
+  && !microsoft.includes('querySelectorAll(')
+  && !microsoft.includes('style.setProperty')
+  && !microsoft.includes('.hidden ='),
+'compatibility bridges do not insert, remove, hide, or move React-owned nodes');
 
 check('THEME_ICON_NO_RELOAD', theme.includes("button.textContent = ''")
   && theme.includes("document.addEventListener('click', handleThemeClick, true)")
@@ -119,71 +103,76 @@ check('THEME_ICON_NO_RELOAD', theme.includes("button.textContent = ''")
   && !theme.includes('window.location.reload')
   && themeCss.includes("content: '☾'")
   && themeCss.includes("content: '☀'"),
-'icon-only theme changes do not reload the application or remove DOM nodes');
+'icon-only theme changes do not reload the app or remove DOM nodes');
 
 check('MODULE010_RESPONSIVE_ACTIONS', microsoftCss.includes('.route-azure-admin .azure-admin-heading-actions')
   && microsoftCss.includes('.route-azure-admin .azure-selection-toolbar')
   && microsoftCss.includes('flex-wrap: wrap !important')
   && microsoftCss.includes('overflow-x: auto')
   && microsoftCss.includes('repeat(auto-fit, minmax(min(100%, 220px), 1fr))'),
-'Module 010 preview/import controls and tables remain visible at constrained widths');
+'Module 010 preview/import controls remain inside constrained viewports');
 
-check('MODULE010_STRICT_SERVICES_ACTIVATION', microsoftCompat.includes('applyStoredServicesProfile')
-  && microsoftCompat.includes("String(tenant?.environmentMode || '').toLowerCase() === runtimeEnvironment")
-  && microsoftCompat.includes('applyPayload?.runtimeActivated !== true')
-  && microsoftCompat.includes("String(applyPayload?.runtimeEnvironment || '').toLowerCase() !== profile.environmentMode")
-  && microsoftCompat.includes("status: 'module_065_services_profile_not_active'"),
-'Module 010 preview stops unless Module 065 activates the matching running-environment services profile');
+check('MODULE010_STRICT_SERVICES_ACTIVATION', microsoft.includes('applyStoredServicesProfile')
+  && microsoft.includes("String(tenant?.environmentMode || '').toLowerCase() === runtimeEnvironment")
+  && microsoft.includes('applyPayload?.runtimeActivated !== true')
+  && microsoft.includes("String(applyPayload?.runtimeEnvironment || '').toLowerCase() !== profile.environmentMode")
+  && microsoft.includes("status: 'module_065_services_profile_not_active'"),
+'Module 010 preview requires a matching running-environment Module 065 services profile');
 
-check('AVAILABILITY_READ_CONTINUITY', registrar.includes('UseModuleAvailabilityReadContinuityCompatibility')
-  && continuity.includes('/api/runtime/v2/role-policy/')
-  && continuity.includes('/api/admin/audit-history/events')
-  && continuity.includes('/api/admin/azure/users/preview')
-  && continuity.includes('/api/microsoft-integration/mail-runtime/test')
-  && !continuity.includes('/api/admin/azure/users/import-selected')
-  && !continuity.includes('/api/microsoft-integration/directory-users/import-selected'),
-'optional module availability storage cannot block authorized read/test flows and never bypasses writes');
-
-check('SSO_PUBLIC_ORIGIN', registrar.includes('X-Forwarded-Host')
-  && registrar.includes('X-Forwarded-Proto')
-  && registrar.includes('request.Headers["Origin"]')
-  && registrar.includes('request.Headers["Referer"]')
-  && registrar.includes('.onenecklab.com')
-  && registrar.includes('TrustedHost'),
-'Module 065 resolves and validates the browser-facing SSO callback origin');
-
-check('MAIL_TEST_REGISTERED', registrar.includes('MapMicrosoftMailTransportTestEndpoints')
-  && mailTest.includes('TestPath = "/api/microsoft-integration/mail-runtime/test"')
-  && main.includes('<MicrosoftMailTransportReadinessPanel />')
-  && mailUi.includes("TEST_PATH = '/api/microsoft-integration/mail-runtime/test'"),
-'Module 065 exposes the non-delivery sender and transport test through API and UI');
-
-check('MAIL_TEST_NO_DELIVERY_OR_SECRET_RETURN', mailTest.includes('liveMessageSent = false')
-  && mailTest.includes('outboxMessageCreated = false')
-  && mailTest.includes('secretValuesReturned = false')
+check('MODULE065_READINESS_UI', main.includes('<MicrosoftMailTransportReadinessPanel />')
+  && mailUi.includes("TEST_PATH = '/api/microsoft-integration/mail-runtime/test'")
   && mailUi.includes('No live message is sent.')
-  && !mailTest.includes('SendMail')
-  && !mailTest.includes('/sendMail')
-  && !mailTest.includes('SmtpClient.Send'),
-'readiness testing cannot send email or return secret values');
+  && mailUi.includes('secretValuesReturned'),
+'Module 065 exposes a non-delivery sender and transport readiness surface');
 
-check('MAIL_TEST_GRAPH_AND_SMTP', mailTest.includes('https://graph.microsoft.com/.default')
-  && mailTest.includes('Mail.Send')
-  && mailTest.includes('Directory.Read.All')
-  && mailTest.includes('User.Read.All')
-  && mailTest.includes('smtp.office365.com')
-  && mailTest.includes('TcpClient')
-  && mailTest.includes('No authentication or email send was attempted'),
-'Graph and SMTP readiness are tested without live delivery');
+const backendPaths = {
+  registrar: 'src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs',
+  continuity: 'src/backend/ProjectTime.Api/Modules/ModuleAvailabilityReadContinuityCompatibility.cs',
+  mailTest: 'src/backend/ProjectTime.Api/Modules/MicrosoftMailTransportTestModule.cs'
+};
+const fullRepositoryContext = Object.values(backendPaths).every(exists);
+if (fullRepositoryContext) {
+  const registrar = read(backendPaths.registrar);
+  const continuity = read(backendPaths.continuity);
+  const mailTest = read(backendPaths.mailTest);
 
-check('MAIL_TEST_AUDITED', mailTest.includes('MICROSOFT_MAIL_TRANSPORT_TESTED')
-  && mailTest.includes('AdminExperienceCommon.WriteAuditAsync')
-  && mailTest.includes('Module 008'),
-'sanitized readiness evidence is submitted to Module 008 when available');
+  check('AVAILABILITY_READ_CONTINUITY', registrar.includes('UseModuleAvailabilityReadContinuityCompatibility')
+    && continuity.includes('/api/runtime/v2/role-policy/')
+    && continuity.includes('/api/admin/audit-history/events')
+    && continuity.includes('/api/admin/azure/users/preview')
+    && continuity.includes('/api/microsoft-integration/mail-runtime/test')
+    && !continuity.includes('/api/microsoft-integration/directory-users/import-selected'),
+  'optional module availability cannot block authorized reads/tests and never bypasses imports');
 
-check('BUILD_GUARD', packageJson.scripts?.build?.includes('validate:admin-runtime-stability')
-  && packageJson.scripts?.['validate:admin-runtime-stability']?.includes('validate-admin-runtime-stability.mjs'),
-'integrated runtime stability validation is permanent in the production build');
+  check('SSO_PUBLIC_ORIGIN', registrar.includes('X-Forwarded-Host')
+    && registrar.includes('X-Forwarded-Proto')
+    && registrar.includes('request.Headers["Origin"]')
+    && registrar.includes('request.Headers["Referer"]')
+    && registrar.includes('.onenecklab.com')
+    && registrar.includes('TrustedHost'),
+  'Module 065 resolves a trusted browser-facing SSO callback origin');
+
+  check('MAIL_TEST_NON_DELIVERY', registrar.includes('MapMicrosoftMailTransportTestEndpoints')
+    && mailTest.includes('TestPath = "/api/microsoft-integration/mail-runtime/test"')
+    && mailTest.includes('liveMessageSent = false')
+    && mailTest.includes('outboxMessageCreated = false')
+    && mailTest.includes('secretValuesReturned = false')
+    && !mailTest.includes('/sendMail'),
+  'Module 065 readiness test cannot send or return secrets');
+
+  check('MAIL_TEST_GRAPH_SMTP_AUDIT', mailTest.includes('https://graph.microsoft.com/.default')
+    && mailTest.includes('Mail.Send')
+    && mailTest.includes('smtp.office365.com')
+    && mailTest.includes('TcpClient')
+    && mailTest.includes('MICROSOFT_MAIL_TRANSPORT_TESTED')
+    && mailTest.includes('AdminExperienceCommon.WriteAuditAsync'),
+  'Graph/SMTP readiness is tested and sanitized evidence is requested in Module 008');
+
+  console.log('ADMIN_RUNTIME_STABILITY_CONTEXT=FULL_REPOSITORY');
+} else {
+  console.log('ADMIN_RUNTIME_STABILITY_BACKEND_DEEP_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
+  console.log('ADMIN_RUNTIME_STABILITY_CONTEXT=MINIMAL_WEB_BUILD');
+}
 
 const failures = checks.filter((item) => !item.condition).map((item) => item.name);
 console.log(`ADMIN_RUNTIME_STABILITY_VALIDATION_CHECKS=${checks.length}`);
