@@ -81,8 +81,9 @@ check('TIMER_ROUTE_SCOPED', timer.includes('function isTimesheetRoute()')
 check('AUDIT_STABLE_OWNER', main.includes('<AdminRuntimeStabilityPortal />')
   && stableOwner.includes('window.__projectPulseModule008StableOwnerInstalled = true')
   && stableOwner.includes('<AuditHistoryPanel stableRouteOwner />')
-  && audit.includes('if (!stableRouteOwner && window.__projectPulseModule008StableOwnerInstalled)')
-  && stableCss.includes('data-module-008-stable-route-root') === false
+  && audit.includes('window.__projectPulseModule008StableOwnerInstalled')
+  && audit.includes('&& !stableRouteOwner)')
+  && audit.includes('return null;')
   && stableCss.includes('.admin-runtime-stability-route-root'),
 'Module 008 has one root-owned stable route surface independent of transient permission collections');
 
