@@ -9,40 +9,59 @@ const optionalText = async (path) => existsSync(absolute(path)) ? text(path) : '
 const requireAll = (source, values, label) => {
   for (const value of values) if (!source.includes(value)) throw new Error(`${label} missing contract: ${value}`);
 };
+const rejectAll = (source, values, label) => {
+  for (const value of values) if (source.includes(value)) throw new Error(`${label} contains retired contract: ${value}`);
+};
 
-const [ui, model, css, backend] = await Promise.all([
+const [ui, model, css, legacyBackend, dynamicBackend] = await Promise.all([
   text('src/frontend/project-time-web/src/RolesPermissionsMatrix.jsx'),
   text('src/frontend/project-time-web/src/role-permission-matrix-model.js'),
   text('src/frontend/project-time-web/src/role-permission-matrix-v2.css'),
-  optionalText('src/backend/ProjectTime.Api/Modules/ScopedRolePolicyModule.cs')
+  optionalText('src/backend/ProjectTime.Api/Modules/ScopedRolePolicyModule.cs'),
+  optionalText('src/backend/ProjectTime.Api/Modules/DynamicRbacAdministrationModule.cs')
 ]);
 
 requireAll(ui, [
   'Module 037',
   'Roles and Permissions Matrix',
   'Read-only confirmation',
-  "api('/api/role-policy/matrix')",
-  "api('/api/role-policy/catalog')",
+  "api('/api/rbac/v1/matrix')",
+  'data-rbac-contract="projectpulse-rbac-v1"',
   'data-read-only="true"',
+  'no fixed module count is required',
+  'Super Administrator is always Full Control',
   'Permission Matrix',
   'Role Reference',
   'Permission Levels',
-  'Database modules',
-  'Canonical roles',
+  'Active modules',
+  'Active roles',
+  'Configured pairs',
+  'Unconfigured pairs',
+  'Dynamic database catalog',
+  'No 70-module requirement',
   'Export matrix',
-  'The Module, Permission, and Description columns stay pinned',
-  '<th>Module</th><th>Permission</th><th>Description</th>',
-  '✓ Allow',
-  '× Deny',
-  '— Not set',
+  '<th>Page</th><th>Permission</th><th>Description</th>',
+  "if (state === 'ALLOW') return 'rpm-decision rpm-decision-allow'",
+  "if (state === 'DENY') return 'rpm-decision rpm-decision-deny'",
+  "return 'rpm-decision rpm-decision-not-set'",
+  "decision.state === 'ALLOW' ? 'Allow'",
+  "decision.state === 'DENY' ? 'No Access' : 'Not Set'",
+  'Permission explanation',
   'Permission code',
-  'Policy evidence',
-  'Project Team Coordinator',
-  'Time-steward boundary',
-  'does not submit their timesheets',
+  'Last modified',
+  'policy evidence',
+  "role.roleCode === 'PROJECT_TEAM_COORDINATOR' ? 'ptc-reference' : ''",
+  'projectpulse-dynamic-rbac-matrix.csv'
+], 'Module 037 dynamic spreadsheet UI');
+
+rejectAll(ui, [
+  'const REQUIRED_ROLE_COUNT',
+  'const REQUIRED_MODULE_COUNT',
+  'Expected ${REQUIRED_ROLE_COUNT} roles and ${REQUIRED_MODULE_COUNT} modules',
   'The published permission matrix is incomplete',
-  'Expected ${REQUIRED_ROLE_COUNT} roles and ${REQUIRED_MODULE_COUNT} modules'
-], 'Module 037 spreadsheet UI');
+  "api('/api/role-policy/matrix')",
+  "api('/api/role-policy/catalog')"
+], 'Module 037 retired fixed-count and legacy transport');
 
 requireAll(model, [
   'PERMISSION_LEVELS',
@@ -75,31 +94,53 @@ requireAll(css, [
   '.rpm-permission-table th:nth-child(3)',
   'position: sticky',
   '.rpm-role-heading',
-  '.rpm-decision-allow',
-  '.rpm-decision-deny',
-  '.rpm-decision-not-set',
+  '.rpm-decision-allow button',
+  '.rpm-decision-deny button',
+  '.rpm-decision-not-set button',
   '.rpm-reference-grid',
   '.ptc-reference',
   '.rpm-level-reference',
   '.rpm-detail-overlay'
 ], 'Module 037 styling');
 
-if (backend) {
-  requireAll(backend, [
+if (dynamicBackend) {
+  requireAll(dynamicBackend, [
+    '"/api/rbac/v1/matrix"',
+    'DynamicRbacMatrixAsync',
+    'fixedModuleCountRequired = false',
+    'readOnly = true',
+    'writeEndpoints = Array.Empty<string>()',
+    'superAdministratorFullControl = true',
+    'legacyFallback = unconfigured',
+    'No explicit RBAC decision exists',
+    'roles.Count == 0 || modules.Count == 0 || version is null'
+  ], 'Dynamic Module 037 backend');
+  rejectAll(dynamicBackend, [
+    'modules.Count != 70',
+    'moduleCount == 70',
+    'Expected 12 roles and 70 modules'
+  ], 'Dynamic Module 037 backend fixed-count gate');
+} else {
+  console.log('MODULE_037_DYNAMIC_BACKEND_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
+}
+
+if (legacyBackend) {
+  requireAll(legacyBackend, [
     'app.MapGet("/api/role-policy/matrix"',
     'app.MapGet("/api/role-policy/explain"',
     'readOnly = true',
     'writeEndpoints = Array.Empty<string>()',
     'legacyAuthorizationPreserved = true'
-  ], 'Module 037 backend');
+  ], 'Legacy Module 037 compatibility backend');
 } else {
-  console.log('MODULE_037_BACKEND_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
+  console.log('MODULE_037_LEGACY_BACKEND_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
 }
 
 for (const forbidden of [
   "method: 'POST'", 'method: "POST"', "method: 'PUT'", 'method: "PUT"',
   "method: 'PATCH'", 'method: "PATCH"', "method: 'DELETE'", 'method: "DELETE"',
-  '/api/role-policy/publish', '/api/role-policy/validate', '/api/role-policy/versions/'
+  '/api/rbac/v1/policies/publish', '/api/rbac/v1/policies/validate',
+  '/api/rbac/v1/role-memberships/', '/api/rbac/v1/modules/register'
 ]) {
   if (ui.includes(forbidden)) throw new Error(`Module 037 must remain strictly read-only: ${forbidden}`);
 }
@@ -108,4 +149,4 @@ if (/<input[^>]+type=["']checkbox["']|<textarea|contentEditable|onSubmit=/i.test
   throw new Error('Module 037 contains an editing control or submission handler.');
 }
 
-console.log('Module 037 read-only spreadsheet permission matrix contracts passed.');
+console.log('MODULE_037_DYNAMIC_PERMISSION_MATRIX=PASS mode=database-dynamic fixedModuleCount=false readOnly=true decisionStyles=aligned');

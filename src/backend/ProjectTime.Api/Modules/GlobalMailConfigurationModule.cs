@@ -19,10 +19,8 @@ public static class GlobalMailConfigurationModule
         app.UseProjectPulsePublicOriginCompatibility();
         app.UseMicrosoftIntegrationSecurityCompatibility();
         app.UseMicrosoftPublicSsoOriginCompatibility();
-        // The HAR-confirmed failure was an ASP.NET route-handler binding issue:
-        // role-policy Task<IResult> method groups completed as raw RequestDelegate
-        // tasks and returned HTTP 200 with an empty body. Execute those read-only
-        // results explicitly before the historic registrations are reached.
+        // Preserve the legacy role-policy route families while Modules 012 and 037
+        // move to the explicit, database-dynamic /api/rbac/v1 contract.
         app.UseScopedRolePolicyResultExecutionCompatibility();
         app.UseModuleAvailabilityReadContinuityCompatibility();
         app.UseMicrosoftSsoRuntimeCompatibility();
@@ -34,6 +32,13 @@ public static class GlobalMailConfigurationModule
         app.MapMicrosoftMailRuntimeConfigurationEndpoints();
         app.MapMicrosoftMailTransportTestEndpoints();
         AzureDirectoryImportModule.MapEndpoints(app);
+
+        // Modules 012 and 037 use this clean v1 RBAC contract. It has no fixed
+        // module count, supports audited role membership and module lifecycle,
+        // and defaults newly registered modules to No Access for every ordinary
+        // role while preserving permanent Super Administrator Full Control.
+        app.MapDynamicRbacAdministrationEndpoints();
+
         // Additive registration only: Module 021 consumes the authoritative
         // Module 026 SELL connection without changing Microsoft Integration.
         app.MapCustomerDirectorySellSyncEndpoints();

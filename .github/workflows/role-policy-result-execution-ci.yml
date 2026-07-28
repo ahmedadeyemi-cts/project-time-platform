@@ -4,10 +4,14 @@ on:
   push:
     branches:
       - 'hotfix/role-policy-result-execution-*'
+      - 'feature/dynamic-rbac-administration-package-*'
   pull_request:
     paths:
       - 'src/backend/ProjectTime.Api/Modules/ScopedRolePolicyResultExecutionCompatibility.cs'
+      - 'src/backend/ProjectTime.Api/Modules/DynamicRbacAdministrationModule.cs'
       - 'src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs'
+      - 'src/frontend/project-time-web/src/RoleAdminDirectoryPanel.jsx'
+      - 'src/frontend/project-time-web/src/RolesPermissionsMatrix.jsx'
       - 'tests/ProjectTime.Api.RouteResultExecutionTests/**'
       - '.github/workflows/security-role-policy-public-origin-ci.yml'
       - '.github/workflows/role-policy-result-execution-ci.yml'
@@ -25,30 +29,34 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 1
 
-      - name: Verify focused source scope
+      - name: Verify focused source scope or run regression mode
         shell: bash
+        env:
+          SOURCE_BRANCH: ${{ github.head_ref || github.ref_name }}
         run: |
           set -Eeuo pipefail
-          git fetch origin main --no-tags
-          mapfile -t CHANGED < <(git diff --name-only origin/main...HEAD)
-          printf '%s\n' "${CHANGED[@]}"
 
-          ALLOWED='^(\.github/workflows/(role-policy-result-execution-ci|security-role-policy-public-origin-ci)\.yml|src/backend/ProjectTime.Api/Modules/(GlobalMailConfigurationModule|ScopedRolePolicyResultExecutionCompatibility)\.cs|tests/ProjectTime.Api.RouteResultExecutionTests/(ProjectTime.Api.RouteResultExecutionTests\.csproj|Program\.cs))$'
-          UNEXPECTED="$(printf '%s\n' "${CHANGED[@]}" | grep -Ev "$ALLOWED" || true)"
-          if [[ -n "$UNEXPECTED" ]]; then
-            echo 'Unexpected role-policy result-execution source scope:' >&2
-            printf '%s\n' "$UNEXPECTED" >&2
-            exit 1
+          if [[ "$SOURCE_BRANCH" == hotfix/role-policy-result-execution-* ]]; then
+            git fetch origin main --no-tags
+            mapfile -t CHANGED < <(git diff --name-only origin/main...HEAD)
+            printf '%s\n' "${CHANGED[@]}"
+            ALLOWED='^(\.github/workflows/role-policy-result-execution-ci\.yml|src/backend/ProjectTime.Api/Modules/(GlobalMailConfigurationModule|ScopedRolePolicyResultExecutionCompatibility)\.cs|tests/ProjectTime.Api.RouteResultExecutionTests/(ProjectTime.Api.RouteResultExecutionTests\.csproj|Program\.cs))$'
+            UNEXPECTED="$(printf '%s\n' "${CHANGED[@]}" | grep -Ev "$ALLOWED" || true)"
+            if [[ -n "$UNEXPECTED" ]]; then
+              echo 'Unexpected role-policy result-execution source scope:' >&2
+              printf '%s\n' "$UNEXPECTED" >&2
+              exit 1
+            fi
+            if printf '%s\n' "${CHANGED[@]}" | grep -E '^(database/|deployment/azure/|\.github/workflows/projectpulse-deploy-)'; then
+              echo 'The result-execution hotfix must not alter migrations or deployment resources.' >&2
+              exit 1
+            fi
+            echo 'ROLE_POLICY_RESULT_EXECUTION_SCOPE=PASS'
+          else
+            echo "ROLE_POLICY_RESULT_EXECUTION_REGRESSION_MODE=PASS branch=$SOURCE_BRANCH"
           fi
-
-          if printf '%s\n' "${CHANGED[@]}" | grep -E '^(database/|deployment/azure/|\.github/workflows/projectpulse-deploy-)'; then
-            echo 'The result-execution hotfix must not alter migrations or deployment resources.' >&2
-            exit 1
-          fi
-
-          echo 'ROLE_POLICY_RESULT_EXECUTION_SCOPE=PASS'
 
       - uses: actions/setup-dotnet@v4
         with:
@@ -61,7 +69,30 @@ jobs:
           cache-dependency-path: src/frontend/project-time-web/package-lock.json
 
       - name: Build repaired ProjectTime API
-        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+        shell: bash
+        run: |
+          set +e
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release > /tmp/dynamic-rbac-api-build.log 2>&1
+          status=$?
+          if (( status != 0 )); then
+            FIRST_ERROR="$(grep -m1 -E 'error CS[0-9]+' /tmp/dynamic-rbac-api-build.log | sed -E 's#^.*DynamicRbacAdministrationModule.cs\(([0-9]+,[0-9]+)\): error (CS[0-9]+): (.*) \[.*#\1 \2 \3#' | tr '\n' ' ' | cut -c1-118)"
+            [[ -n "$FIRST_ERROR" ]] || FIRST_ERROR='API compiler error; inspect dynamic-rbac-api-build artifact.'
+            printf 'DYNAMIC_RBAC_FIRST_BUILD_ERROR=%s\n' "$FIRST_ERROR" >> "$GITHUB_ENV"
+            echo 'DYNAMIC_RBAC_API_BUILD_ERRORS_BEGIN'
+            grep -E 'error CS|Build FAILED|DynamicRbacAdministrationModule' /tmp/dynamic-rbac-api-build.log || tail -160 /tmp/dynamic-rbac-api-build.log
+            echo 'DYNAMIC_RBAC_API_BUILD_ERRORS_END'
+          else
+            tail -20 /tmp/dynamic-rbac-api-build.log
+          fi
+          exit "$status"
+
+      - name: Upload API compiler diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dynamic-rbac-api-build-${{ github.run_id }}
+          path: /tmp/dynamic-rbac-api-build.log
+          retention-days: 7
 
       - name: Reproduce framework failure and verify explicit result execution
         run: >-
@@ -113,11 +144,12 @@ jobs:
           set -Eeuo pipefail
           if [[ "$JOB_STATUS" == success ]]; then
             STATE=success
-            DESCRIPTION='Zero-byte 200 reproduced; explicit Module 012/037 IResult execution passed.'
+            DESCRIPTION='Zero-byte 200 regression and explicit RBAC result execution passed.'
           else
             STATE=failure
-            DESCRIPTION='Role-policy result-execution validation failed.'
+            DESCRIPTION="${DYNAMIC_RBAC_FIRST_BUILD_ERROR:-Role-policy result-execution validation failed.}"
           fi
+          DESCRIPTION="$(printf '%s' "$DESCRIPTION" | cut -c1-140)"
 
           PAYLOAD="$(jq -nc \
             --arg state "$STATE" \

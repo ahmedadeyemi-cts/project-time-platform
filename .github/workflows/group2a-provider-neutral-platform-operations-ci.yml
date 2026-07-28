@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - 'feature/group-2a-provider-neutral-platform-operations-*'
+      - 'feature/dynamic-rbac-administration-package-*'
   pull_request:
     paths:
       - 'src/backend/ProjectTime.Api/Modules/PlatformOperationsContracts.cs'
@@ -38,10 +39,17 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Verify isolated Group 2A scope
+      - name: Verify isolated Group 2A scope or run regression mode
         shell: bash
         run: |
           set -Eeuo pipefail
+          BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          if [[ "$BRANCH" != feature/group-2a-provider-neutral-platform-operations-* ]]; then
+            echo "GROUP_2A_SOURCE_ISOLATION=NOT_APPLICABLE branch=$BRANCH"
+            echo 'The Group 2A regression workflow was triggered because a shared API project or module registry changed. Source isolation applies only to the Group 2A feature branch.'
+            exit 0
+          fi
+
           git fetch origin main --no-tags
           CHANGED="$(git diff --name-only origin/main...HEAD)"
           printf '%s\n' "$CHANGED"

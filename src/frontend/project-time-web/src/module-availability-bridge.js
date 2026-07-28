@@ -353,6 +353,7 @@ function installPermissionNavigationGuard(nativeFetch) {
       roleCodes: [...effectiveActor.roleCodes],
       deniedModuleNumbers: [...deniedModuleNumbers],
       retiredModuleNumbers: [...RETIRED_MODULE_NUMBERS],
+      evidenceContract: 'projectpulse-rbac-v1',
       secretValuesReturned: false
     };
     window.__projectPulseEffectiveNavigation = detail;
@@ -387,23 +388,43 @@ function installPermissionNavigationGuard(nativeFetch) {
     applyVisibility();
     try {
       const request = { method: 'GET', cache: 'no-store', credentials: 'include', headers: permissionHeaders() };
-      const [summaryResponse, matrixResponse] = await Promise.all([
-        nativeFetch('/api/role-policy/summary', request),
-        nativeFetch('/api/role-policy/matrix', request)
+      const [bootstrapResponse, matrixResponse] = await Promise.all([
+        nativeFetch('/api/rbac/v1/bootstrap', request),
+        nativeFetch('/api/rbac/v1/matrix', request)
       ]);
-      if (!summaryResponse.ok || !matrixResponse.ok) {
-        throw new Error('Role-policy navigation evidence could not be loaded.');
+      if (!bootstrapResponse.ok || !matrixResponse.ok) {
+        throw new Error('Dynamic RBAC navigation evidence could not be loaded.');
       }
 
-      const [summary, matrix] = await Promise.all([summaryResponse.json(), matrixResponse.json()]);
+      const [bootstrap, matrix] = await Promise.all([bootstrapResponse.json(), matrixResponse.json()]);
+      if (!Array.isArray(bootstrap?.roles)
+        || !Array.isArray(bootstrap?.modules)
+        || !Array.isArray(matrix?.roles)
+        || !Array.isArray(matrix?.modules)
+        || !Array.isArray(matrix?.grants)) {
+        throw new Error('Dynamic RBAC navigation evidence was incomplete.');
+      }
+
       const viewAs = activeViewAs();
-      let actorRoles = normalizedRoleCodes(summary?.actor?.roleCodes);
+      let actorRoles = normalizedRoleCodes(bootstrap?.actor?.roleCodes);
       if (viewAs && actorRoles.length === 0) actorRoles = normalizedRoleCodes(viewAs.roleCodes);
       const roleSet = new Set(actorRoles);
+      const activeModuleNumbers = new Set(matrix.modules
+        .map((module) => String(module?.moduleCode || '').trim().toUpperCase())
+        .filter(Boolean));
       const denied = new Set(RETIRED_MODULE_NUMBERS);
+
+      // Dynamic module retirement is a catalog decision. A page that is not in
+      // the active RBAC catalog stays hidden for every identity, including an
+      // administrator, until it is explicitly restored through Module 012.
+      for (const module of PROJECTPULSE_MODULES) {
+        const number = String(module.moduleNumber || '').trim().toUpperCase();
+        if (number && !activeModuleNumbers.has(number)) denied.add(number);
+      }
+
       const actualSuperAdministrator = !viewAs && roleSet.has('SUPER_ADMINISTRATOR');
       if (!actualSuperAdministrator) {
-        (matrix?.grants || [])
+        matrix.grants
           .filter((grant) => roleSet.has(String(grant.roleCode || '').toUpperCase()))
           .filter((grant) => String(grant.actionCode || '').toUpperCase() === 'MODULE_ACCESS')
           .filter((grant) => String(grant.grantEffect || '').toUpperCase() === 'DENY')

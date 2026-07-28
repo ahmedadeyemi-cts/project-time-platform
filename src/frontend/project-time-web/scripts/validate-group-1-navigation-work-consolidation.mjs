@@ -17,11 +17,13 @@ const paths = {
   bridge: 'src/frontend/project-time-web/src/module-availability-bridge.js',
   registry: 'src/frontend/project-time-web/src/module-availability-registry.js',
   css: 'src/frontend/project-time-web/src/permission-aware-more-menu.css',
+  intuitive: 'src/frontend/project-time-web/src/intuitive-more-menu.js',
+  intuitiveCss: 'src/frontend/project-time-web/src/intuitive-more-menu.css',
   app: 'src/frontend/project-time-web/src/App.jsx',
   workspace: 'src/frontend/project-time-web/src/ProjectWorkspaceCenter.jsx',
   capacity: 'src/frontend/project-time-web/src/CapacityPipelineForecastCenter.jsx',
   intakeHandoff: 'src/frontend/project-time-web/src/IntakeWorkTaskHandoffPanel.jsx',
-  availabilityController: 'src/frontend/project-time-web/src/ModuleAvailabilityController.jsx',
+  availabilityController: 'src/frontend/project-time-web/src/ModuleAvailabilityController.jsx'
 };
 
 for (const [key, relative] of Object.entries(paths)) {
@@ -31,38 +33,48 @@ for (const [key, relative] of Object.entries(paths)) {
 const bridge = read(paths.bridge);
 const registry = read(paths.registry);
 const css = read(paths.css);
+const intuitive = read(paths.intuitive);
+const intuitiveCss = read(paths.intuitiveCss);
 const app = read(paths.app);
 const workspace = read(paths.workspace);
 const capacity = read(paths.capacity);
 const intakeHandoff = read(paths.intakeHandoff);
 const availabilityController = read(paths.availabilityController);
 
-assert('MORE_MENU_TARGET', bridge.includes("#enterprise-more-navigation-menu.enterprise-more-dropdown")
+assert('MORE_MENU_TARGET', bridge.includes('#enterprise-more-navigation-menu.enterprise-more-dropdown')
   && bridge.includes('.enterprise-more-button')
   && css.includes('.enterprise-more-dropdown'),
 'Group 1 enhances the top-bar More button identified by the user, not the Modules directory button');
-assert('MORE_MENU_SEARCH', bridge.includes('projectpulse-more-menu-search')
-  && bridge.includes('Search module number or page name')
+assert('MORE_MENU_NAME_ONLY_SEARCH', bridge.includes('projectpulse-more-menu-search')
+  && intuitive.includes('Search by page name')
+  && intuitive.includes("input.setAttribute('aria-label', 'Search available pages by name')")
   && css.includes('.projectpulse-more-menu-search-row'),
-'More navigation includes an accessible search control');
-assert('MORE_MENU_MODULE_NUMBERS', bridge.includes('projectpulse-more-module-number')
-  && bridge.includes('MODULE ${module.moduleNumber}')
-  && css.includes('.projectpulse-more-module-number'),
-'each More option displays its canonical module number and page name');
-assert('MORE_MENU_READABILITY', css.includes('grid-template-columns: repeat(2, minmax(0, 1fr))')
-  && css.includes('max-height: min(76vh, 720px)')
-  && css.includes('overflow: auto')
-  && css.includes('@media (max-width: 760px)'),
-'More navigation is grouped, scrollable, high-contrast, and responsive');
+'More navigation provides an accessible page-name search rather than exposing module numbers');
+assert('MORE_MENU_NAME_ONLY_OPTIONS', intuitive.includes('projectpulse-more-intuitive-name')
+  && intuitive.includes('link.replaceChildren(title, arrow)')
+  && intuitive.includes('link.setAttribute(REFINED, name)')
+  && intuitiveCss.includes('.projectpulse-more-intuitive .projectpulse-more-module-number')
+  && intuitiveCss.includes('display: none !important'),
+'each More option renders the friendly page name and navigation affordance without a visible module number');
+assert('MORE_MENU_READABILITY', intuitiveCss.includes('grid-template-columns: repeat(2, minmax(0, 1fr))')
+  && intuitiveCss.includes('grid-template-columns: repeat(3, minmax(0, 1fr))')
+  && intuitiveCss.includes('max-height: min(78vh, 760px)')
+  && intuitiveCss.includes('@media (max-width: 720px)'),
+'More navigation is grouped, scrollable, responsive, and uses two or three columns where space permits');
 assert('MORE_MENU_FAILS_CLOSED', bridge.includes("permissionEvidenceState = 'loading'")
   && bridge.includes("permissionEvidenceState = 'unavailable'")
   && css.includes('[data-permission-evidence="unavailable"] .enterprise-more-group'),
 'More options remain hidden until effective permission evidence is verified');
-assert('ROLE_POLICY_EVIDENCE', bridge.includes("nativeFetch('/api/role-policy/summary'")
-  && bridge.includes("nativeFetch('/api/role-policy/matrix'")
+assert('DYNAMIC_RBAC_EVIDENCE', bridge.includes("nativeFetch('/api/rbac/v1/bootstrap'")
+  && bridge.includes("nativeFetch('/api/rbac/v1/matrix'")
   && bridge.includes("actionCode || '').toUpperCase() === 'MODULE_ACCESS'")
-  && bridge.includes("grantEffect || '').toUpperCase() === 'DENY'"),
-'More menu honors published Module 012/037 MODULE_ACCESS denials');
+  && bridge.includes("grantEffect || '').toUpperCase() === 'DENY'")
+  && bridge.includes("evidenceContract: 'projectpulse-rbac-v1'"),
+'More menu consumes the same dynamic RBAC contract as Modules 012 and 037');
+assert('DYNAMIC_MODULE_LIFECYCLE', bridge.includes('activeModuleNumbers')
+  && bridge.includes('!activeModuleNumbers.has(number)')
+  && bridge.includes('PROJECTPULSE_MODULES'),
+'More navigation removes pages that are not in the active dynamic RBAC module catalog');
 assert('VIEW_AS_PERMISSION_CONTEXT', bridge.includes("headers['X-ProjectPulse-View-As-User']")
   && bridge.includes("event.key === 'projectPulseViewAsUser'")
   && bridge.includes("'projectpulse:view-as-changed'"),
@@ -71,10 +83,10 @@ assert('FULL_SESSION_HEADERS', bridge.includes("'X-ProjectPulse-Session': token"
   && bridge.includes("'X-Project-Pulse-Session': token")
   && bridge.includes("'X-Session-Token': token")
   && bridge.includes('Authorization: `Bearer ${token}`'),
-'role-policy navigation checks use the complete authenticated session contract');
+'dynamic RBAC navigation checks use the complete authenticated session contract');
 assert('NO_NAVIGATION_PRIVILEGE_EXPANSION', bridge.includes('decorateMoreLink')
   && !bridge.includes('PROJECTPULSE_MODULES.forEach((module) => dropdown')
-  && !bridge.includes('appendChild(document.createElement(\'a\'))'),
+  && !bridge.includes("appendChild(document.createElement('a'))"),
 'More enhancement decorates rendered authorized links and does not invent additional access');
 assert('IDEMPOTENT_VISIBILITY_MUTATIONS', bridge.includes('if (!element.hidden) element.hidden = true;')
   && bridge.includes("if (element.getAttribute(HIDDEN_ATTRIBUTE) !== 'true')")
@@ -89,7 +101,7 @@ assert('MODULE_007_RETAINED', registry.includes("moduleNumber: '007'")
 'Module 007 remains the post-time-entry approval, reconciliation, export, and audit workflow');
 assert('MODULE_011_RETIRED', registry.includes("moduleNumber: '011'")
   && registry.includes("lifecycle: 'retired'")
-  && registry.includes("isRetired: true")
+  && registry.includes('isRetired: true')
   && registry.includes("replacementRoutes: Object.freeze(['work-register', 'create-work-register'])"),
 'Module 011 is retained as historical metadata but removed from active work ownership');
 assert('MODULE_011_DIRECT_ROUTE_REDIRECT', registry.includes("'work-task-builder': 'work-register'")
