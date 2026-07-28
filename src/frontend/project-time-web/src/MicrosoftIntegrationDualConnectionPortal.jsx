@@ -7,6 +7,7 @@ const CONFIG_MARKER = 'PROJECTPULSE_MICROSOFT_INTEGRATION_JSON:';
 const ENVIRONMENTS = ['test', 'production'];
 const SSO_CALLBACK_PATH = '/api/auth/sso/callback';
 const REQUIRED_SERVICES_SCOPES = ['Directory.Read.All', 'User.Read.All', 'Mail.Send'];
+const DEFAULT_SYNC_HOURS = 24;
 
 function routeFromHash() {
   return window.location.hash.replace(/^#/, '').split('?')[0].trim();
@@ -15,11 +16,7 @@ function routeFromHash() {
 async function readJson(response) {
   const text = await response.text();
   if (!text.trim()) return {};
-  try {
-    return JSON.parse(text);
-  } catch {
-    return { status: 'invalid_json_response' };
-  }
+  try { return JSON.parse(text); } catch { return { status: 'invalid_json_response' }; }
 }
 
 async function fetchJson(url, init) {
@@ -31,8 +28,12 @@ async function fetchJson(url, init) {
 
 function runtimeEnvironmentMode() {
   const host = window.location.hostname.toLowerCase();
-  if (host.includes('-test.') || host === 'localhost' || host === '127.0.0.1') return 'test';
+  if (host.includes('-test.') || host.endsWith('.onenecklab.com') || host === 'localhost' || host === '127.0.0.1') return 'test';
   return 'production';
+}
+
+function environmentLabel(value) {
+  return value === 'production' ? 'Production' : 'Test';
 }
 
 function currentCallbackUri() {
@@ -82,19 +83,45 @@ function normalizeServicesScopes(value) {
   return [...map.values()].join(' ');
 }
 
+function defaultMail(environmentMode) {
+  return {
+    providerTarget: 'microsoft_graph',
+    smtpHost: 'smtp.office365.com',
+    smtpPort: 587,
+    senderName: environmentMode === 'production' ? 'US Signal Pulse' : 'US Signal Pulse Test',
+    senderAddress: '',
+    replyToAddress: '',
+    recipientBoundary: environmentMode === 'production' ? 'locked' : 'test_only'
+  };
+}
+
+function normalizeMail(raw, environmentMode, legacyMail = null) {
+  const defaults = defaultMail(environmentMode);
+  const source = raw || legacyMail || {};
+  return {
+    ...defaults,
+    ...source,
+    providerTarget: source.providerTarget || defaults.providerTarget,
+    smtpHost: source.smtpHost || defaults.smtpHost,
+    smtpPort: Number(source.smtpPort || defaults.smtpPort),
+    senderName: source.senderName || defaults.senderName,
+    senderAddress: source.senderAddress || '',
+    replyToAddress: source.replyToAddress || '',
+    recipientBoundary: source.recipientBoundary || defaults.recipientBoundary
+  };
+}
+
 function environmentDefaults(environmentMode) {
   const production = environmentMode === 'production';
-  const tenantKey = production ? 'ussignal' : 'onenecklab';
-  const tenantDomain = production ? 'ussignal.com' : 'onenecklab.com';
   return {
-    key: tenantKey,
+    key: production ? 'ussignal' : 'onenecklab',
     name: production ? 'US Signal Production' : 'OneNeck Lab Test',
     environmentMode,
-    tenantDomain,
+    tenantDomain: production ? 'ussignal.com' : 'onenecklab.com',
     tenantId: '',
     sourceProvider: production ? 'ENTRA_ID' : 'ENTRA_ID_TEST',
     directorySyncEnabled: false,
-    syncFrequencyHours: 24,
+    syncFrequencyHours: DEFAULT_SYNC_HOURS,
     defaultRoleCode: 'ENGINEERING',
     sso: {
       connectionPurpose: 'sso_app_registration',
@@ -107,52 +134,51 @@ function environmentDefaults(environmentMode) {
       connectionPurpose: 'microsoft_services_enterprise_application',
       clientId: '',
       graphScopes: REQUIRED_SERVICES_SCOPES.join(' ')
-    }
+    },
+    mail: defaultMail(environmentMode)
   };
 }
 
-function normalizeTenant(raw, environmentMode) {
+function normalizeTenant(raw, environmentMode, legacyMail = null) {
   const defaults = environmentDefaults(environmentMode);
-  const sso = raw?.sso || raw?.ssoConnection || {};
-  const services = raw?.services || raw?.servicesConnection || {};
-  const tenantId = String(raw?.tenantId || '').trim();
-  const authorityUrl = sso.authorityUrl || sso.authority || raw?.authorityUrl || (isGuid(tenantId) ? `https://login.microsoftonline.com/${tenantId}` : '');
-  const redirectUri = redirectWithCurrentEnvironment(
-    sso.redirectUri || sso.callbackUri || raw?.redirectUri || '',
-    environmentMode
-  );
+  const source = raw || {};
+  const sso = source.sso || source.ssoConnection || {};
+  const services = source.services || source.servicesConnection || {};
+  const tenantId = String(source.tenantId || '').trim();
+  const authorityUrl = sso.authorityUrl || sso.authority || source.authorityUrl || (isGuid(tenantId) ? `https://login.microsoftonline.com/${tenantId}` : '');
   return {
     ...defaults,
-    ...raw,
-    key: raw?.key || raw?.tenantKey || defaults.key,
-    name: raw?.name || raw?.tenantName || defaults.name,
+    ...source,
+    key: source.key || source.tenantKey || defaults.key,
+    name: source.name || source.tenantName || defaults.name,
     environmentMode,
-    tenantDomain: raw?.tenantDomain || defaults.tenantDomain,
+    tenantDomain: source.tenantDomain || defaults.tenantDomain,
     tenantId,
-    sourceProvider: raw?.sourceProvider || defaults.sourceProvider,
-    directorySyncEnabled: Boolean(raw?.directorySyncEnabled ?? raw?.syncEnabled ?? false),
-    syncFrequencyHours: Number(raw?.syncFrequencyHours || 24),
-    defaultRoleCode: String(raw?.defaultRoleCode || 'ENGINEERING').toUpperCase(),
+    sourceProvider: source.sourceProvider || defaults.sourceProvider,
+    directorySyncEnabled: Boolean(source.directorySyncEnabled ?? source.syncEnabled ?? false),
+    syncFrequencyHours: Math.max(1, Number(source.syncFrequencyHours || DEFAULT_SYNC_HOURS)),
+    defaultRoleCode: String(source.defaultRoleCode || 'ENGINEERING').toUpperCase(),
     sso: {
       ...defaults.sso,
       ...sso,
-      clientId: sso.clientId || sso.applicationId || raw?.ssoClientId || '',
+      clientId: sso.clientId || sso.applicationId || source.ssoClientId || '',
       authorityUrl,
-      redirectUri,
-      allowedDomains: sso.allowedDomains || raw?.ssoAllowedDomains || defaults.sso.allowedDomains
+      redirectUri: redirectWithCurrentEnvironment(sso.redirectUri || sso.callbackUri || source.redirectUri || '', environmentMode),
+      allowedDomains: sso.allowedDomains || source.ssoAllowedDomains || defaults.sso.allowedDomains
     },
     services: {
       ...defaults.services,
       ...services,
-      // The original Module 065 clientId is intentionally carried forward as the services/Graph application.
-      clientId: services.clientId || services.applicationId || raw?.serviceClientId || raw?.clientId || '',
-      graphScopes: normalizeServicesScopes(services.graphScopes || services.scopes || raw?.graphScopes || raw?.graphScope || defaults.services.graphScopes)
-    }
+      clientId: services.clientId || services.applicationId || source.serviceClientId || source.clientId || '',
+      graphScopes: normalizeServicesScopes(services.graphScopes || services.scopes || source.graphScopes || source.graphScope || defaults.services.graphScopes)
+    },
+    mail: normalizeMail(source.mail, environmentMode, legacyMail)
   };
 }
 
-function configurationWithBothEnvironments(stored, observedTenant) {
+function configurationWithBothEnvironments(stored, observedTenant, legacy067Mail = null) {
   const rawTenants = Array.isArray(stored?.tenants) ? stored.tenants : [];
+  const legacyMail = stored?.mail || legacy067Mail || null;
   const tenants = ENVIRONMENTS.map((environmentMode) => {
     const existing = rawTenants.find((tenant) => {
       const mode = String(tenant?.environmentMode || '').toLowerCase();
@@ -160,7 +186,7 @@ function configurationWithBothEnvironments(stored, observedTenant) {
         || (environmentMode === 'test' && String(tenant?.sourceProvider || '').includes('TEST'))
         || (environmentMode === 'production' && mode === 'prod');
     });
-    return normalizeTenant(existing, environmentMode);
+    return normalizeTenant(existing, environmentMode, legacyMail);
   });
 
   if (rawTenants.length === 0 && observedTenant) {
@@ -178,9 +204,9 @@ function configurationWithBothEnvironments(stored, observedTenant) {
       graphScopes: observedTenant.graphScopes || '',
       sourceProvider: observedTenant.sourceProvider || tenants[index].sourceProvider,
       directorySyncEnabled: Boolean(observedTenant.directorySyncEnabled),
-      syncFrequencyHours: Number(observedTenant.syncFrequencyHours || 24),
+      syncFrequencyHours: Number(observedTenant.syncFrequencyHours || DEFAULT_SYNC_HOURS),
       defaultRoleCode: observedTenant.defaultRoleCode || 'ENGINEERING'
-    }, observedMode);
+    }, observedMode, legacyMail);
   }
 
   const activeMode = String(stored?.activeEnvironmentMode || '').toLowerCase();
@@ -193,27 +219,14 @@ function configurationWithBothEnvironments(stored, observedTenant) {
   return {
     activeTenantKey: active.key,
     activeEnvironmentMode: active.environmentMode,
-    tenants,
-    mail: {
-      providerTarget: stored?.mail?.providerTarget || 'microsoft_graph',
-      smtpHost: stored?.mail?.smtpHost || 'smtp.office365.com',
-      smtpPort: Number(stored?.mail?.smtpPort || 587),
-      senderName: stored?.mail?.senderName || '',
-      senderAddress: stored?.mail?.senderAddress || '',
-      replyToAddress: stored?.mail?.replyToAddress || '',
-      recipientBoundary: stored?.mail?.recipientBoundary || 'test_only'
-    }
+    tenants
   };
 }
 
 function parseStoredConfiguration(document) {
   const notes = document?.configuration?.notes;
   if (typeof notes !== 'string' || !notes.startsWith(CONFIG_MARKER)) return null;
-  try {
-    return JSON.parse(notes.slice(CONFIG_MARKER.length));
-  } catch {
-    return null;
-  }
+  try { return JSON.parse(notes.slice(CONFIG_MARKER.length)); } catch { return null; }
 }
 
 function legacyMailFallback(document) {
@@ -229,9 +242,9 @@ function legacyMailFallback(document) {
   };
 }
 
-function Field({ label, help, children }) {
+function Field({ label, help, children, className = '' }) {
   return (
-    <label className="microsoft-integration-field">
+    <label className={`microsoft-integration-field ${className}`.trim()}>
       <span>{label}</span>
       {children}
       {help ? <small>{help}</small> : null}
@@ -279,14 +292,13 @@ export default function MicrosoftIntegrationDualConnectionPortal() {
       ]);
       const module065Document = module065Body?.document || {};
       const stored = parseStoredConfiguration(module065Document);
-      const next = configurationWithBothEnvironments(stored, overviewBody?.activeTenant);
-      if (!stored && module067Body?.document) next.mail = legacyMailFallback(module067Body.document);
+      const legacyMail = !stored && module067Body?.document ? legacyMailFallback(module067Body.document) : null;
       setOverview(overviewBody);
       setSsoReadiness(ssoBody);
       setNativeDocument(module065Document);
       setRevision(Number(module065Body?.revision || 0));
       setLegacy067(module067Body);
-      setConfiguration(next);
+      setConfiguration(configurationWithBothEnvironments(stored, overviewBody?.activeTenant, legacyMail));
     } catch (loadError) {
       setError(loadError?.message || 'Microsoft Integration could not be loaded.');
     } finally {
@@ -297,22 +309,16 @@ export default function MicrosoftIntegrationDualConnectionPortal() {
   useEffect(() => { void load(); }, [load]);
 
   const activeTenant = useMemo(
-    () => configuration.tenants.find((tenant) => tenant.key === configuration.activeTenantKey)
-      || configuration.tenants[0],
+    () => configuration.tenants.find((tenant) => tenant.key === configuration.activeTenantKey) || configuration.tenants[0],
     [configuration]
   );
-
-  const ssoProfileStatus = useMemo(
-    () => ssoReadiness?.profiles?.find((profile) => profile.environmentMode === activeTenant.environmentMode),
-    [ssoReadiness, activeTenant.environmentMode]
-  );
-
-  const servicesSecretConfigured = Boolean(
-    overview?.secretMetadata?.some((item) => item.tenantKey === activeTenant.key)
-  );
-
+  const activeMail = activeTenant.mail;
   const expectedRedirectUri = expectedRedirectFor(activeTenant.environmentMode);
   const redirectMatchesEnvironment = !expectedRedirectUri || activeTenant.sso.redirectUri === expectedRedirectUri;
+  const ssoProfileStatus = ssoReadiness?.profiles?.find((profile) => profile.environmentMode === activeTenant.environmentMode);
+  const servicesSecretConfigured = Boolean(overview?.secretMetadata?.some((item) => item.tenantKey === activeTenant.key));
+  const runtimeEnvironment = runtimeEnvironmentMode();
+  const selectedEnvironmentIsRuntime = activeTenant.environmentMode === runtimeEnvironment;
 
   function selectEnvironment(environmentMode) {
     setConfiguration((current) => {
@@ -323,14 +329,13 @@ export default function MicrosoftIntegrationDualConnectionPortal() {
     setTestResults({});
     setMessage('');
     setError('');
+    window.dispatchEvent(new CustomEvent('projectpulse:microsoft-environment-changed', { detail: { environmentMode } }));
   }
 
   function updateTenant(field, value) {
     setConfiguration((current) => ({
       ...current,
-      tenants: current.tenants.map((tenant) => tenant.key === current.activeTenantKey
-        ? { ...tenant, [field]: value }
-        : tenant)
+      tenants: current.tenants.map((tenant) => tenant.key === current.activeTenantKey ? { ...tenant, [field]: value } : tenant)
     }));
   }
 
@@ -344,34 +349,39 @@ export default function MicrosoftIntegrationDualConnectionPortal() {
   }
 
   function updateMail(field, value) {
-    setConfiguration((current) => ({ ...current, mail: { ...current.mail, [field]: value } }));
+    setConfiguration((current) => ({
+      ...current,
+      tenants: current.tenants.map((tenant) => tenant.key === current.activeTenantKey
+        ? { ...tenant, mail: { ...tenant.mail, [field]: value } }
+        : tenant)
+    }));
   }
 
   function serializedConfiguration() {
+    const runtimeTenant = configuration.tenants.find((tenant) => tenant.environmentMode === runtimeEnvironment) || activeTenant;
     return {
       ...configuration,
       activeEnvironmentMode: activeTenant.environmentMode,
       tenants: configuration.tenants.map((tenant) => ({
         ...tenant,
-        services: {
-          ...tenant.services,
-          graphScopes: normalizeServicesScopes(tenant.services.graphScopes)
-        },
-        // Legacy fields intentionally mirror the services and SSO profiles for Module 010 and existing readers.
+        syncMode: tenant.directorySyncEnabled ? 'automatic' : 'manual',
+        services: { ...tenant.services, graphScopes: normalizeServicesScopes(tenant.services.graphScopes) },
         clientId: tenant.services.clientId,
         graphScopes: normalizeServicesScopes(tenant.services.graphScopes),
         authorityUrl: tenant.sso.authorityUrl,
         redirectUri: tenant.sso.redirectUri,
         ssoClientId: tenant.sso.clientId,
-        ssoAllowedDomains: tenant.sso.allowedDomains
-      }))
+        ssoAllowedDomains: tenant.sso.allowedDomains,
+        mail: { ...tenant.mail }
+      })),
+      // Legacy projection retained for existing readers. The environment-specific tenant.mail is authoritative.
+      mail: { ...runtimeTenant.mail },
+      mailConfigurationScope: 'per_environment'
     };
   }
 
   function validateActiveConnection(purpose = 'integration') {
-    if (!isGuid(activeTenant.tenantId)) {
-      throw new Error('Tenant ID must be the Directory (tenant) ID GUID from the Entra App Registration overview.');
-    }
+    if (!isGuid(activeTenant.tenantId)) throw new Error('Tenant ID must be the Directory (tenant) ID GUID from the Entra App Registration overview.');
     if ((purpose === 'integration' || purpose === 'services') && !isGuid(activeTenant.services.clientId)) {
       throw new Error('Services application/client ID must be the Application (client) ID GUID used for Graph and Module 010 preview.');
     }
@@ -384,12 +394,13 @@ export default function MicrosoftIntegrationDualConnectionPortal() {
       throw new Error('Enter the SSO application/client ID before saving or testing the SSO connection.');
     }
     if (purpose === 'services' || purpose === 'integration') {
-      const scopes = normalizeServicesScopes(activeTenant.services.graphScopes);
+      const scopes = normalizeServicesScopes(activeTenant.services.graphScopes).toLowerCase().split(/\s+/);
       for (const required of REQUIRED_SERVICES_SCOPES.slice(0, 2)) {
-        if (!scopes.toLowerCase().split(/\s+/).includes(required.toLowerCase())) {
-          throw new Error(`Microsoft services requires ${required} application permission with tenant admin consent.`);
-        }
+        if (!scopes.includes(required.toLowerCase())) throw new Error(`Microsoft services requires ${required} application permission with tenant admin consent.`);
       }
+    }
+    if (activeTenant.directorySyncEnabled && (!Number.isFinite(Number(activeTenant.syncFrequencyHours)) || Number(activeTenant.syncFrequencyHours) < 1 || Number(activeTenant.syncFrequencyHours) > 168)) {
+      throw new Error('Automatic directory synchronization frequency must be between 1 and 168 hours.');
     }
   }
 
@@ -413,7 +424,6 @@ export default function MicrosoftIntegrationDualConnectionPortal() {
     });
 
     if (purpose !== 'sso') {
-      // Module 010 continues to use the Microsoft services/Graph application, never the SSO App Registration.
       await Promise.all([
         fetchJson('/api/admin/azure/config', {
           method: 'POST',
@@ -426,7 +436,7 @@ export default function MicrosoftIntegrationDualConnectionPortal() {
             graphScope: normalizeServicesScopes(activeTenant.services.graphScopes),
             syncEnabled: Boolean(activeTenant.directorySyncEnabled),
             defaultRoleCode: activeTenant.defaultRoleCode,
-            syncFrequencyHours: Number(activeTenant.syncFrequencyHours || 24)
+            syncFrequencyHours: Number(activeTenant.syncFrequencyHours || DEFAULT_SYNC_HOURS)
           })
         }),
         fetchJson('/api/admin/azure/import-settings', {
@@ -469,43 +479,37 @@ export default function MicrosoftIntegrationDualConnectionPortal() {
       tenantId: activeTenant.tenantId,
       clientId: activeTenant.services.clientId,
       graphScopes: normalizeServicesScopes(activeTenant.services.graphScopes),
-      senderMailbox: configuration.mail.senderAddress
+      senderMailbox: activeMail.senderAddress
     };
   }
 
   function mailRuntimePayload() {
     return {
       environmentMode: activeTenant.environmentMode,
-      providerTarget: configuration.mail.providerTarget,
+      providerTarget: activeMail.providerTarget,
       tenantId: activeTenant.tenantId,
       clientId: activeTenant.services.clientId,
-      smtpHost: configuration.mail.smtpHost,
-      smtpPort: Number(configuration.mail.smtpPort || 587),
-      senderName: configuration.mail.senderName,
-      senderAddress: configuration.mail.senderAddress,
-      replyToAddress: configuration.mail.replyToAddress,
-      recipientBoundary: configuration.mail.recipientBoundary
+      smtpHost: activeMail.smtpHost,
+      smtpPort: Number(activeMail.smtpPort || 587),
+      senderName: activeMail.senderName,
+      senderAddress: activeMail.senderAddress,
+      replyToAddress: activeMail.replyToAddress,
+      recipientBoundary: activeMail.recipientBoundary
     };
   }
 
   async function applyConnectionRuntime(purpose) {
     if (purpose === 'sso') {
       return fetchJson('/api/microsoft-integration/sso-apply-profile', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(ssoRuntimePayload())
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(ssoRuntimePayload())
       });
     }
     const services = await fetchJson('/api/microsoft-integration/services-apply-profile', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(servicesRuntimePayload())
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(servicesRuntimePayload())
     });
-    const mail = activeTenant.environmentMode === runtimeEnvironmentMode()
+    const mail = selectedEnvironmentIsRuntime
       ? await fetchJson('/api/microsoft-integration/mail-runtime', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(mailRuntimePayload())
+          method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(mailRuntimePayload())
         })
       : null;
     return { services, mail };
@@ -517,7 +521,8 @@ export default function MicrosoftIntegrationDualConnectionPortal() {
     setError('');
     try {
       await persistConfiguration('integration');
-      setMessage(`${activeTenant.environmentMode === 'production' ? 'Production' : 'Test'} SSO, Microsoft services, Module 010 preview, and Module 065 mail metadata saved. Runtime activation status appears above.`);
+      if (selectedEnvironmentIsRuntime) await applyConnectionRuntime('services');
+      setMessage(`${environmentLabel(activeTenant.environmentMode)} SSO, Microsoft services, directory sync, and mail settings saved.${selectedEnvironmentIsRuntime ? ' The running environment was activated immediately.' : ' This profile will activate in its matching environment.'}`);
       await load();
     } catch (saveError) {
       setError(saveError?.message || 'Microsoft Integration configuration could not be saved.');
@@ -540,22 +545,15 @@ export default function MicrosoftIntegrationDualConnectionPortal() {
       await persistConfiguration(purpose);
       const result = purpose === 'sso'
         ? await fetchJson('/api/microsoft-integration/sso-client-secret', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            environmentMode: activeTenant.environmentMode,
-            tenantKey: activeTenant.key,
-            clientSecret: value
+            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ environmentMode: activeTenant.environmentMode, tenantKey: activeTenant.key, clientSecret: value })
           })
-        })
         : await fetchJson('/api/microsoft-integration/client-secret', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ tenantKey: activeTenant.key, clientSecret: value })
-        });
+            method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tenantKey: activeTenant.key, clientSecret: value })
+          });
       await applyConnectionRuntime(purpose);
       setSecrets((current) => ({ ...current, [purpose]: '' }));
-      setMessage(`${result.message || 'Client secret saved securely.'} The connection metadata was saved first and the selected runtime profile was reapplied.`);
+      setMessage(`${result.message || 'Client secret saved securely.'} The selected ${environmentLabel(activeTenant.environmentMode)} profile was reapplied.`);
       await load();
     } catch (secretError) {
       setError(secretError?.message || 'The client secret or connection metadata could not be saved.');
@@ -574,27 +572,13 @@ export default function MicrosoftIntegrationDualConnectionPortal() {
       await applyConnectionRuntime(purpose);
       const result = purpose === 'sso'
         ? await fetchJson('/api/microsoft-integration/sso-test', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            environmentMode: activeTenant.environmentMode,
-            tenantKey: activeTenant.key,
-            tenantId: activeTenant.tenantId,
-            clientId: activeTenant.sso.clientId,
-            authorityUrl: activeTenant.sso.authorityUrl,
-            redirectUri: activeTenant.sso.redirectUri
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ environmentMode: activeTenant.environmentMode, tenantKey: activeTenant.key, tenantId: activeTenant.tenantId, clientId: activeTenant.sso.clientId, authorityUrl: activeTenant.sso.authorityUrl, redirectUri: activeTenant.sso.redirectUri })
           })
-        })
         : await fetchJson('/api/microsoft-integration/test-connection', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            tenantKey: activeTenant.key,
-            tenantId: activeTenant.tenantId,
-            clientId: activeTenant.services.clientId,
-            senderMailbox: configuration.mail.senderAddress
-          })
-        });
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tenantKey: activeTenant.key, tenantId: activeTenant.tenantId, clientId: activeTenant.services.clientId, senderMailbox: activeMail.senderAddress })
+          });
       setTestResults((current) => ({ ...current, [purpose]: result }));
       setMessage(result.message || 'Connection test completed.');
     } catch (testError) {
@@ -606,19 +590,24 @@ export default function MicrosoftIntegrationDualConnectionPortal() {
 
   if (!active) return null;
 
+  const syncMode = activeTenant.directorySyncEnabled ? 'automatic' : 'manual';
+  const providerDescription = activeMail.providerTarget === 'microsoft_graph'
+    ? `Microsoft Graph is configured for ${environmentLabel(activeTenant.environmentMode)}. SMTP metadata is preserved but inactive because Graph is selected.`
+    : activeMail.providerTarget === 'smtp_relay'
+      ? `Microsoft 365 SMTP relay is configured for ${environmentLabel(activeTenant.environmentMode)}. Graph directory services remain available, but Graph mail is not the selected transport.`
+      : `${environmentLabel(activeTenant.environmentMode)} mail delivery is locked.`;
+
   return (
     <section className="microsoft-integration-portal projectpulse-module-standard" data-module="065">
       <div className="microsoft-integration-heading">
         <div>
           <p className="eyebrow">MODULE 065</p>
           <h1>Microsoft Integration</h1>
-          <p className="section-copy">
-            Manage separate SSO and Microsoft services connections for Test and Production. Module 010 continues using the services connection for Entra preview and import.
-          </p>
+          <p className="section-copy">Manage separate SSO, Microsoft services, directory synchronization, and mail settings for Test and Production. Module 010 uses the services connection for Entra preview and import.</p>
         </div>
         <div className="microsoft-integration-actions">
           <button type="button" className="secondary-action" onClick={() => void load()} disabled={loading || saving}>Refresh</button>
-          <button type="button" className="primary-action" onClick={() => void saveConfiguration()} disabled={loading || saving}>{saving ? 'Saving…' : 'Save integration'}</button>
+          <button type="button" className="primary-action" onClick={() => void saveConfiguration()} disabled={loading || saving}>{saving ? 'Saving…' : `Save ${environmentLabel(activeTenant.environmentMode)} integration`}</button>
         </div>
       </div>
 
@@ -626,127 +615,101 @@ export default function MicrosoftIntegrationDualConnectionPortal() {
       {message ? <div className="microsoft-integration-banner success">{message}</div> : null}
       {loading ? <div className="microsoft-integration-empty">Loading Microsoft Integration…</div> : null}
 
-      {!loading ? (
-        <>
-          <div className="microsoft-integration-banner">
-            Existing Test Graph/calendar/identity settings are carried forward as the Microsoft services connection. SSO is stored separately. Module 065 is the authoritative source for Microsoft 365 and SMTP mail runtime settings.
-          </div>
+      {!loading ? <>
+        <div className="microsoft-integration-banner">Test and Production maintain independent SSO, services, directory-sync, sender, provider, SMTP, and recipient-boundary settings. Module 065 is the authoritative source for every ProjectPulse Microsoft and mail runtime.</div>
+        <div className="microsoft-environment-switcher" role="tablist" aria-label="Microsoft environment">
+          {ENVIRONMENTS.map((environmentMode) => <button type="button" key={environmentMode} className={activeTenant.environmentMode === environmentMode ? 'active' : ''} onClick={() => selectEnvironment(environmentMode)}>{environmentLabel(environmentMode)}</button>)}
+        </div>
 
-          <div className="microsoft-environment-switcher" role="tablist" aria-label="Microsoft environment">
-            {ENVIRONMENTS.map((environmentMode) => (
-              <button
-                type="button"
-                key={environmentMode}
-                className={activeTenant.environmentMode === environmentMode ? 'active' : ''}
-                onClick={() => selectEnvironment(environmentMode)}
-              >
-                {environmentMode === 'production' ? 'Production' : 'Test'}
-              </button>
-            ))}
-          </div>
+        <div className="microsoft-integration-grid">
+          <article className="microsoft-integration-card wide">
+            <div className="microsoft-integration-card-heading"><div><p className="eyebrow">{activeTenant.environmentMode.toUpperCase()} ENVIRONMENT</p><h2>{activeTenant.name}</h2></div><span className="microsoft-connection-badge">{selectedEnvironmentIsRuntime ? 'Running environment' : 'Saved environment profile'}</span></div>
+            <div className="microsoft-integration-form-grid">
+              <Field label="Environment name"><input value={activeTenant.name} onChange={(event) => updateTenant('name', event.target.value)} /></Field>
+              <Field label="Tenant key" help="Stable internal key used to find the correct encrypted services secret."><input value={activeTenant.key} disabled /></Field>
+              <Field label="Tenant domain"><input value={activeTenant.tenantDomain} onChange={(event) => updateTenant('tenantDomain', event.target.value)} /></Field>
+              <Field label="Tenant ID" help="Directory (tenant) ID from the Entra App Registration overview."><input value={activeTenant.tenantId} onChange={(event) => updateTenant('tenantId', event.target.value.trim())} /></Field>
+              <Field label="Directory source"><input value={activeTenant.sourceProvider} disabled /></Field>
+              <Field label="Default imported-user role"><input value={activeTenant.defaultRoleCode} onChange={(event) => updateTenant('defaultRoleCode', event.target.value.toUpperCase())} /></Field>
+            </div>
+            <div className="microsoft-compatibility-grid">
+              <div><strong>Environment</strong><span>{environmentLabel(activeTenant.environmentMode)}</span></div>
+              <div><strong>Tenant key</strong><span>{activeTenant.key || 'Not configured'}</span></div>
+              <div><strong>Tenant GUID</strong><span>{activeTenant.tenantId || 'Not configured'}</span></div>
+              <div><strong>SSO client GUID</strong><span>{activeTenant.sso.clientId || 'Not configured'}</span></div>
+              <div><strong>Redirect URI</strong><span>{activeTenant.sso.redirectUri || 'Not configured'}</span></div>
+            </div>
+          </article>
 
-          <div className="microsoft-integration-grid">
-            <article className="microsoft-integration-card wide">
-              <div className="microsoft-integration-card-heading">
-                <div>
-                  <p className="eyebrow">{activeTenant.environmentMode.toUpperCase()} ENVIRONMENT</p>
-                  <h2>{activeTenant.name}</h2>
-                </div>
-                <span className="microsoft-connection-badge">Two independent connections</span>
-              </div>
-              <div className="microsoft-integration-form-grid">
-                <Field label="Environment name"><input value={activeTenant.name} onChange={(event) => updateTenant('name', event.target.value)} /></Field>
-                <Field label="Tenant key" help="Stable internal key used to find the correct encrypted services secret."><input value={activeTenant.key} disabled /></Field>
-                <Field label="Tenant domain"><input value={activeTenant.tenantDomain} onChange={(event) => updateTenant('tenantDomain', event.target.value)} /></Field>
-                <Field label="Tenant ID" help="Directory (tenant) ID from the Entra App Registration overview."><input value={activeTenant.tenantId} onChange={(event) => updateTenant('tenantId', event.target.value.trim())} /></Field>
-                <Field label="Directory source"><input value={activeTenant.sourceProvider} disabled /></Field>
-                <Field label="Default imported-user role"><input value={activeTenant.defaultRoleCode} onChange={(event) => updateTenant('defaultRoleCode', event.target.value.toUpperCase())} /></Field>
-              </div>
-              <div className="microsoft-compatibility-grid">
-                <div><strong>Environment</strong><span>{activeTenant.environmentMode === 'production' ? 'Production' : 'Test'}</span></div>
-                <div><strong>Tenant key</strong><span>{activeTenant.key || 'Not configured'}</span></div>
-                <div><strong>Tenant GUID</strong><span>{activeTenant.tenantId || 'Not configured'}</span></div>
-                <div><strong>SSO client GUID</strong><span>{activeTenant.sso.clientId || 'Not configured'}</span></div>
-                <div><strong>Redirect URI</strong><span>{activeTenant.sso.redirectUri || 'Not configured'}</span></div>
-              </div>
-            </article>
+          <article className="microsoft-integration-card wide microsoft-directory-sync-card">
+            <p className="eyebrow">MODULE 010 DIRECTORY SYNCHRONIZATION</p>
+            <h2>{environmentLabel(activeTenant.environmentMode)} Entra import schedule</h2>
+            <p className="section-copy">Manual mode imports only when an administrator selects Sync Now or imports selected users. Automatic mode retains the same controls and schedules recurring synchronization using the saved frequency.</p>
+            <div className="microsoft-integration-form-grid">
+              <Field label="Synchronization mode"><select value={syncMode} onChange={(event) => updateTenant('directorySyncEnabled', event.target.value === 'automatic')}><option value="manual">Manual only</option><option value="automatic">Automatic and manual</option></select></Field>
+              <Field label="Automatic frequency" help="Choose any interval from 1 to 168 hours. Common values are 12 or 24 hours."><div className="microsoft-sync-frequency-control"><input type="number" min="1" max="168" disabled={!activeTenant.directorySyncEnabled} value={activeTenant.syncFrequencyHours} onChange={(event) => updateTenant('syncFrequencyHours', Math.max(1, Math.min(168, Number(event.target.value) || DEFAULT_SYNC_HOURS)))} /><span>hours</span></div></Field>
+              <Field label="Current schedule"><input value={activeTenant.directorySyncEnabled ? `Automatic every ${activeTenant.syncFrequencyHours} hour(s)` : 'Manual only'} disabled /></Field>
+            </div>
+            <div className="microsoft-integration-actions"><a className="secondary-action" href="#azure-admin">Open Module 010 preview and import</a><a className="primary-action" href="#azure-admin">Sync Now in Module 010</a></div>
+          </article>
 
-            <article className="microsoft-integration-card microsoft-connection-card">
-              <p className="eyebrow">CONNECTION 1 · APP REGISTRATION</p>
-              <h2>Microsoft Entra SSO</h2>
-              <p className="section-copy">Used only for interactive sign-in. It does not replace the Graph/calendar/identity application.</p>
-              <Field label="SSO application / client ID" help="Application (client) ID from the SSO App Registration overview."><input value={activeTenant.sso.clientId} onChange={(event) => updateConnection('sso', 'clientId', event.target.value.trim())} /></Field>
-              <div className="microsoft-integration-actions">
-                <button type="button" className="secondary-action" disabled={!activeTenant.services.clientId} onClick={() => updateConnection('sso', 'clientId', activeTenant.services.clientId)}>Use services app ID</button>
-              </div>
-              <Field label="Authority URL"><input value={activeTenant.sso.authorityUrl} onChange={(event) => updateConnection('sso', 'authorityUrl', event.target.value)} placeholder={`https://login.microsoftonline.com/${activeTenant.tenantId || '<tenant-id>'}`} /></Field>
-              <Field label="Redirect URI" help={expectedRedirectUri ? `This environment must use ${expectedRedirectUri}` : `Must end with ${SSO_CALLBACK_PATH}.`}><input value={activeTenant.sso.redirectUri} onChange={(event) => updateConnection('sso', 'redirectUri', event.target.value.trim())} /></Field>
-              {expectedRedirectUri ? <div className="microsoft-integration-actions"><button type="button" className="secondary-action" onClick={() => updateConnection('sso', 'redirectUri', expectedRedirectUri)}>Use current callback</button></div> : null}
-              <Field label="Allowed sign-in domains"><input value={activeTenant.sso.allowedDomains} onChange={(event) => updateConnection('sso', 'allowedDomains', event.target.value)} /></Field>
-              <Field label="New SSO client secret" help="Save SSO connection stores the current client ID and redirect metadata before storing the write-only secret.">
-                <input type="password" autoComplete="new-password" value={secrets.sso} onChange={(event) => setSecrets((current) => ({ ...current, sso: event.target.value }))} />
-              </Field>
-              <div className="microsoft-integration-actions">
-                <button type="button" className="primary-action" onClick={() => void saveSecret('sso')} disabled={secretSaving === 'sso'}>{secretSaving === 'sso' ? 'Saving…' : 'Save SSO connection'}</button>
-                <button type="button" className="secondary-action" onClick={() => void testConnection('sso')} disabled={testing === 'sso'}>{testing === 'sso' ? 'Testing…' : 'Test SSO readiness'}</button>
-              </div>
-              <div className="microsoft-integration-fact"><strong>Secret</strong><span>{connectionStatusLabel(Boolean(ssoProfileStatus?.secretConfigured))}</span></div>
-              <div className="microsoft-integration-fact"><strong>Redirect match</strong><span>{redirectMatchesEnvironment ? 'Matches current environment' : 'Update required'}</span></div>
-              <div className="microsoft-integration-fact"><strong>Required delegated permissions</strong><span>openid · profile · email · User.Read</span></div>
-              <div className="microsoft-integration-fact"><strong>Final validation</strong><span>Interactive sign-in required</span></div>
-              {testResults.sso ? <pre className="microsoft-integration-result">{JSON.stringify({ status: testResults.sso.status, discoveryReady: testResults.sso.discoveryReady, secretConfigured: testResults.sso.secretConfigured, interactiveSignInRequired: testResults.sso.interactiveSignInRequired }, null, 2)}</pre> : null}
-            </article>
+          <article className="microsoft-integration-card microsoft-connection-card">
+            <p className="eyebrow">CONNECTION 1 · APP REGISTRATION</p><h2>Microsoft Entra SSO</h2><p className="section-copy">Used only for interactive sign-in. It does not replace the Graph/calendar/identity application.</p>
+            <Field label="SSO application / client ID" help="Application (client) ID from the SSO App Registration overview."><input value={activeTenant.sso.clientId} onChange={(event) => updateConnection('sso', 'clientId', event.target.value.trim())} /></Field>
+            <div className="microsoft-integration-actions"><button type="button" className="secondary-action" disabled={!activeTenant.services.clientId} onClick={() => updateConnection('sso', 'clientId', activeTenant.services.clientId)}>Use services app ID</button></div>
+            <Field label="Authority URL"><input value={activeTenant.sso.authorityUrl} onChange={(event) => updateConnection('sso', 'authorityUrl', event.target.value)} placeholder={`https://login.microsoftonline.com/${activeTenant.tenantId || '<tenant-id>'}`} /></Field>
+            <Field label="Redirect URI" help={expectedRedirectUri ? `This environment must use ${expectedRedirectUri}` : `Must end with ${SSO_CALLBACK_PATH}.`}><input value={activeTenant.sso.redirectUri} onChange={(event) => updateConnection('sso', 'redirectUri', event.target.value.trim())} /></Field>
+            {expectedRedirectUri ? <div className="microsoft-integration-actions"><button type="button" className="secondary-action" onClick={() => updateConnection('sso', 'redirectUri', expectedRedirectUri)}>Use current callback</button></div> : null}
+            <Field label="Allowed sign-in domains"><input value={activeTenant.sso.allowedDomains} onChange={(event) => updateConnection('sso', 'allowedDomains', event.target.value)} /></Field>
+            <Field label="New SSO client secret" help="The write-only secret is stored separately for Test and Production."><input type="password" autoComplete="new-password" value={secrets.sso} onChange={(event) => setSecrets((current) => ({ ...current, sso: event.target.value }))} /></Field>
+            <div className="microsoft-integration-actions"><button type="button" className="primary-action" onClick={() => void saveSecret('sso')} disabled={secretSaving === 'sso'}>{secretSaving === 'sso' ? 'Saving…' : 'Save SSO connection'}</button><button type="button" className="secondary-action" onClick={() => void testConnection('sso')} disabled={testing === 'sso'}>{testing === 'sso' ? 'Testing…' : 'Test SSO readiness'}</button></div>
+            <div className="microsoft-integration-fact"><strong>Secret</strong><span>{connectionStatusLabel(Boolean(ssoProfileStatus?.secretConfigured))}</span></div>
+            <div className="microsoft-integration-fact"><strong>Redirect match</strong><span>{redirectMatchesEnvironment ? 'Matches current environment' : 'Update required'}</span></div>
+            <div className="microsoft-integration-fact"><strong>Required delegated permissions</strong><span>openid · profile · email · User.Read</span></div>
+            <div className="microsoft-integration-fact"><strong>Final validation</strong><span>Interactive sign-in required</span></div>
+            {testResults.sso ? <pre className="microsoft-integration-result">{JSON.stringify({ status: testResults.sso.status, discoveryReady: testResults.sso.discoveryReady, secretConfigured: testResults.sso.secretConfigured, interactiveSignInRequired: testResults.sso.interactiveSignInRequired }, null, 2)}</pre> : null}
+          </article>
 
-            <article className="microsoft-integration-card microsoft-connection-card">
-              <p className="eyebrow">CONNECTION 2 · ENTERPRISE APPLICATION</p>
-              <h2>Microsoft services and Graph</h2>
-              <p className="section-copy">Used by Module 010 import, Module 057 calendar, Module 062 identity/profile/presence, and Microsoft 365 services.</p>
-              <Field label="Services application / client ID" help="Application (client) ID whose application permissions have tenant admin consent."><input value={activeTenant.services.clientId} onChange={(event) => updateConnection('services', 'clientId', event.target.value.trim())} /></Field>
-              <Field label="Graph application permissions" help="Module 010 needs Directory.Read.All and User.Read.All. Graph mail needs Mail.Send."><input value={activeTenant.services.graphScopes} onChange={(event) => updateConnection('services', 'graphScopes', normalizeServicesScopes(event.target.value))} /></Field>
-              <Field label="New services client secret" help="The current Test secret and environment contract are preserved.">
-                <input type="password" autoComplete="new-password" value={secrets.services} onChange={(event) => setSecrets((current) => ({ ...current, services: event.target.value }))} />
-              </Field>
-              <div className="microsoft-integration-actions">
-                <button type="button" className="primary-action" onClick={() => void saveSecret('services')} disabled={secretSaving === 'services'}>{secretSaving === 'services' ? 'Saving…' : 'Save services connection'}</button>
-                <button type="button" className="secondary-action" onClick={() => void testConnection('services')} disabled={testing === 'services'}>{testing === 'services' ? 'Testing…' : 'Test Graph connection'}</button>
-              </div>
-              <div className="microsoft-integration-fact"><strong>Secret</strong><span>{connectionStatusLabel(servicesSecretConfigured)}</span></div>
-              <div className="microsoft-integration-fact"><strong>Required permissions</strong><span>Directory.Read.All · User.Read.All · Mail.Send</span></div>
-              <div className="microsoft-integration-fact"><strong>Module 010 preview source</strong><span>Module 065 services profile</span></div>
-              {testResults.services ? <pre className="microsoft-integration-result">{JSON.stringify({ status: testResults.services.status, directoryRead: testResults.services.directoryRead, senderMailbox: testResults.services.senderMailbox }, null, 2)}</pre> : null}
-            </article>
+          <article className="microsoft-integration-card microsoft-connection-card">
+            <p className="eyebrow">CONNECTION 2 · ENTERPRISE APPLICATION</p><h2>Microsoft services and Graph</h2><p className="section-copy">Used by Module 010 import, Module 057 calendar, Module 062 identity/profile/presence, and Microsoft 365 services.</p>
+            <Field label="Services application / client ID" help="Application (client) ID whose application permissions have tenant admin consent."><input value={activeTenant.services.clientId} onChange={(event) => updateConnection('services', 'clientId', event.target.value.trim())} /></Field>
+            <Field label="Graph application permissions" help="Module 010 needs Directory.Read.All and User.Read.All. Graph mail needs Mail.Send."><input value={activeTenant.services.graphScopes} onChange={(event) => updateConnection('services', 'graphScopes', normalizeServicesScopes(event.target.value))} /></Field>
+            <Field label="New services client secret" help={`The current ${environmentLabel(activeTenant.environmentMode)} secret is preserved until a replacement is saved.`}><input type="password" autoComplete="new-password" value={secrets.services} onChange={(event) => setSecrets((current) => ({ ...current, services: event.target.value }))} /></Field>
+            <div className="microsoft-integration-actions"><button type="button" className="primary-action" onClick={() => void saveSecret('services')} disabled={secretSaving === 'services'}>{secretSaving === 'services' ? 'Saving…' : 'Save services connection'}</button><button type="button" className="secondary-action" onClick={() => void testConnection('services')} disabled={testing === 'services'}>{testing === 'services' ? 'Testing…' : 'Test Graph connection'}</button></div>
+            <div className="microsoft-integration-fact"><strong>Secret</strong><span>{connectionStatusLabel(servicesSecretConfigured)}</span></div>
+            <div className="microsoft-integration-fact"><strong>Required permissions</strong><span>Directory.Read.All · User.Read.All · Mail.Send</span></div>
+            <div className="microsoft-integration-fact"><strong>Module 010 preview source</strong><span>Module 065 {environmentLabel(activeTenant.environmentMode)} services profile</span></div>
+            {testResults.services ? <pre className="microsoft-integration-result">{JSON.stringify({ status: testResults.services.status, directoryRead: testResults.services.directoryRead, senderMailbox: testResults.services.senderMailbox }, null, 2)}</pre> : null}
+          </article>
 
-            <article className="microsoft-integration-card wide">
-              <p className="eyebrow">Microsoft 365 / SMTP</p>
-              <h2>Sender and transport configuration</h2>
-              <p className="section-copy">Module 065 is the authoritative mail source for every ProjectPulse email path. Microsoft Graph uses the services application and Mail.Send. SMTP host and port are active only when Microsoft 365 SMTP relay is selected.</p>
-              <div className="microsoft-integration-form-grid">
-                <Field label="Provider"><select value={configuration.mail.providerTarget} onChange={(event) => updateMail('providerTarget', event.target.value)}><option value="microsoft_graph">Microsoft Graph</option><option value="smtp_relay">Microsoft 365 SMTP relay</option><option value="locked">Locked</option></select></Field>
-                <Field label="SMTP host"><input value={configuration.mail.smtpHost} onChange={(event) => updateMail('smtpHost', event.target.value)} /></Field>
-                <Field label="SMTP port"><input type="number" value={configuration.mail.smtpPort} onChange={(event) => updateMail('smtpPort', Number(event.target.value))} /></Field>
-                <Field label="Sender name"><input value={configuration.mail.senderName} onChange={(event) => updateMail('senderName', event.target.value)} /></Field>
-                <Field label="Sender mailbox"><input type="email" value={configuration.mail.senderAddress} onChange={(event) => updateMail('senderAddress', event.target.value)} /></Field>
-                <Field label="Reply-to address"><input type="email" value={configuration.mail.replyToAddress} onChange={(event) => updateMail('replyToAddress', event.target.value)} /></Field>
-                <Field label="Recipient boundary"><select value={configuration.mail.recipientBoundary} onChange={(event) => updateMail('recipientBoundary', event.target.value)}><option value="test_only">Test only</option><option value="production_governed">Production governed</option><option value="locked">Locked</option></select></Field>
-              </div>
-              <div className="microsoft-integration-fact"><strong>Authoritative source</strong><span>Module 065 Microsoft Integration</span></div>
-              <div className="microsoft-integration-fact"><strong>Current transport</strong><span>{configuration.mail.providerTarget === 'microsoft_graph' ? 'Microsoft Graph · SMTP fields inactive' : configuration.mail.providerTarget === 'smtp_relay' ? 'Microsoft 365 SMTP relay' : 'Locked'}</span></div>
-            </article>
+          <article className="microsoft-integration-card wide microsoft-mail-environment-card" data-mail-environment={activeTenant.environmentMode}>
+            <p className="eyebrow">{activeTenant.environmentMode.toUpperCase()} · MICROSOFT 365 / SMTP</p><h2>{environmentLabel(activeTenant.environmentMode)} sender and transport configuration</h2><p className="section-copy">Graph and Microsoft 365 SMTP relay are alternative mail transports. Select one for this environment. Test-only keeps live delivery disabled while still allowing a real non-delivery readiness test of the configured transport.</p>
+            <div className="microsoft-integration-form-grid">
+              <Field label="Provider"><select value={activeMail.providerTarget} onChange={(event) => updateMail('providerTarget', event.target.value)}><option value="microsoft_graph">Microsoft Graph</option><option value="smtp_relay">Microsoft 365 SMTP relay</option><option value="locked">Locked</option></select></Field>
+              <Field label="SMTP host" help={activeMail.providerTarget === 'smtp_relay' ? 'Active SMTP endpoint.' : 'Preserved for later use; inactive while Graph or Locked is selected.'}><input disabled={activeMail.providerTarget !== 'smtp_relay'} value={activeMail.smtpHost} onChange={(event) => updateMail('smtpHost', event.target.value)} /></Field>
+              <Field label="SMTP port"><input type="number" disabled={activeMail.providerTarget !== 'smtp_relay'} value={activeMail.smtpPort} onChange={(event) => updateMail('smtpPort', Number(event.target.value))} /></Field>
+              <Field label="Sender name"><input value={activeMail.senderName} onChange={(event) => updateMail('senderName', event.target.value)} /></Field>
+              <Field label="Sender mailbox"><input type="email" value={activeMail.senderAddress} onChange={(event) => updateMail('senderAddress', event.target.value)} /></Field>
+              <Field label="Reply-to address"><input type="email" value={activeMail.replyToAddress} onChange={(event) => updateMail('replyToAddress', event.target.value)} /></Field>
+              <Field label="Recipient boundary"><select value={activeMail.recipientBoundary} onChange={(event) => updateMail('recipientBoundary', event.target.value)}><option value="test_only">Test only — no live delivery</option><option value="production_governed">Production governed — live delivery allowed</option><option value="locked">Locked</option></select></Field>
+            </div>
+            <div className="microsoft-integration-fact"><strong>Authoritative source</strong><span>Module 065 · {environmentLabel(activeTenant.environmentMode)}</span></div>
+            <div className="microsoft-integration-fact"><strong>Configured transport</strong><span>{providerDescription}</span></div>
+            <div className="microsoft-integration-fact"><strong>Live delivery</strong><span>{activeMail.recipientBoundary === 'production_governed' && activeMail.providerTarget !== 'locked' ? 'Eligible after readiness validation' : 'Disabled by recipient boundary; readiness testing remains available'}</span></div>
+          </article>
 
-            <article className="microsoft-integration-card wide">
-              <p className="eyebrow">Compatibility contract</p>
-              <h2>Existing integrations remain connected</h2>
-              <div className="microsoft-compatibility-grid">
-                <div><strong>Module 010</strong><span>Uses the Module 065 services/Graph connection for preview and import.</span></div>
-                <div><strong>Module 057</strong><span>Uses the active Module 065 services runtime for calendar and presence.</span></div>
-                <div><strong>Module 062</strong><span>Uses explicit Test and Production services credentials by domain.</span></div>
-                <div><strong>All email senders</strong><span>Use the provider, sender, boundary, and SMTP projection selected in Module 065.</span></div>
-                <div><strong>Module 067</strong><span>{legacy067?.document ? 'Saved mail configuration preserved.' : 'No legacy document observed.'}</span></div>
-              </div>
-            </article>
-          </div>
-        </>
-      ) : null}
+          <article className="microsoft-integration-card wide">
+            <p className="eyebrow">Compatibility contract</p><h2>Existing integrations remain connected</h2>
+            <div className="microsoft-compatibility-grid">
+              <div><strong>Module 010</strong><span>Uses the matching Module 065 services profile for preview/import and the saved manual or automatic sync schedule.</span></div>
+              <div><strong>Module 057</strong><span>Uses the active Module 065 services runtime for calendar and presence.</span></div>
+              <div><strong>Module 062</strong><span>Uses explicit Test and Production services credentials by domain.</span></div>
+              <div><strong>All email senders</strong><span>Use the provider, sender, boundary, and SMTP projection selected for their Module 065 environment.</span></div>
+              <div><strong>Module 067</strong><span>{legacy067?.document ? 'Saved legacy mail configuration preserved as an environment fallback.' : 'No legacy document observed.'}</span></div>
+            </div>
+          </article>
+        </div>
+      </> : null}
     </section>
   );
 }
