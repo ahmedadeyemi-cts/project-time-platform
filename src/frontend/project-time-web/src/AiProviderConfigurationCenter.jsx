@@ -8,6 +8,8 @@ const PROVIDER_LABELS = {
   openai: 'OpenAI',
   local_template: 'Governed local template',
 };
+const AUTOMATIC_HEALTH_POLL_MS = 2000;
+const AUTOMATIC_HEALTH_POLL_LIMIT = 10;
 
 function formatDate(value) {
   if (!value) return 'Not recorded';
@@ -17,8 +19,14 @@ function formatDate(value) {
 
 function statusClass(status) {
   if (['available', 'ready'].includes(status)) return 'healthy';
+  if (status === 'checking') return 'checking';
   if (['disabled', 'not_configured'].includes(status)) return 'inactive';
   return 'degraded';
+}
+
+function statusLabel(status) {
+  if (status === 'checking') return 'Checking automatically';
+  return String(status || 'checking').replaceAll('_', ' ');
 }
 
 async function readJson(response) {
@@ -39,22 +47,25 @@ export default function AiProviderConfigurationCenter() {
   const [savingModel, setSavingModel] = useState('');
   const [changingState, setChangingState] = useState('');
 
-  const load = useCallback(async () => {
-    setState((current) => ({ ...current, loading: true, error: '' }));
+  const load = useCallback(async ({ quiet = false } = {}) => {
+    if (!quiet) setState((current) => ({ ...current, loading: true, error: '' }));
     try {
-      const payload = await readJson(await fetch('/api/ai-configuration'));
+      const payload = await readJson(await fetch('/api/ai-configuration', {
+        credentials: 'include',
+        cache: 'no-store',
+      }));
       setState({ loading: false, error: '', payload });
     } catch (error) {
-      setState({
+      setState((current) => ({
         loading: false,
         error: error instanceof Error ? error.message : 'AI provider configuration could not be loaded.',
-        payload: null,
-      });
+        payload: quiet ? current.payload : null,
+      }));
     }
   }, []);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
 
   const configuration = state.payload?.configuration;
@@ -63,14 +74,62 @@ export default function AiProviderConfigurationCenter() {
     () => new Map((state.payload?.health ?? []).map((item) => [item.provider, item])),
     [state.payload],
   );
+  const pendingProviderKey = useMemo(() => providers
+    .filter((provider) => provider.code !== 'local_template' && provider.enabled && provider.configured)
+    .filter((provider) => ['checking', 'not_checked'].includes(healthByProvider.get(provider.code)?.probeStatus))
+    .map((provider) => provider.code)
+    .sort()
+    .join(','), [providers, healthByProvider]);
+
+  useEffect(() => {
+    if (!pendingProviderKey) return undefined;
+    let cancelled = false;
+    let attempts = 0;
+    let timer;
+
+    const poll = async () => {
+      attempts += 1;
+      try {
+        const result = await readJson(await fetch('/api/ai-configuration/health', {
+          credentials: 'include',
+          cache: 'no-store',
+        }));
+        if (cancelled) return;
+        setState((current) => current.payload ? {
+          ...current,
+          payload: { ...current.payload, health: result.providers ?? current.payload.health },
+        } : current);
+        const stillChecking = (result.providers ?? []).some((provider) =>
+          provider.enabled
+          && provider.configured
+          && ['checking', 'not_checked'].includes(provider.probeStatus));
+        if (stillChecking && attempts < AUTOMATIC_HEALTH_POLL_LIMIT) {
+          timer = window.setTimeout(poll, AUTOMATIC_HEALTH_POLL_MS);
+        }
+      } catch {
+        if (!cancelled && attempts < AUTOMATIC_HEALTH_POLL_LIMIT) {
+          timer = window.setTimeout(poll, AUTOMATIC_HEALTH_POLL_MS);
+        }
+      }
+    };
+
+    timer = window.setTimeout(poll, AUTOMATIC_HEALTH_POLL_MS);
+    return () => {
+      cancelled = true;
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [pendingProviderKey]);
 
   async function refreshHealth() {
     setRefreshing(true);
     setNotice('');
     try {
-      const result = await readJson(await fetch('/api/ai-configuration/health/refresh', { method: 'POST' }));
+      const result = await readJson(await fetch('/api/ai-configuration/health/refresh', {
+        method: 'POST',
+        credentials: 'include',
+      }));
       setNotice(result.message || 'Provider health checks completed.');
-      await load();
+      await load({ quiet: true });
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Provider health checks could not be completed.');
     } finally {
@@ -87,12 +146,13 @@ export default function AiProviderConfigurationCenter() {
     try {
       const result = await readJson(await fetch(`/api/ai-configuration/providers/${providerCode}/secret`, {
         method: 'PUT',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ apiKey }),
       }));
       setKeys((current) => ({ ...current, [providerCode]: '' }));
-      setNotice(result.message || 'API key saved securely.');
-      await load();
+      setNotice(result.message || 'API key saved securely and checked automatically.');
+      await load({ quiet: true });
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'The API key could not be saved.');
     } finally {
@@ -109,11 +169,12 @@ export default function AiProviderConfigurationCenter() {
     try {
       const result = await readJson(await fetch(`/api/ai-configuration/providers/${providerCode}/model`, {
         method: 'PUT',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model }),
       }));
       setNotice(result.message || 'Model saved and tested.');
-      await load();
+      await load({ quiet: true });
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'The model could not be saved and tested.');
     } finally {
@@ -127,11 +188,12 @@ export default function AiProviderConfigurationCenter() {
     try {
       const result = await readJson(await fetch(`/api/ai-configuration/providers/${providerCode}/enabled`, {
         method: 'PUT',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enabled }),
       }));
       setNotice(result.message || `Provider ${enabled ? 'enabled' : 'disabled'}.`);
-      await load();
+      await load({ quiet: true });
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'The provider state could not be changed.');
     } finally {
@@ -140,19 +202,14 @@ export default function AiProviderConfigurationCenter() {
   }
 
   return (
-    <div className="ai-provider-center projectpulse-module-standard" data-module="064"
-      data-brand="us-signal">
+    <div className="ai-provider-center projectpulse-module-standard" data-module="064" data-brand="us-signal">
       <header className="ai-provider-center__header">
-        <img
-          className="projectpulse-module-standard__logo"
-          src={usSignalLogoDataUrl}
-          alt="US Signal"
-        />
+        <img className="projectpulse-module-standard__logo" src={usSignalLogoDataUrl} alt="US Signal" />
         <div>
           <p className="ai-provider-center__eyebrow">Module 064 · governed shared service</p>
           <h1>AI Provider Configuration Center</h1>
           <p>
-            ProjectPulse checks provider health and routes each AI request once through Claude,
+            ProjectPulse checks provider health automatically and routes each AI request once through Claude,
             then OpenAI, then the governed local fallback. A safety refusal never triggers another provider.
           </p>
         </div>
@@ -161,34 +218,29 @@ export default function AiProviderConfigurationCenter() {
         </button>
       </header>
 
+      <div className="ai-provider-center__automatic-health" role="status">
+        <strong>Automatic provider health is active.</strong>
+        <span>
+          Configured providers are checked when the API starts, after configuration changes, and every {configuration?.execution?.healthIntervalSeconds ?? 120} seconds. The button remains available for an immediate recheck.
+        </span>
+      </div>
+
       {notice ? <div className="ai-provider-center__notice" role="status">{notice}</div> : null}
-      {state.loading ? <div className="ai-provider-center__state">Loading shared AI configuration…</div> : null}
+      {state.loading ? <div className="ai-provider-center__state">Loading shared AI configuration and checking provider readiness…</div> : null}
       {state.error ? (
         <div className="ai-provider-center__state ai-provider-center__state--error" role="alert">
           <p>{state.error}</p>
-          <button type="button" onClick={load}>Try again</button>
+          <button type="button" onClick={() => load()}>Try again</button>
         </div>
       ) : null}
 
       {configuration ? (
         <>
           <section className="ai-provider-center__summary" aria-label="Shared routing summary">
-            <article>
-              <span>Routing mode</span>
-              <strong>{configuration.mode?.replaceAll('_', ' ')}</strong>
-            </article>
-            <article>
-              <span>Execution</span>
-              <strong>Sequential, no duplicate calls</strong>
-            </article>
-            <article>
-              <span>Timeout / retries</span>
-              <strong>{configuration.execution?.requestTimeoutSeconds}s / {configuration.execution?.retryCount}</strong>
-            </article>
-            <article>
-              <span>Output limit</span>
-              <strong>{configuration.execution?.maxOutputTokens} tokens</strong>
-            </article>
+            <article><span>Routing mode</span><strong>{configuration.mode?.replaceAll('_', ' ')}</strong></article>
+            <article><span>Execution</span><strong>Sequential, no duplicate calls</strong></article>
+            <article><span>Timeout / retries</span><strong>{configuration.execution?.requestTimeoutSeconds}s / {configuration.execution?.retryCount}</strong></article>
+            <article><span>Output limit</span><strong>{configuration.execution?.maxOutputTokens} tokens</strong></article>
           </section>
 
           <section className="ai-provider-center__section">
@@ -211,7 +263,7 @@ export default function AiProviderConfigurationCenter() {
                         <p>{provider.model}</p>
                       </div>
                       <span className={`ai-provider-center__status ai-provider-center__status--${statusClass(health.probeStatus)}`}>
-                        {(health.probeStatus || 'not checked').replaceAll('_', ' ')}
+                        {statusLabel(health.probeStatus)}
                       </span>
                     </div>
                     <dl>
@@ -219,14 +271,14 @@ export default function AiProviderConfigurationCenter() {
                       <div><dt>Configured</dt><dd>{provider.configured ? 'Yes' : 'No'}</dd></div>
                       <div><dt>Endpoint</dt><dd>{provider.endpoint || 'Local only'}</dd></div>
                       <div><dt>API version</dt><dd>{provider.apiVersion || 'Not applicable'}</dd></div>
-                      <div><dt>Generation route status</dt><dd>{(health.status || 'not checked').replaceAll('_', ' ')}</dd></div>
+                      <div><dt>Generation route status</dt><dd>{statusLabel(health.status)}</dd></div>
                       <div><dt>Last check</dt><dd>{formatDate(health.lastCheckedAt)}</dd></div>
                       <div><dt>Last success</dt><dd>{formatDate(health.lastSuccessAt)}</dd></div>
                       <div><dt>Generations succeeded</dt><dd>{health.successCount ?? 0}</dd></div>
                       <div><dt>Generation failures / refusals</dt><dd>{health.failureCount ?? 0} / {health.refusalCount ?? 0}</dd></div>
                       <div><dt>Last generation failure</dt><dd>{health.lastFailureCode ?? 'None'}</dd></div>
                       <div><dt>Last generation request</dt><dd>{health.lastRequestId ?? 'Not reported'}</dd></div>
-                      <div><dt>Probe status</dt><dd>{(health.probeStatus || 'not checked').replaceAll('_', ' ')}</dd></div>
+                      <div><dt>Probe status</dt><dd>{statusLabel(health.probeStatus)}</dd></div>
                       <div><dt>Last probe</dt><dd>{formatDate(health.lastProbeAt)}</dd></div>
                       <div><dt>Probe successes / failures</dt><dd>{health.probeSuccessCount ?? 0} / {health.probeFailureCount ?? 0}</dd></div>
                       <div><dt>Last probe failure</dt><dd>{health.lastProbeFailureCode ?? 'None'}</dd></div>
@@ -240,34 +292,34 @@ export default function AiProviderConfigurationCenter() {
                     </dl>
                     {provider.code !== 'local_template' ? (
                       <div className="ai-provider-center__provider-controls">
-                      <div className="ai-provider-center__enable-control">
-                        <div><strong>Provider routing</strong><small>Disabling preserves the saved key and model.</small></div>
-                        <button
-                          type="button"
-                          className={provider.enabled ? 'ai-provider-center__danger-button' : ''}
-                          onClick={() => setProviderEnabled(provider.code, !provider.enabled)}
-                          disabled={changingState === provider.code || (!provider.configured && !provider.enabled)}
-                        >
-                          {changingState === provider.code ? 'Updating…' : provider.enabled ? 'Disable' : 'Enable'}
-                        </button>
-                      </div>
-                      <form className="ai-provider-center__model-form" onSubmit={(event) => saveModel(event, provider.code, provider.model)}>
-                        <label htmlFor={`provider-model-${provider.code}`}>Active model</label>
-                        <div>
-                          <select
-                            id={`provider-model-${provider.code}`}
-                            value={models[provider.code] || provider.model}
-                            onChange={(event) => setModels((current) => ({ ...current, [provider.code]: event.target.value }))}
-                            disabled={!provider.configured || savingModel === provider.code}
+                        <div className="ai-provider-center__enable-control">
+                          <div><strong>Provider routing</strong><small>Disabling preserves the saved key and model.</small></div>
+                          <button
+                            type="button"
+                            className={provider.enabled ? 'ai-provider-center__danger-button' : ''}
+                            onClick={() => setProviderEnabled(provider.code, !provider.enabled)}
+                            disabled={changingState === provider.code || (!provider.configured && !provider.enabled)}
                           >
-                            {(provider.approvedModels || [provider.model]).map((model) => <option value={model} key={model}>{model}</option>)}
-                          </select>
-                          <button type="submit" disabled={!provider.configured || savingModel === provider.code || (models[provider.code] || provider.model) === provider.model}>
-                            {savingModel === provider.code ? 'Testing…' : 'Save and test'}
+                            {changingState === provider.code ? 'Updating…' : provider.enabled ? 'Disable' : 'Enable'}
                           </button>
                         </div>
-                        <small>{provider.configured ? 'The new model activates only after the saved key verifies it.' : 'Save an API key before changing the model.'}</small>
-                      </form>
+                        <form className="ai-provider-center__model-form" onSubmit={(event) => saveModel(event, provider.code, provider.model)}>
+                          <label htmlFor={`provider-model-${provider.code}`}>Active model</label>
+                          <div>
+                            <select
+                              id={`provider-model-${provider.code}`}
+                              value={models[provider.code] || provider.model}
+                              onChange={(event) => setModels((current) => ({ ...current, [provider.code]: event.target.value }))}
+                              disabled={!provider.configured || savingModel === provider.code}
+                            >
+                              {(provider.approvedModels || [provider.model]).map((model) => <option value={model} key={model}>{model}</option>)}
+                            </select>
+                            <button type="submit" disabled={!provider.configured || savingModel === provider.code || (models[provider.code] || provider.model) === provider.model}>
+                              {savingModel === provider.code ? 'Testing…' : 'Save and test'}
+                            </button>
+                          </div>
+                          <small>{provider.configured ? 'The new model activates only after the saved key verifies it.' : 'Save an API key before changing the model.'}</small>
+                        </form>
                       </div>
                     ) : null}
                     {provider.secret ? (
@@ -279,9 +331,7 @@ export default function AiProviderConfigurationCenter() {
                         <span>Rotation: {formatDate(provider.secret.rotatedAt)}</span>
                         <span>Expiry: {formatDate(provider.secret.expiresAt)}</span>
                         <form className="ai-provider-center__secret-form" onSubmit={(event) => saveKey(event, provider.code)}>
-                          <label htmlFor={`provider-key-${provider.code}`}>
-                            {provider.configured ? 'Replace API key' : 'Add API key'}
-                          </label>
+                          <label htmlFor={`provider-key-${provider.code}`}>{provider.configured ? 'Replace API key' : 'Add API key'}</label>
                           <div>
                             <input
                               id={`provider-key-${provider.code}`}
@@ -289,16 +339,14 @@ export default function AiProviderConfigurationCenter() {
                               value={keys[provider.code] || ''}
                               onChange={(event) => setKeys((current) => ({ ...current, [provider.code]: event.target.value }))}
                               autoComplete="new-password"
-                              spellCheck="false"
-                              maxLength={8192}
                               placeholder="Paste key once"
                               disabled={savingProvider === provider.code}
                             />
                             <button type="submit" disabled={!keys[provider.code]?.trim() || savingProvider === provider.code}>
-                              {savingProvider === provider.code ? 'Saving…' : 'Save securely'}
+                              {savingProvider === provider.code ? 'Saving and checking…' : 'Save securely'}
                             </button>
                           </div>
-                          <small>The key is write-only and disappears from this form immediately after saving.</small>
+                          <small>The key is write-only, disappears after saving, and is health-checked automatically.</small>
                         </form>
                       </div>
                     ) : null}
@@ -310,10 +358,7 @@ export default function AiProviderConfigurationCenter() {
 
           <section className="ai-provider-center__section">
             <div className="ai-provider-center__section-heading">
-              <div>
-                <p className="ai-provider-center__eyebrow">Feature routing</p>
-                <h2>One governed route per AI capability</h2>
-              </div>
+              <div><p className="ai-provider-center__eyebrow">Feature routing</p><h2>One governed route per AI capability</h2></div>
               <span>Local fallback is always last</span>
             </div>
             <div className="ai-provider-center__routes">
@@ -333,7 +378,7 @@ export default function AiProviderConfigurationCenter() {
               <h2>Provider keys are write-only</h2>
               <p>
                 Administrators can add or replace Claude and OpenAI keys. Keys are encrypted before database
-                storage, activate immediately, and are never returned by the API after submission.
+                storage, tested automatically, and never returned by the API after submission.
               </p>
             </div>
             <ul>
