@@ -194,7 +194,7 @@ check('GENERATED_REGISTRATION',
 'shared middleware and endpoints are registered exactly once without editing oversized Program.cs');
 
 check('MODULE_013_EXPERIENCE', [
-  'System Health & API Diagnostics',
+  'System Health &amp; API Diagnostics',
   '/api/platform-operations/overview',
   '/api/platform-operations/apis',
   'api-diagnostic-drawer',
@@ -217,7 +217,7 @@ check('MODULE_013_RESPONSIVE', [
 check('MODULE_016_EVIDENCE',
   module016.includes('<OperationalEvidenceCenter')
     && [
-      'Operational Evidence & Diagnostic History',
+      'Operational Evidence &amp; Diagnostic History',
       '/api/platform-operations/evidence?',
       '/api/platform-operations/evidence/export',
       'Dependency timeline',
