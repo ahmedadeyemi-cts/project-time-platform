@@ -19,8 +19,11 @@ internal static class ProjectPulseActualSessionAuthority
     {
         if (context.Items.TryGetValue("ProjectPulseIsViewAs", out var flag) && flag is true)
             return true;
-        if (context.Request.Headers.ContainsKey("X-ProjectPulse-View-As-User"))
+        if (context.Request.Headers.TryGetValue("X-ProjectPulse-View-As-User", out var header)
+            && !string.IsNullOrWhiteSpace(header.ToString()))
+        {
             return true;
+        }
 
         var actual = ReadUserId(context, "ProjectPulseActualUserId", "ProjectPulseSessionUserId");
         var effective = ReadUserId(context, "ProjectPulseEffectiveUserId", "ProjectPulseSessionUserId");
@@ -38,8 +41,11 @@ internal static class ProjectPulseActualSessionAuthority
         if (!actualUserId.HasValue) return false;
 
         var ownsConnection = existingConnection is null;
+        var connectionString = ownsConnection ? BuildConnectionString() : string.Empty;
+        if (ownsConnection && string.IsNullOrWhiteSpace(connectionString)) return false;
+
         await using var ownedConnection = ownsConnection
-            ? new NpgsqlConnection(BuildConnectionString())
+            ? new NpgsqlConnection(connectionString)
             : null;
         var connection = existingConnection ?? ownedConnection!;
         if (connection.State != System.Data.ConnectionState.Open)
@@ -62,7 +68,7 @@ internal static class ProjectPulseActualSessionAuthority
             """, connection, transaction);
         command.Parameters.AddWithValue("user_id", actualUserId.Value);
         command.Parameters.AddWithValue("role_codes", SuperAdministratorRoleCodes);
-        return await command.ExecuteScalarAsync(cancellationToken) is true;
+        return Convert.ToBoolean(await command.ExecuteScalarAsync(cancellationToken) ?? false);
     }
 
     internal static Guid? ReadUserId(HttpContext context, params string[] keys)
