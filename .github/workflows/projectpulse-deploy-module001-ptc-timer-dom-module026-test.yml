@@ -1,0 +1,233 @@
+name: ProjectPulse Deploy Module 001 PTC Timer DOM and Module 026 Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_commit:
+        description: Exact verified Module 001 PTC timer DOM and Module 026 source release
+        required: true
+        default: 816deeda98d3d875cdbdea1a42b5662815334eb9
+        type: string
+      confirmation:
+        description: Enter DEPLOY-MODULE001-PTC-TIMER-DOM-MODULE026-TO-TEST
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: projectpulse-deploy-module001-ptc-timer-dom-module026-test
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Guarded Module 001 PTC timer DOM, Module 026, API, and web test deployment
+    environment: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      EXPECTED_RELEASE_COMMIT: 816deeda98d3d875cdbdea1a42b5662815334eb9
+
+    steps:
+      - name: Check out deployment controls
+        uses: actions/checkout@v5
+        with:
+          path: control
+          fetch-depth: 0
+
+      - name: Check out exact Module 001 and Module 026 source release
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.release_commit }}
+          path: release
+          fetch-depth: 1
+
+      - name: Guard workflow source and validate exact release
+        id: release
+        shell: bash
+        env:
+          DISPATCH_RELEASE_COMMIT: ${{ inputs.release_commit }}
+          DISPATCH_CONFIRMATION: ${{ inputs.confirmation }}
+          WORKFLOW_SOURCE_REF: ${{ github.ref }}
+          WORKFLOW_SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$WORKFLOW_SOURCE_REF" == 'refs/heads/main' ]] || {
+            echo 'Dispatch this workflow from main.' >&2
+            exit 1
+          }
+          [[ "$DISPATCH_CONFIRMATION" == 'DEPLOY-MODULE001-PTC-TIMER-DOM-MODULE026-TO-TEST' ]] || {
+            echo 'The deployment confirmation text does not match.' >&2
+            exit 1
+          }
+          [[ "$DISPATCH_RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || {
+            echo 'release_commit must be a complete 40-character SHA.' >&2
+            exit 1
+          }
+
+          CONTROL_COMMIT="$(git -C control rev-parse HEAD)"
+          TARGET_COMMIT="$(git -C release rev-parse HEAD)"
+          [[ "$CONTROL_COMMIT" == "$WORKFLOW_SOURCE_SHA" ]]
+          [[ "$TARGET_COMMIT" == "$DISPATCH_RELEASE_COMMIT" ]]
+          [[ "$TARGET_COMMIT" == "$EXPECTED_RELEASE_COMMIT" ]] || {
+            echo 'Only the verified Module 001 PTC timer DOM and Module 026 source release may deploy.' >&2
+            exit 1
+          }
+          git -C control merge-base --is-ancestor "$TARGET_COMMIT" HEAD || {
+            echo 'The source release is not an ancestor of the deployment controls.' >&2
+            exit 1
+          }
+
+          RESULT_EXECUTION='release/src/backend/ProjectTime.Api/Modules/Module001ResultExecutionCompatibility.cs'
+          STEWARD_V2='release/src/backend/ProjectTime.Api/Modules/Module001TimeStewardV2Module.cs'
+          TIMER_TARGETS='release/src/backend/ProjectTime.Api/Modules/Module001TimerTargets.cs'
+          TIMER_DATA='release/src/backend/ProjectTime.Api/Modules/Module001TimesheetData.cs'
+          PTC_PORTAL='release/src/frontend/project-time-web/src/module001/PtcTimesheetManagementPortal.jsx'
+          TIMER_PORTAL='release/src/frontend/project-time-web/src/module001/TimesheetEnhancementPortal.jsx'
+          TIMER_VIEW='release/src/frontend/project-time-web/src/module001/TimesheetTimerView.jsx'
+          TIMER_PICKER='release/src/frontend/project-time-web/src/module001/TimesheetTaskPicker.jsx'
+          SLOT_INJECTOR='release/src/frontend/project-time-web/scripts/inject-module-001-owned-extension-slots.mjs'
+          MORE_INJECTOR='release/src/frontend/project-time-web/scripts/inject-react-owned-more-menu.mjs'
+          NAVIGATION='release/src/frontend/project-time-web/src/module-availability-bridge.js'
+          MORE_RUNTIME='release/src/frontend/project-time-web/src/intuitive-more-menu.js'
+          MODULE026_UI='release/src/frontend/project-time-web/src/CrmErpIntegrationCenter.jsx'
+          MODULE026_BACKEND='release/src/backend/ProjectTime.Api/Modules/CrmErpAdministrationExperience.cs'
+          GROUP2A_API='release/src/backend/ProjectTime.Api/Modules/PlatformOperationsModule.cs'
+
+          for required in \
+            "$RESULT_EXECUTION" "$STEWARD_V2" "$TIMER_TARGETS" "$TIMER_DATA" \
+            "$PTC_PORTAL" "$TIMER_PORTAL" "$TIMER_VIEW" "$TIMER_PICKER" \
+            "$SLOT_INJECTOR" "$MORE_INJECTOR" "$NAVIGATION" "$MORE_RUNTIME" \
+            "$MODULE026_UI" "$MODULE026_BACKEND" "$GROUP2A_API" \
+            release/src/backend/ProjectTime.Api/ProjectTime.Api.csproj \
+            release/tests/ProjectTime.Api.RouteResultExecutionTests/ProjectTime.Api.RouteResultExecutionTests.csproj \
+            release/tests/ProjectTime.Api.AuthorizationTests/ProjectTime.Api.AuthorizationTests.csproj \
+            release/tests/test-projectpulse-api-startup.sh \
+            release/src/frontend/project-time-web/scripts/validate-module-001-timesheet-timer-mobile.mjs \
+            release/src/frontend/project-time-web/scripts/validate-module-001-ptc-time-steward.mjs \
+            release/src/frontend/project-time-web/scripts/validate-module-001-ptc-timer-dom-ownership.mjs \
+            release/src/frontend/project-time-web/scripts/validate-role-permission-timesheet-stabilization.mjs \
+            release/src/frontend/project-time-web/scripts/validate-runtime-role-policy-ptc-data.mjs \
+            release/src/frontend/project-time-web/scripts/validate-group-1-navigation-work-consolidation.mjs \
+            release/src/frontend/project-time-web/scripts/validate-dynamic-rbac-administration.mjs \
+            release/src/frontend/project-time-web/scripts/validate-module-026-crm-erp-integrations.mjs \
+            release/src/frontend/project-time-web/scripts/validate-modules-021-026-sell-customer-sync.mjs \
+            release/src/frontend/project-time-web/scripts/validate-group-2a-provider-neutral-platform-operations.mjs \
+            release/src/frontend/project-time-web/scripts/validate-module-068-system-architecture.mjs \
+            control/scripts/run-module001-ptc-timer-dom-module026-test-deployment.sh; do
+            test -f "$required"
+          done
+
+          grep -Fq 'UseModule001ResultExecutionCompatibility' "$RESULT_EXECUTION"
+          grep -Fq 'Module001TimerTargetsAsync(context)' "$RESULT_EXECUTION"
+          grep -Fq 'Module001ActiveTimerAsync(context)' "$RESULT_EXECUTION"
+          grep -Fq 'Module001TimerHistoryAsync(context)' "$RESULT_EXECUTION"
+          grep -Fq 'X-ProjectPulse-Module001-Result-Execution' "$RESULT_EXECUTION"
+          grep -Fq 'await result.ExecuteAsync(context);' "$RESULT_EXECUTION"
+
+          grep -Fq 'module001-time-steward-v2-2026-07-28' "$STEWARD_V2"
+          grep -Fq '"/api/runtime/timesheet/steward/v2/users"' "$STEWARD_V2"
+          grep -Fq '"/api/runtime/timesheet/steward/v2/users/{targetUserId:guid}/workspace"' "$STEWARD_V2"
+          grep -Fq '"/api/runtime/timesheet/steward/v2/entries/{timeEntryId:guid}/move"' "$STEWARD_V2"
+          grep -Fq 'ENGINEERING_LEAD' "$STEWARD_V2"
+          grep -Fq 'PROJECT_MANAGEMENT_LEAD' "$STEWARD_V2"
+          grep -Fq 'Requests / Service Requests' "$STEWARD_V2"
+          grep -Fq 'Project Tasks' "$STEWARD_V2"
+          grep -Fq 'Non-Project Time' "$STEWARD_V2"
+          grep -Fq 'canAssignExistingProjectTaskDuringMove = true' "$STEWARD_V2"
+          grep -Fq 'canMoveToNonProjectTime = true' "$STEWARD_V2"
+          grep -Fq 'crossActivityTypeMove = true' "$STEWARD_V2"
+          grep -Fq 'submissionOnBehalf = false' "$STEWARD_V2"
+
+          grep -Fq '/api/runtime/timesheet/steward/v2/users?weekStart=' "$PTC_PORTAL"
+          grep -Fq "requiredCollections: ['users']" "$PTC_PORTAL"
+          grep -Fq 'Move time across all supported activity types' "$PTC_PORTAL"
+          grep -Fq '<optgroup key={group.name} label={group.name}>' "$PTC_PORTAL"
+          grep -Fq '/api/timesheet/timers/targets' "$TIMER_PORTAL"
+          grep -Fq '/api/timesheet/timers/active' "$TIMER_PORTAL"
+          grep -Fq '/api/timesheet/timers/history' "$TIMER_PORTAL"
+          grep -Fq 'sign-out, and session expiration' "$TIMER_PORTAL"
+          grep -Fq 'Timer history' "$TIMER_VIEW"
+          grep -Fq "const GROUP_ORDER = ['Requests / Service Requests', 'Project Tasks', 'Non-Project Time']" "$TIMER_PICKER"
+          grep -Fq 'FOR UPDATE OF t' "$TIMER_DATA"
+
+          grep -Fq 'data-projectpulse-react-owned-slot="true"' "$SLOT_INJECTOR"
+          grep -Fq 'runtimeDomInsertion=0' "$SLOT_INJECTOR"
+          grep -Fq 'PROJECTPULSE_REACT_OWNED_MORE_MENU' "$MORE_INJECTOR"
+          grep -Fq 'runtimeChildReplacement=0' "$MORE_INJECTOR"
+          grep -Fq "reactDomOwnership: 'attributes-only-v1'" "$NAVIGATION"
+          grep -Fq "moreMenu: 'react-owned-v1'" "$MORE_RUNTIME"
+          ! grep -Fq 'link.replaceChildren' "$NAVIGATION"
+          ! grep -Fq 'dropdown.prepend' "$NAVIGATION"
+          ! grep -Fq 'document.createElement' "$TIMER_PORTAL"
+          ! grep -Fq 'document.createElement' "$PTC_PORTAL"
+
+          grep -Fq 'Edit connection' "$MODULE026_UI"
+          grep -Fq 'Add CRM platform' "$MODULE026_UI"
+          grep -Fq 'zendesk_sell' "$MODULE026_BACKEND"
+          grep -Fq 'salesforce' "$MODULE026_BACKEND"
+          grep -Fq 'servicenow' "$MODULE026_BACKEND"
+          grep -Fq 'certinia' "$MODULE026_BACKEND"
+          grep -Fq '/api/platform-operations/overview' "$GROUP2A_API"
+
+          (
+            cd release
+            dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+            dotnet run \
+              --project tests/ProjectTime.Api.RouteResultExecutionTests/ProjectTime.Api.RouteResultExecutionTests.csproj \
+              --configuration Release
+            dotnet run \
+              --project tests/ProjectTime.Api.AuthorizationTests/ProjectTime.Api.AuthorizationTests.csproj \
+              --configuration Release
+            bash tests/test-projectpulse-api-startup.sh
+          )
+
+          (
+            cd release/src/frontend/project-time-web
+            npm ci --no-audit --no-fund
+            npm run validate:module001-enhancement
+            npm run validate:module001-ptc-time-steward
+            npm run validate:module001-ptc-timer-dom
+            npm run validate:role-permission-timesheet-stabilization
+            npm run validate:runtime-role-policy-ptc
+            node scripts/validate-group-1-navigation-work-consolidation.mjs
+            npm run validate:dynamic-rbac
+            npm run validate:module026
+            npm run validate:modules021026
+            node scripts/validate-group-2a-provider-neutral-platform-operations.mjs
+            npm run validate:module068
+            npm run build
+          )
+
+          echo "target_commit=$TARGET_COMMIT" >> "$GITHUB_OUTPUT"
+          echo 'MODULE001_PTC_TIMER_DOM_MODULE026_SOURCE_VALIDATION=PASS'
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build, deploy, validate, and preserve rollback evidence
+        shell: bash
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_API_APP: ${{ vars.AZURE_API_APP }}
+          AZURE_WEB_APP: ${{ vars.AZURE_WEB_APP }}
+          AZURE_ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
+          PUBLIC_URL: ${{ vars.PUBLIC_URL }}
+        run: >-
+          bash control/scripts/run-module001-ptc-timer-dom-module026-test-deployment.sh
+          control
+          release
+          '${{ steps.release.outputs.target_commit }}'
+
+      - name: Upload immutable deployment evidence
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: module001-ptc-timer-dom-module026-test-${{ github.run_id }}
+          path: control/evidence/module001-ptc-timer-dom-module026-test-deployment.json
+          retention-days: 30

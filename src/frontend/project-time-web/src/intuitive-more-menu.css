@@ -92,7 +92,8 @@
   outline: none;
 }
 
-.projectpulse-more-intuitive-name {
+.projectpulse-more-intuitive-name,
+.projectpulse-more-intuitive .projectpulse-more-link-copy strong {
   min-width: 0;
   overflow: hidden;
   color: inherit;
@@ -117,10 +118,25 @@
   line-height: 1;
 }
 
+/* Legacy decoration is hidden without replacing React-owned link children. */
 .projectpulse-more-intuitive .projectpulse-more-module-number,
-.projectpulse-more-intuitive .projectpulse-more-link-copy,
 .projectpulse-more-intuitive .projectpulse-more-link-copy small {
   display: none !important;
+}
+
+.projectpulse-more-intuitive .projectpulse-more-link-copy {
+  display: contents;
+}
+
+.projectpulse-body-owned-notice {
+  position: fixed;
+  top: 5.5rem;
+  left: 50%;
+  z-index: 11000;
+  width: min(920px, calc(100vw - 2rem));
+  margin: 0;
+  transform: translateX(-50%);
+  box-shadow: 0 18px 50px rgba(15, 35, 64, 0.25);
 }
 
 [data-theme="dark"] .enterprise-more-dropdown.projectpulse-more-intuitive,
@@ -158,5 +174,9 @@
 
   .projectpulse-more-intuitive .enterprise-more-links {
     grid-template-columns: 1fr;
+  }
+
+  .projectpulse-body-owned-notice {
+    top: 1rem;
   }
 }

@@ -4,6 +4,8 @@ const validators = [
   './scripts/validate-admin-runtime-stability.mjs',
   './scripts/validate-module-005-project-expense-upload.mjs',
   './scripts/validate-module-001-timesheet-timer-mobile.mjs',
+  './scripts/validate-module-001-ptc-time-steward.mjs',
+  './scripts/validate-module-001-ptc-timer-dom-ownership.mjs',
   './scripts/validate-module-012-scoped-role-admin.mjs',
   './scripts/validate-module-037-effective-matrix.mjs',
   './scripts/validate-runtime-role-policy-ptc-data.mjs'
@@ -30,4 +32,4 @@ for (const validator of validators) {
   console.log(`COMBINED_MODULE_VALIDATOR_PASSED=${validator}`);
 }
 
-console.log('FUNCTIONAL_RUNTIME_UAT_001_005_012_037_038_CONTRACTS=PASS');
+console.log('FUNCTIONAL_RUNTIME_UAT_001_005_012_037_038_CONTRACTS=PASS module001ResultExecution=explicit pTC=v2 timer=server-authoritative domOwnership=react-owned');

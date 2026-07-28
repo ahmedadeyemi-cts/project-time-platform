@@ -18,7 +18,6 @@ import ModuleAvailabilityController from './ModuleAvailabilityController.jsx';
 import DashboardPersonalCalendarPortal from './DashboardPersonalCalendarPortal.jsx';
 import CriticalRoutePresentationBoundary from './CriticalRoutePresentationBoundary.jsx';
 import TimesheetEnhancementPortal from './module001/TimesheetEnhancementPortal.jsx';
-import Module001ActiveTimerRecoveryPortal from './module001/Module001ActiveTimerRecoveryPortal.jsx';
 import PtcTimeStewardGate from './module001/PtcTimeStewardGate.jsx';
 import ProjectExpenseCrossModulePortal from './ProjectExpenseCrossModulePortal.jsx';
 import Module005ExperienceCompatibility from './Module005ExperienceCompatibility.jsx';
@@ -43,7 +42,6 @@ createRoot(document.getElementById('root')).render(
     <ModuleAvailabilityController />
     <DashboardPersonalCalendarPortal />
     <TimesheetEnhancementPortal />
-    <Module001ActiveTimerRecoveryPortal />
     <PtcTimeStewardGate />
     <ProjectExpenseCrossModulePortal />
     <Module005ExperienceCompatibility />

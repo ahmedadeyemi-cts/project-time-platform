@@ -14,14 +14,13 @@ function getProjectPulseAuthHeaders() {
 
 async function fetchJson(path) {
   const response = await fetch(path, { headers: getProjectPulseAuthHeaders() });
-
-  if (response.status === 403) return { canViewIntakeWorkTaskHandoff: false, canViewProjectLinkOptions: false };
-
+  if (response.status === 403) {
+    return { canViewIntakeWorkTaskHandoff: false, canViewProjectLinkOptions: false };
+  }
   if (!response.ok) {
     const raw = await response.text();
     throw new Error(raw || `${path} returned HTTP ${response.status}`);
   }
-
   return response.json();
 }
 
@@ -34,12 +33,10 @@ async function postJson(path, body) {
     },
     body: JSON.stringify(body)
   });
-
   if (!response.ok) {
     const raw = await response.text();
     throw new Error(raw || `${path} returned HTTP ${response.status}`);
   }
-
   return response.json();
 }
 
@@ -65,15 +62,12 @@ export default function IntakeWorkTaskHandoffPanel() {
 
   async function loadHandoff() {
     setPayload((current) => ({ ...current, loading: true, error: null }));
-
     try {
       const [data, options] = await Promise.all([
         fetchJson('/api/project-intake/work-task-handoff'),
         fetchJson('/api/project-intake/project-link-options')
       ]);
-
       setPayload({ loading: false, data, options, error: null });
-
       const nextForms = {};
       (options?.intakes ?? []).forEach((item) => {
         nextForms[item.intakeId] = {
@@ -93,47 +87,45 @@ export default function IntakeWorkTaskHandoffPanel() {
   }
 
   useEffect(() => {
-    loadHandoff();
+    void loadHandoff();
   }, []);
 
   const data = payload.data;
   const options = payload.options;
   const intakes = data?.intakes ?? [];
   const projects = options?.projects ?? data?.projects ?? [];
-
   const optionByIntake = useMemo(() => {
     const map = new Map();
     (options?.intakes ?? []).forEach((item) => map.set(item.intakeId, item));
     return map;
   }, [options]);
-
-  const stages = useMemo(() => {
-    return Array.from(new Set(intakes.map((item) => item.readinessStage).filter(Boolean)));
-  }, [intakes]);
-
-  const filteredIntakes = useMemo(() => {
-    if (stageFilter === 'all') return intakes;
-    return intakes.filter((item) => item.readinessStage === stageFilter);
-  }, [intakes, stageFilter]);
-
-  const canManageProjectLinks = Boolean(data?.access?.canManageProjectLinks || options?.canManageProjectLinks);
+  const stages = useMemo(
+    () => Array.from(new Set(intakes.map((item) => item.readinessStage).filter(Boolean))),
+    [intakes]
+  );
+  const filteredIntakes = useMemo(
+    () => stageFilter === 'all'
+      ? intakes
+      : intakes.filter((item) => item.readinessStage === stageFilter),
+    [intakes, stageFilter]
+  );
+  const canManageProjectLinks = Boolean(
+    data?.access?.canManageProjectLinks || options?.canManageProjectLinks
+  );
 
   async function confirmProjectLink(intake) {
     const form = linkForms[intake.intakeId] ?? {};
-
     if (!form.projectId) {
       setActionStatus('Select a project before confirming the intake project link.');
       return;
     }
-
     setActionStatus(`Confirming project link for ${intake.requestNumber}...`);
-
     try {
       const result = await postJson(`/api/project-intake/${intake.intakeId}/project-link`, {
         projectId: form.projectId,
-        confirmationNote: form.confirmationNote || `Confirmed from Project Intake handoff readiness for ${intake.requestNumber}.`
+        confirmationNote: form.confirmationNote
+          || `Confirmed from Project Intake handoff readiness for ${intake.requestNumber}.`
       });
-
       setActionStatus(result.message || 'Project link confirmed.');
       await loadHandoff();
     } catch (error) {
@@ -142,22 +134,39 @@ export default function IntakeWorkTaskHandoffPanel() {
   }
 
   if (payload.loading) return null;
-
-  if (!payload.error && !data?.canViewIntakeWorkTaskHandoff) {
-    return null;
-  }
+  if (!payload.error && !data?.canViewIntakeWorkTaskHandoff) return null;
 
   return (
-    <section id="intake-work-task-handoff" className="panel intake-work-task-handoff-panel">
+    <section
+      id="intake-work-task-handoff"
+      className="panel intake-work-task-handoff-panel"
+      data-projectpulse-work-management-handoff="020-to-055d-055c"
+    >
       <div className="section-heading">
         <div>
-          <p className="eyebrow">019M-AR / 019M-AS</p>
-          <h2>Project Intake → Work Task Builder Handoff</h2>
+          <p className="eyebrow">MODULE 020 · PROJECT INTAKE & RESOURCE HANDOFF</p>
+          <h2>Project Intake → Project Creation & Work Register Handoff</h2>
           <p className="section-copy">
-            This readiness view explains how an intake should move into project work, work tasks, engineer assignments, timesheets, and utilization. Project links are manually confirmed; automatic conversion remains disabled.
+            Module 020 owns pre-project intake, signed-date aging, project-link confirmation,
+            engineering demand, and resource handoff. Create a ready project in Module 055D,
+            then maintain its tasks, assignments, and delivery details in Module 055C.
+            Module 011 Work Task Builder is retired.
           </p>
         </div>
         <button type="button" className="secondary-action" onClick={loadHandoff}>Refresh</button>
+      </div>
+
+      <div className="projectpulse-work-management-handoff-actions">
+        <a href="#create-work-register">
+          <span>MODULE 055D</span>
+          <strong>Create New Project</strong>
+          <small>Create the project from GSD or SELL after intake is ready.</small>
+        </a>
+        <a href="#work-register">
+          <span>MODULE 055C</span>
+          <strong>Manage Existing Projects</strong>
+          <small>Maintain project details, tasks, assignments, and audited changes.</small>
+        </a>
       </div>
 
       {payload.error ? <div className="error-text">{payload.error}</div> : null}
@@ -167,8 +176,8 @@ export default function IntakeWorkTaskHandoffPanel() {
         {(data?.lifecycle ?? []).map((step) => (
           <article key={step.step}>
             <span>{step.step}</span>
-            <strong>{step.title}</strong>
-            <p>{step.description}</p>
+            <strong>{String(step.title || '').replace(/Work Task Builder/gi, 'Project Creation & Work Register')}</strong>
+            <p>{String(step.description || '').replace(/work task builder/gi, 'Modules 055D and 055C')}</p>
           </article>
         ))}
       </div>
@@ -236,15 +245,14 @@ export default function IntakeWorkTaskHandoffPanel() {
                 <div className="handoff-confirm-panel">
                   <h4>Confirm project link</h4>
                   <p className="section-copy">
-                    Select the project that belongs to this intake. This confirms the relationship only; it does not automatically create projects, tasks, or timesheets.
+                    Select the project that belongs to this intake. This confirms the relationship only;
+                    it does not automatically create projects, tasks, or timesheets.
                   </p>
-
                   {linkOption?.confirmedProjectId ? (
                     <div className="handoff-confirmed-link">
                       Confirmed: {linkOption.confirmedProjectCode} — {linkOption.confirmedProjectName}
                     </div>
                   ) : null}
-
                   <label>
                     Project
                     <select
@@ -257,15 +265,18 @@ export default function IntakeWorkTaskHandoffPanel() {
                       <option value="">Select project</option>
                       {candidateProjects.length > 0 ? <option disabled>Suggested matches</option> : null}
                       {candidateProjects.map((project) => (
-                        <option key={`candidate-${project.projectId}`} value={project.projectId}>{optionLabel(project)}</option>
+                        <option key={`candidate-${project.projectId}`} value={project.projectId}>
+                          {optionLabel(project)}
+                        </option>
                       ))}
                       {remainingProjects.length > 0 ? <option disabled>All available projects</option> : null}
                       {remainingProjects.map((project) => (
-                        <option key={`all-${project.projectId}`} value={project.projectId}>{optionLabel(project)}</option>
+                        <option key={`all-${project.projectId}`} value={project.projectId}>
+                          {optionLabel(project)}
+                        </option>
                       ))}
                     </select>
                   </label>
-
                   <label>
                     Confirmation note
                     <textarea
@@ -277,7 +288,6 @@ export default function IntakeWorkTaskHandoffPanel() {
                       placeholder="Why is this the correct project link?"
                     />
                   </label>
-
                   <button type="button" className="primary-action" onClick={() => confirmProjectLink(item)}>
                     Confirm project link
                   </button>

@@ -1,241 +1,389 @@
-import { useEffect, useRef } from 'react';
-import TimesheetEnhancementPortalV2 from './TimesheetEnhancementPortalV2.jsx';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { authoritativeApi } from '../projectpulse-authoritative-api.js';
+import TimesheetTimerView from './TimesheetTimerView.jsx';
+import { calculateTimerDuration, formatElapsedSeconds } from './timesheet-duration.js';
+import './timesheet-prep.css';
+import './module001-runtime-v2.css';
 
-const AUGMENTED_MARKER = '__module001AuthoritativeTimerTargets';
-const TIMER_TARGET_CLIENT = 'projectpulse-timer-target-direct-fetch-v1';
+const UUID_PATTERN = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
+const TIMER_TARGET_PATTERN = /^(?:(?:assignment|category):[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}|category-code:[A-Z0-9][A-Z0-9_-]{0,99})$/i;
 
 function isTimesheetRoute() {
   return String(window.location.hash || '#dashboard').replace(/^#/, '').split('?')[0] === 'timesheet';
 }
 
-function sessionToken() {
-  for (const storage of [window.localStorage, window.sessionStorage]) {
-    for (const key of ['projectPulseAuthSession', 'ProjectPulseAuthSession', 'projectPulseSession']) {
-      try {
-        const session = JSON.parse(storage.getItem(key) || 'null');
-        const token = session?.sessionToken || session?.token || session?.accessToken || session?.session_token || '';
-        if (token && (!session?.expiresAt || Date.now() < Date.parse(session.expiresAt))) return token;
-      } catch {
-        // Continue through the supported session storage contracts.
-      }
-    }
-  }
-  return '';
+function readSlots() {
+  if (!isTimesheetRoute()) return { page: null, switcher: null, workspace: null, recovery: null };
+  const page = document.querySelector('#timesheet.timesheet-page');
+  if (!page) return { page: null, switcher: null, workspace: null, recovery: null };
+  return {
+    page,
+    switcher: page.querySelector('#module001-view-tab-host[data-projectpulse-react-owned-slot="true"]'),
+    workspace: page.querySelector('#module001-enhancement-view-host[data-projectpulse-react-owned-slot="true"]'),
+    recovery: page.querySelector('#module001-active-timer-recovery-host[data-projectpulse-react-owned-slot="true"]')
+  };
 }
 
-function normalizeTimerTargetPayload(payload) {
-  if (Array.isArray(payload)) return { targets: payload };
-  const queue = [payload];
-  const visited = new Set();
-  while (queue.length) {
-    const candidate = queue.shift();
-    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate) || visited.has(candidate)) continue;
-    visited.add(candidate);
-    const key = Object.keys(candidate).find((name) => name.toLowerCase() === 'targets');
-    if (key && Array.isArray(candidate[key])) return { ...candidate, targets: candidate[key] };
-    for (const name of ['data', 'result', 'value', 'payload', 'response', 'body']) {
-      const nestedKey = Object.keys(candidate).find((keyName) => keyName.toLowerCase() === name);
-      if (nestedKey && candidate[nestedKey] && typeof candidate[nestedKey] === 'object') queue.push(candidate[nestedKey]);
-    }
-  }
-  return null;
-}
-
-async function loadTimerTargets(weekStart) {
-  const token = sessionToken();
-  if (!token) throw new Error('ProjectPulse session is not ready for timer targets.');
-  const path = `/api/timesheet/timers/targets?weekStart=${encodeURIComponent(weekStart)}`;
-  const response = await fetch(path, {
-    method: 'GET',
-    cache: 'no-store',
-    credentials: 'include',
-    headers: {
-      Accept: 'application/json',
-      'Cache-Control': 'no-cache, no-store, max-age=0',
-      Pragma: 'no-cache',
-      Authorization: `Bearer ${token}`,
-      'X-ProjectPulse-Session': token,
-      'X-Project-Pulse-Session': token,
-      'X-Session-Token': token,
-      'X-ProjectPulse-Module-Number': '001',
-      'X-ProjectPulse-Timer-Target-Client': TIMER_TARGET_CLIENT
-    }
+async function module001Api(path, options = {}) {
+  return authoritativeApi(path, {
+    ...options,
+    moduleNumber: '001'
   });
-  const raw = await response.text();
-  let payload = {};
-  try { payload = raw ? JSON.parse(raw) : {}; } catch { /* handled below */ }
-  if (!response.ok) {
-    throw new Error(payload?.message || `${path} returned HTTP ${response.status}.`);
-  }
-  const normalized = normalizeTimerTargetPayload(payload);
-  if (!normalized) {
-    throw new Error('Timer-target data did not contain the required targets collection.');
-  }
-  return normalized;
 }
 
-function targetKey(target = {}) {
-  const selectionValue = String(target.selectionValue || '').trim();
-  if (selectionValue) return selectionValue;
-  const assignmentId = String(target.assignmentId || target.projectAssignmentId || target.targetId || '').trim();
-  if (assignmentId && (target.targetType === 'assignment' || target.taskId || target.projectId)) return `assignment:${assignmentId}`;
-  const categoryId = String(
-    target.nonProjectTimeCategoryId
-    || target.nonProjectCategoryId
-    || target.categoryId
-    || target.id
-    || (target.targetType === 'category' ? target.targetId : '')
-    || ''
-  ).trim();
-  if (categoryId) return `category:${categoryId}`;
-  const categoryCode = String(target.categoryCode || target.code || target.targetCode || '').trim().toUpperCase();
-  if (categoryCode) return `category-code:${categoryCode}`;
-  const projectId = String(target.projectId || '').trim();
-  const taskId = String(target.taskId || '').trim();
-  if (projectId || taskId) return `task:${projectId}:${taskId}`;
-  const label = String(target.categoryName || target.name || target.taskName || target.selectionLabel || '').trim().toLowerCase();
-  return label ? `label:${label}` : '';
+function timerTargetValue(target = {}) {
+  const existing = String(target.selectionValue || '').trim();
+  if (TIMER_TARGET_PATTERN.test(existing)) return existing;
+  const assignmentId = String(target.assignmentId || target.projectAssignmentId || '').trim();
+  if (UUID_PATTERN.test(assignmentId)) return `assignment:${assignmentId}`;
+  const categoryId = String(target.nonProjectTimeCategoryId || target.nonProjectCategoryId || target.targetId || '').trim();
+  if (UUID_PATTERN.test(categoryId)) return `category:${categoryId}`;
+  const categoryCode = String(target.categoryCode || target.targetCode || '').trim().toUpperCase();
+  return categoryCode ? `category-code:${categoryCode}` : '';
 }
 
-function mergeByKey(existing, incoming) {
-  const rows = new Map();
-  for (const item of existing || []) {
-    const key = targetKey(item);
-    if (key) rows.set(key, item);
-  }
-  for (const item of incoming || []) {
-    const key = targetKey(item);
-    if (key) rows.set(key, { ...(rows.get(key) || {}), ...item });
-  }
-  return [...rows.values()];
-}
-
-function synchronizeViewButtons() {
-  if (!isTimesheetRoute()) return;
-  const page = document.querySelector('#timesheet');
-  if (!page?.classList.contains('module001-timer-mode')) return;
-  const timerButton = page.querySelector('#module001-start-stop-tab');
-  if (!timerButton) return;
-  page.querySelectorAll('.timesheet-view-button').forEach((button) => {
-    const active = button === timerButton;
-    button.classList.toggle('active', active);
-    button.setAttribute('aria-selected', active ? 'true' : 'false');
+function normalizeTargets(rows = []) {
+  const seen = new Set();
+  return rows.map((target) => {
+    const selectionValue = timerTargetValue(target);
+    return {
+      ...target,
+      selectionValue,
+      selectionLabel: target.selectionLabel || target.categoryName || target.taskName || 'Authorized activity',
+      groupLabel: target.groupLabel || (target.targetType === 'category' ? 'Non-Project Time' : 'Project Tasks')
+    };
+  }).filter((target) => {
+    if (!target.selectionValue || seen.has(target.selectionValue)) return false;
+    seen.add(target.selectionValue);
+    return true;
   });
+}
+
+function activeTimerLabel(timer) {
+  return [
+    timer?.customerName,
+    timer?.projectCode,
+    timer?.taskName || timer?.nonProjectCategoryName
+  ].filter(Boolean).join(' · ') || 'Authorized activity';
 }
 
 export default function TimesheetEnhancementPortal() {
-  const cacheRef = useRef(new Map());
-  const pendingRef = useRef(new Set());
-  const latestSnapshotRef = useRef(new Map());
+  const [slots, setSlots] = useState(() => readSlots());
+  const [snapshot, setSnapshot] = useState(() => window.__projectPulseModule001Snapshot || null);
+  const [timerMode, setTimerMode] = useState(false);
+  const [targets, setTargets] = useState([]);
+  const [activeTimer, setActiveTimer] = useState(null);
+  const [autoStoppedTimer, setAutoStoppedTimer] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [selectedTarget, setSelectedTarget] = useState('');
+  const [classification, setClassification] = useState('normal');
+  const [description, setDescription] = useState('');
+  const [busy, setBusy] = useState('');
+  const [message, setMessage] = useState('');
+  const [clock, setClock] = useState(() => new Date());
 
   useEffect(() => {
-    let timer = 0;
-    const schedule = () => {
-      window.clearTimeout(timer);
-      timer = window.setTimeout(synchronizeViewButtons, 40);
+    const synchronize = () => {
+      const next = readSlots();
+      setSlots((current) => (
+        current.page === next.page
+        && current.switcher === next.switcher
+        && current.workspace === next.workspace
+        && current.recovery === next.recovery
+      ) ? current : next);
     };
-    schedule();
-    document.addEventListener('click', schedule, true);
-    window.addEventListener('hashchange', schedule);
+    synchronize();
+    const observer = new MutationObserver(synchronize);
+    observer.observe(document.body, { childList: true, subtree: true });
+    window.addEventListener('hashchange', synchronize);
     return () => {
-      window.clearTimeout(timer);
-      document.removeEventListener('click', schedule, true);
-      window.removeEventListener('hashchange', schedule);
+      observer.disconnect();
+      window.removeEventListener('hashchange', synchronize);
     };
   }, []);
 
   useEffect(() => {
-    let disposed = false;
+    const receive = (event) => setSnapshot(event?.detail || window.__projectPulseModule001Snapshot || null);
+    window.addEventListener('projectpulse:module001-state', receive);
+    return () => window.removeEventListener('projectpulse:module001-state', receive);
+  }, []);
 
-    const publish = (snapshot, payload, error = '') => {
-      if (disposed || !snapshot?.selectedWeekStart || !isTimesheetRoute()) return;
-      const targets = Array.isArray(payload?.targets) ? payload.targets : [];
-      const authoritativeAssignments = targets.filter((target) => target.targetType === 'assignment');
-      const nonProjectTargets = targets.filter((target) => target.targetType === 'category' || target.targetType === 'categoryCode');
-      const assignedTasks = mergeByKey(snapshot.assignedTasks, authoritativeAssignments);
-      const nonProjectCategories = mergeByKey(
-        snapshot.nonProjectCategories,
-        nonProjectTargets.map((target) => ({
-          ...target,
-          id: target.nonProjectTimeCategoryId || target.targetId || target.id,
-          nonProjectTimeCategoryId: target.nonProjectTimeCategoryId || target.targetId || target.id,
-          code: target.categoryCode || target.targetCode || target.code,
-          categoryCode: target.categoryCode || target.targetCode || target.code,
-          name: target.categoryName || target.selectionLabel || target.name,
-          categoryName: target.categoryName || target.selectionLabel || target.name
-        }))
+  useEffect(() => {
+    document.body.classList.toggle('projectpulse-module001-timer-mode', Boolean(timerMode && slots.page));
+    return () => document.body.classList.remove('projectpulse-module001-timer-mode');
+  }, [slots.page, timerMode]);
+
+  useEffect(() => {
+    if (!slots.switcher) return undefined;
+    const leaveTimerMode = (event) => {
+      if (event.target.closest('.timesheet-view-button') && !event.target.closest('#module001-start-stop-tab')) {
+        setTimerMode(false);
+      }
+    };
+    const switcher = slots.switcher.parentElement;
+    switcher?.addEventListener('click', leaveTimerMode, true);
+    return () => switcher?.removeEventListener('click', leaveTimerMode, true);
+  }, [slots.switcher]);
+
+  const selectedWeekStart = snapshot?.selectedWeekStart || '';
+
+  const loadRuntime = useCallback(async ({ preserveMessage = false } = {}) => {
+    if (!slots.page || !selectedWeekStart) return;
+    const [activeResult, historyResult, targetResult] = await Promise.allSettled([
+      module001Api('/api/timesheet/timers/active'),
+      module001Api(`/api/timesheet/timers/history?weekStart=${encodeURIComponent(selectedWeekStart)}`, {
+        requiredCollections: ['timers']
+      }),
+      module001Api(`/api/timesheet/timers/targets?weekStart=${encodeURIComponent(selectedWeekStart)}`, {
+        requiredCollections: ['targets']
+      })
+    ]);
+
+    const errors = [];
+    if (activeResult.status === 'fulfilled') {
+      const payload = activeResult.value || {};
+      if (!Object.prototype.hasOwnProperty.call(payload, 'activeTimer')
+          && !Object.prototype.hasOwnProperty.call(payload, 'autoStoppedTimer')) {
+        errors.push('The active-timer service returned an incomplete response.');
+      } else {
+        const timer = payload.activeTimer || payload.ActiveTimer || null;
+        const stopped = payload.autoStoppedTimer || payload.AutoStoppedTimer || null;
+        setActiveTimer(timer);
+        setAutoStoppedTimer(stopped);
+        if (timer) {
+          setDescription(timer.description || '');
+          setClassification(timer.timeClassification || 'normal');
+        }
+      }
+    } else {
+      errors.push(activeResult.reason?.message || 'Unable to load the active timer.');
+    }
+
+    if (historyResult.status === 'fulfilled') {
+      setHistory(historyResult.value.timers || []);
+    } else {
+      errors.push(historyResult.reason?.message || 'Unable to load timer history.');
+    }
+
+    if (targetResult.status === 'fulfilled') {
+      setTargets(normalizeTargets(targetResult.value.targets || []));
+    } else {
+      errors.push(targetResult.reason?.message || 'Unable to load timer activities.');
+    }
+
+    if (errors.length) setMessage(errors.join(' '));
+    else if (!preserveMessage) setMessage('');
+  }, [selectedWeekStart, slots.page]);
+
+  useEffect(() => {
+    void loadRuntime();
+  }, [loadRuntime]);
+
+  useEffect(() => {
+    if (!slots.page) return undefined;
+    const refresh = () => void loadRuntime({ preserveMessage: true });
+    const interval = window.setInterval(refresh, 5000);
+    const visible = () => { if (!document.hidden) refresh(); };
+    window.addEventListener('focus', refresh);
+    window.addEventListener('projectpulse:auth-session-ready', refresh);
+    document.addEventListener('visibilitychange', visible);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', refresh);
+      window.removeEventListener('projectpulse:auth-session-ready', refresh);
+      document.removeEventListener('visibilitychange', visible);
+    };
+  }, [slots.page, loadRuntime]);
+
+  useEffect(() => {
+    if (selectedTarget && !targets.some((target) => target.selectionValue === selectedTarget)) {
+      setSelectedTarget('');
+    }
+  }, [selectedTarget, targets]);
+
+  useEffect(() => {
+    setClock(new Date());
+    if (!activeTimer?.startedAtUtc) return undefined;
+    const interval = window.setInterval(() => setClock(new Date()), 1000);
+    return () => window.clearInterval(interval);
+  }, [activeTimer?.startedAtUtc]);
+
+  const recoveryDuration = useMemo(
+    () => activeTimer?.startedAtUtc
+      ? calculateTimerDuration(activeTimer.startedAtUtc, clock)
+      : { cappedSeconds: 0, roundedMinutes: 0 },
+    [activeTimer?.startedAtUtc, clock]
+  );
+
+  async function startTimer() {
+    const target = targets.find((item) => item.selectionValue === selectedTarget);
+    if (!target) {
+      setMessage('Select a Project Task, Request / Service Request, or Non-Project Time activity.');
+      return;
+    }
+
+    setBusy('start');
+    setMessage('Starting the server timer…');
+    try {
+      const codeTarget = target.selectionValue.startsWith('category-code:');
+      const result = await module001Api(
+        codeTarget ? '/api/timesheet/timers/start-by-code' : '/api/timesheet/timers/start',
+        {
+          method: 'POST',
+          body: JSON.stringify(codeTarget ? {
+            nonProjectCategoryCode: target.selectionValue.slice('category-code:'.length),
+            timeClassification: classification,
+            description,
+            timeZoneId: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+          } : {
+            assignmentId: target.selectionValue.startsWith('assignment:')
+              ? target.selectionValue.slice('assignment:'.length)
+              : null,
+            nonProjectTimeCategoryId: target.selectionValue.startsWith('category:')
+              ? target.selectionValue.slice('category:'.length)
+              : null,
+            timeClassification: classification,
+            description,
+            timeZoneId: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+          })
+        }
       );
-      const enrichedSnapshot = {
-        ...snapshot,
-        assignedTasks,
-        regularAssignedTasks: assignedTasks.filter((target) => target.groupLabel !== 'Service Request Tasks' && target.groupLabel !== 'Requests / Service Requests'),
-        requestAssignedTasks: assignedTasks.filter((target) => target.groupLabel === 'Service Request Tasks' || target.groupLabel === 'Requests / Service Requests'),
-        nonProjectCategories,
-        timerTargetCounts: {
-          assignments: Number(payload?.assignmentCount ?? assignedTasks.length),
-          regularTasks: Number(payload?.regularTaskCount ?? assignedTasks.filter((target) => target.groupLabel !== 'Service Request Tasks' && target.groupLabel !== 'Requests / Service Requests').length),
-          serviceRequestTasks: Number(payload?.serviceRequestTaskCount ?? assignedTasks.filter((target) => target.groupLabel === 'Service Request Tasks' || target.groupLabel === 'Requests / Service Requests').length),
-          nonProject: Number(payload?.nonProjectCount ?? nonProjectCategories.length)
-        },
-        timerTargetAuthoritativeSources: Array.isArray(payload?.authoritativeSources) ? payload.authoritativeSources : [],
-        timerTargetLoadError: error,
-        [AUGMENTED_MARKER]: true
-      };
-      window.__projectPulseModule001Snapshot = enrichedSnapshot;
-      window.dispatchEvent(new CustomEvent('projectpulse:module001-state', { detail: enrichedSnapshot }));
-      window.dispatchEvent(new CustomEvent('projectpulse:module001-timer-targets', {
-        detail: { payload, error, weekStart: snapshot.selectedWeekStart }
-      }));
-    };
-
-    const enrichSnapshot = async (snapshot, force = false) => {
-      if (!isTimesheetRoute() || !snapshot?.selectedWeekStart) return;
-      const weekStart = String(snapshot.selectedWeekStart);
-      const baseSnapshot = force ? { ...snapshot, [AUGMENTED_MARKER]: false } : snapshot;
-      if (baseSnapshot?.[AUGMENTED_MARKER]) return;
-      latestSnapshotRef.current.set(weekStart, baseSnapshot);
-      if (!force && cacheRef.current.has(weekStart)) {
-        publish(baseSnapshot, cacheRef.current.get(weekStart));
-        return;
+      const timer = result.timer || result.activeTimer || null;
+      if (timer) {
+        setActiveTimer(timer);
+        setDescription(timer.description || description);
+        setClassification(timer.timeClassification || classification);
       }
-      if (pendingRef.current.has(weekStart)) return;
-      pendingRef.current.add(weekStart);
-      try {
-        const payload = await loadTimerTargets(weekStart);
-        cacheRef.current.set(weekStart, payload);
-        publish(latestSnapshotRef.current.get(weekStart) || baseSnapshot, payload);
-      } catch (error) {
-        publish(
-          latestSnapshotRef.current.get(weekStart) || baseSnapshot,
-          { targets: [] },
-          error?.message || 'Unable to load assigned timer targets. Existing Timesheet activities remain available.'
-        );
-      } finally {
-        pendingRef.current.delete(weekStart);
+      setMessage('Timer started. The server continues tracking it through refreshes, sign-out, and session expiration.');
+      await loadRuntime({ preserveMessage: true });
+    } catch (error) {
+      const existingTimer = error?.payload?.activeTimer || null;
+      if (error?.status === 409 && existingTimer) {
+        setActiveTimer(existingTimer);
+        setDescription(existingTimer.description || '');
+        setClassification(existingTimer.timeClassification || 'normal');
+        setMessage('A timer was already running. It has been recovered from the server.');
+      } else {
+        setMessage(error.message || 'The timer could not be started.');
       }
-    };
+    } finally {
+      setBusy('');
+    }
+  }
 
-    const handleSnapshot = (event) => void enrichSnapshot(event?.detail || window.__projectPulseModule001Snapshot || null);
-    const handleAuthSession = () => {
-      cacheRef.current.clear();
-      void enrichSnapshot(window.__projectPulseModule001Snapshot || null, true);
-    };
-    const handleRoute = () => {
-      if (isTimesheetRoute()) void enrichSnapshot(window.__projectPulseModule001Snapshot || null, true);
-    };
+  async function stopTimer() {
+    if (!activeTimer) return;
+    setBusy('stop');
+    setMessage('Stopping the server timer…');
+    try {
+      const result = await module001Api(`/api/timesheet/timers/${activeTimer.timerSessionId}/stop`, {
+        method: 'POST',
+        body: JSON.stringify({
+          description,
+          reason: 'Stopped from Module 001 Timesheet.',
+          expectedRowVersion: activeTimer.rowVersion
+        })
+      });
+      setActiveTimer(null);
+      setMessage(result.message || 'Timer stopped and its draft time entry was created.');
+      window.dispatchEvent(new CustomEvent('projectpulse:module001-timer-changed', { detail: { action: 'stopped' } }));
+      await loadRuntime({ preserveMessage: true });
+    } catch (error) {
+      setMessage(error.message || 'The timer could not be stopped.');
+    } finally {
+      setBusy('');
+    }
+  }
 
-    window.addEventListener('projectpulse:module001-state', handleSnapshot);
-    window.addEventListener('projectpulse:auth-session-ready', handleAuthSession);
-    window.addEventListener('hashchange', handleRoute);
-    queueMicrotask(handleRoute);
+  async function discardTimer() {
+    if (!activeTimer || !window.confirm('Discard this running timer without creating a time entry?')) return;
+    setBusy('discard');
+    setMessage('Discarding the server timer…');
+    try {
+      const result = await module001Api(`/api/timesheet/timers/${activeTimer.timerSessionId}/discard`, {
+        method: 'POST',
+        body: JSON.stringify({
+          reason: 'Discarded after user confirmation.',
+          expectedRowVersion: activeTimer.rowVersion
+        })
+      });
+      setActiveTimer(null);
+      setDescription('');
+      setMessage(result.message || 'Timer discarded.');
+      window.dispatchEvent(new CustomEvent('projectpulse:module001-timer-changed', { detail: { action: 'discarded' } }));
+      await loadRuntime({ preserveMessage: true });
+    } catch (error) {
+      setMessage(error.message || 'The timer could not be discarded.');
+    } finally {
+      setBusy('');
+    }
+  }
 
-    return () => {
-      disposed = true;
-      window.removeEventListener('projectpulse:module001-state', handleSnapshot);
-      window.removeEventListener('projectpulse:auth-session-ready', handleAuthSession);
-      window.removeEventListener('hashchange', handleRoute);
-    };
-  }, []);
+  if (!slots.page || !snapshot) return null;
+  const viewAs = Boolean(snapshot.isViewAs);
 
-  return <TimesheetEnhancementPortalV2 />;
+  return <>
+    {slots.switcher ? createPortal(
+      <button
+        id="module001-start-stop-tab"
+        type="button"
+        role="tab"
+        aria-selected={timerMode}
+        className={timerMode ? 'timesheet-view-button active' : 'timesheet-view-button'}
+        onClick={() => setTimerMode(true)}
+      >
+        <strong>Start / Stop Timer</strong>
+        <small>Track active work in real time</small>
+      </button>,
+      slots.switcher
+    ) : null}
+
+    {slots.workspace ? createPortal(
+      timerMode ? <TimesheetTimerView
+        targets={targets}
+        history={history}
+        activeTimer={activeTimer}
+        selectedTargetValue={selectedTarget}
+        classification={classification}
+        description={description}
+        isViewAs={viewAs}
+        busy={Boolean(busy)}
+        statusMessage={message}
+        onSelectTarget={setSelectedTarget}
+        onClassificationChange={setClassification}
+        onDescriptionChange={setDescription}
+        onStart={startTimer}
+        onStop={stopTimer}
+        onDiscard={discardTimer}
+      /> : null,
+      slots.workspace
+    ) : null}
+
+    {slots.recovery && !timerMode && activeTimer ? createPortal(
+      <section className="module001-server-timer-recovery" aria-label="Running timer recovered from server">
+        <div>
+          <p className="eyebrow">RUNNING TIMER</p>
+          <h3>{activeTimerLabel(activeTimer)}</h3>
+          <p>The timer is server-owned and remains active through refreshes, sign-out, and session expiration.</p>
+          <small>Started {new Date(activeTimer.startedAtUtc).toLocaleString()} · Rounded draft {(recoveryDuration.roundedMinutes / 60).toFixed(2)} hours</small>
+        </div>
+        <strong className="module001-server-timer-clock" aria-live="polite">{formatElapsedSeconds(recoveryDuration.cappedSeconds)}</strong>
+        <div className="module001-server-timer-actions">
+          <button type="button" onClick={() => setTimerMode(true)}>Open timer</button>
+          <button type="button" disabled={Boolean(busy) || viewAs} onClick={stopTimer}>{busy === 'stop' ? 'Stopping…' : 'Stop timer'}</button>
+          <button type="button" className="danger" disabled={Boolean(busy) || viewAs} onClick={discardTimer}>{busy === 'discard' ? 'Discarding…' : 'Discard'}</button>
+        </div>
+      </section>,
+      slots.recovery
+    ) : null}
+
+    {slots.recovery && !activeTimer && autoStoppedTimer ? createPortal(
+      <section className="module001-server-timer-recovery auto-stopped" aria-label="Automatically stopped timer">
+        <div><p className="eyebrow">TIMER SAFETY LIMIT</p><h3>{activeTimerLabel(autoStoppedTimer)}</h3><p>The server stopped this timer at the 12-hour limit. Review the resulting draft entry before submission.</p></div>
+        <button type="button" onClick={() => setAutoStoppedTimer(null)}>Dismiss</button>
+      </section>,
+      slots.recovery
+    ) : null}
+  </>;
 }
