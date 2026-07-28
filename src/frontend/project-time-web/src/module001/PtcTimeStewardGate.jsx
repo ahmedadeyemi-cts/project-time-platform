@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import PtcTimesheetManagementPortal from './PtcTimesheetManagementPortal.jsx';
-import PtcRuntimeTaskCatalog from './PtcRuntimeTaskCatalog.jsx';
 
 const ALLOWED_ROLES = new Set([
   'PROJECT_TEAM_COORDINATOR',
@@ -9,7 +8,9 @@ const ALLOWED_ROLES = new Set([
 ]);
 
 function normalizeRoles(value) {
-  if (Array.isArray(value)) return value.map((role) => String(role).trim().toUpperCase()).filter(Boolean);
+  if (Array.isArray(value)) {
+    return value.map((role) => String(role).trim().toUpperCase()).filter(Boolean);
+  }
   return String(value || '')
     .split(',')
     .map((role) => role.trim().toUpperCase())
@@ -46,10 +47,10 @@ export default function PtcTimeStewardGate() {
     };
   }, []);
 
+  // View-As remains read-only and must not expose the time-steward workspace for
+  // an effective identity that is not itself a PTC or administrator. In an own
+  // session the backend remains authoritative and hides the portal on a 403.
   if (state.active && !state.allowed) return null;
 
-  return <>
-    <PtcTimesheetManagementPortal />
-    <PtcRuntimeTaskCatalog />
-  </>;
+  return <PtcTimesheetManagementPortal />;
 }
