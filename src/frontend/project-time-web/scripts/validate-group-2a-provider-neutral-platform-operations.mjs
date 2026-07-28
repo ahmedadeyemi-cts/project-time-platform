@@ -205,6 +205,18 @@ check('MODULE_013_EXPERIENCE', [
 ].every((value) => module013.includes(value)),
 'Module 013 is the first-response health and per-API troubleshooting workspace');
 
+check('MODULE_013_COLLAPSIBLE_VOLUME', [
+  'const [volumeExpanded, setVolumeExpanded] = useState(false)',
+  'data-module-013-volume-control="collapsed-by-default"',
+  'aria-expanded={volumeExpanded}',
+  'aria-controls="module-013-volume-details"',
+  'id="module-013-volume-details"',
+  'hidden={!volumeExpanded}',
+  'Show volume details',
+  'Hide volume details'
+].every((value) => module013.includes(value)),
+'Module 013 keeps disk-volume details collapsed by default with an explicit accessible Show/Hide control');
+
 check('MODULE_013_RESPONSIVE', [
   '.platform-identity-strip',
   '.resource-metric-grid',

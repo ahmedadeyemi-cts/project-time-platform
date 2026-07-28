@@ -96,6 +96,7 @@ export default function ServiceControlCenter({ authSession }) {
   const [filters, setFilters] = useState({ search: '', module: 'all', status: 'all' });
   const [selected, setSelected] = useState({ loading: false, data: null, error: '' });
   const [retest, setRetest] = useState({ apiId: '', loading: false, message: '', error: '' });
+  const [volumeExpanded, setVolumeExpanded] = useState(false);
 
   const load = useCallback(async ({ quiet = false } = {}) => {
     if (!quiet) setState((current) => ({ ...current, loading: true, error: '' }));
@@ -163,6 +164,7 @@ export default function ServiceControlCenter({ authSession }) {
   const platform = overview.platform ?? {};
   const runtime = overview.runtime ?? {};
   const resources = overview.resources ?? {};
+  const drives = Array.isArray(resources.drives) ? resources.drives : [];
   const dependencies = overview.dependencies ?? {};
   const inventorySummary = state.inventory?.summary ?? {};
 
@@ -208,14 +210,30 @@ export default function ServiceControlCenter({ authSession }) {
           <article><span>Available RAM</span><strong>{bytes(resources.availableMemoryBytes)}</strong><small>{bytes(resources.totalMemoryBytes)} total reported</small></article>
           <article><span>Managed heap</span><strong>{bytes(resources.managedHeapBytes)}</strong><small>.NET managed memory</small></article>
         </div>
-        <div className="platform-table-wrap">
+        <div className="service-control-card-header" data-module-013-volume-control="collapsed-by-default">
+          <div>
+            <p className="eyebrow">Storage volumes</p>
+            <h2>Volume details</h2>
+            <p>{drives.length === 1 ? '1 mounted volume reported.' : `${drives.length} mounted volumes reported.`} Expand only when disk-level detail is needed.</p>
+          </div>
+          <button
+            type="button"
+            className="secondary-action"
+            aria-expanded={volumeExpanded}
+            aria-controls="module-013-volume-details"
+            onClick={() => setVolumeExpanded((current) => !current)}
+          >
+            {volumeExpanded ? 'Hide volume details' : 'Show volume details'}
+          </button>
+        </div>
+        <div id="module-013-volume-details" className="platform-table-wrap" hidden={!volumeExpanded}>
           <table>
             <thead><tr><th>Volume</th><th>Type</th><th>File system</th><th>Used</th><th>Available</th><th>Total</th></tr></thead>
             <tbody>
-              {(resources.drives ?? []).map((drive) => (
+              {drives.map((drive) => (
                 <tr key={drive.volume}><td>{drive.volume}</td><td>{title(drive.type)}</td><td>{drive.fileSystem}</td><td>{bytes(drive.usedBytes)}</td><td>{bytes(drive.availableBytes)}</td><td>{bytes(drive.totalBytes)}</td></tr>
               ))}
-              {!resources.drives?.length ? <tr><td colSpan="6">Disk metrics are not exposed by the active platform adapter.</td></tr> : null}
+              {!drives.length ? <tr><td colSpan="6">Disk metrics are not exposed by the active platform adapter.</td></tr> : null}
             </tbody>
           </table>
         </div>
