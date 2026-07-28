@@ -92,6 +92,12 @@ function decisionFor(grants, roleCode, actionCode) {
   return { state: 'NOT_SET', scope: '—', grants: [] };
 }
 
+function decisionCellClass(state) {
+  if (state === 'ALLOW') return 'rpm-decision rpm-decision-allow';
+  if (state === 'DENY') return 'rpm-decision rpm-decision-deny';
+  return 'rpm-decision rpm-decision-not-set';
+}
+
 export default function RolesPermissionsMatrix() {
   const [payload, setPayload] = useState({ loading: true, data: null, error: '' });
   const [tab, setTab] = useState('matrix');
@@ -226,18 +232,18 @@ export default function RolesPermissionsMatrix() {
         const moduleGrants = grants.filter((grant) => grant.moduleCode === module.moduleCode);
         return <tr key={`${module.moduleCode}-${action.actionCode}`}><td><strong>{module.moduleName}</strong><small>{module.routeScope}</small></td><td><strong>{actionLabel(action.actionCode)}</strong><code>{action.actionCode}</code></td><td>{actionDescription(action.actionCode, action.actionDescription)}</td>{visibleRoles.map((role) => {
           const decision = decisionFor(moduleGrants, role.roleCode, action.actionCode);
-          return <td key={role.roleCode}><button type="button" className={decision.state === 'ALLOW' ? 'rpm-decision allow' : decision.state === 'DENY' ? 'rpm-decision deny' : 'rpm-decision not-set'} onClick={() => setSelected({ module, action, role, decision })}><strong>{decision.state === 'ALLOW' ? 'Allow' : decision.state === 'DENY' ? 'No Access' : 'Not Set'}</strong><small>{decision.scope}</small></button></td>;
+          return <td key={role.roleCode} className={decisionCellClass(decision.state)}><button type="button" onClick={() => setSelected({ module, action, role, decision })}><strong>{decision.state === 'ALLOW' ? 'Allow' : decision.state === 'DENY' ? 'No Access' : 'Not Set'}</strong><small>{decision.scope}</small></button></td>;
         })}</tr>;
       })}</tbody></table></div>
     </> : null}
 
     {tab === 'roles' ? <section className="rpm-reference-grid">{roles.map((role) => {
       const reference = ROLE_REFERENCE[role.roleCode] || { purpose: role.description || 'Uses the permissions assigned in Module 012.', visibility: 'Controlled by the published data scope.', defaultScope: 'CONFIGURED' };
-      return <article key={role.roleCode}><p className="eyebrow">{role.roleCode}</p><h2>{role.roleName}</h2><p>{reference.purpose}</p><strong>Visibility</strong><span>{reference.visibility}</span><strong>Default scope</strong><span>{reference.defaultScope}</span><strong>Assigned users</strong><span>{role.activeUserCount}</span></article>;
+      return <article key={role.roleCode} className={role.roleCode === 'PROJECT_TEAM_COORDINATOR' ? 'ptc-reference' : ''}><p className="eyebrow">{role.roleCode}</p><h2>{role.roleName}</h2><p>{reference.purpose}</p><strong>Visibility</strong><span>{reference.visibility}</span><strong>Default scope</strong><span>{reference.defaultScope}</span><strong>Assigned users</strong><span>{role.activeUserCount}</span></article>;
     })}</section> : null}
 
     {tab === 'levels' ? <section className="rpm-level-reference">{PERMISSION_LEVELS.map((level) => <article key={level.code}><strong className={levelClass(level.code)}>{level.code}</strong><p>{level.meaning}</p></article>)}</section> : null}
 
-    {selected ? <div className="rpm-drawer-backdrop" role="presentation" onClick={() => setSelected(null)}><aside className="rpm-drawer" role="dialog" aria-modal="true" aria-label="Permission explanation" onClick={(event) => event.stopPropagation()}><header><div><p className="eyebrow">Permission explanation</p><h2>{selected.role.roleName}</h2><p>{selected.module.moduleName} · {actionLabel(selected.action.actionCode)}</p></div><button type="button" onClick={() => setSelected(null)}>Close</button></header><dl><div><dt>Decision</dt><dd>{selected.decision.state}</dd></div><div><dt>Scope</dt><dd>{selected.decision.scope}</dd></div><div><dt>Permission code</dt><dd>{selected.action.actionCode}</dd></div><div><dt>Last modified</dt><dd>{formatDate(selected.decision.grants?.[0]?.lastModifiedAt)}</dd></div></dl><p>{selected.decision.grants?.[0]?.sourceNotes || selected.decision.grants?.[0]?.explanation || 'No additional source note was stored.'}</p></aside></div> : null}
+    {selected ? <div className="rpm-detail-overlay" role="presentation" onClick={() => setSelected(null)}><article role="dialog" aria-modal="true" aria-label="Permission explanation" onClick={(event) => event.stopPropagation()}><header><div><p className="eyebrow">Permission explanation</p><h2>{selected.role.roleName}</h2><p>{selected.module.moduleName} · {actionLabel(selected.action.actionCode)}</p></div><button type="button" onClick={() => setSelected(null)}>Close</button></header><dl><dt>Decision</dt><dd>{selected.decision.state}</dd><dt>Scope</dt><dd>{selected.decision.scope}</dd><dt>Permission code</dt><dd>{selected.action.actionCode}</dd><dt>Last modified</dt><dd>{formatDate(selected.decision.grants?.[0]?.lastModifiedAt)}</dd></dl><p>{selected.decision.grants?.[0]?.sourceNotes || selected.decision.grants?.[0]?.explanation || 'No additional policy evidence was stored.'}</p></article></div> : null}
   </section>;
 }
