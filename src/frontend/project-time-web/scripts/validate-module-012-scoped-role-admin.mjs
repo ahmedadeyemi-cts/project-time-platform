@@ -166,7 +166,7 @@ requireAll(dynamicCss, [
   '.dynamic-rbac-invariant',
   '.dynamic-rbac-tabs',
   '.dynamic-rbac-members',
-  '.dynamic-rbac-module-catalog'
+  '.dynamic-rbac-modules'
 ], 'Module 012 dynamic styling');
 
 requireAll(navigation, [
