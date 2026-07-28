@@ -18,8 +18,13 @@ function requestMethod(input, init) {
 }
 
 function requestBody(input, init) {
-  if (typeof init?.body === 'string') return init.body;
-  return null;
+  return typeof init?.body === 'string' ? init.body : null;
+}
+
+function runtimeEnvironmentMode() {
+  const host = window.location.hostname.toLowerCase();
+  if (host.includes('-test.') || host.endsWith('.onenecklab.com') || host === 'localhost' || host === '127.0.0.1') return 'test';
+  return 'production';
 }
 
 function activeRuntimeProfiles(bodyText) {
@@ -29,35 +34,36 @@ function activeRuntimeProfiles(bodyText) {
     if (typeof notes !== 'string' || !notes.startsWith(CONFIG_MARKER)) return null;
     const configuration = JSON.parse(notes.slice(CONFIG_MARKER.length));
     const tenants = Array.isArray(configuration?.tenants) ? configuration.tenants : [];
-    const active = tenants.find((tenant) => tenant?.key === configuration?.activeTenantKey)
+    const selected = tenants.find((tenant) => tenant?.key === configuration?.activeTenantKey)
       || tenants.find((tenant) => tenant?.environmentMode === configuration?.activeEnvironmentMode)
       || null;
-    if (!active) return null;
+    if (!selected) return null;
 
-    const sso = active.sso || active.ssoConnection || {};
-    const services = active.services || active.servicesConnection || {};
-    const mail = configuration.mail || {};
-    const ssoClientId = sso.clientId || sso.applicationId || active.ssoClientId || '';
-    const servicesClientId = services.clientId || services.applicationId || active.serviceClientId || active.clientId || '';
+    const sso = selected.sso || selected.ssoConnection || {};
+    const services = selected.services || selected.servicesConnection || {};
+    const selectedMail = selected.mail || configuration.mail || {};
+    const ssoClientId = sso.clientId || sso.applicationId || selected.ssoClientId || '';
+    const servicesClientId = services.clientId || services.applicationId || selected.serviceClientId || selected.clientId || '';
 
     return {
-      sso: active.tenantId && ssoClientId && (sso.redirectUri || active.redirectUri)
+      environmentMode: String(selected.environmentMode || '').toLowerCase(),
+      sso: selected.tenantId && ssoClientId && (sso.redirectUri || selected.redirectUri)
         ? {
-            environmentMode: active.environmentMode,
-            tenantId: active.tenantId,
+            environmentMode: selected.environmentMode,
+            tenantId: selected.tenantId,
             clientId: ssoClientId,
-            redirectUri: sso.redirectUri || active.redirectUri,
-            allowedDomains: sso.allowedDomains || active.ssoAllowedDomains || active.tenantDomain || ''
+            redirectUri: sso.redirectUri || selected.redirectUri,
+            allowedDomains: sso.allowedDomains || selected.ssoAllowedDomains || selected.tenantDomain || ''
           }
         : null,
-      services: active.tenantId && servicesClientId
+      services: selected.tenantId && servicesClientId
         ? {
-            environmentMode: active.environmentMode,
-            tenantKey: active.key || active.tenantKey,
-            tenantId: active.tenantId,
+            environmentMode: selected.environmentMode,
+            tenantKey: selected.key || selected.tenantKey,
+            tenantId: selected.tenantId,
             clientId: servicesClientId,
-            graphScopes: services.graphScopes || services.scopes || active.graphScopes || '',
-            senderMailbox: mail.senderAddress || ''
+            graphScopes: services.graphScopes || services.scopes || selected.graphScopes || '',
+            senderMailbox: selectedMail.senderAddress || ''
           }
         : null
     };
@@ -86,12 +92,12 @@ function presentStatus(detail) {
     if (heading?.nextSibling) portal.insertBefore(status, heading.nextSibling);
     else portal.prepend(status);
   }
-  status.className = `microsoft-integration-banner ${detail.runtimeActivated ? 'success' : 'error'}`;
+  status.className = `microsoft-integration-banner ${detail.runtimeActivated ? 'success' : detail.persistedConfiguration ? '' : 'error'}`;
   status.textContent = detail.message;
 }
 
 async function applyProfile(delegatedFetch, path, profile, input, init) {
-  if (!profile) return { ok: true, skipped: true, payload: {} };
+  if (!profile) return { ok: true, skipped: true, activated: true, payload: {} };
   const response = await delegatedFetch(path, {
     method: 'POST',
     cache: 'no-store',
@@ -100,7 +106,13 @@ async function applyProfile(delegatedFetch, path, profile, input, init) {
   });
   let payload = {};
   try { payload = await response.json(); } catch { /* sanitized fallback below */ }
-  return { ok: response.ok, skipped: false, payload, status: response.status };
+  return {
+    ok: response.ok,
+    skipped: false,
+    activated: response.ok && payload?.runtimeActivated !== false,
+    payload,
+    status: response.status
+  };
 }
 
 if (typeof window !== 'undefined' && !window[INSTALL_MARKER]) {
@@ -118,27 +130,36 @@ if (typeof window !== 'undefined' && !window[INSTALL_MARKER]) {
     if (!profiles || !response.ok) return response;
 
     try {
-      const servicesResult = await applyProfile(
-        delegatedFetch,
-        SERVICES_APPLY_PATH,
-        profiles.services,
-        input,
-        init
-      );
+      const servicesResult = await applyProfile(delegatedFetch, SERVICES_APPLY_PATH, profiles.services, input, init);
       const ssoResult = servicesResult.ok
         ? await applyProfile(delegatedFetch, SSO_APPLY_PATH, profiles.sso, input, init)
-        : { ok: false, skipped: true, payload: {} };
-      const runtimeActivated = servicesResult.ok && ssoResult.ok;
+        : { ok: false, skipped: true, activated: false, payload: {} };
+      const requestSucceeded = servicesResult.ok && ssoResult.ok;
+      const runtimeActivated = requestSucceeded && servicesResult.activated && ssoResult.activated;
       const failure = !servicesResult.ok ? servicesResult : !ssoResult.ok ? ssoResult : null;
+      const selectedEnvironment = profiles.environmentMode || 'unknown';
+      const runningEnvironment = runtimeEnvironmentMode();
+      const savedForOtherEnvironment = requestSucceeded && !runtimeActivated && selectedEnvironment !== runningEnvironment;
+
       presentStatus({
-        status: failure?.payload?.status || (runtimeActivated ? 'microsoft_runtime_profiles_applied' : 'microsoft_runtime_activation_pending'),
-        message: failure?.payload?.message || (runtimeActivated
-          ? 'Module 065 connection metadata was saved and applied to the running SSO and Microsoft services paths.'
-          : 'Module 065 connection metadata was saved. Runtime activation is still pending.'),
+        status: failure?.payload?.status
+          || (runtimeActivated
+            ? 'microsoft_runtime_profiles_applied'
+            : savedForOtherEnvironment
+              ? 'microsoft_profiles_saved_for_other_environment'
+              : 'microsoft_runtime_activation_pending'),
+        message: failure?.payload?.message
+          || (runtimeActivated
+            ? `Module 065 ${selectedEnvironment === 'production' ? 'Production' : 'Test'} connection metadata was saved and applied to the running SSO and Microsoft services paths.`
+            : savedForOtherEnvironment
+              ? `Module 065 ${selectedEnvironment === 'production' ? 'Production' : 'Test'} connection metadata was saved. It will activate only in its matching environment.`
+              : 'Module 065 connection metadata was saved. Runtime activation is still pending.'),
         persistedConfiguration: true,
+        selectedEnvironment,
+        runningEnvironment,
         runtimeActivated,
-        ssoRuntimeActivated: Boolean(ssoResult.ok && !ssoResult.skipped),
-        servicesRuntimeActivated: Boolean(servicesResult.ok && !servicesResult.skipped),
+        ssoRuntimeActivated: Boolean(ssoResult.activated && !ssoResult.skipped),
+        servicesRuntimeActivated: Boolean(servicesResult.activated && !servicesResult.skipped),
         secretValuesReturned: false
       });
     } catch {
