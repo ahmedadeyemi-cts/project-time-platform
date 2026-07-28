@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-EXPECTED_RELEASE_COMMIT="d62902d00a838d9cf593e990f4d78c45304642ef"
+EXPECTED_RELEASE_COMMIT="e678cdaacc020ccd2ee7726d6e77f0276fae38ce"
 CONTROL_ROOT="${1:-}"
 RELEASE_ROOT="${2:-}"
 TARGET_COMMIT="${3:-}"
@@ -268,6 +268,8 @@ cat > "$CONTROL_ROOT/evidence/open-pr-reconciliation-test-deployment.json" <<JSO
   "apiRevision": "$READY_API",
   "webRevision": "$READY_WEB",
   "migration049": "applied-or-verified",
+  "migrationRuntimeRole": "configured-api-database-identity",
+  "optionalPtpAppRole": "verified-when-present-not-required",
   "operationalRows": "preserved-by-guard",
   "providerNeutralPlatformOperations": true,
   "modules013016068": "served-and-protected",

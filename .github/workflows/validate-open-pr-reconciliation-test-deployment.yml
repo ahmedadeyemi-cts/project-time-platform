@@ -5,6 +5,7 @@ on:
     branches:
       - 'release/open-pr-reconciliation-test-deployment-*'
       - 'release/repin-open-pr-reconciliation-test-deployment-*'
+      - 'release/repin-migration-049-role-compatible-test-*'
   pull_request:
     paths:
       - '.github/workflows/projectpulse-deploy-open-pr-reconciliation-test.yml'
@@ -20,7 +21,7 @@ permissions:
 
 jobs:
   validate:
-    name: Validate guarded reconciled release deployment controls
+    name: Validate guarded role-compatible reconciled release deployment controls
     runs-on: ubuntu-latest
     timeout-minutes: 60
     services:
@@ -113,7 +114,7 @@ jobs:
       - name: Verify API startup and route registration
         run: bash tests/test-projectpulse-api-startup.sh
 
-      - name: Test migration 049 apply, idempotence, evidence, uniqueness, and guarded rollback
+      - name: Test migration 049 with absent and optional compatibility roles
         env:
           PROJECTPULSE_TEST_DATABASE_URL: postgresql://postgres@127.0.0.1:5432/projectpulse_test
         run: bash tests/test-module-021-sell-customer-sync-049.sh
@@ -168,7 +169,7 @@ jobs:
           set -Eeuo pipefail
           if [[ "$JOB_STATUS" == success ]]; then
             STATE=success
-            DESCRIPTION='Complete source, migration 049, provider-neutral modules, API, frontend, rollback, and deployment guards passed.'
+            DESCRIPTION='Role-compatible migration 049, complete source, API, frontend, rollback, and deployment guards passed.'
           else
             STATE=failure
             DESCRIPTION='Open-PR reconciliation deployment-control validation failed.'
