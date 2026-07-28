@@ -1,0 +1,283 @@
+.engineering-utilization-manager-table {
+  margin-top: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.engineering-utilization-manager-table-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 1rem 1.1rem;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface-strong) 88%, var(--accent));
+}
+
+.engineering-utilization-manager-table-heading h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 1.15rem;
+}
+
+.engineering-utilization-manager-table-heading p:not(.eyebrow) {
+  max-width: 900px;
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.engineering-utilization-manager-table-heading > span {
+  flex: 0 0 auto;
+  padding: 0.38rem 0.62rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--brand-blue-strong);
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.engineering-utilization-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.engineering-utilization-table {
+  width: 100%;
+  min-width: 1120px;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+  color: var(--text);
+}
+
+.engineering-utilization-table col.engineer-column {
+  width: 22%;
+}
+
+.engineering-utilization-table col.team-column {
+  width: 18%;
+}
+
+.engineering-utilization-table col.annual-utilization-column {
+  width: 16%;
+}
+
+.engineering-utilization-table col.annual-billable-column {
+  width: 11%;
+}
+
+.engineering-utilization-table col.quarter-column {
+  width: 8.25%;
+}
+
+.engineering-utilization-table th,
+.engineering-utilization-table td {
+  padding: 0.85rem 0.9rem;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.engineering-utilization-table th:last-child,
+.engineering-utilization-table td:last-child {
+  border-right: 0;
+}
+
+.engineering-utilization-table tbody tr:last-child th,
+.engineering-utilization-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.engineering-utilization-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface-strong);
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.engineering-utilization-table thead th.quarter-heading {
+  text-align: center;
+}
+
+.engineering-utilization-table tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--surface) 94%, var(--bg-soft));
+}
+
+.engineering-utilization-table tbody tr:hover {
+  background: color-mix(in srgb, var(--accent) 55%, var(--surface));
+}
+
+.engineer-cell {
+  font-weight: 400;
+}
+
+.engineer-cell-content {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.engineer-avatar {
+  flex: 0 0 38px;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: var(--accent);
+  color: var(--brand-blue-strong);
+  font-size: 0.76rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+}
+
+.engineer-identity {
+  min-width: 0;
+  display: grid;
+  gap: 0.18rem;
+}
+
+.engineer-identity strong {
+  color: var(--text);
+  font-size: 0.88rem;
+}
+
+.engineer-identity small {
+  color: var(--muted);
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.team-cell span {
+  display: inline-flex;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-strong);
+  color: var(--text);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.annual-utilization-content {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.annual-utilization-value {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.45rem;
+}
+
+.annual-utilization-value > strong {
+  color: var(--text);
+  font-size: 1rem;
+}
+
+.utilization-state {
+  padding: 0.25rem 0.42rem;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.utilization-state.on-target {
+  background: color-mix(in srgb, var(--brand-green) 18%, transparent);
+  color: color-mix(in srgb, var(--brand-green) 72%, var(--text));
+}
+
+.utilization-state.below-target {
+  background: color-mix(in srgb, #d97706 16%, transparent);
+  color: color-mix(in srgb, #d97706 78%, var(--text));
+}
+
+.utilization-state.no-activity {
+  background: color-mix(in srgb, var(--muted) 14%, transparent);
+  color: var(--muted);
+}
+
+.utilization-progress {
+  display: block;
+  width: 100%;
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--border) 80%, transparent);
+}
+
+.utilization-progress > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--brand-blue), var(--brand-cyan));
+}
+
+.numeric-cell,
+.quarter-cell {
+  text-align: center !important;
+}
+
+.numeric-cell strong,
+.numeric-cell small,
+.quarter-cell strong,
+.quarter-cell small {
+  display: block;
+}
+
+.numeric-cell strong,
+.quarter-cell strong {
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.numeric-cell small,
+.quarter-cell small {
+  margin-top: 0.18rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.engineering-utilization-empty {
+  padding: 1.4rem !important;
+  color: var(--muted);
+  text-align: center !important;
+}
+
+@media (max-width: 920px) {
+  .engineering-utilization-manager-table-heading {
+    flex-direction: column;
+  }
+
+  .engineering-utilization-manager-table-heading > span {
+    align-self: flex-start;
+  }
+}
+
+@media (max-width: 640px) {
+  .engineering-utilization-manager-table {
+    border-radius: 14px;
+  }
+
+  .engineering-utilization-manager-table-heading {
+    padding: 0.85rem;
+  }
+
+  .engineering-utilization-table th,
+  .engineering-utilization-table td {
+    padding: 0.72rem;
+  }
+}
