@@ -184,7 +184,7 @@ public static class MicrosoftDirectorySyncModule
             lastSyncMessage = last.Message,
             nextScheduledAt = profile.Enabled
                 ? last.LastSyncAt?.AddHours(profile.FrequencyHours) ?? DateTimeOffset.UtcNow
-                : null,
+                : (DateTimeOffset?)null,
             syncInProgress = LocalSyncGate.CurrentCount == 0,
             activeRunStartedAt = _activeRunStartedAt,
             workerStarted = Volatile.Read(ref _workerStarted) == 1,
