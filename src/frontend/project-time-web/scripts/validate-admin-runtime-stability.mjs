@@ -23,6 +23,8 @@ const frontendPaths = {
   theme: 'src/frontend/project-time-web/src/admin-experience-theme.js',
   themeCss: 'src/frontend/project-time-web/src/admin-experience-theme.css',
   ownership: 'src/frontend/project-time-web/src/react-dom-ownership-prelude.js',
+  navigation: 'src/frontend/project-time-web/src/module-availability-bridge.js',
+  intuitiveMore: 'src/frontend/project-time-web/src/intuitive-more-menu.js',
   microsoft: 'src/frontend/project-time-web/src/microsoft-integration-compatibility.js',
   microsoftCss: 'src/frontend/project-time-web/src/microsoft-integration-portal.css',
   mailUi: 'src/frontend/project-time-web/src/MicrosoftMailTransportReadinessPanel.jsx'
@@ -41,6 +43,8 @@ const stableCss = read(frontendPaths.stableCss);
 const theme = read(frontendPaths.theme);
 const themeCss = read(frontendPaths.themeCss);
 const ownership = read(frontendPaths.ownership);
+const navigation = read(frontendPaths.navigation);
+const intuitiveMore = read(frontendPaths.intuitiveMore);
 const microsoft = read(frontendPaths.microsoft);
 const microsoftCss = read(frontendPaths.microsoftCss);
 const mailUi = read(frontendPaths.mailUi);
@@ -51,7 +55,7 @@ check('ROLE_POLICY_DIRECT_VALIDATION', runtime.includes('projectpulse-role-polic
   && runtime.includes('hasCollections(normalized, collections)')
   && runtime.includes("status: 'role_policy_contract_mismatch'")
   && !runtime.includes('normalized[name] = []'),
-'role-policy reads use validated legacy/v2 direct transports and never fabricate collections');
+'legacy role-policy reads remain validated and never fabricate collections');
 
 check('ROLE_POLICY_MODULE_ATTRIBUTION', runtime.includes("currentRoute() === 'roles-permissions-matrix'")
   && runtime.includes("return '037'")
@@ -59,13 +63,24 @@ check('ROLE_POLICY_MODULE_ATTRIBUTION', runtime.includes("currentRoute() === 'ro
   && runtime.includes("headers.set('X-ProjectPulse-Module-Number', moduleNumber)"),
 'Modules 012 and 037 are attributed explicitly');
 
-check('TIMER_ROUTE_SCOPED', timer.includes('function isTimesheetRoute()')
+check('TIMER_ROUTE_SCOPED_AUTHORITATIVE', timer.includes('function isTimesheetRoute()')
   && timer.includes("=== 'timesheet'")
-  && timer.includes("'X-ProjectPulse-Module-Number': '001'")
-  && timer.includes('async function loadTimerTargets(weekStart)')
-  && !timer.includes('new MutationObserver')
-  && !timer.includes("import { authoritativeApi }"),
-'Timer targets run only on Module 001 through a direct validated transport');
+  && timer.includes("import { authoritativeApi } from '../projectpulse-authoritative-api.js';")
+  && timer.includes('/api/timesheet/timers/targets?weekStart=')
+  && timer.includes('/api/timesheet/timers/active')
+  && timer.includes('/api/timesheet/timers/history?weekStart=')
+  && timer.includes("requiredCollections: ['targets']")
+  && timer.includes("requiredCollections: ['timers']")
+  && timer.includes('data-projectpulse-react-owned-slot="true"')
+  && !timer.includes('document.createElement')
+  && !timer.includes('.insertBefore('),
+'Timer targets, active state, and history run only on Module 001 through the wrapper-independent client and static React-owned slots');
+
+check('TIMER_PERSISTENCE', timer.includes('window.setInterval(refresh, 5000)')
+  && timer.includes('window.setInterval(() => setClock(new Date()), 1000)')
+  && timer.includes('The server continues tracking it through refreshes, sign-out, and session expiration.')
+  && timer.includes('module001-server-timer-recovery'),
+'a server-owned timer remains visible, live, and recoverable across browser sessions');
 
 check('AUDIT_STABLE_OWNER', main.includes('<AdminRuntimeStabilityPortal />')
   && owner.includes('window.__projectPulseModule008StableOwnerInstalled = true')
@@ -87,6 +102,17 @@ check('VIEW_AS_REACT_DOM_OWNERSHIP', main.includes("import './react-dom-ownershi
   && ownership.includes('view-as-body-owned')
   && !/insertBefore|appendChild|removeChild|MutationObserver/.test(ownership),
 'legacy View-As cannot reparent nodes inside the React-owned top bar');
+
+check('NAVIGATION_REACT_DOM_OWNERSHIP', navigation.includes("reactDomOwnership: 'attributes-only-v1'")
+  && navigation.includes("notice.dataset.projectpulseBodyOwned = 'true'")
+  && navigation.includes('document.body.append(notice)')
+  && !navigation.includes('link.replaceChildren')
+  && !navigation.includes('dropdown.prepend')
+  && !navigation.includes('main.prepend')
+  && intuitiveMore.includes("moreMenu: 'react-owned-v1'")
+  && !intuitiveMore.includes('MutationObserver')
+  && !intuitiveMore.includes('document.createElement'),
+'permission-aware navigation changes attributes only, while its optional notice is body-owned outside #root');
 
 check('NO_REACT_DOM_MUTATION_BRIDGES', !theme.includes('MutationObserver')
   && !theme.includes('node.remove()')
@@ -129,14 +155,24 @@ const backendPaths = {
   registrar: 'src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs',
   publicOrigin: 'src/backend/ProjectTime.Api/Modules/ProjectPulsePublicOriginCompatibility.cs',
   continuity: 'src/backend/ProjectTime.Api/Modules/ModuleAvailabilityReadContinuityCompatibility.cs',
-  mailTest: 'src/backend/ProjectTime.Api/Modules/MicrosoftMailTransportTestModule.cs'
+  mailTest: 'src/backend/ProjectTime.Api/Modules/MicrosoftMailTransportTestModule.cs',
+  module001Result: 'src/backend/ProjectTime.Api/Modules/Module001ResultExecutionCompatibility.cs',
+  project: 'src/backend/ProjectTime.Api/ProjectTime.Api.csproj'
 };
-const fullRepositoryContext = [backendPaths.registrar, backendPaths.continuity, backendPaths.mailTest].every(exists);
+const fullRepositoryContext = [
+  backendPaths.registrar,
+  backendPaths.continuity,
+  backendPaths.mailTest,
+  backendPaths.module001Result,
+  backendPaths.project
+].every(exists);
 if (fullRepositoryContext) {
   const registrar = read(backendPaths.registrar);
   const publicOrigin = exists(backendPaths.publicOrigin) ? read(backendPaths.publicOrigin) : '';
   const continuity = read(backendPaths.continuity);
   const mailTest = read(backendPaths.mailTest);
+  const module001Result = read(backendPaths.module001Result);
+  const project = read(backendPaths.project);
 
   check('AVAILABILITY_READ_CONTINUITY', registrar.includes('UseModuleAvailabilityReadContinuityCompatibility')
     && continuity.includes('/api/runtime/v2/role-policy/')
@@ -145,6 +181,13 @@ if (fullRepositoryContext) {
     && continuity.includes('/api/microsoft-integration/mail-runtime/test')
     && !continuity.includes('/api/microsoft-integration/directory-users/import-selected'),
   'optional module availability cannot block authorized reads/tests and never bypasses imports');
+
+  check('MODULE001_EXPLICIT_RESULT_EXECUTION', project.includes('app.UseModule001ResultExecutionCompatibility();')
+    && module001Result.includes('Module001TimerTargetsAsync(context)')
+    && module001Result.includes('Module001ActiveTimerAsync(context)')
+    && module001Result.includes('Module001TimerHistoryAsync(context)')
+    && module001Result.includes('await result.ExecuteAsync(context);'),
+  'Module 001 GET handlers execute their IResult instead of returning empty HTTP 200 responses');
 
   const legacyOriginResolver = registrar.includes('X-Forwarded-Host')
     && registrar.includes('X-Forwarded-Proto')
