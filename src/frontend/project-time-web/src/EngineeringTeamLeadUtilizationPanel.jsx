@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import './engineering-team-lead-utilization.css';
 
 function getProjectPulseAuthHeaders() {
   try {
@@ -59,6 +60,31 @@ function getScopeLabel(scope) {
   }
 }
 
+function engineerInitials(name) {
+  return String(name ?? '')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join('') || 'EN';
+}
+
+function quarterFor(member, quarterNumber) {
+  return member?.quarters?.find((quarter) => Number(quarter.quarterNumber) === quarterNumber) ?? {
+    quarterNumber,
+    utilizationPercent: 0,
+    billableHours: 0
+  };
+}
+
+function utilizationState(value, targetPercent) {
+  const percent = Number(value ?? 0);
+  const target = Number(targetPercent ?? 0);
+  if (percent <= 0) return 'no-activity';
+  if (target > 0 && percent >= target) return 'on-target';
+  return 'below-target';
+}
+
 export default function EngineeringTeamLeadUtilizationPanel() {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [selectedEngineerUserId, setSelectedEngineerUserId] = useState('');
@@ -95,6 +121,7 @@ export default function EngineeringTeamLeadUtilizationPanel() {
   const selectableEngineers = data?.selectableEngineers ?? [];
   const members = data?.members ?? [];
   const teamSummaries = data?.teamSummaries ?? [];
+  const targetPercent = Number(data?.policy?.targetPercent ?? 0);
   const canSelectEngineer = Boolean(access.canSelectEngineer) && selectableEngineers.length > 1;
 
   const yearOptions = useMemo(() => {
@@ -177,7 +204,7 @@ export default function EngineeringTeamLeadUtilizationPanel() {
         <article>
           <span>Annual capacity</span>
           <strong>{payload.loading ? '...' : formatNumber(data?.collectiveSummary?.annualCapacityHours)}</strong>
-          <small>{data?.policy?.targetPercent ?? 0}% target</small>
+          <small>{targetPercent}% target</small>
         </article>
       </div>
 
@@ -201,42 +228,90 @@ export default function EngineeringTeamLeadUtilizationPanel() {
         ))}
       </div>
 
-      <div className="engineering-utilization-table-wrap">
-        <table className="team-member-table">
-          <thead>
-            <tr>
-              <th>Engineer</th>
-              <th>Team</th>
-              <th>Annual utilization</th>
-              <th>Annual billable</th>
-              <th>Quarter detail</th>
-            </tr>
-          </thead>
-          <tbody>
-            {members.map((member) => (
-              <tr key={member.userId}>
-                <td><strong>{member.displayName}</strong><span>{member.email}</span></td>
-                <td>{member.teamName}</td>
-                <td>{formatPercent(member.annualUtilizationPercent)}</td>
-                <td>{formatNumber(member.annualBillableHours)} hrs</td>
-                <td>
-                  <div className="member-quarter-list">
-                    {member.quarters.map((quarter) => (
-                      <span key={`${member.userId}-${quarter.quarterNumber}`}>
-                        Q{quarter.quarterNumber}: {formatPercent(quarter.utilizationPercent)}
-                      </span>
-                    ))}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <section className="engineering-utilization-manager-table" aria-labelledby="engineering-utilization-manager-table-title">
+        <div className="engineering-utilization-manager-table-heading">
+          <div>
+            <p className="eyebrow">Manager detail</p>
+            <h3 id="engineering-utilization-manager-table-title">Engineer utilization by quarter</h3>
+            <p>Each value is aligned beneath its header so managers can compare engineers, teams, annual totals, and quarterly performance without visual ambiguity.</p>
+          </div>
+          <span>{members.length} engineer{members.length === 1 ? '' : 's'}</span>
+        </div>
 
-        {!payload.loading && members.length === 0 ? (
-          <div className="manager-empty-state">No engineers are currently visible in this utilization scope.</div>
-        ) : null}
-      </div>
+        <div className="engineering-utilization-table-wrap">
+          <table className="engineering-utilization-table">
+            <colgroup>
+              <col className="engineer-column" />
+              <col className="team-column" />
+              <col className="annual-utilization-column" />
+              <col className="annual-billable-column" />
+              <col className="quarter-column" />
+              <col className="quarter-column" />
+              <col className="quarter-column" />
+              <col className="quarter-column" />
+            </colgroup>
+            <thead>
+              <tr>
+                <th scope="col">Engineer</th>
+                <th scope="col">Team</th>
+                <th scope="col">Annual utilization</th>
+                <th scope="col">Billable hours</th>
+                <th scope="col" className="quarter-heading">Q1</th>
+                <th scope="col" className="quarter-heading">Q2</th>
+                <th scope="col" className="quarter-heading">Q3</th>
+                <th scope="col" className="quarter-heading">Q4</th>
+              </tr>
+            </thead>
+            <tbody>
+              {members.map((member) => {
+                const annualState = utilizationState(member.annualUtilizationPercent, targetPercent);
+                return (
+                  <tr key={member.userId}>
+                    <th scope="row" className="engineer-cell">
+                      <span className="engineer-avatar" aria-hidden="true">{engineerInitials(member.displayName)}</span>
+                      <span className="engineer-identity">
+                        <strong>{member.displayName}</strong>
+                        <small>{member.email}</small>
+                      </span>
+                    </th>
+                    <td className="team-cell"><span>{member.teamName}</span></td>
+                    <td className="annual-utilization-cell">
+                      <div className="annual-utilization-value">
+                        <strong>{formatPercent(member.annualUtilizationPercent)}</strong>
+                        <span className={`utilization-state ${annualState}`}>
+                          {annualState === 'on-target' ? 'On target' : annualState === 'below-target' ? 'Below target' : 'No recorded hours'}
+                        </span>
+                      </div>
+                      <span className="utilization-progress" aria-label={`${formatPercent(member.annualUtilizationPercent)} annual utilization`}>
+                        <span style={{ width: `${Math.min(100, Math.max(0, Number(member.annualUtilizationPercent ?? 0)))}%` }} />
+                      </span>
+                    </td>
+                    <td className="numeric-cell">
+                      <strong>{formatNumber(member.annualBillableHours)}</strong>
+                      <small>hrs</small>
+                    </td>
+                    {[1, 2, 3, 4].map((quarterNumber) => {
+                      const quarter = quarterFor(member, quarterNumber);
+                      return (
+                        <td className="quarter-cell" key={`${member.userId}-${quarterNumber}`}>
+                          <strong>{formatPercent(quarter.utilizationPercent)}</strong>
+                          <small>{formatNumber(quarter.billableHours)} hrs</small>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+
+              {!payload.loading && members.length === 0 ? (
+                <tr>
+                  <td className="engineering-utilization-empty" colSpan="8">No engineers are currently visible in this utilization scope.</td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       <p className="section-copy">{data?.calculationNote}</p>
     </section>
