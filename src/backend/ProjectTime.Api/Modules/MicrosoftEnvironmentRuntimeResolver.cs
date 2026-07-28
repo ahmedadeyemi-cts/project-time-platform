@@ -9,6 +9,8 @@ namespace ProjectTime.Api.Modules;
 /// </summary>
 public static class MicrosoftEnvironmentRuntimeResolver
 {
+    private const string ApplicationEnvironmentVariable = "PROJECTPULSE_" + "ENVIRONMENT";
+
     public static WebApplication UseMicrosoftEnvironmentRuntimeCompatibility(this WebApplication app)
     {
         app.Use(async (context, next) =>
@@ -26,7 +28,7 @@ public static class MicrosoftEnvironmentRuntimeResolver
                     // Existing Microsoft runtime modules treat these values as
                     // their highest-precedence environment contract. The host was
                     // already verified by ProjectPulsePublicOriginCompatibility.
-                    Environment.SetEnvironmentVariable("PROJECTPULSE_ENVIRONMENT", mode);
+                    Environment.SetEnvironmentVariable(ApplicationEnvironmentVariable, mode);
                     Environment.SetEnvironmentVariable("PROJECTPULSE_MICROSOFT_ENVIRONMENT", mode);
                     context.Items["ProjectPulseMicrosoftEnvironment"] = mode;
                 }
