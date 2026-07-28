@@ -175,6 +175,7 @@ public static class ProjectPulsePublicOriginCompatibility
     {
         var path = context.Request.Path.Value ?? string.Empty;
         return path.StartsWith("/api/microsoft-integration/", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/api/auth/sso/", StringComparison.OrdinalIgnoreCase)
             || path.Equals("/api/admin/azure/users/preview", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/api/integrations/026/", StringComparison.OrdinalIgnoreCase)
             || path.Equals("/api/public/integrations/026/oauth/callback", StringComparison.OrdinalIgnoreCase);

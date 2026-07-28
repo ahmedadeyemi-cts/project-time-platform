@@ -8,13 +8,15 @@ namespace ProjectTime.Api.Modules;
 
 /// <summary>
 /// Module 065 non-delivery readiness test for the configured Microsoft mail
-/// transport. It never accepts or returns credentials, never sends email, and
-/// records sanitized evidence in Module 008 when the audit ledger is available.
+/// transport. Test and Production profiles can be evaluated independently.
+/// Credentials are read only from the established environment-specific stores,
+/// never accepted from the browser, never returned, and no email is sent.
 /// </summary>
 public static class MicrosoftMailTransportTestModule
 {
     private const string ModuleNumber = "065";
     private const string TestPath = "/api/microsoft-integration/mail-runtime/test";
+    private const string ConfigurationMarker = "PROJECTPULSE_MICROSOFT_INTEGRATION_JSON:";
     private static readonly TimeSpan NetworkTimeout = TimeSpan.FromSeconds(8);
 
     public static WebApplication MapMicrosoftMailTransportTestEndpoints(this WebApplication app)
@@ -37,58 +39,109 @@ public static class MicrosoftMailTransportTestModule
             }, statusCode: StatusCodes.Status403Forbidden);
         }
 
-        var environmentMode = NormalizeEnvironment(First(
-            Environment.GetEnvironmentVariable("PROJECTPULSE_ENTRA_MODE"),
-            Environment.GetEnvironmentVariable("PROJECTPULSE_SSO_MODE"),
-            Environment.GetEnvironmentVariable("PROJECTPULSE_ENVIRONMENT"),
-            Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")));
-        var provider = NormalizeProvider(First(
-            Environment.GetEnvironmentVariable("PROJECTPULSE_MAIL_PROVIDER"),
-            Environment.GetEnvironmentVariable("PROJECTPULSE_EMAIL_PROVIDER")));
-        var boundary = NormalizeBoundary(Environment.GetEnvironmentVariable("PROJECTPULSE_MAIL_RECIPIENT_BOUNDARY"));
-        var sender = First(
-            Environment.GetEnvironmentVariable("PROJECTPULSE_M365_SENDER_MAILBOX"),
-            Environment.GetEnvironmentVariable("PROJECTPULSE_SMTP_FROM"));
-        var tenantId = Environment.GetEnvironmentVariable("PROJECTPULSE_M365_TENANT_ID") ?? string.Empty;
-        var clientId = Environment.GetEnvironmentVariable("PROJECTPULSE_M365_CLIENT_ID") ?? string.Empty;
-        var clientSecret = Environment.GetEnvironmentVariable("PROJECTPULSE_M365_CLIENT_SECRET") ?? string.Empty;
-        var smtpHost = First(Environment.GetEnvironmentVariable("PROJECTPULSE_SMTP_HOST"), "smtp.office365.com");
-        var smtpPort = int.TryParse(Environment.GetEnvironmentVariable("PROJECTPULSE_SMTP_PORT"), out var parsedPort)
-            ? parsedPort
-            : 587;
-        var smtpCredential = ResolveSmtpCredential(environmentMode);
+        MailTestRequest? request = null;
+        try
+        {
+            if (context.Request.ContentLength is > 0)
+            {
+                request = await context.Request.ReadFromJsonAsync<MailTestRequest>(
+                    cancellationToken: context.RequestAborted);
+            }
+        }
+        catch
+        {
+            return Results.BadRequest(new
+            {
+                module = ModuleNumber,
+                status = "invalid_mail_test_request",
+                message = "Choose Test or Production before running the sender and transport readiness test."
+            });
+        }
 
-        var graph = provider == "microsoft_graph"
-            ? await TestGraphAsync(tenantId, clientId, clientSecret, sender, context.RequestAborted)
+        var runtimeEnvironment = MicrosoftEnvironmentRuntimeResolver.Resolve(context);
+        var environmentMode = MicrosoftEnvironmentRuntimeResolver.Normalize(request?.EnvironmentMode);
+        if (string.IsNullOrWhiteSpace(environmentMode)) environmentMode = runtimeEnvironment;
+        if (string.IsNullOrWhiteSpace(environmentMode))
+        {
+            return Results.Json(new
+            {
+                module = ModuleNumber,
+                status = "microsoft_environment_unresolved",
+                correlationId = context.TraceIdentifier,
+                message = "ProjectPulse could not determine the Test or Production Microsoft environment."
+            }, statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+
+        var profile = await ReadStoredProfileAsync(
+            access.Context!.ConnectionString,
+            environmentMode,
+            context.RequestAborted);
+        if (profile is null)
+        {
+            return Results.Json(new
+            {
+                module = ModuleNumber,
+                status = "mail_profile_not_configured",
+                environmentMode,
+                correlationId = context.TraceIdentifier,
+                message = $"Complete and save the {MicrosoftEnvironmentRuntimeResolver.Display(environmentMode)} sender and transport settings in Module 065 before testing."
+            }, statusCode: StatusCodes.Status409Conflict);
+        }
+
+        var servicesSecret = ResolveServicesSecret(environmentMode, profile.TenantKey);
+        var smtpCredential = ResolveSmtpCredential(environmentMode);
+        var graph = profile.Provider == "microsoft_graph"
+            ? await TestGraphAsync(
+                profile.TenantId,
+                profile.ClientId,
+                servicesSecret,
+                profile.Sender,
+                context.RequestAborted)
             : GraphTest.NotSelected();
-        var smtp = provider is "smtp_relay" or "exchange_online_smtp" or "smtp"
-            ? await TestSmtpAsync(smtpHost, smtpPort, smtpCredential, context.RequestAborted)
+        var smtp = profile.Provider == "smtp_relay"
+            ? await TestSmtpAsync(
+                profile.SmtpHost,
+                profile.SmtpPort,
+                smtpCredential,
+                context.RequestAborted)
             : SmtpTest.NotSelected();
 
-        var metadataReady = !string.IsNullOrWhiteSpace(environmentMode)
-            && !string.IsNullOrWhiteSpace(provider)
-            && IsEmail(sender);
-        var providerReady = provider switch
+        var metadataReady = !string.IsNullOrWhiteSpace(profile.Provider)
+            && (profile.Provider == "locked" || IsEmail(profile.Sender));
+        var providerReady = profile.Provider switch
         {
-            "microsoft_graph" => graph.AuthenticationReady && graph.MailSendRoleDeclared && graph.SenderResolved,
-            "smtp_relay" or "exchange_online_smtp" or "smtp" => smtp.NetworkReachable && smtp.CredentialAvailable,
-            "locked" or "outbox_only" => true,
+            "microsoft_graph" => graph.AuthenticationReady
+                && graph.MailSendRoleDeclared
+                && graph.SenderResolved,
+            "smtp_relay" => smtp.NetworkReachable && smtp.CredentialAvailable,
+            "locked" => true,
             _ => false
         };
         var ready = metadataReady && providerReady;
-        var deliveryMode = boundary == "production_governed" && provider is not ("locked" or "outbox_only")
-            ? "live_governed"
-            : "outbox_only";
+        var selectedEnvironmentIsRuntime = environmentMode.Equals(
+            runtimeEnvironment,
+            StringComparison.OrdinalIgnoreCase);
+        var liveDeliveryEnabled = selectedEnvironmentIsRuntime
+            && profile.Boundary == "production_governed"
+            && profile.Provider != "locked"
+            && ready;
+        var activeDeliveryProvider = liveDeliveryEnabled
+            ? profile.Provider
+            : selectedEnvironmentIsRuntime ? "outbox_only" : "profile_not_active_here";
+        var deliveryMode = liveDeliveryEnabled ? "live_governed" : "outbox_only";
 
         var evidence = new
         {
             environmentMode,
-            provider,
-            boundary,
-            senderMailbox = sender,
+            runtimeEnvironment,
+            configuredProvider = profile.Provider,
+            activeDeliveryProvider,
+            boundary = profile.Boundary,
+            senderMailbox = profile.Sender,
             metadataReady,
             providerReady,
             ready,
+            liveDeliveryEnabled,
             deliveryMode,
             graph = new
             {
@@ -115,7 +168,7 @@ public static class MicrosoftMailTransportTestModule
 
         try
         {
-            await using var connection = new NpgsqlConnection(access.Context!.ConnectionString);
+            await using var connection = new NpgsqlConnection(access.Context.ConnectionString);
             await connection.OpenAsync(context.RequestAborted);
             await AdminExperienceCommon.WriteAuditAsync(
                 connection,
@@ -127,13 +180,13 @@ public static class MicrosoftMailTransportTestModule
                 access.Context.Email,
                 "microsoft_mail_transport",
                 environmentMode,
-                sender,
+                profile.Sender,
                 ModuleNumber,
                 "projectpulse_system_audit_events",
                 context.TraceIdentifier,
                 ready
-                    ? "Module 065 Microsoft sender and transport readiness test passed."
-                    : "Module 065 Microsoft sender and transport readiness test requires attention.",
+                    ? $"Module 065 {MicrosoftEnvironmentRuntimeResolver.Display(environmentMode)} sender and configured transport readiness test passed."
+                    : $"Module 065 {MicrosoftEnvironmentRuntimeResolver.Display(environmentMode)} sender and configured transport readiness test requires attention.",
                 evidence,
                 AdminExperienceCommon.ClientIp(context),
                 context.TraceIdentifier,
@@ -144,18 +197,38 @@ public static class MicrosoftMailTransportTestModule
             // Readiness results remain available when optional audit evidence is unavailable.
         }
 
+        var boundaryMessage = profile.Boundary switch
+        {
+            "production_governed" when liveDeliveryEnabled =>
+                "Governed live delivery is eligible in the running environment.",
+            "production_governed" when !selectedEnvironmentIsRuntime =>
+                "This profile is not active in the currently running environment.",
+            "production_governed" =>
+                "Live delivery remains disabled until the configured provider is ready.",
+            _ =>
+                "The recipient boundary intentionally prevents live delivery; the configured provider was still tested."
+        };
+
         return Results.Ok(new
         {
             module = ModuleNumber,
-            status = ready ? "mail_transport_test_passed" : "mail_transport_test_attention_required",
+            status = ready
+                ? "mail_transport_test_passed"
+                : "mail_transport_test_attention_required",
             testedAt = DateTimeOffset.UtcNow,
             environmentMode,
-            provider,
-            recipientBoundary = boundary,
-            senderMailbox = sender,
+            runtimeEnvironment,
+            selectedEnvironmentIsRuntime,
+            configuredProvider = profile.Provider,
+            provider = profile.Provider,
+            activeDeliveryProvider,
+            recipientBoundary = profile.Boundary,
+            senderMailbox = profile.Sender,
             metadataReady,
             providerReady,
             runtimeReady = ready,
+            configuredTransportReady = ready,
+            liveDeliveryEnabled,
             deliveryMode,
             graph = new
             {
@@ -180,10 +253,62 @@ public static class MicrosoftMailTransportTestModule
             outboxMessageCreated = false,
             secretValuesReturned = false,
             auditEvidenceRequested = true,
+            correlationId = context.TraceIdentifier,
             message = ready
-                ? "The configured sender and transport passed the non-delivery readiness test. No email was sent."
-                : "The non-delivery readiness test found configuration or connectivity items that require attention. No email was sent."
+                ? $"The configured {MicrosoftEnvironmentRuntimeResolver.Display(environmentMode)} sender and {ProviderLabel(profile.Provider)} transport passed the non-delivery readiness test. {boundaryMessage} No email was sent."
+                : $"The configured {MicrosoftEnvironmentRuntimeResolver.Display(environmentMode)} {ProviderLabel(profile.Provider)} transport requires attention. {boundaryMessage} No email was sent."
         });
+    }
+
+    private static async Task<MailProfile?> ReadStoredProfileAsync(
+        string connectionString,
+        string environmentMode,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+            SELECT document_json::text
+            FROM projectpulse_native_admin_documents
+            WHERE module_number='065' AND document_key='configuration'
+            LIMIT 1;
+            """, connection);
+        var raw = Convert.ToString(await command.ExecuteScalarAsync(cancellationToken));
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+
+        using var document = JsonDocument.Parse(raw);
+        if (!TryProperty(document.RootElement, "configuration", out var configuration)) return null;
+        var notes = JsonString(configuration, "notes");
+        if (!notes.StartsWith(ConfigurationMarker, StringComparison.Ordinal)) return null;
+
+        using var stored = JsonDocument.Parse(notes[ConfigurationMarker.Length..]);
+        var root = stored.RootElement;
+        if (!TryProperty(root, "tenants", out var tenants)
+            || tenants.ValueKind != JsonValueKind.Array) return null;
+
+        foreach (var tenant in tenants.EnumerateArray())
+        {
+            var mode = MicrosoftEnvironmentRuntimeResolver.Normalize(
+                JsonString(tenant, "environmentMode"));
+            if (!mode.Equals(environmentMode, StringComparison.OrdinalIgnoreCase)) continue;
+
+            if (!TryProperty(tenant, "services", out var services)) services = default;
+            if (!TryProperty(tenant, "mail", out var mail)
+                && !TryProperty(root, "mail", out mail)) mail = default;
+
+            return new MailProfile(
+                First(JsonString(tenant, "key"), JsonString(tenant, "tenantKey")),
+                environmentMode,
+                NormalizeProvider(JsonString(mail, "providerTarget")),
+                NormalizeBoundary(JsonString(mail, "recipientBoundary")),
+                JsonString(tenant, "tenantId"),
+                JsonString(services, "clientId"),
+                JsonString(mail, "senderAddress"),
+                First(JsonString(mail, "smtpHost"), "smtp.office365.com"),
+                JsonInt(mail, "smtpPort") ?? 587);
+        }
+
+        return null;
     }
 
     private static async Task<GraphTest> TestGraphAsync(
@@ -248,7 +373,8 @@ public static class MicrosoftMailTransportTestModule
 
             var roles = ReadTokenRoles(accessToken);
             var mailSend = roles.Contains("Mail.Send");
-            var directoryRoles = roles.Contains("Directory.Read.All") && roles.Contains("User.Read.All");
+            var directoryRoles = roles.Contains("Directory.Read.All")
+                && roles.Contains("User.Read.All");
 
             using var senderRequest = new HttpRequestMessage(
                 HttpMethod.Get,
@@ -358,26 +484,51 @@ public static class MicrosoftMailTransportTestModule
         }
     }
 
+    private static string ResolveServicesSecret(string environmentMode, string tenantKey)
+    {
+        var token = new string((tenantKey ?? string.Empty).ToUpperInvariant()
+            .Select(character => char.IsAsciiLetterOrDigit(character) ? character : '_')
+            .ToArray());
+        var activeMode = MicrosoftEnvironmentRuntimeResolver.Normalize(
+            Environment.GetEnvironmentVariable("PROJECTPULSE_ENTRA_MODE"));
+        var modeName = environmentMode == "production"
+            ? "PROJECTPULSE_ENTRA_PRODUCTION_CLIENT_SECRET"
+            : "PROJECTPULSE_ENTRA_TEST_CLIENT_SECRET";
+        return First(
+            Environment.GetEnvironmentVariable($"PROJECTPULSE_MICROSOFT_TENANT_{token}_CLIENT_SECRET"),
+            Environment.GetEnvironmentVariable(modeName),
+            activeMode == environmentMode
+                ? Environment.GetEnvironmentVariable("PROJECTPULSE_M365_CLIENT_SECRET")
+                : string.Empty,
+            activeMode == environmentMode
+                ? Environment.GetEnvironmentVariable("PROJECTPULSE_ENTRA_CLIENT_SECRET")
+                : string.Empty);
+    }
+
     private static SmtpCredential ResolveSmtpCredential(string environmentMode)
     {
+        var activeMode = MicrosoftEnvironmentRuntimeResolver.Normalize(
+            Environment.GetEnvironmentVariable("PROJECTPULSE_ENTRA_MODE"));
         var prefix = environmentMode == "production"
             ? "PROJECTPULSE_PRODUCTION_SMTP_"
             : "PROJECTPULSE_TEST_SMTP_";
         var username = First(
             Environment.GetEnvironmentVariable(prefix + "USERNAME"),
-            environmentMode == "production" ? string.Empty : Environment.GetEnvironmentVariable("PROJECTPULSE_SMTP_USERNAME"));
+            activeMode == environmentMode
+                ? Environment.GetEnvironmentVariable("PROJECTPULSE_SMTP_USERNAME")
+                : string.Empty,
+            activeMode == environmentMode
+                ? Environment.GetEnvironmentVariable("SMTP_USERNAME")
+                : string.Empty);
         var password = First(
             Environment.GetEnvironmentVariable(prefix + "PASSWORD"),
-            environmentMode == "production" ? string.Empty : Environment.GetEnvironmentVariable("PROJECTPULSE_SMTP_PASSWORD"));
+            activeMode == environmentMode
+                ? Environment.GetEnvironmentVariable("PROJECTPULSE_SMTP_PASSWORD")
+                : string.Empty,
+            activeMode == environmentMode
+                ? Environment.GetEnvironmentVariable("SMTP_PASSWORD")
+                : string.Empty);
         return new(!string.IsNullOrWhiteSpace(username) && !string.IsNullOrWhiteSpace(password));
-    }
-
-    private static string NormalizeEnvironment(string? value)
-    {
-        var normalized = (value ?? string.Empty).Trim().ToLowerInvariant();
-        if (normalized is "test" or "testing" or "development" or "dev") return "test";
-        if (normalized is "production" or "prod") return "production";
-        return string.Empty;
     }
 
     private static string NormalizeProvider(string? value)
@@ -387,7 +538,7 @@ public static class MicrosoftMailTransportTestModule
         {
             "microsoft_graph" => "microsoft_graph",
             "exchange_online_smtp" or "smtp_relay" or "smtp" => "smtp_relay",
-            "locked" or "outbox_only" or "" => normalized is "" ? "locked" : normalized,
+            "locked" or "outbox_only" or "" => "locked",
             _ => normalized
         };
     }
@@ -400,14 +551,60 @@ public static class MicrosoftMailTransportTestModule
             : "test_only";
     }
 
+    private static string ProviderLabel(string provider) => provider switch
+    {
+        "microsoft_graph" => "Microsoft Graph",
+        "smtp_relay" => "Microsoft 365 SMTP relay",
+        _ => "Locked"
+    };
+
     private static bool IsEmail(string value) =>
         !string.IsNullOrWhiteSpace(value)
         && value.Contains('@')
         && value.IndexOf('@') > 0
         && value.LastIndexOf('.') > value.IndexOf('@') + 1;
 
+    private static bool TryProperty(JsonElement element, string name, out JsonElement value)
+    {
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in element.EnumerateObject())
+            {
+                if (property.Name.Equals(name, StringComparison.OrdinalIgnoreCase))
+                {
+                    value = property.Value;
+                    return true;
+                }
+            }
+        }
+        value = default;
+        return false;
+    }
+
+    private static string JsonString(JsonElement element, string name) =>
+        TryProperty(element, name, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()?.Trim() ?? string.Empty
+            : string.Empty;
+
+    private static int? JsonInt(JsonElement element, string name) =>
+        TryProperty(element, name, out var value) && value.TryGetInt32(out var parsed)
+            ? parsed
+            : null;
+
     private static string First(params string?[] values) =>
         values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim() ?? string.Empty;
+
+    private sealed record MailTestRequest(string? EnvironmentMode);
+    private sealed record MailProfile(
+        string TenantKey,
+        string EnvironmentMode,
+        string Provider,
+        string Boundary,
+        string TenantId,
+        string ClientId,
+        string Sender,
+        string SmtpHost,
+        int SmtpPort);
 
     private sealed record GraphTest(
         string Status,
@@ -419,7 +616,7 @@ public static class MicrosoftMailTransportTestModule
         string Message)
     {
         internal static GraphTest NotSelected() =>
-            new("not_selected", false, false, false, false, 0, "Microsoft Graph is not the selected mail provider.");
+            new("not_selected", false, false, false, false, 0, "Microsoft Graph is not the configured mail provider for this environment.");
     }
 
     private sealed record SmtpTest(
@@ -431,7 +628,7 @@ public static class MicrosoftMailTransportTestModule
         string Message)
     {
         internal static SmtpTest NotSelected() =>
-            new("not_selected", false, false, false, 0, "Microsoft 365 SMTP relay is not the selected mail provider.");
+            new("not_selected", false, false, false, 0, "Microsoft 365 SMTP relay is not the configured mail provider for this environment.");
     }
 
     private sealed record SmtpCredential(bool Available);

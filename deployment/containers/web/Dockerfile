@@ -74,7 +74,21 @@ COPY src/backend/ProjectTime.Api/Modules/SecurityDiagnosticsOperations.cs \
      src/backend/ProjectTime.Api/Modules/SecurityDiagnosticsOperations.cs
 
 COPY src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs \
-     src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs
+     src/backend/ProjectTime.Api/Modules/MicrosoftIntegrationSecurityCompatibility.cs \
+     src/backend/ProjectTime.Api/Modules/MicrosoftIntegrationModule.cs \
+     src/backend/ProjectTime.Api/Modules/MicrosoftSsoConnectionProfilesModule.cs \
+     src/backend/ProjectTime.Api/Modules/MicrosoftSsoInteractiveStartActivation.cs \
+     src/backend/ProjectTime.Api/Modules/MicrosoftEnvironmentRuntimeResolver.cs \
+     src/backend/ProjectTime.Api/Modules/MicrosoftMailRuntimeConfigurationModule.cs \
+     src/backend/ProjectTime.Api/Modules/MicrosoftMailTransportTestModule.cs \
+     src/backend/ProjectTime.Api/Modules/MicrosoftSmtpCredentialProjectionCompatibility.cs \
+     src/backend/ProjectTime.Api/Modules/MicrosoftSsoRuntimeCompatibility.cs \
+     src/backend/ProjectTime.Api/Modules/MicrosoftServicesRuntimeCompatibility.cs \
+     src/backend/ProjectTime.Api/Modules/MicrosoftDirectorySyncModule.cs \
+     src/backend/ProjectTime.Api/Modules/AzureDirectoryImportModule.cs \
+     src/backend/ProjectTime.Api/Modules/ProjectPulsePublicOriginCompatibility.cs \
+     src/backend/ProjectTime.Api/Modules/ModuleAvailabilityReadContinuityCompatibility.cs \
+     src/backend/ProjectTime.Api/Modules/
 
 COPY src/backend/ProjectTime.Api/Modules/SystemArchitectureModule.cs \
      src/backend/ProjectTime.Api/Modules/SystemArchitectureModule.cs

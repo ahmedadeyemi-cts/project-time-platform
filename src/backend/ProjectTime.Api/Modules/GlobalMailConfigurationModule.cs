@@ -2,7 +2,7 @@ namespace ProjectTime.Api.Modules;
 
 /// <summary>
 /// Compatibility registration point retained for the former Module 067.
-/// Module 065 owns Microsoft Integration; Module 010 owns Entra directory-user import.
+/// Module 065 owns Microsoft Integration; Module 010 owns Entra directory-user import and sync.
 /// Program.cs continues to call this existing method once, so no broad startup edit is required.
 /// Trusted public-origin resolution is centralized in
 /// <see cref="ProjectPulsePublicOriginCompatibility"/> so Microsoft, Entra preview,
@@ -14,13 +14,11 @@ public static class GlobalMailConfigurationModule
 
     public static WebApplication MapGlobalMailConfigurationEndpoints(this WebApplication app)
     {
-        // Normalize only trusted ProjectPulse public origins before any
-        // Microsoft, Entra-preview, or Module 026 same-origin decisions run.
         app.UseProjectPulsePublicOriginCompatibility();
+        app.UseMicrosoftEnvironmentRuntimeCompatibility();
+        app.UseMicrosoftSsoInteractiveStartActivation();
         app.UseMicrosoftIntegrationSecurityCompatibility();
         app.UseMicrosoftPublicSsoOriginCompatibility();
-        // Preserve the legacy role-policy route families while Modules 012 and 037
-        // move to the explicit, database-dynamic /api/rbac/v1 contract.
         app.UseScopedRolePolicyResultExecutionCompatibility();
         app.UseModuleAvailabilityReadContinuityCompatibility();
         app.UseMicrosoftSsoRuntimeCompatibility();
@@ -32,11 +30,8 @@ public static class GlobalMailConfigurationModule
         app.MapMicrosoftMailRuntimeConfigurationEndpoints();
         app.MapMicrosoftMailTransportTestEndpoints();
         AzureDirectoryImportModule.MapEndpoints(app);
+        app.MapMicrosoftDirectorySyncEndpoints();
 
-        // Modules 012 and 037 use this clean v1 RBAC contract. It has no fixed
-        // module count, supports audited role membership and module lifecycle,
-        // and defaults newly registered modules to No Access for every ordinary
-        // role while preserving permanent Super Administrator Full Control.
         app.MapDynamicRbacAdministrationEndpoints();
 
         // Additive registration only: Module 021 consumes the authoritative
@@ -100,10 +95,6 @@ public static class GlobalMailConfigurationModule
             return true;
         }
 
-        // Browser Origin and Referer remain a final compatibility candidate,
-        // but the shared resolver still enforces HTTPS and approved ProjectPulse
-        // environment hosts. An invalid forwarded value is never accepted and
-        // no longer prevents a valid browser origin from being evaluated.
         return ProjectPulsePublicOriginCompatibility.TryBrowserOrigin(
             context,
             out publicOrigin,
