@@ -40,15 +40,17 @@ requireAll(ui, [
   'Dynamic database catalog',
   'No 70-module requirement',
   'Export matrix',
-  '<th>Module</th><th>Permission</th><th>Description</th>',
-  '✓ Allow',
-  '× Deny',
-  '— Not set',
+  '<th>Page</th><th>Permission</th><th>Description</th>',
+  "if (state === 'ALLOW') return 'rpm-decision rpm-decision-allow'",
+  "if (state === 'DENY') return 'rpm-decision rpm-decision-deny'",
+  "return 'rpm-decision rpm-decision-not-set'",
+  "decision.state === 'ALLOW' ? 'Allow'",
+  "decision.state === 'DENY' ? 'No Access' : 'Not Set'",
+  'Permission explanation',
   'Permission code',
-  'Policy evidence',
-  'Project Team Coordinator',
-  'Time-steward boundary',
-  'does not submit their timesheets',
+  'Last modified',
+  'policy evidence',
+  "role.roleCode === 'PROJECT_TEAM_COORDINATOR' ? 'ptc-reference' : ''",
   'projectpulse-dynamic-rbac-matrix.csv'
 ], 'Module 037 dynamic spreadsheet UI');
 
@@ -56,8 +58,10 @@ rejectAll(ui, [
   'const REQUIRED_ROLE_COUNT',
   'const REQUIRED_MODULE_COUNT',
   'Expected ${REQUIRED_ROLE_COUNT} roles and ${REQUIRED_MODULE_COUNT} modules',
-  'The published permission matrix is incomplete'
-], 'Module 037 fixed-count gate');
+  'The published permission matrix is incomplete',
+  "api('/api/role-policy/matrix')",
+  "api('/api/role-policy/catalog')"
+], 'Module 037 retired fixed-count and legacy transport');
 
 requireAll(model, [
   'PERMISSION_LEVELS',
@@ -90,9 +94,9 @@ requireAll(css, [
   '.rpm-permission-table th:nth-child(3)',
   'position: sticky',
   '.rpm-role-heading',
-  '.rpm-decision-allow',
-  '.rpm-decision-deny',
-  '.rpm-decision-not-set',
+  '.rpm-decision-allow button',
+  '.rpm-decision-deny button',
+  '.rpm-decision-not-set button',
   '.rpm-reference-grid',
   '.ptc-reference',
   '.rpm-level-reference',
@@ -139,4 +143,4 @@ if (/<input[^>]+type=["']checkbox["']|<textarea|contentEditable|onSubmit=/i.test
   throw new Error('Module 037 contains an editing control or submission handler.');
 }
 
-console.log('MODULE_037_DYNAMIC_PERMISSION_MATRIX=PASS mode=database-dynamic fixedModuleCount=false readOnly=true');
+console.log('MODULE_037_DYNAMIC_PERMISSION_MATRIX=PASS mode=database-dynamic fixedModuleCount=false readOnly=true decisionStyles=aligned');
