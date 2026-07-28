@@ -14,6 +14,7 @@ on:
       - 'src/frontend/project-time-web/src/module001/**'
       - 'src/frontend/project-time-web/src/ProjectAllocationInfoPanel.jsx'
       - 'src/frontend/project-time-web/src/CertifyIntegrationCenter.jsx'
+      - 'src/frontend/project-time-web/scripts/generate-module-001-integrated-app.mjs'
       - 'src/frontend/project-time-web/scripts/validate-combined-modules-001-005-012-037-038.mjs'
       - 'tests/test-projectpulse-api-startup.sh'
       - 'tests/Module005ExpenseParserTests/**'
@@ -94,6 +95,10 @@ jobs:
         run: |
           bash tests/test-project-expense-migration-044.sh | tee /tmp/combined-module005-migration.log
           grep -Fq 'PROJECT_EXPENSE_MIGRATION_044_TEST=PASS apply=true idempotent=true safeRollback=true guardedRollback=true immutableAudit=true' /tmp/combined-module005-migration.log
+
+      - name: Generate integrated Module 001 App source
+        working-directory: src/frontend/project-time-web
+        run: node ./scripts/generate-module-001-integrated-app.mjs
 
       - name: Validate admin runtime stability contract
         working-directory: src/frontend/project-time-web
