@@ -1,0 +1,19 @@
+# Never commit generated Azure migration state, logs, or secret-bearing files.
+*.env
+*.log
+*.pem
+*.key
+*.pfx
+*.p12
+*.cer
+*.crt
+*.tfstate
+*.tfstate.*
+*.secrets.json
+
+config/
+logs/
+artifacts/
+exports/
+
+# Keep only reviewed, reusable scripts and documentation in GitHub.
