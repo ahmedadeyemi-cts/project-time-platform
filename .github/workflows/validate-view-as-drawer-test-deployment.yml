@@ -1,0 +1,127 @@
+name: Validate Administrator View-As Drawer Test Deployment
+
+on:
+  push:
+    branches:
+      - 'release/view-as-drawer-web-test-*'
+  pull_request:
+    paths:
+      - '.github/workflows/projectpulse-deploy-view-as-drawer-test.yml'
+      - '.github/workflows/validate-view-as-drawer-test-deployment.yml'
+      - 'scripts/validate-view-as-drawer-test-deployment.sh'
+
+permissions:
+  contents: read
+  statuses: write
+
+jobs:
+  validate:
+    name: Validate guarded View-As drawer web-only controls
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Enforce exact deployment-control scope
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git fetch origin main --no-tags
+          mapfile -t CHANGED < <(git diff --name-only origin/main...HEAD)
+          printf '%s\n' "${CHANGED[@]}"
+
+          ALLOWED=(
+            '.github/workflows/projectpulse-deploy-view-as-drawer-test.yml'
+            '.github/workflows/validate-view-as-drawer-test-deployment.yml'
+            'scripts/validate-view-as-drawer-test-deployment.sh'
+          )
+
+          [[ "${#CHANGED[@]}" -eq 3 ]] || {
+            echo "Expected exactly three View-As drawer deployment-control files; found ${#CHANGED[@]}." >&2
+            exit 1
+          }
+
+          for changed in "${CHANGED[@]}"; do
+            MATCH=false
+            for allowed in "${ALLOWED[@]}"; do
+              [[ "$changed" == "$allowed" ]] && MATCH=true
+            done
+            [[ "$MATCH" == true ]] || {
+              echo "Unexpected changed file: $changed" >&2
+              exit 1
+            }
+          done
+
+          echo 'VIEW_AS_DRAWER_DEPLOYMENT_SCOPE=PASS'
+
+      - name: Validate deployment-control shell syntax
+        shell: bash
+        run: bash -n scripts/validate-view-as-drawer-test-deployment.sh
+
+      - name: Validate deployment-control contract
+        shell: bash
+        run: bash scripts/validate-view-as-drawer-test-deployment.sh
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Validate Administrator View-As drawer source
+        working-directory: src/frontend/project-time-web
+        run: node scripts/validate-global-view-as-drawer.mjs
+
+      - name: Validate admin runtime regression
+        working-directory: src/frontend/project-time-web
+        run: node scripts/validate-admin-runtime-stability.mjs
+
+      - name: Validate permission-aware navigation regression
+        working-directory: src/frontend/project-time-web
+        run: node scripts/validate-group-1-navigation-work-consolidation.mjs
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Build complete frontend production bundle
+        working-directory: src/frontend/project-time-web
+        run: npm run build
+
+      - name: Publish exact-commit deployment-control status
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
+          COMMIT_SHA: ${{ github.sha }}
+          API_ROOT: ${{ github.api_url }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -Eeuo pipefail
+          if [[ "$JOB_STATUS" == success ]]; then
+            STATE=success
+            DESCRIPTION='View-As drawer source, web-only deployment, validation, and rollback guards passed.'
+          else
+            STATE=failure
+            DESCRIPTION='View-As drawer deployment-control validation failed.'
+          fi
+
+          PAYLOAD="$(jq -nc \
+            --arg state "$STATE" \
+            --arg context 'view-as-drawer/deployment-controls' \
+            --arg description "$DESCRIPTION" \
+            --arg target_url "$RUN_URL" \
+            '{state:$state,context:$context,description:$description,target_url:$target_url}')"
+
+          curl --fail-with-body --silent --show-error \
+            --request POST \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'Accept: application/vnd.github+json' \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            --data "$PAYLOAD" \
+            "$API_ROOT/repos/$REPOSITORY/statuses/$COMMIT_SHA"

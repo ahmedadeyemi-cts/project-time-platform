@@ -1,0 +1,351 @@
+name: ProjectPulse Deploy Administrator View-As Drawer Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_commit:
+        description: Exact verified Administrator View-As drawer source commit
+        required: true
+        default: c3e918b12d27e37373f0b0533d0e6c97e9aa0180
+        type: string
+      confirmation:
+        description: Enter DEPLOY-VIEW-AS-DRAWER-TO-TEST
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: projectpulse-deploy-view-as-drawer-test
+  cancel-in-progress: false
+
+jobs:
+  deploy-web:
+    name: Guarded Administrator View-As drawer web-only test deployment
+    environment: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      EXPECTED_RELEASE_COMMIT: c3e918b12d27e37373f0b0533d0e6c97e9aa0180
+
+    steps:
+      - name: Check out deployment controls
+        uses: actions/checkout@v5
+        with:
+          path: control
+          fetch-depth: 0
+
+      - name: Check out exact View-As drawer source
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.release_commit }}
+          path: release
+          fetch-depth: 1
+
+      - name: Guard workflow source and exact release
+        id: release
+        shell: bash
+        env:
+          DISPATCH_RELEASE_COMMIT: ${{ inputs.release_commit }}
+          DISPATCH_CONFIRMATION: ${{ inputs.confirmation }}
+          WORKFLOW_SOURCE_REF: ${{ github.ref }}
+          WORKFLOW_SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$WORKFLOW_SOURCE_REF" == 'refs/heads/main' ]] || {
+            echo 'Dispatch this workflow from main.' >&2
+            exit 1
+          }
+          [[ "$DISPATCH_CONFIRMATION" == 'DEPLOY-VIEW-AS-DRAWER-TO-TEST' ]] || {
+            echo 'The deployment confirmation text does not match.' >&2
+            exit 1
+          }
+          [[ "$DISPATCH_RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || {
+            echo 'release_commit must be a complete 40-character SHA.' >&2
+            exit 1
+          }
+
+          CONTROL_COMMIT="$(git -C control rev-parse HEAD)"
+          TARGET_COMMIT="$(git -C release rev-parse HEAD)"
+          [[ "$CONTROL_COMMIT" == "$WORKFLOW_SOURCE_SHA" ]] || {
+            echo 'The deployment-control checkout does not match this workflow run.' >&2
+            exit 1
+          }
+          [[ "$TARGET_COMMIT" == "$DISPATCH_RELEASE_COMMIT" ]] || {
+            echo 'The release checkout does not match the requested commit.' >&2
+            exit 1
+          }
+          [[ "$TARGET_COMMIT" == "$EXPECTED_RELEASE_COMMIT" ]] || {
+            echo 'Only the verified Administrator View-As drawer release may deploy.' >&2
+            exit 1
+          }
+          git -C control merge-base --is-ancestor "$TARGET_COMMIT" HEAD || {
+            echo 'The View-As drawer release is not an ancestor of the deployment controls.' >&2
+            exit 1
+          }
+
+          DRAWER='release/src/frontend/project-time-web/src/GlobalViewAsDrawer.jsx'
+          DRAWER_CSS='release/src/frontend/project-time-web/src/global-view-as-drawer.css'
+          MAIN='release/src/frontend/project-time-web/src/main.jsx'
+          APP='release/src/frontend/project-time-web/src/App.jsx'
+          VALIDATOR='release/src/frontend/project-time-web/scripts/validate-global-view-as-drawer.mjs'
+
+          for required in \
+            "$DRAWER" "$DRAWER_CSS" "$MAIN" "$APP" "$VALIDATOR" \
+            release/src/frontend/project-time-web/package-lock.json \
+            release/deployment/containers/web/Dockerfile \
+            control/scripts/build-pr55-acr-image.sh \
+            control/scripts/wait-containerapp-ready-revision.sh; do
+            test -f "$required"
+          done
+
+          grep -Fq "import GlobalViewAsDrawer from './GlobalViewAsDrawer.jsx';" "$MAIN"
+          grep -Fq '<GlobalViewAsDrawer />' "$MAIN"
+          grep -Fq 'Administrator View-As' "$DRAWER"
+          grep -Fq 'View-As Active' "$DRAWER"
+          grep -Fq 'Exit preview' "$DRAWER"
+          grep -Fq '/api/project-workspace/view-as/users' "$DRAWER"
+          grep -Fq 'projectPulseViewAsUser' "$DRAWER"
+          grep -Fq 'projectpulse-view-as-handle' "$DRAWER_CSS"
+          grep -Fq 'projectpulse-view-as-drawer.is-open' "$DRAWER_CSS"
+          grep -Fq '#projectpulse-global-view-as-topbar-slot' "$DRAWER_CSS"
+          grep -Fq 'bottom: 5.75rem' "$DRAWER_CSS"
+          grep -Fq "headers.set('X-ProjectPulse-View-As-User', viewAs.userId);" "$APP"
+          grep -Fq "status: 'view_as_read_only'" "$APP"
+          echo "target_commit=$TARGET_COMMIT" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: release/src/frontend/project-time-web/package-lock.json
+
+      - name: Validate and build exact frontend source
+        working-directory: release/src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node scripts/validate-global-view-as-drawer.mjs
+          node scripts/validate-admin-runtime-stability.mjs
+          node scripts/validate-group-1-navigation-work-consolidation.mjs
+          npm ci --no-audit --no-fund
+          npm run build
+          echo 'VIEW_AS_DRAWER_SOURCE_VALIDATION=PASS'
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Capture immutable rollback web image and unchanged API image
+        id: before
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          RAW_WEB_IMAGE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
+          RAW_API_IMAGE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
+          WEB_MODE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.configuration.activeRevisionsMode' -o tsv)"
+          [[ -n "$RAW_WEB_IMAGE" && -n "$RAW_API_IMAGE" ]] || {
+            echo 'Current API or web image could not be captured.' >&2
+            exit 1
+          }
+          [[ "${WEB_MODE,,}" == single ]] || {
+            echo 'The web Container App must use single-revision mode.' >&2
+            exit 1
+          }
+
+          resolve_digest() {
+            local image="$1" registry='${{ vars.AZURE_ACR_NAME }}.azurecr.io/' relative repository digest
+            case "$image" in
+              "$registry"*@sha256:*) printf '%s\n' "$image"; return ;;
+              "$registry"*:*) ;;
+              *) echo "Rollback image is outside the approved ACR: $image" >&2; return 1 ;;
+            esac
+            relative="${image#"$registry"}"
+            repository="${relative%:*}"
+            digest="$(az acr repository show --name '${{ vars.AZURE_ACR_NAME }}' --image "$relative" --query digest -o tsv)"
+            [[ "$digest" == sha256:* ]]
+            printf '%s%s@%s\n' "$registry" "$repository" "$digest"
+          }
+
+          OLD_WEB_IMAGE="$(resolve_digest "$RAW_WEB_IMAGE")"
+          echo "old_web_image=$OLD_WEB_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "api_image=$RAW_API_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "CAPTURED_VIEW_AS_DRAWER_ROLLBACK_IMAGE=$OLD_WEB_IMAGE"
+          echo "CAPTURED_UNCHANGED_API_IMAGE=$RAW_API_IMAGE"
+
+      - name: Build exact immutable View-As drawer web image
+        id: build
+        shell: bash
+        working-directory: release
+        run: |
+          set -Eeuo pipefail
+          SHA='${{ steps.release.outputs.target_commit }}'
+          WEB_REPOSITORY='project-health-dashboard-web'
+          WEB_DIGEST="$(
+            ../control/scripts/build-pr55-acr-image.sh \
+              '${{ vars.AZURE_ACR_NAME }}' \
+              "$WEB_REPOSITORY:view-as-drawer-$SHA" \
+              deployment/containers/web/Dockerfile \
+              .
+          )"
+          [[ "$WEB_DIGEST" == sha256:* ]]
+          WEB_IMAGE='${{ vars.AZURE_ACR_NAME }}.azurecr.io/'"$WEB_REPOSITORY@$WEB_DIGEST"
+          echo "web_image=$WEB_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "VIEW_AS_DRAWER_IMMUTABLE_WEB_IMAGE=$WEB_IMAGE"
+
+      - name: Deploy exact View-As drawer web candidate
+        id: deploy_web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          SUFFIX="viewasweb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          REVISION='${{ vars.AZURE_WEB_APP }}'"--$SUFFIX"
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
+          az containerapp update \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_WEB_APP }}' \
+            --image '${{ steps.build.outputs.web_image }}' \
+            --revision-suffix "$SUFFIX" \
+            --output none
+
+      - name: Wait for exact View-As drawer web revision
+        shell: bash
+        run: >-
+          bash control/scripts/wait-containerapp-ready-revision.sh
+          '${{ vars.AZURE_RESOURCE_GROUP }}'
+          '${{ vars.AZURE_WEB_APP }}'
+          '${{ steps.deploy_web.outputs.revision }}'
+          '${{ steps.build.outputs.web_image }}'
+          60
+          10
+
+      - name: Validate served drawer assets and unchanged API image
+        id: validate_web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          BASE_URL='${{ vars.PUBLIC_URL }}'; BASE_URL="${BASE_URL%/}"
+          READY=false
+
+          absolute_asset_url() {
+            local asset="$1"
+            case "$asset" in
+              http://*|https://*) printf '%s\n' "$asset" ;;
+              /*) printf '%s%s\n' "$BASE_URL" "$asset" ;;
+              *) printf '%s/%s\n' "$BASE_URL" "$asset" ;;
+            esac
+          }
+
+          for attempt in $(seq 1 36); do
+            BUSTER="viewas-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${attempt}"
+            HTML_STATUS="$(curl -sS -L -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' -o /tmp/viewas-index.html -w '%{http_code}' "$BASE_URL/?release_check=$BUSTER" || true)"
+            if [[ "$HTML_STATUS" == 200 ]]; then
+              JS_PATH="$(sed -nE 's/.*src="([^"]+\.js)".*/\1/p' /tmp/viewas-index.html | head -1)"
+              CSS_PATH="$(sed -nE 's/.*href="([^"]+\.css)".*/\1/p' /tmp/viewas-index.html | head -1)"
+              if [[ -n "$JS_PATH" && -n "$CSS_PATH" ]]; then
+                JS_URL="$(absolute_asset_url "$JS_PATH")"
+                CSS_URL="$(absolute_asset_url "$CSS_PATH")"
+                JS_STATUS="$(curl -sS -L -H 'Cache-Control: no-cache, no-store' -o /tmp/viewas-app.js -w '%{http_code}' "$JS_URL?release_check=$BUSTER" || true)"
+                CSS_STATUS="$(curl -sS -L -H 'Cache-Control: no-cache, no-store' -o /tmp/viewas-app.css -w '%{http_code}' "$CSS_URL?release_check=$BUSTER" || true)"
+                tr -d '[:space:]' < /tmp/viewas-app.css > /tmp/viewas-app.compact.css
+                if [[ "$JS_STATUS" == 200 && "$CSS_STATUS" == 200 ]] \
+                  && grep -Fq 'Administrator View-As' /tmp/viewas-app.js \
+                  && grep -Fq 'View-As Active' /tmp/viewas-app.js \
+                  && grep -Fq 'Exit preview' /tmp/viewas-app.js \
+                  && grep -Fq '/api/project-workspace/view-as/users' /tmp/viewas-app.js \
+                  && grep -Fq 'projectPulseViewAsUser' /tmp/viewas-app.js \
+                  && grep -Fq 'X-ProjectPulse-View-As-User' /tmp/viewas-app.js \
+                  && grep -Fq 'projectpulse-view-as-handle' /tmp/viewas-app.compact.css \
+                  && grep -Fq 'projectpulse-view-as-drawer' /tmp/viewas-app.compact.css \
+                  && grep -Fq 'projectpulse-global-view-as-topbar-slot' /tmp/viewas-app.compact.css \
+                  && grep -Fq 'bottom:5.75rem' /tmp/viewas-app.compact.css; then
+                  READY=true
+                  break
+                fi
+              fi
+            fi
+            sleep 10
+          done
+
+          [[ "$READY" == true ]] || {
+            echo 'The served web bundle did not expose the complete Administrator View-As drawer contract.' >&2
+            exit 1
+          }
+
+          READY_REVISION="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.latestReadyRevisionName' -o tsv)"
+          [[ "$READY_REVISION" == '${{ steps.deploy_web.outputs.revision }}' ]]
+          ACTIVE_WEB_IMAGE="$(az containerapp revision show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --revision "$READY_REVISION" --query 'properties.template.containers[0].image' -o tsv)"
+          [[ "$ACTIVE_WEB_IMAGE" == '${{ steps.build.outputs.web_image }}' ]]
+          CURRENT_API_IMAGE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
+          [[ "$CURRENT_API_IMAGE" == '${{ steps.before.outputs.api_image }}' ]] || {
+            echo 'The API image changed during a web-only deployment.' >&2
+            exit 1
+          }
+          echo "ready_revision=$READY_REVISION" >> "$GITHUB_OUTPUT"
+          echo 'VIEW_AS_DRAWER_WEB_VALIDATION=PASS'
+          echo 'VIEW_AS_DRAWER_API_IMAGE=UNCHANGED'
+
+      - name: Write View-As drawer deployment evidence
+        if: success()
+        shell: bash
+        run: |
+          mkdir -p evidence
+          cat > evidence/view-as-drawer-test-deployment.json <<JSON
+          {
+            "environment": "test",
+            "releaseCommit": "${{ steps.release.outputs.target_commit }}",
+            "workflowCommit": "${{ github.sha }}",
+            "runId": "${{ github.run_id }}",
+            "webImage": "${{ steps.build.outputs.web_image }}",
+            "previousWebImage": "${{ steps.before.outputs.old_web_image }}",
+            "webRevision": "${{ steps.validate_web.outputs.ready_revision }}",
+            "apiImage": "${{ steps.before.outputs.api_image }}",
+            "apiDeployment": "unchanged",
+            "database": "unchanged",
+            "migrations": "unchanged",
+            "legacyTopbarViewAs": "hidden",
+            "administratorViewAsDrawer": "served-and-collapsed-by-default",
+            "viewAsReadOnlyBoundary": "preserved",
+            "smokeTests": "passed"
+          }
+          JSON
+
+      - name: Upload View-As drawer deployment evidence
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: view-as-drawer-test-${{ github.run_id }}
+          path: evidence/view-as-drawer-test-deployment.json
+          retention-days: 30
+
+      - name: Restore captured web image on failure
+        if: ${{ failure() && steps.deploy_web.outputs.started == 'true' }}
+        shell: bash
+        run: |
+          set +e
+          ACTIVE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.template.containers[0].image' -o tsv 2>/dev/null)"
+          if [[ "$ACTIVE" == '${{ steps.build.outputs.web_image }}' ]]; then
+            SUFFIX="viewaswebrb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+            REVISION='${{ vars.AZURE_WEB_APP }}'"--$SUFFIX"
+            az containerapp update \
+              -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+              -n '${{ vars.AZURE_WEB_APP }}' \
+              --image '${{ steps.before.outputs.old_web_image }}' \
+              --revision-suffix "$SUFFIX" \
+              --output none
+            bash control/scripts/wait-containerapp-ready-revision.sh \
+              '${{ vars.AZURE_RESOURCE_GROUP }}' \
+              '${{ vars.AZURE_WEB_APP }}' \
+              "$REVISION" \
+              '${{ steps.before.outputs.old_web_image }}' \
+              60 \
+              10
+            echo 'VIEW_AS_DRAWER_WEB_ROLLBACK=COMPLETE'
+          else
+            echo "Web rollback skipped because another image is active: $ACTIVE" >&2
+          fi
