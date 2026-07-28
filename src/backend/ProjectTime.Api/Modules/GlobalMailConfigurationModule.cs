@@ -17,6 +17,9 @@ public static class GlobalMailConfigurationModule
         // Normalize only trusted ProjectPulse public origins before any
         // Microsoft, Entra-preview, or Module 026 same-origin decisions run.
         app.UseProjectPulsePublicOriginCompatibility();
+        // Derive Test versus Production from the trusted public host before the
+        // existing Microsoft runtime modules inspect ASPNETCORE_ENVIRONMENT.
+        app.UseMicrosoftEnvironmentRuntimeCompatibility();
         app.UseMicrosoftIntegrationSecurityCompatibility();
         app.UseMicrosoftPublicSsoOriginCompatibility();
         // Preserve the legacy role-policy route families while Modules 012 and 037
