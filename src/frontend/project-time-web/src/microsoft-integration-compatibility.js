@@ -19,7 +19,7 @@ function currentRoute() {
 
 function runtimeEnvironmentMode() {
   const host = window.location.hostname.toLowerCase();
-  if (host.includes('-test.') || host === 'localhost' || host === '127.0.0.1') return 'test';
+  if (host.includes('-test.') || host.endsWith('.onenecklab.com') || host === 'localhost' || host === '127.0.0.1') return 'test';
   return 'production';
 }
 
@@ -68,7 +68,7 @@ function activeServicesProfile(payload) {
       tenantId: active.tenantId,
       clientId,
       graphScopes: services.graphScopes || services.scopes || active.graphScopes || '',
-      senderMailbox: stored?.mail?.senderAddress || ''
+      senderMailbox: active?.mail?.senderAddress || stored?.mail?.senderAddress || ''
     };
   } catch {
     return null;
