@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - 'release/open-pr-reconciliation-test-deployment-*'
+      - 'release/repin-open-pr-reconciliation-test-deployment-*'
   pull_request:
     paths:
       - '.github/workflows/projectpulse-deploy-open-pr-reconciliation-test.yml'
@@ -133,6 +134,14 @@ jobs:
         working-directory: src/frontend/project-time-web
         run: node scripts/validate-modules-021-026-sell-customer-sync.mjs
 
+      - name: Validate provider-neutral Modules 013 016 and 068
+        working-directory: src/frontend/project-time-web
+        run: node scripts/validate-group-2a-provider-neutral-platform-operations.mjs
+
+      - name: Validate Module 068 architecture compatibility
+        working-directory: src/frontend/project-time-web
+        run: node scripts/validate-module-068-system-architecture.mjs
+
       - name: Validate Microsoft authoritative connection
         working-directory: src/frontend/project-time-web
         run: npm run validate:microsoft-connection
@@ -159,7 +168,7 @@ jobs:
           set -Eeuo pipefail
           if [[ "$JOB_STATUS" == success ]]; then
             STATE=success
-            DESCRIPTION='Source, migration 049, API, frontend, rollback, and deployment guards passed.'
+            DESCRIPTION='Complete source, migration 049, provider-neutral modules, API, frontend, rollback, and deployment guards passed.'
           else
             STATE=failure
             DESCRIPTION='Open-PR reconciliation deployment-control validation failed.'
