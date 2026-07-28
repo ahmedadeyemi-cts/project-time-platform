@@ -4,18 +4,25 @@ on:
   push:
     branches:
       - 'feature/modules-021-026-sell-customer-sync-*'
+      - 'fix/module-026-editable-connectors-consistent-design-*'
   pull_request:
     paths:
       - 'database/migrations/049_module_021_sell_customer_sync.sql'
       - 'database/rollback/049_module_021_sell_customer_sync_rollback.sql'
       - 'src/backend/ProjectTime.Api/Modules/CustomerDirectorySellSyncModule.cs'
       - 'src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/CrmErpIntegrationModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/CrmErpAdministrationExperience.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ScopedRolePolicyAuthorizationBridge.cs'
+      - 'src/backend/ProjectTime.Api/ProjectTime.Api.csproj'
       - 'src/frontend/project-time-web/src/CrmErpIntegrationCenter.jsx'
       - 'src/frontend/project-time-web/src/CustomerDirectoryCenter.jsx'
       - 'src/frontend/project-time-web/src/crm-erp-integration-center.css'
       - 'src/frontend/project-time-web/src/customer-directory-sell-sync.css'
+      - 'src/frontend/project-time-web/scripts/validate-module-026-crm-erp-integrations.mjs'
       - 'src/frontend/project-time-web/scripts/validate-modules-021-026-sell-customer-sync.mjs'
       - 'src/frontend/project-time-web/package.json'
+      - 'deployment/containers/web/Dockerfile'
       - 'tests/test-module-021-sell-customer-sync-049.sh'
       - '.github/workflows/modules021026-sell-customer-sync-ci.yml'
   workflow_dispatch:
