@@ -109,6 +109,12 @@ COPY src/backend/ProjectTime.Api/Modules/DefectTrackerModule.cs \
 COPY src/backend/ProjectTime.Api/Modules/CrmErpIntegrationModule.cs \
      src/backend/ProjectTime.Api/Modules/CrmErpIntegrationModule.cs
 
+COPY src/backend/ProjectTime.Api/Modules/CrmErpAdministrationExperience.cs \
+     src/backend/ProjectTime.Api/Modules/CrmErpAdministrationExperience.cs
+
+COPY src/backend/ProjectTime.Api/Modules/ScopedRolePolicyAuthorizationBridge.cs \
+     src/backend/ProjectTime.Api/Modules/ScopedRolePolicyAuthorizationBridge.cs
+
 COPY src/backend/ProjectTime.Api/Modules/WorkRegisterAuthorization.cs \
      src/backend/ProjectTime.Api/Modules/WorkRegisterAuthorization.cs
 
