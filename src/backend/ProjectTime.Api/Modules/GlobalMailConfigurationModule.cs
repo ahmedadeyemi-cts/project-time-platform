@@ -33,6 +33,9 @@ public static class GlobalMailConfigurationModule
         app.MapMicrosoftDirectorySyncEndpoints();
 
         app.MapDynamicRbacAdministrationEndpoints();
+
+        // Additive registration only: Module 021 consumes the authoritative
+        // Module 026 SELL connection without changing Microsoft Integration.
         app.MapCustomerDirectorySellSyncEndpoints();
         return app;
     }
