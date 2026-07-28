@@ -58,6 +58,11 @@ public sealed class ProjectPulseAiRouter
                 continue;
             }
 
+            // The health registry can be created before encrypted secrets finish
+            // loading. Reconcile from the live shared configuration before every
+            // route decision so Module 001 never skips a configured provider merely
+            // because the process started with an unhydrated health snapshot.
+            _health.ApplyConfiguration(_configuration.Provider(providerCode));
             if (!_health.CanAttempt(providerCode, out _))
             {
                 skipped.Add(providerCode);
@@ -117,7 +122,11 @@ public sealed class ProjectPulseAiRouter
 
             if (result.IsRefusal)
             {
-                _health.RecordRefusal(providerCode, result.Usage, result.RequestId, result.RateLimits);
+                _health.RecordRefusal(
+                    providerCode,
+                    result.Usage,
+                    result.RequestId,
+                    result.RateLimits);
                 return new ProjectPulseAiRouteResult(
                     string.Empty,
                     providerCode,
@@ -129,7 +138,10 @@ public sealed class ProjectPulseAiRouter
                     result.RequestId);
             }
 
-            _health.RecordFailure(providerCode, result.Code ?? "provider_unavailable", result.RequestId);
+            _health.RecordFailure(
+                providerCode,
+                result.Code ?? "provider_unavailable",
+                result.RequestId);
             failed.Add(providerCode);
         }
 
