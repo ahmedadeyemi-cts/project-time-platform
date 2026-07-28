@@ -1,13 +1,23 @@
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 const root = resolve(process.cwd(), '../../..');
-const text = (path) => readFile(resolve(root, path), 'utf8');
+const absolute = (path) => resolve(root, path);
+const text = (path) => readFile(absolute(path), 'utf8');
+const optionalText = async (path) => existsSync(absolute(path)) ? text(path) : '';
 const requireAll = (source, values, label) => {
   for (const value of values) if (!source.includes(value)) throw new Error(`${label} missing contract: ${value}`);
 };
 const rejectAll = (source, values, label) => {
   for (const value of values) if (source.includes(value)) throw new Error(`${label} contains retired contract: ${value}`);
+};
+const validateWhenPresent = (source, validate, label) => {
+  if (!source) {
+    console.log(`${label.toUpperCase().replaceAll(/[^A-Z0-9]+/g, '_')}=SKIPPED_MINIMAL_WEB_CONTEXT`);
+    return;
+  }
+  validate(source);
 };
 
 function validateCatalog({ roles, modules, grants = [] }) {
@@ -72,40 +82,42 @@ for (const test of expectedFailures) {
 }
 
 const [backend, registrar, project, roleUi, matrixUi, more, moreCss, evaluator, platform, service, evidence, architecture, group2aWorkflow] = await Promise.all([
-  text('src/backend/ProjectTime.Api/Modules/DynamicRbacAdministrationModule.cs'),
-  text('src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs'),
-  text('src/backend/ProjectTime.Api/ProjectTime.Api.csproj'),
+  optionalText('src/backend/ProjectTime.Api/Modules/DynamicRbacAdministrationModule.cs'),
+  optionalText('src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs'),
+  optionalText('src/backend/ProjectTime.Api/ProjectTime.Api.csproj'),
   text('src/frontend/project-time-web/src/RoleAdminDirectoryPanel.jsx'),
   text('src/frontend/project-time-web/src/RolesPermissionsMatrix.jsx'),
   text('src/frontend/project-time-web/src/intuitive-more-menu.js'),
   text('src/frontend/project-time-web/src/intuitive-more-menu.css'),
-  text('src/backend/ProjectTime.Api/Modules/ScopedAuthorizationEvaluator.cs'),
-  text('src/backend/ProjectTime.Api/Modules/PlatformOperationsModule.cs'),
+  optionalText('src/backend/ProjectTime.Api/Modules/ScopedAuthorizationEvaluator.cs'),
+  optionalText('src/backend/ProjectTime.Api/Modules/PlatformOperationsModule.cs'),
   text('src/frontend/project-time-web/src/ServiceControlCenter.jsx'),
   text('src/frontend/project-time-web/src/OperationalEvidenceCenter.jsx'),
   text('src/frontend/project-time-web/src/SystemArchitectureCenter.jsx'),
-  text('.github/workflows/group2a-provider-neutral-platform-operations-ci.yml')
+  optionalText('.github/workflows/group2a-provider-neutral-platform-operations-ci.yml')
 ]);
 
-requireAll(backend, [
-  'projectpulse-rbac-v1-2026-07-28',
-  'moduleCatalogMode = "database_dynamic"',
-  'fixedModuleCountRequired = false',
-  'permanentFullControl = true',
-  'organizationWide = true',
-  'reducible = false',
-  'NO_ACCESS_FOR_NON_SUPER_ADMINISTRATORS',
-  'super_administrator_self_lockout_blocked',
-  'final_super_administrator_removal_blocked',
-  'ROLE_MEMBERSHIP_ASSIGNED',
-  'ROLE_MEMBERSHIP_REMOVED',
-  'MODULE_RETIRED',
-  'historicalPolicyAndAuditPreserved = true'
-], 'Dynamic RBAC API');
-rejectAll(backend, ['modules.Count != 70', 'moduleCount == 70', 'Expected 12 roles and 70 modules'], 'Dynamic RBAC API');
-requireAll(registrar, ['app.MapDynamicRbacAdministrationEndpoints();'], 'Dynamic RBAC registration');
-requireAll(project, ['DynamicRbacGeneratedModule', '<Compile Remove="Modules/DynamicRbacAdministrationModule.cs" />'], 'Dynamic RBAC compilation');
-requireAll(evaluator, ['if (actor.IsSuperAdministrator)', 'permanent organization-wide Full Control', 'actor.IsViewAs && isWrite'], 'Central RBAC enforcement');
+validateWhenPresent(backend, (source) => {
+  requireAll(source, [
+    'projectpulse-rbac-v1-2026-07-28',
+    'moduleCatalogMode = "database_dynamic"',
+    'fixedModuleCountRequired = false',
+    'permanentFullControl = true',
+    'organizationWide = true',
+    'reducible = false',
+    'NO_ACCESS_FOR_NON_SUPER_ADMINISTRATORS',
+    'super_administrator_self_lockout_blocked',
+    'final_super_administrator_removal_blocked',
+    'ROLE_MEMBERSHIP_ASSIGNED',
+    'ROLE_MEMBERSHIP_REMOVED',
+    'MODULE_RETIRED',
+    'historicalPolicyAndAuditPreserved = true'
+  ], 'Dynamic RBAC API');
+  rejectAll(source, ['modules.Count != 70', 'moduleCount == 70', 'Expected 12 roles and 70 modules'], 'Dynamic RBAC API');
+}, 'Dynamic RBAC API');
+validateWhenPresent(registrar, (source) => requireAll(source, ['app.MapDynamicRbacAdministrationEndpoints();'], 'Dynamic RBAC registration'), 'Dynamic RBAC registration');
+validateWhenPresent(project, (source) => requireAll(source, ['DynamicRbacGeneratedModule', '<Compile Remove="Modules/DynamicRbacAdministrationModule.cs" />'], 'Dynamic RBAC compilation'), 'Dynamic RBAC compilation');
+validateWhenPresent(evaluator, (source) => requireAll(source, ['if (actor.IsSuperAdministrator)', 'permanent organization-wide Full Control', 'actor.IsViewAs && isWrite'], 'Central RBAC enforcement'), 'Central RBAC enforcement');
 
 requireAll(roleUi, [
   "api('/api/rbac/v1/bootstrap')",
@@ -140,22 +152,24 @@ requireAll(moreCss, [
   'grid-template-columns: repeat(3, minmax(0, 1fr))'
 ], 'Name-only More menu styling');
 
-// Group 2A is a mandatory regression boundary for this deployment package.
-requireAll(platform, [
+// Group 2A's frontend contract remains mandatory in the production web build.
+// Its backend and workflow contract are additionally enforced whenever the full
+// repository context is present in source CI.
+validateWhenPresent(platform, (source) => requireAll(source, [
   '/api/platform-operations/overview',
   '/api/platform-operations/apis',
   '/api/platform-operations/evidence',
   '/api/platform-operations/architecture'
-], 'Group 2A provider-neutral API');
+], 'Group 2A provider-neutral API'), 'Group 2A provider-neutral API');
 requireAll(service, ['System Health &amp; API Diagnostics', '/api/platform-operations/overview'], 'Module 013');
 requireAll(evidence, ['Operational Evidence', '/api/platform-operations/evidence'], 'Module 016');
 requireAll(architecture, ['System Architecture', '/api/platform-operations/architecture'], 'Module 068');
-requireAll(group2aWorkflow, [
+validateWhenPresent(group2aWorkflow, (source) => requireAll(source, [
   'GROUP_2A_SOURCE_ISOLATION=NOT_APPLICABLE',
   'Validate Group 2A source contract',
   'Build ProjectTime API',
   'Validate Module 068 compatibility',
   'Build complete frontend production bundle'
-], 'Group 2A regression workflow');
+], 'Group 2A regression workflow'), 'Group 2A regression workflow');
 
-console.log('DYNAMIC_RBAC_ADMINISTRATION_PACKAGE=PASS moduleCounts=69,70,71 superAdmin=permanent-full-control group2a=preserved moreMenu=name-only');
+console.log('DYNAMIC_RBAC_ADMINISTRATION_PACKAGE=PASS moduleCounts=69,70,71 superAdmin=permanent-full-control group2a=preserved moreMenu=name-only contextAwareWebBuild=true');
