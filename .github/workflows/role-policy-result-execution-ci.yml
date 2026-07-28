@@ -29,7 +29,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 1
 
       - name: Verify focused source scope or run regression mode
         shell: bash
@@ -37,11 +37,11 @@ jobs:
           SOURCE_BRANCH: ${{ github.head_ref || github.ref_name }}
         run: |
           set -Eeuo pipefail
-          git fetch origin main --no-tags
-          mapfile -t CHANGED < <(git diff --name-only origin/main...HEAD)
-          printf '%s\n' "${CHANGED[@]}"
 
           if [[ "$SOURCE_BRANCH" == hotfix/role-policy-result-execution-* ]]; then
+            git fetch origin main --no-tags
+            mapfile -t CHANGED < <(git diff --name-only origin/main...HEAD)
+            printf '%s\n' "${CHANGED[@]}"
             ALLOWED='^(\.github/workflows/role-policy-result-execution-ci\.yml|src/backend/ProjectTime.Api/Modules/(GlobalMailConfigurationModule|ScopedRolePolicyResultExecutionCompatibility)\.cs|tests/ProjectTime.Api.RouteResultExecutionTests/(ProjectTime.Api.RouteResultExecutionTests\.csproj|Program\.cs))$'
             UNEXPECTED="$(printf '%s\n' "${CHANGED[@]}" | grep -Ev "$ALLOWED" || true)"
             if [[ -n "$UNEXPECTED" ]]; then
