@@ -8,6 +8,12 @@ function currentRoute() {
   return String(window.location.hash || '#dashboard').replace(/^#/, '').split('?')[0] || 'dashboard';
 }
 
+function runtimeEnvironmentMode() {
+  const host = window.location.hostname.toLowerCase();
+  if (host.includes('-test.') || host.endsWith('.onenecklab.com') || host === 'localhost' || host === '127.0.0.1') return 'test';
+  return 'production';
+}
+
 function sessionToken() {
   for (const storage of [window.localStorage, window.sessionStorage]) {
     for (const key of ['projectPulseAuthSession', 'ProjectPulseAuthSession', 'projectPulseSession']) {
@@ -29,6 +35,10 @@ async function readJson(response) {
   try { return JSON.parse(text); } catch { return { message: text }; }
 }
 
+function title(value) {
+  return String(value || 'Not reported').replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
 function Fact({ label, value, tone = '' }) {
   return (
     <div className={`microsoft-mail-readiness-fact ${tone}`.trim()}>
@@ -40,26 +50,38 @@ function Fact({ label, value, tone = '' }) {
 
 export default function MicrosoftMailTransportReadinessPanel() {
   const [route, setRoute] = useState(currentRoute);
+  const [environmentMode, setEnvironmentMode] = useState(runtimeEnvironmentMode);
   const [testing, setTesting] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
     const synchronize = () => setRoute(currentRoute());
+    const synchronizeEnvironment = (event) => {
+      const next = String(event?.detail?.environmentMode || '').toLowerCase();
+      if (next === 'test' || next === 'production') {
+        setEnvironmentMode(next);
+        setResult(null);
+        setError('');
+      }
+    };
     window.addEventListener('hashchange', synchronize);
     window.addEventListener('pageshow', synchronize);
+    window.addEventListener('projectpulse:microsoft-environment-changed', synchronizeEnvironment);
     return () => {
       window.removeEventListener('hashchange', synchronize);
       window.removeEventListener('pageshow', synchronize);
+      window.removeEventListener('projectpulse:microsoft-environment-changed', synchronizeEnvironment);
     };
   }, []);
 
   const selectedProvider = useMemo(() => {
-    if (!result?.provider) return 'Not tested';
-    if (result.provider === 'microsoft_graph') return 'Microsoft Graph';
-    if (result.provider === 'smtp_relay') return 'Microsoft 365 SMTP relay';
-    if (result.provider === 'outbox_only') return 'Outbox only';
-    return String(result.provider).replaceAll('_', ' ');
+    const provider = result?.configuredProvider || result?.provider;
+    if (!provider) return 'Not tested';
+    if (provider === 'microsoft_graph') return 'Microsoft Graph';
+    if (provider === 'smtp_relay') return 'Microsoft 365 SMTP relay';
+    if (provider === 'locked') return 'Locked';
+    return title(provider);
   }, [result]);
 
   async function runTest() {
@@ -86,13 +108,14 @@ export default function MicrosoftMailTransportReadinessPanel() {
           'X-Session-Token': token,
           'X-ProjectPulse-Module-Number': '065'
         },
-        body: '{}'
+        body: JSON.stringify({ environmentMode })
       });
       const payload = await readJson(response);
       if (!response.ok) {
         const details = [
           payload?.message,
           payload?.status,
+          payload?.correlationId ? `Correlation: ${payload.correlationId}` : '',
           payload?.expectedRedirectUri ? `Expected callback: ${payload.expectedRedirectUri}` : '',
           payload?.configuredRedirectUri ? `Configured callback: ${payload.configuredRedirectUri}` : ''
         ].filter(Boolean).join(' ');
@@ -113,20 +136,28 @@ export default function MicrosoftMailTransportReadinessPanel() {
       <div className="microsoft-mail-readiness-heading">
         <div>
           <p className="eyebrow">MODULE 065 · NON-DELIVERY TEST</p>
-          <h2>Sender and transport readiness</h2>
+          <h2>{environmentMode === 'production' ? 'Production' : 'Test'} sender and transport readiness</h2>
           <p>
-            Verify the active Test or Production mail metadata, Microsoft Graph application access,
-            sender mailbox, or Microsoft 365 SMTP connectivity. This check never sends an email and never returns a secret.
+            Verify the configured {environmentMode === 'production' ? 'Production' : 'Test'} Microsoft Graph or Microsoft 365 SMTP transport even when the recipient boundary intentionally keeps live delivery disabled. This check never sends an email and never returns a secret.
           </p>
         </div>
-        <button type="button" className="primary-action" onClick={() => void runTest()} disabled={testing}>
-          {testing ? 'Testing configuration…' : 'Test sender and transport'}
-        </button>
+        <div className="microsoft-mail-readiness-controls">
+          <label>
+            <span>Environment</span>
+            <select value={environmentMode} onChange={(event) => { setEnvironmentMode(event.target.value); setResult(null); setError(''); }}>
+              <option value="test">Test</option>
+              <option value="production">Production</option>
+            </select>
+          </label>
+          <button type="button" className="primary-action" onClick={() => void runTest()} disabled={testing}>
+            {testing ? 'Testing configuration…' : 'Test sender and transport'}
+          </button>
+        </div>
       </div>
 
       <div className="microsoft-mail-readiness-safety">
         <strong>No live message is sent.</strong>
-        <span>The result is recorded as sanitized Module 008 audit evidence when the audit ledger is available.</span>
+        <span>The configured provider is tested independently from the live-delivery boundary, and the sanitized result is recorded as Module 008 audit evidence when available.</span>
       </div>
 
       {error ? <div className="microsoft-mail-readiness-message error">{error}</div> : null}
@@ -136,12 +167,15 @@ export default function MicrosoftMailTransportReadinessPanel() {
             {result.message}
           </div>
           <div className="microsoft-mail-readiness-facts">
-            <Fact label="Environment" value={result.environmentMode} />
-            <Fact label="Provider" value={selectedProvider} />
-            <Fact label="Recipient boundary" value={result.recipientBoundary} />
+            <Fact label="Selected environment" value={title(result.environmentMode)} />
+            <Fact label="Running environment" value={title(result.runtimeEnvironment)} />
+            <Fact label="Configured provider" value={selectedProvider} />
+            <Fact label="Active delivery provider" value={title(result.activeDeliveryProvider)} />
+            <Fact label="Recipient boundary" value={title(result.recipientBoundary)} />
             <Fact label="Sender mailbox" value={result.senderMailbox} />
-            <Fact label="Runtime readiness" value={result.runtimeReady ? 'Ready' : 'Attention required'} tone={result.runtimeReady ? 'ready' : 'attention'} />
-            <Fact label="Delivery mode" value={result.deliveryMode} />
+            <Fact label="Configured transport" value={result.configuredTransportReady ? 'Ready' : 'Attention required'} tone={result.configuredTransportReady ? 'ready' : 'attention'} />
+            <Fact label="Live delivery" value={result.liveDeliveryEnabled ? 'Eligible' : 'Disabled'} />
+            <Fact label="Delivery mode" value={title(result.deliveryMode)} />
             <Fact label="Live message sent" value={result.liveMessageSent ? 'Yes' : 'No'} />
             <Fact label="Secret returned" value={result.secretValuesReturned ? 'Yes' : 'No'} />
           </div>
@@ -149,8 +183,8 @@ export default function MicrosoftMailTransportReadinessPanel() {
           <div className="microsoft-mail-readiness-details">
             <article>
               <p className="eyebrow">Microsoft Graph</p>
-              <h3>{result.graph?.status || 'Not selected'}</h3>
-              <p>{result.graph?.message || 'Microsoft Graph was not the selected transport.'}</p>
+              <h3>{title(result.graph?.status || 'Not selected')}</h3>
+              <p>{result.graph?.message || 'Microsoft Graph was not the configured transport for this environment.'}</p>
               <ul>
                 <li>Application authentication: {result.graph?.authenticationReady ? 'Ready' : 'Not ready'}</li>
                 <li>Mail.Send application role: {result.graph?.mailSendRoleDeclared ? 'Present' : 'Not confirmed'}</li>
@@ -160,8 +194,8 @@ export default function MicrosoftMailTransportReadinessPanel() {
             </article>
             <article>
               <p className="eyebrow">Microsoft 365 SMTP</p>
-              <h3>{result.smtp?.status || 'Not selected'}</h3>
-              <p>{result.smtp?.message || 'Microsoft 365 SMTP was not the selected transport.'}</p>
+              <h3>{title(result.smtp?.status || 'Not selected')}</h3>
+              <p>{result.smtp?.message || 'Microsoft 365 SMTP was not the configured transport for this environment.'}</p>
               <ul>
                 <li>Approved host: {result.smtp?.hostAccepted ? 'Yes' : 'No'}</li>
                 <li>Network reachable: {result.smtp?.networkReachable ? 'Yes' : 'No'}</li>
@@ -173,7 +207,7 @@ export default function MicrosoftMailTransportReadinessPanel() {
         </>
       ) : (
         <div className="microsoft-mail-readiness-empty">
-          Run the test after saving Module 065. The check reads only the active runtime configuration.
+          Select Test or Production, save that environment’s sender and transport configuration, then run the non-delivery readiness test.
         </div>
       )}
     </section>
