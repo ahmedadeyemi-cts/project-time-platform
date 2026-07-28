@@ -75,6 +75,9 @@ jobs:
           dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release > /tmp/dynamic-rbac-api-build.log 2>&1
           status=$?
           if (( status != 0 )); then
+            FIRST_ERROR="$(grep -m1 -E 'error CS[0-9]+' /tmp/dynamic-rbac-api-build.log | sed -E 's#^.*DynamicRbacAdministrationModule.cs\(([0-9]+,[0-9]+)\): error (CS[0-9]+): (.*) \[.*#\1 \2 \3#' | tr '\n' ' ' | cut -c1-118)"
+            [[ -n "$FIRST_ERROR" ]] || FIRST_ERROR='API compiler error; inspect dynamic-rbac-api-build artifact.'
+            printf 'DYNAMIC_RBAC_FIRST_BUILD_ERROR=%s\n' "$FIRST_ERROR" >> "$GITHUB_ENV"
             echo 'DYNAMIC_RBAC_API_BUILD_ERRORS_BEGIN'
             grep -E 'error CS|Build FAILED|DynamicRbacAdministrationModule' /tmp/dynamic-rbac-api-build.log || tail -160 /tmp/dynamic-rbac-api-build.log
             echo 'DYNAMIC_RBAC_API_BUILD_ERRORS_END'
@@ -82,6 +85,14 @@ jobs:
             tail -20 /tmp/dynamic-rbac-api-build.log
           fi
           exit "$status"
+
+      - name: Upload API compiler diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dynamic-rbac-api-build-${{ github.run_id }}
+          path: /tmp/dynamic-rbac-api-build.log
+          retention-days: 7
 
       - name: Reproduce framework failure and verify explicit result execution
         run: >-
@@ -136,8 +147,9 @@ jobs:
             DESCRIPTION='Zero-byte 200 regression and explicit RBAC result execution passed.'
           else
             STATE=failure
-            DESCRIPTION='Role-policy result-execution validation failed.'
+            DESCRIPTION="${DYNAMIC_RBAC_FIRST_BUILD_ERROR:-Role-policy result-execution validation failed.}"
           fi
+          DESCRIPTION="$(printf '%s' "$DESCRIPTION" | cut -c1-140)"
 
           PAYLOAD="$(jq -nc \
             --arg state "$STATE" \
