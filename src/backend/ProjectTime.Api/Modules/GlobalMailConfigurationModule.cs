@@ -20,6 +20,9 @@ public static class GlobalMailConfigurationModule
         // Derive Test versus Production from the trusted public host before the
         // existing Microsoft runtime modules inspect ASPNETCORE_ENVIRONMENT.
         app.UseMicrosoftEnvironmentRuntimeCompatibility();
+        // Hydrate the selected environment's SSO metadata and write-only secret
+        // before the legacy interactive /api/auth/sso/start handler executes.
+        app.UseMicrosoftSsoInteractiveStartActivation();
         app.UseMicrosoftIntegrationSecurityCompatibility();
         app.UseMicrosoftPublicSsoOriginCompatibility();
         // Preserve the legacy role-policy route families while Modules 012 and 037
