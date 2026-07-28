@@ -37,7 +37,7 @@ Modules 998/997 HTTP 401 barriers, and both protected web bundles.
 | 008 | Audit / Security History | `audit-history` | Installed | Audit authority for future FlowHive history |
 | 009 | User Administration | `user-admin` | Installed | Identity and role dependency |
 | 010 | Azure / Entra Admin | `azure-admin` | Installed | Azure/Entra changes always require separate authorization |
-| 011 | Work Task Builder | `work-task-builder` | Installed | Tracker proposes a future scope decision; current task behavior remains protected |
+| 011 | Pulse AI | `work-task-builder` compatibility route | Source foundation on isolated branch; not merged or runtime-active | Reuses the retired Work Task Builder number for AI lifecycle governance. The retired Work Task Builder remains recoverable from `main@ad9fa2c76f6aba8df9bbdd4ab6970dcb0748fbb2`; Modules 055D and 055C retain project and task ownership. No migration, training, provider mutation, Azure change, or deployment. |
 | 012 | Role Administration | `role-admin` | Installed | Role enforcement dependency |
 | 013 | Service Control Center | `service-control` | Installed | Administrative module |
 | 014 | Backup / DR Center | `backup-dr` | Installed | Administrative module |
@@ -82,6 +82,7 @@ Modules 998/997 HTTP 401 barriers, and both protected web bundles.
 
 | Module | Title | Status | Owner/workspace | Dependencies | Number decision |
 |---|---|---|---|---|---|
+| 011 | Pulse AI | Read-only and browser-session-only source foundation | `feature/module-011-pulse-ai-foundation-20260728` from `main@ad9fa2c76f6aba8df9bbdd4ab6970dcb0748fbb2` | Modules 012, 037, 059, and 064; Modules 055D/055C preserve legacy work ownership | User explicitly approved reuse on 2026-07-28 after non-destructive retirement. Route, API, database, audit, history, documentation, and dependency impacts are recorded. Persistence, training, provider mutation, Azure, and deployment remain locked. |
 | 061 | Undefined | Scope required | No verified implementation checkpoint | None confirmed | Reserved until explicit scope approval |
 | 064 | AI Provider Configuration Center | Shared runtime plus write-only administrator key entry | Module 064 secure provider-key update | Provider governance, encrypted secrets, sanitized audit | Key readback, deletion, and rollback remain unavailable |
 | 065 | Entra Secret Administration | Installed fail-closed source through merged PR 24 | Consolidated 064–074 release train | Module 010, Module 062, secure secret controls | No external adapter, secret-store write, durable approval/audit, Azure, or Entra mutation |
@@ -103,14 +104,19 @@ Historical PR 24 catalog marker retained for the protected Module 068 validator
 
 `HISTORICAL_PR24_ROW=| 067 | Global Mail Configuration Center | Release-train candidate`
 
+## Resolved numbering and reuse decisions
+
+| Candidate | Historical conflict | Approved disposition |
+|---|---|---|
+| Module 011 reuse | Work Task Builder formerly owned `work-task-builder` | The retired Work Task Builder remains recoverable from the exact pre-reuse commit and its business behavior remains with Modules 055D and 055C. Module 011 is reused as Pulse AI through the compatibility route; no migration or legacy work-data mutation is included. |
+| Global SMTP historical numbering | Tracker proposed Module 063, but 063 is installed Opportunities | Resolved as Module 067; preserve installed Module 063 |
+
 ## Unresolved numbering and reuse decisions
 
 | Candidate | Conflict | Required decision |
 |---|---|---|
-| Global SMTP historical numbering | Tracker proposed Module 063, but 063 is installed Opportunities | Resolved as Module 067; preserve installed Module 063 |
 | Module 005 reuse | Current Project Allocation route remains installed; tracker says retire/reserve | Preserve route and history until a formal retirement plan is approved |
 | Module 006 reuse | Current PSA Modules route remains installed | Complete route/API/data dependency audit before reuse |
-| Module 011 reuse | Current Work Task Builder route remains installed | Do not replace task behavior with qualifications scope without migration approval |
 | Module 020 future scope | Tracker names both Integration Status and Work Intake while current source is Project Intake | Reconcile requirements before any rename or replacement |
 
 ## Module 066 phase catalog
@@ -128,6 +134,7 @@ Historical PR 24 catalog marker retained for the protected Module 068 validator
 
 | Module | Source status | Runtime-active in portal | Required next step |
 |---|---|---|---|
+| 011 | Isolated Pulse AI source foundation; branch `feature/module-011-pulse-ai-foundation-20260728` | No; source is not merged or deployed | Complete source validation and PR review. Persistence, external training, private endpoint registration, Module 064 mutation, and deployment require separate authorization. |
 | 062 | Merged to `main` | No verified post-merge deployment | Controlled test deployment and profile/presence portal smoke test |
 | 066A | Merged foundation | No; foundation alone did not register the route | Preserve the merged read-only foundation |
 | 066A.1–066E | Validated in source commit `6e7509cfe9b5704ff291525eb587040f31944ee8`; open draft PR 24 | No; source is not merged or deployed | Review PR 24 checks and findings; merge and deployment require separate authorization |
@@ -142,6 +149,8 @@ Historical PR 24 catalog marker retained for the protected Module 068 validator
 - Module 056E contract-management behavior remains present.
 - Module 062 remains the shared identity and normalized presence authority.
 - Current Module 001 and Module 002 workflows are not replaced by new-module work.
+- Modules 055D and 055C remain the project creation and project/task-management authorities formerly associated with Work Task Builder.
+- Module 064 remains the provider, encrypted-secret, health, usage, routing, and fallback authority for Pulse AI.
 - A new route must remain inside the existing authenticated application shell.
 
 ## Module 997 — Security Operations, Threat Intelligence & Response Center
