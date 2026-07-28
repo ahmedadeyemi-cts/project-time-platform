@@ -102,16 +102,42 @@ jobs:
         working-directory: src/frontend/project-time-web
         run: npm ci --no-audit --no-fund
 
-      - name: Run focused source validators
+      - name: Run focused source validators with diagnostics
+        id: focused_validators
         working-directory: src/frontend/project-time-web
+        shell: bash
         run: |
-          node scripts/validate-module-001-timesheet-timer-mobile.mjs
-          node scripts/validate-module-001-ptc-time-steward.mjs
-          node scripts/validate-module-001-ptc-timer-dom-ownership.mjs
-          node scripts/validate-role-permission-timesheet-stabilization.mjs
-          node scripts/validate-runtime-role-policy-ptc-data.mjs
-          node scripts/validate-admin-runtime-stability.mjs
-          node scripts/validate-group-1-navigation-work-consolidation.mjs
+          set +e
+          mkdir -p module001-validator-logs
+          validators=(
+            validate-module-001-timesheet-timer-mobile.mjs
+            validate-module-001-ptc-time-steward.mjs
+            validate-module-001-ptc-timer-dom-ownership.mjs
+            validate-role-permission-timesheet-stabilization.mjs
+            validate-runtime-role-policy-ptc-data.mjs
+            validate-admin-runtime-stability.mjs
+            validate-group-1-navigation-work-consolidation.mjs
+          )
+          aggregate=0
+          : > module001-validator-logs/summary.txt
+          for validator in "${validators[@]}"; do
+            log="module001-validator-logs/${validator%.mjs}.log"
+            node "scripts/$validator" > "$log" 2>&1
+            status=$?
+            printf '%s=%s\n' "$validator" "$status" | tee -a module001-validator-logs/summary.txt
+            cat "$log"
+            if (( status != 0 )); then aggregate=1; fi
+          done
+          exit "$aggregate"
+
+      - name: Upload focused validator diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: module001-validator-logs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: src/frontend/project-time-web/module001-validator-logs/
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Build complete frontend production bundle
         id: frontend_build
