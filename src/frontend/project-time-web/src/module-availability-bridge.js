@@ -14,6 +14,7 @@ const PERMISSION_MARKER = '__projectPulsePermissionNavigationGuardInstalled';
 const HIDDEN_ATTRIBUTE = 'data-projectpulse-permission-hidden';
 const MORE_SEARCH_HIDDEN_ATTRIBUTE = 'data-projectpulse-more-search-hidden';
 const RETIRED_ROUTE_NOTICE_KEY = 'projectPulseRetiredWorkTaskBuilderNotice';
+const BODY_NOTICE_ID = 'projectpulse-module-011-retirement-notice';
 const RETIRED_MODULE_NUMBERS = new Set(
   RETIRED_PROJECTPULSE_MODULES.map((module) => module.moduleNumber.toUpperCase())
 );
@@ -89,8 +90,7 @@ function installPermissionNavigationGuard(nativeFetch) {
     const href = element.getAttribute?.('href');
     if (!href) return '';
     try {
-      const url = new URL(href, window.location.href);
-      return rawModuleRoute(url.hash);
+      return rawModuleRoute(new URL(href, window.location.href).hash);
     } catch {
       return rawModuleRoute(href);
     }
@@ -110,6 +110,11 @@ function installPermissionNavigationGuard(nativeFetch) {
     if (descriptor.retired) return true;
     const moduleNumber = descriptor.module?.moduleNumber?.toUpperCase();
     return Boolean(moduleNumber && deniedModuleNumbers.has(moduleNumber));
+  }
+
+  function setAttributeIfChanged(element, name, value) {
+    const next = String(value);
+    if (element.getAttribute(name) !== next) element.setAttribute(name, next);
   }
 
   function restorePermissionVisibility(element) {
@@ -135,197 +140,116 @@ function installPermissionNavigationGuard(nativeFetch) {
     });
   }
 
-  function visibleMoreLink(link) {
-    return link.getAttribute(HIDDEN_ATTRIBUTE) !== 'true'
-      && link.getAttribute('data-module-availability-hidden') !== 'true'
-      && link.getAttribute(MORE_SEARCH_HIDDEN_ATTRIBUTE) !== 'true'
-      && !link.hidden;
-  }
-
-  function ensureMoreTools(dropdown) {
-    let tools = dropdown.querySelector(':scope > .projectpulse-more-menu-tools');
-    if (tools) return tools;
-
-    tools = document.createElement('div');
-    tools.className = 'projectpulse-more-menu-tools';
-    tools.innerHTML = `
-      <label for="projectpulse-more-menu-search">Find an available page</label>
-      <div class="projectpulse-more-menu-search-row">
-        <span aria-hidden="true">⌕</span>
-        <input id="projectpulse-more-menu-search" type="search" autocomplete="off" placeholder="Search module number or page name" />
-        <button type="button" aria-label="Clear More menu search">Clear</button>
-      </div>
-      <p class="projectpulse-more-menu-status" role="status" aria-live="polite"></p>
-    `;
-    const input = tools.querySelector('input');
-    const clear = tools.querySelector('button');
-    input.value = moreSearchValue;
-    input.addEventListener('input', () => {
-      moreSearchValue = input.value;
-      scheduleApply();
-    });
-    clear.addEventListener('click', () => {
-      moreSearchValue = '';
-      input.value = '';
-      input.focus();
-      scheduleApply();
-    });
-    dropdown.prepend(tools);
-    return tools;
-  }
-
-  function decorateMoreLink(link, groupName) {
-    const descriptor = descriptorOf(link);
-    const module = descriptor.module;
-    if (!module || descriptor.retired) return descriptor;
-
-    link.dataset.moduleNumber = module.moduleNumber;
-    link.dataset.route = module.route;
-    link.setAttribute('role', 'menuitem');
-    const title = module.displayName || link.textContent?.trim() || module.route;
-    const expectedKey = `${module.moduleNumber}|${title}|${module.group || groupName}`;
-    if (link.dataset.projectpulseMoreDecoration !== expectedKey) {
-      const number = document.createElement('span');
-      number.className = 'projectpulse-more-module-number';
-      number.textContent = `MODULE ${module.moduleNumber}`;
-
-      const copy = document.createElement('span');
-      copy.className = 'projectpulse-more-link-copy';
-      const strong = document.createElement('strong');
-      strong.textContent = title;
-      const small = document.createElement('small');
-      small.textContent = module.description || module.group || groupName;
-      copy.append(strong, small);
-
-      link.replaceChildren(number, copy);
-      link.dataset.projectpulseMoreDecoration = expectedKey;
-      link.setAttribute('aria-label', `Module ${module.moduleNumber}, ${title}`);
-      link.title = module.description || `${module.group || groupName} · Module ${module.moduleNumber}`;
-    }
-    return descriptor;
-  }
-
   function enhanceMoreMenu() {
     const button = document.querySelector('.enterprise-more-button');
     if (button) {
-      button.setAttribute('aria-label', 'Open pages available to the current effective user');
-      button.title = 'Pages available to your current role or View-As identity';
+      setAttributeIfChanged(button, 'aria-label', 'Open pages available to the current effective user');
+      if (button.title !== 'Pages available to your current role or View-As identity') {
+        button.title = 'Pages available to your current role or View-As identity';
+      }
     }
 
     const dropdown = document.querySelector('#enterprise-more-navigation-menu.enterprise-more-dropdown');
     if (!dropdown) return;
-    dropdown.setAttribute('role', 'menu');
-    dropdown.dataset.permissionEvidence = permissionEvidenceState;
-    dropdown.setAttribute('aria-busy', permissionEvidenceState === 'loading' ? 'true' : 'false');
+    dropdown.classList.add('projectpulse-more-intuitive');
+    setAttributeIfChanged(dropdown, 'role', 'menu');
+    setAttributeIfChanged(dropdown, 'data-permission-evidence', permissionEvidenceState);
+    setAttributeIfChanged(dropdown, 'aria-busy', permissionEvidenceState === 'loading' ? 'true' : 'false');
 
-    const tools = ensureMoreTools(dropdown);
-    const status = tools.querySelector('.projectpulse-more-menu-status');
     const search = moreSearchValue.trim().toLowerCase();
     let visibleCount = 0;
-
     dropdown.querySelectorAll(':scope > .enterprise-more-group').forEach((group) => {
       const heading = group.querySelector(':scope > strong');
       const groupName = heading?.textContent?.trim() || 'Pages';
-      if (heading) heading.setAttribute('aria-label', `${groupName} pages`);
+      if (heading) setAttributeIfChanged(heading, 'aria-label', `${groupName} pages`);
       let groupVisibleCount = 0;
 
       group.querySelectorAll('.enterprise-more-links > a[href]').forEach((link) => {
-        const descriptor = decorateMoreLink(link, groupName);
+        const descriptor = descriptorOf(link);
         const module = descriptor.module;
+        if (module && !descriptor.retired) {
+          link.dataset.moduleNumber = module.moduleNumber;
+          link.dataset.route = module.route;
+          setAttributeIfChanged(link, 'role', 'menuitem');
+          setAttributeIfChanged(link, 'aria-label', `Open ${module.displayName || link.dataset.pageName || link.textContent?.trim() || module.route}`);
+          const title = module.description || module.displayName || module.route;
+          if (link.title !== title) link.title = title;
+        }
+
         const blocked = isBlocked(descriptor)
           || link.getAttribute(HIDDEN_ATTRIBUTE) === 'true'
           || link.getAttribute('data-module-availability-hidden') === 'true';
-        const searchable = `${module?.moduleNumber || ''} ${module?.displayName || ''} ${module?.group || ''} ${groupName}`.toLowerCase();
+        const searchable = `${link.dataset.pageName || ''} ${module?.displayName || ''} ${module?.group || ''} ${groupName}`.toLowerCase();
         const matches = !search || searchable.includes(search);
         const permissionReady = permissionEvidenceState === 'ready';
         const searchHidden = blocked || !matches || !permissionReady;
-        link.setAttribute(MORE_SEARCH_HIDDEN_ATTRIBUTE, searchHidden ? 'true' : 'false');
-        if (!searchHidden && visibleMoreLink(link)) {
+        setAttributeIfChanged(link, MORE_SEARCH_HIDDEN_ATTRIBUTE, searchHidden ? 'true' : 'false');
+        if (!searchHidden && !link.hidden) {
           groupVisibleCount += 1;
           visibleCount += 1;
         }
       });
 
-      group.dataset.projectpulseMoreGroupHidden = groupVisibleCount === 0 ? 'true' : 'false';
+      setAttributeIfChanged(
+        group,
+        'data-projectpulse-more-group-hidden',
+        groupVisibleCount === 0 ? 'true' : 'false'
+      );
     });
 
-    let empty = dropdown.querySelector(':scope > .projectpulse-more-menu-empty');
-    if (!empty) {
-      empty = document.createElement('div');
-      empty.className = 'projectpulse-more-menu-empty';
-      empty.setAttribute('role', 'status');
-      dropdown.append(empty);
-    }
-
-    if (permissionEvidenceState === 'loading') {
-      status.textContent = 'Checking the current user’s module permissions…';
-      empty.textContent = 'Available pages will appear after permission verification.';
-    } else if (permissionEvidenceState === 'unavailable') {
-      status.textContent = 'Permission evidence is temporarily unavailable.';
-      empty.textContent = 'The More menu is hidden until permissions can be verified. Refresh the page to try again.';
-    } else if (permissionEvidenceState === 'anonymous') {
-      status.textContent = 'Sign in to view available pages.';
-      empty.textContent = 'No authenticated navigation is available.';
-    } else {
-      const identity = effectiveActor.isViewAs ? 'View-As identity' : 'current user';
-      status.textContent = `${visibleCount} page${visibleCount === 1 ? '' : 's'} available to the ${identity}${search ? ' for this search' : ''}.`;
-      empty.textContent = search
-        ? 'No permitted pages match this search.'
-        : 'No additional permitted pages are available.';
-    }
-    empty.dataset.visible = visibleCount === 0 ? 'true' : 'false';
+    dropdown.dataset.visiblePageCount = String(visibleCount);
+    dropdown.dataset.searchActive = search ? 'true' : 'false';
   }
 
   function enhanceIntakeHandoff() {
     const section = document.querySelector('#intake-work-task-handoff');
     if (!section) return;
-    const heading = section.querySelector('.section-heading h2');
-    if (heading && heading.textContent !== 'Project Intake → Project Creation & Work Register Handoff') {
-      heading.textContent = 'Project Intake → Project Creation & Work Register Handoff';
-    }
-    const copy = section.querySelector('.section-heading .section-copy');
-    if (copy) {
-      copy.textContent = 'Module 020 owns pre-project intake, signed-date aging, project-link confirmation, and resource handoff. Create the resulting project in Module 055D, then maintain project tasks, assignments, and delivery details in Module 055C. Module 011 is retired.';
-    }
-    section.querySelectorAll('.handoff-lifecycle-grid article').forEach((card) => {
-      card.querySelectorAll('strong, p').forEach((element) => {
-        const next = String(element.textContent || '')
-          .replace(/Work Task Builder/gi, 'Create New Project / Manage Existing Projects')
-          .replace(/work task builder/gi, 'Modules 055D and 055C');
-        if (next !== element.textContent) element.textContent = next;
-      });
-    });
+    // The source component owns its children. Keep only a non-structural marker
+    // confirming the governed Module 020 → 055D/055C handoff.
+    setAttributeIfChanged(section, 'data-projectpulse-work-management-handoff', '020-to-055d-055c');
+  }
 
-    if (!section.querySelector('.projectpulse-work-management-handoff-actions')) {
-      const actions = document.createElement('div');
-      actions.className = 'projectpulse-work-management-handoff-actions';
-      actions.innerHTML = `
-        <a href="#create-work-register"><span>MODULE 055D</span><strong>Create New Project</strong><small>Create the project from GSD or SELL after intake is ready.</small></a>
-        <a href="#work-register"><span>MODULE 055C</span><strong>Manage Existing Projects</strong><small>Maintain project details, tasks, assignments, and audited changes.</small></a>
-      `;
-      const headingContainer = section.querySelector('.section-heading');
-      headingContainer?.insertAdjacentElement('afterend', actions);
-    }
+  function removeBodyOwnedRetirementNotice() {
+    const notice = document.getElementById(BODY_NOTICE_ID);
+    if (notice?.parentElement === document.body) notice.remove();
   }
 
   function showRetirementNotice() {
-    if (rawModuleRoute(window.location.hash) !== 'work-register') return;
-    if (window.sessionStorage.getItem(RETIRED_ROUTE_NOTICE_KEY) !== 'true') return;
-    const main = document.querySelector('main.app-shell, main');
-    if (!main || document.getElementById('projectpulse-module-011-retirement-notice')) return;
+    if (rawModuleRoute(window.location.hash) !== 'work-register'
+        || window.sessionStorage.getItem(RETIRED_ROUTE_NOTICE_KEY) !== 'true') {
+      removeBodyOwnedRetirementNotice();
+      return;
+    }
+    if (document.getElementById(BODY_NOTICE_ID)) return;
 
-    const notice = document.createElement('div');
-    notice.id = 'projectpulse-module-011-retirement-notice';
-    notice.className = 'projectpulse-work-management-retirement-notice';
-    notice.innerHTML = `
-      <div><strong>Module 011 Work Task Builder is retired.</strong><span>You were moved to Module 055C for existing project management. Use Module 055D when creating a new project.</span></div>
-      <div><a href="#create-work-register">Create New Project</a><button type="button">Dismiss</button></div>
-    `;
-    notice.querySelector('button')?.addEventListener('click', () => {
+    // This notice is deliberately a direct child of body, outside #root. React
+    // never owns this subtree, so its lifecycle cannot cause removeChild errors.
+    const notice = document.createElement('aside');
+    notice.id = BODY_NOTICE_ID;
+    notice.className = 'projectpulse-work-management-retirement-notice projectpulse-body-owned-notice';
+    notice.dataset.projectpulseBodyOwned = 'true';
+
+    const copy = document.createElement('div');
+    const title = document.createElement('strong');
+    title.textContent = 'Module 011 Work Task Builder is retired.';
+    const description = document.createElement('span');
+    description.textContent = 'You were moved to Module 055C for existing project management. Use Module 055D when creating a new project.';
+    copy.append(title, description);
+
+    const actions = document.createElement('div');
+    const createLink = document.createElement('a');
+    createLink.href = '#create-work-register';
+    createLink.textContent = 'Create New Project';
+    const dismiss = document.createElement('button');
+    dismiss.type = 'button';
+    dismiss.textContent = 'Dismiss';
+    dismiss.addEventListener('click', () => {
       window.sessionStorage.removeItem(RETIRED_ROUTE_NOTICE_KEY);
-      notice.remove();
+      removeBodyOwnedRetirementNotice();
     });
-    main.prepend(notice);
+    actions.append(createLink, dismiss);
+    notice.append(copy, actions);
+    document.body.append(notice);
   }
 
   function enforceRouteBoundary() {
@@ -354,6 +278,7 @@ function installPermissionNavigationGuard(nativeFetch) {
       deniedModuleNumbers: [...deniedModuleNumbers],
       retiredModuleNumbers: [...RETIRED_MODULE_NUMBERS],
       evidenceContract: 'projectpulse-rbac-v1',
+      reactDomOwnership: 'attributes-only-v1',
       secretValuesReturned: false
     };
     window.__projectPulseEffectiveNavigation = detail;
@@ -373,6 +298,24 @@ function installPermissionNavigationGuard(nativeFetch) {
     applyTimer = window.setTimeout(applyVisibility, 25);
   }
 
+  window.ProjectPulseMoreNavigation = {
+    filter(value = '') {
+      moreSearchValue = String(value || '');
+      scheduleApply();
+    },
+    clear() {
+      moreSearchValue = '';
+      scheduleApply();
+    },
+    get state() {
+      return {
+        permissionEvidenceState,
+        search: moreSearchValue,
+        isViewAs: effectiveActor.isViewAs
+      };
+    }
+  };
+
   async function refreshPermissions() {
     const token = sessionToken();
     if (!token) {
@@ -387,7 +330,12 @@ function installPermissionNavigationGuard(nativeFetch) {
     permissionEvidenceState = 'loading';
     applyVisibility();
     try {
-      const request = { method: 'GET', cache: 'no-store', credentials: 'include', headers: permissionHeaders() };
+      const request = {
+        method: 'GET',
+        cache: 'no-store',
+        credentials: 'include',
+        headers: permissionHeaders()
+      };
       const [bootstrapResponse, matrixResponse] = await Promise.all([
         nativeFetch('/api/rbac/v1/bootstrap', request),
         nativeFetch('/api/rbac/v1/matrix', request)
@@ -396,12 +344,15 @@ function installPermissionNavigationGuard(nativeFetch) {
         throw new Error('Dynamic RBAC navigation evidence could not be loaded.');
       }
 
-      const [bootstrap, matrix] = await Promise.all([bootstrapResponse.json(), matrixResponse.json()]);
+      const [bootstrap, matrix] = await Promise.all([
+        bootstrapResponse.json(),
+        matrixResponse.json()
+      ]);
       if (!Array.isArray(bootstrap?.roles)
-        || !Array.isArray(bootstrap?.modules)
-        || !Array.isArray(matrix?.roles)
-        || !Array.isArray(matrix?.modules)
-        || !Array.isArray(matrix?.grants)) {
+          || !Array.isArray(bootstrap?.modules)
+          || !Array.isArray(matrix?.roles)
+          || !Array.isArray(matrix?.modules)
+          || !Array.isArray(matrix?.grants)) {
         throw new Error('Dynamic RBAC navigation evidence was incomplete.');
       }
 
@@ -414,9 +365,6 @@ function installPermissionNavigationGuard(nativeFetch) {
         .filter(Boolean));
       const denied = new Set(RETIRED_MODULE_NUMBERS);
 
-      // Dynamic module retirement is a catalog decision. A page that is not in
-      // the active RBAC catalog stays hidden for every identity, including an
-      // administrator, until it is explicitly restored through Module 012.
       for (const module of PROJECTPULSE_MODULES) {
         const number = String(module.moduleNumber || '').trim().toUpperCase();
         if (number && !activeModuleNumbers.has(number)) denied.add(number);
@@ -448,19 +396,31 @@ function installPermissionNavigationGuard(nativeFetch) {
   const boot = () => {
     applyVisibility();
     void refreshPermissions();
-    observer = new MutationObserver(scheduleApply);
-    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden', 'class', 'href'] });
+    observer = new MutationObserver((mutations) => {
+      if (mutations.some((mutation) => mutation.addedNodes.length || mutation.removedNodes.length)) {
+        scheduleApply();
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    document.addEventListener('click', (event) => {
+      if (event.target.closest?.('.enterprise-more-button')) scheduleApply();
+    }, true);
   };
 
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true });
-  else boot();
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot, { once: true });
+  } else {
+    boot();
+  }
 
   window.addEventListener('hashchange', () => {
     applyVisibility();
     void refreshPermissions();
   });
   window.addEventListener('storage', (event) => {
-    if (event.key === 'projectPulseAuthSession' || event.key === 'projectPulseViewAsUser') void refreshPermissions();
+    if (event.key === 'projectPulseAuthSession' || event.key === 'projectPulseViewAsUser') {
+      void refreshPermissions();
+    }
   });
   window.addEventListener('projectpulse:auth-session-ready', refreshPermissions);
   window.addEventListener('projectpulse:view-as-changed', refreshPermissions);
@@ -481,7 +441,9 @@ if (typeof window !== 'undefined' && !window[INSTALL_MARKER]) {
     const module = moduleForRoute(currentProjectPulseRoute());
     if (!module) return nativeFetch(input, init);
 
-    const headers = new Headers(init?.headers || (input instanceof Request ? input.headers : undefined));
+    const headers = new Headers(
+      init?.headers || (input instanceof Request ? input.headers : undefined)
+    );
     if (!headers.has('X-ProjectPulse-Module-Number')) {
       headers.set('X-ProjectPulse-Module-Number', module.moduleNumber);
     }

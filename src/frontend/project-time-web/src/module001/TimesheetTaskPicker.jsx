@@ -1,7 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 const TIMER_TARGET_PATTERN = /^(?:(?:assignment|category):[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}|category-code:[A-Z0-9][A-Z0-9_-]{0,99})$/i;
-const GROUP_ORDER = ['Non-Project Time', 'Regular Tasks', 'Service Request Tasks'];
+const GROUP_ORDER = ['Requests / Service Requests', 'Project Tasks', 'Non-Project Time'];
+
+function canonicalGroupLabel(value, assignment) {
+  const label = String(value || '').trim();
+  if (label === 'Service Request Tasks') return 'Requests / Service Requests';
+  if (label === 'Regular Tasks') return 'Project Tasks';
+  if (GROUP_ORDER.includes(label)) return label;
+  return assignment ? 'Project Tasks' : 'Non-Project Time';
+}
 
 function toTimerOption(target) {
   const categoryCode = target.categoryCode || target.targetCode || target.nonProjectCategoryCode || '';
@@ -19,8 +27,8 @@ function toTimerOption(target) {
     || target.categoryName
     || 'Authorized activity';
 
-  const groupLabel = target.groupLabel
-    || (optionValue.startsWith('assignment:') ? 'Regular Tasks' : 'Non-Project Time');
+  const assignment = optionValue.startsWith('assignment:');
+  const groupLabel = canonicalGroupLabel(target.groupLabel, assignment);
 
   return {
     optionValue,
@@ -222,7 +230,7 @@ export default function TimesheetTaskPicker({
 
       <small>
         {!hasOptions
-          ? 'No active assigned tasks or non-project activities are currently available.'
+          ? 'No active project tasks, requests, or non-project activities are currently available.'
           : selectedOption
             ? `Selected from ${selectedOption.groupLabel}. Start the timer when ready.`
             : `${filteredOptions.length} matching choice${filteredOptions.length === 1 ? '' : 's'} available. Type to open the matching list, then select a result.`}

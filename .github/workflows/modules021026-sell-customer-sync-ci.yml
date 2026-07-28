@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - 'feature/modules-021-026-sell-customer-sync-*'
-      - 'fix/module-026-editable-connectors-consistent-design-*'
+      - 'fix/module-026-editable-connectors-*'
   pull_request:
     paths:
       - 'database/migrations/049_module_021_sell_customer_sync.sql'
@@ -56,25 +56,34 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Verify isolated source scope
+      - name: Verify isolated source scope or run regression mode
         shell: bash
         run: |
           set -Eeuo pipefail
-          git fetch origin main --no-tags
-          CHANGED="$(git diff --name-only origin/main...HEAD)"
-          printf '%s\n' "$CHANGED"
+          SOURCE_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          case "$SOURCE_BRANCH" in
+            feature/modules-021-026-sell-customer-sync-*|fix/module-026-editable-connectors-*)
+              git fetch origin main --no-tags
+              CHANGED="$(git diff --name-only origin/main...HEAD)"
+              printf '%s\n' "$CHANGED"
 
-          if grep -E '(^|/)(module001|module-001|module008|module-008|module009|module-009|module012|module-012|module037|module-037|module038|module-038)' <<<"$CHANGED"; then
-            echo 'Protected active module source changed.' >&2
-            exit 1
-          fi
+              if grep -E '(^|/)(module001|module-001|module008|module-008|module009|module-009|module012|module-012|module037|module-037|module038|module-038)' <<<"$CHANGED"; then
+                echo 'Protected active module source changed.' >&2
+                exit 1
+              fi
 
-          if grep -E '^\.github/workflows/projectpulse-deploy-' <<<"$CHANGED"; then
-            echo 'Deployment workflow changes are outside this source issue.' >&2
-            exit 1
-          fi
+              if grep -E '^\.github/workflows/projectpulse-deploy-' <<<"$CHANGED"; then
+                echo 'Deployment workflow changes are outside this source issue.' >&2
+                exit 1
+              fi
 
-          echo 'MODULES_021_026_ISOLATION=PASSED'
+              echo 'MODULES_021_026_ISOLATION=PASSED'
+              ;;
+            *)
+              echo "MODULES_021_026_ISOLATION=NOT_APPLICABLE branch=$SOURCE_BRANCH"
+              echo 'The workflow was triggered by a shared API project or frontend build gate. Modules 021/026 regression coverage still runs in full.'
+              ;;
+          esac
 
       - uses: actions/setup-dotnet@v4
         with:

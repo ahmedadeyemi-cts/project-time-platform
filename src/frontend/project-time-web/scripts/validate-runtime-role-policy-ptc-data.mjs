@@ -17,20 +17,39 @@ const rejectAll = (source, values, label) => {
   }
 };
 
-const [jsonResponse, authoritative, bridge, roleModel, matrixModel, portal, catalog, gate, recovery, css, main, backend, ptcBackend, project] = await Promise.all([
+const [
+  jsonResponse,
+  authoritative,
+  bridge,
+  roleModel,
+  matrixModel,
+  portal,
+  gate,
+  timerPortal,
+  timerView,
+  picker,
+  main,
+  runtimeBackend,
+  ptcBackend,
+  ptcBackendV2,
+  resultExecution,
+  project
+] = await Promise.all([
   text('src/frontend/project-time-web/src/api-json-response.js'),
   text('src/frontend/project-time-web/src/projectpulse-authoritative-api.js'),
   text('src/frontend/project-time-web/src/runtime-data-compatibility.js'),
   text('src/frontend/project-time-web/src/role-permission-model.js'),
   text('src/frontend/project-time-web/src/role-permission-matrix-model.js'),
   text('src/frontend/project-time-web/src/module001/PtcTimesheetManagementPortal.jsx'),
-  text('src/frontend/project-time-web/src/module001/PtcRuntimeTaskCatalog.jsx'),
   text('src/frontend/project-time-web/src/module001/PtcTimeStewardGate.jsx'),
-  text('src/frontend/project-time-web/src/module001/Module001ActiveTimerRecoveryPortal.jsx'),
-  text('src/frontend/project-time-web/src/module001/ptc-runtime-task-catalog.css'),
+  text('src/frontend/project-time-web/src/module001/TimesheetEnhancementPortal.jsx'),
+  text('src/frontend/project-time-web/src/module001/TimesheetTimerView.jsx'),
+  text('src/frontend/project-time-web/src/module001/TimesheetTaskPicker.jsx'),
   text('src/frontend/project-time-web/src/main.jsx'),
   optionalText('src/backend/ProjectTime.Api/Modules/RuntimeDataCompatibilityModule.cs'),
   optionalText('src/backend/ProjectTime.Api/Modules/Module001PtcTimesheetManagement.cs'),
+  optionalText('src/backend/ProjectTime.Api/Modules/Module001TimeStewardV2Module.cs'),
+  optionalText('src/backend/ProjectTime.Api/Modules/Module001ResultExecutionCompatibility.cs'),
   optionalText('src/backend/ProjectTime.Api/ProjectTime.Api.csproj')
 ]);
 
@@ -55,34 +74,30 @@ requireAll(authoritative, [
   'requiredCollections',
   'collectionCounts',
   'projectpulse:authoritative-api-diagnostic',
-  '__projectPulseAuthoritativeApiDiagnostics'
-], 'Wrapper-independent authoritative XHR client retained for PTC and protected actions');
+  '__projectPulseAuthoritativeApiDiagnostics',
+  'nativeFetchAuthoritative',
+  'xhr-success-missing-collections'
+], 'Wrapper-independent authoritative API client');
 rejectAll(authoritative, ['window.fetch(', 'fetch(path'], 'Wrapper-independent authoritative XHR client');
 
+// Legacy read compatibility remains fail-closed for older panels. Modules 012
+// and 037 themselves now use /api/rbac/v1; this bridge must never synthesize
+// missing arrays or turn an incomplete success into an empty valid contract.
 requireAll(bridge, [
   "import { authoritativeApi } from './projectpulse-authoritative-api.js';",
   "DIRECT_ROLE_POLICY_MARKER = 'projectpulse-role-policy-direct-fetch-v3'",
-  "'/api/role-policy/summary': '/api/runtime/v2/role-policy/summary'",
-  "'/api/runtime/v2/role-policy/summary': '/api/role-policy/summary'",
+  '/api/runtime/v2/role-policy/summary',
   '/api/runtime/v2/role-policy/catalog',
   '/api/runtime/v2/role-policy/versions',
   '/api/runtime/v2/role-policy/matrix',
-  '/api/timesheet/ptc/users',
-  '/entries',
   'expectedCollections',
-  'normalizePtcWorkspace',
-  'allActiveUsersAllowed: true',
   'directRolePolicyResponse',
-  'fetchRolePolicyCandidate',
   'hasCollections(normalized, collections)',
   "status: 'role_policy_contract_mismatch'",
-  'projectpulse:ptc-runtime-users',
-  'projectpulse:ptc-runtime-workspace',
   "requestMethod(input, init) !== 'GET'",
   'responseKeys: error?.diagnostic?.responseKeys'
-], 'Direct validated role-policy transport with preserved authoritative PTC bridge');
+], 'Fail-closed legacy role-policy compatibility');
 rejectAll(bridge, [
-  'window.__projectPulseOriginalFetch',
   'requiredCollections.map((name) => [name, []])',
   'normalized[name] = []'
 ], 'Runtime data bridge safety');
@@ -90,45 +105,34 @@ rejectAll(bridge, [
 requireAll(roleModel, [
   "'/api/role-policy/summary': '/api/runtime/role-policy/summary'",
   "'/api/role-policy/catalog': '/api/runtime/role-policy/catalog'",
-  "'/api/role-policy/versions': '/api/runtime/role-policy/versions'",
-  "'/api/role-policy/matrix': '/api/runtime/role-policy/matrix'",
-  "'/api/runtime/role-policy/roles/'",
-  'const requestPath = readPath(path, method)'
-], 'Module 012 compatibility caller');
-
+  "'/api/role-policy/versions': '/api/runtime/role-policy/versions'"
+], 'Legacy Module 012 compatibility caller');
 requireAll(matrixModel, [
   "'/api/role-policy/catalog': '/api/runtime/role-policy/catalog'",
-  "'/api/role-policy/matrix': '/api/runtime/role-policy/matrix'",
-  'const requestPath = runtimePath(path)'
-], 'Module 037 compatibility caller');
+  "'/api/role-policy/matrix': '/api/runtime/role-policy/matrix'"
+], 'Legacy Module 037 compatibility caller');
 
 requireAll(portal, [
-  '/api/runtime/timesheet/steward/users?weekStart=',
-  '/api/runtime/timesheet/steward/users/${encodeURIComponent(selectedUserId)}/workspace?weekStart=',
-  'publishUsers(payload)',
-  'publishWorkspace(payload)',
-  'projectpulse:ptc-runtime-users',
-  'projectpulse:ptc-runtime-workspace'
-], 'PTC runtime user and workspace caller');
-
-requireAll(catalog, [
-  'Available work for selected user',
-  'User scope',
-  'All active users',
-  'Active user',
-  'Choose any active ProjectPulse user',
+  "import { authoritativeApi } from '../projectpulse-authoritative-api.js';",
+  '/api/runtime/timesheet/steward/v2/users?weekStart=',
+  '/api/runtime/timesheet/steward/v2/users/${encodeURIComponent(selectedUserId)}/workspace',
+  '/api/runtime/timesheet/steward/v2/entries/${entry.timeEntryId}/move',
+  "requiredCollections: ['users']",
+  "requiredCollections: ['entries', 'moveTargets', 'nonProjectCategories', 'availableProjects']",
+  'Engineering, Engineering Lead, Project Management, and Project Management Lead',
   'Requests / Service Requests',
   'Project Tasks',
   'Non-Project Time',
-  'snapshotCategories',
-  'requestTask',
-  'roleNames',
-  'groupLabel',
-  'selectionLabel',
-  'projectpulse:ptc-runtime-users',
-  'projectpulse:ptc-runtime-workspace',
-  'PtcRuntimeTaskCatalog'
-], 'PTC grouped all-active-user task catalog');
+  'assignment will be created',
+  'No submission on behalf'
+], 'Wrapper-independent PTC v2 caller');
+rejectAll(portal, [
+  'publishUsers(payload)',
+  'publishWorkspace(payload)',
+  'PtcRuntimeTaskCatalog',
+  'document.createElement',
+  '.insertBefore('
+], 'Retired PTC compatibility portal behavior');
 
 requireAll(gate, [
   'PtcTimeStewardGate',
@@ -136,77 +140,108 @@ requireAll(gate, [
   "'SUPER_ADMINISTRATOR'",
   "localStorage.getItem('projectPulseViewAsUser')",
   'if (state.active && !state.allowed) return null',
-  '<PtcTimesheetManagementPortal />',
-  '<PtcRuntimeTaskCatalog />'
-], 'Effective-role runtime PTC gate');
+  '<PtcTimesheetManagementPortal />'
+], 'Effective-role PTC gate');
+rejectAll(gate, ['PtcRuntimeTaskCatalog'], 'single PTC portal owner');
 
-requireAll(recovery, [
+requireAll(timerPortal, [
   "import { authoritativeApi } from '../projectpulse-authoritative-api.js';",
-  "document.querySelector('#timesheet')",
+  '/api/timesheet/timers/targets',
   '/api/timesheet/timers/active',
-  'window.setInterval(() => void load(), 5000)',
-  'Timer status check failed',
-  'Try timer check again',
-  'Running timer recovered',
-  'Timer automatically stopped',
-  'Stop timer',
-  'Discard'
-], 'Persistent active timer recovery');
-
-requireAll(css, [
-  '.ptc-runtime-task-catalog',
-  '.ptc-runtime-groups',
-  '.ptc-runtime-target-card',
-  '.ptc-runtime-role-boundary',
-  '.ptc-entry-table select'
-], 'PTC runtime task catalog styling');
+  '/api/timesheet/timers/history',
+  "requiredCollections: ['targets']",
+  "requiredCollections: ['timers']",
+  'window.setInterval(refresh, 5000)',
+  'window.setInterval(() => setClock(new Date()), 1000)',
+  'The server continues tracking it through refreshes, sign-out, and session expiration.',
+  'module001-server-timer-recovery'
+], 'Persistent integrated timer recovery');
+requireAll(timerView, [
+  'Timer history',
+  'history.map',
+  'window.setInterval(() => setClock(new Date()), 1000)'
+], 'Visible timer history and live clock');
+requireAll(picker, [
+  "const GROUP_ORDER = ['Requests / Service Requests', 'Project Tasks', 'Non-Project Time']",
+  'role="combobox"',
+  'Search activity, task, project, customer, or request'
+], 'Three-group timer activity picker');
 
 requireAll(main, [
   "import './projectpulse-authoritative-api.js';",
   "import './runtime-data-compatibility.js';",
-  "import Module001ActiveTimerRecoveryPortal from './module001/Module001ActiveTimerRecoveryPortal.jsx';",
+  "import TimesheetEnhancementPortal from './module001/TimesheetEnhancementPortal.jsx';",
   "import PtcTimeStewardGate from './module001/PtcTimeStewardGate.jsx';",
-  '<Module001ActiveTimerRecoveryPortal />',
+  '<TimesheetEnhancementPortal />',
   '<PtcTimeStewardGate />'
-], 'Gated runtime data and recovery application mount');
-for (const forbidden of [
-  "import PtcRuntimeTaskCatalog from './module001/PtcRuntimeTaskCatalog.jsx';",
-  '<PtcRuntimeTaskCatalog />'
-]) {
-  if (main.includes(forbidden)) throw new Error(`Main must not bypass the PTC effective-role gate: ${forbidden}`);
-}
+], 'Integrated Module 001 application mount');
+rejectAll(main, [
+  'Module001ActiveTimerRecoveryPortal',
+  'PtcRuntimeTaskCatalog'
+], 'Duplicate Module 001 runtime mount');
 
-const externalAvailable = backend.length > 0 && ptcBackend.length > 0 && project.length > 0;
+const externalAvailable = [
+  runtimeBackend,
+  ptcBackend,
+  ptcBackendV2,
+  resultExecution,
+  project
+].every(Boolean);
+
 if (externalAvailable) {
-  requireAll(backend, [
+  requireAll(runtimeBackend, [
     'MapRuntimeDataCompatibilityEndpoints',
-    '/api/runtime/role-policy/summary',
-    '/api/runtime/role-policy/matrix',
-    '/api/runtime/timesheet/steward/users',
-    '/api/runtime/timesheet/steward/users/{targetUserId:guid}/workspace',
     'PtcManagedRoleAliases',
+    'ENGINEERING',
+    'ENGINEER',
+    'ENGINEERING_LEAD',
+    'ENGINEERING_TEAM_LEAD',
+    'PROJECT_MANAGEMENT',
+    'PROJECT_MANAGER',
+    'PROJECT_MANAGEMENT_LEAD',
+    'PROJECT_MANAGEMENT_TEAM_LEAD',
+    'PM_TEAM_LEAD',
+    'RuntimePtcUsersAsync',
     'eligibleRoleCodes',
-    'roleNames',
+    'roleNames'
+  ], 'Role-filtered runtime PTC backend');
+
+  requireAll(ptcBackendV2, [
+    'MapModule001TimeStewardV2Endpoints',
+    '/api/runtime/timesheet/steward/v2/users',
+    '/api/runtime/timesheet/steward/v2/users/{targetUserId:guid}/workspace',
+    '/api/runtime/timesheet/steward/v2/entries/{timeEntryId:guid}/move',
     'Requests / Service Requests',
     'Project Tasks',
     'Non-Project Time',
-    "to_jsonb(pt)->>'work_task_category'",
-    "to_jsonb(pt)->>'service_request_number'",
-    'nonProjectCategories',
-    'canSubmitOnBehalf = false'
-  ], 'Runtime role-policy and PTC backend');
+    'canAssignExistingProjectTaskDuringMove = true',
+    'canMoveToNonProjectTime = true',
+    'Module001EnsurePtcAssignmentV2Async',
+    'crossActivityTypeMove = true'
+  ], 'PTC v2 backend');
+
+  requireAll(resultExecution, [
+    'UseModule001ResultExecutionCompatibility',
+    'Module001TimerTargetsAsync(context)',
+    'Module001ActiveTimerAsync(context)',
+    'Module001TimerHistoryAsync(context)',
+    'X-ProjectPulse-Module001-Result-Execution',
+    'await result.ExecuteAsync(context);'
+  ], 'Module 001 GET result execution');
 
   requireAll(ptcBackend, [
-    'app.MapGet("/api/timesheet/ptc/users"',
-    'app.MapGet("/api/timesheet/ptc/users/{targetUserId:guid}/entries"',
-    'WHERE u.is_active = TRUE',
-    'ActiveUserExistsAsync',
+    'app.MapPost("/api/timesheet/ptc/users/{targetUserId:guid}/weeks/{weekStart}/unsubmit"',
+    'app.MapPatch("/api/timesheet/ptc/entries/{timeEntryId:guid}"',
+    'app.MapPost("/api/timesheet/ptc/entries/{timeEntryId:guid}/remove"',
+    'app.MapPost("/api/timesheet/ptc/tasks"',
     'canSubmitOnBehalf = false'
-  ], 'All-active-user Module 001 PTC backend');
+  ], 'Governed PTC mutation backend');
 
   requireAll(project, [
-    'app.MapRuntimeDataCompatibilityEndpoints();',
-    'app.MapModule001PtcTimesheetManagementEndpoints();'
+    'app.UseModule001ResultExecutionCompatibility();',
+    'app.MapModule001TimeStewardV2Endpoints();',
+    'app.MapModule001PtcTimesheetManagementEndpoints();',
+    'app.MapModule001TimerTargetEndpoints();'
   ], 'Runtime endpoint registration');
 } else {
   console.log('RUNTIME_ROLE_POLICY_PTC_EXTERNAL_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
@@ -218,7 +253,9 @@ for (const forbidden of [
   'app.MapPatch("/api/runtime/role-policy',
   'app.MapDelete("/api/runtime/role-policy'
 ]) {
-  if (backend.includes(forbidden)) throw new Error(`Runtime role-policy aliases must remain read-only: ${forbidden}`);
+  if (runtimeBackend.includes(forbidden)) {
+    throw new Error(`Runtime role-policy aliases must remain read-only: ${forbidden}`);
+  }
 }
 
-console.log('DIRECT_ROLE_POLICY_AND_WRAPPER_INDEPENDENT_PTC_CONTRACTS=PASS');
+console.log('RUNTIME_ROLE_POLICY_PTC_DATA=PASS pTCTransport=v2-authoritative timerPersistence=server-authoritative');
