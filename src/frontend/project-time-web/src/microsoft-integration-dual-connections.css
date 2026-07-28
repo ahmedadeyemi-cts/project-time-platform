@@ -49,6 +49,7 @@
 .microsoft-compatibility-grid > div {
   display: grid;
   gap: 0.25rem;
+  min-width: 0;
   padding: 0.9rem;
   border: 1px solid var(--border-color, #d7e3ef);
   border-radius: 0.85rem;
@@ -56,7 +57,46 @@
 }
 
 .microsoft-compatibility-grid span {
+  overflow-wrap: anywhere;
   color: var(--text-secondary, #5d7288);
+}
+
+.microsoft-directory-sync-card,
+.microsoft-mail-environment-card {
+  border-color: color-mix(in srgb, var(--primary, #075b9b) 30%, var(--border-color, #d7e3ef));
+  background: linear-gradient(145deg, color-mix(in srgb, var(--primary, #075b9b) 5%, var(--surface, #fff)), var(--surface, #fff));
+}
+
+.microsoft-sync-frequency-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.microsoft-sync-frequency-control span {
+  color: var(--text-secondary, #5d7288);
+  font-weight: 800;
+}
+
+.microsoft-integration-actions a.primary-action,
+.microsoft-integration-actions a.secondary-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
+.microsoft-mail-environment-card input:disabled,
+.microsoft-directory-sync-card input:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  background: var(--surface-subtle, #f5f9fc);
+}
+
+[data-theme='dark'] .microsoft-connection-badge {
+  background: rgba(16, 185, 129, 0.16);
+  color: #6ee7b7;
 }
 
 @media (max-width: 800px) {

@@ -27,8 +27,37 @@
   line-height: 1.55;
 }
 
-.microsoft-mail-readiness-heading button {
+.microsoft-mail-readiness-controls {
   flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: minmax(120px, 160px) auto;
+  align-items: end;
+  gap: 0.65rem;
+}
+
+.microsoft-mail-readiness-controls label {
+  display: grid;
+  gap: 0.3rem;
+  color: var(--muted, #60708d);
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.microsoft-mail-readiness-controls select {
+  min-height: 42px;
+  border: 1px solid var(--border, rgba(23, 32, 51, 0.15));
+  border-radius: 0.7rem;
+  padding: 0.55rem 0.7rem;
+  background: var(--surface, #fff);
+  color: var(--text, #172033);
+  font: inherit;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.microsoft-mail-readiness-controls button {
   white-space: nowrap;
 }
 
@@ -150,12 +179,14 @@
   }
 
   .microsoft-mail-readiness-heading,
-  .microsoft-mail-readiness-details {
+  .microsoft-mail-readiness-details,
+  .microsoft-mail-readiness-controls {
     display: grid;
     grid-template-columns: 1fr;
   }
 
-  .microsoft-mail-readiness-heading button {
+  .microsoft-mail-readiness-controls,
+  .microsoft-mail-readiness-controls button {
     width: 100%;
   }
 

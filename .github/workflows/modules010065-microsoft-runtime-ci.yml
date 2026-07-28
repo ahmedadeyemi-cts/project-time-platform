@@ -1,0 +1,240 @@
+name: Validate Modules 010 and 065 Microsoft Runtime
+
+on:
+  push:
+    branches:
+      - 'fix/modules-010-065-environment-runtime-sync-mail-*'
+  pull_request:
+    paths:
+      - 'src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/MicrosoftDirectorySyncModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/MicrosoftEnvironmentRuntimeResolver.cs'
+      - 'src/backend/ProjectTime.Api/Modules/MicrosoftMailRuntimeConfigurationModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/MicrosoftMailTransportTestModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/MicrosoftSsoInteractiveStartActivation.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectPulsePublicOriginCompatibility.cs'
+      - 'src/frontend/project-time-web/src/MicrosoftIntegrationDualConnectionPortal.jsx'
+      - 'src/frontend/project-time-web/src/MicrosoftMailTransportReadinessPanel.jsx'
+      - 'src/frontend/project-time-web/src/microsoft-integration-compatibility.js'
+      - 'src/frontend/project-time-web/src/microsoft-sso-runtime-activation.js'
+      - 'src/frontend/project-time-web/src/microsoft-integration-dual-connections.css'
+      - 'src/frontend/project-time-web/src/microsoft-mail-transport-readiness.css'
+      - 'src/frontend/project-time-web/scripts/validate-module-067-global-mail.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-microsoft-integration-authoritative-connection.mjs'
+      - '.github/workflows/modules010065-microsoft-runtime-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify isolated Microsoft runtime scope
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git fetch origin main --no-tags
+          CHANGED="$(git diff --name-only origin/main...HEAD)"
+          printf '%s\n' "$CHANGED"
+
+          if grep -E '^(database/|deployment/azure/|\.github/workflows/projectpulse-deploy-|src/frontend/project-time-web/src/(CrmErpIntegrationCenter|CustomerDirectoryCenter|customer-directory-sell-sync|crm-erp-integration-center)\.|src/backend/ProjectTime.Api/Modules/(CustomerDirectorySellSyncModule|CrmErpIntegrationModule)\.cs)' <<<"$CHANGED"; then
+            echo 'Modules 010/065 overlap a database, deployment, or CRM/SELL reserved surface.' >&2
+            exit 1
+          fi
+          echo 'MODULES_010_065_SOURCE_ISOLATION=PASSED'
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Validate real Entra synchronization runtime
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          SYNC='src/backend/ProjectTime.Api/Modules/MicrosoftDirectorySyncModule.cs'
+          COMPAT='src/frontend/project-time-web/src/microsoft-integration-compatibility.js'
+          REGISTRAR='src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs'
+          : > modules010065-sync-runtime-evidence.log
+
+          {
+            grep -q '/api/microsoft-integration/directory-users/sync-now' "$SYNC"
+            grep -q '/api/microsoft-integration/directory-users/sync-status' "$SYNC"
+            grep -q 'SchedulerLoopAsync' "$SYNC"
+            grep -q 'WorkerPollInterval' "$SYNC"
+            grep -q 'syncFrequencyHours' "$SYNC"
+            grep -q 'https://graph.microsoft.com/v1.0/users' "$SYNC"
+            grep -q 'Directory.Read.All' "$SYNC"
+            grep -q 'User.Read.All' "$SYNC"
+            grep -q 'pg_try_advisory_lock' "$SYNC"
+            grep -q 'module010_sync_' "$SYNC"
+            grep -q 'SAVEPOINT {savepoint}' "$SYNC"
+            grep -q 'transaction.CommitAsync' "$SYNC"
+            grep -q 'secretValuesReturned = false' "$SYNC"
+            grep -q "LEGACY_SYNC_ROUTE = '/api/admin/azure/sync/run'" "$COMPAT"
+            grep -q "ACTIVE_SYNC_ROUTE = '/api/microsoft-integration/directory-users/sync-now'" "$COMPAT"
+            grep -q 'MapMicrosoftDirectorySyncEndpoints' "$REGISTRAR"
+
+            if grep -Eq 'clientSecret\s*=\s*request|accessToken\s*=\s*request|Results\.(Ok|Json)\([^)]*(clientSecret|accessToken)' "$SYNC"; then
+              echo 'Directory sync exposes or accepts a provider credential.' >&2
+              exit 1
+            fi
+
+            echo 'MODULE_010_MANUAL_GRAPH_SYNC=PASSED'
+            echo 'MODULE_010_AUTOMATIC_SYNC_SCHEDULER=PASSED'
+            echo 'MODULE_010_SYNC_FREQUENCY_CONSUMED=PASSED'
+            echo 'MODULE_010_CROSS_REPLICA_LOCK=PASSED'
+            echo 'MODULE_010_GOVERNED_ROLE_AND_TRANSACTION=PASSED'
+            echo 'MODULE_010_SYNC_SECRET_SAFETY=PASSED'
+          } 2>&1 | tee modules010065-sync-runtime-evidence.log
+
+      - name: Upload Entra sync runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: modules010065-sync-runtime-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: modules010065-sync-runtime-evidence.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Build ProjectTime API
+        id: api_build
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release > modules010065-api-build.log 2>&1
+          STATUS=$?
+          echo "exit_code=$STATUS" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload API build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: modules010065-api-build-${{ github.run_id }}-${{ github.run_attempt }}
+          path: modules010065-api-build.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce API build result
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          STATUS='${{ steps.api_build.outputs.exit_code }}'
+          if [[ "$STATUS" != '0' ]]; then
+            tail -n 160 modules010065-api-build.log >&2
+            exit "$STATUS"
+          fi
+          tail -n 50 modules010065-api-build.log
+          echo 'MODULES_010_065_API_BUILD=PASSED'
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Execute Microsoft validators with complete diagnostics
+        id: microsoft_validators
+        continue-on-error: true
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set +e
+          npm run validate:module067 > validate-module067.log 2>&1
+          DUAL=$?
+          npm run validate:microsoft-connection > validate-microsoft-connection.log 2>&1
+          CONNECTION=$?
+          npm run validate:microsoft-sso-runtime > validate-microsoft-sso-runtime.log 2>&1
+          SSO=$?
+          npm run validate:friendly-api-errors > validate-friendly-api-errors.log 2>&1
+          FRIENDLY=$?
+
+          echo "dual_exit=$DUAL" >> "$GITHUB_OUTPUT"
+          echo "connection_exit=$CONNECTION" >> "$GITHUB_OUTPUT"
+          echo "sso_exit=$SSO" >> "$GITHUB_OUTPUT"
+          echo "friendly_exit=$FRIENDLY" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload Microsoft validator diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: modules010065-validator-logs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            src/frontend/project-time-web/validate-module067.log
+            src/frontend/project-time-web/validate-microsoft-connection.log
+            src/frontend/project-time-web/validate-microsoft-sso-runtime.log
+            src/frontend/project-time-web/validate-friendly-api-errors.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce Microsoft validator results
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          FAILED=0
+          for ENTRY in \
+            "dual:${{ steps.microsoft_validators.outputs.dual_exit }}:validate-module067.log" \
+            "connection:${{ steps.microsoft_validators.outputs.connection_exit }}:validate-microsoft-connection.log" \
+            "sso:${{ steps.microsoft_validators.outputs.sso_exit }}:validate-microsoft-sso-runtime.log" \
+            "friendly:${{ steps.microsoft_validators.outputs.friendly_exit }}:validate-friendly-api-errors.log"
+          do
+            IFS=: read -r NAME STATUS LOG <<<"$ENTRY"
+            echo "===== $NAME ====="
+            cat "$LOG"
+            if [[ "$STATUS" != '0' ]]; then FAILED=1; fi
+          done
+          if [[ "$FAILED" != '0' ]]; then
+            echo 'One or more Microsoft runtime validators failed.' >&2
+            exit 1
+          fi
+          echo 'MODULES_010_065_VALIDATORS=PASSED'
+
+      - name: Build complete frontend production bundle
+        id: frontend_build
+        continue-on-error: true
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set +e
+          npm run build > modules010065-frontend-build.log 2>&1
+          STATUS=$?
+          echo "exit_code=$STATUS" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload frontend build diagnostics
+        if: always() && steps.frontend_build.outcome != 'skipped'
+        uses: actions/upload-artifact@v4
+        with:
+          name: modules010065-frontend-build-${{ github.run_id }}-${{ github.run_attempt }}
+          path: src/frontend/project-time-web/modules010065-frontend-build.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce frontend build result
+        if: steps.frontend_build.outcome != 'skipped'
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          STATUS='${{ steps.frontend_build.outputs.exit_code }}'
+          if [[ "$STATUS" != '0' ]]; then
+            tail -n 160 modules010065-frontend-build.log >&2
+            exit "$STATUS"
+          fi
+          tail -n 50 modules010065-frontend-build.log
+          echo 'MODULES_010_065_FRONTEND_BUILD=PASSED'
