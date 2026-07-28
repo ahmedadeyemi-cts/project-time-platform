@@ -1,0 +1,91 @@
+name: Validate Global Administrator View-As Drawer
+
+on:
+  push:
+    branches:
+      - 'feature/global-view-as-left-drawer-*'
+  pull_request:
+    paths:
+      - 'src/frontend/project-time-web/src/GlobalViewAsDrawer.jsx'
+      - 'src/frontend/project-time-web/src/global-view-as-drawer.css'
+      - 'src/frontend/project-time-web/src/main.jsx'
+      - 'src/frontend/project-time-web/scripts/validate-global-view-as-drawer.mjs'
+      - '.github/workflows/global-view-as-drawer-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate collapsible Administrator View-As experience
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify isolated View-As drawer scope
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git fetch origin main --no-tags
+          mapfile -t CHANGED < <(git diff --name-only origin/main...HEAD)
+          printf '%s\n' "${CHANGED[@]}"
+
+          ALLOWED=(
+            '.github/workflows/global-view-as-drawer-ci.yml'
+            'src/frontend/project-time-web/scripts/validate-global-view-as-drawer.mjs'
+            'src/frontend/project-time-web/src/GlobalViewAsDrawer.jsx'
+            'src/frontend/project-time-web/src/global-view-as-drawer.css'
+            'src/frontend/project-time-web/src/main.jsx'
+          )
+
+          [[ "${#CHANGED[@]}" -eq 5 ]] || {
+            echo "Expected exactly five View-As drawer files; found ${#CHANGED[@]}." >&2
+            exit 1
+          }
+
+          for changed in "${CHANGED[@]}"; do
+            MATCH=false
+            for allowed in "${ALLOWED[@]}"; do
+              [[ "$changed" == "$allowed" ]] && MATCH=true
+            done
+            [[ "$MATCH" == true ]] || {
+              echo "Unexpected changed file: $changed" >&2
+              exit 1
+            }
+          done
+
+          echo 'GLOBAL_VIEW_AS_DRAWER_SCOPE=PASS'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Check focused validator syntax
+        working-directory: src/frontend/project-time-web
+        run: node --check scripts/validate-global-view-as-drawer.mjs
+
+      - name: Validate Administrator View-As drawer contract
+        working-directory: src/frontend/project-time-web
+        run: node scripts/validate-global-view-as-drawer.mjs
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Validate admin runtime stability regression
+        working-directory: src/frontend/project-time-web
+        run: node scripts/validate-admin-runtime-stability.mjs
+
+      - name: Validate permission-aware navigation regression
+        working-directory: src/frontend/project-time-web
+        run: node scripts/validate-group-1-navigation-work-consolidation.mjs
+
+      - name: Build complete frontend production bundle
+        working-directory: src/frontend/project-time-web
+        run: npm run build

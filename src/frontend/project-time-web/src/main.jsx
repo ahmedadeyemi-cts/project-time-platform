@@ -10,6 +10,7 @@ import './microsoft-mail-runtime-activation.js';
 import './react-dom-ownership-prelude.js';
 import App from './App.Module001.g.jsx';
 import AdminRuntimeStabilityPortal from './AdminRuntimeStabilityPortal.jsx';
+import GlobalViewAsDrawer from './GlobalViewAsDrawer.jsx';
 import HelpAssistant from './HelpAssistant.jsx';
 import ModulesDirectoryPortal from './ModulesDirectoryPortal.jsx';
 import ModuleAvailabilityController from './ModuleAvailabilityController.jsx';
@@ -36,6 +37,7 @@ createRoot(document.getElementById('root')).render(
     <App />
     <CriticalRoutePresentationBoundary />
     <AdminRuntimeStabilityPortal />
+    <GlobalViewAsDrawer />
     <ModulesDirectoryPortal />
     <ModuleAvailabilityController />
     <DashboardPersonalCalendarPortal />
