@@ -15,7 +15,6 @@ if (timesheetIndex < 0) throw new Error('Module 001 slot injector could not loca
 
 const slotIds = [
   'module001-view-tab-host',
-  'module001-toolbar-host',
   'module001-active-timer-recovery-host',
   'module001-ptc-time-steward-host',
   'module001-enhancement-view-host'
@@ -23,55 +22,51 @@ const slotIds = [
 
 const existing = slotIds.filter((id) => source.includes(`id="${id}"`));
 if (existing.length && existing.length !== slotIds.length) {
-  throw new Error(`Module 001 generated App contains a partial slot set: ${existing.join(', ')}`);
+  throw new Error(`Module 001 generated App contains a partial React-owned slot set: ${existing.join(', ')}`);
 }
 
-function replaceAfterTimesheet(marker, replacement, label) {
-  const index = source.indexOf(marker, timesheetIndex);
+function replaceOnce(marker, replacement, label, fromIndex = 0) {
+  const index = source.indexOf(marker, fromIndex);
   if (index < 0) throw new Error(`Module 001 slot injector could not locate ${label}.`);
-  if (source.indexOf(marker, index + marker.length) >= 0 && label !== 'the Timesheet toolbar actions') {
-    // The markers selected below are unique in the Timesheet section. Refuse an
-    // ambiguous future layout instead of injecting into an unrelated module.
-    const nextTimesheetBoundary = source.indexOf('<section id="', index + marker.length);
-    const duplicate = source.indexOf(marker, index + marker.length);
-    if (duplicate >= 0 && (nextTimesheetBoundary < 0 || duplicate < nextTimesheetBoundary)) {
-      throw new Error(`Module 001 slot injector found multiple ${label} markers inside the Timesheet route.`);
-    }
+  const duplicate = source.indexOf(marker, index + marker.length);
+  const nextRoute = source.indexOf('<section id="', index + marker.length);
+  if (duplicate >= 0 && (nextRoute < 0 || duplicate < nextRoute)) {
+    throw new Error(`Module 001 slot injector found multiple ${label} markers inside the Timesheet route.`);
   }
   source = `${source.slice(0, index)}${replacement}${source.slice(index + marker.length)}`;
 }
 
 if (!existing.length) {
-  replaceAfterTimesheet(
+  replaceOnce(
+    timesheetMarker,
+    `${timesheetMarker}\n        <div id="module001-active-timer-recovery-host" className="module001-active-timer-recovery-host" data-projectpulse-react-owned-slot="true" />\n        <div id="module001-ptc-time-steward-host" className="module001-ptc-time-steward-host" data-projectpulse-react-owned-slot="true" />`,
+    'the Timesheet route boundary'
+  );
+
+  replaceOnce(
     '<div className="timesheet-view-switcher" role="tablist" aria-label="Timesheet views">',
     `<div className="timesheet-view-switcher" role="tablist" aria-label="Timesheet views">\n          <div id="module001-view-tab-host" className="module001-view-tab-host" data-projectpulse-react-owned-slot="true" />`,
-    'the Timesheet view switcher'
+    'the Timesheet view switcher',
+    timesheetIndex
   );
 
-  replaceAfterTimesheet(
-    '<div className="toolbar-actions">',
-    `<div className="toolbar-actions">\n            <div id="module001-toolbar-host" className="module001-toolbar-host" data-projectpulse-react-owned-slot="true" />`,
-    'the Timesheet toolbar actions'
-  );
-
-  replaceAfterTimesheet(
-    '<DataState loading={timesheet.loading} error={timesheet.error}>',
-    `<div id="module001-active-timer-recovery-host" className="module001-active-timer-recovery-host" data-projectpulse-react-owned-slot="true" />\n        <div id="module001-ptc-time-steward-host" className="module001-ptc-time-steward-host" data-projectpulse-react-owned-slot="true" />\n\n        <DataState loading={timesheet.loading} error={timesheet.error}>`,
-    'the Timesheet data boundary'
-  );
-
-  replaceAfterTimesheet(
+  replaceOnce(
     '<div className="timesheet-workspace">',
     `<div className="timesheet-workspace">\n            <div id="module001-enhancement-view-host" className="module001-enhancement-view-host" data-projectpulse-react-owned-slot="true" />`,
-    'the Timesheet workspace'
+    'the Timesheet workspace',
+    timesheetIndex
   );
 }
 
 for (const id of slotIds) {
   const matches = source.match(new RegExp(`id=["']${id}["']`, 'g')) || [];
   if (matches.length !== 1) {
-    throw new Error(`Module 001 slot ${id} must appear exactly once; found ${matches.length}.`);
+    throw new Error(`Module 001 React-owned slot ${id} must appear exactly once; found ${matches.length}.`);
   }
+}
+
+if (source.includes('module001-toolbar-host')) {
+  throw new Error('The retired runtime-created Module 001 toolbar host must not be present.');
 }
 
 if (source.includes('MODULE_001_REACT_OWNED_EXTENSION_SLOTS')) {
@@ -83,4 +78,4 @@ source = source.replace(
 );
 
 fs.writeFileSync(generatedAppPath, source, 'utf8');
-console.log(`MODULE_001_REACT_OWNED_EXTENSION_SLOTS=PASS slots=${slotIds.length}`);
+console.log(`MODULE_001_REACT_OWNED_EXTENSION_SLOTS=PASS slots=${slotIds.length} runtimeDomInsertion=0`);
