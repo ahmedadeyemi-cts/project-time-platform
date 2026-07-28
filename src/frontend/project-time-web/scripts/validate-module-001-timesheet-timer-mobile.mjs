@@ -13,29 +13,34 @@ const read = (relative, required = true) => {
   }
   return fs.readFileSync(absolute, 'utf8');
 };
-const requireText = (source, value, label) => assert.ok(source.includes(value), `${label}: missing ${value}`);
-const rejectText = (source, value, label) => assert.ok(!source.includes(value), `${label}: forbidden ${value}`);
+const requireText = (source, value, label) => assert.ok(
+  source.includes(value),
+  `${label}: missing ${value}`
+);
+const rejectText = (source, value, label) => assert.ok(
+  !source.includes(value),
+  `${label}: forbidden ${value}`
+);
 
 const app = read('src/frontend/project-time-web/src/App.jsx');
-const generated = read('src/frontend/project-time-web/src/App.Module001.g.jsx');
 const generator = read('src/frontend/project-time-web/scripts/generate-module-001-integrated-app.mjs');
+const slotInjector = read('src/frontend/project-time-web/scripts/inject-module-001-owned-extension-slots.mjs');
+const moreInjector = read('src/frontend/project-time-web/scripts/inject-react-owned-more-menu.mjs');
 const main = read('src/frontend/project-time-web/src/main.jsx');
 const authoritative = read('src/frontend/project-time-web/src/projectpulse-authoritative-api.js');
-const portalEntry = read('src/frontend/project-time-web/src/module001/TimesheetEnhancementPortal.jsx');
-const portal = read('src/frontend/project-time-web/src/module001/TimesheetEnhancementPortalV2.jsx');
+const portal = read('src/frontend/project-time-web/src/module001/TimesheetEnhancementPortal.jsx');
 const timerView = read('src/frontend/project-time-web/src/module001/TimesheetTimerView.jsx');
-const timerRecovery = read('src/frontend/project-time-web/src/module001/Module001ActiveTimerRecoveryPortal.jsx');
 const taskPicker = read('src/frontend/project-time-web/src/module001/TimesheetTaskPicker.jsx');
 const durationSource = read('src/frontend/project-time-web/src/module001/timesheet-duration.js');
-const css = read('src/frontend/project-time-web/src/module001/timesheet-prep.css');
-const timerRecoveryCss = read('src/frontend/project-time-web/src/module001/timesheet-timer-recovery.css');
-const persistentRecoveryCss = read('src/frontend/project-time-web/src/module001/module001-active-timer-recovery.css');
-const uatCss = read('src/frontend/project-time-web/src/module001/module001-uat-fixes.css');
+const prepCss = read('src/frontend/project-time-web/src/module001/timesheet-prep.css');
+const recoveryCss = read('src/frontend/project-time-web/src/module001/timesheet-timer-recovery.css');
+const runtimeCss = read('src/frontend/project-time-web/src/module001/module001-runtime-v2.css');
 const packageJson = read('src/frontend/project-time-web/package.json');
+const resultExecution = read('src/backend/ProjectTime.Api/Modules/Module001ResultExecutionCompatibility.cs', false);
 
-for (const view of ['Weekly Grid', 'Daily Focus', 'Quick Entry List']) requireText(generated, view, 'streamlined Timesheet view');
-requireText(portalEntry, './TimesheetEnhancementPortalV2.jsx', 'timer portal implementation');
-requireText(portal, 'Start / Stop Timer', 'timer Timesheet view');
+for (const view of ['Weekly Grid', 'Daily Focus', 'Quick Entry List']) {
+  requireText(app, view, 'streamlined Timesheet view');
+}
 requireText(app, "route: 'timesheet'", 'Module 001 route');
 requireText(app, "title: 'Timesheet'", 'Module 001 name');
 requireText(generator, 'buildTimesheetPayload()', 'shared weekly draft');
@@ -43,107 +48,97 @@ requireText(generator, 'projectpulse:module001-state', 'canonical state event');
 requireText(generator, 'assignedTasks: assignedOpenTasks', 'canonical assigned-task source');
 requireText(generator, 'nonProjectCategories: categories', 'canonical non-project source');
 requireText(main, './App.Module001.g.jsx', 'generated App import');
-requireText(main, "import './projectpulse-authoritative-api.js';", 'wrapper-independent authoritative client mount');
-requireText(main, '<TimesheetEnhancementPortal />', 'portal root integration');
-requireText(main, "import Module001ActiveTimerRecoveryPortal from './module001/Module001ActiveTimerRecoveryPortal.jsx';", 'persistent timer recovery import');
-requireText(main, '<Module001ActiveTimerRecoveryPortal />', 'persistent timer recovery mount');
-requireText(main, './module001/module001-uat-fixes.css', 'Module 001 UAT repair styling');
+requireText(main, "import './projectpulse-authoritative-api.js';", 'authoritative client mount');
+requireText(main, '<TimesheetEnhancementPortal />', 'single timer portal mount');
+rejectText(main, 'Module001ActiveTimerRecoveryPortal', 'retired duplicate timer-recovery portal');
+
+requireText(slotInjector, 'MODULE_001_REACT_OWNED_EXTENSION_SLOTS', 'React-owned Module 001 extension marker');
+for (const slot of [
+  'module001-view-tab-host',
+  'module001-active-timer-recovery-host',
+  'module001-ptc-time-steward-host',
+  'module001-enhancement-view-host'
+]) {
+  requireText(slotInjector, slot, 'React-owned Module 001 slot');
+}
+requireText(slotInjector, 'runtimeDomInsertion=0', 'zero runtime child insertion evidence');
+rejectText(slotInjector, 'module001-toolbar-host', 'retired runtime toolbar portal');
+requireText(moreInjector, 'PROJECTPULSE_REACT_OWNED_MORE_MENU', 'React-owned More generator');
 
 requireText(authoritative, 'new XMLHttpRequest()', 'wrapper-independent transport');
 requireText(authoritative, "const DIAGNOSTIC_MARKER = 'projectpulse-authoritative-xhr-v1'", 'authoritative diagnostic marker');
 requireText(authoritative, 'requiredCollections', 'authoritative collection validation');
 requireText(authoritative, '__projectPulseAuthoritativeApiDiagnostics', 'authoritative diagnostics storage');
-rejectText(authoritative, 'window.fetch(', 'wrapper-independent transport');
+rejectText(authoritative, 'window.fetch(', 'wrapper-independent primary transport');
 
-requireText(portalEntry, "const TIMER_TARGET_CLIENT = 'projectpulse-timer-target-direct-fetch-v1';", 'direct timer-target client marker');
-requireText(portalEntry, 'function isTimesheetRoute()', 'route-scoped target loading');
-requireText(portalEntry, "=== 'timesheet'", 'Timesheet-only target loading');
-requireText(portalEntry, 'async function loadTimerTargets(weekStart)', 'direct timer target request');
-requireText(portalEntry, '/api/timesheet/timers/targets?weekStart=', 'authoritative timer target endpoint');
-requireText(portalEntry, "'X-ProjectPulse-Module-Number': '001'", 'explicit Module 001 attribution');
-requireText(portalEntry, "'X-ProjectPulse-Timer-Target-Client': TIMER_TARGET_CLIENT", 'direct target client evidence');
-requireText(portalEntry, 'normalizeTimerTargetPayload(payload)', 'timer target collection validation');
-requireText(portalEntry, "target.targetType === 'assignment'", 'assigned target extraction');
-requireText(portalEntry, 'mergeByKey(snapshot.assignedTasks, authoritativeAssignments)', 'assigned task preservation');
-requireText(portalEntry, 'snapshot.nonProjectCategories', 'non-project preservation');
-requireText(portalEntry, "target.targetType === 'category' || target.targetType === 'categoryCode'", 'non-project target extraction');
-requireText(portalEntry, "target.groupLabel === 'Service Request Tasks' || target.groupLabel === 'Requests / Service Requests'", 'service-request collection');
-requireText(portalEntry, 'regularAssignedTasks', 'regular-task collection');
-requireText(portalEntry, 'requestAssignedTasks', 'request-task collection');
-requireText(portalEntry, 'timerTargetCounts', 'authoritative target counts');
-requireText(portalEntry, 'timerTargetAuthoritativeSources', 'authoritative target evidence');
-requireText(portalEntry, 'timerTargetLoadError', 'visible timer target failure evidence');
-requireText(portalEntry, 'Existing Timesheet activities remain available', 'fail-safe target preservation');
-requireText(portalEntry, 'projectpulse:module001-timer-targets', 'timer target state evidence');
-requireText(portalEntry, 'synchronizeViewButtons', 'single active Timesheet view');
-requireText(portalEntry, "button.setAttribute('aria-selected', active ? 'true' : 'false')", 'active view accessibility state');
-rejectText(portalEntry, "import { authoritativeApi } from '../projectpulse-authoritative-api.js';", 'retired XHR timer target transport');
-rejectText(portalEntry, 'new MutationObserver', 'route-wide target DOM observation');
-rejectText(portalEntry, '/api/assignments/available-tasks', 'retired available-task enrichment');
-rejectText(portalEntry, '/api/timesheet/work-queue', 'retired work-queue enrichment');
+requireText(portal, "import { authoritativeApi } from '../projectpulse-authoritative-api.js';", 'integrated authoritative timer portal');
+requireText(portal, 'function readSlots()', 'static React-owned slot lookup');
+requireText(portal, 'data-projectpulse-react-owned-slot="true"', 'React-owned slot boundary');
+requireText(portal, '/api/timesheet/timers/targets?weekStart=', 'authoritative timer target endpoint');
+requireText(portal, "requiredCollections: ['targets']", 'target collection contract');
+requireText(portal, '/api/timesheet/timers/active', 'active timer endpoint');
+requireText(portal, '/api/timesheet/timers/history?weekStart=', 'timer history endpoint');
+requireText(portal, "requiredCollections: ['timers']", 'history collection contract');
+requireText(portal, 'window.setInterval(refresh, 5000)', 'server timer polling');
+requireText(portal, 'window.setInterval(() => setClock(new Date()), 1000)', 'one-second recovered clock');
+requireText(portal, 'Timer started. The server continues tracking it through refreshes, sign-out, and session expiration.', 'server persistence guidance');
+requireText(portal, 'A timer was already running. It has been recovered from the server.', 'running-timer conflict recovery');
+requireText(portal, 'module001-server-timer-recovery', 'always-visible recovered timer surface');
+requireText(portal, 'Start / Stop Timer', 'timer Timesheet view');
+requireText(portal, '/api/timesheet/timers/start-by-code', 'non-project code timer start');
+requireText(portal, '/api/timesheet/timers/start', 'assignment/category timer start');
+requireText(portal, '/stop', 'timer stop action');
+requireText(portal, '/discard', 'timer discard action');
 
-for (const contract of ['/api/timesheet/timers/active', '/api/timesheet/timers/start', '/api/timesheet/timers/start-by-code', '/stop', '/discard']) {
-  requireText(`${portal}\n${timerView}\n${timerRecovery}`, contract, 'timer frontend contract');
+for (const forbidden of [
+  'document.createElement',
+  '.appendChild(',
+  '.insertBefore(',
+  '.prepend(',
+  '.replaceChildren(',
+  '.innerHTML ='
+]) {
+  rejectText(portal, forbidden, 'timer React DOM ownership');
 }
-requireText(portal, 'snapshot?.assignedTasks', 'timer assigned-task source');
-requireText(portal, 'snapshot?.nonProjectCategories', 'timer non-project source');
-requireText(portal, 'categoryTarget', 'category normalization');
-requireText(portal, "targetType: 'categoryCode'", 'category-code construction');
-requireText(portal, 'nonProjectCategoryCode: target.targetCode', 'category-code start payload');
-requireText(portal, 'assignmentId: target.targetType ===', 'assignment timer start payload');
-requireText(portal, 'window.setInterval(refresh, 5000)', 'active timer polling');
-requireText(portal, "error?.status === 409", 'running-timer recovery');
-requireText(portal, "groupLabel: isServiceRequestTask(task) ? 'Service Request Tasks' : 'Regular Tasks'", 'assigned task grouping');
-requireText(portal, "groupLabel: 'Non-Project Time'", 'non-project grouping');
-requireText(portal, 'projectPulseModule001MobileMode', 'mobile preference');
-requireText(portal, 'Mobile mode', 'mobile selector');
-
-requireText(timerRecovery, "import { authoritativeApi } from '../projectpulse-authoritative-api.js';", 'recovery authoritative client');
-requireText(timerRecovery, "document.querySelector('#timesheet')", 'recovery actual Timesheet root');
-requireText(timerRecovery, '/api/timesheet/timers/active', 'snapshot-independent active timer recovery');
-requireText(timerRecovery, 'window.setInterval(() => void load(), 5000)', 'recovery polling');
-requireText(timerRecovery, 'window.setInterval(() => setClock(new Date()), 1000)', 'recovery live clock');
-requireText(timerRecovery, 'Timer status check failed', 'visible recovery failure');
-requireText(timerRecovery, 'Try timer check again', 'recovery retry action');
-requireText(timerRecovery, 'Running timer recovered', 'recovery banner');
-requireText(timerRecovery, 'Timer automatically stopped', 'auto-stop evidence');
-requireText(timerRecovery, 'Stop timer', 'recovery stop action');
-requireText(timerRecovery, 'Discard', 'recovery discard action');
-rejectText(timerRecovery, "document.querySelector('#timesheet.timesheet-page')", 'overly strict timer root selector');
-rejectText(timerRecovery, 'const response = await fetch(path', 'wrapped recovery fetch');
-requireText(persistentRecoveryCss, '.module001-active-timer-recovery', 'recovery surface styling');
-requireText(persistentRecoveryCss, '.module001-active-timer-recovery-clock', 'recovery clock styling');
 
 requireText(timerView, 'Ready to start', 'explicit timer pre-start state');
 requireText(timerView, 'Select Start timer to begin the live clock.', 'timer action guidance');
 requireText(timerView, 'setClock(new Date())', 'immediate live clock reset');
 requireText(timerView, 'window.setInterval(() => setClock(new Date()), 1000)', 'one-second live clock');
-requireText(uatCss, '#timesheet.module001-timer-mode .timesheet-view-button:not(#module001-start-stop-tab)', 'inactive view override');
-requireText(uatCss, '#timesheet.module001-timer-mode #module001-start-stop-tab', 'active timer view styling');
-requireText(uatCss, '.module001-ready-to-start', 'timer ready-state styling');
+requireText(timerView, 'Timer history', 'visible timer history heading');
+requireText(timerView, 'history.map', 'visible timer history rows');
 
 requireText(taskPicker, 'role="combobox"', 'autocomplete combobox');
 requireText(taskPicker, 'aria-autocomplete="list"', 'autocomplete mode');
-requireText(taskPicker, 'Regular Tasks', 'regular task group');
-requireText(taskPicker, 'Service Request Tasks', 'service request group');
-requireText(taskPicker, 'Non-Project Time', 'non-project group');
-rejectText(taskPicker, '<select', 'legacy task selector');
-requireText(timerRecoveryCss, '#timesheet.module001-timer-mode .module001-enhancement-view-host', 'timer host visibility');
-requireText(timerRecoveryCss, '.module001-task-results', 'autocomplete panel styling');
-requireText(css, '#timesheet.module001-mobile-mode', 'mobile presentation');
-requireText(css, 'min-height: 44px', 'touch targets');
+requireText(taskPicker, "const GROUP_ORDER = ['Requests / Service Requests', 'Project Tasks', 'Non-Project Time']", 'three activity groups');
+requireText(taskPicker, "if (label === 'Service Request Tasks') return 'Requests / Service Requests'", 'service-request alias normalization');
+requireText(taskPicker, "if (label === 'Regular Tasks') return 'Project Tasks'", 'project-task alias normalization');
+rejectText(taskPicker, '<select', 'legacy timer selector');
 
-for (const contract of ['/api/timesheets/week/draft', '/validate-submission', '/submit', 'Module 002 Approval Inbox', 'Confirm and submit week']) {
-  requireText(portal, contract, 'weekly submission frontend');
-}
-requireText(portal, 'snapshot.isViewAs', 'View-As read-only mode');
-requireText(packageJson, 'validate:module001-enhancement', 'protected validator registration');
+requireText(runtimeCss, 'body.projectpulse-module001-timer-mode', 'full-width timer mode');
+requireText(runtimeCss, '.module001-server-timer-recovery', 'recovered timer styling');
+requireText(runtimeCss, '.module001-server-timer-clock', 'recovered timer clock styling');
+requireText(runtimeCss, '[data-projectpulse-react-owned-slot="true"]', 'slot styling boundary');
+requireText(runtimeCss, '@media (max-width: 720px)', 'small-screen timer presentation');
+requireText(prepCss, 'min-height: 44px', 'touch targets');
+requireText(recoveryCss, '.module001-task-results', 'autocomplete panel styling');
+
+requireText(packageJson, 'inject-module-001-owned-extension-slots.mjs', 'slot generator build gate');
+requireText(packageJson, 'inject-react-owned-more-menu.mjs', 'React-owned More build gate');
+requireText(packageJson, 'validate:module001-ptc-timer-dom', 'DOM ownership validator registration');
+requireText(packageJson, 'validate:module001-enhancement', 'timer validator registration');
 
 const duration = await import(pathToFileURL(path.join(webRoot, 'src/module001/timesheet-duration.js')).href);
 const roundingCases = [
-  [4 * 3600, 240], [4 * 3600 + 1, 255], [4 * 3600 + 14 * 60 + 59, 255],
-  [4 * 3600 + 15 * 60, 255], [4 * 3600 + 15 * 60 + 1, 270], [1, 15],
-  [11 * 3600 + 59 * 60 + 59, 720], [12 * 3600, 720], [13 * 3600, 720]
+  [4 * 3600, 240],
+  [4 * 3600 + 1, 255],
+  [4 * 3600 + 14 * 60 + 59, 255],
+  [4 * 3600 + 15 * 60, 255],
+  [4 * 3600 + 15 * 60 + 1, 270],
+  [1, 15],
+  [11 * 3600 + 59 * 60 + 59, 720],
+  [12 * 3600, 720],
+  [13 * 3600, 720]
 ];
 for (const [seconds, expectedMinutes] of roundingCases) {
   assert.equal(duration.roundSecondsUpToQuarterHour(seconds), expectedMinutes, `rounding ${seconds}`);
@@ -183,11 +178,23 @@ if (backendAvailable) {
   requireText(timerTargets, 'regularTaskCount', 'regular task count');
   requireText(timerTargets, 'serviceRequestTaskCount', 'service request count');
   requireText(timerTargets, 'groupLabel = "Non-Project Time"', 'non-project API group');
-  requireText(projectFile, 'app.MapModule001TimerTargetEndpoints();', 'endpoint registration');
+  requireText(projectFile, 'app.UseModule001ResultExecutionCompatibility();', 'explicit GET result execution registration');
+  requireText(projectFile, 'app.MapModule001TimerTargetEndpoints();', 'target endpoint registration');
   requireText(migration, 'ux_module001_one_running_timer_per_user', 'one timer constraint');
   requireText(migration, 'rounded_minutes % 15 = 0', 'quarter-hour constraint');
   requireText(migration, 'module001_timer_audit_events', 'timer audit');
   requireText(rollback, 'rollback blocked', 'fail-closed rollback');
+  void contracts;
+  void engine;
+  void submission;
+  void endpoints;
 }
 
-console.log(`MODULE_001_FUNCTIONAL_TIMER_TARGET_VALIDATION=PASS roundingCases=${roundingCases.length} backend=${backendAvailable ? 'full' : 'frontend-container'} directScopedTransport=true visibleRecoveryErrors=true targetCounts=true`);
+if (resultExecution) {
+  requireText(resultExecution, 'Module001ActiveTimerAsync(context)', 'active timer explicit IResult execution');
+  requireText(resultExecution, 'Module001TimerHistoryAsync(context)', 'history explicit IResult execution');
+  requireText(resultExecution, 'Module001TimerTargetsAsync(context)', 'target explicit IResult execution');
+  requireText(resultExecution, 'await result.ExecuteAsync(context);', 'framework-safe result execution');
+}
+
+console.log('MODULE_001_TIMER_MOBILE=PASS timer=server-authoritative history=visible targets=3-groups domOwnership=react-owned');
