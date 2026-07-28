@@ -39,6 +39,32 @@ assert.doesNotMatch(utilization, /2026 \+ index/);
 assert.doesNotMatch(utilization, /currentYear >= 2026/);
 assert.doesNotMatch(utilization, /length: 11/);
 
+const managerUtilization = read('src/EngineeringTeamLeadUtilizationPanel.jsx');
+const managerUtilizationCss = read('src/engineering-team-lead-utilization.css');
+assert.match(managerUtilization, /import '\.\/engineering-team-lead-utilization\.css';/);
+assert.match(managerUtilization, /<table className="engineering-utilization-table">/);
+assert.match(managerUtilization, /<colgroup>/);
+assert.match(managerUtilization, /<th scope="col">Engineer<\/th>/);
+assert.match(managerUtilization, /<th scope="col">Team<\/th>/);
+assert.match(managerUtilization, /<th scope="col">Annual utilization<\/th>/);
+assert.match(managerUtilization, /<th scope="col">Billable hours<\/th>/);
+for (const quarter of [1, 2, 3, 4]) {
+  assert.match(managerUtilization, new RegExp(`<th scope="col" className="quarter-heading">Q${quarter}<\\/th>`));
+}
+assert.match(managerUtilization, /<th scope="row" className="engineer-cell">/);
+assert.match(managerUtilization, /quarterFor\(member, quarterNumber\)/);
+assert.match(managerUtilization, /colSpan="8"/);
+assert.doesNotMatch(managerUtilization, /className="team-member-table"/);
+assert.doesNotMatch(managerUtilization, /className="member-quarter-list"/);
+
+assert.match(managerUtilizationCss, /\.engineering-utilization-table\s*\{/);
+assert.match(managerUtilizationCss, /border-collapse:\s*separate/);
+assert.match(managerUtilizationCss, /table-layout:\s*fixed/);
+assert.match(managerUtilizationCss, /border-right:\s*1px solid var\(--border\)/);
+assert.match(managerUtilizationCss, /overflow-x:\s*auto/);
+assert.match(managerUtilizationCss, /\.quarter-cell/);
+assert.match(managerUtilizationCss, /@media \(max-width: 640px\)/);
+
 const generator = read('scripts/generate-module-001-integrated-app.mjs');
 assert.match(generator, /import \{ getRollingYearOptions \} from '\.\/rolling-year-window\.js';/);
 assert.match(generator, /const holidayYearOptions = getRollingYearOptions\(\)\.map\(String\);/);
@@ -52,4 +78,4 @@ assert.equal(
 );
 assert.match(packageJson.scripts.build, /validate:modules003004-rolling-years/);
 
-console.log('MODULES_003_004_ROLLING_YEARS_VALIDATION=PASS reference2026=2023-2032 reference2030=2027-2036 total=10');
+console.log('MODULES_003_004_ROLLING_YEARS_VALIDATION=PASS reference2026=2023-2032 reference2030=2027-2036 total=10 managerTable=aligned-8-columns');
