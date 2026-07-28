@@ -1,3 +1,5 @@
+import './intuitive-more-menu.js';
+
 export const PROJECTPULSE_MODULES = Object.freeze([
   Object.freeze({ moduleNumber: '001', route: 'timesheet', displayName: 'Timesheet', group: 'Time Management' }),
   Object.freeze({ moduleNumber: '002', route: 'manager-approval', displayName: 'Approval Inbox', group: 'Approvals' }),
