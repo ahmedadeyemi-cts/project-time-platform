@@ -10,6 +10,8 @@ on:
       - 'src/frontend/project-time-web/src/main.jsx'
       - 'src/frontend/project-time-web/scripts/validate-security-role-policy-public-origin.mjs'
       - 'src/frontend/project-time-web/scripts/validate-admin-runtime-stability.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-microsoft-integration-authoritative-connection.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-microsoft-sso-runtime-wiring.mjs'
       - 'src/backend/ProjectTime.Api/Modules/ProjectPulsePublicOriginCompatibility.cs'
       - 'src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs'
       - 'deployment/containers/web/default.conf.template'
@@ -44,13 +46,15 @@ jobs:
             'src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs'
             'src/backend/ProjectTime.Api/Modules/ProjectPulsePublicOriginCompatibility.cs'
             'src/frontend/project-time-web/scripts/validate-admin-runtime-stability.mjs'
+            'src/frontend/project-time-web/scripts/validate-microsoft-integration-authoritative-connection.mjs'
+            'src/frontend/project-time-web/scripts/validate-microsoft-sso-runtime-wiring.mjs'
             'src/frontend/project-time-web/scripts/validate-security-role-policy-public-origin.mjs'
             'src/frontend/project-time-web/src/main.jsx'
             'src/frontend/project-time-web/src/role-policy-authoritative-transport.js'
           )
 
-          [[ "${#CHANGED[@]}" -eq 8 ]] || {
-            echo "Expected exactly eight security-hotfix files; found ${#CHANGED[@]}." >&2
+          [[ "${#CHANGED[@]}" -eq 10 ]] || {
+            echo "Expected exactly ten security-hotfix files; found ${#CHANGED[@]}." >&2
             exit 1
           }
 
