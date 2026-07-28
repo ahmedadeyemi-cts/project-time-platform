@@ -50,7 +50,8 @@ public static class ProjectPulsePublicOriginCompatibility
         out string source)
     {
         if (context.Items.TryGetValue(PublicOriginItem, out var existing)
-            && existing is Uri existingUri)
+            && existing is Uri existingUri
+            && TrustedHost(existingUri.Host, context))
         {
             publicOrigin = existingUri;
             source = context.Items.TryGetValue(PublicOriginSourceItem, out var existingSource)
@@ -60,24 +61,35 @@ public static class ProjectPulsePublicOriginCompatibility
         }
 
         var request = context.Request;
-        var forwardedHost = FirstForwardedValue(request.Headers["X-Forwarded-Host"].ToString());
-        var forwardedProto = FirstForwardedValue(request.Headers["X-Forwarded-Proto"].ToString());
-        if (string.IsNullOrWhiteSpace(forwardedHost))
+        var hosts = ForwardedValues(request.Headers["X-Forwarded-Host"].ToString());
+        var protocols = ForwardedValues(request.Headers["X-Forwarded-Proto"].ToString());
+        for (var index = 0; index < hosts.Length; index++)
         {
-            ReadForwardedHeader(
-                FirstForwardedValue(request.Headers["Forwarded"].ToString()),
-                out forwardedHost,
-                out forwardedProto);
-        }
-
-        if (!string.IsNullOrWhiteSpace(forwardedHost)
-            && TryApprovedAuthority(forwardedHost, context, out var approvedAuthority))
-        {
-            foreach (var scheme in CandidateSchemes(forwardedProto, approvedAuthority.Host))
+            var candidateHost = hosts[index];
+            var candidateProto = protocols.Length > index
+                ? protocols[index]
+                : protocols.FirstOrDefault() ?? string.Empty;
+            if (!TryApprovedAuthority(candidateHost, context, out var approvedAuthority)) continue;
+            foreach (var scheme in CandidateSchemes(candidateProto, approvedAuthority.Host))
             {
                 if (TryOrigin($"{scheme}://{approvedAuthority.Authority}", context, out publicOrigin))
                 {
                     source = "trusted_forwarded_origin";
+                    return true;
+                }
+            }
+        }
+
+        foreach (var forwarded in ForwardedValues(request.Headers["Forwarded"].ToString()))
+        {
+            ReadForwardedHeader(forwarded, out var forwardedHost, out var forwardedProto);
+            if (string.IsNullOrWhiteSpace(forwardedHost)
+                || !TryApprovedAuthority(forwardedHost, context, out var approvedAuthority)) continue;
+            foreach (var scheme in CandidateSchemes(forwardedProto, approvedAuthority.Host))
+            {
+                if (TryOrigin($"{scheme}://{approvedAuthority.Authority}", context, out publicOrigin))
+                {
+                    source = "trusted_forwarded_header";
                     return true;
                 }
             }
@@ -113,19 +125,23 @@ public static class ProjectPulsePublicOriginCompatibility
     internal static bool TryBrowserOrigin(HttpContext context, out Uri publicOrigin, out string source)
     {
         var request = context.Request;
-        var originHeader = FirstForwardedValue(request.Headers["Origin"].ToString());
-        if (TryOrigin(originHeader, context, out publicOrigin))
+        foreach (var originHeader in ForwardedValues(request.Headers["Origin"].ToString()))
         {
-            source = "browser_origin";
-            return true;
+            if (TryOrigin(originHeader, context, out publicOrigin))
+            {
+                source = "browser_origin";
+                return true;
+            }
         }
 
-        var refererHeader = FirstForwardedValue(request.Headers["Referer"].ToString());
-        if (Uri.TryCreate(refererHeader, UriKind.Absolute, out var referer)
-            && TryOrigin(referer.GetLeftPart(UriPartial.Authority), context, out publicOrigin))
+        foreach (var refererHeader in ForwardedValues(request.Headers["Referer"].ToString()))
         {
-            source = "browser_referer";
-            return true;
+            if (Uri.TryCreate(refererHeader, UriKind.Absolute, out var referer)
+                && TryOrigin(referer.GetLeftPart(UriPartial.Authority), context, out publicOrigin))
+            {
+                source = "browser_referer";
+                return true;
+            }
         }
 
         publicOrigin = null!;
@@ -171,6 +187,15 @@ public static class ProjectPulsePublicOriginCompatibility
             && host.Equals(requestHost, StringComparison.OrdinalIgnoreCase);
     }
 
+    internal static bool IsApprovedEnvironmentHost(string? host)
+    {
+        var value = (host ?? string.Empty).Trim().TrimEnd('.');
+        return value.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+            || value.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase)
+            || value.EndsWith(".onenecklab.com", StringComparison.OrdinalIgnoreCase)
+            || value.EndsWith(".ussignal.com", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static bool IsRelevantRequest(HttpContext context)
     {
         var path = context.Request.Path.Value ?? string.Empty;
@@ -202,7 +227,7 @@ public static class ProjectPulsePublicOriginCompatibility
     {
         var local = host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
             || host.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase);
-        var normalized = FirstForwardedValue(forwardedScheme);
+        var normalized = ForwardedValues(forwardedScheme).FirstOrDefault() ?? string.Empty;
 
         if (normalized.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
             yield return Uri.UriSchemeHttps;
@@ -221,15 +246,6 @@ public static class ProjectPulsePublicOriginCompatibility
             && (origin.IsLoopback
                 || origin.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase)));
 
-    private static bool IsApprovedEnvironmentHost(string? host)
-    {
-        var value = (host ?? string.Empty).Trim().TrimEnd('.');
-        return value.Equals("localhost", StringComparison.OrdinalIgnoreCase)
-            || value.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase)
-            || value.EndsWith(".onenecklab.com", StringComparison.OrdinalIgnoreCase)
-            || value.EndsWith(".ussignal.com", StringComparison.OrdinalIgnoreCase);
-    }
-
     private static void ReadForwardedHeader(string value, out string host, out string proto)
     {
         host = string.Empty;
@@ -243,10 +259,9 @@ public static class ProjectPulsePublicOriginCompatibility
         }
     }
 
-    private static string FirstForwardedValue(string? value) =>
+    private static string[] ForwardedValues(string? value) =>
         (value ?? string.Empty)
-            .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
-            .FirstOrDefault() ?? string.Empty;
+            .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
 
     private static void EnsureCrmErpEncryptionKey()
     {
