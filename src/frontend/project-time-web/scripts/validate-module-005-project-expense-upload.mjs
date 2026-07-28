@@ -15,8 +15,9 @@ const rejectAll = (source, values, label) => {
 
 const [
   module005, module005Experience, module038, module038Css, routeBoundary, routeCss,
-  pageContext, portal, main, registry,
+  pageContext, portal, portalCss, main, registry,
   foundation, safeEndpoints, parser, data, commands, notificationAuth, mail, certify,
+  expenseBilling, expenseContinuity,
   migration, rollback, project, parserTest, migrationTest
 ] = await Promise.all([
   text('src/frontend/project-time-web/src/ProjectAllocationInfoPanel.jsx'),
@@ -27,6 +28,7 @@ const [
   text('src/frontend/project-time-web/src/critical-route-presentation.css'),
   text('src/frontend/project-time-web/src/PageContextGuide.jsx'),
   text('src/frontend/project-time-web/src/ProjectExpenseCrossModulePortal.jsx'),
+  text('src/frontend/project-time-web/src/project-expense-cross-module.css'),
   text('src/frontend/project-time-web/src/main.jsx'),
   text('src/frontend/project-time-web/src/module-availability-registry.js'),
   optional('src/backend/ProjectTime.Api/Modules/Module005ProjectExpenseUploadModule.cs'),
@@ -37,6 +39,8 @@ const [
   optional('src/backend/ProjectTime.Api/Modules/Module005ProjectExpenseNotificationAuthorization.cs'),
   optional('src/backend/ProjectTime.Api/Modules/Module005ProjectExpenseMail.cs'),
   optional('src/backend/ProjectTime.Api/Modules/Module038CertifyConnectionModule.cs'),
+  optional('src/backend/ProjectTime.Api/Modules/Module005ProjectExpenseBillingAcknowledgement.cs'),
+  optional('src/backend/ProjectTime.Api/Modules/Module005ProjectExpenseBillingContinuitySafe.cs'),
   optional('database/migrations/044_project_expense_upload_certify_connection.sql'),
   optional('database/rollback/044_project_expense_upload_certify_connection_rollback.sql'),
   optional('src/backend/ProjectTime.Api/ProjectTime.Api.csproj'),
@@ -110,11 +114,31 @@ requireAll(pageContext, [
 ], 'Module 005 and 038 canonical page context');
 
 requireAll(portal, [
-  "['invoice-billing-center', 'work-register']",
-  '/api/project-expenses/projects/${projectId}/summary',
-  'Project expenses', 'Invoice eligible', 'Fixed-price included cost',
+  "const ACTIVE_ROUTES = new Set(['invoice-billing-center', 'work-register'])",
+  "const [open, setOpen] = useState(false)",
+  'data-project-expense-cross-module="non-invasive-v2"',
+  'className="expense-cross-module-launcher"',
+  'aria-expanded={open}',
+  '/api/project-expenses/projects/${selectedProjectId}/billing-context',
+  '/api/project-expenses/projects/${projectId}/billing-acknowledgement',
+  'Choose a project only when expense context is needed',
+  'This panel stays collapsed and does not choose a project automatically.',
+  'Deleted and superseded uploads are excluded.',
+  'Acknowledge for invoice review',
+  'Acknowledge as included project cost',
   '#project-allocation-info'
-], 'Module 042 and 055C expense visibility');
+], 'Module 042 and 055C non-invasive expense visibility');
+rejectAll(portal, [
+  "setProjectId((current) => current || result.projects?.[0]?.projectId || '')",
+  '/api/project-expenses/projects/${projectId}/summary'
+], 'retired invasive expense context');
+requireAll(portalCss, [
+  '.expense-cross-module-launcher',
+  '.expense-cross-module-shell.is-open',
+  '.expense-cross-module-panel',
+  '.expense-cross-close',
+  '.expense-cross-acknowledgement'
+], 'Module 005 collapsed cross-module drawer');
 
 requireAll(main, [
   "import CriticalRoutePresentationBoundary from './CriticalRoutePresentationBoundary.jsx';",
@@ -172,7 +196,8 @@ if (externalAvailable) {
     'projectWideVisibility', 'ownerScope',
     'AuthorizeExistingUploadActionAsync',
     'ENGINEERING', 'ENGINEERING_LEAD',
-    'uploadedAt', 'project_expense_summary_loaded'
+    'uploadedAt', 'project_expense_summary_loaded',
+    'upload.is_current=TRUE AND upload.deleted_at IS NULL'
   ], 'Project and role scope');
 
   requireAll(commands, [
@@ -207,6 +232,28 @@ if (externalAvailable) {
     'secretsReturned = false'
   ], 'Certify connection and safe automation gate');
 
+  if (expenseBilling && expenseContinuity) {
+    requireAll(expenseBilling, [
+      'MapModule005ProjectExpenseBillingAcknowledgementEndpoints',
+      '/api/project-expenses/projects/{projectId:guid}/billing-context',
+      '/api/project-expenses/projects/{projectId:guid}/billing-acknowledgement',
+      'upload.is_current = TRUE',
+      'upload.deleted_at IS NULL',
+      'expense-only-pass-through',
+      'expense-included-fixed-price',
+      'project_expense_ready_for_invoice',
+      'project_expense_acknowledged_as_included_cost',
+      "SET review_status = 'blocked'",
+      'deletedUploadsExcluded = true'
+    ], 'Governed expense billing acknowledgement');
+    requireAll(expenseContinuity, [
+      'UseProjectExpenseBillingReadinessContinuitySafe',
+      'HttpMethods.IsGet(context.Request.Method)',
+      '!ProjectPulseActualSessionAuthority.IsViewAs(context)',
+      'authenticated_candidate_read_v1'
+    ], 'Authenticated-only stale expense continuity');
+  }
+
   requireAll(migration, [
     '044_project_expense_upload_certify_connection',
     'project_expense_uploads', 'project_expense_lines', 'project_expense_events',
@@ -228,10 +275,13 @@ if (externalAvailable) {
 
   requireAll(project, [
     'app.MapModule005ProjectExpenseUploadEndpointsSafe();',
+    'app.MapModule005ProjectExpenseBillingAcknowledgementEndpoints();',
+    'app.UseProjectExpenseBillingReadinessContinuitySafe();',
     'app.MapModule038CertifyConnectionEndpoints();'
   ], 'API registration');
   rejectAll(project, [
-    'app.MapModule005ProjectExpenseUploadEndpoints();'
+    'app.MapModule005ProjectExpenseUploadEndpoints();',
+    'app.UseProjectExpenseBillingReadinessContinuity();'
   ], 'API registration');
 
   requireAll(parserTest, [
@@ -251,5 +301,5 @@ if (externalAvailable) {
   console.log('MODULE_005_EXTERNAL_SOURCE_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
 }
 
-console.log('MODULE_005_038_MERGE_CANDIDATE=PASS reupload=true compactSync=true explicitRouteBoundary=true');
+console.log('MODULE_005_038_MERGE_CANDIDATE=PASS reupload=true compactSync=true explicitRouteBoundary=true nonInvasiveExpenseDrawer=true billingAcknowledgement=true');
 console.log('Module 005 Project Expense Upload and Module 038 Certify contracts passed.');
