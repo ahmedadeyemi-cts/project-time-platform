@@ -112,21 +112,63 @@ jobs:
         working-directory: src/frontend/project-time-web
         run: npm ci --no-audit --no-fund
 
-      - name: Validate Microsoft dual-connection contract
+      - name: Execute Microsoft validators with complete diagnostics
+        id: microsoft_validators
+        continue-on-error: true
         working-directory: src/frontend/project-time-web
-        run: npm run validate:module067
+        shell: bash
+        run: |
+          set +e
+          npm run validate:module067 > validate-module067.log 2>&1
+          DUAL=$?
+          npm run validate:microsoft-connection > validate-microsoft-connection.log 2>&1
+          CONNECTION=$?
+          npm run validate:microsoft-sso-runtime > validate-microsoft-sso-runtime.log 2>&1
+          SSO=$?
+          npm run validate:friendly-api-errors > validate-friendly-api-errors.log 2>&1
+          FRIENDLY=$?
 
-      - name: Validate Microsoft authoritative connection
-        working-directory: src/frontend/project-time-web
-        run: npm run validate:microsoft-connection
+          echo "dual_exit=$DUAL" >> "$GITHUB_OUTPUT"
+          echo "connection_exit=$CONNECTION" >> "$GITHUB_OUTPUT"
+          echo "sso_exit=$SSO" >> "$GITHUB_OUTPUT"
+          echo "friendly_exit=$FRIENDLY" >> "$GITHUB_OUTPUT"
+          exit 0
 
-      - name: Validate Microsoft SSO runtime
-        working-directory: src/frontend/project-time-web
-        run: npm run validate:microsoft-sso-runtime
+      - name: Upload Microsoft validator diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: modules010065-validator-logs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            src/frontend/project-time-web/validate-module067.log
+            src/frontend/project-time-web/validate-microsoft-connection.log
+            src/frontend/project-time-web/validate-microsoft-sso-runtime.log
+            src/frontend/project-time-web/validate-friendly-api-errors.log
+          if-no-files-found: error
+          retention-days: 7
 
-      - name: Validate friendly API references
+      - name: Enforce Microsoft validator results
         working-directory: src/frontend/project-time-web
-        run: npm run validate:friendly-api-errors
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          FAILED=0
+          for ENTRY in \
+            "dual:${{ steps.microsoft_validators.outputs.dual_exit }}:validate-module067.log" \
+            "connection:${{ steps.microsoft_validators.outputs.connection_exit }}:validate-microsoft-connection.log" \
+            "sso:${{ steps.microsoft_validators.outputs.sso_exit }}:validate-microsoft-sso-runtime.log" \
+            "friendly:${{ steps.microsoft_validators.outputs.friendly_exit }}:validate-friendly-api-errors.log"
+          do
+            IFS=: read -r NAME STATUS LOG <<<"$ENTRY"
+            echo "===== $NAME ====="
+            cat "$LOG"
+            if [[ "$STATUS" != '0' ]]; then FAILED=1; fi
+          done
+          if [[ "$FAILED" != '0' ]]; then
+            echo 'One or more Microsoft runtime validators failed.' >&2
+            exit 1
+          fi
+          echo 'MODULES_010_065_VALIDATORS=PASSED'
 
       - name: Build complete frontend production bundle
         id: frontend_build
@@ -141,7 +183,7 @@ jobs:
           exit 0
 
       - name: Upload frontend build diagnostics
-        if: always()
+        if: always() && steps.frontend_build.outcome != 'skipped'
         uses: actions/upload-artifact@v4
         with:
           name: modules010065-frontend-build-${{ github.run_id }}-${{ github.run_attempt }}
@@ -150,6 +192,7 @@ jobs:
           retention-days: 7
 
       - name: Enforce frontend build result
+        if: steps.frontend_build.outcome != 'skipped'
         working-directory: src/frontend/project-time-web
         shell: bash
         run: |
