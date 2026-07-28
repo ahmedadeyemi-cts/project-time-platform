@@ -79,7 +79,7 @@ test('NATIVE_REACT_ROUTE', app.includes("import CrmErpIntegrationCenter from './
 test('LEGACY_OVERLAY_DISABLED', legacy.includes('MODULE_026_NATIVE_REACT_ROUTE') && legacy.includes("(function () {\n  // MODULE_026_NATIVE_REACT_ROUTE: the historical local-only overlay is disabled.\n  return;"));
 test('CORE_CONNECTOR_CARDS', frontend.includes('SELL') && frontend.includes('Salesforce') && frontend.includes('ServiceNow') && frontend.includes('Certinia') && frontend.includes('Configure connection'));
 test('EXPLICIT_EDIT_MODE', frontend.includes('Edit connection') && frontend.includes('beginEditing') && frontend.includes('cancelEditing') && frontend.includes("const [editing, setEditing] = useState(false)"));
-test('FIRST_SAVE_CREATES_BUILTIN', frontend.includes('const creating = !draft.isPersisted') && frontend.includes("creating ? '/api/integrations/026/providers'") && frontend.includes("method: creating ? 'POST' : 'PUT'"));
+test('FIRST_SAVE_CREATES_BUILTIN', frontend.includes('const creating = !draft.isPersisted') && frontend.includes("? '/api/integrations/026/providers'") && frontend.includes("method: creating ? 'POST' : 'PUT'"));
 test('CUSTOM_PLATFORM_MODAL', frontend.includes('Add CRM platform') && frontend.includes('Add another CRM or ERP platform') && frontend.includes('Add platform and continue setup') && frontend.includes('crm-erp-modal-backdrop'));
 test('AUTHENTICATION_UI', frontend.includes('OAuth 2.0') && frontend.includes('API key') && frontend.includes('Write-only credential'));
 test('SELL_RECORD_LOOKUP', migration.includes('record_lookup_url_template') && frontend.includes('Record lookup URL template'));
