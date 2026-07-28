@@ -11,9 +11,9 @@ var builder = WebApplication.CreateBuilder();
 builder.WebHost.UseUrls("http://127.0.0.1:0");
 var app = builder.Build();
 
-// This is the exact registration shape that was used by the role-policy reads.
-// Task<IResult> can bind to RequestDelegate's Task return type, so ASP.NET awaits
-// the task but does not execute the returned IResult.
+// This is the ambiguous registration shape previously used by role-policy and
+// several Module 001 GET handlers. Task<IResult> can bind to RequestDelegate's
+// Task return type, so ASP.NET awaits the task but does not execute the result.
 app.MapGet("/method-group", MethodGroupResultAsync);
 
 // This is the framework-safe registration/execution shape. The concrete delegate
@@ -45,8 +45,8 @@ try
     Expect(
         "METHOD_GROUP_EMPTY_BODY",
         methodGroupBody.Length == 0,
-        "ambiguous Task<IResult> method group reproduces the HAR zero-byte response");
-    Console.WriteLine("ROLE_POLICY_METHOD_GROUP_EMPTY_200_REPRODUCED=PASS");
+        "ambiguous Task<IResult> method group reproduces the zero-byte response");
+    Console.WriteLine("TASK_IRESULT_METHOD_GROUP_EMPTY_200_REPRODUCED=PASS");
 
     using var explicitResponse = await client.GetAsync("/explicit-result");
     var explicitBody = await explicitResponse.Content.ReadAsStringAsync();
@@ -63,17 +63,26 @@ try
         explicitBody.Contains("\"roles\"", StringComparison.Ordinal)
         && explicitBody.Contains("\"modules\"", StringComparison.Ordinal),
         "explicit IResult execution writes the required response collections");
-    Console.WriteLine("ROLE_POLICY_EXPLICIT_IRESULT_JSON=PASS");
+    Console.WriteLine("EXPLICIT_IRESULT_JSON=PASS");
 
     var repositoryRoot = FindRepositoryRoot();
-    var compatibilityPath = Path.Combine(
+    var roleCompatibilityPath = Path.Combine(
         repositoryRoot,
         "src/backend/ProjectTime.Api/Modules/ScopedRolePolicyResultExecutionCompatibility.cs");
+    var module001CompatibilityPath = Path.Combine(
+        repositoryRoot,
+        "src/backend/ProjectTime.Api/Modules/Module001ResultExecutionCompatibility.cs");
     var registrationPath = Path.Combine(
         repositoryRoot,
         "src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs");
-    var compatibility = File.ReadAllText(compatibilityPath);
+    var projectPath = Path.Combine(
+        repositoryRoot,
+        "src/backend/ProjectTime.Api/ProjectTime.Api.csproj");
+
+    var roleCompatibility = File.ReadAllText(roleCompatibilityPath);
+    var module001Compatibility = File.ReadAllText(module001CompatibilityPath);
     var registration = File.ReadAllText(registrationPath);
+    var project = File.ReadAllText(projectPath);
 
     foreach (var marker in new[]
              {
@@ -87,8 +96,8 @@ try
              })
     {
         Expect(
-            $"COMPATIBILITY_{Sanitize(marker)}",
-            compatibility.Contains(marker, StringComparison.Ordinal),
+            $"ROLE_COMPATIBILITY_{Sanitize(marker)}",
+            roleCompatibility.Contains(marker, StringComparison.Ordinal),
             $"role-policy compatibility source must contain {marker}");
     }
 
@@ -99,16 +108,53 @@ try
         "app.UseModuleAvailabilityReadContinuityCompatibility();",
         StringComparison.Ordinal);
     Expect(
-        "COMPATIBILITY_REGISTERED",
+        "ROLE_COMPATIBILITY_REGISTERED",
         executionIndex >= 0,
-        "explicit result execution compatibility is registered");
+        "explicit role-policy result execution compatibility is registered");
     Expect(
-        "COMPATIBILITY_BEFORE_AVAILABILITY",
+        "ROLE_COMPATIBILITY_BEFORE_AVAILABILITY",
         availabilityIndex >= 0 && executionIndex < availabilityIndex,
         "role-policy result execution runs before the historic availability/endpoint path");
 
-    Console.WriteLine($"ROLE_POLICY_RESULT_EXECUTION_CHECKS={checks}");
+    foreach (var marker in new[]
+             {
+                 "UseModule001ResultExecutionCompatibility",
+                 "RuntimePtcUsersAsync(context)",
+                 "RuntimePtcWorkspaceAsync(targetUserId, context)",
+                 "Module001TimerTargetsAsync(context)",
+                 "Module001ActiveTimerAsync(context)",
+                 "Module001TimerHistoryAsync(context)",
+                 "Module001WorkQueueAsync(context)",
+                 "Module001WeeklyLinesAsync(context)",
+                 "X-ProjectPulse-Module001-Result-Execution",
+                 "explicit-iresult-v1",
+                 "await result.ExecuteAsync(context);"
+             })
+    {
+        Expect(
+            $"MODULE001_COMPATIBILITY_{Sanitize(marker)}",
+            module001Compatibility.Contains(marker, StringComparison.Ordinal),
+            $"Module 001 compatibility source must contain {marker}");
+    }
+
+    var module001CompatibilityIndex = project.IndexOf(
+        "app.UseModule001ResultExecutionCompatibility();",
+        StringComparison.Ordinal);
+    var module001EndpointIndex = project.IndexOf(
+        "app.MapModule001TimesheetEnhancementEndpoints();",
+        StringComparison.Ordinal);
+    Expect(
+        "MODULE001_COMPATIBILITY_REGISTERED",
+        module001CompatibilityIndex >= 0,
+        "Module 001 explicit result execution compatibility is registered");
+    Expect(
+        "MODULE001_COMPATIBILITY_BEFORE_ENDPOINTS",
+        module001EndpointIndex >= 0 && module001CompatibilityIndex < module001EndpointIndex,
+        "Module 001 explicit result execution runs before the ambiguous historic endpoint registrations");
+
+    Console.WriteLine($"ROUTE_RESULT_EXECUTION_CHECKS={checks}");
     Console.WriteLine("ROLE_POLICY_RESULT_EXECUTION_CONTRACT=PASS");
+    Console.WriteLine("MODULE_001_RESULT_EXECUTION_CONTRACT=PASS");
 }
 finally
 {
@@ -120,21 +166,21 @@ static Task<IResult> MethodGroupResultAsync(HttpContext context) =>
     Task.FromResult<IResult>(Results.Ok(new
     {
         roles = new[] { "SUPER_ADMINISTRATOR" },
-        modules = new[] { "012", "037" }
+        modules = new[] { "001", "012", "037" }
     }));
 
 static Task<IResult> ExplicitResultAsync(HttpContext context) =>
     Task.FromResult<IResult>(Results.Ok(new
     {
         roles = new[] { "SUPER_ADMINISTRATOR" },
-        modules = new[] { "012", "037" }
+        modules = new[] { "001", "012", "037" }
     }));
 
 void Expect(string name, bool condition, string evidence)
 {
     checks += 1;
     Console.WriteLine(
-        $"ROLE_POLICY_RESULT_EXECUTION_{name}={(condition ? "PASSED" : "FAILED")} — {evidence}");
+        $"ROUTE_RESULT_EXECUTION_{name}={(condition ? "PASSED" : "FAILED")} — {evidence}");
     if (!condition)
         throw new InvalidOperationException($"{name}: {evidence}");
 }
