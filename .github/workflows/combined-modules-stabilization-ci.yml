@@ -14,6 +14,7 @@ on:
       - 'src/frontend/project-time-web/src/module001/**'
       - 'src/frontend/project-time-web/src/ProjectAllocationInfoPanel.jsx'
       - 'src/frontend/project-time-web/src/CertifyIntegrationCenter.jsx'
+      - 'src/frontend/project-time-web/scripts/generate-module-001-integrated-app.mjs'
       - 'src/frontend/project-time-web/scripts/validate-combined-modules-001-005-012-037-038.mjs'
       - 'tests/test-projectpulse-api-startup.sh'
       - 'tests/Module005ExpenseParserTests/**'
@@ -95,9 +96,36 @@ jobs:
           bash tests/test-project-expense-migration-044.sh | tee /tmp/combined-module005-migration.log
           grep -Fq 'PROJECT_EXPENSE_MIGRATION_044_TEST=PASS apply=true idempotent=true safeRollback=true guardedRollback=true immutableAudit=true' /tmp/combined-module005-migration.log
 
-      - name: Validate combined module source contracts
+      - name: Generate integrated Module 001 App source
         working-directory: src/frontend/project-time-web
-        run: node ./scripts/validate-combined-modules-001-005-012-037-038.mjs
+        run: node ./scripts/generate-module-001-integrated-app.mjs
+
+      - name: Validate admin runtime stability contract
+        working-directory: src/frontend/project-time-web
+        run: node ./scripts/validate-admin-runtime-stability.mjs
+
+      - name: Validate Module 005 project expense contract
+        working-directory: src/frontend/project-time-web
+        run: node ./scripts/validate-module-005-project-expense-upload.mjs
+
+      - name: Validate Module 001 timer and mobile contract
+        working-directory: src/frontend/project-time-web
+        run: node ./scripts/validate-module-001-timesheet-timer-mobile.mjs
+
+      - name: Validate Module 012 role administration contract
+        working-directory: src/frontend/project-time-web
+        run: node ./scripts/validate-module-012-scoped-role-admin.mjs
+
+      - name: Validate Module 037 permission matrix contract
+        working-directory: src/frontend/project-time-web
+        run: node ./scripts/validate-module-037-effective-matrix.mjs
+
+      - name: Validate runtime role-policy and PTC contract
+        working-directory: src/frontend/project-time-web
+        run: node ./scripts/validate-runtime-role-policy-ptc-data.mjs
+
+      - name: Publish combined source-contract result
+        run: echo 'FUNCTIONAL_RUNTIME_UAT_001_005_012_037_038_CONTRACTS=PASS'
 
       - name: Build combined frontend production bundle
         working-directory: src/frontend/project-time-web

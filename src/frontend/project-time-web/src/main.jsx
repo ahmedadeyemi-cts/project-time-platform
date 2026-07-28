@@ -7,7 +7,9 @@ import './runtime-data-compatibility.js';
 import './microsoft-integration-compatibility.js';
 import './microsoft-sso-runtime-activation.js';
 import './microsoft-mail-runtime-activation.js';
+import './react-dom-ownership-prelude.js';
 import App from './App.Module001.g.jsx';
+import AdminRuntimeStabilityPortal from './AdminRuntimeStabilityPortal.jsx';
 import HelpAssistant from './HelpAssistant.jsx';
 import ModulesDirectoryPortal from './ModulesDirectoryPortal.jsx';
 import ModuleAvailabilityController from './ModuleAvailabilityController.jsx';
@@ -19,6 +21,7 @@ import PtcTimeStewardGate from './module001/PtcTimeStewardGate.jsx';
 import ProjectExpenseCrossModulePortal from './ProjectExpenseCrossModulePortal.jsx';
 import Module005ExperienceCompatibility from './Module005ExperienceCompatibility.jsx';
 import MicrosoftIntegrationDualConnectionPortal from './MicrosoftIntegrationDualConnectionPortal.jsx';
+import MicrosoftMailTransportReadinessPanel from './MicrosoftMailTransportReadinessPanel.jsx';
 import './approval-access-navigation-compatibility.js';
 import './scoped-rbac-catalog-compatibility.js';
 import './styles.css';
@@ -32,6 +35,7 @@ createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <App />
     <CriticalRoutePresentationBoundary />
+    <AdminRuntimeStabilityPortal />
     <ModulesDirectoryPortal />
     <ModuleAvailabilityController />
     <DashboardPersonalCalendarPortal />
@@ -41,6 +45,7 @@ createRoot(document.getElementById('root')).render(
     <ProjectExpenseCrossModulePortal />
     <Module005ExperienceCompatibility />
     <MicrosoftIntegrationDualConnectionPortal />
+    <MicrosoftMailTransportReadinessPanel />
     <HelpAssistant />
   </React.StrictMode>
 );

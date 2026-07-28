@@ -1,0 +1,165 @@
+.microsoft-mail-readiness-panel {
+  width: min(1480px, calc(100% - 32px));
+  margin: 1rem auto 4rem;
+  padding: 1.25rem;
+  border: 1px solid rgba(15, 57, 87, 0.16);
+  border-radius: 1rem;
+  background: var(--surface, #fff);
+  color: var(--text, #172033);
+  box-shadow: var(--shadow, 0 14px 36px rgba(23, 32, 51, 0.07));
+}
+
+.microsoft-mail-readiness-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.25rem;
+}
+
+.microsoft-mail-readiness-heading h2 {
+  margin: 0.15rem 0 0.45rem;
+}
+
+.microsoft-mail-readiness-heading p:not(.eyebrow) {
+  max-width: 880px;
+  margin: 0;
+  color: var(--muted, #60708d);
+  line-height: 1.55;
+}
+
+.microsoft-mail-readiness-heading button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.microsoft-mail-readiness-safety,
+.microsoft-mail-readiness-message,
+.microsoft-mail-readiness-empty {
+  margin-top: 1rem;
+  border: 1px solid rgba(0, 119, 182, 0.2);
+  border-radius: 0.75rem;
+  padding: 0.9rem 1rem;
+  background: color-mix(in srgb, var(--accent, #e7f6fb) 58%, var(--surface, #fff));
+}
+
+.microsoft-mail-readiness-safety {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.8rem;
+}
+
+.microsoft-mail-readiness-safety span,
+.microsoft-mail-readiness-empty {
+  color: var(--muted, #60708d);
+}
+
+.microsoft-mail-readiness-message.success {
+  border-color: rgba(22, 163, 74, 0.32);
+  background: color-mix(in srgb, #dcfce7 72%, var(--surface, #fff));
+  color: #166534;
+}
+
+.microsoft-mail-readiness-message.warning {
+  border-color: rgba(217, 119, 6, 0.34);
+  background: color-mix(in srgb, #fef3c7 72%, var(--surface, #fff));
+  color: #92400e;
+}
+
+.microsoft-mail-readiness-message.error {
+  border-color: rgba(220, 38, 38, 0.34);
+  background: color-mix(in srgb, #fee2e2 72%, var(--surface, #fff));
+  color: #991b1b;
+}
+
+.microsoft-mail-readiness-facts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.microsoft-mail-readiness-fact {
+  min-width: 0;
+  border: 1px solid var(--border, rgba(23, 32, 51, 0.1));
+  border-radius: 0.75rem;
+  padding: 0.85rem;
+  background: var(--surface-strong, #f8fafc);
+}
+
+.microsoft-mail-readiness-fact span,
+.microsoft-mail-readiness-fact strong {
+  display: block;
+}
+
+.microsoft-mail-readiness-fact span {
+  color: var(--muted, #60708d);
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.microsoft-mail-readiness-fact strong {
+  overflow-wrap: anywhere;
+  margin-top: 0.4rem;
+}
+
+.microsoft-mail-readiness-fact.ready strong { color: #15803d; }
+.microsoft-mail-readiness-fact.attention strong { color: #b45309; }
+
+.microsoft-mail-readiness-details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.microsoft-mail-readiness-details article {
+  border: 1px solid var(--border, rgba(23, 32, 51, 0.1));
+  border-radius: 0.85rem;
+  padding: 1rem;
+  background: var(--surface-strong, #f8fafc);
+}
+
+.microsoft-mail-readiness-details h3 {
+  margin: 0.1rem 0 0.5rem;
+  text-transform: capitalize;
+}
+
+.microsoft-mail-readiness-details p,
+.microsoft-mail-readiness-details li {
+  color: var(--muted, #60708d);
+  line-height: 1.5;
+}
+
+.microsoft-mail-readiness-details ul {
+  margin: 0.75rem 0 0;
+  padding-left: 1.25rem;
+}
+
+@media (max-width: 1000px) {
+  .microsoft-mail-readiness-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .microsoft-mail-readiness-panel {
+    width: calc(100% - 16px);
+    padding: 0.9rem;
+  }
+
+  .microsoft-mail-readiness-heading,
+  .microsoft-mail-readiness-details {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .microsoft-mail-readiness-heading button {
+    width: 100%;
+  }
+
+  .microsoft-mail-readiness-facts {
+    grid-template-columns: 1fr;
+  }
+}

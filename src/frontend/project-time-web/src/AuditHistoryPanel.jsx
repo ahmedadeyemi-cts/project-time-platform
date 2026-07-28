@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import './audit-history.css';
 
 function readStoredJson(key) {
@@ -26,7 +26,20 @@ function getProjectPulseAuthHeaders() {
     'X-ProjectPulse-Session': session.token,
     'X-Project-Pulse-Session': session.token,
     'X-Session-Token': session.token,
-    Authorization: `Bearer ${session.token}`
+    Authorization: `Bearer ${session.token}`,
+    'X-ProjectPulse-Module-Number': '008'
+  };
+}
+
+function initialFilters() {
+  const [, query = ''] = String(window.location.hash || '').split('?');
+  const params = new URLSearchParams(query);
+  return {
+    days: params.get('days') || '14',
+    category: params.get('category') || 'all',
+    status: params.get('status') || 'all',
+    source: params.get('source') || 'all',
+    search: params.get('search') || ''
   };
 }
 
@@ -42,8 +55,13 @@ async function readApiErrorMessage(response, path) {
   }
 }
 
-async function fetchJson(path) {
-  const response = await fetch(path, { headers: getProjectPulseAuthHeaders() });
+async function fetchJson(path, signal) {
+  const response = await fetch(path, {
+    cache: 'no-store',
+    credentials: 'include',
+    headers: getProjectPulseAuthHeaders(),
+    signal
+  });
   if (!response.ok) throw new Error(await readApiErrorMessage(response, path));
   return response.json();
 }
@@ -78,22 +96,19 @@ function compactValue(value) {
   return String(value);
 }
 
-export default function AuditHistoryPanel() {
-  const [filters, setFilters] = useState({
-    days: '14',
-    category: 'all',
-    status: 'all',
-    source: 'all',
-    search: ''
-  });
-  const [submittedSearch, setSubmittedSearch] = useState('');
+function AuditHistoryPanelContent({ stableRouteOwner }) {
+  const [filters, setFilters] = useState(initialFilters);
+  const [submittedSearch, setSubmittedSearch] = useState(() => initialFilters().search);
   const [auditData, setAuditData] = useState({
     loading: true,
     data: null,
     error: ''
   });
+  const requestSequence = useRef(0);
 
   async function loadAuditHistory() {
+    const sequence = ++requestSequence.current;
+    const controller = new AbortController();
     setAuditData((current) => ({ ...current, loading: true, error: '' }));
     const params = new URLSearchParams({
       days: filters.days,
@@ -105,19 +120,28 @@ export default function AuditHistoryPanel() {
     });
 
     try {
-      const result = await fetchJson(`/api/admin/audit-history/events?${params.toString()}`);
-      setAuditData({ loading: false, data: result, error: '' });
+      const result = await fetchJson(`/api/admin/audit-history/events?${params.toString()}`, controller.signal);
+      if (sequence === requestSequence.current) {
+        setAuditData({ loading: false, data: result, error: '' });
+      }
     } catch (error) {
-      setAuditData({
-        loading: false,
-        data: null,
-        error: error instanceof Error ? error.message : 'Audit and History could not be loaded.'
-      });
+      if (error?.name === 'AbortError') return;
+      if (sequence === requestSequence.current) {
+        setAuditData({
+          loading: false,
+          data: null,
+          error: error instanceof Error ? error.message : 'Audit and History could not be loaded.'
+        });
+      }
     }
+
+    return () => controller.abort();
   }
 
   useEffect(() => {
-    void loadAuditHistory();
+    let cleanup;
+    void loadAuditHistory().then((value) => { cleanup = value; });
+    return () => cleanup?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters.days, filters.category, filters.status, filters.source, submittedSearch]);
 
@@ -141,8 +165,23 @@ export default function AuditHistoryPanel() {
     setSubmittedSearch(filters.search.trim());
   }
 
+  function showModule010Evidence() {
+    const azureSource = availableSources.find((source) => /azure|entra|sync/i.test(`${source.source} ${source.label}`));
+    setFilters((current) => ({
+      ...current,
+      category: 'integration',
+      source: azureSource?.source || 'all',
+      search: azureSource ? '' : 'Azure Entra Module 010'
+    }));
+    setSubmittedSearch(azureSource ? '' : 'Azure Entra Module 010');
+  }
+
   return (
-    <section id="audit-history" className="panel audit-history-panel">
+    <section
+      id="audit-history"
+      className="panel audit-history-panel"
+      data-module-008-stable-owner={stableRouteOwner ? 'true' : undefined}
+    >
       <div className="audit-history-hero">
         <div>
           <p className="eyebrow">Module 008 · Security & Audit</p>
@@ -157,6 +196,9 @@ export default function AuditHistoryPanel() {
           <span className={auditData.data?.centralAudit?.immutable ? 'audit-ledger-state ready' : 'audit-ledger-state'}>
             {auditData.data?.centralAudit?.immutable ? 'Immutable ledger ready' : 'Immutable ledger pending migration'}
           </span>
+          <button type="button" className="secondary-action" onClick={showModule010Evidence}>
+            Module 010 sync evidence
+          </button>
           <button type="button" className="secondary-action" onClick={loadAuditHistory} disabled={auditData.loading}>
             {auditData.loading ? 'Refreshing…' : 'Refresh history'}
           </button>
@@ -294,4 +336,14 @@ export default function AuditHistoryPanel() {
       </div>
     </section>
   );
+}
+
+export default function AuditHistoryPanel({ stableRouteOwner = false } = {}) {
+  if (typeof window !== 'undefined'
+      && window.__projectPulseModule008StableOwnerInstalled
+      && !stableRouteOwner) {
+    return null;
+  }
+
+  return <AuditHistoryPanelContent stableRouteOwner={stableRouteOwner} />;
 }

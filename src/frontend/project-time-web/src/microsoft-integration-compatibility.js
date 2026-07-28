@@ -1,6 +1,5 @@
 const ACTIVE_ROUTE = 'entra-secret-administration';
 const RETIRED_ROUTE = 'global-mail-configuration';
-const ACTIVE_MODULE_NAME = 'Microsoft Integration Connection';
 const CONFIG_MARKER = 'PROJECTPULSE_MICROSOFT_INTEGRATION_JSON:';
 const DOCUMENT_PATH = '/api/native-administration/065/document';
 const SERVICES_APPLY_PATH = '/api/microsoft-integration/services-apply-profile';
@@ -24,118 +23,14 @@ function runtimeEnvironmentMode() {
   return 'production';
 }
 
-function redirectRetiredRoute() {
-  if (currentRoute() === RETIRED_ROUTE) {
+function synchronizeRouteState() {
+  const route = currentRoute();
+  if (route === RETIRED_ROUTE) {
     window.location.replace(`#${ACTIVE_ROUTE}`);
+    return;
   }
-}
-
-function closestModuleSurface(element) {
-  return element.closest('a, button, li, article, section, .module-card, .workspace-card, .navigation-item, .sidebar-item');
-}
-
-function setTextIfChanged(element, value) {
-  if (!element || element.textContent === value) return;
-  element.textContent = value;
-}
-
-function suppressMovedSurface(element, reason) {
-  if (!element) return;
-  element.setAttribute('data-moved-to-module-065', reason || 'true');
-  element.hidden = true;
-  element.setAttribute('aria-hidden', 'true');
-  element.style.setProperty('display', 'none', 'important');
-}
-
-function restoreModule010Preview(element) {
-  if (!element) return;
-  element.hidden = false;
-  element.removeAttribute('aria-hidden');
-  element.removeAttribute('data-moved-to-module-065');
-  element.style.removeProperty('display');
-  element.setAttribute('data-module-010-preview-preserved', 'true');
-}
-
-function activateAuthoritativeModule065() {
-  const active = currentRoute() === ACTIVE_ROUTE;
-  document.body.classList.toggle('projectpulse-microsoft-integration-active', active);
-  if (!active) return;
-
-  document.querySelectorAll([
-    '.entra-secret-center[data-module="065"]',
-    '.native-module-administration[data-module-administration="065"]',
-    '.entra-secret-administration-route-panel',
-    '[data-phase="065_COMPLETE_SOURCE_LOCKED_RUNTIME"]'
-  ].join(',')).forEach((element) => {
-    if (!element.closest('.microsoft-integration-portal')) {
-      suppressMovedSurface(element, 'legacy-module-065-surface');
-    }
-  });
-
-  const portal = document.querySelector('.microsoft-integration-portal[data-module="065"], .microsoft-integration-portal');
-  if (portal) {
-    portal.setAttribute('data-microsoft-integration-authoritative', 'true');
-    portal.hidden = false;
-    portal.removeAttribute('aria-hidden');
-    portal.style.removeProperty('display');
-    setTextIfChanged(portal.querySelector('.microsoft-integration-heading h1'), ACTIVE_MODULE_NAME);
-  }
-}
-
-function normalizeModuleSurfaces() {
-  document.querySelectorAll(`a[href="#${RETIRED_ROUTE}"], [data-route="${RETIRED_ROUTE}"]`).forEach((element) => {
-    const surface = closestModuleSurface(element) || element;
-    surface.setAttribute('data-module-067-retired', 'true');
-    surface.hidden = true;
-    surface.style.setProperty('display', 'none', 'important');
-  });
-
-  document.querySelectorAll('a, button, h1, h2, h3, h4, p, span, strong, div').forEach((element) => {
-    const text = element.textContent?.trim() || '';
-    if (!text || element.children.length > 4) return;
-
-    if (/\bMODULE\s*067\b/i.test(text) || /^Global Mail Configuration(?: Center)?$/i.test(text)) {
-      const surface = closestModuleSurface(element);
-      if (surface && !surface.querySelector(`a[href="#${ACTIVE_ROUTE}"]`)) {
-        surface.setAttribute('data-module-067-retired', 'true');
-        surface.hidden = true;
-        surface.style.setProperty('display', 'none', 'important');
-      }
-    }
-
-    if (/^Entra Secret Administration(?: Metadata management)?$/i.test(text)
-      || /^Microsoft Integration$/i.test(text)) {
-      setTextIfChanged(element, ACTIVE_MODULE_NAME);
-    }
-  });
-
-  const module010 = document.querySelector('#azure-admin');
-  if (module010) {
-    module010.querySelectorAll('.azure-config-card, .azure-sync-summary-card').forEach((element) => {
-      suppressMovedSurface(element, 'tenant-sync-configuration');
-    });
-
-    module010.querySelectorAll('button').forEach((button) => {
-      const label = button.textContent?.trim().toLowerCase();
-      if (label === 'sync now' || label === 'reconcile inactive users' || label === 'save configuration') {
-        suppressMovedSurface(button, 'configuration-action');
-      }
-    });
-
-    const previewCard = module010.querySelector('.azure-preview-card');
-    restoreModule010Preview(previewCard);
-    previewCard?.querySelectorAll('button, .azure-admin-heading-actions, .azure-selection-toolbar, .azure-filter-grid, .azure-preview-table')
-      .forEach(restoreModule010Preview);
-
-    const eyebrow = module010.querySelector('.section-heading .eyebrow');
-    const heading = module010.querySelector('.section-heading h1');
-    const copy = module010.querySelector('.section-heading .section-copy');
-    setTextIfChanged(eyebrow, 'MODULE 010 · AZURE / ENTRA DIRECTORY USERS');
-    setTextIfChanged(heading, 'Preview and import Entra users');
-    setTextIfChanged(copy, `Preview Entra directory users, filter the list, select the people to import, and confirm that imported users appear in ProjectPulse. Tenant, synchronization, identity, calendar, and Microsoft 365 mail settings are managed in Module 065 ${ACTIVE_MODULE_NAME}.`);
-  }
-
-  activateAuthoritativeModule065();
+  document.body?.classList.toggle('projectpulse-microsoft-integration-active', route === ACTIVE_ROUTE);
+  document.body?.classList.toggle('projectpulse-module010-directory-active', route === 'azure-admin');
 }
 
 function canonicalRoleCode(value) {
@@ -146,7 +41,6 @@ function canonicalRoleCode(value) {
 
 function normalizeRolePayload(pathname, init) {
   if (!ROLE_NORMALIZATION_ROUTES.has(pathname) || typeof init?.body !== 'string') return init;
-
   try {
     const payload = JSON.parse(init.body);
     payload.defaultRoleCode = canonicalRoleCode(payload.defaultRoleCode);
@@ -163,15 +57,13 @@ function activeServicesProfile(payload) {
     const stored = JSON.parse(notes.slice(CONFIG_MARKER.length));
     const tenants = Array.isArray(stored?.tenants) ? stored.tenants : [];
     const runtimeEnvironment = runtimeEnvironmentMode();
-    const active = tenants.find((tenant) => tenant?.environmentMode === runtimeEnvironment)
-      || tenants.find((tenant) => tenant?.key === stored?.activeTenantKey && tenant?.environmentMode === runtimeEnvironment)
-      || tenants.find((tenant) => tenant?.environmentMode === stored?.activeEnvironmentMode && tenant?.environmentMode === runtimeEnvironment);
+    const active = tenants.find((tenant) => String(tenant?.environmentMode || '').toLowerCase() === runtimeEnvironment);
     if (!active) return null;
     const services = active.services || active.servicesConnection || {};
     const clientId = services.clientId || services.applicationId || active.serviceClientId || active.clientId || '';
     if (!active.tenantId || !clientId) return null;
     return {
-      environmentMode: active.environmentMode,
+      environmentMode: runtimeEnvironment,
       tenantKey: active.key || active.tenantKey,
       tenantId: active.tenantId,
       clientId,
@@ -183,16 +75,29 @@ function activeServicesProfile(payload) {
   }
 }
 
-function responseFailure(status, payload, fallback) {
+function responseFailure(status, payload, fallback, extra = {}) {
   return new Response(JSON.stringify({
     status: payload?.status || 'module_065_services_runtime_unavailable',
     message: payload?.message || fallback,
     module: '010',
-    configurationSource: 'module_065'
+    configurationSource: 'module_065',
+    runtimeEnvironment: runtimeEnvironmentMode(),
+    ...extra
   }), {
     status: status >= 400 && status <= 599 ? status : 503,
-    headers: { 'Content-Type': 'application/json' }
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store'
+    }
   });
+}
+
+async function readJson(response) {
+  try {
+    return await response.clone().json();
+  } catch {
+    return {};
+  }
 }
 
 async function applyStoredServicesProfile(previousFetch, init) {
@@ -203,10 +108,13 @@ async function applyStoredServicesProfile(previousFetch, init) {
     credentials: 'include',
     headers
   });
-  let documentPayload = {};
-  try { documentPayload = await documentResponse.json(); } catch { /* controlled failure below */ }
+  const documentPayload = await readJson(documentResponse);
   if (!documentResponse.ok) {
-    return responseFailure(documentResponse.status, documentPayload, 'Module 065 Microsoft services configuration could not be loaded.');
+    return responseFailure(
+      documentResponse.status,
+      documentPayload,
+      'Module 065 Microsoft services configuration could not be loaded.'
+    );
   }
 
   const profile = activeServicesProfile(documentPayload);
@@ -225,15 +133,28 @@ async function applyStoredServicesProfile(previousFetch, init) {
     headers,
     body: JSON.stringify(profile)
   });
-  let applyPayload = {};
-  try { applyPayload = await applyResponse.json(); } catch { /* controlled failure below */ }
+  const applyPayload = await readJson(applyResponse);
   if (!applyResponse.ok) {
-    return responseFailure(applyResponse.status, applyPayload, 'Module 065 could not activate the Microsoft services profile for Entra preview.');
+    return responseFailure(
+      applyResponse.status,
+      applyPayload,
+      'Module 065 could not activate the Microsoft services profile for Entra preview.',
+      {
+        selectedEnvironment: profile.environmentMode,
+        returnedRuntimeEnvironment: applyPayload?.runtimeEnvironment || ''
+      }
+    );
   }
-  if (applyPayload?.runtimeActivated !== true) {
+
+  if (applyPayload?.runtimeActivated !== true
+      || String(applyPayload?.runtimeEnvironment || '').toLowerCase() !== profile.environmentMode) {
     return responseFailure(409, {
       status: 'module_065_services_profile_not_active',
       message: 'Module 010 preview requires the Module 065 services profile for the currently running ProjectPulse environment.'
+    }, '', {
+      selectedEnvironment: profile.environmentMode,
+      returnedRuntimeEnvironment: applyPayload?.runtimeEnvironment || '',
+      runtimeActivated: Boolean(applyPayload?.runtimeActivated)
     });
   }
   return null;
@@ -247,44 +168,40 @@ function installMicrosoftIntegrationCompatibility() {
   window.fetch = async (input, init = {}) => {
     const rawUrl = typeof input === 'string' ? input : input?.url;
     const method = String(init?.method || (input instanceof Request ? input.method : '') || 'GET').toUpperCase();
-
     if (!rawUrl || !['POST', 'PUT', 'PATCH'].includes(method)) return previousFetch(input, init);
 
-    const url = new URL(rawUrl, window.location.origin);
-    const normalizedInit = normalizeRolePayload(url.pathname, init);
+    let url;
+    try {
+      url = new URL(rawUrl, window.location.origin);
+    } catch {
+      return previousFetch(input, init);
+    }
+    if (url.origin !== window.location.origin) return previousFetch(input, init);
 
+    const normalizedInit = normalizeRolePayload(url.pathname, init);
     if (url.pathname === PREVIEW_ROUTE && method === 'POST') {
       const failure = await applyStoredServicesProfile(previousFetch, normalizedInit);
       if (failure) return failure;
       return previousFetch(input, normalizedInit);
     }
 
-    if (url.pathname !== LEGACY_IMPORT_ROUTE) {
-      return previousFetch(input, normalizedInit);
-    }
+    if (url.pathname !== LEGACY_IMPORT_ROUTE) return previousFetch(input, normalizedInit);
 
     const replacement = new URL(ACTIVE_IMPORT_ROUTE, window.location.origin);
     const nextInput = input instanceof Request
       ? new Request(replacement.toString(), input)
-      : replacement.pathname;
-
+      : `${replacement.pathname}${replacement.search}`;
     return previousFetch(nextInput, normalizedInit);
   };
 }
 
-function refresh() {
-  redirectRetiredRoute();
-  normalizeModuleSurfaces();
-}
-
 installMicrosoftIntegrationCompatibility();
-refresh();
 
-window.addEventListener('hashchange', refresh);
-window.addEventListener('projectpulse:auth-session-ready', refresh);
-
-const observer = new MutationObserver(() => {
-  window.clearTimeout(window.__projectPulseMicrosoftIntegrationRefreshTimer);
-  window.__projectPulseMicrosoftIntegrationRefreshTimer = window.setTimeout(refresh, 25);
-});
-observer.observe(document.documentElement, { childList: true, subtree: true });
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', synchronizeRouteState, { once: true });
+} else {
+  synchronizeRouteState();
+}
+window.addEventListener('hashchange', synchronizeRouteState);
+window.addEventListener('pageshow', synchronizeRouteState);
+window.addEventListener('projectpulse:auth-session-ready', synchronizeRouteState);

@@ -151,8 +151,17 @@ assert('SEPARATE_SECRET_FORMS', portal.includes("saveSecret('sso')")
 assert('TEST_PRODUCTION_DOMAINS', portal.includes('onenecklab.com,onitdemo.com') && portal.includes('ussignal.com'), 'current Test and Production domain defaults are present');
 assert('DIRECTORY_SYNC_MOVED', portal.includes('directorySyncEnabled') && portal.includes('/api/admin/azure/config') && portal.includes('/api/admin/azure/import-settings'), 'sync configuration remains in Module 065 while APIs stay compatible');
 assert('MAIL_CONSOLIDATED', portal.includes('Microsoft 365 / SMTP') && portal.includes('Sender mailbox') && portal.includes('smtp.office365.com'), 'Module 067 mail capabilities remain consolidated');
-assert('MODULE_010_IMPORT_ONLY', compatibility.includes('.azure-config-card, .azure-sync-summary-card') && compatibility.includes('Preview and import Entra users'), 'tenant and sync cards remain removed from Module 010');
-assert('OBSERVER_RECURSION_GUARD', compatibility.includes('function setTextIfChanged') && compatibility.includes('element.textContent === value'), 'Module 010 DOM normalization does not self-trigger');
+assert('MODULE_010_IMPORT_ONLY', stylesheet.includes('.route-azure-admin .azure-config-card')
+  && stylesheet.includes('.route-azure-admin .azure-sync-summary-card')
+  && stylesheet.includes('.route-azure-admin .azure-sync-runs-card')
+  && stylesheet.includes("content: 'Preview and import Entra users'"),
+'tenant, sync, and local sync-run presentation are removed from Module 010 through scoped CSS while preview/import remains');
+assert('OBSERVER_RECURSION_GUARD', !compatibility.includes('MutationObserver')
+  && !compatibility.includes('querySelectorAll(')
+  && !compatibility.includes('style.setProperty')
+  && !compatibility.includes('.hidden =')
+  && compatibility.includes("document.body?.classList.toggle('projectpulse-module010-directory-active'"),
+'Module 010 route compatibility no longer observes or mutates React-owned content');
 assert('ACTIVE_REGISTRY_TITLES', registry.includes("moduleNumber: '010', route: 'azure-admin', displayName: 'Azure / Entra Directory Users'") && registry.includes("moduleNumber: '065', route: 'entra-secret-administration', displayName: 'Microsoft Integration Connection'"), 'active module names remain authoritative');
 assert('MODULE_067_RETIRED_FROM_REGISTRY', !registry.includes("moduleNumber: '067'") && registry.includes("'global-mail-configuration': 'entra-secret-administration'"), 'Module 067 remains retired with route compatibility');
 assert('PORTAL_MOUNT', main.includes("import MicrosoftIntegrationDualConnectionPortal from './MicrosoftIntegrationDualConnectionPortal.jsx';") && main.includes('<MicrosoftIntegrationDualConnectionPortal />') && !main.includes('<MicrosoftIntegrationPortal />'), 'dual portal is mounted once');
