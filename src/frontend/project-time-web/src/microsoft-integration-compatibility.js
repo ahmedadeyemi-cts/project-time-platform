@@ -6,6 +6,8 @@ const SERVICES_APPLY_PATH = '/api/microsoft-integration/services-apply-profile';
 const PREVIEW_ROUTE = '/api/admin/azure/users/preview';
 const LEGACY_IMPORT_ROUTE = '/api/admin/azure/users/import-selected';
 const ACTIVE_IMPORT_ROUTE = '/api/microsoft-integration/directory-users/import-selected';
+const LEGACY_SYNC_ROUTE = '/api/admin/azure/sync/run';
+const ACTIVE_SYNC_ROUTE = '/api/microsoft-integration/directory-users/sync-now';
 const ROLE_NORMALIZATION_ROUTES = new Set([
   LEGACY_IMPORT_ROUTE,
   ACTIVE_IMPORT_ROUTE,
@@ -93,11 +95,7 @@ function responseFailure(status, payload, fallback, extra = {}) {
 }
 
 async function readJson(response) {
-  try {
-    return await response.clone().json();
-  } catch {
-    return {};
-  }
+  try { return await response.clone().json(); } catch { return {}; }
 }
 
 async function applyStoredServicesProfile(previousFetch, init) {
@@ -110,11 +108,7 @@ async function applyStoredServicesProfile(previousFetch, init) {
   });
   const documentPayload = await readJson(documentResponse);
   if (!documentResponse.ok) {
-    return responseFailure(
-      documentResponse.status,
-      documentPayload,
-      'Module 065 Microsoft services configuration could not be loaded.'
-    );
+    return responseFailure(documentResponse.status, documentPayload, 'Module 065 Microsoft services configuration could not be loaded.');
   }
 
   const profile = activeServicesProfile(documentPayload);
@@ -135,15 +129,10 @@ async function applyStoredServicesProfile(previousFetch, init) {
   });
   const applyPayload = await readJson(applyResponse);
   if (!applyResponse.ok) {
-    return responseFailure(
-      applyResponse.status,
-      applyPayload,
-      'Module 065 could not activate the Microsoft services profile for Entra preview.',
-      {
-        selectedEnvironment: profile.environmentMode,
-        returnedRuntimeEnvironment: applyPayload?.runtimeEnvironment || ''
-      }
-    );
+    return responseFailure(applyResponse.status, applyPayload, 'Module 065 could not activate the Microsoft services profile for Entra preview.', {
+      selectedEnvironment: profile.environmentMode,
+      returnedRuntimeEnvironment: applyPayload?.runtimeEnvironment || ''
+    });
   }
 
   if (applyPayload?.runtimeActivated !== true
@@ -160,6 +149,13 @@ async function applyStoredServicesProfile(previousFetch, init) {
   return null;
 }
 
+function replacementInput(input, replacementPath) {
+  const replacement = new URL(replacementPath, window.location.origin);
+  return input instanceof Request
+    ? new Request(replacement.toString(), input)
+    : `${replacement.pathname}${replacement.search}`;
+}
+
 function installMicrosoftIntegrationCompatibility() {
   if (window.__projectPulseMicrosoftIntegrationCompatibilityInstalled) return;
   window.__projectPulseMicrosoftIntegrationCompatibilityInstalled = true;
@@ -171,11 +167,7 @@ function installMicrosoftIntegrationCompatibility() {
     if (!rawUrl || !['POST', 'PUT', 'PATCH'].includes(method)) return previousFetch(input, init);
 
     let url;
-    try {
-      url = new URL(rawUrl, window.location.origin);
-    } catch {
-      return previousFetch(input, init);
-    }
+    try { url = new URL(rawUrl, window.location.origin); } catch { return previousFetch(input, init); }
     if (url.origin !== window.location.origin) return previousFetch(input, init);
 
     const normalizedInit = normalizeRolePayload(url.pathname, init);
@@ -185,13 +177,22 @@ function installMicrosoftIntegrationCompatibility() {
       return previousFetch(input, normalizedInit);
     }
 
-    if (url.pathname !== LEGACY_IMPORT_ROUTE) return previousFetch(input, normalizedInit);
+    if (url.pathname === LEGACY_SYNC_ROUTE && method === 'POST') {
+      const nextInit = typeof normalizedInit.body === 'string'
+        ? normalizedInit
+        : {
+            ...normalizedInit,
+            headers: { ...(normalizedInit.headers || {}), 'Content-Type': 'application/json' },
+            body: JSON.stringify({ environmentMode: runtimeEnvironmentMode() })
+          };
+      return previousFetch(replacementInput(input, ACTIVE_SYNC_ROUTE), nextInit);
+    }
 
-    const replacement = new URL(ACTIVE_IMPORT_ROUTE, window.location.origin);
-    const nextInput = input instanceof Request
-      ? new Request(replacement.toString(), input)
-      : `${replacement.pathname}${replacement.search}`;
-    return previousFetch(nextInput, normalizedInit);
+    if (url.pathname === LEGACY_IMPORT_ROUTE && method === 'POST') {
+      return previousFetch(replacementInput(input, ACTIVE_IMPORT_ROUTE), normalizedInit);
+    }
+
+    return previousFetch(input, normalizedInit);
   };
 }
 
