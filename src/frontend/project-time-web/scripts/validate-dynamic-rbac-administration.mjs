@@ -81,13 +81,29 @@ for (const test of expectedFailures) {
   if (!failed) throw new Error('dynamic RBAC fail-closed catalog test unexpectedly passed');
 }
 
-const [backend, registrar, project, roleUi, matrixUi, more, moreCss, evaluator, platform, service, evidence, architecture, group2aWorkflow] = await Promise.all([
+const [
+  backend,
+  registrar,
+  project,
+  roleUi,
+  matrixUi,
+  moreRuntime,
+  moreInjector,
+  moreCss,
+  evaluator,
+  platform,
+  service,
+  evidence,
+  architecture,
+  group2aWorkflow
+] = await Promise.all([
   optionalText('src/backend/ProjectTime.Api/Modules/DynamicRbacAdministrationModule.cs'),
   optionalText('src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs'),
   optionalText('src/backend/ProjectTime.Api/ProjectTime.Api.csproj'),
   text('src/frontend/project-time-web/src/RoleAdminDirectoryPanel.jsx'),
   text('src/frontend/project-time-web/src/RolesPermissionsMatrix.jsx'),
   text('src/frontend/project-time-web/src/intuitive-more-menu.js'),
+  text('src/frontend/project-time-web/scripts/inject-react-owned-more-menu.mjs'),
   text('src/frontend/project-time-web/src/intuitive-more-menu.css'),
   optionalText('src/backend/ProjectTime.Api/Modules/ScopedAuthorizationEvaluator.cs'),
   optionalText('src/backend/ProjectTime.Api/Modules/PlatformOperationsModule.cs'),
@@ -113,11 +129,34 @@ validateWhenPresent(backend, (source) => {
     'MODULE_RETIRED',
     'historicalPolicyAndAuditPreserved = true'
   ], 'Dynamic RBAC API');
-  rejectAll(source, ['modules.Count != 70', 'moduleCount == 70', 'Expected 12 roles and 70 modules'], 'Dynamic RBAC API');
+  rejectAll(source, [
+    'modules.Count != 70',
+    'moduleCount == 70',
+    'Expected 12 roles and 70 modules'
+  ], 'Dynamic RBAC API');
 }, 'Dynamic RBAC API');
-validateWhenPresent(registrar, (source) => requireAll(source, ['app.MapDynamicRbacAdministrationEndpoints();'], 'Dynamic RBAC registration'), 'Dynamic RBAC registration');
-validateWhenPresent(project, (source) => requireAll(source, ['DynamicRbacGeneratedModule', '<Compile Remove="Modules/DynamicRbacAdministrationModule.cs" />'], 'Dynamic RBAC compilation'), 'Dynamic RBAC compilation');
-validateWhenPresent(evaluator, (source) => requireAll(source, ['if (actor.IsSuperAdministrator)', 'permanent organization-wide Full Control', 'actor.IsViewAs && isWrite'], 'Central RBAC enforcement'), 'Central RBAC enforcement');
+validateWhenPresent(
+  registrar,
+  (source) => requireAll(source, ['app.MapDynamicRbacAdministrationEndpoints();'], 'Dynamic RBAC registration'),
+  'Dynamic RBAC registration'
+);
+validateWhenPresent(
+  project,
+  (source) => requireAll(source, [
+    'DynamicRbacGeneratedModule',
+    '<Compile Remove="Modules/DynamicRbacAdministrationModule.cs" />'
+  ], 'Dynamic RBAC compilation'),
+  'Dynamic RBAC compilation'
+);
+validateWhenPresent(
+  evaluator,
+  (source) => requireAll(source, [
+    'if (actor.IsSuperAdministrator)',
+    'permanent organization-wide Full Control',
+    'actor.IsViewAs && isWrite'
+  ], 'Central RBAC enforcement'),
+  'Central RBAC enforcement'
+);
 
 requireAll(roleUi, [
   "api('/api/rbac/v1/bootstrap')",
@@ -128,7 +167,10 @@ requireAll(roleUi, [
   'Default to No Access',
   'Permanent organization-wide Full Control'
 ], 'Module 012 dynamic experience');
-rejectAll(roleUi, ['REQUIRED_MODULE_COUNT', 'Expected ${REQUIRED_ROLE_COUNT} roles'], 'Module 012 dynamic experience');
+rejectAll(roleUi, [
+  'REQUIRED_MODULE_COUNT',
+  'Expected ${REQUIRED_ROLE_COUNT} roles'
+], 'Module 012 dynamic experience');
 requireAll(matrixUi, [
   "api('/api/rbac/v1/matrix')",
   'no fixed module count is required',
@@ -137,18 +179,36 @@ requireAll(matrixUi, [
   'Unconfigured pairs',
   'No 70-module requirement'
 ], 'Module 037 dynamic experience');
-rejectAll(matrixUi, ['REQUIRED_MODULE_COUNT', 'Expected ${REQUIRED_ROLE_COUNT} roles'], 'Module 037 dynamic experience');
+rejectAll(matrixUi, [
+  'REQUIRED_MODULE_COUNT',
+  'Expected ${REQUIRED_ROLE_COUNT} roles'
+], 'Module 037 dynamic experience');
 
-requireAll(more, [
+requireAll(moreInjector, [
+  'PROJECTPULSE_REACT_OWNED_MORE_MENU',
+  'data-projectpulse-react-owned-menu="true"',
   'More pages',
   'Search by page name',
   'projectpulse-more-intuitive-name',
-  'link.setAttribute(\'aria-label\', `Open ${name}`)',
-  "void import('./intuitive-more-menu.css')"
-], 'Name-only More menu');
+  'projectpulse-more-intuitive-arrow',
+  'window.ProjectPulseMoreNavigation?.filter',
+  'runtimeChildReplacement=0'
+], 'React-owned name-only More menu');
+requireAll(moreRuntime, [
+  "void import('./intuitive-more-menu.css')",
+  "moreMenu: 'react-owned-v1'",
+  'must never replace, prepend, append, or remove children'
+], 'Non-mutating More runtime');
+rejectAll(moreRuntime, [
+  'MutationObserver',
+  'replaceChildren',
+  'document.createElement'
+], 'More runtime DOM ownership');
 requireAll(moreCss, [
   '.projectpulse-more-intuitive .projectpulse-more-module-number',
   'display: none !important',
+  '.projectpulse-more-intuitive-name',
+  '.projectpulse-more-intuitive-arrow',
   'grid-template-columns: repeat(3, minmax(0, 1fr))'
 ], 'Name-only More menu styling');
 
@@ -161,9 +221,18 @@ validateWhenPresent(platform, (source) => requireAll(source, [
   '/api/platform-operations/evidence',
   '/api/platform-operations/architecture'
 ], 'Group 2A provider-neutral API'), 'Group 2A provider-neutral API');
-requireAll(service, ['System Health &amp; API Diagnostics', '/api/platform-operations/overview'], 'Module 013');
-requireAll(evidence, ['Operational Evidence', '/api/platform-operations/evidence'], 'Module 016');
-requireAll(architecture, ['System Architecture', '/api/platform-operations/architecture'], 'Module 068');
+requireAll(service, [
+  'System Health &amp; API Diagnostics',
+  '/api/platform-operations/overview'
+], 'Module 013');
+requireAll(evidence, [
+  'Operational Evidence',
+  '/api/platform-operations/evidence'
+], 'Module 016');
+requireAll(architecture, [
+  'System Architecture',
+  '/api/platform-operations/architecture'
+], 'Module 068');
 validateWhenPresent(group2aWorkflow, (source) => requireAll(source, [
   'GROUP_2A_SOURCE_ISOLATION=NOT_APPLICABLE',
   'Validate Group 2A source contract',
@@ -172,4 +241,4 @@ validateWhenPresent(group2aWorkflow, (source) => requireAll(source, [
   'Build complete frontend production bundle'
 ], 'Group 2A regression workflow'), 'Group 2A regression workflow');
 
-console.log('DYNAMIC_RBAC_ADMINISTRATION_PACKAGE=PASS moduleCounts=69,70,71 superAdmin=permanent-full-control group2a=preserved moreMenu=name-only contextAwareWebBuild=true');
+console.log('DYNAMIC_RBAC_ADMINISTRATION_PACKAGE=PASS moduleCounts=69,70,71 superAdmin=permanent-full-control group2a=preserved moreMenu=react-owned-name-only');
