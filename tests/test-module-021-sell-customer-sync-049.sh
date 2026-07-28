@@ -20,8 +20,9 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 DO $$
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ptp_app') THEN
-        CREATE ROLE ptp_app;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ptp_app') THEN
+        EXECUTE 'DROP OWNED BY "ptp_app"';
+        EXECUTE 'DROP ROLE "ptp_app"';
     END IF;
 END $$;
 
@@ -65,7 +66,30 @@ INSERT INTO crm_integration_providers (provider_key, provider_name, auth_model, 
 VALUES ('zendesk_sell', 'SELL (Zendesk Sell)', 'oauth2', TRUE);
 SQL
 
+# The live test environment does not install a hard-coded ptp_app role. Prove
+# that migration 049 succeeds when the configured migration/runtime identity is
+# the table owner and the compatibility role is absent.
 psql "$DATABASE_URL" --no-psqlrc --set=ON_ERROR_STOP=1 --file="$MIGRATION"
+
+eval "$(psql "$DATABASE_URL" --no-psqlrc -At --set=ON_ERROR_STOP=1 <<'SQL'
+SELECT 'PTP_APP_EXISTS=' || quote_literal(EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ptp_app'));
+SELECT 'CURRENT_ROLE_LINK_PRIVILEGES=' || quote_literal(
+    has_table_privilege(current_user, 'customer_directory_source_links', 'SELECT,INSERT,UPDATE'));
+SELECT 'CURRENT_ROLE_RUN_PRIVILEGES=' || quote_literal(
+    has_table_privilege(current_user, 'customer_directory_sync_runs', 'SELECT,INSERT,UPDATE'));
+SQL
+)"
+
+[[ "$PTP_APP_EXISTS" == false ]] || fail "The role-absent test unexpectedly found ptp_app."
+[[ "$CURRENT_ROLE_LINK_PRIVILEGES" == true ]] || fail "The configured migration role cannot use customer source links."
+[[ "$CURRENT_ROLE_RUN_PRIVILEGES" == true ]] || fail "The configured migration role cannot use customer sync runs."
+echo "MODULE_021_SELL_CUSTOMER_SYNC_049_NO_PTP_APP=PASS"
+
+# Preserve backward compatibility for older environments that do install the
+# ptp_app role. An idempotent rerun must grant that optional role access.
+psql "$DATABASE_URL" --no-psqlrc --set=ON_ERROR_STOP=1 <<'SQL'
+CREATE ROLE ptp_app;
+SQL
 psql "$DATABASE_URL" --no-psqlrc --set=ON_ERROR_STOP=1 --file="$MIGRATION"
 
 eval "$(psql "$DATABASE_URL" --no-psqlrc -At --set=ON_ERROR_STOP=1 <<'SQL'
@@ -76,6 +100,10 @@ SELECT 'LINK_TABLE=' || quote_literal(to_regclass('public.customer_directory_sou
 SELECT 'RUN_TABLE=' || quote_literal(to_regclass('public.customer_directory_sync_runs') IS NOT NULL);
 SELECT 'CLIENT_LINK_INDEX=' || quote_literal(to_regclass('public.ux_customer_directory_source_links_client') IS NOT NULL);
 SELECT 'RUN_INDEX=' || quote_literal(to_regclass('public.ix_customer_directory_sync_runs_provider') IS NOT NULL);
+SELECT 'PTP_APP_LINK_PRIVILEGES=' || quote_literal(
+    has_table_privilege('ptp_app', 'customer_directory_source_links', 'SELECT,INSERT,UPDATE'));
+SELECT 'PTP_APP_RUN_PRIVILEGES=' || quote_literal(
+    has_table_privilege('ptp_app', 'customer_directory_sync_runs', 'SELECT,INSERT,UPDATE'));
 SQL
 )"
 
@@ -84,7 +112,10 @@ SQL
 [[ "$RUN_TABLE" == true ]] || fail "Customer sync-run table was not created."
 [[ "$CLIENT_LINK_INDEX" == true ]] || fail "Customer source-link uniqueness index was not created."
 [[ "$RUN_INDEX" == true ]] || fail "Sync-run provider index was not created."
+[[ "$PTP_APP_LINK_PRIVILEGES" == true ]] || fail "The optional ptp_app role did not receive source-link privileges."
+[[ "$PTP_APP_RUN_PRIVILEGES" == true ]] || fail "The optional ptp_app role did not receive sync-run privileges."
 
+echo "MODULE_021_SELL_CUSTOMER_SYNC_049_OPTIONAL_ROLE_GRANT=PASS"
 echo "MODULE_021_SELL_CUSTOMER_SYNC_049_APPLY=PASS"
 
 read -r ACTOR_ID CLIENT_ID <<<"$(
@@ -236,5 +267,10 @@ SQL
 [[ "$LINK_REMOVED" == true ]] || fail "Rollback did not remove the empty source-link table."
 [[ "$RUN_REMOVED" == true ]] || fail "Rollback did not remove the empty sync-run table."
 [[ "$REGISTRATION_REMOVED" == true ]] || fail "Rollback did not remove migration registration."
+
+psql "$DATABASE_URL" --no-psqlrc --set=ON_ERROR_STOP=1 <<'SQL'
+DROP OWNED BY ptp_app;
+DROP ROLE ptp_app;
+SQL
 
 echo "MODULE_021_SELL_CUSTOMER_SYNC_049_TEST=PASS"
