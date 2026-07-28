@@ -91,7 +91,7 @@ require "$RUN" '[[ -n "$CURRENT_API_IMAGE" && -n "$CURRENT_WEB_IMAGE" ]]'
 require "$RUN" 'project-health-dashboard-open-pr-reconciliation-migrator'
 require "$RUN" 'run-open-pr-reconciliation-test-migration-job.sh'
 require "$RUN" 'OPEN_PR_RECONCILIATION_MIGRATION_049=APPLIED_OR_VERIFIED'
-require "$RUN" 'Deploy exact API candidate'
+require "$RUN" 'API_SUFFIX="oprrapi-${RUN_ID}-${RUN_ATTEMPT}"'
 require "$RUN" "probe_api sell-status GET '/api/customers/sell/status' '401'"
 require "$RUN" "probe_api sell-preview POST '/api/customers/sell/preview' '401' '{}'"
 require "$RUN" "probe_api sell-import POST '/api/customers/sell/import' '401' '{}'"
