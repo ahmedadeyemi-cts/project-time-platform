@@ -241,7 +241,7 @@ if (module026Backend) {
     'salesforce',
     'servicenow',
     'certinia',
-    'isPersisted'
+    'IsPersisted'
   ], 'PR 207 Module 026 backend templates');
 } else {
   console.log('MODULE_026_PR207_BACKEND_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
