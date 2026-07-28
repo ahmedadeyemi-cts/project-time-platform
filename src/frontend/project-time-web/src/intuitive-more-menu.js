@@ -1,9 +1,12 @@
-import './intuitive-more-menu.css';
-
 const MARKER = '__projectPulseIntuitiveMoreMenuInstalled';
 const REFINED = 'data-projectpulse-intuitive-more-link';
 
 if (typeof window !== 'undefined' && typeof document !== 'undefined' && !window[MARKER]) {
+  // Load the visual refinement only in the browser. Node-based runtime
+  // harnesses import the shared module registry directly and must not attempt
+  // to resolve CSS as an ECMAScript module.
+  void import('./intuitive-more-menu.css');
+
   window[MARKER] = true;
   let timer = 0;
   let observer = null;
