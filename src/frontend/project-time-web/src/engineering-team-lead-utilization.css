@@ -119,10 +119,13 @@
 }
 
 .engineer-cell {
+  font-weight: 400;
+}
+
+.engineer-cell-content {
   display: flex;
   align-items: center;
   gap: 0.7rem;
-  font-weight: 400;
 }
 
 .engineer-avatar {
@@ -167,7 +170,7 @@
   font-weight: 800;
 }
 
-.annual-utilization-cell {
+.annual-utilization-content {
   display: grid;
   gap: 0.55rem;
 }
