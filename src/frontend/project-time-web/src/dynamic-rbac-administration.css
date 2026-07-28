@@ -1,0 +1,374 @@
+.dynamic-rbac-admin {
+  display: grid;
+  gap: 1rem;
+}
+
+.dynamic-rbac-hero {
+  background:
+    radial-gradient(circle at top right, rgba(37, 99, 235, 0.15), transparent 38%),
+    linear-gradient(135deg, rgba(239, 246, 255, 0.95), rgba(255, 255, 255, 0.98));
+}
+
+.dynamic-rbac-invariant {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.dynamic-rbac-invariant > div {
+  display: grid;
+  gap: 0.3rem;
+  min-height: 112px;
+  padding: 0.9rem;
+  border: 1px solid rgba(59, 130, 246, 0.22);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--panel-bg, #ffffff) 94%, #eaf3ff 6%);
+  box-shadow: 0 8px 24px rgba(15, 35, 64, 0.05);
+}
+
+.dynamic-rbac-invariant strong {
+  color: var(--text-primary, #17243b);
+  font-size: 0.88rem;
+}
+
+.dynamic-rbac-invariant span {
+  color: var(--text-secondary, #61708a);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.dynamic-rbac-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  padding: 0.45rem;
+  border: 1px solid rgba(94, 118, 151, 0.2);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--panel-bg, #ffffff) 96%, #eef5ff 4%);
+}
+
+.dynamic-rbac-tabs button {
+  border: 0;
+  border-radius: 10px;
+  padding: 0.65rem 0.85rem;
+  background: transparent;
+  color: var(--text-secondary, #60718a);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.dynamic-rbac-tabs button:hover,
+.dynamic-rbac-tabs button:focus-visible {
+  background: rgba(37, 99, 235, 0.08);
+  color: #1d4ed8;
+  outline: none;
+}
+
+.dynamic-rbac-tabs button.active {
+  background: #1d4ed8;
+  color: #ffffff;
+  box-shadow: 0 8px 18px rgba(29, 78, 216, 0.22);
+}
+
+.dynamic-rbac-members,
+.dynamic-rbac-modules,
+.dynamic-rbac-history {
+  display: grid;
+  gap: 0.9rem;
+  padding: 1rem;
+  border: 1px solid rgba(94, 118, 151, 0.2);
+  border-radius: 16px;
+  background: var(--panel-bg, #ffffff);
+  box-shadow: 0 10px 30px rgba(15, 35, 64, 0.05);
+}
+
+.dynamic-rbac-members > header,
+.dynamic-rbac-modules > header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 340px);
+  gap: 1rem;
+  align-items: end;
+}
+
+.dynamic-rbac-members header h2,
+.dynamic-rbac-modules header h2,
+.dynamic-rbac-history h2 {
+  margin: 0.2rem 0 0.35rem;
+  color: var(--text-primary, #17243b);
+  font-size: 1.18rem;
+}
+
+.dynamic-rbac-members header p,
+.dynamic-rbac-modules header p,
+.dynamic-rbac-history header p {
+  margin: 0;
+  color: var(--text-secondary, #61708a);
+  line-height: 1.5;
+}
+
+.dynamic-rbac-members label,
+.dynamic-rbac-modules label {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.dynamic-rbac-members label > span,
+.dynamic-rbac-modules label > span {
+  color: var(--text-secondary, #60718a);
+  font-size: 0.74rem;
+  font-weight: 850;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.dynamic-rbac-members input,
+.dynamic-rbac-members select,
+.dynamic-rbac-modules input,
+.dynamic-rbac-modules select {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid rgba(94, 118, 151, 0.32);
+  border-radius: 10px;
+  padding: 0.55rem 0.65rem;
+  background: var(--input-bg, #ffffff);
+  color: var(--text-primary, #17243b);
+  font: inherit;
+}
+
+.dynamic-rbac-membership-controls {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.8fr) minmax(240px, 1.2fr) minmax(240px, 1.4fr) auto;
+  gap: 0.65rem;
+  align-items: end;
+  padding: 0.85rem;
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: 14px;
+  background: rgba(239, 246, 255, 0.58);
+}
+
+.dynamic-rbac-membership-controls button,
+.dynamic-rbac-module-form button,
+.dynamic-rbac-assigned-list button,
+.dynamic-rbac-module-list button,
+.dynamic-rbac-history button {
+  min-height: 40px;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: 10px;
+  padding: 0.55rem 0.7rem;
+  background: #ffffff;
+  color: #1d4ed8;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.dynamic-rbac-membership-controls button.primary,
+.dynamic-rbac-module-form button.primary {
+  border-color: #1d4ed8;
+  background: #1d4ed8;
+  color: #ffffff;
+}
+
+.dynamic-rbac-membership-controls button:disabled,
+.dynamic-rbac-module-form button:disabled,
+.dynamic-rbac-assigned-list button:disabled,
+.dynamic-rbac-module-list button:disabled,
+.dynamic-rbac-history button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.dynamic-rbac-assigned-list {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.dynamic-rbac-assigned-list > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.dynamic-rbac-assigned-list > header h3 {
+  margin: 0;
+  color: var(--text-primary, #17243b);
+}
+
+.dynamic-rbac-assigned-list > header span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  min-height: 30px;
+  border-radius: 999px;
+  background: #e8f1ff;
+  color: #1d4ed8;
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.dynamic-rbac-assigned-list article,
+.dynamic-rbac-module-list article,
+.dynamic-rbac-history article {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 0.8rem;
+  border: 1px solid rgba(94, 118, 151, 0.18);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--panel-bg, #ffffff) 97%, #eef5ff 3%);
+}
+
+.dynamic-rbac-assigned-list article > div,
+.dynamic-rbac-module-list article > div:first-child,
+.dynamic-rbac-history article > div {
+  min-width: 0;
+  display: grid;
+  gap: 0.18rem;
+}
+
+.dynamic-rbac-assigned-list article strong,
+.dynamic-rbac-module-list article strong,
+.dynamic-rbac-history article strong {
+  color: var(--text-primary, #17243b);
+}
+
+.dynamic-rbac-assigned-list article span,
+.dynamic-rbac-module-list article span,
+.dynamic-rbac-history article span,
+.dynamic-rbac-module-list article small,
+.dynamic-rbac-history article small {
+  overflow-wrap: anywhere;
+  color: var(--text-secondary, #61708a);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.dynamic-rbac-module-form {
+  display: grid;
+  grid-template-columns: minmax(100px, 0.55fr) minmax(190px, 1fr) minmax(160px, 0.85fr) minmax(120px, 0.6fr);
+  gap: 0.65rem;
+  align-items: end;
+  padding: 0.85rem;
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: 14px;
+  background: rgba(239, 246, 255, 0.58);
+}
+
+.dynamic-rbac-module-form .notes,
+.dynamic-rbac-module-form .reason {
+  grid-column: span 2;
+}
+
+.dynamic-rbac-module-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.dynamic-rbac-module-list article.retired {
+  border-style: dashed;
+  background: rgba(248, 250, 252, 0.78);
+  opacity: 0.88;
+}
+
+.dynamic-rbac-module-list article > div:last-child {
+  display: grid;
+  justify-items: end;
+  gap: 0.4rem;
+}
+
+.dynamic-rbac-module-list .status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  background: #eaf7ef;
+  color: #18733d;
+  font-size: 0.7rem;
+  font-weight: 900;
+}
+
+.dynamic-rbac-module-list article.retired .status {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.dynamic-rbac-history > div {
+  display: grid;
+  gap: 0.5rem;
+}
+
+[data-theme="dark"] .dynamic-rbac-hero,
+.dark .dynamic-rbac-hero,
+[data-theme="dark"] .dynamic-rbac-invariant > div,
+.dark .dynamic-rbac-invariant > div,
+[data-theme="dark"] .dynamic-rbac-tabs,
+.dark .dynamic-rbac-tabs,
+[data-theme="dark"] .dynamic-rbac-members,
+.dark .dynamic-rbac-members,
+[data-theme="dark"] .dynamic-rbac-modules,
+.dark .dynamic-rbac-modules,
+[data-theme="dark"] .dynamic-rbac-history,
+.dark .dynamic-rbac-history {
+  background: #111c2d;
+}
+
+[data-theme="dark"] .dynamic-rbac-membership-controls,
+.dark .dynamic-rbac-membership-controls,
+[data-theme="dark"] .dynamic-rbac-module-form,
+.dark .dynamic-rbac-module-form {
+  background: rgba(20, 45, 77, 0.62);
+}
+
+[data-theme="dark"] .dynamic-rbac-assigned-list article,
+.dark .dynamic-rbac-assigned-list article,
+[data-theme="dark"] .dynamic-rbac-module-list article,
+.dark .dynamic-rbac-module-list article,
+[data-theme="dark"] .dynamic-rbac-history article,
+.dark .dynamic-rbac-history article {
+  background: #18263a;
+}
+
+@media (max-width: 1050px) {
+  .dynamic-rbac-invariant {
+    grid-template-columns: 1fr;
+  }
+
+  .dynamic-rbac-membership-controls,
+  .dynamic-rbac-module-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dynamic-rbac-module-form .notes,
+  .dynamic-rbac-module-form .reason {
+    grid-column: span 1;
+  }
+}
+
+@media (max-width: 760px) {
+  .dynamic-rbac-members > header,
+  .dynamic-rbac-modules > header,
+  .dynamic-rbac-membership-controls,
+  .dynamic-rbac-module-form,
+  .dynamic-rbac-module-list {
+    grid-template-columns: 1fr;
+  }
+
+  .dynamic-rbac-assigned-list article,
+  .dynamic-rbac-module-list article,
+  .dynamic-rbac-history article {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .dynamic-rbac-module-list article > div:last-child {
+    justify-items: start;
+  }
+}
