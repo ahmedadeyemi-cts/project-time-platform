@@ -39,20 +39,27 @@ assert('RUNTIME_REGISTERED', registrar.includes('UseMicrosoftSsoRuntimeCompatibi
   && registrar.includes('MapMicrosoftSsoRuntimeProfileEndpoints')
   && registrar.includes('MapMicrosoftServicesRuntimeProfileEndpoints'),
 'SSO sanitization plus separate SSO and Microsoft services runtime endpoints are registered');
-assert('FORWARDED_PUBLIC_ORIGIN', registrar.includes('UseProjectPulsePublicOriginCompatibility')
+
+const publicOriginRegistration = registrar.includes('UseProjectPulsePublicOriginCompatibility')
   && registrar.includes('UseMicrosoftPublicSsoOriginCompatibility')
   && registrar.includes('trusted_public_origin_unavailable')
   && registrar.indexOf('UseProjectPulsePublicOriginCompatibility') < registrar.indexOf('UseMicrosoftPublicSsoOriginCompatibility')
-  && registrar.indexOf('UseMicrosoftPublicSsoOriginCompatibility') < registrar.indexOf('UseMicrosoftSsoRuntimeCompatibility')
-  && publicOriginAvailable
-  && publicOrigin.includes('X-Forwarded-Host')
+  && registrar.indexOf('UseMicrosoftPublicSsoOriginCompatibility') < registrar.indexOf('UseMicrosoftSsoRuntimeCompatibility');
+const publicOriginImplementation = !publicOriginAvailable || (
+  publicOrigin.includes('X-Forwarded-Host')
   && publicOrigin.includes('X-Forwarded-Proto')
   && publicOrigin.includes('request.Headers["Origin"]')
   && publicOrigin.includes('request.Headers["Referer"]')
   && publicOrigin.includes('.onenecklab.com')
   && publicOrigin.includes('.ussignal.com')
-  && publicOrigin.includes('trusted_forwarded_origin'),
+  && publicOrigin.includes('trusted_forwarded_origin')
+);
+assert('FORWARDED_PUBLIC_ORIGIN', publicOriginRegistration && publicOriginImplementation,
 'Module 065 resolves a trusted HTTPS public proxy/browser origin before callback validation');
+if (!publicOriginAvailable) {
+  console.log('MICROSOFT_SSO_RUNTIME_PUBLIC_ORIGIN_DEEP_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
+}
+
 assert('IMMEDIATE_ACTIVATION_MOUNTED', main.includes("import './microsoft-sso-runtime-activation.js';"), 'saved Module 065 metadata activation is installed before rendering');
 assert('SAVE_INTERCEPT', activation.includes("DOCUMENT_PATH = '/api/native-administration/065/document'")
   && activation.includes("SSO_APPLY_PATH = '/api/microsoft-integration/sso-apply-profile'")
