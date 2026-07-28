@@ -246,9 +246,9 @@ requireAll(utilization, [
 ], 'PR 212 structured Module 003 utilization table');
 requireAll(utilizationCss, [
   '.engineering-utilization-table-wrap',
-  'overflow-x:auto',
+  'overflow-x: auto',
   '.engineering-utilization-table thead th',
-  'position:sticky',
+  'position: sticky',
   'border-right'
 ], 'PR 212 Module 003 table styling');
 
