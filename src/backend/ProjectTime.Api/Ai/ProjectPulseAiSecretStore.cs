@@ -40,21 +40,33 @@ public sealed class ProjectPulseAiSecretStore
             try
             {
                 var providerCode = reader.GetString(0);
-                result.Add(new StoredSecret(providerCode, Decrypt(providerCode, (byte[])reader[1], (byte[])reader[2], (byte[])reader[3]), reader.GetString(4), new DateTimeOffset(reader.GetDateTime(5).ToUniversalTime())));
+                result.Add(new StoredSecret(
+                    providerCode,
+                    Decrypt(providerCode, (byte[])reader[1], (byte[])reader[2], (byte[])reader[3]),
+                    reader.GetString(4),
+                    new DateTimeOffset(reader.GetDateTime(5).ToUniversalTime())));
             }
             catch (CryptographicException exception)
             {
-                _logger.LogError(exception, "Module 064 could not decrypt the {Provider} provider secret.", reader.GetString(0));
+                _logger.LogError(
+                    exception,
+                    "Module 064 could not decrypt the {Provider} provider secret.",
+                    reader.GetString(0));
             }
         }
         return result;
     }
 
-    public async Task<StoredSecret> SaveAsync(string providerCode, string apiKey, Guid actorUserId, CancellationToken cancellationToken)
+    public async Task<StoredSecret> SaveAsync(
+        string providerCode,
+        string apiKey,
+        Guid actorUserId,
+        CancellationToken cancellationToken)
     {
         if (!Available) throw new InvalidOperationException(UnavailableReason);
         var secretBytes = Encoding.UTF8.GetByteCount(apiKey);
-        if (secretBytes is < 1 or > MaximumSecretBytes) throw new ArgumentException($"API key must be between 1 and {MaximumSecretBytes} UTF-8 bytes.");
+        if (secretBytes is < 1 or > MaximumSecretBytes)
+            throw new ArgumentException($"API key must be between 1 and {MaximumSecretBytes} UTF-8 bytes.");
 
         var nonce = RandomNumberGenerator.GetBytes(12);
         var plaintext = Encoding.UTF8.GetBytes(apiKey);
@@ -63,9 +75,17 @@ public sealed class ProjectPulseAiSecretStore
         try
         {
             using var aes = new AesGcm(_encryptionKey!, 16);
-            aes.Encrypt(nonce, plaintext, ciphertext, tag, Encoding.UTF8.GetBytes(providerCode));
+            aes.Encrypt(
+                nonce,
+                plaintext,
+                ciphertext,
+                tag,
+                Encoding.UTF8.GetBytes(providerCode));
         }
-        finally { CryptographicOperations.ZeroMemory(plaintext); }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(plaintext);
+        }
 
         var version = DateTimeOffset.UtcNow.ToString("yyyyMMddHHmmssfff");
         var rotatedAt = DateTimeOffset.UtcNow;
@@ -102,7 +122,8 @@ public sealed class ProjectPulseAiSecretStore
         return new StoredSecret(providerCode, apiKey, version, rotatedAt);
     }
 
-    public async Task<IReadOnlyDictionary<string, string>> LoadModelsAsync(CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyDictionary<string, string>> LoadModelsAsync(
+        CancellationToken cancellationToken = default)
     {
         if (_connectionString is null) return new Dictionary<string, string>();
         await using var connection = new NpgsqlConnection(_connectionString);
@@ -112,11 +133,13 @@ public sealed class ProjectPulseAiSecretStore
         await using var command = new NpgsqlCommand(sql, connection);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        while (await reader.ReadAsync(cancellationToken)) result[reader.GetString(0)] = reader.GetString(1);
+        while (await reader.ReadAsync(cancellationToken))
+            result[reader.GetString(0)] = reader.GetString(1);
         return result;
     }
 
-    public async Task<IReadOnlyDictionary<string, bool>> LoadEnabledAsync(CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyDictionary<string, bool>> LoadEnabledAsync(
+        CancellationToken cancellationToken = default)
     {
         if (_connectionString is null) return new Dictionary<string, bool>();
         await using var connection = new NpgsqlConnection(_connectionString);
@@ -126,13 +149,19 @@ public sealed class ProjectPulseAiSecretStore
         await using var command = new NpgsqlCommand(sql, connection);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         var result = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
-        while (await reader.ReadAsync(cancellationToken)) result[reader.GetString(0)] = reader.GetBoolean(1);
+        while (await reader.ReadAsync(cancellationToken))
+            result[reader.GetString(0)] = reader.GetBoolean(1);
         return result;
     }
 
-    public async Task SaveModelAsync(string providerCode, string model, Guid actorUserId, CancellationToken cancellationToken)
+    public async Task SaveModelAsync(
+        string providerCode,
+        string model,
+        Guid actorUserId,
+        CancellationToken cancellationToken)
     {
-        if (_connectionString is null) throw new InvalidOperationException("Database configuration is unavailable.");
+        if (_connectionString is null)
+            throw new InvalidOperationException("Database configuration is unavailable.");
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
         await EnsureSchemaAsync(connection, cancellationToken);
@@ -161,9 +190,15 @@ public sealed class ProjectPulseAiSecretStore
         await transaction.CommitAsync(cancellationToken);
     }
 
-    public async Task SaveEnabledAsync(string providerCode, bool enabled, string model, Guid actorUserId, CancellationToken cancellationToken)
+    public async Task SaveEnabledAsync(
+        string providerCode,
+        bool enabled,
+        string model,
+        Guid actorUserId,
+        CancellationToken cancellationToken)
     {
-        if (_connectionString is null) throw new InvalidOperationException("Database configuration is unavailable.");
+        if (_connectionString is null)
+            throw new InvalidOperationException("Database configuration is unavailable.");
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
         await EnsureSchemaAsync(connection, cancellationToken);
@@ -194,7 +229,9 @@ public sealed class ProjectPulseAiSecretStore
         await transaction.CommitAsync(cancellationToken);
     }
 
-    private async Task EnsureSchemaAsync(NpgsqlConnection connection, CancellationToken cancellationToken)
+    private async Task EnsureSchemaAsync(
+        NpgsqlConnection connection,
+        CancellationToken cancellationToken)
     {
         const string sql = """
             CREATE TABLE IF NOT EXISTS ai_provider_secrets (
@@ -230,10 +267,18 @@ public sealed class ProjectPulseAiSecretStore
         try
         {
             using var aes = new AesGcm(_encryptionKey!, 16);
-            aes.Decrypt(nonce, ciphertext, tag, plaintext, Encoding.UTF8.GetBytes(providerCode));
+            aes.Decrypt(
+                nonce,
+                ciphertext,
+                tag,
+                plaintext,
+                Encoding.UTF8.GetBytes(providerCode));
             return Encoding.UTF8.GetString(plaintext);
         }
-        finally { CryptographicOperations.ZeroMemory(plaintext); }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(plaintext);
+        }
     }
 
     private static byte[]? ReadEncryptionKey()
@@ -245,28 +290,76 @@ public sealed class ProjectPulseAiSecretStore
             var key = Convert.FromBase64String(value.Trim());
             return key.Length == 32 ? key : null;
         }
-        catch (FormatException) { return null; }
+        catch (FormatException)
+        {
+            return null;
+        }
     }
 
-    private static string? ConnectionString() => new[] { "ConnectionStrings__DefaultConnection", "ConnectionStrings__ProjectPulse", "ConnectionStrings__ProjectTime", "PROJECTPULSE_CONNECTION_STRING", "PROJECTTIME_DATABASE_CONNECTION", "PROJECTPULSE_DB_CONNECTION", "PROJECTTIME_DB_CONNECTION" }
-        .Select(Environment.GetEnvironmentVariable).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+    private static string? ConnectionString() => new[]
+        {
+            "ConnectionStrings__DefaultConnection",
+            "ConnectionStrings__ProjectPulse",
+            "ConnectionStrings__ProjectTime",
+            "PROJECTPULSE_CONNECTION_STRING",
+            "PROJECTTIME_DATABASE_CONNECTION",
+            "PROJECTPULSE_DB_CONNECTION",
+            "PROJECTTIME_DB_CONNECTION"
+        }
+        .Select(Environment.GetEnvironmentVariable)
+        .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
 
-    public sealed record StoredSecret(string ProviderCode, string ApiKey, string Version, DateTimeOffset RotatedAt);
+    public sealed record StoredSecret(
+        string ProviderCode,
+        string ApiKey,
+        string Version,
+        DateTimeOffset RotatedAt);
 }
 
-public sealed class ProjectPulseAiSecretLoader(ProjectPulseAiSecretStore store, ProjectPulseAiConfiguration configuration, ILogger<ProjectPulseAiSecretLoader> logger) : IHostedService
+public sealed class ProjectPulseAiSecretLoader(
+    ProjectPulseAiSecretStore store,
+    ProjectPulseAiConfiguration configuration,
+    ProjectPulseAiHealthRegistry health,
+    ILogger<ProjectPulseAiSecretLoader> logger) : IHostedService
 {
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        if (!store.Available) { logger.LogWarning("Module 064 write-only secret store is unavailable: {Reason}", store.UnavailableReason); return; }
-        foreach (var secret in await store.LoadAsync(cancellationToken)) configuration.ApplyStoredSecret(secret.ProviderCode, secret.ApiKey, secret.Version, secret.RotatedAt);
-        foreach (var setting in await store.LoadModelsAsync(cancellationToken)) configuration.ApplyStoredModel(setting.Key, setting.Value);
-        foreach (var setting in await store.LoadEnabledAsync(cancellationToken)) configuration.ApplyStoredEnabled(setting.Key, setting.Value);
+        if (!store.Available)
+        {
+            logger.LogWarning(
+                "Module 064 write-only secret store is unavailable: {Reason}",
+                store.UnavailableReason);
+            health.ApplyConfiguration(configuration.Claude);
+            health.ApplyConfiguration(configuration.OpenAi);
+            return;
+        }
+
+        foreach (var secret in await store.LoadAsync(cancellationToken))
+            configuration.ApplyStoredSecret(
+                secret.ProviderCode,
+                secret.ApiKey,
+                secret.Version,
+                secret.RotatedAt);
+        foreach (var setting in await store.LoadModelsAsync(cancellationToken))
+            configuration.ApplyStoredModel(setting.Key, setting.Value);
+        foreach (var setting in await store.LoadEnabledAsync(cancellationToken))
+            configuration.ApplyStoredEnabled(setting.Key, setting.Value);
+
+        // The health registry can be constructed before hosted services start.
+        // Reconcile it only after encrypted keys and settings have been loaded.
+        health.ApplyConfiguration(configuration.Claude);
+        health.ApplyConfiguration(configuration.OpenAi);
     }
+
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }
 
-public sealed class ProjectPulseAiConfigurationSynchronizer(ProjectPulseAiSecretStore store, ProjectPulseAiConfiguration configuration, ILogger<ProjectPulseAiConfigurationSynchronizer> logger) : BackgroundService
+public sealed class ProjectPulseAiConfigurationSynchronizer(
+    ProjectPulseAiSecretStore store,
+    ProjectPulseAiConfiguration configuration,
+    ProjectPulseAiHealthRegistry health,
+    ProjectPulseAiHealthCoordinator coordinator,
+    ILogger<ProjectPulseAiConfigurationSynchronizer> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -275,12 +368,30 @@ public sealed class ProjectPulseAiConfigurationSynchronizer(ProjectPulseAiSecret
         {
             try
             {
-                foreach (var secret in await store.LoadAsync(stoppingToken)) configuration.ApplyStoredSecret(secret.ProviderCode, secret.ApiKey, secret.Version, secret.RotatedAt);
-                foreach (var setting in await store.LoadModelsAsync(stoppingToken)) configuration.ApplyStoredModel(setting.Key, setting.Value);
-                foreach (var setting in await store.LoadEnabledAsync(stoppingToken)) configuration.ApplyStoredEnabled(setting.Key, setting.Value);
+                foreach (var secret in await store.LoadAsync(stoppingToken))
+                    configuration.ApplyStoredSecret(
+                        secret.ProviderCode,
+                        secret.ApiKey,
+                        secret.Version,
+                        secret.RotatedAt);
+                foreach (var setting in await store.LoadModelsAsync(stoppingToken))
+                    configuration.ApplyStoredModel(setting.Key, setting.Value);
+                foreach (var setting in await store.LoadEnabledAsync(stoppingToken))
+                    configuration.ApplyStoredEnabled(setting.Key, setting.Value);
+
+                health.ApplyConfiguration(configuration.Claude);
+                health.ApplyConfiguration(configuration.OpenAi);
+                await coordinator.RefreshAsync(false, stoppingToken);
             }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
-            catch (Exception exception) { logger.LogWarning(exception, "Module 064 could not synchronize provider configuration."); }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+            }
+            catch (Exception exception)
+            {
+                logger.LogWarning(
+                    exception,
+                    "Module 064 could not synchronize provider configuration and health.");
+            }
         }
     }
 }
