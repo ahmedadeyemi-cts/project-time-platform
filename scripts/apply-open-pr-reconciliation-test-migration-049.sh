@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-EXPECTED_RELEASE_COMMIT="d62902d00a838d9cf593e990f4d78c45304642ef"
+EXPECTED_RELEASE_COMMIT="e678cdaacc020ccd2ee7726d6e77f0276fae38ce"
 RELEASE_ROOT="${1:-}"
 DATABASE_URL="${PROJECTPULSE_TEST_DATABASE_URL:-}"
 MIGRATION_FILE="049_module_021_sell_customer_sync.sql"
@@ -98,10 +98,26 @@ done
   fail "Migration 049 check constraints are incomplete."
 [[ "$(scalar "SELECT COUNT(*) FROM crm_integration_providers WHERE provider_key='zendesk_sell';")" == "1" ]] ||
   fail "The authoritative Module 026 SELL provider is unavailable."
-[[ "$(scalar "SELECT has_table_privilege('ptp_app','customer_directory_source_links','SELECT,INSERT,UPDATE');")" == "t" ]] ||
-  fail "ptp_app lacks the required source-link privileges."
-[[ "$(scalar "SELECT has_table_privilege('ptp_app','customer_directory_sync_runs','SELECT,INSERT,UPDATE');")" == "t" ]] ||
-  fail "ptp_app lacks the required sync-run privileges."
+
+# The database URL comes from the running API application's configured database
+# identity. Verify that identity can use the new tables. A historical ptp_app
+# role is optional and is checked only when the environment actually installs it.
+[[ "$(scalar "SELECT has_table_privilege(current_user,'customer_directory_source_links','SELECT,INSERT,UPDATE');")" == "t" ]] ||
+  fail "The configured runtime database role lacks the required source-link privileges."
+[[ "$(scalar "SELECT has_table_privilege(current_user,'customer_directory_sync_runs','SELECT,INSERT,UPDATE');")" == "t" ]] ||
+  fail "The configured runtime database role lacks the required sync-run privileges."
+echo "OPEN_PR_RECONCILIATION_RUNTIME_ROLE_PRIVILEGES=VERIFIED"
+
+PTP_APP_EXISTS="$(scalar "SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='ptp_app');")"
+if [[ "$PTP_APP_EXISTS" == "t" ]]; then
+  [[ "$(scalar "SELECT has_table_privilege('ptp_app','customer_directory_source_links','SELECT,INSERT,UPDATE');")" == "t" ]] ||
+    fail "The optional ptp_app compatibility role lacks source-link privileges."
+  [[ "$(scalar "SELECT has_table_privilege('ptp_app','customer_directory_sync_runs','SELECT,INSERT,UPDATE');")" == "t" ]] ||
+    fail "The optional ptp_app compatibility role lacks sync-run privileges."
+  echo "OPEN_PR_RECONCILIATION_PTP_APP_COMPATIBILITY=VERIFIED"
+else
+  echo "OPEN_PR_RECONCILIATION_PTP_APP_COMPATIBILITY=OPTIONAL_ROLE_NOT_INSTALLED"
+fi
 
 read -r USERS_AFTER CLIENTS_AFTER CONTACTS_AFTER PROJECTS_AFTER PROVIDERS_AFTER <<<"$(
   psql "$DATABASE_URL" --no-psqlrc -At -F ' ' --set=ON_ERROR_STOP=1 --command="
