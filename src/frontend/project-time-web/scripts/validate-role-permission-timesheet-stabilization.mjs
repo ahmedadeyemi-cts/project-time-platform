@@ -11,8 +11,26 @@ const requireAll = (source, values, label) => {
     if (!source.includes(value)) throw new Error(`${label} missing contract: ${value}`);
   }
 };
+const rejectAll = (source, values, label) => {
+  for (const value of values) {
+    if (source.includes(value)) throw new Error(`${label} contains retired contract: ${value}`);
+  }
+};
 
-const [support, boundary, project, gate, main, authoritative, timerPortal, timerBackend, queries] = await Promise.all([
+const [
+  support,
+  boundary,
+  project,
+  gate,
+  main,
+  authoritative,
+  timerPortal,
+  timerPicker,
+  timerBackend,
+  resultExecution,
+  stewardV2,
+  queries
+] = await Promise.all([
   optional('src/backend/ProjectTime.Api/Modules/ScopedRolePolicySupport.cs'),
   optional('src/backend/ProjectTime.Api/Modules/PtcTimeStewardRoleBoundary.cs'),
   optional('src/backend/ProjectTime.Api/ProjectTime.Api.csproj'),
@@ -20,7 +38,10 @@ const [support, boundary, project, gate, main, authoritative, timerPortal, timer
   read('src/frontend/project-time-web/src/main.jsx'),
   read('src/frontend/project-time-web/src/projectpulse-authoritative-api.js'),
   read('src/frontend/project-time-web/src/module001/TimesheetEnhancementPortal.jsx'),
+  read('src/frontend/project-time-web/src/module001/TimesheetTaskPicker.jsx'),
   optional('src/backend/ProjectTime.Api/Modules/Module001TimerTargets.cs'),
+  optional('src/backend/ProjectTime.Api/Modules/Module001ResultExecutionCompatibility.cs'),
+  optional('src/backend/ProjectTime.Api/Modules/Module001TimeStewardV2Module.cs'),
   optional('src/backend/ProjectTime.Api/Modules/ScopedRolePolicyQueries.cs')
 ]);
 
@@ -53,7 +74,13 @@ if (boundary) {
   ], 'Time-steward hard role boundary');
 }
 
-if (project) requireAll(project, ['app.UsePtcTimeStewardRoleBoundary();'], 'Generated API registration');
+if (project) {
+  requireAll(project, [
+    'app.UsePtcTimeStewardRoleBoundary();',
+    'app.UseModule001ResultExecutionCompatibility();',
+    'app.MapModule001TimeStewardV2Endpoints();'
+  ], 'Generated API registration');
+}
 
 requireAll(gate, [
   'PtcTimeStewardGate',
@@ -61,57 +88,60 @@ requireAll(gate, [
   "'SUPER_ADMINISTRATOR'",
   "'projectPulseViewAsUser'",
   'roleCodes',
-  'if (state.active && !state.allowed) return null'
+  'if (state.active && !state.allowed) return null',
+  '<PtcTimesheetManagementPortal />'
 ], 'Effective-role PTC UI gate');
+rejectAll(gate, ['PtcRuntimeTaskCatalog'], 'single PTC portal owner');
+
 requireAll(main, [
   "import './projectpulse-authoritative-api.js';",
   "import PtcTimeStewardGate from './module001/PtcTimeStewardGate.jsx';",
-  '<PtcTimeStewardGate />'
-], 'Gated PTC application mount');
-if (main.includes("import PtcTimesheetManagementPortal from './module001/PtcTimesheetManagementPortal.jsx';")) {
-  throw new Error('Main still bypasses the PTC effective-role gate.');
-}
+  '<PtcTimeStewardGate />',
+  '<TimesheetEnhancementPortal />'
+], 'Gated PTC and timer application mount');
+rejectAll(main, [
+  "import PtcTimesheetManagementPortal from './module001/PtcTimesheetManagementPortal.jsx';",
+  'Module001ActiveTimerRecoveryPortal',
+  'PtcRuntimeTaskCatalog'
+], 'Main Module 001 ownership bypass');
 
 requireAll(authoritative, [
   'new XMLHttpRequest()',
   'requiredCollections',
   'collectionCounts',
-  'projectpulse:authoritative-api-diagnostic'
+  'projectpulse:authoritative-api-diagnostic',
+  'nativeFetchAuthoritative'
 ], 'Wrapper-independent authoritative API retained for protected mutation and recovery flows');
 
 requireAll(timerPortal, [
-  "const TIMER_TARGET_CLIENT = 'projectpulse-timer-target-direct-fetch-v1';",
+  "import { authoritativeApi } from '../projectpulse-authoritative-api.js';",
   'function isTimesheetRoute()',
   "=== 'timesheet'",
-  'async function loadTimerTargets(weekStart)',
   '/api/timesheet/timers/targets?weekStart=',
-  "'X-ProjectPulse-Module-Number': '001'",
-  "'X-ProjectPulse-Timer-Target-Client': TIMER_TARGET_CLIENT",
-  'normalizeTimerTargetPayload(payload)',
-  'mergeByKey(snapshot.assignedTasks, authoritativeAssignments)',
-  'snapshot.nonProjectCategories',
-  "target.groupLabel !== 'Service Request Tasks' && target.groupLabel !== 'Requests / Service Requests'",
-  "target.groupLabel === 'Service Request Tasks' || target.groupLabel === 'Requests / Service Requests'",
-  'regularAssignedTasks',
-  'requestAssignedTasks',
-  'timerTargetCounts',
-  'timerTargetAuthoritativeSources',
-  'timerTargetLoadError',
-  'projectpulse:module001-timer-targets',
-  'Existing Timesheet activities remain available',
-  'synchronizeViewButtons'
-], 'Module 001 timer target integration with direct validated transport and preserved fallback catalogs');
-
-for (const forbidden of [
-  "import { authoritativeApi } from '../projectpulse-authoritative-api.js';",
+  '/api/timesheet/timers/active',
+  '/api/timesheet/timers/history?weekStart=',
+  "requiredCollections: ['targets']",
+  "requiredCollections: ['timers']",
+  'window.setInterval(refresh, 5000)',
+  'window.setInterval(() => setClock(new Date()), 1000)',
+  'The server continues tracking it through refreshes, sign-out, and session expiration.',
+  'module001-server-timer-recovery',
+  'data-projectpulse-react-owned-slot="true"'
+], 'Module 001 timer target, history, and persistent recovery integration');
+rejectAll(timerPortal, [
   '/api/assignments/available-tasks',
   '/api/timesheet/work-queue',
-  'new MutationObserver',
-  'returned an incomplete timer-target payload',
-  'The canonical Timesheet snapshot remains usable if the assignment join refresh fails.'
-]) {
-  if (timerPortal.includes(forbidden)) throw new Error(`Legacy or route-wide timer target path remains: ${forbidden}`);
-}
+  'document.createElement',
+  '.insertBefore(',
+  '.replaceChildren('
+], 'Legacy timer target and DOM mutation paths');
+
+requireAll(timerPicker, [
+  "const GROUP_ORDER = ['Requests / Service Requests', 'Project Tasks', 'Non-Project Time']",
+  "if (label === 'Service Request Tasks') return 'Requests / Service Requests'",
+  "if (label === 'Regular Tasks') return 'Project Tasks'",
+  'role="combobox"'
+], 'Three-group timer picker');
 
 if (timerBackend) {
   requireAll(timerBackend, [
@@ -129,6 +159,33 @@ if (timerBackend) {
   ], 'Authoritative timer target backend');
 }
 
+if (resultExecution) {
+  requireAll(resultExecution, [
+    'Module001TimerTargetsAsync(context)',
+    'Module001ActiveTimerAsync(context)',
+    'Module001TimerHistoryAsync(context)',
+    'X-ProjectPulse-Module001-Result-Execution',
+    'await result.ExecuteAsync(context);'
+  ], 'Explicit Module 001 GET result execution');
+}
+
+if (stewardV2) {
+  requireAll(stewardV2, [
+    '/api/runtime/timesheet/steward/v2/users',
+    '/api/runtime/timesheet/steward/v2/users/{targetUserId:guid}/workspace',
+    '/api/runtime/timesheet/steward/v2/entries/{timeEntryId:guid}/move',
+    'ENGINEERING',
+    'ENGINEERING_LEAD',
+    'PROJECT_MANAGEMENT',
+    'PROJECT_MANAGEMENT_LEAD',
+    'Requests / Service Requests',
+    'Project Tasks',
+    'Non-Project Time',
+    'Module001EnsurePtcAssignmentV2Async',
+    'crossActivityTypeMove = true'
+  ], 'Flexible PTC v2 source');
+}
+
 if (queries) {
   requireAll(queries, [
     'foreach (var roleCode in CanonicalRoleOrder)',
@@ -137,4 +194,4 @@ if (queries) {
   ], 'Role and module query foundation');
 }
 
-console.log('Role permission and timesheet stabilization contracts passed with route-scoped direct Module 001 target transport.');
+console.log('ROLE_PERMISSION_TIMESHEET_STABILIZATION=PASS database=PTP timer=server-authoritative pTC=v2 domOwnership=react-owned');
