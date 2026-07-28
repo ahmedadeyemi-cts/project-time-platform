@@ -1,0 +1,189 @@
+name: ProjectPulse Deploy Dynamic RBAC and Group 2A Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_commit:
+        description: Exact verified dynamic RBAC and Group 2A source release
+        required: true
+        default: 175579682b24c27daa8ca7b73c348e4ff4cab687
+        type: string
+      confirmation:
+        description: Enter DEPLOY-DYNAMIC-RBAC-GROUP2A-TO-TEST
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: projectpulse-deploy-dynamic-rbac-group2a-test
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Guarded dynamic RBAC, Group 2A, API, and web test deployment
+    environment: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      EXPECTED_RELEASE_COMMIT: 175579682b24c27daa8ca7b73c348e4ff4cab687
+
+    steps:
+      - name: Check out deployment controls
+        uses: actions/checkout@v5
+        with:
+          path: control
+          fetch-depth: 0
+
+      - name: Check out exact dynamic RBAC source release
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.release_commit }}
+          path: release
+          fetch-depth: 1
+
+      - name: Guard workflow source and validate exact release
+        id: release
+        shell: bash
+        env:
+          DISPATCH_RELEASE_COMMIT: ${{ inputs.release_commit }}
+          DISPATCH_CONFIRMATION: ${{ inputs.confirmation }}
+          WORKFLOW_SOURCE_REF: ${{ github.ref }}
+          WORKFLOW_SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$WORKFLOW_SOURCE_REF" == 'refs/heads/main' ]] || {
+            echo 'Dispatch this workflow from main.' >&2
+            exit 1
+          }
+          [[ "$DISPATCH_CONFIRMATION" == 'DEPLOY-DYNAMIC-RBAC-GROUP2A-TO-TEST' ]] || {
+            echo 'The deployment confirmation text does not match.' >&2
+            exit 1
+          }
+          [[ "$DISPATCH_RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || {
+            echo 'release_commit must be a complete 40-character SHA.' >&2
+            exit 1
+          }
+
+          CONTROL_COMMIT="$(git -C control rev-parse HEAD)"
+          TARGET_COMMIT="$(git -C release rev-parse HEAD)"
+          [[ "$CONTROL_COMMIT" == "$WORKFLOW_SOURCE_SHA" ]]
+          [[ "$TARGET_COMMIT" == "$DISPATCH_RELEASE_COMMIT" ]]
+          [[ "$TARGET_COMMIT" == "$EXPECTED_RELEASE_COMMIT" ]] || {
+            echo 'Only the verified dynamic RBAC and Group 2A source release may deploy.' >&2
+            exit 1
+          }
+          git -C control merge-base --is-ancestor "$TARGET_COMMIT" HEAD || {
+            echo 'The source release is not an ancestor of the deployment controls.' >&2
+            exit 1
+          }
+
+          RBAC_BACKEND='release/src/backend/ProjectTime.Api/Modules/DynamicRbacAdministrationModule.cs'
+          RBAC_REGISTRAR='release/src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs'
+          RBAC_EVALUATOR='release/src/backend/ProjectTime.Api/Modules/ScopedAuthorizationEvaluator.cs'
+          ROLE_UI='release/src/frontend/project-time-web/src/RoleAdminDirectoryPanel.jsx'
+          MATRIX_UI='release/src/frontend/project-time-web/src/RolesPermissionsMatrix.jsx'
+          MORE_BRIDGE='release/src/frontend/project-time-web/src/module-availability-bridge.js'
+          MORE_UI='release/src/frontend/project-time-web/src/intuitive-more-menu.js'
+          GROUP2A_API='release/src/backend/ProjectTime.Api/Modules/PlatformOperationsModule.cs'
+          MODULE013='release/src/frontend/project-time-web/src/ServiceControlCenter.jsx'
+          MODULE016='release/src/frontend/project-time-web/src/OperationalEvidenceCenter.jsx'
+          MODULE068='release/src/frontend/project-time-web/src/SystemArchitectureCenter.jsx'
+
+          for required in \
+            "$RBAC_BACKEND" "$RBAC_REGISTRAR" "$RBAC_EVALUATOR" \
+            "$ROLE_UI" "$MATRIX_UI" "$MORE_BRIDGE" "$MORE_UI" \
+            "$GROUP2A_API" "$MODULE013" "$MODULE016" "$MODULE068" \
+            release/src/backend/ProjectTime.Api/ProjectTime.Api.csproj \
+            release/tests/ProjectTime.Api.AuthorizationTests/ProjectTime.Api.AuthorizationTests.csproj \
+            release/tests/test-projectpulse-api-startup.sh \
+            release/src/frontend/project-time-web/scripts/validate-dynamic-rbac-administration.mjs \
+            release/src/frontend/project-time-web/scripts/validate-module-012-scoped-role-admin.mjs \
+            release/src/frontend/project-time-web/scripts/validate-module-037-effective-matrix.mjs \
+            release/src/frontend/project-time-web/scripts/validate-group-1-navigation-work-consolidation.mjs \
+            release/src/frontend/project-time-web/scripts/validate-group-2a-provider-neutral-platform-operations.mjs \
+            release/src/frontend/project-time-web/scripts/validate-module-068-system-architecture.mjs \
+            control/scripts/run-dynamic-rbac-group2a-test-deployment.sh; do
+            test -f "$required"
+          done
+
+          grep -Fq 'projectpulse-rbac-v1-2026-07-28' "$RBAC_BACKEND"
+          grep -Fq '"/api/rbac/v1/bootstrap"' "$RBAC_BACKEND"
+          grep -Fq '"/api/rbac/v1/matrix"' "$RBAC_BACKEND"
+          grep -Fq '"/api/rbac/v1/role-memberships/assign"' "$RBAC_BACKEND"
+          grep -Fq '"/api/rbac/v1/modules/register"' "$RBAC_BACKEND"
+          grep -Fq 'fixedModuleCountRequired = false' "$RBAC_BACKEND"
+          grep -Fq 'permanentFullControl = true' "$RBAC_BACKEND"
+          grep -Fq 'app.MapDynamicRbacAdministrationEndpoints();' "$RBAC_REGISTRAR"
+          grep -Fq 'Super Administrator has permanent organization-wide Full Control' "$RBAC_EVALUATOR"
+          grep -Fq "api('/api/rbac/v1/bootstrap')" "$ROLE_UI"
+          grep -Fq 'Role-Based Access Control' "$ROLE_UI"
+          grep -Fq "api('/api/rbac/v1/matrix')" "$MATRIX_UI"
+          grep -Fq 'No 70-module requirement' "$MATRIX_UI"
+          ! grep -Fq 'REQUIRED_MODULE_COUNT' "$ROLE_UI"
+          ! grep -Fq 'REQUIRED_MODULE_COUNT' "$MATRIX_UI"
+          ! grep -Fq 'Expected 12 roles and 70 modules' "$ROLE_UI"
+          ! grep -Fq 'Expected 12 roles and 70 modules' "$MATRIX_UI"
+          grep -Fq "nativeFetch('/api/rbac/v1/bootstrap'" "$MORE_BRIDGE"
+          grep -Fq "nativeFetch('/api/rbac/v1/matrix'" "$MORE_BRIDGE"
+          grep -Fq 'Search by page name' "$MORE_UI"
+          grep -Fq '/api/platform-operations/overview' "$GROUP2A_API"
+          grep -Fq '/api/platform-operations/evidence' "$GROUP2A_API"
+          grep -Fq '/api/platform-operations/architecture' "$GROUP2A_API"
+          grep -Fq 'System Health &amp; API Diagnostics' "$MODULE013"
+          grep -Fq 'Operational Evidence' "$MODULE016"
+          grep -Fq 'System Architecture' "$MODULE068"
+
+          (
+            cd release
+            dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+            dotnet run \
+              --project tests/ProjectTime.Api.AuthorizationTests/ProjectTime.Api.AuthorizationTests.csproj \
+              --configuration Release
+            bash tests/test-projectpulse-api-startup.sh
+          )
+
+          (
+            cd release/src/frontend/project-time-web
+            npm ci --no-audit --no-fund
+            npm run validate:dynamic-rbac
+            npm run validate:module012
+            npm run validate:module037
+            node scripts/validate-group-1-navigation-work-consolidation.mjs
+            node scripts/validate-group-2a-provider-neutral-platform-operations.mjs
+            npm run validate:module068
+            npm run build
+          )
+
+          echo "target_commit=$TARGET_COMMIT" >> "$GITHUB_OUTPUT"
+          echo 'DYNAMIC_RBAC_GROUP2A_SOURCE_VALIDATION=PASS'
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build, deploy, validate, and preserve rollback evidence
+        shell: bash
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_API_APP: ${{ vars.AZURE_API_APP }}
+          AZURE_WEB_APP: ${{ vars.AZURE_WEB_APP }}
+          AZURE_ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
+          PUBLIC_URL: ${{ vars.PUBLIC_URL }}
+        run: >-
+          bash control/scripts/run-dynamic-rbac-group2a-test-deployment.sh
+          control
+          release
+          '${{ steps.release.outputs.target_commit }}'
+
+      - name: Upload immutable deployment evidence
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dynamic-rbac-group2a-test-${{ github.run_id }}
+          path: control/evidence/dynamic-rbac-group2a-test-deployment.json
+          retention-days: 30
