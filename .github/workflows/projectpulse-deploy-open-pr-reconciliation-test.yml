@@ -6,7 +6,7 @@ on:
       release_commit:
         description: Exact verified source release containing all reconciled open PR work
         required: true
-        default: b24ea3db7d0c839d03804975e87b7929dba8c7f6
+        default: d62902d00a838d9cf593e990f4d78c45304642ef
         type: string
       confirmation:
         description: Enter DEPLOY-OPEN-PR-RECONCILIATION-TO-TEST
@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
-      EXPECTED_RELEASE_COMMIT: b24ea3db7d0c839d03804975e87b7929dba8c7f6
+      EXPECTED_RELEASE_COMMIT: d62902d00a838d9cf593e990f4d78c45304642ef
 
     steps:
       - name: Check out deployment controls
@@ -82,21 +82,28 @@ jobs:
 
           SELL_MODULE='release/src/backend/ProjectTime.Api/Modules/CustomerDirectorySellSyncModule.cs'
           REGISTRAR='release/src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs'
+          PLATFORM_MODULE='release/src/backend/ProjectTime.Api/Modules/PlatformOperationsModule.cs'
           MORE_BRIDGE='release/src/frontend/project-time-web/src/module-availability-bridge.js'
           MORE_REGISTRY='release/src/frontend/project-time-web/src/module-availability-registry.js'
           ADMIN_RUNTIME='release/src/frontend/project-time-web/src/AdminRuntimeStabilityPortal.jsx'
           CUSTOMER_UI='release/src/frontend/project-time-web/src/CustomerDirectoryCenter.jsx'
+          SERVICE_UI='release/src/frontend/project-time-web/src/ServiceControlCenter.jsx'
+          EVIDENCE_UI='release/src/frontend/project-time-web/src/OperationalEvidenceCenter.jsx'
+          ARCHITECTURE_UI='release/src/frontend/project-time-web/src/SystemArchitectureCenter.jsx'
           MIGRATION='release/database/migrations/049_module_021_sell_customer_sync.sql'
 
           for required in \
-            "$SELL_MODULE" "$REGISTRAR" "$MORE_BRIDGE" "$MORE_REGISTRY" \
-            "$ADMIN_RUNTIME" "$CUSTOMER_UI" "$MIGRATION" \
+            "$SELL_MODULE" "$REGISTRAR" "$PLATFORM_MODULE" \
+            "$MORE_BRIDGE" "$MORE_REGISTRY" "$ADMIN_RUNTIME" "$CUSTOMER_UI" \
+            "$SERVICE_UI" "$EVIDENCE_UI" "$ARCHITECTURE_UI" "$MIGRATION" \
             release/src/backend/ProjectTime.Api/ProjectTime.Api.csproj \
             release/tests/ProjectTime.Api.AuthorizationTests/ProjectTime.Api.AuthorizationTests.csproj \
             release/tests/test-projectpulse-api-startup.sh \
             release/src/frontend/project-time-web/scripts/validate-admin-runtime-stability.mjs \
             release/src/frontend/project-time-web/scripts/validate-group-1-navigation-work-consolidation.mjs \
             release/src/frontend/project-time-web/scripts/validate-modules-021-026-sell-customer-sync.mjs \
+            release/src/frontend/project-time-web/scripts/validate-group-2a-provider-neutral-platform-operations.mjs \
+            release/src/frontend/project-time-web/scripts/validate-module-068-system-architecture.mjs \
             control/scripts/apply-open-pr-reconciliation-test-migration-049.sh \
             control/scripts/run-open-pr-reconciliation-test-migration-job.sh \
             control/scripts/run-open-pr-reconciliation-test-deployment.sh; do
@@ -108,6 +115,9 @@ jobs:
           grep -Fq '/api/customers/sell/preview' "$SELL_MODULE"
           grep -Fq '/api/customers/sell/import' "$SELL_MODULE"
           grep -Fq 'MapCustomerDirectorySellSyncEndpoints' "$REGISTRAR"
+          grep -Fq '/api/platform-operations/overview' "$PLATFORM_MODULE"
+          grep -Fq '/api/platform-operations/evidence' "$PLATFORM_MODULE"
+          grep -Fq '/api/platform-operations/architecture' "$PLATFORM_MODULE"
           grep -Fq 'X-ProjectPulse-View-As-User' "$MORE_BRIDGE"
           grep -Fq 'Search module number or page name' "$MORE_BRIDGE"
           grep -Fq "lifecycle: 'retired'" "$MORE_REGISTRY"
@@ -115,6 +125,9 @@ jobs:
           grep -Fq 'Project creation and project/task management moved to Modules 055D and 055C.' "$MORE_REGISTRY"
           grep -Fq 'Synchronization history is consolidated in Module 008' "$ADMIN_RUNTIME"
           grep -Fq '/api/customers/sell/status' "$CUSTOMER_UI"
+          grep -Fq 'System Health &amp; API Diagnostics' "$SERVICE_UI"
+          grep -Fq 'Operational Evidence &amp; Diagnostic History' "$EVIDENCE_UI"
+          grep -Fq 'System Architecture &amp; API Dependency Map' "$ARCHITECTURE_UI"
           grep -Fq 'CREATE TABLE IF NOT EXISTS customer_directory_source_links' "$MIGRATION"
           grep -Fq 'CREATE TABLE IF NOT EXISTS customer_directory_sync_runs' "$MIGRATION"
           grep -Fq "'049_module_021_sell_customer_sync'" "$MIGRATION"
@@ -134,6 +147,8 @@ jobs:
             node scripts/validate-admin-runtime-stability.mjs
             node scripts/validate-group-1-navigation-work-consolidation.mjs
             node scripts/validate-modules-021-026-sell-customer-sync.mjs
+            node scripts/validate-group-2a-provider-neutral-platform-operations.mjs
+            node scripts/validate-module-068-system-architecture.mjs
             npm run validate:microsoft-connection
             npm run validate:microsoft-sso-runtime
             npm run build
