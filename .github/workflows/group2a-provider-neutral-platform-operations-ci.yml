@@ -1,0 +1,161 @@
+name: Validate Group 2A Provider-Neutral Platform Operations
+
+on:
+  push:
+    branches:
+      - 'feature/group-2a-provider-neutral-platform-operations-*'
+  pull_request:
+    paths:
+      - 'src/backend/ProjectTime.Api/Modules/PlatformOperationsContracts.cs'
+      - 'src/backend/ProjectTime.Api/Modules/PlatformOperationsModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/PlatformOperationsArchitecture.cs'
+      - 'src/backend/ProjectTime.Api/ProjectTime.Api.csproj'
+      - 'src/frontend/project-time-web/src/ServiceControlCenter.jsx'
+      - 'src/frontend/project-time-web/src/service-control-center.css'
+      - 'src/frontend/project-time-web/src/BackupRetentionCenter.jsx'
+      - 'src/frontend/project-time-web/src/LegacyBackupRetentionCenter.jsx'
+      - 'src/frontend/project-time-web/src/OperationalEvidenceCenter.jsx'
+      - 'src/frontend/project-time-web/src/operational-evidence-center.css'
+      - 'src/frontend/project-time-web/src/SystemArchitectureCenter.jsx'
+      - 'src/frontend/project-time-web/src/system-architecture-center.css'
+      - 'src/frontend/project-time-web/src/module-availability-registry.js'
+      - 'src/frontend/project-time-web/scripts/validate-module-068-system-architecture.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-group-2a-provider-neutral-platform-operations.mjs'
+      - '.github/workflows/group2a-provider-neutral-platform-operations-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify isolated Group 2A scope
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git fetch origin main --no-tags
+          CHANGED="$(git diff --name-only origin/main...HEAD)"
+          printf '%s\n' "$CHANGED"
+
+          ALLOWED='^(\.github/workflows/group2a-provider-neutral-platform-operations-ci\.yml|src/backend/ProjectTime.Api/Modules/PlatformOperationsContracts\.cs|src/backend/ProjectTime.Api/Modules/PlatformOperationsModule\.cs|src/backend/ProjectTime.Api/Modules/PlatformOperationsArchitecture\.cs|src/backend/ProjectTime.Api/ProjectTime.Api\.csproj|src/frontend/project-time-web/src/ServiceControlCenter\.jsx|src/frontend/project-time-web/src/service-control-center\.css|src/frontend/project-time-web/src/BackupRetentionCenter\.jsx|src/frontend/project-time-web/src/LegacyBackupRetentionCenter\.jsx|src/frontend/project-time-web/src/OperationalEvidenceCenter\.jsx|src/frontend/project-time-web/src/operational-evidence-center\.css|src/frontend/project-time-web/src/SystemArchitectureCenter\.jsx|src/frontend/project-time-web/src/system-architecture-center\.css|src/frontend/project-time-web/src/module-availability-registry\.js|src/frontend/project-time-web/scripts/validate-module-068-system-architecture\.mjs|src/frontend/project-time-web/scripts/validate-group-2a-provider-neutral-platform-operations\.mjs)$'
+          UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
+          if [[ -n "$UNEXPECTED" ]]; then
+            echo 'Unexpected Group 2A source scope:' >&2
+            printf '%s\n' "$UNEXPECTED" >&2
+            exit 1
+          fi
+
+          if grep -E '^(database/|deployment/azure/|\.github/workflows/projectpulse-deploy-|src/frontend/project-time-web/src/(main|CrmErpIntegrationCenter|CustomerDirectoryCenter|customer-directory-sell-sync|crm-erp-integration-center)\.|src/backend/ProjectTime.Api/Modules/(CustomerDirectorySellSyncModule|GlobalMailConfigurationModule)\.cs)' <<<"$CHANGED"; then
+            echo 'Group 2A overlaps a database, deployment, PR #187, or unrelated shared runtime surface.' >&2
+            exit 1
+          fi
+
+          echo 'GROUP_2A_SOURCE_ISOLATION=PASSED'
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Check provider-neutral source syntax
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node --check src/frontend/project-time-web/src/module-availability-registry.js
+          node --check src/frontend/project-time-web/scripts/validate-module-068-system-architecture.mjs
+          node --check src/frontend/project-time-web/scripts/validate-group-2a-provider-neutral-platform-operations.mjs
+
+      - name: Validate Group 2A source contract
+        working-directory: src/frontend/project-time-web
+        run: node ./scripts/validate-group-2a-provider-neutral-platform-operations.mjs
+
+      - name: Build ProjectTime API
+        id: api_build
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release > group2a-api-build.log 2>&1
+          STATUS=$?
+          echo "exit_code=$STATUS" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload API build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: group2a-api-build-${{ github.run_id }}-${{ github.run_attempt }}
+          path: group2a-api-build.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce API build result
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          STATUS='${{ steps.api_build.outputs.exit_code }}'
+          if [[ "$STATUS" != '0' ]]; then
+            echo 'API build failed. Last 120 diagnostic lines:' >&2
+            tail -n 120 group2a-api-build.log >&2
+            exit "$STATUS"
+          fi
+          tail -n 40 group2a-api-build.log
+          echo 'GROUP_2A_API_BUILD=PASSED'
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Validate Module 068 compatibility
+        working-directory: src/frontend/project-time-web
+        run: npm run validate:module068
+
+      - name: Build complete frontend production bundle
+        id: frontend_build
+        continue-on-error: true
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set +e
+          npm run build > group2a-frontend-build.log 2>&1
+          STATUS=$?
+          echo "exit_code=$STATUS" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload frontend build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: group2a-frontend-build-${{ github.run_id }}-${{ github.run_attempt }}
+          path: src/frontend/project-time-web/group2a-frontend-build.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce frontend build result
+        if: always()
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          STATUS='${{ steps.frontend_build.outputs.exit_code }}'
+          if [[ "$STATUS" != '0' ]]; then
+            echo 'Frontend build failed. Last 120 diagnostic lines:' >&2
+            tail -n 120 group2a-frontend-build.log >&2
+            exit "$STATUS"
+          fi
+          tail -n 40 group2a-frontend-build.log
+          echo 'GROUP_2A_FRONTEND_BUILD=PASSED'
