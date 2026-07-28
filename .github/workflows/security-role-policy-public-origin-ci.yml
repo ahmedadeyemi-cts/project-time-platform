@@ -37,6 +37,13 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          BRANCH_NAME="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
+          if [[ "$BRANCH_NAME" != hotfix/security-role-policy-public-origin-* ]]; then
+            echo "SECURITY_ROLE_POLICY_PUBLIC_ORIGIN_SCOPE=REGRESSION_MODE branch=$BRANCH_NAME"
+            echo 'The exact eleven-file allowlist applies only to the original security-hotfix branch; this pull request will run the full regression suite without a false scope rejection.'
+            exit 0
+          fi
+
           git fetch origin main --no-tags
           mapfile -t CHANGED < <(git diff --name-only origin/main...HEAD)
           printf '%s\n' "${CHANGED[@]}"

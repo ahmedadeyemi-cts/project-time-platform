@@ -1,0 +1,135 @@
+name: Validate Role Policy Result Execution
+
+on:
+  push:
+    branches:
+      - 'hotfix/role-policy-result-execution-*'
+  pull_request:
+    paths:
+      - 'src/backend/ProjectTime.Api/Modules/ScopedRolePolicyResultExecutionCompatibility.cs'
+      - 'src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs'
+      - 'tests/ProjectTime.Api.RouteResultExecutionTests/**'
+      - '.github/workflows/security-role-policy-public-origin-ci.yml'
+      - '.github/workflows/role-policy-result-execution-ci.yml'
+
+permissions:
+  contents: read
+  statuses: write
+
+jobs:
+  validate:
+    name: Reproduce zero-byte 200 and validate explicit IResult execution
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify focused source scope
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git fetch origin main --no-tags
+          mapfile -t CHANGED < <(git diff --name-only origin/main...HEAD)
+          printf '%s\n' "${CHANGED[@]}"
+
+          ALLOWED='^(\.github/workflows/(role-policy-result-execution-ci|security-role-policy-public-origin-ci)\.yml|src/backend/ProjectTime.Api/Modules/(GlobalMailConfigurationModule|ScopedRolePolicyResultExecutionCompatibility)\.cs|tests/ProjectTime.Api.RouteResultExecutionTests/(ProjectTime.Api.RouteResultExecutionTests\.csproj|Program\.cs))$'
+          UNEXPECTED="$(printf '%s\n' "${CHANGED[@]}" | grep -Ev "$ALLOWED" || true)"
+          if [[ -n "$UNEXPECTED" ]]; then
+            echo 'Unexpected role-policy result-execution source scope:' >&2
+            printf '%s\n' "$UNEXPECTED" >&2
+            exit 1
+          fi
+
+          if printf '%s\n' "${CHANGED[@]}" | grep -E '^(database/|deployment/azure/|\.github/workflows/projectpulse-deploy-)'; then
+            echo 'The result-execution hotfix must not alter migrations or deployment resources.' >&2
+            exit 1
+          fi
+
+          echo 'ROLE_POLICY_RESULT_EXECUTION_SCOPE=PASS'
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Build repaired ProjectTime API
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+
+      - name: Reproduce framework failure and verify explicit result execution
+        run: >-
+          dotnet run
+          --project tests/ProjectTime.Api.RouteResultExecutionTests/ProjectTime.Api.RouteResultExecutionTests.csproj
+          --configuration Release
+
+      - name: Execute central authorization tests
+        run: >-
+          dotnet run
+          --project tests/ProjectTime.Api.AuthorizationTests/ProjectTime.Api.AuthorizationTests.csproj
+          --configuration Release
+
+      - name: Verify API startup and route registration
+        run: bash tests/test-projectpulse-api-startup.sh
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Validate Module 012 and role-policy transport
+        working-directory: src/frontend/project-time-web
+        run: |
+          node scripts/validate-module-012-scoped-role-admin.mjs
+          node scripts/validate-role-permission-timesheet-stabilization.mjs
+          node scripts/validate-security-role-policy-public-origin.mjs
+
+      - name: Validate Module 037 and admin runtime
+        working-directory: src/frontend/project-time-web
+        run: |
+          node scripts/validate-module-037-effective-matrix.mjs
+          node scripts/validate-admin-runtime-stability.mjs
+
+      - name: Build complete frontend production bundle
+        working-directory: src/frontend/project-time-web
+        run: npm run build
+
+      - name: Publish exact-commit result-execution status
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
+          COMMIT_SHA: ${{ github.sha }}
+          API_ROOT: ${{ github.api_url }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -Eeuo pipefail
+          if [[ "$JOB_STATUS" == success ]]; then
+            STATE=success
+            DESCRIPTION='Zero-byte 200 reproduced; explicit Module 012/037 IResult execution passed.'
+          else
+            STATE=failure
+            DESCRIPTION='Role-policy result-execution validation failed.'
+          fi
+
+          PAYLOAD="$(jq -nc \
+            --arg state "$STATE" \
+            --arg context 'security/role-policy-result-execution' \
+            --arg description "$DESCRIPTION" \
+            --arg target_url "$RUN_URL" \
+            '{state:$state,context:$context,description:$description,target_url:$target_url}')"
+
+          curl --fail-with-body --silent --show-error \
+            --request POST \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'Accept: application/vnd.github+json' \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            --data "$PAYLOAD" \
+            "$API_ROOT/repos/$REPOSITORY/statuses/$COMMIT_SHA"
