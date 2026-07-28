@@ -147,7 +147,7 @@ requireAll(platform, [
   '/api/platform-operations/evidence',
   '/api/platform-operations/architecture'
 ], 'Group 2A provider-neutral API');
-requireAll(service, ['System Health & API Diagnostics', '/api/platform-operations/overview'], 'Module 013');
+requireAll(service, ['System Health &amp; API Diagnostics', '/api/platform-operations/overview'], 'Module 013');
 requireAll(evidence, ['Operational Evidence', '/api/platform-operations/evidence'], 'Module 016');
 requireAll(architecture, ['System Architecture', '/api/platform-operations/architecture'], 'Module 068');
 requireAll(group2aWorkflow, [
