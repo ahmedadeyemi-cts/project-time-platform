@@ -1,15 +1,15 @@
-name: ProjectPulse Deploy Module 001 PTC Timer DOM and Module 026 Test
+name: ProjectPulse Deploy Module 001, Module 026, and Microsoft Runtime Test
 
 on:
   workflow_dispatch:
     inputs:
       release_commit:
-        description: Exact verified Module 001 PTC timer DOM and Module 026 source release
+        description: Exact verified Module 001, Module 026, and Microsoft runtime source release
         required: true
-        default: 816deeda98d3d875cdbdea1a42b5662815334eb9
+        default: 9a1308de1186abef6c199e9e6453f222b5e95999
         type: string
       confirmation:
-        description: Enter DEPLOY-MODULE001-PTC-TIMER-DOM-MODULE026-TO-TEST
+        description: Enter DEPLOY-MODULE001-MODULE026-MICROSOFT-RUNTIME-TO-TEST
         required: true
         type: string
 
@@ -18,17 +18,17 @@ permissions:
   contents: read
 
 concurrency:
-  group: projectpulse-deploy-module001-ptc-timer-dom-module026-test
+  group: projectpulse-deploy-module001-module026-microsoft-runtime-test
   cancel-in-progress: false
 
 jobs:
   deploy:
-    name: Guarded Module 001 PTC timer DOM, Module 026, API, and web test deployment
+    name: Guarded Module 001, Module 026, Microsoft runtime, API, and web test deployment
     environment: test
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
-      EXPECTED_RELEASE_COMMIT: 816deeda98d3d875cdbdea1a42b5662815334eb9
+      EXPECTED_RELEASE_COMMIT: 9a1308de1186abef6c199e9e6453f222b5e95999
 
     steps:
       - name: Check out deployment controls
@@ -37,7 +37,7 @@ jobs:
           path: control
           fetch-depth: 0
 
-      - name: Check out exact Module 001 and Module 026 source release
+      - name: Check out exact combined source release
         uses: actions/checkout@v5
         with:
           ref: ${{ inputs.release_commit }}
@@ -58,7 +58,7 @@ jobs:
             echo 'Dispatch this workflow from main.' >&2
             exit 1
           }
-          [[ "$DISPATCH_CONFIRMATION" == 'DEPLOY-MODULE001-PTC-TIMER-DOM-MODULE026-TO-TEST' ]] || {
+          [[ "$DISPATCH_CONFIRMATION" == 'DEPLOY-MODULE001-MODULE026-MICROSOFT-RUNTIME-TO-TEST' ]] || {
             echo 'The deployment confirmation text does not match.' >&2
             exit 1
           }
@@ -72,7 +72,7 @@ jobs:
           [[ "$CONTROL_COMMIT" == "$WORKFLOW_SOURCE_SHA" ]]
           [[ "$TARGET_COMMIT" == "$DISPATCH_RELEASE_COMMIT" ]]
           [[ "$TARGET_COMMIT" == "$EXPECTED_RELEASE_COMMIT" ]] || {
-            echo 'Only the verified Module 001 PTC timer DOM and Module 026 source release may deploy.' >&2
+            echo 'Only the verified combined Module 001, Module 026, and Microsoft runtime source release may deploy.' >&2
             exit 1
           }
           git -C control merge-base --is-ancestor "$TARGET_COMMIT" HEAD || {
@@ -94,13 +94,27 @@ jobs:
           MORE_RUNTIME='release/src/frontend/project-time-web/src/intuitive-more-menu.js'
           MODULE026_UI='release/src/frontend/project-time-web/src/CrmErpIntegrationCenter.jsx'
           MODULE026_BACKEND='release/src/backend/ProjectTime.Api/Modules/CrmErpAdministrationExperience.cs'
+          MICROSOFT_SYNC='release/src/backend/ProjectTime.Api/Modules/MicrosoftDirectorySyncModule.cs'
+          MICROSOFT_ENVIRONMENT='release/src/backend/ProjectTime.Api/Modules/MicrosoftEnvironmentRuntimeResolver.cs'
+          MICROSOFT_ORIGIN='release/src/backend/ProjectTime.Api/Modules/ProjectPulsePublicOriginCompatibility.cs'
+          MICROSOFT_SSO='release/src/backend/ProjectTime.Api/Modules/MicrosoftSsoInteractiveStartActivation.cs'
+          MICROSOFT_MAIL_RUNTIME='release/src/backend/ProjectTime.Api/Modules/MicrosoftMailRuntimeConfigurationModule.cs'
+          MICROSOFT_MAIL_TEST='release/src/backend/ProjectTime.Api/Modules/MicrosoftMailTransportTestModule.cs'
+          MICROSOFT_PORTAL='release/src/frontend/project-time-web/src/MicrosoftIntegrationDualConnectionPortal.jsx'
+          MICROSOFT_READINESS='release/src/frontend/project-time-web/src/MicrosoftMailTransportReadinessPanel.jsx'
+          MICROSOFT_COMPAT='release/src/frontend/project-time-web/src/microsoft-integration-compatibility.js'
+          WEB_DOCKERFILE='release/deployment/containers/web/Dockerfile'
           GROUP2A_API='release/src/backend/ProjectTime.Api/Modules/PlatformOperationsModule.cs'
 
           for required in \
             "$RESULT_EXECUTION" "$STEWARD_V2" "$TIMER_TARGETS" "$TIMER_DATA" \
             "$PTC_PORTAL" "$TIMER_PORTAL" "$TIMER_VIEW" "$TIMER_PICKER" \
             "$SLOT_INJECTOR" "$MORE_INJECTOR" "$NAVIGATION" "$MORE_RUNTIME" \
-            "$MODULE026_UI" "$MODULE026_BACKEND" "$GROUP2A_API" \
+            "$MODULE026_UI" "$MODULE026_BACKEND" \
+            "$MICROSOFT_SYNC" "$MICROSOFT_ENVIRONMENT" "$MICROSOFT_ORIGIN" \
+            "$MICROSOFT_SSO" "$MICROSOFT_MAIL_RUNTIME" "$MICROSOFT_MAIL_TEST" \
+            "$MICROSOFT_PORTAL" "$MICROSOFT_READINESS" "$MICROSOFT_COMPAT" \
+            "$WEB_DOCKERFILE" "$GROUP2A_API" \
             release/src/backend/ProjectTime.Api/ProjectTime.Api.csproj \
             release/tests/ProjectTime.Api.RouteResultExecutionTests/ProjectTime.Api.RouteResultExecutionTests.csproj \
             release/tests/ProjectTime.Api.AuthorizationTests/ProjectTime.Api.AuthorizationTests.csproj \
@@ -114,6 +128,10 @@ jobs:
             release/src/frontend/project-time-web/scripts/validate-dynamic-rbac-administration.mjs \
             release/src/frontend/project-time-web/scripts/validate-module-026-crm-erp-integrations.mjs \
             release/src/frontend/project-time-web/scripts/validate-modules-021-026-sell-customer-sync.mjs \
+            release/src/frontend/project-time-web/scripts/validate-module-067-global-mail.mjs \
+            release/src/frontend/project-time-web/scripts/validate-microsoft-integration-authoritative-connection.mjs \
+            release/src/frontend/project-time-web/scripts/validate-microsoft-sso-runtime-wiring.mjs \
+            release/src/frontend/project-time-web/scripts/validate-friendly-api-errors.mjs \
             release/src/frontend/project-time-web/scripts/validate-group-2a-provider-neutral-platform-operations.mjs \
             release/src/frontend/project-time-web/scripts/validate-module-068-system-architecture.mjs \
             control/scripts/run-module001-ptc-timer-dom-module026-test-deployment.sh; do
@@ -170,7 +188,76 @@ jobs:
           grep -Fq 'salesforce' "$MODULE026_BACKEND"
           grep -Fq 'servicenow' "$MODULE026_BACKEND"
           grep -Fq 'certinia' "$MODULE026_BACKEND"
+
+          grep -Fq '/api/microsoft-integration/directory-users/sync-now' "$MICROSOFT_SYNC"
+          grep -Fq '/api/microsoft-integration/directory-users/sync-status' "$MICROSOFT_SYNC"
+          grep -Fq 'SchedulerLoopAsync' "$MICROSOFT_SYNC"
+          grep -Fq 'WorkerPollInterval' "$MICROSOFT_SYNC"
+          grep -Fq 'syncFrequencyHours' "$MICROSOFT_SYNC"
+          grep -Fq 'https://graph.microsoft.com/v1.0/users' "$MICROSOFT_SYNC"
+          grep -Fq 'Directory.Read.All' "$MICROSOFT_SYNC"
+          grep -Fq 'User.Read.All' "$MICROSOFT_SYNC"
+          grep -Fq 'pg_try_advisory_lock' "$MICROSOFT_SYNC"
+          grep -Fq 'SAVEPOINT {savepoint}' "$MICROSOFT_SYNC"
+          grep -Fq 'transaction.CommitAsync' "$MICROSOFT_SYNC"
+          grep -Fq 'secretValuesReturned = false' "$MICROSOFT_SYNC"
+
+          grep -Fq 'PROJECTPULSE_MICROSOFT_ENVIRONMENT' "$MICROSOFT_ENVIRONMENT"
+          grep -Fq 'var hostMode = FromHost' "$MICROSOFT_ENVIRONMENT"
+          grep -Fq '.onenecklab.com' "$MICROSOFT_ENVIRONMENT"
+          grep -Fq '.ussignal.com' "$MICROSOFT_ENVIRONMENT"
+          grep -Fq 'ASPNETCORE_ENVIRONMENT' "$MICROSOFT_ENVIRONMENT"
+          HOST_MODE_LINE="$(grep -Fn 'var hostMode = FromHost' "$MICROSOFT_ENVIRONMENT" | head -1 | cut -d: -f1)"
+          ASPNET_LINE="$(grep -Fn '"ASPNETCORE_ENVIRONMENT"' "$MICROSOFT_ENVIRONMENT" | head -1 | cut -d: -f1)"
+          [[ -n "$HOST_MODE_LINE" && -n "$ASPNET_LINE" && "$HOST_MODE_LINE" -lt "$ASPNET_LINE" ]]
+
+          grep -Fq '/api/auth/sso/' "$MICROSOFT_ORIGIN"
+          grep -Fq 'trusted_forwarded_origin' "$MICROSOFT_ORIGIN"
+          grep -Fq '.onenecklab.com' "$MICROSOFT_ORIGIN"
+          grep -Fq '.ussignal.com' "$MICROSOFT_ORIGIN"
+
+          grep -Fq 'StartPath = "/api/auth/sso/start"' "$MICROSOFT_SSO"
+          grep -Fq 'ReadStoredProfileAsync(environmentMode)' "$MICROSOFT_SSO"
+          grep -Fq 'PROJECTPULSE_SSO_CLIENT_SECRET' "$MICROSOFT_SSO"
+          grep -Fq 'sso_redirect_host_mismatch' "$MICROSOFT_SSO"
+          grep -Fq 'sso_client_secret_missing' "$MICROSOFT_SSO"
+          grep -Fq 'correlationId = context.TraceIdentifier' "$MICROSOFT_SSO"
+
+          grep -Fq 'ConfiguredProvider' "$MICROSOFT_MAIL_RUNTIME"
+          grep -Fq 'configuredProvider = result.ConfiguredProvider' "$MICROSOFT_MAIL_RUNTIME"
+          grep -Fq 'activeDeliveryProvider = result.ModuleProvider' "$MICROSOFT_MAIL_RUNTIME"
+          grep -Fq 'configuredTransportReady = result.ConfiguredReady' "$MICROSOFT_MAIL_RUNTIME"
+          grep -Fq '"outbox_only"' "$MICROSOFT_MAIL_RUNTIME"
+          grep -Fq 'TestPath = "/api/microsoft-integration/mail-runtime/test"' "$MICROSOFT_MAIL_TEST"
+          grep -Fq 'liveMessageSent = false' "$MICROSOFT_MAIL_TEST"
+          grep -Fq 'secretValuesReturned = false' "$MICROSOFT_MAIL_TEST"
+          ! grep -Fq '/sendMail' "$MICROSOFT_MAIL_TEST"
+
+          grep -Fq 'Manual only' "$MICROSOFT_PORTAL"
+          grep -Fq 'Automatic and manual' "$MICROSOFT_PORTAL"
+          grep -Fq 'between 1 and 168 hours' "$MICROSOFT_PORTAL"
+          grep -Fq 'Test and Production maintain independent' "$MICROSOFT_PORTAL"
+          grep -Fq 'No live message is sent.' "$MICROSOFT_READINESS"
+          grep -Fq 'module_065_services_profile_not_active' "$MICROSOFT_COMPAT"
           grep -Fq '/api/platform-operations/overview' "$GROUP2A_API"
+
+          for microsoft_source in \
+            MicrosoftIntegrationSecurityCompatibility.cs \
+            MicrosoftIntegrationModule.cs \
+            MicrosoftSsoConnectionProfilesModule.cs \
+            MicrosoftSsoInteractiveStartActivation.cs \
+            MicrosoftEnvironmentRuntimeResolver.cs \
+            MicrosoftMailRuntimeConfigurationModule.cs \
+            MicrosoftMailTransportTestModule.cs \
+            MicrosoftSmtpCredentialProjectionCompatibility.cs \
+            MicrosoftSsoRuntimeCompatibility.cs \
+            MicrosoftServicesRuntimeCompatibility.cs \
+            MicrosoftDirectorySyncModule.cs \
+            AzureDirectoryImportModule.cs \
+            ProjectPulsePublicOriginCompatibility.cs \
+            ModuleAvailabilityReadContinuityCompatibility.cs; do
+            grep -Fq "src/backend/ProjectTime.Api/Modules/$microsoft_source" "$WEB_DOCKERFILE"
+          done
 
           (
             cd release
@@ -196,13 +283,18 @@ jobs:
             npm run validate:dynamic-rbac
             npm run validate:module026
             npm run validate:modules021026
+            npm run validate:module067
+            npm run validate:microsoft-connection
+            npm run validate:microsoft-sso-runtime
+            npm run validate:friendly-api-errors
+            node scripts/validate-admin-runtime-stability.mjs
             node scripts/validate-group-2a-provider-neutral-platform-operations.mjs
             npm run validate:module068
             npm run build
           )
 
           echo "target_commit=$TARGET_COMMIT" >> "$GITHUB_OUTPUT"
-          echo 'MODULE001_PTC_TIMER_DOM_MODULE026_SOURCE_VALIDATION=PASS'
+          echo 'MODULE001_MODULE026_MICROSOFT_RUNTIME_SOURCE_VALIDATION=PASS'
 
       - uses: azure/login@v2
         with:
@@ -224,10 +316,21 @@ jobs:
           release
           '${{ steps.release.outputs.target_commit }}'
 
+      - name: Upload deployment diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: module001-module026-microsoft-runtime-test-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            control/evidence/
+            ${{ runner.temp }}/module001-module026-microsoft-runtime-probes/
+          if-no-files-found: warn
+          retention-days: 30
+
       - name: Upload immutable deployment evidence
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: module001-ptc-timer-dom-module026-test-${{ github.run_id }}
-          path: control/evidence/module001-ptc-timer-dom-module026-test-deployment.json
+          name: module001-module026-microsoft-runtime-test-${{ github.run_id }}
+          path: control/evidence/module001-module026-microsoft-runtime-test-deployment.json
           retention-days: 30

@@ -1,9 +1,9 @@
-name: Validate Module 001 PTC Timer DOM and Module 026 Test Deployment
+name: Validate Module 001, Module 026, and Microsoft Runtime Test Deployment
 
 on:
   push:
     branches:
-      - 'release/module001-ptc-timer-dom-module026-test-*'
+      - 'release/module001-module026-microsoft-runtime-test-*'
   pull_request:
     paths:
       - '.github/workflows/projectpulse-deploy-module001-ptc-timer-dom-module026-test.yml'
@@ -16,9 +16,9 @@ permissions:
 
 jobs:
   validate:
-    name: Validate guarded Module 001 PTC timer DOM and Module 026 deployment controls
+    name: Validate guarded combined test deployment controls
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    timeout-minutes: 90
 
     steps:
       - uses: actions/checkout@v4
@@ -56,7 +56,7 @@ jobs:
             }
           done
 
-          echo 'MODULE001_PTC_TIMER_DOM_MODULE026_DEPLOYMENT_SCOPE=PASS'
+          echo 'MODULE001_MODULE026_MICROSOFT_RUNTIME_DEPLOYMENT_SCOPE=PASS'
 
       - name: Validate shell syntax
         shell: bash
@@ -64,7 +64,7 @@ jobs:
           set -Eeuo pipefail
           bash -n scripts/run-module001-ptc-timer-dom-module026-test-deployment.sh
           bash -n scripts/validate-module001-ptc-timer-dom-module026-test-deployment.sh
-          echo 'MODULE001_PTC_TIMER_DOM_MODULE026_SHELL_SYNTAX=PASS'
+          echo 'MODULE001_MODULE026_MICROSOFT_RUNTIME_SHELL_SYNTAX=PASS'
 
       - name: Validate static deployment-control contract
         shell: bash
@@ -85,17 +85,17 @@ jobs:
         shell: bash
         run: |
           set +e
-          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release > module001-deployment-api-build.log 2>&1
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release > combined-deployment-api-build.log 2>&1
           status=$?
-          tail -n 160 module001-deployment-api-build.log
+          tail -n 180 combined-deployment-api-build.log
           exit "$status"
 
       - name: Upload API build diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: module001-deployment-api-build-${{ github.run_id }}-${{ github.run_attempt }}
-          path: module001-deployment-api-build.log
+          name: combined-deployment-api-build-${{ github.run_id }}-${{ github.run_attempt }}
+          path: combined-deployment-api-build.log
           if-no-files-found: error
           retention-days: 7
 
@@ -148,6 +148,16 @@ jobs:
           node scripts/validate-module-026-crm-erp-integrations.mjs
           node scripts/validate-modules-021-026-sell-customer-sync.mjs
 
+      - name: Validate PR 208 Microsoft runtime continuity
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node scripts/validate-module-067-global-mail.mjs
+          node scripts/validate-microsoft-integration-authoritative-connection.mjs
+          node scripts/validate-microsoft-sso-runtime-wiring.mjs
+          node scripts/validate-friendly-api-errors.mjs
+
       - name: Validate Group 2A provider-neutral continuity
         working-directory: src/frontend/project-time-web
         shell: bash
@@ -162,16 +172,121 @@ jobs:
         shell: bash
         run: |
           set +e
-          npm run build > module001-deployment-frontend-build.log 2>&1
+          npm run build > combined-deployment-frontend-build.log 2>&1
           status=$?
-          tail -n 220 module001-deployment-frontend-build.log
+          tail -n 240 combined-deployment-frontend-build.log
           exit "$status"
 
       - name: Upload frontend build diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: module001-deployment-frontend-build-${{ github.run_id }}-${{ github.run_attempt }}
-          path: src/frontend/project-time-web/module001-deployment-frontend-build.log
+          name: combined-deployment-frontend-build-${{ github.run_id }}-${{ github.run_attempt }}
+          path: src/frontend/project-time-web/combined-deployment-frontend-build.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Validate combined split frontend assets
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          LOG=combined-split-asset-validation.log
+          exec > >(tee "$LOG") 2>&1
+          find dist/assets -type f -name '*.js' -print | sort > combined-js-assets.txt
+          find dist/assets -type f -name '*.css' -print | sort > combined-css-assets.txt
+          [[ -s combined-js-assets.txt ]]
+          [[ -s combined-css-assets.txt ]]
+          : > combined-served-bundle.js
+          : > combined-served-bundle.css
+          while IFS= read -r asset; do
+            printf '\n/* built asset: %s */\n' "$asset" >> combined-served-bundle.js
+            cat "$asset" >> combined-served-bundle.js
+          done < combined-js-assets.txt
+          while IFS= read -r asset; do
+            printf '\n/* built asset: %s */\n' "$asset" >> combined-served-bundle.css
+            cat "$asset" >> combined-served-bundle.css
+          done < combined-css-assets.txt
+
+          JS_MARKERS=(
+            '/api/runtime/timesheet/steward/v2/users'
+            '/api/runtime/timesheet/steward/v2/entries/'
+            'Move time across all supported activity types'
+            '/api/timesheet/timers/active'
+            '/api/timesheet/timers/history'
+            'Timer history'
+            'data-projectpulse-react-owned-slot'
+            'react-owned-v1'
+            'attributes-only-v1'
+            'Search by page name'
+            'Edit connection'
+            'Add CRM platform'
+            '/api/platform-operations/overview'
+            '/api/microsoft-integration/directory-users/sync-now'
+            'module_065_services_profile_not_active'
+            'Manual only'
+            'Automatic and manual'
+            'between 1 and 168 hours'
+            '/api/microsoft-integration/mail-runtime/test'
+            'No live message is sent.'
+            'configuredProvider'
+            'activeDeliveryProvider'
+          )
+          CSS_MARKERS=(
+            '.module001-server-timer-recovery'
+            '.ptc-destination-catalog'
+            '.projectpulse-more-intuitive-name'
+            '.microsoft-environment-switcher'
+            '.microsoft-directory-sync-card'
+            '.microsoft-mail-environment-card'
+            '.microsoft-mail-readiness-panel'
+          )
+
+          for marker in "${JS_MARKERS[@]}"; do
+            grep -Fq -- "$marker" combined-served-bundle.js || {
+              echo "MISSING_JS_MARKER=$marker" >&2
+              exit 1
+            }
+            echo "BUILT_JS_MARKER=$marker PASS"
+          done
+          for marker in "${CSS_MARKERS[@]}"; do
+            grep -Fq -- "$marker" combined-served-bundle.css || {
+              echo "MISSING_CSS_MARKER=$marker" >&2
+              exit 1
+            }
+            echo "BUILT_CSS_MARKER=$marker PASS"
+          done
+          ! grep -Fq 'ptc-runtime-task-catalog-host' combined-served-bundle.js
+          ! grep -Fq 'module001-toolbar-host' combined-served-bundle.js
+          echo 'COMBINED_SPLIT_FRONTEND_ASSET_VALIDATION=PASS'
+
+      - name: Upload combined split-asset diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: combined-split-assets-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            src/frontend/project-time-web/combined-split-asset-validation.log
+            src/frontend/project-time-web/combined-js-assets.txt
+            src/frontend/project-time-web/combined-css-assets.txt
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Validate web container build context
+        id: web_container_build
+        shell: bash
+        run: |
+          set +e
+          docker build --target build -f deployment/containers/web/Dockerfile . > combined-web-container-build.log 2>&1
+          status=$?
+          tail -n 220 combined-web-container-build.log
+          exit "$status"
+
+      - name: Upload web container build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: combined-web-container-build-${{ github.run_id }}-${{ github.run_attempt }}
+          path: combined-web-container-build.log
           if-no-files-found: error
           retention-days: 7

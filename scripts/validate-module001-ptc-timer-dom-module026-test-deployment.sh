@@ -6,7 +6,7 @@ DEPLOY="$ROOT/.github/workflows/projectpulse-deploy-module001-ptc-timer-dom-modu
 VALIDATE="$ROOT/.github/workflows/validate-module001-ptc-timer-dom-module026-test-deployment.yml"
 RUNNER="$ROOT/scripts/run-module001-ptc-timer-dom-module026-test-deployment.sh"
 SELF="$ROOT/scripts/validate-module001-ptc-timer-dom-module026-test-deployment.sh"
-EXPECTED_RELEASE="816deeda98d3d875cdbdea1a42b5662815334eb9"
+EXPECTED_RELEASE="9a1308de1186abef6c199e9e6453f222b5e95999"
 
 fail() { echo "ERROR: $*" >&2; exit 1; }
 require_file() { [[ -f "$1" ]] || fail "Missing required file: ${1#$ROOT/}"; }
@@ -18,18 +18,19 @@ for file in "$DEPLOY" "$VALIDATE" "$RUNNER" "$SELF"; do
   require_file "$file"
 done
 
-require "$DEPLOY" 'name: ProjectPulse Deploy Module 001 PTC Timer DOM and Module 026 Test'
+require "$DEPLOY" 'name: ProjectPulse Deploy Module 001, Module 026, and Microsoft Runtime Test'
 require "$DEPLOY" 'workflow_dispatch:'
 require "$DEPLOY" "default: $EXPECTED_RELEASE"
 require "$DEPLOY" "EXPECTED_RELEASE_COMMIT: $EXPECTED_RELEASE"
-require "$DEPLOY" 'DEPLOY-MODULE001-PTC-TIMER-DOM-MODULE026-TO-TEST'
+require "$DEPLOY" 'DEPLOY-MODULE001-MODULE026-MICROSOFT-RUNTIME-TO-TEST'
 require "$DEPLOY" 'environment: test'
-require "$DEPLOY" 'group: projectpulse-deploy-module001-ptc-timer-dom-module026-test'
+require "$DEPLOY" 'group: projectpulse-deploy-module001-module026-microsoft-runtime-test'
 require "$DEPLOY" 'cancel-in-progress: false'
 require "$DEPLOY" "[[ \"\$WORKFLOW_SOURCE_REF\" == 'refs/heads/main' ]]"
 require "$DEPLOY" 'release_commit must be a complete 40-character SHA.'
-require "$DEPLOY" 'Only the verified Module 001 PTC timer DOM and Module 026 source release may deploy.'
+require "$DEPLOY" 'Only the verified combined Module 001, Module 026, and Microsoft runtime source release may deploy.'
 require "$DEPLOY" 'git -C control merge-base --is-ancestor "$TARGET_COMMIT" HEAD'
+
 require "$DEPLOY" 'UseModule001ResultExecutionCompatibility'
 require "$DEPLOY" 'Module001TimerTargetsAsync(context)'
 require "$DEPLOY" 'Module001ActiveTimerAsync(context)'
@@ -55,9 +56,47 @@ require "$DEPLOY" "reactDomOwnership: 'attributes-only-v1'"
 require "$DEPLOY" "moreMenu: 'react-owned-v1'"
 require "$DEPLOY" "! grep -Fq 'link.replaceChildren'"
 require "$DEPLOY" "! grep -Fq 'document.createElement' \"\$TIMER_PORTAL\""
+
 require "$DEPLOY" 'Edit connection'
 require "$DEPLOY" 'Add CRM platform'
 require "$DEPLOY" 'zendesk_sell'
+
+require "$DEPLOY" '/api/microsoft-integration/directory-users/sync-now'
+require "$DEPLOY" '/api/microsoft-integration/directory-users/sync-status'
+require "$DEPLOY" 'SchedulerLoopAsync'
+require "$DEPLOY" 'WorkerPollInterval'
+require "$DEPLOY" 'syncFrequencyHours'
+require "$DEPLOY" 'Directory.Read.All'
+require "$DEPLOY" 'User.Read.All'
+require "$DEPLOY" 'pg_try_advisory_lock'
+require "$DEPLOY" 'SAVEPOINT {savepoint}'
+require "$DEPLOY" 'PROJECTPULSE_MICROSOFT_ENVIRONMENT'
+require "$DEPLOY" 'var hostMode = FromHost'
+require "$DEPLOY" 'ASPNETCORE_ENVIRONMENT'
+require "$DEPLOY" '/api/auth/sso/'
+require "$DEPLOY" 'trusted_forwarded_origin'
+require "$DEPLOY" 'StartPath = "/api/auth/sso/start"'
+require "$DEPLOY" 'ReadStoredProfileAsync(environmentMode)'
+require "$DEPLOY" 'sso_redirect_host_mismatch'
+require "$DEPLOY" 'sso_client_secret_missing'
+require "$DEPLOY" 'correlationId = context.TraceIdentifier'
+require "$DEPLOY" 'configuredProvider = result.ConfiguredProvider'
+require "$DEPLOY" 'activeDeliveryProvider = result.ModuleProvider'
+require "$DEPLOY" 'configuredTransportReady = result.ConfiguredReady'
+require "$DEPLOY" 'TestPath = "/api/microsoft-integration/mail-runtime/test"'
+require "$DEPLOY" 'liveMessageSent = false'
+require "$DEPLOY" 'secretValuesReturned = false'
+require "$DEPLOY" "! grep -Fq '/sendMail'"
+require "$DEPLOY" 'Manual only'
+require "$DEPLOY" 'Automatic and manual'
+require "$DEPLOY" 'between 1 and 168 hours'
+require "$DEPLOY" 'Test and Production maintain independent'
+require "$DEPLOY" 'No live message is sent.'
+require "$DEPLOY" 'module_065_services_profile_not_active'
+require "$DEPLOY" 'MicrosoftIntegrationSecurityCompatibility.cs'
+require "$DEPLOY" 'MicrosoftDirectorySyncModule.cs'
+require "$DEPLOY" 'MicrosoftMailTransportTestModule.cs'
+
 require "$DEPLOY" '/api/platform-operations/overview'
 require "$DEPLOY" 'ProjectTime.Api.RouteResultExecutionTests.csproj'
 require "$DEPLOY" 'ProjectTime.Api.AuthorizationTests.csproj'
@@ -67,12 +106,18 @@ require "$DEPLOY" 'npm run validate:module001-ptc-time-steward'
 require "$DEPLOY" 'npm run validate:module001-ptc-timer-dom'
 require "$DEPLOY" 'npm run validate:module026'
 require "$DEPLOY" 'npm run validate:modules021026'
+require "$DEPLOY" 'npm run validate:module067'
+require "$DEPLOY" 'npm run validate:microsoft-connection'
+require "$DEPLOY" 'npm run validate:microsoft-sso-runtime'
+require "$DEPLOY" 'npm run validate:friendly-api-errors'
 require "$DEPLOY" 'validate-group-1-navigation-work-consolidation.mjs'
 require "$DEPLOY" 'validate-group-2a-provider-neutral-platform-operations.mjs'
 require "$DEPLOY" 'npm run build'
+require "$DEPLOY" 'MODULE001_MODULE026_MICROSOFT_RUNTIME_SOURCE_VALIDATION=PASS'
 require "$DEPLOY" 'azure/login@v2'
 require "$DEPLOY" 'run-module001-ptc-timer-dom-module026-test-deployment.sh'
-require "$DEPLOY" 'control/evidence/module001-ptc-timer-dom-module026-test-deployment.json'
+require "$DEPLOY" 'Upload deployment diagnostics'
+require "$DEPLOY" 'module001-module026-microsoft-runtime-test-deployment.json'
 reject "$DEPLOY" '^[[:space:]]*push:'
 reject "$DEPLOY" '^[[:space:]]*schedule:'
 reject "$DEPLOY" 'environment:[[:space:]]*production'
@@ -82,7 +127,7 @@ reject "$DEPLOY" '\bpsql\b'
 reject "$DEPLOY" 'database/migrations/[0-9]'
 reject "$DEPLOY" 'az[[:space:]]+role[[:space:]]+assignment'
 
-SOURCE_CHECK_LINE="$(line_of "$DEPLOY" 'MODULE001_PTC_TIMER_DOM_MODULE026_SOURCE_VALIDATION=PASS')"
+SOURCE_CHECK_LINE="$(line_of "$DEPLOY" 'MODULE001_MODULE026_MICROSOFT_RUNTIME_SOURCE_VALIDATION=PASS')"
 AZURE_LOGIN_LINE="$(line_of "$DEPLOY" 'azure/login@v2')"
 [[ -n "$SOURCE_CHECK_LINE" && -n "$AZURE_LOGIN_LINE" && "$SOURCE_CHECK_LINE" -lt "$AZURE_LOGIN_LINE" ]] ||
   fail 'All source validation must complete before Azure login.'
@@ -95,9 +140,8 @@ require "$RUNNER" 'restore_web'
 require "$RUNNER" 'restore_api'
 require "$RUNNER" 'Web rollback skipped because another image is active'
 require "$RUNNER" 'API rollback skipped because another image is active'
-require "$RUNNER" 'API_REPOSITORY='
-require "$RUNNER" 'WEB_REPOSITORY='
-require "$RUNNER" 'module001-ptc-timer-dom-$TARGET_COMMIT'
+require "$RUNNER" 'combined-module-runtime-$TARGET_COMMIT'
+
 require "$RUNNER" "probe_api ptc_v2_users GET '/api/runtime/timesheet/steward/v2/users?weekStart=2026-07-26' '401,403'"
 require "$RUNNER" "probe_api ptc_v2_workspace GET '/api/runtime/timesheet/steward/v2/users/00000000-0000-0000-0000-000000000000/workspace?weekStart=2026-07-26' '401,403'"
 require "$RUNNER" "probe_api ptc_v2_move POST '/api/runtime/timesheet/steward/v2/entries/00000000-0000-0000-0000-000000000000/move' '401,403'"
@@ -107,7 +151,29 @@ require "$RUNNER" "probe_api timer_history GET '/api/timesheet/timers/history?we
 require "$RUNNER" "probe_api rbac_bootstrap GET '/api/rbac/v1/bootstrap' '401,403'"
 require "$RUNNER" "probe_api module026_providers GET '/api/integrations/026/providers' '401,403'"
 require "$RUNNER" "probe_api platform_overview GET '/api/platform-operations/overview' '401,403'"
-require "$RUNNER" 'MODULE001_PTC_TIMER_DOM_API_PROTECTED_BOUNDARY=PASS'
+require "$RUNNER" "probe_api microsoft_sync_status GET '/api/microsoft-integration/directory-users/sync-status' '401,403'"
+require "$RUNNER" "probe_api microsoft_sync_now POST '/api/microsoft-integration/directory-users/sync-now' '401,403'"
+require "$RUNNER" "probe_api microsoft_mail_test POST '/api/microsoft-integration/mail-runtime/test' '401,403'"
+require "$RUNNER" "probe_api microsoft_preview POST '/api/admin/azure/users/preview' '401,403'"
+require "$RUNNER" 'COMBINED_MODULE_RUNTIME_API_PROTECTED_BOUNDARY=PASS'
+
+require "$RUNNER" 'fetch_served_asset_graph'
+require "$RUNNER" 'normalize_asset_path'
+require "$RUNNER" 'SERVED_JS_ASSET_COUNT='
+require "$RUNNER" 'SERVED_CSS_ASSET_COUNT='
+require "$RUNNER" 'bundle.js'
+require "$RUNNER" 'bundle.css'
+require "$RUNNER" "grep -Eo '(\\./|/)?assets/[A-Za-z0-9._-]+\\.js'"
+require "$RUNNER" "grep -Eo '(\\./|/)?assets/[A-Za-z0-9._-]+\\.css'"
+require "$RUNNER" 'SERVED_MULTI_ASSET_BUNDLE_VALIDATION=PASS'
+require "$RUNNER" "'MICROSOFT_SYNC|/api/microsoft-integration/directory-users/sync-now'"
+require "$RUNNER" "'MORE_NAME_STYLE|.projectpulse-more-intuitive-name'"
+require "$RUNNER" 'SERVED_JS_MARKER_${label}=PASS'
+require "$RUNNER" 'SERVED_CSS_MARKER_${label}=PASS'
+require "$RUNNER" 'module001-module026-microsoft-runtime-served-assets'
+reject "$RUNNER" 'CSS_PATH=.*head -1'
+reject "$RUNNER" 'JS_PATH=.*head -1'
+
 require "$RUNNER" '/api/runtime/timesheet/steward/v2/users'
 require "$RUNNER" '/api/runtime/timesheet/steward/v2/entries/'
 require "$RUNNER" 'Engineering, Engineering Lead, Project Management, and Project Management Lead'
@@ -126,24 +192,47 @@ require "$RUNNER" 'attributes-only-v1'
 require "$RUNNER" 'Search by page name'
 require "$RUNNER" 'Edit connection'
 require "$RUNNER" 'Add CRM platform'
-require "$RUNNER" '/api/platform-operations/overview'
+require "$RUNNER" '/api/microsoft-integration/directory-users/sync-now'
+require "$RUNNER" 'module_065_services_profile_not_active'
+require "$RUNNER" 'Manual only'
+require "$RUNNER" 'Automatic and manual'
+require "$RUNNER" 'between 1 and 168 hours'
+require "$RUNNER" '/api/microsoft-integration/mail-runtime/test'
+require "$RUNNER" 'No live message is sent.'
+require "$RUNNER" 'configuredProvider'
+require "$RUNNER" 'activeDeliveryProvider'
+require "$RUNNER" '.microsoft-environment-switcher'
+require "$RUNNER" '.microsoft-directory-sync-card'
+require "$RUNNER" '.microsoft-mail-readiness-panel'
 require "$RUNNER" "! grep -Fq 'ptc-runtime-task-catalog-host'"
 require "$RUNNER" "! grep -Fq 'module001-toolbar-host'"
-require "$RUNNER" 'MODULE001_PTC_TIMER_DOM_API_VALIDATION=PASS'
-require "$RUNNER" 'MODULE001_PTC_TIMER_DOM_WEB_VALIDATION=PASS'
-require "$RUNNER" 'module001-ptc-timer-dom-module026-test-deployment.json'
+
+require "$RUNNER" 'COMBINED_MODULE_RUNTIME_API_VALIDATION=PASS'
+require "$RUNNER" 'COMBINED_MODULE_RUNTIME_WEB_VALIDATION=PASS'
+require "$RUNNER" 'module001-module026-microsoft-runtime-test-deployment.json'
 require "$RUNNER" '"databaseMutation": false'
 require "$RUNNER" '"module001ResultExecution": "explicit-iresult-v1"'
 require "$RUNNER" '"crossTaskAssignmentDuringMove": "authorized-and-audited"'
 require "$RUNNER" '"submissionOnBehalf": false'
 require "$RUNNER" '"timerAuthority": "server"'
 require "$RUNNER" '"runtimeNavigationMutation": "attributes-only"'
+require "$RUNNER" '"servedBundleValidation": "all-index-and-dynamically-referenced-js-css-assets"'
 require "$RUNNER" '"module026Pr207": "editable-built-in-and-custom-connectors-included"'
+require "$RUNNER" '"microsoftRuntimePr208": "included"'
+require "$RUNNER" '"microsoftRuntimeEnvironmentResolution": "trusted-host-precedes-aspnetcore"'
+require "$RUNNER" '"interactiveSsoProfileHydration": "environment-specific"'
+require "$RUNNER" '"directorySync": "manual-and-automatic-1-168-hours"'
+require "$RUNNER" '"directorySyncLocks": "process-and-postgresql-advisory"'
+require "$RUNNER" '"mailConfigurationScope": "test-and-production-independent"'
+require "$RUNNER" '"mailReadiness": "non-delivery-no-secrets"'
 require "$RUNNER" '"group2A": "modules-013-016-068-preserved"'
 require "$RUNNER" '"timeOrTimerMutationPerformedByDeployment": false'
+require "$RUNNER" '"directorySyncExecutedByDeployment": false'
+require "$RUNNER" '"mailReadinessExecutedByDeployment": false'
+require "$RUNNER" '"emailSentByDeployment": false'
 require "$RUNNER" '"credentialValuesChanged": false'
 require "$RUNNER" '"externalProviderCallsPerformedByDeployment": false'
-require "$RUNNER" 'MODULE001_PTC_TIMER_DOM_MODULE026_TEST_DEPLOYMENT=COMPLETE'
+require "$RUNNER" 'MODULE001_MODULE026_MICROSOFT_RUNTIME_TEST_DEPLOYMENT=COMPLETE'
 reject "$RUNNER" 'PROJECTPULSE_TEST_DATABASE_URL'
 reject "$RUNNER" '\bpsql\b'
 reject "$RUNNER" 'database/migrations/[0-9]'
@@ -151,8 +240,8 @@ reject "$RUNNER" 'az[[:space:]]+role[[:space:]]+assignment'
 reject "$RUNNER" 'environment:[[:space:]]*production'
 reject "$RUNNER" 'api\.getbase\.com|graph\.microsoft\.com|sendMail|smtp\.office365\.com'
 
-require "$VALIDATE" 'name: Validate Module 001 PTC Timer DOM and Module 026 Test Deployment'
-require "$VALIDATE" 'release/module001-ptc-timer-dom-module026-test-*'
+require "$VALIDATE" 'name: Validate Module 001, Module 026, and Microsoft Runtime Test Deployment'
+require "$VALIDATE" 'release/module001-module026-microsoft-runtime-test-*'
 require "$VALIDATE" 'Enforce exact four-file deployment-control scope'
 require "$VALIDATE" 'scripts/validate-module001-ptc-timer-dom-module026-test-deployment.sh'
 require "$VALIDATE" 'bash -n scripts/run-module001-ptc-timer-dom-module026-test-deployment.sh'
@@ -164,8 +253,14 @@ require "$VALIDATE" 'validate-module-001-ptc-time-steward.mjs'
 require "$VALIDATE" 'validate-module-001-ptc-timer-dom-ownership.mjs'
 require "$VALIDATE" 'validate-group-1-navigation-work-consolidation.mjs'
 require "$VALIDATE" 'validate-module-026-crm-erp-integrations.mjs'
+require "$VALIDATE" 'validate-module-067-global-mail.mjs'
+require "$VALIDATE" 'validate-microsoft-integration-authoritative-connection.mjs'
+require "$VALIDATE" 'validate-microsoft-sso-runtime-wiring.mjs'
+require "$VALIDATE" 'validate-friendly-api-errors.mjs'
 require "$VALIDATE" 'validate-group-2a-provider-neutral-platform-operations.mjs'
-require "$VALIDATE" 'npm run build'
+require "$VALIDATE" 'Build complete frontend production bundle'
+require "$VALIDATE" 'Validate combined split frontend assets'
+require "$VALIDATE" 'Validate web container build context'
 reject "$VALIDATE" 'azure/login'
 reject "$VALIDATE" 'az[[:space:]]+containerapp[[:space:]]+(update|job)'
 reject "$VALIDATE" 'environment:[[:space:]]*production'
@@ -174,4 +269,4 @@ reject "$VALIDATE" '\bpsql\b'
 
 bash -n "$RUNNER"
 bash -n "$SELF"
-echo 'MODULE001_PTC_TIMER_DOM_MODULE026_TEST_DEPLOYMENT_GUARD=PASS'
+echo 'MODULE001_MODULE026_MICROSOFT_RUNTIME_TEST_DEPLOYMENT_GUARD=PASS'
