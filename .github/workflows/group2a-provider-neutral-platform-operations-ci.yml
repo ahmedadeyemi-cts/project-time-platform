@@ -21,6 +21,7 @@ on:
       - 'src/frontend/project-time-web/src/module-availability-registry.js'
       - 'src/frontend/project-time-web/scripts/validate-module-068-system-architecture.mjs'
       - 'src/frontend/project-time-web/scripts/validate-group-2a-provider-neutral-platform-operations.mjs'
+      - '.github/workflows/group1-navigation-work-consolidation-ci.yml'
       - '.github/workflows/group2a-provider-neutral-platform-operations-ci.yml'
   workflow_dispatch:
 
@@ -45,7 +46,7 @@ jobs:
           CHANGED="$(git diff --name-only origin/main...HEAD)"
           printf '%s\n' "$CHANGED"
 
-          ALLOWED='^(\.github/workflows/group2a-provider-neutral-platform-operations-ci\.yml|src/backend/ProjectTime.Api/Modules/PlatformOperationsContracts\.cs|src/backend/ProjectTime.Api/Modules/PlatformOperationsModule\.cs|src/backend/ProjectTime.Api/Modules/PlatformOperationsArchitecture\.cs|src/backend/ProjectTime.Api/ProjectTime.Api\.csproj|src/frontend/project-time-web/src/ServiceControlCenter\.jsx|src/frontend/project-time-web/src/service-control-center\.css|src/frontend/project-time-web/src/BackupRetentionCenter\.jsx|src/frontend/project-time-web/src/LegacyBackupRetentionCenter\.jsx|src/frontend/project-time-web/src/OperationalEvidenceCenter\.jsx|src/frontend/project-time-web/src/operational-evidence-center\.css|src/frontend/project-time-web/src/SystemArchitectureCenter\.jsx|src/frontend/project-time-web/src/system-architecture-center\.css|src/frontend/project-time-web/src/module-availability-registry\.js|src/frontend/project-time-web/scripts/validate-module-068-system-architecture\.mjs|src/frontend/project-time-web/scripts/validate-group-2a-provider-neutral-platform-operations\.mjs)$'
+          ALLOWED='^(\.github/workflows/group1-navigation-work-consolidation-ci\.yml|\.github/workflows/group2a-provider-neutral-platform-operations-ci\.yml|src/backend/ProjectTime.Api/Modules/PlatformOperationsContracts\.cs|src/backend/ProjectTime.Api/Modules/PlatformOperationsModule\.cs|src/backend/ProjectTime.Api/Modules/PlatformOperationsArchitecture\.cs|src/backend/ProjectTime.Api/ProjectTime.Api\.csproj|src/frontend/project-time-web/src/ServiceControlCenter\.jsx|src/frontend/project-time-web/src/service-control-center\.css|src/frontend/project-time-web/src/BackupRetentionCenter\.jsx|src/frontend/project-time-web/src/LegacyBackupRetentionCenter\.jsx|src/frontend/project-time-web/src/OperationalEvidenceCenter\.jsx|src/frontend/project-time-web/src/operational-evidence-center\.css|src/frontend/project-time-web/src/SystemArchitectureCenter\.jsx|src/frontend/project-time-web/src/system-architecture-center\.css|src/frontend/project-time-web/src/module-availability-registry\.js|src/frontend/project-time-web/scripts/validate-module-068-system-architecture\.mjs|src/frontend/project-time-web/scripts/validate-group-2a-provider-neutral-platform-operations\.mjs)$'
           UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
           if [[ -n "$UNEXPECTED" ]]; then
             echo 'Unexpected Group 2A source scope:' >&2
