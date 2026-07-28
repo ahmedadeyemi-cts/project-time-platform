@@ -1,9 +1,9 @@
 namespace ProjectTime.Api.Modules;
 
 /// <summary>
-/// Resolves the ProjectPulse Microsoft environment from explicit application
-/// configuration and the trusted public host before considering the generic
-/// ASP.NET runtime environment. Azure Container Apps normally runs the Test
+/// Resolves the ProjectPulse Microsoft environment from an explicit Microsoft
+/// override or the trusted public host before considering generic application
+/// and ASP.NET runtime modes. Azure Container Apps normally runs the Test
 /// application with ASPNETCORE_ENVIRONMENT=Production, so that generic value
 /// cannot decide whether the OneNeck Lab or US Signal Microsoft profile is active.
 /// </summary>
@@ -23,11 +23,9 @@ public static class MicrosoftEnvironmentRuntimeResolver
                 var mode = Resolve(context);
                 if (!string.IsNullOrWhiteSpace(mode))
                 {
-                    // The existing Microsoft runtime modules already treat this
-                    // variable as their highest-precedence environment contract.
-                    // Setting it from a trusted public host corrects Test Container
-                    // Apps that use ASPNETCORE_ENVIRONMENT=Production for optimized
-                    // runtime behavior.
+                    // Existing Microsoft runtime modules treat these values as
+                    // their highest-precedence environment contract. The host was
+                    // already verified by ProjectPulsePublicOriginCompatibility.
                     Environment.SetEnvironmentVariable("PROJECTPULSE_ENVIRONMENT", mode);
                     Environment.SetEnvironmentVariable("PROJECTPULSE_MICROSOFT_ENVIRONMENT", mode);
                     context.Items["ProjectPulseMicrosoftEnvironment"] = mode;
@@ -41,24 +39,31 @@ public static class MicrosoftEnvironmentRuntimeResolver
 
     public static string Resolve(HttpContext? context = null, string? host = null)
     {
-        foreach (var name in new[]
-                 {
-                     "PROJECTPULSE_MICROSOFT_ENVIRONMENT",
-                     "PROJECTPULSE_ENVIRONMENT",
-                     "PROJECTPULSE_SSO_MODE",
-                     "PROJECTPULSE_ENTRA_MODE"
-                 })
-        {
-            var explicitMode = Normalize(Environment.GetEnvironmentVariable(name));
-            if (!string.IsNullOrWhiteSpace(explicitMode)) return explicitMode;
-        }
+        // A dedicated Microsoft override is the only setting allowed to outrank
+        // the trusted public host.
+        var explicitMicrosoftMode = Normalize(
+            Environment.GetEnvironmentVariable("PROJECTPULSE_MICROSOFT_ENVIRONMENT"));
+        if (!string.IsNullOrWhiteSpace(explicitMicrosoftMode)) return explicitMicrosoftMode;
 
         var trustedHost = ResolveHost(context, host);
         var hostMode = FromHost(trustedHost);
         if (!string.IsNullOrWhiteSpace(hostMode)) return hostMode;
 
-        // This is intentionally the final fallback. A Test Container App can
-        // correctly use the Production ASP.NET optimization profile.
+        // These application-level values are useful at startup when no request
+        // host exists, but cannot override a trusted Test or Production host.
+        foreach (var name in new[]
+                 {
+                     "PROJECTPULSE_ENVIRONMENT",
+                     "PROJECTPULSE_SSO_MODE",
+                     "PROJECTPULSE_ENTRA_MODE"
+                 })
+        {
+            var applicationMode = Normalize(Environment.GetEnvironmentVariable(name));
+            if (!string.IsNullOrWhiteSpace(applicationMode)) return applicationMode;
+        }
+
+        // Final fallback only. A Test Container App can intentionally use the
+        // Production ASP.NET optimization profile.
         foreach (var name in new[] { "DOTNET_ENVIRONMENT", "ASPNETCORE_ENVIRONMENT" })
         {
             var frameworkMode = Normalize(Environment.GetEnvironmentVariable(name));
