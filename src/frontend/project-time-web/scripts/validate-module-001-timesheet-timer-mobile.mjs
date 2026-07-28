@@ -62,7 +62,7 @@ for (const slot of [
   requireText(slotInjector, slot, 'React-owned Module 001 slot');
 }
 requireText(slotInjector, 'runtimeDomInsertion=0', 'zero runtime child insertion evidence');
-rejectText(slotInjector, 'module001-toolbar-host', 'retired runtime toolbar portal');
+requireText(slotInjector, 'The retired runtime-created Module 001 toolbar host must not be present.', 'retired toolbar rejection guard');
 requireText(moreInjector, 'PROJECTPULSE_REACT_OWNED_MORE_MENU', 'React-owned More generator');
 
 requireText(authoritative, 'new XMLHttpRequest()', 'wrapper-independent transport');
