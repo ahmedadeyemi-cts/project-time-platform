@@ -109,7 +109,20 @@ public static class MicrosoftSsoInteractiveStartActivation
             }, statusCode: StatusCodes.Status409Conflict);
         }
 
-        var expectedRedirect = ExpectedRedirect(context);
+        var expectedRedirect = ExpectedRedirect(context, environmentMode, profile);
+        if (string.IsNullOrWhiteSpace(expectedRedirect))
+        {
+            return Results.Json(new
+            {
+                module = "065",
+                status = "trusted_public_origin_unavailable",
+                environmentMode,
+                configuredRedirectUri = profile.RedirectUri,
+                correlationId = context.TraceIdentifier,
+                message = "ProjectPulse could not resolve an approved public HTTPS callback origin for this environment."
+            }, statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+
         if (!profile.RedirectUri.Equals(expectedRedirect, StringComparison.OrdinalIgnoreCase))
         {
             return Results.Json(new
@@ -140,6 +153,7 @@ public static class MicrosoftSsoInteractiveStartActivation
         Apply(profile, secret);
         context.Items["ProjectPulseSsoEnvironment"] = environmentMode;
         context.Items["ProjectPulseSsoProfileHydrated"] = true;
+        context.Items["ProjectPulseSsoRedirectUri"] = expectedRedirect;
         return null;
     }
 
@@ -221,13 +235,60 @@ public static class MicrosoftSsoInteractiveStartActivation
         return null;
     }
 
-    private static string ExpectedRedirect(HttpContext context)
+    private static string? ExpectedRedirect(
+        HttpContext context,
+        string environmentMode,
+        SsoProfile profile)
     {
         if (context.Items.TryGetValue(ProjectPulsePublicOriginCompatibility.PublicOriginItem, out var originValue)
-            && originValue is Uri publicOrigin)
+            && originValue is Uri publicOrigin
+            && ApprovedEnvironmentOrigin(publicOrigin, environmentMode))
+        {
             return $"{publicOrigin.GetLeftPart(UriPartial.Authority)}{CallbackPath}";
-        return $"{context.Request.Scheme}://{context.Request.Host}{CallbackPath}";
+        }
+
+        if (ProjectPulsePublicOriginCompatibility.TryResolveProxyOrConfiguredOrigin(
+                context,
+                out var proxyOrigin,
+                out _)
+            && ApprovedEnvironmentOrigin(proxyOrigin, environmentMode))
+        {
+            return $"{proxyOrigin.GetLeftPart(UriPartial.Authority)}{CallbackPath}";
+        }
+
+        if (ProjectPulsePublicOriginCompatibility.TryBrowserOrigin(
+                context,
+                out var browserOrigin,
+                out _)
+            && ApprovedEnvironmentOrigin(browserOrigin, environmentMode))
+        {
+            return $"{browserOrigin.GetLeftPart(UriPartial.Authority)}{CallbackPath}";
+        }
+
+        // A saved redirect is an acceptable final authority only when it is the
+        // canonical HTTPS callback on an approved host for the same environment.
+        if (Uri.TryCreate(profile.RedirectUri, UriKind.Absolute, out var configured)
+            && configured.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
+            && configured.AbsolutePath.TrimEnd('/').Equals(CallbackPath, StringComparison.OrdinalIgnoreCase)
+            && ProjectPulsePublicOriginCompatibility.TrustedHost(configured.Host, context)
+            && MicrosoftEnvironmentRuntimeResolver.FromHost(configured.Host)
+                .Equals(environmentMode, StringComparison.OrdinalIgnoreCase))
+        {
+            context.Items[ProjectPulsePublicOriginCompatibility.PublicOriginItem] =
+                new Uri(configured.GetLeftPart(UriPartial.Authority));
+            context.Items[ProjectPulsePublicOriginCompatibility.PublicOriginSourceItem] =
+                "stored_environment_profile";
+            return configured.AbsoluteUri.TrimEnd('/');
+        }
+
+        return null;
     }
+
+    private static bool ApprovedEnvironmentOrigin(Uri origin, string environmentMode) =>
+        origin.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
+        && ProjectPulsePublicOriginCompatibility.IsApprovedEnvironmentHost(origin.Host)
+        && MicrosoftEnvironmentRuntimeResolver.FromHost(origin.Host)
+            .Equals(environmentMode, StringComparison.OrdinalIgnoreCase);
 
     private static string ActiveSecret(string environmentMode)
     {

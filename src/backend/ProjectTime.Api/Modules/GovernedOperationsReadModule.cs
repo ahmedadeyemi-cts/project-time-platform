@@ -15,7 +15,21 @@ internal static class GovernedOperationsReadModule
         try
         {
             await using var connection = new NpgsqlConnection(connectionString);
-            await connection.OpenAsync();
+            await connection.OpenAsync(context.RequestAborted);
+
+            // A Super Administrator's own authenticated session has permanent
+            // organization-wide Full Control. That authority never transfers to
+            // an effective View-As identity.
+            if (await ProjectPulseActualSessionAuthority.IsSuperAdministratorAsync(
+                    context,
+                    connection,
+                    cancellationToken: context.RequestAborted))
+            {
+                context.Items["ProjectPulsePermanentFullControl"] = true;
+                context.Items["ProjectPulseAuthorizationSource"] = "actual_session_super_administrator";
+                return null;
+            }
+
             await using var command = new NpgsqlCommand("""
                 SELECT EXISTS (
                     SELECT 1 FROM app_user_role_assignments ura
@@ -30,7 +44,7 @@ internal static class GovernedOperationsReadModule
             command.Parameters.AddWithValue("user_id", userId.Value);
             command.Parameters.AddWithValue("roles", roles);
             command.Parameters.AddWithValue("permissions", permissions);
-            if (await command.ExecuteScalarAsync() is true) return null;
+            if (await command.ExecuteScalarAsync(context.RequestAborted) is true) return null;
             return Results.Json(new { module, code = "MODULE_ACCESS_REQUIRED", message = "Your account is not authorized for this operational center." }, statusCode: 403);
         }
         catch (Exception exception)
@@ -63,7 +77,7 @@ internal static class GovernedOperationsReadModule
             ("078", "services") => ("Service catalog", "Owned services and dependency relationships.", "Register service", new object[] { new { service = "ProjectPulse API", owner = "Platform Operations", tier = "Critical" }, new { service = "ProjectPulse Web", owner = "Platform Operations", tier = "Critical" } }),
             ("078", "signals") => ("Signals", "Availability, latency, errors, saturation, and dependency health.", "Connect telemetry", Array.Empty<object>()),
             ("078", "slos") => ("SLOs and error budgets", "Measurable reliability objectives and remaining budget.", "Create SLO", Array.Empty<object>()),
-            ("078", "alerts") => ("Alert history", "Actionable threshold breaches and ownership.", "Configure alert", Array.Empty<object>()),
+            ("078", "alerts") => ("Alert history", "Actionable threshold breaches and ownership.", "Configure alerts", Array.Empty<object>()),
             ("078", "integrations") => ("Telemetry integrations", "Approved sources for platform signals.", "Connect source", Array.Empty<object>()),
             ("078", _) => ("Retention policy", "Telemetry is retained only for an approved purpose and duration.", "Review policy", new object[] { new { classification = "Operational telemetry", secretValues = "Excluded", customerPayloads = "Excluded" } }),
             ("079", "overview") => ("Governance posture", "Data ownership, classification, lineage, retention, holds, and privacy.", "Register domain", new object[] { new { domain = "ProjectPulse operational data", owner = "Platform Administration", status = "Governed" } }),
@@ -86,20 +100,15 @@ internal static class GovernedOperationsReadModule
     }
 
     internal static bool IsViewAs(HttpContext context) =>
-        context.Items.TryGetValue("ProjectPulseIsViewAs", out var value) && value is true;
+        ProjectPulseActualSessionAuthority.IsViewAs(context);
 
     internal static bool HasActualUser(HttpContext context) => ActualUser(context) is not null;
 
-    private static Guid? ActualUser(HttpContext context)
-    {
-        foreach (var key in new[] { "ProjectPulseActualUserId", "ProjectPulseSessionUserId" })
-        {
-            if (!context.Items.TryGetValue(key, out var value)) continue;
-            if (value is Guid id) return id;
-            if (Guid.TryParse(value?.ToString(), out var parsed)) return parsed;
-        }
-        return null;
-    }
+    private static Guid? ActualUser(HttpContext context) =>
+        ProjectPulseActualSessionAuthority.ReadUserId(
+            context,
+            "ProjectPulseActualUserId",
+            "ProjectPulseSessionUserId");
 
     private static string? BuildConnectionString()
     {
