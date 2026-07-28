@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-EXPECTED_RELEASE_COMMIT="b24ea3db7d0c839d03804975e87b7929dba8c7f6"
+EXPECTED_RELEASE_COMMIT="d62902d00a838d9cf593e990f4d78c45304642ef"
 CONTROL_ROOT="${1:-}"
 RELEASE_ROOT="${2:-}"
 TARGET_COMMIT="${3:-}"
@@ -196,6 +196,10 @@ probe_api audit-history GET '/api/admin/audit-history/events' '401'
 probe_api module065-sso POST '/api/microsoft-integration/sso-apply-profile' '401' '{}'
 probe_api module065-services POST '/api/microsoft-integration/services-apply-profile' '401' '{}'
 probe_api module065-mail-test POST '/api/microsoft-integration/mail-runtime/test' '401,403' '{}'
+probe_api platform-overview GET '/api/platform-operations/overview' '401'
+probe_api platform-apis GET '/api/platform-operations/apis' '401'
+probe_api platform-evidence GET '/api/platform-operations/evidence' '401'
+probe_api platform-architecture GET '/api/platform-operations/architecture' '401'
 
 READY_API="$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" --query 'properties.latestReadyRevisionName' -o tsv --only-show-errors)"
 [[ "$READY_API" == "$API_REVISION" ]] || fail "Unexpected ready API revision: $READY_API"
@@ -228,6 +232,12 @@ for attempt in $(seq 1 36); do
       && grep -Fq '/api/customers/sell/preview' /tmp/oprr-app.js \
       && grep -Fq '/api/admin/audit-history/events' /tmp/oprr-app.js \
       && grep -Fq 'module_065_services_profile_not_active' /tmp/oprr-app.js \
+      && grep -Fq '/api/platform-operations/overview' /tmp/oprr-app.js \
+      && grep -Fq 'System Health & API Diagnostics' /tmp/oprr-app.js \
+      && grep -Fq '/api/platform-operations/evidence' /tmp/oprr-app.js \
+      && grep -Fq 'Operational Evidence & Diagnostic History' /tmp/oprr-app.js \
+      && grep -Fq '/api/platform-operations/architecture' /tmp/oprr-app.js \
+      && grep -Fq 'System Architecture & API Dependency Map' /tmp/oprr-app.js \
       && grep -Fq 'projectpulse-more-menu-tools' /tmp/oprr-app.css; then
       SERVED_READY=true
       break
@@ -259,6 +269,8 @@ cat > "$CONTROL_ROOT/evidence/open-pr-reconciliation-test-deployment.json" <<JSO
   "webRevision": "$READY_WEB",
   "migration049": "applied-or-verified",
   "operationalRows": "preserved-by-guard",
+  "providerNeutralPlatformOperations": true,
+  "modules013016068": "served-and-protected",
   "sellExternalApiCalledByDeployment": false,
   "providerCredentialsChanged": false,
   "module011DataDeleted": false,

@@ -7,7 +7,7 @@ VALIDATE="$ROOT/.github/workflows/validate-open-pr-reconciliation-test-deploymen
 APPLY="$ROOT/scripts/apply-open-pr-reconciliation-test-migration-049.sh"
 JOB="$ROOT/scripts/run-open-pr-reconciliation-test-migration-job.sh"
 RUN="$ROOT/scripts/run-open-pr-reconciliation-test-deployment.sh"
-EXPECTED_RELEASE="b24ea3db7d0c839d03804975e87b7929dba8c7f6"
+EXPECTED_RELEASE="d62902d00a838d9cf593e990f4d78c45304642ef"
 
 fail() { echo "ERROR: $*" >&2; exit 1; }
 require_file() { [[ -f "$1" ]] || fail "Missing required file: ${1#$ROOT/}"; }
@@ -30,6 +30,12 @@ require "$DEPLOY" 'cancel-in-progress: false'
 require "$DEPLOY" 'Only the verified open-PR reconciliation source release may deploy.'
 require "$DEPLOY" 'git -C control merge-base --is-ancestor'
 require "$DEPLOY" 'MapCustomerDirectorySellSyncEndpoints'
+require "$DEPLOY" '/api/platform-operations/overview'
+require "$DEPLOY" '/api/platform-operations/evidence'
+require "$DEPLOY" '/api/platform-operations/architecture'
+require "$DEPLOY" 'System Health &amp; API Diagnostics'
+require "$DEPLOY" 'Operational Evidence &amp; Diagnostic History'
+require "$DEPLOY" 'System Architecture &amp; API Dependency Map'
 require "$DEPLOY" 'X-ProjectPulse-View-As-User'
 require "$DEPLOY" 'Search module number or page name'
 require "$DEPLOY" "'work-task-builder': 'work-register'"
@@ -38,6 +44,8 @@ require "$DEPLOY" '049_module_021_sell_customer_sync'
 require "$DEPLOY" 'validate-admin-runtime-stability.mjs'
 require "$DEPLOY" 'validate-group-1-navigation-work-consolidation.mjs'
 require "$DEPLOY" 'validate-modules-021-026-sell-customer-sync.mjs'
+require "$DEPLOY" 'validate-group-2a-provider-neutral-platform-operations.mjs'
+require "$DEPLOY" 'validate-module-068-system-architecture.mjs'
 require "$DEPLOY" 'npm run validate:microsoft-connection'
 require "$DEPLOY" 'npm run validate:microsoft-sso-runtime'
 require "$DEPLOY" 'npm run build'
@@ -97,6 +105,13 @@ require "$RUN" "probe_api sell-preview POST '/api/customers/sell/preview' '401' 
 require "$RUN" "probe_api sell-import POST '/api/customers/sell/import' '401' '{}'"
 require "$RUN" "probe_api audit-history GET '/api/admin/audit-history/events' '401'"
 require "$RUN" "probe_api module065-mail-test POST '/api/microsoft-integration/mail-runtime/test' '401,403' '{}'"
+require "$RUN" "probe_api platform-overview GET '/api/platform-operations/overview' '401'"
+require "$RUN" "probe_api platform-apis GET '/api/platform-operations/apis' '401'"
+require "$RUN" "probe_api platform-evidence GET '/api/platform-operations/evidence' '401'"
+require "$RUN" "probe_api platform-architecture GET '/api/platform-operations/architecture' '401'"
+require "$RUN" 'System Health & API Diagnostics'
+require "$RUN" 'Operational Evidence & Diagnostic History'
+require "$RUN" 'System Architecture & API Dependency Map'
 require "$RUN" 'Search module number or page name'
 require "$RUN" 'X-ProjectPulse-View-As-User'
 require "$RUN" 'Project creation and project/task management moved to Modules 055D and 055C.'
@@ -106,6 +121,8 @@ require "$RUN" 'restore_web'
 require "$RUN" 'restore_api'
 require "$RUN" 'Web rollback skipped because another image is active'
 require "$RUN" 'API rollback skipped because another image is active'
+require "$RUN" '"providerNeutralPlatformOperations": true'
+require "$RUN" '"modules013016068": "served-and-protected"'
 require "$RUN" '"migrationRollbackOnFailure": "not-automatic-additive-schema-remains"'
 require "$RUN" '"sellExternalApiCalledByDeployment": false'
 require "$RUN" '"providerCredentialsChanged": false'
@@ -116,6 +133,7 @@ reject "$RUN" 'api\.getbase\.com'
 
 require "$VALIDATE" 'name: Validate Open PR Reconciliation Test Deployment'
 require "$VALIDATE" 'Enforce exact deployment-control scope'
+require "$VALIDATE" 'release/repin-open-pr-reconciliation-test-deployment-*'
 require "$VALIDATE" 'scripts/validate-open-pr-reconciliation-test-deployment.sh'
 require "$VALIDATE" 'bash -n scripts/apply-open-pr-reconciliation-test-migration-049.sh'
 require "$VALIDATE" 'bash -n scripts/run-open-pr-reconciliation-test-migration-job.sh'
@@ -124,6 +142,8 @@ require "$VALIDATE" 'ProjectTime.Api.AuthorizationTests.csproj'
 require "$VALIDATE" 'validate-admin-runtime-stability.mjs'
 require "$VALIDATE" 'validate-group-1-navigation-work-consolidation.mjs'
 require "$VALIDATE" 'validate-modules-021-026-sell-customer-sync.mjs'
+require "$VALIDATE" 'validate-group-2a-provider-neutral-platform-operations.mjs'
+require "$VALIDATE" 'validate-module-068-system-architecture.mjs'
 require "$VALIDATE" 'npm run build'
 require "$VALIDATE" 'open-pr-reconciliation/deployment-controls'
 reject "$VALIDATE" 'azure/login'
