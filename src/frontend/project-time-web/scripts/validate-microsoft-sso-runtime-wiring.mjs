@@ -20,10 +20,13 @@ const compatibility = read('src/frontend/project-time-web/src/microsoft-integrat
 const main = read('src/frontend/project-time-web/src/main.jsx');
 const runtimePath = 'src/backend/ProjectTime.Api/Modules/MicrosoftSsoRuntimeCompatibility.cs';
 const servicesPath = 'src/backend/ProjectTime.Api/Modules/MicrosoftServicesRuntimeCompatibility.cs';
+const continuityPath = 'src/backend/ProjectTime.Api/Modules/ModuleAvailabilityReadContinuityCompatibility.cs';
 const runtimeAvailable = exists(runtimePath);
 const servicesAvailable = exists(servicesPath);
+const continuityAvailable = exists(continuityPath);
 const runtime = runtimeAvailable ? read(runtimePath) : '';
 const services = servicesAvailable ? read(servicesPath) : '';
+const continuity = continuityAvailable ? read(continuityPath) : '';
 
 assert('COMPILED_HANDLER_TENANT', csproj.includes("s/PROJECTPULSE_ENTRA_TENANT_ID/PROJECTPULSE_SSO_TENANT_ID/g"), 'compiled SSO handlers consume the active SSO tenant');
 assert('COMPILED_HANDLER_CLIENT', csproj.includes("s/PROJECTPULSE_ENTRA_CLIENT_ID/PROJECTPULSE_SSO_CLIENT_ID/g"), 'compiled SSO handlers consume the SSO App Registration client ID');
@@ -36,9 +39,12 @@ assert('RUNTIME_REGISTERED', registrar.includes('UseMicrosoftSsoRuntimeCompatibi
 assert('FORWARDED_PUBLIC_ORIGIN', registrar.includes('UseMicrosoftPublicSsoOriginCompatibility')
   && registrar.includes('X-Forwarded-Host')
   && registrar.includes('X-Forwarded-Proto')
+  && registrar.includes('request.Headers["Origin"]')
+  && registrar.includes('request.Headers["Referer"]')
+  && registrar.includes('.onenecklab.com')
   && registrar.includes('invalid_forwarded_public_origin')
   && registrar.indexOf('UseMicrosoftPublicSsoOriginCompatibility') < registrar.indexOf('UseMicrosoftSsoRuntimeCompatibility'),
-'Module 065 normalizes the trusted proxy public origin before callback validation and rejects malformed forwarded values');
+'Module 065 resolves a trusted public proxy/browser origin before callback validation');
 assert('IMMEDIATE_ACTIVATION_MOUNTED', main.includes("import './microsoft-sso-runtime-activation.js';"), 'saved Module 065 metadata activation is installed before rendering');
 assert('SAVE_INTERCEPT', activation.includes("DOCUMENT_PATH = '/api/native-administration/065/document'")
   && activation.includes("SSO_APPLY_PATH = '/api/microsoft-integration/sso-apply-profile'")
@@ -69,12 +75,23 @@ assert('PORTAL_CURRENT_CALLBACK', portal.includes("const SSO_CALLBACK_PATH = '/a
 assert('MODULE_010_PROFILE_PRELOAD', compatibility.includes("PREVIEW_ROUTE = '/api/admin/azure/users/preview'")
   && compatibility.includes('applyStoredServicesProfile')
   && compatibility.includes("SERVICES_APPLY_PATH = '/api/microsoft-integration/services-apply-profile'"),
-'Module 010 preview activates the saved Module 065 services profile before calling the legacy preview endpoint');
+'Module 010 preview activates the saved Module 065 services profile before calling the preview endpoint');
 assert('MODULE_010_RUNNING_ENVIRONMENT', compatibility.includes('function runtimeEnvironmentMode()')
-  && compatibility.includes('tenant?.environmentMode === runtimeEnvironment')
+  && compatibility.includes("String(tenant?.environmentMode || '').toLowerCase() === runtimeEnvironment")
   && compatibility.includes("status: 'module_065_services_profile_not_active'")
-  && compatibility.includes('applyPayload?.runtimeActivated !== true'),
-'Module 010 preview selects the running environment and stops unless Module 065 confirms runtime activation');
+  && compatibility.includes('applyPayload?.runtimeActivated !== true')
+  && compatibility.includes("String(applyPayload?.runtimeEnvironment || '').toLowerCase() !== profile.environmentMode"),
+'Module 010 preview selects the running environment and stops unless Module 065 confirms matching runtime activation');
+
+if (continuityAvailable) {
+  assert('READ_CONTINUITY_NON_MUTATING', registrar.includes('UseModuleAvailabilityReadContinuityCompatibility')
+    && continuity.includes('/api/microsoft-integration/sso-test')
+    && continuity.includes('/api/admin/azure/users/preview')
+    && !continuity.includes('/api/microsoft-integration/directory-users/import-selected'),
+  'optional availability storage cannot block tests/preview and cannot bypass import or configuration writes');
+} else {
+  console.log('MICROSOFT_SSO_RUNTIME_CONTINUITY_DEEP_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
+}
 
 if (runtimeAvailable) {
   assert('MICROSOFT_AUTHORITY_DERIVED', runtime.includes('MicrosoftAuthority(tenantGuid)') && runtime.includes('payload["authorityUrl"] = MicrosoftAuthority(tenantGuid)'), 'SSO discovery authority is derived from a validated tenant GUID');
@@ -123,6 +140,8 @@ if (servicesAvailable) {
 }
 
 if (checks.some((check) => !check.condition)) {
+  const failed = checks.filter((check) => !check.condition).map((check) => check.name);
+  console.error(`MICROSOFT_SSO_RUNTIME_FAILED_CHECKS=${failed.join(',')}`);
   console.error('MICROSOFT_SSO_RUNTIME_CONTRACT=FAILED');
   process.exit(1);
 }

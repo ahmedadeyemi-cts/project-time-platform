@@ -1,0 +1,215 @@
+name: Validate Admin Runtime Stability 008 010 012 037 065
+
+on:
+  push:
+    branches:
+      - 'fix/admin-runtime-stability-*'
+  pull_request:
+    paths:
+      - 'src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ModuleAvailabilityReadContinuityCompatibility.cs'
+      - 'src/backend/ProjectTime.Api/Modules/MicrosoftMailTransportTestModule.cs'
+      - 'src/frontend/project-time-web/src/AdminRuntimeStabilityPortal.jsx'
+      - 'src/frontend/project-time-web/src/AuditHistoryPanel.jsx'
+      - 'src/frontend/project-time-web/src/MicrosoftMailTransportReadinessPanel.jsx'
+      - 'src/frontend/project-time-web/src/admin-experience-theme.js'
+      - 'src/frontend/project-time-web/src/admin-runtime-stability.css'
+      - 'src/frontend/project-time-web/src/main.jsx'
+      - 'src/frontend/project-time-web/src/microsoft-integration-compatibility.js'
+      - 'src/frontend/project-time-web/src/microsoft-integration-portal.css'
+      - 'src/frontend/project-time-web/src/microsoft-mail-transport-readiness.css'
+      - 'src/frontend/project-time-web/src/module001/TimesheetEnhancementPortal.jsx'
+      - 'src/frontend/project-time-web/src/react-dom-ownership-prelude.js'
+      - 'src/frontend/project-time-web/src/runtime-data-compatibility.js'
+      - 'src/frontend/project-time-web/scripts/test-admin-runtime-stability-runtime.mjs'
+      - 'src/frontend/project-time-web/scripts/test-session-theme-dom-safety-runtime.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-admin-runtime-stability.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-module-001-timesheet-timer-mobile.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-modules-008-009-admin-experience.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-microsoft-integration-authoritative-connection.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-microsoft-sso-runtime-wiring.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-module-067-global-mail.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-role-permission-timesheet-stabilization.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-runtime-role-policy-ptc-data.mjs'
+      - 'src/frontend/project-time-web/package.json'
+      - '.github/workflows/admin-runtime-stability-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Compile and execute integrated admin runtime checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify source isolation and protected exclusions
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git fetch origin main --no-tags
+          CHANGED="$(git diff --name-only origin/main...HEAD)"
+          printf '%s\n' "$CHANGED"
+
+          if grep -E '^database/(migrations|rollback)/' <<<"$CHANGED"; then
+            echo 'This runtime stabilization source must not add or alter a migration.' >&2
+            exit 1
+          fi
+
+          if grep -E '^\.github/workflows/(projectpulse-deploy-runtime-direct-timer-recovery-test|validate-runtime-direct-timer-recovery-deployment)\.yml$|^scripts/validate-runtime-direct-timer-recovery-test-deployment\.sh$' <<<"$CHANGED"; then
+            echo 'A protected deployment-control file changed.' >&2
+            exit 1
+          fi
+
+          if grep -E '^\.github/workflows/projectpulse-deploy-' <<<"$CHANGED"; then
+            echo 'Deployment workflow changes are outside this source branch.' >&2
+            exit 1
+          fi
+
+          if grep -E 'CustomerDirectorySellSyncModule|CustomerDirectoryCenter|CrmErpIntegrationCenter|049_module_021_sell_customer_sync' <<<"$CHANGED"; then
+            echo 'PR 187 source ownership was modified by the admin runtime branch.' >&2
+            exit 1
+          fi
+
+          echo 'ADMIN_RUNTIME_STABILITY_ISOLATION=PASS'
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Build ProjectTime API in Release mode
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release 2>&1 | tee /tmp/admin-runtime-api-build.log
+
+      - name: Execute central authorization tests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          dotnet run \
+            --project tests/ProjectTime.Api.AuthorizationTests/ProjectTime.Api.AuthorizationTests.csproj \
+            --configuration Release 2>&1 | tee /tmp/admin-runtime-authorization.log
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Generate integrated Module 001 App source
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node scripts/generate-module-001-integrated-app.mjs 2>&1 | tee /tmp/admin-runtime-app-generation.log
+
+      - name: Validate integrated admin runtime source contract
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm run validate:admin-runtime-stability 2>&1 | tee /tmp/admin-runtime-static.log
+
+      - name: Execute direct role-policy runtime test
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node scripts/test-admin-runtime-stability-runtime.mjs 2>&1 | tee /tmp/admin-runtime-role-policy.log
+
+      - name: Execute safe session theme and DOM ownership runtime harness
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node scripts/test-session-theme-dom-safety-runtime.mjs 2>&1 | tee /tmp/admin-runtime-session-theme.log
+
+      - name: Validate safe global session transport
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm run validate:global-session-invalidation 2>&1 | tee /tmp/admin-runtime-global-session.log
+
+      - name: Validate Modules 008 and 009
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm run validate:modules008009 2>&1 | tee /tmp/admin-runtime-modules008009.log
+
+      - name: Validate Module 001 timer transport
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm run validate:module001-enhancement 2>&1 | tee /tmp/admin-runtime-module001.log
+
+      - name: Validate role and timesheet stabilization
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm run validate:role-permission-timesheet-stabilization 2>&1 | tee /tmp/admin-runtime-role-timesheet.log
+
+      - name: Validate Module 012
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm run validate:module012 2>&1 | tee /tmp/admin-runtime-module012.log
+
+      - name: Validate Module 037
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm run validate:module037 2>&1 | tee /tmp/admin-runtime-module037.log
+
+      - name: Validate module availability
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm run validate:module-availability 2>&1 | tee /tmp/admin-runtime-module-availability.log
+
+      - name: Validate authoritative Microsoft Integration
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm run validate:microsoft-connection 2>&1 | tee /tmp/admin-runtime-microsoft-connection.log
+
+      - name: Validate Microsoft SSO runtime
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm run validate:microsoft-sso-runtime 2>&1 | tee /tmp/admin-runtime-microsoft-sso.log
+
+      - name: Build complete frontend production bundle
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm run build 2>&1 | tee /tmp/admin-runtime-frontend-build.log
+
+      - name: Upload focused validation diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: admin-runtime-stability-diagnostics-${{ github.run_id }}
+          path: /tmp/admin-runtime-*.log
+          if-no-files-found: warn
+          retention-days: 7
