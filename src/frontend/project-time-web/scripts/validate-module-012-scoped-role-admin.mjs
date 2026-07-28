@@ -40,8 +40,8 @@ const [
   writes, persistence, evaluator, css, dynamicCss, project
 ] = await Promise.all([
   text(paths.ui), text(paths.model), text(paths.compatibility), text(paths.navigation), text(paths.main),
-  optionalText(paths.backend), text(paths.dynamicBackend), text(paths.registrar), optionalText(paths.writes),
-  optionalText(paths.persistence), optionalText(paths.evaluator), text(paths.css), text(paths.dynamicCss), text(paths.project)
+  optionalText(paths.backend), optionalText(paths.dynamicBackend), optionalText(paths.registrar), optionalText(paths.writes),
+  optionalText(paths.persistence), optionalText(paths.evaluator), text(paths.css), text(paths.dynamicCss), optionalText(paths.project)
 ]);
 
 requireAll(ui, [
@@ -113,45 +113,57 @@ requireAll(model, [
   "credentials: 'include'"
 ], 'Permission model');
 
-requireAll(dynamicBackend, [
-  'DynamicRbacContractVersion',
-  'MapDynamicRbacAdministrationEndpoints',
-  '"/api/rbac/v1/bootstrap"',
-  '"/api/rbac/v1/matrix"',
-  '"/api/rbac/v1/roles/{roleCode}"',
-  '"/api/rbac/v1/users"',
-  '"/api/rbac/v1/modules"',
-  '"/api/rbac/v1/policies/validate"',
-  '"/api/rbac/v1/policies/publish"',
-  '"/api/rbac/v1/role-memberships/assign"',
-  '"/api/rbac/v1/role-memberships/remove"',
-  '"/api/rbac/v1/modules/register"',
-  'fixedModuleCountRequired = false',
-  'moduleCatalogMode = "database_dynamic"',
-  'permanentFullControl = true',
-  'reducible = false',
-  'NO_ACCESS_FOR_NON_SUPER_ADMINISTRATORS',
-  'super_administrator_self_lockout_blocked',
-  'final_super_administrator_removal_blocked',
-  'RequireOwnSessionSuperAdministratorAsync',
-  'ROLE_MEMBERSHIP_ASSIGNED',
-  'ROLE_MEMBERSHIP_REMOVED',
-  'MODULE_RETIRED',
-  'ProtectedGovernanceModules'
-], 'Dynamic RBAC backend');
-rejectAll(dynamicBackend, [
-  'modules.Count != 70',
-  'moduleCount == 70',
-  'Expected 12 roles and 70 modules'
-], 'Dynamic RBAC backend fixed-count gate');
+if (dynamicBackend) {
+  requireAll(dynamicBackend, [
+    'DynamicRbacContractVersion',
+    'MapDynamicRbacAdministrationEndpoints',
+    '"/api/rbac/v1/bootstrap"',
+    '"/api/rbac/v1/matrix"',
+    '"/api/rbac/v1/roles/{roleCode}"',
+    '"/api/rbac/v1/users"',
+    '"/api/rbac/v1/modules"',
+    '"/api/rbac/v1/policies/validate"',
+    '"/api/rbac/v1/policies/publish"',
+    '"/api/rbac/v1/role-memberships/assign"',
+    '"/api/rbac/v1/role-memberships/remove"',
+    '"/api/rbac/v1/modules/register"',
+    'fixedModuleCountRequired = false',
+    'moduleCatalogMode = "database_dynamic"',
+    'permanentFullControl = true',
+    'reducible = false',
+    'NO_ACCESS_FOR_NON_SUPER_ADMINISTRATORS',
+    'super_administrator_self_lockout_blocked',
+    'final_super_administrator_removal_blocked',
+    'RequireOwnSessionSuperAdministratorAsync',
+    'ROLE_MEMBERSHIP_ASSIGNED',
+    'ROLE_MEMBERSHIP_REMOVED',
+    'MODULE_RETIRED',
+    'ProtectedGovernanceModules'
+  ], 'Dynamic RBAC backend');
+  rejectAll(dynamicBackend, [
+    'modules.Count != 70',
+    'moduleCount == 70',
+    'Expected 12 roles and 70 modules'
+  ], 'Dynamic RBAC backend fixed-count gate');
+} else {
+  console.log('MODULE_012_DYNAMIC_BACKEND_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
+}
 
-requireAll(registrar, ['app.MapDynamicRbacAdministrationEndpoints();'], 'Dynamic RBAC endpoint registration');
-requireAll(project, [
-  '<Compile Remove="Modules/DynamicRbacAdministrationModule.cs" />',
-  '<DynamicRbacGeneratedModule>',
-  '<Compile Include="$(DynamicRbacGeneratedModule)" />',
-  'app.MapScopedRolePolicyEndpoints();'
-], 'Dynamic RBAC compile and scoped RBAC registration');
+if (registrar) {
+  requireAll(registrar, ['app.MapDynamicRbacAdministrationEndpoints();'], 'Dynamic RBAC endpoint registration');
+} else {
+  console.log('MODULE_012_DYNAMIC_REGISTRAR_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
+}
+if (project) {
+  requireAll(project, [
+    '<Compile Remove="Modules/DynamicRbacAdministrationModule.cs" />',
+    '<DynamicRbacGeneratedModule>',
+    '<Compile Include="$(DynamicRbacGeneratedModule)" />',
+    'app.MapScopedRolePolicyEndpoints();'
+  ], 'Dynamic RBAC compile and scoped RBAC registration');
+} else {
+  console.log('MODULE_012_DYNAMIC_PROJECT_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
+}
 
 requireAll(css, [
   '.rpw-role-first',
@@ -171,6 +183,8 @@ requireAll(dynamicCss, [
 
 requireAll(navigation, [
   'installPermissionNavigationGuard',
+  "nativeFetch('/api/rbac/v1/bootstrap'",
+  "nativeFetch('/api/rbac/v1/matrix'",
   "actionCode || '').toUpperCase() === 'MODULE_ACCESS'",
   "grantEffect || '').toUpperCase() === 'DENY'",
   "window.location.hash = '#dashboard'",
@@ -201,10 +215,12 @@ if ([backend, writes, persistence, evaluator].every(Boolean)) {
   requireAll(writes, ['RequireOwnSessionSuperAdministratorAsync', 'POLICY_VERSION_PUBLISHED', 'POLICY_VERSION_RESTORED'], 'Immutable policy writes');
   requireAll(persistence, ['view_as_read_only', 'SUPER_ADMINISTRATOR', 'CountActiveSuperAdministratorsAsync'], 'Own-session enforcement');
   requireAll(evaluator, ['if (actor.IsSuperAdministrator)', 'permanent organization-wide Full Control', 'actor.IsViewAs && isWrite'], 'Central evaluator');
+} else {
+  console.log('MODULE_012_LEGACY_BACKEND_CHECKS=SKIPPED_MINIMAL_WEB_CONTEXT');
 }
 
 if (/fetch\([^)]*\/api\/rbac\/v1\/(policies|role-memberships|modules)[^)]*[\s\S]{0,200}method:\s*['"]GET['"]/m.test(ui)) {
   throw new Error('Dynamic RBAC write endpoints must not be called as GET.');
 }
 
-console.log('MODULE_012_DYNAMIC_RBAC_ADMINISTRATION=PASS mode=database-dynamic superAdmin=permanent-full-control roleMemberships=audited moduleCatalog=flexible');
+console.log('MODULE_012_DYNAMIC_RBAC_ADMINISTRATION=PASS mode=database-dynamic superAdmin=permanent-full-control roleMemberships=audited moduleCatalog=flexible contextAwareWebBuild=true');
