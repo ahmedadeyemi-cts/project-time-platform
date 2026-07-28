@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - 'release/security-admin-repair-test-deployment-*'
+      - 'release/repin-role-policy-result-execution-test-*'
   pull_request:
     paths:
       - '.github/workflows/projectpulse-deploy-security-admin-repair-test.yml'
@@ -17,7 +18,7 @@ permissions:
 
 jobs:
   validate:
-    name: Validate guarded security and admin repair deployment controls
+    name: Validate guarded HAR-confirmed role-policy repair deployment controls
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -84,6 +85,12 @@ jobs:
       - name: Build repaired API source
         run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
 
+      - name: Reproduce zero-byte 200 and validate explicit IResult execution
+        run: >-
+          dotnet run
+          --project tests/ProjectTime.Api.RouteResultExecutionTests/ProjectTime.Api.RouteResultExecutionTests.csproj
+          --configuration Release
+
       - name: Execute central authorization tests
         run: >-
           dotnet run
@@ -147,10 +154,10 @@ jobs:
           set -Eeuo pipefail
           if [[ "$JOB_STATUS" == success ]]; then
             STATE=success
-            DESCRIPTION='Security/admin source, API, frontend, rollback, and deployment guards passed.'
+            DESCRIPTION='HAR-confirmed role-policy result execution, API, frontend, rollback, and deployment guards passed.'
           else
             STATE=failure
-            DESCRIPTION='Security/admin deployment-control validation failed.'
+            DESCRIPTION='Role-policy result-execution deployment-control validation failed.'
           fi
           PAYLOAD="$(jq -nc \
             --arg state "$STATE" \
