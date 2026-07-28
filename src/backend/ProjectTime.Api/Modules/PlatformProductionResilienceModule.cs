@@ -607,7 +607,7 @@ public static partial class PlatformOperationsModule
                 item.Method,
                 item.Path,
                 item.StatusCode,
-                item.DurationMs,
+                item.ResponseTimeMs,
                 item.ErrorCode,
                 item.Message,
                 item.ReleaseSha
