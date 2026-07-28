@@ -9,6 +9,36 @@ namespace ProjectTime.Api.Modules;
 /// </summary>
 public static class MicrosoftEnvironmentRuntimeResolver
 {
+    public static WebApplication UseMicrosoftEnvironmentRuntimeCompatibility(this WebApplication app)
+    {
+        app.Use(async (context, next) =>
+        {
+            var path = context.Request.Path.Value ?? string.Empty;
+            var relevant = path.StartsWith("/api/microsoft-integration/", StringComparison.OrdinalIgnoreCase)
+                || path.StartsWith("/api/auth/sso/", StringComparison.OrdinalIgnoreCase)
+                || path.StartsWith("/api/admin/azure/", StringComparison.OrdinalIgnoreCase);
+
+            if (relevant)
+            {
+                var mode = Resolve(context);
+                if (!string.IsNullOrWhiteSpace(mode))
+                {
+                    // The existing Microsoft runtime modules already treat this
+                    // variable as their highest-precedence environment contract.
+                    // Setting it from a trusted public host corrects Test Container
+                    // Apps that use ASPNETCORE_ENVIRONMENT=Production for optimized
+                    // runtime behavior.
+                    Environment.SetEnvironmentVariable("PROJECTPULSE_ENVIRONMENT", mode);
+                    Environment.SetEnvironmentVariable("PROJECTPULSE_MICROSOFT_ENVIRONMENT", mode);
+                    context.Items["ProjectPulseMicrosoftEnvironment"] = mode;
+                }
+            }
+
+            await next();
+        });
+        return app;
+    }
+
     public static string Resolve(HttpContext? context = null, string? host = null)
     {
         foreach (var name in new[]
