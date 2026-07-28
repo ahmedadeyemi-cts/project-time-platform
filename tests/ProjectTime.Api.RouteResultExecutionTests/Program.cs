@@ -117,14 +117,14 @@ finally
 }
 
 static Task<IResult> MethodGroupResultAsync(HttpContext context) =>
-    Task.FromResult(Results.Ok(new
+    Task.FromResult<IResult>(Results.Ok(new
     {
         roles = new[] { "SUPER_ADMINISTRATOR" },
         modules = new[] { "012", "037" }
     }));
 
 static Task<IResult> ExplicitResultAsync(HttpContext context) =>
-    Task.FromResult(Results.Ok(new
+    Task.FromResult<IResult>(Results.Ok(new
     {
         roles = new[] { "SUPER_ADMINISTRATOR" },
         modules = new[] { "012", "037" }
