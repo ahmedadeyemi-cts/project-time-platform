@@ -23,6 +23,9 @@ public static class GlobalMailConfigurationModule
         app.MapMicrosoftMailRuntimeConfigurationEndpoints();
         app.MapMicrosoftMailTransportTestEndpoints();
         AzureDirectoryImportModule.MapEndpoints(app);
+        // Additive registration only: Module 021 consumes the authoritative
+        // Module 026 SELL connection without changing Microsoft Integration.
+        app.MapCustomerDirectorySellSyncEndpoints();
         return app;
     }
 
