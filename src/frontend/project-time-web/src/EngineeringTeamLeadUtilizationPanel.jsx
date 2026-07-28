@@ -268,23 +268,27 @@ export default function EngineeringTeamLeadUtilizationPanel() {
                 return (
                   <tr key={member.userId}>
                     <th scope="row" className="engineer-cell">
-                      <span className="engineer-avatar" aria-hidden="true">{engineerInitials(member.displayName)}</span>
-                      <span className="engineer-identity">
-                        <strong>{member.displayName}</strong>
-                        <small>{member.email}</small>
-                      </span>
+                      <div className="engineer-cell-content">
+                        <span className="engineer-avatar" aria-hidden="true">{engineerInitials(member.displayName)}</span>
+                        <span className="engineer-identity">
+                          <strong>{member.displayName}</strong>
+                          <small>{member.email}</small>
+                        </span>
+                      </div>
                     </th>
                     <td className="team-cell"><span>{member.teamName}</span></td>
                     <td className="annual-utilization-cell">
-                      <div className="annual-utilization-value">
-                        <strong>{formatPercent(member.annualUtilizationPercent)}</strong>
-                        <span className={`utilization-state ${annualState}`}>
-                          {annualState === 'on-target' ? 'On target' : annualState === 'below-target' ? 'Below target' : 'No recorded hours'}
+                      <div className="annual-utilization-content">
+                        <div className="annual-utilization-value">
+                          <strong>{formatPercent(member.annualUtilizationPercent)}</strong>
+                          <span className={`utilization-state ${annualState}`}>
+                            {annualState === 'on-target' ? 'On target' : annualState === 'below-target' ? 'Below target' : 'No recorded hours'}
+                          </span>
+                        </div>
+                        <span className="utilization-progress" aria-label={`${formatPercent(member.annualUtilizationPercent)} annual utilization`}>
+                          <span style={{ width: `${Math.min(100, Math.max(0, Number(member.annualUtilizationPercent ?? 0)))}%` }} />
                         </span>
                       </div>
-                      <span className="utilization-progress" aria-label={`${formatPercent(member.annualUtilizationPercent)} annual utilization`}>
-                        <span style={{ width: `${Math.min(100, Math.max(0, Number(member.annualUtilizationPercent ?? 0)))}%` }} />
-                      </span>
                     </td>
                     <td className="numeric-cell">
                       <strong>{formatNumber(member.annualBillableHours)}</strong>
