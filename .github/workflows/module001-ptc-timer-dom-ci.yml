@@ -1,0 +1,134 @@
+name: Validate Module 001 PTC Timer and React DOM Ownership
+
+on:
+  push:
+    branches:
+      - 'fix/module-001-ptc-timer-dom-ownership-*'
+  pull_request:
+    paths:
+      - 'src/backend/ProjectTime.Api/Modules/Module001ResultExecutionCompatibility.cs'
+      - 'src/backend/ProjectTime.Api/Modules/Module001TimeStewardV2Module.cs'
+      - 'src/backend/ProjectTime.Api/ProjectTime.Api.csproj'
+      - 'src/frontend/project-time-web/src/module001/**'
+      - 'src/frontend/project-time-web/src/module-availability-bridge.js'
+      - 'src/frontend/project-time-web/src/intuitive-more-menu.js'
+      - 'src/frontend/project-time-web/src/intuitive-more-menu.css'
+      - 'src/frontend/project-time-web/src/IntakeWorkTaskHandoffPanel.jsx'
+      - 'src/frontend/project-time-web/src/main.jsx'
+      - 'src/frontend/project-time-web/scripts/inject-module-001-owned-extension-slots.mjs'
+      - 'src/frontend/project-time-web/scripts/inject-react-owned-more-menu.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-module-001-*.mjs'
+      - 'src/frontend/project-time-web/package.json'
+      - 'tests/ProjectTime.Api.RouteResultExecutionTests/**'
+      - '.github/workflows/module001-ptc-timer-dom-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate PTC users, flexible moves, timer persistence, and DOM ownership
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Enforce source boundary or run regression mode
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          if [[ "$BRANCH" != fix/module-001-ptc-timer-dom-ownership-* ]]; then
+            echo "MODULE001_PTC_TIMER_ISOLATION=NOT_APPLICABLE branch=$BRANCH"
+            exit 0
+          fi
+          git fetch origin main --no-tags
+          mapfile -t CHANGED < <(git diff --name-only origin/main...HEAD)
+          printf '%s\n' "${CHANGED[@]}"
+          if printf '%s\n' "${CHANGED[@]}" | grep -E '^(database/|deployment/azure/|\.github/workflows/projectpulse-deploy-)'; then
+            echo 'The source repair must not alter migrations or deployment resources.' >&2
+            exit 1
+          fi
+          echo 'MODULE001_PTC_TIMER_ISOLATION=PASS'
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Build ProjectTime API
+        id: api_build
+        shell: bash
+        run: |
+          set +e
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release > module001-api-build.log 2>&1
+          status=$?
+          tail -n 120 module001-api-build.log
+          exit "$status"
+
+      - name: Upload API diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: module001-api-build-${{ github.run_id }}-${{ github.run_attempt }}
+          path: module001-api-build.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Reproduce empty 200 and verify explicit IResult execution
+        run: >-
+          dotnet run
+          --project tests/ProjectTime.Api.RouteResultExecutionTests/ProjectTime.Api.RouteResultExecutionTests.csproj
+          --configuration Release
+
+      - name: Execute central authorization tests
+        run: >-
+          dotnet run
+          --project tests/ProjectTime.Api.AuthorizationTests/ProjectTime.Api.AuthorizationTests.csproj
+          --configuration Release
+
+      - name: Verify API startup and route registration
+        run: bash tests/test-projectpulse-api-startup.sh
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Run focused source validators
+        working-directory: src/frontend/project-time-web
+        run: |
+          node scripts/validate-module-001-timesheet-timer-mobile.mjs
+          node scripts/validate-module-001-ptc-time-steward.mjs
+          node scripts/validate-module-001-ptc-timer-dom-ownership.mjs
+          node scripts/validate-role-permission-timesheet-stabilization.mjs
+          node scripts/validate-runtime-role-policy-ptc-data.mjs
+          node scripts/validate-admin-runtime-stability.mjs
+          node scripts/validate-group-1-navigation-work-consolidation.mjs
+
+      - name: Build complete frontend production bundle
+        id: frontend_build
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set +e
+          npm run build > module001-frontend-build.log 2>&1
+          status=$?
+          tail -n 180 module001-frontend-build.log
+          exit "$status"
+
+      - name: Upload frontend diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: module001-frontend-build-${{ github.run_id }}-${{ github.run_attempt }}
+          path: src/frontend/project-time-web/module001-frontend-build.log
+          if-no-files-found: error
+          retention-days: 7
