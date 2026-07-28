@@ -79,7 +79,6 @@ requireAll(ui, [
   '/api/rbac/v1/role-memberships/',
   "api('/api/rbac/v1/modules/register'",
   '/api/rbac/v1/modules/${encodeURIComponent(module.moduleCode)}/',
-  'Project Team Coordinator',
   "actionCode === 'TIME_SUBMIT'",
   'PTC_DENIED_ACTIONS.has(action.actionCode)',
   "effect: 'DENY'"
