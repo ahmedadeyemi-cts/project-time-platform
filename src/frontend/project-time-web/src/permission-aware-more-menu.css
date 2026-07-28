@@ -1,10 +1,4 @@
-/* Group 1: permission-aware global More navigation and non-destructive Module 011 retirement. */
-
-a[href="#work-task-builder"],
-button[data-route="work-task-builder"],
-[data-module-number="011"] {
-  display: none !important;
-}
+/* Group 1: permission-aware global More navigation and preserved Module 011 history. */
 
 .enterprise-more-navigation {
   position: relative;
