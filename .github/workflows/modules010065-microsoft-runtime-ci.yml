@@ -64,6 +64,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          sed -n '19280,19830p' src/backend/ProjectTime.Api/Program.cs > modules010065-sync-source-section.txt
           {
             echo 'MODULE_010_SYNC_RUNTIME_EVIDENCE_BEGIN'
             grep -nE 'api/admin/azure/sync/run|sync_frequency_hours|syncFrequencyHours|PeriodicTimer|BackgroundService|Azure.*Sync|Entra.*Sync' \
@@ -78,11 +79,10 @@ jobs:
             echo 'MODULE_010_SYNC_FREQUENCY_STORAGE=PASSED'
 
             if grep -Eq 'PeriodicTimer|BackgroundService|IHostedService|sync_frequency_hours.*Task\.Delay|Task\.Delay.*sync_frequency_hours' \
-              src/backend/ProjectTime.Api/Program.cs \
-              src/backend/ProjectTime.Api/Modules/*.cs; then
-              echo 'MODULE_010_AUTOMATIC_SYNC_SCHEDULER=DETECTED'
+              modules010065-sync-source-section.txt; then
+              echo 'MODULE_010_AUTOMATIC_SYNC_SCHEDULER=DETECTED_IN_SYNC_SECTION'
             else
-              echo 'MODULE_010_AUTOMATIC_SYNC_SCHEDULER=NOT_DETECTED'
+              echo 'MODULE_010_AUTOMATIC_SYNC_SCHEDULER=NOT_DETECTED_IN_SYNC_SECTION'
             fi
           } | tee modules010065-sync-runtime-evidence.log
 
@@ -91,7 +91,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: modules010065-sync-runtime-evidence-${{ github.run_id }}-${{ github.run_attempt }}
-          path: modules010065-sync-runtime-evidence.log
+          path: |
+            modules010065-sync-runtime-evidence.log
+            modules010065-sync-source-section.txt
           if-no-files-found: error
           retention-days: 7
 
