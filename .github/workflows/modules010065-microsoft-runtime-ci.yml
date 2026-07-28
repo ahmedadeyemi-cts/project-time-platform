@@ -64,17 +64,36 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          echo 'MODULE_010_SYNC_RUNTIME_EVIDENCE_BEGIN'
-          grep -nE 'api/admin/azure/sync/run|sync_frequency_hours|syncFrequencyHours|PeriodicTimer|BackgroundService|Azure.*Sync|Entra.*Sync' \
-            src/backend/ProjectTime.Api/Program.cs \
-            src/backend/ProjectTime.Api/Modules/*.cs \
-            | head -n 250 || true
-          echo 'MODULE_010_SYNC_RUNTIME_EVIDENCE_END'
+          {
+            echo 'MODULE_010_SYNC_RUNTIME_EVIDENCE_BEGIN'
+            grep -nE 'api/admin/azure/sync/run|sync_frequency_hours|syncFrequencyHours|PeriodicTimer|BackgroundService|Azure.*Sync|Entra.*Sync' \
+              src/backend/ProjectTime.Api/Program.cs \
+              src/backend/ProjectTime.Api/Modules/*.cs \
+              | head -n 300 || true
+            echo 'MODULE_010_SYNC_RUNTIME_EVIDENCE_END'
 
-          grep -q '/api/admin/azure/sync/run' src/backend/ProjectTime.Api/Program.cs
-          grep -q 'sync_frequency_hours' src/backend/ProjectTime.Api/Program.cs
-          echo 'MODULE_010_MANUAL_SYNC_ENDPOINT=PASSED'
-          echo 'MODULE_010_SYNC_FREQUENCY_STORAGE=PASSED'
+            grep -q '/api/admin/azure/sync/run' src/backend/ProjectTime.Api/Program.cs
+            grep -q 'sync_frequency_hours' src/backend/ProjectTime.Api/Program.cs
+            echo 'MODULE_010_MANUAL_SYNC_ENDPOINT=PASSED'
+            echo 'MODULE_010_SYNC_FREQUENCY_STORAGE=PASSED'
+
+            if grep -Eq 'PeriodicTimer|BackgroundService|IHostedService|sync_frequency_hours.*Task\.Delay|Task\.Delay.*sync_frequency_hours' \
+              src/backend/ProjectTime.Api/Program.cs \
+              src/backend/ProjectTime.Api/Modules/*.cs; then
+              echo 'MODULE_010_AUTOMATIC_SYNC_SCHEDULER=DETECTED'
+            else
+              echo 'MODULE_010_AUTOMATIC_SYNC_SCHEDULER=NOT_DETECTED'
+            fi
+          } | tee modules010065-sync-runtime-evidence.log
+
+      - name: Upload Entra sync runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: modules010065-sync-runtime-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: modules010065-sync-runtime-evidence.log
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Build ProjectTime API
         id: api_build
