@@ -7,7 +7,7 @@ VALIDATE="$ROOT/.github/workflows/validate-open-pr-reconciliation-test-deploymen
 APPLY="$ROOT/scripts/apply-open-pr-reconciliation-test-migration-049.sh"
 JOB="$ROOT/scripts/run-open-pr-reconciliation-test-migration-job.sh"
 RUN="$ROOT/scripts/run-open-pr-reconciliation-test-deployment.sh"
-EXPECTED_RELEASE="d62902d00a838d9cf593e990f4d78c45304642ef"
+EXPECTED_RELEASE="e678cdaacc020ccd2ee7726d6e77f0276fae38ce"
 
 fail() { echo "ERROR: $*" >&2; exit 1; }
 require_file() { [[ -f "$1" ]] || fail "Missing required file: ${1#$ROOT/}"; }
@@ -27,7 +27,7 @@ require "$DEPLOY" 'refs/heads/main'
 require "$DEPLOY" 'environment: test'
 require "$DEPLOY" 'group: projectpulse-deploy-open-pr-reconciliation-test'
 require "$DEPLOY" 'cancel-in-progress: false'
-require "$DEPLOY" 'Only the verified open-PR reconciliation source release may deploy.'
+require "$DEPLOY" 'Only the verified role-compatible open-PR reconciliation source release may deploy.'
 require "$DEPLOY" 'git -C control merge-base --is-ancestor'
 require "$DEPLOY" 'MapCustomerDirectorySellSyncEndpoints'
 require "$DEPLOY" '/api/platform-operations/overview'
@@ -41,6 +41,10 @@ require "$DEPLOY" 'Search module number or page name'
 require "$DEPLOY" "'work-task-builder': 'work-register'"
 require "$DEPLOY" 'Synchronization history is consolidated in Module 008'
 require "$DEPLOY" '049_module_021_sell_customer_sync'
+require "$DEPLOY" "pg_roles WHERE rolname = 'ptp_app'"
+require "$DEPLOY" 'the current migration role owns the tables.'
+require "$DEPLOY" 'MODULE_021_SELL_CUSTOMER_SYNC_049_NO_PTP_APP=PASS'
+require "$DEPLOY" 'MODULE_021_SELL_CUSTOMER_SYNC_049_OPTIONAL_ROLE_GRANT=PASS'
 require "$DEPLOY" 'validate-admin-runtime-stability.mjs'
 require "$DEPLOY" 'validate-group-1-navigation-work-consolidation.mjs'
 require "$DEPLOY" 'validate-modules-021-026-sell-customer-sync.mjs'
@@ -72,6 +76,12 @@ require "$APPLY" 'Migration 049 changed CRM provider row count.'
 require "$APPLY" 'ux_customer_directory_source_links_client'
 require "$APPLY" 'ix_customer_directory_source_links_sync'
 require "$APPLY" 'ix_customer_directory_sync_runs_provider'
+require "$APPLY" "has_table_privilege(current_user,'customer_directory_source_links','SELECT,INSERT,UPDATE')"
+require "$APPLY" "has_table_privilege(current_user,'customer_directory_sync_runs','SELECT,INSERT,UPDATE')"
+require "$APPLY" "PTP_APP_EXISTS=\"\$(scalar \"SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='ptp_app');\")\""
+require "$APPLY" 'OPEN_PR_RECONCILIATION_RUNTIME_ROLE_PRIVILEGES=VERIFIED'
+require "$APPLY" 'OPEN_PR_RECONCILIATION_PTP_APP_COMPATIBILITY=VERIFIED'
+require "$APPLY" 'OPEN_PR_RECONCILIATION_PTP_APP_COMPATIBILITY=OPTIONAL_ROLE_NOT_INSTALLED'
 require "$APPLY" "ARRAY['clientSecret','apiKey','accessToken','refreshToken']"
 require "$APPLY" 'MODULE_021_026_SELL_SYNC_MIGRATION_049=APPLIED_OR_VERIFIED'
 reject "$APPLY" 'database/rollback'
@@ -121,6 +131,8 @@ require "$RUN" 'restore_web'
 require "$RUN" 'restore_api'
 require "$RUN" 'Web rollback skipped because another image is active'
 require "$RUN" 'API rollback skipped because another image is active'
+require "$RUN" '"migrationRuntimeRole": "configured-api-database-identity"'
+require "$RUN" '"optionalPtpAppRole": "verified-when-present-not-required"'
 require "$RUN" '"providerNeutralPlatformOperations": true'
 require "$RUN" '"modules013016068": "served-and-protected"'
 require "$RUN" '"migrationRollbackOnFailure": "not-automatic-additive-schema-remains"'
@@ -133,12 +145,13 @@ reject "$RUN" 'api\.getbase\.com'
 
 require "$VALIDATE" 'name: Validate Open PR Reconciliation Test Deployment'
 require "$VALIDATE" 'Enforce exact deployment-control scope'
-require "$VALIDATE" 'release/repin-open-pr-reconciliation-test-deployment-*'
+require "$VALIDATE" 'release/repin-migration-049-role-compatible-test-*'
 require "$VALIDATE" 'scripts/validate-open-pr-reconciliation-test-deployment.sh'
 require "$VALIDATE" 'bash -n scripts/apply-open-pr-reconciliation-test-migration-049.sh'
 require "$VALIDATE" 'bash -n scripts/run-open-pr-reconciliation-test-migration-job.sh'
 require "$VALIDATE" 'bash -n scripts/run-open-pr-reconciliation-test-deployment.sh'
 require "$VALIDATE" 'ProjectTime.Api.AuthorizationTests.csproj'
+require "$VALIDATE" 'Test migration 049 with absent and optional compatibility roles'
 require "$VALIDATE" 'validate-admin-runtime-stability.mjs'
 require "$VALIDATE" 'validate-group-1-navigation-work-consolidation.mjs'
 require "$VALIDATE" 'validate-modules-021-026-sell-customer-sync.mjs'
