@@ -4,6 +4,9 @@ namespace ProjectTime.Api.Modules;
 /// Compatibility registration point retained for the former Module 067.
 /// Module 065 owns Microsoft Integration; Module 010 owns Entra directory-user import.
 /// Program.cs continues to call this existing method once, so no broad startup edit is required.
+/// Trusted public-origin resolution is centralized in
+/// <see cref="ProjectPulsePublicOriginCompatibility"/> so Microsoft, Entra preview,
+/// and CRM/ERP mutations share one fail-closed origin boundary.
 /// </summary>
 public static class GlobalMailConfigurationModule
 {
@@ -11,6 +14,9 @@ public static class GlobalMailConfigurationModule
 
     public static WebApplication MapGlobalMailConfigurationEndpoints(this WebApplication app)
     {
+        // Normalize only trusted ProjectPulse public origins before any
+        // Microsoft, Entra-preview, or Module 026 same-origin decisions run.
+        app.UseProjectPulsePublicOriginCompatibility();
         app.UseMicrosoftIntegrationSecurityCompatibility();
         app.UseMicrosoftPublicSsoOriginCompatibility();
         app.UseModuleAvailabilityReadContinuityCompatibility();
@@ -40,19 +46,21 @@ public static class GlobalMailConfigurationModule
                 return;
             }
 
-            if (!TryResolvePublicOrigin(context, out var publicOrigin, out var failure))
+            if (!TryResolvePublicOrigin(context, out var publicOrigin, out var source))
             {
                 await Results.BadRequest(new
                 {
                     module = "065",
-                    status = "invalid_forwarded_public_origin",
-                    message = failure
+                    status = "trusted_public_origin_unavailable",
+                    message = "ProjectPulse could not determine the trusted HTTPS public origin for this Microsoft SSO operation. Verify the public URL and reverse-proxy forwarding configuration."
                 }).ExecuteAsync(context);
                 return;
             }
 
             context.Request.Scheme = publicOrigin.Scheme;
             context.Request.Host = HostString.FromUriComponent(publicOrigin.Authority);
+            context.Items[ProjectPulsePublicOriginCompatibility.PublicOriginItem] = publicOrigin;
+            context.Items[ProjectPulsePublicOriginCompatibility.PublicOriginSourceItem] = source;
             context.Items["ProjectPulsePublicOrigin"] = publicOrigin.GetLeftPart(UriPartial.Authority);
             await next();
         });
@@ -62,126 +70,33 @@ public static class GlobalMailConfigurationModule
     private static bool TryResolvePublicOrigin(
         HttpContext context,
         out Uri publicOrigin,
-        out string failure)
+        out string source)
     {
-        var request = context.Request;
-        var forwardedHost = FirstForwardedValue(request.Headers["X-Forwarded-Host"].ToString());
-        var forwardedProto = FirstForwardedValue(request.Headers["X-Forwarded-Proto"].ToString());
-        if (string.IsNullOrWhiteSpace(forwardedHost)
-            && string.IsNullOrWhiteSpace(forwardedProto))
+        if (context.Items.TryGetValue(ProjectPulsePublicOriginCompatibility.PublicOriginItem, out var existing)
+            && existing is Uri existingUri)
         {
-            ReadForwardedHeader(
-                FirstForwardedValue(request.Headers["Forwarded"].ToString()),
-                out forwardedHost,
-                out forwardedProto);
-        }
-
-        if (!string.IsNullOrWhiteSpace(forwardedHost)
-            || !string.IsNullOrWhiteSpace(forwardedProto))
-        {
-            var scheme = First(forwardedProto, request.Scheme);
-            var authority = First(forwardedHost, request.Host.Value);
-            if (!TryOrigin($"{scheme}://{authority}", context, out publicOrigin))
-            {
-                failure = "The forwarded ProjectPulse public origin is invalid or outside the approved environment domains.";
-                return false;
-            }
-
-            failure = string.Empty;
+            publicOrigin = existingUri;
+            source = context.Items.TryGetValue(ProjectPulsePublicOriginCompatibility.PublicOriginSourceItem, out var existingSource)
+                ? existingSource?.ToString() ?? "trusted_origin_middleware"
+                : "trusted_origin_middleware";
             return true;
         }
 
-        var originHeader = FirstForwardedValue(request.Headers["Origin"].ToString());
-        if (!string.IsNullOrWhiteSpace(originHeader)
-            && TryOrigin(originHeader, context, out publicOrigin))
+        if (ProjectPulsePublicOriginCompatibility.TryResolveProxyOrConfiguredOrigin(
+                context,
+                out publicOrigin,
+                out source))
         {
-            failure = string.Empty;
             return true;
         }
 
-        var refererHeader = FirstForwardedValue(request.Headers["Referer"].ToString());
-        if (!string.IsNullOrWhiteSpace(refererHeader)
-            && Uri.TryCreate(refererHeader, UriKind.Absolute, out var referer)
-            && TryOrigin(referer.GetLeftPart(UriPartial.Authority), context, out publicOrigin))
-        {
-            failure = string.Empty;
-            return true;
-        }
-
-        if (TryOrigin($"{request.Scheme}://{request.Host}", context, out publicOrigin))
-        {
-            failure = string.Empty;
-            return true;
-        }
-
-        publicOrigin = null!;
-        failure = "ProjectPulse could not determine a trusted public origin for the SSO callback.";
-        return false;
+        // Browser Origin and Referer remain a final compatibility candidate,
+        // but the shared resolver still enforces HTTPS and approved ProjectPulse
+        // environment hosts. An invalid forwarded value is never accepted and
+        // no longer prevents a valid browser origin from being evaluated.
+        return ProjectPulsePublicOriginCompatibility.TryBrowserOrigin(
+            context,
+            out publicOrigin,
+            out source);
     }
-
-    private static bool TryOrigin(string value, HttpContext context, out Uri origin)
-    {
-        origin = null!;
-        if (!Uri.TryCreate(value.Trim().Trim('"'), UriKind.Absolute, out var parsed)
-            || !string.IsNullOrWhiteSpace(parsed.UserInfo)
-            || parsed.AbsolutePath != "/"
-            || !string.IsNullOrWhiteSpace(parsed.Query)
-            || !string.IsNullOrWhiteSpace(parsed.Fragment)
-            || !ApprovedScheme(parsed)
-            || !TrustedHost(parsed.Host, context))
-        {
-            return false;
-        }
-
-        origin = parsed;
-        return true;
-    }
-
-    private static bool ApprovedScheme(Uri origin) =>
-        origin.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
-        || (origin.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
-            && (origin.IsLoopback
-                || origin.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase)));
-
-    private static bool TrustedHost(string host, HttpContext context)
-    {
-        if (host.Equals(context.Request.Host.Host, StringComparison.OrdinalIgnoreCase)
-            || host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
-            || host.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase)
-            || host.EndsWith(".onenecklab.com", StringComparison.OrdinalIgnoreCase)
-            || host.EndsWith(".ussignal.com", StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        foreach (var name in new[] { "PUBLIC_URL", "PROJECTPULSE_PUBLIC_URL", "PROJECTPULSE_WEB_URL" })
-        {
-            var configured = Environment.GetEnvironmentVariable(name);
-            if (Uri.TryCreate(configured, UriKind.Absolute, out var configuredUri)
-                && host.Equals(configuredUri.Host, StringComparison.OrdinalIgnoreCase))
-                return true;
-        }
-
-        return false;
-    }
-
-    private static void ReadForwardedHeader(string value, out string host, out string proto)
-    {
-        host = string.Empty;
-        proto = string.Empty;
-        foreach (var part in value.Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
-        {
-            var pair = part.Split('=', 2, StringSplitOptions.TrimEntries);
-            if (pair.Length != 2) continue;
-            if (pair[0].Equals("host", StringComparison.OrdinalIgnoreCase)) host = pair[1].Trim('"');
-            if (pair[0].Equals("proto", StringComparison.OrdinalIgnoreCase)) proto = pair[1].Trim('"');
-        }
-    }
-
-    private static string FirstForwardedValue(string? value) =>
-        (value ?? string.Empty).Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
-            .FirstOrDefault() ?? string.Empty;
-
-    private static string First(params string?[] values) =>
-        values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim() ?? string.Empty;
 }

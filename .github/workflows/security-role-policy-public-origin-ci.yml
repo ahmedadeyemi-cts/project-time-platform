@@ -1,0 +1,157 @@
+name: Validate Security Role Policy and Public Origin Repair
+
+on:
+  push:
+    branches:
+      - 'hotfix/security-role-policy-public-origin-*'
+  pull_request:
+    paths:
+      - '.github/workflows/global-view-as-drawer-ci.yml'
+      - 'src/frontend/project-time-web/src/role-policy-authoritative-transport.js'
+      - 'src/frontend/project-time-web/src/main.jsx'
+      - 'src/frontend/project-time-web/scripts/validate-security-role-policy-public-origin.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-admin-runtime-stability.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-microsoft-integration-authoritative-connection.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-microsoft-sso-runtime-wiring.mjs'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectPulsePublicOriginCompatibility.cs'
+      - 'src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs'
+      - 'deployment/containers/web/default.conf.template'
+      - '.github/workflows/security-role-policy-public-origin-ci.yml'
+
+permissions:
+  contents: read
+  statuses: write
+
+jobs:
+  validate:
+    name: Validate Modules 012 037 065 010 and 026 security repair
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify isolated security-hotfix scope
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git fetch origin main --no-tags
+          mapfile -t CHANGED < <(git diff --name-only origin/main...HEAD)
+          printf '%s\n' "${CHANGED[@]}"
+
+          ALLOWED=(
+            '.github/workflows/global-view-as-drawer-ci.yml'
+            '.github/workflows/security-role-policy-public-origin-ci.yml'
+            'deployment/containers/web/default.conf.template'
+            'src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs'
+            'src/backend/ProjectTime.Api/Modules/ProjectPulsePublicOriginCompatibility.cs'
+            'src/frontend/project-time-web/scripts/validate-admin-runtime-stability.mjs'
+            'src/frontend/project-time-web/scripts/validate-microsoft-integration-authoritative-connection.mjs'
+            'src/frontend/project-time-web/scripts/validate-microsoft-sso-runtime-wiring.mjs'
+            'src/frontend/project-time-web/scripts/validate-security-role-policy-public-origin.mjs'
+            'src/frontend/project-time-web/src/main.jsx'
+            'src/frontend/project-time-web/src/role-policy-authoritative-transport.js'
+          )
+
+          [[ "${#CHANGED[@]}" -eq 11 ]] || {
+            echo "Expected exactly eleven security-hotfix and validation-governance files; found ${#CHANGED[@]}." >&2
+            exit 1
+          }
+
+          for changed in "${CHANGED[@]}"; do
+            match=false
+            for allowed in "${ALLOWED[@]}"; do
+              [[ "$changed" == "$allowed" ]] && match=true
+            done
+            [[ "$match" == true ]] || {
+              echo "Unexpected changed file: $changed" >&2
+              exit 1
+            }
+          done
+
+          echo 'SECURITY_ROLE_POLICY_PUBLIC_ORIGIN_SCOPE=PASS'
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Validate focused security contracts
+        working-directory: src/frontend/project-time-web
+        run: node scripts/validate-security-role-policy-public-origin.mjs
+
+      - name: Build ProjectTime API
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+
+      - name: Execute central authorization tests
+        run: >-
+          dotnet run
+          --project tests/ProjectTime.Api.AuthorizationTests/ProjectTime.Api.AuthorizationTests.csproj
+          --configuration Release
+
+      - name: Verify API startup and route registration
+        run: bash tests/test-projectpulse-api-startup.sh
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Validate role and timesheet stabilization regression
+        working-directory: src/frontend/project-time-web
+        run: node scripts/validate-role-permission-timesheet-stabilization.mjs
+
+      - name: Validate admin runtime regression
+        working-directory: src/frontend/project-time-web
+        run: node scripts/validate-admin-runtime-stability.mjs
+
+      - name: Validate Microsoft Integration regression
+        working-directory: src/frontend/project-time-web
+        run: node scripts/validate-microsoft-integration-authoritative-connection.mjs
+
+      - name: Validate Microsoft SSO runtime regression
+        working-directory: src/frontend/project-time-web
+        run: node scripts/validate-microsoft-sso-runtime-wiring.mjs
+
+      - name: Build complete frontend production bundle
+        working-directory: src/frontend/project-time-web
+        run: npm run build
+
+      - name: Publish exact-commit security status
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
+          COMMIT_SHA: ${{ github.sha }}
+          API_ROOT: ${{ github.api_url }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -Eeuo pipefail
+          if [[ "$JOB_STATUS" == success ]]; then
+            STATE=success
+            DESCRIPTION='Role-policy, trusted-origin, authorization, API, and frontend security checks passed.'
+          else
+            STATE=failure
+            DESCRIPTION='Security role-policy and public-origin validation failed.'
+          fi
+          PAYLOAD="$(jq -nc \
+            --arg state "$STATE" \
+            --arg context 'security/role-policy-public-origin' \
+            --arg description "$DESCRIPTION" \
+            --arg target_url "$RUN_URL" \
+            '{state:$state,context:$context,description:$description,target_url:$target_url}')"
+          curl --fail-with-body --silent --show-error \
+            --request POST \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'Accept: application/vnd.github+json' \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            --data "$PAYLOAD" \
+            "$API_ROOT/repos/$REPOSITORY/statuses/$COMMIT_SHA"

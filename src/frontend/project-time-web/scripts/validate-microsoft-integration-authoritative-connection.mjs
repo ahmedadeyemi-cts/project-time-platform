@@ -16,6 +16,7 @@ const paths = {
   mailTest: 'src/backend/ProjectTime.Api/Modules/MicrosoftMailTransportTestModule.cs',
   smtpProjection: 'src/backend/ProjectTime.Api/Modules/MicrosoftSmtpCredentialProjectionCompatibility.cs',
   registrar: 'src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs',
+  publicOrigin: 'src/backend/ProjectTime.Api/Modules/ProjectPulsePublicOriginCompatibility.cs',
   continuity: 'src/backend/ProjectTime.Api/Modules/ModuleAvailabilityReadContinuityCompatibility.cs',
   migration: 'database/migrations/047_microsoft_integration_connection_carryover.sql',
   rollback: 'database/rollback/047_microsoft_integration_connection_carryover_rollback.sql',
@@ -126,7 +127,7 @@ assert('NON_DELIVERY_READINESS_UI', main.includes('<MicrosoftMailTransportReadin
 'Module 065 exposes a responsive non-delivery sender and transport readiness test');
 
 const fullRepositoryContext = [
-  'migration', 'rollback', 'test', 'mailRuntime', 'mailTest', 'smtpProjection', 'registrar', 'continuity'
+  'migration', 'rollback', 'test', 'mailRuntime', 'mailTest', 'smtpProjection', 'registrar', 'publicOrigin', 'continuity'
 ].every((name) => exists(paths[name]));
 
 if (fullRepositoryContext) {
@@ -137,6 +138,7 @@ if (fullRepositoryContext) {
   const mailTest = read(paths.mailTest);
   const smtpProjection = read(paths.smtpProjection);
   const registrar = read(paths.registrar);
+  const publicOrigin = read(paths.publicOrigin);
   const continuity = read(paths.continuity);
 
   assert('MAIL_RUNTIME_REGISTERED', registrar.includes('MapMicrosoftMailRuntimeConfigurationEndpoints')
@@ -147,13 +149,18 @@ if (fullRepositoryContext) {
     && mailRuntime.includes('ReadStoredConfigurationAsync'),
   'mail runtime metadata and the non-delivery readiness endpoint are registered');
 
-  assert('PUBLIC_SSO_ORIGIN', registrar.includes('X-Forwarded-Host')
-    && registrar.includes('X-Forwarded-Proto')
-    && registrar.includes('request.Headers["Origin"]')
-    && registrar.includes('request.Headers["Referer"]')
-    && registrar.includes('.onenecklab.com')
-    && registrar.includes('invalid_forwarded_public_origin'),
-  'Module 065 resolves an approved public callback origin through proxy and same-origin request evidence');
+  assert('PUBLIC_SSO_ORIGIN', registrar.includes('UseProjectPulsePublicOriginCompatibility')
+    && registrar.includes('UseMicrosoftPublicSsoOriginCompatibility')
+    && registrar.includes('trusted_public_origin_unavailable')
+    && registrar.indexOf('UseProjectPulsePublicOriginCompatibility') < registrar.indexOf('UseMicrosoftPublicSsoOriginCompatibility')
+    && publicOrigin.includes('X-Forwarded-Host')
+    && publicOrigin.includes('X-Forwarded-Proto')
+    && publicOrigin.includes('request.Headers["Origin"]')
+    && publicOrigin.includes('request.Headers["Referer"]')
+    && publicOrigin.includes('.onenecklab.com')
+    && publicOrigin.includes('.ussignal.com')
+    && publicOrigin.includes('trusted_forwarded_origin'),
+  'Module 065 resolves an approved HTTPS public callback origin through the shared proxy and browser-origin boundary');
 
   assert('MODULE_AVAILABILITY_READ_CONTINUITY', registrar.includes('UseModuleAvailabilityReadContinuityCompatibility')
     && continuity.includes('/api/admin/azure/users/preview')

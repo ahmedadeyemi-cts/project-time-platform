@@ -28,37 +28,43 @@ jobs:
 
       - name: Verify isolated View-As drawer scope
         shell: bash
+        env:
+          SOURCE_BRANCH: ${{ github.head_ref || github.ref_name }}
         run: |
           set -Eeuo pipefail
           git fetch origin main --no-tags
           mapfile -t CHANGED < <(git diff --name-only origin/main...HEAD)
           printf '%s\n' "${CHANGED[@]}"
 
-          ALLOWED=(
-            '.github/workflows/global-view-as-drawer-ci.yml'
-            'src/frontend/project-time-web/scripts/validate-global-view-as-drawer.mjs'
-            'src/frontend/project-time-web/src/GlobalViewAsDrawer.jsx'
-            'src/frontend/project-time-web/src/global-view-as-drawer.css'
-            'src/frontend/project-time-web/src/main.jsx'
-          )
+          if [[ "$SOURCE_BRANCH" == feature/global-view-as-left-drawer-* ]]; then
+            ALLOWED=(
+              '.github/workflows/global-view-as-drawer-ci.yml'
+              'src/frontend/project-time-web/scripts/validate-global-view-as-drawer.mjs'
+              'src/frontend/project-time-web/src/GlobalViewAsDrawer.jsx'
+              'src/frontend/project-time-web/src/global-view-as-drawer.css'
+              'src/frontend/project-time-web/src/main.jsx'
+            )
 
-          [[ "${#CHANGED[@]}" -eq 5 ]] || {
-            echo "Expected exactly five View-As drawer files; found ${#CHANGED[@]}." >&2
-            exit 1
-          }
-
-          for changed in "${CHANGED[@]}"; do
-            MATCH=false
-            for allowed in "${ALLOWED[@]}"; do
-              [[ "$changed" == "$allowed" ]] && MATCH=true
-            done
-            [[ "$MATCH" == true ]] || {
-              echo "Unexpected changed file: $changed" >&2
+            [[ "${#CHANGED[@]}" -eq 5 ]] || {
+              echo "Expected exactly five View-As drawer files; found ${#CHANGED[@]}." >&2
               exit 1
             }
-          done
 
-          echo 'GLOBAL_VIEW_AS_DRAWER_SCOPE=PASS'
+            for changed in "${CHANGED[@]}"; do
+              MATCH=false
+              for allowed in "${ALLOWED[@]}"; do
+                [[ "$changed" == "$allowed" ]] && MATCH=true
+              done
+              [[ "$MATCH" == true ]] || {
+                echo "Unexpected changed file: $changed" >&2
+                exit 1
+              }
+            done
+
+            echo 'GLOBAL_VIEW_AS_DRAWER_SCOPE=PASS'
+          else
+            echo "GLOBAL_VIEW_AS_DRAWER_SCOPE=NOT_APPLICABLE_FOR_$SOURCE_BRANCH"
+          fi
 
       - uses: actions/setup-node@v4
         with:

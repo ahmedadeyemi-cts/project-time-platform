@@ -127,12 +127,14 @@ check('MODULE065_READINESS_UI', main.includes('<MicrosoftMailTransportReadinessP
 
 const backendPaths = {
   registrar: 'src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs',
+  publicOrigin: 'src/backend/ProjectTime.Api/Modules/ProjectPulsePublicOriginCompatibility.cs',
   continuity: 'src/backend/ProjectTime.Api/Modules/ModuleAvailabilityReadContinuityCompatibility.cs',
   mailTest: 'src/backend/ProjectTime.Api/Modules/MicrosoftMailTransportTestModule.cs'
 };
-const fullRepositoryContext = Object.values(backendPaths).every(exists);
+const fullRepositoryContext = [backendPaths.registrar, backendPaths.continuity, backendPaths.mailTest].every(exists);
 if (fullRepositoryContext) {
   const registrar = read(backendPaths.registrar);
+  const publicOrigin = exists(backendPaths.publicOrigin) ? read(backendPaths.publicOrigin) : '';
   const continuity = read(backendPaths.continuity);
   const mailTest = read(backendPaths.mailTest);
 
@@ -144,13 +146,25 @@ if (fullRepositoryContext) {
     && !continuity.includes('/api/microsoft-integration/directory-users/import-selected'),
   'optional module availability cannot block authorized reads/tests and never bypasses imports');
 
-  check('SSO_PUBLIC_ORIGIN', registrar.includes('X-Forwarded-Host')
+  const legacyOriginResolver = registrar.includes('X-Forwarded-Host')
     && registrar.includes('X-Forwarded-Proto')
     && registrar.includes('request.Headers["Origin"]')
     && registrar.includes('request.Headers["Referer"]')
     && registrar.includes('.onenecklab.com')
-    && registrar.includes('TrustedHost'),
-  'Module 065 resolves a trusted browser-facing SSO callback origin');
+    && registrar.includes('TrustedHost');
+  const sharedOriginResolver = registrar.includes('UseProjectPulsePublicOriginCompatibility')
+    && registrar.includes('TryResolveProxyOrConfiguredOrigin')
+    && registrar.includes('TryBrowserOrigin')
+    && registrar.includes('trusted_public_origin_unavailable')
+    && publicOrigin.includes('X-Forwarded-Host')
+    && publicOrigin.includes('X-Forwarded-Proto')
+    && publicOrigin.includes('.onenecklab.com')
+    && publicOrigin.includes('.ussignal.com')
+    && publicOrigin.includes('TrustedHost')
+    && publicOrigin.includes('Public ProjectPulse environments are HTTPS-only');
+
+  check('SSO_PUBLIC_ORIGIN', legacyOriginResolver || sharedOriginResolver,
+  'Module 065 resolves a trusted browser-facing SSO callback origin through the legacy or shared fail-closed resolver');
 
   check('MAIL_TEST_NON_DELIVERY', registrar.includes('MapMicrosoftMailTransportTestEndpoints')
     && mailTest.includes('TestPath = "/api/microsoft-integration/mail-runtime/test"')

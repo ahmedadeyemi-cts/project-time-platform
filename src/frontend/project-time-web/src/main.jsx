@@ -4,6 +4,7 @@ import './projectpulse-authoritative-api.js';
 import './module-availability-bridge.js';
 import './api-error-presentation.js';
 import './runtime-data-compatibility.js';
+import './role-policy-authoritative-transport.js';
 import './microsoft-integration-compatibility.js';
 import './microsoft-sso-runtime-activation.js';
 import './microsoft-mail-runtime-activation.js';
