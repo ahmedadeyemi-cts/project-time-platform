@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       release_commit:
-        description: Exact verified source release containing the security and Module 013 repairs
+        description: Exact verified source release containing the HAR-confirmed role-policy result-execution repair
         required: true
-        default: 845fb2d90affd808d2ec06175afcffa04863abe0
+        default: 7d21b93d2a5a3e2eb7681cce8662ffb81bf7c01a
         type: string
       confirmation:
         description: Enter DEPLOY-SECURITY-ADMIN-REPAIR-TO-TEST
@@ -23,12 +23,12 @@ concurrency:
 
 jobs:
   deploy:
-    name: Guarded security, role-policy, Microsoft, CRM, and Module 013 test deployment
+    name: Guarded role-policy result execution, security, Microsoft, CRM, and Module 013 test deployment
     environment: test
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
-      EXPECTED_RELEASE_COMMIT: 845fb2d90affd808d2ec06175afcffa04863abe0
+      EXPECTED_RELEASE_COMMIT: 7d21b93d2a5a3e2eb7681cce8662ffb81bf7c01a
 
     steps:
       - name: Check out deployment controls
@@ -72,7 +72,7 @@ jobs:
           [[ "$CONTROL_COMMIT" == "$WORKFLOW_SOURCE_SHA" ]]
           [[ "$TARGET_COMMIT" == "$DISPATCH_RELEASE_COMMIT" ]]
           [[ "$TARGET_COMMIT" == "$EXPECTED_RELEASE_COMMIT" ]] || {
-            echo 'Only the verified security and admin repair source release may deploy.' >&2
+            echo 'Only the verified HAR-confirmed role-policy repair source release may deploy.' >&2
             exit 1
           }
           git -C control merge-base --is-ancestor "$TARGET_COMMIT" HEAD || {
@@ -81,6 +81,9 @@ jobs:
           }
 
           ROLE_TRANSPORT='release/src/frontend/project-time-web/src/role-policy-authoritative-transport.js'
+          ROLE_EXECUTION='release/src/backend/ProjectTime.Api/Modules/ScopedRolePolicyResultExecutionCompatibility.cs'
+          ROLE_EXECUTION_TEST='release/tests/ProjectTime.Api.RouteResultExecutionTests/Program.cs'
+          ROLE_EXECUTION_PROJECT='release/tests/ProjectTime.Api.RouteResultExecutionTests/ProjectTime.Api.RouteResultExecutionTests.csproj'
           PUBLIC_ORIGIN='release/src/backend/ProjectTime.Api/Modules/ProjectPulsePublicOriginCompatibility.cs'
           REGISTRAR='release/src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs'
           NGINX='release/deployment/containers/web/default.conf.template'
@@ -88,7 +91,8 @@ jobs:
           MODULE026='release/src/backend/ProjectTime.Api/Modules/CrmErpIntegrationModule.cs'
 
           for required in \
-            "$ROLE_TRANSPORT" "$PUBLIC_ORIGIN" "$REGISTRAR" "$NGINX" "$MODULE013" "$MODULE026" \
+            "$ROLE_TRANSPORT" "$ROLE_EXECUTION" "$ROLE_EXECUTION_TEST" "$ROLE_EXECUTION_PROJECT" \
+            "$PUBLIC_ORIGIN" "$REGISTRAR" "$NGINX" "$MODULE013" "$MODULE026" \
             release/src/backend/ProjectTime.Api/ProjectTime.Api.csproj \
             release/tests/ProjectTime.Api.AuthorizationTests/ProjectTime.Api.AuthorizationTests.csproj \
             release/tests/test-projectpulse-api-startup.sh \
@@ -110,6 +114,17 @@ jobs:
           grep -Fq '/api/runtime/v2/role-policy/catalog' "$ROLE_TRANSPORT"
           grep -Fq '/api/runtime/v2/role-policy/matrix' "$ROLE_TRANSPORT"
           grep -Fq "if (requestMethod(input, init) !== 'GET')" "$ROLE_TRANSPORT"
+
+          grep -Fq 'UseScopedRolePolicyResultExecutionCompatibility' "$REGISTRAR"
+          grep -Fq 'summary" => await SummaryAsync(context)' "$ROLE_EXECUTION"
+          grep -Fq 'catalog" => await CatalogAsync(context)' "$ROLE_EXECUTION"
+          grep -Fq 'versions" => await VersionsAsync(context)' "$ROLE_EXECUTION"
+          grep -Fq 'matrix" => await MatrixAsync(context)' "$ROLE_EXECUTION"
+          grep -Fq 'await result.ExecuteAsync(context);' "$ROLE_EXECUTION"
+          grep -Fq 'X-ProjectPulse-Role-Policy-Execution' "$ROLE_EXECUTION"
+          grep -Fq 'explicit-iresult-v1' "$ROLE_EXECUTION"
+          grep -Fq 'ROLE_POLICY_METHOD_GROUP_EMPTY_200_REPRODUCED=PASS' "$ROLE_EXECUTION_TEST"
+          grep -Fq 'ROLE_POLICY_EXPLICIT_IRESULT_JSON=PASS' "$ROLE_EXECUTION_TEST"
 
           grep -Fq 'UseProjectPulsePublicOriginCompatibility' "$REGISTRAR"
           grep -Fq 'trusted_public_origin_unavailable' "$REGISTRAR"
@@ -140,6 +155,9 @@ jobs:
             cd release
             dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
             dotnet run \
+              --project tests/ProjectTime.Api.RouteResultExecutionTests/ProjectTime.Api.RouteResultExecutionTests.csproj \
+              --configuration Release
+            dotnet run \
               --project tests/ProjectTime.Api.AuthorizationTests/ProjectTime.Api.AuthorizationTests.csproj \
               --configuration Release
             bash tests/test-projectpulse-api-startup.sh
@@ -160,6 +178,7 @@ jobs:
           )
 
           echo "target_commit=$TARGET_COMMIT" >> "$GITHUB_OUTPUT"
+          echo 'ROLE_POLICY_RESULT_EXECUTION_SOURCE_VALIDATION=PASS'
           echo 'SECURITY_ADMIN_REPAIR_SOURCE_VALIDATION=PASS'
 
       - uses: azure/login@v2

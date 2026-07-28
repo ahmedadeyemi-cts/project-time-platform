@@ -5,7 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEPLOY="$ROOT/.github/workflows/projectpulse-deploy-security-admin-repair-test.yml"
 VALIDATE="$ROOT/.github/workflows/validate-security-admin-repair-test-deployment.yml"
 RUNNER="$ROOT/scripts/run-security-admin-repair-test-deployment.sh"
-EXPECTED_RELEASE="845fb2d90affd808d2ec06175afcffa04863abe0"
+EXPECTED_RELEASE="7d21b93d2a5a3e2eb7681cce8662ffb81bf7c01a"
 
 fail() { echo "ERROR: $*" >&2; exit 1; }
 require_file() { [[ -f "$1" ]] || fail "Missing required file: ${1#$ROOT/}"; }
@@ -25,11 +25,20 @@ require "$DEPLOY" 'refs/heads/main'
 require "$DEPLOY" 'environment: test'
 require "$DEPLOY" 'group: projectpulse-deploy-security-admin-repair-test'
 require "$DEPLOY" 'cancel-in-progress: false'
-require "$DEPLOY" 'Only the verified security and admin repair source release may deploy.'
+require "$DEPLOY" 'Only the verified HAR-confirmed role-policy repair source release may deploy.'
 require "$DEPLOY" 'git -C control merge-base --is-ancestor'
 require "$DEPLOY" 'projectpulse-role-policy-authoritative-v3'
 require "$DEPLOY" "requiredCollections: ['actions', 'scopes']"
 require "$DEPLOY" "requiredCollections: ['roles', 'modules', 'grants']"
+require "$DEPLOY" 'ScopedRolePolicyResultExecutionCompatibility.cs'
+require "$DEPLOY" 'ProjectTime.Api.RouteResultExecutionTests.csproj'
+require "$DEPLOY" 'UseScopedRolePolicyResultExecutionCompatibility'
+require "$DEPLOY" 'await result.ExecuteAsync(context);'
+require "$DEPLOY" 'X-ProjectPulse-Role-Policy-Execution'
+require "$DEPLOY" 'explicit-iresult-v1'
+require "$DEPLOY" 'ROLE_POLICY_METHOD_GROUP_EMPTY_200_REPRODUCED=PASS'
+require "$DEPLOY" 'ROLE_POLICY_EXPLICIT_IRESULT_JSON=PASS'
+require "$DEPLOY" 'ROLE_POLICY_RESULT_EXECUTION_SOURCE_VALIDATION=PASS'
 require "$DEPLOY" 'UseProjectPulsePublicOriginCompatibility'
 require "$DEPLOY" 'trusted_public_origin_unavailable'
 require "$DEPLOY" 'ProjectPulse-CRM-ERP-Integration:'
@@ -65,7 +74,9 @@ require "$RUNNER" 'API_SUFFIX="sarapi-${RUN_ID}-${RUN_ATTEMPT}"'
 require "$RUNNER" 'WEB_SUFFIX="sarweb-${RUN_ID}-${RUN_ATTEMPT}"'
 require "$RUNNER" "probe_api role_summary GET '/api/runtime/v2/role-policy/summary' '401,403'"
 require "$RUNNER" "probe_api role_catalog GET '/api/runtime/v2/role-policy/catalog' '401,403'"
+require "$RUNNER" "probe_api role_versions GET '/api/runtime/v2/role-policy/versions' '401,403'"
 require "$RUNNER" "probe_api role_matrix GET '/api/runtime/v2/role-policy/matrix' '401,403'"
+require "$RUNNER" 'ROLE_POLICY_RESULT_EXECUTION_PROTECTED_BOUNDARY=PASS'
 require "$RUNNER" "probe_api module065_sso POST '/api/microsoft-integration/sso-apply-profile' '401,403' '{}'"
 require "$RUNNER" "probe_api module010_preview POST '/api/admin/azure/users/preview' '401,403' '{}'"
 require "$RUNNER" "probe_api module026_providers GET '/api/integrations/026/providers' '401,403'"
@@ -82,6 +93,10 @@ require "$RUNNER" 'Web rollback skipped because another image is active'
 require "$RUNNER" 'API rollback skipped because another image is active'
 require "$RUNNER" '"deploymentType": "api-web-no-migration"'
 require "$RUNNER" '"databaseMutation": false'
+require "$RUNNER" '"harConfirmedFailure": "http-200-zero-byte-role-policy-response"'
+require "$RUNNER" '"rolePolicyResultExecution": "explicit-iresult-v1-source-and-runtime-test-validated"'
+require "$RUNNER" '"rolePolicyProtectedRoutes": "summary-catalog-versions-matrix-auth-boundary-verified"'
+require "$RUNNER" '"rolePolicyAuthenticatedJsonUat": "required-after-deployment"'
 require "$RUNNER" '"credentialValuesChanged": false'
 require "$RUNNER" '"externalProviderCallsPerformedByDeployment": false'
 require "$RUNNER" '"authenticatedFunctionalUat": "required"'
@@ -92,11 +107,13 @@ reject "$RUNNER" 'environment:[[:space:]]*production'
 reject "$RUNNER" 'api\.getbase\.com|graph\.microsoft\.com|smtp\.office365\.com'
 
 require "$VALIDATE" 'name: Validate Security and Admin Repair Test Deployment'
-require "$VALIDATE" 'release/security-admin-repair-test-deployment-*'
+require "$VALIDATE" 'release/repin-role-policy-result-execution-test-*'
 require "$VALIDATE" 'Enforce exact deployment-control scope'
 require "$VALIDATE" 'bash -n scripts/run-security-admin-repair-test-deployment.sh'
 require "$VALIDATE" 'bash -n scripts/validate-security-admin-repair-test-deployment.sh'
 require "$VALIDATE" 'scripts/validate-security-admin-repair-test-deployment.sh'
+require "$VALIDATE" 'ProjectTime.Api.RouteResultExecutionTests.csproj'
+require "$VALIDATE" 'Reproduce zero-byte 200 and validate explicit IResult execution'
 require "$VALIDATE" 'ProjectTime.Api.AuthorizationTests.csproj'
 require "$VALIDATE" 'validate-security-role-policy-public-origin.mjs'
 require "$VALIDATE" 'validate-admin-runtime-stability.mjs'
@@ -113,4 +130,4 @@ reject "$VALIDATE" 'az[[:space:]]+containerapp[[:space:]]+(update|job|create|del
 reject "$VALIDATE" 'environment:[[:space:]]*production'
 reject "$VALIDATE" 'psql|PROJECTPULSE_TEST_DATABASE_URL|PTP_DB_PASSWORD'
 
- echo 'SECURITY_ADMIN_REPAIR_TEST_DEPLOYMENT_GUARD=PASS'
+echo 'SECURITY_ADMIN_REPAIR_TEST_DEPLOYMENT_GUARD=PASS'

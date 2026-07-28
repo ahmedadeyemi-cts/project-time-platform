@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-EXPECTED_RELEASE_COMMIT="845fb2d90affd808d2ec06175afcffa04863abe0"
+EXPECTED_RELEASE_COMMIT="7d21b93d2a5a3e2eb7681cce8662ffb81bf7c01a"
 CONTROL_ROOT="${1:-}"
 RELEASE_ROOT="${2:-}"
 TARGET_COMMIT="${3:-}"
@@ -177,8 +177,10 @@ probe_api health GET '/health' '200'
 probe_api version GET '/api/version' '200'
 probe_api role_summary GET '/api/runtime/v2/role-policy/summary' '401,403'
 probe_api role_catalog GET '/api/runtime/v2/role-policy/catalog' '401,403'
+probe_api role_versions GET '/api/runtime/v2/role-policy/versions' '401,403'
 probe_api role_matrix GET '/api/runtime/v2/role-policy/matrix' '401,403'
 probe_api platform_overview GET '/api/platform-operations/overview' '401,403'
+echo "ROLE_POLICY_RESULT_EXECUTION_PROTECTED_BOUNDARY=PASS"
 
 READY_API="$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" --query 'properties.latestReadyRevisionName' -o tsv --only-show-errors)"
 [[ "$READY_API" == "$API_REVISION" ]] || fail "Unexpected ready API revision: $READY_API"
@@ -249,6 +251,10 @@ cat > "$CONTROL_ROOT/evidence/security-admin-repair-test-deployment.json" <<JSON
   "apiRevision": "$READY_API",
   "webRevision": "$READY_WEB",
   "databaseMutation": false,
+  "harConfirmedFailure": "http-200-zero-byte-role-policy-response",
+  "rolePolicyResultExecution": "explicit-iresult-v1-source-and-runtime-test-validated",
+  "rolePolicyProtectedRoutes": "summary-catalog-versions-matrix-auth-boundary-verified",
+  "rolePolicyAuthenticatedJsonUat": "required-after-deployment",
   "rolePolicyTransport": "authoritative-runtime-v2",
   "trustedPublicOrigin": "https-approved-hosts-fail-closed",
   "module010PreviewRoute": "protected-and-reachable",
