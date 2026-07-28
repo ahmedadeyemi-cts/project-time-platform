@@ -19,6 +19,11 @@ public static class GlobalMailConfigurationModule
         app.UseProjectPulsePublicOriginCompatibility();
         app.UseMicrosoftIntegrationSecurityCompatibility();
         app.UseMicrosoftPublicSsoOriginCompatibility();
+        // The HAR-confirmed failure was an ASP.NET route-handler binding issue:
+        // role-policy Task<IResult> method groups completed as raw RequestDelegate
+        // tasks and returned HTTP 200 with an empty body. Execute those read-only
+        // results explicitly before the historic registrations are reached.
+        app.UseScopedRolePolicyResultExecutionCompatibility();
         app.UseModuleAvailabilityReadContinuityCompatibility();
         app.UseMicrosoftSsoRuntimeCompatibility();
         app.UseMicrosoftSmtpCredentialProjectionCompatibility();
