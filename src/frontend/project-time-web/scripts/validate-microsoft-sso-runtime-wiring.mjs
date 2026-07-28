@@ -21,12 +21,15 @@ const main = read('src/frontend/project-time-web/src/main.jsx');
 const runtimePath = 'src/backend/ProjectTime.Api/Modules/MicrosoftSsoRuntimeCompatibility.cs';
 const servicesPath = 'src/backend/ProjectTime.Api/Modules/MicrosoftServicesRuntimeCompatibility.cs';
 const continuityPath = 'src/backend/ProjectTime.Api/Modules/ModuleAvailabilityReadContinuityCompatibility.cs';
+const publicOriginPath = 'src/backend/ProjectTime.Api/Modules/ProjectPulsePublicOriginCompatibility.cs';
 const runtimeAvailable = exists(runtimePath);
 const servicesAvailable = exists(servicesPath);
 const continuityAvailable = exists(continuityPath);
+const publicOriginAvailable = exists(publicOriginPath);
 const runtime = runtimeAvailable ? read(runtimePath) : '';
 const services = servicesAvailable ? read(servicesPath) : '';
 const continuity = continuityAvailable ? read(continuityPath) : '';
+const publicOrigin = publicOriginAvailable ? read(publicOriginPath) : '';
 
 assert('COMPILED_HANDLER_TENANT', csproj.includes("s/PROJECTPULSE_ENTRA_TENANT_ID/PROJECTPULSE_SSO_TENANT_ID/g"), 'compiled SSO handlers consume the active SSO tenant');
 assert('COMPILED_HANDLER_CLIENT', csproj.includes("s/PROJECTPULSE_ENTRA_CLIENT_ID/PROJECTPULSE_SSO_CLIENT_ID/g"), 'compiled SSO handlers consume the SSO App Registration client ID');
@@ -36,15 +39,20 @@ assert('RUNTIME_REGISTERED', registrar.includes('UseMicrosoftSsoRuntimeCompatibi
   && registrar.includes('MapMicrosoftSsoRuntimeProfileEndpoints')
   && registrar.includes('MapMicrosoftServicesRuntimeProfileEndpoints'),
 'SSO sanitization plus separate SSO and Microsoft services runtime endpoints are registered');
-assert('FORWARDED_PUBLIC_ORIGIN', registrar.includes('UseMicrosoftPublicSsoOriginCompatibility')
-  && registrar.includes('X-Forwarded-Host')
-  && registrar.includes('X-Forwarded-Proto')
-  && registrar.includes('request.Headers["Origin"]')
-  && registrar.includes('request.Headers["Referer"]')
-  && registrar.includes('.onenecklab.com')
-  && registrar.includes('invalid_forwarded_public_origin')
-  && registrar.indexOf('UseMicrosoftPublicSsoOriginCompatibility') < registrar.indexOf('UseMicrosoftSsoRuntimeCompatibility'),
-'Module 065 resolves a trusted public proxy/browser origin before callback validation');
+assert('FORWARDED_PUBLIC_ORIGIN', registrar.includes('UseProjectPulsePublicOriginCompatibility')
+  && registrar.includes('UseMicrosoftPublicSsoOriginCompatibility')
+  && registrar.includes('trusted_public_origin_unavailable')
+  && registrar.indexOf('UseProjectPulsePublicOriginCompatibility') < registrar.indexOf('UseMicrosoftPublicSsoOriginCompatibility')
+  && registrar.indexOf('UseMicrosoftPublicSsoOriginCompatibility') < registrar.indexOf('UseMicrosoftSsoRuntimeCompatibility')
+  && publicOriginAvailable
+  && publicOrigin.includes('X-Forwarded-Host')
+  && publicOrigin.includes('X-Forwarded-Proto')
+  && publicOrigin.includes('request.Headers["Origin"]')
+  && publicOrigin.includes('request.Headers["Referer"]')
+  && publicOrigin.includes('.onenecklab.com')
+  && publicOrigin.includes('.ussignal.com')
+  && publicOrigin.includes('trusted_forwarded_origin'),
+'Module 065 resolves a trusted HTTPS public proxy/browser origin before callback validation');
 assert('IMMEDIATE_ACTIVATION_MOUNTED', main.includes("import './microsoft-sso-runtime-activation.js';"), 'saved Module 065 metadata activation is installed before rendering');
 assert('SAVE_INTERCEPT', activation.includes("DOCUMENT_PATH = '/api/native-administration/065/document'")
   && activation.includes("SSO_APPLY_PATH = '/api/microsoft-integration/sso-apply-profile'")
