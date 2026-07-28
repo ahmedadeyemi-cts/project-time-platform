@@ -42,11 +42,12 @@ const packageJson = JSON.parse(read(paths.package));
 assert('CORE_PROVIDER_CARDS', ['zendesk_sell', 'salesforce', 'servicenow', 'certinia']
   .every((provider) => integrationUi.includes(`${provider}: {`)),
 'Module 026 renders explicit SELL, Salesforce, ServiceNow, and Certinia provider profiles');
-assert('CONSISTENT_PROVIDER_WORKSPACE', integrationUi.includes('One pattern, provider-specific setup')
-  && integrationUi.includes('Saved connections')
+assert('CONSISTENT_PROVIDER_WORKSPACE', integrationUi.includes('Select a connector, then choose Edit')
+  && integrationUi.includes('Built-in and custom platforms')
+  && integrationUi.includes('Edit connection')
   && integrationCss.includes('.crm-erp-platform-grid')
   && integrationCss.includes('.crm-erp-provider-guide'),
-'core platforms share one responsive status/configuration workspace');
+'core platforms share one responsive select, status, edit, configuration, credential, and test workspace');
 assert('OAUTH_AND_API_KEY_PAGES', integrationUi.includes("draft.authModel === 'oauth2'")
   && integrationUi.includes('OAuth authorization URL')
   && integrationUi.includes('OAuth token URL')
@@ -55,9 +56,10 @@ assert('OAUTH_AND_API_KEY_PAGES', integrationUi.includes("draft.authModel === 'o
   && integrationUi.includes('Write-only credential'),
 'authentication-specific fields are displayed only for the selected OAuth 2.0 or API-key mode');
 assert('PROVIDER_TEMPLATE_ACTION', integrationUi.includes('Apply recommended template')
-  && integrationUi.includes('chooseNewProviderTemplate')
-  && integrationUi.includes('Add another platform'),
-'admins can apply built-in defaults or add/save another provider');
+  && integrationUi.includes('applySelectedTemplate')
+  && integrationUi.includes('Add CRM platform')
+  && integrationUi.includes('Add another CRM or ERP platform'),
+'admins can apply built-in defaults or add and continue configuring another provider');
 assert('SELL_MODULE_021_HANDOFF', integrationUi.includes('Module 021 customer sync')
   && integrationUi.includes('Open Module 021 Customer Directory sync'),
 'Module 026 explicitly identifies the SELL connection consumed by Module 021');
@@ -65,8 +67,8 @@ assert('SELL_PUBLIC_ENDPOINTS', integrationUi.includes('https://api.getbase.com/
   && integrationUi.includes('https://api.getbase.com/oauth2/authorize')
   && integrationUi.includes('https://api.getbase.com/oauth2/token'),
 'SELL template uses fixed public HTTPS API and OAuth endpoints');
-assert('CUSTOMER_SYNC_STATUS', customerUi.includes("fetchJson('/api/customers/sell/status')")
-  && customerUi.includes("fetchJson('/api/customers/sell/runs')"),
+assert('CUSTOMER_SYNC_STATUS', customerUi.includes("fetchJson('/api/customers/sell/status'")
+  && customerUi.includes("fetchJson('/api/customers/sell/runs'"),
 'Module 021 reads connection readiness and synchronization history');
 assert('CUSTOMER_SYNC_PREVIEW_IMPORT', customerUi.includes("sendJson('/api/customers/sell/preview'")
   && customerUi.includes("sendJson('/api/customers/sell/import'")
