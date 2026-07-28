@@ -9,6 +9,11 @@ const optionalText = async (path) => existsSync(absolute(path)) ? text(path) : '
 const requireAll = (source, values, label) => {
   for (const value of values) if (!source.includes(value)) throw new Error(`${label} missing contract: ${value}`);
 };
+const requireOneOf = (source, values, label) => {
+  if (!values.some((value) => source.includes(value))) {
+    throw new Error(`${label} missing equivalent contract: ${values.join(' OR ')}`);
+  }
+};
 
 const paths = {
   ui: 'src/frontend/project-time-web/src/RoleAdminDirectoryPanel.jsx',
@@ -60,7 +65,7 @@ requireAll(ui, [
   'Can reopen and unsubmit time for correction',
   'Cannot submit a timesheet on another user’s behalf',
   "actionCode === 'TIME_SUBMIT'",
-  "PTC_DENIED_ACTIONS.has(action.actionCode)",
+  'PTC_DENIED_ACTIONS.has(action.actionCode)',
   "effect: 'DENY'"
 ], 'Module 012 role-first UI');
 
@@ -101,8 +106,13 @@ requireAll(navigation, [
   "actionCode || '').toUpperCase() === 'MODULE_ACCESS'",
   "grantEffect || '').toUpperCase() === 'DENY'",
   "window.location.hash = '#dashboard'",
-  "actorRoles.has('SUPER_ADMINISTRATOR')"
+  'const actualSuperAdministrator = !viewAs &&',
+  "headers['X-ProjectPulse-View-As-User']"
 ], 'No Access navigation enforcement');
+requireOneOf(navigation, [
+  "actorRoles.has('SUPER_ADMINISTRATOR')",
+  "roleSet.has('SUPER_ADMINISTRATOR')"
+], 'Super Administrator navigation bypass');
 
 requireAll(compatibility, [
   "SCOPED_RBAC_CATALOG_PATH = '/api/role-policy/catalog'",

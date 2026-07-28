@@ -1,0 +1,117 @@
+name: Validate Group 1 Navigation and Work Consolidation
+
+on:
+  push:
+    branches:
+      - 'feature/group-1-permission-aware-more-menu-work-consolidation-*'
+  pull_request:
+    paths:
+      - 'src/frontend/project-time-web/src/module-availability-registry.js'
+      - 'src/frontend/project-time-web/src/module-availability-bridge.js'
+      - 'src/frontend/project-time-web/src/permission-aware-more-menu.css'
+      - 'src/frontend/project-time-web/scripts/validate-group-1-navigation-work-consolidation.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-module-012-scoped-role-admin.mjs'
+      - '.github/workflows/group1-navigation-work-consolidation-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify isolated Group 1 scope
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git fetch origin main --no-tags
+          CHANGED="$(git diff --name-only origin/main...HEAD)"
+          printf '%s\n' "$CHANGED"
+
+          ALLOWED='^(\.github/workflows/group1-navigation-work-consolidation-ci\.yml|src/frontend/project-time-web/src/module-availability-registry\.js|src/frontend/project-time-web/src/module-availability-bridge\.js|src/frontend/project-time-web/src/permission-aware-more-menu\.css|src/frontend/project-time-web/scripts/validate-group-1-navigation-work-consolidation\.mjs|src/frontend/project-time-web/scripts/validate-module-012-scoped-role-admin\.mjs)$'
+          UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
+          if [[ -n "$UNEXPECTED" ]]; then
+            echo 'Unexpected Group 1 source scope:' >&2
+            printf '%s\n' "$UNEXPECTED" >&2
+            exit 1
+          fi
+
+          if grep -E '^(database/|src/backend/|\.github/workflows/projectpulse-deploy-|src/frontend/project-time-web/src/(CrmErpIntegrationCenter|CustomerDirectoryCenter|customer-directory-sell-sync|crm-erp-integration-center))' <<<"$CHANGED"; then
+            echo 'Group 1 overlaps a database, deployment, backend, or PR #187 reserved surface.' >&2
+            exit 1
+          fi
+
+          echo 'GROUP1_SOURCE_ISOLATION=PASSED'
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Build ProjectTime API compatibility baseline
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+
+      - name: Check navigation source syntax
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node --check src/frontend/project-time-web/src/module-availability-registry.js
+          node --check src/frontend/project-time-web/src/module-availability-bridge.js
+          node --check src/frontend/project-time-web/scripts/validate-group-1-navigation-work-consolidation.mjs
+          node --check src/frontend/project-time-web/scripts/validate-module-012-scoped-role-admin.mjs
+
+      - name: Validate Group 1 contract
+        working-directory: src/frontend/project-time-web
+        run: node ./scripts/validate-group-1-navigation-work-consolidation.mjs
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Build complete frontend production bundle
+        id: frontend_build
+        continue-on-error: true
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set +e
+          npm run build > group1-frontend-build.log 2>&1
+          STATUS=$?
+          echo "exit_code=$STATUS" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload frontend build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: group1-frontend-build-${{ github.run_id }}-${{ github.run_attempt }}
+          path: src/frontend/project-time-web/group1-frontend-build.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce frontend build result
+        if: always()
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          STATUS='${{ steps.frontend_build.outputs.exit_code }}'
+          if [[ "$STATUS" != '0' ]]; then
+            echo 'Frontend build failed. Last 80 diagnostic lines:' >&2
+            tail -n 80 group1-frontend-build.log >&2
+            exit "$STATUS"
+          fi
+          tail -n 30 group1-frontend-build.log
+          echo 'GROUP1_FRONTEND_BUILD=PASSED'

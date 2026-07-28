@@ -1,0 +1,321 @@
+/* Group 1: permission-aware global More navigation and non-destructive Module 011 retirement. */
+
+a[href="#work-task-builder"],
+button[data-route="work-task-builder"],
+[data-module-number="011"] {
+  display: none !important;
+}
+
+.enterprise-more-navigation {
+  position: relative;
+}
+
+.enterprise-more-dropdown {
+  width: min(720px, calc(100vw - 2rem));
+  max-height: min(76vh, 720px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 0.7rem;
+  border: 1px solid rgba(94, 118, 151, 0.26);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--panel-bg, #ffffff) 96%, #eaf3ff 4%);
+  box-shadow: 0 24px 60px rgba(15, 35, 64, 0.22);
+  scrollbar-gutter: stable;
+}
+
+.projectpulse-more-menu-tools {
+  position: sticky;
+  top: -0.7rem;
+  z-index: 5;
+  display: grid;
+  gap: 0.45rem;
+  margin: -0.7rem -0.7rem 0.7rem;
+  padding: 0.85rem;
+  border-bottom: 1px solid rgba(94, 118, 151, 0.2);
+  background: color-mix(in srgb, var(--panel-bg, #ffffff) 97%, #eaf3ff 3%);
+  backdrop-filter: blur(14px);
+}
+
+.projectpulse-more-menu-tools > label {
+  color: var(--text-primary, #17243b);
+  font-size: 0.76rem;
+  font-weight: 900;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+
+.projectpulse-more-menu-search-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 44px;
+  padding: 0.2rem 0.25rem 0.2rem 0.7rem;
+  border: 1px solid rgba(73, 103, 143, 0.35);
+  border-radius: 13px;
+  background: var(--input-bg, #ffffff);
+  color: var(--text-secondary, #61708a);
+}
+
+.projectpulse-more-menu-search-row:focus-within {
+  border-color: #2878d0;
+  box-shadow: 0 0 0 3px rgba(40, 120, 208, 0.14);
+}
+
+.projectpulse-more-menu-search-row input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text-primary, #17243b);
+  font: inherit;
+}
+
+.projectpulse-more-menu-search-row button {
+  min-height: 34px;
+  border: 0;
+  border-radius: 9px;
+  padding: 0.35rem 0.55rem;
+  background: rgba(40, 120, 208, 0.1);
+  color: #185b9f;
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.projectpulse-more-menu-status {
+  margin: 0;
+  color: var(--text-secondary, #65748b);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.enterprise-more-dropdown[data-permission-evidence="loading"] .enterprise-more-group,
+.enterprise-more-dropdown[data-permission-evidence="unavailable"] .enterprise-more-group,
+.enterprise-more-dropdown[data-permission-evidence="anonymous"] .enterprise-more-group,
+.enterprise-more-group[data-projectpulse-more-group-hidden="true"],
+.enterprise-more-links > a[data-projectpulse-more-search-hidden="true"] {
+  display: none !important;
+}
+
+.enterprise-more-group {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0 0 0.65rem;
+  padding: 0.65rem;
+  border: 1px solid rgba(94, 118, 151, 0.2);
+  border-radius: 14px;
+  background: rgba(247, 250, 255, 0.7);
+}
+
+.enterprise-more-group > strong {
+  padding: 0 0.2rem;
+  color: var(--text-secondary, #566983);
+  font-size: 0.72rem;
+  font-weight: 950;
+  letter-spacing: 0.065em;
+  text-transform: uppercase;
+}
+
+.enterprise-more-links {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.enterprise-more-links > a {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.7rem;
+  min-height: 68px;
+  padding: 0.65rem 0.7rem;
+  border: 1px solid rgba(94, 118, 151, 0.2);
+  border-radius: 12px;
+  background: var(--panel-bg, #ffffff);
+  color: var(--text-primary, #17243b);
+  text-decoration: none;
+  box-shadow: 0 5px 16px rgba(15, 35, 64, 0.04);
+}
+
+.enterprise-more-links > a:hover,
+.enterprise-more-links > a:focus-visible,
+.enterprise-more-links > a.active {
+  border-color: #2878d0;
+  background: color-mix(in srgb, var(--panel-bg, #ffffff) 91%, #dcecff 9%);
+  box-shadow: 0 0 0 3px rgba(40, 120, 208, 0.11);
+  outline: none;
+}
+
+.projectpulse-more-module-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 76px;
+  min-height: 28px;
+  padding: 0.25rem 0.42rem;
+  border-radius: 999px;
+  background: #e7f1ff;
+  color: #165797;
+  font-size: 0.68rem;
+  font-weight: 950;
+  letter-spacing: 0.045em;
+  white-space: nowrap;
+}
+
+.projectpulse-more-link-copy {
+  min-width: 0;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.projectpulse-more-link-copy strong {
+  overflow: hidden;
+  color: inherit;
+  font-size: 0.86rem;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+}
+
+.projectpulse-more-link-copy small {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--text-secondary, #65748b);
+  font-size: 0.72rem;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.projectpulse-more-menu-empty {
+  display: none;
+  margin: 0.35rem;
+  padding: 1rem;
+  border: 1px dashed rgba(94, 118, 151, 0.35);
+  border-radius: 13px;
+  background: rgba(247, 250, 255, 0.72);
+  color: var(--text-secondary, #65748b);
+  text-align: center;
+  line-height: 1.45;
+}
+
+.projectpulse-more-menu-empty[data-visible="true"] {
+  display: block;
+}
+
+.projectpulse-work-management-retirement-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0 0 1rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid #9ec5ed;
+  border-radius: 15px;
+  background: #edf6ff;
+  color: #173c64;
+}
+
+.projectpulse-work-management-retirement-notice > div:first-child {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.projectpulse-work-management-retirement-notice > div:last-child {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.projectpulse-work-management-retirement-notice a,
+.projectpulse-work-management-retirement-notice button {
+  border: 0;
+  border-radius: 9px;
+  padding: 0.5rem 0.65rem;
+  background: #ffffff;
+  color: #185b9f;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 850;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.projectpulse-work-management-handoff-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.7rem;
+  margin: 0.8rem 0 1rem;
+}
+
+.projectpulse-work-management-handoff-actions > a {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.85rem;
+  border: 1px solid #bed6ee;
+  border-radius: 14px;
+  background: #f5faff;
+  color: #173c64;
+  text-decoration: none;
+}
+
+.projectpulse-work-management-handoff-actions > a:hover,
+.projectpulse-work-management-handoff-actions > a:focus-visible {
+  border-color: #2878d0;
+  box-shadow: 0 0 0 3px rgba(40, 120, 208, 0.12);
+  outline: none;
+}
+
+.projectpulse-work-management-handoff-actions span {
+  color: #1764aa;
+  font-size: 0.7rem;
+  font-weight: 950;
+  letter-spacing: 0.055em;
+}
+
+.projectpulse-work-management-handoff-actions small {
+  color: #60718a;
+  line-height: 1.4;
+}
+
+[data-theme="dark"] .enterprise-more-dropdown,
+.dark .enterprise-more-dropdown {
+  border-color: rgba(148, 163, 184, 0.28);
+  background: #111c2d;
+}
+
+[data-theme="dark"] .projectpulse-more-menu-tools,
+.dark .projectpulse-more-menu-tools,
+[data-theme="dark"] .enterprise-more-group,
+.dark .enterprise-more-group {
+  background: rgba(17, 28, 45, 0.97);
+}
+
+[data-theme="dark"] .enterprise-more-links > a,
+.dark .enterprise-more-links > a {
+  background: #18263a;
+}
+
+[data-theme="dark"] .projectpulse-more-module-number,
+.dark .projectpulse-more-module-number {
+  background: #153d65;
+  color: #cfe8ff;
+}
+
+@media (max-width: 760px) {
+  .enterprise-more-dropdown {
+    width: min(96vw, 560px);
+    max-height: 78vh;
+  }
+
+  .enterprise-more-links,
+  .projectpulse-work-management-handoff-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .projectpulse-work-management-retirement-notice {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
