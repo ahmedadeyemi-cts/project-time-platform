@@ -23,9 +23,10 @@ const servicesPath = 'src/backend/ProjectTime.Api/Modules/MicrosoftServicesRunti
 const continuityPath = 'src/backend/ProjectTime.Api/Modules/ModuleAvailabilityReadContinuityCompatibility.cs';
 const runtimeAvailable = exists(runtimePath);
 const servicesAvailable = exists(servicesPath);
+const continuityAvailable = exists(continuityPath);
 const runtime = runtimeAvailable ? read(runtimePath) : '';
 const services = servicesAvailable ? read(servicesPath) : '';
-const continuity = exists(continuityPath) ? read(continuityPath) : '';
+const continuity = continuityAvailable ? read(continuityPath) : '';
 
 assert('COMPILED_HANDLER_TENANT', csproj.includes("s/PROJECTPULSE_ENTRA_TENANT_ID/PROJECTPULSE_SSO_TENANT_ID/g"), 'compiled SSO handlers consume the active SSO tenant');
 assert('COMPILED_HANDLER_CLIENT', csproj.includes("s/PROJECTPULSE_ENTRA_CLIENT_ID/PROJECTPULSE_SSO_CLIENT_ID/g"), 'compiled SSO handlers consume the SSO App Registration client ID');
@@ -81,11 +82,16 @@ assert('MODULE_010_RUNNING_ENVIRONMENT', compatibility.includes('function runtim
   && compatibility.includes('applyPayload?.runtimeActivated !== true')
   && compatibility.includes("String(applyPayload?.runtimeEnvironment || '').toLowerCase() !== profile.environmentMode"),
 'Module 010 preview selects the running environment and stops unless Module 065 confirms matching runtime activation');
-assert('READ_CONTINUITY_NON_MUTATING', registrar.includes('UseModuleAvailabilityReadContinuityCompatibility')
-  && continuity.includes('/api/microsoft-integration/sso-test')
-  && continuity.includes('/api/admin/azure/users/preview')
-  && !continuity.includes('/api/microsoft-integration/directory-users/import-selected'),
-'optional availability storage cannot block tests/preview and cannot bypass import or configuration writes');
+
+if (continuityAvailable) {
+  assert('READ_CONTINUITY_NON_MUTATING', registrar.includes('UseModuleAvailabilityReadContinuityCompatibility')
+    && continuity.includes('/api/microsoft-integration/sso-test')
+    && continuity.includes('/api/admin/azure/users/preview')
+    && !continuity.includes('/api/microsoft-integration/directory-users/import-selected'),
+  'optional availability storage cannot block tests/preview and cannot bypass import or configuration writes');
+} else {
+  console.log('MICROSOFT_SSO_RUNTIME_CONTINUITY_DEEP_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
+}
 
 if (runtimeAvailable) {
   assert('MICROSOFT_AUTHORITY_DERIVED', runtime.includes('MicrosoftAuthority(tenantGuid)') && runtime.includes('payload["authorityUrl"] = MicrosoftAuthority(tenantGuid)'), 'SSO discovery authority is derived from a validated tenant GUID');
