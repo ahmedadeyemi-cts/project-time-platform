@@ -7,9 +7,9 @@ namespace ProjectTime.Api.Modules;
 
 /// <summary>
 /// Graph-backed Module 010 directory synchronization owned by Module 065.
-/// Manual Sync Now and the automatic schedule use the same guarded runtime,
-/// transaction, role boundary, sync-run history, and environment-specific
-/// services credentials. No browser-supplied credential is accepted or returned.
+/// Manual Sync Now and the automatic schedule use the same environment-specific
+/// profile, governed role boundary, transaction, audit trail, and run history.
+/// Browser requests never contain or receive Microsoft credentials.
 /// </summary>
 public static class MicrosoftDirectorySyncModule
 {
@@ -21,8 +21,8 @@ public static class MicrosoftDirectorySyncModule
     private const int MaximumGraphUsers = 20000;
     private static readonly TimeSpan InitialWorkerDelay = TimeSpan.FromSeconds(45);
     private static readonly TimeSpan WorkerPollInterval = TimeSpan.FromMinutes(5);
-    private static readonly TimeSpan GraphTimeout = TimeSpan.FromSeconds(30);
-    private static readonly SemaphoreSlim SyncGate = new(1, 1);
+    private static readonly TimeSpan GraphTimeout = TimeSpan.FromSeconds(90);
+    private static readonly SemaphoreSlim LocalSyncGate = new(1, 1);
     private static int _workerStarted;
     private static DateTimeOffset? _activeRunStartedAt;
 
@@ -53,11 +53,8 @@ public static class MicrosoftDirectorySyncModule
         app.Lifetime.ApplicationStarted.Register(() =>
         {
             if (Interlocked.Exchange(ref _workerStarted, 1) != 0) return;
-            _ = Task.Run(() => SchedulerLoopAsync(
-                app.Services,
-                app.Lifetime.ApplicationStopping));
+            _ = Task.Run(() => SchedulerLoopAsync(app.Services, app.Lifetime.ApplicationStopping));
         });
-
         return app;
     }
 
@@ -104,11 +101,11 @@ public static class MicrosoftDirectorySyncModule
         }
 
         var runtimeEnvironment = MicrosoftEnvironmentRuntimeResolver.Resolve(context);
-        var requestedEnvironment = MicrosoftEnvironmentRuntimeResolver.Normalize(
-            request?.EnvironmentMode);
+        var requestedEnvironment = MicrosoftEnvironmentRuntimeResolver.Normalize(request?.EnvironmentMode);
         var environmentMode = string.IsNullOrWhiteSpace(requestedEnvironment)
             ? runtimeEnvironment
             : requestedEnvironment;
+
         if (string.IsNullOrWhiteSpace(environmentMode))
         {
             return Results.Json(new
@@ -131,7 +128,7 @@ public static class MicrosoftDirectorySyncModule
             }, statusCode: StatusCodes.Status409Conflict);
         }
 
-        var result = await TryRunAsync(
+        var result = await RunAsync(
             context.RequestServices,
             environmentMode,
             "manual",
@@ -140,8 +137,7 @@ public static class MicrosoftDirectorySyncModule
             context.TraceIdentifier,
             force: true,
             context.RequestAborted);
-
-        return ResultFor(result);
+        return ToHttpResult(result);
     }
 
     private static async Task<IResult> GetStatusAsync(HttpContext context)
@@ -175,10 +171,6 @@ public static class MicrosoftDirectorySyncModule
         }
 
         var last = await ReadLastSyncAsync(connection, context.RequestAborted);
-        var nextScheduledAt = profile.Enabled
-            ? (last.LastSyncAt ?? DateTimeOffset.UtcNow).AddHours(profile.FrequencyHours)
-            : null;
-
         return Results.Ok(new
         {
             module = ModuleNumber,
@@ -190,8 +182,10 @@ public static class MicrosoftDirectorySyncModule
             lastSyncAt = last.LastSyncAt,
             lastSyncStatus = last.Status,
             lastSyncMessage = last.Message,
-            nextScheduledAt,
-            syncInProgress = SyncGate.CurrentCount == 0,
+            nextScheduledAt = profile.Enabled
+                ? last.LastSyncAt?.AddHours(profile.FrequencyHours) ?? DateTimeOffset.UtcNow
+                : null,
+            syncInProgress = LocalSyncGate.CurrentCount == 0,
             activeRunStartedAt = _activeRunStartedAt,
             workerStarted = Volatile.Read(ref _workerStarted) == 1,
             configuredRole = profile.DefaultRoleCode,
@@ -207,7 +201,6 @@ public static class MicrosoftDirectorySyncModule
     {
         var logger = services.GetRequiredService<ILoggerFactory>()
             .CreateLogger("MicrosoftDirectorySyncScheduler");
-
         try
         {
             await Task.Delay(InitialWorkerDelay, stoppingToken);
@@ -229,21 +222,13 @@ public static class MicrosoftDirectorySyncModule
                     {
                         await using var connection = new NpgsqlConnection(connectionString);
                         await connection.OpenAsync(stoppingToken);
-                        var profile = await ReadProfileAsync(
-                            connection,
-                            environmentMode,
-                            stoppingToken);
-                        var last = await ReadLastSyncAsync(
-                            connection,
-                            stoppingToken);
-
+                        var profile = await ReadProfileAsync(connection, environmentMode, stoppingToken);
+                        var last = await ReadLastSyncAsync(connection, stoppingToken);
                         if (profile?.Enabled == true && IsDue(profile, last.LastSyncAt))
                         {
-                            var actor = await ResolveAutomaticActorAsync(
-                                connection,
-                                stoppingToken);
+                            var actor = await ResolveAutomaticActorAsync(connection, stoppingToken);
                             var correlationId = $"entra-auto-{Guid.NewGuid():N}";
-                            var result = await TryRunAsync(
+                            var result = await RunAsync(
                                 services,
                                 environmentMode,
                                 "automatic",
@@ -252,7 +237,6 @@ public static class MicrosoftDirectorySyncModule
                                 correlationId,
                                 force: false,
                                 stoppingToken);
-
                             logger.LogInformation(
                                 "Module 010 automatic {Environment} directory sync finished with {Status}; correlation {CorrelationId}.",
                                 environmentMode,
@@ -284,7 +268,7 @@ public static class MicrosoftDirectorySyncModule
         }
     }
 
-    private static async Task<SyncResult> TryRunAsync(
+    private static async Task<SyncResult> RunAsync(
         IServiceProvider services,
         string environmentMode,
         string trigger,
@@ -294,23 +278,26 @@ public static class MicrosoftDirectorySyncModule
         bool force,
         CancellationToken cancellationToken)
     {
-        if (!await SyncGate.WaitAsync(0, cancellationToken))
+        if (!await LocalSyncGate.WaitAsync(0, cancellationToken))
         {
-            return SyncResult.Conflict(
+            return SyncResult.CreateConflict(
                 environmentMode,
                 trigger,
                 correlationId,
                 "directory_sync_already_running",
-                "Another Entra directory synchronization is already running.");
+                "Another Entra directory synchronization is already running.",
+                alreadyRunning: true);
         }
 
         _activeRunStartedAt = DateTimeOffset.UtcNow;
+        NpgsqlConnection? connection = null;
+        var distributedLock = false;
         try
         {
             var connectionString = BuildConnectionString();
             if (string.IsNullOrWhiteSpace(connectionString))
             {
-                return SyncResult.Unavailable(
+                return SyncResult.CreateUnavailable(
                     environmentMode,
                     trigger,
                     correlationId,
@@ -318,15 +305,37 @@ public static class MicrosoftDirectorySyncModule
                     "Directory synchronization storage is unavailable.");
             }
 
-            await using var connection = new NpgsqlConnection(connectionString);
+            connection = new NpgsqlConnection(connectionString);
             await connection.OpenAsync(cancellationToken);
-            var profile = await ReadProfileAsync(
+            distributedLock = await TryAcquireDistributedLockAsync(
                 connection,
                 environmentMode,
                 cancellationToken);
+            if (!distributedLock)
+            {
+                return SyncResult.CreateConflict(
+                    environmentMode,
+                    trigger,
+                    correlationId,
+                    "directory_sync_already_running",
+                    "Another ProjectPulse API instance is already synchronizing this Entra environment.",
+                    alreadyRunning: true);
+            }
+
+            if (!await RequiredSchemaExistsAsync(connection, cancellationToken))
+            {
+                return SyncResult.CreateUnavailable(
+                    environmentMode,
+                    trigger,
+                    correlationId,
+                    "directory_sync_schema_unavailable",
+                    "The Module 010 user, role, or sync-run schema is unavailable.");
+            }
+
+            var profile = await ReadProfileAsync(connection, environmentMode, cancellationToken);
             if (profile is null)
             {
-                return SyncResult.Conflict(
+                return SyncResult.CreateConflict(
                     environmentMode,
                     trigger,
                     correlationId,
@@ -335,7 +344,7 @@ public static class MicrosoftDirectorySyncModule
             }
             if (!force && !profile.Enabled)
             {
-                return SyncResult.Skipped(
+                return SyncResult.CreateSkipped(
                     environmentMode,
                     trigger,
                     correlationId,
@@ -346,7 +355,7 @@ public static class MicrosoftDirectorySyncModule
             var last = await ReadLastSyncAsync(connection, cancellationToken);
             if (!force && !IsDue(profile, last.LastSyncAt))
             {
-                return SyncResult.Skipped(
+                return SyncResult.CreateSkipped(
                     environmentMode,
                     trigger,
                     correlationId,
@@ -357,18 +366,17 @@ public static class MicrosoftDirectorySyncModule
             var governedRole = NormalizeRole(profile.DefaultRoleCode);
             if (!AllowedImportRoles.Contains(governedRole))
             {
-                return SyncResult.Conflict(
+                return SyncResult.CreateConflict(
                     environmentMode,
                     trigger,
                     correlationId,
                     "governed_import_role_not_allowed",
                     "The configured import role is privileged or unsupported. Select an approved non-administrative role in Module 065.");
             }
-
             if (!Guid.TryParse(profile.TenantId, out var tenantId)
                 || !Guid.TryParse(profile.ClientId, out _))
             {
-                return SyncResult.Conflict(
+                return SyncResult.CreateConflict(
                     environmentMode,
                     trigger,
                     correlationId,
@@ -376,12 +384,10 @@ public static class MicrosoftDirectorySyncModule
                     "The Microsoft tenant and services application IDs must be valid GUIDs.");
             }
 
-            var clientSecret = ResolveServicesSecret(
-                profile.EnvironmentMode,
-                profile.TenantKey);
+            var clientSecret = ResolveServicesSecret(profile.EnvironmentMode, profile.TenantKey);
             if (string.IsNullOrWhiteSpace(clientSecret))
             {
-                return SyncResult.Conflict(
+                return SyncResult.CreateConflict(
                     environmentMode,
                     trigger,
                     correlationId,
@@ -407,7 +413,6 @@ public static class MicrosoftDirectorySyncModule
                     profile.ClientId,
                     clientSecret,
                     cancellationToken);
-
                 var effectiveActor = actorUserId is not null
                     ? new SyncActor(actorUserId, actorEmail)
                     : await ResolveAutomaticActorAsync(connection, cancellationToken);
@@ -423,7 +428,7 @@ public static class MicrosoftDirectorySyncModule
                     cancellationToken);
 
                 return new SyncResult(
-                    persistence.Failed == 0
+                    persistence.FailedCount == 0
                         ? "directory_sync_completed"
                         : "directory_sync_completed_with_failures",
                     environmentMode,
@@ -431,15 +436,15 @@ public static class MicrosoftDirectorySyncModule
                     correlationId,
                     runId,
                     graphUsers.Count,
-                    persistence.Imported,
-                    persistence.Updated,
-                    persistence.Skipped,
-                    persistence.Failed,
+                    persistence.ImportedCount,
+                    persistence.UpdatedCount,
+                    persistence.SkippedCount,
+                    persistence.FailedCount,
                     true,
                     false,
-                    persistence.Failed == 0
-                        ? $"Entra synchronization completed: {persistence.Imported} new, {persistence.Updated} refreshed, and {persistence.Skipped} skipped user(s)."
-                        : $"Entra synchronization completed with failures: {persistence.Imported} new, {persistence.Updated} refreshed, {persistence.Skipped} skipped, and {persistence.Failed} failed user(s).",
+                    persistence.FailedCount == 0
+                        ? $"Entra synchronization completed: {persistence.ImportedCount} new, {persistence.UpdatedCount} refreshed, and {persistence.SkippedCount} skipped user(s)."
+                        : $"Entra synchronization completed with failures: {persistence.ImportedCount} new, {persistence.UpdatedCount} refreshed, {persistence.SkippedCount} skipped, and {persistence.FailedCount} failed user(s).",
                     StatusCodes.Status200OK);
             }
             catch (SyncFailure failure)
@@ -451,8 +456,8 @@ public static class MicrosoftDirectorySyncModule
                     failure.SafeMessage,
                     environmentMode,
                     correlationId,
-                    cancellationToken);
-                return SyncResult.Failed(
+                    CancellationToken.None);
+                return SyncResult.CreateFailure(
                     environmentMode,
                     trigger,
                     correlationId,
@@ -470,7 +475,6 @@ public static class MicrosoftDirectorySyncModule
                         trigger,
                         exception.GetType().Name,
                         correlationId);
-
                 await FailRunAsync(
                     connection,
                     runId,
@@ -478,8 +482,8 @@ public static class MicrosoftDirectorySyncModule
                     "ProjectPulse could not complete the Entra directory synchronization.",
                     environmentMode,
                     correlationId,
-                    cancellationToken);
-                return SyncResult.Failed(
+                    CancellationToken.None);
+                return SyncResult.CreateFailure(
                     environmentMode,
                     trigger,
                     correlationId,
@@ -491,8 +495,13 @@ public static class MicrosoftDirectorySyncModule
         }
         finally
         {
+            if (distributedLock && connection is not null)
+            {
+                await ReleaseDistributedLockAsync(connection, environmentMode);
+            }
+            if (connection is not null) await connection.DisposeAsync();
             _activeRunStartedAt = null;
-            SyncGate.Release();
+            LocalSyncGate.Release();
         }
     }
 
@@ -521,7 +530,10 @@ public static class MicrosoftDirectorySyncModule
             })
         };
         using var tokenResponse = await client.SendAsync(tokenRequest, timeout.Token);
-        var tokenRaw = await ReadBoundedStringAsync(tokenResponse.Content, 2 * 1024 * 1024, timeout.Token);
+        var tokenRaw = await ReadBoundedStringAsync(
+            tokenResponse.Content,
+            2 * 1024 * 1024,
+            timeout.Token);
         if (!tokenResponse.IsSuccessStatusCode)
         {
             throw new SyncFailure(
@@ -569,7 +581,10 @@ public static class MicrosoftDirectorySyncModule
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
             using var response = await client.SendAsync(request, timeout.Token);
-            var body = await ReadBoundedStringAsync(response.Content, 8 * 1024 * 1024, timeout.Token);
+            var body = await ReadBoundedStringAsync(
+                response.Content,
+                8 * 1024 * 1024,
+                timeout.Token);
             if (!response.IsSuccessStatusCode)
             {
                 throw new SyncFailure(
@@ -608,7 +623,6 @@ public static class MicrosoftDirectorySyncModule
                 "Microsoft Graph returned more pages than the controlled synchronization limit.",
                 StatusCodes.Status409Conflict);
         }
-
         return users;
     }
 
@@ -624,12 +638,18 @@ public static class MicrosoftDirectorySyncModule
         CancellationToken cancellationToken)
     {
         var userColumns = await ReadColumnsAsync(connection, "app_users", cancellationToken);
-        var assignmentColumns = await ReadColumnsAsync(connection, "app_user_role_assignments", cancellationToken);
-        if (!userColumns.Contains("user_id") || !userColumns.Contains("email"))
+        var assignmentColumns = await ReadColumnsAsync(
+            connection,
+            "app_user_role_assignments",
+            cancellationToken);
+        if (!userColumns.Contains("user_id")
+            || !userColumns.Contains("email")
+            || !assignmentColumns.Contains("user_id")
+            || !assignmentColumns.Contains("app_role_id"))
         {
             throw new SyncFailure(
-                "app_users_schema_unavailable",
-                "The ProjectPulse user directory schema is unavailable for synchronization.",
+                "directory_user_schema_unavailable",
+                "The ProjectPulse user or role-assignment schema is unavailable for synchronization.",
                 StatusCodes.Status503ServiceUnavailable);
         }
 
@@ -653,7 +673,11 @@ public static class MicrosoftDirectorySyncModule
         {
             var user = users[index];
             var savepoint = $"module010_sync_{index}";
-            await ExecuteControlAsync(connection, transaction, $"SAVEPOINT {savepoint};", cancellationToken);
+            await ExecuteControlAsync(
+                connection,
+                transaction,
+                $"SAVEPOINT {savepoint};",
+                cancellationToken);
             try
             {
                 if (string.IsNullOrWhiteSpace(user.Email)
@@ -661,7 +685,11 @@ public static class MicrosoftDirectorySyncModule
                     || !seen.Add(First(user.ObjectId, user.Email)))
                 {
                     skipped++;
-                    await ExecuteControlAsync(connection, transaction, $"RELEASE SAVEPOINT {savepoint};", cancellationToken);
+                    await ExecuteControlAsync(
+                        connection,
+                        transaction,
+                        $"RELEASE SAVEPOINT {savepoint};",
+                        cancellationToken);
                     continue;
                 }
 
@@ -672,8 +700,7 @@ public static class MicrosoftDirectorySyncModule
                     profile.SourceProvider,
                     user.JobTitle,
                     user.Department,
-                    user.OfficeLocation,
-                    user.AccountEnabled);
+                    user.OfficeLocation);
                 var existing = await FindExistingUserAsync(
                     connection,
                     transaction,
@@ -716,17 +743,31 @@ public static class MicrosoftDirectorySyncModule
                     actor.UserId,
                     defaultRoleCode,
                     cancellationToken);
-                await ExecuteControlAsync(connection, transaction, $"RELEASE SAVEPOINT {savepoint};", cancellationToken);
+                await ExecuteControlAsync(
+                    connection,
+                    transaction,
+                    $"RELEASE SAVEPOINT {savepoint};",
+                    cancellationToken);
             }
             catch
             {
-                await ExecuteControlAsync(connection, transaction, $"ROLLBACK TO SAVEPOINT {savepoint};", cancellationToken);
+                await ExecuteControlAsync(
+                    connection,
+                    transaction,
+                    $"ROLLBACK TO SAVEPOINT {savepoint};",
+                    cancellationToken);
                 failed++;
-                await ExecuteControlAsync(connection, transaction, $"RELEASE SAVEPOINT {savepoint};", cancellationToken);
+                await ExecuteControlAsync(
+                    connection,
+                    transaction,
+                    $"RELEASE SAVEPOINT {savepoint};",
+                    cancellationToken);
             }
         }
 
-        var status = failed == 0 ? "completed_graph_sync" : "completed_graph_sync_with_failures";
+        var status = failed == 0
+            ? "completed_graph_sync"
+            : "completed_graph_sync_with_failures";
         var message = $"{MicrosoftEnvironmentRuntimeResolver.Display(profile.EnvironmentMode)} Graph synchronization: {imported} new, {updated} refreshed, {skipped} skipped, {failed} failed.";
         await CompleteRunAsync(
             connection,
@@ -739,23 +780,50 @@ public static class MicrosoftDirectorySyncModule
             skipped,
             failed,
             message,
-            profile.EnvironmentMode,
             correlationId,
             cancellationToken);
-        await WriteAuditAsync(
+
+        var auditSavepoint = "module010_sync_audit";
+        await ExecuteControlAsync(
             connection,
             transaction,
-            actor,
-            profile,
-            trigger,
-            correlationId,
-            imported,
-            updated,
-            skipped,
-            failed,
+            $"SAVEPOINT {auditSavepoint};",
             cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
+        try
+        {
+            await WriteAuditAsync(
+                connection,
+                transaction,
+                actor,
+                profile,
+                trigger,
+                correlationId,
+                imported,
+                updated,
+                skipped,
+                failed,
+                cancellationToken);
+            await ExecuteControlAsync(
+                connection,
+                transaction,
+                $"RELEASE SAVEPOINT {auditSavepoint};",
+                cancellationToken);
+        }
+        catch
+        {
+            await ExecuteControlAsync(
+                connection,
+                transaction,
+                $"ROLLBACK TO SAVEPOINT {auditSavepoint};",
+                cancellationToken);
+            await ExecuteControlAsync(
+                connection,
+                transaction,
+                $"RELEASE SAVEPOINT {auditSavepoint};",
+                cancellationToken);
+        }
 
+        await transaction.CommitAsync(cancellationToken);
         return new(imported, updated, skipped, failed);
     }
 
@@ -792,8 +860,12 @@ public static class MicrosoftDirectorySyncModule
             );
             """, connection);
         command.Parameters.AddWithValue("run_id", runId);
-        command.Parameters.AddWithValue("actor_email", First(actorEmail, $"system:module010-{trigger}"));
-        command.Parameters.AddWithValue("message", $"{MicrosoftEnvironmentRuntimeResolver.Display(environmentMode)} {trigger} Graph synchronization started. Correlation {correlationId}.");
+        command.Parameters.AddWithValue(
+            "actor_email",
+            First(actorEmail, $"system:module010-{trigger}"));
+        command.Parameters.AddWithValue(
+            "message",
+            $"{MicrosoftEnvironmentRuntimeResolver.Display(environmentMode)} {trigger} Graph synchronization started. Correlation {correlationId}.");
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
@@ -808,7 +880,6 @@ public static class MicrosoftDirectorySyncModule
         int skipped,
         int failed,
         string message,
-        string environmentMode,
         string correlationId,
         CancellationToken cancellationToken)
     {
@@ -864,12 +935,14 @@ public static class MicrosoftDirectorySyncModule
                     updated_at = NOW();
                 """, connection);
             command.Parameters.AddWithValue("run_id", runId);
-            command.Parameters.AddWithValue("message", $"{MicrosoftEnvironmentRuntimeResolver.Display(environmentMode)} Graph synchronization failed ({code}). {safeMessage} Correlation {correlationId}.");
+            command.Parameters.AddWithValue(
+                "message",
+                $"{MicrosoftEnvironmentRuntimeResolver.Display(environmentMode)} Graph synchronization failed ({code}). {safeMessage} Correlation {correlationId}.");
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
         catch
         {
-            // The controlled failure remains the response when optional run evidence cannot update.
+            // The controlled failure remains the response when run evidence cannot update.
         }
     }
 
@@ -887,48 +960,43 @@ public static class MicrosoftDirectorySyncModule
         CancellationToken cancellationToken)
     {
         if (actor.UserId is null) return;
-        try
+        await using var command = new NpgsqlCommand("""
+            INSERT INTO microsoft_integration_audit_events (
+                actor_user_id,
+                actor_email,
+                action_code,
+                tenant_key,
+                outcome_code,
+                correlation_id,
+                event_metadata
+            ) VALUES (
+                @actor,
+                @email,
+                'DIRECTORY_USERS_SYNCHRONIZED',
+                @tenant_key,
+                @outcome,
+                @correlation,
+                CAST(@metadata AS jsonb)
+            );
+            """, connection, transaction);
+        command.Parameters.AddWithValue("actor", actor.UserId.Value);
+        command.Parameters.AddWithValue("email", actor.Email);
+        command.Parameters.AddWithValue("tenant_key", profile.TenantKey);
+        command.Parameters.AddWithValue(
+            "outcome",
+            failed == 0 ? "success" : "completed_with_failures");
+        command.Parameters.AddWithValue("correlation", correlationId);
+        command.Parameters.AddWithValue("metadata", JsonSerializer.Serialize(new
         {
-            await using var command = new NpgsqlCommand("""
-                INSERT INTO microsoft_integration_audit_events (
-                    actor_user_id,
-                    actor_email,
-                    action_code,
-                    tenant_key,
-                    outcome_code,
-                    correlation_id,
-                    event_metadata
-                ) VALUES (
-                    @actor,
-                    @email,
-                    'DIRECTORY_USERS_SYNCHRONIZED',
-                    @tenant_key,
-                    @outcome,
-                    @correlation,
-                    CAST(@metadata AS jsonb)
-                );
-                """, connection, transaction);
-            command.Parameters.AddWithValue("actor", actor.UserId.Value);
-            command.Parameters.AddWithValue("email", actor.Email);
-            command.Parameters.AddWithValue("tenant_key", profile.TenantKey);
-            command.Parameters.AddWithValue("outcome", failed == 0 ? "success" : "completed_with_failures");
-            command.Parameters.AddWithValue("correlation", correlationId);
-            command.Parameters.AddWithValue("metadata", JsonSerializer.Serialize(new
-            {
-                trigger,
-                profile.EnvironmentMode,
-                imported,
-                updated,
-                skipped,
-                failed,
-                secretValuesReturned = false
-            }));
-            await command.ExecuteNonQueryAsync(cancellationToken);
-        }
-        catch (PostgresException exception) when (exception.SqlState is "42P01" or "42703")
-        {
-            // Optional audit table is not available in every compatibility database.
-        }
+            trigger,
+            profile.EnvironmentMode,
+            imported,
+            updated,
+            skipped,
+            failed,
+            secretValuesReturned = false
+        }));
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private static async Task<SyncProfile?> ReadProfileAsync(
@@ -959,12 +1027,13 @@ public static class MicrosoftDirectorySyncModule
                 JsonString(tenant, "environmentMode"));
             if (!mode.Equals(environmentMode, StringComparison.OrdinalIgnoreCase)) continue;
             if (!TryProperty(tenant, "services", out var services)) services = default;
-
             var graphScopes = First(
                 JsonString(services, "graphScopes"),
                 JsonString(tenant, "graphScopes"));
             var scopes = graphScopes
-                .Split(new[] { ' ', ',', ';', '\r', '\n', '\t' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Split(
+                    new[] { ' ', ',', ';', '\r', '\n', '\t' },
+                    StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
             if (!scopes.Contains("Directory.Read.All") || !scopes.Contains("User.Read.All"))
                 return null;
@@ -974,13 +1043,15 @@ public static class MicrosoftDirectorySyncModule
                 First(JsonString(tenant, "key"), JsonString(tenant, "tenantKey")),
                 JsonString(tenant, "tenantId"),
                 First(JsonString(services, "clientId"), JsonString(tenant, "clientId")),
-                JsonBool(tenant, "directorySyncEnabled") ?? JsonBool(tenant, "syncEnabled") ?? false,
+                JsonBool(tenant, "directorySyncEnabled")
+                    ?? JsonBool(tenant, "syncEnabled")
+                    ?? false,
                 Math.Clamp(JsonInt(tenant, "syncFrequencyHours") ?? 24, 1, 168),
                 NormalizeRole(First(JsonString(tenant, "defaultRoleCode"), "ENGINEERING")),
-                First(JsonString(tenant, "sourceProvider"), mode == "production" ? "ENTRA_ID" : "ENTRA_ID_TEST"),
-                graphScopes);
+                First(
+                    JsonString(tenant, "sourceProvider"),
+                    mode == "production" ? "ENTRA_ID" : "ENTRA_ID_TEST"));
         }
-
         return null;
     }
 
@@ -991,13 +1062,15 @@ public static class MicrosoftDirectorySyncModule
         try
         {
             await using var command = new NpgsqlCommand("""
-                SELECT last_sync_at, COALESCE(last_sync_status,''), COALESCE(last_sync_message,'')
+                SELECT last_sync_at,
+                       COALESCE(last_sync_status,''),
+                       COALESCE(last_sync_message,'')
                 FROM azure_entra_settings
-                ORDER BY created_at
                 LIMIT 1;
                 """, connection);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-            if (!await reader.ReadAsync(cancellationToken)) return new(null, string.Empty, string.Empty);
+            if (!await reader.ReadAsync(cancellationToken))
+                return new(null, string.Empty, string.Empty);
             return new(
                 reader.IsDBNull(0) ? null : reader.GetFieldValue<DateTimeOffset>(0),
                 reader.GetString(1),
@@ -1010,7 +1083,8 @@ public static class MicrosoftDirectorySyncModule
     }
 
     private static bool IsDue(SyncProfile profile, DateTimeOffset? lastSyncAt) =>
-        lastSyncAt is null || DateTimeOffset.UtcNow >= lastSyncAt.Value.AddHours(profile.FrequencyHours);
+        lastSyncAt is null
+        || DateTimeOffset.UtcNow >= lastSyncAt.Value.AddHours(profile.FrequencyHours);
 
     private static async Task<SyncActor> ResolveAutomaticActorAsync(
         NpgsqlConnection connection,
@@ -1030,7 +1104,7 @@ public static class MicrosoftDirectorySyncModule
                 WHERE user_record.is_active = TRUE
                   AND upper(role.role_code) IN ('SUPER_ADMINISTRATOR','ADMINISTRATOR')
                 ORDER BY CASE WHEN upper(role.role_code)='SUPER_ADMINISTRATOR' THEN 0 ELSE 1 END,
-                         user_record.created_at
+                         lower(user_record.email)
                 LIMIT 1;
                 """, connection);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -1073,7 +1147,8 @@ public static class MicrosoftDirectorySyncModule
             await using var connection = new NpgsqlConnection(connectionString);
             await connection.OpenAsync(context.RequestAborted);
             await using var command = new NpgsqlCommand("""
-                SELECT COALESCE(role.role_code,''), COALESCE(permission.permission_code,'')
+                SELECT COALESCE(role.role_code,''),
+                       COALESCE(permission.permission_code,'')
                 FROM app_user_role_assignments assignment
                 JOIN app_roles role
                   ON role.app_role_id=assignment.app_role_id
@@ -1095,7 +1170,8 @@ public static class MicrosoftDirectorySyncModule
                 if (!reader.IsDBNull(1)) permissions.Add(reader.GetString(1));
             }
 
-            var administrator = roles.Contains("SUPER_ADMINISTRATOR") || roles.Contains("ADMINISTRATOR");
+            var administrator = roles.Contains("SUPER_ADMINISTRATOR")
+                || roles.Contains("ADMINISTRATOR");
             if (!administrator && !permissions.Any(AcceptedPermissions.Contains))
             {
                 return new(null, Results.Json(new
@@ -1106,7 +1182,9 @@ public static class MicrosoftDirectorySyncModule
                 }, statusCode: StatusCodes.Status403Forbidden));
             }
 
-            return new(new(userId.Value, ActualEmail(context), connectionString), null);
+            return new(
+                new(userId.Value, ActualEmail(context), connectionString),
+                null);
         }
         catch
         {
@@ -1119,27 +1197,76 @@ public static class MicrosoftDirectorySyncModule
         }
     }
 
+    private static async Task<bool> RequiredSchemaExistsAsync(
+        NpgsqlConnection connection,
+        CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand("""
+            SELECT to_regclass('public.app_users') IS NOT NULL
+               AND to_regclass('public.app_roles') IS NOT NULL
+               AND to_regclass('public.app_user_role_assignments') IS NOT NULL
+               AND to_regclass('public.azure_entra_settings') IS NOT NULL
+               AND to_regclass('public.azure_entra_sync_runs') IS NOT NULL;
+            """, connection);
+        return Convert.ToBoolean(await command.ExecuteScalarAsync(cancellationToken));
+    }
+
+    private static async Task<bool> TryAcquireDistributedLockAsync(
+        NpgsqlConnection connection,
+        string environmentMode,
+        CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(
+            "SELECT pg_try_advisory_lock(hashtext(@lock_name));",
+            connection);
+        command.Parameters.AddWithValue(
+            "lock_name",
+            $"projectpulse:module010:entra-sync:{environmentMode}");
+        return Convert.ToBoolean(await command.ExecuteScalarAsync(cancellationToken));
+    }
+
+    private static async Task ReleaseDistributedLockAsync(
+        NpgsqlConnection connection,
+        string environmentMode)
+    {
+        try
+        {
+            await using var command = new NpgsqlCommand(
+                "SELECT pg_advisory_unlock(hashtext(@lock_name));",
+                connection);
+            command.Parameters.AddWithValue(
+                "lock_name",
+                $"projectpulse:module010:entra-sync:{environmentMode}");
+            await command.ExecuteScalarAsync(CancellationToken.None);
+        }
+        catch
+        {
+            // Closing the session also releases PostgreSQL advisory locks.
+        }
+    }
+
     private static async Task<Guid?> ResolveRoleIdAsync(
         NpgsqlConnection connection,
         string roleCode,
         CancellationToken cancellationToken)
     {
-        var candidates = roleCode.Equals("ENGINEERING", StringComparison.OrdinalIgnoreCase)
-            ? new[] { "ENGINEERING", "ENGINEER" }
-            : roleCode.Equals("ENGINEER", StringComparison.OrdinalIgnoreCase)
-                ? new[] { "ENGINEER", "ENGINEERING" }
-                : new[] { roleCode };
+        var candidates = roleCode.Equals("ENGINEER", StringComparison.OrdinalIgnoreCase)
+            ? new[] { "ENGINEER", "ENGINEERING" }
+            : new[] { roleCode };
         await using var command = new NpgsqlCommand("""
             SELECT app_role_id
             FROM app_roles
             WHERE upper(role_code)=ANY(@role_codes)
               AND is_active=TRUE
-            ORDER BY display_order
             LIMIT 1;
             """, connection);
-        command.Parameters.AddWithValue("role_codes", candidates.Select(value => value.ToUpperInvariant()).ToArray());
+        command.Parameters.AddWithValue(
+            "role_codes",
+            candidates.Select(value => value.ToUpperInvariant()).ToArray());
         var value = await command.ExecuteScalarAsync(cancellationToken);
-        return value is Guid id ? id : Guid.TryParse(Convert.ToString(value), out var parsed) ? parsed : null;
+        return value is Guid id
+            ? id
+            : Guid.TryParse(Convert.ToString(value), out var parsed) ? parsed : null;
     }
 
     private static async Task<HashSet<string>> ReadColumnsAsync(
@@ -1167,16 +1294,21 @@ public static class MicrosoftDirectorySyncModule
         CancellationToken cancellationToken)
     {
         var predicates = new List<string> { "lower(email)=lower(@email)" };
-        if (columns.Contains("entra_object_id") && !string.IsNullOrWhiteSpace(candidate.ObjectId))
+        if (columns.Contains("entra_object_id")
+            && !string.IsNullOrWhiteSpace(candidate.ObjectId))
             predicates.Add("entra_object_id=@entra_object_id");
+
         await using var command = new NpgsqlCommand(
             $"SELECT user_id FROM app_users WHERE {string.Join(" OR ", predicates)} LIMIT 1;",
             connection,
             transaction);
         command.Parameters.AddWithValue("email", candidate.Email);
-        if (predicates.Count > 1) command.Parameters.AddWithValue("entra_object_id", candidate.ObjectId);
+        if (predicates.Count > 1)
+            command.Parameters.AddWithValue("entra_object_id", candidate.ObjectId);
         var value = await command.ExecuteScalarAsync(cancellationToken);
-        return value is Guid id ? id : Guid.TryParse(Convert.ToString(value), out var parsed) ? parsed : null;
+        return value is Guid id
+            ? id
+            : Guid.TryParse(Convert.ToString(value), out var parsed) ? parsed : null;
     }
 
     private static async Task InsertUserAsync(
@@ -1188,9 +1320,15 @@ public static class MicrosoftDirectorySyncModule
         string roleCode,
         CancellationToken cancellationToken)
     {
-        var values = UserValues(columns, candidate, roleCode, true);
+        var values = UserValues(columns, candidate, roleCode, includeCreatedAt: true);
         values["user_id"] = userId;
-        await ExecuteInsertAsync(connection, transaction, "app_users", columns, values, cancellationToken);
+        await ExecuteInsertAsync(
+            connection,
+            transaction,
+            "app_users",
+            columns,
+            values,
+            cancellationToken);
     }
 
     private static async Task UpdateUserAsync(
@@ -1201,9 +1339,17 @@ public static class MicrosoftDirectorySyncModule
         ImportCandidate candidate,
         CancellationToken cancellationToken)
     {
-        var values = UserValues(columns, candidate, string.Empty, false);
+        var values = UserValues(columns, candidate, string.Empty, includeCreatedAt: false);
         values.Remove("email");
-        await ExecuteUpdateAsync(connection, transaction, "app_users", "user_id", userId, columns, values, cancellationToken);
+        await ExecuteUpdateAsync(
+            connection,
+            transaction,
+            "app_users",
+            "user_id",
+            userId,
+            columns,
+            values,
+            cancellationToken);
     }
 
     private static Dictionary<string, object> UserValues(
@@ -1224,16 +1370,20 @@ public static class MicrosoftDirectorySyncModule
             ["updated_at"] = DateTimeOffset.UtcNow
         };
         if (includeCreatedAt) values["created_at"] = DateTimeOffset.UtcNow;
-        if (!string.IsNullOrWhiteSpace(candidate.ObjectId)) values["entra_object_id"] = candidate.ObjectId;
-        if (!string.IsNullOrWhiteSpace(candidate.JobTitle)) values["job_title"] = candidate.JobTitle;
+        if (!string.IsNullOrWhiteSpace(candidate.ObjectId))
+            values["entra_object_id"] = candidate.ObjectId;
+        if (!string.IsNullOrWhiteSpace(candidate.JobTitle))
+            values["job_title"] = candidate.JobTitle;
         if (!string.IsNullOrWhiteSpace(candidate.Department))
         {
             values["department_name"] = candidate.Department;
             values["department"] = candidate.Department;
         }
-        if (!string.IsNullOrWhiteSpace(candidate.OfficeLocation)) values["office_location"] = candidate.OfficeLocation;
+        if (!string.IsNullOrWhiteSpace(candidate.OfficeLocation))
+            values["office_location"] = candidate.OfficeLocation;
         if (!string.IsNullOrWhiteSpace(roleCode)) values["role_name"] = roleCode;
-        return values.Where(item => columns.Contains(item.Key))
+        return values
+            .Where(item => columns.Contains(item.Key))
             .ToDictionary(item => item.Key, item => item.Value, StringComparer.OrdinalIgnoreCase);
     }
 
@@ -1247,7 +1397,6 @@ public static class MicrosoftDirectorySyncModule
         string roleCode,
         CancellationToken cancellationToken)
     {
-        if (!columns.Contains("user_id") || !columns.Contains("app_role_id")) return;
         await using (var exists = new NpgsqlCommand("""
             SELECT EXISTS (
                 SELECT 1
@@ -1280,7 +1429,13 @@ public static class MicrosoftDirectorySyncModule
             values["assigned_by_user_id"] = actorUserId.Value;
             values["created_by_user_id"] = actorUserId.Value;
         }
-        await ExecuteInsertAsync(connection, transaction, "app_user_role_assignments", columns, values, cancellationToken);
+        await ExecuteInsertAsync(
+            connection,
+            transaction,
+            "app_user_role_assignments",
+            columns,
+            values,
+            cancellationToken);
     }
 
     private static async Task ExecuteInsertAsync(
@@ -1299,7 +1454,8 @@ public static class MicrosoftDirectorySyncModule
             $"INSERT INTO {QuoteIdentifier(table)} ({string.Join(", ", names)}) VALUES ({string.Join(", ", parameters)});",
             connection,
             transaction);
-        for (var index = 0; index < included.Count; index++) command.Parameters.AddWithValue($"p{index}", included[index].Value);
+        for (var index = 0; index < included.Count; index++)
+            command.Parameters.AddWithValue($"p{index}", included[index].Value);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
@@ -1313,14 +1469,20 @@ public static class MicrosoftDirectorySyncModule
         Dictionary<string, object> values,
         CancellationToken cancellationToken)
     {
-        var included = values.Where(item => columns.Contains(item.Key) && !item.Key.Equals(keyColumn, StringComparison.OrdinalIgnoreCase)).ToList();
+        var included = values
+            .Where(item => columns.Contains(item.Key)
+                && !item.Key.Equals(keyColumn, StringComparison.OrdinalIgnoreCase))
+            .ToList();
         if (included.Count == 0) return;
-        var assignments = included.Select((item, index) => $"{QuoteIdentifier(item.Key)}=@p{index}").ToArray();
+        var assignments = included
+            .Select((item, index) => $"{QuoteIdentifier(item.Key)}=@p{index}")
+            .ToArray();
         await using var command = new NpgsqlCommand(
             $"UPDATE {QuoteIdentifier(table)} SET {string.Join(", ", assignments)} WHERE {QuoteIdentifier(keyColumn)}=@key;",
             connection,
             transaction);
-        for (var index = 0; index < included.Count; index++) command.Parameters.AddWithValue($"p{index}", included[index].Value);
+        for (var index = 0; index < included.Count; index++)
+            command.Parameters.AddWithValue($"p{index}", included[index].Value);
         command.Parameters.AddWithValue("key", keyValue);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
@@ -1346,10 +1508,15 @@ public static class MicrosoftDirectorySyncModule
             ? "PROJECTPULSE_ENTRA_PRODUCTION_CLIENT_SECRET"
             : "PROJECTPULSE_ENTRA_TEST_CLIENT_SECRET";
         return First(
-            Environment.GetEnvironmentVariable($"PROJECTPULSE_MICROSOFT_TENANT_{token}_CLIENT_SECRET"),
+            Environment.GetEnvironmentVariable(
+                $"PROJECTPULSE_MICROSOFT_TENANT_{token}_CLIENT_SECRET"),
             Environment.GetEnvironmentVariable(modeName),
-            activeMode == environmentMode ? Environment.GetEnvironmentVariable("PROJECTPULSE_ENTRA_CLIENT_SECRET") : string.Empty,
-            activeMode == environmentMode ? Environment.GetEnvironmentVariable("PROJECTPULSE_M365_CLIENT_SECRET") : string.Empty);
+            activeMode == environmentMode
+                ? Environment.GetEnvironmentVariable("PROJECTPULSE_ENTRA_CLIENT_SECRET")
+                : string.Empty,
+            activeMode == environmentMode
+                ? Environment.GetEnvironmentVariable("PROJECTPULSE_M365_CLIENT_SECRET")
+                : string.Empty);
     }
 
     private static IReadOnlySet<string> ReadTokenRoles(string accessToken)
@@ -1357,15 +1524,24 @@ public static class MicrosoftDirectorySyncModule
         try
         {
             var segments = accessToken.Split('.');
-            if (segments.Length < 2) return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (segments.Length < 2)
+                return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var payload = segments[1].Replace('-', '+').Replace('_', '/');
-            payload = payload.PadRight(payload.Length + ((4 - payload.Length % 4) % 4), '=');
-            using var document = JsonDocument.Parse(Encoding.UTF8.GetString(Convert.FromBase64String(payload)));
+            payload = payload.PadRight(
+                payload.Length + ((4 - payload.Length % 4) % 4),
+                '=');
+            using var document = JsonDocument.Parse(
+                Encoding.UTF8.GetString(Convert.FromBase64String(payload)));
             if (!document.RootElement.TryGetProperty("roles", out var roles))
                 return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            return roles.ValueKind == JsonValueKind.Array
-                ? roles.EnumerateArray().Select(item => item.GetString() ?? string.Empty).Where(value => !string.IsNullOrWhiteSpace(value)).ToHashSet(StringComparer.OrdinalIgnoreCase)
-                : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (roles.ValueKind == JsonValueKind.Array)
+            {
+                return roles.EnumerateArray()
+                    .Select(item => item.GetString() ?? string.Empty)
+                    .Where(value => !string.IsNullOrWhiteSpace(value))
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            }
+            return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         }
         catch
         {
@@ -1383,7 +1559,7 @@ public static class MicrosoftDirectorySyncModule
         var buffer = new byte[8192];
         while (true)
         {
-            var read = await stream.ReadAsync(buffer, cancellationToken);
+            var read = await stream.ReadAsync(buffer.AsMemory(), cancellationToken);
             if (read == 0) break;
             if (memory.Length + read > maximumBytes)
             {
@@ -1422,7 +1598,9 @@ public static class MicrosoftDirectorySyncModule
         return new NpgsqlConnectionStringBuilder
         {
             Host = host,
-            Port = int.TryParse(Environment.GetEnvironmentVariable("PTP_DB_PORT"), out var port) ? port : 5432,
+            Port = int.TryParse(
+                Environment.GetEnvironmentVariable("PTP_DB_PORT"),
+                out var port) ? port : 5432,
             Database = database,
             Username = username,
             Password = password,
@@ -1437,13 +1615,21 @@ public static class MicrosoftDirectorySyncModule
         var origin = context.Request.Headers.Origin.ToString();
         if (string.IsNullOrWhiteSpace(origin)) return true;
         return ProjectPulsePublicOriginCompatibility.TryOrigin(origin, context, out var parsed)
-            && parsed.Host.Equals(context.Request.Host.Host, StringComparison.OrdinalIgnoreCase)
-            && parsed.Scheme.Equals(context.Request.Scheme, StringComparison.OrdinalIgnoreCase);
+            && parsed.Host.Equals(
+                context.Request.Host.Host,
+                StringComparison.OrdinalIgnoreCase)
+            && parsed.Scheme.Equals(
+                context.Request.Scheme,
+                StringComparison.OrdinalIgnoreCase);
     }
 
     private static Guid? ActualSessionUserId(HttpContext context)
     {
-        foreach (var key in new[] { "ProjectPulseActualUserId", "ProjectPulseSessionUserId" })
+        foreach (var key in new[]
+                 {
+                     "ProjectPulseActualUserId",
+                     "ProjectPulseSessionUserId"
+                 })
         {
             if (!context.Items.TryGetValue(key, out var value)) continue;
             if (value is Guid userId) return userId;
@@ -1454,10 +1640,15 @@ public static class MicrosoftDirectorySyncModule
 
     private static string ActualEmail(HttpContext context)
     {
-        foreach (var key in new[] { "ProjectPulseActualEmail", "ProjectPulseSessionEmail" })
+        foreach (var key in new[]
+                 {
+                     "ProjectPulseActualEmail",
+                     "ProjectPulseSessionEmail"
+                 })
         {
             if (!context.Items.TryGetValue(key, out var value)) continue;
-            if (!string.IsNullOrWhiteSpace(value?.ToString())) return value!.ToString()!.Trim().ToLowerInvariant();
+            if (!string.IsNullOrWhiteSpace(value?.ToString()))
+                return value!.ToString()!.Trim().ToLowerInvariant();
         }
         return "unknown";
     }
@@ -1476,22 +1667,25 @@ public static class MicrosoftDirectorySyncModule
     private static string QuoteIdentifier(string identifier)
     {
         if (string.IsNullOrWhiteSpace(identifier)
-            || identifier.Any(character => !(char.IsAsciiLetterOrDigit(character) || character == '_')))
+            || identifier.Any(character =>
+                !(char.IsAsciiLetterOrDigit(character) || character == '_')))
             throw new InvalidOperationException("unsafe_identifier");
         return $"\"{identifier}\"";
     }
 
-    private static bool TryProperty(JsonElement element, string name, out JsonElement value)
+    private static bool TryProperty(
+        JsonElement element,
+        string name,
+        out JsonElement value)
     {
         if (element.ValueKind == JsonValueKind.Object)
         {
             foreach (var property in element.EnumerateObject())
             {
-                if (property.Name.Equals(name, StringComparison.OrdinalIgnoreCase))
-                {
-                    value = property.Value;
-                    return true;
-                }
+                if (!property.Name.Equals(name, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                value = property.Value;
+                return true;
             }
         }
         value = default;
@@ -1499,26 +1693,29 @@ public static class MicrosoftDirectorySyncModule
     }
 
     private static string JsonString(JsonElement element, string name) =>
-        TryProperty(element, name, out var value) && value.ValueKind == JsonValueKind.String
+        TryProperty(element, name, out var value)
+        && value.ValueKind == JsonValueKind.String
             ? value.GetString()?.Trim() ?? string.Empty
             : string.Empty;
 
     private static bool? JsonBool(JsonElement element, string name) =>
-        TryProperty(element, name, out var value) && value.ValueKind is JsonValueKind.True or JsonValueKind.False
+        TryProperty(element, name, out var value)
+        && value.ValueKind is JsonValueKind.True or JsonValueKind.False
             ? value.GetBoolean()
             : null;
 
     private static int? JsonInt(JsonElement element, string name) =>
-        TryProperty(element, name, out var value) && value.TryGetInt32(out var parsed)
+        TryProperty(element, name, out var value)
+        && value.TryGetInt32(out var parsed)
             ? parsed
             : null;
 
     private static string First(params string?[] values) =>
-        values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim() ?? string.Empty;
+        values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim()
+        ?? string.Empty;
 
-    private static IResult ResultFor(SyncResult result)
-    {
-        var payload = new
+    private static IResult ToHttpResult(SyncResult result) =>
+        Results.Json(new
         {
             module = ModuleNumber,
             status = result.Status,
@@ -1527,17 +1724,15 @@ public static class MicrosoftDirectorySyncModule
             correlationId = result.CorrelationId,
             syncRunId = result.RunId,
             usersSeen = result.UsersSeen,
-            usersImported = result.Imported,
-            usersUpdated = result.Updated,
-            usersSkipped = result.Skipped,
-            usersFailed = result.Failed,
+            usersImported = result.ImportedCount,
+            usersUpdated = result.UpdatedCount,
+            usersSkipped = result.SkippedCount,
+            usersFailed = result.FailedCount,
             transactionCommitted = result.TransactionCommitted,
             alreadyRunning = result.AlreadyRunning,
             secretValuesReturned = false,
             result.Message
-        };
-        return Results.Json(payload, statusCode: result.HttpStatus);
-    }
+        }, statusCode: result.HttpStatus);
 
     private sealed record SyncRequest(string? EnvironmentMode);
     private sealed record AccessOutcome(AccessContext? Context, IResult? Failure);
@@ -1552,8 +1747,7 @@ public static class MicrosoftDirectorySyncModule
         bool Enabled,
         int FrequencyHours,
         string DefaultRoleCode,
-        string SourceProvider,
-        string GraphScopes);
+        string SourceProvider);
     private sealed record ImportCandidate(
         string Email,
         string DisplayName,
@@ -1561,9 +1755,12 @@ public static class MicrosoftDirectorySyncModule
         string SourceProvider,
         string JobTitle,
         string Department,
-        string OfficeLocation,
-        bool AccountEnabled);
-    private sealed record PersistenceResult(int Imported, int Updated, int Skipped, int Failed);
+        string OfficeLocation);
+    private sealed record PersistenceResult(
+        int ImportedCount,
+        int UpdatedCount,
+        int SkippedCount,
+        int FailedCount);
 
     private sealed record DirectoryUser(
         string ObjectId,
@@ -1576,9 +1773,11 @@ public static class MicrosoftDirectorySyncModule
     {
         internal static DirectoryUser From(JsonElement element)
         {
-            var mail = JsonString(element, "mail");
-            var upn = JsonString(element, "userPrincipalName");
-            var email = First(mail, upn).Trim().ToLowerInvariant();
+            var email = First(
+                JsonString(element, "mail"),
+                JsonString(element, "userPrincipalName"))
+                .Trim()
+                .ToLowerInvariant();
             return new(
                 JsonString(element, "id"),
                 email.Contains('@', StringComparison.Ordinal) ? email : string.Empty,
@@ -1612,22 +1811,104 @@ public static class MicrosoftDirectorySyncModule
         string CorrelationId,
         Guid? RunId,
         int UsersSeen,
-        int Imported,
-        int Updated,
-        int Skipped,
-        int Failed,
+        int ImportedCount,
+        int UpdatedCount,
+        int SkippedCount,
+        int FailedCount,
         bool TransactionCommitted,
         bool AlreadyRunning,
         string Message,
         int HttpStatus)
     {
-        internal static SyncResult Conflict(string environment, string trigger, string correlation, string status, string message) =>
-            new(status, environment, trigger, correlation, null, 0, 0, 0, 0, 0, false, status == "directory_sync_already_running", message, StatusCodes.Status409Conflict);
-        internal static SyncResult Unavailable(string environment, string trigger, string correlation, string status, string message) =>
-            new(status, environment, trigger, correlation, null, 0, 0, 0, 0, 0, false, false, message, StatusCodes.Status503ServiceUnavailable);
-        internal static SyncResult Skipped(string environment, string trigger, string correlation, string status, string message) =>
-            new(status, environment, trigger, correlation, null, 0, 0, 0, 0, 0, false, false, message, StatusCodes.Status200OK);
-        internal static SyncResult Failed(string environment, string trigger, string correlation, Guid runId, string status, string message, int httpStatus) =>
-            new(status, environment, trigger, correlation, runId, 0, 0, 0, 0, 0, false, false, message, httpStatus);
+        internal static SyncResult CreateConflict(
+            string environment,
+            string trigger,
+            string correlation,
+            string status,
+            string message,
+            bool alreadyRunning = false) =>
+            new(
+                status,
+                environment,
+                trigger,
+                correlation,
+                null,
+                0,
+                0,
+                0,
+                0,
+                0,
+                false,
+                alreadyRunning,
+                message,
+                StatusCodes.Status409Conflict);
+
+        internal static SyncResult CreateUnavailable(
+            string environment,
+            string trigger,
+            string correlation,
+            string status,
+            string message) =>
+            new(
+                status,
+                environment,
+                trigger,
+                correlation,
+                null,
+                0,
+                0,
+                0,
+                0,
+                0,
+                false,
+                false,
+                message,
+                StatusCodes.Status503ServiceUnavailable);
+
+        internal static SyncResult CreateSkipped(
+            string environment,
+            string trigger,
+            string correlation,
+            string status,
+            string message) =>
+            new(
+                status,
+                environment,
+                trigger,
+                correlation,
+                null,
+                0,
+                0,
+                0,
+                0,
+                0,
+                false,
+                false,
+                message,
+                StatusCodes.Status200OK);
+
+        internal static SyncResult CreateFailure(
+            string environment,
+            string trigger,
+            string correlation,
+            Guid runId,
+            string status,
+            string message,
+            int httpStatus) =>
+            new(
+                status,
+                environment,
+                trigger,
+                correlation,
+                runId,
+                0,
+                0,
+                0,
+                0,
+                0,
+                false,
+                false,
+                message,
+                httpStatus);
     }
 }
