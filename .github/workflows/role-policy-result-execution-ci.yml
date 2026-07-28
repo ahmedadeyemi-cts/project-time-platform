@@ -9,6 +9,7 @@ on:
       - 'src/backend/ProjectTime.Api/Modules/ScopedRolePolicyResultExecutionCompatibility.cs'
       - 'src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs'
       - 'tests/ProjectTime.Api.RouteResultExecutionTests/**'
+      - '.github/workflows/security-role-policy-public-origin-ci.yml'
       - '.github/workflows/role-policy-result-execution-ci.yml'
 
 permissions:
@@ -34,7 +35,7 @@ jobs:
           mapfile -t CHANGED < <(git diff --name-only origin/main...HEAD)
           printf '%s\n' "${CHANGED[@]}"
 
-          ALLOWED='^(\.github/workflows/role-policy-result-execution-ci\.yml|src/backend/ProjectTime.Api/Modules/(GlobalMailConfigurationModule|ScopedRolePolicyResultExecutionCompatibility)\.cs|tests/ProjectTime.Api.RouteResultExecutionTests/(ProjectTime.Api.RouteResultExecutionTests\.csproj|Program\.cs))$'
+          ALLOWED='^(\.github/workflows/(role-policy-result-execution-ci|security-role-policy-public-origin-ci)\.yml|src/backend/ProjectTime.Api/Modules/(GlobalMailConfigurationModule|ScopedRolePolicyResultExecutionCompatibility)\.cs|tests/ProjectTime.Api.RouteResultExecutionTests/(ProjectTime.Api.RouteResultExecutionTests\.csproj|Program\.cs))$'
           UNEXPECTED="$(printf '%s\n' "${CHANGED[@]}" | grep -Ev "$ALLOWED" || true)"
           if [[ -n "$UNEXPECTED" ]]; then
             echo 'Unexpected role-policy result-execution source scope:' >&2
