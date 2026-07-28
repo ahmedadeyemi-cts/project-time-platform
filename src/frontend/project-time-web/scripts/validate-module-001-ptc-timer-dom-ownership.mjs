@@ -85,9 +85,9 @@ requireAll(slotInjector, [
   'module001-active-timer-recovery-host',
   'module001-ptc-time-steward-host',
   'module001-enhancement-view-host',
-  'runtimeDomInsertion=0'
+  'runtimeDomInsertion=0',
+  'The retired runtime-created Module 001 toolbar host must not be present.'
 ], 'React-owned Module 001 slots');
-rejectAll(slotInjector, ['module001-toolbar-host'], 'retired Module 001 toolbar portal');
 
 requireAll(moreInjector, [
   'PROJECTPULSE_REACT_OWNED_MORE_MENU',
