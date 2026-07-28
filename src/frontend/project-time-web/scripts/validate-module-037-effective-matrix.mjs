@@ -18,7 +18,7 @@ const [ui, model, css, legacyBackend, dynamicBackend] = await Promise.all([
   text('src/frontend/project-time-web/src/role-permission-matrix-model.js'),
   text('src/frontend/project-time-web/src/role-permission-matrix-v2.css'),
   optionalText('src/backend/ProjectTime.Api/Modules/ScopedRolePolicyModule.cs'),
-  text('src/backend/ProjectTime.Api/Modules/DynamicRbacAdministrationModule.cs')
+  optionalText('src/backend/ProjectTime.Api/Modules/DynamicRbacAdministrationModule.cs')
 ]);
 
 requireAll(ui, [
@@ -103,22 +103,26 @@ requireAll(css, [
   '.rpm-detail-overlay'
 ], 'Module 037 styling');
 
-requireAll(dynamicBackend, [
-  '"/api/rbac/v1/matrix"',
-  'DynamicRbacMatrixAsync',
-  'fixedModuleCountRequired = false',
-  'readOnly = true',
-  'writeEndpoints = Array.Empty<string>()',
-  'superAdministratorFullControl = true',
-  'legacyFallback = unconfigured',
-  'No explicit RBAC decision exists',
-  'roles.Count == 0 || modules.Count == 0 || version is null'
-], 'Dynamic Module 037 backend');
-rejectAll(dynamicBackend, [
-  'modules.Count != 70',
-  'moduleCount == 70',
-  'Expected 12 roles and 70 modules'
-], 'Dynamic Module 037 backend fixed-count gate');
+if (dynamicBackend) {
+  requireAll(dynamicBackend, [
+    '"/api/rbac/v1/matrix"',
+    'DynamicRbacMatrixAsync',
+    'fixedModuleCountRequired = false',
+    'readOnly = true',
+    'writeEndpoints = Array.Empty<string>()',
+    'superAdministratorFullControl = true',
+    'legacyFallback = unconfigured',
+    'No explicit RBAC decision exists',
+    'roles.Count == 0 || modules.Count == 0 || version is null'
+  ], 'Dynamic Module 037 backend');
+  rejectAll(dynamicBackend, [
+    'modules.Count != 70',
+    'moduleCount == 70',
+    'Expected 12 roles and 70 modules'
+  ], 'Dynamic Module 037 backend fixed-count gate');
+} else {
+  console.log('MODULE_037_DYNAMIC_BACKEND_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
+}
 
 if (legacyBackend) {
   requireAll(legacyBackend, [
@@ -128,6 +132,8 @@ if (legacyBackend) {
     'writeEndpoints = Array.Empty<string>()',
     'legacyAuthorizationPreserved = true'
   ], 'Legacy Module 037 compatibility backend');
+} else {
+  console.log('MODULE_037_LEGACY_BACKEND_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
 }
 
 for (const forbidden of [
