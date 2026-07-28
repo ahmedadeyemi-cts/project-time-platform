@@ -1,0 +1,175 @@
+name: Validate Module 064 Automatic Provider Health
+
+on:
+  push:
+    branches:
+      - 'fix/module-064-automatic-provider-health-routing-*'
+  pull_request:
+    paths:
+      - 'src/backend/ProjectTime.Api/Ai/ProjectPulseAiHealthRegistry.cs'
+      - 'src/backend/ProjectTime.Api/Ai/ProjectPulseAiHealthMonitor.cs'
+      - 'src/backend/ProjectTime.Api/Ai/ProjectPulseAiRouter.cs'
+      - 'src/backend/ProjectTime.Api/Ai/ProjectPulseAiSecretStore.cs'
+      - 'src/backend/ProjectTime.Api/Modules/AiProviderConfigurationModule.cs'
+      - 'src/frontend/project-time-web/src/AiProviderConfigurationCenter.jsx'
+      - 'src/frontend/project-time-web/src/ai-provider-configuration-center.css'
+      - 'src/frontend/project-time-web/scripts/validate-module-064-shared-ai.mjs'
+      - '.github/workflows/module064-automatic-provider-health-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify isolated Module 064 scope
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git fetch origin main --no-tags
+          CHANGED="$(git diff --name-only origin/main...HEAD)"
+          printf '%s\n' "$CHANGED"
+
+          ALLOWED='^(\.github/workflows/module064-automatic-provider-health-ci\.yml|src/backend/ProjectTime.Api/Ai/ProjectPulseAiHealthRegistry\.cs|src/backend/ProjectTime.Api/Ai/ProjectPulseAiHealthMonitor\.cs|src/backend/ProjectTime.Api/Ai/ProjectPulseAiRouter\.cs|src/backend/ProjectTime.Api/Ai/ProjectPulseAiSecretStore\.cs|src/backend/ProjectTime.Api/Modules/AiProviderConfigurationModule\.cs|src/frontend/project-time-web/src/AiProviderConfigurationCenter\.jsx|src/frontend/project-time-web/src/ai-provider-configuration-center\.css|src/frontend/project-time-web/scripts/validate-module-064-shared-ai\.mjs)$'
+          UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
+          if [[ -n "$UNEXPECTED" ]]; then
+            echo 'Unexpected Module 064 source scope:' >&2
+            printf '%s\n' "$UNEXPECTED" >&2
+            exit 1
+          fi
+
+          if grep -E '^(database/|deployment/azure/|\.github/workflows/projectpulse-deploy-|src/backend/ProjectTime.Api/Modules/(Microsoft|CustomerDirectory|CrmErp)|src/frontend/project-time-web/src/(Microsoft|CrmErp|CustomerDirectory))' <<<"$CHANGED"; then
+            echo 'Module 064 overlaps a database, deployment, Microsoft, CRM, or customer-directory surface.' >&2
+            exit 1
+          fi
+          echo 'MODULE_064_SOURCE_ISOLATION=PASSED'
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Validate automatic health source contract
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          REGISTRY='src/backend/ProjectTime.Api/Ai/ProjectPulseAiHealthRegistry.cs'
+          MONITOR='src/backend/ProjectTime.Api/Ai/ProjectPulseAiHealthMonitor.cs'
+          ROUTER='src/backend/ProjectTime.Api/Ai/ProjectPulseAiRouter.cs'
+          STORE='src/backend/ProjectTime.Api/Ai/ProjectPulseAiSecretStore.cs'
+          MODULE='src/backend/ProjectTime.Api/Modules/AiProviderConfigurationModule.cs'
+          CENTER='src/frontend/project-time-web/src/AiProviderConfigurationCenter.jsx'
+
+          grep -Fq 'ShouldProbe' "$REGISTRY"
+          grep -Fq 'MarkProbeStarted' "$REGISTRY"
+          grep -Fq 'state.ProbeStatus = "checking"' "$REGISTRY"
+          grep -Fq 'var liveConfiguration = _configuration.Provider(provider.Code)' "$MONITOR"
+          grep -Fq '_health.ApplyConfiguration(liveConfiguration)' "$MONITOR"
+          grep -Fq '_health.ShouldProbe(provider.Code, maximumAge, force)' "$MONITOR"
+          grep -Fq '_health.ApplyConfiguration(_configuration.Provider(providerCode))' "$ROUTER"
+          grep -Fq 'ProjectPulseAiHealthRegistry health' "$STORE"
+          grep -Fq 'await coordinator.RefreshAsync(false, stoppingToken)' "$STORE"
+          grep -Fq 'healthCheckedAutomatically = true' "$MODULE"
+          grep -Fq 'secret_replaced_and_verified' "$MODULE"
+          grep -Fq 'AUTOMATIC_HEALTH_POLL_LIMIT = 10' "$CENTER"
+          grep -Fq 'Automatic provider health is active.' "$CENTER"
+
+          if grep -Eq 'fetch\([^)]*(api\.anthropic\.com|api\.openai\.com)' "$CENTER"; then
+            echo 'The browser must not probe AI providers directly.' >&2
+            exit 1
+          fi
+
+          echo 'MODULE_064_STARTUP_HEALTH=PASSED'
+          echo 'MODULE_064_PERIODIC_HEALTH=PASSED'
+          echo 'MODULE_064_REPLICA_HEALTH=PASSED'
+          echo 'MODULE_064_ROUTER_RECONCILIATION=PASSED'
+          echo 'MODULE_064_FRONTEND_POLLING=BOUNDED_BACKEND_ONLY'
+          echo 'MODULE_064_PROVIDER_CALLS_PERFORMED=0'
+
+      - name: Build ProjectTime API
+        id: api_build
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release > module064-api-build.log 2>&1
+          STATUS=$?
+          echo "exit_code=$STATUS" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload API build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: module064-api-build-${{ github.run_id }}-${{ github.run_attempt }}
+          path: module064-api-build.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce API build result
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          STATUS='${{ steps.api_build.outputs.exit_code }}'
+          if [[ "$STATUS" != '0' ]]; then
+            tail -n 160 module064-api-build.log >&2
+            exit "$STATUS"
+          fi
+          tail -n 50 module064-api-build.log
+          echo 'MODULE_064_API_BUILD=PASSED'
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Validate Module 064 contract
+        working-directory: src/frontend/project-time-web
+        run: npm run validate:module064
+
+      - name: Build complete frontend production bundle
+        id: frontend_build
+        continue-on-error: true
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set +e
+          npm run build > module064-frontend-build.log 2>&1
+          STATUS=$?
+          echo "exit_code=$STATUS" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload frontend build diagnostics
+        if: always() && steps.frontend_build.outcome != 'skipped'
+        uses: actions/upload-artifact@v4
+        with:
+          name: module064-frontend-build-${{ github.run_id }}-${{ github.run_attempt }}
+          path: src/frontend/project-time-web/module064-frontend-build.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce frontend build result
+        if: steps.frontend_build.outcome != 'skipped'
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          STATUS='${{ steps.frontend_build.outputs.exit_code }}'
+          if [[ "$STATUS" != '0' ]]; then
+            tail -n 160 module064-frontend-build.log >&2
+            exit "$STATUS"
+          fi
+          tail -n 50 module064-frontend-build.log
+          echo 'MODULE_064_FRONTEND_BUILD=PASSED'
