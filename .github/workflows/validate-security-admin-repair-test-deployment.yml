@@ -1,0 +1,167 @@
+name: Validate Security and Admin Repair Test Deployment
+
+on:
+  push:
+    branches:
+      - 'release/security-admin-repair-test-deployment-*'
+  pull_request:
+    paths:
+      - '.github/workflows/projectpulse-deploy-security-admin-repair-test.yml'
+      - '.github/workflows/validate-security-admin-repair-test-deployment.yml'
+      - 'scripts/run-security-admin-repair-test-deployment.sh'
+      - 'scripts/validate-security-admin-repair-test-deployment.sh'
+
+permissions:
+  contents: read
+  statuses: write
+
+jobs:
+  validate:
+    name: Validate guarded security and admin repair deployment controls
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Enforce exact deployment-control scope
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git fetch origin main --no-tags
+          mapfile -t CHANGED < <(git diff --name-only origin/main...HEAD)
+          printf '%s\n' "${CHANGED[@]}"
+
+          ALLOWED=(
+            '.github/workflows/projectpulse-deploy-security-admin-repair-test.yml'
+            '.github/workflows/validate-security-admin-repair-test-deployment.yml'
+            'scripts/run-security-admin-repair-test-deployment.sh'
+            'scripts/validate-security-admin-repair-test-deployment.sh'
+          )
+
+          [[ "${#CHANGED[@]}" -eq 4 ]] || {
+            echo "Expected exactly four deployment-control files; found ${#CHANGED[@]}." >&2
+            exit 1
+          }
+
+          for changed in "${CHANGED[@]}"; do
+            match=false
+            for allowed in "${ALLOWED[@]}"; do
+              [[ "$changed" == "$allowed" ]] && match=true
+            done
+            [[ "$match" == true ]] || {
+              echo "Unexpected changed file: $changed" >&2
+              exit 1
+            }
+          done
+
+          echo 'SECURITY_ADMIN_REPAIR_DEPLOYMENT_SCOPE=PASS'
+
+      - name: Validate shell syntax
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash -n scripts/run-security-admin-repair-test-deployment.sh
+          bash -n scripts/validate-security-admin-repair-test-deployment.sh
+          echo 'SECURITY_ADMIN_REPAIR_SHELL_SYNTAX=PASS'
+
+      - name: Validate deployment-control contract
+        shell: bash
+        run: bash scripts/validate-security-admin-repair-test-deployment.sh
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Build repaired API source
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+
+      - name: Execute central authorization tests
+        run: >-
+          dotnet run
+          --project tests/ProjectTime.Api.AuthorizationTests/ProjectTime.Api.AuthorizationTests.csproj
+          --configuration Release
+
+      - name: Verify API startup and route registration
+        run: bash tests/test-projectpulse-api-startup.sh
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Validate role-policy and trusted-origin security repair
+        working-directory: src/frontend/project-time-web
+        run: node scripts/validate-security-role-policy-public-origin.mjs
+
+      - name: Validate admin runtime stability
+        working-directory: src/frontend/project-time-web
+        run: node scripts/validate-admin-runtime-stability.mjs
+
+      - name: Validate Microsoft Integration authority and origin
+        working-directory: src/frontend/project-time-web
+        run: node scripts/validate-microsoft-integration-authoritative-connection.mjs
+
+      - name: Validate Microsoft SSO runtime
+        working-directory: src/frontend/project-time-web
+        run: node scripts/validate-microsoft-sso-runtime-wiring.mjs
+
+      - name: Validate Module 013 provider-neutral experience
+        working-directory: src/frontend/project-time-web
+        run: node scripts/validate-group-2a-provider-neutral-platform-operations.mjs
+
+      - name: Validate Administrator View-As drawer
+        working-directory: src/frontend/project-time-web
+        run: node scripts/validate-global-view-as-drawer.mjs
+
+      - name: Validate Module 026 CRM and ERP controls
+        working-directory: src/frontend/project-time-web
+        run: npm run validate:module026
+
+      - name: Validate Modules 021 and 026 SELL contract
+        working-directory: src/frontend/project-time-web
+        run: npm run validate:modules021026
+
+      - name: Build complete frontend production bundle
+        working-directory: src/frontend/project-time-web
+        run: npm run build
+
+      - name: Publish exact-commit deployment-control status
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
+          COMMIT_SHA: ${{ github.sha }}
+          API_ROOT: ${{ github.api_url }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -Eeuo pipefail
+          if [[ "$JOB_STATUS" == success ]]; then
+            STATE=success
+            DESCRIPTION='Security/admin source, API, frontend, rollback, and deployment guards passed.'
+          else
+            STATE=failure
+            DESCRIPTION='Security/admin deployment-control validation failed.'
+          fi
+          PAYLOAD="$(jq -nc \
+            --arg state "$STATE" \
+            --arg context 'security-admin-repair/deployment-controls' \
+            --arg description "$DESCRIPTION" \
+            --arg target_url "$RUN_URL" \
+            '{state:$state,context:$context,description:$description,target_url:$target_url}')"
+          curl --fail-with-body --silent --show-error \
+            --request POST \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'Accept: application/vnd.github+json' \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            --data "$PAYLOAD" \
+            "$API_ROOT/repos/$REPOSITORY/statuses/$COMMIT_SHA"
