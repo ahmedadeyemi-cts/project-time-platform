@@ -4,13 +4,9 @@ namespace ProjectTime.Api.Modules;
 /// Compatibility registration point retained for the former Module 067.
 /// Module 065 owns Microsoft Integration; Module 010 owns Entra directory-user import.
 /// Program.cs continues to call this existing method once, so no broad startup edit is required.
-///
-/// Trusted-origin implementation moved to <see cref="ProjectPulsePublicOriginCompatibility"/>.
-/// The following legacy validation markers document that preserved contract while the
-/// executable checks remain centralized and fail-closed:
-/// X-Forwarded-Host, X-Forwarded-Proto, request.Headers["Origin"],
-/// request.Headers["Referer"], .onenecklab.com, invalid_forwarded_public_origin.
-/// Runtime failures now use the non-reflective trusted_public_origin_unavailable status.
+/// Trusted public-origin resolution is centralized in
+/// <see cref="ProjectPulsePublicOriginCompatibility"/> so Microsoft, Entra preview,
+/// and CRM/ERP mutations share one fail-closed origin boundary.
 /// </summary>
 public static class GlobalMailConfigurationModule
 {
