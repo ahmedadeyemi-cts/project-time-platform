@@ -69,7 +69,19 @@ jobs:
           cache-dependency-path: src/frontend/project-time-web/package-lock.json
 
       - name: Build repaired ProjectTime API
-        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+        shell: bash
+        run: |
+          set +e
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release > /tmp/dynamic-rbac-api-build.log 2>&1
+          status=$?
+          if (( status != 0 )); then
+            echo 'DYNAMIC_RBAC_API_BUILD_ERRORS_BEGIN'
+            grep -E 'error CS|Build FAILED|DynamicRbacAdministrationModule' /tmp/dynamic-rbac-api-build.log || tail -160 /tmp/dynamic-rbac-api-build.log
+            echo 'DYNAMIC_RBAC_API_BUILD_ERRORS_END'
+          else
+            tail -20 /tmp/dynamic-rbac-api-build.log
+          fi
+          exit "$status"
 
       - name: Reproduce framework failure and verify explicit result execution
         run: >-
