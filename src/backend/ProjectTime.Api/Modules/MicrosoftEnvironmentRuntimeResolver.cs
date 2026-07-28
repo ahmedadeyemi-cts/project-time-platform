@@ -25,9 +25,6 @@ public static class MicrosoftEnvironmentRuntimeResolver
                 var mode = Resolve(context);
                 if (!string.IsNullOrWhiteSpace(mode))
                 {
-                    // Existing Microsoft runtime modules treat these values as
-                    // their highest-precedence environment contract. The host was
-                    // already verified by ProjectPulsePublicOriginCompatibility.
                     Environment.SetEnvironmentVariable(ApplicationEnvironmentVariable, mode);
                     Environment.SetEnvironmentVariable("PROJECTPULSE_MICROSOFT_ENVIRONMENT", mode);
                     context.Items["ProjectPulseMicrosoftEnvironment"] = mode;
@@ -41,8 +38,6 @@ public static class MicrosoftEnvironmentRuntimeResolver
 
     public static string Resolve(HttpContext? context = null, string? host = null)
     {
-        // A dedicated Microsoft override is the only setting allowed to outrank
-        // the trusted public host.
         var explicitMicrosoftMode = Normalize(
             Environment.GetEnvironmentVariable("PROJECTPULSE_MICROSOFT_ENVIRONMENT"));
         if (!string.IsNullOrWhiteSpace(explicitMicrosoftMode)) return explicitMicrosoftMode;
@@ -51,8 +46,23 @@ public static class MicrosoftEnvironmentRuntimeResolver
         var hostMode = FromHost(trustedHost);
         if (!string.IsNullOrWhiteSpace(hostMode)) return hostMode;
 
-        // These application-level values are useful at startup when no request
-        // host exists, but cannot override a trusted Test or Production host.
+        // Background workers do not have an HttpContext. Resolve the same
+        // approved public host from deployment configuration before considering
+        // generic application/runtime modes.
+        foreach (var name in new[]
+                 {
+                     "PROJECTPULSE_PUBLIC_URL",
+                     "PROJECTPULSE_PUBLIC_BASE_URL",
+                     "PROJECTPULSE_WEB_URL",
+                     "PUBLIC_URL"
+                 })
+        {
+            var configured = Environment.GetEnvironmentVariable(name);
+            if (!Uri.TryCreate(configured, UriKind.Absolute, out var uri)) continue;
+            var configuredMode = FromHost(uri.Host);
+            if (!string.IsNullOrWhiteSpace(configuredMode)) return configuredMode;
+        }
+
         foreach (var name in new[]
                  {
                      "PROJECTPULSE_ENVIRONMENT",
@@ -64,8 +74,6 @@ public static class MicrosoftEnvironmentRuntimeResolver
             if (!string.IsNullOrWhiteSpace(applicationMode)) return applicationMode;
         }
 
-        // Final fallback only. A Test Container App can intentionally use the
-        // Production ASP.NET optimization profile.
         foreach (var name in new[] { "DOTNET_ENVIRONMENT", "ASPNETCORE_ENVIRONMENT" })
         {
             var frameworkMode = Normalize(Environment.GetEnvironmentVariable(name));
