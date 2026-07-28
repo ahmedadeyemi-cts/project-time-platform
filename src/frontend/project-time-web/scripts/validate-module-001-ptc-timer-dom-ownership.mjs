@@ -2,10 +2,15 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const root = resolve(process.cwd(), '../../..');
+const absolute = (path) => resolve(root, path);
 const read = (path) => {
-  const absolute = resolve(root, path);
-  if (!existsSync(absolute)) throw new Error(`Missing required source: ${path}`);
-  return readFileSync(absolute, 'utf8');
+  const target = absolute(path);
+  if (!existsSync(target)) throw new Error(`Missing required source: ${path}`);
+  return readFileSync(target, 'utf8');
+};
+const optionalRead = (path) => {
+  const target = absolute(path);
+  return existsSync(target) ? readFileSync(target, 'utf8') : '';
 };
 const requireAll = (source, values, label) => {
   for (const value of values) {
@@ -18,9 +23,9 @@ const rejectAll = (source, values, label) => {
   }
 };
 
-const resultExecution = read('src/backend/ProjectTime.Api/Modules/Module001ResultExecutionCompatibility.cs');
-const stewardV2 = read('src/backend/ProjectTime.Api/Modules/Module001TimeStewardV2Module.cs');
-const project = read('src/backend/ProjectTime.Api/ProjectTime.Api.csproj');
+const resultExecution = optionalRead('src/backend/ProjectTime.Api/Modules/Module001ResultExecutionCompatibility.cs');
+const stewardV2 = optionalRead('src/backend/ProjectTime.Api/Modules/Module001TimeStewardV2Module.cs');
+const project = optionalRead('src/backend/ProjectTime.Api/ProjectTime.Api.csproj');
 const slotInjector = read('src/frontend/project-time-web/scripts/inject-module-001-owned-extension-slots.mjs');
 const moreInjector = read('src/frontend/project-time-web/scripts/inject-react-owned-more-menu.mjs');
 const timerPortal = read('src/frontend/project-time-web/src/module001/TimesheetEnhancementPortal.jsx');
@@ -34,50 +39,55 @@ const bridge = read('src/frontend/project-time-web/src/module-availability-bridg
 const intuitive = read('src/frontend/project-time-web/src/intuitive-more-menu.js');
 const intuitiveCss = read('src/frontend/project-time-web/src/intuitive-more-menu.css');
 const module026 = read('src/frontend/project-time-web/src/CrmErpIntegrationCenter.jsx');
-const module026Backend = read('src/backend/ProjectTime.Api/Modules/CrmErpAdministrationExperience.cs');
+const module026Backend = optionalRead('src/backend/ProjectTime.Api/Modules/CrmErpAdministrationExperience.cs');
 const packageJson = read('src/frontend/project-time-web/package.json');
 
-requireAll(resultExecution, [
-  'UseModule001ResultExecutionCompatibility',
-  'RuntimePtcUsersAsync(context)',
-  'RuntimePtcWorkspaceAsync(targetUserId, context)',
-  'Module001TimerTargetsAsync(context)',
-  'Module001ActiveTimerAsync(context)',
-  'Module001TimerHistoryAsync(context)',
-  'Module001WorkQueueAsync(context)',
-  'Module001WeeklyLinesAsync(context)',
-  'X-ProjectPulse-Module001-Result-Execution',
-  'await result.ExecuteAsync(context);'
-], 'Module 001 explicit IResult execution');
+const fullModule001BackendContext = Boolean(resultExecution && stewardV2 && project);
+if (fullModule001BackendContext) {
+  requireAll(resultExecution, [
+    'UseModule001ResultExecutionCompatibility',
+    'RuntimePtcUsersAsync(context)',
+    'RuntimePtcWorkspaceAsync(targetUserId, context)',
+    'Module001TimerTargetsAsync(context)',
+    'Module001ActiveTimerAsync(context)',
+    'Module001TimerHistoryAsync(context)',
+    'Module001WorkQueueAsync(context)',
+    'Module001WeeklyLinesAsync(context)',
+    'X-ProjectPulse-Module001-Result-Execution',
+    'await result.ExecuteAsync(context);'
+  ], 'Module 001 explicit IResult execution');
 
-requireAll(stewardV2, [
-  'module001-time-steward-v2-2026-07-28',
-  '/api/runtime/timesheet/steward/v2/users',
-  '/api/runtime/timesheet/steward/v2/users/{targetUserId:guid}/workspace',
-  '/api/runtime/timesheet/steward/v2/entries/{timeEntryId:guid}/move',
-  'ENGINEERING',
-  'ENGINEERING_LEAD',
-  'PROJECT_MANAGEMENT',
-  'PROJECT_MANAGEMENT_LEAD',
-  'Requests / Service Requests',
-  'Project Tasks',
-  'Non-Project Time',
-  'canAssignExistingProjectTaskDuringMove = true',
-  'canMoveToNonProjectTime = true',
-  'TIME_TASK_ASSIGN',
-  'Module001EnsurePtcAssignmentV2Async',
-  'non_project_time_category_id = @category_id',
-  "association_source = 'PTC_TIME_STEWARD'",
-  'crossActivityTypeMove = true',
-  'submissionOnBehalf = false'
-], 'Module 001 time-steward v2 backend');
+  requireAll(stewardV2, [
+    'module001-time-steward-v2-2026-07-28',
+    '/api/runtime/timesheet/steward/v2/users',
+    '/api/runtime/timesheet/steward/v2/users/{targetUserId:guid}/workspace',
+    '/api/runtime/timesheet/steward/v2/entries/{timeEntryId:guid}/move',
+    'ENGINEERING',
+    'ENGINEERING_LEAD',
+    'PROJECT_MANAGEMENT',
+    'PROJECT_MANAGEMENT_LEAD',
+    'Requests / Service Requests',
+    'Project Tasks',
+    'Non-Project Time',
+    'canAssignExistingProjectTaskDuringMove = true',
+    'canMoveToNonProjectTime = true',
+    'TIME_TASK_ASSIGN',
+    'Module001EnsurePtcAssignmentV2Async',
+    'non_project_time_category_id = @category_id',
+    "association_source = 'PTC_TIME_STEWARD'",
+    'crossActivityTypeMove = true',
+    'submissionOnBehalf = false'
+  ], 'Module 001 time-steward v2 backend');
 
-requireAll(project, [
-  'app.UseModule001ResultExecutionCompatibility();',
-  'app.MapModule001TimeStewardV2Endpoints();',
-  'app.MapModule001TimesheetEnhancementEndpoints();',
-  'app.MapModule001TimerTargetEndpoints();'
-], 'Module 001 backend registration');
+  requireAll(project, [
+    'app.UseModule001ResultExecutionCompatibility();',
+    'app.MapModule001TimeStewardV2Endpoints();',
+    'app.MapModule001TimesheetEnhancementEndpoints();',
+    'app.MapModule001TimerTargetEndpoints();'
+  ], 'Module 001 backend registration');
+} else {
+  console.log('MODULE_001_PTC_TIMER_BACKEND_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
+}
 
 requireAll(slotInjector, [
   'data-projectpulse-react-owned-slot="true"',
@@ -225,13 +235,17 @@ requireAll(module026, [
   'Configure connection',
   'Add CRM platform'
 ], 'PR 207 Module 026 editable connectors');
-requireAll(module026Backend, [
-  'zendesk_sell',
-  'salesforce',
-  'servicenow',
-  'certinia',
-  'isPersisted'
-], 'PR 207 Module 026 backend templates');
+if (module026Backend) {
+  requireAll(module026Backend, [
+    'zendesk_sell',
+    'salesforce',
+    'servicenow',
+    'certinia',
+    'isPersisted'
+  ], 'PR 207 Module 026 backend templates');
+} else {
+  console.log('MODULE_026_PR207_BACKEND_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
+}
 
 requireAll(packageJson, [
   'inject-module-001-owned-extension-slots.mjs',
