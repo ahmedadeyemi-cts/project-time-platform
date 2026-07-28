@@ -78,7 +78,21 @@ ON CONFLICT (migration_id) DO UPDATE
 SET description = EXCLUDED.description,
     applied_at = EXCLUDED.applied_at;
 
-GRANT SELECT, INSERT, UPDATE ON TABLE customer_directory_source_links TO "ptp_app";
-GRANT SELECT, INSERT, UPDATE ON TABLE customer_directory_sync_runs TO "ptp_app";
+-- The private-network migration runner uses the database identity configured on
+-- the API application. That identity owns newly created tables and therefore
+-- already has the required privileges. Preserve compatibility with older
+-- environments that installed a separate ptp_app role, but do not require or
+-- create that role in environments that use a different runtime identity.
+DO $grant_runtime_role$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ptp_app') THEN
+        EXECUTE 'GRANT SELECT, INSERT, UPDATE ON TABLE customer_directory_source_links TO "ptp_app"';
+        EXECUTE 'GRANT SELECT, INSERT, UPDATE ON TABLE customer_directory_sync_runs TO "ptp_app"';
+        RAISE NOTICE 'Migration 049 granted optional compatibility privileges to ptp_app.';
+    ELSE
+        RAISE NOTICE 'Migration 049 skipped optional ptp_app grants because the role is not installed; the current migration role owns the tables.';
+    END IF;
+END
+$grant_runtime_role$;
 
 COMMIT;
