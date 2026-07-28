@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       release_commit:
-        description: Exact verified source release containing all reconciled open PR work
+        description: Exact verified role-compatible reconciled source release
         required: true
-        default: d62902d00a838d9cf593e990f4d78c45304642ef
+        default: e678cdaacc020ccd2ee7726d6e77f0276fae38ce
         type: string
       confirmation:
         description: Enter DEPLOY-OPEN-PR-RECONCILIATION-TO-TEST
@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
-      EXPECTED_RELEASE_COMMIT: d62902d00a838d9cf593e990f4d78c45304642ef
+      EXPECTED_RELEASE_COMMIT: e678cdaacc020ccd2ee7726d6e77f0276fae38ce
 
     steps:
       - name: Check out deployment controls
@@ -72,7 +72,7 @@ jobs:
           [[ "$CONTROL_COMMIT" == "$WORKFLOW_SOURCE_SHA" ]]
           [[ "$TARGET_COMMIT" == "$DISPATCH_RELEASE_COMMIT" ]]
           [[ "$TARGET_COMMIT" == "$EXPECTED_RELEASE_COMMIT" ]] || {
-            echo 'Only the verified open-PR reconciliation source release may deploy.' >&2
+            echo 'Only the verified role-compatible open-PR reconciliation source release may deploy.' >&2
             exit 1
           }
           git -C control merge-base --is-ancestor "$TARGET_COMMIT" HEAD || {
@@ -91,11 +91,12 @@ jobs:
           EVIDENCE_UI='release/src/frontend/project-time-web/src/OperationalEvidenceCenter.jsx'
           ARCHITECTURE_UI='release/src/frontend/project-time-web/src/SystemArchitectureCenter.jsx'
           MIGRATION='release/database/migrations/049_module_021_sell_customer_sync.sql'
+          MIGRATION_TEST='release/tests/test-module-021-sell-customer-sync-049.sh'
 
           for required in \
             "$SELL_MODULE" "$REGISTRAR" "$PLATFORM_MODULE" \
             "$MORE_BRIDGE" "$MORE_REGISTRY" "$ADMIN_RUNTIME" "$CUSTOMER_UI" \
-            "$SERVICE_UI" "$EVIDENCE_UI" "$ARCHITECTURE_UI" "$MIGRATION" \
+            "$SERVICE_UI" "$EVIDENCE_UI" "$ARCHITECTURE_UI" "$MIGRATION" "$MIGRATION_TEST" \
             release/src/backend/ProjectTime.Api/ProjectTime.Api.csproj \
             release/tests/ProjectTime.Api.AuthorizationTests/ProjectTime.Api.AuthorizationTests.csproj \
             release/tests/test-projectpulse-api-startup.sh \
@@ -131,6 +132,10 @@ jobs:
           grep -Fq 'CREATE TABLE IF NOT EXISTS customer_directory_source_links' "$MIGRATION"
           grep -Fq 'CREATE TABLE IF NOT EXISTS customer_directory_sync_runs' "$MIGRATION"
           grep -Fq "'049_module_021_sell_customer_sync'" "$MIGRATION"
+          grep -Fq "pg_roles WHERE rolname = 'ptp_app'" "$MIGRATION"
+          grep -Fq 'the current migration role owns the tables.' "$MIGRATION"
+          grep -Fq 'MODULE_021_SELL_CUSTOMER_SYNC_049_NO_PTP_APP=PASS' "$MIGRATION_TEST"
+          grep -Fq 'MODULE_021_SELL_CUSTOMER_SYNC_049_OPTIONAL_ROLE_GRANT=PASS' "$MIGRATION_TEST"
 
           (
             cd release
