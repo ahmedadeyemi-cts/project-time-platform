@@ -77,7 +77,7 @@ jobs:
 
           git add -A
           git diff --cached --check
-          git diff --cached --name-only | sort > /tmp/actual-source-files.txt
+          git diff --cached --name-only "$EXPECTED_MAIN" | sort > /tmp/actual-source-files.txt
           diff -u /tmp/expected-source-files.txt /tmp/actual-source-files.txt
 
           git config user.name 'ProjectPulse Integration Bot'
