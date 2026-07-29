@@ -81,10 +81,10 @@ function normalizeProviderStatus(provider = {}) {
   const raw = `${provider.probeStatus ?? ''} ${provider.status ?? ''} ${provider.lastProbeFailureCode ?? ''} ${provider.lastFailureCode ?? ''}`.toLowerCase();
   if (!provider.enabled || !provider.configured || raw.includes('not_configured') || raw.includes('disabled')) return 'not_configured';
   if (raw.includes('checking') || raw.includes('not_checked')) return 'checking';
-  if (raw.includes('available') || raw.includes('healthy') || raw.includes('ready') || raw.includes('success')) return 'available';
   if (raw.includes('401') || raw.includes('403') || raw.includes('auth') || raw.includes('credential') || raw.includes('api_key')) return 'authentication_failed';
   if (raw.includes('429') || raw.includes('rate_limit') || raw.includes('rate limit')) return 'rate_limited';
   if (raw.includes('timeout') || raw.includes('unreachable') || raw.includes('network') || raw.includes('unavailable')) return 'unavailable';
+  if (raw.includes('available') || raw.includes('healthy') || raw.includes('ready') || raw.includes('success')) return 'available';
   return 'provider_error';
 }
 
@@ -128,9 +128,7 @@ export function subscribeAiProviderReadiness(listener) {
 }
 
 export function getAiProviderReadinessSnapshot() {
-  const lastVerified = state.lastVerifiedAt ? Date.parse(state.lastVerifiedAt) : Number.NaN;
-  const stale = !Number.isFinite(lastVerified) || Date.now() - lastVerified > STALE_AFTER_MS;
-  return stale === state.stale ? state : { ...state, stale };
+  return state;
 }
 
 export async function refreshAiProviderReadiness({ force = false, reason = 'background' } = {}) {
