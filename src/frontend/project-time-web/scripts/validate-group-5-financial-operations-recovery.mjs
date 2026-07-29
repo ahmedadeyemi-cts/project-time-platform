@@ -61,9 +61,9 @@ for (const marker of [
 ]) contains(component, marker, 'Group 5 enterprise workspace');
 for (const api of [
   '/api/financial-operations/reports/catalog',
-  '/api/financial-operations/reports/preview',
-  '/api/financial-operations/reports/run',
+  '/api/financial-operations/reports/${persisted',
   '/api/financial-operations/reports/history',
+  '/api/financial-operations/reports/runs/${runId}/export',
   '/api/financial-operations/sources/',
   '/api/financial-operations/workbench',
   '/api/financial-operations/modules/'
