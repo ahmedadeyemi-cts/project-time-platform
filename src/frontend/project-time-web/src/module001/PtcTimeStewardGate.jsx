@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import PendingApprovalWorkPortal from '../PendingApprovalWorkPortal.jsx';
+import PtcNonProjectTaskPortal from './PtcNonProjectTaskPortal.jsx';
 import PtcTimesheetManagementPortal from './PtcTimesheetManagementPortal.jsx';
 
 const ALLOWED_ROLES = new Set([
@@ -47,10 +49,16 @@ export default function PtcTimeStewardGate() {
     };
   }, []);
 
-  // View-As remains read-only and must not expose the time-steward workspace for
-  // an effective identity that is not itself a PTC or administrator. In an own
-  // session the backend remains authoritative and hides the portal on a 403.
-  if (state.active && !state.allowed) return null;
+  // Approval work remains visible to the effective Manager or PM while View-As
+  // is active. The PTC time-steward and standalone-task controls remain hidden
+  // unless the effective identity itself is a PTC or administrator.
+  const showPtcWorkspace = !state.active || state.allowed;
 
-  return <PtcTimesheetManagementPortal />;
+  return (
+    <>
+      {showPtcWorkspace ? <PtcTimesheetManagementPortal /> : null}
+      <PendingApprovalWorkPortal />
+      {showPtcWorkspace ? <PtcNonProjectTaskPortal /> : null}
+    </>
+  );
 }
