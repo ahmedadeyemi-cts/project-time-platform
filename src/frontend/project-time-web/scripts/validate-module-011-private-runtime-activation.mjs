@@ -167,7 +167,7 @@ assert(
 
 assert(
   'MALWARE_SCAN_BEFORE_EXTRACTION',
-  scanner.includes('zINSTREAM\0')
+  scanner.includes('zINSTREAM')
     && scanner.includes('MalwareScanAttested')
     && runtime.indexOf('_malwareScanner.ScanAsync') < runtime.indexOf('_extractor.ExtractAsync')
     && runtime.includes('The document was not parsed, embedded, or indexed.'),
