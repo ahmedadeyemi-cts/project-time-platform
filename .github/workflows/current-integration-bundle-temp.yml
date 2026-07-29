@@ -3,6 +3,7 @@ name: Temporary Current Integration Bundle
 on:
   push:
     branches:
+      - main
       - tooling/current-integration-bundle-20260729
 
 permissions:
@@ -14,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Check out tooling branch
+      - name: Check out triggering branch
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
