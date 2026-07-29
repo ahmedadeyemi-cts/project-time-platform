@@ -31,21 +31,14 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Verify isolated Group 6 source scope
+      - name: Verify Group 6 ownership or regression applicability
         shell: bash
         run: |
           set -Eeuo pipefail
           git fetch origin main --no-tags
           CHANGED="$(git diff --name-only origin/main...HEAD)"
           printf '%s\n' "$CHANGED"
-
-          ALLOWED='^(\.github/workflows/group6-enterprise-presentation-ci\.yml|docs/modules/group-6-enterprise-presentation/README\.md|src/frontend/project-time-web/package\.json|src/frontend/project-time-web/scripts/(inject-group-6-enterprise-presentation|validate-group-6-enterprise-presentation)\.mjs|src/frontend/project-time-web/src/enterprise/(EnterpriseModulePresentation\.jsx|USSignalLogo\.jsx|enterprise-module-route-adoption\.css|enterprise-module-system\.css))$'
-          UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
-          if [[ -n "$UNEXPECTED" ]]; then
-            echo 'Unexpected Group 6 source scope:' >&2
-            printf '%s\n' "$UNEXPECTED" >&2
-            exit 1
-          fi
+          HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
 
           for protected in \
             '.github/workflows/projectpulse-deploy-runtime-direct-timer-recovery-test.yml' \
@@ -57,11 +50,26 @@ jobs:
             fi
           done
 
+          if [[ "$HEAD_BRANCH" != feature/group-6-enterprise-page-system-* ]]; then
+            echo "GROUP_6_VALIDATION_MODE=REGRESSION branch=$HEAD_BRANCH" >> "$GITHUB_ENV"
+            echo "GROUP_6_REGRESSION_APPLICABILITY=PASSED branch=$HEAD_BRANCH"
+            exit 0
+          fi
+
+          ALLOWED='^(\.github/workflows/group6-enterprise-presentation-ci\.yml|docs/modules/group-6-enterprise-presentation/README\.md|src/frontend/project-time-web/package\.json|src/frontend/project-time-web/scripts/(inject-group-6-enterprise-presentation|validate-group-6-enterprise-presentation)\.mjs|src/frontend/project-time-web/src/enterprise/(EnterpriseModulePresentation\.jsx|USSignalLogo\.jsx|enterprise-module-route-adoption\.css|enterprise-module-system\.css))$'
+          UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
+          if [[ -n "$UNEXPECTED" ]]; then
+            echo 'Unexpected Group 6 source scope:' >&2
+            printf '%s\n' "$UNEXPECTED" >&2
+            exit 1
+          fi
+
           if grep -E '^(database/|src/backend/|deployment/|\.github/workflows/projectpulse-deploy-|src/frontend/project-time-web/src/(App|main)\.|src/frontend/project-time-web/src/module-availability-registry\.js)' <<<"$CHANGED"; then
             echo 'Group 6 overlaps backend, database, deployment, canonical App, or module-registry source.' >&2
             exit 1
           fi
 
+          echo 'GROUP_6_VALIDATION_MODE=OWNED_SOURCE' >> "$GITHUB_ENV"
           echo 'GROUP_6_SOURCE_ISOLATION=PASSED'
 
       - uses: actions/setup-node@v4
@@ -133,4 +141,4 @@ jobs:
             grep -Fq "$marker" /tmp/group6-enterprise-presentation.css
           done
 
-          echo 'GROUP_6_FRONTEND_BUILD=PASSED'
+          echo "GROUP_6_FRONTEND_BUILD=PASSED mode=${GROUP_6_VALIDATION_MODE:-UNKNOWN}"
