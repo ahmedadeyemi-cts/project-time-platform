@@ -116,7 +116,10 @@ jobs:
           print('PULSE_AI_ARCHITECTURE_DOCUMENT_VALIDATION=PASSED')
           PY
           (cd "$ROOT" && sha256sum --check SHA256SUMS.txt)
-          git diff --check
+          # Git's whitespace checker can interpret PDF metadata objects as text.
+          # Validate every reviewable source/text change while excluding only PDFs,
+          # whose structure and checksums were validated immediately above.
+          git diff --check -- . ':(exclude,glob)**/*.pdf'
 
       - name: Commit the generated architecture artifacts
         shell: bash
