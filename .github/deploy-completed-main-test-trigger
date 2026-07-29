@@ -1,0 +1,3 @@
+operation=deploy
+release_commit=5d269021b1f8df471a0e1d1b654e17e0c7b1576c
+confirmation=DEPLOY-COMPLETED-MAIN-TO-TEST
