@@ -5,7 +5,7 @@ namespace ProjectTime.Api.Modules;
 /// <summary>
 /// Bounded in-process scheduler for Group 4. A PostgreSQL advisory lock ensures
 /// that only one API replica evaluates due schedules at a time. Migration absence,
-/// database outages, and Module 065 delivery locks are all fail-closed.
+/// database outages, quiet hours, and Module 065 delivery locks are fail-closed.
 /// </summary>
 internal static class ProjectNotificationScheduler
 {
@@ -89,11 +89,12 @@ internal static class ProjectNotificationScheduler
 
         try
         {
-            return await ProjectNotificationProcessingService.RunDueSchedulesAsync(
+            var result = await ProjectNotificationQuietHoursService.RunDueSchedulesAsync(
                 connection,
                 null,
                 null,
                 cancellationToken);
+            return result.Summary;
         }
         finally
         {
