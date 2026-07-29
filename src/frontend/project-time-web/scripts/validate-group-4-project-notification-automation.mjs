@@ -57,7 +57,9 @@ const injector = read(files.injector);
 const packageJson = JSON.parse(read(files.package));
 
 contains(component, "import { usSignalLogoDataUrl } from './assets/usSignalLogoData.js';", 'US Signal branding');
-contains(component, 'data-projectpulse-group4="project-notifications"', 'Group 4 UI identity');
+contains(component, 'className="group4-notification-center projectpulse-module-standard"', 'Group 4 UI identity');
+contains(component, 'data-group4-workspace={workspace}', 'Group 4 workspace identity');
+contains(component, 'data-module={configuration.module}', 'Group 4 module identity');
 for (const marker of [
   'Project Cost Alert Routing',
   'Configurable Notification Schedules',
@@ -66,10 +68,10 @@ for (const marker of [
   'Automatically derived recipients',
   'Recent delivery attempts',
   'Quiet hours',
-  'Month-end',
+  'month-end',
   'Escalation',
-  'Test only',
-  'Production governed'
+  'test_only',
+  'production_governed'
 ]) contains(component, marker, 'Group 4 enterprise workspace');
 for (const api of [
   '/api/project-notifications/routing-rules',
@@ -88,8 +90,8 @@ for (const marker of [
   '.group4-rule-grid',
   '.group4-schedule-grid',
   '.group4-table-wrap',
-  '.group4-delivery-layout',
-  '@media (max-width: 620px)'
+  '.group4-summary-grid',
+  '@media (max-width: 700px)'
 ]) contains(css, marker, 'Group 4 styling');
 
 for (const marker of [
@@ -247,7 +249,7 @@ if (fullRepositoryContext) {
   ]) contains(snapshot, marker, 'authoritative recipient source');
   contains(snapshot, 'Module 005', 'current expense source');
   contains(processing, 'RunDueSchedulesAsync', 'due schedule processing');
-  contains(processing, 'CreateDispatchAsync', 'durable dispatch processing');
+  contains(processing, 'UpsertDispatchAsync', 'durable dispatch processing');
   contains(quietHours, 'IsQuietHours', 'quiet-hours enforcement');
   contains(quietHours, 'EndOfQuietHours', 'quiet-hours deferral');
   contains(repository, 'MigrationReadyAsync', 'migration readiness guard');
@@ -260,12 +262,14 @@ if (fullRepositoryContext) {
     'MicrosoftMailRuntimeConfigurationModule.ApplyStoredEnvironmentAsync',
     'production_governed',
     'test_only',
-    'module_065',
-    'Mail.Send',
+    'Module065ProjectNotificationDelivery',
+    '/sendMail',
     'microsoft_graph',
     'smtp_relay',
-    'secretValuesReturned = false'
+    'Module 065 delivered the notification'
   ]) contains(module065, marker, 'Module 065 governed delivery');
+contains(service, 'credentialsReturned = false', 'Group 4 credential secrecy');
+contains(service, 'secretValuesReturned = false', 'Group 4 secret-value secrecy');
   assert(!/PROJECTPULSE_GLOBAL_MAIL|module_067|global_mail_configuration/i.test(module065),
     'Group 4 delivery must not read retired Module 067 configuration.');
 
@@ -283,8 +287,8 @@ if (fullRepositoryContext) {
     'Module 041',
     'Module 065',
     'Migration 050',
-    'Module 038 is regression-only',
-    'No deployment'
+    'no Module 038 layout change',
+    'no deployment'
   ]) contains(documentation, marker, 'Group 4 documentation');
 } else {
   console.log('GROUP_4_BACKEND_MIGRATION_DOCUMENTATION=SKIPPED_FRONTEND_CONTAINER_CONTEXT');
