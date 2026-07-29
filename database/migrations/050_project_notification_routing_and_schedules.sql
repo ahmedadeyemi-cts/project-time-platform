@@ -37,7 +37,9 @@ CREATE TABLE IF NOT EXISTS project_cost_alert_routing_rules (
         'project_team_coordinator'
     ]::TEXT[],
     optional_escalation_manager_user_id UUID NULL REFERENCES app_users(user_id) ON DELETE SET NULL,
-    escalation_after_minutes INTEGER NULL CHECK (escalation_after_minutes IS NULL OR escalation_after_minutes BETWEEN 0 AND 43200),
+    escalation_after_minutes INTEGER NULL CHECK (
+        escalation_after_minutes IS NULL OR escalation_after_minutes BETWEEN 0 AND 43200
+    ),
     delivery_boundary VARCHAR(40) NOT NULL DEFAULT 'test_only' CHECK (delivery_boundary IN (
         'test_only', 'production_governed', 'locked'
     )),
@@ -66,8 +68,12 @@ CREATE TABLE IF NOT EXISTS project_notification_schedules (
     day_of_week SMALLINT NULL CHECK (day_of_week IS NULL OR day_of_week BETWEEN 0 AND 6),
     local_time TIME NOT NULL DEFAULT TIME '06:00',
     timezone_name VARCHAR(100) NOT NULL DEFAULT 'America/Chicago',
-    days_before_month_end INTEGER NULL CHECK (days_before_month_end IS NULL OR days_before_month_end BETWEEN 0 AND 31),
-    escalation_after_minutes INTEGER NULL CHECK (escalation_after_minutes IS NULL OR escalation_after_minutes BETWEEN 0 AND 43200),
+    days_before_month_end INTEGER NULL CHECK (
+        days_before_month_end IS NULL OR days_before_month_end BETWEEN 0 AND 31
+    ),
+    escalation_after_minutes INTEGER NULL CHECK (
+        escalation_after_minutes IS NULL OR escalation_after_minutes BETWEEN 0 AND 43200
+    ),
     quiet_hours_start TIME NULL,
     quiet_hours_end TIME NULL,
     enabled BOOLEAN NOT NULL DEFAULT TRUE,
@@ -134,12 +140,17 @@ CREATE TABLE IF NOT EXISTS project_notification_dispatch_recipients (
     delivery_status VARCHAR(40) NOT NULL DEFAULT 'pending' CHECK (delivery_status IN (
         'pending', 'sent', 'failed', 'suppressed'
     )),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE(project_notification_dispatch_id, lower(recipient_email), recipient_type)
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS ix_project_notification_dispatch_recipients_dispatch
     ON project_notification_dispatch_recipients(project_notification_dispatch_id, recipient_type);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_project_notification_dispatch_recipients_email
+    ON project_notification_dispatch_recipients(
+        project_notification_dispatch_id,
+        lower(recipient_email),
+        recipient_type
+    );
 
 CREATE TABLE IF NOT EXISTS project_notification_delivery_attempts (
     project_notification_delivery_attempt_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -199,9 +210,17 @@ BEFORE UPDATE OR DELETE ON project_notification_configuration_audit
 FOR EACH ROW EXECUTE FUNCTION projectpulse050_block_notification_evidence_mutation();
 
 INSERT INTO project_cost_alert_routing_rules (
-    rule_code, rule_name, metric_code, comparison_operator,
-    threshold_value, threshold_unit, alert_severity,
-    recipient_roles, escalation_after_minutes, delivery_boundary, description
+    rule_code,
+    rule_name,
+    metric_code,
+    comparison_operator,
+    threshold_value,
+    threshold_unit,
+    alert_severity,
+    recipient_roles,
+    escalation_after_minutes,
+    delivery_boundary,
+    description
 )
 VALUES
     ('HOURS_USED_APPROACHING', 'Hours used approaching allocation', 'hours_used_percent', 'gte', 80, 'percent', 'warning', ARRAY['project_manager','assigned_engineers','project_team_coordinator'], 1440, 'test_only', 'Notify the project team when used hours reach eighty percent of planned hours.'),
@@ -225,9 +244,18 @@ SET rule_name = EXCLUDED.rule_name,
     updated_at = NOW();
 
 INSERT INTO project_notification_schedules (
-    schedule_code, schedule_name, schedule_type, day_of_week, local_time,
-    timezone_name, days_before_month_end, escalation_after_minutes,
-    quiet_hours_start, quiet_hours_end, enabled, delivery_boundary
+    schedule_code,
+    schedule_name,
+    schedule_type,
+    day_of_week,
+    local_time,
+    timezone_name,
+    days_before_month_end,
+    escalation_after_minutes,
+    quiet_hours_start,
+    quiet_hours_end,
+    enabled,
+    delivery_boundary
 )
 VALUES
     ('COST_ALERT_WEEKDAY_EVALUATION', 'Weekday project-cost evaluation', 'cost_alert_evaluation', 1, TIME '07:00', 'America/Chicago', NULL, 60, TIME '20:00', TIME '06:00', TRUE, 'test_only'),
@@ -247,7 +275,10 @@ SET schedule_name = EXCLUDED.schedule_name,
     updated_at = NOW();
 
 INSERT INTO app_permissions (
-    permission_code, permission_name, module_code, permission_description
+    permission_code,
+    permission_name,
+    module_code,
+    permission_description
 )
 VALUES
     ('VIEW_COST_ALERT_ROUTING_RULES', 'View Cost Alert Routing Rules', '022', 'View governed project-cost thresholds, recipients, escalation timing, and evaluation history.'),
@@ -264,8 +295,14 @@ SET permission_name = EXCLUDED.permission_name,
     permission_description = EXCLUDED.permission_description;
 
 INSERT INTO app_feature_catalog (
-    feature_code, feature_name, module_code, route_anchor,
-    required_permission_code, feature_description, display_order, is_active
+    feature_code,
+    feature_name,
+    module_code,
+    route_anchor,
+    required_permission_code,
+    feature_description,
+    display_order,
+    is_active
 )
 VALUES
     ('COST_ALERT_ROUTING_RULES', 'Cost Alert Routing Rules', '022', '#cost-alerts', 'VIEW_COST_ALERT_ROUTING_RULES', 'Configurable project financial thresholds and automatically derived project-team recipients.', 220, TRUE),
@@ -282,8 +319,7 @@ SET feature_name = EXCLUDED.feature_name,
     is_active = TRUE,
     updated_at = NOW();
 
--- Project Managers and project-management leads can review project-cost rules,
--- notification schedules, closeout routing, and delivery evidence within server scope.
+-- Project Management, finance, and executive users can review relevant routing evidence.
 INSERT INTO app_role_permissions (app_role_id, app_permission_id)
 SELECT role.app_role_id, permission.app_permission_id
 FROM app_roles role
@@ -295,35 +331,27 @@ JOIN app_permissions permission ON permission.permission_code = ANY(ARRAY[
 ])
 WHERE upper(role.role_code) IN (
     'PROJECT_MANAGER', 'PROJECT_MANAGEMENT',
-    'PROJECT_MANAGEMENT_LEAD', 'PROJECT_MANAGEMENT_TEAM_LEAD', 'PM_TEAM_LEAD'
-)
-ON CONFLICT DO NOTHING;
-
--- Accounting, Billing, Finance, and Executives receive operational visibility.
-INSERT INTO app_role_permissions (app_role_id, app_permission_id)
-SELECT role.app_role_id, permission.app_permission_id
-FROM app_roles role
-JOIN app_permissions permission ON permission.permission_code = ANY(ARRAY[
-    'VIEW_COST_ALERT_ROUTING_RULES',
-    'VIEW_NOTIFICATION_SCHEDULES',
-    'VIEW_NOTIFICATION_DELIVERY_MONITOR',
-    'VIEW_CLOSEOUT_NOTIFICATION_ROUTING'
-])
-WHERE upper(role.role_code) IN (
+    'PROJECT_MANAGEMENT_LEAD', 'PROJECT_MANAGEMENT_TEAM_LEAD', 'PM_TEAM_LEAD',
     'ACCOUNTING', 'ACCOUNTING_BILLING', 'BILLING', 'FINANCE', 'EXECUTIVE'
 )
 ON CONFLICT DO NOTHING;
 
--- Managers and team leads can review schedules and delivery results for their teams.
+-- Engineering, sales, Solution Architects, and managers receive scoped visibility.
 INSERT INTO app_role_permissions (app_role_id, app_permission_id)
 SELECT role.app_role_id, permission.app_permission_id
 FROM app_roles role
-JOIN app_permissions permission ON permission.permission_code = ANY(ARRAY[
-    'VIEW_NOTIFICATION_SCHEDULES',
-    'VIEW_NOTIFICATION_DELIVERY_MONITOR'
-])
+JOIN app_permissions permission ON permission.permission_code = ANY(
+    CASE
+        WHEN upper(role.role_code) = 'SOLUTION_ARCHITECT'
+            THEN ARRAY['VIEW_COST_ALERT_ROUTING_RULES','VIEW_NOTIFICATION_DELIVERY_MONITOR']
+        WHEN upper(role.role_code) IN ('MANAGER','ENGINEERING_LEAD','ENGINEERING_TEAM_LEAD')
+            THEN ARRAY['VIEW_NOTIFICATION_SCHEDULES','VIEW_NOTIFICATION_DELIVERY_MONITOR']
+        ELSE ARRAY['VIEW_NOTIFICATION_DELIVERY_MONITOR']
+    END
+)
 WHERE upper(role.role_code) IN (
-    'MANAGER', 'ENGINEERING_LEAD', 'ENGINEERING_TEAM_LEAD'
+    'ENGINEERING', 'ENGINEER', 'ENGINEERING_LEAD', 'ENGINEERING_TEAM_LEAD',
+    'SALES', 'INSIDE_SALES', 'SOLUTION_ARCHITECT', 'MANAGER'
 )
 ON CONFLICT DO NOTHING;
 
