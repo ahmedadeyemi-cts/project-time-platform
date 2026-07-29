@@ -1,0 +1,227 @@
+name: Validate Group 3 Unified Project Financial Workspaces
+
+on:
+  push:
+    branches:
+      - 'feature/group-3-unified-project-financial-workspaces-*'
+  pull_request:
+    paths:
+      - 'src/backend/ProjectTime.Api/Modules/ProjectFinancialTruthModule.cs'
+      - 'src/backend/ProjectTime.Api/ProjectTime.Api.csproj'
+      - 'src/frontend/project-time-web/src/UnifiedProjectFinancialWorkspace.jsx'
+      - 'src/frontend/project-time-web/src/unified-project-financial-workspace.css'
+      - 'src/frontend/project-time-web/scripts/inject-group-3-project-financial-workspaces.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-group-3-project-financial-workspaces.mjs'
+      - 'src/frontend/project-time-web/package.json'
+      - 'docs/modules/group-3-project-financial-workspaces/README.md'
+      - '.github/workflows/group3-unified-project-financial-workspaces-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: group3-unified-project-financial-workspaces-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify isolated Group 3 source scope or run regression mode
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          if [[ "$BRANCH" != feature/group-3-unified-project-financial-workspaces-* ]]; then
+            echo "GROUP_3_SOURCE_ISOLATION=NOT_APPLICABLE branch=$BRANCH"
+            echo 'The Group 3 regression workflow was triggered by an additive shared integration point.'
+            exit 0
+          fi
+
+          git fetch origin main --no-tags
+          CHANGED="$(git diff --name-only origin/main...HEAD)"
+          printf '%s\n' "$CHANGED"
+
+          ALLOWED='^(\.github/workflows/group3-unified-project-financial-workspaces-ci\.yml|docs/modules/group-3-project-financial-workspaces/README\.md|src/backend/ProjectTime.Api/Modules/ProjectFinancialTruthModule\.cs|src/backend/ProjectTime.Api/ProjectTime.Api\.csproj|src/frontend/project-time-web/package\.json|src/frontend/project-time-web/scripts/inject-group-3-project-financial-workspaces\.mjs|src/frontend/project-time-web/scripts/validate-group-3-project-financial-workspaces\.mjs|src/frontend/project-time-web/src/UnifiedProjectFinancialWorkspace\.jsx|src/frontend/project-time-web/src/unified-project-financial-workspace\.css)$'
+          UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
+          if [[ -n "$UNEXPECTED" ]]; then
+            echo 'Unexpected Group 3 source scope:' >&2
+            printf '%s\n' "$UNEXPECTED" >&2
+            exit 1
+          fi
+
+          for protected in \
+            '.github/workflows/projectpulse-deploy-runtime-direct-timer-recovery-test.yml' \
+            '.github/workflows/validate-runtime-direct-timer-recovery-deployment.yml' \
+            'scripts/validate-runtime-direct-timer-recovery-test-deployment.sh'; do
+            if grep -Fxq "$protected" <<<"$CHANGED"; then
+              echo "Protected deployment file changed: $protected" >&2
+              exit 1
+            fi
+          done
+
+          if grep -E '^(database/|deployment/azure/|\.github/workflows/projectpulse-deploy-|scripts/.*deploy|src/frontend/project-time-web/src/(App|main)\.|src/frontend/project-time-web/src/.*navigation|src/frontend/project-time-web/src/module-availability-registry\.js|src/backend/ProjectTime.Api/Modules/(CustomerDirectorySellSyncModule|CrmErpIntegrationModule|CrmErpAdministrationExperience|GlobalMailConfigurationModule)\.cs)' <<<"$CHANGED"; then
+            echo 'Group 3 overlaps a migration, deployment, application shell, navigation, registry, Module 026 connection foundation, or mail configuration.' >&2
+            exit 1
+          fi
+
+          echo 'GROUP_3_SOURCE_ISOLATION=PASSED'
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Check Group 3 JavaScript syntax
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node --check src/frontend/project-time-web/scripts/inject-group-3-project-financial-workspaces.mjs
+          node --check src/frontend/project-time-web/scripts/validate-group-3-project-financial-workspaces.mjs
+
+      - name: Validate Group 3 source contract
+        id: source_contract
+        continue-on-error: true
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set +e
+          node ./scripts/validate-group-3-project-financial-workspaces.mjs > group3-source-contract.log 2>&1
+          STATUS=$?
+          echo "exit_code=$STATUS" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload Group 3 source-contract diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: group3-source-contract-${{ github.run_id }}-${{ github.run_attempt }}
+          path: src/frontend/project-time-web/group3-source-contract.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce Group 3 source-contract result
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          STATUS='${{ steps.source_contract.outputs.exit_code }}'
+          if [[ "$STATUS" != '0' ]]; then
+            echo 'Group 3 source contract failed:' >&2
+            cat src/frontend/project-time-web/group3-source-contract.log >&2
+            exit "$STATUS"
+          fi
+          cat src/frontend/project-time-web/group3-source-contract.log
+
+      - name: Build ProjectTime API
+        id: api_build
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release > group3-api-build.log 2>&1
+          STATUS=$?
+          echo "exit_code=$STATUS" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload Group 3 API-build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: group3-api-build-${{ github.run_id }}-${{ github.run_attempt }}
+          path: group3-api-build.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce API-build result
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          STATUS='${{ steps.api_build.outputs.exit_code }}'
+          if [[ "$STATUS" != '0' ]]; then
+            echo 'Group 3 API build failed. Last 180 diagnostic lines:' >&2
+            tail -n 180 group3-api-build.log >&2
+            exit "$STATUS"
+          fi
+          tail -n 40 group3-api-build.log
+          echo 'GROUP_3_API_BUILD=PASSED'
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Validate governed SELL and workspace dependencies
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm run validate:module026
+          npm run validate:modules021026
+          npm run validate:work-register-055c-055d
+          npm run validate:project-workspace-download
+          npm run validate:group3-project-financial-workspaces
+
+      - name: Build complete frontend production bundle
+        id: frontend_build
+        continue-on-error: true
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set +e
+          npm run build > group3-frontend-build.log 2>&1
+          STATUS=$?
+          echo "exit_code=$STATUS" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload Group 3 frontend-build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: group3-frontend-build-${{ github.run_id }}-${{ github.run_attempt }}
+          path: src/frontend/project-time-web/group3-frontend-build.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce frontend-build result and bundle markers
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          STATUS='${{ steps.frontend_build.outputs.exit_code }}'
+          if [[ "$STATUS" != '0' ]]; then
+            echo 'Group 3 frontend build failed. Last 180 diagnostic lines:' >&2
+            tail -n 180 group3-frontend-build.log >&2
+            exit "$STATUS"
+          fi
+
+          cat dist/assets/*.js > /tmp/group3-financial-workspaces.js
+          cat dist/assets/*.css > /tmp/group3-financial-workspaces.css
+          for marker in \
+            'One authoritative project summary' \
+            'Project portfolio and financial truth' \
+            'Allocated, used, and remaining hours' \
+            'SELL connection owner: Module 026' \
+            'How values were calculated' \
+            '/api/project-financials/portfolio' \
+            '/api/project-workspace/documents/'; do
+            grep -Fq "$marker" /tmp/group3-financial-workspaces.js
+          done
+          for marker in \
+            '.group3-financial-workspace' \
+            '.group3-project-table' \
+            '.group3-source-grid'; do
+            grep -Fq "$marker" /tmp/group3-financial-workspaces.css
+          done
+          tail -n 40 group3-frontend-build.log
+          echo 'GROUP_3_FRONTEND_BUILD=PASSED'
