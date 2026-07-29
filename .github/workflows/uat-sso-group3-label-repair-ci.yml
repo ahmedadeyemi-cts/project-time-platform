@@ -16,6 +16,7 @@ on:
       - 'src/frontend/project-time-web/src/HelpAssistant.jsx'
       - 'src/frontend/project-time-web/src/UnifiedProjectFinancialWorkspace.jsx'
       - 'src/frontend/project-time-web/src/unified-project-financial-workspace.css'
+      - '.github/workflows/group3-unified-project-financial-workspaces-ci.yml'
       - '.github/workflows/uat-sso-group3-label-repair-ci.yml'
 
 permissions:
@@ -35,7 +36,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Enforce isolated eleven-file source scope
+      - name: Enforce isolated twelve-file source scope
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -48,6 +49,7 @@ jobs:
 
           mapfile -t CHANGED < <(git diff --name-only origin/main...HEAD | sort)
           cat > /tmp/expected.txt <<'EOF'
+          .github/workflows/group3-unified-project-financial-workspaces-ci.yml
           .github/workflows/uat-sso-group3-label-repair-ci.yml
           src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs
           src/backend/ProjectTime.Api/Modules/MicrosoftSsoStateOriginRecovery.cs
