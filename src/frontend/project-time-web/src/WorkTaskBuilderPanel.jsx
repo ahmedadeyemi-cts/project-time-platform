@@ -14,11 +14,15 @@ import PulseAiMissionControl from './PulseAiMissionControl.jsx';
  */
 export { PulseAiCenter, PulseAiMissionControl };
 
+function PulseAiWorkspace() {
+  return <PulseAiCenter />;
+}
+
 export default function WorkTaskBuilderPanel() {
   return (
     <>
       <PulseAiMissionControl />
-      <PulseAiCenter />
+      <PulseAiWorkspace />
     </>
   );
 }
