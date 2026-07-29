@@ -43,13 +43,12 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Verify isolated Group 5 stacked source scope
+      - name: Verify isolated Group 5 source scope on current main
         shell: bash
         run: |
           set -Eeuo pipefail
-          BASE_BRANCH='fix/group4-group5-regression-compatibility-20260729'
-          git fetch origin "$BASE_BRANCH" main --no-tags
-          CHANGED="$(git diff --name-only "origin/$BASE_BRANCH"...HEAD)"
+          git fetch origin main --no-tags
+          CHANGED="$(git diff --name-only origin/main...HEAD)"
           printf '%s\n' "$CHANGED"
 
           ALLOWED='^(\.github/workflows/group5-financial-operations-recovery-ci\.yml|database/migrations/051_financial_operations_reporting_recovery\.sql|database/rollback/051_financial_operations_reporting_recovery_rollback\.sql|docs/modules/group-5-financial-operations/README\.md|src/backend/ProjectTime.Api/Modules/(FinancialOperationsContracts|FinancialOperationsRecoveryModule|FinancialOperationsReportEngine|FinancialOperationsRepository|FinancialOperationsSourceLoader|FinancialOperationsWorkItemFactory|ProjectFinancialTruthReportingBridge)\.cs|src/backend/ProjectTime.Api/ProjectTime.Api\.csproj|src/frontend/project-time-web/package\.json|src/frontend/project-time-web/scripts/(inject-group-5-financial-operations-recovery|validate-group-5-financial-operations-recovery)\.mjs|src/frontend/project-time-web/src/(FinancialOperationsRecoveryWorkspace\.jsx|financial-operations-recovery-workspace\.css)|tests/test-financial-operations-migration-051\.sh)$'

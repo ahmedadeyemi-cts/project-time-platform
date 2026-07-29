@@ -1,4 +1,4 @@
-/* 019M-AL UI repair: floating Help Assistant visibility */
+/* Global Help and Pulse AI launcher visibility and interaction safeguards. */
 .help-assistant,
 .help-assistant-widget,
 .help-assistant-launcher,
@@ -6,7 +6,9 @@
 .help-chat-button,
 .help-button,
 .assistant-help,
-.project-pulse-help-assistant {
+.project-pulse-help-assistant,
+.help-launcher,
+.help-panel {
   z-index: 2147483000 !important;
 }
 
@@ -23,35 +25,26 @@
 .help-chat-button,
 .help-button,
 .assistant-help button,
-.project-pulse-help-assistant button {
+.project-pulse-help-assistant button,
+.help-launcher,
+.help-panel button {
   min-width: 44px;
   min-height: 44px;
 }
 
-.help-full-guide-button {
-  width: calc(100% - 24px);
-  margin: 12px;
-  border: 1px solid color-mix(in srgb, var(--brand-blue) 45%, var(--border));
-  border-radius: 12px;
-  padding: 11px 12px;
-  background: var(--brand-blue);
-  color: #fff;
-  cursor: pointer;
-  font-weight: 900;
+.help-panel button.help-full-guide-button,
+.help-panel button.help-pulse-ai-button,
+.help-panel button.help-report-defect-button,
+.help-panel .help-answer-navigation button,
+.help-panel .help-suggestions button {
+  min-height: 34px;
 }
 
-.help-report-defect-button {
-  width: calc(100% - 24px);
-  margin: 0 12px 12px;
-  border: 1px solid color-mix(in srgb, var(--brand-blue) 35%, var(--border));
-  border-radius: 12px;
-  padding: 11px 12px;
-  background: var(--surface-strong);
-  color: var(--brand-blue-strong);
-  cursor: pointer;
-  font-weight: 900;
-}
-
-.help-report-defect-button:hover {
-  background: color-mix(in srgb, var(--brand-blue) 10%, var(--surface));
+@media (max-width: 620px) {
+  .help-assistant,
+  .help-assistant-widget,
+  .project-pulse-help-assistant {
+    right: 16px !important;
+    bottom: 16px !important;
+  }
 }

@@ -4,6 +4,7 @@ public static class ProjectPulseAiServiceCollectionExtensions
 {
     public static IServiceCollection AddProjectPulseAi(this IServiceCollection services)
     {
+        services.AddHttpContextAccessor();
         services.AddHttpClient("ProjectPulseAi");
         services.AddSingleton<ProjectPulseAiConfiguration>();
         services.AddSingleton<ProjectPulseAiSecretStore>();
@@ -16,6 +17,11 @@ public static class ProjectPulseAiServiceCollectionExtensions
         services.AddSingleton<IProjectPulseAiProvider>(provider => provider.GetRequiredService<ProjectPulseOpenAiProvider>());
         services.AddSingleton<ProjectPulseAiRouter>();
         services.AddSingleton<ProjectPulseAiHealthCoordinator>();
+        services.AddSingleton<PulseAiDocumentGroundingService>();
+        services.AddSingleton<PulseAiQuestionPlanner>();
+        services.AddSingleton<PulseAiEscalationSanitizer>();
+        services.AddSingleton<PulseAiPrivateDocumentExtractionService>();
+        services.AddSingleton<PulseAiPrivateDocumentPipelineService>();
         services.AddSingleton<ProjectPulseAiTimeEntrySuggestionService>();
         services.AddHostedService<ProjectPulseAiHealthMonitor>();
         return services;

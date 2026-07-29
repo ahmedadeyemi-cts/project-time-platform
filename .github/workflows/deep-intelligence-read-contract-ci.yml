@@ -1,0 +1,282 @@
+name: Validate Deep Intelligence Read Contract
+
+on:
+  push:
+    branches:
+      - 'feature/module-011-pulse-ai-deep-intelligence-*'
+      - 'feature/module-011-private-document-pipeline-*'
+  pull_request:
+    paths:
+      - '.github/workflows/deep-intelligence-read-contract-ci.yml'
+      - '.github/workflows/private-document-pipeline-read-contract-ci.yml'
+      - 'docs/modules/module-011-pulse-ai/DEEP-INTELLIGENCE-RUNTIME.md'
+      - 'docs/modules/module-011-pulse-ai/ANSWER-QUALITY-AND-PRIVACY-CONTRACT.md'
+      - 'docs/modules/module-011-pulse-ai/PRIVATE-DOCUMENT-PIPELINE.md'
+      - 'docs/modules/module-011-pulse-ai/PRIVATE-INDEX-SECURITY-CONTRACT.md'
+      - 'docs/modules/module-066-project-flowhive/AI-INTEGRATION.md'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiDeepIntelligenceContracts.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiDocumentGroundingService.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiQuestionPlanner.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiEscalationSanitizer.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentPipelineContracts.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentExtractionService.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentPipelineService.cs'
+      - 'src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs'
+      - 'src/backend/ProjectTime.Api/Modules/PulseAiDeepIntelligenceModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/PulseAiPrivateDocumentPipelineModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiRequestFactory.cs'
+      - 'src/backend/ProjectTime.Api/ProjectPulseAiTimeEntrySuggestionService.cs'
+      - 'src/backend/ProjectTime.Api/ProjectTime.Api.csproj'
+      - 'src/frontend/project-time-web/scripts/validate-module-011-pulse-ai-deep-intelligence.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-module-011-private-document-pipeline.mjs'
+      - 'src/frontend/project-time-web/src/PulseAiDeepIntelligenceWorkbench.jsx'
+      - 'src/frontend/project-time-web/src/pulse-ai-deep-intelligence-workbench.css'
+      - 'src/frontend/project-time-web/src/PulseAiPrivateDocumentPipelineWorkbench.jsx'
+      - 'src/frontend/project-time-web/src/pulse-ai-private-document-pipeline-workbench.css'
+      - 'src/frontend/project-time-web/src/WorkTaskBuilderPanel.jsx'
+      - 'src/frontend/project-time-web/src/HelpAssistant.jsx'
+      - 'src/frontend/project-time-web/src/help.css'
+      - 'src/frontend/project-time-web/src/help-assistant.css'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deep-intelligence-read-contract-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Verify dependent source scope
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          BASE_BRANCH="${GITHUB_BASE_REF:-feature/module-011-pulse-ai-foundation-20260728}"
+          git fetch origin "$BASE_BRANCH" --no-tags
+
+          CHANGED="$(git diff --name-only "origin/$BASE_BRANCH"...HEAD)"
+          printf '%s\n' "$CHANGED"
+
+          if [[ "$BASE_BRANCH" == 'feature/module-011-pulse-ai-deep-intelligence-20260728' ]]; then
+            ALLOWED='^(\.github/workflows/(deep-intelligence-read-contract-ci|private-document-pipeline-read-contract-ci)\.yml|docs/modules/module-011-pulse-ai/(PRIVATE-DOCUMENT-PIPELINE|PRIVATE-INDEX-SECURITY-CONTRACT)\.md|src/backend/ProjectTime\.Api/Ai/(PulseAiPrivateDocumentPipelineContracts|PulseAiPrivateDocumentExtractionService|PulseAiPrivateDocumentPipelineService|ProjectPulseAiServiceCollectionExtensions)\.cs|src/backend/ProjectTime\.Api/Modules/PulseAiPrivateDocumentPipelineModule\.cs|src/backend/ProjectTime\.Api/ProjectTime\.Api\.csproj|src/frontend/project-time-web/scripts/validate-module-011-private-document-pipeline\.mjs|src/frontend/project-time-web/src/(PulseAiPrivateDocumentPipelineWorkbench\.jsx|pulse-ai-private-document-pipeline-workbench\.css|WorkTaskBuilderPanel\.jsx))$'
+            SCOPE_LABEL='PRIVATE_DOCUMENT_PIPELINE_STACK'
+          else
+            ALLOWED='^(\.github/workflows/deep-intelligence-read-contract-ci\.yml|docs/modules/module-011-pulse-ai/(DEEP-INTELLIGENCE-RUNTIME|ANSWER-QUALITY-AND-PRIVACY-CONTRACT)\.md|docs/modules/module-066-project-flowhive/AI-INTEGRATION\.md|src/backend/ProjectTime\.Api/Ai/(PulseAiDeepIntelligenceContracts|PulseAiDocumentGroundingService|PulseAiQuestionPlanner|PulseAiEscalationSanitizer|ProjectPulseAiServiceCollectionExtensions)\.cs|src/backend/ProjectTime\.Api/Modules/(PulseAiDeepIntelligenceModule|ProjectFlowHiveAiRequestFactory)\.cs|src/backend/ProjectTime\.Api/ProjectPulseAiTimeEntrySuggestionService\.cs|src/backend/ProjectTime\.Api/ProjectTime\.Api\.csproj|src/frontend/project-time-web/scripts/validate-module-011-pulse-ai-deep-intelligence\.mjs|src/frontend/project-time-web/src/(PulseAiDeepIntelligenceWorkbench\.jsx|pulse-ai-deep-intelligence-workbench\.css|WorkTaskBuilderPanel\.jsx|HelpAssistant\.jsx|help\.css|help-assistant\.css))$'
+            SCOPE_LABEL='DEEP_INTELLIGENCE_FOUNDATION'
+          fi
+
+          UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
+          if [[ -n "$UNEXPECTED" ]]; then
+            echo "Unexpected $SCOPE_LABEL source scope:" >&2
+            printf '%s\n' "$UNEXPECTED" >&2
+            exit 1
+          fi
+
+          for protected in \
+            '.github/workflows/projectpulse-deploy-runtime-direct-timer-recovery-test.yml' \
+            '.github/workflows/validate-runtime-direct-timer-recovery-deployment.yml' \
+            'scripts/validate-runtime-direct-timer-recovery-test-deployment.sh'; do
+            if grep -Fxq "$protected" <<<"$CHANGED"; then
+              echo "Protected deployment file changed: $protected" >&2
+              exit 1
+            fi
+          done
+
+          if grep -E '^(database/|deployment/azure/|\.github/workflows/projectpulse-deploy-|scripts/.*deploy|src/backend/ProjectTime\.Api/(Ai/ProjectPulseAiConfiguration|Ai/ProjectPulseAiRemoteProviders|Ai/ProjectPulseAiSecretStore|Modules/AiProviderConfigurationModule)\.|src/frontend/project-time-web/src/AiProviderConfigurationCenter\.|src/backend/ProjectTime\.Api/Modules/ProjectFinancialTruthModule\.cs|src/frontend/project-time-web/src/UnifiedProjectFinancialWorkspace\.)' <<<"$CHANGED"; then
+            echo 'The dependent package overlaps a migration, deployment, Module 064 provider implementation, or PR #220 financial implementation.' >&2
+            exit 1
+          fi
+
+          [[ "$(git merge-base "origin/$BASE_BRANCH" HEAD)" == "$(git rev-parse "origin/$BASE_BRANCH")" ]]
+          git diff --check "origin/$BASE_BRANCH"...HEAD
+          echo "DEEP_INTELLIGENCE_BASE_BRANCH=$BASE_BRANCH"
+          echo "DEEP_INTELLIGENCE_VALIDATION_SCOPE=$SCOPE_LABEL"
+          echo 'DEEP_INTELLIGENCE_SOURCE_ISOLATION=PASSED'
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Check validator syntax
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node --check src/frontend/project-time-web/scripts/validate-module-011-pulse-ai-deep-intelligence.mjs
+          if [[ -f src/frontend/project-time-web/scripts/validate-module-011-private-document-pipeline.mjs ]]; then
+            node --check src/frontend/project-time-web/scripts/validate-module-011-private-document-pipeline.mjs
+          fi
+
+      - name: Validate deep intelligence source contract
+        id: source_contract
+        continue-on-error: true
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set +e
+          node ./scripts/validate-module-011-pulse-ai-deep-intelligence.mjs > deep-intelligence-source-contract.log 2>&1
+          STATUS=$?
+          if [[ "$STATUS" == '0' && -f ./scripts/validate-module-011-private-document-pipeline.mjs ]]; then
+            node ./scripts/validate-module-011-private-document-pipeline.mjs >> deep-intelligence-source-contract.log 2>&1
+            STATUS=$?
+          fi
+          echo "exit_code=$STATUS" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload source-contract diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deep-intelligence-source-contract-${{ github.run_id }}-${{ github.run_attempt }}
+          path: src/frontend/project-time-web/deep-intelligence-source-contract.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce source-contract result
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          STATUS='${{ steps.source_contract.outputs.exit_code }}'
+          cat deep-intelligence-source-contract.log
+          if [[ "$STATUS" != '0' ]]; then
+            exit "$STATUS"
+          fi
+
+      - name: Validate preserved Module 011 and FlowHive contracts
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node ./scripts/validate-module-011-pulse-ai.mjs
+          node ./scripts/validate-module-066-project-flowhive.mjs
+
+      - name: Build ProjectTime API
+        id: api_build
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release > deep-intelligence-api-build.log 2>&1
+          STATUS=$?
+          echo "exit_code=$STATUS" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload API-build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deep-intelligence-api-build-${{ github.run_id }}-${{ github.run_attempt }}
+          path: deep-intelligence-api-build.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce API-build result
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          STATUS='${{ steps.api_build.outputs.exit_code }}'
+          tail -n 220 deep-intelligence-api-build.log
+          if [[ "$STATUS" != '0' ]]; then
+            exit "$STATUS"
+          fi
+          echo 'DEEP_INTELLIGENCE_API_BUILD=PASSED'
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Build complete frontend production bundle
+        id: frontend_build
+        continue-on-error: true
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set +e
+          npm run build > deep-intelligence-frontend-build.log 2>&1
+          STATUS=$?
+          echo "exit_code=$STATUS" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload frontend-build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deep-intelligence-frontend-build-${{ github.run_id }}-${{ github.run_attempt }}
+          path: src/frontend/project-time-web/deep-intelligence-frontend-build.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce frontend-build result
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          STATUS='${{ steps.frontend_build.outputs.exit_code }}'
+          tail -n 200 deep-intelligence-frontend-build.log
+          if [[ "$STATUS" != '0' ]]; then
+            exit "$STATUS"
+          fi
+
+          cat dist/assets/*.js > /tmp/deep-intelligence.js
+          cat dist/assets/*.css > /tmp/deep-intelligence.css
+
+          for marker in \
+            'Build comprehensive, source-grounded answers—not surface summaries' \
+            'Timesheet Grounding' \
+            'FlowHive Planning' \
+            'Reports & Financials' \
+            'Pulse AI Help & Search' \
+            'Automatic multi-tool execution is not yet enabled'; do
+            grep -Fq "$marker" /tmp/deep-intelligence.js
+          done
+
+          grep -Fq '.pulse-ai-deep-workbench' /tmp/deep-intelligence.css
+          grep -Fq '.help-detailed-answer' /tmp/deep-intelligence.css
+          echo 'DEEP_INTELLIGENCE_FRONTEND_BUILD=PASSED'
+
+      - name: Validate web container build context
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          docker build \
+            --file deployment/containers/web/Dockerfile \
+            --tag "projectpulse-deep-intelligence:${GITHUB_SHA}" \
+            .
+          echo 'DEEP_INTELLIGENCE_WEB_CONTAINER_BUILD=PASSED'
+
+      - name: Publish final validation summary
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          {
+            echo '## Module 011 Pulse AI Deep Intelligence'
+            echo
+            echo '- Source contract: passed'
+            echo '- Existing Module 011 contract: passed'
+            echo '- Existing Module 066 contract: passed'
+            echo '- Stacked private-document source contract: passed when present'
+            echo '- .NET 10 API build: passed'
+            echo '- Complete frontend build: passed'
+            echo '- Web container build context: passed'
+            echo '- Database migration: none'
+            echo '- External model call: none'
+            echo '- Provider secret or route mutation: none'
+            echo '- Azure, Entra, Container App, or deployment operation: none'
+            echo '- PR #220 financial runtime consumption: gated'
+          } >> "$GITHUB_STEP_SUMMARY"
