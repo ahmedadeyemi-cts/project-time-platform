@@ -1,0 +1,184 @@
+name: ProjectPulse Deploy Group 4 Notifications to Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_commit:
+        description: Exact verified Group 4 source release
+        required: true
+        default: 24fb92d751726b1bab66c11d902c0b2571701b23
+        type: string
+      confirmation:
+        description: Enter DEPLOY-GROUP4-NOTIFICATIONS-TO-TEST
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: projectpulse-deploy-group4-notifications-test
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Guarded Group 4 API and web Test deployment
+    environment: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    env:
+      EXPECTED_RELEASE_COMMIT: 24fb92d751726b1bab66c11d902c0b2571701b23
+      SOURCE_BASELINE_COMMIT: e2b514e4820e0956a6328db97c74e41dd59fd662
+
+    steps:
+      - name: Check out deployment controls
+        uses: actions/checkout@v5
+        with:
+          path: control
+          fetch-depth: 0
+
+      - name: Check out exact Group 4 source release
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.release_commit }}
+          path: release
+          fetch-depth: 0
+
+      - name: Guard workflow source and exact Group 4 release
+        id: release
+        shell: bash
+        env:
+          DISPATCH_RELEASE_COMMIT: ${{ inputs.release_commit }}
+          DISPATCH_CONFIRMATION: ${{ inputs.confirmation }}
+          WORKFLOW_SOURCE_REF: ${{ github.ref }}
+          WORKFLOW_SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$WORKFLOW_SOURCE_REF" == 'refs/heads/main' ]]
+          [[ "$DISPATCH_CONFIRMATION" == 'DEPLOY-GROUP4-NOTIFICATIONS-TO-TEST' ]]
+          [[ "$DISPATCH_RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+
+          CONTROL_COMMIT="$(git -C control rev-parse HEAD)"
+          TARGET_COMMIT="$(git -C release rev-parse HEAD)"
+          [[ "$CONTROL_COMMIT" == "$WORKFLOW_SOURCE_SHA" ]]
+          [[ "$TARGET_COMMIT" == "$DISPATCH_RELEASE_COMMIT" ]]
+          [[ "$TARGET_COMMIT" == "$EXPECTED_RELEASE_COMMIT" ]]
+          git -C control merge-base --is-ancestor "$TARGET_COMMIT" HEAD
+
+          for file in \
+            release/database/migrations/050_project_notification_routing_and_schedules.sql \
+            release/src/backend/ProjectTime.Api/Modules/ProjectNotificationAutomationModule.cs \
+            release/src/backend/ProjectTime.Api/Modules/ProjectNotificationAutomationService.cs \
+            release/src/backend/ProjectTime.Api/Modules/Module065ProjectNotificationDelivery.cs \
+            release/src/frontend/project-time-web/src/ProjectNotificationAutomationCenter.jsx \
+            release/src/frontend/project-time-web/src/project-notification-automation-center.css \
+            release/src/frontend/project-time-web/scripts/validate-group-4-project-notification-automation.mjs \
+            control/scripts/apply-group4-migration-050-test.sh \
+            control/scripts/run-group4-migration-050-test-job.sh \
+            control/scripts/run-group4-notifications-test-deployment.sh; do
+            test -f "$file"
+          done
+
+          mapfile -t DATABASE_CHANGED < <(
+            git -C release diff --name-only "$SOURCE_BASELINE_COMMIT...$TARGET_COMMIT" |
+              grep '^database/' |
+              sort
+          )
+          cat > /tmp/expected-db.txt <<'EOF'
+          database/migrations/050_project_notification_routing_and_schedules.sql
+          database/rollback/050_project_notification_routing_and_schedules_rollback.sql
+          EOF
+          sed -i 's/^[[:space:]]*//' /tmp/expected-db.txt
+          sort -o /tmp/expected-db.txt /tmp/expected-db.txt
+          diff -u /tmp/expected-db.txt <(printf '%s\n' "${DATABASE_CHANGED[@]}")
+
+          grep -Fq 'app.MapProjectNotificationAutomationEndpoints();' release/src/backend/ProjectTime.Api/ProjectTime.Api.csproj
+          grep -Fq 'app.UseProjectNotificationCloseoutCompatibility();' release/src/backend/ProjectTime.Api/ProjectTime.Api.csproj
+          grep -Fq 'validate:group4-project-notifications' release/src/frontend/project-time-web/package.json
+
+          (cd release && dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release)
+          (cd release/src/frontend/project-time-web && npm ci --no-audit --no-fund && npm run validate:group4-project-notifications && npm run build)
+
+          echo "target_commit=$TARGET_COMMIT" >> "$GITHUB_OUTPUT"
+          echo 'GROUP4_NOTIFICATIONS_RELEASE_GUARD=PASS'
+          echo 'This API/web Action does not apply migration 050.'
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Load Test database connection for migration preflight
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_API_APP: ${{ vars.AZURE_API_APP }}
+        run: bash control/scripts/export-pr55-test-database-url.sh
+
+      - name: Build checksum-pinned migration 050 preflight image
+        id: migration
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          CONTEXT="$RUNNER_TEMP/group4-migration-preflight-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          install -d -m 0700 "$CONTEXT/migrations"
+          install -m 0644 control/deployment/containers/pr55-migrator/Dockerfile "$CONTEXT/Dockerfile"
+          install -m 0755 control/scripts/apply-group4-migration-050-test.sh "$CONTEXT/apply-pr55-test-migrations.sh"
+          install -m 0644 release/database/migrations/050_project_notification_routing_and_schedules.sql "$CONTEXT/migrations/050_project_notification_routing_and_schedules.sql"
+          (
+            cd "$CONTEXT/migrations"
+            sha256sum 050_project_notification_routing_and_schedules.sql > SHA256SUMS
+          )
+          printf '%s\n' '${{ steps.release.outputs.target_commit }}' > "$CONTEXT/release-commit"
+          DIGEST="$(control/scripts/build-pr55-acr-image.sh \
+            '${{ vars.AZURE_ACR_NAME }}' \
+            "project-health-dashboard-group4-migration050:verify-${{ steps.release.outputs.target_commit }}-${GITHUB_SHA:0:12}" \
+            "$CONTEXT/Dockerfile" \
+            "$CONTEXT")"
+          [[ "$DIGEST" == sha256:* ]]
+          echo "image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/project-health-dashboard-group4-migration050@$DIGEST" >> "$GITHUB_OUTPUT"
+
+      - name: Verify migration 050 before API and web deployment
+        shell: bash
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_API_APP: ${{ vars.AZURE_API_APP }}
+          AZURE_ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
+          GROUP4_MIGRATION_IMAGE: ${{ steps.migration.outputs.image }}
+          GROUP4_MIGRATION_JOB_NAME: g4pre-${{ github.run_id }}-${{ github.run_attempt }}
+          GROUP4_MIGRATION_MODE: verify
+        run: bash control/scripts/run-group4-migration-050-test-job.sh
+
+      - name: Build, deploy, validate, and preserve rollback evidence
+        shell: bash
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_API_APP: ${{ vars.AZURE_API_APP }}
+          AZURE_WEB_APP: ${{ vars.AZURE_WEB_APP }}
+          AZURE_ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
+          PUBLIC_URL: ${{ vars.PUBLIC_URL }}
+        run: >-
+          bash control/scripts/run-group4-notifications-test-deployment.sh
+          control
+          release
+          '${{ steps.release.outputs.target_commit }}'
+
+      - name: Upload deployment diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: group4-notifications-test-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            control/evidence/
+            ${{ runner.temp }}/group4-notifications-probes/
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload immutable deployment evidence
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: group4-notifications-test-${{ github.run_id }}
+          path: control/evidence/group4-notifications-test-deployment.json
+          retention-days: 30

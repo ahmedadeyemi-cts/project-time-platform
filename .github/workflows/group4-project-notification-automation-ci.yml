@@ -1,0 +1,163 @@
+name: Validate Group 4 Project Notification Automation
+
+on:
+  push:
+    branches:
+      - 'feature/group-4-cost-routing-notification-schedules-*'
+      - 'fix/group4-group5-regression-compatibility-*'
+  pull_request:
+    paths:
+      - '.github/workflows/admin-runtime-stability-ci.yml'
+      - '.github/workflows/group4-project-notification-automation-ci.yml'
+      - 'database/migrations/050_project_notification_routing_and_schedules.sql'
+      - 'database/rollback/050_project_notification_routing_and_schedules_rollback.sql'
+      - 'docs/modules/group-4-project-notifications/README.md'
+      - 'src/backend/ProjectTime.Api/Modules/Module065ProjectNotificationDelivery.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectNotificationAutomationModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectNotificationAutomationService.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectNotificationContracts.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectNotificationEvaluator.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectNotificationFinancialSnapshotLoader.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectNotificationProcessingService.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectNotificationQuietHoursService.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectNotificationRepository.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectNotificationScheduler.cs'
+      - 'src/backend/ProjectTime.Api/ProjectTime.Api.csproj'
+      - 'src/frontend/project-time-web/package.json'
+      - 'src/frontend/project-time-web/scripts/inject-group-4-project-notification-automation.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-group-4-project-notification-automation.mjs'
+      - 'src/frontend/project-time-web/src/ProjectNotificationAutomationCenter.jsx'
+      - 'src/frontend/project-time-web/src/project-notification-automation-center.css'
+      - 'tests/test-project-notification-migration-050.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: group4-project-notification-automation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify isolated Group 4 source scope or run regression mode
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          git fetch origin main --no-tags
+          CHANGED="$(git diff --name-only origin/main...HEAD)"
+          printf '%s\n' "$CHANGED"
+
+          for protected in \
+            '.github/workflows/projectpulse-deploy-runtime-direct-timer-recovery-test.yml' \
+            '.github/workflows/validate-runtime-direct-timer-recovery-deployment.yml' \
+            'scripts/validate-runtime-direct-timer-recovery-test-deployment.sh'; do
+            if grep -Fxq "$protected" <<<"$CHANGED"; then
+              echo "Protected deployment file changed: $protected" >&2
+              exit 1
+            fi
+          done
+
+          if [[ "$BRANCH" != feature/group-4-cost-routing-notification-schedules-* \
+             && "$BRANCH" != fix/group4-group5-regression-compatibility-* ]]; then
+            echo "GROUP_4_SOURCE_ISOLATION=REGRESSION_MODE branch=$BRANCH"
+            exit 0
+          fi
+
+          ALLOWED='^(\.github/workflows/(admin-runtime-stability-ci|group4-project-notification-automation-ci)\.yml|database/migrations/050_project_notification_routing_and_schedules\.sql|database/rollback/050_project_notification_routing_and_schedules_rollback\.sql|docs/modules/group-4-project-notifications/README\.md|src/backend/ProjectTime.Api/Modules/(Module065ProjectNotificationDelivery|ProjectNotificationAutomationModule|ProjectNotificationAutomationService|ProjectNotificationContracts|ProjectNotificationEvaluator|ProjectNotificationFinancialSnapshotLoader|ProjectNotificationProcessingService|ProjectNotificationQuietHoursService|ProjectNotificationRepository|ProjectNotificationScheduler)\.cs|src/backend/ProjectTime.Api/ProjectTime.Api\.csproj|src/frontend/project-time-web/package\.json|src/frontend/project-time-web/scripts/(inject-group-4-project-notification-automation|validate-group-4-project-notification-automation)\.mjs|src/frontend/project-time-web/src/(ProjectNotificationAutomationCenter\.jsx|project-notification-automation-center\.css)|tests/test-project-notification-migration-050\.sh)$'
+          UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
+          if [[ -n "$UNEXPECTED" ]]; then
+            echo 'Unexpected Group 4 source scope:' >&2
+            printf '%s\n' "$UNEXPECTED" >&2
+            exit 1
+          fi
+
+          if grep -E '^(deployment/|\.github/workflows/projectpulse-deploy-|scripts/.*deploy|src/frontend/project-time-web/src/(App|main)\.|src/frontend/project-time-web/src/module-availability-registry\.js|src/frontend/project-time-web/src/.*[Cc]ertify|src/backend/ProjectTime.Api/Modules/Module038)' <<<"$CHANGED"; then
+            echo 'Group 4 overlaps deployment, canonical App/registry source, or Module 038 Certify layout.' >&2
+            exit 1
+          fi
+
+          echo 'GROUP_4_SOURCE_ISOLATION=PASSED'
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Check Group 4 JavaScript syntax
+        run: |
+          set -Eeuo pipefail
+          node --check src/frontend/project-time-web/scripts/inject-group-4-project-notification-automation.mjs
+          node --check src/frontend/project-time-web/scripts/validate-group-4-project-notification-automation.mjs
+
+      - name: Test migration 050
+        run: bash tests/test-project-notification-migration-050.sh
+
+      - name: Validate Group 4 source contract
+        working-directory: src/frontend/project-time-web
+        run: npm run validate:group4-project-notifications
+
+      - name: Build ProjectTime API
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Validate integrated dependencies
+        working-directory: src/frontend/project-time-web
+        run: |
+          set -Eeuo pipefail
+          npm run validate:group2b-production-resilience
+          npm run validate:group3-project-financial-workspaces
+          npm run validate:module011
+          npm run validate:module064
+          npm run validate:module065
+          npm run validate:microsoft-connection
+          npm run validate:microsoft-sso-runtime
+          npm run validate:module005
+          npm run validate:modules021026
+
+      - name: Build complete frontend production bundle
+        working-directory: src/frontend/project-time-web
+        run: npm run build
+
+      - name: Validate compiled Group 4 markers
+        working-directory: src/frontend/project-time-web
+        run: |
+          set -Eeuo pipefail
+          cat dist/assets/*.js > /tmp/group4-project-notifications.js
+          cat dist/assets/*.css > /tmp/group4-project-notifications.css
+          for marker in \
+            'Project Cost Alert Routing' \
+            'Configurable Notification Schedules' \
+            'Notification Delivery Monitor' \
+            'Module 065 is the only mail-delivery authority' \
+            'Automatically derived recipients' \
+            'Recent delivery attempts' \
+            '/api/project-notifications/routing-rules' \
+            '/api/project-notifications/delivery-monitor'; do
+            grep -Fq "$marker" /tmp/group4-project-notifications.js
+          done
+          for marker in \
+            '.group4-notification-center' \
+            '.group4-rule-grid' \
+            '.group4-schedule-grid' \
+            '.group4-table-wrap'; do
+            grep -Fq "$marker" /tmp/group4-project-notifications.css
+          done
+          echo 'GROUP_4_FRONTEND_BUILD=PASSED'

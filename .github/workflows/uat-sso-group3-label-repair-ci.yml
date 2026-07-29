@@ -1,0 +1,160 @@
+name: Validate UAT SSO, Group 3 Workspaces, and Pulse AI Label Repair
+
+on:
+  push:
+    branches:
+      - 'fix/uat-sso-group3-module011-labels-*'
+  pull_request:
+    paths:
+      - 'src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/MicrosoftSsoStateOriginRecovery.cs'
+      - 'src/backend/ProjectTime.Api/Program.cs'
+      - 'src/frontend/project-time-web/scripts/validate-group-3-project-financial-workspaces.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-microsoft-sso-runtime-wiring.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-module-011-pulse-ai.mjs'
+      - 'src/frontend/project-time-web/src/App.jsx'
+      - 'src/frontend/project-time-web/src/HelpAssistant.jsx'
+      - 'src/frontend/project-time-web/src/UnifiedProjectFinancialWorkspace.jsx'
+      - 'src/frontend/project-time-web/src/unified-project-financial-workspace.css'
+      - '.github/workflows/group3-unified-project-financial-workspaces-ci.yml'
+      - '.github/workflows/uat-sso-group3-label-repair-ci.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: uat-sso-group3-module011-label-repair-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Enforce isolated twelve-file source scope
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git fetch origin main --no-tags
+          BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          if [[ "$BRANCH" != fix/uat-sso-group3-module011-labels-* ]]; then
+            echo "UAT_REPAIR_SOURCE_ISOLATION=REGRESSION_MODE branch=$BRANCH"
+            exit 0
+          fi
+
+          mapfile -t CHANGED < <(git diff --name-only origin/main...HEAD | sort)
+          cat > /tmp/expected.txt <<'EOF'
+          .github/workflows/group3-unified-project-financial-workspaces-ci.yml
+          .github/workflows/uat-sso-group3-label-repair-ci.yml
+          src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs
+          src/backend/ProjectTime.Api/Modules/MicrosoftSsoStateOriginRecovery.cs
+          src/backend/ProjectTime.Api/Program.cs
+          src/frontend/project-time-web/scripts/validate-group-3-project-financial-workspaces.mjs
+          src/frontend/project-time-web/scripts/validate-microsoft-sso-runtime-wiring.mjs
+          src/frontend/project-time-web/scripts/validate-module-011-pulse-ai.mjs
+          src/frontend/project-time-web/src/App.jsx
+          src/frontend/project-time-web/src/HelpAssistant.jsx
+          src/frontend/project-time-web/src/UnifiedProjectFinancialWorkspace.jsx
+          src/frontend/project-time-web/src/unified-project-financial-workspace.css
+          EOF
+          sed -i 's/^[[:space:]]*//' /tmp/expected.txt
+          sort -o /tmp/expected.txt /tmp/expected.txt
+          diff -u /tmp/expected.txt <(printf '%s\n' "${CHANGED[@]}")
+
+          if printf '%s\n' "${CHANGED[@]}" | grep -E '^(database/|deployment/azure/|\.github/workflows/projectpulse-deploy-|scripts/.*deploy)'; then
+            echo 'UAT repair must not contain a migration or deployment control.' >&2
+            exit 1
+          fi
+          echo 'UAT_REPAIR_SOURCE_ISOLATION=PASS'
+
+      - name: Validate SSO state-origin recovery contract
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          RECOVERY='src/backend/ProjectTime.Api/Modules/MicrosoftSsoStateOriginRecovery.cs'
+          MIDDLEWARE='src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs'
+          PROGRAM='src/backend/ProjectTime.Api/Program.cs'
+
+          for marker in \
+            'FROM auth_sso_state' \
+            'consumed_at IS NULL' \
+            'expires_at > NOW()' \
+            'CallbackPath = "/api/auth/sso/callback"' \
+            'stored_redirect_uri_https_required' \
+            'stored_redirect_uri_callback_path_mismatch' \
+            'stored_redirect_uri_internal_host_rejected' \
+            'stored_redirect_uri_environment_mismatch' \
+            '.onenecklab.com' \
+            '.ussignal.com' \
+            '.azurecontainerapps.io'; do
+            grep -Fq "$marker" "$RECOVERY"
+          done
+
+          grep -Fq 'MicrosoftSsoStateOriginRecovery.TryRecoverAsync' "$MIDDLEWARE"
+          grep -Fq 'context.Request.Query["state"]' "$MIDDLEWARE"
+          grep -Fq 'RETURNING nonce_token, requested_email, redirect_uri' "$PROGRAM"
+          grep -Fq 'MicrosoftSsoStateOriginRecovery.TryValidateStoredRedirectUri' "$PROGRAM"
+          grep -Fq 'consumed_auth_sso_state_redirect_uri' "$PROGRAM"
+          echo 'MICROSOFT_SSO_STATE_ORIGIN_RECOVERY=PASS'
+
+      - name: Validate role-specific Group 3 and Pulse AI labels
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          WORKSPACE='src/frontend/project-time-web/src/UnifiedProjectFinancialWorkspace.jsx'
+          CSS='src/frontend/project-time-web/src/unified-project-financial-workspace.css'
+          APP='src/frontend/project-time-web/src/App.jsx'
+          HELP='src/frontend/project-time-web/src/HelpAssistant.jsx'
+
+          for marker in \
+            'Project portfolio command center' \
+            'Engineering assignments and project evidence' \
+            'Customer, SELL, and delivery readiness' \
+            'Projects, customers, SELL, and governed rates' \
+            'data-workspace-summary' \
+            'workspaceColumns' \
+            'workspaceCells'; do
+            grep -Fq "$marker" "$WORKSPACE"
+          done
+
+          grep -Fq 'Pulse AI' "$APP"
+          grep -Fq 'Pulse AI' "$HELP"
+          grep -Fq '.group3-hero' "$CSS"
+          grep -Eq '#0[0-9A-Fa-f]{5}|#1[0-9A-Fa-f]{5}|rgb\(' "$CSS"
+          echo 'GROUP3_DISTINCT_WORKSPACES_AND_PULSE_AI_LABEL=PASS'
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Build ProjectTime API in Release mode
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Run focused runtime validators
+        working-directory: src/frontend/project-time-web
+        run: |
+          node --check scripts/validate-microsoft-sso-runtime-wiring.mjs
+          node --check scripts/validate-group-3-project-financial-workspaces.mjs
+          node --check scripts/validate-module-011-pulse-ai.mjs
+          node scripts/validate-microsoft-sso-runtime-wiring.mjs
+          node scripts/validate-group-3-project-financial-workspaces.mjs
+          node scripts/validate-module-011-pulse-ai.mjs
+
+      - name: Build complete frontend production bundle
+        working-directory: src/frontend/project-time-web
+        run: npm run build

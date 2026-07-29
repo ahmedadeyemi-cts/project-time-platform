@@ -24,13 +24,17 @@ export {
   PulseAiPrivateDocumentPipelineWorkbench
 };
 
+function PulseAiWorkspace() {
+  return <PulseAiCenter />;
+}
+
 export default function WorkTaskBuilderPanel() {
   return (
     <>
       <PulseAiMissionControl />
       <PulseAiPrivateDocumentPipelineWorkbench />
       <PulseAiDeepIntelligenceWorkbench />
-      <PulseAiCenter />
+      <PulseAiWorkspace />
     </>
   );
 }
