@@ -13,6 +13,7 @@
     <Module001GeneratedContracts>$(IntermediateOutputPath)Module001TimesheetContracts.g.cs</Module001GeneratedContracts>
     <Module001GeneratedData>$(IntermediateOutputPath)Module001TimesheetData.g.cs</Module001GeneratedData>
     <Module001GeneratedEndpoints>$(IntermediateOutputPath)Module001TimesheetEnhancementModule.g.cs</Module001GeneratedEndpoints>
+    <PulseAiGroundingGenerated>$(IntermediateOutputPath)PulseAiDocumentGroundingService.g.cs</PulseAiGroundingGenerated>
   </PropertyGroup>
 
   <ItemGroup>
@@ -36,6 +37,7 @@
     <Compile Remove="Modules/Module001TimesheetContracts.cs" />
     <Compile Remove="Modules/Module001TimesheetData.cs" />
     <Compile Remove="Modules/Module001TimesheetEnhancementModule.cs" />
+    <Compile Remove="Ai/PulseAiDocumentGroundingService.cs" />
   </ItemGroup>
 
   <Target Name="GenerateScopedRbacSources" BeforeTargets="CoreCompile">
@@ -58,6 +60,10 @@
     <Exec Command="sed -e 's/value.HasValue ? value.Value : DBNull.Value/value.HasValue ? (object)value.Value : DBNull.Value/' &quot;$(MSBuildProjectDirectory)/Modules/Module001TimesheetContracts.cs&quot; &gt; &quot;$(Module001GeneratedContracts)&quot;" />
     <Exec Command="sed -e 's/if (value is Guid id) existingId = id;/if (value is Guid foundEntryId) existingId = foundEntryId;/' &quot;$(MSBuildProjectDirectory)/Modules/Module001TimesheetData.cs&quot; &gt; &quot;$(Module001GeneratedData)&quot;" />
     <Exec Command="sed -e 's/reader.IsDBNull(1) ? null : reader.GetGuid(1)/reader.IsDBNull(1) ? (Guid?)null : reader.GetGuid(1)/' -e 's/reader.IsDBNull(3) ? null : reader.GetGuid(3)/reader.IsDBNull(3) ? (Guid?)null : reader.GetGuid(3)/' -e 's/reader.IsDBNull(4) ? null : reader.GetGuid(4)/reader.IsDBNull(4) ? (Guid?)null : reader.GetGuid(4)/' &quot;$(MSBuildProjectDirectory)/Modules/Module001TimesheetEnhancementModule.cs&quot; &gt; &quot;$(Module001GeneratedEndpoints)&quot;" />
+    <!-- Pulse AI keeps the canonical permission-aware grounding source readable.
+         The compiled copy materializes ordered role evidence for the existing
+         IReadOnlyList response contract without changing authorization behavior. -->
+    <Exec Command="sed -e 's/roles: access.RoleCodes,/roles: access.RoleCodes.OrderBy(value =&gt; value).ToArray(),/' &quot;$(MSBuildProjectDirectory)/Ai/PulseAiDocumentGroundingService.cs&quot; &gt; &quot;$(PulseAiGroundingGenerated)&quot;" />
     <ItemGroup>
       <Compile Include="$(ScopedRbacGeneratedProgram)" />
       <Compile Include="$(ScopedRbacGeneratedModule)" />
@@ -67,6 +73,7 @@
       <Compile Include="$(Module001GeneratedContracts)" />
       <Compile Include="$(Module001GeneratedData)" />
       <Compile Include="$(Module001GeneratedEndpoints)" />
+      <Compile Include="$(PulseAiGroundingGenerated)" />
     </ItemGroup>
   </Target>
 </Project>
