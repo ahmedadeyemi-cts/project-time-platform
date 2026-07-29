@@ -319,9 +319,14 @@ peer = {
 }
 
 if peer_host:
-    ping = run(["bash", "-lc", f"timeout 5 bash -c '</dev/tcp/{peer_host}/22'"], timeout=7)
-    peer["status"] = "ready" if ping["ok"] else "warning"
-    peer["detail"] = "Peer host is reachable on TCP/22." if ping["ok"] else "Peer host is configured but not reachable on TCP/22."
+    try:
+        with socket.create_connection((peer_host, 22), timeout=5):
+            peer_reachable = True
+    except (OSError, ValueError):
+        peer_reachable = False
+
+    peer["status"] = "ready" if peer_reachable else "warning"
+    peer["detail"] = "Peer host is reachable on TCP/22." if peer_reachable else "Peer host is configured but not reachable on TCP/22."
 
 checks = []
 

@@ -1056,7 +1056,7 @@ public static class SecurityHardeningModule
         Guid actorUserId,
         Guid documentId)
     {
-        if (access.CanUseProjectIntake)
+        if (access.HasOrganizationIntakeScope)
         {
             return true;
         }
@@ -1235,10 +1235,10 @@ public static class SecurityHardeningModule
                 "MANAGE_ALL"
             });
 
+        // SECURITY_20260729_TIME_COMPLIANCE_ORG_SCOPE
         public bool CanViewTimeCompliance =>
             IsAdministrator
             || Roles.Contains("PROJECT_TEAM_COORDINATOR")
-            || Roles.Contains("MANAGER")
             || Permissions.Overlaps(new[]
             {
                 "VIEW_TIME_COMPLIANCE",
@@ -1282,6 +1282,17 @@ public static class SecurityHardeningModule
             {
                 "MANAGE_PROJECT_ASSIGNMENTS",
                 "MANAGE_PROJECT_COORDINATION",
+                "SYSTEM_ADMINISTRATION",
+                "MANAGE_ALL"
+            });
+
+        public bool HasOrganizationIntakeScope =>
+            IsAdministrator
+            || Roles.Contains("PROJECT_TEAM_COORDINATOR")
+            || Permissions.Overlaps(new[]
+            {
+                "MANAGE_PROJECT_INTAKE",
+                "MANAGE_PROJECT_DOCUMENTS",
                 "SYSTEM_ADMINISTRATION",
                 "MANAGE_ALL"
             });

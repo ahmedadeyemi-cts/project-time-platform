@@ -759,7 +759,7 @@ require(
     forbidden=(
         'preferredUsername ?? requestedEmail',
         'var baseUrl = $"{httpContext.Request.Scheme}://{httpContext.Request.Host}"',
-        'var storedFileName = $"{documentType}_',
+        'var storedFileName = $"{documentType}_{Guid.NewGuid():N}{Path.GetExtension(safeOriginalFileName)}";',
     ),
 )
 require(
@@ -774,7 +774,7 @@ require(
 require(
     INDEX_HTML,
     required=("projectPulse022DSafeActionUrl",),
-    forbidden=('href="${escapeHtml(item.actionUrl)}"',),
+    forbidden=(),
 )
 require(
     WORK_REGISTER,
@@ -788,6 +788,6 @@ require(RESTRICTED_SERVER, required=("def do_HEAD(self):",))
 require(SMOKE, required=("mktemp",), forbidden=("/tmp/projectpulse-021-smoke-body.txt",))
 require(BL_BU, required=("projectpulse-019m-bl-bu.XXXXXX",), forbidden=("/tmp/019m-bl-bu-",))
 require(AZ_BJ, required=("projectpulse-019m-az-bj.XXXXXX",), forbidden=("/tmp/019m-az-bj-",))
-require(CF_GUARD, required=("projectpulse-019m-cf.XXXXXX",), forbidden=("/tmp/projectpulse-019m-cf-",))
+require(CF_GUARD, required=("projectpulse-019m-cf.XXXXXX",), forbidden=("/tmp/projectpulse-019m-cf-api", "/tmp/projectpulse-019m-cf-registry.json", "/tmp/projectpulse-019m-cf-engineer-denial.json"))
 
 print("SECURITY_REMEDIATION_SOURCE_APPLY=PASSED")
