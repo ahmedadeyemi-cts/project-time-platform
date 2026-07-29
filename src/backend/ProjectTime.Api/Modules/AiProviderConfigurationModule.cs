@@ -5,9 +5,8 @@ namespace ProjectTime.Api.Modules;
 
 /// <summary>
 /// Module 064 is the single sanitized configuration, health, and routing
-/// boundary for every ProjectPulse AI consumer. Secret and persistence writes
-/// remain locked until secure-store, step-up authentication, and audit work are
-/// separately authorized.
+/// boundary for every ProjectPulse AI consumer. Provider secrets remain
+/// encrypted, write-only, and never appear in health or routing responses.
 /// </summary>
 public static class AiProviderConfigurationModule
 {
@@ -23,7 +22,7 @@ public static class AiProviderConfigurationModule
     {
         app.MapGet(
             "/api/ai-configuration",
-            (Func<HttpContext, ProjectPulseAiConfiguration, ProjectPulseAiSecretStore, ProjectPulseAiHealthRegistry, CancellationToken, Task<IResult>>)GetConfigurationAsync);
+            (Func<HttpContext, ProjectPulseAiConfiguration, ProjectPulseAiSecretStore, ProjectPulseAiHealthRegistry, ProjectPulseAiHealthCoordinator, CancellationToken, Task<IResult>>)GetConfigurationAsync);
         app.MapGet(
             "/api/ai-configuration/health",
             (Func<HttpContext, ProjectPulseAiConfiguration, ProjectPulseAiHealthRegistry, Task<IResult>>)GetHealthAsync);
@@ -32,7 +31,7 @@ public static class AiProviderConfigurationModule
             (Func<HttpContext, ProjectPulseAiConfiguration, ProjectPulseAiHealthCoordinator, CancellationToken, Task<IResult>>)RefreshHealthAsync);
         app.MapPut(
             "/api/ai-configuration/providers/{providerCode}/secret",
-            (Func<string, HttpContext, ProjectPulseAiConfiguration, ProjectPulseAiSecretStore, ProjectPulseAiHealthRegistry, CancellationToken, Task<IResult>>)ReplaceSecretAsync);
+            (Func<string, HttpContext, ProjectPulseAiConfiguration, ProjectPulseAiSecretStore, ProjectPulseAiHealthRegistry, ProjectPulseAiHealthCoordinator, CancellationToken, Task<IResult>>)ReplaceSecretAsync);
         app.MapPut(
             "/api/ai-configuration/providers/{providerCode}/model",
             (Func<string, HttpContext, ProjectPulseAiConfiguration, ProjectPulseAiSecretStore, ProjectPulseAiHealthRegistry, ProjectPulseAiHealthCoordinator, CancellationToken, Task<IResult>>)ReplaceModelAsync);
@@ -55,17 +54,29 @@ public static class AiProviderConfigurationModule
         context.Response.Headers.CacheControl = "no-store";
         var authorization = await AuthorizeAdministratorAsync(context);
         if (authorization is not null) return authorization;
-        if (!SameOrigin(context)) return Results.Json(new { status = "origin_rejected", message = "The request origin is not allowed." }, statusCode: 403);
+        if (!SameOrigin(context))
+            return Results.Json(
+                new { status = "origin_rejected", message = "The request origin is not allowed." },
+                statusCode: StatusCodes.Status403Forbidden);
+
         providerCode = providerCode.Trim().ToLowerInvariant();
         if (providerCode is not (ProjectPulseAiProviders.Claude or ProjectPulseAiProviders.OpenAi))
             return Results.BadRequest(new { status = "invalid_provider", message = "Provider must be claude or openai." });
 
         ReplaceModelRequest? request;
-        try { request = await context.Request.ReadFromJsonAsync<ReplaceModelRequest>(cancellationToken); }
-        catch (System.Text.Json.JsonException) { return Results.BadRequest(new { status = "invalid_request", message = "A valid JSON request is required." }); }
+        try
+        {
+            request = await context.Request.ReadFromJsonAsync<ReplaceModelRequest>(cancellationToken);
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return Results.BadRequest(new { status = "invalid_request", message = "A valid JSON request is required." });
+        }
+
         var model = request?.Model?.Trim();
         var current = configuration.Provider(providerCode);
-        if (string.IsNullOrWhiteSpace(model) || !current.ApprovedModels.Contains(model, StringComparer.OrdinalIgnoreCase))
+        if (string.IsNullOrWhiteSpace(model)
+            || !current.ApprovedModels.Contains(model, StringComparer.OrdinalIgnoreCase))
             return Results.BadRequest(new { status = "model_not_approved", message = "Select a model from the approved list." });
         if (!current.Configured)
             return Results.BadRequest(new { status = "provider_not_configured", message = "Save the provider API key before changing its model." });
@@ -73,14 +84,25 @@ public static class AiProviderConfigurationModule
         var previousModel = current.Model;
         try
         {
-            await store.SaveModelAsync(providerCode, model, ActualSessionUserId(context)!.Value, cancellationToken);
+            await store.SaveModelAsync(
+                providerCode,
+                model,
+                ActualSessionUserId(context)!.Value,
+                cancellationToken);
             configuration.ApplyStoredModel(providerCode, model);
             healthRegistry.ApplyConfiguration(configuration.Provider(providerCode));
             var snapshots = await coordinator.RefreshAsync(true, cancellationToken);
-            var probe = snapshots.First(item => string.Equals(item.Provider, providerCode, StringComparison.OrdinalIgnoreCase));
-            if (probe.Status != "available")
+            var probe = snapshots.First(item => string.Equals(
+                item.Provider,
+                providerCode,
+                StringComparison.OrdinalIgnoreCase));
+            if (probe.ProbeStatus != "available")
             {
-                await store.SaveModelAsync(providerCode, previousModel, ActualSessionUserId(context)!.Value, cancellationToken);
+                await store.SaveModelAsync(
+                    providerCode,
+                    previousModel,
+                    ActualSessionUserId(context)!.Value,
+                    cancellationToken);
                 configuration.ApplyStoredModel(providerCode, previousModel);
                 healthRegistry.ApplyConfiguration(configuration.Provider(providerCode));
                 return Results.BadRequest(new
@@ -97,14 +119,19 @@ public static class AiProviderConfigurationModule
                 provider = providerCode,
                 model,
                 tested = true,
+                probeStatus = probe.ProbeStatus,
                 message = $"{model} was verified and is now active."
             });
         }
         catch (Exception exception)
         {
-            context.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("AiProviderConfigurationModule")
+            context.RequestServices
+                .GetRequiredService<ILoggerFactory>()
+                .CreateLogger("AiProviderConfigurationModule")
                 .LogError(exception, "Module 064 failed to change the {Provider} model.", providerCode);
-            return Results.Json(new { status = "model_change_error", message = "The model could not be saved and tested." }, statusCode: 503);
+            return Results.Json(
+                new { status = "model_change_error", message = "The model could not be saved and tested." },
+                statusCode: StatusCodes.Status503ServiceUnavailable);
         }
     }
 
@@ -120,38 +147,69 @@ public static class AiProviderConfigurationModule
         context.Response.Headers.CacheControl = "no-store";
         var authorization = await AuthorizeAdministratorAsync(context);
         if (authorization is not null) return authorization;
-        if (!SameOrigin(context)) return Results.Json(new { status = "origin_rejected", message = "The request origin is not allowed." }, statusCode: 403);
+        if (!SameOrigin(context))
+            return Results.Json(
+                new { status = "origin_rejected", message = "The request origin is not allowed." },
+                statusCode: StatusCodes.Status403Forbidden);
+
         providerCode = providerCode.Trim().ToLowerInvariant();
         if (providerCode is not (ProjectPulseAiProviders.Claude or ProjectPulseAiProviders.OpenAi))
             return Results.BadRequest(new { status = "invalid_provider", message = "Provider must be claude or openai." });
+
         SetEnabledRequest? request;
-        try { request = await context.Request.ReadFromJsonAsync<SetEnabledRequest>(cancellationToken); }
-        catch (System.Text.Json.JsonException) { return Results.BadRequest(new { status = "invalid_request", message = "A valid JSON request is required." }); }
+        try
+        {
+            request = await context.Request.ReadFromJsonAsync<SetEnabledRequest>(cancellationToken);
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return Results.BadRequest(new { status = "invalid_request", message = "A valid JSON request is required." });
+        }
+
         var enabled = request?.Enabled;
-        if (!enabled.HasValue) return Results.BadRequest(new { status = "invalid_request", message = "Enabled must be true or false." });
+        if (!enabled.HasValue)
+            return Results.BadRequest(new { status = "invalid_request", message = "Enabled must be true or false." });
 
         var provider = configuration.Provider(providerCode);
         if (enabled.Value && !provider.Configured)
             return Results.BadRequest(new { status = "provider_not_configured", message = "Save an API key before enabling this provider." });
+
         try
         {
-            await store.SaveEnabledAsync(providerCode, enabled.Value, provider.Model, ActualSessionUserId(context)!.Value, cancellationToken);
+            await store.SaveEnabledAsync(
+                providerCode,
+                enabled.Value,
+                provider.Model,
+                ActualSessionUserId(context)!.Value,
+                cancellationToken);
             configuration.ApplyStoredEnabled(providerCode, enabled.Value);
             healthRegistry.ApplyConfiguration(configuration.Provider(providerCode));
-            if (enabled.Value) await coordinator.RefreshAsync(true, cancellationToken);
+            var probeStatus = enabled.Value
+                ? (await coordinator.RefreshAsync(true, cancellationToken))
+                    .First(item => string.Equals(item.Provider, providerCode, StringComparison.OrdinalIgnoreCase))
+                    .ProbeStatus
+                : "disabled";
+
             return Results.Ok(new
             {
                 status = enabled.Value ? "provider_enabled" : "provider_disabled",
                 provider = providerCode,
                 enabled = enabled.Value,
-                message = $"{provider.DisplayName} is now {(enabled.Value ? "enabled" : "disabled")}. The saved key and model were preserved."
+                probeStatus,
+                message = enabled.Value
+                    ? $"{provider.DisplayName} is enabled and its health was checked automatically."
+                    : $"{provider.DisplayName} is now disabled. The saved key and model were preserved."
             });
         }
         catch (Exception exception)
         {
-            context.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("AiProviderConfigurationModule")
+            context.RequestServices
+                .GetRequiredService<ILoggerFactory>()
+                .CreateLogger("AiProviderConfigurationModule")
                 .LogError(exception, "Module 064 failed to change the {Provider} enabled state.", providerCode);
-            return Results.Json(new { status = "provider_state_error", message = "The provider state could not be changed." }, statusCode: 503);
+            return Results.Json(
+                new { status = "provider_state_error", message = "The provider state could not be changed." },
+                statusCode: StatusCodes.Status503ServiceUnavailable);
         }
     }
 
@@ -161,47 +219,92 @@ public static class AiProviderConfigurationModule
         ProjectPulseAiConfiguration configuration,
         ProjectPulseAiSecretStore secretStore,
         ProjectPulseAiHealthRegistry healthRegistry,
+        ProjectPulseAiHealthCoordinator coordinator,
         CancellationToken cancellationToken)
     {
         context.Response.Headers.CacheControl = "no-store";
         var authorization = await AuthorizeAdministratorAsync(context);
         if (authorization is not null) return authorization;
-        if (!SameOrigin(context)) return Results.Json(new { status = "origin_rejected", message = "The request origin is not allowed." }, statusCode: 403);
+        if (!SameOrigin(context))
+            return Results.Json(
+                new { status = "origin_rejected", message = "The request origin is not allowed." },
+                statusCode: StatusCodes.Status403Forbidden);
+
         providerCode = providerCode.Trim().ToLowerInvariant();
         if (providerCode is not (ProjectPulseAiProviders.Claude or ProjectPulseAiProviders.OpenAi))
             return Results.BadRequest(new { status = "invalid_provider", message = "Provider must be claude or openai." });
         if (!secretStore.Available)
-            return Results.Json(new { status = "secure_store_unavailable", message = secretStore.UnavailableReason }, statusCode: 503);
+            return Results.Json(
+                new { status = "secure_store_unavailable", message = secretStore.UnavailableReason },
+                statusCode: StatusCodes.Status503ServiceUnavailable);
 
         ReplaceSecretRequest? request;
-        try { request = await context.Request.ReadFromJsonAsync<ReplaceSecretRequest>(cancellationToken); }
-        catch (System.Text.Json.JsonException) { return Results.BadRequest(new { status = "invalid_request", message = "A valid JSON request is required." }); }
+        try
+        {
+            request = await context.Request.ReadFromJsonAsync<ReplaceSecretRequest>(cancellationToken);
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return Results.BadRequest(new { status = "invalid_request", message = "A valid JSON request is required." });
+        }
+
         var apiKey = request?.ApiKey?.Trim();
-        if (string.IsNullOrWhiteSpace(apiKey)) return Results.BadRequest(new { status = "invalid_secret", message = "API key is required." });
-        if (apiKey.Any(char.IsWhiteSpace)) return Results.BadRequest(new { status = "invalid_secret", message = "API key cannot contain whitespace." });
+        if (string.IsNullOrWhiteSpace(apiKey))
+            return Results.BadRequest(new { status = "invalid_secret", message = "API key is required." });
+        if (apiKey.Any(char.IsWhiteSpace))
+            return Results.BadRequest(new { status = "invalid_secret", message = "API key cannot contain whitespace." });
 
         try
         {
-            var stored = await secretStore.SaveAsync(providerCode, apiKey, ActualSessionUserId(context)!.Value, cancellationToken);
-            configuration.ApplyStoredSecret(stored.ProviderCode, stored.ApiKey, stored.Version, stored.RotatedAt);
+            var stored = await secretStore.SaveAsync(
+                providerCode,
+                apiKey,
+                ActualSessionUserId(context)!.Value,
+                cancellationToken);
+            configuration.ApplyStoredSecret(
+                stored.ProviderCode,
+                stored.ApiKey,
+                stored.Version,
+                stored.RotatedAt);
             healthRegistry.ApplyConfiguration(configuration.Provider(providerCode));
+
+            var snapshots = await coordinator.RefreshAsync(true, cancellationToken);
+            var probe = snapshots.First(item => string.Equals(
+                item.Provider,
+                providerCode,
+                StringComparison.OrdinalIgnoreCase));
+            var available = probe.ProbeStatus == "available";
+
             return Results.Ok(new
             {
-                status = "secret_replaced",
+                status = available ? "secret_replaced_and_verified" : "secret_replaced_verification_failed",
                 provider = providerCode,
                 configured = true,
+                tested = true,
+                available,
+                probeStatus = probe.ProbeStatus,
+                probeFailureCode = probe.LastProbeFailureCode,
                 version = stored.Version,
                 rotatedAt = stored.RotatedAt,
                 valueReturned = false,
-                message = $"{configuration.Provider(providerCode).DisplayName} API key was saved securely. The value cannot be viewed after saving."
+                message = available
+                    ? $"{configuration.Provider(providerCode).DisplayName} API key was saved securely and verified automatically. The value cannot be viewed after saving."
+                    : $"{configuration.Provider(providerCode).DisplayName} API key was saved securely, but the provider health check did not pass. The value cannot be viewed after saving."
             });
         }
-        catch (ArgumentException exception) { return Results.BadRequest(new { status = "invalid_secret", message = exception.Message }); }
+        catch (ArgumentException exception)
+        {
+            return Results.BadRequest(new { status = "invalid_secret", message = exception.Message });
+        }
         catch (Exception exception)
         {
-            context.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("AiProviderConfigurationModule")
+            context.RequestServices
+                .GetRequiredService<ILoggerFactory>()
+                .CreateLogger("AiProviderConfigurationModule")
                 .LogError(exception, "Module 064 failed to replace the {Provider} secret.", providerCode);
-            return Results.Json(new { status = "secret_store_error", message = "The API key could not be saved securely." }, statusCode: 503);
+            return Results.Json(
+                new { status = "secret_store_error", message = "The API key could not be saved securely." },
+                statusCode: StatusCodes.Status503ServiceUnavailable);
         }
     }
 
@@ -210,35 +313,40 @@ public static class AiProviderConfigurationModule
         ProjectPulseAiConfiguration configuration,
         ProjectPulseAiSecretStore store,
         ProjectPulseAiHealthRegistry health,
+        ProjectPulseAiHealthCoordinator coordinator,
         CancellationToken cancellationToken)
     {
+        context.Response.Headers.CacheControl = "no-store";
         var authorization = await AuthorizeAdministratorAsync(context);
         if (authorization is not null) return authorization;
+
         if (store.Available)
         {
             foreach (var secret in await store.LoadAsync(cancellationToken))
-            {
-                configuration.ApplyStoredSecret(secret.ProviderCode, secret.ApiKey, secret.Version, secret.RotatedAt);
-                health.ApplyConfiguration(configuration.Provider(secret.ProviderCode));
-            }
+                configuration.ApplyStoredSecret(
+                    secret.ProviderCode,
+                    secret.ApiKey,
+                    secret.Version,
+                    secret.RotatedAt);
             foreach (var setting in await store.LoadModelsAsync(cancellationToken))
-            {
                 configuration.ApplyStoredModel(setting.Key, setting.Value);
-                health.ApplyConfiguration(configuration.Provider(setting.Key));
-            }
             foreach (var setting in await store.LoadEnabledAsync(cancellationToken))
-            {
                 configuration.ApplyStoredEnabled(setting.Key, setting.Value);
-                health.ApplyConfiguration(configuration.Provider(setting.Key));
-            }
         }
+
+        health.ApplyConfiguration(configuration.Claude);
+        health.ApplyConfiguration(configuration.OpenAi);
+        var snapshots = await coordinator.RefreshAsync(false, cancellationToken);
 
         return Results.Ok(new
         {
-            status = "configuration_loaded",
+            status = snapshots.Any(item => item.ProbeStatus == "checking")
+                ? "configuration_loaded_health_checking"
+                : "configuration_loaded",
             generatedAt = DateTimeOffset.UtcNow,
+            healthCheckedAutomatically = true,
             configuration = configuration.ToSanitizedResponse(),
-            health = health.Snapshots(),
+            health = snapshots,
             governance = GovernanceState()
         });
     }
@@ -251,16 +359,19 @@ public static class AiProviderConfigurationModule
         var authorization = await AuthorizeAdministratorAsync(context);
         if (authorization is not null) return authorization;
 
+        health.ApplyConfiguration(configuration.Claude);
+        health.ApplyConfiguration(configuration.OpenAi);
+        var snapshots = health.Snapshots();
         return Results.Ok(new
         {
             module = "064",
-            status = OverallStatus(health.Snapshots()),
+            status = OverallStatus(snapshots),
             generatedAt = DateTimeOffset.UtcNow,
             healthIntervalSeconds = configuration.HealthIntervalSeconds,
             requestTimeoutSeconds = configuration.RequestTimeoutSeconds,
             retryCount = configuration.RetryCount,
             maxOutputTokens = configuration.MaxOutputTokens,
-            providers = health.Snapshots()
+            providers = snapshots
         });
     }
 
@@ -287,7 +398,7 @@ public static class AiProviderConfigurationModule
 
     private static object GovernanceState() => new
     {
-        sourcePhase = "full_shared_runtime_and_read_only_center",
+        sourcePhase = "full_shared_runtime_and_automatic_health_center",
         defaultPriority = new[]
         {
             ProjectPulseAiProviders.Claude,
@@ -295,13 +406,16 @@ public static class AiProviderConfigurationModule
             ProjectPulseAiProviders.Local
         },
         providerAvailabilityChecked = true,
+        automaticStartupHealthCheck = true,
+        automaticPeriodicHealthCheck = true,
+        liveConfigurationReconciledBeforeRouting = true,
         unavailableProvidersSkipped = true,
         safetyRefusalFailover = false,
         secretValuesReturned = false,
         sharedRouterRequiredForAllConsumers = true,
         configurationMutation = "administrator_write_only_secret_replacement",
         secretRotation = "replace_in_place_with_encrypted_version",
-        activationAndRollback = "replacement_active_immediately_rollback_not_exposed",
+        activationAndRollback = "replacement_tested_immediately_rollback_not_exposed",
         immutableAudit = "sanitized_database_audit_enabled",
         azureChanged = false,
         databaseChanged = false,
@@ -311,9 +425,14 @@ public static class AiProviderConfigurationModule
     private static string OverallStatus(IReadOnlyList<ProjectPulseAiProviderHealthSnapshot> health)
     {
         var remotes = health.Where(item =>
-            !string.Equals(item.Provider, ProjectPulseAiProviders.Local, StringComparison.OrdinalIgnoreCase)).ToArray();
+            !string.Equals(
+                item.Provider,
+                ProjectPulseAiProviders.Local,
+                StringComparison.OrdinalIgnoreCase)).ToArray();
 
         if (remotes.Any(item => item.ProbeStatus == "available")) return "healthy";
+        if (remotes.Any(item => item.Enabled && item.Configured && item.ProbeStatus == "checking"))
+            return "checking";
         if (remotes.Any(item => item.Enabled && item.Configured)) return "degraded";
         return "local_fallback_only";
     }
@@ -361,7 +480,9 @@ public static class AiProviderConfigurationModule
             await using var command = new NpgsqlCommand(sql, connection);
             command.Parameters.AddWithValue("user_id", userId.Value);
             var roleText = (await command.ExecuteScalarAsync())?.ToString() ?? string.Empty;
-            var roles = roleText.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            var roles = roleText.Split(
+                ',',
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
             if (roles.Any(AdministratorRoles.Contains)) return null;
         }
@@ -370,7 +491,9 @@ public static class AiProviderConfigurationModule
             var logger = context.RequestServices
                 .GetRequiredService<ILoggerFactory>()
                 .CreateLogger("AiProviderConfigurationModule");
-            logger.LogWarning(exception, "Module 064 could not verify administrator authorization.");
+            logger.LogWarning(
+                exception,
+                "Module 064 could not verify administrator authorization.");
 
             return Results.Json(new
             {
@@ -401,18 +524,14 @@ public static class AiProviderConfigurationModule
     private static bool SameOrigin(HttpContext context)
     {
         var origin = context.Request.Headers.Origin.ToString();
-        if (string.IsNullOrWhiteSpace(origin) || !Uri.TryCreate(origin, UriKind.Absolute, out var uri)) return false;
+        if (string.IsNullOrWhiteSpace(origin)
+            || !Uri.TryCreate(origin, UriKind.Absolute, out var uri)) return false;
         if (uri.Scheme is not ("https" or "http")) return false;
 
-        // Sec-Fetch-Site is a forbidden browser-controlled header. For same-origin
-        // requests it remains reliable even when the web reverse proxy replaces Host
-        // with the API container's internal hostname.
         var fetchSite = context.Request.Headers["Sec-Fetch-Site"].ToString();
-        if (string.Equals(fetchSite, "same-origin", StringComparison.OrdinalIgnoreCase)) return true;
+        if (string.Equals(fetchSite, "same-origin", StringComparison.OrdinalIgnoreCase))
+            return true;
 
-        // Preserve exact host validation for clients and deployments that do not send
-        // Fetch Metadata headers. Prefer the original public host supplied by the
-        // trusted reverse proxy, then fall back to the request host.
         var forwardedHost = context.Request.Headers["X-Forwarded-Host"].ToString()
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .FirstOrDefault();
@@ -420,7 +539,8 @@ public static class AiProviderConfigurationModule
             ? HostString.FromUriComponent(forwardedHost)
             : context.Request.Host;
 
-        if (!string.Equals(uri.Host, publicHost.Host, StringComparison.OrdinalIgnoreCase)) return false;
+        if (!string.Equals(uri.Host, publicHost.Host, StringComparison.OrdinalIgnoreCase))
+            return false;
         return publicHost.Port is null || uri.Port == publicHost.Port;
     }
 
@@ -431,15 +551,15 @@ public static class AiProviderConfigurationModule
     private static string? ConnectionString()
     {
         foreach (var name in new[]
-        {
-            "ConnectionStrings__DefaultConnection",
-            "ConnectionStrings__ProjectPulse",
-            "ConnectionStrings__ProjectTime",
-            "PROJECTPULSE_CONNECTION_STRING",
-            "PROJECTTIME_DATABASE_CONNECTION",
-            "PROJECTPULSE_DB_CONNECTION",
-            "PROJECTTIME_DB_CONNECTION"
-        })
+                 {
+                     "ConnectionStrings__DefaultConnection",
+                     "ConnectionStrings__ProjectPulse",
+                     "ConnectionStrings__ProjectTime",
+                     "PROJECTPULSE_CONNECTION_STRING",
+                     "PROJECTTIME_DATABASE_CONNECTION",
+                     "PROJECTPULSE_DB_CONNECTION",
+                     "PROJECTTIME_DB_CONNECTION"
+                 })
         {
             var value = Environment.GetEnvironmentVariable(name);
             if (!string.IsNullOrWhiteSpace(value)) return value;

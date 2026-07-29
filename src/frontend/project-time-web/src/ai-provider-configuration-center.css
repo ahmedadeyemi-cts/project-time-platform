@@ -60,6 +60,7 @@
 }
 
 .ai-provider-center__notice,
+.ai-provider-center__automatic-health,
 .ai-provider-center__state,
 .ai-provider-center__section,
 .ai-provider-center__locked {
@@ -67,6 +68,24 @@
   border-radius: 0.8rem;
   background: var(--ai064-surface);
   padding: 1rem;
+}
+
+.ai-provider-center__automatic-health {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  border-color: color-mix(in srgb, #22c55e 42%, var(--ai064-border));
+  background: color-mix(in srgb, #dcfce7 70%, var(--ai064-surface));
+  color: color-mix(in srgb, #166534 82%, var(--text-color, #172033));
+}
+
+.ai-provider-center__automatic-health strong {
+  flex: 0 0 auto;
+}
+
+.ai-provider-center__automatic-health span {
+  color: inherit;
+  line-height: 1.45;
 }
 
 .ai-provider-center__notice {
@@ -131,6 +150,11 @@
 .ai-provider-center__status--healthy {
   background: #dcfce7;
   color: #166534;
+}
+
+.ai-provider-center__status--checking {
+  background: #dbeafe;
+  color: #1d4ed8;
 }
 
 .ai-provider-center__status--degraded {
@@ -248,7 +272,8 @@
 @media (max-width: 720px) {
   .ai-provider-center__header,
   .ai-provider-center__section-heading,
-  .ai-provider-center__locked {
+  .ai-provider-center__locked,
+  .ai-provider-center__automatic-health {
     flex-direction: column;
   }
 

@@ -1,0 +1,212 @@
+name: Validate Group 2B Provider-Neutral Production Resilience
+
+on:
+  push:
+    branches:
+      - 'feature/group-2b-provider-neutral-resilience-*'
+  pull_request:
+    paths:
+      - 'src/backend/ProjectTime.Api/Modules/PlatformProductionResilienceModule.cs'
+      - 'src/backend/ProjectTime.Api/ProjectTime.Api.csproj'
+      - 'src/frontend/project-time-web/src/PlatformResiliencePlanningPanel.jsx'
+      - 'src/frontend/project-time-web/src/platform-resilience-planning-panel.css'
+      - 'src/frontend/project-time-web/scripts/inject-group-2b-provider-neutral-resilience.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-group-2b-provider-neutral-production-resilience.mjs'
+      - 'src/frontend/project-time-web/package.json'
+      - 'docs/modules/group-2b-production-resilience/README.md'
+      - '.github/workflows/group2b-provider-neutral-production-resilience-ci.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: group2b-provider-neutral-production-resilience-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify isolated Group 2B source scope or run regression mode
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          if [[ "$BRANCH" != feature/group-2b-provider-neutral-resilience-* ]]; then
+            echo "GROUP_2B_SOURCE_ISOLATION=NOT_APPLICABLE branch=$BRANCH"
+            echo 'The Group 2B regression workflow was triggered by a shared registration or package change.'
+            exit 0
+          fi
+
+          git fetch origin main --no-tags
+          CHANGED="$(git diff --name-only origin/main...HEAD)"
+          printf '%s\n' "$CHANGED"
+
+          ALLOWED='^(\.github/workflows/group2b-provider-neutral-production-resilience-ci\.yml|docs/modules/group-2b-production-resilience/README\.md|src/backend/ProjectTime.Api/Modules/PlatformProductionResilienceModule\.cs|src/backend/ProjectTime.Api/ProjectTime.Api\.csproj|src/frontend/project-time-web/package\.json|src/frontend/project-time-web/scripts/inject-group-2b-provider-neutral-resilience\.mjs|src/frontend/project-time-web/scripts/validate-group-2b-provider-neutral-production-resilience\.mjs|src/frontend/project-time-web/src/PlatformResiliencePlanningPanel\.jsx|src/frontend/project-time-web/src/platform-resilience-planning-panel\.css)$'
+          UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
+          if [[ -n "$UNEXPECTED" ]]; then
+            echo 'Unexpected Group 2B source scope:' >&2
+            printf '%s\n' "$UNEXPECTED" >&2
+            exit 1
+          fi
+
+          for protected in \
+            '.github/workflows/projectpulse-deploy-runtime-direct-timer-recovery-test.yml' \
+            '.github/workflows/validate-runtime-direct-timer-recovery-deployment.yml' \
+            'scripts/validate-runtime-direct-timer-recovery-test-deployment.sh'; do
+            if grep -Fxq "$protected" <<<"$CHANGED"; then
+              echo "Protected deployment file changed: $protected" >&2
+              exit 1
+            fi
+          done
+
+          if grep -E '^(database/|deployment/azure/|\.github/workflows/projectpulse-deploy-|scripts/.*deploy|src/frontend/project-time-web/src/(App|main)\.|src/frontend/project-time-web/src/.*navigation|src/frontend/project-time-web/src/module-availability-registry\.js)' <<<"$CHANGED"; then
+            echo 'Group 2B overlaps a migration, deployment, application shell, navigation, or module-registry surface.' >&2
+            exit 1
+          fi
+
+          echo 'GROUP_2B_SOURCE_ISOLATION=PASSED'
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Check Group 2B JavaScript syntax
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node --check src/frontend/project-time-web/scripts/inject-group-2b-provider-neutral-resilience.mjs
+          node --check src/frontend/project-time-web/scripts/validate-group-2b-provider-neutral-production-resilience.mjs
+
+      - name: Validate Group 2B source contract
+        id: source_contract
+        continue-on-error: true
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set +e
+          node ./scripts/validate-group-2b-provider-neutral-production-resilience.mjs > group2b-source-contract.log 2>&1
+          STATUS=$?
+          echo "exit_code=$STATUS" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload Group 2B source-contract diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: group2b-source-contract-${{ github.run_id }}-${{ github.run_attempt }}
+          path: src/frontend/project-time-web/group2b-source-contract.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce Group 2B source-contract result
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          STATUS='${{ steps.source_contract.outputs.exit_code }}'
+          if [[ "$STATUS" != '0' ]]; then
+            echo 'Group 2B source contract failed:' >&2
+            cat src/frontend/project-time-web/group2b-source-contract.log >&2
+            exit "$STATUS"
+          fi
+          cat src/frontend/project-time-web/group2b-source-contract.log
+
+      - name: Validate Group 2A abstraction compatibility
+        working-directory: src/frontend/project-time-web
+        run: node ./scripts/validate-group-2a-provider-neutral-platform-operations.mjs
+
+      - name: Build ProjectTime API
+        id: api_build
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release > group2b-api-build.log 2>&1
+          STATUS=$?
+          echo "exit_code=$STATUS" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload Group 2B API-build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: group2b-api-build-${{ github.run_id }}-${{ github.run_attempt }}
+          path: group2b-api-build.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce API-build result
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          STATUS='${{ steps.api_build.outputs.exit_code }}'
+          if [[ "$STATUS" != '0' ]]; then
+            echo 'Group 2B API build failed. Last 160 diagnostic lines:' >&2
+            tail -n 160 group2b-api-build.log >&2
+            exit "$STATUS"
+          fi
+          tail -n 40 group2b-api-build.log
+          echo 'GROUP_2B_API_BUILD=PASSED'
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Build complete frontend production bundle
+        id: frontend_build
+        continue-on-error: true
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set +e
+          npm run build > group2b-frontend-build.log 2>&1
+          STATUS=$?
+          echo "exit_code=$STATUS" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload Group 2B frontend-build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: group2b-frontend-build-${{ github.run_id }}-${{ github.run_attempt }}
+          path: src/frontend/project-time-web/group2b-frontend-build.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce frontend-build result
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          STATUS='${{ steps.frontend_build.outputs.exit_code }}'
+          if [[ "$STATUS" != '0' ]]; then
+            echo 'Group 2B frontend build failed. Last 160 diagnostic lines:' >&2
+            tail -n 160 group2b-frontend-build.log >&2
+            exit "$STATUS"
+          fi
+          tail -n 40 group2b-frontend-build.log
+          cat dist/assets/*.js > /tmp/group2b-production-resilience.js
+          cat dist/assets/*.css > /tmp/group2b-production-resilience.css
+          for marker in \
+            'Provider-neutral by design' \
+            'Current versus target' \
+            'Recovery point objective' \
+            'Failover prerequisites' \
+            '/api/system/backup-dr/production-planning' \
+            '/api/system/backup-dr/resilience-report/export'; do
+            grep -Fq "$marker" /tmp/group2b-production-resilience.js
+          done
+          grep -Fq '.group2b-resilience-shell' /tmp/group2b-production-resilience.css
+          echo 'GROUP_2B_FRONTEND_BUILD=PASSED'
