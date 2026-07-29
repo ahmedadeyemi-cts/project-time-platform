@@ -144,6 +144,26 @@
   line-height: 1.4;
 }
 
+.help-answer-preference-evidence {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.55rem;
+  padding: 0.55rem;
+  border: 1px solid var(--uss-slate-200, #d8e1e8);
+  border-radius: var(--uss-radius-sm, 8px);
+  background: var(--uss-slate-100, #eef3f7);
+}
+
+.help-answer-preference-evidence span {
+  padding: 0.25rem 0.45rem;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--uss-slate-700, #40576b);
+  font-size: 0.68rem;
+  font-weight: 750;
+}
+
 .group7-help-governance__actions,
 .group7-system-guide-overview__actions {
   display: flex;
