@@ -47,7 +47,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          BASE_BRANCH='feature/group-4-cost-routing-notification-schedules-20260729-final'
+          BASE_BRANCH='fix/group4-group5-regression-compatibility-20260729'
           git fetch origin "$BASE_BRANCH" main --no-tags
           CHANGED="$(git diff --name-only "origin/$BASE_BRANCH"...HEAD)"
           printf '%s\n' "$CHANGED"
