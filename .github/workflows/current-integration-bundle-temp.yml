@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 jobs:
   bundle:
@@ -40,3 +41,13 @@ jobs:
             current-integration-refs.txt
             SHA256SUMS
           retention-days: 1
+
+      - name: Report temporary bundle run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          gh api \
+            repos/${{ github.repository }}/issues/221/comments \
+            -f body="TEMP_INTEGRATION_BUNDLE_RUN_ID=${GITHUB_RUN_ID}%0ATEMP_INTEGRATION_BUNDLE_COMMIT=${GITHUB_SHA}%0ATEMP_INTEGRATION_BUNDLE_ARTIFACT=current-integration-bundle-${GITHUB_RUN_ID}"
