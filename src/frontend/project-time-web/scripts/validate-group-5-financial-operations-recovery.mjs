@@ -35,7 +35,6 @@ function read(filePath) {
   if (!fs.existsSync(filePath)) throw new Error(`Required Group 5 file is missing: ${path.relative(repositoryRoot, filePath)}`);
   return fs.readFileSync(filePath, 'utf8');
 }
-function optionalRead(filePath) { return fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf8') : ''; }
 function assert(condition, message) { checks += 1; if (!condition) throw new Error(message); }
 function contains(source, marker, label) { assert(source.includes(marker), `${label} is missing: ${marker}`); }
 function count(source, marker) { return source.split(marker).length - 1; }
@@ -53,7 +52,7 @@ for (const marker of [
   'Report run history',
   'Source health and recovery',
   'Financial Operations Workbench',
-  'Retry Financial Sources',
+  'canRetrySources',
   'Closeout Notification Recovery',
   'Invoice & Billing Recovery',
   'Current expense drill-down',
@@ -139,7 +138,7 @@ if (fullRepositoryContext) {
     'project_closeout_records',
     'project_notification_dispatches',
     'This source is unavailable. Other healthy financial content remains visible',
-    'RetryEndpoint'
+    '/api/financial-operations/sources/'
   ]) contains(sourceLoader, marker, 'source-isolated loader');
 
   for (const report of [
