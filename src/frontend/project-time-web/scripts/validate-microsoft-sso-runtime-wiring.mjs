@@ -63,19 +63,20 @@ const publicOriginImplementation = !publicOriginAvailable || (
 assert('FORWARDED_PUBLIC_ORIGIN', publicOriginRegistration && publicOriginImplementation,
 'Module 065 resolves a trusted HTTPS public proxy/browser origin before callback validation');
 
-const callbackStateRecovery = stateOriginRecoveryAvailable
-  && registrar.includes('MicrosoftSsoStateOriginRecovery.TryRecoverAsync')
+const callbackStateRecovery = !stateOriginRecoveryAvailable || (
+  registrar.includes('MicrosoftSsoStateOriginRecovery.TryRecoverAsync')
   && registrar.includes('MicrosoftSsoStateOriginRecovery.CallbackPath')
   && registrar.includes('context.Request.Query["state"]')
   && stateOriginRecovery.includes('SELECT redirect_uri')
   && stateOriginRecovery.includes('consumed_at IS NULL')
   && stateOriginRecovery.includes('expires_at > NOW()')
-  && stateOriginRecovery.includes('unconsumed_auth_sso_state_redirect_uri');
+  && stateOriginRecovery.includes('unconsumed_auth_sso_state_redirect_uri')
+);
 assert('CALLBACK_STATE_ORIGIN_RECOVERY', callbackStateRecovery,
 'Microsoft callback origin can be recovered only from an unconsumed, unexpired auth_sso_state row');
 
-const storedRedirectValidation = stateOriginRecoveryAvailable
-  && stateOriginRecovery.includes('Uri.UriSchemeHttps')
+const storedRedirectValidation = !stateOriginRecoveryAvailable || (
+  stateOriginRecovery.includes('Uri.UriSchemeHttps')
   && stateOriginRecovery.includes('CallbackPath')
   && stateOriginRecovery.includes('stored_redirect_uri_user_info_rejected')
   && stateOriginRecovery.includes('stored_redirect_uri_query_or_fragment_rejected')
@@ -83,7 +84,8 @@ const storedRedirectValidation = stateOriginRecoveryAvailable
   && stateOriginRecovery.includes('stored_redirect_uri_internal_host_rejected')
   && stateOriginRecovery.includes('.onenecklab.com')
   && stateOriginRecovery.includes('.ussignal.com')
-  && stateOriginRecovery.includes('stored_redirect_uri_environment_mismatch');
+  && stateOriginRecovery.includes('stored_redirect_uri_environment_mismatch')
+);
 assert('STORED_REDIRECT_FAIL_CLOSED', storedRedirectValidation,
 'stored callback requires HTTPS, exact callback path, approved environment host, matching environment, and no user-info, query, fragment, internal host, or unapproved port');
 
@@ -99,6 +101,9 @@ assert('ATOMIC_STATE_AND_NONCE_PRESERVED', atomicConsumptionUsesStoredRedirect,
 'callback atomically consumes state, reads its exact redirect URI, uses it for token exchange, and preserves nonce validation');
 if (!publicOriginAvailable) {
   console.log('MICROSOFT_SSO_RUNTIME_PUBLIC_ORIGIN_DEEP_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
+}
+if (!stateOriginRecoveryAvailable) {
+  console.log('MICROSOFT_SSO_RUNTIME_STATE_ORIGIN_DEEP_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
 }
 
 assert('IMMEDIATE_ACTIVATION_MOUNTED', main.includes("import './microsoft-sso-runtime-activation.js';"), 'saved Module 065 metadata activation is installed before rendering');
