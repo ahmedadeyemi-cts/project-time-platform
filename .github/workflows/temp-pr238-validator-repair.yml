@@ -80,6 +80,14 @@ jobs:
             cd src/frontend/project-time-web
             node scripts/validate-group-4-project-notification-automation.mjs
           )
+
+          # The validator exercises the idempotent injector, which deliberately updates
+          # generated App and registry files. Those are validation artifacts, not PR #238
+          # source, so restore them before enforcing the one-file repair scope.
+          git checkout -- \
+            src/frontend/project-time-web/src/App.jsx \
+            src/frontend/project-time-web/src/module-availability-registry.js
+
           git diff --check
           git diff --name-only
           [[ "$(git diff --name-only | wc -l | tr -d ' ')" == 1 ]]
