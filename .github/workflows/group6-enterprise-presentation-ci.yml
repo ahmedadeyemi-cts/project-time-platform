@@ -1,0 +1,138 @@
+name: Validate Group 6 Enterprise Presentation
+
+on:
+  push:
+    branches:
+      - 'feature/group-6-enterprise-page-system-*'
+  pull_request:
+    paths:
+      - '.github/workflows/group6-enterprise-presentation-ci.yml'
+      - 'docs/modules/group-6-enterprise-presentation/README.md'
+      - 'src/frontend/project-time-web/package.json'
+      - 'src/frontend/project-time-web/scripts/inject-group-6-enterprise-presentation.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-group-6-enterprise-presentation.mjs'
+      - 'src/frontend/project-time-web/src/enterprise/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: group6-enterprise-presentation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify isolated Group 6 source scope
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git fetch origin main --no-tags
+          CHANGED="$(git diff --name-only origin/main...HEAD)"
+          printf '%s\n' "$CHANGED"
+
+          ALLOWED='^(\.github/workflows/group6-enterprise-presentation-ci\.yml|docs/modules/group-6-enterprise-presentation/README\.md|src/frontend/project-time-web/package\.json|src/frontend/project-time-web/scripts/(inject-group-6-enterprise-presentation|validate-group-6-enterprise-presentation)\.mjs|src/frontend/project-time-web/src/enterprise/(EnterpriseModulePresentation\.jsx|USSignalLogo\.jsx|enterprise-module-route-adoption\.css|enterprise-module-system\.css))$'
+          UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
+          if [[ -n "$UNEXPECTED" ]]; then
+            echo 'Unexpected Group 6 source scope:' >&2
+            printf '%s\n' "$UNEXPECTED" >&2
+            exit 1
+          fi
+
+          for protected in \
+            '.github/workflows/projectpulse-deploy-runtime-direct-timer-recovery-test.yml' \
+            '.github/workflows/validate-runtime-direct-timer-recovery-deployment.yml' \
+            'scripts/validate-runtime-direct-timer-recovery-test-deployment.sh'; do
+            if grep -Fxq "$protected" <<<"$CHANGED"; then
+              echo "Protected deployment file changed: $protected" >&2
+              exit 1
+            fi
+          done
+
+          if grep -E '^(database/|src/backend/|deployment/|\.github/workflows/projectpulse-deploy-|src/frontend/project-time-web/src/(App|main)\.|src/frontend/project-time-web/src/module-availability-registry\.js)' <<<"$CHANGED"; then
+            echo 'Group 6 overlaps backend, database, deployment, canonical App, or module-registry source.' >&2
+            exit 1
+          fi
+
+          echo 'GROUP_6_SOURCE_ISOLATION=PASSED'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Check Group 6 JavaScript syntax
+        run: |
+          set -Eeuo pipefail
+          node --check src/frontend/project-time-web/scripts/inject-group-6-enterprise-presentation.mjs
+          node --check src/frontend/project-time-web/scripts/validate-group-6-enterprise-presentation.mjs
+
+      - name: Validate Group 6 source contract
+        working-directory: src/frontend/project-time-web
+        run: npm run validate:group6-enterprise-presentation
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Validate affected module compatibility
+        working-directory: src/frontend/project-time-web
+        run: |
+          set -Eeuo pipefail
+          npm run validate:module064
+          npm run validate:module068
+          npm run validate:module069
+          npm run validate:module071
+          npm run validate:module072
+          npm run validate:module074
+          npm run validate:modules064074-ui
+          npm run validate:modules064074-native-admin
+          npm run validate:modules071072-native
+          npm run validate:modules-directory
+          npm run validate:approval-access-compatibility
+
+      - name: Build complete frontend production bundle
+        working-directory: src/frontend/project-time-web
+        run: npm run build
+
+      - name: Validate compiled enterprise presentation markers
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cat dist/assets/*.js > /tmp/group6-enterprise-presentation.js
+          cat dist/assets/*.css > /tmp/group6-enterprise-presentation.css
+
+          for marker in \
+            'EnterpriseModulePresentation' \
+            'Official US Signal identity' \
+            'Existing permissions preserved' \
+            'Source behavior unchanged' \
+            'Sales Intake' \
+            'AI Provider Configuration Center' \
+            'On-Call Scheduling' \
+            'OEM & Vendor Directory'; do
+            grep -Fq "$marker" /tmp/group6-enterprise-presentation.js
+          done
+
+          for marker in \
+            '.uss-enterprise-module-presentation' \
+            '.uss-enterprise-page-header' \
+            '.uss-enterprise-summary-strip' \
+            '.uss-enterprise-filter-bar' \
+            '.uss-enterprise-tabs' \
+            '.uss-enterprise-table-wrap' \
+            '.uss-enterprise-print-header'; do
+            grep -Fq "$marker" /tmp/group6-enterprise-presentation.css
+          done
+
+          echo 'GROUP_6_FRONTEND_BUILD=PASSED'
