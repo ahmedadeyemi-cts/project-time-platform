@@ -896,3 +896,88 @@
     justify-items: start;
   }
 }
+
+/* UAT contrast and workspace differentiation. The standard module shell is
+   imported first; these selectors intentionally own the Group 3 hero. */
+.group3-financial-workspace.projectpulse-module-standard > .group3-hero {
+  min-height: 190px;
+  margin: 0;
+  padding: 1.45rem;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-bottom-color: rgba(255, 255, 255, 0.15);
+  background:
+    radial-gradient(circle at 88% 12%, rgba(0, 171, 201, 0.36), transparent 31%),
+    linear-gradient(132deg, #071b2c 0%, #123d60 60%, #0d6071 100%);
+  color: #ffffff;
+}
+
+.group3-financial-workspace.projectpulse-module-standard > .group3-hero h2,
+.group3-financial-workspace.projectpulse-module-standard > .group3-hero p,
+.group3-financial-workspace.projectpulse-module-standard > .group3-hero .group3-eyebrow {
+  color: #ffffff;
+}
+
+.group3-financial-workspace.projectpulse-module-standard > .group3-hero .group3-eyebrow {
+  color: #9cecf5;
+}
+
+.group3-financial-workspace.projectpulse-module-standard > .group3-hero .group3-brand > div > p:not(.group3-eyebrow) {
+  color: rgba(255, 255, 255, 0.92);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.22);
+}
+
+.group3-financial-workspace[data-workspace='pm'] > .group3-hero {
+  box-shadow: inset 6px 0 0 #00a6d6, 0 18px 42px rgba(7, 27, 44, 0.2);
+}
+
+.group3-financial-workspace[data-workspace='engineering'] > .group3-hero {
+  background:
+    radial-gradient(circle at 88% 12%, rgba(117, 184, 67, 0.28), transparent 31%),
+    linear-gradient(132deg, #071b2c 0%, #123d60 58%, #17624f 100%);
+  box-shadow: inset 6px 0 0 #75b843, 0 18px 42px rgba(7, 27, 44, 0.2);
+}
+
+.group3-financial-workspace[data-workspace='sales'] > .group3-hero {
+  background:
+    radial-gradient(circle at 88% 12%, rgba(0, 166, 214, 0.38), transparent 31%),
+    linear-gradient(132deg, #071b2c 0%, #17496e 58%, #006f85 100%);
+  box-shadow: inset 6px 0 0 #00a6d6, 0 18px 42px rgba(7, 27, 44, 0.2);
+}
+
+.group3-financial-workspace[data-workspace='rate-card'] > .group3-hero {
+  background:
+    radial-gradient(circle at 88% 12%, rgba(109, 214, 232, 0.3), transparent 31%),
+    linear-gradient(132deg, #071b2c 0%, #243f62 58%, #175b6c 100%);
+  box-shadow: inset 6px 0 0 #6dd6e8, 0 18px 42px rgba(7, 27, 44, 0.2);
+}
+
+.group3-financial-workspace[data-workspace='engineering'] .group3-authority-banner {
+  border-color: #c6e2d5;
+  border-left-color: #75b843;
+  background: #f0f8f3;
+}
+
+.group3-financial-workspace[data-workspace='sales'] .group3-authority-banner {
+  border-color: #b7e0e7;
+  border-left-color: #00a6d6;
+  background: #edf9fc;
+}
+
+.group3-financial-workspace[data-workspace='rate-card'] .group3-authority-banner {
+  border-color: #c4dbe8;
+  border-left-color: #1261a0;
+  background: #f1f7fb;
+}
+
+.group3-project-table.workspace-engineering,
+.group3-project-table.workspace-sales,
+.group3-project-table.workspace-rate-card {
+  min-width: 920px;
+}
+
+@media (max-width: 820px) {
+  .group3-financial-workspace.projectpulse-module-standard > .group3-hero {
+    min-height: auto;
+    padding: 1.15rem;
+  }
+}
