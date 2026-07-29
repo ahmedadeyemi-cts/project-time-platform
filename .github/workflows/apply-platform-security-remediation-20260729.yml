@@ -99,8 +99,21 @@ jobs:
           python - <<'PY'
           from pathlib import Path
 
-          path = Path('src/frontend/project-time-web/index.html')
-          html = path.read_text(encoding='utf-8')
+          program_path = Path('src/backend/ProjectTime.Api/Program.cs')
+          program = program_path.read_text(encoding='utf-8')
+          invalid_stored_name = 'var storedFileName = $"{documentCategory}_{Guid.NewGuid():N}{Path.GetExtension(safeOriginalFileName)}"; // SECURITY_20260729_SAFE_DOCUMENT_PATH_COMPONENT'
+          safe_stored_name = 'var storedFileName = $"{Guid.NewGuid():N}{Path.GetExtension(safeOriginalFileName)}"; // SECURITY_20260729_SAFE_DOCUMENT_PATH_COMPONENT'
+
+          if invalid_stored_name in program:
+              program = program.replace(invalid_stored_name, safe_stored_name, 1)
+          if safe_stored_name not in program:
+              raise RuntimeError('The GUID-only intake stored filename correction was not applied.')
+
+          program_path.write_text(program, encoding='utf-8')
+          print('SECURITY_INTAKE_STORED_FILENAME=GUID_ONLY')
+
+          index_path = Path('src/frontend/project-time-web/index.html')
+          html = index_path.read_text(encoding='utf-8')
           topbar_anchor = '<script id="projectpulse-022d-topbar-notification-dropdown">'
 
           if topbar_anchor not in html:
@@ -155,7 +168,7 @@ jobs:
           if marker not in html:
               raise RuntimeError('Topbar action URL allowlist helper was not installed.')
 
-          path.write_text(html, encoding='utf-8')
+          index_path.write_text(html, encoding='utf-8')
           print('SECURITY_NOTIFICATION_ACTION_URL_RENDERERS=HARDENED')
           PY
 
