@@ -8,6 +8,7 @@ const sourceRoot = path.join(webRoot, 'src');
 const importLine = "import ProjectNotificationAutomationCenter from './ProjectNotificationAutomationCenter.jsx';";
 const markerStart = 'GROUP_4_PROJECT_NOTIFICATION_AUTOMATION_START';
 const markerEnd = 'GROUP_4_PROJECT_NOTIFICATION_AUTOMATION_END';
+const group3Marker = 'GROUP_3_UNIFIED_PROJECT_FINANCIAL_WORKSPACES_START';
 
 const moduleTargets = [
   {
@@ -32,7 +33,8 @@ const moduleTargets = [
     file: 'ProjectManagerWorkloadCenter.jsx',
     importAnchor: "import './project-manager-workload-center.css';",
     rootAnchor: '    <section className="pm-workload-center">',
-    mount: '      <ProjectNotificationAutomationCenter workspace="pm" />'
+    mount: '      <ProjectNotificationAutomationCenter workspace="pm" />',
+    mountWhenGroup3Present: "      <ProjectNotificationAutomationCenter workspace={'pm'} />"
   }
 ];
 
@@ -48,6 +50,10 @@ function installModulePanel(configuration) {
   const filePath = path.join(sourceRoot, configuration.file);
   if (!fs.existsSync(filePath)) throw new Error(`Group 4 target is missing: ${configuration.file}`);
   let source = fs.readFileSync(filePath, 'utf8');
+  const selectedMount = configuration.mountWhenGroup3Present && source.includes(group3Marker)
+    ? configuration.mountWhenGroup3Present
+    : configuration.mount;
+  const knownMounts = [configuration.mount, configuration.mountWhenGroup3Present].filter(Boolean);
 
   if (!source.includes(importLine)) {
     if (!source.includes(configuration.importAnchor)) throw new Error(`Group 4 import anchor is missing in ${configuration.file}.`);
@@ -59,14 +65,21 @@ function installModulePanel(configuration) {
     source = source.replace(configuration.rootAnchor, [
       configuration.rootAnchor,
       `      {/* ${markerStart} */}`,
-      configuration.mount,
+      selectedMount,
       `      {/* ${markerEnd} */}`
     ].join('\n'));
+  } else if (!source.includes(selectedMount) && configuration.mountWhenGroup3Present) {
+    const currentMount = knownMounts.find((mount) => source.includes(mount));
+    if (!currentMount) throw new Error(`Group 4 mount is missing in ${configuration.file}.`);
+    source = source.replace(currentMount, selectedMount);
   }
 
   if (count(source, importLine) !== 1) throw new Error(`Group 4 import must appear exactly once in ${configuration.file}.`);
   if (count(source, markerStart) !== 1 || count(source, markerEnd) !== 1) throw new Error(`Group 4 markers must appear exactly once in ${configuration.file}.`);
-  if (count(source, configuration.mount.trim()) !== 1) throw new Error(`Group 4 mount must appear exactly once in ${configuration.file}.`);
+  const mountedVariants = knownMounts.reduce((total, mount) => total + count(source, mount.trim()), 0);
+  if (mountedVariants !== 1 || count(source, selectedMount.trim()) !== 1) {
+    throw new Error(`Group 4 mount must appear exactly once in ${configuration.file}.`);
+  }
   write(filePath, source);
 }
 
