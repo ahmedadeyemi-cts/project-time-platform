@@ -18,7 +18,9 @@ psql_exec() {
 }
 value() { psql_exec -Atqc "$1" | tr -d '\r'; }
 assert_eq() {
-  local expected="$1" actual="$2" label="$3"
+  local expected="$1"
+  local actual="$2"
+  local label="$3"
   [[ "$actual" == "$expected" ]] || {
     echo "ASSERTION_FAILED $label expected=$expected actual=$actual" >&2
     exit 1
@@ -26,7 +28,10 @@ assert_eq() {
   echo "ASSERTION_PASSED $label=$actual"
 }
 expect_sql_failure() {
-  local sql="$1" expected="$2" label="$3" log="/tmp/group5-051-${label}.log"
+  local sql="$1"
+  local expected="$2"
+  local label="$3"
+  local log="/tmp/group5-051-${label}.log"
   if psql_exec -c "$sql" >"$log" 2>&1; then
     echo "ASSERTION_FAILED $label unexpectedly_succeeded" >&2
     exit 1
@@ -136,7 +141,7 @@ assert_eq 1 "$(value "SELECT COUNT(*) FROM schema_migrations WHERE migration_id=
 assert_eq 3 "$(value "SELECT COUNT(*) FROM pg_tables WHERE schemaname='public' AND tablename IN ('financial_report_runs','financial_operations_work_items','financial_operations_actions');")" tables_created
 assert_eq 10 "$(value "SELECT COUNT(*) FROM app_permissions WHERE permission_code IN ('VIEW_FINANCIAL_REPORT_CENTER','RUN_FINANCIAL_REPORTS','EXPORT_FINANCIAL_REPORTS','VIEW_FINANCIAL_OPERATIONS_WORKBENCH','MANAGE_FINANCIAL_OPERATIONS_RECOVERY','RETRY_FINANCIAL_SOURCES','VIEW_ACCOUNTING_RECONCILIATION_RECOVERY','VIEW_PROJECT_CLOSEOUT_RECOVERY','VIEW_CLOSEOUT_NOTIFICATION_RECOVERY','VIEW_BILLING_RECOVERY');")" permissions_created
 assert_eq 6 "$(value "SELECT COUNT(*) FROM app_feature_catalog WHERE feature_code IN ('FINANCIAL_REPORT_CENTER','FINANCIAL_OPERATIONS_WORKBENCH','BILLING_READINESS_RECOVERY','PROJECT_CLOSEOUT_RECOVERY','CLOSEOUT_NOTIFICATION_RECOVERY','BILLING_RECOVERY');")" features_created
-assert_eq 10 "$(value "SELECT COUNT(*) FROM app_roles r JOIN app_role_permissions rp USING(app_role_id) JOIN app_permissions p USING(app_permission_id) WHERE r.role_code='ACCOUNTING' AND p.permission_code LIKE '%FINANCIAL%' OR r.role_code='ACCOUNTING' AND p.permission_code IN ('RETRY_FINANCIAL_SOURCES','VIEW_ACCOUNTING_RECONCILIATION_RECOVERY','VIEW_PROJECT_CLOSEOUT_RECOVERY','VIEW_CLOSEOUT_NOTIFICATION_RECOVERY','VIEW_BILLING_RECOVERY');")" accounting_full_permissions
+assert_eq 10 "$(value "SELECT COUNT(*) FROM app_roles r JOIN app_role_permissions rp USING(app_role_id) JOIN app_permissions p USING(app_permission_id) WHERE r.role_code='ACCOUNTING';")" accounting_full_permissions
 assert_eq 6 "$(value "SELECT COUNT(*) FROM app_roles r JOIN app_role_permissions rp USING(app_role_id) JOIN app_permissions p USING(app_permission_id) WHERE r.role_code='PROJECT_MANAGEMENT';")" pm_scoped_permissions
 assert_eq 6 "$(value "SELECT COUNT(*) FROM app_roles r JOIN app_role_permissions rp USING(app_role_id) JOIN app_permissions p USING(app_permission_id) WHERE r.role_code='EXECUTIVE';")" executive_read_permissions
 assert_eq 2 "$(value "SELECT COUNT(*) FROM app_roles r JOIN app_role_permissions rp USING(app_role_id) JOIN app_permissions p USING(app_permission_id) WHERE r.role_code='ENGINEERING';")" engineering_report_permissions
