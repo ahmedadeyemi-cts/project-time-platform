@@ -427,7 +427,7 @@ public sealed record PulseAiDocumentProcessingPreview(
     };
 }
 
-internal sealed record PulseAiAuthorizedDocumentSource(
+public sealed record PulseAiAuthorizedDocumentSource(
     Guid DocumentId,
     Guid? ProjectId,
     string ProjectCode,
