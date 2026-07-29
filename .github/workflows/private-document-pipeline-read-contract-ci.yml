@@ -39,25 +39,17 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
-      - name: Verify exact dependent source scope
+      - name: Verify owned source scope or run regression mode
         shell: bash
         run: |
           set -Eeuo pipefail
 
-          BASE_BRANCH="${GITHUB_BASE_REF:-feature/module-011-pulse-ai-deep-intelligence-20260728}"
+          HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          BASE_BRANCH="${GITHUB_BASE_REF:-main}"
           git fetch origin "$BASE_BRANCH" --no-tags
 
           CHANGED="$(git diff --name-only "origin/$BASE_BRANCH"...HEAD)"
           printf '%s\n' "$CHANGED"
-
-          ALLOWED='^(\.github/workflows/(private-document-pipeline-read-contract-ci|deep-intelligence-read-contract-ci)\.yml|docs/modules/module-011-pulse-ai/(PRIVATE-DOCUMENT-PIPELINE|PRIVATE-INDEX-SECURITY-CONTRACT)\.md|src/backend/ProjectTime\.Api/Ai/(PulseAiPrivateDocumentPipelineContracts|PulseAiPrivateDocumentExtractionService|PulseAiPrivateDocumentPipelineService|ProjectPulseAiServiceCollectionExtensions)\.cs|src/backend/ProjectTime\.Api/Modules/PulseAiPrivateDocumentPipelineModule\.cs|src/backend/ProjectTime\.Api/ProjectTime\.Api\.csproj|src/frontend/project-time-web/scripts/validate-module-011-private-document-pipeline\.mjs|src/frontend/project-time-web/src/(PulseAiPrivateDocumentPipelineWorkbench\.jsx|pulse-ai-private-document-pipeline-workbench\.css|WorkTaskBuilderPanel\.jsx))$'
-          UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
-
-          if [[ -n "$UNEXPECTED" ]]; then
-            echo 'Unexpected private-document pipeline source scope:' >&2
-            printf '%s\n' "$UNEXPECTED" >&2
-            exit 1
-          fi
 
           for protected in \
             '.github/workflows/projectpulse-deploy-runtime-direct-timer-recovery-test.yml' \
@@ -69,8 +61,23 @@ jobs:
             fi
           done
 
+          if [[ "$HEAD_BRANCH" != feature/module-011-private-document-pipeline-* ]]; then
+            echo "PRIVATE_DOCUMENT_PIPELINE_VALIDATION_MODE=REGRESSION branch=$HEAD_BRANCH"
+            echo 'PRIVATE_DOCUMENT_PIPELINE_SOURCE_ISOLATION=NOT_APPLICABLE'
+            exit 0
+          fi
+
+          ALLOWED='^(\.github/workflows/(private-document-pipeline-read-contract-ci|deep-intelligence-read-contract-ci)\.yml|docs/modules/module-011-pulse-ai/(PRIVATE-DOCUMENT-PIPELINE|PRIVATE-INDEX-SECURITY-CONTRACT)\.md|src/backend/ProjectTime\.Api/Ai/(PulseAiPrivateDocumentPipelineContracts|PulseAiPrivateDocumentExtractionService|PulseAiPrivateDocumentPipelineService|ProjectPulseAiServiceCollectionExtensions)\.cs|src/backend/ProjectTime\.Api/Modules/PulseAiPrivateDocumentPipelineModule\.cs|src/backend/ProjectTime\.Api/ProjectTime\.Api\.csproj|src/frontend/project-time-web/scripts/validate-module-011-private-document-pipeline\.mjs|src/frontend/project-time-web/src/(PulseAiPrivateDocumentPipelineWorkbench\.jsx|pulse-ai-private-document-pipeline-workbench\.css|WorkTaskBuilderPanel\.jsx))$'
+          UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
+
+          if [[ -n "$UNEXPECTED" ]]; then
+            echo 'Unexpected private-document pipeline source scope:' >&2
+            printf '%s\n' "$UNEXPECTED" >&2
+            exit 1
+          fi
+
           if grep -E '^(database/|deployment/azure/|\.github/workflows/projectpulse-deploy-|scripts/.*deploy|src/backend/ProjectTime\.Api/(Ai/ProjectPulseAiConfiguration|Ai/ProjectPulseAiRemoteProviders|Ai/ProjectPulseAiSecretStore|Modules/AiProviderConfigurationModule)\.|src/frontend/project-time-web/src/AiProviderConfigurationCenter\.|src/backend/ProjectTime\.Api/Modules/ProjectFinancialTruthModule\.cs|src/frontend/project-time-web/src/UnifiedProjectFinancialWorkspace\.)' <<<"$CHANGED"; then
-            echo 'The source package overlaps a migration, deployment, Module 064 provider implementation, or Group 3 financial implementation.' >&2
+            echo 'The owned private-document package overlaps a migration, deployment, Module 064 provider implementation, or project-financial implementation.' >&2
             exit 1
           fi
 
