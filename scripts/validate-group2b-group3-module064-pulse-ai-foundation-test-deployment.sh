@@ -2,11 +2,12 @@
 set -Eeuo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 EXPECTED_RELEASE="7db5a59fd5bd0850b6ea496a6d4e0d8ca0e02a0d"
-SLUG="group2b-group3-module064-pulse-ai-foundation"
-DEPLOY="$ROOT/.github/workflows/projectpulse-deploy-$SLUG-test.yml"
-VALIDATE="$ROOT/.github/workflows/validate-$SLUG-test-deployment.yml"
-RUNNER="$ROOT/scripts/run-$SLUG-test-deployment.sh"
-SELF="$ROOT/scripts/validate-$SLUG-test-deployment.sh"
+WORKFLOW_SLUG="group2b-group3-module064-foundation"
+SCRIPT_SLUG="group2b-group3-module064-pulse-ai-foundation"
+DEPLOY="$ROOT/.github/workflows/projectpulse-deploy-$WORKFLOW_SLUG-test.yml"
+VALIDATE="$ROOT/.github/workflows/validate-$WORKFLOW_SLUG-test-deployment.yml"
+RUNNER="$ROOT/scripts/run-$SCRIPT_SLUG-test-deployment.sh"
+SELF="$ROOT/scripts/validate-$SCRIPT_SLUG-test-deployment.sh"
 fail() { echo "ERROR: $*" >&2; exit 1; }
 for file in "$DEPLOY" "$VALIDATE" "$RUNNER" "$SELF"; do [[ -f "$file" ]] || fail "Missing $file"; done
 require() { grep -Fq -- "$2" "$1" || fail "Missing contract in $1: $2"; }
@@ -16,7 +17,7 @@ require "$DEPLOY" "EXPECTED_RELEASE_COMMIT: $EXPECTED_RELEASE"
 require "$DEPLOY" 'DEPLOY-GROUP2B-GROUP3-MODULE064-PULSEAI-FOUNDATION-TO-TEST'
 require "$DEPLOY" 'environment: test'
 require "$DEPLOY" 'SOURCE_BASELINE_COMMIT: 185a0030dbc96813c8cd46498668ca289805a4d7'
-require "$DEPLOY" "run-$SLUG-test-deployment.sh"
+require "$DEPLOY" "run-$SCRIPT_SLUG-test-deployment.sh"
 require "$DEPLOY" 'This cumulative release is API/web only and must not carry a database migration.'
 require "$RUNNER" "EXPECTED_RELEASE_COMMIT=\"$EXPECTED_RELEASE\""
 require "$RUNNER" 'probe_json group2b'
