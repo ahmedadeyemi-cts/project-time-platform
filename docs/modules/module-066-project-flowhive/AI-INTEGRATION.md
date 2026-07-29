@@ -49,6 +49,14 @@ deterministic schedule calculations before any content is shown as a draft.
 A Claude or OpenAI safety refusal terminates routing with no fallback. The local
 template cannot be used to bypass a refusal.
 
+## Human review sequence
+
+The Project Manager reviews the source coverage, assumptions, conflicts, risks,
+and proposed timeline before presenting the draft to Engineering. Engineering
+modifies and validates the technical tasks, durations, dependencies,
+prerequisites, milestones, roles, and unresolved questions before a separately
+authorized user can approve a baseline.
+
 ## Source authority and human control
 
 The response must identify SOW/GSD and supporting-document versions, cite source
