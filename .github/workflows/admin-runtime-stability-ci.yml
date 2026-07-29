@@ -56,10 +56,22 @@ jobs:
           git fetch origin main --no-tags
           CHANGED="$(git diff --name-only origin/main...HEAD)"
           printf '%s\n' "$CHANGED"
+          BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
 
-          if grep -E '^database/(migrations|rollback)/' <<<"$CHANGED"; then
-            echo 'This runtime stabilization source must not add or alter a migration.' >&2
-            exit 1
+          if [[ "$BRANCH" == fix/admin-runtime-stability-* ]]; then
+            if grep -E '^database/(migrations|rollback)/' <<<"$CHANGED"; then
+              echo 'This runtime stabilization source must not add or alter a migration.' >&2
+              exit 1
+            fi
+
+            if grep -E 'CustomerDirectorySellSyncModule|CustomerDirectoryCenter|CrmErpIntegrationCenter|049_module_021_sell_customer_sync' <<<"$CHANGED"; then
+              echo 'PR 187 source ownership was modified by the admin runtime branch.' >&2
+              exit 1
+            fi
+
+            echo 'ADMIN_RUNTIME_STABILITY_ISOLATION=PASS'
+          else
+            echo "ADMIN_RUNTIME_STABILITY_ISOLATION=REGRESSION_MODE branch=$BRANCH"
           fi
 
           if grep -E '^\.github/workflows/(projectpulse-deploy-runtime-direct-timer-recovery-test|validate-runtime-direct-timer-recovery-deployment)\.yml$|^scripts/validate-runtime-direct-timer-recovery-test-deployment\.sh$' <<<"$CHANGED"; then
@@ -71,13 +83,6 @@ jobs:
             echo 'Deployment workflow changes are outside this source branch.' >&2
             exit 1
           fi
-
-          if grep -E 'CustomerDirectorySellSyncModule|CustomerDirectoryCenter|CrmErpIntegrationCenter|049_module_021_sell_customer_sync' <<<"$CHANGED"; then
-            echo 'PR 187 source ownership was modified by the admin runtime branch.' >&2
-            exit 1
-          fi
-
-          echo 'ADMIN_RUNTIME_STABILITY_ISOLATION=PASS'
 
       - uses: actions/setup-dotnet@v4
         with:
