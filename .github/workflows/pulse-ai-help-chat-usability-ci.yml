@@ -1,0 +1,132 @@
+name: Validate Pulse AI Help Chat Usability
+
+on:
+  push:
+    branches:
+      - 'fix/module-011-help-chat-usability-*'
+  pull_request:
+    paths:
+      - '.github/workflows/pulse-ai-help-chat-usability-ci.yml'
+      - 'src/frontend/project-time-web/src/pulse-ai-help-chat-usability.js'
+      - 'src/frontend/project-time-web/src/pulse-ai-help-chat-usability.css'
+      - 'src/frontend/project-time-web/src/main.jsx'
+      - 'src/frontend/project-time-web/src/HelpAssistant.jsx'
+      - 'src/frontend/project-time-web/scripts/validate-pulse-ai-help-chat-usability.mjs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiProductKnowledgeCatalog.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiQuestionPlanner.cs'
+      - 'src/backend/ProjectTime.Api/ProjectTime.Api.csproj'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pulse-ai-help-chat-usability-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Verify exact hotfix source scope
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          BASE_BRANCH="${GITHUB_BASE_REF:-main}"
+          git fetch origin "$BASE_BRANCH" --no-tags
+          CHANGED="$(git diff --name-only "origin/$BASE_BRANCH"...HEAD)"
+          printf '%s\n' "$CHANGED"
+
+          ALLOWED='^(\.github/workflows/pulse-ai-help-chat-usability-ci\.yml|src/frontend/project-time-web/src/(pulse-ai-help-chat-usability\.js|pulse-ai-help-chat-usability\.css|main\.jsx)|src/frontend/project-time-web/scripts/validate-pulse-ai-help-chat-usability\.mjs|src/backend/ProjectTime\.Api/Ai/PulseAiProductKnowledgeCatalog\.cs|src/backend/ProjectTime\.Api/ProjectTime\.Api\.csproj)$'
+          UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
+          if [[ -n "$UNEXPECTED" ]]; then
+            echo 'Unexpected Pulse AI Help chat hotfix scope:' >&2
+            printf '%s\n' "$UNEXPECTED" >&2
+            exit 1
+          fi
+
+          if grep -E '^(database/|deployment/|scripts/.*deploy|\.github/workflows/projectpulse-deploy-)' <<<"$CHANGED"; then
+            echo 'The Help chat hotfix cannot include a migration or deployment operation.' >&2
+            exit 1
+          fi
+
+          git diff --check "origin/$BASE_BRANCH"...HEAD
+          echo 'PULSE_AI_HELP_CHAT_SOURCE_ISOLATION=PASSED'
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Validate source contract
+        working-directory: src/frontend/project-time-web
+        run: |
+          node --check ./scripts/validate-pulse-ai-help-chat-usability.mjs
+          node --check ./src/pulse-ai-help-chat-usability.js
+          node ./scripts/validate-pulse-ai-help-chat-usability.mjs
+
+      - name: Build ProjectTime API
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+          GENERATED="$(find src/backend/ProjectTime.Api/obj -name PulseAiQuestionPlanner.g.cs -print -quit)"
+          test -n "$GENERATED"
+          grep -Fq 'PulseAiProductKnowledgeCatalog.Find(normalized) ?? FindKnowledgeAnswer(normalized)' "$GENERATED"
+          echo 'PULSE_AI_HELP_CHAT_API_BUILD=PASSED'
+
+      - name: Build complete frontend production bundle
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm ci --no-audit --no-fund
+          npm run build
+          cat dist/assets/*.js > /tmp/pulse-ai-help-chat.js
+          cat dist/assets/*.css > /tmp/pulse-ai-help-chat.css
+          grep -Fq 'pulse-ai-help-chat-usability-v1' /tmp/pulse-ai-help-chat.js
+          grep -Fq 'Enter sends' /tmp/pulse-ai-help-chat.js
+          grep -Fq 'Shift+Enter adds a line' /tmp/pulse-ai-help-chat.js
+          grep -Fq '.pulse-ai-help-keyboard-hint' /tmp/pulse-ai-help-chat.css
+          grep -Fq 'overscroll-behavior:contain' /tmp/pulse-ai-help-chat.css
+          echo 'PULSE_AI_HELP_CHAT_FRONTEND_BUILD=PASSED'
+
+      - name: Validate web container build context
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          docker build \
+            --file deployment/containers/web/Dockerfile \
+            --tag "projectpulse-help-chat:${GITHUB_SHA}" \
+            .
+          echo 'PULSE_AI_HELP_CHAT_WEB_CONTAINER_BUILD=PASSED'
+
+      - name: Publish validation summary
+        shell: bash
+        run: |
+          {
+            echo '## Pulse AI Help Chat Usability'
+            echo
+            echo '- Conversation scrolling: restored'
+            echo '- Enter submits: enabled'
+            echo '- Shift+Enter newline: preserved'
+            echo '- Escape closes: enabled'
+            echo '- Direct Pulse AI purpose answer: enabled'
+            echo '- API build: passed'
+            echo '- Complete frontend build: passed'
+            echo '- Web container build: passed'
+            echo '- Database migration: none'
+            echo '- Provider call added: none'
+            echo '- Deployment performed: none'
+          } >> "$GITHUB_STEP_SUMMARY"
