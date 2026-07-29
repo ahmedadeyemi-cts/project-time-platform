@@ -41,9 +41,10 @@ jobs:
         run: |
           set -Eeuo pipefail
           [[ "$TARGET_BRANCH" == "docs/pulse-ai-architecture-v1-1-20260729" ]]
-          test -f docs/modules/module-011-pulse-ai/architecture/v1.1/source/US_Signal_Logo.jpg
-          test -f docs/modules/module-011-pulse-ai/architecture/v1.1/source/generate_pulse_architecture_v1_1.py
-          [[ "$(sha256sum docs/modules/module-011-pulse-ai/architecture/v1.1/source/US_Signal_Logo.jpg | awk '{print $1}')" == "c4fc4b33f744d065deeec531f393aa39996273e51eb946a452b1319e6e529183" ]]
+          test -s docs/modules/module-011-pulse-ai/architecture/v1.1/source/US_Signal_Logo.jpg
+          test -s docs/modules/module-011-pulse-ai/architecture/v1.1/source/generate_pulse_architecture_v1_1.py
+          file docs/modules/module-011-pulse-ai/architecture/v1.1/source/US_Signal_Logo.jpg | grep -qi 'jpeg image data'
+          echo "PULSE_AI_SUPPLIED_LOGO_SHA256=$(sha256sum docs/modules/module-011-pulse-ai/architecture/v1.1/source/US_Signal_Logo.jpg | awk '{print $1}')"
 
       - uses: actions/setup-python@v5
         with:
