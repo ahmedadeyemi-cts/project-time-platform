@@ -1,5 +1,6 @@
 import PulseAiCenter from './PulseAiCenter.jsx';
 import PulseAiMissionControl from './PulseAiMissionControl.jsx';
+import PulseAiDeepIntelligenceWorkbench from './PulseAiDeepIntelligenceWorkbench.jsx';
 
 /**
  * Module 011 compatibility mount.
@@ -12,12 +13,17 @@ import PulseAiMissionControl from './PulseAiMissionControl.jsx';
  * The retired implementation remains recoverable from the immutable pre-reuse
  * checkpoint documented under docs/modules/module-011-pulse-ai/.
  */
-export { PulseAiCenter, PulseAiMissionControl };
+export {
+  PulseAiCenter,
+  PulseAiMissionControl,
+  PulseAiDeepIntelligenceWorkbench
+};
 
 export default function WorkTaskBuilderPanel() {
   return (
     <>
       <PulseAiMissionControl />
+      <PulseAiDeepIntelligenceWorkbench />
       <PulseAiCenter />
     </>
   );
