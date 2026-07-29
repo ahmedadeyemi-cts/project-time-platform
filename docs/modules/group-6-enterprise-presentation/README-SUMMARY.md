@@ -1,0 +1,1 @@
+The Group 6 presentation system remains a source-only draft until exact-head validation passes.
