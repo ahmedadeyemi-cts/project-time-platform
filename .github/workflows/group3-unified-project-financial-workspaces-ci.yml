@@ -208,7 +208,10 @@ jobs:
           cat dist/assets/*.js > /tmp/group3-financial-workspaces.js
           cat dist/assets/*.css > /tmp/group3-financial-workspaces.css
           for marker in \
-            'One authoritative project summary' \
+            'Project Management authority' \
+            'Engineering delivery context' \
+            'Sales and delivery handoff' \
+            'Governed rate context' \
             'Project portfolio command center' \
             'Engineering assignments and project evidence' \
             'Customer, SELL, and delivery readiness' \
