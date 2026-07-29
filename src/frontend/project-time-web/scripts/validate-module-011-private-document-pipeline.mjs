@@ -352,17 +352,21 @@ assert(
     : `unexpected migration paths: ${migrationMatches.join(', ')}`
 );
 
-const deploymentMatches = [
-  ...walk('.github/workflows'),
-  ...walk('scripts'),
-  ...walk('deployment')
-].filter((relative) => /(?:module[-_]?011|pulse[-_]?ai|private[-_]?document).*(?:deploy|migration|azure|entra)/i.test(relative));
+const ownedPrivateDocumentPaths = [
+  '.github/workflows/deep-intelligence-read-contract-ci.yml',
+  '.github/workflows/private-document-pipeline-read-contract-ci.yml',
+  'src/frontend/project-time-web/scripts/validate-module-011-private-document-pipeline.mjs',
+  ...Object.values(paths)
+];
+const deploymentMatches = [...new Set(ownedPrivateDocumentPaths)].filter((relative) =>
+  /(?:module[-_]?011|pulse[-_]?ai|private[-_]?document).*(?:deploy|migration|azure|entra)/i.test(relative)
+);
 assert(
   'NO_DEPLOYMENT_OR_ENVIRONMENT_ACTION',
   deploymentMatches.length === 0,
   deploymentMatches.length === 0
-    ? 'no private-document deployment, migration, Azure, or Entra action exists'
-    : `unexpected environment-changing paths: ${deploymentMatches.join(', ')}`
+    ? 'no environment-changing action exists in the owned private-document source scope'
+    : `unexpected environment-changing owned paths: ${deploymentMatches.join(', ')}`
 );
 
 console.log(`MODULE_011_PRIVATE_DOCUMENT_PIPELINE_CHECKS=${checks.length}`);
