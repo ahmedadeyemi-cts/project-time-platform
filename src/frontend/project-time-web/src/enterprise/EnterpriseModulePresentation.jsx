@@ -1,5 +1,6 @@
 import USSignalLogo from './USSignalLogo.jsx';
 import './enterprise-module-system.css';
+import './enterprise-module-route-adoption.css';
 
 const MODULE_PRESENTATION = Object.freeze({
   '024': Object.freeze({
