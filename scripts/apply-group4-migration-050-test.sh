@@ -75,11 +75,7 @@ case "$REGISTERED:$MODE" in
     ;;
 esac
 
-psql "$DATABASE_URL" --no-psqlrc --set=ON_ERROR_STOP=1 \
-  --set=users_before="$USERS_BEFORE" \
-  --set=projects_before="$PROJECTS_BEFORE" \
-  --set=assignments_before="$ASSIGNMENTS_BEFORE" \
-  --set=entries_before="$ENTRIES_BEFORE" <<'SQL'
+psql "$DATABASE_URL" --no-psqlrc --set=ON_ERROR_STOP=1 <<'SQL'
 DO $group4_verify$
 DECLARE
   missing_tables text[];
@@ -208,17 +204,25 @@ BEGIN
   IF complete_privileged_roles <> existing_privileged_roles THEN
     RAISE EXCEPTION 'One or more privileged roles are missing the complete Group 4 permission set.';
   END IF;
-
-  IF (SELECT COUNT(*) FROM app_users) <> :'users_before'::bigint
-     OR (SELECT COUNT(*) FROM projects) <> :'projects_before'::bigint
-     OR (SELECT COUNT(*) FROM project_assignments) <> :'assignments_before'::bigint
-     OR (SELECT COUNT(*) FROM time_entries) <> :'entries_before'::bigint THEN
-    RAISE EXCEPTION 'Migration 050 changed operational user, project, assignment, or time-entry counts.';
-  END IF;
 END
 $group4_verify$;
 SQL
 
+read -r USERS_AFTER PROJECTS_AFTER ASSIGNMENTS_AFTER ENTRIES_AFTER <<<"$(
+  psql "$DATABASE_URL" --no-psqlrc -At --set=ON_ERROR_STOP=1 --command="
+    SELECT
+      (SELECT COUNT(*) FROM app_users),
+      (SELECT COUNT(*) FROM projects),
+      (SELECT COUNT(*) FROM project_assignments),
+      (SELECT COUNT(*) FROM time_entries);" | tr '|' ' '
+)"
+
+[[ "$USERS_AFTER" == "$USERS_BEFORE" ]] || fail "Migration 050 changed app_users row count."
+[[ "$PROJECTS_AFTER" == "$PROJECTS_BEFORE" ]] || fail "Migration 050 changed projects row count."
+[[ "$ASSIGNMENTS_AFTER" == "$ASSIGNMENTS_BEFORE" ]] || fail "Migration 050 changed project_assignments row count."
+[[ "$ENTRIES_AFTER" == "$ENTRIES_BEFORE" ]] || fail "Migration 050 changed time_entries row count."
+
+echo "GROUP4_MIGRATION_050_OPERATIONAL_COUNTS=UNCHANGED"
 echo "GROUP4_MIGRATION_050_INVARIANTS=VERIFIED"
 if [[ "$MODE" == apply ]]; then
   echo "GROUP4_MIGRATION_050_RESULT=APPLIED_OR_ALREADY_PRESENT"
