@@ -1,0 +1,70 @@
+name: Normalize Pulse AI Private Runtime Readiness Variables
+
+on:
+  push:
+    branches:
+      - feature/module-011-private-runtime-activation-20260729
+    paths:
+      - .github/workflows/pulse-ai-private-runtime-source-normalizer.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pulse-ai-private-runtime-source-normalizer
+  cancel-in-progress: false
+
+jobs:
+  normalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: feature/module-011-private-runtime-activation-20260729
+      - name: Initialize endpoint-policy reason variables and remove this one-time workflow
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeService.cs')
+          text = path.read_text()
+          old = '''        var ocrPrivate = options.OcrConfigured
+              && PulseAiPrivateEndpointPolicy.IsApprovedPrivateEndpoint(
+                  options.OcrEndpoint,
+                  options.PrivateHostAllowlist,
+                  out _,
+                  out var ocrReason);
+          var embeddingPrivate = options.EmbeddingConfigured
+              && PulseAiPrivateEndpointPolicy.IsApprovedPrivateEndpoint(
+                  options.EmbeddingEndpoint,
+                  options.PrivateHostAllowlist,
+                  out _,
+                  out var embeddingReason);'''
+          new = '''        var ocrReason = "not_configured";
+          var ocrPrivate = options.OcrConfigured
+              && PulseAiPrivateEndpointPolicy.IsApprovedPrivateEndpoint(
+                  options.OcrEndpoint,
+                  options.PrivateHostAllowlist,
+                  out _,
+                  out ocrReason);
+          var embeddingReason = "not_configured";
+          var embeddingPrivate = options.EmbeddingConfigured
+              && PulseAiPrivateEndpointPolicy.IsApprovedPrivateEndpoint(
+                  options.EmbeddingEndpoint,
+                  options.PrivateHostAllowlist,
+                  out _,
+                  out embeddingReason);'''
+          if text.count(old) != 1:
+              raise SystemExit('Expected endpoint-policy block was not found exactly once.')
+          path.write_text(text.replace(old, new))
+          PY
+          rm -f .github/workflows/pulse-ai-private-runtime-source-normalizer.yml
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeService.cs .github/workflows/pulse-ai-private-runtime-source-normalizer.yml
+          git commit -m 'Initialize Pulse AI private endpoint readiness reasons'
+          git push origin HEAD:feature/module-011-private-runtime-activation-20260729
