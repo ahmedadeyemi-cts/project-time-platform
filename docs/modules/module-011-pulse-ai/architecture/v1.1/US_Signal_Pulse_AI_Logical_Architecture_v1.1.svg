@@ -1,0 +1,138 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1050" viewBox="0 0 1600 1050">
+<defs>
+<filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="4" stdDeviation="5" flood-color="#0B2540" flood-opacity="0.18"/></filter>
+<marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#1769AA"/></marker>
+<marker id="arrow-green" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#67B446"/></marker>
+<style>text{font-family:Arial,Helvetica,sans-serif}.title{font-size:34px;font-weight:700;fill:#072D59}.sub{font-size:16px;fill:#465B6D}.zone{font-size:16px;font-weight:700;fill:#072D59;letter-spacing:.4px}.box-title{font-size:16px;font-weight:700;fill:#072D59}.box-copy{font-size:12px;fill:#34495E}.small{font-size:10px;fill:#51697C}.label{font-size:11px;font-weight:700;fill:#1769AA}</style>
+</defs>
+<rect width="1600" height="1050" fill="#FFFFFF"/>
+<image href="data:image/jpeg;base64,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" x="40" y="24" width="150" height="95" preserveAspectRatio="xMidYMid meet"/>
+<text x="220" y="62" class="title">Pulse AI Private-First Logical Architecture</text>
+<text x="220" y="91" class="sub">US Signal • Pulse • Module 011 • Version 1.1</text>
+<line x1="40" y1="125" x2="1560" y2="125" stroke="#009FE3" stroke-width="4"/>
+<rect x="35" y="150" width="1530" height="165" rx="16" fill="#EAF5FB" stroke="#9BB2C6" stroke-width="1.5"/>
+<text x="53" y="178" class="zone">PULSE APPLICATION TRUST ZONE</text>
+<rect x="35" y="330" width="1530" height="390" rx="16" fill="#F7FAFC" stroke="#9BB2C6" stroke-width="1.5"/>
+<text x="53" y="358" class="zone">PRIVATE DATA AND AI TRUST ZONE</text>
+<rect x="35" y="735" width="930" height="250" rx="16" fill="#F4F9F1" stroke="#9BB2C6" stroke-width="1.5"/>
+<text x="53" y="763" class="zone">PRIVATE VERIFICATION AND RESPONSE ZONE</text>
+<rect x="985" y="735" width="580" height="250" rx="16" fill="#FFF8EE" stroke="#9BB2C6" stroke-width="1.5"/>
+<text x="1003" y="763" class="zone">CONTROLLED EGRESS / EXTERNAL PROVIDER ZONE</text>
+<g filter="url(#shadow)"><rect x="75" y="200" width="250" height="90" rx="12" fill="#FFFFFF" stroke="#1769AA" stroke-width="2"/></g>
+<rect x="87" y="212" width="70" height="22" rx="11" fill="#1769AA"/><text x="97" y="228" font-size="11" font-weight="700" fill="#FFFFFF">ENTRY</text>
+<text x="91" y="254" class="box-title">Pulse User Experience</text>
+<text x="91" y="277" class="box-copy">Timesheet • Ask Pulse AI • Search</text>
+<text x="91" y="294" class="box-copy">FlowHive • Reports • Financials</text>
+<g filter="url(#shadow)"><rect x="390" y="200" width="300" height="90" rx="12" fill="#FFFFFF" stroke="#1769AA" stroke-width="2"/></g>
+<text x="406" y="230" class="box-title">Identity and Authorization</text>
+<text x="406" y="253" class="box-copy">Session • actual/effective user</text>
+<text x="406" y="270" class="box-copy">RBAC • module • project • record scope</text>
+<g filter="url(#shadow)"><rect x="760" y="200" width="300" height="90" rx="12" fill="#FFFFFF" stroke="#1769AA" stroke-width="2"/></g>
+<text x="776" y="230" class="box-title">Pulse AI Orchestrator</text>
+<text x="776" y="253" class="box-copy">Intent • policy • tool plan</text>
+<text x="776" y="270" class="box-copy">minimum-necessary context assembly</text>
+<g filter="url(#shadow)"><rect x="1130" y="200" width="360" height="90" rx="12" fill="#FFFFFF" stroke="#1769AA" stroke-width="2"/></g>
+<text x="1146" y="230" class="box-title">Audit and Correlation</text>
+<text x="1146" y="253" class="box-copy">Request ID • scope summary • evidence</text>
+<text x="1146" y="270" class="box-copy">sanitized telemetry only</text>
+<line x1="325" y1="245" x2="390" y2="245" stroke="#1769AA" stroke-width="3" marker-end="url(#arrow)"/>
+<line x1="690" y1="245" x2="760" y2="245" stroke="#1769AA" stroke-width="3" marker-end="url(#arrow)"/>
+<line x1="1060" y1="245" x2="1130" y2="245" stroke="#1769AA" stroke-width="3" marker-end="url(#arrow)" stroke-dasharray="8 6"/>
+<g filter="url(#shadow)"><rect x="75" y="385" width="300" height="120" rx="12" fill="#FFFFFF" stroke="#1769AA" stroke-width="2"/></g>
+<rect x="87" y="397" width="70" height="22" rx="11" fill="#1769AA"/><text x="97" y="413" font-size="11" font-weight="700" fill="#FFFFFF">RAG</text>
+<text x="91" y="439" class="box-title">Private Document Retrieval</text>
+<text x="91" y="462" class="box-copy">SOW • GSD • design • contract</text>
+<text x="91" y="479" class="box-copy">versioned extraction and citations</text>
+<text x="91" y="496" class="box-copy">permission-filtered hybrid/vector search</text>
+<g filter="url(#shadow)"><rect x="425" y="385" width="300" height="120" rx="12" fill="#FFFFFF" stroke="#1769AA" stroke-width="2"/></g>
+<rect x="437" y="397" width="70" height="22" rx="11" fill="#1769AA"/><text x="447" y="413" font-size="11" font-weight="700" fill="#FFFFFF">TOOLS</text>
+<text x="441" y="439" class="box-title">Governed Live-Data Tools</text>
+<text x="441" y="462" class="box-copy">projects • tasks • time • approvals</text>
+<text x="441" y="479" class="box-copy">capacity • reports • finance</text>
+<text x="441" y="496" class="box-copy">allowlisted read-only semantic contracts</text>
+<g filter="url(#shadow)"><rect x="785" y="385" width="300" height="120" rx="12" fill="#EDF8FE" stroke="#009FE3" stroke-width="2"/></g>
+<rect x="797" y="397" width="70" height="22" rx="11" fill="#009FE3"/><text x="807" y="413" font-size="11" font-weight="700" fill="#FFFFFF">PRIMARY</text>
+<text x="801" y="439" class="box-title">Private Pulse AI Model</text>
+<text x="801" y="462" class="box-copy">open-weight private endpoint</text>
+<text x="801" y="479" class="box-copy">structured deep-response schemas</text>
+<text x="801" y="496" class="box-copy">no public inbound access</text>
+<g filter="url(#shadow)"><rect x="1145" y="385" width="345" height="120" rx="12" fill="#F1F8ED" stroke="#67B446" stroke-width="2"/></g>
+<rect x="1157" y="397" width="70" height="22" rx="11" fill="#67B446"/><text x="1167" y="413" font-size="11" font-weight="700" fill="#FFFFFF">GATE</text>
+<text x="1161" y="439" class="box-title">Confidence Assessment</text>
+<text x="1161" y="462" class="box-copy">coverage • freshness • conflicts</text>
+<text x="1161" y="479" class="box-copy">calculation validity • unsupported claims</text>
+<text x="1161" y="496" class="box-copy">external-help policy eligibility</text>
+<line x1="910" y1="290" x2="225" y2="385" stroke="#1769AA" stroke-width="3" marker-end="url(#arrow)"/>
+<rect x="492.5" y="324.5" width="150" height="22" rx="6" fill="#FFFFFF" opacity="0.94"/><text x="567.5" y="340.5" text-anchor="middle" class="label">authorized document plan</text>
+<line x1="910" y1="290" x2="575" y2="385" stroke="#1769AA" stroke-width="3" marker-end="url(#arrow)"/>
+<rect x="667.5" y="324.5" width="150" height="22" rx="6" fill="#FFFFFF" opacity="0.94"/><text x="742.5" y="340.5" text-anchor="middle" class="label">governed tool plan</text>
+<line x1="375" y1="445" x2="785" y2="445" stroke="#1769AA" stroke-width="3" marker-end="url(#arrow)"/>
+<rect x="505.0" y="432.0" width="150" height="22" rx="6" fill="#FFFFFF" opacity="0.94"/><text x="580.0" y="448.0" text-anchor="middle" class="label">cited context</text>
+<line x1="725" y1="465" x2="785" y2="465" stroke="#1769AA" stroke-width="3" marker-end="url(#arrow)"/>
+<rect x="680.0" y="452.0" width="150" height="22" rx="6" fill="#FFFFFF" opacity="0.94"/><text x="755.0" y="468.0" text-anchor="middle" class="label">deterministic results</text>
+<line x1="1085" y1="445" x2="1145" y2="445" stroke="#1769AA" stroke-width="3" marker-end="url(#arrow)"/>
+<g filter="url(#shadow)"><rect x="75" y="565" width="300" height="110" rx="12" fill="#FFFFFF" stroke="#1769AA" stroke-width="2"/></g>
+<text x="91" y="595" class="box-title">Private Storage and Index</text>
+<text x="91" y="618" class="box-copy">object storage • PostgreSQL</text>
+<text x="91" y="635" class="box-copy">extracted text • embeddings</text>
+<text x="91" y="652" class="box-copy">retention and access metadata</text>
+<g filter="url(#shadow)"><rect x="425" y="565" width="300" height="110" rx="12" fill="#FFFFFF" stroke="#1769AA" stroke-width="2"/></g>
+<text x="441" y="595" class="box-title">Prompt and Schema Registry</text>
+<text x="441" y="618" class="box-copy">feature prompts • response schemas</text>
+<text x="441" y="635" class="box-copy">versioning • approval • rollback</text>
+<g filter="url(#shadow)"><rect x="785" y="565" width="300" height="110" rx="12" fill="#FFFFFF" stroke="#1769AA" stroke-width="2"/></g>
+<text x="801" y="595" class="box-title">Model Lifecycle Services</text>
+<text x="801" y="618" class="box-copy">evaluation • feedback • registry</text>
+<text x="801" y="635" class="box-copy">private training • canary • rollback</text>
+<g filter="url(#shadow)"><rect x="1145" y="565" width="345" height="110" rx="12" fill="#FFFFFF" stroke="#1769AA" stroke-width="2"/></g>
+<text x="1161" y="595" class="box-title">Policy and DLP Controls</text>
+<text x="1161" y="618" class="box-copy">classification • redaction</text>
+<text x="1161" y="635" class="box-copy">egress allowlists • refusal policy</text>
+<line x1="225" y1="505" x2="225" y2="565" stroke="#1769AA" stroke-width="3" marker-end="url(#arrow)" stroke-dasharray="8 6"/>
+<line x1="575" y1="505" x2="575" y2="565" stroke="#1769AA" stroke-width="3" marker-end="url(#arrow)" stroke-dasharray="8 6"/>
+<line x1="935" y1="505" x2="935" y2="565" stroke="#1769AA" stroke-width="3" marker-end="url(#arrow)" stroke-dasharray="8 6"/>
+<line x1="1318" y1="505" x2="1318" y2="565" stroke="#1769AA" stroke-width="3" marker-end="url(#arrow)" stroke-dasharray="8 6"/>
+<g filter="url(#shadow)"><rect x="75" y="790" width="300" height="125" rx="12" fill="#F1F8ED" stroke="#67B446" stroke-width="2"/></g>
+<rect x="87" y="802" width="70" height="22" rx="11" fill="#67B446"/><text x="97" y="818" font-size="11" font-weight="700" fill="#FFFFFF">PASS</text>
+<text x="91" y="844" class="box-title">Sufficient Evidence</text>
+<text x="91" y="867" class="box-copy">complete private answer path</text>
+<text x="91" y="884" class="box-copy">no external provider required</text>
+<text x="91" y="901" class="box-copy">preserve sources and uncertainty</text>
+<g filter="url(#shadow)"><rect x="425" y="790" width="300" height="125" rx="12" fill="#FFFFFF" stroke="#1769AA" stroke-width="2"/></g>
+<rect x="437" y="802" width="70" height="22" rx="11" fill="#1769AA"/><text x="447" y="818" font-size="11" font-weight="700" fill="#FFFFFF">VERIFY</text>
+<text x="441" y="844" class="box-title">Private Evidence Verification</text>
+<text x="441" y="867" class="box-copy">re-ground claims and calculations</text>
+<text x="441" y="884" class="box-copy">remove unsupported statements</text>
+<text x="441" y="901" class="box-copy">attach citations and navigation</text>
+<g filter="url(#shadow)"><rect x="785" y="790" width="140" height="125" rx="12" fill="#EDF8FE" stroke="#009FE3" stroke-width="2"/></g>
+<text x="801" y="820" class="box-title">Detailed Result</text>
+<text x="801" y="843" class="box-copy">cited answer</text>
+<text x="801" y="860" class="box-copy">or reviewable draft</text>
+<line x1="1318" y1="505" x2="225" y2="790" stroke="#67B446" stroke-width="3" marker-end="url(#arrow-green)"/>
+<rect x="696.5" y="634.5" width="150" height="22" rx="6" fill="#FFFFFF" opacity="0.94"/><text x="771.5" y="650.5" text-anchor="middle" class="label">confidence sufficient</text>
+<line x1="375" y1="852" x2="425" y2="852" stroke="#67B446" stroke-width="3" marker-end="url(#arrow-green)"/>
+<line x1="725" y1="852" x2="785" y2="852" stroke="#67B446" stroke-width="3" marker-end="url(#arrow-green)"/>
+<g filter="url(#shadow)"><rect x="1025" y="790" width="220" height="125" rx="12" fill="#FFFDF8" stroke="#D9992E" stroke-width="2"/></g>
+<rect x="1037" y="802" width="70" height="22" rx="11" fill="#D9992E"/><text x="1047" y="818" font-size="11" font-weight="700" fill="#FFFFFF">OPTIONAL</text>
+<text x="1041" y="844" class="box-title">Sanitization / DLP</text>
+<text x="1041" y="867" class="box-copy">minimal generic problem</text>
+<text x="1041" y="884" class="box-copy">no raw documents, IDs,</text>
+<text x="1041" y="901" class="box-copy">secrets, pricing, or PII</text>
+<g filter="url(#shadow)"><rect x="1285" y="790" width="120" height="125" rx="12" fill="#FFFFFF" stroke="#D9992E" stroke-width="2"/></g>
+<text x="1301" y="820" class="box-title">Module 064</text>
+<text x="1301" y="843" class="box-copy">provider</text>
+<text x="1301" y="860" class="box-copy">health</text>
+<text x="1301" y="877" class="box-copy">routing</text>
+<g filter="url(#shadow)"><rect x="1440" y="790" width="90" height="125" rx="12" fill="#FFFFFF" stroke="#D9992E" stroke-width="2"/></g>
+<text x="1456" y="820" class="box-title">Claude /</text>
+<text x="1456" y="843" class="box-copy">OpenAI</text>
+<text x="1456" y="860" class="box-copy">generic</text>
+<text x="1456" y="877" class="box-copy">reasoning</text>
+<line x1="1318" y1="505" x2="1135" y2="790" stroke="#1769AA" stroke-width="3" marker-end="url(#arrow)" stroke-dasharray="8 6"/>
+<rect x="1151.5" y="634.5" width="150" height="22" rx="6" fill="#FFFFFF" opacity="0.94"/><text x="1226.5" y="650.5" text-anchor="middle" class="label">generic help eligible</text>
+<line x1="1245" y1="852" x2="1285" y2="852" stroke="#1769AA" stroke-width="3" marker-end="url(#arrow)" stroke-dasharray="8 6"/>
+<line x1="1405" y1="852" x2="1440" y2="852" stroke="#1769AA" stroke-width="3" marker-end="url(#arrow)" stroke-dasharray="8 6"/>
+<line x1="1485" y1="915" x2="700" y2="915" stroke="#1769AA" stroke-width="3" marker-end="url(#arrow)" stroke-dasharray="8 6"/>
+<rect x="1017.5" y="902.0" width="150" height="22" rx="6" fill="#FFFFFF" opacity="0.94"/><text x="1092.5" y="918.0" text-anchor="middle" class="label">untrusted suggestion returned for private verification</text>
+<text x="40" y="1025" class="small">US Signal Internal — Confidential • Architecture baseline v1.1 • Raw internal documents remain inside the private Pulse boundary by default.</text>
+</svg>
