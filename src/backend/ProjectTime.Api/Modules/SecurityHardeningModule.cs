@@ -31,6 +31,10 @@ public static class SecurityHardeningModule
         @"^/api/project-intake/documents/(?<id>[0-9a-fA-F-]{36})/download$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
+    private static readonly Regex IntakeRequestMutationPath = new(
+        @"^/api/project-intake/(?:requests/)?(?<id>[0-9a-fA-F-]{36})/(?:documents|supporting-documents/upload|post-intake|project-link)$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
     private static readonly HashSet<string> SafeDocumentTypes = new(StringComparer.OrdinalIgnoreCase)
     {
         "sow",
@@ -119,20 +123,80 @@ public static class SecurityHardeningModule
             return;
         }
 
+        var sensitivePayloadRequired =
+            IsRoleMutationPath(path, method)
+            || IsBreakGlassPasswordPath(path, method);
+
         JsonDocument? inspectedPayload = null;
 
-        if (IsUnsafeMethod(method)
-            && IsJsonRequest(context.Request)
-            && context.Request.ContentLength.GetValueOrDefault() <= MaximumInspectedJsonBytes)
+        if (sensitivePayloadRequired && !IsJsonRequest(context.Request))
         {
-            inspectedPayload = await TryReadJsonBodyAsync(context);
+            await WriteErrorAsync(
+                context,
+                StatusCodes.Status415UnsupportedMediaType,
+                "json_body_required",
+                "This security-sensitive action requires an application/json request body.");
+            return;
+        }
 
-            if (inspectedPayload is not null
-                && !await ValidateJsonSafetyAsync(context, path, inspectedPayload.RootElement))
+        if (IsUnsafeMethod(method) && IsJsonRequest(context.Request))
+        {
+            if (context.Request.ContentLength is long contentLength
+                && contentLength > MaximumInspectedJsonBytes)
             {
-                inspectedPayload.Dispose();
+                await WriteErrorAsync(
+                    context,
+                    StatusCodes.Status413PayloadTooLarge,
+                    "request_body_too_large",
+                    "The request body exceeds the security inspection limit.");
                 return;
             }
+
+            var inspection = await InspectJsonBodyAsync(context);
+
+            if (inspection.TooLarge)
+            {
+                await WriteErrorAsync(
+                    context,
+                    StatusCodes.Status413PayloadTooLarge,
+                    "request_body_too_large",
+                    "The request body exceeds the security inspection limit.");
+                return;
+            }
+
+            if (inspection.Malformed)
+            {
+                if (sensitivePayloadRequired)
+                {
+                    await WriteErrorAsync(
+                        context,
+                        StatusCodes.Status400BadRequest,
+                        "invalid_json_body",
+                        "A valid JSON request body is required for this security-sensitive action.");
+                    return;
+                }
+            }
+            else
+            {
+                inspectedPayload = inspection.Document;
+
+                if (inspectedPayload is not null
+                    && !await ValidateJsonSafetyAsync(context, path, inspectedPayload.RootElement))
+                {
+                    inspectedPayload.Dispose();
+                    return;
+                }
+            }
+        }
+
+        if (sensitivePayloadRequired && inspectedPayload is null)
+        {
+            await WriteErrorAsync(
+                context,
+                StatusCodes.Status400BadRequest,
+                "security_payload_unavailable",
+                "The request body could not be inspected and the action was denied.");
+            return;
         }
 
         NpgsqlConnection? authorizationConnection = null;
@@ -210,7 +274,7 @@ public static class SecurityHardeningModule
                 context,
                 StatusCodes.Status503ServiceUnavailable,
                 "security_configuration_unavailable",
-                ex.Message);
+                "Security authorization could not be evaluated. The action was denied.");
         }
         finally
         {
@@ -466,15 +530,26 @@ public static class SecurityHardeningModule
                && CryptographicOperations.FixedTimeEquals(expected, actual);
     }
 
-    private static async Task<JsonDocument?> TryReadJsonBodyAsync(HttpContext context)
+    private static async Task<JsonBodyInspection> InspectJsonBodyAsync(HttpContext context)
     {
         try
         {
-            context.Request.EnableBuffering();
+            context.Request.EnableBuffering(
+                bufferThreshold: 64 * 1024,
+                bufferLimit: MaximumInspectedJsonBytes);
             context.Request.Body.Position = 0;
             var document = await JsonDocument.ParseAsync(context.Request.Body);
             context.Request.Body.Position = 0;
-            return document;
+            return new JsonBodyInspection(document, TooLarge: false, Malformed: false);
+        }
+        catch (IOException)
+        {
+            if (context.Request.Body.CanSeek)
+            {
+                context.Request.Body.Position = 0;
+            }
+
+            return new JsonBodyInspection(null, TooLarge: true, Malformed: false);
         }
         catch (JsonException)
         {
@@ -483,13 +558,39 @@ public static class SecurityHardeningModule
                 context.Request.Body.Position = 0;
             }
 
-            return null;
+            return new JsonBodyInspection(null, TooLarge: false, Malformed: true);
         }
+    }
+
+    private static bool TryGetPropertyIgnoreCase(
+        JsonElement element,
+        string propertyName,
+        out JsonElement value)
+    {
+        value = default;
+
+        if (element.ValueKind != JsonValueKind.Object)
+        {
+            return false;
+        }
+
+        foreach (var property in element.EnumerateObject())
+        {
+            if (property.Name.Equals(propertyName, StringComparison.OrdinalIgnoreCase))
+            {
+                value = property.Value;
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static async Task<string> TryReadJsonStringAsync(HttpContext context, string propertyName)
     {
-        var document = await TryReadJsonBodyAsync(context);
+        var inspection = await InspectJsonBodyAsync(context);
+        var document = inspection.Document;
+
         if (document is null)
         {
             return string.Empty;
@@ -497,8 +598,7 @@ public static class SecurityHardeningModule
 
         using (document)
         {
-            return document.RootElement.ValueKind == JsonValueKind.Object
-                   && document.RootElement.TryGetProperty(propertyName, out var property)
+            return TryGetPropertyIgnoreCase(document.RootElement, propertyName, out var property)
                    && property.ValueKind == JsonValueKind.String
                 ? property.GetString()?.Trim() ?? string.Empty
                 : string.Empty;
@@ -693,7 +793,9 @@ public static class SecurityHardeningModule
 
         if (path.StartsWith("/api/project-intake/", StringComparison.OrdinalIgnoreCase))
         {
-            if (path.Contains("/assign", StringComparison.OrdinalIgnoreCase))
+            if (path.Contains("/assign", StringComparison.OrdinalIgnoreCase)
+                || path.Equals("/api/project-intake/resource-assignment-promotions", StringComparison.OrdinalIgnoreCase)
+                || path.EndsWith("/project-link", StringComparison.OrdinalIgnoreCase))
             {
                 return SecurityPolicy.ProjectAssignment;
             }
@@ -774,38 +876,53 @@ public static class SecurityHardeningModule
     {
         var roleCodes = ReadRoleCodes(payload);
 
-        if (roleCodes.Count == 0)
+        if (roleCodes.Count > 0)
         {
-            return true;
-        }
+            var knownCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        var knownCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        await using (var command = new NpgsqlCommand("""
-            SELECT role_code
-            FROM app_roles
-            WHERE is_active = TRUE
-              AND role_code = ANY(@role_codes);
-            """, connection))
-        {
-            command.Parameters.AddWithValue("role_codes", roleCodes.ToArray());
-
-            await using var reader = await command.ExecuteReaderAsync();
-            while (await reader.ReadAsync())
+            await using (var command = new NpgsqlCommand("""
+                SELECT role_code
+                FROM app_roles
+                WHERE is_active = TRUE
+                  AND role_code = ANY(@role_codes);
+                """, connection))
             {
-                knownCodes.Add(reader.GetString(0));
+                command.Parameters.AddWithValue("role_codes", roleCodes.ToArray());
+
+                await using var reader = await command.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    knownCodes.Add(reader.GetString(0));
+                }
+            }
+
+            var unknownCodes = roleCodes.Where(code => !knownCodes.Contains(code)).ToArray();
+
+            if (unknownCodes.Length > 0)
+            {
+                await WriteErrorAsync(
+                    context,
+                    StatusCodes.Status400BadRequest,
+                    "unknown_role_code",
+                    $"Unknown or inactive role code(s): {string.Join(", ", unknownCodes)}.");
+                return false;
             }
         }
 
-        var unknownCodes = roleCodes.Where(code => !knownCodes.Contains(code)).ToArray();
+        var targetUserIds = ReadTargetUserIds(payload);
+        var targetEmail = ReadString(payload, "email");
 
-        if (unknownCodes.Length > 0)
+        if (!access.IsSuperAdministrator
+            && await TargetsExistingSuperAdministratorAsync(
+                connection,
+                targetUserIds,
+                targetEmail))
         {
             await WriteErrorAsync(
                 context,
-                StatusCodes.Status400BadRequest,
-                "unknown_role_code",
-                $"Unknown or inactive role code(s): {string.Join(", ", unknownCodes)}.");
+                StatusCodes.Status403Forbidden,
+                "super_administrator_target_protected",
+                "Only a Super Administrator can change roles for an existing Super Administrator.");
             return false;
         }
 
@@ -835,12 +952,48 @@ public static class SecurityHardeningModule
         return true;
     }
 
+    private static async Task<bool> TargetsExistingSuperAdministratorAsync(
+        NpgsqlConnection connection,
+        IReadOnlyCollection<Guid> targetUserIds,
+        string targetEmail)
+    {
+        if (targetUserIds.Count == 0 && string.IsNullOrWhiteSpace(targetEmail))
+        {
+            return false;
+        }
+
+        await using var command = new NpgsqlCommand("""
+            SELECT EXISTS (
+                SELECT 1
+                FROM app_users u
+                JOIN app_user_role_assignments ura
+                  ON ura.user_id = u.user_id
+                 AND ura.is_active = TRUE
+                JOIN app_roles r
+                  ON r.app_role_id = ura.app_role_id
+                 AND r.is_active = TRUE
+                WHERE r.role_code = 'SUPER_ADMINISTRATOR'
+                  AND (
+                        (cardinality(@target_user_ids) > 0 AND u.user_id = ANY(@target_user_ids))
+                     OR (NULLIF(@target_email, '') IS NOT NULL AND lower(u.email) = lower(@target_email))
+                  )
+            );
+            """, connection);
+
+        command.Parameters.AddWithValue(
+            "target_user_ids",
+            NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Uuid,
+            targetUserIds.ToArray());
+        command.Parameters.AddWithValue("target_email", targetEmail ?? string.Empty);
+
+        return Convert.ToBoolean(await command.ExecuteScalarAsync() ?? false);
+    }
+
     private static HashSet<string> ReadRoleCodes(JsonElement payload)
     {
         var roleCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        if (payload.ValueKind != JsonValueKind.Object
-            || !payload.TryGetProperty("roleCodes", out var roleElement)
+        if (!TryGetPropertyIgnoreCase(payload, "roleCodes", out var roleElement)
             || roleElement.ValueKind != JsonValueKind.Array)
         {
             return roleCodes;
@@ -863,10 +1016,35 @@ public static class SecurityHardeningModule
         return roleCodes;
     }
 
+    private static HashSet<Guid> ReadTargetUserIds(JsonElement payload)
+    {
+        var userIds = new HashSet<Guid>();
+        var singleUserId = ReadGuid(payload, "userId");
+
+        if (singleUserId is not null)
+        {
+            userIds.Add(singleUserId.Value);
+        }
+
+        if (TryGetPropertyIgnoreCase(payload, "userIds", out var userIdsElement)
+            && userIdsElement.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in userIdsElement.EnumerateArray())
+            {
+                if (item.ValueKind == JsonValueKind.String
+                    && Guid.TryParse(item.GetString(), out var parsed))
+                {
+                    userIds.Add(parsed);
+                }
+            }
+        }
+
+        return userIds;
+    }
+
     private static Guid? ReadGuid(JsonElement payload, string propertyName)
     {
-        if (payload.ValueKind != JsonValueKind.Object
-            || !payload.TryGetProperty(propertyName, out var element))
+        if (!TryGetPropertyIgnoreCase(payload, propertyName, out var element))
         {
             return null;
         }
@@ -878,6 +1056,14 @@ public static class SecurityHardeningModule
         }
 
         return null;
+    }
+
+    private static string ReadString(JsonElement payload, string propertyName)
+    {
+        return TryGetPropertyIgnoreCase(payload, propertyName, out var element)
+               && element.ValueKind == JsonValueKind.String
+            ? element.GetString()?.Trim() ?? string.Empty
+            : string.Empty;
     }
 
     private static async Task<bool> ValidateBreakGlassPasswordMutationAsync(
@@ -941,38 +1127,37 @@ public static class SecurityHardeningModule
         var documentMatch = WorkRegisterDocumentDownloadPath.Match(path);
 
         if (documentMatch.Success
-            && Guid.TryParse(documentMatch.Groups["id"].Value, out var documentId))
+            && Guid.TryParse(documentMatch.Groups["id"].Value, out var documentId)
+            && !await CanAccessWorkRegisterDocumentAsync(
+                connection,
+                access,
+                actorUserId,
+                documentId))
         {
-            await using var command = new NpgsqlCommand("""
-                SELECT project_id
-                FROM work_register_documents
-                WHERE work_register_document_id = @document_id
-                  AND status = 'active'
-                LIMIT 1;
-                """, connection);
+            await WriteErrorAsync(
+                context,
+                StatusCodes.Status403Forbidden,
+                "document_access_denied",
+                "The requested project document was not found or is outside your document visibility scope.");
+            return false;
+        }
 
-            command.Parameters.AddWithValue("document_id", documentId);
-            var result = await command.ExecuteScalarAsync();
+        var intakeMutationMatch = IntakeRequestMutationPath.Match(path);
 
-            if (result is not Guid documentProjectId)
-            {
-                await WriteErrorAsync(
-                    context,
-                    StatusCodes.Status404NotFound,
-                    "document_not_found",
-                    "The requested document was not found.");
-                return false;
-            }
-
-            if (!await CanAccessProjectAsync(connection, access, actorUserId, documentProjectId))
-            {
-                await WriteErrorAsync(
-                    context,
-                    StatusCodes.Status403Forbidden,
-                    "document_access_denied",
-                    "You do not have access to this project document.");
-                return false;
-            }
+        if (intakeMutationMatch.Success
+            && Guid.TryParse(intakeMutationMatch.Groups["id"].Value, out var intakeRequestId)
+            && !await CanAccessIntakeRequestAsync(
+                connection,
+                access,
+                actorUserId,
+                intakeRequestId))
+        {
+            await WriteErrorAsync(
+                context,
+                StatusCodes.Status403Forbidden,
+                "intake_access_denied",
+                "The requested Project Intake record was not found or is outside your role scope.");
+            return false;
         }
 
         var intakeMatch = IntakeDocumentDownloadPath.Match(path);
@@ -989,7 +1174,7 @@ public static class SecurityHardeningModule
                 context,
                 StatusCodes.Status403Forbidden,
                 "document_access_denied",
-                "You do not have access to this intake document.");
+                "The requested intake document was not found or is outside your role scope.");
             return false;
         }
 
@@ -1007,19 +1192,99 @@ public static class SecurityHardeningModule
             return true;
         }
 
-        await using (var managerCommand = new NpgsqlCommand("""
+        return await IsProjectManagerAsync(connection, actorUserId, projectId)
+               || await IsAssignedToProjectAsync(connection, actorUserId, projectId);
+    }
+
+    private static async Task<bool> CanAccessWorkRegisterDocumentAsync(
+        NpgsqlConnection connection,
+        AccessContext access,
+        Guid actorUserId,
+        Guid documentId)
+    {
+        Guid projectId;
+        string visibility;
+
+        await using (var command = new NpgsqlCommand("""
+            SELECT
+                project_id,
+                lower(COALESCE(NULLIF(visibility, ''), 'project_team'))
+            FROM work_register_documents
+            WHERE work_register_document_id = @document_id
+              AND status = 'active'
+            LIMIT 1;
+            """, connection))
+        {
+            command.Parameters.AddWithValue("document_id", documentId);
+
+            await using var reader = await command.ExecuteReaderAsync();
+            if (!await reader.ReadAsync())
+            {
+                return false;
+            }
+
+            projectId = reader.GetGuid(0);
+            visibility = reader.GetString(1);
+        }
+
+        if (access.CanManageAllWorkRegisterDocuments)
+        {
+            return true;
+        }
+
+        var isProjectManager = await IsProjectManagerAsync(connection, actorUserId, projectId);
+
+        if (isProjectManager
+            && visibility is "project_team" or "pm_ptc_admin" or "engineering_team")
+        {
+            return true;
+        }
+
+        var isAssigned = await IsAssignedToProjectAsync(connection, actorUserId, projectId);
+
+        return isAssigned
+               && visibility is "project_team" or "engineering_team";
+    }
+
+    private static async Task<bool> IsProjectManagerAsync(
+        NpgsqlConnection connection,
+        Guid actorUserId,
+        Guid projectId)
+    {
+        await using var command = new NpgsqlCommand("""
             SELECT EXISTS (
                 SELECT 1
                 FROM projects
                 WHERE project_id = @project_id
                   AND project_manager_user_id = @user_id
             );
-            """, connection))
-        {
-            managerCommand.Parameters.AddWithValue("project_id", projectId);
-            managerCommand.Parameters.AddWithValue("user_id", actorUserId);
+            """, connection);
 
-            if (Convert.ToBoolean(await managerCommand.ExecuteScalarAsync() ?? false))
+        command.Parameters.AddWithValue("project_id", projectId);
+        command.Parameters.AddWithValue("user_id", actorUserId);
+        return Convert.ToBoolean(await command.ExecuteScalarAsync() ?? false);
+    }
+
+    private static async Task<bool> IsAssignedToProjectAsync(
+        NpgsqlConnection connection,
+        Guid actorUserId,
+        Guid projectId)
+    {
+        if (await TableExistsAsync(connection, "project_assignments"))
+        {
+            await using var projectAssignmentCommand = new NpgsqlCommand("""
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM project_assignments
+                    WHERE project_id = @project_id
+                      AND user_id = @user_id
+                );
+                """, connection);
+
+            projectAssignmentCommand.Parameters.AddWithValue("project_id", projectId);
+            projectAssignmentCommand.Parameters.AddWithValue("user_id", actorUserId);
+
+            if (Convert.ToBoolean(await projectAssignmentCommand.ExecuteScalarAsync() ?? false))
             {
                 return true;
             }
@@ -1050,6 +1315,37 @@ public static class SecurityHardeningModule
         return false;
     }
 
+    private static async Task<bool> CanAccessIntakeRequestAsync(
+        NpgsqlConnection connection,
+        AccessContext access,
+        Guid actorUserId,
+        Guid requestId)
+    {
+        if (access.HasOrganizationIntakeScope)
+        {
+            return true;
+        }
+
+        await using var command = new NpgsqlCommand("""
+            SELECT EXISTS (
+                SELECT 1
+                FROM project_intake_requests r
+                WHERE r.project_intake_request_id = @request_id
+                  AND (
+                        r.requested_by_user_id = @user_id
+                     OR r.assigned_pm_user_id = @user_id
+                     OR r.account_executive_user_id = @user_id
+                     OR r.solution_architect_user_id = @user_id
+                  )
+            );
+            """, connection);
+
+        command.Parameters.AddWithValue("request_id", requestId);
+        command.Parameters.AddWithValue("user_id", actorUserId);
+
+        return Convert.ToBoolean(await command.ExecuteScalarAsync() ?? false);
+    }
+
     private static async Task<bool> CanAccessIntakeDocumentAsync(
         NpgsqlConnection connection,
         AccessContext access,
@@ -1070,9 +1366,20 @@ public static class SecurityHardeningModule
                 WHERE d.project_intake_document_id = @document_id
                   AND COALESCE(d.is_active, TRUE) = TRUE
                   AND (
-                        r.assigned_pm_user_id = @user_id
+                        r.requested_by_user_id = @user_id
+                     OR r.assigned_pm_user_id = @user_id
                      OR r.account_executive_user_id = @user_id
                      OR r.solution_architect_user_id = @user_id
+                     OR (
+                            COALESCE(d.engineering_visible, FALSE) = TRUE
+                        AND d.project_id IS NOT NULL
+                        AND EXISTS (
+                            SELECT 1
+                            FROM project_assignments pa
+                            WHERE pa.project_id = d.project_id
+                              AND pa.user_id = @user_id
+                        )
+                     )
                   )
             );
             """, connection);
@@ -1197,6 +1504,11 @@ public static class SecurityHardeningModule
         });
     }
 
+    private sealed record JsonBodyInspection(
+        JsonDocument? Document,
+        bool TooLarge,
+        bool Malformed);
+
     private enum SecurityPolicy
     {
         None,
@@ -1297,6 +1609,17 @@ public static class SecurityHardeningModule
                 "MANAGE_ALL"
             });
 
+        public bool CanManageAllWorkRegisterDocuments =>
+            IsAdministrator
+            || Roles.Contains("PROJECT_TEAM_COORDINATOR")
+            || Permissions.Overlaps(new[]
+            {
+                "MANAGE_WORK_REGISTER",
+                "MANAGE_PROJECT_DOCUMENTS",
+                "SYSTEM_ADMINISTRATION",
+                "MANAGE_ALL"
+            });
+
         public bool HasOrganizationProjectScope =>
             IsAdministrator
             || Roles.Contains("PROJECT_TEAM_COORDINATOR")
@@ -1310,4 +1633,6 @@ public static class SecurityHardeningModule
                 "MANAGE_ALL"
             });
     }
+
+    // SECURITY_20260729_FOLLOWUP_COMPLETE
 }
