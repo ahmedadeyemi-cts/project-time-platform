@@ -1,0 +1,93 @@
+name: Temporary Exact-Head PR 238 Validator Repair
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/pr238-validator-repair-trigger'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: projectpulse-temp-pr238-validator-repair
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    if: github.actor == 'ahmedadeyemi-cts'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out exact PR 238 branch
+        uses: actions/checkout@v5
+        with:
+          ref: fix/group4-group5-regression-compatibility-20260729
+          fetch-depth: 0
+          token: ${{ github.token }}
+          persist-credentials: true
+
+      - name: Repair stale Group 4 validator assertions
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          EXPECTED_HEAD='a139209e5d1347821fc2c1793058965e9615aab1'
+          TARGET_BRANCH='fix/group4-group5-regression-compatibility-20260729'
+          [[ "$(git rev-parse HEAD)" == "$EXPECTED_HEAD" ]]
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/frontend/project-time-web/scripts/validate-group-4-project-notification-automation.mjs')
+          source = path.read_text()
+
+          replacements = {
+              "contains(component, 'data-projectpulse-group4=\"project-notifications\"', 'Group 4 UI identity');": """contains(component, 'className=\"group4-notification-center projectpulse-module-standard\"', 'Group 4 UI identity');
+          contains(component, 'data-group4-workspace={workspace}', 'Group 4 workspace identity');
+          contains(component, 'data-module={configuration.module}', 'Group 4 module identity');""",
+              "  'Month-end',": "  'month-end',",
+              "  'Test only',": "  'test_only',",
+              "  'Production governed'": "  'production_governed'",
+              "  '.group4-delivery-layout',": "  '.group4-summary-grid',",
+              "  '@media (max-width: 620px)'": "  '@media (max-width: 700px)'",
+              "contains(processing, 'CreateDispatchAsync', 'durable dispatch processing');": "contains(processing, 'UpsertDispatchAsync', 'durable dispatch processing');",
+              "    'module_065',": "    'Module065ProjectNotificationDelivery',",
+              "    'Mail.Send',": "    '/sendMail',",
+              "    'secretValuesReturned = false'": "    'Module 065 delivered the notification'",
+              "    'Module 038 is regression-only',": "    'no Module 038 layout change',",
+              "    'No deployment'": "    'no deployment'",
+          }
+          for old, new in replacements.items():
+              if old not in source:
+                  raise SystemExit(f'Expected validator text was not found: {old}')
+              source = source.replace(old, new)
+
+          loop_anchor = "  ]) contains(module065, marker, 'Module 065 governed delivery');\n"
+          secrecy_checks = """  ]) contains(module065, marker, 'Module 065 governed delivery');
+          contains(service, 'credentialsReturned = false', 'Group 4 credential secrecy');
+          contains(service, 'secretValuesReturned = false', 'Group 4 secret-value secrecy');
+          """
+          if loop_anchor not in source:
+              raise SystemExit('Module 065 validator loop anchor was not found.')
+          source = source.replace(loop_anchor, secrecy_checks, 1)
+          path.write_text(source)
+          PY
+
+          node --check src/frontend/project-time-web/scripts/validate-group-4-project-notification-automation.mjs
+          (
+            cd src/frontend/project-time-web
+            node scripts/validate-group-4-project-notification-automation.mjs
+          )
+          git diff --check
+          git diff --name-only
+          [[ "$(git diff --name-only | wc -l | tr -d ' ')" == 1 ]]
+          [[ "$(git diff --name-only)" == 'src/frontend/project-time-web/scripts/validate-group-4-project-notification-automation.mjs' ]]
+
+          git config user.name 'ProjectPulse Source Integration'
+          git config user.email 'projectpulse-integration@users.noreply.github.com'
+          git add src/frontend/project-time-web/scripts/validate-group-4-project-notification-automation.mjs
+          git commit -m 'Correct Group 4 regression validator contracts'
+          git push origin HEAD:"$TARGET_BRANCH"
+          echo "PR238_REPAIRED_HEAD=$(git rev-parse HEAD)"
