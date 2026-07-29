@@ -1,0 +1,91 @@
+name: Validate UAT SSO, Group 3, and Pulse AI Repair Test Deployment
+
+on:
+  push:
+    branches:
+      - 'release/uat-sso-group3-pulse-ai-repair-test-*'
+  pull_request:
+    paths:
+      - '.github/workflows/projectpulse-deploy-uat-sso-group3-pulse-ai-repair-test.yml'
+      - '.github/workflows/validate-uat-sso-group3-pulse-ai-repair-test-deployment.yml'
+      - 'scripts/run-uat-sso-group3-pulse-ai-repair-test-deployment.sh'
+      - 'scripts/validate-uat-sso-group3-pulse-ai-repair-test-deployment.sh'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-uat-sso-group3-pulse-ai-repair-test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+
+    steps:
+      - name: Check out deployment controls
+        uses: actions/checkout@v4
+        with:
+          path: control
+          fetch-depth: 0
+
+      - name: Check out exact repair source release
+        uses: actions/checkout@v4
+        with:
+          ref: b402f99130341995d692bb9f85fe195255c8ffb5
+          path: release
+          fetch-depth: 0
+
+      - name: Enforce exact four-file deployment-control scope
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git -C control fetch origin main --no-tags
+          mapfile -t CHANGED < <(git -C control diff --name-only origin/main...HEAD | sort)
+          cat > /tmp/expected.txt <<'EOF'
+          .github/workflows/projectpulse-deploy-uat-sso-group3-pulse-ai-repair-test.yml
+          .github/workflows/validate-uat-sso-group3-pulse-ai-repair-test-deployment.yml
+          scripts/run-uat-sso-group3-pulse-ai-repair-test-deployment.sh
+          scripts/validate-uat-sso-group3-pulse-ai-repair-test-deployment.sh
+          EOF
+          sed -i 's/^[[:space:]]*//' /tmp/expected.txt
+          sort -o /tmp/expected.txt /tmp/expected.txt
+          diff -u /tmp/expected.txt <(printf '%s\n' "${CHANGED[@]}")
+          echo 'UAT_REPAIR_DEPLOYMENT_SCOPE=PASS'
+
+      - name: Validate shell syntax and static contract
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash -n control/scripts/run-uat-sso-group3-pulse-ai-repair-test-deployment.sh
+          bash -n control/scripts/validate-uat-sso-group3-pulse-ai-repair-test-deployment.sh
+          bash control/scripts/validate-uat-sso-group3-pulse-ai-repair-test-deployment.sh
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: release/src/frontend/project-time-web/package-lock.json
+
+      - name: Build ProjectTime API from exact source release
+        run: dotnet build release/src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+
+      - name: Install frontend dependencies for exact source release
+        working-directory: release/src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Validate exact source package contracts
+        working-directory: release/src/frontend/project-time-web
+        run: |
+          node scripts/validate-microsoft-sso-runtime-wiring.mjs
+          node scripts/validate-group-3-project-financial-workspaces.mjs
+          node scripts/validate-module-011-pulse-ai.mjs
+
+      - name: Build complete frontend production bundle from exact source release
+        working-directory: release/src/frontend/project-time-web
+        run: npm run build
