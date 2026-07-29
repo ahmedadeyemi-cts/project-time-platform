@@ -27,8 +27,8 @@ A complete FlowHive planning request must:
    calculations to FlowHive's deterministic schedule engine.
 
 The private request uses feature `project_flowhive_plan`, a maximum output of
-2,600 tokens by default, temperature 0.1, and a deterministic supplied-task
-fallback. Private model execution remains separately gated.
+2,600 tokens by default, temperature 0.1, and a governed local deterministic
+supplied-task fallback. Private model execution remains separately gated.
 
 ## Optional external reasoning
 
