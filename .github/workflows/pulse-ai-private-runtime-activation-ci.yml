@@ -7,8 +7,8 @@ on:
   pull_request:
     paths:
       - '.github/workflows/pulse-ai-private-runtime-activation-ci.yml'
-      - 'database/migrations/052_pulse_ai_private_document_runtime.sql'
-      - 'database/rollback/052_pulse_ai_private_document_runtime_rollback.sql'
+      - 'database/migrations/052_document_intelligence_runtime.sql'
+      - 'database/rollback/052_document_intelligence_runtime_rollback.sql'
       - 'tests/test-pulse-ai-private-document-runtime-migration-052.sh'
       - 'docs/modules/module-011-pulse-ai/PRIVATE-RUNTIME-ACTIVATION.md'
       - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRuntimeContracts.cs'
@@ -54,7 +54,7 @@ jobs:
           [[ "$(git merge-base "$EXPECTED_BASE" HEAD)" == "$EXPECTED_BASE" ]]
           CHANGED="$(git diff --name-only "$EXPECTED_BASE"...HEAD)"
           printf '%s\n' "$CHANGED"
-          ALLOWED='^(\.github/workflows/pulse-ai-private-runtime-activation-ci\.yml|database/migrations/052_pulse_ai_private_document_runtime\.sql|database/rollback/052_pulse_ai_private_document_runtime_rollback\.sql|tests/test-pulse-ai-private-document-runtime-migration-052\.sh|docs/modules/module-011-pulse-ai/PRIVATE-RUNTIME-ACTIVATION\.md|src/backend/ProjectTime\.Api/Ai/(PulseAiPrivateRuntimeContracts|PulseAiPrivateMalwareScanner|PulseAiPrivateOcrClient|PulseAiPrivateEmbeddingClient|PulseAiPrivateRuntimeSourceResolver|PulseAiPrivateDocumentRuntimeRepository|PulseAiPrivateDocumentRuntimeService|PulseAiPrivateDocumentRuntimeWorker|ProjectPulseAiServiceCollectionExtensions)\.cs|src/backend/ProjectTime\.Api/Modules/(PulseAiPrivateRuntimeModule|PulseAiPrivateDocumentPipelineModule)\.cs|src/frontend/project-time-web/scripts/validate-module-011-private-runtime-activation\.mjs|src/frontend/project-time-web/src/(PulseAiPrivateRuntimeWorkbench\.jsx|pulse-ai-private-runtime-workbench\.css|WorkTaskBuilderPanel\.jsx))$'
+          ALLOWED='^(\.github/workflows/pulse-ai-private-runtime-activation-ci\.yml|database/migrations/052_document_intelligence_runtime\.sql|database/rollback/052_document_intelligence_runtime_rollback\.sql|tests/test-pulse-ai-private-document-runtime-migration-052\.sh|docs/modules/module-011-pulse-ai/PRIVATE-RUNTIME-ACTIVATION\.md|src/backend/ProjectTime\.Api/Ai/(PulseAiPrivateRuntimeContracts|PulseAiPrivateMalwareScanner|PulseAiPrivateOcrClient|PulseAiPrivateEmbeddingClient|PulseAiPrivateRuntimeSourceResolver|PulseAiPrivateDocumentRuntimeRepository|PulseAiPrivateDocumentRuntimeService|PulseAiPrivateDocumentRuntimeWorker|ProjectPulseAiServiceCollectionExtensions)\.cs|src/backend/ProjectTime\.Api/Modules/(PulseAiPrivateRuntimeModule|PulseAiPrivateDocumentPipelineModule)\.cs|src/frontend/project-time-web/scripts/validate-module-011-private-runtime-activation\.mjs|src/frontend/project-time-web/src/(PulseAiPrivateRuntimeWorkbench\.jsx|pulse-ai-private-runtime-workbench\.css|WorkTaskBuilderPanel\.jsx))$'
           UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
           if [[ -n "$UNEXPECTED" ]]; then
             echo 'Unexpected Pulse AI private-runtime source scope:' >&2
