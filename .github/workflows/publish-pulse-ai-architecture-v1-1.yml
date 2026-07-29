@@ -7,19 +7,13 @@ on:
     paths:
       - .github/workflows/publish-pulse-ai-architecture-v1-1.yml
       - docs/modules/module-011-pulse-ai/architecture/v1.1/source/**
-  pull_request:
-    branches:
-      - main
-    paths:
-      - .github/workflows/publish-pulse-ai-architecture-v1-1.yml
-      - docs/modules/module-011-pulse-ai/architecture/v1.1/source/**
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: publish-pulse-ai-architecture-v1-1-${{ github.event.pull_request.number || github.ref }}
+  group: publish-pulse-ai-architecture-v1-1-docs-branch
   cancel-in-progress: false
 
 jobs:
@@ -28,19 +22,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
-      TARGET_BRANCH: ${{ github.head_ref || github.ref_name }}
+      TARGET_BRANCH: docs/pulse-ai-architecture-v1-1-20260729
 
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
 
       - name: Enforce documentation branch and source boundary
         shell: bash
         run: |
           set -Eeuo pipefail
-          [[ "$TARGET_BRANCH" == "docs/pulse-ai-architecture-v1-1-20260729" ]]
+          [[ "$GITHUB_REF" == "refs/heads/$TARGET_BRANCH" ]]
           test -s docs/modules/module-011-pulse-ai/architecture/v1.1/source/US_Signal_Logo.jpg
           test -s docs/modules/module-011-pulse-ai/architecture/v1.1/source/generate_pulse_architecture_v1_1.py
           file docs/modules/module-011-pulse-ai/architecture/v1.1/source/US_Signal_Logo.jpg | grep -qi 'jpeg image data'
@@ -116,9 +110,6 @@ jobs:
           print('PULSE_AI_ARCHITECTURE_DOCUMENT_VALIDATION=PASSED')
           PY
           (cd "$ROOT" && sha256sum --check SHA256SUMS.txt)
-          # Git's whitespace checker can interpret PDF metadata objects as text.
-          # Validate every reviewable source/text change while excluding only PDFs,
-          # whose structure and checksums were validated immediately above.
           git diff --check -- . ':(exclude,glob)**/*.pdf'
 
       - name: Commit the generated architecture artifacts
