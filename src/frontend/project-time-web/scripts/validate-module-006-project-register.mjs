@@ -1,0 +1,235 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const repoRoot = fileURLToPath(new URL('../../../../', import.meta.url));
+const absolute = (relative) => path.join(repoRoot, relative);
+const exists = (relative) => fs.existsSync(absolute(relative));
+const read = (relative) => fs.readFileSync(absolute(relative), 'utf8');
+const checks = [];
+
+function assert(name, condition, evidence) {
+  checks.push({ name, condition, evidence });
+  console.log(`MODULE006_PROJECT_REGISTER_${name}=${condition ? 'PASSED' : 'FAILED'} — ${evidence}`);
+}
+
+function walk(relativeDirectory) {
+  const directory = absolute(relativeDirectory);
+  if (!fs.existsSync(directory)) return [];
+  const files = [];
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const relative = path.join(relativeDirectory, entry.name);
+    if (entry.isDirectory()) files.push(...walk(relative));
+    else files.push(relative.replaceAll('\\', '/'));
+  }
+  return files;
+}
+
+const paths = {
+  center: 'src/frontend/project-time-web/src/ProjectRegisterCenter.jsx',
+  css: 'src/frontend/project-time-web/src/project-register-center.css',
+  generator: 'src/frontend/project-time-web/scripts/inject-module-006-project-register.mjs',
+  retiredGenerator: 'src/frontend/project-time-web/scripts/inject-module-006-toyota-hyundai-pipeline.mjs',
+  registry: 'src/frontend/project-time-web/src/module-availability-registry.js',
+  rbac: 'src/frontend/project-time-web/src/scoped-rbac-catalog-compatibility.js',
+  packageJson: 'src/frontend/project-time-web/package.json',
+  workRegister: 'src/frontend/project-time-web/src/WorkRegisterCenter.jsx',
+  generatedApp: 'src/frontend/project-time-web/src/App.Module001.g.jsx'
+};
+
+for (const [key, relative] of Object.entries(paths)) {
+  if (key === 'retiredGenerator' || key === 'generatedApp') continue;
+  assert(`FILE_${key.toUpperCase()}`, exists(relative), relative);
+}
+assert('RETIRED_GENERATOR_REMOVED', !exists(paths.retiredGenerator), paths.retiredGenerator);
+
+if (checks.some((check) => !check.condition)) {
+  console.error('MODULE_006_PROJECT_REGISTER_CONTRACT=FAILED_MISSING_FILE');
+  process.exit(1);
+}
+
+const center = read(paths.center);
+const css = read(paths.css);
+const generator = read(paths.generator);
+const registry = read(paths.registry);
+const rbac = read(paths.rbac);
+const packageJson = read(paths.packageJson);
+const workRegister = read(paths.workRegister);
+const generatedApp = exists(paths.generatedApp) ? read(paths.generatedApp) : '';
+
+const module006Start = registry.indexOf("moduleNumber: '006'");
+const module007Start = registry.indexOf("moduleNumber: '007'", module006Start);
+const module006Block = module006Start >= 0 && module007Start > module006Start
+  ? registry.slice(module006Start, module007Start)
+  : '';
+
+assert(
+  'CANONICAL_IDENTITY',
+  module006Block.includes("route: 'project-register'")
+    && module006Block.includes("displayName: 'Project Register'")
+    && module006Block.includes("group: 'Project Operations'")
+    && module006Block.includes("lifecycle: 'source_foundation'"),
+  'Module 006 is Project Register in Project Operations'
+);
+
+assert(
+  'LEGACY_ROUTE_COMPATIBILITY',
+  registry.includes("'psa-modules': 'project-register'")
+    && module006Block.includes("displayName: 'Toyota & Hyundai Pipeline'")
+    && module006Block.includes("route: 'psa-modules'")
+    && module006Block.includes("lifecycle: 'retired_non_destructively'"),
+  'the old customer-specific route is an explicit non-canonical compatibility alias'
+);
+
+assert(
+  'ROLE_POLICY_NORMALIZATION',
+  rbac.includes("'006': 'Project Register'")
+    && rbac.includes("'006': 'project-register'")
+    && rbac.includes('MODULE_ROUTE_OVERRIDES')
+    && rbac.includes('moduleDisplayNameOverrides')
+    && rbac.includes('moduleRouteOverrides'),
+  'Modules 012 and 037 receive the current name and route even before the database catalog migration'
+);
+
+assert(
+  'AUTHORITATIVE_READ_SOURCE',
+  center.includes("fetchJson('/api/work-register/overview')")
+    && center.includes('/api/work-register/projects/${item.workId}/details')
+    && center.includes('/api/work-lifecycle/projects/${item.workId}')
+    && center.includes("normalize(item?.sourceTable) === 'projects'"),
+  'Module 006 composes the existing Work Register and lifecycle APIs'
+);
+
+assert(
+  'ACTIVE_AND_HISTORICAL_VIEWS',
+  center.includes('<option value="active">Active</option>')
+    && center.includes('<option value="historical">Archived / historical</option>')
+    && center.includes('<option value="all">All projects</option>')
+    && center.includes('Historical project. Project state remains read-only'),
+  'active, archived, and all-project views preserve historical read-only evidence'
+);
+
+assert(
+  'REGISTER_FIELDS',
+  [
+    'Project Manager', 'Project Coordinator', 'Account Executive', 'Solution Architect',
+    'SELL:', 'allocated', 'remaining', 'documents', 'tasks'
+  ].every((marker) => center.includes(marker)),
+  'the register exposes core ownership, SELL, task, document, hour, and financial context'
+);
+
+assert(
+  'MUTATION_AUTHORITY_PRESERVED',
+  center.includes('Mutations remain in Module 055C')
+    && center.includes('Manage Existing Projects')
+    && center.includes('href="#work-register"')
+    && !/method\s*:\s*['"](?:POST|PUT|PATCH|DELETE)['"]/i.test(center)
+    && !center.includes('/api/work-register/projects/update')
+    && !center.includes('/api/work-register/projects/create'),
+  'Module 006 is read-only and delegates project mutation to the authoritative workspace'
+);
+
+assert(
+  'VIEW_AS_AND_SCOPE_BOUNDARY',
+  center.includes('The backend remains the authorization authority.')
+    && workRegister.includes('selectedWorkItem?.canEditProject === true')
+    && workRegister.includes('selectedWorkItemIsArchived'),
+  'current backend project scope and archived-project protections remain authoritative'
+);
+
+assert(
+  'IMPORT_AND_EXPORT_GATES',
+  center.includes('Workbook import')
+    && center.includes('Review-gated')
+    && center.includes('Import controls locked')
+    && center.includes('Branded exports')
+    && center.includes('Evidence-gated')
+    && center.includes('Export controls locked'),
+  'workbook import and Excel/PDF export remain visibly locked until their evidence schemas are reviewed'
+);
+
+assert(
+  'RESPONSIVE_AND_DARK_THEME',
+  css.includes('.project-register-table-wrap')
+    && css.includes('overflow: auto')
+    && css.includes('.project-register-drawer-backdrop')
+    && css.includes('[data-theme="dark"]')
+    && css.includes('@media (max-width: 1180px)')
+    && css.includes('@media (max-width: 700px)'),
+  'desktop, tablet, mobile, drawer, horizontal table, and dark-theme behavior are present'
+);
+
+assert(
+  'GENERATED_ROUTE_MOUNT',
+  generator.includes("route: 'project-register'")
+    && generator.includes("activeRoute === 'project-register'")
+    && generator.includes('<ProjectRegisterCenter legacyRoute={activeRoute === \'psa-modules\'} />')
+    && generator.includes("title: 'PSA Modules'")
+    && generator.includes("title: 'Toyota & Hyundai Pipeline'")
+    && generator.includes('MODULE_006_PROJECT_REGISTER_GENERATION=PASS'),
+  'the generated App receives the canonical route and removes the retired dashboard-only panel'
+);
+
+if (generatedApp) {
+  assert(
+    'GENERATED_APP_CURRENT',
+    generatedApp.includes("import ProjectRegisterCenter from './ProjectRegisterCenter.jsx';")
+      && generatedApp.includes("route: 'project-register'")
+      && generatedApp.includes('<ProjectRegisterCenter legacyRoute={activeRoute === \'psa-modules\'} />')
+      && !generatedApp.includes("title: 'PSA Modules'")
+      && !generatedApp.includes("title: 'Toyota & Hyundai Pipeline'")
+      && !generatedApp.includes('<section id="psa-modules"'),
+    'the current generated build surface contains only the Project Register presentation'
+  );
+} else {
+  console.log('MODULE006_PROJECT_REGISTER_GENERATED_APP=NOT_PRESENT_BEFORE_PREBUILD');
+}
+
+assert(
+  'BUILD_INTEGRATION',
+  packageJson.includes('inject-module-006-project-register.mjs')
+    && packageJson.includes('"validate:module006": "node ./scripts/validate-module-006-project-register.mjs"')
+    && packageJson.includes('npm run validate:module006')
+    && !packageJson.includes('inject-module-006-toyota-hyundai-pipeline.mjs'),
+  'predevelopment, prebuild, and complete build run the Project Register source controls'
+);
+
+const module006Migrations = walk('database/migrations').filter((relative) => /(?:module[-_]?006|project[-_]?register)/i.test(relative));
+assert(
+  'NO_UNREVIEWED_MIGRATION',
+  module006Migrations.length === 0,
+  module006Migrations.length === 0
+    ? 'this foundation does not change database metadata, imports, exports, or operational records'
+    : `unexpected Module 006 migration paths: ${module006Migrations.join(', ')}`
+);
+
+const deploymentMatches = [
+  ...walk('.github/workflows'),
+  ...walk('scripts'),
+  ...walk('deployment')
+].filter((relative) => /(?:module[-_]?006|project[-_]?register).*(?:deploy|azure|containerapp|migration)/i.test(relative));
+assert(
+  'NO_ENVIRONMENT_ACTION',
+  deploymentMatches.length === 0,
+  deploymentMatches.length === 0
+    ? 'no Module 006 migration, deployment, Azure, or environment-changing action exists'
+    : `unexpected Module 006 environment paths: ${deploymentMatches.join(', ')}`
+);
+
+console.log(`MODULE_006_PROJECT_REGISTER_CHECKS=${checks.length}`);
+console.log('MODULE_006_PROJECT_REGISTER_PHASE=READ_ONLY_FOUNDATION');
+console.log('MODULE_006_PROJECT_REGISTER_CANONICAL_ROUTE=project-register');
+console.log('MODULE_006_PROJECT_REGISTER_LEGACY_ROUTE=psa-modules_COMPATIBILITY_ONLY');
+console.log('MODULE_006_PROJECT_REGISTER_DATA_AUTHORITY=WORK_REGISTER_AND_LIFECYCLE');
+console.log('MODULE_006_PROJECT_REGISTER_MUTATION_AUTHORITY=MODULE_055C_AND_055D');
+console.log('MODULE_006_PROJECT_REGISTER_IMPORTS_PERSISTED=0');
+console.log('MODULE_006_PROJECT_REGISTER_EXPORTS_GENERATED=0');
+console.log('MODULE_006_PROJECT_REGISTER_DATABASE_CHANGES=0');
+console.log('MODULE_006_PROJECT_REGISTER_DEPLOYMENTS=0');
+
+if (checks.some((check) => !check.condition)) {
+  console.error('MODULE_006_PROJECT_REGISTER_CONTRACT=FAILED');
+  process.exit(1);
+}
+
+console.log('MODULE_006_PROJECT_REGISTER_CONTRACT=PASSED');
