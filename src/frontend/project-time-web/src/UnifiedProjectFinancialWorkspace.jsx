@@ -1,32 +1,56 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { usSignalLogoDataUrl } from './assets/usSignalLogoData.js';
-import './unified-project-financial-workspace.css';
 import './projectpulse-module-standard.css';
+import './unified-project-financial-workspace.css';
 
 const workspaceConfig = {
   pm: {
     module: '018',
-    eyebrow: 'Project Manager workspace',
-    title: 'Project portfolio and financial truth',
-    description: 'Budget, expense, actual-cost, forecast, risk, notification, and calculation visibility for the current Project Manager scope.'
+    eyebrow: 'Project Management workspace',
+    title: 'Project portfolio command center',
+    description: 'Assigned-project hours, financial position, delivery risk, notifications, and attention items for the selected Project Manager scope.',
+    authorityTitle: 'Project Management authority',
+    authorityDescription: 'Only projects allowed by the server-enforced Project Manager or Project Management Lead scope are returned. Portfolio costs, current expenses, forecasts, alerts, and project teams are reconciled for delivery decisions.',
+    searchPlaceholder: 'Customer, project, Project Manager, or SELL quote…',
+    refreshLabel: 'Refresh PM portfolio',
+    defaultTab: 'overview',
+    tabs: [['overview', 'Overview'], ['financials', 'Financials'], ['team', 'Team & SELL'], ['expenses', 'Expenses'], ['documents', 'Documents']]
   },
   engineering: {
     module: '019',
-    eyebrow: 'Engineering workspace',
-    title: 'Assignments, progress, and project documents',
-    description: 'Allocated, used, and remaining hours with role-appropriate financial visibility, grouped documents, and working downloads.'
+    eyebrow: 'Project workspace',
+    title: 'Engineering assignments and project evidence',
+    description: 'Assigned engineers, allocated and used hours, remaining work, project progress, and role-visible IQS, service-request, project, and customer documents.',
+    authorityTitle: 'Engineering delivery context',
+    authorityDescription: 'This workspace prioritizes assignments, remaining hours, task context, and downloadable project evidence. Commercial values remain limited to the current user’s role and assigned-project scope.',
+    searchPlaceholder: 'Project, customer, PM, engineer, or document context…',
+    refreshLabel: 'Refresh project workspace',
+    defaultTab: 'team',
+    tabs: [['team', 'Assignments'], ['documents', 'Documents'], ['overview', 'Project context'], ['financials', 'Cost context']]
   },
   sales: {
     module: '036',
-    eyebrow: 'Sales workspace',
-    title: 'Sales-owned projects and delivery risk',
-    description: 'SELL association, customer and opportunity context, project financial status, delivery risk, warnings, and assigned teams.'
+    eyebrow: 'Sales insights workspace',
+    title: 'Customer, SELL, and delivery readiness',
+    description: 'Sales-owned and assigned projects with governed SELL association, Account Executive context, commercial status, forecast, budget signals, and delivery ownership.',
+    authorityTitle: 'Sales and delivery handoff',
+    authorityDescription: 'Module 036 emphasizes customer, Account Executive, SELL quote, contracted value, commercial readiness, and delivery risk without exposing restricted labor-cost detail.',
+    searchPlaceholder: 'Customer, project, Account Executive, or SELL quote…',
+    refreshLabel: 'Refresh sales portfolio',
+    defaultTab: 'team',
+    tabs: [['team', 'SELL & ownership'], ['financials', 'Commercial position'], ['overview', 'Delivery readiness']]
   },
   'rate-card': {
     module: '055B',
     eyebrow: 'Rate Card Administration context',
     title: 'Projects, customers, SELL, and governed rates',
-    description: 'Project and customer context from the Module 026 governed SELL connection without another credential or connection system.'
+    description: 'Project and customer rate coverage from the Module 026 governed SELL connection, including contract type, matched rate card, effective status, and missing-rate attention.',
+    authorityTitle: 'Governed rate context',
+    authorityDescription: 'Module 055B retains rate-card administration while this context identifies which customers and projects have a governed rate basis, SELL association, and complete rate coverage without another provider credential.',
+    searchPlaceholder: 'Customer, project, contract type, rate card, or quote…',
+    refreshLabel: 'Refresh governed rate context',
+    defaultTab: 'team',
+    tabs: [['team', 'Rate card & SELL'], ['financials', 'Rate impact'], ['overview', 'Project context']]
   }
 };
 
@@ -158,33 +182,142 @@ function Person({ label: personLabel, person, fallback = 'Not assigned' }) {
   );
 }
 
-function SummaryStrip({ summary, loading }) {
+function sumProjects(projects, selector) {
+  return (projects || []).reduce((total, project) => {
+    const value = Number(selector(project));
+    return Number.isFinite(value) ? total + value : total;
+  }, 0);
+}
+
+function projectDocumentCount(project) {
+  return (project.documentGroups || []).reduce((total, group) => total + Number(group.count || 0), 0);
+}
+
+function summaryMetrics(workspace, summary, projects, loading) {
+  if (loading && !summary) {
+    return Array.from({ length: 6 }, (_, index) => ({
+      label: `Loading ${index + 1}`,
+      value: '…',
+      detail: 'Loading authoritative data'
+    }));
+  }
+
+  const projectList = projects || [];
+  const linkedSellCount = projectList.filter((project) => project.sell?.sellQuoteNumber).length;
+  const riskCount = projectList.filter((project) => ['approaching_budget', 'over_budget', 'missing_financial_information'].includes(project.budgetStatus)).length;
+  const uniqueEngineers = new Set(projectList.flatMap((project) => (project.engineers || []).map((engineer) => engineer.userId))).size;
+  const documentCount = sumProjects(projectList, projectDocumentCount);
+  const governedRateCards = projectList.filter((project) => project.sell?.rateCard?.rateCardId).length;
+  const customerSpecificRateCards = projectList.filter((project) => project.sell?.rateCard?.isCustomerSpecific).length;
+  const missingRateCoverage = projectList.filter((project) => (project.missing || []).includes('governed_labor_rate_basis')).length;
+
+  switch (workspace) {
+    case 'engineering':
+      return [
+        { label: 'Assigned projects', value: number(summary?.projectCount, 0), detail: `${number(summary?.customerCount, 0)} customer(s)` },
+        { label: 'Assigned engineers', value: number(uniqueEngineers, 0), detail: 'Unique role-visible engineers' },
+        { label: 'Used / planned hours', value: `${number(summary?.usedHours)} / ${number(summary?.plannedHours)}`, detail: `${number(summary?.remainingHours)} remaining` },
+        { label: 'Project documents', value: number(documentCount, 0), detail: 'IQS, service request, project, and customer files' },
+        { label: 'Projects needing attention', value: number(riskCount, 0), detail: `${number(summary?.missingFinancialInformationCount, 0)} with incomplete financial context`, status: riskCount > 0 ? 'approaching_budget' : 'healthy' },
+        { label: 'Open delivery alerts', value: number(summary?.openAlertCount, 0), detail: `${number(summary?.notificationQueuedCount, 0)} notification(s) queued`, status: Number(summary?.openAlertCount || 0) > 0 ? 'approaching_budget' : 'healthy' }
+      ];
+    case 'sales':
+      return [
+        { label: 'Sales-visible projects', value: number(summary?.projectCount, 0), detail: `${number(summary?.customerCount, 0)} customer(s)` },
+        { label: 'SELL-linked projects', value: number(linkedSellCount, 0), detail: `${Math.max(projectList.length - linkedSellCount, 0)} awaiting quote association`, status: linkedSellCount === projectList.length ? 'healthy' : 'approaching_budget' },
+        { label: 'Contracted value', value: money(sumProjects(projectList, (project) => project.contractedValue)), detail: 'Only role-visible commercial values' },
+        { label: 'Forecast final cost', value: money(summary?.forecastedFinalCost), detail: `Portfolio variance ${money(summary?.currentVariance)}` },
+        { label: 'Delivery risks', value: number(riskCount, 0), detail: `${number(summary?.approachingBudgetCount, 0)} approaching · ${number(summary?.overBudgetCount, 0)} over`, status: riskCount > 0 ? 'over_budget' : 'healthy' },
+        { label: 'Open notifications', value: number(summary?.notificationQueuedCount, 0), detail: `${number(summary?.openAlertCount, 0)} open alert(s)`, status: Number(summary?.openAlertCount || 0) > 0 ? 'approaching_budget' : 'healthy' }
+      ];
+    case 'rate-card':
+      return [
+        { label: 'Projects in context', value: number(summary?.projectCount, 0), detail: `${number(summary?.customerCount, 0)} customer(s)` },
+        { label: 'Governed rate cards', value: number(governedRateCards, 0), detail: `${customerSpecificRateCards} customer-specific` },
+        { label: 'Missing rate coverage', value: number(missingRateCoverage, 0), detail: 'Projects without a governed labor-rate basis', status: missingRateCoverage > 0 ? 'approaching_budget' : 'healthy' },
+        { label: 'SELL-linked projects', value: number(linkedSellCount, 0), detail: 'Quote association owned by Module 026' },
+        { label: 'Forecast using rate basis', value: money(summary?.forecastedFinalCost), detail: `Variance ${money(summary?.currentVariance)}` },
+        { label: 'Rate-impact warnings', value: number(riskCount, 0), detail: `${number(summary?.missingFinancialInformationCount, 0)} incomplete financial record(s)`, status: riskCount > 0 ? 'approaching_budget' : 'healthy' }
+      ];
+    default:
+      return [
+        { label: 'Managed projects', value: number(summary?.projectCount, 0), detail: `${number(summary?.customerCount, 0)} customer(s)` },
+        { label: 'Used / planned hours', value: `${number(summary?.usedHours)} / ${number(summary?.plannedHours)}`, detail: `${number(summary?.remainingHours)} remaining` },
+        { label: 'Current expenses', value: money(summary?.uploadedExpenses), detail: 'Current non-deleted Module 005 uploads' },
+        { label: 'Forecast final cost', value: money(summary?.forecastedFinalCost), detail: `Variance ${money(summary?.currentVariance)}` },
+        { label: 'Budget attention', value: `${number(summary?.approachingBudgetCount, 0)} approaching · ${number(summary?.overBudgetCount, 0)} over`, detail: `${number(summary?.missingFinancialInformationCount, 0)} incomplete`, status: Number(summary?.overBudgetCount || 0) > 0 ? 'over_budget' : Number(summary?.approachingBudgetCount || 0) > 0 ? 'approaching_budget' : 'on_track' },
+        { label: 'Notifications', value: number(summary?.notificationQueuedCount, 0), detail: `${number(summary?.openAlertCount, 0)} open alert(s)`, status: Number(summary?.openAlertCount || 0) > 0 ? 'approaching_budget' : 'healthy' }
+      ];
+  }
+}
+
+function SummaryStrip({ workspace, summary, projects, loading }) {
   return (
-    <div className="group3-summary-grid">
-      <Metric label="Projects" value={loading ? '…' : number(summary?.projectCount, 0)} detail={`${number(summary?.customerCount, 0)} customer(s)`} />
-      <Metric label="Used / planned hours" value={loading ? '…' : `${number(summary?.usedHours)} / ${number(summary?.plannedHours)}`} detail={`${number(summary?.remainingHours)} remaining`} />
-      <Metric label="Uploaded expenses" value={loading ? '…' : money(summary?.uploadedExpenses)} detail="Current non-deleted Module 005 uploads" />
-      <Metric label="Forecast final cost" value={loading ? '…' : money(summary?.forecastedFinalCost)} detail={`Variance ${money(summary?.currentVariance)}`} />
-      <Metric label="Budget warnings" value={loading ? '…' : `${number(summary?.approachingBudgetCount, 0)} approaching · ${number(summary?.overBudgetCount, 0)} over`} detail={`${number(summary?.missingFinancialInformationCount, 0)} incomplete`} status={Number(summary?.overBudgetCount || 0) > 0 ? 'over_budget' : Number(summary?.approachingBudgetCount || 0) > 0 ? 'approaching_budget' : 'on_track'} />
-      <Metric label="Notifications" value={loading ? '…' : number(summary?.notificationQueuedCount, 0)} detail={`${number(summary?.openAlertCount, 0)} open alert(s)`} status={Number(summary?.openAlertCount || 0) > 0 ? 'approaching_budget' : 'healthy'} />
+    <div className="group3-summary-grid" data-workspace-summary={workspace}>
+      {summaryMetrics(workspace, summary, projects, loading).map((metric) => (
+        <Metric key={metric.label} {...metric} />
+      ))}
     </div>
   );
 }
 
-function ProjectTable({ projects, selectedProjectId, onSelect }) {
+function workspaceColumns(workspace) {
+  switch (workspace) {
+    case 'engineering':
+      return ['Customer / project', 'Project Manager', 'Engineers', 'Hours remaining', 'Documents', 'Delivery status'];
+    case 'sales':
+      return ['Customer / project', 'Account Executive', 'SELL quote', 'Contracted value', 'Forecast', 'Delivery risk'];
+    case 'rate-card':
+      return ['Customer / project', 'Contract type', 'Governed rate card', 'Rate lines', 'SELL quote', 'Coverage'];
+    default:
+      return ['Customer / project', 'Project Manager', 'Hours', 'Forecast', 'Variance', 'Status'];
+  }
+}
+
+function workspaceCells(workspace, project) {
+  switch (workspace) {
+    case 'engineering':
+      return [
+        text(project.projectManagerName, 'Not assigned'),
+        `${number(project.engineers?.length || 0, 0)} assigned`,
+        number(project.remainingHours),
+        number(projectDocumentCount(project), 0),
+        <Status key="status" value={project.projectStatus} />
+      ];
+    case 'sales':
+      return [
+        text(project.accountExecutive?.displayName, 'Not assigned'),
+        text(project.sell?.sellQuoteNumber, label(project.sell?.readinessStatus)),
+        money(project.contractedValue),
+        money(project.forecastedFinalCost),
+        <Status key="status" value={project.budgetStatus} />
+      ];
+    case 'rate-card':
+      return [
+        label(project.contractType),
+        text(project.sell?.rateCard?.rateCardName, 'No governed rate card'),
+        number(project.sell?.rateCard?.rateLineCount || 0, 0),
+        text(project.sell?.sellQuoteNumber, 'No SELL quote'),
+        <Status key="status" value={project.sell?.rateCard?.rateCardId ? project.sell?.rateCard?.status || 'ready' : 'missing_rate_context'} />
+      ];
+    default:
+      return [
+        text(project.projectManagerName, 'Not assigned'),
+        `${number(project.usedHours)} / ${number(project.plannedHours)}`,
+        money(project.forecastedFinalCost),
+        money(project.currentVariance),
+        <Status key="status" value={project.budgetStatus} />
+      ];
+  }
+}
+
+function ProjectTable({ workspace, projects, selectedProjectId, onSelect }) {
+  const columns = workspaceColumns(workspace);
   return (
-    <div className="group3-table-wrap">
-      <table className="group3-project-table">
+    <div className="group3-table-wrap" data-workspace-table={workspace}>
+      <table className={`group3-project-table workspace-${workspace}`}>
         <thead>
-          <tr>
-            <th>Customer / project</th>
-            <th>PM</th>
-            <th>Hours</th>
-            <th>Forecast</th>
-            <th>Variance</th>
-            <th>SELL</th>
-            <th>Status</th>
-          </tr>
+          <tr>{columns.map((column) => <th key={column}>{column}</th>)}</tr>
         </thead>
         <tbody>
           {projects.map((project) => (
@@ -199,12 +332,7 @@ function ProjectTable({ projects, selectedProjectId, onSelect }) {
                   <small>{project.customerName}</small>
                 </button>
               </td>
-              <td>{text(project.projectManagerName, 'Not assigned')}</td>
-              <td>{number(project.usedHours)} / {number(project.plannedHours)}</td>
-              <td>{money(project.forecastedFinalCost)}</td>
-              <td>{money(project.currentVariance)}</td>
-              <td>{text(project.sell?.sellQuoteNumber, label(project.sell?.readinessStatus))}</td>
-              <td><Status value={project.budgetStatus} /></td>
+              {workspaceCells(workspace, project).map((cell, index) => <td key={`${project.projectId}-${columns[index + 1]}`}>{cell}</td>)}
             </tr>
           ))}
         </tbody>
@@ -449,7 +577,7 @@ export default function UnifiedProjectFinancialWorkspace({
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedProjectId, setSelectedProjectId] = useState('');
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState(config.defaultTab);
   const [downloadState, setDownloadState] = useState({
     documentId: '',
     loading: false,
@@ -478,8 +606,9 @@ export default function UnifiedProjectFinancialWorkspace({
   }, [workspace, projectManagerUserId]);
 
   useEffect(() => {
+    setActiveTab(config.defaultTab);
     load();
-  }, [load]);
+  }, [load, config.defaultTab]);
 
   const projects = state.data?.projects || [];
   const filteredProjects = useMemo(() => {
@@ -488,8 +617,9 @@ export default function UnifiedProjectFinancialWorkspace({
       const statusMatches = statusFilter === 'all'
         || project.budgetStatus === statusFilter
         || project.projectStatus === statusFilter;
+      const engineerNames = (project.engineers || []).map((engineer) => engineer.displayName).join(' ');
       const searchMatches = !normalized
-        || `${project.customerName} ${project.projectCode} ${project.projectName} ${project.projectManagerName} ${project.sell?.sellQuoteNumber || ''}`
+        || `${project.customerName} ${project.projectCode} ${project.projectName} ${project.projectManagerName} ${project.accountExecutive?.displayName || ''} ${engineerNames} ${project.contractType || ''} ${project.sell?.sellQuoteNumber || ''} ${project.sell?.rateCard?.rateCardName || ''}`
           .toLowerCase()
           .includes(normalized);
       return statusMatches && searchMatches;
@@ -563,14 +693,14 @@ export default function UnifiedProjectFinancialWorkspace({
         <div className="group3-hero-actions">
           <Status value={state.data?.status || (state.loading ? 'loading' : 'unavailable')} />
           <button type="button" className="group3-primary" onClick={load} disabled={state.loading}>
-            {state.loading ? 'Refreshing…' : 'Refresh financial truth'}
+            {state.loading ? 'Refreshing…' : config.refreshLabel}
           </button>
         </div>
       </header>
 
-      <div className="group3-authority-banner">
-        <strong>One authoritative project summary</strong>
-        <span>Projects, assignments, time, Module 005 expenses, documents, cost alerts, rate cards, and the Module 026 SELL read model are reconciled without another provider credential.</span>
+      <div className="group3-authority-banner" data-workspace-authority={workspace}>
+        <strong>{config.authorityTitle}</strong>
+        <span>{config.authorityDescription}</span>
       </div>
 
       {state.error ? (
@@ -581,7 +711,7 @@ export default function UnifiedProjectFinancialWorkspace({
         </div>
       ) : null}
 
-      <SummaryStrip summary={state.data?.summary} loading={state.loading} />
+      <SummaryStrip workspace={workspace} summary={state.data?.summary} projects={projects} loading={state.loading} />
 
       <section className="group3-card">
         <div className="group3-filterbar">
@@ -591,7 +721,7 @@ export default function UnifiedProjectFinancialWorkspace({
               type="search"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Customer, project, PM, SELL quote…"
+              placeholder={config.searchPlaceholder}
             />
           </label>
           <label>
@@ -612,11 +742,12 @@ export default function UnifiedProjectFinancialWorkspace({
           <div className="group3-empty">Loading authoritative project financial data…</div>
         ) : filteredProjects.length ? (
           <ProjectTable
+            workspace={workspace}
             projects={filteredProjects}
             selectedProjectId={selectedProject?.projectId}
             onSelect={(projectId) => {
               setSelectedProjectId(projectId);
-              setActiveTab('overview');
+              setActiveTab(config.defaultTab);
             }}
           />
         ) : (
@@ -628,7 +759,7 @@ export default function UnifiedProjectFinancialWorkspace({
         <section className="group3-detail">
           <header className="group3-detail-header">
             <div>
-              <p className="group3-eyebrow">Project drill-down</p>
+              <p className="group3-eyebrow">Module {config.module} · {config.eyebrow}</p>
               <h3>{selectedProject.projectCode} · {selectedProject.projectName}</h3>
               <p>{selectedProject.customerName} · PM {text(selectedProject.projectManagerName, 'not assigned')}</p>
             </div>
@@ -636,13 +767,7 @@ export default function UnifiedProjectFinancialWorkspace({
           </header>
 
           <div className="group3-tabs" role="tablist" aria-label="Project financial detail sections">
-            {[
-              ['overview', 'Overview'],
-              ['financials', 'Financials'],
-              ['team', 'Team & SELL'],
-              ['expenses', 'Expenses'],
-              ['documents', 'Documents']
-            ].map(([key, tabLabel]) => (
+            {config.tabs.map(([key, tabLabel]) => (
               <button
                 type="button"
                 role="tab"
@@ -675,7 +800,7 @@ export default function UnifiedProjectFinancialWorkspace({
       <footer className="group3-footer">
         <span>Contract {state.data?.contractVersion || 'pending'}</span>
         <span>Generated {dateTime(state.data?.generatedAt)}</span>
-        <span>Read-only · server-enforced cost visibility</span>
+        <span>{config.authorityTitle} · server-enforced scope</span>
         <span>SELL connection owner: Module 026</span>
       </footer>
     </section>

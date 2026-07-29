@@ -163,8 +163,27 @@ check('WORKSPACE_IDENTITIES', includesAll(component, [
   "module: '018'", "module: '019'", "module: '036'", "module: '055B'"
 ]), 'Modules 018, 019, 036, and 055B use one shared component');
 
+check('WORKSPACE_SPECIFIC_EXPERIENCES', includesAll(component, [
+  'Project portfolio command center',
+  'Engineering assignments and project evidence',
+  'Customer, SELL, and delivery readiness',
+  'Governed rate context',
+  "data-workspace-summary={workspace}",
+  "data-workspace-table={workspace}",
+  "case 'engineering'", "case 'sales'", "case 'rate-card'",
+  'Assigned engineers', 'Account Executive', 'Governed rate card'
+]), 'each module has distinct purpose, metrics, columns, default tabs, and authority copy while sharing one data contract');
+
+check('HERO_CONTRAST', component.indexOf("import './projectpulse-module-standard.css';") < component.indexOf("import './unified-project-financial-workspace.css';")
+  && css.includes('.group3-financial-workspace.projectpulse-module-standard > .group3-hero')
+  && css.includes('color: #ffffff')
+  && css.includes("[data-workspace='engineering'] > .group3-hero")
+  && css.includes("[data-workspace='sales'] > .group3-hero")
+  && css.includes("[data-workspace='rate-card'] > .group3-hero"),
+'standard shell loads first and the module-scoped hero owns readable text contrast and workspace accents');
+
 check('FINANCIAL_EXPERIENCE', includesAll(component, [
-  'Project portfolio and financial truth', 'Contracted value',
+  'Project portfolio command center', 'Contracted value',
   'Labor budget', 'Expense budget', 'Calculated labor cost',
   'Uploaded expenses', 'Committed cost', 'Forecasted final cost',
   'Current variance', 'How values were calculated'
@@ -184,7 +203,7 @@ check('SELL_GOVERNANCE_PRESENTATION', includesAll(component, [
 
 check('SOURCE_RETRY', includesAll(component, [
   'Source health', 'Retry sources', 'One unavailable optional source does not blank',
-  'Refresh financial truth'
+  'Refresh PM portfolio', 'Refresh project workspace', 'Refresh sales portfolio', 'Refresh governed rate context'
 ]), 'friendly source-level diagnostics and retry are available');
 
 check('NO_MODULE_011_FRONTEND',

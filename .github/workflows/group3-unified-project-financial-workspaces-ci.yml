@@ -208,8 +208,14 @@ jobs:
           cat dist/assets/*.js > /tmp/group3-financial-workspaces.js
           cat dist/assets/*.css > /tmp/group3-financial-workspaces.css
           for marker in \
-            'One authoritative project summary' \
-            'Project portfolio and financial truth' \
+            'Project Management authority' \
+            'Engineering delivery context' \
+            'Sales and delivery handoff' \
+            'Governed rate context' \
+            'Project portfolio command center' \
+            'Engineering assignments and project evidence' \
+            'Customer, SELL, and delivery readiness' \
+            'Projects, customers, SELL, and governed rates' \
             'Allocated, used, and remaining hours' \
             'SELL connection owner: Module 026' \
             'How values were calculated' \
@@ -220,7 +226,8 @@ jobs:
           for marker in \
             '.group3-financial-workspace' \
             '.group3-project-table' \
-            '.group3-source-grid'; do
+            '.group3-source-grid' \
+            '.group3-hero'; do
             grep -Fq "$marker" /tmp/group3-financial-workspaces.css
           done
           tail -n 40 group3-frontend-build.log

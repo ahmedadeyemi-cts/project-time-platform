@@ -1,0 +1,221 @@
+name: Temporary Exact-Head PR 240 Reconciler
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/pr240-reconcile-trigger'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: projectpulse-temp-pr240-reconciler
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    if: github.actor == 'ahmedadeyemi-cts'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Check out exact PR 240 branch
+        uses: actions/checkout@v5
+        with:
+          ref: feature/module-011-private-document-pipeline-20260729
+          fetch-depth: 0
+          token: ${{ github.token }}
+          persist-credentials: true
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Merge current main and resolve reviewed PR 240 conflict
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          EXPECTED_HEAD='a201b17f0368b1a155f0e222b61d67d9b12369ee'
+          TARGET_BRANCH='feature/module-011-private-document-pipeline-20260729'
+
+          git config user.name 'ProjectPulse Source Integration'
+          git config user.email 'projectpulse-integration@users.noreply.github.com'
+          git fetch origin main "$TARGET_BRANCH" --no-tags
+          [[ "$(git rev-parse HEAD)" == "$EXPECTED_HEAD" ]]
+
+          set +e
+          git merge --no-ff origin/main -m 'Reconcile PR #240 with merged PR #221 and current main'
+          MERGE_STATUS=$?
+          set -e
+          [[ "$MERGE_STATUS" -ne 0 ]]
+
+          mapfile -t CONFLICTS < <(git diff --name-only --diff-filter=U | sort)
+          EXPECTED_CONFLICT='src/backend/ProjectTime.Api/ProjectTime.Api.csproj'
+          diff -u <(printf '%s\n' "$EXPECTED_CONFLICT") <(printf '%s\n' "${CONFLICTS[@]}")
+
+          git checkout --theirs src/backend/ProjectTime.Api/ProjectTime.Api.csproj
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          project = Path('src/backend/ProjectTime.Api/ProjectTime.Api.csproj')
+          text = project.read_text()
+
+          insertions = [
+              (
+                  '    <PulseAiGroundingGenerated>$(IntermediateOutputPath)PulseAiDocumentGroundingService.g.cs</PulseAiGroundingGenerated>\n',
+                  '    <PulseAiPrivateExtractorGenerated>$(IntermediateOutputPath)PulseAiPrivateDocumentExtractionService.g.cs</PulseAiPrivateExtractorGenerated>\n'
+              ),
+              (
+                  '    <PackageReference Include="ClosedXML" Version="0.105.0" />\n',
+                  '    <PackageReference Include="PdfPig" Version="0.1.10" />\n'
+              ),
+              (
+                  '    <Compile Remove="Ai/PulseAiDocumentGroundingService.cs" />\n',
+                  '    <Compile Remove="Ai/PulseAiPrivateDocumentExtractionService.cs" />\n'
+              ),
+              (
+                  'print &quot;app.MapPulseAiDeepIntelligenceEndpoints();&quot;; ',
+                  'print &quot;app.MapPulseAiPrivateDocumentPipelineEndpoints();&quot;; '
+              ),
+              (
+                  '      <Compile Include="$(PulseAiGroundingGenerated)" />\n',
+                  '      <Compile Include="$(PulseAiPrivateExtractorGenerated)" />\n'
+              )
+          ]
+          for anchor, addition in insertions:
+              if addition not in text:
+                  if anchor not in text:
+                      raise SystemExit(f'Missing project-file anchor: {anchor}')
+                  text = text.replace(anchor, anchor + addition, 1)
+
+          grounding_exec = '  <Exec Command="sed -e \'s/roles: access.RoleCodes,/roles: access.RoleCodes.OrderBy(value =&gt; value).ToArray(),/\' &quot;$(MSBuildProjectDirectory)/Ai/PulseAiDocumentGroundingService.cs&quot; &gt; &quot;$(PulseAiGroundingGenerated)&quot;" />\n'
+          private_exec = '''    <!-- ClosedXML defines its own LoadOptions type and no longer exposes the old
+               XLEventTracking constructor argument. Keep the canonical extractor easy
+               to review while compiling an API-version-normalized copy. -->
+            <Exec Command="sed -e 's/LoadOptions\\.PreserveWhitespace/System.Xml.Linq.LoadOptions.PreserveWhitespace/g' -e 's/new XLWorkbook(source.StoragePath, XLEventTracking.Disabled)/new XLWorkbook(source.StoragePath)/' &quot;$(MSBuildProjectDirectory)/Ai/PulseAiPrivateDocumentExtractionService.cs&quot; &gt; &quot;$(PulseAiPrivateExtractorGenerated)&quot;" />
+          '''
+          if '$(PulseAiPrivateExtractorGenerated)' not in text.split('<ItemGroup>', 2)[-1]:
+              raise SystemExit('Private extractor compile include was not added.')
+          if 'PulseAiPrivateDocumentExtractionService.cs&quot; &gt; &quot;$(PulseAiPrivateExtractorGenerated)' not in text:
+              if grounding_exec not in text:
+                  raise SystemExit('Grounding Exec anchor was not found.')
+              text = text.replace(grounding_exec, grounding_exec + private_exec, 1)
+
+          project.write_text(text)
+
+          validator = Path('src/frontend/project-time-web/scripts/validate-module-011-private-document-pipeline.mjs')
+          source = validator.read_text()
+          old = '''const deploymentMatches = [
+            ...walk('.github/workflows'),
+            ...walk('scripts'),
+            ...walk('deployment')
+          ].filter((relative) => /(?:module[-_]?011|pulse[-_]?ai|private[-_]?document).*(?:deploy|migration|azure|entra)/i.test(relative));
+          '''
+          new = '''const ownedPrivateDocumentPaths = [
+            '.github/workflows/deep-intelligence-read-contract-ci.yml',
+            '.github/workflows/private-document-pipeline-read-contract-ci.yml',
+            'src/frontend/project-time-web/scripts/validate-module-011-private-document-pipeline.mjs',
+            ...Object.values(paths)
+          ];
+          const deploymentMatches = ownedPrivateDocumentPaths.filter((relative) =>
+            /(?:module[-_]?011|pulse[-_]?ai|private[-_]?document).*(?:deploy|migration|azure|entra)/i.test(relative)
+          );
+          '''
+          if old not in source:
+              raise SystemExit('Expected private-document environment-action block was not found.')
+          validator.write_text(source.replace(old, new))
+
+          workflow = Path('.github/workflows/deep-intelligence-read-contract-ci.yml')
+          workflow_text = workflow.read_text()
+          old_branch = '''          if [[ "$BASE_BRANCH" == 'feature/module-011-pulse-ai-deep-intelligence-20260728' ]]; then
+          '''
+          new_branch = '''          HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          if [[ "$HEAD_BRANCH" == feature/module-011-private-document-pipeline-* ]]; then
+          '''
+          if old_branch not in workflow_text:
+              raise SystemExit('Expected deep-intelligence workflow branch selector was not found.')
+          workflow.write_text(workflow_text.replace(old_branch, new_branch, 1))
+          PY
+
+          git add \
+            src/backend/ProjectTime.Api/ProjectTime.Api.csproj \
+            src/frontend/project-time-web/scripts/validate-module-011-private-document-pipeline.mjs \
+            .github/workflows/deep-intelligence-read-contract-ci.yml \
+            src/frontend/project-time-web/src/WorkTaskBuilderPanel.jsx
+          test -z "$(git diff --name-only --diff-filter=U)"
+          git diff --cached --check
+          git commit --no-edit
+
+      - name: Verify exact 14-file private-document delta
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mapfile -t CHANGED < <(git diff --name-only origin/main...HEAD | sort)
+          cat > /tmp/expected-files.txt <<'EOF'
+          .github/workflows/deep-intelligence-read-contract-ci.yml
+          .github/workflows/private-document-pipeline-read-contract-ci.yml
+          docs/modules/module-011-pulse-ai/PRIVATE-DOCUMENT-PIPELINE.md
+          docs/modules/module-011-pulse-ai/PRIVATE-INDEX-SECURITY-CONTRACT.md
+          src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentExtractionService.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentPipelineContracts.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentPipelineService.cs
+          src/backend/ProjectTime.Api/Modules/PulseAiPrivateDocumentPipelineModule.cs
+          src/backend/ProjectTime.Api/ProjectTime.Api.csproj
+          src/frontend/project-time-web/scripts/validate-module-011-private-document-pipeline.mjs
+          src/frontend/project-time-web/src/PulseAiPrivateDocumentPipelineWorkbench.jsx
+          src/frontend/project-time-web/src/WorkTaskBuilderPanel.jsx
+          src/frontend/project-time-web/src/pulse-ai-private-document-pipeline-workbench.css
+          EOF
+          sed -i 's/^[[:space:]]*//' /tmp/expected-files.txt
+          sort -o /tmp/expected-files.txt /tmp/expected-files.txt
+          diff -u /tmp/expected-files.txt <(printf '%s\n' "${CHANGED[@]}")
+
+          for marker in \
+            'app.MapPlatformProductionResilienceEndpoints();' \
+            'app.MapProjectFinancialTruthEndpoints();' \
+            'app.UseProjectNotificationCloseoutCompatibility();' \
+            'app.MapProjectNotificationAutomationEndpoints();' \
+            'app.MapPulseAiDeepIntelligenceEndpoints();' \
+            'app.MapPulseAiPrivateDocumentPipelineEndpoints();'; do
+            [[ "$(grep -Fo "$marker" src/backend/ProjectTime.Api/ProjectTime.Api.csproj | wc -l | tr -d ' ')" == 1 ]]
+          done
+
+          grep -Fq "import PulseAiPrivateDocumentPipelineWorkbench" src/frontend/project-time-web/src/WorkTaskBuilderPanel.jsx
+          grep -Fq '<PulseAiPrivateDocumentPipelineWorkbench />' src/frontend/project-time-web/src/WorkTaskBuilderPanel.jsx
+          grep -Fq '<PulseAiDeepIntelligenceWorkbench />' src/frontend/project-time-web/src/WorkTaskBuilderPanel.jsx
+          git diff --check origin/main...HEAD
+
+      - name: Validate source and build
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          pushd src/frontend/project-time-web >/dev/null
+          node --check scripts/validate-module-011-private-document-pipeline.mjs
+          node scripts/validate-module-011-private-document-pipeline.mjs
+          node scripts/validate-module-011-pulse-ai.mjs
+          node scripts/validate-module-011-pulse-ai-deep-intelligence.mjs
+          node scripts/validate-module-066-project-flowhive.mjs
+          node scripts/validate-group-2b-provider-neutral-production-resilience.mjs
+          node scripts/validate-group-3-project-financial-workspaces.mjs
+          node scripts/validate-group-4-project-notification-automation.mjs
+          npm ci --no-audit --no-fund
+          npm run build
+          popd >/dev/null
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+
+      - name: Push reconciled PR 240 branch
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git push origin HEAD:feature/module-011-private-document-pipeline-20260729
+          echo "PR240_RECONCILED_HEAD=$(git rev-parse HEAD)"

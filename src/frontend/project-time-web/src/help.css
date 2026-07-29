@@ -13,8 +13,11 @@
   font-weight: 900;
 }
 
-.help-launcher:hover {
+.help-launcher:hover,
+.help-launcher:focus-visible {
   background: var(--brand-blue-strong);
+  outline: 3px solid color-mix(in srgb, var(--brand-blue) 25%, transparent);
+  outline-offset: 2px;
 }
 
 .help-panel {
@@ -23,9 +26,9 @@
   bottom: 84px;
   z-index: 95;
   display: grid;
-  grid-template-rows: auto 1fr auto auto;
-  width: min(420px, calc(100vw - 32px));
-  max-height: min(660px, calc(100vh - 120px));
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  width: min(720px, calc(100vw - 32px));
+  max-height: min(820px, calc(100vh - 112px));
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 24px;
@@ -40,7 +43,9 @@
   gap: 16px;
   padding: 18px;
   border-bottom: 1px solid var(--border);
-  background: var(--surface-strong);
+  background:
+    radial-gradient(circle at 88% 18%, rgba(17, 171, 204, 0.18), transparent 32%),
+    linear-gradient(135deg, color-mix(in srgb, var(--surface-strong) 85%, #d9efff 15%), var(--surface-strong));
 }
 
 .help-header strong,
@@ -75,12 +80,69 @@
   font-weight: 900;
 }
 
+.help-header button:hover,
+.help-header button:focus-visible {
+  border-color: var(--brand-blue);
+  color: var(--brand-blue-strong);
+  outline: none;
+}
+
+.help-quick-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.help-full-guide-button,
+.help-pulse-ai-button,
+.help-report-defect-button {
+  width: 100%;
+  min-height: 42px;
+  margin: 0;
+  border: 1px solid color-mix(in srgb, var(--brand-blue) 35%, var(--border));
+  border-radius: 11px;
+  padding: 9px 10px;
+  background: var(--surface-strong);
+  color: var(--brand-blue-strong);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.7rem;
+  font-weight: 900;
+  line-height: 1.3;
+}
+
+.help-full-guide-button {
+  background: var(--brand-blue);
+  color: #ffffff;
+}
+
+.help-pulse-ai-button {
+  border-color: color-mix(in srgb, #0e91af 45%, var(--border));
+  background: color-mix(in srgb, var(--surface) 86%, #d9f7fb 14%);
+  color: #0a6680;
+}
+
+.help-full-guide-button:hover,
+.help-full-guide-button:focus-visible,
+.help-pulse-ai-button:hover,
+.help-pulse-ai-button:focus-visible,
+.help-report-defect-button:hover,
+.help-report-defect-button:focus-visible {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-blue) 12%, transparent);
+  outline: none;
+}
+
 .help-messages {
   display: grid;
   align-content: start;
   gap: 10px;
+  min-height: 0;
   overflow-y: auto;
   padding: 16px;
+  scrollbar-gutter: stable;
 }
 
 .help-message {
@@ -90,6 +152,7 @@
   color: var(--text);
   line-height: 1.45;
   font-size: 0.88rem;
+  overflow-wrap: anywhere;
 }
 
 .help-message.assistant {
@@ -98,61 +161,340 @@
   background: var(--surface-strong);
 }
 
+.help-message.assistant.is-detailed {
+  width: 100%;
+  max-width: 100%;
+  padding: 0;
+  overflow: hidden;
+  background: var(--surface);
+}
+
 .help-message.user {
   justify-self: end;
   background: var(--brand-blue);
   color: #ffffff;
 }
 
-.help-suggestions {
+.help-message-loading {
+  position: relative;
+  padding-left: 38px;
+}
+
+.help-message-loading::before {
+  position: absolute;
+  top: 50%;
+  left: 14px;
+  width: 13px;
+  height: 13px;
+  border: 2px solid color-mix(in srgb, var(--brand-blue) 28%, transparent);
+  border-top-color: var(--brand-blue);
+  border-radius: 50%;
+  content: '';
+  transform: translateY(-50%);
+  animation: pulse-ai-help-spin 0.8s linear infinite;
+}
+
+@keyframes pulse-ai-help-spin {
+  to { transform: translateY(-50%) rotate(360deg); }
+}
+
+.help-detailed-answer {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.9rem;
+}
+
+.help-detailed-answer.is-fallback {
+  border-left: 4px solid #b36a08;
+  background: color-mix(in srgb, var(--surface) 92%, #fff1d5 8%);
+}
+
+.help-answer-heading {
+  display: grid;
+  gap: 0.18rem;
+}
+
+.help-answer-heading > span {
+  color: var(--brand-blue-strong);
+  font-size: 0.65rem;
+  font-weight: 950;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.help-answer-heading > strong {
+  color: var(--text);
+  font-size: 1rem;
+  line-height: 1.35;
+}
+
+.help-answer-summary {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.8rem;
+  font-weight: 650;
+  line-height: 1.6;
+}
+
+.help-answer-warning {
+  margin: 0;
+  border: 1px solid color-mix(in srgb, #b36a08 35%, var(--border));
+  border-radius: 10px;
+  padding: 0.65rem;
+  background: #fff7e9;
+  color: #774307;
+  font-size: 0.7rem;
+  line-height: 1.45;
+}
+
+.help-answer-section {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  padding: 0.68rem;
+  background: var(--surface-strong);
+}
+
+.help-answer-section > strong {
+  color: var(--text);
+  font-size: 0.72rem;
+}
+
+.help-answer-section ul {
+  display: grid;
+  gap: 0.36rem;
+  margin: 0;
+  padding-left: 1.05rem;
+  color: var(--muted);
+  font-size: 0.7rem;
+  line-height: 1.48;
+}
+
+.help-answer-section p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.7rem;
+  line-height: 1.45;
+}
+
+.help-answer-query-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.42rem;
+  margin: 0;
+}
+
+.help-answer-query-grid > div {
+  display: grid;
+  gap: 0.12rem;
+  min-width: 0;
+  border-radius: 8px;
+  padding: 0.48rem;
+  background: var(--surface);
+}
+
+.help-answer-query-grid dt {
+  color: var(--muted);
+  font-size: 0.57rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.help-answer-query-grid dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--text);
+  font-size: 0.66rem;
+  font-weight: 750;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.help-answer-evidence {
   display: flex;
   flex-wrap: wrap;
+  gap: 0.42rem;
+}
+
+.help-answer-evidence span {
+  border: 1px solid color-mix(in srgb, var(--brand-blue) 20%, var(--border));
+  border-radius: 999px;
+  padding: 0.28rem 0.46rem;
+  background: color-mix(in srgb, var(--surface) 90%, #ddecfb 10%);
+  color: var(--muted);
+  font-size: 0.61rem;
+  line-height: 1.35;
+}
+
+.help-answer-navigation {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.42rem;
+}
+
+.help-answer-navigation button {
+  min-height: 34px;
+  border: 1px solid color-mix(in srgb, var(--brand-blue) 30%, var(--border));
+  border-radius: 999px;
+  padding: 0.38rem 0.58rem;
+  background: color-mix(in srgb, var(--surface) 86%, #ddecfb 14%);
+  color: var(--brand-blue-strong);
+  font: inherit;
+  font-size: 0.65rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.help-answer-navigation button:hover,
+.help-answer-navigation button:focus-visible {
+  background: color-mix(in srgb, var(--surface) 72%, #ddecfb 28%);
+  outline: 3px solid color-mix(in srgb, var(--brand-blue) 12%, transparent);
+  outline-offset: 1px;
+}
+
+.help-answer-contract {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--surface-strong);
+}
+
+.help-answer-contract summary {
+  padding: 0.62rem 0.7rem;
+  color: var(--brand-blue-strong);
+  font-size: 0.68rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.help-answer-contract[open] {
+  padding-bottom: 0.6rem;
+}
+
+.help-answer-contract[open] summary {
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 0.55rem;
+}
+
+.help-answer-contract .help-answer-section,
+.help-answer-contract > p {
+  margin-right: 0.55rem;
+  margin-left: 0.55rem;
+}
+
+.help-answer-contract > p {
+  color: var(--muted);
+  font-size: 0.68rem;
+  line-height: 1.45;
+}
+
+.help-suggestions {
+  display: flex;
+  flex-wrap: nowrap;
   gap: 8px;
+  overflow-x: auto;
   padding: 0 16px 14px;
+  scrollbar-width: thin;
 }
 
 .help-suggestions button {
+  flex: 0 0 auto;
+  max-width: 280px;
   border: 1px solid var(--border);
   border-radius: 999px;
   padding: 8px 10px;
   background: var(--surface-strong);
   color: var(--muted);
   cursor: pointer;
-  font-size: 0.76rem;
+  font-size: 0.7rem;
   font-weight: 850;
+  line-height: 1.35;
+  white-space: normal;
 }
 
-.help-suggestions button:hover {
+.help-suggestions button:hover,
+.help-suggestions button:focus-visible {
   background: var(--accent);
   color: var(--brand-blue-strong);
+  outline: none;
+}
+
+.help-suggestions button:disabled {
+  opacity: 0.55;
+  cursor: progress;
 }
 
 .help-input-row {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
   gap: 10px;
   padding: 16px;
   border-top: 1px solid var(--border);
   background: var(--surface-strong);
 }
 
-.help-input-row input {
+.help-input-row textarea {
   min-width: 0;
+  max-height: 130px;
+  resize: vertical;
   border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 11px 13px;
+  border-radius: 14px;
+  padding: 10px 12px;
   background: var(--surface);
   color: var(--text);
+  font: inherit;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.help-input-row textarea:focus {
+  border-color: var(--brand-blue);
+  outline: 3px solid color-mix(in srgb, var(--brand-blue) 12%, transparent);
 }
 
 .help-input-row button {
+  min-height: 42px;
   border: 1px solid color-mix(in srgb, var(--brand-blue) 45%, var(--border));
-  border-radius: 999px;
-  padding: 11px 14px;
+  border-radius: 12px;
+  padding: 10px 14px;
   background: var(--brand-blue);
   color: #ffffff;
   cursor: pointer;
   font-weight: 900;
+}
+
+.help-input-row button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+[data-theme="dark"] .help-answer-warning,
+.dark .help-answer-warning {
+  border-color: rgba(245, 158, 11, 0.38);
+  background: #3b2a12;
+  color: #ffe1a7;
+}
+
+@media (max-width: 760px) {
+  .help-panel {
+    right: 12px;
+    bottom: 72px;
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - 88px);
+    border-radius: 18px;
+  }
+
+  .help-quick-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .help-answer-query-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 620px) {
@@ -162,7 +504,22 @@
   }
 
   .help-panel {
-    right: 16px;
-    bottom: 72px;
+    right: 8px;
+    bottom: 68px;
+    width: calc(100vw - 16px);
+  }
+
+  .help-header,
+  .help-messages,
+  .help-input-row {
+    padding: 12px;
+  }
+
+  .help-input-row {
+    grid-template-columns: 1fr;
+  }
+
+  .help-input-row button {
+    width: 100%;
   }
 }
