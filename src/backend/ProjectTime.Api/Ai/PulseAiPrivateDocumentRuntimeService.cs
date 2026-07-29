@@ -69,19 +69,20 @@ public sealed class PulseAiPrivateDocumentRuntimeService
             blockers.Add("The private OCR endpoint is not configured; text-native documents can still be processed.");
         if (!options.EmbeddingConfigured && !options.AllowLexicalOnlyCompletion)
             blockers.Add("The private embedding endpoint is not configured and lexical-only completion is disabled.");
-
-        var ocrPrivate = options.OcrConfigured
-            && PulseAiPrivateEndpointPolicy.IsApprovedPrivateEndpoint(
-                options.OcrEndpoint,
-                options.PrivateHostAllowlist,
-                out _,
-                out var ocrReason);
-        var embeddingPrivate = options.EmbeddingConfigured
-            && PulseAiPrivateEndpointPolicy.IsApprovedPrivateEndpoint(
-                options.EmbeddingEndpoint,
-                options.PrivateHostAllowlist,
-                out _,
-                out var embeddingReason);
+var ocrReason = "not_configured";
+var ocrPrivate = options.OcrConfigured
+    && PulseAiPrivateEndpointPolicy.IsApprovedPrivateEndpoint(
+        options.OcrEndpoint,
+        options.PrivateHostAllowlist,
+        out _,
+        out ocrReason);
+var embeddingReason = "not_configured";
+var embeddingPrivate = options.EmbeddingConfigured
+    && PulseAiPrivateEndpointPolicy.IsApprovedPrivateEndpoint(
+        options.EmbeddingEndpoint,
+        options.PrivateHostAllowlist,
+        out _,
+        out embeddingReason);
         if (options.OcrConfigured && !ocrPrivate)
             blockers.Add($"The configured OCR endpoint was rejected by the private endpoint policy ({ocrReason}).");
         if (options.EmbeddingConfigured && !embeddingPrivate)
