@@ -1,0 +1,54 @@
+name: Temporary Current Integration Bundle
+
+on:
+  push:
+    branches:
+      - main
+      - tooling/current-integration-bundle-20260729
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out triggering branch
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Fetch repository branches and pull-request heads
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git fetch origin --prune --no-tags \
+            '+refs/heads/*:refs/remotes/origin/*' \
+            '+refs/pull/*/head:refs/remotes/pull/*'
+          git show-ref | sort > current-integration-refs.txt
+          git bundle create current-integration.bundle --all
+          git bundle verify current-integration.bundle
+          sha256sum current-integration.bundle current-integration-refs.txt > SHA256SUMS
+
+      - name: Upload current integration bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: current-integration-bundle-${{ github.run_id }}
+          path: |
+            current-integration.bundle
+            current-integration-refs.txt
+            SHA256SUMS
+          retention-days: 1
+
+      - name: Report temporary bundle run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          gh api \
+            repos/${{ github.repository }}/issues/221/comments \
+            -f body="TEMP_INTEGRATION_BUNDLE_RUN_ID=${GITHUB_RUN_ID}%0ATEMP_INTEGRATION_BUNDLE_COMMIT=${GITHUB_SHA}%0ATEMP_INTEGRATION_BUNDLE_ARTIFACT=current-integration-bundle-${GITHUB_RUN_ID}"
