@@ -74,17 +74,86 @@ jobs:
 
           path = Path('scripts/security/apply-platform-security-remediation-20260729.py')
           text = path.read_text(encoding='utf-8')
-          old = '        \'var storedFileName = $"{documentType}_\',\n'
-          new = '        \'var storedFileName = $"{documentType}_{Guid.NewGuid():N}{Path.GetExtension(safeOriginalFileName)}";\',\n'
 
-          if old in text:
-              text = text.replace(old, new, 1)
-              path.write_text(text, encoding='utf-8')
+          broad_upload_check = '        \'var storedFileName = $"{documentType}_\',\n'
+          scoped_upload_check = '        \'var storedFileName = $"{documentType}_{Guid.NewGuid():N}{Path.GetExtension(safeOriginalFileName)}";\',\n'
+          if broad_upload_check in text:
+              text = text.replace(broad_upload_check, scoped_upload_check, 1)
 
-          print('SECURITY_REMEDIATION_POSTCONDITION_SCOPE=NARROWED')
+          first_widget_only_check = '    forbidden=(\'href="${escapeHtml(item.actionUrl)}"\',),\n'
+          if first_widget_only_check in text:
+              text = text.replace(first_widget_only_check, '    forbidden=(),\n', 1)
+
+          path.write_text(text, encoding='utf-8')
+          print('SECURITY_REMEDIATION_POSTCONDITIONS=SCOPED')
           PY
+
           python -m py_compile scripts/security/apply-platform-security-remediation-20260729.py
           python scripts/security/apply-platform-security-remediation-20260729.py
+
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/frontend/project-time-web/index.html')
+          html = path.read_text(encoding='utf-8')
+          topbar_anchor = '<script id="projectpulse-022d-topbar-notification-dropdown">'
+
+          if topbar_anchor not in html:
+              raise RuntimeError('Topbar notification script anchor was not found.')
+
+          before, topbar = html.split(topbar_anchor, 1)
+          marker = 'const projectPulse022DTopbarSafeActionUrl'
+
+          if marker not in topbar:
+              insert_after = '  const isViewAs = () => !!getViewAsUserId();\n\n'
+              helper = '''  const projectPulse022DTopbarSafeActionUrl = (value) => {
+            const candidate = String(value || "").trim();
+            if (!candidate) return "";
+
+            if (
+              candidate.startsWith("/")
+              && !candidate.startsWith("//")
+              && !candidate.includes(String.fromCharCode(92))
+              && !Array.from(candidate).some((character) => character.charCodeAt(0) < 32)
+            ) {
+              return candidate;
+            }
+
+            try {
+              const parsed = new URL(candidate);
+              if (parsed.protocol === "https:" && !parsed.username && !parsed.password) {
+                return parsed.href;
+              }
+            } catch (_) {
+              return "";
+            }
+
+            return "";
+          };
+
+          '''
+
+              if insert_after not in topbar:
+                  raise RuntimeError('Topbar action URL helper insertion point was not found.')
+              topbar = topbar.replace(insert_after, insert_after + helper, 1)
+
+          vulnerable_link = '${item.actionUrl ? `<a class="projectpulse-022d-topbar-action" href="${escapeHtml(item.actionUrl)}">Open related page</a>` : ""}'
+          safe_link = '${projectPulse022DTopbarSafeActionUrl(item.actionUrl) ? `<a class="projectpulse-022d-topbar-action" href="${escapeHtml(projectPulse022DTopbarSafeActionUrl(item.actionUrl))}" rel="noopener noreferrer">Open related page</a>` : ""}'
+
+          if vulnerable_link in topbar:
+              topbar = topbar.replace(vulnerable_link, safe_link, 1)
+
+          html = before + topbar_anchor + topbar
+
+          if 'href="${escapeHtml(item.actionUrl)}"' in html:
+              raise RuntimeError('An unvalidated notification action URL renderer remains.')
+          if marker not in html:
+              raise RuntimeError('Topbar action URL allowlist helper was not installed.')
+
+          path.write_text(html, encoding='utf-8')
+          print('SECURITY_NOTIFICATION_ACTION_URL_RENDERERS=HARDENED')
+          PY
+
           git diff --check
 
       - name: Validate hardened Python and shell sources
