@@ -1,0 +1,383 @@
+.project-register-center {
+  display: grid;
+  gap: 1rem;
+}
+
+.project-register-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding: 1.4rem;
+  border: 1px solid rgba(8, 64, 104, 0.18);
+  border-radius: 1rem;
+  background: linear-gradient(135deg, rgba(0, 159, 227, 0.12), rgba(103, 180, 70, 0.08));
+}
+
+.project-register-hero h2,
+.project-register-drawer h3,
+.project-register-detail-section h4 {
+  margin: 0;
+}
+
+.project-register-hero p:not(.eyebrow) {
+  max-width: 64rem;
+  margin: 0.5rem 0 0;
+  line-height: 1.55;
+}
+
+.project-register-hero-actions,
+.project-register-drawer footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  align-items: center;
+}
+
+.project-register-link-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.5rem;
+  text-decoration: none;
+}
+
+.project-register-banner {
+  padding: 0.85rem 1rem;
+  border: 1px solid rgba(8, 64, 104, 0.2);
+  border-radius: 0.75rem;
+  background: rgba(0, 159, 227, 0.08);
+}
+
+.project-register-banner.warning {
+  border-color: rgba(190, 125, 0, 0.35);
+  background: rgba(255, 190, 60, 0.12);
+}
+
+.project-register-banner.error {
+  border-color: rgba(172, 42, 42, 0.35);
+  background: rgba(172, 42, 42, 0.08);
+}
+
+.project-register-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.project-register-summary article,
+.project-register-detail-summary article,
+.project-register-governance-grid article {
+  display: grid;
+  gap: 0.25rem;
+  padding: 1rem;
+  border: 1px solid rgba(8, 64, 104, 0.16);
+  border-radius: 0.85rem;
+  background: var(--panel-bg, #fff);
+}
+
+.project-register-summary span,
+.project-register-detail-summary span,
+.project-register-governance-grid span {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.72;
+}
+
+.project-register-summary strong {
+  font-size: 1.45rem;
+}
+
+.project-register-summary small,
+.project-register-table small,
+.project-register-detail-list span {
+  display: block;
+  line-height: 1.35;
+}
+
+.project-register-toolbar {
+  display: grid;
+  grid-template-columns: minmax(16rem, 2fr) repeat(4, minmax(10rem, 1fr));
+  gap: 0.75rem;
+  align-items: end;
+}
+
+.project-register-toolbar label {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.project-register-toolbar input,
+.project-register-toolbar select {
+  width: 100%;
+  min-height: 2.65rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid rgba(8, 64, 104, 0.25);
+  border-radius: 0.65rem;
+  background: var(--input-bg, #fff);
+  color: inherit;
+}
+
+.project-register-totalbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem 1.3rem;
+  padding: 0.75rem 0.9rem;
+  border-radius: 0.7rem;
+  background: rgba(8, 64, 104, 0.06);
+  font-size: 0.82rem;
+}
+
+.project-register-table-wrap {
+  overflow: auto;
+  max-width: 100%;
+  border: 1px solid rgba(8, 64, 104, 0.16);
+  border-radius: 0.9rem;
+}
+
+.project-register-table {
+  width: 100%;
+  min-width: 112rem;
+  border-collapse: separate;
+  border-spacing: 0;
+  background: var(--panel-bg, #fff);
+}
+
+.project-register-table th,
+.project-register-table td {
+  padding: 0.8rem;
+  border-bottom: 1px solid rgba(8, 64, 104, 0.12);
+  vertical-align: top;
+  text-align: left;
+}
+
+.project-register-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--panel-bg, #fff);
+  color: var(--heading-color, #072d59);
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.project-register-table tbody tr:hover {
+  background: rgba(0, 159, 227, 0.045);
+}
+
+.project-register-state {
+  display: inline-flex;
+  margin-bottom: 0.35rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.project-register-state.active {
+  background: rgba(103, 180, 70, 0.16);
+  color: #356d22;
+}
+
+.project-register-state.historical {
+  background: rgba(87, 105, 120, 0.14);
+  color: #40515e;
+}
+
+.project-register-row-action,
+.project-register-inline-link {
+  display: inline-flex;
+  width: 100%;
+  justify-content: center;
+  margin-bottom: 0.4rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid rgba(0, 159, 227, 0.35);
+  border-radius: 0.55rem;
+  background: rgba(0, 159, 227, 0.08);
+  color: inherit;
+  text-decoration: none;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.project-register-empty-cell,
+.project-register-empty-copy {
+  padding: 1.5rem;
+  text-align: center;
+  opacity: 0.72;
+}
+
+.project-register-governance-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.project-register-governance-grid p {
+  margin: 0.35rem 0;
+  line-height: 1.45;
+}
+
+.project-register-governance-grid button[disabled] {
+  justify-self: start;
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.project-register-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1800;
+  display: flex;
+  justify-content: flex-end;
+  background: rgba(2, 18, 31, 0.58);
+  backdrop-filter: blur(2px);
+}
+
+.project-register-drawer {
+  width: min(50rem, 96vw);
+  height: 100%;
+  overflow-y: auto;
+  padding: 1.2rem;
+  background: var(--panel-bg, #fff);
+  color: inherit;
+  box-shadow: -1rem 0 2.5rem rgba(0, 0, 0, 0.22);
+}
+
+.project-register-drawer > header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid rgba(8, 64, 104, 0.16);
+}
+
+.project-register-drawer > header p:not(.eyebrow) {
+  margin: 0.4rem 0 0;
+}
+
+.project-register-readonly-notice {
+  margin: 1rem 0;
+  padding: 0.85rem;
+  border-left: 0.3rem solid #607789;
+  background: rgba(96, 119, 137, 0.08);
+  line-height: 1.45;
+}
+
+.project-register-readonly-notice.managed {
+  border-left-color: #67b446;
+  background: rgba(103, 180, 70, 0.08);
+}
+
+.project-register-detail-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.65rem;
+  margin-bottom: 1rem;
+}
+
+.project-register-detail-summary strong {
+  overflow-wrap: anywhere;
+}
+
+.project-register-detail-section {
+  margin: 0 0 1rem;
+  padding: 1rem;
+  border: 1px solid rgba(8, 64, 104, 0.14);
+  border-radius: 0.8rem;
+}
+
+.project-register-detail-section h4 {
+  margin-bottom: 0.7rem;
+}
+
+.project-register-detail-list {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.project-register-detail-list article {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.7rem;
+  border-radius: 0.6rem;
+  background: rgba(8, 64, 104, 0.045);
+}
+
+.project-register-drawer footer {
+  position: sticky;
+  bottom: -1.2rem;
+  margin: 1rem -1.2rem -1.2rem;
+  padding: 1rem 1.2rem;
+  border-top: 1px solid rgba(8, 64, 104, 0.16);
+  background: var(--panel-bg, #fff);
+}
+
+[data-theme="dark"] .project-register-hero {
+  border-color: rgba(111, 203, 244, 0.25);
+  background: linear-gradient(135deg, rgba(0, 159, 227, 0.16), rgba(103, 180, 70, 0.1));
+}
+
+[data-theme="dark"] .project-register-table-wrap,
+[data-theme="dark"] .project-register-summary article,
+[data-theme="dark"] .project-register-detail-summary article,
+[data-theme="dark"] .project-register-governance-grid article,
+[data-theme="dark"] .project-register-detail-section {
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+[data-theme="dark"] .project-register-state.active {
+  color: #a8df8c;
+}
+
+[data-theme="dark"] .project-register-state.historical {
+  color: #ccd7de;
+}
+
+@media (max-width: 1180px) {
+  .project-register-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .project-register-toolbar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .project-register-toolbar .wide {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 700px) {
+  .project-register-hero {
+    display: grid;
+  }
+
+  .project-register-hero-actions,
+  .project-register-drawer footer {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .project-register-summary,
+  .project-register-toolbar,
+  .project-register-governance-grid,
+  .project-register-detail-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .project-register-toolbar .wide {
+    grid-column: auto;
+  }
+
+  .project-register-drawer {
+    width: 100%;
+  }
+}
