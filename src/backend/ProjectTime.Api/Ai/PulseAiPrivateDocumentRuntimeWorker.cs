@@ -1,5 +1,9 @@
 namespace ProjectTime.Api.Ai;
 
+/// <summary>
+/// Runs only when explicitly enabled by private-runtime configuration. Deploying
+/// the source alone does not start document processing or external traffic.
+/// </summary>
 public sealed class PulseAiPrivateDocumentRuntimeWorker : BackgroundService
 {
     private readonly IServiceProvider _services;
