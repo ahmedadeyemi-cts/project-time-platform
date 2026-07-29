@@ -49,16 +49,16 @@ export default function PtcTimeStewardGate() {
     };
   }, []);
 
-  // Approval work remains visible to the effective Manager or PM while View-As
-  // is active. The PTC time-steward and standalone-task controls remain hidden
-  // unless the effective identity itself is a PTC or administrator.
-  const showPtcWorkspace = !state.active || state.allowed;
+  // Preserve the existing fail-closed View-As boundary for Module 001. Actual
+  // Manager and PM sessions still render the approval portal; PTC-only surfaces
+  // remain protected by their authoritative backend access checks.
+  if (state.active && !state.allowed) return null;
 
   return (
     <>
-      {showPtcWorkspace ? <PtcTimesheetManagementPortal /> : null}
+      <PtcTimesheetManagementPortal />
       <PendingApprovalWorkPortal />
-      {showPtcWorkspace ? <PtcNonProjectTaskPortal /> : null}
+      <PtcNonProjectTaskPortal />
     </>
   );
 }
