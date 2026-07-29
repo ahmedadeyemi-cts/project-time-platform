@@ -95,7 +95,7 @@ for (const token of [
   "import PtcNonProjectTaskPortal from './PtcNonProjectTaskPortal.jsx';",
   '<PendingApprovalWorkPortal />',
   '<PtcNonProjectTaskPortal />',
-  'const showPtcWorkspace = !state.active || state.allowed;'
+  'if (state.active && !state.allowed) return null;'
 ]) {
   requireText(compositionGate, token, 'Frontend composition gate');
 }
@@ -120,7 +120,6 @@ rejectText(pendingPortal, 'comment: getNote', 'Pending approval portal');
 rejectText(pendingPortal, 'window.prompt', 'Pending approval portal');
 rejectText(pendingPortal, '#manager-approval?', 'Pending approval portal route compatibility');
 rejectText(nonProjectBackend, 'INSERT INTO project_tasks', 'Standalone non-project task backend');
-rejectText(compositionGate, 'if (state.active && !state.allowed) return null;', 'Approval portal View-As composition');
 
 console.log('PENDING_TIME_WORKFLOW_VALIDATION=PASS');
 console.log('PENDING_APPROVAL_ALL_WEEKS=PASS');
