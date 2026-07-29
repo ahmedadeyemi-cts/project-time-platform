@@ -14,6 +14,7 @@
     <Module001GeneratedData>$(IntermediateOutputPath)Module001TimesheetData.g.cs</Module001GeneratedData>
     <Module001GeneratedEndpoints>$(IntermediateOutputPath)Module001TimesheetEnhancementModule.g.cs</Module001GeneratedEndpoints>
     <PulseAiGroundingGenerated>$(IntermediateOutputPath)PulseAiDocumentGroundingService.g.cs</PulseAiGroundingGenerated>
+    <PulseAiPrivateExtractorGenerated>$(IntermediateOutputPath)PulseAiPrivateDocumentExtractionService.g.cs</PulseAiPrivateExtractorGenerated>
   </PropertyGroup>
 
   <ItemGroup>
@@ -39,6 +40,7 @@
     <Compile Remove="Modules/Module001TimesheetData.cs" />
     <Compile Remove="Modules/Module001TimesheetEnhancementModule.cs" />
     <Compile Remove="Ai/PulseAiDocumentGroundingService.cs" />
+    <Compile Remove="Ai/PulseAiPrivateDocumentExtractionService.cs" />
   </ItemGroup>
 
   <Target Name="GenerateScopedRbacSources" BeforeTargets="CoreCompile">
@@ -65,6 +67,10 @@
          The compiled copy materializes ordered role evidence for the existing
          IReadOnlyList response contract without changing authorization behavior. -->
     <Exec Command="sed -e 's/roles: access.RoleCodes,/roles: access.RoleCodes.OrderBy(value =&gt; value).ToArray(),/' &quot;$(MSBuildProjectDirectory)/Ai/PulseAiDocumentGroundingService.cs&quot; &gt; &quot;$(PulseAiGroundingGenerated)&quot;" />
+    <!-- ClosedXML defines its own LoadOptions type and no longer exposes the old
+         XLEventTracking constructor argument. Keep the canonical extractor easy
+         to review while compiling an API-version-normalized copy. -->
+    <Exec Command="sed -e 's/LoadOptions\.PreserveWhitespace/System.Xml.Linq.LoadOptions.PreserveWhitespace/g' -e 's/new XLWorkbook(source.StoragePath, XLEventTracking.Disabled)/new XLWorkbook(source.StoragePath)/' &quot;$(MSBuildProjectDirectory)/Ai/PulseAiPrivateDocumentExtractionService.cs&quot; &gt; &quot;$(PulseAiPrivateExtractorGenerated)&quot;" />
     <ItemGroup>
       <Compile Include="$(ScopedRbacGeneratedProgram)" />
       <Compile Include="$(ScopedRbacGeneratedModule)" />
@@ -75,6 +81,7 @@
       <Compile Include="$(Module001GeneratedData)" />
       <Compile Include="$(Module001GeneratedEndpoints)" />
       <Compile Include="$(PulseAiGroundingGenerated)" />
+      <Compile Include="$(PulseAiPrivateExtractorGenerated)" />
     </ItemGroup>
   </Target>
 </Project>
