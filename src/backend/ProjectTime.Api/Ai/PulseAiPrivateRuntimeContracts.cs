@@ -278,7 +278,7 @@ public sealed record PulseAiPrivateEmbeddingResult(
         && Vectors.All(vector => vector.Length == Dimension);
 }
 
-public sealed record PulseAiPrivateRuntimeReadiness(
+public sealed record PulseAiPrivateDocumentRuntimeReadiness(
     string Status,
     string ContractVersion,
     bool MigrationApplied,
