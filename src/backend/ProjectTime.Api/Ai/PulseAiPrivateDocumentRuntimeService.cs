@@ -34,7 +34,7 @@ public sealed class PulseAiPrivateDocumentRuntimeService
     public PulseAiPrivateRuntimeOptions Options() =>
         PulseAiPrivateRuntimeOptions.FromEnvironment();
 
-    public async Task<PulseAiPrivateRuntimeReadiness> GetReadinessAsync(
+    public async Task<PulseAiPrivateDocumentRuntimeReadiness> GetReadinessAsync(
         CancellationToken cancellationToken = default)
     {
         var options = Options();
@@ -98,7 +98,7 @@ public sealed class PulseAiPrivateDocumentRuntimeService
             && (options.ClamAvConfigured || options.PreScanAttestationConfigured)
             && (embeddingPrivate || options.AllowLexicalOnlyCompletion);
 
-        return new PulseAiPrivateRuntimeReadiness(
+        return new PulseAiPrivateDocumentRuntimeReadiness(
             Status: fullyReady
                 ? "private_document_runtime_ready"
                 : schema.Complete
