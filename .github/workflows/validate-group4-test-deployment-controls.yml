@@ -1,0 +1,112 @@
+name: Validate Group 4 Test Deployment Controls
+
+on:
+  push:
+    branches:
+      - 'release/group4-migration050-notifications-test-*'
+  pull_request:
+    paths:
+      - '.github/workflows/projectpulse-run-group4-migration-050-test.yml'
+      - '.github/workflows/projectpulse-deploy-group4-notifications-test.yml'
+      - '.github/workflows/validate-group4-test-deployment-controls.yml'
+      - 'scripts/apply-group4-migration-050-test.sh'
+      - 'scripts/run-group4-migration-050-test-job.sh'
+      - 'scripts/run-group4-notifications-test-deployment.sh'
+      - 'scripts/validate-group4-test-deployment-controls.sh'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-group4-test-deployment-controls-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Check out deployment controls
+        uses: actions/checkout@v4
+        with:
+          path: control
+          fetch-depth: 0
+
+      - name: Check out exact Group 4 source release
+        uses: actions/checkout@v4
+        with:
+          ref: 24fb92d751726b1bab66c11d902c0b2571701b23
+          path: release
+          fetch-depth: 0
+
+      - name: Enforce exact seven-file deployment-control scope
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git -C control fetch origin main --no-tags
+          mapfile -t CHANGED < <(git -C control diff --name-only origin/main...HEAD | sort)
+          cat > /tmp/expected.txt <<'EOF'
+          .github/workflows/projectpulse-deploy-group4-notifications-test.yml
+          .github/workflows/projectpulse-run-group4-migration-050-test.yml
+          .github/workflows/validate-group4-test-deployment-controls.yml
+          scripts/apply-group4-migration-050-test.sh
+          scripts/run-group4-migration-050-test-job.sh
+          scripts/run-group4-notifications-test-deployment.sh
+          scripts/validate-group4-test-deployment-controls.sh
+          EOF
+          sed -i 's/^[[:space:]]*//' /tmp/expected.txt
+          sort -o /tmp/expected.txt /tmp/expected.txt
+          diff -u /tmp/expected.txt <(printf '%s\n' "${CHANGED[@]}")
+          git -C control diff --check origin/main...HEAD
+          echo 'GROUP4_DEPLOYMENT_CONTROL_SCOPE=PASS'
+
+      - name: Validate shell syntax and static contracts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash -n control/scripts/apply-group4-migration-050-test.sh
+          bash -n control/scripts/run-group4-migration-050-test-job.sh
+          bash -n control/scripts/run-group4-notifications-test-deployment.sh
+          bash -n control/scripts/validate-group4-test-deployment-controls.sh
+          bash control/scripts/validate-group4-test-deployment-controls.sh
+
+      - name: Test migration 050 apply, idempotency, invariants, and rollback
+        run: bash release/tests/test-project-notification-migration-050.sh
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: release/src/frontend/project-time-web/package-lock.json
+
+      - name: Build ProjectTime API from exact Group 4 release
+        run: dotnet build release/src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+
+      - name: Install frontend dependencies for exact Group 4 release
+        working-directory: release/src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Validate Group 4 and preserved dependencies
+        working-directory: release/src/frontend/project-time-web
+        run: |
+          set -Eeuo pipefail
+          npm run validate:group4-project-notifications
+          npm run validate:group3-project-financial-workspaces
+          npm run validate:group2b-production-resilience
+          npm run validate:module011
+          npm run validate:module064
+          npm run validate:module065
+          npm run validate:microsoft-connection
+          npm run validate:microsoft-sso-runtime
+          npm run validate:module005
+          npm run validate:modules021026
+          npm run validate:admin-runtime-stability
+
+      - name: Build complete frontend production bundle from exact Group 4 release
+        working-directory: release/src/frontend/project-time-web
+        run: npm run build
