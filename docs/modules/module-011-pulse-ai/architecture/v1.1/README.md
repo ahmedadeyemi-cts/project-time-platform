@@ -20,13 +20,13 @@ The repository copies are losslessly packaged or publication-optimized for sourc
 
 | File | Purpose | SHA-256 |
 |---|---|---|
-| `US_Signal_Pulse_AI_Private_Intelligence_Architecture_v1.1.docx` | Editable architecture document | `297de76633e63616d40ecd53232e4ae122b8f6c02a1a5e0cb040f8c0d9b5acbb` |
-| `US_Signal_Pulse_AI_Private_Intelligence_Architecture_v1.1.pdf` | Published architecture document | `5ec2776d74da1c399dfb7b52b50a827d061038cdcc198a2e6dd31ce224c45d63` |
-| `US_Signal_Pulse_AI_Architecture_Diagrams_v1.1.pdf` | Combined systems-engineering diagram package | `510ec8d789b6c068513a26a81afa041ee0e1cdaa7fcb46dd00bc1a2991257ebe` |
-| `US_Signal_Pulse_AI_Logical_Architecture_v1.1.png` | High-resolution private-first logical architecture | `2e07e9b8a30685be9f365e422727f8c0d1a7c38f94c975c962c8bea57296d7cb` |
-| `US_Signal_Pulse_AI_Logical_Architecture_v1.1.svg` | Editable vector private-first logical architecture | `a7adbe4e4b0f40f34c06a1a497c9c192d5e53708fdc3919c0fc902a963b64b41` |
-| `US_Signal_Pulse_AI_Deployment_Network_Architecture_v1.1.png` | High-resolution deployment and network architecture | `a62ffc29629b1e7a7c1d9a30aa5afc5a0d889461ebdf98f14ff051c11432183c` |
-| `US_Signal_Pulse_AI_Deployment_Network_Architecture_v1.1.svg` | Editable vector deployment and network architecture | `8ff860932d94dd91ad9e2e7e158cccb3e6927f8738fc50546a8aa5a2db0c795b` |
+| `US_Signal_Pulse_AI_Private_Intelligence_Architecture_v1.1.docx` | Editable architecture document | `638cc0ec9ccafd04b64af2c1920d55a601ad97626665f1dc074440bbd1bb7554` |
+| `US_Signal_Pulse_AI_Private_Intelligence_Architecture_v1.1.pdf` | Published architecture document | `43776bbfac2c44e0ab45ac37c2d4a1a5b1f0a2467baa2cc05b345a45bbbb66ad` |
+| `US_Signal_Pulse_AI_Architecture_Diagrams_v1.1.pdf` | Combined systems-engineering diagram package | `e7d7d2a288fdc4f99d0b70c62758fdb3609e9b4d2b6830432fd4df85583e0ceb` |
+| `US_Signal_Pulse_AI_Logical_Architecture_v1.1.png` | High-resolution private-first logical architecture | `22180ea7d3890407756d33e95642f94ffdb8f751bb05ac25f31c6761759be5fc` |
+| `US_Signal_Pulse_AI_Logical_Architecture_v1.1.svg` | Editable vector private-first logical architecture | `dcc3c2148db944eb02c55ee073f83990afe3212080931d1c7b4e8013854e0996` |
+| `US_Signal_Pulse_AI_Deployment_Network_Architecture_v1.1.png` | High-resolution deployment and network architecture | `2a51f56e89d4abfd222f734c3c4e0cb1f0fd75830caa1a094ed34f736275dcb4` |
+| `US_Signal_Pulse_AI_Deployment_Network_Architecture_v1.1.svg` | Editable vector deployment and network architecture | `c5d8f4f0511fe001103c04a62cba741fb18adde75d3857cfe363b7572a62aded` |
 | `assets/US_Signal_Logo.jpg` | Source US Signal logo supplied for this architecture package | `c4fc4b33f744d065deeec531f393aa39996273e51eb946a452b1319e6e529183` |
 
 ## Architecture summary
