@@ -17,6 +17,7 @@ public static class PulseAiPrivateDocumentPipelineModule
             "/api/pulse-ai/v1/documents/{documentId:guid}/processing-preview",
             (Func<Guid, HttpContext, PulseAiPrivateDocumentPipelineService, CancellationToken, Task<IResult>>)GetProcessingPreviewAsync);
 
+        endpoints.MapPulseAiPrivateRuntimeEndpoints();
         return endpoints;
     }
 
