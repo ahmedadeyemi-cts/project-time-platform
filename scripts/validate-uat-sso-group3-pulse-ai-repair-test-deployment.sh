@@ -4,8 +4,8 @@ set -Eeuo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 EXPECTED_RELEASE="b402f99130341995d692bb9f85fe195255c8ffb5"
 SLUG="uat-sso-group3-pulse-ai-repair"
-DEPLOY="$ROOT/.github/workflows/projectpulse-deploy-uat-sso-group3-module011-repair-test.yml"
-VALIDATE="$ROOT/.github/workflows/validate-uat-sso-group3-module011-repair-test-deployment.yml"
+DEPLOY="$ROOT/.github/workflows/projectpulse-deploy-uat-sso-group3-label-repair-test.yml"
+VALIDATE="$ROOT/.github/workflows/validate-uat-sso-group3-label-repair-test-deployment.yml"
 RUNNER="$ROOT/scripts/run-$SLUG-test-deployment.sh"
 SELF="$ROOT/scripts/validate-$SLUG-test-deployment.sh"
 
