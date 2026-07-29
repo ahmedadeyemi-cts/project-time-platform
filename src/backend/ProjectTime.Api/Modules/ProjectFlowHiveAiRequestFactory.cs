@@ -28,6 +28,7 @@ internal static class ProjectFlowHiveAiRequestFactory
             requiredService = "ProjectPulseAiRouter",
             feature = "project_flowhive_plan",
             requiredProviderOrder = new[] { "private_model", "local_template" },
+            legacyExternalRouteRejected = new[] { "claude", "openai", "local_template" },
             refusalFailover = "blocked",
             privateRequest = new
             {
