@@ -72,7 +72,7 @@ internal static class ProjectFlowHiveAiRequestFactory
                 "The preview calls no model or provider.",
                 "Detailed project-document context remains inside the private ProjectPulse boundary.",
                 "Module 064 may receive only an approved abstract capsule and cannot receive unrestricted document context.",
-                "AI output remains a draft and cannot establish a baseline, assign resources, reserve capacity, or commit customer dates.",
+                "AI output is a draft and cannot establish a baseline, assign resources, reserve capacity, or commit customer dates.",
                 "A safety refusal ends routing and cannot be bypassed through another provider."
             }
         };
