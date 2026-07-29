@@ -1,14 +1,6 @@
-name: Apply Platform Security Remediation 2026-07-29
+name: Apply Platform Security Remediation Follow-up 2026-07-29
 
 on:
-  push:
-    branches:
-      - security/platform-findings-remediation-20260729
-    paths:
-      - .github/workflows/apply-platform-security-remediation-20260729.yml
-      - scripts/security/apply-platform-security-remediation-20260729.py
-      - src/backend/ProjectTime.Api/Modules/SecurityHardeningModule.cs
-      - ops/projectpulse/scripts/projectpulse-send-backup-email.py
   pull_request:
     branches:
       - main
@@ -18,16 +10,15 @@ on:
       - reopened
     paths:
       - .github/workflows/apply-platform-security-remediation-20260729.yml
-      - scripts/security/apply-platform-security-remediation-20260729.py
+      - scripts/security/apply-platform-security-followup-20260729.py
       - src/backend/ProjectTime.Api/Modules/SecurityHardeningModule.cs
-      - ops/projectpulse/scripts/projectpulse-send-backup-email.py
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: platform-security-remediation-20260729
+  group: platform-security-remediation-followup-20260729
   cancel-in-progress: false
 
 jobs:
@@ -53,125 +44,21 @@ jobs:
           set -Eeuo pipefail
           if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
             test "$GITHUB_HEAD_REF" = "$TARGET_BRANCH"
-          else
-            test "$GITHUB_REF" = "refs/heads/$TARGET_BRANCH"
           fi
-          test -s scripts/security/apply-platform-security-remediation-20260729.py
+          test -s scripts/security/apply-platform-security-followup-20260729.py
           test -s src/backend/ProjectTime.Api/Modules/SecurityHardeningModule.cs
-          test -s ops/projectpulse/scripts/projectpulse-send-backup-email.py
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
-      - name: Apply deterministic source remediation
+      - name: Apply fail-closed privilege and object-scope corrections
         shell: bash
         run: |
           set -Eeuo pipefail
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path('scripts/security/apply-platform-security-remediation-20260729.py')
-          text = path.read_text(encoding='utf-8')
-
-          broad_upload_check = '        \'var storedFileName = $"{documentType}_\',\n'
-          scoped_upload_check = '        \'var storedFileName = $"{documentType}_{Guid.NewGuid():N}{Path.GetExtension(safeOriginalFileName)}";\',\n'
-          if broad_upload_check in text:
-              text = text.replace(broad_upload_check, scoped_upload_check, 1)
-
-          first_widget_only_check = '    forbidden=(\'href="${escapeHtml(item.actionUrl)}"\',),\n'
-          if first_widget_only_check in text:
-              text = text.replace(first_widget_only_check, '    forbidden=(),\n', 1)
-
-          broad_temp_check = 'require(CF_GUARD, required=("projectpulse-019m-cf.XXXXXX",), forbidden=("/tmp/projectpulse-019m-cf-",))'
-          scoped_temp_check = 'require(CF_GUARD, required=("projectpulse-019m-cf.XXXXXX",), forbidden=("/tmp/projectpulse-019m-cf-api", "/tmp/projectpulse-019m-cf-registry.json", "/tmp/projectpulse-019m-cf-engineer-denial.json"))'
-          if broad_temp_check in text:
-              text = text.replace(broad_temp_check, scoped_temp_check, 1)
-
-          path.write_text(text, encoding='utf-8')
-          print('SECURITY_REMEDIATION_POSTCONDITIONS=SCOPED')
-          PY
-
-          python -m py_compile scripts/security/apply-platform-security-remediation-20260729.py
-          python scripts/security/apply-platform-security-remediation-20260729.py
-
-          python - <<'PY'
-          from pathlib import Path
-
-          program_path = Path('src/backend/ProjectTime.Api/Program.cs')
-          program = program_path.read_text(encoding='utf-8')
-          invalid_stored_name = 'var storedFileName = $"{documentCategory}_{Guid.NewGuid():N}{Path.GetExtension(safeOriginalFileName)}"; // SECURITY_20260729_SAFE_DOCUMENT_PATH_COMPONENT'
-          safe_stored_name = 'var storedFileName = $"{Guid.NewGuid():N}{Path.GetExtension(safeOriginalFileName)}"; // SECURITY_20260729_SAFE_DOCUMENT_PATH_COMPONENT'
-
-          if invalid_stored_name in program:
-              program = program.replace(invalid_stored_name, safe_stored_name, 1)
-          if safe_stored_name not in program:
-              raise RuntimeError('The GUID-only intake stored filename correction was not applied.')
-
-          program_path.write_text(program, encoding='utf-8')
-          print('SECURITY_INTAKE_STORED_FILENAME=GUID_ONLY')
-
-          index_path = Path('src/frontend/project-time-web/index.html')
-          html = index_path.read_text(encoding='utf-8')
-          topbar_anchor = '<script id="projectpulse-022d-topbar-notification-dropdown">'
-
-          if topbar_anchor not in html:
-              raise RuntimeError('Topbar notification script anchor was not found.')
-
-          before, topbar = html.split(topbar_anchor, 1)
-          marker = 'const projectPulse022DTopbarSafeActionUrl'
-
-          if marker not in topbar:
-              insert_after = '  const isViewAs = () => !!getViewAsUserId();\n\n'
-              helper = '''  const projectPulse022DTopbarSafeActionUrl = (value) => {
-            const candidate = String(value || "").trim();
-            if (!candidate) return "";
-
-            if (
-              candidate.startsWith("/")
-              && !candidate.startsWith("//")
-              && !candidate.includes(String.fromCharCode(92))
-              && !Array.from(candidate).some((character) => character.charCodeAt(0) < 32)
-            ) {
-              return candidate;
-            }
-
-            try {
-              const parsed = new URL(candidate);
-              if (parsed.protocol === "https:" && !parsed.username && !parsed.password) {
-                return parsed.href;
-              }
-            } catch (_) {
-              return "";
-            }
-
-            return "";
-          };
-
-          '''
-
-              if insert_after not in topbar:
-                  raise RuntimeError('Topbar action URL helper insertion point was not found.')
-              topbar = topbar.replace(insert_after, insert_after + helper, 1)
-
-          vulnerable_link = '${item.actionUrl ? `<a class="projectpulse-022d-topbar-action" href="${escapeHtml(item.actionUrl)}">Open related page</a>` : ""}'
-          safe_link = '${projectPulse022DTopbarSafeActionUrl(item.actionUrl) ? `<a class="projectpulse-022d-topbar-action" href="${escapeHtml(projectPulse022DTopbarSafeActionUrl(item.actionUrl))}" rel="noopener noreferrer">Open related page</a>` : ""}'
-
-          if vulnerable_link in topbar:
-              topbar = topbar.replace(vulnerable_link, safe_link, 1)
-
-          html = before + topbar_anchor + topbar
-
-          if 'href="${escapeHtml(item.actionUrl)}"' in html:
-              raise RuntimeError('An unvalidated notification action URL renderer remains.')
-          if marker not in html:
-              raise RuntimeError('Topbar action URL allowlist helper was not installed.')
-
-          index_path.write_text(html, encoding='utf-8')
-          print('SECURITY_NOTIFICATION_ACTION_URL_RENDERERS=HARDENED')
-          PY
-
+          python -m py_compile scripts/security/apply-platform-security-followup-20260729.py
+          python scripts/security/apply-platform-security-followup-20260729.py
           git diff --check
 
       - name: Validate hardened Python and shell sources
@@ -181,7 +68,8 @@ jobs:
           python -m py_compile \
             deployment/rocky-linux/import-company-holidays.py \
             deployment/rocky-linux/serve-frontend-public-restricted.py \
-            ops/projectpulse/scripts/projectpulse-send-backup-email.py
+            ops/projectpulse/scripts/projectpulse-send-backup-email.py \
+            scripts/security/apply-platform-security-followup-20260729.py
           bash -n ops/projectpulse/scripts/projectpulse-sync-status-export.sh
           bash -n ops/projectpulse/scripts/projectpulse-restore-validation-export.sh
           bash -n scripts/021-release-smoke.sh
@@ -194,7 +82,7 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Build backend and run authorization regression tests
+      - name: Build backend and run authorization regressions
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -211,7 +99,7 @@ jobs:
           cache: npm
           cache-dependency-path: src/frontend/project-time-web/package-lock.json
 
-      - name: Build frontend
+      - name: Build production frontend
         working-directory: src/frontend/project-time-web
         shell: bash
         run: |
@@ -219,33 +107,22 @@ jobs:
           npm ci
           npm run build
 
-      - name: Commit validated source remediation
+      - name: Commit validated follow-up source
         shell: bash
         run: |
           set -Eeuo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add \
-            scripts/security/apply-platform-security-remediation-20260729.py \
-            src/backend/ProjectTime.Api/Program.cs \
-            src/backend/ProjectTime.Api/Modules/SecurityHardeningModule.cs \
-            src/frontend/project-time-web/index.html \
-            src/frontend/project-time-web/src/WorkRegisterCenter.jsx \
-            ops/projectpulse/scripts/projectpulse-sync-status-export.sh \
-            ops/projectpulse/scripts/projectpulse-restore-validation-export.sh \
-            deployment/rocky-linux/import-company-holidays.py \
-            deployment/rocky-linux/serve-frontend-public-restricted.py \
-            scripts/021-release-smoke.sh \
-            scripts/validate-019m-bl-through-bu-production-hardening.sh \
-            scripts/validate-019m-az-through-bj.sh \
-            scripts/validate-019m-cf-production-wording-compatibility-guard.sh
+            scripts/security/apply-platform-security-followup-20260729.py \
+            src/backend/ProjectTime.Api/Modules/SecurityHardeningModule.cs
 
           if git diff --cached --quiet; then
-            echo 'SECURITY_REMEDIATION_ALREADY_CURRENT=YES'
+            echo 'SECURITY_FOLLOWUP_ALREADY_CURRENT=YES'
             exit 0
           fi
 
           git diff --cached --check
-          git commit -m 'Remediate platform security findings [security-source-applied]'
+          git commit -m 'Close residual security privilege and object-scope gaps'
           git push origin "HEAD:$TARGET_BRANCH"
-          echo 'SECURITY_REMEDIATION_SOURCE_COMMITTED=YES'
+          echo 'SECURITY_FOLLOWUP_SOURCE_COMMITTED=YES'
