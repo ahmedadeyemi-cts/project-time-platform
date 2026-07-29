@@ -20,6 +20,11 @@ function count(source, marker) {
   return source.split(marker).length - 1;
 }
 
+function replaceRequired(source, anchor, replacement, label) {
+  if (!source.includes(anchor)) throw new Error(`${label} anchor is missing.`);
+  return source.replace(anchor, replacement);
+}
+
 function installApp() {
   const target = read('App.jsx');
   let source = target.source;
@@ -88,11 +93,107 @@ function installHelp() {
     source = source.replace(importAnchor, `${importAnchor}\n${governanceImport}\n${preferenceImport}`);
   }
 
-  const preferenceCall = '  applyHelpAnswerPreferences(url, question);';
+  const preferenceCall = '  const answerPreferences = applyHelpAnswerPreferences(url, question);';
   if (!source.includes(preferenceCall)) {
     const anchor = "  url.searchParams.set('question', question);";
-    if (!source.includes(anchor)) throw new Error('Group 7 Help query anchor is missing.');
-    source = source.replace(anchor, `${anchor}\n${preferenceCall}`);
+    source = replaceRequired(source, anchor, `${anchor}\n${preferenceCall}`, 'Group 7 Help query');
+  }
+
+  if (!source.includes('return { ...payload, answerPreferences };')) {
+    const anchor = '  return payload;\n}\n\nfunction navigateTo';
+    source = replaceRequired(
+      source,
+      anchor,
+      '  return { ...payload, answerPreferences };\n}\n\nfunction navigateTo',
+      'Group 7 Help answer-preference response'
+    );
+  }
+
+  if (!source.includes('GROUP_7_HELP_ANSWER_DETAIL_START')) {
+    const anchor = '  const answerContract = payload?.answerContract ?? {};';
+    source = replaceRequired(source, anchor, [
+      anchor,
+      '  /* GROUP_7_HELP_ANSWER_DETAIL_START */',
+      "  const answerPreferences = payload?.answerPreferences ?? { detailLevel: 'standard' };",
+      "  const detailLevel = answerPreferences.detailLevel ?? 'standard';",
+      "  const conciseAnswer = detailLevel === 'concise';",
+      "  const executiveAnswer = detailLevel === 'executive';",
+      "  const expandedAnswer = ['detailed', 'highly_detailed', 'technical', 'step_by_step'].includes(detailLevel);",
+      "  const technicalAnswer = ['highly_detailed', 'technical'].includes(detailLevel);",
+      '  /* GROUP_7_HELP_ANSWER_DETAIL_END */'
+    ].join('\n'), 'Group 7 Help answer-detail state');
+  }
+
+  if (!source.includes('data-answer-detail={detailLevel}')) {
+    source = replaceRequired(
+      source,
+      '    <div className="help-detailed-answer">',
+      '    <div className="help-detailed-answer" data-answer-detail={detailLevel}>',
+      'Group 7 Help answer-detail marker'
+    );
+  }
+
+  const conditionalReplacements = [
+    [
+      '          <AnswerList heading="Detailed procedure" values={direct.detailedSteps} />',
+      '          {!executiveAnswer ? <AnswerList heading="Detailed procedure" values={direct.detailedSteps} /> : null}'
+    ],
+    [
+      '          <AnswerList heading="Important rules" values={direct.importantRules} />',
+      '          {!conciseAnswer ? <AnswerList heading="Important rules" values={direct.importantRules} /> : null}'
+    ],
+    [
+      '           <AnswerList heading="Required evidence" values={plan.requiredEvidence} />',
+      '           {expandedAnswer ? <AnswerList heading="Required evidence" values={plan.requiredEvidence} /> : null}'
+    ],
+    [
+      '           <AnswerList heading="Filters that must be resolved" values={plan.filtersToResolve} />',
+      '           {technicalAnswer ? <AnswerList heading="Filters that must be resolved" values={plan.filtersToResolve} /> : null}'
+    ],
+    [
+      '           <AnswerList heading="Deterministic calculations" values={plan.deterministicCalculations} />',
+      '           {expandedAnswer ? <AnswerList heading="Deterministic calculations" values={plan.deterministicCalculations} /> : null}'
+    ],
+    [
+      '           <AnswerList heading="Required answer sections" values={plan.answerSections} />',
+      '           {!conciseAnswer ? <AnswerList heading="Required answer sections" values={plan.answerSections} /> : null}'
+    ],
+    [
+      '           <AnswerList heading="Detailed execution sequence" values={plan.executionSteps} />',
+      '           {expandedAnswer ? <AnswerList heading="Detailed execution sequence" values={plan.executionSteps} /> : null}'
+    ],
+    [
+      '           <AnswerList heading="Privacy controls" values={plan.privacyControls} />',
+      '           {!conciseAnswer ? <AnswerList heading="Privacy controls" values={plan.privacyControls} /> : null}'
+    ],
+    [
+      '           <AnswerList heading="Missing inputs before exact execution" values={plan.missingInputs} />',
+      '           {!conciseAnswer ? <AnswerList heading="Missing inputs before exact execution" values={plan.missingInputs} /> : null}'
+    ]
+  ];
+  conditionalReplacements.forEach(([anchor, replacement]) => {
+    if (source.includes(anchor)) source = source.replace(anchor, replacement);
+  });
+
+  if (!source.includes('Answer detail: {titleFrom(detailLevel)}')) {
+    const anchor = '      <details className="help-answer-contract">';
+    source = replaceRequired(source, anchor, [
+      '      <div className="help-answer-preference-evidence">',
+      '        <span>Answer detail: {titleFrom(detailLevel)}</span>',
+      '        <span>Preference source: {titleFrom(answerPreferences.preferenceSource ?? \'saved_preference\')}</span>',
+      '        {answerPreferences.includeRepositoryContext ? <span>Repository context requested</span> : null}',
+      '        {answerPreferences.includeAssumptions ? <span>Assumptions requested</span> : null}',
+      '        {answerPreferences.includeSourceCitations ? <span>Source citations requested</span> : null}',
+      '      </div>',
+      '      {technicalAnswer ? (',
+      anchor
+    ].join('\n'), 'Group 7 Help preference evidence');
+    source = replaceRequired(
+      source,
+      '      </details>\n    </div>',
+      '      </details>\n      ) : null}\n    </div>',
+      'Group 7 Help technical answer contract'
+    );
   }
 
   if (!source.includes('GROUP_7_HELP_GOVERNANCE_PANEL_START')) {
