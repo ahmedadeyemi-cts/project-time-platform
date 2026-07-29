@@ -122,7 +122,7 @@ jobs:
 
           grep -Fq 'Pulse AI' "$APP"
           grep -Fq 'Pulse AI' "$HELP"
-          grep -Fq 'group3-workspace-hero' "$CSS"
+          grep -Fq '.group3-hero' "$CSS"
           grep -Eq '#0[0-9A-Fa-f]{5}|#1[0-9A-Fa-f]{5}|rgb\(' "$CSS"
           echo 'GROUP3_DISTINCT_WORKSPACES_AND_PULSE_AI_LABEL=PASS'
 
