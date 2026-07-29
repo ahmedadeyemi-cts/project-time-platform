@@ -26,6 +26,29 @@ public static partial class ScopedRolePolicyModule
             var actor = await LoadActorAsync(context, connection);
             if (actor is null) return null;
 
+            // The actual authenticated Super Administrator invariant is checked
+            // independently of effective-policy rows. It cannot transfer through
+            // View-As and cannot be reduced by a module-specific denial.
+            if (await ProjectPulseActualSessionAuthority.IsSuperAdministratorAsync(
+                    context,
+                    connection,
+                    cancellationToken: context.RequestAborted))
+            {
+                return new ScopedAuthorizationDecision(
+                    true,
+                    false,
+                    false,
+                    false,
+                    (moduleCode ?? string.Empty).Trim().ToUpperInvariant(),
+                    (actionCode ?? string.Empty).Trim().ToUpperInvariant(),
+                    "ORGANIZATION",
+                    null,
+                    false,
+                    true,
+                    true,
+                    "Super Administrator has permanent organization-wide Full Control in their own session.");
+            }
+
             return await ScopedAuthorizationEvaluator.EvaluateAsync(
                 connection,
                 actor,

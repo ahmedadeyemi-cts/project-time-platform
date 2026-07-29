@@ -11,14 +11,19 @@ namespace ProjectTime.Api.Modules;
 public static class GlobalMailConfigurationModule
 {
     private const string MicrosoftSsoRuntimePrefix = "/api/microsoft-integration/sso-";
+    private const string InteractiveSsoPrefix = "/api/auth/sso/";
 
     public static WebApplication MapGlobalMailConfigurationEndpoints(this WebApplication app)
     {
         app.UseProjectPulsePublicOriginCompatibility();
+
+        // Resolve the trusted public HTTPS origin before environment selection or
+        // interactive SSO activation. Azure's internal Container Apps host must
+        // never become the expected Entra callback URI.
+        app.UseMicrosoftPublicSsoOriginCompatibility();
         app.UseMicrosoftEnvironmentRuntimeCompatibility();
         app.UseMicrosoftSsoInteractiveStartActivation();
         app.UseMicrosoftIntegrationSecurityCompatibility();
-        app.UseMicrosoftPublicSsoOriginCompatibility();
         app.UseScopedRolePolicyResultExecutionCompatibility();
         app.UseModuleAvailabilityReadContinuityCompatibility();
         app.UseMicrosoftSsoRuntimeCompatibility();
@@ -45,7 +50,9 @@ public static class GlobalMailConfigurationModule
         app.Use(async (context, next) =>
         {
             var path = context.Request.Path.Value ?? string.Empty;
-            if (!path.StartsWith(MicrosoftSsoRuntimePrefix, StringComparison.OrdinalIgnoreCase))
+            var isSsoOperation = path.StartsWith(MicrosoftSsoRuntimePrefix, StringComparison.OrdinalIgnoreCase)
+                || path.StartsWith(InteractiveSsoPrefix, StringComparison.OrdinalIgnoreCase);
+            if (!isSsoOperation)
             {
                 await next();
                 return;
@@ -57,6 +64,7 @@ public static class GlobalMailConfigurationModule
                 {
                     module = "065",
                     status = "trusted_public_origin_unavailable",
+                    correlationId = context.TraceIdentifier,
                     message = "ProjectPulse could not determine the trusted HTTPS public origin for this Microsoft SSO operation. Verify the public URL and reverse-proxy forwarding configuration."
                 }).ExecuteAsync(context);
                 return;
@@ -67,6 +75,7 @@ public static class GlobalMailConfigurationModule
             context.Items[ProjectPulsePublicOriginCompatibility.PublicOriginItem] = publicOrigin;
             context.Items[ProjectPulsePublicOriginCompatibility.PublicOriginSourceItem] = source;
             context.Items["ProjectPulsePublicOrigin"] = publicOrigin.GetLeftPart(UriPartial.Authority);
+            context.Items["ProjectPulsePublicSsoOriginResolved"] = true;
             await next();
         });
         return app;
@@ -78,7 +87,8 @@ public static class GlobalMailConfigurationModule
         out string source)
     {
         if (context.Items.TryGetValue(ProjectPulsePublicOriginCompatibility.PublicOriginItem, out var existing)
-            && existing is Uri existingUri)
+            && existing is Uri existingUri
+            && ProjectPulsePublicOriginCompatibility.TrustedHost(existingUri.Host, context))
         {
             publicOrigin = existingUri;
             source = context.Items.TryGetValue(ProjectPulsePublicOriginCompatibility.PublicOriginSourceItem, out var existingSource)
