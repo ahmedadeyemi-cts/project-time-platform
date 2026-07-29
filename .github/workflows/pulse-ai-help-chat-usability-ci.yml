@@ -81,9 +81,10 @@ jobs:
         run: |
           set -Eeuo pipefail
           dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
-          GENERATED="$(find src/backend/ProjectTime.Api/obj -name PulseAiQuestionPlanner.g.cs -print -quit)"
+          GENERATED="$(find src/backend/ProjectTime.Api -maxdepth 6 -name PulseAiQuestionPlanner.g.cs -print -quit)"
           test -n "$GENERATED"
           grep -Fq 'PulseAiProductKnowledgeCatalog.Find(normalized) ?? FindKnowledgeAnswer(normalized)' "$GENERATED"
+          echo "PULSE_AI_HELP_CHAT_GENERATED_PLANNER=$GENERATED"
           echo 'PULSE_AI_HELP_CHAT_API_BUILD=PASSED'
 
       - name: Build complete frontend production bundle
